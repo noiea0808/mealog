@@ -1444,7 +1444,7 @@ window.viewAllComments = async (postId) => {
                         <div class="mb-1 text-sm">
                             <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
-                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                         </div>
                     `;
@@ -1510,6 +1510,18 @@ window.toggleCommentInput = (postId) => {
             const textInput = document.getElementById(`comment-text-${postId}`);
             if (textInput) {
                 textInput.focus();
+                try {
+                    if (!textInput.dataset.mv2SendBtnBound) {
+                        textInput.dataset.mv2SendBtnBound = '1';
+                        textInput.addEventListener('input', () => {
+                            syncCommentSendButtonVisibility(postId, textInput);
+                        });
+                        textInput.addEventListener('blur', () => {
+                            syncCommentSendButtonVisibility(postId, textInput);
+                        });
+                    }
+                    syncCommentSendButtonVisibility(postId, textInput);
+                } catch (_) {}
             }
             syncMomentV2SocialCommentEmptyOverlay(postId);
             // 입력창 왼쪽 아바타 반영 (사진 > 이모지 > 기본)
@@ -1611,6 +1623,9 @@ window.submitComment = async (postId) => {
     
     // 즉시 비우기 (disabled 대신 플래그로 더블 탭 방지 → 키보드 유지)
     inputEl.value = '';
+    try {
+        syncCommentSendButtonVisibility(postId, inputEl);
+    } catch (_) {}
     
     // 낙관적 업데이트: 댓글 한 줄 즉시 표시
     if (commentsListEl) {
@@ -1678,7 +1693,7 @@ window.submitComment = async (postId) => {
                 );
                 const nickCls2 = useDarkCommentRowStyle ? 'font-bold text-white/95' : 'font-bold text-slate-800';
                 const bodyCls2 = useDarkCommentRowStyle ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
-                const dateCls = useDarkCommentRowStyle ? 'text-xs text-white/45 ml-2' : 'text-xs text-slate-400 ml-2';
+                const dateCls = useDarkCommentRowStyle ? 'text-xs text-white/65 ml-2' : 'text-xs text-slate-500 ml-2';
                 const delCls = useDarkCommentRowStyle
                     ? 'ml-2 text-white/50 text-xs hover:text-red-300'
                     : 'ml-2 text-slate-400 text-xs hover:text-red-500';
@@ -1727,6 +1742,20 @@ window.submitComment = async (postId) => {
         _commentSubmitting[postId] = false;
     }
 };
+
+function syncCommentSendButtonVisibility(postId, inputEl) {
+    const pid = String(postId || '');
+    if (!pid) return;
+    const input = inputEl || document.getElementById(`comment-text-${pid}`);
+    if (!input) return;
+    const wrap = input.closest?.('.moment-v2-social-comments-input-shell') || input.parentElement;
+    const btn =
+        (wrap && wrap.querySelector ? wrap.querySelector('[data-comment-send-btn="1"]') : null) ||
+        document.querySelector(`.moment-v2-social-comments-send[data-post-id="${CSS.escape(pid)}"]`);
+    if (!btn) return;
+    const hasText = Boolean((input.value || '').trim());
+    btn.disabled = !hasText;
+}
 
 /** 사진 팝업 하단 댓글 박스 — 코멘트 밴드와 유사한 어두운 톤 */
 async function loadPostCommentsForMealPhotoOverlayList(postId, listEl) {
@@ -1845,7 +1874,7 @@ async function loadPostComments(postId) {
                         <div class="mb-1 text-sm">
                             <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
-                            ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                            ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                         </div>
                     `;

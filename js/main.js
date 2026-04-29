@@ -44,9 +44,10 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
-import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
+import { scheduleAttendanceCheckIfNeeded, updateTrackerStreakLabel } from './attendance-check.js';
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
+import { clearMealsWindowStatsReconcileMeta, clearStreakEmptyDayTrustAll } from './meal-record-count.js';
 import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
@@ -1149,6 +1150,8 @@ initAuth(async (user) => {
             // 전역 상태 초기화
             window.userSettings = null;
             window.mealHistory = null;
+            clearStreakEmptyDayTrustAll();
+            clearMealsWindowStatsReconcileMeta();
             window.dailyStats = null;
             window.sharedPhotos = null;
             window.sharedPhotosFeed = [];
@@ -1309,6 +1312,9 @@ initAuth(async (user) => {
                             hideLoading();
                         }
                         return;
+                    }
+                    if (tab === 'timeline') {
+                        updateTrackerStreakLabel();
                     }
                     // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
                     if (tab !== 'timeline') return;

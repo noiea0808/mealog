@@ -14,6 +14,7 @@ import {
     MealSyncManager,
     getMealSyncManager,
     mealDocSnapshotAppearsServerAcked,
+    mealRecordHasBase64PendingPhotos,
     mergePreserveLocalSaveFailed,
     shouldPreserveMealSaveFailureOnMerge
 } from './meal-sync-manager.js';
@@ -26,7 +27,7 @@ import {
 } from './meal-entry-pending.js';
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
-import { mealRecordHasBase64PendingPhotos } from './meal-sync-manager.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
 import { appState } from '../state.js';
 
 /** mealHistory에서 YYYY-MM-DD 최소일 (없으면 null). limit(50)으로 초기 스냅샷에 구멍이 생길 때 loaded 범위와 일치시키기 위함 */
@@ -40,18 +41,6 @@ function minMealDateYmd(meals) {
         }
     }
     return min;
-}
-
-function maxMealDateYmd(meals) {
-    if (!Array.isArray(meals) || !meals.length) return null;
-    let max = null;
-    for (const m of meals) {
-        const d = m?.date;
-        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-            if (max == null || d > max) max = d;
-        }
-    }
-    return max;
 }
 
 /** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지) */
@@ -357,6 +346,18 @@ export function applyMealsSnapshotPrimary(p) {
         }
     }
 
+    if (!demo) {
+        const wr = window.loadedMealsDateRange;
+        window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
+        window.__mealogMealsQueryEnd = wr?.end || todayStr;
+        window.__mealogMealsWindowFullyLoaded = snap.docs.length < 50;
+        if (window.dailyStats && typeof window.dailyStats === 'object') {
+            window.dailyStats = applyStreakTrustPatchesToDailyStats(
+                stripGhostDailyStatsInQueryWindow({ ...window.dailyStats })
+            );
+        }
+    }
+
     clearStuckMealPendingFlags();
     if (onDataUpdate) onDataUpdate();
     if (!demo) {
@@ -367,10 +368,19 @@ export function applyMealsSnapshotPrimary(p) {
 
 /**
  * 날짜 범위 쿼리 실패 시 fallback 전체 컬렉션 리스너 콜백 본문
- * @param {{ snap: *, demo: boolean, userId: string, mergeStatsIntoDaily: () => void, onDataUpdate?: () => void, firstSnapshotState: { value: boolean } }} p
+ * @param {{ snap: *, demo: boolean, userId: string, cutoffDateStr: string, todayStr: string, mergeStatsIntoDaily: () => void, onDataUpdate?: () => void, firstSnapshotState: { value: boolean } }} p
  */
 export function applyMealsSnapshotFallback(p) {
-    const { snap, demo, userId, mergeStatsIntoDaily, onDataUpdate, firstSnapshotState } = p;
+    const {
+        snap,
+        demo,
+        userId,
+        cutoffDateStr,
+        todayStr,
+        mergeStatsIntoDaily,
+        onDataUpdate,
+        firstSnapshotState
+    } = p;
 
     if (window.currentUser && userId !== window.currentUser.uid) {
         console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
@@ -396,11 +406,9 @@ export function applyMealsSnapshotFallback(p) {
         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
     window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
     const minF = minMealDateYmd(window.mealHistory);
-    const maxF = maxMealDateYmd(window.mealHistory);
-    const tl = todayLocalYmd();
     window.loadedMealsDateRange = {
-        start: minF ?? tl,
-        end: maxF ?? tl
+        start: minF ?? cutoffDateStr,
+        end: todayStr
     };
     const allowFromCacheAck = firstSnapshotState.value;
     snap.docs.forEach((d) => {
@@ -413,6 +421,14 @@ export function applyMealsSnapshotFallback(p) {
         }
     });
     firstSnapshotState.value = false;
+    if (!demo) {
+        const wr = window.loadedMealsDateRange;
+        window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
+        window.__mealogMealsQueryEnd = wr?.end || todayStr;
+        // 전체 컬렉션 스냅샷: 날짜 범위 내 실제 끼니 유무는 mealHistory와 일치
+        window.__mealogMealsWindowFullyLoaded = true;
+        mergeStatsIntoDaily();
+    }
     if (onDataUpdate) onDataUpdate();
     if (!demo) {
         scheduleReconcileStaleMealSyncDotsAfterSnapshot();

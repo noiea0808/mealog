@@ -68,9 +68,22 @@ export const appState = {
     wantsToShare: false, // 공유를 원하는지 여부
     currentRating: 3,
     currentSatiety: 3,
-    /** 기록 모달 열림 중: 만족도·포만감 게이지 사용(저장·통계 반영) 여부 */
-    entryGaugeRatingOn: false,
-    entryGaugeSatietyOn: false,
+    /** 기록 모달: 만족도·포만감 게이지 사용 여부 (식사 슬롯 vs 간식 슬롯 각각) */
+    entryGaugeRatingOnMain: false,
+    entryGaugeRatingOnSnack: false,
+    entryGaugeSatietyOnMain: false,
+    entryGaugeSatietyOnSnack: false,
+    /** 기록 모달: 식사/간식 각각 시간 항목 on */
+    entryTimeOnMain: false,
+    entryTimeOnSnack: false,
+    /** 신규 기록 모달: 시간 자동 채우기 1회 제한용 */
+    entryMealClockDidSeedModalOpenMain: false,
+    entryMealClockDidSeedModalOpenSnack: false,
+    entryMealClockDidApplyPhotoExifMain: false,
+    entryMealClockDidApplyPhotoExifSnack: false,
+    /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
+    entryMealClockPendingExifHhmmMain: null,
+    entryMealClockPendingExifHhmmSnack: null,
     
     // 대시보드
     dashboardMode: '7d',

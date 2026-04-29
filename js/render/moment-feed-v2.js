@@ -184,6 +184,9 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                     <div class="moment-v2-social-comments-input-shell relative backdrop-blur-sm">
                         <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
                         <input type="text" id="comment-text-${p}" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 text-[14px] leading-none text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
+                        <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="입력">
+                            <i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
             </div>

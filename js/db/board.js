@@ -6,6 +6,45 @@ import { isDemoUser } from '../demo-account.js';
 import { getMealogClientEnv } from '../utils.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 
+/** 알림 목록: 레거시 제목 우선, 없으면 본문(html) 첫 줄 평문, 길면 `...` (Cloud `boardPostPushTitlePreview` 와 동일 길이 규칙) */
+function boardPostTitleForNotification(data) {
+    if (!data || typeof data !== 'object') return '';
+    const legacy = typeof data.title === 'string' ? data.title.trim() : '';
+    const maxLen = 52;
+    if (legacy) {
+        if (legacy.length <= maxLen) return legacy;
+        return `${legacy.slice(0, Math.max(1, maxLen - 3))}...`;
+    }
+    const raw = data.content != null ? String(data.content) : '';
+    if (!raw.trim()) return '';
+    let firstLine = '';
+    try {
+        if (typeof document !== 'undefined') {
+            const div = document.createElement('div');
+            div.innerHTML = raw;
+            const txt = (div.textContent || div.innerText || '').replace(/\r\n/g, '\n');
+            for (const seg of txt.split('\n')) {
+                const s = seg.replace(/\s+/g, ' ').trim();
+                if (s) {
+                    firstLine = s;
+                    break;
+                }
+            }
+        }
+    } catch (_) {}
+    if (!firstLine) {
+        const stripped = raw
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        firstLine = stripped.split('\n').map((x) => x.trim()).find(Boolean) || stripped;
+    }
+    if (!firstLine) return '';
+    if (firstLine.length <= maxLen) return firstLine;
+    return `${firstLine.slice(0, Math.max(1, maxLen - 3))}...`;
+}
+
 // 게시판 관련 함수들
 export const boardOperations = {
     // 게시글 작성 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
@@ -554,7 +593,7 @@ export const boardOperations = {
             const myPostTitles = new Map();
             myPostsSnap.docs.forEach(d => {
                 const data = d.data();
-                myPostTitles.set(d.id, (data.title || '').trim() || '(제목 없음)');
+                myPostTitles.set(d.id, boardPostTitleForNotification(data) || '밀톡');
             });
 
             // 알림용: 서버에 저장된 postAuthorId로 "내 글에 달린 댓글"만 쿼리 (구조 변경으로 확실히 동작)
@@ -575,7 +614,7 @@ export const boardOperations = {
                 const data = d.data();
                 const postId = String(data.postId || '').trim();
                 if (!postId) continue;
-                const title = myPostTitles.get(postId) || '(제목 없음)';
+                const title = myPostTitles.get(postId) || '밀톡';
                 let ts = 0;
                 try {
                     const t = data.timestamp;
@@ -610,7 +649,7 @@ export const boardOperations = {
     },
 
     // 댓글 작성 (Cloud Functions 사용 - 레이트 리밋 및 스팸 필터 적용)
-    async addComment(postId, content) {
+    async addComment(postId, content, imageUrls = []) {
         if (!window.currentUser) {
             throw new Error("로그인이 필요합니다.");
         }
@@ -623,10 +662,11 @@ export const boardOperations = {
             throw new Error('ONBOARDING_INCOMPLETE');
         }
         try {
-            console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length });
+            console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length, imageCount: Array.isArray(imageUrls) ? imageUrls.length : 0 });
             const result = await callableFunctions.addBoardComment({
                 postId,
-                content
+                content,
+                imageUrls: Array.isArray(imageUrls) ? imageUrls : []
             });
             console.log('[boardOperations.addComment] 성공:', result.data);
             return result.data;
@@ -658,6 +698,26 @@ export const boardOperations = {
         } catch (e) {
             console.error("Delete Comment Error:", e);
             const errorMessage = e.message || e.details || "댓글 삭제에 실패했습니다.";
+            showToast(errorMessage, 'error');
+            throw e;
+        }
+    },
+
+    // 댓글 편집 (Cloud Functions 사용)
+    async updateComment(commentId, postId, content) {
+        if (!window.currentUser) {
+            throw new Error("로그인이 필요합니다.");
+        }
+        try {
+            const result = await callableFunctions.updateBoardComment({
+                commentId,
+                postId,
+                content
+            });
+            return result.data;
+        } catch (e) {
+            console.error("Update Comment Error:", e);
+            const errorMessage = e.message || e.details || "댓글 편집에 실패했습니다.";
             showToast(errorMessage, 'error');
             throw e;
         }
@@ -952,7 +1012,7 @@ export const noticeOperations = {
         }
     },
 
-    async addNoticeComment(noticeId, content) {
+    async addNoticeComment(noticeId, content, imageUrls = []) {
         if (!window.currentUser) {
             throw new Error('로그인이 필요합니다.');
         }
@@ -967,7 +1027,8 @@ export const noticeOperations = {
         try {
             const result = await callableFunctions.addNoticeComment({
                 noticeId: String(noticeId),
-                content
+                content,
+                imageUrls: Array.isArray(imageUrls) ? imageUrls : []
             });
             return result.data;
         } catch (e) {
@@ -991,6 +1052,25 @@ export const noticeOperations = {
         } catch (e) {
             console.error('Delete Notice Comment Error:', e);
             const errorMessage = e.message || e.details || '댓글 삭제에 실패했습니다.';
+            showToast(errorMessage, 'error');
+            throw e;
+        }
+    },
+
+    async updateNoticeComment(commentId, noticeId, content) {
+        if (!window.currentUser) {
+            throw new Error('로그인이 필요합니다.');
+        }
+        try {
+            const result = await callableFunctions.updateNoticeComment({
+                commentId,
+                noticeId: noticeId != null ? String(noticeId) : '',
+                content
+            });
+            return result.data;
+        } catch (e) {
+            console.error('Update Notice Comment Error:', e);
+            const errorMessage = e.message || e.details || '댓글 편집에 실패했습니다.';
             showToast(errorMessage, 'error');
             throw e;
         }

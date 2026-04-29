@@ -1,6 +1,6 @@
 /**
- * 출석/연속 기록 팝업 — 어제(서울 달력)까지 이어진 연속 일수(트래커와 동일: dailyStats ∪ mealHistory로 일자별 기록 유무; 전일 무기록이면 0).
- * (meals 쿼리는 최근 구간만 로드되므로 연속 일수는 전역 dailyStats와 합쳐 계산.)
+ * 출석/연속 기록 팝업 — 연속 일수는 {@link computeTrackerStreakDisplayDays}(서울 달력, 당일 기록이 있으면 오늘부터 세는 값)으로 분기·문구 치환.
+ * (meals 쿼리는 최근 구간만 로드되므로 일자별 유무는 전역 dailyStats ∪ mealHistory와 {@link getRecordCountForIso}로 맞춤.)
  * 노출 빈도: 케이스별(기록 없음·연속 없음·1일·2일+) 관리자 설정 — 접속마다(sessionStorage) 또는 하루 1회(localStorage). 설정 미로드 시 기본은 하루 1회.
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
@@ -66,8 +66,40 @@ export function computeConsecutiveStreakDays(dateSet) {
 }
 
 /**
+ * 트래커 헤더 문구용: 오늘(서울)에 기록이 있으면 **오늘부터** 역순 연속 일수 (당일 첫 끼니 후에도 증가).
+ * 없으면 {@link computeConsecutiveStreakDays}와 같이 **어제부터** (어제 공백이면 0).
+ * — 서버·관리자 웰컴 내보내기 등 **전일만** 쓰는 곳은 {@link computeConsecutiveStreakDays} 유지.
+ * @returns {number}
+ */
+export function computeTrackerStreakDisplayDays() {
+    const set = collectRecordedDateSetForStreak();
+    if (!set || set.size === 0) return 0;
+    const today = toSeoulDateString(new Date());
+    const yesterday = addCalendarDaysSeoulYmd(today, -1);
+    const start = set.has(today) ? today : yesterday;
+    if (!start || !set.has(start)) return 0;
+    let streak = 0;
+    let cursor = start;
+    while (set.has(cursor)) {
+        streak++;
+        cursor = addCalendarDaysSeoulYmd(cursor, -1);
+    }
+    return streak;
+}
+
+/**
+ * 타임라인 트래커 헤더(달력 아이콘 옆) — {@link computeTrackerStreakDisplayDays} 값 표시.
+ */
+export function updateTrackerStreakLabel() {
+    const el = document.getElementById('trackerStreakLabel');
+    if (!el) return;
+    const n = computeTrackerStreakDisplayDays();
+    el.textContent = `${n}일 연속 기록중 `;
+}
+
+/**
  * 기록 완료 팝업 문구 — 해당 날짜 **첫** 신규 기록만 연속 메시지.
- * - 어제까지 연속 일수 n (`computeConsecutiveStreakDays`): n≥1 → `(n+1)일 연속 기록!`, n=0 → `기록 완료!`
+ * - {@link computeTrackerStreakDisplayDays}가 2일 미만이면 `기록 완료!`, 이상이면 `N일 연속 기록!` (당일 기준 연속 일수).
  * - 그날 두 번째 기록부터는 항상 `기록 완료!`
  * @param {boolean} wasNewRecord
  * @param {string} [mealDateIso] YYYY-MM-DD
@@ -84,9 +116,9 @@ export function resolveRecordCompletePopupMessage(wasNewRecord, mealDateIso) {
     if (countOnDate < 1) return '기록 완료!';
     if (countOnDate !== 1) return '기록 완료!';
 
-    const n = computeConsecutiveStreakDays(collectRecordedDateSetForStreak());
-    if (n <= 0) return '기록 완료!';
-    return `${n + 1}일 연속 기록!`;
+    const s = computeTrackerStreakDisplayDays();
+    if (s < 2) return '기록 완료!';
+    return `${s}일 연속 기록!`;
 }
 
 let lastAttendanceUid = null;
@@ -250,7 +282,7 @@ const DEFAULT_HEADLINE_STREAK_MULTI = '{streak}일 연속 기록 중!';
 /**
  * @param {{ message?: string|null }} sub message만 사용(빈도는 호출부에서 이미 반영)
  * @param {'noStreak'|'streakOne'|'streakTwoOrMore'} slot
- * @param {number} streak 어제부터 이어진 연속 일수(2일 이상 문구용)
+ * @param {number} streak {@link computeTrackerStreakDisplayDays}와 동일(당일 기준, 2일 이상 문구의 {streak} 치환)
  */
 function resolveHasRecordHeadline(sub, slot, streak) {
     const raw = sub?.message;
@@ -788,7 +820,7 @@ export function scheduleAttendanceCheckIfNeeded() {
                     }
                     return;
                 }
-                const streak = computeConsecutiveStreakDays(collectRecordedDateSetForStreak());
+                const streak = computeTrackerStreakDisplayDays();
                 /** @type {{ row: UnifiedScenarioRow, slot: 'noStreak'|'streakOne'|'streakTwoOrMore', welcomeIcon: 'hasRecordRestart'|'hasRecord', markKind: 'ns'|'s1'|'s2p' }} */
                 let picked;
                 if (streak <= 0) {

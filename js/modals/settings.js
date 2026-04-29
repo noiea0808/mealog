@@ -2024,24 +2024,66 @@ export function initPushPreferencesControlsOnce() {
     });
 }
 
-export async function deleteSubTag(key, text, containerId, inputId, parentFilter) {
+function getSubTagEntryText(t) {
+    return typeof t === 'string' ? t : (t && t.text != null ? String(t.text) : '');
+}
+
+export async function deleteSubTag(key, text, containerId, inputId, parentFilter, fullSubTagText) {
     const newSettings = JSON.parse(JSON.stringify(window.userSettings));
-    if (newSettings.subTags && newSettings.subTags[key]) {
-        const idx = newSettings.subTags[key].findIndex(t => (typeof t === 'string' ? t : t.text) === text);
-        if (idx > -1) {
-            newSettings.subTags[key].splice(idx, 1);
-            window.userSettings = newSettings;
-            try {
-                await dbOps.saveSettings(newSettings);
-                showToast("태그가 삭제되었습니다.", 'success');
-                if (containerId) {
-                    const realParentFilter = (parentFilter === 'null' || !parentFilter) ? null : parentFilter;
-                    window.renderSecondary(containerId, newSettings.subTags[key], inputId, realParentFilter, key);
+    if (!newSettings.subTags || !newSettings.subTags[key]) return;
+
+    const list = newSettings.subTags[key];
+    const matchText = (entryText, want) => entryText === want;
+
+    let idx = -1;
+    if (fullSubTagText) {
+        idx = list.findIndex((t) => matchText(getSubTagEntryText(t), fullSubTagText));
+    }
+    if (idx === -1) {
+        idx = list.findIndex((t) => matchText(getSubTagEntryText(t), text));
+    }
+    if (idx === -1) {
+        idx = list.findIndex((t) => {
+            const tx = getSubTagEntryText(t);
+            if (!tx || !tx.includes(',')) return false;
+            return tx
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .includes(text);
+        });
+    }
+
+    if (idx > -1) {
+        const entry = list[idx];
+        const full = getSubTagEntryText(entry);
+        if (!full.includes(',') || full === text) {
+            list.splice(idx, 1);
+        } else {
+            const parts = full.split(',').map((s) => s.trim()).filter(Boolean);
+            const next = parts.filter((p) => p !== text);
+            if (next.length === 0) {
+                list.splice(idx, 1);
+            } else {
+                const joined = next.join(',');
+                if (typeof entry === 'string') {
+                    list[idx] = joined;
+                } else {
+                    list[idx] = { ...entry, text: joined };
                 }
-            } catch (e) {
-                console.error(e);
-                showToast("삭제 실패", 'error');
             }
+        }
+        window.userSettings = newSettings;
+        try {
+            await dbOps.saveSettings(newSettings);
+            showToast("태그가 삭제되었습니다.", 'success');
+            if (containerId) {
+                const realParentFilter = (parentFilter === 'null' || !parentFilter) ? null : parentFilter;
+                window.renderSecondary(containerId, newSettings.subTags[key], inputId, realParentFilter, key);
+            }
+        } catch (e) {
+            console.error(e);
+            showToast("삭제 실패", 'error');
         }
     }
 }

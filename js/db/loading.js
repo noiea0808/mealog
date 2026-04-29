@@ -5,6 +5,7 @@ import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { addDaysToYmd, applyDemoDateShiftToDailyStats, applyDemoDateShiftToMeals } from '../demo-date-shift.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
 
 /** 연도별 stats 로드 (config/stats/years/{year}) - 대시보드에서 과거 연도 조회 시 */
 export async function loadStatsForYears(years) {
@@ -22,6 +23,9 @@ export async function loadStatsForYears(years) {
                     : 0;
             const patch = shift ? applyDemoDateShiftToDailyStats(raw, shift) : raw;
             Object.assign(window.dailyStats, patch);
+            window.dailyStats = applyStreakTrustPatchesToDailyStats(
+                stripGhostDailyStatsInQueryWindow({ ...window.dailyStats })
+            );
         }
     }
 }

@@ -108,10 +108,10 @@ export const DEFAULT_USER_SETTINGS = {
         mealTalk: true,
         adminDefault: true
     },
-    /** 기록 모달: 만족도·포만감 다이얼 사용 여부 (기본 끔, 다음에도 동일하게 열림) */
+    /** 기록 모달: 만족도·포만감 다이얼 사용 여부 (식사·간식 각각 기억, 기본 끔) */
     entryModalGauges: {
-        ratingEnabled: false,
-        satietyEnabled: false
+        main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
+        snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
     }
 };
 

@@ -271,8 +271,18 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
         modal.remove();
     }
     
-    showToast("장소가 선택되었습니다.", 'success');
+        showToast("장소가 선택되었습니다.", 'success');
 }
 
+/** 카카오 장소 검색 모달이 열린 뒤 검색어를 넣고(선택) 검색을 실행. 모달이 없으면 no-op. */
+export function applyKakaoSearchText(text, runSearch = true) {
+    const searchInput = document.getElementById('kakaoSearchInput');
+    if (!searchInput) return;
+    const s = text == null ? '' : String(text).trim();
+    searchInput.value = s;
+    if (runSearch && s.length >= KAKAO_SEARCH_MIN_LENGTH) {
+        return searchKakaoPlaces();
+    }
+}
 
 

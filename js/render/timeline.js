@@ -23,6 +23,8 @@ import {
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
+import { updateTrackerStreakLabel } from '../attendance-check.js';
+import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -417,13 +419,52 @@ function mealRecordAuxChronoMs(r) {
     return 0;
 }
 
+/** Firestore recordedAt(ISO) 우선 — 신규 간식이 시간 없을 때 아래(뒤)로 쌓이게 */
+function mealRecordedAtPrimaryMs(r) {
+    if (!r) return NaN;
+    if (typeof r.recordedAt === 'string' && r.recordedAt.trim()) {
+        const ms = Date.parse(r.recordedAt.trim());
+        if (!Number.isNaN(ms)) return ms;
+    }
+    return NaN;
+}
+
+/** mealClock 있으면 시간 기록으로 간주 */
+function snackHasMealClockForSort(r) {
+    return Boolean(r && normalizeMealClockInputValue(r.mealClock || ''));
+}
+
+/** mealClock만으로 당일 순서(자정 기준 분 단위) */
+function snackMealClockMinutesFromMidnight(r) {
+    const mc = normalizeMealClockInputValue(r?.mealClock || '');
+    const m = String(mc).match(/^(\d{2}):(\d{2})$/);
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
 function sortSnackSlotRecordsChronological(records) {
     return [...records].sort((a, b) => {
-        const da = mealRecordTimeSortMs(a);
-        const db = mealRecordTimeSortMs(b);
-        if (da !== db) return da - db;
-        const ta = mealRecordAuxChronoMs(a);
-        const tb = mealRecordAuxChronoMs(b);
+        const ca = snackHasMealClockForSort(a);
+        const cb = snackHasMealClockForSort(b);
+        /** 시간 기록 있음 먼저(위), 없음은 나중(아래) — 화면 세로는 시간 오름차순 후 생성순 */
+        if (ca !== cb) return ca ? -1 : 1;
+
+        if (ca && cb) {
+            const ma = snackMealClockMinutesFromMidnight(a);
+            const mb = snackMealClockMinutesFromMidnight(b);
+            if (ma !== mb) return ma - mb;
+            const ra = mealRecordedAtPrimaryMs(a);
+            const rb = mealRecordedAtPrimaryMs(b);
+            const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);
+            const tb = Number.isFinite(rb) ? rb : mealRecordAuxChronoMs(b) || mealRecordTimeSortMs(b);
+            if (ta !== tb) return ta - tb;
+            return String(a.id || '').localeCompare(String(b.id || ''));
+        }
+
+        const ra = mealRecordedAtPrimaryMs(a);
+        const rb = mealRecordedAtPrimaryMs(b);
+        const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);
+        const tb = Number.isFinite(rb) ? rb : mealRecordAuxChronoMs(b) || mealRecordTimeSortMs(b);
         if (ta !== tb) return ta - tb;
         return String(a.id || '').localeCompare(String(b.id || ''));
     });
@@ -671,6 +712,8 @@ function buildSnackTimelineCardHtml(
     }
     const titleLine2 = escapeHtml(menuLine);
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
@@ -791,6 +834,8 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     const safeMenu = escapeHtml(menuLine);
 
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
     else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
@@ -858,6 +903,8 @@ function buildSnackListFilledRowHtml(
     const safePlaceLine = escapeHtml(p || '—');
 
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
@@ -1148,6 +1195,8 @@ export function renderTimeline() {
                         const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
                         titleLine2 = escapeHtml(menuLine);
                         const tags = [];
+                        const clockTagMain = mealClockTagLabelFromRecord(r);
+                        if (clockTagMain) tags.push(clockTagMain);
                         if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
                         if (r.withWhomDetail) tags.push(r.withWhomDetail);
                         else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
@@ -1418,6 +1467,7 @@ export function renderTimeline() {
     }
 
     updateTimelineMealEntryPendingIndicators();
+    updateTrackerStreakLabel();
 }
 
 let miniCalendarPointerDragBound = false;
@@ -1773,4 +1823,5 @@ export function renderMiniCalendar() {
     }, 100);
 
     refreshTrackerMonthCalendarPopupIfOpen();
+    updateTrackerStreakLabel();
 }
