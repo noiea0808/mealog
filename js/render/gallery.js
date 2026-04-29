@@ -23,6 +23,11 @@ import {
 import { ensureMomentFeedPinchDelegate } from '../main/moment-feed-pinch.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
+import {
+    buildMomentFeedSkeletonCardsHtml,
+    replaceMomentSkeletonWithBatch,
+    removeRemainingMomentSkeletons
+} from './moment-feed-skeleton.js';
 
 ensureMomentFeedPinchDelegate();
 
@@ -1104,7 +1109,17 @@ export async function renderGallery(options = {}) {
     // 초기 렌더링: 최대 10건 먼저 표시, 나머지는 더보기/스크롤로 로드
     const estimatedPostHeight = 600; // 각 포스트의 예상 높이
     const INITIAL_POSTS_COUNT = Math.min(10, Math.max(1, sortedGroups.length)); // 10건씩 끊어서 표시
-    
+    if (sortedGroups.length > 0) {
+        postsInsertPoint.insertAdjacentHTML(
+            'beforeend',
+            buildMomentFeedSkeletonCardsHtml(
+                INITIAL_POSTS_COUNT,
+                galleryMomentLayoutV2,
+                galleryMomentLayoutV2
+            )
+        );
+    }
+
     // 초기 포스트만 먼저 렌더링 (비동기 배치 처리로 브라우저 블로킹 방지)
     const initialPosts = sortedGroups.slice(0, INITIAL_POSTS_COUNT);
     
@@ -1121,6 +1136,7 @@ export async function renderGallery(options = {}) {
         }
         
         if (renderedIndex >= initialPosts.length) {
+            removeRemainingMomentSkeletons(postsInsertPoint);
             // 모든 초기 포스트 렌더링 완료
             // 나머지 포스트는 placeholder로 렌더링 (스크롤 시 실제 포스트로 교체)
             if (sortedGroups.length > INITIAL_POSTS_COUNT) {
@@ -1192,7 +1208,7 @@ export async function renderGallery(options = {}) {
         while (tempDiv.firstChild) {
             fragment.appendChild(tempDiv.firstChild);
         }
-        postsInsertPoint.appendChild(fragment);
+        replaceMomentSkeletonWithBatch(postsInsertPoint, fragment, batch.length);
         const batchSize = batch.length;
         renderedIndex += batchSize;
         applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);

@@ -240,6 +240,45 @@ body.keyboard-closed #boardWriteView {
     width: 100%;
     box-sizing: border-box;
 }
+
+/* 모먼트 초기 로딩 스켈레톤(풀폭 슬롯 + 쉬머) */
+@keyframes moment-feed-skel-shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+.moment-feed-skel-base {
+    position: relative;
+    overflow: hidden;
+    background-color: #e2e8f0;
+    background-image: linear-gradient(
+        90deg,
+        #e2e8f0 0%,
+        #f1f5f9 16%,
+        #f8fafc 38%,
+        #f1f5f9 58%,
+        #e2e8f0 100%
+    );
+    background-size: 240% 100%;
+    background-position: 200% 0;
+    animation: moment-feed-skel-shimmer 1.25s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .moment-feed-skel-base {
+        animation: none;
+        background-image: none;
+    }
+}
+#galleryContainer .moment-feed-skeleton-card,
+#feedContent .moment-feed-skeleton-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
 /* JS 앵커용 `.instagram-post`: 시각 박스 없음(투명 래퍼) */
 #galleryContainer.moment-feed-layout-v2 .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2'] {
     margin: 0 !important;
@@ -1794,6 +1833,12 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     max-height: min(88vh, calc(100dvh - 7rem));
     min-height: min-content;
     overflow: hidden;
+}
+/* 베스트·일간·인사이트 등 PNG 카드: intrinsic 높이 유지 — 뷰포트 max-height로 축소·클립 방지 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card),
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card),
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card) {
+    max-height: none;
 }
 /* 화면2 세로 스택: 단위마다 블러 배경(사진 확대·투명) */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-v-unit-bg-wrap,
