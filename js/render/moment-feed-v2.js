@@ -124,7 +124,7 @@ function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) 
 export function buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, ctx = {}) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
     const { mealHistoryMap, groupEntryId } = ctx;
-    const menuBase = (captionTextPlain || '').trim() || '—';
+    const menuBase = isDailyShare ? '' : (captionTextPlain || '').trim() || '—';
     return photoGroup.map((p) => {
         const { y, mo, day, wd } = getMomentV2DateParts(p);
         const slotT = getMomentV2SlotWheelLabel(p, isBestShare, isDailyShare, isInsightShare);
@@ -235,7 +235,15 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
     const { y, mo, day, wd } = getMomentV2DateParts(photo);
     const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare);
-    const menu = (menuCaptionPlain || '').trim() || '—';
+    let menuCol = '';
+    if (!isDailyShare) {
+        const menu = (menuCaptionPlain || '').trim() || '—';
+        menuCol = `<div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
+            <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">
+                <span class="meal-photo-wheel-label-line moment-v2-wheel-menu-anim-line">${buildMomentV2MenuLabelLineInnerHtml(menu)}</span>
+            </div>
+        </div>`;
+    }
     return `<div class="moment-v2-wheel-strip w-full max-w-full min-w-0 overflow-x-hidden scrollbar-hide">
     <div class="timeline-meal-photos-slide-caption-inner flex w-full max-w-full min-w-0 min-h-[30px] items-center rounded-none border border-white/10 bg-black/50 text-white timeline-meal-photo-menu-bar moment-v2-wheel-caption-row moment-v2-wheel-caption-row--unit">
         <div class="timeline-meal-photos-wheelbar-inner flex min-w-0 shrink-0 items-center gap-0 flex-nowrap">
@@ -249,11 +257,7 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags) {
             <span class="meal-photo-wheel-sep meal-photo-wheel-sep--colon shrink-0 select-none text-white/45">:</span>
             ${buildWheelLabelCol('meal-photo-wheel-col--slot', slotT, 'slot')}
         </div>
-        <div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
-            <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">
-                <span class="meal-photo-wheel-label-line moment-v2-wheel-menu-anim-line">${buildMomentV2MenuLabelLineInnerHtml(menu)}</span>
-            </div>
-        </div>
+        ${menuCol}
     </div>
 </div>`;
 }
@@ -273,8 +277,9 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         : '';
     const maxH = 'min(88vh, calc(100dvh - 7rem))';
     if (isBest || isDaily || isInsight) {
-        return `<div class="moment-v2-photo-surface relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-transparent shadow-inner" style="max-height: ${maxH};">
-            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 h-auto w-full object-contain object-center select-none" style="max-height: ${maxH};" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+        /* PNG 카드(베스트·일간·인사이트)는 업로드 해상도·비율 그대로 — 뷰포트 높이로 축소하지 않음 */
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-transparent shadow-inner">
+            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 h-auto w-full max-w-full object-contain object-center select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }

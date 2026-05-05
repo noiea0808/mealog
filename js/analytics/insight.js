@@ -1,5 +1,15 @@
 // 인사이트 코멘트 관련 함수들
-import { SLOTS, SATIETY_DATA, MEALOG_ICON_URL } from '../constants.js';
+import {
+    SLOTS,
+    SATIETY_DATA,
+    MEALOG_ICON_URL,
+    MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY,
+    MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
+    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS
+} from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
@@ -1508,11 +1518,11 @@ export async function openShareInsightModal() {
             <div style="background: #ffffff; padding: 10px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; min-width: 0;">
                     <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase; line-height: 1.2; min-width: 0;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0; line-height: 1.3;">${escapeHtml(dateRangeText || '')}</span>
+                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE}; font-weight: normal; color: #64748b; flex-shrink: 0; line-height: 1.35; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY};">${escapeHtml(dateRangeText || '')}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
                     <span style="font-size: 16px; flex-shrink: 0;">💬</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif; line-height: 1.35; min-width: 0;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
+                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35; min-width: 0;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
                 </div>
             </div>
             <!-- 본문: 연회색 배경, 캐릭터+말풍선 (캐릭터는 원본 DOM 복제) -->
@@ -1883,11 +1893,8 @@ export async function shareInsightToFeed() {
         // 폰트 CSS (html2canvas 클론에서 폰트 로드용)
         let fontCSS = '';
         try {
-            const [fredokaRes, nanumRes] = await Promise.all([
-                fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'),
-                fetch('https://fonts.googleapis.com/earlyaccess/nanumsquareround.css')
-            ]);
-            fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
+            const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
+            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
 
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처

@@ -522,10 +522,12 @@ function buildBottomCaption(row) {
         const t = '기록 없음';
         return row.place ? `${escapeHtml(t)} @ ${escapeHtml(row.place)}` : escapeHtml(t);
     }
-    const menu = (row.menuLine || '').trim() || '—';
-    const m = escapeHtml(menu);
+    const rawMenu = (row.menuLine || '').trim();
+    const m = rawMenu ? escapeHtml(rawMenu) : '';
     const p = (row.place || '').trim();
-    return p ? `${m} @ ${escapeHtml(p)}` : m;
+    if (!m && !p) return '';
+    if (m && p) return `${m} @ ${escapeHtml(p)}`;
+    return m || escapeHtml(p);
 }
 
 /** 이미지 위 우측: 다장일 때만 i/N */

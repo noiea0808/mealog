@@ -1,5 +1,15 @@
 // 베스트 공유 관련 함수들
-import { SLOTS, SLOT_STYLES, SATIETY_DATA } from '../constants.js';
+import {
+    SLOTS,
+    SLOT_STYLES,
+    SATIETY_DATA,
+    MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY,
+    MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
+    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS
+} from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
@@ -842,11 +852,11 @@ export async function openShareBestModal() {
             <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
                     <span style="font-size: 28.8px; font-weight: 600; color: #eab308; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: 12px; font-weight: 400; color: #64748b; flex-shrink: 0;">${periodText}</span>
+                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE}; font-weight: normal; color: #64748b; flex-shrink: 0; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${periodText}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px;">🏆</span>
-                    <span style="font-size: 15px; font-weight: 700; color: #1e293b; font-family: 'NanumSquareRound', sans-serif;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
+                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
                 </div>
             </div>
             <div style="padding: 0 0 12px 0; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
@@ -1192,11 +1202,8 @@ export async function shareBestToFeed() {
         await document.fonts.ready;
         let fontCSS = '';
         try {
-            const [fredokaRes, nanumRes] = await Promise.all([
-                fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'),
-                fetch('https://fonts.googleapis.com/earlyaccess/nanumsquareround.css')
-            ]);
-            fontCSS = (await fredokaRes.text()) + (await nanumRes.text());
+            const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
+            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
 
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처

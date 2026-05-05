@@ -165,7 +165,7 @@ import {
     searchKakaoPlaces,
     selectKakaoPlace
 } from '../modals.js';
-import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js';
+import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA, MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
@@ -397,13 +397,15 @@ window.confirmDailyShare = async (dateStr, ev) => {
             allowTaint: false,
             foreignObjectRendering: false,
             onclone: (clonedDoc) => {
+                const garamCss = MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
                 if (fredokaFontCSS) {
                     const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent = fredokaFontCSS;
+                    clonedStyle.textContent = fredokaFontCSS + garamCss;
                     clonedDoc.head.appendChild(clonedStyle);
                 } else {
                     const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent = `
+                    clonedStyle.textContent =
+                        `
                         @font-face {
                             font-family: 'Fredoka';
                             font-style: normal;
@@ -412,7 +414,7 @@ window.confirmDailyShare = async (dateStr, ev) => {
                             src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
                             unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
                         }
-                    `;
+                    ` + garamCss;
                     clonedDoc.head.appendChild(clonedStyle);
                 }
                 const allSpans = clonedDoc.querySelectorAll('span');
