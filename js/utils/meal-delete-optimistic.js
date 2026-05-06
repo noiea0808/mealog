@@ -1,10 +1,20 @@
 /**
  * 식사 기록 삭제 시 mealHistory·dailyStats·모먼트 캐시 낙관적 반영 (entry-and-core·스냅샷 공용)
  */
+import { updateTrackerStreakLabel } from '../attendance-check.js';
+import { trustStreakHistoryEmptyForDay, untrustStreakHistoryEmptyForDay } from '../meal-record-count.js';
 import { clearMealEntrySaveFailedById } from './meal-entry-pending.js';
 
 const DELETE_OPT_MAIN = new Set(['morning', 'lunch', 'dinner']);
 const DELETE_OPT_SNACK = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
+
+/** Firestore·로컬 meal.date 형식 차이로 trust·dailyStats 키가 어긋나지 않게 */
+function normalizeMealDateYmd(meal) {
+    const d = meal?.date;
+    if (typeof d !== 'string') return '';
+    const s = d.trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : '';
+}
 
 /**
  * @returns {{ meal: object, prevDayStats: object | null, dateIso: string, hadShared: boolean } | null}
@@ -15,11 +25,18 @@ export function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
         (preloadedMeal && preloadedMeal.id === mealId ? preloadedMeal : null) ||
         window.mealHistory?.find((m) => m.id === mealId);
     if (!meal) return null;
-    const dateIso = typeof meal.date === 'string' ? meal.date : '';
+    const dateIso = normalizeMealDateYmd(meal);
     const slotId = meal.slotId || '';
     let prevDayStats = null;
 
     window.mealHistory = window.mealHistory.filter((m) => m.id !== mealId);
+
+    if (dateIso) {
+        const nOnDate = (window.mealHistory || []).filter((m) => m && m.date === dateIso).length;
+        if (nOnDate === 0) {
+            trustStreakHistoryEmptyForDay(dateIso);
+        }
+    }
 
     if (dateIso && window.dailyStats && typeof window.dailyStats === 'object') {
         const day = window.dailyStats[dateIso];
@@ -48,6 +65,11 @@ export function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
     } catch (_) {
         /* ignore */
     }
+    try {
+        updateTrackerStreakLabel();
+    } catch (_) {
+        /* ignore */
+    }
 
     const hadShared = Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
     if (hadShared && window.sharedPhotos) {
@@ -62,6 +84,7 @@ export function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
 
 export function rollbackOptimisticMealDelete(ctx) {
     if (!ctx?.meal) return;
+    if (ctx.dateIso) untrustStreakHistoryEmptyForDay(ctx.dateIso);
     const m = ctx.meal;
     window.mealHistory = [...(window.mealHistory || []), m].sort(
         (a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || '')
@@ -77,6 +100,11 @@ export function rollbackOptimisticMealDelete(ctx) {
     }
     try {
         if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
+    } catch (_) {
+        /* ignore */
+    }
+    try {
+        updateTrackerStreakLabel();
     } catch (_) {
         /* ignore */
     }

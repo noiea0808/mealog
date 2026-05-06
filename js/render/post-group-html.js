@@ -35,7 +35,7 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     let menuLine = '';
     const place = String(photo.place || '').trim();
     if (isBestShare || isDailyShare || isInsightShare) {
-        menuLine = (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+        menuLine = isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
     } else if (isSnack) {
         menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
     } else {
@@ -263,10 +263,10 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                       isInsight = p.type === 'insight';
                   const inner =
                       (isBest || isDaily || isInsight)
-                          ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                          ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                           : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                   return `
-            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+            <div class="flex-shrink-0 w-full snap-start relative" data-moment-i="${idx}">
                 <div class="moment-feed-pinch-host w-full relative">${inner}</div>
             </div>
         `;
@@ -291,7 +291,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     const v2PostCaptionAndFetch =
         layoutV2
             ? [
-                  caption && (isBestShare || isDailyShare || isInsightShare)
+                  caption && (isBestShare || isInsightShare)
                       ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
                       : '',
                   !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
@@ -392,7 +392,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon social-action-icon-stroke"></i>
                         </button>
                     </div>
-                    ${caption && (isBestShare || isDailyShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
+                    ${caption && (isBestShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}
                     ${comment && !isBestShare && !isDailyShare && !isInsightShare ? `
                         <div class="mb-2 text-sm text-slate-800">
                             <div id="post-caption-collapsed-${groupIdx}" class="min-h-[1em]" data-comment-raw="${encodeURIComponent(comment)}" data-caption-variant="moment" data-group-idx="${groupIdx}">
@@ -401,7 +401,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             <div id="post-caption-expanded-${groupIdx}" class="hidden whitespace-pre-line break-words leading-snug cursor-pointer" onclick="window.togglePostCaption(${groupIdx})">${escapeHtml(comment).replace(/\n/g, '<br>')}</div>
                         </div>
                     ` : (!isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost ? `<div class="shared-comment-fetch-placeholder mb-2 text-sm text-slate-800" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"><span class="text-xs text-slate-400">불러오는 중</span></div>` : '')}
-                    <div class="comment-section comments-empty ${((caption && (isBestShare || isDailyShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-3 px-3 pt-1.5 mt-1" id="comment-section-${postId}">
+                    <div class="comment-section comments-empty ${((caption && (isBestShare || isInsightShare)) || (comment && !isBestShare && !isDailyShare && !isInsightShare)) ? 'border-t border-slate-200 ' : ''}-mx-3 px-3 pt-1.5 mt-1" id="comment-section-${postId}">
                         <div class="post-comments-list mb-1 rounded-lg py-2 bg-white" data-post-id="${postId}" id="comments-list-${postId}"></div>
                         <button id="view-comments-${postId}" class="hidden text-xs text-slate-500 font-bold mb-1 hover:text-slate-700 active:text-slate-900 transition-colors" onclick='window.viewAllComments(${postIdJs})'>댓글 더보기</button>
                         <div id="comment-input-${postId}" class="hidden mt-1 py-3 -mx-3 px-3">

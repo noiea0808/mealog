@@ -5,7 +5,7 @@ import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps, unwrapMealSaveResult } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
-import { resolveRecordCompletePopupMessage } from '../attendance-check.js';
+import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
 import {
     renderTimeline,
     renderMiniCalendar,
@@ -52,7 +52,15 @@ import {
     getMealRowSyncLeadKind
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
-import { applyOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
+import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
+import {
+    normalizeMealClockInputValue,
+    tryExifTimeHHmmFromImageFile,
+    formatMealClock12TextWhileTyping,
+    normalizeMealClock12InputValue,
+    mealClock24FromAmPmClock,
+    mealClock24ToAmPmAndDisplay
+} from '../meal-time-utils.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
@@ -156,35 +164,60 @@ export function syncDeliveryVendorSectionVisibility() {
 
 function ensureEntryModalGaugesOnUserSettings() {
     if (!window.userSettings) return;
-    if (!window.userSettings.entryModalGauges || typeof window.userSettings.entryModalGauges !== 'object') {
-        window.userSettings.entryModalGauges = { ratingEnabled: false, satietyEnabled: false };
-    } else {
-        window.userSettings.entryModalGauges.ratingEnabled = window.userSettings.entryModalGauges.ratingEnabled === true;
-        window.userSettings.entryModalGauges.satietyEnabled = window.userSettings.entryModalGauges.satietyEnabled === true;
+    const cur = window.userSettings.entryModalGauges;
+    const off = { ratingEnabled: false, satietyEnabled: false, timeEnabled: false };
+    if (!cur || typeof cur !== 'object') {
+        window.userSettings.entryModalGauges = { main: { ...off }, snack: { ...off } };
+        return;
     }
+    if (cur.main && cur.snack && typeof cur.main === 'object' && typeof cur.snack === 'object') {
+        window.userSettings.entryModalGauges = {
+            main: {
+                ratingEnabled: cur.main.ratingEnabled === true,
+                satietyEnabled: cur.main.satietyEnabled === true,
+                timeEnabled: cur.main.timeEnabled === true
+            },
+            snack: {
+                ratingEnabled: cur.snack.ratingEnabled === true,
+                satietyEnabled: cur.snack.satietyEnabled === true,
+                timeEnabled: cur.snack.timeEnabled === true
+            }
+        };
+        return;
+    }
+    const r = cur.ratingEnabled === true;
+    const s = cur.satietyEnabled === true;
+    window.userSettings.entryModalGauges = {
+        main: { ratingEnabled: r, satietyEnabled: s, timeEnabled: false },
+        snack: { ratingEnabled: r, satietyEnabled: s, timeEnabled: false }
+    };
 }
 
 function syncEntryGaugeToggleCheckboxes() {
-    const r = appState.entryGaugeRatingOn === true;
-    const s = appState.entryGaugeSatietyOn === true;
-    ['entryGaugeRatingToggleMain', 'entryGaugeRatingToggleSnack'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.checked = r;
-    });
-    ['entryGaugeSatietyToggleMain', 'entryGaugeSatietyToggleSnack'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.checked = s;
-    });
+    const rM = appState.entryGaugeRatingOnMain === true;
+    const rS = appState.entryGaugeRatingOnSnack === true;
+    const sM = appState.entryGaugeSatietyOnMain === true;
+    const sS = appState.entryGaugeSatietyOnSnack === true;
+    const elRM = document.getElementById('entryGaugeRatingToggleMain');
+    if (elRM) elRM.checked = rM;
+    const elRS = document.getElementById('entryGaugeRatingToggleSnack');
+    if (elRS) elRS.checked = rS;
+    const elSM = document.getElementById('entryGaugeSatietyToggleMain');
+    if (elSM) elSM.checked = sM;
+    const elSS = document.getElementById('entryGaugeSatietyToggleSnack');
+    if (elSS) elSS.checked = sS;
 }
 
 function applyEntryGaugeDialUi() {
-    const rOn = appState.entryGaugeRatingOn === true;
-    const sOn = appState.entryGaugeSatietyOn === true;
+    const rM = appState.entryGaugeRatingOnMain === true;
+    const rS = appState.entryGaugeRatingOnSnack === true;
+    const sM = appState.entryGaugeSatietyOnMain === true;
+    const sS = appState.entryGaugeSatietyOnSnack === true;
     const pairs = [
-        ['ratingGaugeDialWrap', 'ratingGaugeOffLayerMain', rOn],
-        ['snackRatingGaugeDialWrap', 'ratingGaugeOffLayerSnack', rOn],
-        ['satietyGaugeDialWrap', 'satietyGaugeOffLayerMain', sOn],
-        ['snackSatietyGaugeDialWrap', 'satietyGaugeOffLayerSnack', sOn]
+        ['ratingGaugeDialWrap', 'ratingGaugeOffLayerMain', rM],
+        ['snackRatingGaugeDialWrap', 'ratingGaugeOffLayerSnack', rS],
+        ['satietyGaugeDialWrap', 'satietyGaugeOffLayerMain', sM],
+        ['snackSatietyGaugeDialWrap', 'satietyGaugeOffLayerSnack', sS]
     ];
     pairs.forEach(([wrapId, layerId, on]) => {
         const wrap = document.getElementById(wrapId);
@@ -197,11 +230,182 @@ function applyEntryGaugeDialUi() {
     });
 }
 
+function syncEntryMealClockToggleCheckboxes() {
+    const tM = appState.entryTimeOnMain === true;
+    const tS = appState.entryTimeOnSnack === true;
+    const elM = document.getElementById('entryMealClockToggleMain');
+    const elS = document.getElementById('entryMealClockToggleSnack');
+    if (elM) elM.checked = tM;
+    if (elS) elS.checked = tS;
+}
+
+/** isMain:true = 본식 시간, false = 간식 시간 — 저장값은 24시 "HH:mm" */
+function applyMealClockRowFrom24(isMain, hhmm24maybe) {
+    const txt = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
+    const bridge = document.getElementById(isMain ? 'entryMealTimeBridgeMain' : 'entryMealTimeBridgeSnack');
+    const sel = document.getElementById(isMain ? 'entryMealAmpmMain' : 'entryMealAmpmSnack');
+    if (!txt || !bridge) return;
+    const n24 = normalizeMealClockInputValue(hhmm24maybe);
+    if (!n24) {
+        txt.value = '';
+        if (sel) sel.value = 'pm';
+        bridge.value = '';
+        return;
+    }
+    bridge.value = n24;
+    const { ampm, display } = mealClock24ToAmPmAndDisplay(n24);
+    if (sel) sel.value = ampm;
+    txt.value = display;
+}
+
+/** 모달에서 읽은 24시 "HH:mm"(빈 문자열 가능) */
+function getMealClock24FromModal(isMain) {
+    const txt = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
+    const sel = document.getElementById(isMain ? 'entryMealAmpmMain' : 'entryMealAmpmSnack');
+    const a = sel?.value === 'am' ? 'am' : 'pm';
+    const raw = mealClock24FromAmPmClock(a, txt?.value || '');
+    return normalizeMealClockInputValue(raw || '');
+}
+
+function applyEntryMealClockInputVisibility() {
+    const onM = appState.entryTimeOnMain === true;
+    const onS = appState.entryTimeOnSnack === true;
+    const inM = document.getElementById('entryMealTimeInputMain');
+    const inS = document.getElementById('entryMealTimeInputSnack');
+    const offM = document.getElementById('entryMealTimeOffDisplayMain');
+    const offS = document.getElementById('entryMealTimeOffDisplaySnack');
+    const pickM = document.getElementById('entryMealTimePickBtnMain');
+    const pickS = document.getElementById('entryMealTimePickBtnSnack');
+    const amM = document.getElementById('entryMealAmpmMain');
+    const amS = document.getElementById('entryMealAmpmSnack');
+    const compoundMain = document.getElementById('entryMealClockCompoundMain');
+    const compoundSnack = document.getElementById('entryMealClockCompoundSnack');
+
+    const applyOne = (on, inp, offEl, pickBtn, amSel, compound) => {
+        if (!inp || !offEl) return;
+        if (on) {
+            offEl.classList.add('pointer-events-none', 'opacity-0');
+            inp.classList.remove('pointer-events-none', 'opacity-0');
+            inp.removeAttribute('tabindex');
+            inp.removeAttribute('aria-hidden');
+            pickBtn?.classList.remove('pointer-events-none', 'opacity-0');
+            amSel?.classList.remove('pointer-events-none', 'opacity-0');
+            if (compound) {
+                compound.classList.remove('pointer-events-none', 'bg-slate-50', 'border-slate-100');
+                compound.classList.add('bg-white', 'border-slate-200');
+            }
+        } else {
+            offEl.classList.remove('pointer-events-none', 'opacity-0');
+            inp.classList.add('pointer-events-none', 'opacity-0');
+            inp.setAttribute('tabindex', '-1');
+            inp.setAttribute('aria-hidden', 'true');
+            pickBtn?.classList.add('pointer-events-none', 'opacity-0');
+            amSel?.classList.add('pointer-events-none', 'opacity-0');
+            if (compound) {
+                compound.classList.add('pointer-events-none', 'bg-slate-50', 'border-slate-100');
+                compound.classList.remove('bg-white', 'border-slate-200');
+            }
+        }
+    };
+    applyOne(onM, inM, offM, pickM, amM, compoundMain);
+    applyOne(onS, inS, offS, pickS, amS, compoundSnack);
+}
+
+function finalizeEntryMealClock(savedRecord, isSnackMode) {
+    ensureEntryModalGaugesOnUserSettings();
+    const prefs = window.userSettings.entryModalGauges;
+    const ptM = prefs.main?.timeEnabled === true;
+    const ptS = prefs.snack?.timeEnabled === true;
+
+    const applySide = (mainSide) => {
+        const r =
+            savedRecord && typeof savedRecord === 'object'
+                ? mainSide
+                    ? isSnackMode
+                        ? null
+                        : savedRecord
+                    : isSnackMode
+                      ? savedRecord
+                      : null
+                : null;
+        const pt = mainSide ? ptM : ptS;
+        const setOn = (v) => {
+            if (mainSide) appState.entryTimeOnMain = v;
+            else appState.entryTimeOnSnack = v;
+        };
+
+        if (r) {
+            const mc = r.mealClock;
+            if (typeof mc === 'string' && mc.trim()) {
+                setOn(true);
+                applyMealClockRowFrom24(mainSide, mc);
+            } else if (mc === null) {
+                setOn(false);
+                applyMealClockRowFrom24(mainSide, '');
+            } else {
+                setOn(pt);
+                applyMealClockRowFrom24(mainSide, '');
+            }
+        } else {
+            setOn(pt);
+            applyMealClockRowFrom24(mainSide, '');
+        }
+    };
+
+    applySide(true);
+    applySide(false);
+    syncEntryMealClockToggleCheckboxes();
+    applyEntryMealClockInputVisibility();
+}
+
+/** 신규 기록이면 플래그 초기화, 수정이면 자동 시간·EXIF 채우기 비활성 */
+function resetEntryMealClockSessionFlagsForOpen(isNewEntry) {
+    if (isNewEntry) {
+        appState.entryMealClockDidSeedModalOpenMain = false;
+        appState.entryMealClockDidSeedModalOpenSnack = false;
+        appState.entryMealClockDidApplyPhotoExifMain = false;
+        appState.entryMealClockDidApplyPhotoExifSnack = false;
+        appState.entryMealClockPendingExifHhmmMain = null;
+        appState.entryMealClockPendingExifHhmmSnack = null;
+    } else {
+        appState.entryMealClockDidSeedModalOpenMain = true;
+        appState.entryMealClockDidSeedModalOpenSnack = true;
+        appState.entryMealClockDidApplyPhotoExifMain = true;
+        appState.entryMealClockDidApplyPhotoExifSnack = true;
+        appState.entryMealClockPendingExifHhmmMain = null;
+        appState.entryMealClockPendingExifHhmmSnack = null;
+    }
+}
+
+/** 신규 + 해당 슬롯 시간 on: 모달 오픈 시각으로 1회만 채움 */
+function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
+    if (entryId) return;
+    const d = new Date();
+    const hhmmRaw = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const hhmm = normalizeMealClockInputValue(hhmmRaw) || hhmmRaw;
+    if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
+        applyMealClockRowFrom24(true, hhmm);
+        appState.entryMealClockDidSeedModalOpenMain = true;
+    }
+    if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
+        applyMealClockRowFrom24(false, hhmm);
+        appState.entryMealClockDidSeedModalOpenSnack = true;
+    }
+}
+
 function schedulePersistEntryModalGaugePrefs() {
     ensureEntryModalGaugesOnUserSettings();
     window.userSettings.entryModalGauges = {
-        ratingEnabled: appState.entryGaugeRatingOn === true,
-        satietyEnabled: appState.entryGaugeSatietyOn === true
+        main: {
+            ratingEnabled: appState.entryGaugeRatingOnMain === true,
+            satietyEnabled: appState.entryGaugeSatietyOnMain === true,
+            timeEnabled: appState.entryTimeOnMain === true
+        },
+        snack: {
+            ratingEnabled: appState.entryGaugeRatingOnSnack === true,
+            satietyEnabled: appState.entryGaugeSatietyOnSnack === true,
+            timeEnabled: appState.entryTimeOnSnack === true
+        }
     };
     if (window.currentUser && isDemoUser(window.currentUser)) return;
     clearTimeout(entryGaugeSaveTimeout);
@@ -212,24 +416,52 @@ function schedulePersistEntryModalGaugePrefs() {
     }, 500);
 }
 
-function finalizeEntryModalGauges(savedRecord) {
+function finalizeEntryModalGauges(savedRecord, isSnackMode) {
     ensureEntryModalGaugesOnUserSettings();
     const prefs = window.userSettings.entryModalGauges;
-    const pr = prefs.ratingEnabled === true;
-    const ps = prefs.satietyEnabled === true;
-    const r = savedRecord;
-    if (r) {
+    const prM = prefs.main?.ratingEnabled === true;
+    const psM = prefs.main?.satietyEnabled === true;
+    const prS = prefs.snack?.ratingEnabled === true;
+    const psS = prefs.snack?.satietyEnabled === true;
+
+    const applyRecord = (r, pr, ps, setR, setS) => {
         const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
-        if (Number.isFinite(rn)) appState.entryGaugeRatingOn = true;
-        else if (r.rating === null) appState.entryGaugeRatingOn = false;
-        else appState.entryGaugeRatingOn = pr;
+        if (Number.isFinite(rn)) setR(true);
+        else if (r.rating === null) setR(false);
+        else setR(pr);
         const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
-        if (Number.isFinite(sn)) appState.entryGaugeSatietyOn = true;
-        else if (r.satiety === null) appState.entryGaugeSatietyOn = false;
-        else appState.entryGaugeSatietyOn = ps;
+        if (Number.isFinite(sn)) setS(true);
+        else if (r.satiety === null) setS(false);
+        else setS(ps);
+    };
+
+    if (savedRecord) {
+        if (isSnackMode) {
+            applyRecord(
+                savedRecord,
+                prS,
+                psS,
+                (v) => { appState.entryGaugeRatingOnSnack = v; },
+                (v) => { appState.entryGaugeSatietyOnSnack = v; }
+            );
+            appState.entryGaugeRatingOnMain = prM;
+            appState.entryGaugeSatietyOnMain = psM;
+        } else {
+            applyRecord(
+                savedRecord,
+                prM,
+                psM,
+                (v) => { appState.entryGaugeRatingOnMain = v; },
+                (v) => { appState.entryGaugeSatietyOnMain = v; }
+            );
+            appState.entryGaugeRatingOnSnack = prS;
+            appState.entryGaugeSatietyOnSnack = psS;
+        }
     } else {
-        appState.entryGaugeRatingOn = pr;
-        appState.entryGaugeSatietyOn = ps;
+        appState.entryGaugeRatingOnMain = prM;
+        appState.entryGaugeSatietyOnMain = psM;
+        appState.entryGaugeRatingOnSnack = prS;
+        appState.entryGaugeSatietyOnSnack = psS;
     }
     syncEntryGaugeToggleCheckboxes();
     applyEntryGaugeDialUi();
@@ -238,29 +470,187 @@ function finalizeEntryModalGauges(savedRecord) {
 function initEntryModalGaugeControlsOnce() {
     if (window.__entryGaugeTogglesInit) return;
     window.__entryGaugeTogglesInit = true;
-    const onRatingChange = (checked) => {
-        appState.entryGaugeRatingOn = checked;
+    const onRatingMain = (checked) => {
+        appState.entryGaugeRatingOnMain = checked;
         syncEntryGaugeToggleCheckboxes();
         applyEntryGaugeDialUi();
         schedulePersistEntryModalGaugePrefs();
     };
-    const onSatietyChange = (checked) => {
-        appState.entryGaugeSatietyOn = checked;
+    const onRatingSnack = (checked) => {
+        appState.entryGaugeRatingOnSnack = checked;
         syncEntryGaugeToggleCheckboxes();
         applyEntryGaugeDialUi();
         schedulePersistEntryModalGaugePrefs();
     };
-    ['entryGaugeRatingToggleMain', 'entryGaugeRatingToggleSnack'].forEach((id) => {
+    const onSatietyMain = (checked) => {
+        appState.entryGaugeSatietyOnMain = checked;
+        syncEntryGaugeToggleCheckboxes();
+        applyEntryGaugeDialUi();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    const onSatietySnack = (checked) => {
+        appState.entryGaugeSatietyOnSnack = checked;
+        syncEntryGaugeToggleCheckboxes();
+        applyEntryGaugeDialUi();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    const bindToggle = (id, handler) => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('change', () => onRatingChange(!!el.checked));
-    });
-    ['entryGaugeSatietyToggleMain', 'entryGaugeSatietyToggleSnack'].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('change', () => onSatietyChange(!!el.checked));
-    });
+        if (el) el.addEventListener('change', () => handler(!!el.checked));
+    };
+    bindToggle('entryGaugeRatingToggleMain', onRatingMain);
+    bindToggle('entryGaugeRatingToggleSnack', onRatingSnack);
+    bindToggle('entryGaugeSatietyToggleMain', onSatietyMain);
+    bindToggle('entryGaugeSatietyToggleSnack', onSatietySnack);
+
+    const fillNowIfEmpty = (mainSide) => {
+        const inp = document.getElementById(mainSide ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
+        if (!inp || String(inp.value || '').trim()) return;
+        const d = new Date();
+        applyMealClockRowFrom24(mainSide, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+    };
+    const applyPendingExifOrFillNowWhenToggleOn = (mainSide) => {
+        if (appState.currentEditingId) {
+            fillNowIfEmpty(mainSide);
+            return;
+        }
+        const pending = mainSide ? appState.entryMealClockPendingExifHhmmMain : appState.entryMealClockPendingExifHhmmSnack;
+        const applied = mainSide ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
+        if (pending != null && String(pending).trim() !== '' && !applied) {
+            applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(pending) || pending);
+            if (mainSide) {
+                appState.entryMealClockDidApplyPhotoExifMain = true;
+                appState.entryMealClockPendingExifHhmmMain = null;
+            } else {
+                appState.entryMealClockDidApplyPhotoExifSnack = true;
+                appState.entryMealClockPendingExifHhmmSnack = null;
+            }
+            return;
+        }
+        fillNowIfEmpty(mainSide);
+    };
+    const onTimeMain = (checked) => {
+        appState.entryTimeOnMain = checked;
+        syncEntryMealClockToggleCheckboxes();
+        if (checked) {
+            applyPendingExifOrFillNowWhenToggleOn(true);
+        } else {
+            const inp = document.getElementById('entryMealTimeInputMain');
+            if (inp) {
+                applyMealClockRowFrom24(true, '');
+            }
+        }
+        applyEntryMealClockInputVisibility();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    const onTimeSnack = (checked) => {
+        appState.entryTimeOnSnack = checked;
+        syncEntryMealClockToggleCheckboxes();
+        if (checked) {
+            applyPendingExifOrFillNowWhenToggleOn(false);
+        } else {
+            const inp = document.getElementById('entryMealTimeInputSnack');
+            if (inp) {
+                applyMealClockRowFrom24(false, '');
+            }
+        }
+        applyEntryMealClockInputVisibility();
+        schedulePersistEntryModalGaugePrefs();
+    };
+    bindToggle('entryMealClockToggleMain', onTimeMain);
+    bindToggle('entryMealClockToggleSnack', onTimeSnack);
+
+    initMealTimeTextInputsOnce();
 }
 
-/** 기록 모달 표시 시 body 클래스 — 하단 네비 숨김·액션 패딩과 동기화 */
+function initMealTimeTextInputsOnce() {
+    if (window.__mealTimeTextInputsInit) return;
+    window.__mealTimeTextInputsInit = true;
+
+    const bindRow = (mainSide, textId, bridgeId, btnId, ampmId) => {
+        const text = document.getElementById(textId);
+        const bridge = document.getElementById(bridgeId);
+        const btn = document.getElementById(btnId);
+        const sel = document.getElementById(ampmId);
+        if (!text || !bridge || !btn) return;
+
+        const selectAllMealClockText = () => {
+            try {
+                text.setSelectionRange(0, text.value.length);
+            } catch (_) {
+                try {
+                    text.select();
+                } catch (_) {}
+            }
+        };
+        text.addEventListener('focus', () => {
+            requestAnimationFrame(selectAllMealClockText);
+        });
+
+        text.addEventListener('input', () => {
+            const next = formatMealClock12TextWhileTyping(text.value);
+            if (text.value !== next) text.value = next;
+            const raw = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', text.value);
+            const n = normalizeMealClockInputValue(raw || '');
+            if (n) bridge.value = n;
+        });
+        text.addEventListener('blur', () => {
+            const d = text.value.replace(/\D/g, '').slice(0, 4);
+            if (!d.length) {
+                applyMealClockRowFrom24(mainSide, '');
+                return;
+            }
+            let candHourMin;
+            if (d.length <= 2) {
+                candHourMin = `${d.padStart(2, '0')}:00`;
+            } else {
+                candHourMin = `${d.slice(0, 2)}:${d.slice(2).padEnd(2, '0').slice(0, 2)}`;
+            }
+            const n12 = normalizeMealClock12InputValue(candHourMin);
+            if (!n12) {
+                applyMealClockRowFrom24(mainSide, '');
+                return;
+            }
+            const raw24 = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', n12) || '';
+            applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(raw24) || '');
+        });
+        if (sel) {
+            sel.addEventListener('change', () => {
+                const n24 = getMealClock24FromModal(mainSide);
+                applyMealClockRowFrom24(mainSide, n24 || '');
+            });
+        }
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            let n = getMealClock24FromModal(mainSide);
+            if (!n) n = '12:00';
+            bridge.value = n;
+            if (typeof bridge.showPicker === 'function') {
+                bridge.showPicker().catch(() => {});
+            } else {
+                try {
+                    bridge.focus({ preventScroll: true });
+                    bridge.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+                } catch (_) {}
+            }
+        });
+        bridge.addEventListener('change', () => {
+            const n = normalizeMealClockInputValue(bridge.value);
+            if (n) applyMealClockRowFrom24(mainSide, n);
+        });
+        bridge.addEventListener('cancel', () => {
+            try {
+                const n = normalizeMealClockInputValue(bridge.value);
+                if (n) applyMealClockRowFrom24(mainSide, n);
+            } catch (_) {}
+        });
+    };
+
+    bindRow(true, 'entryMealTimeInputMain', 'entryMealTimeBridgeMain', 'entryMealTimePickBtnMain', 'entryMealAmpmMain');
+    bindRow(false, 'entryMealTimeInputSnack', 'entryMealTimeBridgeSnack', 'entryMealTimePickBtnSnack', 'entryMealAmpmSnack');
+}
+
 function syncEntryModalBodyClass() {
     const el = document.getElementById('entryModal');
     if (el && !el.classList.contains('hidden')) {
@@ -327,17 +717,22 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     const applyViewportGeometry = (vh, vtop) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
+        const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
+        const tRaw = Number.isFinite(vtop) ? vtop : 0;
+        // 키보드 애니 첫 프레임에 offsetTop이 음수·과대로 나와 시트가 위로 튀는 경우 방지
+        const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
+        const top = Math.max(0, tRaw);
         if (
             !Number.isNaN(lastAppliedVh) &&
-            Math.abs(lastAppliedVh - vh) < 1 &&
-            Math.abs(lastAppliedVtop - vtop) < 1
+            Math.abs(lastAppliedVh - h) < 1 &&
+            Math.abs(lastAppliedVtop - top) < 1
         ) {
             return;
         }
-        lastAppliedVh = vh;
-        lastAppliedVtop = vtop;
-        entryModal.style.height = vh + 'px';
-        entryModal.style.top = vtop + 'px';
+        lastAppliedVh = h;
+        lastAppliedVtop = top;
+        entryModal.style.height = h + 'px';
+        entryModal.style.top = top + 'px';
     };
 
     const scheduleViewportGeometryFromVv = () => {
@@ -370,10 +765,17 @@ function initEntryModalKeyboardHandling(entryModal) {
     const setKeyboardOpen = (open) => {
         if (open) {
             entryModal.classList.add('keyboard-open');
-            const vv = window.visualViewport;
-            const vh = vv?.height ?? window.innerHeight;
-            const vtop = vv?.offsetTop ?? 0;
-            applyViewportGeometry(vh, vtop);
+            // focusin 직후에는 visualViewport가 아직 키보드 이전 값이라 height/top이 한 번 틀어지고
+            // 첫 필드만 상태창 인근까지 밀리는 경우가 있음 → 동기 1회 적용 생략, rAF/지연으로 맞춤
+            lastAppliedVh = NaN;
+            lastAppliedVtop = NaN;
+            const bump = () => scheduleViewportGeometryFromVv();
+            bump();
+            requestAnimationFrame(() => {
+                bump();
+                requestAnimationFrame(bump);
+            });
+            [16, 50, 100, 200, 350].forEach((ms) => setTimeout(bump, ms));
         } else {
             entryModal.classList.remove('keyboard-open');
             lastAppliedVh = NaN;
@@ -577,6 +979,7 @@ export async function openModal(date, slotId, entryId = null) {
         state.currentEditingId = entryId;
         state.currentEditingDate = date;
         state.currentEditingSlotId = slotId;
+        resetEntryMealClockSessionFlagsForOpen(!entryId);
         state.currentPhotos = [];
         state.sharedPhotos = []; // 이미 공유된 사진 목록
         state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
@@ -717,6 +1120,10 @@ export async function openModal(date, slotId, entryId = null) {
         if (snackReviewSection) {
             snackReviewSection.classList.toggle('hidden', !isS);
         }
+        const entryMealTimeSectionMain = document.getElementById('entryMealTimeSectionMain');
+        const entryMealTimeSectionSnack = document.getElementById('entryMealTimeSectionSnack');
+        if (entryMealTimeSectionMain) entryMealTimeSectionMain.classList.toggle('hidden', isS);
+        if (entryMealTimeSectionSnack) entryMealTimeSectionSnack.classList.toggle('hidden', !isS);
         document.getElementById('btnDelete')?.classList.add('hidden');
         const satietySection = document.getElementById('satietySection');
         if (satietySection) {
@@ -1128,7 +1535,9 @@ export async function openModal(date, slotId, entryId = null) {
         }
         
         initEntryModalGaugeControlsOnce();
-        finalizeEntryModalGauges(entryId && savedRecord ? savedRecord : null);
+        finalizeEntryModalGauges(entryId && savedRecord ? savedRecord : null, isS);
+        finalizeEntryMealClock(entryId && savedRecord ? savedRecord : null, isS);
+        seedEntryMealClockOnModalOpenAfterFinalize(entryId, isS);
 
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
@@ -1282,7 +1691,14 @@ async function focusTimelineAfterMealSaveFailure(record, editingDateStr, optimis
               ? editingDateStr
               : '';
     if (appState.currentTab === 'timeline' && focusIso && typeof window.jumpToDate === 'function') {
-        await window.jumpToDate(focusIso);
+        // 실패 시에도 무한/연쇄 스크롤을 막기 위해 1회만 앵커링
+        const key =
+            record && record.id
+                ? `save-fail:${String(record.id)}`
+                : optimisticTempId
+                  ? `save-fail-temp:${String(optimisticTempId)}`
+                  : `save-fail-date:${String(focusIso)}`;
+        await window.jumpToDate(focusIso, { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
         updateTimelineShareIndicators();
         updateTimelineMealEntryPendingIndicators();
     } else {
@@ -1487,9 +1903,14 @@ export async function saveEntry() {
                 }
             });
         }
-        if (isS && snackInputVal && !newSettings.subTags.snack.find(t => (t.text || t) === snackInputVal)) {
-            newSettings.subTags.snack.push({ text: snackInputVal, parent: snackTypeResolved });
-            tagsChanged = true;
+        if (isS && snackInputVal) {
+            const snackVals = snackInputVal.split(',').map((v) => v.trim()).filter((v) => v);
+            snackVals.forEach((val) => {
+                if (!newSettings.subTags.snack.find((t) => (t.text || t) === val)) {
+                    newSettings.subTags.snack.push({ text: val, parent: snackTypeResolved });
+                    tagsChanged = true;
+                }
+            });
         }
         
         if (tagsChanged) {
@@ -1560,8 +1981,27 @@ export async function saveEntry() {
             (photo) => typeof photo === 'string' && photo && !isLocalPendingPhoto(photo)
         );
 
-        const rateOn = appState.entryGaugeRatingOn === true;
-        const satOn = appState.entryGaugeSatietyOn === true;
+        const rateOn = isS
+            ? appState.entryGaugeRatingOnSnack === true
+            : appState.entryGaugeRatingOnMain === true;
+        const satOn = isS
+            ? appState.entryGaugeSatietyOnSnack === true
+            : appState.entryGaugeSatietyOnMain === true;
+        const timeOn = !isSk && (isS ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true);
+        /** getMealClock24FromModal(isMain) — 간식이 아닐 때 본식 입력, 간식일 때 간식 입력을 읽음 */
+        const normalizedClock = timeOn ? getMealClock24FromModal(!isS) : '';
+        const mealClockVal = !isSk && timeOn ? (normalizedClock || null) : null;
+        const nowLocaleTime = () =>
+            new Date().toLocaleTimeString('ko-KR', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        let timeSortStr = nowLocaleTime();
+        if (!isSk && timeOn && normalizedClock) {
+            timeSortStr = `${normalizedClock}:00`;
+        }
         const record = {
             id: idToUse,
             date: state.currentEditingDate,
@@ -1580,14 +2020,15 @@ export async function saveEntry() {
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
             rating: isSk ? null : (rateOn ? state.currentRating : null),
             satiety: isSk ? null : (satOn ? state.currentSatiety : null),
+            mealClock: mealClockVal,
             // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
-            time: new Date().toLocaleTimeString('ko-KR', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            })
+            time: timeSortStr,
         };
+        if (!idToUse) {
+            record.recordedAt = new Date().toISOString();
+        } else if (existingRecord?.recordedAt) {
+            record.recordedAt = existingRecord.recordedAt;
+        }
         if (isS && !isSk && snackPlaceMainResolved) {
             record.snackPlaceMain = snackPlaceMainResolved;
         }
@@ -1727,7 +2168,9 @@ export async function saveEntry() {
         window._timelineRerenderFreezeUntil = Date.now() + 1200;
         if (currentTab === 'timeline' && editingDate) {
             try {
-                if (window.jumpToDate) await window.jumpToDate(editingDate);
+                // 저장 직후 낙관 반영 단계에서는 "스크롤은 하지 않고" 해당 날짜를 로드/선택만 맞춘다.
+                // (스크롤은 아래 서버 저장 완료 후 1회만 중앙 정렬)
+                if (window.jumpToDate) await window.jumpToDate(editingDate, { scroll: false, onceKey: `save-optimistic:${String(editingDate)}` });
                 updateTimelineShareIndicators();
                 renderTimeline();
             } catch (e) {
@@ -2225,7 +2668,9 @@ export async function saveEntry() {
                 void (async () => {
                     try {
                         if (typeof window.jumpToDate === 'function' && /^\d{4}-\d{2}-\d{2}$/.test(String(editingDate))) {
-                            await window.jumpToDate(String(editingDate));
+                            // 저장 플로우에서는 "해당 날짜 중앙 정렬"을 1회만 수행
+                            const key = record && record.id ? `save-final:${String(record.id)}` : `save-final:${String(editingDate)}`;
+                            await window.jumpToDate(String(editingDate), { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
                         } else {
                             renderTimeline();
                             renderMiniCalendar();
@@ -2321,7 +2766,8 @@ function rerenderAfterMealDelete(mealDate) {
     void (async () => {
         try {
             if (appState.currentTab === 'timeline' && mealDate && typeof window.jumpToDate === 'function') {
-                await window.jumpToDate(mealDate);
+                // 삭제 직후 리스너/재렌더가 연속으로 들어와도 스크롤은 1회만
+                await window.jumpToDate(mealDate, { scroll: true, behavior: 'smooth', onceKey: `delete:${String(mealDate)}`, anchorAfterRenderMs: 1400 });
             } else {
                 renderTimeline();
                 renderMiniCalendar();
@@ -2331,6 +2777,14 @@ function rerenderAfterMealDelete(mealDate) {
             if (document.getElementById('feedContent')) renderFeed();
         } catch (e) {
             console.warn('삭제 후 렌더:', e);
+        }
+        try {
+            if (appState.currentTab === 'timeline') {
+                renderMiniCalendar();
+                updateTrackerStreakLabel();
+            }
+        } catch (e2) {
+            console.warn('삭제 후 트래커·연속일 갱신:', e2);
         }
     })();
 }
@@ -2411,6 +2865,13 @@ export async function deleteEntry() {
     }
 
     markMealEntryDeletePending(entryIdToDelete);
+    /** 스냅샷 `removed` 이전에 로컬 반영 — 연속 일수·트래커가 삭제 직후 갱신되도록 */
+    let deleteOptCtx = null;
+    try {
+        deleteOptCtx = applyOptimisticMealDelete(entryIdToDelete, mealForDelete);
+    } catch (e) {
+        console.warn('applyOptimisticMealDelete', e);
+    }
     rerenderAfterMealDelete(mealDate);
 
     /** 삭제예정 칩만 최대 10초 — 이후에도 진행 중이면 삭제 중(레드닷) */
@@ -2447,10 +2908,18 @@ export async function deleteEntry() {
         clearMealEntryDeleteFailed(entryIdToDelete);
         // Firestore deleteDoc는 로컬 큐 반영만으로도 resolve될 수 있음. 목록·동기화 맵 정리는
         // meals-snapshot-apply에서 서버 ack된 removed일 때만 수행한다.
+        if (deleteOptCtx) showToast('기록이 삭제되었습니다.', 'success');
         rerenderAfterMealDelete(mealDate);
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (deleteOptCtx) {
+            try {
+                rollbackOptimisticMealDelete(deleteOptCtx);
+            } catch (_) {
+                /* ignore */
+            }
+        }
         console.error('삭제 오류:', error);
         markMealEntryDeleteFailed(entryIdToDelete);
         try {
@@ -2778,6 +3247,12 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     }
 
     markMealEntryDeletePending(entryId);
+    let deleteRetryOptCtx = null;
+    try {
+        deleteRetryOptCtx = applyOptimisticMealDelete(entryId, mealForDelete);
+    } catch (e) {
+        console.warn('applyOptimisticMealDelete (retry delete)', e);
+    }
     rerenderAfterMealDelete(mealDate);
 
     const RETRY_DELETE_CHIP_MS = 10000;
@@ -2811,10 +3286,18 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
         clearMealEntryDeleteFailed(entryId);
+        if (deleteRetryOptCtx) showToast('기록이 삭제되었습니다.', 'success');
         rerenderAfterMealDelete(mealDate);
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (deleteRetryOptCtx) {
+            try {
+                rollbackOptimisticMealDelete(deleteRetryOptCtx);
+            } catch (_) {
+                /* ignore */
+            }
+        }
         console.error('retryMealEntryDeleteSync:', error);
         markMealEntryDeleteFailed(entryId);
         try {
@@ -3041,16 +3524,16 @@ function initWheelDialsOnce() {
     };
 
     bindWheel('ratingWheel', (v) => {
-        if (appState.entryGaugeRatingOn === true) window.setRating?.(v);
+        if (appState.entryGaugeRatingOnMain === true) window.setRating?.(v);
     }, 'y');
     bindWheel('snackRatingWheel', (v) => {
-        if (appState.entryGaugeRatingOn === true) window.setRating?.(v);
+        if (appState.entryGaugeRatingOnSnack === true) window.setRating?.(v);
     }, 'y');
     bindWheel('satietyWheel', (v) => {
-        if (appState.entryGaugeSatietyOn === true) window.setSatiety?.(v);
+        if (appState.entryGaugeSatietyOnMain === true) window.setSatiety?.(v);
     }, 'y');
     bindWheel('snackSatietyWheel', (v) => {
-        if (appState.entryGaugeSatietyOn === true) window.setSatiety?.(v);
+        if (appState.entryGaugeSatietyOnSnack === true) window.setSatiety?.(v);
     }, 'y');
 }
 
@@ -3075,11 +3558,102 @@ function initEntryModalSubChipDeleteDelegation() {
             return;
         }
         if (payload.kind === 'recent' && typeof window.deleteSubTag === 'function') {
-            window.deleteSubTag(payload.subTagKey, payload.text, payload.containerId, payload.inputId, payload.parentFilter);
+            window.deleteSubTag(
+                payload.subTagKey,
+                payload.text,
+                payload.containerId,
+                payload.inputId,
+                payload.parentFilter,
+                payload.fullSubTagText || null
+            );
         }
     });
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
+
+/**
+ * 기록 모달 '나만의 태그 / 최근 태그' 줄: 마우스로 누른 채 좌우 드래그하면 가로 스크롤 (클릭과 구분).
+ */
+function initEntryModalSubtagDragScroll() {
+    const root = document.getElementById('entryModal');
+    if (!root || root._subtagDragScrollBound) return;
+    root._subtagDragScrollBound = true;
+
+    const DRAG_THRESHOLD_PX = 14;
+    const VERTICAL_CANCEL_RATIO = 12;
+
+    /** @type {{ el: HTMLElement, pointerId: number, startX: number, startY: number, startScrollLeft: number, dragging: boolean } | null} */
+    let state = null;
+
+    const release = () => {
+        if (!state) return;
+        const { el, pointerId } = state;
+        el.classList.remove('entry-subtag-suggestions--dragging');
+        try {
+            el.releasePointerCapture(pointerId);
+        } catch (_) {}
+        state = null;
+    };
+
+    root.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || e.pointerType !== 'mouse') return;
+        /** 칩 버튼·삭제 버튼은 짧은 클릭으로 선택·삭제 — 가로 드래그 스크롤과 충돌 방지 */
+        if (e.target.closest?.('button')) return;
+        const el = e.target.closest?.('.entry-subtag-suggestions');
+        if (!el || !root.contains(el)) return;
+        if (el.scrollWidth <= el.clientWidth + 1) return;
+        state = {
+            el,
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            startScrollLeft: el.scrollLeft,
+            dragging: false
+        };
+        try {
+            el.setPointerCapture(e.pointerId);
+        } catch (_) {}
+    }, true);
+
+    root.addEventListener('pointermove', (e) => {
+        if (!state || e.pointerId !== state.pointerId) return;
+        const dx = e.clientX - state.startX;
+        const dy = e.clientY - state.startY;
+        if (!state.dragging) {
+            if (Math.abs(dy) > VERTICAL_CANCEL_RATIO && Math.abs(dy) > Math.abs(dx)) {
+                release();
+                return;
+            }
+            if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+            state.dragging = true;
+            state.el.classList.add('entry-subtag-suggestions--dragging');
+        }
+        state.el.scrollLeft = state.startScrollLeft - dx;
+        e.preventDefault();
+    }, true);
+
+    root.addEventListener('pointerup', (e) => {
+        if (!state || e.pointerId !== state.pointerId) return;
+        const wasDrag = state.dragging;
+        release();
+        if (wasDrag) {
+            const killClick = (ev) => {
+                const strip = ev.target.closest?.('.entry-subtag-suggestions');
+                if (!strip || !root.contains(strip)) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                root.removeEventListener('click', killClick, true);
+            };
+            root.addEventListener('click', killClick, true);
+        }
+    }, true);
+
+    root.addEventListener('pointercancel', (e) => {
+        if (!state || e.pointerId !== state.pointerId) return;
+        release();
+    }, true);
+}
+setTimeout(initEntryModalSubtagDragScroll, 0);
 
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
@@ -3186,6 +3760,15 @@ function toggleFieldsForSkip(isSkip) {
             ratingSection.classList.remove('hidden');
         }
     }
+
+    const entryMealTimeSectionMain = document.getElementById('entryMealTimeSectionMain');
+    if (entryMealTimeSectionMain) {
+        if (isSkip) {
+            entryMealTimeSectionMain.classList.add('hidden');
+        } else {
+            entryMealTimeSectionMain.classList.remove('hidden');
+        }
+    }
     syncDeliveryVendorSectionVisibility();
 }
 
@@ -3226,7 +3809,7 @@ export function handleMultipleImages(e) {
     });
     
     // ⚠️ 중요: 모든 파일이 로드된 후 선택 순서대로 정렬하여 추가
-    Promise.all(filePromises).then(results => {
+    Promise.all(filePromises).then(async (results) => {
         // null 제거 및 인덱스 순서대로 정렬
         const sortedResults = results
             .filter(r => r !== null)
@@ -3245,6 +3828,31 @@ export function handleMultipleImages(e) {
         
         renderPhotoPreviews();
         updateShareIndicator();
+
+        const isSnackInput = e.target && e.target.id === 'snackImageInput';
+        const mainSide = !isSnackInput;
+        const timeOn = isSnackInput ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true;
+
+        /** 신규 기록만: EXIF 시간 1회 반영(off→on은 pending으로 이어짐) */
+        const isNewEntry = !state.currentEditingId && filesToProcess.length > 0;
+        if (isNewEntry) {
+            const hhmmExif = await tryExifTimeHHmmFromImageFile(filesToProcess[0]);
+            if (timeOn) {
+                const alreadyApplied = mainSide ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
+                if (!alreadyApplied && hhmmExif) {
+                    applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(hhmmExif) || hhmmExif);
+                    if (mainSide) appState.entryMealClockDidApplyPhotoExifMain = true;
+                    else appState.entryMealClockDidApplyPhotoExifSnack = true;
+                }
+            } else if (hhmmExif) {
+                if (mainSide && appState.entryMealClockPendingExifHhmmMain == null) {
+                    appState.entryMealClockPendingExifHhmmMain = hhmmExif;
+                }
+                if (!mainSide && appState.entryMealClockPendingExifHhmmSnack == null) {
+                    appState.entryMealClockPendingExifHhmmSnack = hhmmExif;
+                }
+            }
+        }
     }).catch(err => {
         console.error('파일 처리 중 오류 발생:', err);
         showToast('사진 처리 중 오류가 발생했습니다.', 'error');

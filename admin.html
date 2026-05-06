@@ -543,13 +543,21 @@
                                         </div>
                                         <div class="border-t border-slate-200 pt-4">
                                             <h3 class="text-sm font-black text-slate-800 mb-3">댓글</h3>
-                                            <div id="boardDetailCommentsList" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto">
+                                            <div id="boardDetailCommentsList" class="space-y-3 mb-4">
                                             </div>
-                                            <div class="flex gap-2">
-                                                <textarea id="boardDetailCommentInput" placeholder="댓글 입력..." rows="2" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none"></textarea>
-                                                <button type="button" onclick="window.submitBoardCommentAsAdmin()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors self-end">
-                                                    등록
-                                                </button>
+                                            <div class="space-y-2">
+                                                <div class="flex gap-2 items-end">
+                                                    <input type="file" id="boardDetailCommentPhotoInput" class="hidden" accept="image/*" multiple>
+                                                    <button type="button" id="boardDetailCommentAttachBtn" class="h-10 w-10 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors disabled:opacity-40 disabled:pointer-events-none" aria-label="사진 첨부" title="사진 첨부">
+                                                        <i class="fa-regular fa-image text-lg" aria-hidden="true"></i>
+                                                    </button>
+                                                    <textarea id="boardDetailCommentInput" placeholder="댓글 입력..." rows="2" class="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 resize-none disabled:opacity-50 disabled:bg-slate-50"></textarea>
+                                                    <button type="button" id="boardDetailCommentSubmitBtn" onclick="window.submitBoardCommentAsAdmin()" class="h-10 w-10 flex items-center justify-center rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-60 disabled:pointer-events-none relative" aria-label="등록">
+                                                        <span id="boardDetailCommentSubmitIdle" class="inline-flex items-center justify-center"><i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i></span>
+                                                        <span id="boardDetailCommentSubmitSpinner" class="hidden absolute inset-0 flex items-center justify-center" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[15px]" aria-hidden="true"></i></span>
+                                                    </button>
+                                                </div>
+                                                <div id="boardDetailCommentPhotoPreview" class="board-detail-comment-photo-preview hidden"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1323,59 +1331,97 @@
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
                                     <h2 class="text-lg font-black text-slate-800">로그인 배너</h2>
-                                    <p class="text-sm text-slate-500 mt-1">로그인 화면 하단(이메일로 가입 아래)에 표시되는 배너입니다. 권장 이미지 크기: 448×160 px</p>
-                                    <div id="loginBannerStats" class="mt-4 flex items-center justify-between gap-4 text-sm text-slate-600 border border-slate-200 rounded-xl px-4 py-3 bg-slate-50">
-                                        <div class="flex items-center gap-4">
-                                            <span class="font-bold text-slate-700">배너 목록</span>
-                                            <span>조회 <span id="loginBannerViewCount" class="font-bold text-slate-800">0</span></span>
-                                            <span>클릭 <span id="loginBannerClickCount" class="font-bold text-slate-800">0</span></span>
-                                        </div>
-                                        <button type="button" id="loginBannerRefreshStatsBtn" onclick="window.refreshLoginBannerStats()" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg transition-colors shrink-0" title="조회수·클릭수 새로고침">
-                                            <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>재조회</span>
-                                        </button>
-                                    </div>
+                                    <p class="text-sm text-slate-500 mt-1">로그인 화면 하단에 표시되는 배너입니다. 팝업과 같이 <strong class="text-slate-700">게시 기간</strong>을 정하면 해당 기간에만 노출됩니다. 항목별 조회·클릭 수는 그 캠페인에만 집계됩니다. 권장 이미지: 448×160 px</p>
                                 </div>
-                                <div class="p-6 space-y-4">
-                                    <div class="flex items-center gap-3">
-                                        <input type="checkbox" id="loginBannerEnabled" class="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
-                                        <label for="loginBannerEnabled" class="text-sm font-bold text-slate-700">배너 사용</label>
-                                    </div>
-                                    <div class="flex items-center gap-3 flex-wrap">
-                                        <div class="w-40">
-                                            <label for="loginBannerTargetEnv" class="text-xs font-bold text-slate-500 block mb-1">표시 환경</label>
-                                            <select id="loginBannerTargetEnv" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
-                                                <option value="all">전체</option>
-                                                <option value="production">프로덕션만</option>
-                                                <option value="staging">스테이징만 (로컬 포함)</option>
-                                            </select>
-                                        </div>
-                                        <p class="text-xs text-slate-400 self-end pb-1">스테이징 선택 시 로컬(localhost 등)에서도 표시됩니다.</p>
-                                    </div>
-                                    <div id="loginBannerImageWrap" class="space-y-2">
-                                        <label class="text-sm font-bold text-slate-600 block">배너 이미지</label>
-                                        <input type="file" id="loginBannerImageInput" accept="image/*" class="hidden">
-                                        <div class="flex items-center gap-2 flex-wrap">
-                                            <button type="button" id="loginBannerImageBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50">이미지 선택</button>
-                                            <button type="button" id="loginBannerImageRemoveBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600">이미지 제거</button>
-                                            <span id="loginBannerImageLabel" class="text-sm text-slate-500">선택된 이미지 없음</span>
-                                        </div>
-                                        <div id="loginBannerImagePreview" class="mt-2"></div>
-                                    </div>
-                                    <div>
-                                        <label class="text-sm font-bold text-slate-600 block mb-2">배너 클릭 시 이동할 공지</label>
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <button type="button" id="loginBannerLandingNoticeBtn" class="py-2.5 px-4 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2">
-                                                <i class="fa-solid fa-link"></i> <span id="loginBannerLandingLabel">공지 선택하기</span>
+                                <div class="p-6">
+                                    <div id="loginBannerListPage" class="login-banner-admin-page">
+                                        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                            <button type="button" onclick="window.openLoginBannerWriteModal()" class="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">새 배너 등록</button>
+                                            <button type="button" id="loginBannerRefreshStatsBtn" onclick="window.refreshLoginBannerStats()" class="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors" title="목록 수치 새로고침">
+                                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>재조회</span>
                                             </button>
-                                            <input type="hidden" id="loginBannerLandingNoticeId" value="">
-                                            <div id="loginBannerLandingSelectedWrap" class="hidden flex items-center gap-2 py-2.5 px-3 bg-slate-50 rounded-lg border border-slate-200">
-                                                <span id="loginBannerLandingSelectedTitle" class="text-sm text-slate-700 truncate max-w-[140px]"></span>
-                                                <button type="button" id="loginBannerLandingClearBtn" class="text-slate-400 hover:text-red-500 text-sm font-bold shrink-0" title="연결 해제">삭제</button>
+                                        </div>
+                                        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                                            <table class="w-full text-sm text-left min-w-[720px]">
+                                                <thead class="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wide">
+                                                    <tr>
+                                                        <th class="px-3 py-3">제목</th>
+                                                        <th class="px-3 py-3 whitespace-nowrap">게시 기간</th>
+                                                        <th class="px-3 py-3 whitespace-nowrap">표시 환경</th>
+                                                        <th class="px-3 py-3 whitespace-nowrap">상태</th>
+                                                        <th class="px-3 py-3 text-right whitespace-nowrap">조회</th>
+                                                        <th class="px-3 py-3 text-right whitespace-nowrap">클릭</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="loginBannerTableBody">
+                                                    <tr><td colspan="6" class="px-3 py-8 text-center text-slate-400">불러오는 중...</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div id="loginBannerDetailPage" class="login-banner-admin-page hidden">
+                                        <button type="button" onclick="window.backToLoginBannerList()" class="mb-4 text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2">
+                                            <i class="fa-solid fa-arrow-left"></i> 목록으로
+                                        </button>
+                                        <div id="loginBannerDetailContainer" class="bg-slate-50 rounded-xl border border-slate-200 p-4 min-h-[200px]"></div>
+                                    </div>
+                                    <div id="loginBannerWritePage" class="login-banner-admin-page hidden">
+                                        <button type="button" onclick="window.backToLoginBannerListFromWrite()" class="mb-4 text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2">
+                                            <i class="fa-solid fa-arrow-left"></i> 목록으로
+                                        </button>
+                                        <div class="space-y-4 max-w-xl">
+                                            <div>
+                                                <h2 id="loginBannerWritePageTitle" class="text-lg font-black text-slate-800">배너 등록</h2>
+                                            </div>
+                                            <div>
+                                                <label for="loginBannerWriteTitle" class="text-xs font-bold text-slate-500 block mb-1">관리용 제목</label>
+                                                <input type="text" id="loginBannerWriteTitle" placeholder="목록에 표시될 이름" class="w-full p-3 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-emerald-500 transition-colors">
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label for="loginBannerStartDate" class="text-xs font-bold text-slate-500 block mb-1">시작일</label>
+                                                    <input type="date" id="loginBannerStartDate" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                </div>
+                                                <div>
+                                                    <label for="loginBannerEndDate" class="text-xs font-bold text-slate-500 block mb-1">종료일</label>
+                                                    <input type="date" id="loginBannerEndDate" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label for="loginBannerWriteTargetEnv" class="text-xs font-bold text-slate-500 block mb-1">표시 환경</label>
+                                                <select id="loginBannerWriteTargetEnv" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+                                                    <option value="all">전체</option>
+                                                    <option value="production">프로덕션만</option>
+                                                    <option value="staging">스테이징만 (로컬 포함)</option>
+                                                </select>
+                                                <p class="text-xs text-slate-400 mt-1">스테이징 선택 시 로컬에서도 표시됩니다.</p>
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">배너 이미지</label>
+                                                <input type="file" id="loginBannerWriteImage" accept="image/*" class="hidden">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <button type="button" id="loginBannerWritePickImageBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50">이미지 선택</button>
+                                                    <button type="button" id="loginBannerWriteRemoveImageBtn" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-red-50 hover:border-red-200 hover:text-red-600">이미지 제거</button>
+                                                </div>
+                                                <div id="loginBannerWriteImagePreview" class="mt-2 min-h-[48px]"></div>
+                                            </div>
+                                            <div>
+                                                <label class="text-xs font-bold text-slate-500 block mb-1">클릭 시 이동할 공지</label>
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <button type="button" id="loginBannerWriteLandingNoticeBtn" class="py-2.5 px-4 border border-slate-200 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-2">
+                                                        <i class="fa-solid fa-link"></i> <span id="loginBannerWriteLandingLabel">공지 선택하기</span>
+                                                    </button>
+                                                    <input type="hidden" id="loginBannerWriteLandingNoticeId" value="">
+                                                    <div id="loginBannerWriteLandingSelectedWrap" class="hidden flex items-center gap-2 py-2.5 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                                                        <span id="loginBannerWriteLandingSelectedTitle" class="text-sm text-slate-700 truncate max-w-[200px]"></span>
+                                                        <button type="button" id="loginBannerWriteLandingClearBtn" class="text-slate-400 hover:text-red-500 text-sm font-bold shrink-0" title="연결 해제">삭제</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex gap-2 pt-2">
+                                                <button type="button" id="loginBannerSubmitBtn" onclick="window.submitLoginBanner()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">등록</button>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div class="flex gap-3 pt-2">
-                                        <button type="button" id="loginBannerSaveBtn" class="px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700">저장</button>
                                     </div>
                                 </div>
                             </div>
@@ -1385,7 +1431,7 @@
                         <div id="loginBannerLandingNoticeModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
                             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
                                 <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-                                    <h3 class="text-lg font-bold text-slate-800">배너 클릭 시 이동할 공지 선택</h3>
+                                    <h3 class="text-lg font-bold text-slate-800">연결할 공지 선택</h3>
                                     <button type="button" id="loginBannerLandingNoticeModalClose" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-500"><i class="fa-solid fa-times"></i></button>
                                 </div>
                                 <div id="loginBannerLandingNoticeList" class="overflow-y-auto flex-1 p-4 space-y-2">
@@ -1804,7 +1850,7 @@
                                             </button>
                                         </div>
                                         <div class="p-6 space-y-4">
-                                            <p class="text-sm text-slate-600 leading-relaxed">문구는 스테이징·운영 공통입니다. 연속 2일 이상에는 <code class="text-sm px-1.5 py-0.5 rounded bg-slate-100">{streak}</code>을 넣으면 어제까지 이어진 일수로 바뀝니다. 빈 칸은 앱 기본 문구를 씁니다.</p>
+                                            <p class="text-sm text-slate-600 leading-relaxed">문구는 스테이징·운영 공통입니다. 연속 2일 이상에는 <code class="text-sm px-1.5 py-0.5 rounded bg-slate-100">{streak}</code>을 넣으면 <strong class="font-semibold text-slate-700">당일(서울) 기준</strong> 연속 일수로 바뀝니다(오늘 기록이 있으면 오늘부터, 없으면 어제부터 세며 앱 웰컴·트래커와 동일). 빈 칸은 앱 기본 문구를 씁니다.</p>
                                             <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                                                 <table class="w-full min-w-[52rem] text-sm border-collapse table-fixed">
                                                     <thead>
@@ -1837,7 +1883,7 @@
                                                             <td class="px-3 py-2 align-top"><textarea id="attendanceNoMessage" rows="2" maxlength="500" placeholder="예: 우리 오늘부터&#10;시작하는거죠?!" class="w-full min-w-0 px-2.5 py-2 border border-slate-200 rounded-lg text-sm leading-snug outline-none focus:border-emerald-500 bg-white resize-y min-h-[3rem] font-sans"></textarea></td>
                                                         </tr>
                                                         <tr>
-                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">연속 기록이 없는 경우 <span class="block text-xs font-semibold text-slate-500 mt-0.5 font-normal">(어제 기록 없음)</span></td>
+                                                            <td class="px-3 py-3 align-top font-bold text-slate-800 leading-snug">연속 기록이 없는 경우 <span class="block text-xs font-semibold text-slate-500 mt-0.5 font-normal">(당일 기준 연속 0일·새 출발)</span></td>
                                                             <td class="px-1 py-2 align-top">
                                                                 <div class="attendance-welcome-freq-switch inline-flex w-max max-w-full mx-auto justify-center shrink-0 p-1 rounded-xl bg-amber-50/90 ring-1 ring-amber-200/70 gap-0.5" role="radiogroup" aria-label="연속 없음·스테이징">
                                                                     <label class="cursor-pointer shrink-0"><input type="radio" name="attendanceNoStreakStagingFreq" value="off" class="peer sr-only"><span class="flex items-center justify-center px-1.5 py-1 rounded-md text-xs font-bold whitespace-nowrap text-slate-600 peer-checked:bg-white peer-checked:text-amber-900 peer-checked:shadow-sm">안 함</span></label>

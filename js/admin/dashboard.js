@@ -9,6 +9,7 @@ import {
     limit,
     doc,
     getDoc,
+    getDocFromServer,
     setDoc,
     where,
     getCountFromServer,
@@ -93,7 +94,8 @@ function ensurePageUsageTableBody() {
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
     const buildKey = `${n}-v4-stripe-bg`;
-    if (_pageUsageTableBuildKey === buildKey && tb.querySelector('tr')) return;
+    const rowCount = tb.querySelectorAll('tr').length;
+    if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
     const rowSpans = computePageUsageSectionRowspans();
     const sectionCellClass =
@@ -164,6 +166,102 @@ function fillPageUsage7dRow(rowIdx, values, fallbackTotal) {
     }
 }
 
+/**
+ * 캐시·Firestore에서 내려온 일별 값을 길이 7 숫자 배열로 맞춤 (배열·숫자 키 객체 대응)
+ */
+function normalizePageUsageDaily7(raw) {
+    if (raw == null) return null;
+    let nums = [];
+    if (Array.isArray(raw)) {
+        nums = raw.map((v) => Number(v) || 0);
+    } else if (typeof raw === 'object') {
+        const keys = Object.keys(raw)
+            .filter((k) => /^\d+$/.test(k))
+            .map((k) => Number(k, 10))
+            .sort((a, b) => a - b);
+        nums = keys.map((k) => Number(raw[String(k)]) || 0);
+    } else {
+        return null;
+    }
+    if (nums.length === 0) {
+        return [0, 0, 0, 0, 0, 0, 0];
+    }
+    while (nums.length < 7) nums.push(0);
+    return nums.slice(0, 7);
+}
+
+/**
+ * Firestore 캐시 변형 대응: byField가
+ * - 맵 { tab_mealdang: [n0..n6], ... } 이거나
+ * - 길이 7 배열 [ { tab_mealdang: n, ... }, ... ] (요일→필드) 일 때 맵 형으로 통일
+ */
+function coercePageUsageByFieldToMap(byField) {
+    if (byField == null) return {};
+    if (Array.isArray(byField)) {
+        if (byField.length !== 7) return {};
+        const out = {};
+        for (const def of PAGE_USAGE_METRIC_DEFS) {
+            out[def.field] = byField.map((day) => Number(day?.[def.field]) || 0);
+        }
+        return out;
+    }
+    if (typeof byField === 'object') return byField;
+    return {};
+}
+
+/** 캐시의 byField가 비었거나 깨졌는지 판별 (정규화 후 길이 7 배열이 하나라도 있으면 usable) */
+function pageUsageLast7ByFieldUsable(pageUsage) {
+    const bf = coercePageUsageByFieldToMap(pageUsage?.last7Breakdown?.byField);
+    return PAGE_USAGE_METRIC_DEFS.some((def) => {
+        const a = normalizePageUsageDaily7(bf[def.field]);
+        return a != null && a.length === 7;
+    });
+}
+
+function last7DatesForRender(pageUsage) {
+    const d = pageUsage?.last7Breakdown?.dates;
+    if (Array.isArray(d) && d.length === 7 && d.every((x) => x != null && String(x).trim() !== '')) {
+        return d.map((x) => String(x));
+    }
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return getLast7DateKeys(todayStart);
+}
+
+/**
+ * usageDaily 스냅샷에서 페이지별 최근 7일 일별·합계만 생성 (aggregate와 동일 규칙)
+ * @param {string[]} last7DateKeys
+ * @param {unknown[]} last7Snaps — getDoc 결과 스냅샷 배열
+ */
+function buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps) {
+    const byFieldDay = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        byFieldDay[def.field] = [0, 0, 0, 0, 0, 0, 0];
+    }
+    last7DateKeys.forEach((dk, i) => {
+        const d = last7Snaps[i]?.exists() ? last7Snaps[i].data() : {};
+        for (const def of PAGE_USAGE_METRIC_DEFS) {
+            byFieldDay[def.field][i] = Number(d[def.field]) || 0;
+        }
+    });
+    const last7Sum = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        last7Sum[def.field] = byFieldDay[def.field].reduce((a, b) => a + b, 0);
+    }
+    return { dates: last7DateKeys, byField: byFieldDay, last7Sum };
+}
+
+/** 화면 보정용: usageDaily 7문서만 읽어 최근 7일 블록 생성 */
+export async function fetchPageUsageLast7FromUsageDaily() {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const last7DateKeys = getLast7DateKeys(todayStart);
+    const last7Snaps = await Promise.all(
+        last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
+    );
+    return buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
+}
+
 export async function renderDashboardPageExcludedFooter() {
     const el = document.getElementById('dashboardPageUsageExcludedUidList');
     if (el) {
@@ -172,14 +270,15 @@ export async function renderDashboardPageExcludedFooter() {
     }
 }
 
-export function renderDashboardPageUsage(pageUsage) {
+export function renderDashboardPageUsage(pageUsage, opts = {}) {
     void renderDashboardPageExcludedFooter();
     ensurePageUsageTableBody();
+    const skipAsyncRepair = opts.skipAsyncRepair === true;
     const set = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '—';
     };
-    if (!pageUsage || !pageUsage.last7Breakdown || !pageUsage.last7Breakdown.dates) {
+    if (!pageUsage) {
         renderPageUsage7dHeaders(null);
         PAGE_USAGE_METRIC_DEFS.forEach((_, rowIdx) => {
             set(`pageUsageRow_${rowIdx}_all`, null);
@@ -188,13 +287,31 @@ export function renderDashboardPageUsage(pageUsage) {
         });
         return;
     }
-    const dates = pageUsage.last7Breakdown.dates;
-    const byField = pageUsage.last7Breakdown.byField || {};
+    const dates = last7DatesForRender(pageUsage);
     renderPageUsage7dHeaders(dates);
+    const byField = coercePageUsageByFieldToMap(pageUsage.last7Breakdown?.byField);
+    const needsDailyRepair =
+        pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage);
+    if (needsDailyRepair && !skipAsyncRepair) {
+        fetchPageUsageLast7FromUsageDaily()
+            .then((r) => {
+                renderDashboardPageUsage(
+                    {
+                        ...pageUsage,
+                        last7Breakdown: { dates: r.dates, byField: r.byField },
+                        last7Sum: r.last7Sum
+                    },
+                    { skipAsyncRepair: true }
+                );
+            })
+            .catch((e) => {
+                console.warn('페이지별 최근 7일(usageDaily) 클라이언트 보정 실패:', e?.message || e);
+            });
+    }
     PAGE_USAGE_METRIC_DEFS.forEach((def, rowIdx) => {
         const all = pageUsage.all?.[def.field];
         const last7 = pageUsage.last7Sum?.[def.field];
-        const dayArr = byField[def.field];
+        const dayArr = normalizePageUsageDaily7(byField[def.field]);
         set(`pageUsageRow_${rowIdx}_all`, all);
         const sum7 = dayArr && dayArr.length === 7 ? dayArr.reduce((a, b) => a + (Number(b) || 0), 0) : null;
         set(`pageUsageRow_${rowIdx}_7Sum`, sum7 != null ? sum7 : last7);
@@ -217,24 +334,9 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
     const todayRef = doc(db, 'artifacts', appId, 'usageDaily', todayStr);
 
     const last7Snaps = await Promise.all(
-        last7DateKeys.map((k) => getDoc(doc(db, 'artifacts', appId, 'usageDaily', k)))
+        last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
     );
-
-    const byFieldDay = {};
-    for (const def of PAGE_USAGE_METRIC_DEFS) {
-        byFieldDay[def.field] = [0, 0, 0, 0, 0, 0, 0];
-    }
-    last7DateKeys.forEach((dk, i) => {
-        const data = last7Snaps[i]?.exists() ? last7Snaps[i].data() : {};
-        for (const def of PAGE_USAGE_METRIC_DEFS) {
-            byFieldDay[def.field][i] = Number(data[def.field]) || 0;
-        }
-    });
-
-    const last7Sum = {};
-    for (const def of PAGE_USAGE_METRIC_DEFS) {
-        last7Sum[def.field] = byFieldDay[def.field].reduce((a, b) => a + b, 0);
-    }
+    const { byField: byFieldDay, last7Sum } = buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
 
     const prevPU = prevDashboardData?.pageUsage;
     const prevMerge =
@@ -1108,7 +1210,20 @@ export async function updateStatistics() {
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
         renderDashboardStats(stats, data.updatedAt, last7Breakdown);
-        renderDashboardPageUsage(data.pageUsage || null);
+        let pageUsage = data.pageUsage || null;
+        if (pageUsage && pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage)) {
+            try {
+                const r = await fetchPageUsageLast7FromUsageDaily();
+                pageUsage = {
+                    ...pageUsage,
+                    last7Breakdown: { dates: r.dates, byField: r.byField },
+                    last7Sum: r.last7Sum
+                };
+            } catch (repErr) {
+                console.warn('페이지별 최근 7일 보정(usageDaily) 실패:', repErr?.message || repErr);
+            }
+        }
+        renderDashboardPageUsage(pageUsage);
     } catch (e) {
         console.error("대시보드 통계 로드 실패:", e);
         renderDashboardStats(null, null);
@@ -1143,8 +1258,24 @@ export async function refreshDashboardStats() {
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
+                let pageUsageToShow = pageUsage;
+                try {
+                    const verified = await getDocFromServer(DASHBOARD_STATS_REF());
+                    const vpu = verified.exists() ? verified.data()?.pageUsage : null;
+                    if (vpu && pageUsageLast7ByFieldUsable(vpu)) {
+                        pageUsageToShow = vpu;
+                    } else if (pageUsageLast7ByFieldUsable(pageUsage)) {
+                        console.warn(
+                            '[대시보드] 서버 캐시에 pageUsage.last7Breakdown.byField가 비어 있어 집계 직후 값으로 표시합니다. pageUsage만 다시 저장합니다.'
+                        );
+                        await setDoc(DASHBOARD_STATS_REF(), { pageUsage }, { merge: true });
+                        pageUsageToShow = pageUsage;
+                    }
+                } catch (verErr) {
+                    console.warn('[대시보드] 캐시 서버 확인 생략:', verErr?.message || verErr);
+                }
                 renderDashboardStats(stats, new Date(), stats.last7Breakdown);
-                renderDashboardPageUsage(pageUsage);
+                renderDashboardPageUsage(pageUsageToShow);
             },
             { loadingText: '집계 중…' }
         );

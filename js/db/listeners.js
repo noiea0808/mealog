@@ -18,6 +18,7 @@ import {
     hydrateMealSyncAbandonedIdsFromStorage
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsSnapshotFallback } from '../utils/meals-snapshot-apply.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -38,9 +39,43 @@ function mergePushPreferencesIntoUserSettings() {
 function mergeEntryModalGaugesIntoUserSettings() {
     if (!window.userSettings) return;
     const cur = window.userSettings.entryModalGauges;
+    const defM = DEFAULT_USER_SETTINGS.entryModalGauges?.main || {
+        ratingEnabled: false,
+        satietyEnabled: false,
+        timeEnabled: false
+    };
+    const defS = DEFAULT_USER_SETTINGS.entryModalGauges?.snack || {
+        ratingEnabled: false,
+        satietyEnabled: false,
+        timeEnabled: false
+    };
+    if (!cur || typeof cur !== 'object') {
+        window.userSettings.entryModalGauges = {
+            main: { ...defM },
+            snack: { ...defS }
+        };
+        return;
+    }
+    if (cur.main && cur.snack && typeof cur.main === 'object' && typeof cur.snack === 'object') {
+        window.userSettings.entryModalGauges = {
+            main: {
+                ratingEnabled: cur.main.ratingEnabled === true,
+                satietyEnabled: cur.main.satietyEnabled === true,
+                timeEnabled: cur.main.timeEnabled === true
+            },
+            snack: {
+                ratingEnabled: cur.snack.ratingEnabled === true,
+                satietyEnabled: cur.snack.satietyEnabled === true,
+                timeEnabled: cur.snack.timeEnabled === true
+            }
+        };
+        return;
+    }
+    const r = cur.ratingEnabled === true;
+    const s = cur.satietyEnabled === true;
     window.userSettings.entryModalGauges = {
-        ratingEnabled: cur && cur.ratingEnabled === true,
-        satietyEnabled: cur && cur.satietyEnabled === true
+        main: { ratingEnabled: r, satietyEnabled: s, timeEnabled: false },
+        snack: { ratingEnabled: r, satietyEnabled: s, timeEnabled: false }
     };
 }
 
@@ -574,9 +609,10 @@ export function setupListeners(userId, callbacks) {
             } else {
                 shift = computeDemoDateShiftDaysFromKeyedObject(merged);
             }
-            window.dailyStats = shift ? applyDemoDateShiftToDailyStats(merged, shift) : merged;
+            const base = shift ? applyDemoDateShiftToDailyStats(merged, shift) : merged;
+            window.dailyStats = applyStreakTrustPatchesToDailyStats(stripGhostDailyStatsInQueryWindow(base));
         } else {
-            window.dailyStats = merged;
+            window.dailyStats = applyStreakTrustPatchesToDailyStats(stripGhostDailyStatsInQueryWindow(merged));
         }
         try {
             if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();
@@ -683,6 +719,8 @@ export function setupListeners(userId, callbacks) {
                     snap,
                     demo,
                     userId,
+                    cutoffDateStr,
+                    todayStr,
                     mergeStatsIntoDaily,
                     onDataUpdate,
                     firstSnapshotState: fallbackFirstSnapshotState

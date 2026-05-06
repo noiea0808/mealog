@@ -324,7 +324,7 @@ export async function renderFeed() {
                       const photoBanned = p.banned === true;
                       const inner =
                           (isBest || isDaily || isInsight)
-                              ? `<img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo w-full h-auto object-contain ${photoBanned ? 'opacity-50' : ''}" style="display: block; width: 100%; height: auto; vertical-align: top;" loading="${idx <= 1 ? 'eager' : 'lazy'}">`
+                              ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                               : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                       const bannedOverlay =
                           photoBanned && !(isBest || isDaily || isInsight)
@@ -337,7 +337,7 @@ export async function renderFeed() {
                 `
                               : '';
                       return `
-            <div class="flex-shrink-0 w-full snap-start relative ${(isBest || isDaily || isInsight) ? 'bg-white' : ''}" data-moment-i="${idx}" ${(isBest || isDaily || isInsight) ? 'style="display: flex; align-items: flex-start; justify-content: center;"' : ''}>
+            <div class="flex-shrink-0 w-full snap-start relative" data-moment-i="${idx}">
                 <div class="moment-feed-pinch-host relative w-full">${inner}</div>
                 ${bannedOverlay}
             </div>
@@ -465,6 +465,11 @@ export async function renderFeed() {
                 }, { passive: false });
 
                 const snapToNearest = () => {
+                    // 강한 스와이프/관성 스크롤로 여러 장이 한 번에 넘어가는 것을 방지:
+                    // 스냅 목표 인덱스를 "직전 스냅 인덱스 ±1"로 제한한다.
+                    if (scrollContainer._mealogMomentLastSnapIdx == null) {
+                        scrollContainer._mealogMomentLastSnapIdx = 0;
+                    }
                     if (isVertical) {
                         const sl = scrollContainer.scrollTop;
                         const ch = scrollContainer.clientHeight;
@@ -475,6 +480,13 @@ export async function renderFeed() {
                             const d = Math.abs(sl + ch / 2 - pos);
                             if (d < minDist) { minDist = d; nearest = i; }
                         });
+                        {
+                            const last = Number(scrollContainer._mealogMomentLastSnapIdx || 0);
+                            if (nearest > last + 1) nearest = last + 1;
+                            else if (nearest < last - 1) nearest = last - 1;
+                            nearest = Math.max(0, Math.min(photos.length - 1, nearest));
+                            scrollContainer._mealogMomentLastSnapIdx = nearest;
+                        }
                         const target = photos[nearest]?.offsetTop ?? 0;
                         if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ top: target, behavior: 'smooth' });
                     } else {
@@ -487,6 +499,13 @@ export async function renderFeed() {
                             const d = Math.abs(sl + cw / 2 - pos);
                             if (d < minDist) { minDist = d; nearest = i; }
                         });
+                        {
+                            const last = Number(scrollContainer._mealogMomentLastSnapIdx || 0);
+                            if (nearest > last + 1) nearest = last + 1;
+                            else if (nearest < last - 1) nearest = last - 1;
+                            nearest = Math.max(0, Math.min(photos.length - 1, nearest));
+                            scrollContainer._mealogMomentLastSnapIdx = nearest;
+                        }
                         const target = photos[nearest]?.offsetLeft ?? 0;
                         if (Math.abs(sl - target) > 2) scrollContainer.scrollTo({ left: target, behavior: 'smooth' });
                     }

@@ -1,7 +1,7 @@
 /**
  * 관리자 모니터링: 밀톡(게시판) 목록·상세·일괄 처리
  */
-import { db, appId, callableFunctions } from '../firebase.js';
+import { db, appId, callableFunctions, auth } from '../firebase.js';
 import { boardOperations } from '../db/board.js';
 import {
     deleteBoardPostByAdmin,
@@ -10,6 +10,12 @@ import {
     getReportsAggregateByGroupKeys
 } from '../db.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { uploadBoardImages } from '../utils.js';
+import { renderFormattedContent } from '../render/utils.js';
+
+/** 밀톡 상세 본문 — `board-notice.js`의 BOARD_DETAIL_BODY_CLASS 와 동일 (서식·줄바꿈 표시) */
+const BOARD_DETAIL_BODY_CLASS =
+    'board-detail-body text-sm text-slate-700 whitespace-pre-wrap leading-relaxed break-words [&_b]:font-bold [&_strong]:font-bold [&_u]:underline [&_s]:line-through [&_strike]:line-through';
 import {
     collection,
     doc,
@@ -20,6 +26,119 @@ import {
     orderBy,
     limit
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+
+const _adminBoardDetailCommentImages = { files: [], objectUrls: [] };
+function _adminRevokeObjectUrls(list) {
+    (list || []).forEach((u) => {
+        try {
+            if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u);
+        } catch (_) {}
+    });
+}
+function _adminSetBoardDetailCommentFiles(files) {
+    _adminRevokeObjectUrls(_adminBoardDetailCommentImages.objectUrls);
+    _adminBoardDetailCommentImages.files = Array.from(files || []).slice(0, 3);
+    _adminBoardDetailCommentImages.objectUrls = _adminBoardDetailCommentImages.files.map((f) => URL.createObjectURL(f));
+}
+function _adminClearBoardDetailCommentFiles({ revoke = true } = {}) {
+    if (revoke) _adminRevokeObjectUrls(_adminBoardDetailCommentImages.objectUrls);
+    _adminBoardDetailCommentImages.files = [];
+    _adminBoardDetailCommentImages.objectUrls = [];
+    const input = document.getElementById('boardDetailCommentPhotoInput');
+    if (input) input.value = '';
+}
+function _adminRenderBoardDetailCommentPreview() {
+    const el = document.getElementById('boardDetailCommentPhotoPreview');
+    if (!el) return;
+    const urls = _adminBoardDetailCommentImages.objectUrls || [];
+    if (!urls.length) {
+        el.innerHTML = '';
+        el.classList.add('hidden');
+        return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = urls
+        .map(
+            (url, idx) => `
+            <button type="button" class="board-detail-comment-photo-thumb" data-admin-board-comment-thumb="1" data-idx="${idx}" aria-label="첨부 이미지 미리보기">
+                <img src="${url}" alt="" loading="lazy" />
+            </button>
+        `
+        )
+        .join('');
+}
+
+let _adminDetailCommentLightboxEl = null;
+function _adminOpenDetailCommentLightbox(src) {
+    const url = typeof src === 'string' ? src.trim() : '';
+    if (!url) return;
+    if (!_adminDetailCommentLightboxEl) {
+        _adminDetailCommentLightboxEl = document.createElement('div');
+        _adminDetailCommentLightboxEl.className = 'detail-comment-lightbox hidden';
+        _adminDetailCommentLightboxEl.innerHTML = `
+            <div class="detail-comment-lightbox__scrim" data-dclb-close="1" aria-label="닫기"></div>
+            <div class="detail-comment-lightbox__stage" role="dialog" aria-modal="true" aria-label="이미지 확대">
+                <button type="button" class="detail-comment-lightbox__close" data-dclb-close="1" aria-label="닫기">
+                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                </button>
+                <img class="detail-comment-lightbox__img" alt="" />
+            </div>
+        `;
+        document.body.appendChild(_adminDetailCommentLightboxEl);
+        _adminDetailCommentLightboxEl.addEventListener('click', (e) => {
+            const close = e.target?.closest?.('[data-dclb-close="1"]');
+            if (close) {
+                e.preventDefault();
+                _adminDetailCommentLightboxEl.classList.add('hidden');
+                _adminDetailCommentLightboxEl.querySelector('img')?.removeAttribute('src');
+            }
+        });
+    }
+    const img = _adminDetailCommentLightboxEl.querySelector('img');
+    if (img) img.src = url;
+    _adminDetailCommentLightboxEl.classList.remove('hidden');
+}
+
+(function bindAdminBoardDetailCommentPhotoComposer() {
+    const attachBtn = document.getElementById('boardDetailCommentAttachBtn');
+    const input = document.getElementById('boardDetailCommentPhotoInput');
+    if (attachBtn && input && !attachBtn.dataset.bound) {
+        attachBtn.dataset.bound = '1';
+        attachBtn.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => {
+            _adminSetBoardDetailCommentFiles(input.files);
+            _adminRenderBoardDetailCommentPreview();
+        });
+    }
+    if (!document.documentElement.dataset.adminBoardDetailLbBound) {
+        document.documentElement.dataset.adminBoardDetailLbBound = '1';
+        document.addEventListener('click', (e) => {
+            const del = e.target?.closest?.('[data-admin-board-delete-comment="1"]');
+            if (del) {
+                e.preventDefault();
+                const cid = del.getAttribute('data-comment-id') || '';
+                const pid = del.getAttribute('data-post-id') || '';
+                const aid = del.getAttribute('data-comment-author') || '';
+                if (cid && pid && typeof window.deleteAdminBoardComment === 'function') {
+                    window.deleteAdminBoardComment(cid, pid, aid);
+                }
+                return;
+            }
+            const thumb = e.target?.closest?.('[data-admin-board-comment-thumb="1"]');
+            if (thumb) {
+                const idx = parseInt(thumb.getAttribute('data-idx') || '0', 10) || 0;
+                const src = _adminBoardDetailCommentImages.objectUrls?.[idx] || '';
+                if (src) _adminOpenDetailCommentLightbox(src);
+                return;
+            }
+            const btn = e.target?.closest?.('[data-detail-comment-image="1"]');
+            if (btn) {
+                const src = btn.getAttribute('data-src') || '';
+                if (src) _adminOpenDetailCommentLightbox(src);
+            }
+        });
+    }
+})();
 
 const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
 const boardListCache = new Map();
@@ -219,6 +338,8 @@ window.selectBoardPost = async function(postId) {
     if (detailPage) detailPage.classList.remove('hidden');
     const inputEl = document.getElementById('boardDetailCommentInput');
     if (inputEl) inputEl.value = '';
+    _adminClearBoardDetailCommentFiles();
+    _adminRenderBoardDetailCommentPreview();
     await renderBoardPostDetail(postId);
 }
 
@@ -228,6 +349,25 @@ window.backToBoardList = function() {
     const detailPage = document.getElementById('boardDetailPage');
     if (listPage) listPage.classList.remove('hidden');
     if (detailPage) detailPage.classList.add('hidden');
+}
+
+/** 관리자 댓글 등록 버튼: 업로드·Callable 중 작은 스피너 + 입력 비활성화 */
+function setAdminBoardCommentSubmitBusy(isBusy) {
+    const idle = document.getElementById('boardDetailCommentSubmitIdle');
+    const spin = document.getElementById('boardDetailCommentSubmitSpinner');
+    const btn = document.getElementById('boardDetailCommentSubmitBtn');
+    const attach = document.getElementById('boardDetailCommentAttachBtn');
+    const inputEl = document.getElementById('boardDetailCommentInput');
+    const fileInput = document.getElementById('boardDetailCommentPhotoInput');
+    if (idle) idle.classList.toggle('hidden', !!isBusy);
+    if (spin) spin.classList.toggle('hidden', !isBusy);
+    if (btn) {
+        btn.disabled = !!isBusy;
+        btn.setAttribute('aria-busy', isBusy ? 'true' : 'false');
+    }
+    [attach, inputEl, fileInput].forEach((el) => {
+        if (el) el.disabled = !!isBusy;
+    });
 }
 
 async function renderBoardPostDetail(postId) {
@@ -257,7 +397,7 @@ async function renderBoardPostDetail(postId) {
             </div>
             ${legacyTitle ? `<div class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(legacyTitle)}</div>` : ''}
             <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
-            <div class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(post.content || '').replace(/\n/g, '<br>')}</div>
+            <div class="${BOARD_DETAIL_BODY_CLASS}">${renderFormattedContent(post.content || '')}</div>
         `;
         const [comments, adminDisplayName] = await Promise.all([
             boardOperations.getComments(postId),
@@ -272,10 +412,37 @@ async function renderBoardPostDetail(postId) {
                     const cd = ct ? (typeof ct?.toDate === 'function' ? ct.toDate() : new Date(ct)) : null;
                     const timeStr = cd && Number.isFinite(cd.getTime()) ? cd.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
                     const displayName = c.isAdminComment === true ? adminDisplayName : (c.authorNickname || '익명');
-                    return `<div class="flex gap-2 p-2 bg-white rounded-lg border border-slate-100">
-                        <span class="font-bold text-slate-700 text-sm">${escapeHtml(displayName)}</span>
-                        <span class="text-slate-500 text-xs">${timeStr}</span>
-                        <p class="text-slate-600 text-sm flex-1">${escapeHtml(c.content || '')}</p>
+                    const body = String(c.content || '').trim();
+                    const imgs = Array.isArray(c.imageUrls) ? c.imageUrls.filter(Boolean).slice(0, 3) : [];
+                    const safeCid = escapeHtml(String(c.id || ''));
+                    const safePostIdAttr = escapeHtml(String(postId));
+                    const safeAuthorIdAttr = escapeHtml(String(c.authorId || ''));
+                    const deleteBtn =
+                        c.isAdminComment === true
+                            ? `<button type="button" class="text-xs font-semibold text-slate-400 hover:text-red-600 transition-colors shrink-0" data-admin-board-delete-comment="1" data-comment-id="${safeCid}" data-post-id="${safePostIdAttr}" data-comment-author="${safeAuthorIdAttr}">삭제</button>`
+                            : '';
+                    return `<div class="p-2 bg-white rounded-lg border border-slate-100">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0 flex items-baseline gap-2 flex-wrap">
+                                <span class="font-bold text-slate-700 text-sm">${escapeHtml(displayName)}</span>
+                                <span class="text-slate-500 text-xs">${timeStr}</span>
+                            </div>
+                            ${deleteBtn}
+                        </div>
+                        ${body ? `<p class="text-slate-600 text-sm mt-1 whitespace-pre-wrap break-words">${escapeHtml(body)}</p>` : ''}
+                        ${imgs.length ? `
+                            <div class="board-detail-comment-images mt-2 flex flex-wrap gap-2">
+                                ${imgs
+                                    .map((url) => {
+                                        const esc = escapeHtml(String(url || '').trim());
+                                        if (!esc) return '';
+                                        return `<button type="button" class="board-detail-comment-image-btn" data-detail-comment-image="1" data-kind="board" data-src="${esc}" aria-label="댓글 이미지 확대">
+                                            <img src="${esc}" alt="" loading="lazy" />
+                                        </button>`;
+                                    })
+                                    .join('')}
+                            </div>
+                        ` : ''}
                     </div>`;
                 }).join('');
             }
@@ -291,25 +458,81 @@ window.submitBoardCommentAsAdmin = async function() {
     const inputEl = document.getElementById('boardDetailCommentInput');
     if (!postId || !inputEl) return;
     const content = inputEl.value.trim();
-    if (!content) {
+    const hasImages = _adminBoardDetailCommentImages.files && _adminBoardDetailCommentImages.files.length > 0;
+    if (!content && !hasImages) {
         alert('댓글 내용을 입력해주세요.');
         return;
     }
+    if (hasImages) {
+        const uid = auth.currentUser?.uid;
+        if (!uid) {
+            alert('로그인 정보를 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요.');
+            return;
+        }
+    }
+    setAdminBoardCommentSubmitBusy(true);
     try {
+        let imageUrls = [];
+        if (hasImages) {
+            const uid = auth.currentUser.uid;
+            const filesToUpload = Array.from(_adminBoardDetailCommentImages.files || []);
+            _adminClearBoardDetailCommentFiles({ revoke: false });
+            _adminRenderBoardDetailCommentPreview();
+            imageUrls = await uploadBoardImages(filesToUpload, uid);
+        } else {
+            _adminClearBoardDetailCommentFiles();
+            _adminRenderBoardDetailCommentPreview();
+        }
         const result = await callableFunctions.addBoardCommentAsAdmin({
             postId,
             content,
+            imageUrls,
             displayName: await getAdminDisplayName()
         });
         if (result?.data) {
             inputEl.value = '';
+            _adminClearBoardDetailCommentFiles();
+            _adminRenderBoardDetailCommentPreview();
             await renderBoardPostDetail(postId);
         }
     } catch (e) {
         console.error('관리자 댓글 등록 실패:', e);
         alert('댓글 등록에 실패했습니다: ' + (e?.message || e));
+    } finally {
+        setAdminBoardCommentSubmitBusy(false);
     }
 }
+
+/**
+ * 본인이 단 관리자 댓글(authorId === 로그인 UID)은 이미 배포된 deleteBoardComment로 삭제합니다.
+ * 다른 관리자가 단 댓글만 deleteBoardCommentAsAdmin 필요(Functions 배포).
+ */
+window.deleteAdminBoardComment = async function(commentId, postId, commentAuthorUid) {
+    if (!commentId || !postId) return;
+    if (!confirm('운영 관리창으로 등록한 이 댓글을 삭제할까요?')) return;
+    const selfUid = auth.currentUser?.uid;
+    if (!selfUid) {
+        alert('로그인 정보를 확인할 수 없습니다.');
+        return;
+    }
+    setAdminBoardCommentSubmitBusy(true);
+    try {
+        const author = String(commentAuthorUid || '').trim();
+        /** 본인이 단 댓글: 오래 문서 등 author 비어 있어도 먼저 deleteBoardComment 시도 가능 */
+        const preferSelfDelete = !author || author === selfUid;
+        if (preferSelfDelete) {
+            await callableFunctions.deleteBoardComment({ commentId, postId });
+        } else {
+            await callableFunctions.deleteBoardCommentAsAdmin({ commentId, postId });
+        }
+        await renderBoardPostDetail(postId);
+    } catch (e) {
+        console.error('관리자 댓글 삭제 실패:', e);
+        alert('댓글 삭제에 실패했습니다: ' + (e?.message || e));
+    } finally {
+        setAdminBoardCommentSubmitBusy(false);
+    }
+};
 
 // 게시판 카테고리 설정
 window.setAdminBoardCategory = function(category) {

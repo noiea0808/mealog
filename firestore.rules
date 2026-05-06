@@ -403,8 +403,32 @@ service cloud.firestore {
     }
     
     // ============================================
+    // 로그인 배너 캠페인 (기간·환경별) — 비로그인 읽기, 관리자 작성, 조회/클릭 집계는 팝업과 동일 패턴
+    // ============================================
+    match /artifacts/{appId}/loginBanners/{bannerId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount'])
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['clickCount'])
+        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewCount', 'clickCount'])
+      );
+      match /views/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
+      match /clicks/{userId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+        allow create: if isAuthenticated() && request.auth.uid == userId;
+        allow update, delete: if false;
+      }
+    }
+    
+    // ============================================
     // 앱 설정 (config 컬렉션) - 로그인 배너 등
     // loginBanner: 비로그인 포함 누구나 읽기, 쓰기는 관리자만. 조회/클릭 수는 통계용으로 업데이트 허용
+    // （구）단일 배너·loadingSpinner 복제용. 신규는 loginBanners 컬렉션 사용.
     // ============================================
     match /artifacts/{appId}/config/loginBanner {
       allow read: if true;

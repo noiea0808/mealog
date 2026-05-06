@@ -44,9 +44,10 @@ import {
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
 } from './auth.js';
 import { authFlowManager } from './auth-flow.js';
-import { scheduleAttendanceCheckIfNeeded } from './attendance-check.js';
+import { scheduleAttendanceCheckIfNeeded, updateTrackerStreakLabel } from './attendance-check.js';
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
+import { clearMealsWindowStatsReconcileMeta, clearStreakEmptyDayTrustAll } from './meal-record-count.js';
 import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
@@ -62,7 +63,7 @@ import {
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
-    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace
+    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
@@ -374,6 +375,10 @@ window.searchKakaoPlaces = searchKakaoPlaces;
 window.Mealog.searchKakaoPlaces = searchKakaoPlaces;
 window.selectKakaoPlace = selectKakaoPlace;
 window.Mealog.selectKakaoPlace = selectKakaoPlace;
+window.applyKakaoSearchText = applyKakaoSearchText;
+window.Mealog.applyKakaoSearchText = applyKakaoSearchText;
+window.applyKakaoPlaceManualText = applyKakaoPlaceManualText;
+window.Mealog.applyKakaoPlaceManualText = applyKakaoPlaceManualText;
 window.boardOperations = boardOperations;
 window.Mealog.boardOperations = boardOperations;
 window.feedOperations = feedOperations;
@@ -410,7 +415,34 @@ window.setViewMode = (m) => {
     renderMiniCalendar();
 };
 
-window.jumpToDate = async (iso) => {
+/**
+ * 타임라인 날짜 이동.
+ * - 기본: 해당 날짜 섹션을 화면 상단 오프셋에 맞춰 스크롤
+ * - 저장 직후/리스너 재렌더 등에서 중복 스크롤을 막기 위해 옵션 지원
+ * @param {string} iso YYYY-MM-DD
+ * @param {{scroll?: boolean, behavior?: ScrollBehavior, onceKey?: string, anchorAfterRenderMs?: number}} [opts]
+ */
+window.jumpToDate = async (iso, opts = {}) => {
+    const {
+        scroll = true,
+        behavior = 'smooth',
+        onceKey = '',
+        anchorAfterRenderMs = 900
+    } = opts || {};
+
+    // 동일한 "1회성 이동"은 짧은 시간 내 재실행 방지
+    if (onceKey) {
+        const now = Date.now();
+        if (!window._jumpToDateOnce) window._jumpToDateOnce = Object.create(null);
+        const prev = window._jumpToDateOnce[onceKey] || 0;
+        if (now - prev < 2500) {
+            // 렌더는 필요할 수 있으니 아래 로직은 진행하되, 스크롤만 억제
+            opts = { ...opts, scroll: false };
+        } else {
+            window._jumpToDateOnce[onceKey] = now;
+        }
+    }
+
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
@@ -460,19 +492,21 @@ window.jumpToDate = async (iso) => {
         
         renderMiniCalendar();
         
-        // 저장 후 자동 스크롤이 아니면 기본 스크롤 동작 실행
-        if (!window.isScrolling) {
+        const shouldScroll = !!(opts && opts.scroll !== false && scroll !== false);
+        if (shouldScroll) {
+            const b = (opts && typeof opts.behavior === 'string') ? opts.behavior : behavior;
+            // 리스너 재렌더가 직후에 들어와도 "해당 날짜 섹션 앵커"를 잠깐만 허용
+            window._timelineAnchorScrollUntil = Date.now() + Math.max(0, Number(anchorAfterRenderMs) || 0);
             setTimeout(() => {
                 const el = document.getElementById(`date-${targetStr}`);
                 if (el) {
-                    // 트래커 섹션 높이를 고려하여 스크롤
                     const trackerSection = document.getElementById('trackerSection');
                     const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
                     const headerHeight = 73;
                     const totalOffset = headerHeight + trackerHeight;
                     const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                     const offsetPosition = elementTop - totalOffset - 16;
-                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
+                    window.scrollTo({ top: Math.max(0, offsetPosition), behavior: b });
                 }
             }, 200);
         }
@@ -1118,6 +1152,8 @@ initAuth(async (user) => {
             // 전역 상태 초기화
             window.userSettings = null;
             window.mealHistory = null;
+            clearStreakEmptyDayTrustAll();
+            clearMealsWindowStatsReconcileMeta();
             window.dailyStats = null;
             window.sharedPhotos = null;
             window.sharedPhotosFeed = [];
@@ -1279,6 +1315,9 @@ initAuth(async (user) => {
                         }
                         return;
                     }
+                    if (tab === 'timeline') {
+                        updateTrackerStreakLabel();
+                    }
                     // 타임라인 탭이 보일 때만 재렌더. 다른 탭(앨범/분석/피드)에서는 스킵해 프리즈·고CPU 방지.
                     if (tab !== 'timeline') return;
                     // 밀로그 메인 화면에서 기록(meals) 첫 수신 시에만 로딩 오버레이 숨김 (loadedMealsDateRange는 meals 리스너에서만 설정됨)
@@ -1309,28 +1348,31 @@ initAuth(async (user) => {
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    let anchored = false;
-                                    const pd = appState.pageDate;
-                                    if (pd instanceof Date && !isNaN(+pd)) {
-                                        const y = pd.getFullYear();
-                                        const mo = String(pd.getMonth() + 1).padStart(2, '0');
-                                        const d = String(pd.getDate()).padStart(2, '0');
-                                        const iso = `${y}-${mo}-${d}`;
-                                        const el = document.getElementById(`date-${iso}`);
-                                        if (el) {
-                                            const trackerSection = document.getElementById('trackerSection');
-                                            const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
-                                            const headerHeight = 73;
-                                            const totalOffset = headerHeight + trackerHeight;
-                                            const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
-                                            const offsetPosition = elementTop - totalOffset - 16;
-                                            window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
-                                            anchored = true;
+                                    // 기본은 사용자가 보고 있던 scrollY 그대로 복원 (사용자 스크롤을 JS가 잡아당기지 않게)
+                                    // 단, jumpToDate 직후 잠깐만 "해당 날짜 섹션 앵커"를 허용 (저장 직후 1회 중앙 정렬 유지용)
+                                    const allowAnchor =
+                                        window._timelineAnchorScrollUntil && Date.now() < window._timelineAnchorScrollUntil;
+                                    if (allowAnchor) {
+                                        const pd = appState.pageDate;
+                                        if (pd instanceof Date && !isNaN(+pd)) {
+                                            const y = pd.getFullYear();
+                                            const mo = String(pd.getMonth() + 1).padStart(2, '0');
+                                            const d = String(pd.getDate()).padStart(2, '0');
+                                            const iso = `${y}-${mo}-${d}`;
+                                            const el = document.getElementById(`date-${iso}`);
+                                            if (el) {
+                                                const trackerSection = document.getElementById('trackerSection');
+                                                const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
+                                                const headerHeight = 73;
+                                                const totalOffset = headerHeight + trackerHeight;
+                                                const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
+                                                const offsetPosition = elementTop - totalOffset - 16;
+                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                                return;
+                                            }
                                         }
                                     }
-                                    if (!anchored) {
-                                        window.scrollTo({ top: savedScrollY, behavior: 'instant' });
-                                    }
+                                    window.scrollTo({ top: savedScrollY, behavior: 'instant' });
                                 });
                             });
                         }
@@ -1418,38 +1460,85 @@ initAuth(async (user) => {
             const imgEl = document.getElementById('loginBannerImage');
             const landingPage = document.getElementById('landingPage');
             if (!section) return;
-            try {
+
+            async function resolveLegacyLoginBanner(currentEnv) {
                 const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
                 const data = bannerDoc.exists() ? bannerDoc.data() : null;
-                if (!data || !data.enabled) {
-                    section.classList.add('hidden');
-                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
-                    return;
-                }
-                const currentEnv = getMealogClientEnv();
+                if (!data || !data.enabled) return null;
                 const targetEnv = data.targetEnv || 'all';
-                if (targetEnv !== 'all' && targetEnv !== currentEnv) {
+                if (targetEnv !== 'all' && targetEnv !== currentEnv) return null;
+                let imageUrl = '';
+                let landingNoticeId = '';
+                if (Array.isArray(data.slides) && data.slides.length > 0) {
+                    const s = data.slides[0];
+                    if (s && typeof s === 'object') {
+                        imageUrl = (s.imageUrl && String(s.imageUrl).trim()) || '';
+                        landingNoticeId = (s.landingNoticeId && String(s.landingNoticeId).trim()) || '';
+                    }
+                }
+                if (!imageUrl) imageUrl = (data.imageUrl && String(data.imageUrl).trim()) || '';
+                if (!landingNoticeId) landingNoticeId = (data.landingNoticeId && String(data.landingNoticeId).trim()) || '';
+                if (!imageUrl && !landingNoticeId) return null;
+                return { campaignId: null, imageUrl, landingNoticeId };
+            }
+
+            try {
+                const today = new Date().toISOString().slice(0, 10);
+                const currentEnv = getMealogClientEnv();
+                let campaignId = null;
+                let imageUrl = '';
+                let landingNoticeId = '';
+
+                const coll = collection(db, 'artifacts', appId, 'loginBanners');
+                const q = query(coll, orderBy('timestamp', 'desc'), limit(50));
+                const snap = await getDocs(q);
+                for (const docSnap of snap.docs) {
+                    const d = docSnap.data();
+                    const targetEnv = d.targetEnv || 'all';
+                    if (targetEnv !== 'all' && targetEnv !== currentEnv) continue;
+                    const start = d.startDate || '';
+                    const end = d.endDate || '';
+                    if (!start || !end || today < start || today > end) continue;
+                    const img = (d.imageUrl && String(d.imageUrl).trim()) || '';
+                    const lid = (d.landingNoticeId && String(d.landingNoticeId).trim()) || '';
+                    if (!img && !lid) continue;
+                    campaignId = docSnap.id;
+                    imageUrl = img;
+                    landingNoticeId = lid;
+                    break;
+                }
+
+                if (!imageUrl && !landingNoticeId) {
+                    const leg = await resolveLegacyLoginBanner(currentEnv);
+                    if (leg) {
+                        campaignId = leg.campaignId;
+                        imageUrl = leg.imageUrl;
+                        landingNoticeId = leg.landingNoticeId;
+                    }
+                }
+
+                if (!imageUrl && !landingNoticeId) {
                     section.classList.add('hidden');
                     if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
+
                 section.classList.remove('hidden');
                 if (landingPage) landingPage.classList.add('landing-banner-visible');
                 section.classList.add('bg-white');
                 if (imgEl) {
-                    imgEl.classList.add('hidden');
-                    imgEl.removeAttribute('src');
-                }
-                if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.trim()) {
-                    section.classList.remove('bg-white');
-                    if (imgEl) {
-                        imgEl.setAttribute('src', data.imageUrl.trim());
+                    if (imageUrl) {
+                        section.classList.remove('bg-white');
+                        imgEl.setAttribute('src', imageUrl);
                         imgEl.setAttribute('alt', '');
                         imgEl.classList.remove('hidden');
+                    } else {
+                        imgEl.classList.add('hidden');
+                        imgEl.removeAttribute('src');
+                        section.classList.add('bg-white');
                     }
                 }
-                recordBannerView();
-                const landingNoticeId = (data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
+                recordBannerView(campaignId);
                 section.removeAttribute('role');
                 section.style.cursor = '';
                 section.onclick = null;
@@ -1457,7 +1546,7 @@ initAuth(async (user) => {
                     section.setAttribute('role', 'button');
                     section.style.cursor = 'pointer';
                     section.onclick = () => {
-                        recordBannerClick();
+                        recordBannerClick(campaignId);
                         try {
                             sessionStorage.setItem('loginBannerLandingNoticeId', landingNoticeId);
                         } catch (_) {}
@@ -1467,8 +1556,8 @@ initAuth(async (user) => {
             } catch (e) {
                 console.warn('로그인 배너 설정 로드 실패:', e);
                 section.classList.add('hidden');
-                const landingPage = document.getElementById('landingPage');
-                if (landingPage) landingPage.classList.remove('landing-banner-visible');
+                const lp = document.getElementById('landingPage');
+                if (lp) lp.classList.remove('landing-banner-visible');
             }
         }
 

@@ -755,29 +755,52 @@ export async function renderBoardDetail(postId) {
                             return `
                                 <div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${comment.id}">
                                     <div class="flex items-start justify-between gap-2">
-                                        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(commentNickname)}</span>
-                                        ${commentDateStr && commentTimeStr ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>` : ''}
+                                        <div class="min-w-0 flex items-baseline gap-2">
+                                            <span class="font-bold text-slate-800 shrink-0">${escapeHtml(commentNickname)}</span>
+                                            ${commentDateStr && commentTimeStr ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>` : ''}
+                                        </div>
+                                        ${(commentDateStr && commentTimeStr) || isCommentAuthor ? `
+                                            <div class="flex items-center justify-end gap-3 shrink-0">
+                                                ${isCommentAuthor ? `
+                                                    <button type="button" onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>
+                                                ` : ''}
+                                            </div>
+                                        ` : ''}
                                     </div>
-                                    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(commentBody)}</p>
-                                    ${isCommentAuthor ? `<div class="mt-2"><button type="button" onclick="window.deleteBoardComment('${comment.id}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>` : ''}
+                                    ${commentBody ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-board-comment-body="1">${escapeHtml(commentBody)}</p>` : ''}
+                                    ${Array.isArray(comment.imageUrls) && comment.imageUrls.length > 0 ? `
+                                        <div class="board-detail-comment-images mt-2 flex flex-wrap gap-2">
+                                            ${comment.imageUrls.slice(0, 3).map((url) => `
+                                                <button type="button" class="board-detail-comment-image-btn" data-detail-comment-image="1" data-kind="board" data-src="${escapeHtml(url)}" aria-label="댓글 이미지 확대">
+                                                    <img src="${escapeHtml(url)}" alt="" loading="lazy" />
+                                                </button>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
                                 </div>
                             `;
                         }).join('') : `<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>`}
                     </div>
-                    <div class="mt-4 pt-3 border-t border-slate-200">
+                    <div class="mt-4 pt-3 border-t border-slate-200 -mx-2 px-2">
                         <div class="relative flex-1">
                             <label class="sr-only" for="boardCommentInput">댓글 입력</label>
+                            <input type="file" id="boardCommentPhotoInput" class="hidden" accept="image/*" multiple>
                             <input type="text" id="boardCommentInput" placeholder="${demo ? '샘플 계정은 읽기 전용입니다' : (window.currentUser ? '댓글을 입력하세요…' : '로그인 후 댓글을 작성할 수 있습니다')}" 
-                                   class="board-detail-comment-input w-full pl-3.5 pr-[4.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
+                                   class="board-detail-comment-input w-full pl-3.5 pr-[6.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
                                    ${(!window.currentUser || demo) ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addBoardComment('${postId}'); }">
-                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-colors shadow-sm" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')">게시</button>`}
+                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-board-comment-attach="1" aria-label="사진 첨부"><i class="fa-regular fa-image" aria-hidden="true"></i></button>`}
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-board-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')"><i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i></button>`}
                         </div>
+                        <div id="boardCommentPhotoPreview" class="board-detail-comment-photo-preview hidden mt-2"></div>
                     </div>
                 </article>
                 </section>
             </div>
         `;
+        try {
+            requestAnimationFrame(() => window.syncBoardDetailCommentComposer?.());
+        } catch (_) {}
     } catch (error) {
         console.error("게시글 상세 로드 오류:", error);
         container.innerHTML = `
@@ -897,11 +920,28 @@ export async function renderNoticeDetail(noticeId) {
                 return `
                                 <div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(comment.id)}">
                                     <div class="flex items-start justify-between gap-2">
-                                        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(commentNickname)}</span>
-                                        ${commentDateStr && commentTimeStr ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>` : ''}
+                                        <div class="min-w-0 flex items-baseline gap-2">
+                                            <span class="font-bold text-slate-800 shrink-0">${escapeHtml(commentNickname)}</span>
+                                            ${commentDateStr && commentTimeStr ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>` : ''}
+                                        </div>
+                                        ${(commentDateStr && commentTimeStr) || isCommentAuthor ? `
+                                            <div class="flex items-center justify-end gap-3 shrink-0">
+                                                ${isCommentAuthor ? `
+                                                    <button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNoticeId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>
+                                                ` : ''}
+                                            </div>
+                                        ` : ''}
                                     </div>
-                                    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(commentBody)}</p>
-                                    ${isCommentAuthor ? `<div class="mt-2"><button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNoticeId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>` : ''}
+                                    ${commentBody ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-notice-comment-body="1">${escapeHtml(commentBody)}</p>` : ''}
+                                    ${Array.isArray(comment.imageUrls) && comment.imageUrls.length > 0 ? `
+                                        <div class="board-detail-comment-images mt-2 flex flex-wrap gap-2">
+                                            ${comment.imageUrls.slice(0, 3).map((url) => `
+                                                <button type="button" class="board-detail-comment-image-btn" data-detail-comment-image="1" data-kind="notice" data-src="${escapeHtml(url)}" aria-label="댓글 이미지 확대">
+                                                    <img src="${escapeHtml(url)}" alt="" loading="lazy" />
+                                                </button>
+                                            `).join('')}
+                                        </div>
+                                    ` : ''}
                                 </div>
                             `;
             }).join('')
@@ -959,20 +999,26 @@ export async function renderNoticeDetail(noticeId) {
                     <div id="noticeCommentsList" class="board-detail-comments-list ${commentList.length > 0 ? 'divide-y divide-slate-100' : ''}">
                         ${commentsListHtml}
                     </div>
-                    <div class="mt-4 pt-3 border-t border-slate-200">
+                    <div class="mt-4 pt-3 border-t border-slate-200 -mx-2 px-2">
                         <div class="relative flex-1">
                             <label class="sr-only" for="noticeCommentInput">댓글 입력</label>
+                            <input type="file" id="noticeCommentPhotoInput" class="hidden" accept="image/*" multiple>
                             <input type="text" id="noticeCommentInput" placeholder="${demo ? '샘플 계정은 읽기 전용입니다' : (window.currentUser ? '댓글을 입력하세요…' : '로그인 후 댓글을 작성할 수 있습니다')}"
-                                   class="board-detail-comment-input w-full pl-3.5 pr-[4.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
+                                   class="board-detail-comment-input w-full pl-3.5 pr-[6.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
                                    ${(!window.currentUser || demo) ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addNoticeComment('${safeNoticeId}'); }">
-                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] transition-colors shadow-sm" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addNoticeComment('${safeNoticeId}')" onclick="if(window.currentUser) window.addNoticeComment('${safeNoticeId}')">게시</button>`}
+                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-notice-comment-attach="1" aria-label="사진 첨부"><i class="fa-regular fa-image" aria-hidden="true"></i></button>`}
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-notice-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addNoticeComment('${safeNoticeId}')" onclick="if(window.currentUser) window.addNoticeComment('${safeNoticeId}')"><i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i></button>`}
                         </div>
+                        <div id="noticeCommentPhotoPreview" class="board-detail-comment-photo-preview hidden mt-2"></div>
                     </div>
                 </article>
             </section>
             </div>
         `;
+        try {
+            requestAnimationFrame(() => window.syncBoardDetailCommentComposer?.());
+        } catch (_) {}
     } catch (e) {
         console.error("공지 상세 로드 오류:", e);
         container.innerHTML = `

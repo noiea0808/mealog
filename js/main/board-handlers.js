@@ -902,8 +902,113 @@ window.deleteBoardPost = (postId) => {
 };
 
 const _boardCommentSubmitting = {};
+const _boardDetailCommentImages = { files: [], objectUrls: [] };
+const _noticeDetailCommentImages = { files: [], objectUrls: [] };
+
+function revokeObjectUrls(list) {
+    (list || []).forEach((u) => {
+        try {
+            if (u && String(u).startsWith('blob:')) URL.revokeObjectURL(u);
+        } catch (_) {}
+    });
+}
+
+function setDetailCommentFiles(kind, files) {
+    const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+    revokeObjectUrls(target.objectUrls);
+    target.files = Array.from(files || []).slice(0, 3);
+    target.objectUrls = target.files.map((f) => URL.createObjectURL(f));
+}
+
+function clearDetailCommentFiles(kind, { revoke = true } = {}) {
+    const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+    if (revoke) revokeObjectUrls(target.objectUrls);
+    target.files = [];
+    target.objectUrls = [];
+}
+
+function detachDetailCommentFiles(kind) {
+    const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+    const files = Array.from(target.files || []);
+    const objectUrls = Array.from(target.objectUrls || []);
+    // UI에서는 즉시 비우되, object URL revoke는 호출 측이 결정(낙관적 row에 남아 있을 수 있음)
+    clearDetailCommentFiles(kind, { revoke: false });
+    return { files, objectUrls };
+}
+
+function replaceTempCommentImageUrls(tempCommentId, kind, imageUrls) {
+    const urls = Array.isArray(imageUrls) ? imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
+    if (!urls.length) return;
+    const listId = kind === 'notice' ? 'noticeCommentsList' : 'boardCommentsList';
+    const root = document.getElementById(listId);
+    const row = root?.querySelector?.(`[data-comment-id="${tempCommentId}"]`);
+    if (!row) return;
+    row.querySelectorAll('[data-detail-comment-image="1"]').forEach((btn, idx) => {
+        const url = urls[idx] || urls[0];
+        if (!url) return;
+        btn.setAttribute('data-src', url);
+        const img = btn.querySelector('img');
+        if (img) img.src = url;
+    });
+}
+
+function renderDetailCommentPhotoPreview(kind) {
+    const id = kind === 'notice' ? 'noticeCommentPhotoPreview' : 'boardCommentPhotoPreview';
+    const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!target.objectUrls.length) {
+        el.innerHTML = '';
+        el.classList.add('hidden');
+        return;
+    }
+    el.classList.remove('hidden');
+    el.innerHTML = target.objectUrls
+        .map(
+            (url, idx) => `
+            <button type="button" class="board-detail-comment-photo-thumb" data-detail-comment-photo-thumb="1" data-kind="${kind}" data-idx="${idx}" aria-label="첨부 이미지 미리보기">
+                <img src="${url}" alt="" loading="lazy" />
+            </button>
+        `
+        )
+        .join('');
+}
+
+function detailComposerHasPayload(kind) {
+    const inputId = kind === 'notice' ? 'noticeCommentInput' : 'boardCommentInput';
+    const input = document.getElementById(inputId);
+    const text = (input?.value || '').trim();
+    const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+    return Boolean(text) || (target.files && target.files.length > 0);
+}
+
+function syncDetailCommentSendBtnVisibilityByKind(kind) {
+    const btnSelector = kind === 'notice' ? '[data-notice-comment-send="1"]' : '[data-board-comment-send="1"]';
+    const btn = document.querySelector(btnSelector);
+    if (!btn) return;
+    const hasPayload = detailComposerHasPayload(kind);
+    btn.disabled = !hasPayload;
+}
 
 /** 게시판 상세 댓글 한 줄 — `renderBoardDetail` 마크업과 동일 */
+function renderDetailCommentImagesHtml(imageUrls, kind) {
+    const urls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [];
+    if (urls.length === 0) return '';
+    const k = kind === 'notice' ? 'notice' : 'board';
+    return `<div class="board-detail-comment-images mt-2 flex flex-wrap gap-2" data-detail-comment-images="${k}">
+        ${urls
+            .map((u) => {
+                const url = String(u || '').trim();
+                if (!url) return '';
+                const esc = escapeHtml(url);
+                return `<button type="button" class="board-detail-comment-image-btn" data-detail-comment-image="1" data-kind="${k}" data-src="${esc}" aria-label="댓글 이미지 확대">
+                    <img src="${esc}" alt="" loading="lazy" />
+                </button>`;
+            })
+            .join('')}
+    </div>`;
+}
+
 function buildBoardDetailCommentRowHtml({
     commentId,
     postId,
@@ -911,22 +1016,30 @@ function buildBoardDetailCommentRowHtml({
     body,
     commentDateStr,
     commentTimeStr,
-    showDelete
+    showDelete,
+    imageUrls
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
             : '';
-    const deletePart = showDelete
-        ? `<div class="mt-2"><button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>`
+    const actionsPart = showDelete
+        ? `<button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        : '';
+    const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'board');
+    const bodyPart = body
+        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-board-comment-body="1">${escapeHtml(body)}</p>`
         : '';
     return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${commentId}">
     <div class="flex items-start justify-between gap-2">
-      <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
-      ${timePart}
+      <div class="min-w-0 flex items-baseline gap-2">
+        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+        ${timePart}
+      </div>
+      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
     </div>
-    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(body)}</p>
-    ${deletePart}
+    ${bodyPart}
+    ${imagesPart}
   </div>`;
 }
 
@@ -945,7 +1058,8 @@ window.addBoardComment = async (postId) => {
     if (!input) return;
     
     const content = input.value.trim();
-    if (!content) {
+    const hasImages = _boardDetailCommentImages.files && _boardDetailCommentImages.files.length > 0;
+    if (!content && !hasImages) {
         showToast("댓글을 입력해주세요.", 'error');
         return;
     }
@@ -968,7 +1082,8 @@ window.addBoardComment = async (postId) => {
         body: content,
         commentDateStr,
         commentTimeStr,
-        showDelete: true
+        showDelete: true,
+        imageUrls: _boardDetailCommentImages.objectUrls || []
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
@@ -982,9 +1097,24 @@ window.addBoardComment = async (postId) => {
         commentsCountEl.textContent = String(n);
     }
     input.value = '';
+    try {
+        window.syncBoardDetailCommentComposer?.();
+    } catch (_) {}
     
     try {
-        const result = await boardOperations.addComment(postId, content);
+        let imageUrls = [];
+        if (hasImages) {
+            const { files: filesToUpload, objectUrls: optimisticUrls } = detachDetailCommentFiles('board');
+            renderDetailCommentPhotoPreview('board');
+            imageUrls = await uploadBoardImages(filesToUpload, window.currentUser.uid);
+            // 업로드 성공 후: 낙관적 blob URL을 실제 URL로 치환 + revoke
+            replaceTempCommentImageUrls(tempCommentId, 'board', imageUrls);
+            revokeObjectUrls(optimisticUrls);
+        } else {
+            clearDetailCommentFiles('board');
+            renderDetailCommentPhotoPreview('board');
+        }
+        const result = await boardOperations.addComment(postId, content, imageUrls);
         const realId = (result && (result.commentId ?? result.id)) || null;
         if (realId && commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
@@ -1012,6 +1142,9 @@ window.addBoardComment = async (postId) => {
         }
     } finally {
         _boardCommentSubmitting[postId] = false;
+        try {
+            window.syncBoardDetailCommentComposer?.();
+        } catch (_) {}
     }
 };
 
@@ -1025,24 +1158,32 @@ function buildNoticeDetailCommentRowHtml({
     body,
     commentDateStr,
     commentTimeStr,
-    showDelete
+    showDelete,
+    imageUrls
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-400 tabular-nums shrink-0 pt-0.5">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
             : '';
     const safeNid = String(noticeId || '').replace(/'/g, "\\'");
     const safeCid = String(commentId || '').replace(/'/g, "\\'");
-    const deletePart = showDelete
-        ? `<div class="mt-2"><button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button></div>`
+    const actionsPart = showDelete
+        ? `<button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        : '';
+    const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'notice');
+    const bodyPart = body
+        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-notice-comment-body="1">${escapeHtml(body)}</p>`
         : '';
     return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(commentId)}">
     <div class="flex items-start justify-between gap-2">
-      <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
-      ${timePart}
+      <div class="min-w-0 flex items-baseline gap-2">
+        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+        ${timePart}
+      </div>
+      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
     </div>
-    <p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words">${escapeHtml(body)}</p>
-    ${deletePart}
+    ${bodyPart}
+    ${imagesPart}
   </div>`;
 }
 
@@ -1061,7 +1202,8 @@ window.addNoticeComment = async (noticeId) => {
     if (!input) return;
 
     const content = input.value.trim();
-    if (!content) {
+    const hasImages = _noticeDetailCommentImages.files && _noticeDetailCommentImages.files.length > 0;
+    if (!content && !hasImages) {
         showToast('댓글을 입력해주세요.', 'error');
         return;
     }
@@ -1084,7 +1226,8 @@ window.addNoticeComment = async (noticeId) => {
         body: content,
         commentDateStr,
         commentTimeStr,
-        showDelete: true
+        showDelete: true,
+        imageUrls: _noticeDetailCommentImages.objectUrls || []
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
@@ -1098,9 +1241,23 @@ window.addNoticeComment = async (noticeId) => {
         commentsCountEl.textContent = String(n);
     }
     input.value = '';
+    try {
+        window.syncBoardDetailCommentComposer?.();
+    } catch (_) {}
 
     try {
-        const result = await noticeOperations.addNoticeComment(noticeId, content);
+        let imageUrls = [];
+        if (hasImages) {
+            const { files: filesToUpload, objectUrls: optimisticUrls } = detachDetailCommentFiles('notice');
+            renderDetailCommentPhotoPreview('notice');
+            imageUrls = await uploadBoardImages(filesToUpload, window.currentUser.uid);
+            replaceTempCommentImageUrls(tempCommentId, 'notice', imageUrls);
+            revokeObjectUrls(optimisticUrls);
+        } else {
+            clearDetailCommentFiles('notice');
+            renderDetailCommentPhotoPreview('notice');
+        }
+        const result = await noticeOperations.addNoticeComment(noticeId, content, imageUrls);
         const realId = (result && (result.commentId ?? result.id)) || null;
         if (realId && commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
@@ -1131,8 +1288,178 @@ window.addNoticeComment = async (noticeId) => {
         }
     } finally {
         _noticeCommentSubmitting[noticeId] = false;
+        try {
+            window.syncBoardDetailCommentComposer?.();
+        } catch (_) {}
     }
 };
+
+function syncDetailCommentSendBtn({ inputId, btnSelector }) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const btn = document.querySelector(btnSelector);
+    if (!btn) return;
+    const hasText = Boolean((input.value || '').trim());
+    btn.classList.toggle('hidden', !hasText);
+    btn.disabled = !hasText;
+}
+
+window.syncBoardDetailCommentComposer = () => {
+    syncDetailCommentSendBtnVisibilityByKind('board');
+    syncDetailCommentSendBtnVisibilityByKind('notice');
+};
+
+// 댓글 이미지 확대(라이트박스) — 게시판/공지 상세 공용
+let _detailCommentLightboxEl = null;
+function openDetailCommentLightbox(src) {
+    const url = typeof src === 'string' ? src.trim() : '';
+    if (!url) return;
+    if (!_detailCommentLightboxEl) {
+        _detailCommentLightboxEl = document.createElement('div');
+        _detailCommentLightboxEl.className = 'detail-comment-lightbox hidden';
+        _detailCommentLightboxEl.innerHTML = `
+            <div class="detail-comment-lightbox__scrim" data-dclb-close="1" aria-label="닫기"></div>
+            <div class="detail-comment-lightbox__stage" role="dialog" aria-modal="true" aria-label="이미지 확대">
+                <button type="button" class="detail-comment-lightbox__close" data-dclb-close="1" aria-label="닫기">
+                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                </button>
+                <img class="detail-comment-lightbox__img" alt="" />
+            </div>
+        `;
+        document.body.appendChild(_detailCommentLightboxEl);
+        _detailCommentLightboxEl.addEventListener('click', (e) => {
+            const close = e.target?.closest?.('[data-dclb-close="1"]');
+            if (close) {
+                e.preventDefault();
+                _detailCommentLightboxEl.classList.add('hidden');
+                _detailCommentLightboxEl.querySelector('img')?.removeAttribute('src');
+            }
+        });
+    }
+    const img = _detailCommentLightboxEl.querySelector('img');
+    if (img) img.src = url;
+    _detailCommentLightboxEl.classList.remove('hidden');
+}
+
+(function bindDetailCommentImageLightbox() {
+    if (document.documentElement.dataset.detailCommentImageLbBound === '1') return;
+    document.documentElement.dataset.detailCommentImageLbBound = '1';
+    document.addEventListener('click', (e) => {
+        const thumb = e.target?.closest?.('[data-detail-comment-photo-thumb="1"]');
+        if (thumb) {
+            const kind = thumb.getAttribute('data-kind') || 'board';
+            const idx = parseInt(thumb.getAttribute('data-idx') || '0', 10) || 0;
+            const target = kind === 'notice' ? _noticeDetailCommentImages : _boardDetailCommentImages;
+            const src = target.objectUrls && target.objectUrls[idx] ? String(target.objectUrls[idx]) : '';
+            if (!src) return;
+            e.preventDefault();
+            openDetailCommentLightbox(src);
+            return;
+        }
+        const btn = e.target?.closest?.('[data-detail-comment-image="1"]');
+        if (!btn) return;
+        const src = btn.getAttribute('data-src') || '';
+        if (!src) return;
+        e.preventDefault();
+        openDetailCommentLightbox(src);
+    });
+})();
+
+// 상세 댓글 입력: 내용 있을 때만 전송(화살표) 버튼 노출
+(function bindDetailCommentComposerVisibility() {
+    if (document.documentElement.dataset.detailCommentComposerBound === '1') return;
+    document.documentElement.dataset.detailCommentComposerBound = '1';
+    const onAnyInput = (e) => {
+        const t = e?.target;
+        if (!t) return;
+        if (t.id === 'boardCommentInput' || t.id === 'noticeCommentInput') {
+            try {
+                window.syncBoardDetailCommentComposer?.();
+            } catch (_) {}
+        }
+    };
+    document.addEventListener('input', onAnyInput, { passive: true });
+    document.addEventListener('focusin', onAnyInput, { passive: true });
+    document.addEventListener('focusout', onAnyInput, { passive: true });
+})();
+
+// 상세 댓글 사진 첨부/미리보기 바인딩
+(function bindDetailCommentPhotoAttach() {
+    if (document.documentElement.dataset.detailCommentPhotoAttachBound === '1') return;
+    document.documentElement.dataset.detailCommentPhotoAttachBound = '1';
+
+    document.addEventListener('click', (e) => {
+        const t = e.target;
+        const boardBtn = t?.closest?.('[data-board-comment-attach="1"]');
+        const noticeBtn = t?.closest?.('[data-notice-comment-attach="1"]');
+        if (boardBtn) {
+            e.preventDefault();
+            document.getElementById('boardCommentPhotoInput')?.click?.();
+            return;
+        }
+        if (noticeBtn) {
+            e.preventDefault();
+            document.getElementById('noticeCommentPhotoInput')?.click?.();
+        }
+    });
+
+    document.addEventListener('change', (e) => {
+        const input = e.target;
+        if (!input || input.tagName !== 'INPUT' || input.type !== 'file') return;
+        if (input.id === 'boardCommentPhotoInput') {
+            setDetailCommentFiles('board', input.files);
+            renderDetailCommentPhotoPreview('board');
+            syncDetailCommentSendBtnVisibilityByKind('board');
+        } else if (input.id === 'noticeCommentPhotoInput') {
+            setDetailCommentFiles('notice', input.files);
+            renderDetailCommentPhotoPreview('notice');
+            syncDetailCommentSendBtnVisibilityByKind('notice');
+        }
+    });
+})();
+
+// 버튼 눌림(press) 효과: 사진/발송 버튼 공용
+(function bindDetailCommentPressFx() {
+    if (document.documentElement.dataset.detailCommentPressFxBound === '1') return;
+    document.documentElement.dataset.detailCommentPressFxBound = '1';
+
+    const isPressTarget = (el) =>
+        Boolean(
+            el?.closest?.('.board-detail-comment-send') ||
+                el?.closest?.('.board-detail-comment-attach') ||
+                el?.closest?.('.moment-v2-social-comments-send')
+        );
+
+    const pressClass = 'is-pressed';
+    const add = (el) => {
+        const btn = el?.closest?.('.board-detail-comment-send, .board-detail-comment-attach, .moment-v2-social-comments-send');
+        if (!btn) return;
+        btn.classList.add(pressClass);
+    };
+    const clearAll = () => {
+        document.querySelectorAll(`.${pressClass}`).forEach((n) => n.classList.remove(pressClass));
+    };
+
+    document.addEventListener(
+        'mousedown',
+        (e) => {
+            if (!isPressTarget(e.target)) return;
+            add(e.target);
+        },
+        { passive: true }
+    );
+    document.addEventListener(
+        'touchstart',
+        (e) => {
+            if (!isPressTarget(e.target)) return;
+            add(e.target);
+        },
+        { passive: true }
+    );
+    ['mouseup', 'touchend', 'touchcancel', 'mouseleave', 'blur'].forEach((evt) => {
+        window.addEventListener(evt, () => clearAll(), { passive: true });
+    });
+})();
 
 window.deleteNoticeComment = async (commentId, noticeId) => {
     if (!confirm('댓글을 삭제하시겠습니까?')) return;
@@ -1193,7 +1520,8 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
                                 body: commentBody,
                                 commentDateStr,
                                 commentTimeStr,
-                                showDelete: isCommentAuthor
+                                showDelete: isCommentAuthor,
+                                imageUrls: comment.imageUrls || []
                             });
                         })
                         .join('');
@@ -1206,6 +1534,62 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
         } catch (err) {
             console.error('공지 댓글 목록 새로고침 오류:', err);
         }
+    }
+};
+
+window.editBoardComment = async (commentId, postId) => {
+    const cid = String(commentId || '').trim();
+    const pid = String(postId || '').trim();
+    if (!cid || !pid) return;
+    const row = document.getElementById('boardCommentsList')?.querySelector?.(`[data-comment-id="${cid}"]`);
+    const current = row?.querySelector?.('[data-board-comment-body]')?.textContent ?? row?.querySelector?.('p')?.textContent ?? '';
+    const next = prompt('댓글을 편집하세요', String(current || '').trim());
+    if (next == null) return;
+    const text = String(next).trim();
+    if (!text) {
+        showToast('댓글 내용을 입력해주세요.', 'error');
+        return;
+    }
+    try {
+        await boardOperations.updateComment(cid, pid, text);
+        if (row) {
+            const p = row.querySelector('[data-board-comment-body]') || row.querySelector('p');
+            if (p) {
+                p.textContent = text;
+                p.classList.remove('hidden');
+            }
+        }
+        showToast('댓글이 수정되었습니다.', 'success');
+    } catch (_) {
+        // updateComment 내에서 토스트 처리
+    }
+};
+
+window.editNoticeComment = async (commentId, noticeId) => {
+    const cid = String(commentId || '').trim();
+    const nid = String(noticeId || '').trim();
+    if (!cid || !nid) return;
+    const row = document.getElementById('noticeCommentsList')?.querySelector?.(`[data-comment-id="${cid}"]`);
+    const current = row?.querySelector?.('[data-notice-comment-body]')?.textContent ?? row?.querySelector?.('p')?.textContent ?? '';
+    const next = prompt('댓글을 편집하세요', String(current || '').trim());
+    if (next == null) return;
+    const text = String(next).trim();
+    if (!text) {
+        showToast('댓글 내용을 입력해주세요.', 'error');
+        return;
+    }
+    try {
+        await noticeOperations.updateNoticeComment(cid, nid, text);
+        if (row) {
+            const p = row.querySelector('[data-notice-comment-body]') || row.querySelector('p');
+            if (p) {
+                p.textContent = text;
+                p.classList.remove('hidden');
+            }
+        }
+        showToast('댓글이 수정되었습니다.', 'success');
+    } catch (_) {
+        // updateNoticeComment 내에서 토스트 처리
     }
 };
 
@@ -1266,7 +1650,8 @@ window.deleteBoardComment = async (commentId, postId) => {
                             body: commentBody,
                             commentDateStr,
                             commentTimeStr,
-                            showDelete: isCommentAuthor
+                            showDelete: isCommentAuthor,
+                            imageUrls: comment.imageUrls || []
                         });
                     }).join('');
                 } else {

@@ -85,12 +85,17 @@ function recordPopupClick(popupId) {
     }).catch(() => {});
 }
 
-/** 로그인 배너 조회 수 증가 — 로그인 사용자당 1회, 비로그인은 매번 집계 */
-export function recordBannerView() {
-    const bannerRef = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+/** @param {string | null | undefined} campaignId — loginBanners 문서 ID. null/undefined 이면 구버전 config/loginBanner 에 집계 */
+export function recordBannerView(campaignId) {
+    const useLegacy = !campaignId;
+    const bannerRef = useLegacy
+        ? doc(db, 'artifacts', appId, 'config', 'loginBanner')
+        : doc(db, 'artifacts', appId, 'loginBanners', campaignId);
     if (auth.currentUser) {
         const uid = auth.currentUser.uid;
-        const viewRef = doc(db, 'artifacts', appId, 'config', 'loginBanner', 'views', uid);
+        const viewRef = useLegacy
+            ? doc(db, 'artifacts', appId, 'config', 'loginBanner', 'views', uid)
+            : doc(db, 'artifacts', appId, 'loginBanners', campaignId, 'views', uid);
         runTransaction(db, async (tx) => {
             const snap = await tx.get(viewRef);
             if (snap.exists()) return;
@@ -102,12 +107,17 @@ export function recordBannerView() {
     }
 }
 
-/** 로그인 배너 클릭 수 증가 — 로그인 사용자당 1회, 비로그인은 매번 집계 */
-export function recordBannerClick() {
-    const bannerRef = doc(db, 'artifacts', appId, 'config', 'loginBanner');
+/** @param {string | null | undefined} campaignId */
+export function recordBannerClick(campaignId) {
+    const useLegacy = !campaignId;
+    const bannerRef = useLegacy
+        ? doc(db, 'artifacts', appId, 'config', 'loginBanner')
+        : doc(db, 'artifacts', appId, 'loginBanners', campaignId);
     if (auth.currentUser) {
         const uid = auth.currentUser.uid;
-        const clickRef = doc(db, 'artifacts', appId, 'config', 'loginBanner', 'clicks', uid);
+        const clickRef = useLegacy
+            ? doc(db, 'artifacts', appId, 'config', 'loginBanner', 'clicks', uid)
+            : doc(db, 'artifacts', appId, 'loginBanners', campaignId, 'clicks', uid);
         runTransaction(db, async (tx) => {
             const snap = await tx.get(clickRef);
             if (snap.exists()) return;

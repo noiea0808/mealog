@@ -86,7 +86,39 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
 }
 
 function feedQueryCacheKey(page) {
-    return `${mealsAdminUseDateTimeSort ? 'dt' : 'd'}_${page}`;
+    return `m${mealsAdminMealsQueryMode}_${page}`;
+}
+
+/** 기록 시각(recordedAt) 우선, 없으면 timestamp, 없으면 슬롯 date+time 근사 */
+function mealRecordedAtMillis(meal) {
+    if (!meal) return 0;
+    const raw = meal.recordedAt ?? meal.timestamp;
+    if (raw != null) {
+        if (raw && typeof raw.toDate === 'function') {
+            const d = raw.toDate();
+            return Number.isFinite(d.getTime()) ? d.getTime() : 0;
+        }
+        if (typeof raw === 'string' || raw instanceof Date) {
+            const d = new Date(raw);
+            return Number.isFinite(d.getTime()) ? d.getTime() : 0;
+        }
+        if (raw && typeof raw.seconds === 'number') {
+            return raw.seconds * 1000 + (raw.nanoseconds || 0) / 1e6;
+        }
+    }
+    if (meal.date) {
+        const dateStr = meal.date;
+        let timeStr = meal.time || '00:00';
+        try {
+            if (timeStr && String(timeStr).split(':').length === 2) timeStr = `${timeStr}:00`;
+            const d = new Date(`${dateStr}T${timeStr}`);
+            if (Number.isFinite(d.getTime())) return d.getTime();
+        } catch (_) {}
+        try {
+            return new Date(dateStr).getTime();
+        } catch (_) {}
+    }
+    return 0;
 }
 
 async function getReportsAggregateCached() {
@@ -128,10 +160,10 @@ async function getFeedPageWithCache(page) {
 }
 
 /**
- * true: collectionGroup(meals) 를 date DESC, time DESC 로 페이지네이션 (관리자 모니터링 기본).
- * false: 인덱스 미배포 등으로 실패 시 date DESC 만 사용 (폴백).
+ * Firestore: recordedAt 으로 정렬하면 필드가 없는 구문서가 목록에서 빠질 수 있어, 항상 슬롯 기준으로 가져온 뒤
+ * 화면에서 recordedAt 기준으로 정렬/표기한다. 1: date+time · 2: date만(인덱스 폴백)
  */
-let mealsAdminUseDateTimeSort = true;
+let mealsAdminMealsQueryMode = 1;
 
 // 피드: 전체 타임라인(meals) 페이지 단위 조회 — 사진 유무와 관계없이 모든 게시물 표시, 중복 없음
 async function getFeedPage(options = {}) {
@@ -140,9 +172,10 @@ async function getFeedPage(options = {}) {
     const startAfterDoc = page === 1 ? null : (feedLastDocsByPage[page - 1] ?? null);
     const mealsGroup = collectionGroup(db, 'meals');
 
-    const orderParts = mealsAdminUseDateTimeSort
-        ? [orderBy('date', 'desc'), orderBy('time', 'desc')]
-        : [orderBy('date', 'desc')];
+    const orderParts =
+        mealsAdminMealsQueryMode === 1
+            ? [orderBy('date', 'desc'), orderBy('time', 'desc')]
+            : [orderBy('date', 'desc')];
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
@@ -184,12 +217,12 @@ async function getFeedPage(options = {}) {
         }
         return { items, totalCount: feedTotalCount, lastDoc, hasMore: docs.length === pageSize };
     } catch (e) {
-        if (page === 1 && mealsAdminUseDateTimeSort && e?.code === 'failed-precondition') {
+        if (page === 1 && e?.code === 'failed-precondition' && mealsAdminMealsQueryMode === 1) {
             console.warn(
-                '관리자 모먼트 피드: date+time 복합 인덱스가 없어 date만 사용합니다. `firebase deploy --only firestore:indexes` 적용 후 새로고침하면 기록 시각 순으로 정렬됩니다.',
+                '관리자 모먼트 피드: date+time 복합 인덱스가 없어 date(슬롯일)만 사용합니다.',
                 e?.message || e
             );
-            mealsAdminUseDateTimeSort = false;
+            mealsAdminMealsQueryMode = 2;
             feedLastDocsByPage = {};
             feedQueryCache.clear();
             return getFeedPage(options);
@@ -267,57 +300,12 @@ async function renderFeedManagement() {
             `✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 총 ${feedTotalCount}개` : ' / 전체 수 집계 생략'})`
         );
         
-        // 서버가 date+time 순이면 이미 맞음. 동일 시각·구문서 보정용으로 페이지 내 한 번 더 정렬
+        // 서버 정렬과 무관하게 필터 적용 후 페이지 내는 기록 시각(recordedAt) 기준으로 맞춤
         filteredMeals.sort((a, b) => {
-            // 모든 게시물을 동일한 기준으로 정렬: date + time 또는 timestamp에서 date 추출
-            const getSortTime = (meal) => {
-                // date 필드가 있으면 date + time 사용
-                if (meal.date) {
-                    const dateStr = meal.date;
-                    const timeStr = meal.time || '23:59'; // time이 없으면 하루의 마지막 시간으로
-                    try {
-                        return new Date(`${dateStr}T${timeStr}:00`).getTime();
-                    } catch (e) {
-                        // 날짜 파싱 실패 시 date만 사용
-                        return new Date(dateStr).getTime();
-                    }
-                }
-                
-                // date 필드가 없으면 timestamp에서 date 추출
-                if (meal.timestamp) {
-                    try {
-                        const timestampDate = new Date(meal.timestamp);
-                        // timestamp의 날짜 부분만 사용 (시간은 00:00:00으로)
-                        const dateOnly = new Date(timestampDate.getFullYear(), timestampDate.getMonth(), timestampDate.getDate());
-                        return dateOnly.getTime();
-                    } catch (e) {
-                        // timestamp 파싱 실패 시 timestamp 그대로 사용
-                        return new Date(meal.timestamp).getTime();
-                    }
-                }
-                
-                return 0;
-            };
-            
-            const timeA = getSortTime(a);
-            const timeB = getSortTime(b);
-            
-            // 타임스탬프로 정렬 (최신순: 큰 값이 먼저)
-            if (timeB !== timeA) {
-                return timeB - timeA;
-            }
-            
-            // 타임스탬프가 같으면 timestamp로 세부 정렬
-            const timestampA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
-            const timestampB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
-            if (timestampB !== timestampA) {
-                return timestampB - timestampA;
-            }
-            
-            // 모두 같으면 date 문자열로 정렬
-            const dateA = a.date || '';
-            const dateB = b.date || '';
-            return dateB.localeCompare(dateA);
+            const ta = mealRecordedAtMillis(a);
+            const tb = mealRecordedAtMillis(b);
+            if (tb !== ta) return tb - ta;
+            return String(b.id || '').localeCompare(String(a.id || ''));
         });
         
         // 페이지 단위 로드 결과에서만 표시
@@ -372,24 +360,37 @@ async function renderFeedManagement() {
         window._feedReportDetails = {};
 
         const fmtDateTimeParts = (meal) => {
-            if (meal.date) {
-                try {
-                    const t = meal.time || '00:00';
-                    const d = new Date(`${meal.date}T${t}`);
-                    const datePart = d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                    const timePart = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    return { date: datePart, time: timePart };
-                } catch (_) {
-                    return { date: meal.date, time: meal.time || '-' };
+            const kst = { timeZone: 'Asia/Seoul' };
+            const toParts = (d) => {
+                if (!d || !Number.isFinite(d.getTime())) return null;
+                return {
+                    date: d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', ...kst }),
+                    time: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...kst })
+                };
+            };
+            const fromRaw = (raw) => {
+                if (raw == null) return null;
+                if (raw && typeof raw.toDate === 'function') return toParts(raw.toDate());
+                if (raw instanceof Date) return toParts(raw);
+                if (typeof raw === 'string') return toParts(new Date(raw));
+                if (typeof raw === 'object' && typeof raw.seconds === 'number') {
+                    return toParts(new Date(raw.seconds * 1000 + (raw.nanoseconds || 0) / 1e6));
                 }
-            }
-            if (meal.timestamp) {
+                return null;
+            };
+            let p = fromRaw(meal?.recordedAt);
+            if (p) return p;
+            p = fromRaw(meal?.timestamp);
+            if (p) return p;
+            if (meal?.date) {
                 try {
-                    const d = new Date(meal.timestamp);
-                    const datePart = d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                    const timePart = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                    return { date: datePart, time: timePart };
+                    let t = meal.time || '00:00';
+                    if (t && String(t).split(':').length === 2) t = `${t}:00`;
+                    const d = new Date(`${meal.date}T${t}`);
+                    p = toParts(d);
+                    if (p) return p;
                 } catch (_) {}
+                return { date: String(meal.date), time: String(meal.time || '-') };
             }
             return { date: '-', time: '-' };
         };
@@ -586,7 +587,7 @@ async function renderFeedManagement() {
                         <tr class="text-xs text-slate-500">
                             <th class="px-3 py-3 font-bold w-10 text-center whitespace-nowrap border-r border-slate-200">선택</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[56px] min-w-[56px] border-r border-slate-200">번호</th>
-                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">일시</th>
+                            <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">기록 일시</th>
                             <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
@@ -745,7 +746,7 @@ window.refreshFeedManagement = async function () {
         feedCurrentPage = 1;
         feedLastDocsByPage = {};
         feedTotalCount = 0;
-        mealsAdminUseDateTimeSort = true;
+        mealsAdminMealsQueryMode = 1;
         await renderFeedManagement();
     });
 };
@@ -1510,10 +1511,10 @@ window.openAdminFeedPhotoViewer = function (urls, startIndex = 0) {
     updateAdminFeedPhotoViewer();
 };
 
-/** 모니터링에서 '모먼트' 탭으로 들어올 때 호출: date+time 인덱스 배포 후에도 폴백만 쓰던 세션을 한 번 되살림 */
+/** 모니터링에서 '모먼트' 탭으로 들어올 때: date-only 폴백(2) 쓰던 경우 date+time(1)으로 한 번 복구 시도 */
 export function refreshAdminMealsFeedSortMode() {
-    if (!mealsAdminUseDateTimeSort) {
-        mealsAdminUseDateTimeSort = true;
+    if (mealsAdminMealsQueryMode === 2) {
+        mealsAdminMealsQueryMode = 1;
         feedLastDocsByPage = {};
         feedCurrentPage = 1;
     }

@@ -585,6 +585,37 @@ function feedOneLinePreview(text, maxLen = 80) {
   return `${s.slice(0, Math.max(1, maxLen - 1))}…`;
 }
 
+/** 게시판 푸시·알림용: 레거시 제목 우선, 없으면 본문 HTML 첫 줄(평문)을 한 줄로 */
+function clipBoardNotificationLine(str, maxLen = 52) {
+  const t = String(str ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, Math.max(1, maxLen - 3))}...`;
+}
+
+function boardPostPushTitlePreview(postData, maxLen = 52) {
+  const title = typeof postData?.title === 'string' ? postData.title.trim() : '';
+  if (title) return clipBoardNotificationLine(title, maxLen) || '밀톡';
+  const rawHtml = postData?.content != null ? String(postData.content) : '';
+  if (!String(rawHtml).trim()) return '밀톡';
+  const stripped = String(rawHtml)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+  let firstLine = '';
+  const lines = stripped.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const s = lines[i].replace(/\s+/g, ' ').trim();
+    if (s) {
+      firstLine = s;
+      break;
+    }
+  }
+  if (!firstLine) firstLine = stripped.replace(/\s+/g, ' ').trim();
+  return clipBoardNotificationLine(firstLine, maxLen) || '밀톡';
+}
+
 function extractFeedMentionNicknames(text) {
   const s = String(text ?? '');
   const re = /(^|[\s\n])@([^\s@]+)/g;
@@ -940,19 +971,26 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
     throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
   }
 
-  const { postId, content } = data;
+  const { postId, content, imageUrls } = data;
+  const text = content != null ? String(content) : '';
+  const imgs = Array.isArray(imageUrls) ? imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
   
-  if (!postId || !content || !content.trim()) {
+  if (!postId || (!text.trim() && imgs.length === 0)) {
     throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+  if (imgs.length > 3) {
+    throw new HttpsError('invalid-argument', '댓글 이미지는 최대 3장까지 첨부할 수 있습니다.');
   }
 
   // 레이트 리밋 체크
   await checkRateLimit(auth.uid, 'comment', request);
 
-  // 스팸 필터링
-  const spamCheck = checkSpam(content);
-  if (spamCheck.isSpam) {
-    throw new HttpsError('invalid-argument', spamCheck.reason);
+  // 스팸 필터링 (텍스트가 있을 때만)
+  if (text.trim()) {
+    const spamCheck = checkSpam(text);
+    if (spamCheck.isSpam) {
+      throw new HttpsError('invalid-argument', spamCheck.reason);
+    }
   }
 
   // 사용자 프로필 정보 가져오기
@@ -983,7 +1021,8 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   const newComment = {
     postId: String(postId),
     postAuthorId: postAuthorId || null,
-    content: content.trim(),
+    content: text.trim(),
+    imageUrls: imgs,
     authorId: auth.uid,
     authorNickname,
     authorPhotoUrl,
@@ -1000,13 +1039,18 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
+    const previewTitle = boardPostPushTitlePreview(postData, 52);
     // 반드시 await: onCall 반환 후 인스턴스가 멈추면 미완료 Promise가 끊겨 푸시가 안 갈 수 있음
     await sendPushToUser(
       postAuthorId,
       {
-        title: '새 댓글',
+        title: previewTitle,
         body: `${authorNickname}님이 댓글을 남겼습니다.`,
-        data: { type: 'boardComment', postId: String(postId) }
+        data: {
+          type: 'boardComment',
+          postId: String(postId),
+          postPreview: previewTitle.slice(0, 200)
+        }
       },
       { pushCategory: 'boardComment' }
     );
@@ -1030,10 +1074,15 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
   }
 
-  const { postId, content, displayName: clientDisplayName } = data;
+  const { postId, content, imageUrls, displayName: clientDisplayName } = data;
+  const text = content != null ? String(content) : '';
+  const imgs = Array.isArray(imageUrls) ? imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
 
-  if (!postId || !content || !content.trim()) {
+  if (!postId || (!text.trim() && imgs.length === 0)) {
     throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+  if (imgs.length > 3) {
+    throw new HttpsError('invalid-argument', '댓글 이미지는 최대 3장까지 첨부할 수 있습니다.');
   }
 
   // 클라이언트에서 보낸 표시 이름 우선 사용 (관리자 설정에서 저장한 값이 즉시 반영되도록)
@@ -1059,7 +1108,8 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
   const newComment = {
     postId: String(postId),
     postAuthorId: postAuthorId || null,
-    content: content.trim(),
+    content: text.trim(),
+    imageUrls: imgs,
     authorId: auth.uid,
     authorNickname: authorNickname || '관리자',
     authorPhotoUrl: null,
@@ -1077,12 +1127,17 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
   }
 
   if (postAuthorId && postAuthorId !== auth.uid) {
+    const previewTitle = boardPostPushTitlePreview(postData, 52);
     await sendPushToUser(
       postAuthorId,
       {
-        title: '새 댓글',
+        title: previewTitle,
         body: `${authorNickname}님이 댓글을 남겼습니다.`,
-        data: { type: 'boardComment', postId: String(postId) }
+        data: {
+          type: 'boardComment',
+          postId: String(postId),
+          postPreview: previewTitle.slice(0, 200)
+        }
       },
       { pushCategory: 'boardComment' }
     );
@@ -1137,6 +1192,105 @@ exports.deleteBoardComment = onCall({ region: REGION }, async (request) => {
 });
 
 /**
+ * 관리자 게시판 댓글 삭제 (Callable) — isAdminComment 인 댓글만, 호출자는 관리자
+ */
+exports.deleteBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
+  const { auth, data } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(auth.uid))) {
+    throw new HttpsError('permission-denied', '관리자만 사용할 수 있습니다.');
+  }
+
+  const { commentId, postId } = data || {};
+  if (!commentId) {
+    throw new HttpsError('invalid-argument', '댓글 ID가 필요합니다.');
+  }
+
+  const commentRef = db.collection('artifacts').doc(APP_ID).collection('boardComments').doc(String(commentId));
+  const commentDoc = await commentRef.get();
+  if (!commentDoc.exists) {
+    throw new HttpsError('not-found', '댓글을 찾을 수 없습니다.');
+  }
+
+  const commentData = commentDoc.data() || {};
+  if (commentData.isAdminComment !== true) {
+    throw new HttpsError('permission-denied', '운영 관리창으로 등록된 댓글만 삭제할 수 있습니다.');
+  }
+
+  const commentPostId = String(commentData.postId || '').trim();
+  if (postId != null && String(postId).trim() && commentPostId && String(postId).trim() !== commentPostId) {
+    throw new HttpsError('invalid-argument', '게시글 정보가 일치하지 않습니다.');
+  }
+
+  await commentRef.delete();
+
+  const pid = (postId != null && String(postId).trim()) || commentPostId;
+  if (pid) {
+    const postRef = db.collection('artifacts').doc(APP_ID).collection('boardPosts').doc(String(pid));
+    const postSnap = await postRef.get();
+    if (postSnap.exists) {
+      await postRef.update({
+        comments: FieldValue.increment(-1)
+      });
+    }
+  }
+
+  return { success: true };
+});
+
+/**
+ * 게시글 댓글 편집 (Callable)
+ */
+exports.updateBoardComment = onCall({ region: REGION }, wrapFunction('updateBoardComment', async (request) => {
+  const { auth, data } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(auth);
+
+  const { commentId, postId, content } = data || {};
+  const text = content != null ? String(content) : '';
+
+  if (!commentId || !postId) {
+    throw new HttpsError('invalid-argument', '필수 값이 누락되었습니다.');
+  }
+  if (!text.trim()) {
+    throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+
+  // 레이트 리밋 체크 (편집도 댓글 카테고리로 제한)
+  await checkRateLimit(auth.uid, 'comment', request);
+
+  // 스팸 필터링
+  const spamCheck = checkSpam(text);
+  if (spamCheck.isSpam) {
+    throw new HttpsError('invalid-argument', spamCheck.reason);
+  }
+
+  const commentRef = db.collection('artifacts').doc(APP_ID).collection('boardComments').doc(String(commentId));
+  const snap = await commentRef.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '댓글을 찾을 수 없습니다.');
+  }
+  const d = snap.data() || {};
+  if (String(d.postId || '') !== String(postId)) {
+    throw new HttpsError('invalid-argument', '댓글/게시글 정보가 일치하지 않습니다.');
+  }
+  if (d.authorId !== auth.uid) {
+    throw new HttpsError('permission-denied', '본인의 댓글만 편집할 수 있습니다.');
+  }
+
+  await commentRef.update({
+    content: text.trim(),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+
+  return { success: true, id: String(commentId), content: text.trim(), updatedAt: new Date().toISOString() };
+}));
+
+/**
  * 공지 댓글 작성 (Callable)
  */
 exports.addNoticeComment = onCall({ region: REGION }, wrapFunction('addNoticeComment', async (request) => {
@@ -1152,17 +1306,24 @@ exports.addNoticeComment = onCall({ region: REGION }, wrapFunction('addNoticeCom
     throw new HttpsError('permission-denied', '댓글 작성이 제한된 계정입니다.');
   }
 
-  const { noticeId, content } = data;
+  const { noticeId, content, imageUrls } = data;
+  const text = content != null ? String(content) : '';
+  const imgs = Array.isArray(imageUrls) ? imageUrls.map((u) => String(u || '').trim()).filter(Boolean) : [];
 
-  if (!noticeId || !content || !content.trim()) {
+  if (!noticeId || (!text.trim() && imgs.length === 0)) {
     throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+  if (imgs.length > 3) {
+    throw new HttpsError('invalid-argument', '댓글 이미지는 최대 3장까지 첨부할 수 있습니다.');
   }
 
   await checkRateLimit(auth.uid, 'comment', request);
 
-  const spamCheck = checkSpam(content);
-  if (spamCheck.isSpam) {
-    throw new HttpsError('invalid-argument', spamCheck.reason);
+  if (text.trim()) {
+    const spamCheck = checkSpam(text);
+    if (spamCheck.isSpam) {
+      throw new HttpsError('invalid-argument', spamCheck.reason);
+    }
   }
 
   const userSettingsRef = db.collection('artifacts').doc(APP_ID)
@@ -1188,7 +1349,8 @@ exports.addNoticeComment = onCall({ region: REGION }, wrapFunction('addNoticeCom
   const commentsRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments');
   const newComment = {
     noticeId: String(noticeId),
-    content: content.trim(),
+    content: text.trim(),
+    imageUrls: imgs,
     authorId: auth.uid,
     authorNickname,
     authorPhotoUrl,
@@ -1252,6 +1414,53 @@ exports.deleteNoticeComment = onCall({ region: REGION }, async (request) => {
 
   return { success: true };
 });
+
+/**
+ * 공지 댓글 편집 (Callable)
+ */
+exports.updateNoticeComment = onCall({ region: REGION }, wrapFunction('updateNoticeComment', async (request) => {
+  const { auth, data } = request;
+  if (!auth || !auth.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(auth);
+
+  const { commentId, noticeId, content } = data || {};
+  const text = content != null ? String(content) : '';
+  if (!commentId || !noticeId) {
+    throw new HttpsError('invalid-argument', '필수 값이 누락되었습니다.');
+  }
+  if (!text.trim()) {
+    throw new HttpsError('invalid-argument', '댓글 내용을 입력해주세요.');
+  }
+
+  await checkRateLimit(auth.uid, 'comment', request);
+
+  const spamCheck = checkSpam(text);
+  if (spamCheck.isSpam) {
+    throw new HttpsError('invalid-argument', spamCheck.reason);
+  }
+
+  const commentRef = db.collection('artifacts').doc(APP_ID).collection('noticeComments').doc(String(commentId));
+  const snap = await commentRef.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '댓글을 찾을 수 없습니다.');
+  }
+  const d = snap.data() || {};
+  if (String(d.noticeId || '') !== String(noticeId)) {
+    throw new HttpsError('invalid-argument', '댓글/공지 정보가 일치하지 않습니다.');
+  }
+  if (d.authorId !== auth.uid) {
+    throw new HttpsError('permission-denied', '본인의 댓글만 편집할 수 있습니다.');
+  }
+
+  await commentRef.update({
+    content: text.trim(),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+
+  return { success: true, id: String(commentId), content: text.trim(), updatedAt: new Date().toISOString() };
+}));
 
 /**
  * 피드 댓글 작성 (Callable)
@@ -3459,10 +3668,19 @@ exports.saveArtifactUserMeal = onCall({ region: REGION }, wrapFunction('saveArti
   if (Object.prototype.hasOwnProperty.call(cleaned, 'id')) {
     delete cleaned.id;
   }
+  delete cleaned.recordedAt;
 
   const coll = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
   const mealRef = mealIdStr ? coll.doc(mealIdStr) : coll.doc();
-  const existedBefore = mealIdStr ? (await mealRef.get()).exists : false;
+  const existingSnap = mealIdStr ? await mealRef.get() : null;
+  const existedBefore = existingSnap && existingSnap.exists;
+
+  if (existedBefore && existingSnap.data()?.recordedAt != null) {
+    cleaned.recordedAt = existingSnap.data().recordedAt;
+  } else {
+    // 신규 문서이거나 recordedAt 누락: 슬롯 날짜로 추론하지 않고 이번 저장 시각(ISO)으로 둔다
+    cleaned.recordedAt = new Date().toISOString();
+  }
 
   await mealRef.set(cleaned, { merge: false });
 

@@ -170,10 +170,23 @@ export const dbOps = {
                 if (Object.prototype.hasOwnProperty.call(dataToSave, 'sharedPhotos')) {
                     dataToSave.sharedPhotos = sanitizePhotoArray(dataToSave.sharedPhotos);
                 }
+                delete dataToSave.recordedAt;
                 const docId = dataToSave.id;
                 delete dataToSave.id;
                 const cleaned = stripUndefinedDeep(dataToSave);
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
+                if (docId) {
+                    const exRef = doc(coll, docId);
+                    const exSnap = await getDoc(exRef);
+                    if (exSnap.exists() && exSnap.data().recordedAt != null) {
+                        cleaned.recordedAt = exSnap.data().recordedAt;
+                    } else {
+                        // 신규 문서이거나, 구문서에 recordedAt 이 없을 때: 슬롯 date 가 아닌 실제 저장 시각(Now)
+                        cleaned.recordedAt = new Date().toISOString();
+                    }
+                } else {
+                    cleaned.recordedAt = new Date().toISOString();
+                }
                 logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave: cleaned });
                 const mealPathHint = docId
                     ? `artifacts/${appId}/users/${currentUser.uid}/meals/${docId}`

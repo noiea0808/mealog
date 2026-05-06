@@ -966,9 +966,12 @@
             <div id="trackerHeader" class="flex justify-between items-center mb-2 gap-2">
                 <div class="flex items-center gap-1 min-w-0 flex-1">
                     <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase truncate">날짜 선택</span>
-                    <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
-                        <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
-                    </button>
+                    <div class="flex items-center gap-0.5 flex-shrink-0">
+                        <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
+                            <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
+                        </button>
+                        <span id="trackerStreakLabel" class="text-xs text-slate-500 tabular-nums whitespace-nowrap font-normal">0일 연속 기록중 </span>
+                    </div>
                 </div>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
                     <button id="btn-view-list" class="view-tab active">전체</button>
@@ -1270,6 +1273,10 @@
                 <!-- 간식 분석 섹션 -->
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">언제</h3></div>
+                            <div id="snackWhenChartContainer"></div>
+                        </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">어디서</h3><button onclick="window.openDetailModal('snackPlace', '어디서 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
                             <div id="snackPlaceChartContainer"></div>
@@ -1843,6 +1850,48 @@
                         </div>
                     </div>
 
+                    <div id="entryMealTimeSectionMain" class="py-2 -mx-4 px-4 border-y border-slate-200/90 rounded-none mb-2">
+                        <div class="flex items-center justify-between gap-3 min-w-0">
+                            <div class="flex items-center shrink-0">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">시간</span>
+                                <label class="entry-gauge-switch ml-[3ch] shrink-0" title="카드 태그·정렬에 기록 시간 반영">
+                                    <input type="checkbox" id="entryMealClockToggleMain" class="peer sr-only" role="switch" aria-label="기록 시간 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div id="entryMealClockInputWrapMain" class="flex min-w-0 flex-1 justify-end">
+                                <div class="flex max-w-[min(100%,22rem)] min-w-[12rem] flex-col items-end gap-1.5">
+                                    <div class="meal-clock-row flex min-w-0 max-w-full flex-wrap items-center justify-end pl-6">
+                                        <div id="entryMealClockCompoundMain" class="entry-meal-clock-compound flex min-h-[42px] min-w-[12rem] w-full max-w-[min(100%,22rem)] overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                            <label for="entryMealAmpmMain" class="sr-only">오전 또는 오후</label>
+                                            <select id="entryMealAmpmMain"
+                                                class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                                <option value="am">오전</option>
+                                                <option value="pm">오후</option>
+                                            </select>
+                                            <div class="relative min-w-0 flex-1 sm:max-w-[9rem]">
+                                                <div id="entryMealTimeOffDisplayMain"
+                                                    class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 pr-10 text-sm font-bold tabular-nums text-slate-400"
+                                                    aria-hidden="true">-- : -- : --</div>
+                                                <input type="text" id="entryMealTimeInputMain"
+                                                    maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                                    placeholder="시:분"
+                                                    class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-10 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                                <input type="time" step="60" id="entryMealTimeBridgeMain"
+                                                    tabindex="-1" aria-hidden="true"
+                                                    class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                                <button type="button" id="entryMealTimePickBtnMain"
+                                                    class="pointer-events-none absolute right-1 top-1/2 z-[3] flex h-[2.125rem] w-[2.125rem] -translate-y-1/2 shrink-0 items-center justify-center rounded-lg text-slate-500 opacity-0 hover:bg-slate-100 hover:text-slate-700"
+                                                    aria-label="시계에서 시간 선택"><i class="fa-regular fa-clock text-[15px]"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-2 -mx-4 mt-2">
                         <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
                         <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="6" class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[160px] appearance-none"></textarea>
@@ -1978,6 +2027,47 @@
                                 </div>
                                 <div id="satietyGaugeOffLayerSnack" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92 px-2" aria-hidden="true" role="status">
                                     <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="entryMealTimeSectionSnack" class="py-2 -mx-4 px-4 border-y border-slate-200/90 rounded-none mb-2">
+                        <div class="flex items-center justify-between gap-3 min-w-0">
+                            <div class="flex items-center shrink-0">
+                                <span class="text-sm font-extrabold text-slate-600 uppercase">시간</span>
+                                <label class="entry-gauge-switch ml-[3ch] shrink-0" title="카드 태그·정렬에 기록 시간 반영">
+                                    <input type="checkbox" id="entryMealClockToggleSnack" class="peer sr-only" role="switch" aria-label="간식 기록 시간 사용">
+                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div id="entryMealClockInputWrapSnack" class="flex min-w-0 flex-1 justify-end">
+                                <div class="flex max-w-[min(100%,22rem)] min-w-[12rem] flex-col items-end gap-1.5">
+                                    <div class="meal-clock-row flex min-w-0 max-w-full flex-wrap items-center justify-end pl-6">
+                                        <div id="entryMealClockCompoundSnack" class="entry-meal-clock-compound flex min-h-[42px] min-w-[12rem] w-full max-w-[min(100%,22rem)] overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                            <label for="entryMealAmpmSnack" class="sr-only">오전 또는 오후</label>
+                                            <select id="entryMealAmpmSnack"
+                                                class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                                <option value="am">오전</option>
+                                                <option value="pm">오후</option>
+                                            </select>
+                                            <div class="relative min-w-0 flex-1 sm:max-w-[9rem]">
+                                                <div id="entryMealTimeOffDisplaySnack"
+                                                    class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 pr-10 text-sm font-bold tabular-nums text-slate-400"
+                                                    aria-hidden="true">-- : -- : --</div>
+                                                <input type="text" id="entryMealTimeInputSnack"
+                                                    maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                                    placeholder="시:분"
+                                                    class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-10 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                                <input type="time" step="60" id="entryMealTimeBridgeSnack"
+                                                    tabindex="-1" aria-hidden="true"
+                                                    class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                                <button type="button" id="entryMealTimePickBtnSnack"
+                                                    class="pointer-events-none absolute right-1 top-1/2 z-[3] flex h-[2.125rem] w-[2.125rem] -translate-y-1/2 shrink-0 items-center justify-center rounded-lg text-slate-500 opacity-0 hover:bg-slate-100 hover:text-slate-700"
+                                                    aria-label="시계에서 시간 선택"><i class="fa-regular fa-clock text-[15px]"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

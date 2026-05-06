@@ -23,6 +23,8 @@ import {
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
+import { updateTrackerStreakLabel } from '../attendance-check.js';
+import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -373,7 +375,7 @@ function getSnackTimelineView() {
     if (SNACK_TIMELINE_FORCE_TAGS_MODE) return 'tags';
     try {
         const v = localStorage.getItem(SNACK_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'tags' || v === 'list') return v;
+        if (v === 'cards' || v === 'tags' || v === 'list' || v === 'mixed') return v;
     } catch (_) {}
     return 'tags';
 }
@@ -381,7 +383,7 @@ function getSnackTimelineView() {
 function getMealTimelineView() {
     try {
         const v = localStorage.getItem(MEAL_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'list') return v;
+        if (v === 'cards' || v === 'list' || v === 'mixed') return v;
     } catch (_) {}
     return 'cards';
 }
@@ -417,13 +419,52 @@ function mealRecordAuxChronoMs(r) {
     return 0;
 }
 
-function sortSnackSlotRecordsChronological(records) {
+/** Firestore recordedAt(ISO) 우선 — 신규 간식이 시간 없을 때 아래(뒤)로 쌓이게 */
+function mealRecordedAtPrimaryMs(r) {
+    if (!r) return NaN;
+    if (typeof r.recordedAt === 'string' && r.recordedAt.trim()) {
+        const ms = Date.parse(r.recordedAt.trim());
+        if (!Number.isNaN(ms)) return ms;
+    }
+    return NaN;
+}
+
+/** mealClock 있으면 시간 기록으로 간주 */
+function snackHasMealClockForSort(r) {
+    return Boolean(r && normalizeMealClockInputValue(r.mealClock || ''));
+}
+
+/** mealClock만으로 당일 순서(자정 기준 분 단위) */
+function snackMealClockMinutesFromMidnight(r) {
+    const mc = normalizeMealClockInputValue(r?.mealClock || '');
+    const m = String(mc).match(/^(\d{2}):(\d{2})$/);
+    if (!m) return 0;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+export function sortSnackSlotRecordsChronological(records) {
     return [...records].sort((a, b) => {
-        const da = mealRecordTimeSortMs(a);
-        const db = mealRecordTimeSortMs(b);
-        if (da !== db) return da - db;
-        const ta = mealRecordAuxChronoMs(a);
-        const tb = mealRecordAuxChronoMs(b);
+        const ca = snackHasMealClockForSort(a);
+        const cb = snackHasMealClockForSort(b);
+        /** 시간 기록 있음 먼저(위), 없음은 나중(아래) — 화면 세로는 시간 오름차순 후 생성순 */
+        if (ca !== cb) return ca ? -1 : 1;
+
+        if (ca && cb) {
+            const ma = snackMealClockMinutesFromMidnight(a);
+            const mb = snackMealClockMinutesFromMidnight(b);
+            if (ma !== mb) return ma - mb;
+            const ra = mealRecordedAtPrimaryMs(a);
+            const rb = mealRecordedAtPrimaryMs(b);
+            const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);
+            const tb = Number.isFinite(rb) ? rb : mealRecordAuxChronoMs(b) || mealRecordTimeSortMs(b);
+            if (ta !== tb) return ta - tb;
+            return String(a.id || '').localeCompare(String(b.id || ''));
+        }
+
+        const ra = mealRecordedAtPrimaryMs(a);
+        const rb = mealRecordedAtPrimaryMs(b);
+        const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);
+        const tb = Number.isFinite(rb) ? rb : mealRecordAuxChronoMs(b) || mealRecordTimeSortMs(b);
         if (ta !== tb) return ta - tb;
         return String(a.id || '').localeCompare(String(b.id || ''));
     });
@@ -568,11 +609,13 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
 function buildMealTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
+    const mixedSel = current === 'mixed' ? ' selected' : '';
     return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
             <label for="mealTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">식사보기</label>
-            <select id="mealTimelineViewSelect" class="meal-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,8rem)] shadow-sm" title="식사보기: 카드·목록">
+            <select id="mealTimelineViewSelect" class="meal-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,8rem)] shadow-sm" title="식사보기: 카드·목록·자동(사진 있으면 카드, 없으면 목록)">
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
+                <option value="mixed"${mixedSel}>자동</option>
             </select>
         </div>`;
 }
@@ -581,12 +624,14 @@ function buildSnackTimelineViewSelectHtml(current) {
     const tagsSel = current === 'tags' ? ' selected' : '';
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
+    const mixedSel = current === 'mixed' ? ' selected' : '';
     return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
             <label for="snackTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">간식보기</label>
-            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,10rem)] shadow-sm" title="간식보기: 태그·카드·목록">
+            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,10rem)] shadow-sm" title="간식보기: 태그·카드·목록·자동(건별 사진 있으면 카드, 없으면 목록)">
                 <option value="tags"${tagsSel}>태그</option>
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
+                <option value="mixed"${mixedSel}>자동</option>
             </select>
         </div>`;
 }
@@ -671,6 +716,8 @@ function buildSnackTimelineCardHtml(
     }
     const titleLine2 = escapeHtml(menuLine);
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
@@ -791,6 +838,8 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     const safeMenu = escapeHtml(menuLine);
 
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
     else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
@@ -858,6 +907,8 @@ function buildSnackListFilledRowHtml(
     const safePlaceLine = escapeHtml(p || '—');
 
     const tags = [];
+    const clockTag = mealClockTagLabelFromRecord(r);
+    if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
     if (r.withWhomDetail) tags.push(r.withWhomDetail);
@@ -1117,7 +1168,11 @@ export function renderTimeline() {
                 const r = records[0];
                 const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
                 const mealView = getMealTimelineView();
-                if (mealView === 'list') {
+                const mainMealUseListLayout =
+                    mealView === 'list' ||
+                    (mealView === 'mixed' &&
+                        (!r || getMealPhotoUrlsForTimeline(r).length === 0));
+                if (mainMealUseListLayout) {
                     if (r) {
                         html += buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, 'mb-1.5');
                     } else {
@@ -1148,6 +1203,8 @@ export function renderTimeline() {
                         const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
                         titleLine2 = escapeHtml(menuLine);
                         const tags = [];
+                        const clockTagMain = mealClockTagLabelFromRecord(r);
+                        if (clockTagMain) tags.push(clockTagMain);
                         if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
                         if (r.withWhomDetail) tags.push(r.withWhomDetail);
                         else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
@@ -1275,6 +1332,48 @@ export function renderTimeline() {
                     } else {
                         html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
                     }
+                } else if (snackView === 'mixed') {
+                    if (records.length > 0) {
+                        html += `<div class="snack-slot-mixed-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
+                            const mb = isLast ? 'mb-0' : 'mb-1.5';
+                            let blockHtml;
+                            if (hasPhotos) {
+                                blockHtml = buildSnackTimelineCardHtml(
+                                    dateStr,
+                                    slot,
+                                    r,
+                                    specificStyle,
+                                    mb,
+                                    idx + 1,
+                                    records.length
+                                );
+                            } else {
+                                blockHtml = buildSnackListFilledRowHtml(
+                                    dateStr,
+                                    slot,
+                                    r,
+                                    specificStyle,
+                                    mb,
+                                    idx + 1,
+                                    records.length
+                                );
+                            }
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">
+                                    ${blockHtml}
+                                    <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                </div>`;
+                            } else {
+                                html += blockHtml;
+                            }
+                        });
+                        html += `</div>`;
+                    } else {
+                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
+                    }
                 } else {
                     html += `<div class="snack-row mb-1.5 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
@@ -1312,53 +1411,10 @@ export function renderTimeline() {
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
     
-    // 일간보기 모드일 때 하루 전체 Comment 입력 영역 추가
-    if (state.viewMode === 'page' && sortedTargetDates.length > 0) {
-        const currentDateStr = sortedTargetDates[0]; // 일간보기는 하나의 날짜만 표시
-        const existingCommentSection = document.getElementById('dailyCommentSection');
-        if (existingCommentSection) {
-            existingCommentSection.remove();
-        }
-        
-        const commentSection = document.createElement('div');
-        commentSection.id = 'dailyCommentSection';
-        commentSection.className = 'card mb-1.5 border border-slate-200 !rounded-none';
-        
-        // getDailyComment 함수가 있으면 사용, 없으면 빈 문자열
-        let currentComment = '';
-        try {
-            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-                currentComment = window.dbOps.getDailyComment(currentDateStr) || '';
-            } else if (window.userSettings && window.userSettings.dailyComments) {
-                currentComment = window.userSettings.dailyComments[currentDateStr] || '';
-            }
-        } catch (e) {
-            console.warn('getDailyComment 호출 실패:', e);
-            currentComment = '';
-        }
-        
-        commentSection.innerHTML = `
-            <div class="p-4">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm font-extrabold text-slate-600 block uppercase">하루 소감</span>
-                    <button type="button" data-mealog-daily="save-comment" data-mealog-date="${currentDateStr}" 
-                        class="text-xs text-slate-600 font-bold px-3 py-1.5 active:text-slate-700 transition-colors">
-                        저장
-                    </button>
-                </div>
-                <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해보세요." 
-                    class="w-full p-3 bg-slate-50 rounded-2xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none min-h-[100px]" 
-                    rows="4">${escapeHtml(currentComment)}</textarea>
-            </div>
-        `;
-        
-        container.appendChild(commentSection);
-    } else {
-        // 일간보기가 아닐 때는 Comment 영역 제거
-        const existingCommentSection = document.getElementById('dailyCommentSection');
-        if (existingCommentSection) {
-            existingCommentSection.remove();
-        }
+    // 일간보기「하루 소감」입력 카드는 사용하지 않음 — 남아 있으면 제거
+    const existingCommentSection = document.getElementById('dailyCommentSection');
+    if (existingCommentSection) {
+        existingCommentSection.remove();
     }
     
     // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
@@ -1418,6 +1474,7 @@ export function renderTimeline() {
     }
 
     updateTimelineMealEntryPendingIndicators();
+    updateTrackerStreakLabel();
 }
 
 let miniCalendarPointerDragBound = false;
@@ -1756,10 +1813,22 @@ export function renderMiniCalendar() {
     });
 
     setTimeout(() => {
-        const activeDot = document.getElementById(`dot-${activeStr}`);
-        if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        // 데이터 리스너 재렌더마다 가로 스크롤이 계속 움직이지 않도록,
+        // 같은 날짜(activeStr)로는 짧은 시간 내 자동 scrollIntoView를 1회로 제한
+        const now = Date.now();
+        const lastKey = window._miniCalLastAutoScrollKey || '';
+        const lastAt = window._miniCalLastAutoScrollAt || 0;
+        const key = String(activeStr);
+        const shouldAutoScroll = !(lastKey === key && now - lastAt < 2000);
+        if (shouldAutoScroll) {
+            window._miniCalLastAutoScrollKey = key;
+            window._miniCalLastAutoScrollAt = now;
+            const activeDot = document.getElementById(`dot-${activeStr}`);
+            if (activeDot) activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
         updateTrackerMonthTitle(container);
     }, 100);
 
     refreshTrackerMonthCalendarPopupIfOpen();
+    updateTrackerStreakLabel();
 }

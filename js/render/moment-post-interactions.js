@@ -275,7 +275,7 @@ export async function loadPostInteractions(postEl, postId) {
                     <div class="mb-1 text-sm">
                         <span class="font-bold text-slate-800">${commentDisplay.nickname}</span>
                         <span class="text-slate-800">${escapeHtml(c.comment)}</span>
-                        ${dateStr && timeStr ? `<span class="text-xs text-slate-400 ml-2">${dateStr} ${timeStr}</span>` : ''}
+                        ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                         ${isLoggedIn && c.userId === window.currentUser?.uid ? `<button onclick="window.deleteCommentFromPost('${c.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                     </div>
                 `;

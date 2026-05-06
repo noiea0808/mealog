@@ -2,6 +2,21 @@
 /** 스마트폰 앱 아이콘(assets/icon-only.png) - 밀당 참견 등에서 MEALOG 캐릭터 아이콘으로 사용 */
 export const MEALOG_ICON_URL = 'assets/icon-only.png';
 
+/** 일간·베스트·인사이트 공유 캡처 헤더(타이틀·날짜) — 앨범·모먼트 휠과 동일 손글씨 스택 (style font-family 인라인용) */
+export const MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY =
+    "'나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive";
+
+/** 캡처 헤더 날짜 줄 — 기본 12px에서 2단계 확대 */
+export const MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE = '16px';
+
+/** 캡처 헤더 타이틀 줄(닉네임의 하루소감 등) — 기본 15px에서 2단계 확대, 진한 색·볼드 */
+export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE = '19px';
+export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR = '#0f172a';
+export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT = '700';
+
+/** html2canvas 클론 문서용 @font-face — `css/style.css` 나눔손글씨 가람연꽃과 동일 소스 */
+export const MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS = `@font-face{font-family:'나눔손글씨 가람연꽃';src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/naverfont_04@1.0/Garam.woff') format('woff');font-weight:normal;font-style:normal;font-display:swap;}`;
+
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export const SLOTS = [
@@ -108,10 +123,10 @@ export const DEFAULT_USER_SETTINGS = {
         mealTalk: true,
         adminDefault: true
     },
-    /** 기록 모달: 만족도·포만감 다이얼 사용 여부 (기본 끔, 다음에도 동일하게 열림) */
+    /** 기록 모달: 만족도·포만감 다이얼 사용 여부 (식사·간식 각각 기억, 기본 끔) */
     entryModalGauges: {
-        ratingEnabled: false,
-        satietyEnabled: false
+        main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
+        snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
     }
 };
 
