@@ -1834,12 +1834,8 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     min-height: min-content;
     overflow: hidden;
 }
-/* 베스트·일간·인사이트 등 PNG 카드: intrinsic 높이 유지 — 뷰포트 max-height로 축소·클립 방지 */
-#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card),
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card),
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope .moment-v2-carousel-viewport--natural:has(.moment-v2-photo-surface--share-card) {
-    max-height: none;
-}
+/* (이전) 베스트·일간 PNG: intrinsic 높이 → 로드 시 가로폭이 좁아졌다 넓어지는 CLS 방지를 위해
+   사진은 슬롯 aspect-ratio + object-contain으로 통일(일반 식사 사진과 동일 패턴). */
 /* 화면2 세로 스택: 단위마다 블러 배경(사진 확대·투명) */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-v-unit-bg-wrap,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-v-unit-bg-wrap {

@@ -45,7 +45,8 @@ function createKakaoSearchModal() {
                         <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
                     </button>
                     <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 2글자 이상 입력하세요" 
-                        class="w-full py-[0.6rem] pl-[46px] pr-3 bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
+                        class="w-full py-[0.6rem] pl-[46px] pr-[3.25rem] bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
+                    <button type="button" onclick="window.applyKakaoPlaceManualText()" class="absolute right-2 top-1/2 -translate-y-1/2 z-10 px-1.5 py-1 text-sm font-extrabold text-emerald-600 hover:text-emerald-700 active:opacity-80 shrink-0" aria-label="검색어를 그대로 장소로 입력">입력</button>
                 </div>
                 <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] min-h-0 overflow-y-auto flex-1"></div>
             </div>
@@ -221,6 +222,27 @@ export async function searchKakaoPlaces() {
         resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
         console.error('카카오 장소 검색 오류:', err);
     }
+}
+
+/** 검색 모달의 텍스트를 카카오 결과 없이 그대로 장소명으로 반영 (직접 입력) */
+export function applyKakaoPlaceManualText() {
+    const searchInput = document.getElementById('kakaoSearchInput');
+    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const placeInput = document.getElementById(targetId);
+    if (!searchInput || !placeInput) return;
+    const text = searchInput.value.trim();
+    if (!text) {
+        showToast('입력할 장소명을 적어주세요.', 'error');
+        return;
+    }
+    placeInput.value = text;
+    placeInput.removeAttribute('data-kakao-place-id');
+    placeInput.removeAttribute('data-kakao-place-address');
+    placeInput.removeAttribute('data-kakao-place-data');
+    placeInput.removeAttribute('data-kakao-place-name');
+    const modal = document.getElementById('kakaoPlaceSearchModal');
+    if (modal) modal.remove();
+    showToast('장소명이 입력되었습니다.', 'success');
 }
 
 // 카카오 장소 선택

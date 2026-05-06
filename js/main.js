@@ -63,7 +63,7 @@ import {
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
-    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText
+    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
@@ -377,6 +377,8 @@ window.selectKakaoPlace = selectKakaoPlace;
 window.Mealog.selectKakaoPlace = selectKakaoPlace;
 window.applyKakaoSearchText = applyKakaoSearchText;
 window.Mealog.applyKakaoSearchText = applyKakaoSearchText;
+window.applyKakaoPlaceManualText = applyKakaoPlaceManualText;
+window.Mealog.applyKakaoPlaceManualText = applyKakaoPlaceManualText;
 window.boardOperations = boardOperations;
 window.Mealog.boardOperations = boardOperations;
 window.feedOperations = feedOperations;
@@ -1458,38 +1460,85 @@ initAuth(async (user) => {
             const imgEl = document.getElementById('loginBannerImage');
             const landingPage = document.getElementById('landingPage');
             if (!section) return;
-            try {
+
+            async function resolveLegacyLoginBanner(currentEnv) {
                 const bannerDoc = await getDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'));
                 const data = bannerDoc.exists() ? bannerDoc.data() : null;
-                if (!data || !data.enabled) {
-                    section.classList.add('hidden');
-                    if (landingPage) landingPage.classList.remove('landing-banner-visible');
-                    return;
-                }
-                const currentEnv = getMealogClientEnv();
+                if (!data || !data.enabled) return null;
                 const targetEnv = data.targetEnv || 'all';
-                if (targetEnv !== 'all' && targetEnv !== currentEnv) {
+                if (targetEnv !== 'all' && targetEnv !== currentEnv) return null;
+                let imageUrl = '';
+                let landingNoticeId = '';
+                if (Array.isArray(data.slides) && data.slides.length > 0) {
+                    const s = data.slides[0];
+                    if (s && typeof s === 'object') {
+                        imageUrl = (s.imageUrl && String(s.imageUrl).trim()) || '';
+                        landingNoticeId = (s.landingNoticeId && String(s.landingNoticeId).trim()) || '';
+                    }
+                }
+                if (!imageUrl) imageUrl = (data.imageUrl && String(data.imageUrl).trim()) || '';
+                if (!landingNoticeId) landingNoticeId = (data.landingNoticeId && String(data.landingNoticeId).trim()) || '';
+                if (!imageUrl && !landingNoticeId) return null;
+                return { campaignId: null, imageUrl, landingNoticeId };
+            }
+
+            try {
+                const today = new Date().toISOString().slice(0, 10);
+                const currentEnv = getMealogClientEnv();
+                let campaignId = null;
+                let imageUrl = '';
+                let landingNoticeId = '';
+
+                const coll = collection(db, 'artifacts', appId, 'loginBanners');
+                const q = query(coll, orderBy('timestamp', 'desc'), limit(50));
+                const snap = await getDocs(q);
+                for (const docSnap of snap.docs) {
+                    const d = docSnap.data();
+                    const targetEnv = d.targetEnv || 'all';
+                    if (targetEnv !== 'all' && targetEnv !== currentEnv) continue;
+                    const start = d.startDate || '';
+                    const end = d.endDate || '';
+                    if (!start || !end || today < start || today > end) continue;
+                    const img = (d.imageUrl && String(d.imageUrl).trim()) || '';
+                    const lid = (d.landingNoticeId && String(d.landingNoticeId).trim()) || '';
+                    if (!img && !lid) continue;
+                    campaignId = docSnap.id;
+                    imageUrl = img;
+                    landingNoticeId = lid;
+                    break;
+                }
+
+                if (!imageUrl && !landingNoticeId) {
+                    const leg = await resolveLegacyLoginBanner(currentEnv);
+                    if (leg) {
+                        campaignId = leg.campaignId;
+                        imageUrl = leg.imageUrl;
+                        landingNoticeId = leg.landingNoticeId;
+                    }
+                }
+
+                if (!imageUrl && !landingNoticeId) {
                     section.classList.add('hidden');
                     if (landingPage) landingPage.classList.remove('landing-banner-visible');
                     return;
                 }
+
                 section.classList.remove('hidden');
                 if (landingPage) landingPage.classList.add('landing-banner-visible');
                 section.classList.add('bg-white');
                 if (imgEl) {
-                    imgEl.classList.add('hidden');
-                    imgEl.removeAttribute('src');
-                }
-                if (data.imageUrl && typeof data.imageUrl === 'string' && data.imageUrl.trim()) {
-                    section.classList.remove('bg-white');
-                    if (imgEl) {
-                        imgEl.setAttribute('src', data.imageUrl.trim());
+                    if (imageUrl) {
+                        section.classList.remove('bg-white');
+                        imgEl.setAttribute('src', imageUrl);
                         imgEl.setAttribute('alt', '');
                         imgEl.classList.remove('hidden');
+                    } else {
+                        imgEl.classList.add('hidden');
+                        imgEl.removeAttribute('src');
+                        section.classList.add('bg-white');
                     }
                 }
-                recordBannerView();
-                const landingNoticeId = (data.landingNoticeId && typeof data.landingNoticeId === 'string') ? data.landingNoticeId.trim() : '';
+                recordBannerView(campaignId);
                 section.removeAttribute('role');
                 section.style.cursor = '';
                 section.onclick = null;
@@ -1497,7 +1546,7 @@ initAuth(async (user) => {
                     section.setAttribute('role', 'button');
                     section.style.cursor = 'pointer';
                     section.onclick = () => {
-                        recordBannerClick();
+                        recordBannerClick(campaignId);
                         try {
                             sessionStorage.setItem('loginBannerLandingNoticeId', landingNoticeId);
                         } catch (_) {}
@@ -1507,8 +1556,8 @@ initAuth(async (user) => {
             } catch (e) {
                 console.warn('로그인 배너 설정 로드 실패:', e);
                 section.classList.add('hidden');
-                const landingPage = document.getElementById('landingPage');
-                if (landingPage) landingPage.classList.remove('landing-banner-visible');
+                const lp = document.getElementById('landingPage');
+                if (lp) lp.classList.remove('landing-banner-visible');
             }
         }
 
