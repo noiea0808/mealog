@@ -77,16 +77,33 @@
         #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
         /* 모웹: 배너+다운로드 버튼을 화면 최하단에 붙여서 배치 (배너가 다운로드 버튼 바로 위) */
         /* 앱: 배너 하단 네비 영역 여백 + 해당 영역 흰색 채움 */
-        #landingBottomFixed { position: fixed; bottom: 0; left: 0; right: 0; padding-bottom: max(env(safe-area-inset-bottom), 48px); background-color: #ffffff; }
-        /* 모웹: 컨테이너 하단 패딩은 두지 않음(흰 띠 방지). 다운로드 막대 안쪽에 제스처·내비 안전 여백 */
+        /* 하단 고정 랩: 기본은 패딩 없음(PC 웹·일반 웹에서 과도한 하단 공백 방지). 네이티브 앱만 safe + 48px */
+        #landingBottomFixed {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding-bottom: 0;
+            background-color: #ffffff;
+        }
+        html.platform-native-app #landingBottomFixed {
+            padding-bottom: max(env(safe-area-inset-bottom), 48px);
+        }
         .platform-web #landingBottomFixed { padding-bottom: 0; }
-        /* 모웹: 앱 다운로드 영역 짙은 녹색 배경 — safe-area + 넉넉한 최소 여백(제스처·내비에 CTA가 묻지 않도록) */
-        .platform-web #apkDownloadSection {
+        /* 앱 다운로드: 하단 패딩은 전부 여기서만 지정(Tailwind py/pb 제거해 충돌 방지) */
+        #apkDownloadSection {
             background-color: #064e3b;
-            padding-bottom: max(
-                4.5rem,
-                calc(env(safe-area-inset-bottom, 0px) + 2.75rem)
-            ) !important;
+            padding-top: 0.625rem;
+            padding-bottom: 0.625rem;
+        }
+        /* 모웹 좁은 뷰포트만 큰 하단 여백 */
+        @media (max-width: 899px) {
+            html.platform-web #apkDownloadSection {
+                padding-bottom: max(
+                    4.5rem,
+                    calc(env(safe-area-inset-bottom, 0px) + 2.75rem)
+                );
+            }
         }
         /* 배너가 보일 때 타이틀·계속하기 버튼이 배너와 겹치지 않도록 하단 여백 */
         #landingPage.landing-banner-visible { padding-bottom: calc(160px + 4rem); }
@@ -607,7 +624,7 @@
                 <img id="loginBannerImage" src="" alt="" class="hidden w-full h-full object-cover object-center pointer-events-none">
             </div>
             <!-- 웹에서만 표시 (Capacitor 네이티브에서는 숨김) -->
-            <div id="apkDownloadSection" class="hidden w-full py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] px-4 sm:px-6 border-t border-emerald-200/40 bg-emerald-900/30">
+            <div id="apkDownloadSection" class="hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
                 <a href="https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
                     <i class="fa-solid fa-mobile-screen mr-1"></i>
                     <span>구글 플레이 스토어에서 밀로그 앱 다운로드</span>
