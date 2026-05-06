@@ -20,7 +20,8 @@ import { appState } from './state.js';
 function applyAuthDefaultMainTab(switchMainTab) {
     if (typeof switchMainTab !== 'function') return;
     if (appState.currentTab === 'timeline') {
-        switchMainTab('timeline');
+        // 기본 탭이 이미 timeline이면 prevTab===tab라 탭 카운트가 빠지므로 방문 1회 강제 기록
+        switchMainTab('timeline', { logTabVisit: true });
     }
 }
 

@@ -22,6 +22,11 @@ export async function logUsageMetric(key) {
         const ref = doc(db, 'artifacts', appId, 'usageDaily', localDateKeyYmd());
         await setDoc(ref, { [key]: increment(1), updatedAt: serverTimestamp() }, { merge: true });
     } catch (e) {
-        console.debug('usage metric skip:', e?.message || e);
+        const code = e?.code || '';
+        if (code === 'permission-denied') {
+            console.warn('usageDaily 기록 거부(권한):', e?.message || e);
+        } else {
+            console.debug('usage metric skip:', e?.message || e);
+        }
     }
 }

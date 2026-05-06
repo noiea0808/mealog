@@ -46,7 +46,8 @@ function updateHeaderSectionLabel(tab) {
 }
 
 export function registerMainTabSwitch() {
-    window.switchMainTab = (tab) => {
+    /** @param {string} tab @param {{ logTabVisit?: boolean }} [opts] — 로그인 직후 등 동일 탭 재호출이어도 방문 1회 기록 */
+    window.switchMainTab = (tab, opts = {}) => {
         try {
             console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
             const prevTab = appState.currentTab;
@@ -54,7 +55,8 @@ export function registerMainTabSwitch() {
             if (prevTab !== tab) {
                 window._contentPopupDismissedVisit = new Set();
             }
-            if (prevTab !== tab && window.currentUser && !window.currentUser.isAnonymous) {
+            const shouldLogTabVisit = prevTab !== tab || opts.logTabVisit === true;
+            if (shouldLogTabVisit && window.currentUser && !window.currentUser.isAnonymous) {
                 if (tab === 'dashboard') logUsageMetric('tab_mealdang').catch(() => {});
                 else if (tab === 'gallery') logUsageMetric('tab_moment').catch(() => {});
                 else if (tab === 'timeline') logUsageMetric('tab_mealog').catch(() => {});

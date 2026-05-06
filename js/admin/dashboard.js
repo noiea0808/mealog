@@ -69,6 +69,68 @@ function addDocDataToPageTotals(data, into) {
     }
 }
 
+function zeroPageUsageWeeklyByField(nWeeks) {
+    const o = {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        o[def.field] = Array.from({ length: nWeeks }, () => 0);
+    }
+    return o;
+}
+
+function addDocDataToPageWeeklyTotals(data, dateKey, intoWeekly, sundayKeyToIndex) {
+    const wi = weekIndexForDateKeyStr(dateKey, sundayKeyToIndex);
+    if (wi < 0) return;
+    const d = data || {};
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        intoWeekly[def.field][wi] += Number(d[def.field]) || 0;
+    }
+}
+
+function clonePageUsageWeeklyFromPrev(prevByField, nWeeks) {
+    const o = zeroPageUsageWeeklyByField(nWeeks);
+    if (!prevByField || typeof prevByField !== 'object') return o;
+    for (const def of PAGE_USAGE_METRIC_DEFS) {
+        const arr = prevByField[def.field];
+        if (!Array.isArray(arr)) continue;
+        for (let i = 0; i < nWeeks && i < arr.length; i++) {
+            o[def.field][i] = Number(arr[i]) || 0;
+        }
+    }
+    return o;
+}
+
+function pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks) {
+    const bf = prevPU?.weeklyBreakdown?.byField;
+    if (!bf || typeof bf !== 'object' || nWeeks <= 0) return false;
+    return PAGE_USAGE_METRIC_DEFS.some((def) => {
+        const a = bf[def.field];
+        return Array.isArray(a) && a.length === nWeeks;
+    });
+}
+
+/** 페이지별 표용: 캐시 weeklyBreakdown → 트렌드와 동일 레이아웃(월·주 헤더) + byField */
+function normalizePageUsageWeeklyForRender(raw) {
+    if (!raw || !Array.isArray(raw.weeks) || raw.weeks.length === 0) return null;
+    const weeks = raw.weeks.map((w) => {
+        const sk = String(w.sundayKey || '');
+        const p = sk.split('-');
+        const d =
+            p.length === 3 ? new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10)) : null;
+        const label = d && !Number.isNaN(d.getTime()) ? weekLabelKoreanFromSunday(d) : String(w.label || '—');
+        return {
+            sundayKey: sk,
+            label,
+            year: Number.isFinite(Number(w.year)) ? Number(w.year) : d ? d.getFullYear() : 0,
+            monthIndex: Number.isFinite(Number(w.monthIndex)) ? Number(w.monthIndex) : d ? d.getMonth() : 0
+        };
+    });
+    return {
+        weeks,
+        monthGroups: buildMonthHeaderGroupsWithStarts(weeks),
+        byField: raw.byField && typeof raw.byField === 'object' ? raw.byField : null
+    };
+}
+
 /** 행 정의·레이아웃이 바뀌면 tbody를 다시 생성 */
 let _pageUsageTableBuildKey = '';
 
@@ -93,7 +155,7 @@ function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v4-stripe-bg`;
+    const buildKey = `${n}-v5-page-week-rows`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
@@ -127,7 +189,7 @@ function ensurePageUsageTableBody() {
                 `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
             );
         }
-        return `<tr class="group border-b border-slate-300">${cells.join('')}</tr>`;
+        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}">${cells.join('')}</tr>`;
     }).join('');
     _pageUsageTableBuildKey = buildKey;
 }
@@ -274,10 +336,31 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
     void renderDashboardPageExcludedFooter();
     ensurePageUsageTableBody();
     const skipAsyncRepair = opts.skipAsyncRepair === true;
+    const skipAsyncWeekRepair = opts.skipAsyncWeekRepair === true;
+    const fallbackWeekly = opts.fallbackWeeklyBreakdown ?? null;
     const set = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '—';
     };
+
+    clearAdminDashboardPageWeekInjections();
+    const weeklyLayout = pageUsage ? resolveWeeklyLayoutForPagePanel(pageUsage, fallbackWeekly) : null;
+    const nWeeks = weeklyLayout?.weeks?.length || 0;
+    const needsWeekClientRepair =
+        Boolean(pageUsage) &&
+        nWeeks > 0 &&
+        !skipAsyncWeekRepair &&
+        !pageUsageWeeklyByFieldShapeOk(pageUsage, nWeeks);
+
+    if (weeklyLayout?.weeks?.length) {
+        syncAdminDashboardPageWeekLayout(weeklyLayout);
+        const weekByFieldForFill =
+            pageUsage && pageUsageWeeklyByFieldShapeOk(pageUsage, nWeeks)
+                ? pageUsage.weeklyBreakdown.byField
+                : null;
+        fillAdminDashboardPageWeeklyCells(weeklyLayout, weekByFieldForFill);
+    }
+
     if (!pageUsage) {
         renderPageUsage7dHeaders(null);
         PAGE_USAGE_METRIC_DEFS.forEach((_, rowIdx) => {
@@ -292,7 +375,29 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
     const byField = coercePageUsageByFieldToMap(pageUsage.last7Breakdown?.byField);
     const needsDailyRepair =
         pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage);
-    if (needsDailyRepair && !skipAsyncRepair) {
+
+    if (needsWeekClientRepair) {
+        fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout)
+            .then((byFieldFixed) => {
+                if (!byFieldFixed) return;
+                const weeksPayload = weeklyLayout.weeks.map((w) => ({
+                    sundayKey: w.sundayKey,
+                    label: w.label,
+                    year: w.year,
+                    monthIndex: w.monthIndex
+                }));
+                renderDashboardPageUsage(
+                    {
+                        ...pageUsage,
+                        weeklyBreakdown: { weeks: weeksPayload, byField: byFieldFixed }
+                    },
+                    { skipAsyncWeekRepair: true, skipAsyncRepair, fallbackWeeklyBreakdown: fallbackWeekly }
+                );
+            })
+            .catch((e) => {
+                console.warn('페이지별 주간 보정(usageDaily) 실패:', e?.message || e);
+            });
+    } else if (needsDailyRepair && !skipAsyncRepair) {
         fetchPageUsageLast7FromUsageDaily()
             .then((r) => {
                 renderDashboardPageUsage(
@@ -301,7 +406,7 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
                         last7Breakdown: { dates: r.dates, byField: r.byField },
                         last7Sum: r.last7Sum
                     },
-                    { skipAsyncRepair: true }
+                    { skipAsyncRepair: true, skipAsyncWeekRepair, fallbackWeeklyBreakdown: fallbackWeekly }
                 );
             })
             .catch((e) => {
@@ -323,12 +428,41 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
  * 페이지별 집계 (트렌드와 동일하게 dashboardStats 캐시 + 증분으로 읽기 최소화)
  * - 화면 로드: 캐시 1회 getDoc만 사용 (updateStatistics)
  * - 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
+ * - 주별: 일요일 시작 주 메타는 트렌드(getUserStatistics)와 동일, usageDaily 일자를 주 인덱스로 합산
  */
+async function rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks) {
+    const wf = zeroPageUsageWeeklyByField(nWeeks);
+    if (nWeeks <= 0) return wf;
+    const q = query(
+        usageCol,
+        where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+        where(documentId(), '<=', todayStr),
+        orderBy(documentId())
+    );
+    const snap = await getDocs(q);
+    snap.docs.forEach((d) => addDocDataToPageWeeklyTotals(d.data(), d.id, wf, sundayKeyToIndex));
+    return wf;
+}
+
+/** 클라이언트 보정: 트렌드와 같은 주차 배열 기준으로 usageDaily 전 구간 스캔해 페이지별 주간 칸 채움 */
+async function fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout) {
+    const weeks = weeklyLayout?.weeks;
+    if (!weeks?.length) return null;
+    const sundayKeyToIndex = new Map(weeks.map((w, i) => [w.sundayKey, i]));
+    const todayStr = getTodayDateString();
+    const usageCol = collection(db, 'artifacts', appId, 'usageDaily');
+    return rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, weeks.length);
+}
+
 export async function aggregatePageUsageFromFirestore(prevDashboardData) {
     const todayStr = getTodayDateString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const last7DateKeys = getLast7DateKeys(todayStart);
+
+    const weekMetas = enumerateSundayWeeksInclusive(DASHBOARD_STATS_RANGE_START, todayStart);
+    const nWeeks = weekMetas.length;
+    const sundayKeyToIndex = new Map(weekMetas.map((w, i) => [w.sundayKey, i]));
 
     const usageCol = collection(db, 'artifacts', appId, 'usageDaily');
     const todayRef = doc(db, 'artifacts', appId, 'usageDaily', todayStr);
@@ -345,6 +479,7 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
 
     let byFieldAll = zeroPageUsageTotals();
     let todayFieldSnap = zeroPageUsageTotals();
+    let weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
 
     if (!prevMerge || !prevAll) {
         const q = query(
@@ -354,7 +489,10 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
             orderBy(documentId())
         );
         const snap = await getDocs(q);
-        snap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
+        snap.docs.forEach((d) => {
+            addDocDataToPageTotals(d.data(), byFieldAll);
+            addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
+        });
         const tSnap = await getDoc(todayRef);
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
     } else if (prevMerge === todayStr) {
@@ -370,7 +508,11 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
             );
             const snap = await getDocs(q);
             byFieldAll = zeroPageUsageTotals();
-            snap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
+            weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
+            snap.docs.forEach((d) => {
+                addDocDataToPageTotals(d.data(), byFieldAll);
+                addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
+            });
             const tSnap = await getDoc(todayRef);
             todayFieldSnap = zeroPageUsageTotals();
             addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
@@ -384,6 +526,16 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
                 byFieldAll[f] = byFieldAll[f] - (Number(oldT[f]) || 0) + (Number(newT[f]) || 0);
             }
             todayFieldSnap = newT;
+            weeklyByField = pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)
+                ? clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks)
+                : await rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks);
+            const wi = weekIndexForDateKeyStr(todayStr, sundayKeyToIndex);
+            if (wi >= 0) {
+                for (const def of PAGE_USAGE_METRIC_DEFS) {
+                    const f = def.field;
+                    weeklyByField[f][wi] += (Number(newT[f]) || 0) - (Number(oldT[f]) || 0);
+                }
+            }
         }
     } else {
         for (const def of PAGE_USAGE_METRIC_DEFS) {
@@ -399,12 +551,36 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
         incSnap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
         const tSnap = await getDoc(todayRef);
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+
+        if (pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)) {
+            weeklyByField = clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks);
+            incSnap.docs.forEach((d) => addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex));
+        } else {
+            weeklyByField = await rebuildPageUsageWeeklyFromFirestoreRange(
+                usageCol,
+                todayStr,
+                sundayKeyToIndex,
+                nWeeks
+            );
+        }
     }
 
     return {
         last7Breakdown: { dates: last7DateKeys, byField: byFieldDay },
         all: byFieldAll,
         last7Sum,
+        weeklyBreakdown:
+            nWeeks > 0
+                ? {
+                      weeks: weekMetas.map((w) => ({
+                          sundayKey: w.sundayKey,
+                          label: w.label,
+                          year: w.year,
+                          monthIndex: w.monthIndex
+                      })),
+                      byField: weeklyByField
+                  }
+                : null,
         mergeThroughDate: todayStr,
         todayFieldSnap
     };
@@ -691,6 +867,118 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
             }
         });
     });
+}
+
+function clearAdminDashboardPageWeekInjections() {
+    document.querySelectorAll('.js-dash-page-month-th, .js-dash-page-week-th, .js-dash-page-week-td').forEach((el) =>
+        el.remove()
+    );
+}
+
+function syncAdminDashboardPageWeekLayout(weeklyLayout) {
+    clearAdminDashboardPageWeekInjections();
+    const row1 = document.getElementById('dashboardPageHeadRow1');
+    const row2 = document.getElementById('dashboardPageHeadRow2');
+    const head7d = document.getElementById('dashboardPageHead7dTop');
+    const sumHead = document.getElementById('pageDashboard7dSumHead');
+    if (!row1 || !row2 || !head7d || !sumHead) return;
+
+    const weeks = weeklyLayout?.weeks;
+    const monthGroups =
+        weeklyLayout?.monthGroups || (weeks?.length ? buildMonthHeaderGroupsWithStarts(weeks) : []);
+    if (!weeks || weeks.length === 0) return;
+
+    for (const g of monthGroups) {
+        const th = document.createElement('th');
+        th.className =
+            'js-dash-page-month-th px-2 py-1.5 font-black text-slate-800 uppercase text-center text-xs tracking-wide border-b border-slate-400 bg-slate-50';
+        th.colSpan = g.span + 1;
+        th.textContent = g.label;
+        row1.insertBefore(th, head7d);
+    }
+
+    for (const g of monthGroups) {
+        const sumTh = document.createElement('th');
+        sumTh.className =
+            'js-dash-page-week-th px-0.5 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-400 bg-slate-100';
+        sumTh.textContent = '합계';
+        sumTh.title = `${g.label} 주간 합계(같은 달에 속한 주차 수치의 합)`;
+        row2.insertBefore(sumTh, sumHead);
+        for (let j = 0; j < g.span; j++) {
+            const w = weeks[g.startWeekIndex + j];
+            const th = document.createElement('th');
+            th.className =
+                'js-dash-page-week-th px-1 py-1 text-center font-bold text-slate-600 min-w-[3.5rem] max-w-[5.5rem] text-[10px] leading-tight border-b border-slate-400 bg-slate-50/90 whitespace-pre-line';
+            th.textContent = w?.label || '—';
+            th.title = w?.sundayKey || '';
+            row2.insertBefore(th, sumHead);
+        }
+    }
+
+    document.querySelectorAll('tr[data-page-dash-row]').forEach((tr) => {
+        for (const g of monthGroups) {
+            const baseCls =
+                'js-dash-page-week-td px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums';
+            const sumTd = document.createElement('td');
+            sumTd.className = `${baseCls} bg-slate-50/80`;
+            const anchor = tr.querySelector('[data-page-dash-7block-start]');
+            if (anchor) tr.insertBefore(sumTd, anchor);
+            for (let j = 0; j < g.span; j++) {
+                const td = document.createElement('td');
+                td.className = baseCls;
+                if (anchor) tr.insertBefore(td, anchor);
+            }
+        }
+    });
+}
+
+function fillAdminDashboardPageWeeklyCells(weeklyLayout, byFieldMap) {
+    const monthGroups = weeklyLayout?.monthGroups;
+    const nW = weeklyLayout?.weeks?.length || 0;
+    const usable =
+        byFieldMap &&
+        typeof byFieldMap === 'object' &&
+        nW > 0 &&
+        PAGE_USAGE_METRIC_DEFS.some((def) => {
+            const a = byFieldMap[def.field];
+            return Array.isArray(a) && a.length === nW;
+        });
+    document.querySelectorAll('tr[data-page-dash-row]').forEach((tr) => {
+        const rowIdx = parseInt(tr.getAttribute('data-page-dash-row'), 10);
+        const field = PAGE_USAGE_METRIC_DEFS[rowIdx]?.field;
+        const vals = usable && field ? byFieldMap[field] || [] : null;
+        const tds = tr.querySelectorAll(':scope > td.js-dash-page-week-td');
+        if (vals == null) {
+            tds.forEach((td) => {
+                td.textContent = '—';
+                td.title = '「새로고침」으로 페이지별 집계';
+            });
+            return;
+        }
+        const expanded =
+            monthGroups && monthGroups.length ? expandWeeklyValuesWithMonthSums(vals, monthGroups) : vals;
+        tds.forEach((td, i) => {
+            const v = expanded[i];
+            if (v != null && Number.isFinite(Number(v))) {
+                td.textContent = Number(v).toLocaleString();
+                td.removeAttribute('title');
+            } else {
+                td.textContent = '—';
+                td.title = '「새로고침」으로 주간 집계';
+            }
+        });
+    });
+}
+
+function resolveWeeklyLayoutForPagePanel(pageUsage, fallbackWeekly) {
+    let layout = normalizePageUsageWeeklyForRender(pageUsage?.weeklyBreakdown);
+    if (!layout?.weeks?.length && fallbackWeekly) {
+        const cl = cloneWeeklyBreakdown(fallbackWeekly);
+        if (cl?.weeks?.length) {
+            layout = { weeks: cl.weeks, monthGroups: cl.monthGroups, byField: null };
+        }
+    }
+    return layout;
 }
 
 // 대시보드 통계 캐시 문서 (adminSettings 사용 — Firestore 규칙에서 관리자 쓰기 허용됨)
@@ -1223,7 +1511,7 @@ export async function updateStatistics() {
                 console.warn('페이지별 최근 7일 보정(usageDaily) 실패:', repErr?.message || repErr);
             }
         }
-        renderDashboardPageUsage(pageUsage);
+        renderDashboardPageUsage(pageUsage, { fallbackWeeklyBreakdown: stats.weeklyBreakdown });
     } catch (e) {
         console.error("대시보드 통계 로드 실패:", e);
         renderDashboardStats(null, null);
@@ -1275,7 +1563,7 @@ export async function refreshDashboardStats() {
                     console.warn('[대시보드] 캐시 서버 확인 생략:', verErr?.message || verErr);
                 }
                 renderDashboardStats(stats, new Date(), stats.last7Breakdown);
-                renderDashboardPageUsage(pageUsageToShow);
+                renderDashboardPageUsage(pageUsageToShow, { fallbackWeeklyBreakdown: stats.weeklyBreakdown });
             },
             { loadingText: '집계 중…' }
         );
