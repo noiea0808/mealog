@@ -47,14 +47,21 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* 랜딩 html 배경: style.css html.mealog-landing-active + ui.js switchScreen */
+        /* 랜딩: 뷰포트 좌우는 html/body 흰색(style.css), 컬럼 내 스플래시 흰 → 로그인부터 초록 */
         /* 랜딩: 아이콘 ↔ 타이틀 전환 페이드 */
-        #landingSplashTransition { min-height: 200px; }
+        /* 스플래시: flexMain 안에서 전환 박스가 세로 전체를 채워 아이콘/타이틀을 화면 중앙에 */
+        #landingPage:not(.landing-buttons-visible) #landingSplashTransition {
+            flex: 1 1 0%;
+            min-height: 0;
+            width: 100%;
+        }
         #landingSplashIconOnly,
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
+        #landingSplashTitleAndTagline {
+            transition: opacity 0.35s ease;
+            backface-visibility: hidden;
+        }
         #landingPage.landing-show-login #landingSplashIconOnly { opacity: 0; pointer-events: none; }
         #landingPage.landing-show-login #landingSplashTitleAndTagline { opacity: 1; pointer-events: auto; }
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
         /* 로그인+버튼: 하단(배너+스토어) 제외 남은 세로 공간의 정중앙에 타이틀·버튼 묶음
            flex-basis 0% → min-height 뷰포트에서 남는 높이를 flexMain이 반드시 먹어 흰 띠 방지 */
         /* 노치·상태줄: #landingPage 한 박스에서 padding-top: var(--safe-top)(style.css). flexMain은 작은 여백만 */
@@ -87,11 +94,13 @@
             margin-left: auto;
             margin-right: auto;
             justify-content: center;
-            animation: landingLoginTitleReveal 0.45s ease-out both;
+            /* opacity transition과 keyframes transform 동시 적용 시 합성 충돌 방지 */
+            transition: none;
+            animation: landingLoginTitleReveal 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
         @keyframes landingLoginTitleReveal {
-            from { opacity: 0.85; transform: translateY(0.5rem); }
-            to { opacity: 1; transform: translateY(0); }
+            from { transform: translate3d(0, 10px, 0); }
+            to { transform: translate3d(0, 0, 0); }
         }
         #landingPage.landing-buttons-visible #landingLoginOptions {
             position: relative !important;
@@ -648,7 +657,7 @@
         <div class="absolute top-3 right-4 z-20 pointer-events-none">
             <span id="landingEnvBadge" class="hidden shrink-0" role="status"></span>
         </div>
-        <div id="landingFlexMain" class="flex-1 flex flex-col justify-center items-center w-full relative">
+        <div id="landingFlexMain" class="flex-1 flex flex-col justify-center items-center w-full relative min-h-0">
             <!-- 아이콘 ↔ 타이틀 전환 영역 (같은 자리에서 페이드) -->
             <div id="landingSplashTransition" class="relative w-full flex flex-col items-center justify-center">
                 <div id="landingSplashIconOnly" class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">

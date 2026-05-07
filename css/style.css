@@ -68,11 +68,11 @@ html {
     padding: 0;
     overflow-x: clip;
     overflow-y: auto;
-    /* 랜딩 비표시 시: max-w-md 바깥(뷰포트 좌우) 배경. mealog-landing-active일 때는 아래에서 초록 */
+    /* 랜딩 중에도 max-w-md 바깥(뷰포트 좌우)은 흰색 */
     background-color: #ffffff;
 }
 html.mealog-landing-active {
-    background-color: #059669;
+    background-color: #ffffff;
 }
 /*
  * 랜딩 세로 영역: body 패딩은 쓰지 않음(메인용 --safe-top / 하단 네비 여유와 분리).
@@ -81,7 +81,7 @@ html.mealog-landing-active {
 html.mealog-landing-active body {
     padding-top: 0;
     padding-bottom: 0;
-    background-color: #059669;
+    background-color: #ffffff;
 }
 /* 모먼트 화면2: 자연 스크롤. 갤러리 화면2는 #galleryPostsInsertPoint `gap`으로 게시물 간격(카드 mb 제거). */
 html:has(#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2),
@@ -5017,14 +5017,18 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     box-sizing: border-box;
     padding-top: var(--safe-top);
     z-index: 200;
-    /* 스플래시(클래스 없음)부터 메인 전 로그인 단계까지 동일 초록 */
-    background: #059669;
+    /* 스플래시(아이콘만): 흰 배경 — 초록은 .landing-show-login 이후 */
+    background: #ffffff;
     display: flex;
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
     overflow-x: hidden;
     overflow-y: visible;
+}
+#landingPage.landing-show-login,
+#landingPage.landing-buttons-visible {
+    background: #059669;
 }
 .star-btn { 
     padding: 4px; 
