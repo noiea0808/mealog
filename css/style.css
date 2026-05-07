@@ -4993,21 +4993,20 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     word-break: keep-all;
 }
 
-#landingPage { 
-    position: fixed; 
-    top: 0; 
-    left: 50%;
-    transform: translateX(-50%);
+/* 로그인 랜딩: body(max-w-md) 안 문서 흐름 — 전역 fixed 레이어가 아님 */
+#landingPage {
+    position: relative;
     width: 100%;
-    max-width: 28rem; /* 448px, body max-w-md와 동일 */
-    height: 100%; 
-    z-index: 200; 
+    min-height: 100vh;
+    min-height: 100dvh;
+    z-index: 200;
     background: #ffffff;
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    justify-content: center;
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-x: hidden;
+    overflow-y: visible;
 }
 #landingPage.landing-show-login,
 #landingPage.landing-buttons-visible {
