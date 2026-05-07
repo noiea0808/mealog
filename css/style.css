@@ -4999,6 +4999,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
     z-index: 200;
     background: #ffffff;
     display: flex;
