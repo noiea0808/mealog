@@ -836,6 +836,7 @@ export function switchScreen(isLoggedIn) {
     if (!landing || !main) return;
 
     if (isLoggedIn) {
+        document.documentElement.classList.remove('mealog-landing-active');
         // 랜딩만 페이드 아웃, 메인은 즉시 표시 (스피너 끝난 뒤 추가 페이드 없음)
         landing.classList.add('screen-transition-exit');
         main.style.display = 'block';
@@ -850,6 +851,7 @@ export function switchScreen(isLoggedIn) {
             if (typeof window.__onMainScreenShown === 'function') window.__onMainScreenShown();
         }, LANDING_EXIT_MS);
     } else {
+        document.documentElement.classList.add('mealog-landing-active');
         landing.style.display = 'flex';
         landing.classList.remove('screen-transition-exit');
         if (landingBottom) landingBottom.style.display = '';

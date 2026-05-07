@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="mealog-landing-active">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
@@ -47,8 +47,7 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* 스플래시→웹 전환 시 깜박임 방지: 초기 배경을 흰색으로 */
-        html { background-color: #ffffff; }
+        /* 랜딩 html 배경: style.css html.mealog-landing-active + ui.js switchScreen */
         /* 랜딩: 아이콘 ↔ 타이틀 전환 페이드 */
         #landingSplashTransition { min-height: 200px; }
         #landingSplashIconOnly,
@@ -58,7 +57,7 @@
         #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
         /* 로그인+버튼: 하단(배너+스토어) 제외 남은 세로 공간의 정중앙에 타이틀·버튼 묶음
            flex-basis 0% → min-height 뷰포트에서 남는 높이를 flexMain이 반드시 먹어 흰 띠 방지 */
-        /* 노치·상태줄: #landingPage(style.css)에서 padding-top 처리. flexMain은 작은 여백만 */
+        /* 노치·상태줄: #landingPage 한 박스에서 padding-top: var(--safe-top)(style.css). flexMain은 작은 여백만 */
         #landingPage.landing-buttons-visible #landingFlexMain {
             justify-content: center;
             align-items: center;
@@ -107,10 +106,7 @@
         }
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease; }
-        /* 랜딩 열·본문 모두 동일 초록(#059669, style.css 랜딩 배경과 동일). gap 구간도 틈 없이 맞춤 */
-        #landingPage.landing-buttons-visible {
-            background: #059669;
-        }
+        /* 로그인 레이아웃: flexMain 구간·gap까지 paint 일치 */
         #landingPage.landing-show-login #landingFlexMain,
         #landingPage.landing-buttons-visible #landingFlexMain {
             background: #059669;
@@ -648,7 +644,7 @@
     </div>
 
     <!-- 1. Landing Page: 처음에는 밀로그 아이콘만 가운데 표시, 로그인 필요 시 옵션 표시 -->
-    <div id="landingPage" class="relative flex flex-col min-h-screen">
+    <div id="landingPage" class="relative flex flex-col">
         <div class="absolute top-3 right-4 z-20 pointer-events-none">
             <span id="landingEnvBadge" class="hidden shrink-0" role="status"></span>
         </div>
