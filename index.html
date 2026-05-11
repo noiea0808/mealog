@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="mealog-landing-active">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
@@ -47,77 +47,140 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
-        /* 스플래시→웹 전환 시 깜박임 방지: 초기 배경을 흰색으로 */
-        html { background-color: #ffffff; }
+        /* 랜딩: 뷰포트 좌우는 html/body 흰색(style.css), 컬럼 내 스플래시 흰 → 로그인부터 초록 */
         /* 랜딩: 아이콘 ↔ 타이틀 전환 페이드 */
-        #landingSplashTransition { min-height: 200px; }
+        /* 스플래시: flexMain 안에서 전환 박스가 세로 전체를 채워 아이콘/타이틀을 화면 중앙에 */
+        #landingPage:not(.landing-buttons-visible) #landingSplashTransition {
+            flex: 1 1 0%;
+            min-height: 0;
+            width: 100%;
+        }
         #landingSplashIconOnly,
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
+        #landingSplashTitleAndTagline {
+            transition: opacity 0.35s ease;
+            backface-visibility: hidden;
+        }
         #landingPage.landing-show-login #landingSplashIconOnly { opacity: 0; pointer-events: none; }
         #landingPage.landing-show-login #landingSplashTitleAndTagline { opacity: 1; pointer-events: auto; }
-        #landingSplashTitleAndTagline { transition: opacity 0.35s ease; }
-        /* 로그인 화면: 상대 좌표(%)로 단순 배치. 타이틀 35%, 버튼은 65% 또는 타이틀+최소간격(10rem) 중 큰 값 */
-        #landingPage.landing-buttons-visible #landingFlexMain { justify-content: flex-start; padding-top: 0; padding-bottom: 0; }
-        #landingPage.landing-buttons-visible #landingSplashTransition { position: static; min-height: 0; height: 0; overflow: visible; }
-        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { position: absolute; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%); animation: landingTitleSlideUp 0.5s ease-out forwards; }
-        @keyframes landingTitleSlideUp { from { top: 50%; } to { top: 35%; } }
-        /* 모웹(좁은 화면): 타이틀·서브타이틀을 앱처럼 위로 올려 첫 로그인 버튼과 겹침 방지 (네이티브 앱은 기존 35% 유지) */
-        @keyframes landingTitleSlideUpWeb { from { top: 50%; } to { top: 27%; } }
-        @media (max-width: 639px) {
-            .platform-web #landingPage.landing-buttons-visible #landingSplashTitleAndTagline { animation-name: landingTitleSlideUpWeb; }
+        /* 로그인+버튼: 하단(배너+스토어) 제외 남은 세로 공간의 정중앙에 타이틀·버튼 묶음
+           flex-basis 0% → min-height 뷰포트에서 남는 높이를 flexMain이 반드시 먹어 흰 띠 방지 */
+        /* 노치·상태줄: #landingPage 한 박스에서 padding-top: var(--safe-top)(style.css). flexMain은 작은 여백만 */
+        #landingPage.landing-buttons-visible #landingFlexMain {
+            justify-content: center;
+            align-items: center;
+            padding-top: 0.5rem;
+            padding-bottom: 0;
+            min-height: 0;
+            flex: 1 1 0%;
+            overflow-y: auto;
+            gap: 1.25rem;
         }
-        #landingPage.landing-buttons-visible #landingLoginOptions { position: absolute; left: 50%; top: max(65%, calc(35% + 10rem)); transform: translate(-50%, -50%); }
-        /* 모웹: 버튼 묶음 앵커를 타이틀 상향에 맞춤 — 서브타이틀·버튼 사이 간격 유지 */
-        @media (max-width: 639px) {
-            .platform-web #landingPage.landing-buttons-visible #landingLoginOptions { top: max(64%, calc(27% + 10rem)); }
+        #landingPage.landing-buttons-visible #landingSplashTransition {
+            position: relative;
+            width: 100%;
+            min-height: 0;
+            height: auto;
+            flex-shrink: 0;
+            overflow: visible;
+        }
+        #landingPage.landing-buttons-visible #landingSplashTitleAndTagline {
+            position: relative !important;
+            inset: auto !important;
+            left: auto !important;
+            right: auto !important;
+            top: auto !important;
+            bottom: auto !important;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            justify-content: center;
+            /* opacity transition과 keyframes transform 동시 적용 시 합성 충돌 방지 */
+            transition: none;
+            animation: landingLoginTitleReveal 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        @keyframes landingLoginTitleReveal {
+            from { transform: translate3d(0, 10px, 0); }
+            to { transform: translate3d(0, 0, 0); }
+        }
+        #landingPage.landing-buttons-visible #landingLoginOptions {
+            position: relative !important;
+            left: auto !important;
+            top: auto !important;
+            transform: none !important;
+            flex-shrink: 0;
+            margin-top: 0;
+        }
+        @media (max-height: 640px) {
+            #landingPage.landing-buttons-visible #landingFlexMain { gap: 0.75rem; }
         }
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease; }
+        /* 로그인 레이아웃: flexMain 구간·gap까지 paint 일치 */
+        #landingPage.landing-show-login #landingFlexMain,
+        #landingPage.landing-buttons-visible #landingFlexMain {
+            background: #059669;
+        }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
         #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
-        /* 모웹: 배너+다운로드 버튼을 화면 최하단에 붙여서 배치 (배너가 다운로드 버튼 바로 위) */
-        /* 앱: 배너 하단 네비 영역 여백 + 해당 영역 흰색 채움 */
-        /* 하단 고정 랩: 기본은 패딩 없음(PC 웹·일반 웹에서 과도한 하단 공백 방지). 네이티브 앱만 safe + 48px */
+        /* 하단: body의 max-w-md(28rem) 열과 동일 너비·가운데 (#landingPage와 맞춤) */
         #landingBottomFixed {
             position: fixed;
             bottom: 0;
-            left: 0;
-            right: 0;
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 28rem;
+            box-sizing: border-box;
+            z-index: 201;
             padding-bottom: 0;
             background-color: #ffffff;
+        }
+        #landingBottomFixed #loginBannerSection,
+        #landingBottomFixed #apkDownloadSection {
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         html.platform-native-app #landingBottomFixed {
             padding-bottom: max(env(safe-area-inset-bottom), 48px);
         }
-        .platform-web #landingBottomFixed { padding-bottom: 0; }
-        /* 앱 다운로드: 기본은 얇은 하단(태블릿·좁은 PC 창 포함). Tailwind py/pb는 div에서 제거함 */
+        .platform-web #landingBottomFixed {
+            padding-bottom: 0;
+        }
+        /*
+          플레이 스토어(1번)
+          · PC 웹(640px↑): 섹션·링크 모두 얇은 상하 패딩만
+          · 모바일 웹: env(safe-area-inset-bottom) 반영 → 홈 인디케이터/네비 위에 붙음, 0이면 화면 맨 아래 + 최소 0.375rem
+        */
         #apkDownloadSection {
             background-color: #064e3b;
-            padding-top: 0.625rem;
-            padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+            padding-top: 0.5rem;
+            padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
         }
-        /* 소형 폰(기존 랜딩과 동일 639px 브레이크포인트)에서만 큰 하단 여백 — max-width:899px는 좁은 PC 창까지 오인 */
-        @media (max-width: 639px) {
-            html.platform-web #apkDownloadSection {
-                padding-bottom: max(
-                    4.5rem,
-                    calc(env(safe-area-inset-bottom, 0px) + 2.75rem)
-                ) !important;
-            }
-        }
-        /* 넓은 화면: 링크 안쪽 py-2까지 합쳐 두껍게 보이지 않도록 압축 */
         @media (min-width: 640px) {
             html.platform-web #apkDownloadSection {
                 padding-top: 0.5rem;
-                padding-bottom: 0.25rem !important;
+                padding-bottom: 0.5rem;
             }
             html.platform-web #apkDownloadLink {
-                padding-top: 0.375rem !important;
-                padding-bottom: 0.375rem !important;
+                padding-top: 0.25rem !important;
+                padding-bottom: 0.25rem !important;
             }
         }
-        /* 배너가 보일 때 타이틀·계속하기 버튼이 배너와 겹치지 않도록 하단 여백 */
-        #landingPage.landing-banner-visible { padding-bottom: calc(160px + 4rem); }
+        /* fixed 하단(배너+스토어)과 겹치지 않도록 */
+        html.platform-web #landingPage.landing-buttons-visible {
+            padding-bottom: max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 3.25rem));
+        }
+        html.platform-web #landingPage.landing-buttons-visible.landing-banner-visible {
+            padding-bottom: calc(160px + max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 3.25rem)));
+        }
+        #landingPage.landing-banner-visible {
+            padding-bottom: calc(160px + 4rem);
+        }
+        @media (max-height: 640px) {
+            #landingPage.landing-buttons-visible #landingLoginOptions.space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.375rem !important; }
+        }
     </style>
     <script>
         // 디버깅: 페이지 로드 시작
@@ -590,11 +653,11 @@
     </div>
 
     <!-- 1. Landing Page: 처음에는 밀로그 아이콘만 가운데 표시, 로그인 필요 시 옵션 표시 -->
-    <div id="landingPage" class="relative flex flex-col min-h-screen">
+    <div id="landingPage" class="relative flex flex-col">
         <div class="absolute top-3 right-4 z-20 pointer-events-none">
             <span id="landingEnvBadge" class="hidden shrink-0" role="status"></span>
         </div>
-        <div id="landingFlexMain" class="flex-1 flex flex-col justify-center items-center w-full relative">
+        <div id="landingFlexMain" class="flex-1 flex flex-col justify-center items-center w-full relative min-h-0">
             <!-- 아이콘 ↔ 타이틀 전환 영역 (같은 자리에서 페이드) -->
             <div id="landingSplashTransition" class="relative w-full flex flex-col items-center justify-center">
                 <div id="landingSplashIconOnly" class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
@@ -604,7 +667,7 @@
                 </div>
                 <div id="landingSplashTitleAndTagline" class="absolute inset-0 flex flex-col items-center justify-center text-center px-4 mb-0 opacity-0 pointer-events-none">
                     <h1 class="mealog-title text-5xl text-white tracking-tighter mb-2">mealog</h1>
-                    <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide whitespace-nowrap">우리가 함께한, 맛있었던 이야기</p>
+                    <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide text-center px-2">우리가 함께한, 맛있었던 이야기</p>
                 </div>
             </div>
             <!-- 로그인 옵션: 로그인 정보 입력이 필요할 때만 표시 -->
@@ -628,19 +691,20 @@
             </div>
             </div>
         </div>
-        <!-- 모웹 하단 고정: 배너 + 다운로드 버튼 (배너가 다운로드 버튼 바로 위) -->
-        <div id="landingBottomFixed" class="w-full">
-            <!-- 로그인 배너: 관리자에서 사용 설정 시에만 표시. 권장 이미지 448×160 px -->
-            <div id="loginBannerSection" class="hidden w-full shrink-0" style="height: 160px;">
-                <img id="loginBannerImage" src="" alt="" class="hidden w-full h-full object-cover object-center pointer-events-none">
-            </div>
-            <!-- 웹에서만 표시 (Capacitor 네이티브에서는 숨김) -->
-            <div id="apkDownloadSection" class="hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
-                <a href="https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
-                    <i class="fa-solid fa-mobile-screen mr-1"></i>
-                    <span>구글 플레이 스토어에서 밀로그 앱 다운로드</span>
-                </a>
-            </div>
+    </div>
+
+    <!-- 로그인 배너 + 스토어: body 직속·뷰포트 너비 (랜딩 max-w 컬럼 밖으로 분리) -->
+    <div id="landingBottomFixed" class="w-full">
+        <!-- 로그인 배너: 관리자에서 사용 설정 시에만 표시. 권장 이미지 448×160 px -->
+        <div id="loginBannerSection" class="hidden w-full shrink-0" style="height: 160px;">
+            <img id="loginBannerImage" src="" alt="" class="hidden w-full h-full object-cover object-center pointer-events-none">
+        </div>
+        <!-- 웹에서만 표시 (Capacitor 네이티브에서는 숨김) -->
+        <div id="apkDownloadSection" class="hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
+            <a href="https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
+                <i class="fa-solid fa-mobile-screen mr-1"></i>
+                <span>구글 플레이 스토어에서 밀로그 앱 다운로드</span>
+            </a>
         </div>
     </div>
 

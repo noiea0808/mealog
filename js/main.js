@@ -1561,7 +1561,7 @@ initAuth(async (user) => {
             }
         }
 
-        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 타이틀 중앙에서 위로 올라감 → 올라가는 애니메이션 완료 후 버튼 페이드인
+        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 상단 플렉 배치 애니 후 버튼 페이드인
         const showLoginScreen = () => {
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
@@ -1570,34 +1570,36 @@ initAuth(async (user) => {
             // 아이콘↔타이틀 페이드 이후 타이틀 위로 올라가는 애니메이션 시작
             setTimeout(() => {
                 if (!landingPage) return;
-                landingPage.classList.add('landing-buttons-visible');
-                const titleEl = document.getElementById('landingSplashTitleAndTagline');
-                let buttonsShown = false;
-                const showButtons = () => {
-                    if (buttonsShown) return;
-                    buttonsShown = true;
-                    if (landingLoginOptions) {
-                        landingLoginOptions.classList.remove('hidden');
-                        requestAnimationFrame(() => {
-                            landingLoginOptions.classList.add('landing-options-visible');
-                        });
-                    }
-                    if (apkSection) apkSection.classList.remove('hidden');
-                    loadAndShowLoginBanner();
-                };
-                // transitionend로 애니메이션 완료 후에만 버튼 표시 (점프 방지)
-                if (titleEl) {
-                    const onEnd = (e) => {
-                        if (e.propertyName === 'transform') {
-                            titleEl.removeEventListener('transitionend', onEnd);
-                            requestAnimationFrame(() => requestAnimationFrame(showButtons)); // 2프레임 대기 후 표시
+                requestAnimationFrame(() => {
+                    landingPage.classList.add('landing-buttons-visible');
+                    const titleEl = document.getElementById('landingSplashTitleAndTagline');
+                    let buttonsShown = false;
+                    const showButtons = () => {
+                        if (buttonsShown) return;
+                        buttonsShown = true;
+                        if (landingLoginOptions) {
+                            landingLoginOptions.classList.remove('hidden');
+                            requestAnimationFrame(() => {
+                                landingLoginOptions.classList.add('landing-options-visible');
+                            });
                         }
+                        if (apkSection) apkSection.classList.remove('hidden');
+                        loadAndShowLoginBanner();
                     };
-                    titleEl.addEventListener('transitionend', onEnd);
-                    setTimeout(showButtons, 950); // 폴백: 0.8s + 여유
-                } else {
-                    setTimeout(showButtons, 800);
-                }
+                    // animationend로 타이틀 정리 애니메이션 후 버튼 표시 (플렉 상단 배치)
+                    if (titleEl) {
+                        const onEnd = (e) => {
+                            if (e.target !== titleEl) return;
+                            if (e.animationName !== 'landingLoginTitleReveal') return;
+                            titleEl.removeEventListener('animationend', onEnd);
+                            requestAnimationFrame(() => requestAnimationFrame(showButtons)); // 2프레임 대기 후 표시
+                        };
+                        titleEl.addEventListener('animationend', onEnd);
+                        setTimeout(showButtons, 600); // 애니·폴백
+                    } else {
+                        setTimeout(showButtons, 800);
+                    }
+                });
             }, 520);
         };
         const showOptionsNow = wasExplicitLogout;
