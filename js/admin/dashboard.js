@@ -155,7 +155,7 @@ function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v5-page-week-rows`;
+    const buildKey = `${n}-v6-page-week-darker-sums`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
@@ -181,7 +181,7 @@ function ensurePageUsageTableBody() {
             `<td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[12.5rem] z-20 min-w-[4rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle" id="pageUsageRow_${rowIdx}_all">—</td>`
         );
         cells.push(
-            `<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums border-l border-slate-300" id="pageUsageRow_${rowIdx}_7Sum">—</td>`
+            `<td data-page-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-300 bg-slate-300/90" id="pageUsageRow_${rowIdx}_7Sum">—</td>`
         );
         for (let i = 0; i < 7; i++) {
             const border = i === 6 ? ' border-r border-slate-300' : '';
@@ -368,6 +368,7 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
             set(`pageUsageRow_${rowIdx}_7Sum`, null);
             fillPageUsage7dRow(rowIdx, null, null);
         });
+        scrollDashboardPageTableToRight();
         return;
     }
     const dates = last7DatesForRender(pageUsage);
@@ -422,6 +423,7 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
         set(`pageUsageRow_${rowIdx}_7Sum`, sum7 != null ? sum7 : last7);
         fillPageUsage7dRow(rowIdx, dayArr, last7);
     });
+    scrollDashboardPageTableToRight();
 }
 
 /**
@@ -607,6 +609,12 @@ export function switchDashboardSubtab(which) {
     if (w === 'excluded') {
         import('./excluded-analytics-admin.js').then((m) => m.loadExcludedAnalyticsAdminPanel());
     }
+    if (w === 'trend') {
+        scrollDashboardTrendTableToRight();
+    }
+    if (w === 'page') {
+        scrollDashboardPageTableToRight();
+    }
 }
 
 const RECORD_SLOT_7D_PREFIXES = SLOTS.map((s) => `statRecSlot_${s.id}_7d`);
@@ -725,14 +733,21 @@ function cloneWeeklyBreakdown(raw) {
     for (const s of SLOTS) {
         recordsBySlot[s.id] = pickWeekArr(rbs[s.id], n);
     }
+    const monthGroups = buildMonthHeaderGroupsWithStarts(weeks);
+    const rawMonthU = raw.activeUsersMonthUnique;
+    let activeUsersMonthUnique;
+    if (Array.isArray(rawMonthU) && rawMonthU.length === monthGroups.length) {
+        activeUsersMonthUnique = rawMonthU.map((x) => Number(x) || 0);
+    }
     return {
         weeks,
-        monthGroups: buildMonthHeaderGroupsWithStarts(weeks),
+        monthGroups,
         newUsers: pickWeekArr(raw.newUsers, n),
         activeUsers: pickWeekArr(raw.activeUsers, n),
         records: pickWeekArr(raw.records, n),
         recordsBySlot,
-        sharedPhotos: pickWeekArr(raw.sharedPhotos, n)
+        sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
+        ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
     };
 }
 
@@ -771,8 +786,86 @@ function expandWeeklyValuesWithMonthSums(vals, monthGroups) {
     return out;
 }
 
+/** 같은 달(헤더 구간)에 속한 주들의 활성 사용자 Set을 합쳐 월간 유니크 수 (주간 합과 다름) */
+function computeActiveUsersMonthUnique(activeSetsByWeek, monthGroups) {
+    const out = [];
+    for (const g of monthGroups) {
+        const union = new Set();
+        for (let k = 0; k < g.span; k++) {
+            const wi = g.startWeekIndex + k;
+            const s = activeSetsByWeek[wi];
+            if (s && typeof s.forEach === 'function') s.forEach((uid) => union.add(uid));
+        }
+        out.push(union.size);
+    }
+    return out;
+}
+
+/**
+ * 트렌드 표 펼침: 대부분 지표는 월 칸 = 주간 합, 활성 사용자는 월 칸 = 유니크(activeUsersMonthUnique).
+ * activeUsersMonthUnique가 없거나 길이가 맞지 않으면 활성 사용자도 기존처럼 주간 합(참고용).
+ */
+function expandWeeklyValuesForTrend(vals, monthGroups, rowKey, activeUsersMonthUnique) {
+    const v = Array.isArray(vals) ? vals.map((x) => Number(x) || 0) : [];
+    const useActiveMonthUnique =
+        rowKey === 'activeUsers' &&
+        Array.isArray(activeUsersMonthUnique) &&
+        activeUsersMonthUnique.length === monthGroups?.length;
+    const out = [];
+    let u = 0;
+    for (const g of monthGroups) {
+        if (useActiveMonthUnique) {
+            out.push(Number(activeUsersMonthUnique[u]) || 0);
+        } else {
+            let sum = 0;
+            for (let k = 0; k < g.span; k++) {
+                sum += v[g.startWeekIndex + k] || 0;
+            }
+            out.push(sum);
+        }
+        u++;
+        for (let k = 0; k < g.span; k++) {
+            out.push(v[g.startWeekIndex + k] || 0);
+        }
+    }
+    return out;
+}
+
+/** expandWeeklyValuesForTrend 결과에서 월 선두 칸(합계/유니크) 인덱스 */
+function monthLeadColumnFlags(monthGroups, expandedLength) {
+    if (!monthGroups?.length || !Number.isFinite(expandedLength)) return null;
+    const flags = new Array(expandedLength).fill(false);
+    let pos = 0;
+    for (const g of monthGroups) {
+        if (pos >= expandedLength) break;
+        flags[pos] = true;
+        pos += 1 + g.span;
+    }
+    return flags;
+}
+
 function clearAdminDashboardWeekInjections() {
     document.querySelectorAll('.js-dash-month-th, .js-dash-week-th, .js-dash-week-td').forEach((el) => el.remove());
+}
+
+/** 대시보드 가로 스크롤 표: 최신 열(오른쪽)이 보이도록 */
+function scrollDashboardTableToRight(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const apply = () => {
+        el.scrollLeft = el.scrollWidth - el.clientWidth;
+    };
+    requestAnimationFrame(() => {
+        requestAnimationFrame(apply);
+    });
+}
+
+function scrollDashboardTrendTableToRight() {
+    scrollDashboardTableToRight('dashboardTrendTableScroll');
+}
+
+function scrollDashboardPageTableToRight() {
+    scrollDashboardTableToRight('dashboardPageTableScroll');
 }
 
 /**
@@ -802,9 +895,9 @@ function syncAdminDashboardWeekLayout(weeklyBreakdown) {
     for (const g of monthGroups) {
         const sumTh = document.createElement('th');
         sumTh.className =
-            'js-dash-week-th px-0.5 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-200 bg-slate-100';
+            'js-dash-week-th px-0.5 py-1 text-center font-extrabold text-slate-900 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-200 bg-slate-400/85';
         sumTh.textContent = '합계';
-        sumTh.title = `${g.label} 주간 합계(같은 달에 속한 주차 수치의 합)`;
+        sumTh.title = `${g.label}: 대부분 지표는 같은 달 주차 수치의 합. 활성 사용자는 같은 구간에서 기록한 유니크 사용자 수`;
         row2.insertBefore(sumTh, sumHead);
         for (let j = 0; j < g.span; j++) {
             const w = weeks[g.startWeekIndex + j];
@@ -824,7 +917,7 @@ function syncAdminDashboardWeekLayout(weeklyBreakdown) {
                 ? 'js-dash-week-td px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums'
                 : 'js-dash-week-td px-2 py-2 text-center text-sm font-bold text-slate-800 tabular-nums';
             const sumTd = document.createElement('td');
-            sumTd.className = `${baseCls} bg-slate-50/80`;
+            sumTd.className = `${baseCls} !bg-slate-300/90`;
             tr.insertBefore(sumTd, tr.querySelector('[data-dash-7block-start]'));
             for (let j = 0; j < g.span; j++) {
                 const td = document.createElement('td');
@@ -850,17 +943,42 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
 
 function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
     const monthGroups = weeklyBreakdown?.monthGroups;
+    const activeUsersMonthUnique = weeklyBreakdown?.activeUsersMonthUnique;
+    const activeUsersMonthUniqueOk =
+        Array.isArray(activeUsersMonthUnique) &&
+        monthGroups &&
+        activeUsersMonthUnique.length === monthGroups.length;
     document.querySelectorAll('tr[data-dash-week-row]').forEach((tr) => {
         const key = tr.getAttribute('data-dash-week-row');
         const vals = weeklyValuesForRow(key, weeklyBreakdown);
         const expanded =
-            monthGroups && monthGroups.length ? expandWeeklyValuesWithMonthSums(vals, monthGroups) : vals;
+            monthGroups && monthGroups.length
+                ? expandWeeklyValuesForTrend(vals, monthGroups, key, activeUsersMonthUnique)
+                : vals;
+        const monthLeads = monthLeadColumnFlags(monthGroups, expanded.length);
         const tds = tr.querySelectorAll(':scope > td.js-dash-week-td');
         tds.forEach((td, i) => {
             const v = expanded[i];
             if (v != null && Number.isFinite(Number(v))) {
                 td.textContent = Number(v).toLocaleString();
-                td.removeAttribute('title');
+                if (
+                    key === 'activeUsers' &&
+                    monthLeads &&
+                    monthLeads[i] &&
+                    activeUsersMonthUniqueOk
+                ) {
+                    td.title = '해당 월(표시 주차 구간) 동안 기록이 있었던 유니크 사용자 수';
+                } else if (
+                    key === 'activeUsers' &&
+                    monthLeads &&
+                    monthLeads[i] &&
+                    !activeUsersMonthUniqueOk
+                ) {
+                    td.title =
+                        '캐시에 월간 유니크가 없어 주간 숫자의 합으로 표시됩니다. 「통계 새로고침」으로 갱신하세요.';
+                } else {
+                    td.removeAttribute('title');
+                }
             } else {
                 td.textContent = '—';
                 td.title = '「새로고침」으로 주간 집계';
@@ -900,7 +1018,7 @@ function syncAdminDashboardPageWeekLayout(weeklyLayout) {
     for (const g of monthGroups) {
         const sumTh = document.createElement('th');
         sumTh.className =
-            'js-dash-page-week-th px-0.5 py-1 text-center font-bold text-slate-600 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-400 bg-slate-100';
+            'js-dash-page-week-th px-0.5 py-1 text-center font-extrabold text-slate-900 min-w-[2.75rem] max-w-[3.25rem] text-[9px] leading-tight border-b border-slate-400 bg-slate-400/85';
         sumTh.textContent = '합계';
         sumTh.title = `${g.label} 주간 합계(같은 달에 속한 주차 수치의 합)`;
         row2.insertBefore(sumTh, sumHead);
@@ -920,7 +1038,7 @@ function syncAdminDashboardPageWeekLayout(weeklyLayout) {
             const baseCls =
                 'js-dash-page-week-td px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums';
             const sumTd = document.createElement('td');
-            sumTd.className = `${baseCls} bg-slate-50/80`;
+            sumTd.className = `${baseCls} !bg-slate-300/90`;
             const anchor = tr.querySelector('[data-page-dash-7block-start]');
             if (anchor) tr.insertBefore(sumTd, anchor);
             for (let j = 0; j < g.span; j++) {
@@ -1322,19 +1440,24 @@ export async function getUserStatistics() {
 
         stats.weeklyBreakdown =
             nWeeks > 0
-                ? {
-                      weeks: weekMetas.map((w) => ({
+                ? (() => {
+                      const weeksPayload = weekMetas.map((w) => ({
                           sundayKey: w.sundayKey,
                           label: w.label,
                           year: w.year,
                           monthIndex: w.monthIndex
-                      })),
-                      newUsers: [...newUsersByWeek],
-                      activeUsers: activeSetsByWeek.map((s) => s.size),
-                      records: [...recordsByWeek],
-                      recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
-                      sharedPhotos: sharedSetsByWeek.map((s) => s.size)
-                  }
+                      }));
+                      const mg = buildMonthHeaderGroupsWithStarts(weeksPayload);
+                      return {
+                          weeks: weeksPayload,
+                          newUsers: [...newUsersByWeek],
+                          activeUsers: activeSetsByWeek.map((s) => s.size),
+                          activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
+                          records: [...recordsByWeek],
+                          recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
+                          sharedPhotos: sharedSetsByWeek.map((s) => s.size)
+                      };
+                  })()
                 : null;
 
         console.log('📊 대시보드 통계(최적화 집계):', stats);
@@ -1427,6 +1550,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
             label.textContent = '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
         }
     }
+    scrollDashboardTrendTableToRight();
 }
 
 /** 당일(오늘 00:00~) 데이터만 경량 조회 — 캐시가 전일 기준일 때 오늘 숫자만 보정용 (읽기 최소화). 공유는 게시물 수로 카운트 */
