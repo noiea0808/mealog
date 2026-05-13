@@ -547,12 +547,12 @@ window.executeDailyShare = async (dateStr) => {
 };
 */
 
-// 일간보기 하루 전체 Comment 저장 함수
+// 일간보기 하루 기록(일간 코멘트) 저장 함수
 window.saveDailyComment = async (date) => {
     const input = document.getElementById('dailyCommentInput');
     if (!input) {
         console.warn('[saveDailyComment] #dailyCommentInput 없음 — 타임라인「일간」모드에서만 표시됩니다.');
-        showToast('하루 소감 영역을 찾을 수 없어요. 타임라인에서「일간」보기로 전환한 뒤 다시 시도해 주세요.', 'error');
+        showToast('하루 기록 영역을 찾을 수 없어요. 타임라인에서「일간」보기로 전환한 뒤 다시 시도해 주세요.', 'error');
         return;
     }
     
@@ -609,7 +609,7 @@ window.openDailyCommentModal = (dateStr) => {
     modal.innerHTML = `
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-base font-black text-slate-800">하루 소감 수정</h3>
+                <h3 class="text-base font-black text-slate-800">하루 기록 수정</h3>
                 <button type="button" onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
                     <i class="fa-solid fa-xmark text-xl"></i>
                 </button>
@@ -666,7 +666,7 @@ window.saveDailyCommentFromModal = async (dateStr) => {
     
     try {
         await dbOps.saveDailyComment(dateStr, comment);
-        showToast("하루 소감이 저장되었습니다.", 'success');
+        showToast('하루 기록이 저장되었습니다.', 'success');
         window.closeDailyCommentModal();
         if (appState.currentTab === 'timeline' && appState.viewMode === 'page') {
             const d = appState.pageDate;
@@ -676,7 +676,7 @@ window.saveDailyCommentFromModal = async (dateStr) => {
                 if (inlineIn) inlineIn.value = comment;
             }
         }
-        // 타임라인은 소감만 바뀐 경우 풀 렌더 시 스크롤이 튐 → 생략 (데이터는 이미 반영됨)
+        // 타임라인은 하루 기록만 바뀐 경우 풀 렌더 시 스크롤이 튐 → 생략 (데이터는 이미 반영됨)
         if (appState.currentTab === 'gallery') {
             renderGallery();
         }
@@ -691,7 +691,7 @@ window.saveDailyCommentFromModal = async (dateStr) => {
     }
 };
 
-/** 타임라인「일간」공유/하루소감 저장 — 인라인 onclick 대신 위임 (CSP·캡처 단계 이슈 회피) */
+/** 타임라인「일간」공유/하루 기록 저장 — 인라인 onclick 대신 위임 (CSP·캡처 단계 이슈 회피) */
 const _mealogDailyTimelineBound = new WeakMap();
 function bindMealogDailyTimelineDelegation() {
     const root = document.getElementById('timelineContainer');

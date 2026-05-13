@@ -9,7 +9,7 @@ export const MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY =
 /** 캡처 헤더 날짜 줄 — 기본 12px에서 2단계 확대 */
 export const MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE = '16px';
 
-/** 캡처 헤더 타이틀 줄(닉네임의 하루소감 등) — 기본 15px에서 2단계 확대, 진한 색·볼드 */
+/** 캡처 헤더 타이틀 줄(닉네임의 하루 기록 등) — 기본 15px에서 2단계 확대, 진한 색·볼드 */
 export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE = '19px';
 export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR = '#0f172a';
 export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT = '700';
