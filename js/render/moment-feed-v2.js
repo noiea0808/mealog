@@ -183,7 +183,7 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                 <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden px-1.5 pt-1.5 pb-2">
                     <div class="moment-v2-social-comments-input-shell relative backdrop-blur-sm">
                         <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
-                        <input type="text" id="comment-text-${p}" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 text-[14px] leading-none text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
+                        <textarea id="comment-text-${p}" rows="1" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent py-1 text-[14px] leading-snug text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeydown='if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();window.submitComment(${postIdJs});}'></textarea>
                         <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="입력">
                             <i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i>
                         </button>

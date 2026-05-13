@@ -1173,6 +1173,14 @@ function mv2EscapeAttr(s) {
         .replace(/'/g, '&#39;');
 }
 
+function syncMomentV2CommentTextareaHeight(textarea) {
+    if (!textarea || textarea.tagName !== 'TEXTAREA') return;
+    const maxPx = 176;
+    textarea.style.height = 'auto';
+    const h = Math.min(Math.max(textarea.scrollHeight, 40), maxPx);
+    textarea.style.height = `${h}px`;
+}
+
 function mv2InsertMentionIntoInput(postId, nickname) {
     const pid = String(postId ?? '');
     const nick = String(nickname ?? '').trim();
@@ -1188,6 +1196,9 @@ function mv2InsertMentionIntoInput(postId, nickname) {
     const prefix = cur.length > 0 && !/\s$/.test(cur) ? ' ' : '';
     input.value = `${cur}${prefix}${tag} `;
     input.focus();
+    try {
+        syncMomentV2CommentTextareaHeight(input);
+    } catch (_) {}
     try {
         const end = input.value.length;
         input.setSelectionRange(end, end);
@@ -1445,7 +1456,7 @@ window.viewAllComments = async (postId) => {
                     return `
                         <div class="mb-1 text-sm">
                             <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
-                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            <span class="text-slate-800 ml-2${isMomentV2Sheet ? ' whitespace-pre-wrap break-words' : ''}">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                         </div>
@@ -1513,9 +1524,13 @@ window.toggleCommentInput = (postId) => {
             if (textInput) {
                 textInput.focus();
                 try {
+                    syncMomentV2CommentTextareaHeight(textInput);
+                } catch (_) {}
+                try {
                     if (!textInput.dataset.mv2SendBtnBound) {
                         textInput.dataset.mv2SendBtnBound = '1';
                         textInput.addEventListener('input', () => {
+                            syncMomentV2CommentTextareaHeight(textInput);
                             syncCommentSendButtonVisibility(postId, textInput);
                         });
                         textInput.addEventListener('blur', () => {
@@ -1628,6 +1643,9 @@ window.submitComment = async (postId) => {
     try {
         syncCommentSendButtonVisibility(postId, inputEl);
     } catch (_) {}
+    try {
+        syncMomentV2CommentTextareaHeight(inputEl);
+    } catch (_) {}
     
     // 낙관적 업데이트: 댓글 한 줄 즉시 표시
     if (commentsListEl) {
@@ -1637,7 +1655,11 @@ window.submitComment = async (postId) => {
             commentsListEl.classList.add('bg-slate-50');
         }
         const nickCls = useDarkCommentRowStyle ? 'font-bold text-white/95' : 'font-bold text-slate-800';
-        const bodyCls = useDarkCommentRowStyle ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+        const bodyCls = useDarkCommentRowStyle
+            ? 'text-white/90 ml-2'
+            : isMomentV2SocialCommentSheetList
+              ? 'text-slate-800 ml-2 whitespace-pre-wrap break-words'
+              : 'text-slate-800 ml-2';
         commentsListEl.insertAdjacentHTML(
             'beforeend',
             `<div class="mb-1 ${useDarkCommentRowStyle && !isMomentV2SocialCommentSheetList ? '' : 'text-sm'}" data-temp-comment-id="${tempId}">
@@ -1694,7 +1716,11 @@ window.submitComment = async (postId) => {
                     { preferStoredNickname: true }
                 );
                 const nickCls2 = useDarkCommentRowStyle ? 'font-bold text-white/95' : 'font-bold text-slate-800';
-                const bodyCls2 = useDarkCommentRowStyle ? 'text-white/90 ml-2' : 'text-slate-800 ml-2';
+                const bodyCls2 = useDarkCommentRowStyle
+                    ? 'text-white/90 ml-2'
+                    : isMomentV2SocialCommentSheetList
+                      ? 'text-slate-800 ml-2 whitespace-pre-wrap break-words'
+                      : 'text-slate-800 ml-2';
                 const dateCls = useDarkCommentRowStyle ? 'text-xs text-white/65 ml-2' : 'text-xs text-slate-500 ml-2';
                 const delCls = useDarkCommentRowStyle
                     ? 'ml-2 text-white/50 text-xs hover:text-red-300'
@@ -1875,7 +1901,7 @@ async function loadPostComments(postId) {
                     return `
                         <div class="mb-1 text-sm">
                             <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
-                            <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
+                            <span class="text-slate-800 ml-2${isMomentV2Sheet ? ' whitespace-pre-wrap break-words' : ''}">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
                         </div>
