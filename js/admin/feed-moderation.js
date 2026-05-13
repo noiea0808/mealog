@@ -39,55 +39,8 @@ let feedLastPageHasMore = false;
 /** 현재 페이지에 실제로 표시되는 행 수(필터 전 원본 페이지 기준은 getFeedPage에서 docs.length) */
 let feedLastPageRowCount = 0;
 
-function computeFeedAdminTotalPages() {
-    if (feedMealTotalCountKnown) {
-        return Math.max(1, Math.ceil(feedTotalCount / feedPageSize));
-    }
-    return Math.max(1, feedCurrentPage + (feedLastPageHasMore ? 1 : 0));
-}
-
-/** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
-let adminFeedMonitoringLoaded = false;
-// 공유 키 캐시 — ensureSharedKeysForMeals에서 채움; 무효화 시 null
-let feedSharedKeysCache = null;
-
-/** 모먼트: 페이지 쿼리·신고 집계·유저 설정 조회 TTL 캐시 (새로고침·데이터 변경 시 무효화) */
+/** 모먼트 목록 TTL·캐시 — 특수 공유 fetch에도 동일 간격 사용 */
 const ADMIN_FEED_CACHE_TTL_MS = 3 * 60 * 1000;
-const feedQueryCache = new Map();
-let feedReportsAggCache = { ts: 0, map: null };
-const feedUserSettingsCache = new Map();
-
-function invalidateAdminFeedMonitoringCache() {
-    feedQueryCache.clear();
-    feedReportsAggCache = { ts: 0, map: null };
-    feedUserSettingsCache.clear();
-    feedSharedKeysCache = null;
-    feedMealTotalCountKnown = true;
-}
-
-/**
- * 모먼트 관리: 기록·공유 문서 삭제 (일반 = users/…/meals + sharedPhotos, 베스트/일간/인사이트 = sharedPhotos만)
- */
-async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight }) {
-    if (!mealId || !userId) throw new Error('mealId 또는 userId가 없습니다.');
-    await refreshAppCheckTokenBeforeFirestore();
-    if (isBest || isDaily || isInsight) {
-        await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
-        return;
-    }
-    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const sharedQuery = query(sharedColl, where('userId', '==', userId), where('entryId', '==', mealId));
-    const sharedSnap = await getDocs(sharedQuery);
-    for (const d of sharedSnap.docs) {
-        await deleteDoc(d.ref);
-    }
-    const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
-    await deleteDoc(mealRef);
-}
-
-function feedQueryCacheKey(page) {
-    return `m${mealsAdminMealsQueryMode}_${page}`;
-}
 
 /** 기록 시각(recordedAt) 우선, 없으면 timestamp, 없으면 슬롯 date+time 근사 */
 function mealRecordedAtMillis(meal) {
@@ -121,6 +74,208 @@ function mealRecordedAtMillis(meal) {
     return 0;
 }
 
+/** 캡처 공유(daily/best/insight) 모니터링 정렬·타임라인 보조 (timestamp 누락·지연 반영 대비) */
+function specialShareSortMillis(row) {
+    if (!row) return 0;
+    let ms = mealRecordedAtMillis(row);
+    if (ms > 0) return ms;
+    if (row.isDailyShare && row.date) {
+        const raw = String(row.date).trim();
+        if (raw) {
+            const t = Date.parse(raw.includes('T') ? raw : `${raw}T23:59:59`);
+            if (Number.isFinite(t)) return t;
+        }
+    }
+    if (row.id && typeof row.id === 'string') {
+        let h = 0;
+        for (let i = 0; i < row.id.length; i++) h = (Math.imul(31, h) + row.id.charCodeAt(i)) | 0;
+        return 1e9 + (Math.abs(h) % 86400000);
+    }
+    return 0;
+}
+
+function moderationRowSortMillis(row) {
+    if (!row) return 0;
+    if (row.isDailyShare || row.isBestShare || row.isInsightShare) return specialShareSortMillis(row);
+    return mealRecordedAtMillis(row);
+}
+
+/** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
+let adminFeedMonitoringLoaded = false;
+// 공유 키 캐시 — ensureSharedKeysForFeedRows에서 채움; 무효화 시 null
+let feedSharedKeysCache = null;
+
+/** sharedPhotos 중 하루기록(daily)·주간 Best(best)·참견(insight) — 모니터링 목록 병합용 */
+const ADMIN_FEED_SPECIAL_SHARE_TYPES = ['daily', 'best', 'insight'];
+const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
+
+let moderationSpecialSharesCache = { ts: 0, rows: null };
+
+async function fetchSpecialSharesForModeration() {
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    await refreshAppCheckTokenBeforeFirestore();
+    const byId = new Map();
+
+    function addDocs(docs) {
+        for (const d of docs || []) {
+            if (d?.id && !byId.has(d.id)) byId.set(d.id, d);
+        }
+    }
+
+    try {
+        const q = query(
+            sharedColl,
+            where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES),
+            orderBy('timestamp', 'desc'),
+            limit(ADMIN_FEED_SPECIAL_ROWS_CAP)
+        );
+        const snap = await getDocs(q);
+        addDocs(snap.docs);
+    } catch (err) {
+        console.warn(
+            '[관리자 모먼트] 특수 공유 단일 조회 실패 → 타입별로 재시도합니다.',
+            err?.code || err?.message || err
+        );
+        const parts = await Promise.all(
+            ADMIN_FEED_SPECIAL_SHARE_TYPES.map((ty) =>
+                getDocs(query(sharedColl, where('type', '==', ty), orderBy('timestamp', 'desc'), limit(200))).catch(() => null)
+            )
+        );
+        for (const s of parts) {
+            if (s?.docs?.length) addDocs(s.docs);
+        }
+    }
+
+    // timestamp 필드가 없거나 orderBy에서 빠진 문서를 type 동등만으로 보강
+    for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
+        try {
+            const snap = await getDocs(query(sharedColl, where('type', '==', ty), limit(400)));
+            addDocs(snap.docs);
+        } catch (e) {
+            console.warn('[관리자 모먼트] 캡처 보조 조회(type만):', ty, e?.code || e?.message || e);
+        }
+    }
+
+    const merged = [...byId.values()];
+    merged.sort((a, b) => {
+        const ra = sharedPhotoDocToAdminFeedRow(a);
+        const rb = sharedPhotoDocToAdminFeedRow(b);
+        return specialShareSortMillis(rb) - specialShareSortMillis(ra);
+    });
+    return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP) : merged;
+}
+
+async function getSpecialSharesModerationRowsCached() {
+    const now = Date.now();
+    if (moderationSpecialSharesCache.rows && now - moderationSpecialSharesCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return moderationSpecialSharesCache.rows;
+    }
+    const docs = await fetchSpecialSharesForModeration();
+    const rows = docs.map(sharedPhotoDocToAdminFeedRow);
+    moderationSpecialSharesCache = { ts: now, rows };
+    return rows;
+}
+
+async function getSpecialSharesTimelineCounts() {
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    await refreshAppCheckTokenBeforeFirestore();
+    try {
+        const q = query(sharedColl, where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES));
+        const cnt = await getCountFromServer(q);
+        return { count: cnt.data().count || 0, known: true };
+    } catch (e1) {
+        try {
+            let sum = 0;
+            let ok = true;
+            for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
+                try {
+                    const c = await getCountFromServer(query(sharedColl, where('type', '==', ty)));
+                    sum += c.data().count || 0;
+                } catch (e2) {
+                    ok = false;
+                    console.warn('[관리자 모먼트] 특수 공유 건수 집계 실패:', ty, e2?.code || e2?.message || e2);
+                }
+            }
+            return { count: sum, known: ok };
+        } catch (e) {
+            console.warn('[관리자 모먼트] 특수 공유 건수 집계 생략', e?.message || e);
+            return { count: 0, known: false };
+        }
+    }
+}
+
+function sharedPhotoDocToAdminFeedRow(docSnap) {
+    const d = docSnap.data() || {};
+    const ty = d.type;
+    const isDaily = ty === 'daily';
+    const isBest = ty === 'best';
+    const isInsight = ty === 'insight';
+    const row = {
+        id: docSnap.id,
+        userId: d.userId || '',
+        recordedAt: d.timestamp,
+        timestamp: d.timestamp,
+        photoUrl: d.photoUrl || '',
+        comment: d.comment || '',
+        shareBanned: d.shareBanned === true,
+        userNickname: d.userNickname,
+        userIcon: d.userIcon,
+        isBestShare: isBest,
+        isDailyShare: isDaily,
+        isInsightShare: isInsight
+    };
+    if (isDaily) {
+        row.slotDisplayDate = '';
+        row.slotDisplayLabel = '하루 기록';
+        if (d.date) row.date = d.date;
+    } else if (isBest) {
+        row.slotDisplayDate = '';
+        row.slotDisplayLabel = '주간 Best';
+        row.periodType = d.periodType;
+        row.periodText = d.periodText;
+    } else if (isInsight) {
+        row.slotDisplayDate = '';
+        row.slotDisplayLabel = '밀당의 참견';
+        row.dateRangeText = d.dateRangeText;
+    }
+    return row;
+}
+
+/** 모먼트: 페이지 쿼리·신고 집계·유저 설정 조회 TTL 캐시 */
+const feedQueryCache = new Map();
+let feedReportsAggCache = { ts: 0, map: null };
+const feedUserSettingsCache = new Map();
+
+function invalidateAdminFeedMonitoringCache() {
+    feedQueryCache.clear();
+    feedReportsAggCache = { ts: 0, map: null };
+    feedUserSettingsCache.clear();
+    feedSharedKeysCache = null;
+    moderationSpecialSharesCache = { ts: 0, rows: null };
+    feedMealTotalCountKnown = true;
+    feedLastDocsByPage = {};
+}
+
+/**
+ * 모먼트 관리: 기록·공유 문서 삭제 (일반 = users/…/meals + sharedPhotos, 베스트/일간/인사이트 = sharedPhotos만)
+ */
+async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, isInsight }) {
+    if (!mealId || !userId) throw new Error('mealId 또는 userId가 없습니다.');
+    await refreshAppCheckTokenBeforeFirestore();
+    if (isBest || isDaily || isInsight) {
+        await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
+        return;
+    }
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const sharedQuery = query(sharedColl, where('userId', '==', userId), where('entryId', '==', mealId));
+    const sharedSnap = await getDocs(sharedQuery);
+    for (const d of sharedSnap.docs) {
+        await deleteDoc(d.ref);
+    }
+    const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
+    await deleteDoc(mealRef);
+}
+
 async function getReportsAggregateCached() {
     const now = Date.now();
     if (feedReportsAggCache.map && now - feedReportsAggCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
@@ -129,6 +284,14 @@ async function getReportsAggregateCached() {
     const map = await getReportsAggregateByGroupKeys();
     feedReportsAggCache = { ts: now, map };
     return map;
+}
+
+
+/** Firestore: recordedAt 필드 미보정 구문서는 슬롯(date+time)으로만 가져옴. 1: date+time · 2: date만(인덱스 폴백) */
+let mealsAdminMealsQueryMode = 1;
+
+function feedQueryCacheKey(page) {
+    return `m${mealsAdminMealsQueryMode}_${page}`;
 }
 
 /**
@@ -140,7 +303,6 @@ async function getFeedPageWithCache(page) {
     const now = Date.now();
     if (ent && now - ent.ts < ADMIN_FEED_CACHE_TTL_MS) {
         if (page === 1) feedTotalCount = ent.totalCount;
-        if (ent.lastDoc) feedLastDocsByPage[page] = ent.lastDoc;
         if (typeof ent.countKnown === 'boolean') feedMealTotalCountKnown = ent.countKnown;
         feedLastPageHasMore = Array.isArray(ent.items) && ent.items.length >= feedPageSize;
         feedLastPageRowCount =
@@ -152,24 +314,24 @@ async function getFeedPageWithCache(page) {
         ts: now,
         items,
         totalCount: feedTotalCount,
-        lastDoc: feedLastDocsByPage[page] ?? null,
         countKnown: feedMealTotalCountKnown,
         rowCount: feedLastPageRowCount
     });
     return items;
 }
 
-/**
- * Firestore: recordedAt 으로 정렬하면 필드가 없는 구문서가 목록에서 빠질 수 있어, 항상 슬롯 기준으로 가져온 뒤
- * 화면에서 recordedAt 기준으로 정렬/표기한다. 1: date+time · 2: date만(인덱스 폴백)
- */
-let mealsAdminMealsQueryMode = 1;
+function mealDocSnapToFeedRow(d) {
+    const pathParts = d.ref.path.split('/');
+    const uidx = pathParts.indexOf('users');
+    const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
+    return { id: d.id, userId, ...d.data() };
+}
 
-// 피드: 전체 타임라인(meals) 페이지 단위 조회 — 사진 유무와 관계없이 모든 게시물 표시, 중복 없음
+/** 피드: sharedPhotos(daily/best/insight) + users/…/meals 를 공유·기록 시각 기준으로 합쳐 한 목록으로 페이지네이션 */
 async function getFeedPage(options = {}) {
     const page = options.page ?? 1;
     const pageSize = options.pageSize ?? feedPageSize;
-    const startAfterDoc = page === 1 ? null : (feedLastDocsByPage[page - 1] ?? null);
+    const skip = (page - 1) * pageSize;
     const mealsGroup = collectionGroup(db, 'meals');
 
     const orderParts =
@@ -180,42 +342,75 @@ async function getFeedPage(options = {}) {
     try {
         await refreshAppCheckTokenBeforeFirestore();
         if (page === 1) {
+            let mealsN = 0;
+            let mealsKnown = true;
             try {
                 const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
-                feedTotalCount = countSnap.data().count;
-                feedMealTotalCountKnown = true;
+                mealsN = countSnap.data().count || 0;
             } catch (cntErr) {
+                mealsKnown = false;
                 console.warn(
-                    '[관리자 모먼트] 전체 개수 집계(getCount) 실패 — 목록만 조회합니다.',
+                    '[관리자 모먼트] 식사 건수 집계(getCount) 실패 — 합산 집계는 일부 생략합니다.',
                     cntErr?.code || cntErr?.message || cntErr
                 );
-                feedMealTotalCountKnown = false;
-                feedTotalCount = 0;
+            }
+            let specKnown = true;
+            let specN = 0;
+            try {
+                const sc = await getSpecialSharesTimelineCounts();
+                specN = sc.count;
+                specKnown = sc.known;
+            } catch (e) {
+                specKnown = false;
+                console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
+            }
+            feedMealTotalCountKnown = mealsKnown && specKnown;
+            if (feedMealTotalCountKnown) {
+                feedTotalCount = mealsN + specN;
+            } else if (mealsKnown) {
+                feedTotalCount = mealsN + (specKnown ? specN : 0);
+            } else {
+                feedTotalCount = specKnown ? specN : 0;
             }
         }
-        const listQ = startAfterDoc
-            ? query(mealsGroup, ...orderParts, startAfter(startAfterDoc), limit(pageSize))
-            : query(mealsGroup, ...orderParts, limit(pageSize));
-        const snapshot = await getDocs(listQ);
-        const docs = snapshot.docs;
-        feedLastPageRowCount = docs.length;
-        feedLastPageHasMore = docs.length === pageSize;
-        const lastDoc = docs.length > 0 ? docs[docs.length - 1] : null;
-        if (lastDoc) feedLastDocsByPage[page] = lastDoc;
 
-        const items = [];
-        for (const d of docs) {
-            const pathParts = d.ref.path.split('/');
-            const userId = pathParts.length >= 4 ? pathParts[pathParts.indexOf('users') + 1] : '';
-            const mealId = d.id;
-            const data = d.data();
-            items.push({
-                id: mealId,
-                userId,
-                ...data
-            });
+        const specRows = await getSpecialSharesModerationRowsCached();
+        const mealRows = [];
+        let mealCursor = null;
+        let exhausted = false;
+        const batchLimit = 120;
+        const maxBatches = 500;
+        let batchI = 0;
+
+        while (!exhausted && batchI < maxBatches) {
+            const listQ = mealCursor
+                ? query(mealsGroup, ...orderParts, startAfter(mealCursor), limit(batchLimit))
+                : query(mealsGroup, ...orderParts, limit(batchLimit));
+            const snapshot = await getDocs(listQ);
+            batchI++;
+            if (!snapshot.docs.length) {
+                exhausted = true;
+                break;
+            }
+            for (const d of snapshot.docs) {
+                mealRows.push(mealDocSnapToFeedRow(d));
+            }
+            mealCursor = snapshot.docs[snapshot.docs.length - 1];
+
+            const mergedProbe = [...specRows, ...mealRows].sort(
+                (a, b) => moderationRowSortMillis(b) - moderationRowSortMillis(a)
+            );
+            if (mergedProbe.length >= skip + pageSize) break;
         }
-        return { items, totalCount: feedTotalCount, lastDoc, hasMore: docs.length === pageSize };
+
+        const merged = [...specRows, ...mealRows].sort(
+            (a, b) => moderationRowSortMillis(b) - moderationRowSortMillis(a)
+        );
+        const items = merged.slice(skip, skip + pageSize);
+        feedLastPageRowCount = items.length;
+        feedLastPageHasMore = items.length === pageSize && (skip + pageSize < merged.length || !exhausted);
+
+        return { items, totalCount: feedTotalCount, hasMore: feedLastPageHasMore };
     } catch (e) {
         if (page === 1 && e?.code === 'failed-precondition' && mealsAdminMealsQueryMode === 1) {
             console.warn(
@@ -232,10 +427,17 @@ async function getFeedPage(options = {}) {
     }
 }
 
-/** 현재 페이지 meals 기준으로 공유 여부 조회. entryId+userId 일치 문서만 캐시에 넣음 (일간/베스트 등 타입은 기존과 동일 한계). */
-async function ensureSharedKeysForMeals(meals) {
-    if (!Array.isArray(meals) || meals.length === 0) return;
+/** 현재 페이지 식사(meals) 행 기준 공유 표시용 캐시 — sharedPhotos.entryId 매칭 */
+async function ensureSharedKeysForFeedRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return;
     if (!feedSharedKeysCache) feedSharedKeysCache = new Set();
+    for (const m of rows) {
+        if (m && (m.isDailyShare || m.isBestShare || m.isInsightShare) && m.userId && m.id) {
+            feedSharedKeysCache.add(`${m.userId}_${m.id}`);
+        }
+    }
+    const meals = rows.filter((m) => m && !m.isDailyShare && !m.isBestShare && !m.isInsightShare);
+    if (!meals.length) return;
     const byUser = new Map();
     for (const m of meals) {
         if (!m?.userId || !m?.id) continue;
@@ -264,7 +466,7 @@ async function ensureSharedKeysForMeals(meals) {
                     if (u && eid) feedSharedKeysCache.add(`${u}_${eid}`);
                 });
             } catch (e) {
-                console.warn('ensureSharedKeysForMeals:', e?.message || e);
+                console.warn('ensureSharedKeysForFeedRows:', e?.message || e);
             }
         }
     }
@@ -278,16 +480,19 @@ async function renderFeedManagement() {
     
     try {
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
-        const allMeals = await getFeedPageWithCache(feedCurrentPage);
-        await ensureSharedKeysForMeals(allMeals);
-        
-        // 필터 적용 (일반 게시물만 — 타임라인 전체 표시, 공유 여부는 캐시로 판별)
+        const allRows = await getFeedPageWithCache(feedCurrentPage);
+        await ensureSharedKeysForFeedRows(allRows);
+
         console.log('🔍 필터 적용:', feedFilters);
-        let filteredMeals = allMeals.filter(meal => {
-            const isActuallyShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
+        let filteredMeals = allRows.filter((meal) => {
+            const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
+            const isActuallyShared =
+                isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
             if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
             if (feedFilters.shared === 'no' && isActuallyShared) return false;
-            const hasPhotos = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0;
+            const hasPhotos =
+                (meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0) ||
+                Boolean(meal.photoUrl && String(meal.photoUrl).trim());
             if (feedFilters.hasPhotos === 'yes' && !hasPhotos) return false;
             if (feedFilters.hasPhotos === 'no' && hasPhotos) return false;
             const isBanned = meal.shareBanned === true;
@@ -295,26 +500,34 @@ async function renderFeedManagement() {
             if (feedFilters.banned === 'no' && isBanned) return false;
             return true;
         });
-        
+
         console.log(
-            `✅ 필터 적용 후: ${filteredMeals.length}개 (페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 총 ${feedTotalCount}개` : ' / 전체 수 집계 생략'})`
+            `✅ 필터 적용 후: ${filteredMeals.length}건 (페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 합산 총 ${feedTotalCount}건` : ' / 총 집계 생략'})`
         );
-        
-        // 서버 정렬과 무관하게 필터 적용 후 페이지 내는 기록 시각(recordedAt) 기준으로 맞춤
+
         filteredMeals.sort((a, b) => {
-            const ta = mealRecordedAtMillis(a);
-            const tb = mealRecordedAtMillis(b);
+            const ta = moderationRowSortMillis(a);
+            const tb = moderationRowSortMillis(b);
             if (tb !== ta) return tb - ta;
             return String(b.id || '').localeCompare(String(a.id || ''));
         });
-        
+
         // 페이지 단위 로드 결과에서만 표시
         const totalPages = computeFeedAdminTotalPages();
         const paginatedMeals = filteredMeals;
-        
+
+        if (paginatedMeals.length === 0) {
+            container.innerHTML =
+                '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+            adminFeedMonitoringLoaded = true;
+            return;
+        }
+
         // 사용자 정보 가져오기 (타임라인 게시물은 설정에서 닉네임/아이콘 조회)
         const userInfoMap = new Map();
-        const userIdsToFetch = [...new Set(paginatedMeals.map(m => m.userId).filter(Boolean))];
+        const userIdsToFetch = [
+            ...new Set(paginatedMeals.map((m) => m.userId).filter(Boolean))
+        ];
         const [emailMap] = await Promise.all([
             fetchAdminEmailsForUserIds(userIdsToFetch),
             Promise.all(
@@ -349,13 +562,7 @@ async function renderFeedManagement() {
             const row = userInfoMap.get(uid);
             row.email = emailMap.get(uid) || '';
         });
-        
-        if (paginatedMeals.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
-            adminFeedMonitoringLoaded = true;
-            return;
-        }
-        
+
         const reportsMap = await getReportsAggregateCached();
         window._feedReportDetails = {};
 
@@ -407,7 +614,11 @@ async function renderFeedManagement() {
             `;
         };
 
-        const rowsHtml = paginatedMeals.map((meal, rowIdx) => {
+        const rowsHtml =
+            paginatedMeals.length === 0
+                ? `<tr><td colspan="13" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
+                : paginatedMeals.map((meal, rowIdx) => {
+            const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
             const targetGroupKey = meal.isBestShare
                 ? `best_${meal.id}`
                 : meal.isDailyShare
@@ -431,28 +642,29 @@ async function renderFeedManagement() {
                       }
                     : baseAuthor;
 
-            const isShared = feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`);
+            const isShared =
+                isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
             const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
             const hasPhotos = (Array.isArray(meal.photos) && meal.photos.length > 0) || Boolean(meal.photoUrl);
             const isBanned = meal.shareBanned === true;
-            const hasDataMismatch = hasLocalSharedPhotos && !isShared;
+            const hasDataMismatch = !isCapture && hasLocalSharedPhotos && !isShared;
 
             const typeLabel = meal.isBestShare
-                ? '베스트 공유'
+                ? '주간 Best'
                 : meal.isDailyShare
-                    ? '일간보기 공유'
+                    ? '하루 기록'
                     : meal.isInsightShare
-                        ? '인사이트 공유'
+                        ? '밀당의 참견'
                         : '일반';
 
-            const whereTag = meal.place || meal.snackPlace || '';
-            const whereSubTag = meal.placeDetail || meal.placeMemo || '';
-            const whatTag = meal.category || meal.mealType || meal.snackType || '';
-            const whatSubTag = meal.menuDetail || meal.snackDetail || '';
-            const withTag = meal.withWhom || '';
-            const withSubTag = meal.withWhomDetail || '';
-            const ratingVal = meal.snackRating ?? meal.rating;
-            const satietyVal = meal.satiety;
+            const whereTag = isCapture ? '' : meal.place || meal.snackPlace || '';
+            const whereSubTag = isCapture ? '' : meal.placeDetail || meal.placeMemo || '';
+            const whatTag = isCapture ? '' : meal.category || meal.mealType || meal.snackType || '';
+            const whatSubTag = isCapture ? '' : meal.menuDetail || meal.snackDetail || '';
+            const withTag = isCapture ? '' : meal.withWhom || '';
+            const withSubTag = isCapture ? '' : meal.withWhomDetail || '';
+            const ratingVal = isCapture ? null : meal.snackRating ?? meal.rating;
+            const satietyVal = isCapture ? null : meal.satiety;
             const photoUrls = (() => {
                 if (Array.isArray(meal.photos) && meal.photos.length > 0) {
                     return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
@@ -503,7 +715,10 @@ async function renderFeedManagement() {
                     return raw;
                 }
             })();
-            const mealSlotDisplay = { date: mealDateLabel, label: mealSlotLabel };
+            const mealSlotDisplay =
+                typeof meal.slotDisplayLabel === 'string'
+                    ? { date: meal.slotDisplayDate ?? '', label: meal.slotDisplayLabel }
+                    : { date: mealDateLabel, label: mealSlotLabel };
 
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
@@ -580,7 +795,8 @@ async function renderFeedManagement() {
             `;
         }).join('');
 
-        container.innerHTML = `
+        container.innerHTML =
+            `
             <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white">
                 <table class="w-full table-fixed text-left">
                     <thead class="bg-slate-50">
@@ -659,6 +875,14 @@ function updateFeedFilterToggleColors() {
     });
 }
 
+/** 합산 건수가 있으면 전체 페이지 수, 없으면 현재까지 로드된 범위 기준 */
+function computeFeedAdminTotalPages() {
+    if (feedMealTotalCountKnown) {
+        return Math.max(1, Math.ceil((feedTotalCount || 0) / feedPageSize));
+    }
+    return Math.max(1, feedCurrentPage + (feedLastPageHasMore ? 1 : 0));
+}
+
 // 피드 페이지네이션 렌더링 (1,2,3… + 이전/다음 — 클릭 시 해당 페이지 조회)
 function renderFeedPagination(totalPages) {
     const paginationContainer = document.getElementById('feedPagination');
@@ -725,18 +949,14 @@ window.toggleFeedFilter = function(filterType) {
     renderFeedManagement();
 }
 
-// 피드 페이지 이동 (해당 페이지로 가기 위해 필요한 커서가 없으면 이전 페이지들 순차 로드)
-window.feedGoToPage = async function(page) {
+// 피드 페이지 이동 (캡처+식사 병합 목록 — 페이지 번호로 직접 조회)
+window.feedGoToPage = async function (page) {
     if (!adminFeedMonitoringLoaded) return;
     if (page < 1) return;
     const totalPages = computeFeedAdminTotalPages();
-    const targetPage = Math.min(page, totalPages);
-    for (let p = 2; p < targetPage; p++) {
-        if (!feedLastDocsByPage[p]) await getFeedPageWithCache(p);
-    }
-    feedCurrentPage = targetPage;
-    renderFeedManagement();
-}
+    feedCurrentPage = Math.min(page, totalPages);
+    await renderFeedManagement();
+};
 
 // 피드 관리 새로고침
 window.refreshFeedManagement = async function () {

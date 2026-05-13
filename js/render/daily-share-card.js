@@ -1,6 +1,6 @@
 /**
  * 일간보기 공유용 컴팩트 카드 (html2canvas 캡처용 DOM)
- * 하루 소감 공유 캡처는 타임라인「식사보기·간식보기」가 모두「자동(mixed)」일 때와 동일한 표시 규칙을 씁니다.
+ * 하루 기록 공유 캡처는 타임라인「식사보기·간식보기」가 모두「자동(mixed)」일 때와 동일한 표시 규칙을 씁니다.
  */
 import {
     SLOTS,
@@ -347,7 +347,7 @@ export function createDailyShareCard(dateStr, forPreview = false) {
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="font-size: 16px; display: flex; align-items: center;">📅</span>
-                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${escapeHtml(userNickname)}의 하루소감</span>
+                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${escapeHtml(userNickname)}의 하루 기록</span>
                 </div>
             </div>
             <div style="padding: 2px 0 12px 0; background: #f1f5f9;">

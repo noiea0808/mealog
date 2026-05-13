@@ -598,7 +598,7 @@ export const dbOps = {
             return;
         }
         if (isDemoUser(currentUser)) {
-            showToast('샘플 계정에서는 하루 소감을 저장할 수 없습니다.', 'error');
+            showToast('샘플 계정에서는 하루 기록을 저장할 수 없습니다.', 'error');
             return;
         }
         try {

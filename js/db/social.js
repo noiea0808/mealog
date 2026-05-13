@@ -309,7 +309,7 @@ export const postInteractions = {
                     const y = d.getFullYear();
                     const m = d.getMonth() + 1;
                     const day = d.getDate();
-                    return `${y}년 ${m}월 ${day}일 하루소감`;
+                    return `${y}년 ${m}월 ${day}일 하루 기록`;
                 }
                 if (shareType === 'best' && data.periodText) {
                     const pt = (data.periodType || '주간').trim();

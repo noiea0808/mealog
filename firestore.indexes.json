@@ -84,6 +84,14 @@
       "collectionGroup": "sharedPhotos",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "sharedPhotos",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "entryId", "order": "ASCENDING" },
         { "fieldPath": "userId", "order": "ASCENDING" }
       ]

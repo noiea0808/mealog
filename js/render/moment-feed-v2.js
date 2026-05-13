@@ -183,7 +183,7 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                 <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden px-1.5 pt-1.5 pb-2">
                     <div class="moment-v2-social-comments-input-shell relative backdrop-blur-sm">
                         <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
-                        <input type="text" id="comment-text-${p}" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 rounded-none border-0 bg-transparent py-0 text-[14px] leading-none text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeypress='if(event.key==="Enter")window.submitComment(${postIdJs})'>
+                        <textarea id="comment-text-${p}" rows="1" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent py-1 text-[14px] leading-snug text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeydown='if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();window.submitComment(${postIdJs});}'></textarea>
                         <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="입력">
                             <i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i>
                         </button>
@@ -276,7 +276,14 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         </div>`
         : '';
     const maxH = 'min(88vh, calc(100dvh - 7rem))';
-    if (isBest || isDaily || isInsight) {
+    /** 일간 캡처 PNG: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
+    if (isDaily) {
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--daily-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
+            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-daily-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+            ${bannedOverlay}
+        </div>`;
+    }
+    if (isBest || isInsight) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
@@ -323,6 +330,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     } = params;
     const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
     const flags = { isBestShare, isDailyShare, isInsightShare };
+    const rootDailyAttr = isDailyShare ? ' data-moment-v2-daily-share="1"' : '';
     const postIdForUi = String(overlayRow?.overlayPostId || String(postIdParam || ''));
     const postIdJs = postIdJsParam != null ? postIdJsParam : JSON.stringify(String(postIdForUi || ''));
     const n = photoGroup.length;
@@ -338,7 +346,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         const bgsJson = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p?.photoUrl || '')));
         const bg0 = String(photoGroup[0]?.photoUrl || '').trim();
         const hpostBgBlock =
-            bg0.length > 0
+            !isDailyShare && bg0.length > 0
                 ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg moment-v2-hpost-bg-wrap" data-moment-v2-hpost-backdrop="1" aria-hidden="true">
   <img src="${escapeHtml(bg0)}" alt="" draggable="false" class="moment-v2-hpost-bg-img" loading="eager" />
   <div class="pointer-events-none absolute inset-0 moment-v2-hpost-bg-dim" aria-hidden="true"></div>
@@ -358,7 +366,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         const momentChrome = overlayRow ? buildV2InlineChromeHtml(overlayRow) : '';
         const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
         const wheelBlock = buildMomentV2WheelCaptionHtml(photoGroup[0], captionTextPlain, flags);
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch gap-px overflow-hidden rounded-lg" data-moment-v2-hpost-ambient data-moment-v2-hstrip-bgs="${bgsJson}">
@@ -413,7 +421,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
                 : '';
             const bgUrl = String(p?.photoUrl || '').trim();
             const bgBlock =
-                bgUrl.length > 0
+                p.type !== 'daily' && bgUrl.length > 0
                     ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden moment-v2-v-unit-bg-wrap" aria-hidden="true" data-moment-v2-bg-clip>
   <img src="${escapeHtml(bgUrl)}" alt="" draggable="false" class="moment-v2-v-unit-bg-img" loading="${idx === 0 ? 'eager' : 'lazy'}" />
 </div>`
@@ -435,7 +443,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         })
         .join('');
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>

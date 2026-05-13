@@ -233,6 +233,16 @@ body.keyboard-closed #boardWriteView {
     min-height: 60vh;
     padding: 0.75rem 1rem; /* py-3 px-4 */
 }
+/* 일간 하루 기록: 타임라인 탭 좌우 패딩을 상쇄해 가로를 꽉 채우되, 본문·제목은 양쪽에 한 글자씩 여백 */
+#timelineView .daily-journal-section {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+    max-width: none;
+    box-sizing: border-box;
+    padding-left: max(0.75rem, 1em);
+    padding-right: max(0.75rem, 1em);
+}
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
@@ -403,8 +413,7 @@ header .mealog-title {
     border: 1px solid #f1f5f9; 
 }
 
-/* 하루소감·주간베스트 코멘트 입력창: 포커스 시 보더 진한 회색 1px */
-#dailyCommentInput:focus,
+/* 주간베스트 코멘트 입력창: 포커스 시 보더 진한 회색 1px */
 #bestShareComment:focus {
     outline: none;
     border-width: 1px;
@@ -412,7 +421,8 @@ header .mealog-title {
 }
 
 #generalCommentInput,
-#snackCommentInput {
+#snackCommentInput,
+#dailyCommentInput {
     border-left: 0 !important;
     border-right: 0 !important;
     border-top-left-radius: 0 !important;
@@ -426,7 +436,10 @@ header .mealog-title {
 #generalCommentInput:active,
 #snackCommentInput:focus,
 #snackCommentInput:focus-visible,
-#snackCommentInput:active {
+#snackCommentInput:active,
+#dailyCommentInput:focus,
+#dailyCommentInput:focus-visible,
+#dailyCommentInput:active {
     border-color: #e2e8f0 !important;
     outline: none !important;
     box-shadow: none !important;
@@ -1820,6 +1833,53 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
 }
+/* 일간 공유 PNG: 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경(고정 aspect 슬롯의 옅은 매트 대신 미리보기와 동일한 인상) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
+#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface--daily-share {
+    width: 100%;
+    min-width: 100%;
+    background-color: #ffffff !important;
+    --tw-ring-color: rgba(226, 232, 240, 0.45) !important;
+}
+/* 일간 공유: 휠 라벨 폭(--meal-wheel-caption-inner-w)에 맞추면 캡처 PNG가 카드보다 좁아 보임 → 사진 열만 카드 가로 100% */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack {
+    align-items: stretch !important;
+}
+/* 일간: 뷰포트·이미지에 88vh 상한이 있으면 세로만 맞추느라 가로가 줄고 좌우 빈칸 생김 */
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural {
+    max-height: none !important;
+    overflow: visible !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img {
+    max-height: none !important;
+    width: 100% !important;
+    height: auto !important;
+    object-fit: initial;
+}
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-stage--split-caption .moment-v2-dock-slab {
     width: var(--meal-wheel-caption-inner-w, 100%);
@@ -1848,8 +1908,7 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     min-height: min-content;
     overflow: hidden;
 }
-/* (이전) 베스트·일간 PNG: intrinsic 높이 → 로드 시 가로폭이 좁아졌다 넓어지는 CLS 방지를 위해
-   사진은 슬롯 aspect-ratio + object-contain으로 통일(일반 식사 사진과 동일 패턴). */
+/* 베스트/인사이트 공유 PNG: aspect-ratio + object-contain 슬롯. 일간은 모먼트에서 자연 높이(너비 100%)로 표시. */
 /* 화면2 세로 스택: 단위마다 블러 배경(사진 확대·투명) */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit .moment-v2-v-unit-bg-wrap,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit .moment-v2-v-unit-bg-wrap {
@@ -2974,12 +3033,12 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
     position: relative;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-start;
     gap: 0.25rem;
     min-height: 2.5rem;
-    height: 2.5rem;
-    padding: 0 0.375rem;
+    height: auto;
+    padding: 0.375rem 0.375rem 0.375rem calc(0.375rem + (2.5rem - 4px) + 0.25rem);
     box-sizing: border-box;
     /* 왼쪽만 크게 라운드(아이콘이 들어가는 캡슐) */
     border-radius: 9999px 0 0 9999px;
@@ -2997,11 +3056,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     position: absolute;
     flex: 0 0 auto;
     left: 0.375rem;
-    top: 50%;
-    transform: translateY(-50%);
-    /* 입력창(2.5rem)보다 상하 합계 4px 작게 */
-    height: calc(100% - 4px);
-    width: auto;
+    top: 0.4rem;
+    transform: none;
+    width: calc(2.5rem - 4px);
+    height: calc(2.5rem - 4px);
     aspect-ratio: 1 / 1;
     border-radius: 9999px;
     z-index: 3;
@@ -3016,28 +3074,31 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     line-height: 1;
     overflow: hidden;
 }
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
-    /* 텍스트는 아이콘 오른쪽에서 자연스럽게 시작 */
-    padding-left: calc(0.375rem + (2.5rem - 4px) + 0.25rem);
-}
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input {
     flex: 1 1 auto;
     min-width: 0;
-    height: 100% !important;
-    min-height: 0 !important;
+    min-height: 2.25rem !important;
+    height: auto !important;
+    max-height: 11rem;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding-left: 0.125rem !important;
     /* 전송 버튼 영역 확보 */
     padding-right: 2.75rem !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+    line-height: 1.38 !important;
+    word-break: break-word;
+    white-space: pre-wrap;
     background: transparent !important;
 }
 
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send {
     position: absolute;
     right: 0.25rem;
-    top: 50%;
-    transform: translateY(-50%);
+    bottom: 0.35rem;
+    top: auto;
+    transform: none;
     height: 2.1rem;
     width: 2.1rem;
     border-radius: 9999px;
@@ -3062,10 +3123,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: rgba(5, 150, 105, 0.95);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:active:not(:disabled) {
-    transform: translateY(-50%) scale(0.96);
+    transform: scale(0.96);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send.is-pressed:not(:disabled) {
-    transform: translateY(-50%) scale(0.95);
+    transform: scale(0.95);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-avatar img {
     width: 100%;

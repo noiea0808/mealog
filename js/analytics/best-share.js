@@ -841,7 +841,7 @@ export async function openShareBestModal() {
     const userNickname = window.userSettings?.profile?.nickname || '익명';
     const userIcon = window.userSettings?.profile?.icon || '🐻';
     
-    // 스크린샷용 HTML 생성 (하루소감과 동일 레이아웃, mealog만 노란색)
+    // 스크린샷용 HTML 생성 (하루 기록과 동일 레이아웃, mealog만 노란색)
     const borderLightGray = '#e2e8f0';
     const borderOuterGray = '#cbd5e1';
     const mealogYellow = '#fcd34d';

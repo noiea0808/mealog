@@ -968,6 +968,38 @@ function refreshTimelineAfterSnackViewChange() {
     renderTimeline();
 }
 
+function getDailyCommentTextForTimeline(dateStr) {
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            return window.dbOps.getDailyComment(dateStr) || '';
+        }
+    } catch (_) {}
+    const dc = window.userSettings && window.userSettings.dailyComments;
+    if (dc && typeof dc === 'object') return String(dc[dateStr] || '');
+    return '';
+}
+
+/** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
+function injectDailyJournalCard(sectionEl, dateStr) {
+    if (!sectionEl || !dateStr) return;
+    sectionEl.querySelector('#dailyCommentSection')?.remove();
+    const text = getDailyCommentTextForTimeline(dateStr);
+    const wrap = document.createElement('div');
+    wrap.id = 'dailyCommentSection';
+    wrap.className = 'daily-journal-section w-full max-w-none pb-4 pt-1';
+    wrap.innerHTML = `
+      <div class="w-full border-y border-slate-200 bg-white shadow-sm">
+        <div class="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90">
+          <span class="text-sm font-black text-slate-800">하루 기록</span>
+          <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
+            class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
+        </div>
+        <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="6"
+          class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[160px] appearance-none">${escapeHtml(text)}</textarea>
+      </div>`;
+    sectionEl.appendChild(wrap);
+}
+
 let timelineViewSelectDelegationBound = false;
 function ensureTimelineViewSelectDelegation() {
     if (timelineViewSelectDelegationBound) return;
@@ -1410,13 +1442,20 @@ export function renderTimeline() {
         insertTimelineDateSectionInChronologicalOrder(container, section, dateStr);
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
-    
-    // 일간보기「하루 소감」입력 카드는 사용하지 않음 — 남아 있으면 제거
-    const existingCommentSection = document.getElementById('dailyCommentSection');
-    if (existingCommentSection) {
-        existingCommentSection.remove();
+
+    if (state.viewMode === 'page') {
+        const py = state.pageDate.getFullYear();
+        const pm = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+        const pd = String(state.pageDate.getDate()).padStart(2, '0');
+        const pageDateStr = `${py}-${pm}-${pd}`;
+        const pageSection = document.getElementById(`date-${pageDateStr}`);
+        if (pageSection) {
+            injectDailyJournalCard(pageSection, pageDateStr);
+        }
+    } else {
+        document.getElementById('dailyCommentSection')?.remove();
     }
-    
+
     // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
     if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
         const todaySection = document.getElementById(`date-${todayStr}`);
