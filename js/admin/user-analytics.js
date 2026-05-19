@@ -54,6 +54,17 @@ function activitySpanBucket(user) {
     return '1년 초과';
 }
 
+/** 마지막 로그인 시각이 최근 `days`일 이내인지 (없거나 파싱 불가면 false) */
+function isLastLoginWithinDays(user, days) {
+    const t = user.lastLoginAt;
+    if (t == null) return false;
+    const d = t instanceof Date ? t : new Date(t);
+    const ms = d.getTime();
+    if (!Number.isFinite(ms)) return false;
+    const cutoff = Date.now() - days * DAY_MS;
+    return ms >= cutoff;
+}
+
 /** UI·집계와 동일한 6종 + 미입력 (그 외 문자열은 기타로 묶음) */
 const LIFESTYLE_ORDER = ['직장인', '프리랜서', '자영업', '주부', '학생', '기타', '미입력'];
 const LIFESTYLE_EXACT = new Set(['직장인', '프리랜서', '자영업', '주부', '학생', '기타']);
@@ -108,16 +119,12 @@ const ACTIVITY_ORDER = [
 
 const AGE_BAND_MISS = '미입력·알 수 없음';
 
-/** 나이대: 인원 많은 순, 단 미입력·알 수 없음 은 항상 맨 아래 */
-function entriesAgeBandOrdered(map) {
-    const rest = [...map.entries()].filter(([k]) => k !== AGE_BAND_MISS);
-    rest.sort((a, b) => b[1] - a[1]);
-    rest.push([AGE_BAND_MISS, map.get(AGE_BAND_MISS) || 0]);
-    return rest;
-}
+/** 나이대: 연령 높은 구간 → 낮은 구간, 미입력·알 수 없음 은 항상 맨 아래 */
+const AGE_BAND_ORDER = ['50세 이상', '40~49세', '30~39세', '20~29세', '19세 이하', AGE_BAND_MISS];
 
-function renderBarRow(label, count, total, pct) {
+function renderBarRow(label, count, total, pct, barFillClass = 'bg-emerald-500/90') {
     const safeLabel = escapeHtml(label);
+    const fill = barFillClass || 'bg-emerald-500/90';
     return `
         <div class="flex flex-col gap-1 py-2 border-b border-slate-100 last:border-0">
             <div class="flex justify-between items-baseline gap-2 text-sm">
@@ -125,13 +132,21 @@ function renderBarRow(label, count, total, pct) {
                 <span class="text-slate-600 tabular-nums shrink-0">${count.toLocaleString('ko-KR')}명 <span class="text-slate-400">(${pct}%)</span></span>
             </div>
             <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div class="h-full bg-emerald-500/90 rounded-full transition-[width] duration-300" style="width:${pct}%"></div>
+                <div class="h-full ${fill} rounded-full transition-[width] duration-300" style="width:${pct}%"></div>
             </div>
         </div>
     `;
 }
 
-function renderSection(title, map, total, orderedEntries) {
+function renderSection(
+    title,
+    map,
+    total,
+    orderedEntries,
+    headerAddonHtml = '',
+    barFillClass = 'bg-emerald-500/90',
+    titleTrailHtml = ''
+) {
     const entries = orderedEntries != null ? orderedEntries : mapToSortedEntries(map);
     if (total === 0) {
         return `
@@ -141,18 +156,119 @@ function renderSection(title, map, total, orderedEntries) {
             </section>
         `;
     }
+    const fill = barFillClass || 'bg-emerald-500/90';
     const rows = entries
         .map(([label, count]) => {
             const pct = total > 0 ? Math.round((count / total) * 1000) / 10 : 0;
-            return renderBarRow(label, count, total, pct);
+            return renderBarRow(label, count, total, pct, fill);
         })
         .join('');
+    const addon = headerAddonHtml || '';
+    const trail = titleTrailHtml || '';
     return `
         <section class="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
-            <h3 class="text-sm font-black text-slate-800 mb-3">${escapeHtml(title)}</h3>
+            <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 mb-3">
+                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 min-w-0">
+                    <h3 class="text-sm font-black text-slate-800">${escapeHtml(title)}</h3>
+                    ${trail}
+                </div>
+                ${addon}
+            </div>
             <div class="space-y-0">${rows}</div>
         </section>
     `;
+}
+
+function buildActivityMapFromUsers(users) {
+    const activity = new Map();
+    for (const u of users) {
+        incrementMap(activity, activitySpanBucket(u));
+    }
+    return activity;
+}
+
+/** 분석 탭에서 재사용 — 새로 불러오기 전까지 유지 */
+let _adminAnalyticsUsers = null;
+let _activityFilterLastWeek = false;
+
+function renderAdminUserAnalyticsPanel() {
+    const mount = document.getElementById('adminUserAnalyticsMount');
+    if (!mount || !_adminAnalyticsUsers || !Array.isArray(_adminAnalyticsUsers)) return;
+
+    const users = _adminAnalyticsUsers;
+    const n = users.length;
+    const agg = buildAggregates(users);
+
+    const activitySubset = _activityFilterLastWeek ? users.filter((u) => isLastLoginWithinDays(u, 7)) : users;
+    const nActivity = activitySubset.length;
+    const aggActivity = buildActivityMapFromUsers(activitySubset);
+
+    const activityTitle = '활동일수(가입~마지막 로그인)';
+    const activityBarFill = _activityFilterLastWeek ? 'bg-orange-500/90' : 'bg-emerald-500/90';
+    const btnOn =
+        'bg-orange-500 text-white border-orange-600 shadow-sm hover:bg-orange-600';
+    const btnOff = 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50';
+    const weekBtnClass = _activityFilterLastWeek ? btnOn : btnOff;
+    const activitySumHtml = (() => {
+        const sum = [...aggActivity.values()].reduce((a, c) => a + c, 0);
+        const tone = _activityFilterLastWeek ? 'text-orange-700' : 'text-slate-600';
+        return `<span class="text-sm font-bold tabular-nums shrink-0 ${tone}" title="구간별 인원 합계">총 ${sum.toLocaleString('ko-KR')}명</span>`;
+    })();
+    const activitySectionInner =
+        nActivity === 0
+            ? `
+        <section class="bg-white border border-slate-100 rounded-xl p-4 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 mb-2">
+                <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 min-w-0">
+                    <h3 class="text-sm font-black text-slate-800">${escapeHtml(activityTitle)}</h3>
+                    <span class="text-sm font-bold tabular-nums shrink-0 ${_activityFilterLastWeek ? 'text-orange-700' : 'text-slate-500'}">총 0명</span>
+                </div>
+                <button type="button" id="adminUserAnalyticsActivityWeekBtn" class="admin-user-analytics-activity-week-btn shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${weekBtnClass}" aria-pressed="${_activityFilterLastWeek ? 'true' : 'false'}">
+                    최근 1주일
+                </button>
+            </div>
+            <p class="text-xs text-slate-400">${
+                _activityFilterLastWeek
+                    ? '마지막 로그인이 최근 7일 이내인 사용자가 없습니다.'
+                    : '데이터 없음'
+            }</p>
+        </section>
+    `
+            : renderSection(
+                  activityTitle,
+                  aggActivity,
+                  nActivity,
+                  entriesInFixedOrder(aggActivity, ACTIVITY_ORDER),
+                  `<button type="button" id="adminUserAnalyticsActivityWeekBtn" class="admin-user-analytics-activity-week-btn shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${weekBtnClass}" aria-pressed="${
+                      _activityFilterLastWeek ? 'true' : 'false'
+                  }">최근 1주일</button>`,
+                  activityBarFill,
+                  activitySumHtml
+              );
+
+    const footNote = _activityFilterLastWeek
+        ? `활동일수 차트만 <strong class="text-slate-700">마지막 로그인 7일 이내 ${nActivity.toLocaleString('ko-KR')}명</strong>을 집계했습니다. 나머지 차트는 전체 ${n.toLocaleString('ko-KR')}명 기준입니다.`
+        : `집계 대상 <strong class="text-slate-700">전체 ${n.toLocaleString('ko-KR')}명</strong> (Firestore <code class="text-[11px] bg-slate-100 px-1 rounded">users</code> 기준 전원).`;
+
+    mount.innerHTML = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            ${renderSection('라이프스타일', agg.lifestyle, n, entriesInFixedOrder(agg.lifestyle, LIFESTYLE_ORDER))}
+            ${renderSection('나이대', agg.ageBand, n, entriesInFixedOrder(agg.ageBand, AGE_BAND_ORDER))}
+            ${renderSection('성별', agg.gender, n, entriesInFixedOrder(agg.gender, GENDER_ORDER))}
+            ${renderSection('로그인 방법', agg.loginMethod, n, entriesInFixedOrder(agg.loginMethod, LOGIN_ORDER))}
+            ${activitySectionInner}
+        </div>
+        <p class="text-xs text-slate-500 mt-4 leading-relaxed">
+            ${footNote}
+            사용자 관리 표는 페이지 단위로만 보일 수 있으며, 사용자 분석은 Firestore 전원을 불러와 계산합니다.
+        </p>
+    `;
+
+    const weekBtn = mount.querySelector('#adminUserAnalyticsActivityWeekBtn');
+    weekBtn?.addEventListener('click', () => {
+        _activityFilterLastWeek = !_activityFilterLastWeek;
+        renderAdminUserAnalyticsPanel();
+    });
 }
 
 function buildAggregates(users) {
@@ -178,6 +294,8 @@ function buildAggregates(users) {
 export async function refreshAdminUserAnalytics() {
     const mount = document.getElementById('adminUserAnalyticsMount');
     if (!mount) return;
+    _adminAnalyticsUsers = null;
+    _activityFilterLastWeek = false;
     mount.innerHTML = `
         <div class="text-center py-16 text-slate-500 text-sm">
             <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 text-emerald-600" aria-hidden="true"></i>
@@ -208,25 +326,9 @@ export async function refreshAdminUserAnalytics() {
         `;
         return;
     }
-    const agg = buildAggregates(users);
-    mount.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            ${renderSection('라이프스타일', agg.lifestyle, n, entriesInFixedOrder(agg.lifestyle, LIFESTYLE_ORDER))}
-            ${renderSection('나이대', agg.ageBand, n, entriesAgeBandOrdered(agg.ageBand))}
-            ${renderSection('성별', agg.gender, n, entriesInFixedOrder(agg.gender, GENDER_ORDER))}
-            ${renderSection('로그인 방법', agg.loginMethod, n, entriesInFixedOrder(agg.loginMethod, LOGIN_ORDER))}
-            ${renderSection(
-                '활동일수(가입~마지막 로그인)',
-                agg.activity,
-                n,
-                entriesInFixedOrder(agg.activity, ACTIVITY_ORDER)
-            )}
-        </div>
-        <p class="text-xs text-slate-500 mt-4 leading-relaxed">
-            집계 대상 <strong class="text-slate-700">전체 ${n.toLocaleString('ko-KR')}명</strong> (Firestore <code class="text-[11px] bg-slate-100 px-1 rounded">users</code> 기준 전원).
-            사용자 관리 표는 페이지 단위로만 보일 수 있으며, 이 분석은 항상 전원입니다.
-        </p>
-    `;
+    _adminAnalyticsUsers = users;
+    _activityFilterLastWeek = false;
+    renderAdminUserAnalyticsPanel();
 }
 
 function setSubmenuButtonState(which) {
