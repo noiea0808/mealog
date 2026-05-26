@@ -979,6 +979,19 @@ function getDailyCommentTextForTimeline(dateStr) {
     return '';
 }
 
+const TIMELINE_WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
+
+function formatTimelineDateHeaderLabel(dateStr) {
+    const dObj = new Date(String(dateStr) + 'T00:00:00');
+    if (Number.isNaN(dObj.getTime())) return String(dateStr || '');
+    const y = dObj.getFullYear();
+    const m = dObj.getMonth() + 1;
+    const day = dObj.getDate();
+    const wd = TIMELINE_WEEKDAY_KO[dObj.getDay()] || '';
+    return `${y}. ${m}.${day} (${wd})`;
+}
+
+
 
 function getDailyVitalsForTimeline(dateStr) {
     try {
@@ -1059,27 +1072,6 @@ function ensureDailyJournalVitalsDelegation() {
 /** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
 function injectDailyJournalCard(sectionEl, dateStr) {
     if (!sectionEl || !dateStr) return;
-    sectionEl.querySelector('#dailyCommentSection')?.remove();
-    const text = getDailyCommentTextForTimeline(dateStr);
-    const wrap = document.createElement('div');
-    wrap.id = 'dailyCommentSection';
-    wrap.className = 'daily-journal-section w-full max-w-none pb-4 pt-1';
-    wrap.innerHTML = `
-      <div class="w-full border-y border-slate-200 bg-white shadow-sm">
-        <div class="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90">
-          <span class="text-sm font-black text-slate-800">하루 기록</span>
-          <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
-            class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
-        </div>
-        <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="5"
-          class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[136px] appearance-none">${escapeHtml(text)}</textarea>
-      </div>`;
-    sectionEl.appendChild(wrap);
-}
-
-/** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
-function injectDailyJournalCard(sectionEl, dateStr) {
-    if (!sectionEl || !dateStr) return;
     ensureDailyJournalVitalsDelegation();
     sectionEl.querySelector('#dailyCommentSection')?.remove();
     const text = getDailyCommentTextForTimeline(dateStr);
@@ -1091,7 +1083,7 @@ function injectDailyJournalCard(sectionEl, dateStr) {
     wrap.innerHTML = `
       <div class="w-full border-y border-slate-200 bg-white shadow-sm">
         <div class="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90">
-          <span class="text-sm font-black text-slate-800">하루 기록</span>
+          <span class="text-sm font-black text-slate-800">${escapeHtml(formatTimelineDateHeaderLabel(dateStr))}</span>
           <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
             class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
         </div>
@@ -1112,12 +1104,12 @@ function buildDailyJournalSummaryRowHtml(dateStr) {
     const safeText = escapeHtml(text);
     const safeDate = escapeHtml(dateStr);
     return `<div class="daily-journal-summary-row card mb-1.5 border border-slate-200 border-l-[4px] border-l-violet-500/70 transition-all !rounded-none cursor-pointer active:scale-[0.98]" data-mealog-daily-summary-date="${safeDate}" onclick='window.openDailyCommentModal && window.openDailyCommentModal(${JSON.stringify(dateStr)})'>
-        <div class="flex items-stretch">
-            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
+        <div class="flex items-start">
+            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r self-stretch">
                 <span class="text-sm font-bold leading-tight text-violet-600 break-words">하루 기록</span>
             </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-4">
-                <p class="daily-journal-summary-text mb-0 min-w-0 text-xs font-medium leading-relaxed text-slate-400">"${safeText}"</p>
+            <div class="flex min-w-0 flex-1 flex-col py-2.5 pl-3 pr-4 overflow-hidden">
+                <p class="daily-journal-summary-text mb-0 min-w-0 text-xs font-medium text-slate-400">"${safeText}"</p>
             </div>
         </div>
     </div>`;
@@ -1312,7 +1304,7 @@ export function renderTimeline() {
             </button>`;
         }
         let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between">
-            <h3>${dObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</h3>
+            <h3>${escapeHtml(formatTimelineDateHeaderLabel(dateStr))}</h3>
             ${shareButton}
         </div>`;
 

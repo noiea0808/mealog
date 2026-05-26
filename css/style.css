@@ -245,11 +245,19 @@ body.keyboard-closed #boardWriteView {
 }
 .daily-journal-summary-text {
     display: -webkit-box;
-    -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
     overflow: hidden;
-    white-space: pre-line;
+    white-space: normal;
     overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.625;
+    max-height: calc(1.625em * 5);
+    text-overflow: ellipsis;
+}
+.daily-journal-summary-row .flex.items-start {
+    align-items: flex-start;
 }
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
@@ -4486,14 +4494,24 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     border-bottom: 1px solid #f1f5f9;
 }
 .daily-journal-metric-wrap--off .daily-journal-metric-field {
-    opacity: 0.08;
-    filter: grayscale(1) blur(4px);
+    opacity: 0.04;
+    filter: grayscale(1) blur(8px);
     pointer-events: none;
 }
+.daily-journal-metric-wrap--off .daily-journal-vital-input,
+.daily-journal-metric-wrap--off .daily-journal-metric-field span {
+    color: transparent !important;
+    text-shadow: 0 0 10px rgb(100 116 139 / 0.35);
+}
 #timelineView .daily-journal-section .daily-journal-metric-off-layer {
-    background-color: rgb(241 245 249 / 0.68);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
+    background-color: rgb(248 250 252 / 0.88);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+}
+#timelineView .daily-journal-section .daily-journal-metric-off-layer .entry-gauge-off-layer__label {
+    color: #334155;
+    font-weight: 800;
+    text-shadow: 0 1px 2px rgb(255 255 255 / 0.95), 0 0 1px rgb(255 255 255 / 1);
 }
 
 /* 가로 휠(간식 만족도): 좌우 스냅 */
