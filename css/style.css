@@ -4437,20 +4437,26 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     transform: translateX(11px);
 }
 
-/* 기록 모달: 게이지 끔 — 뒤쪽 휠이 비활성 상태로 더 흐릿하게 보이도록 처리 */
+/* 기록 모달: 게이지 끔 — 뒤쪽 휠 텍스트가 비활성 상태로 더 흐릿하게 보이도록 처리 */
 .entry-gauge-dial-wrap--off .mealog-wheel__scroller {
-    opacity: 0.12;
-    filter: grayscale(1) blur(3px);
+    opacity: 0.08;
+    filter: grayscale(1) blur(5px);
     pointer-events: none;
 }
+.entry-gauge-dial-wrap--off .mealog-wheel__item,
+.entry-gauge-dial-wrap--off .mealog-wheel__satiety-label,
+.entry-gauge-dial-wrap--off .mealog-wheel__stars {
+    color: transparent;
+    text-shadow: 0 0 8px rgb(100 116 139 / 0.28);
+}
 .entry-gauge-dial-wrap--off .mealog-wheel__indicator {
-    opacity: 0.28;
-    filter: blur(1.2px);
+    opacity: 0.2;
+    filter: blur(2px);
 }
 .entry-gauge-off-layer {
-    background-color: rgb(241 245 249 / 0.78);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    background-color: rgb(241 245 249 / 0.82);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
 }
 .entry-gauge-off-layer__label {
     position: relative;
