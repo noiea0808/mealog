@@ -979,6 +979,83 @@ function getDailyCommentTextForTimeline(dateStr) {
     return '';
 }
 
+
+function getDailyVitalsForTimeline(dateStr) {
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyVitals === 'function') {
+            return window.dbOps.getDailyVitals(dateStr);
+        }
+    } catch (_) {}
+    const raw = window.userSettings?.dailyVitals?.[dateStr];
+    if (!raw || typeof raw !== 'object') {
+        return { weight: '', glucose: '', weightOn: false, glucoseOn: false };
+    }
+    return {
+        weight: raw.weight != null && raw.weight !== '' ? String(raw.weight) : '',
+        glucose: raw.glucose != null && raw.glucose !== '' ? String(raw.glucose) : '',
+        weightOn: raw.weightOn === true,
+        glucoseOn: raw.glucoseOn === true
+    };
+}
+
+function buildDailyJournalMetricHtml(vital, label, unit, dateStr, vitals) {
+    const on = vital === 'weight' ? vitals.weightOn : vitals.glucoseOn;
+    const val = vital === 'weight' ? vitals.weight : vitals.glucose;
+    const checked = on ? ' checked' : '';
+    const wrapOff = on ? '' : ' daily-journal-metric-wrap--off';
+    const layerHidden = on ? 'hidden ' : '';
+    return `
+        <div class="daily-journal-metric min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span class="text-xs font-extrabold text-slate-600 uppercase">${escapeHtml(label)}</span>
+            <label class="entry-gauge-switch" title="${escapeHtml(label)} 기록">
+              <input type="checkbox" class="peer sr-only daily-journal-vital-toggle" data-vital-toggle="${vital}" data-mealog-date="${escapeHtml(dateStr)}" role="switch" aria-label="${escapeHtml(label)} 기록 사용"${checked}>
+              <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+              <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+            </label>
+          </div>
+          <div class="daily-journal-metric-wrap relative rounded-xl border border-slate-200 bg-slate-50${wrapOff}" data-vital-wrap="${vital}">
+            <div class="daily-journal-metric-field flex items-center gap-2 px-3 py-2.5 min-h-[44px]">
+              <input type="text" inputmode="decimal" autocomplete="off" data-vital-input="${vital}" data-mealog-date="${escapeHtml(dateStr)}" value="${escapeHtml(val)}" placeholder="—" class="daily-journal-vital-input flex-1 min-w-0 bg-transparent border-0 p-0 text-sm font-bold text-slate-800 outline-none focus:ring-0 appearance-none">
+              <span class="text-xs font-bold text-slate-400 shrink-0 tabular-nums">${escapeHtml(unit)}</span>
+            </div>
+            <div class="entry-gauge-off-layer daily-journal-metric-off-layer ${layerHidden}absolute inset-0 z-[5] flex items-center justify-center rounded-xl px-2" data-vital-off="${vital}" aria-hidden="${on ? 'true' : 'false'}" role="status">
+              <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
+            </div>
+          </div>
+        </div>`;
+}
+
+function applyDailyJournalVitalsUi(sectionEl) {
+    if (!sectionEl) return;
+    ['weight', 'glucose'].forEach((vital) => {
+        const toggle = sectionEl.querySelector(`[data-vital-toggle="${vital}"]`);
+        const wrap = sectionEl.querySelector(`[data-vital-wrap="${vital}"]`);
+        const layer = sectionEl.querySelector(`[data-vital-off="${vital}"]`);
+        const on = toggle?.checked === true;
+        if (wrap) wrap.classList.toggle('daily-journal-metric-wrap--off', !on);
+        if (layer) {
+            layer.classList.toggle('hidden', on);
+            layer.setAttribute('aria-hidden', on ? 'true' : 'false');
+        }
+    });
+}
+
+let dailyJournalVitalsDelegationBound = false;
+function ensureDailyJournalVitalsDelegation() {
+    if (dailyJournalVitalsDelegationBound) return;
+    const root = document.getElementById('timelineContainer');
+    if (!root) return;
+    dailyJournalVitalsDelegationBound = true;
+    root.addEventListener('change', (e) => {
+        const t = e.target;
+        if (!t?.classList?.contains('daily-journal-vital-toggle')) return;
+        const section = t.closest('.daily-journal-section');
+        if (!section || !root.contains(section)) return;
+        applyDailyJournalVitalsUi(section);
+    });
+}
+
 /** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
 function injectDailyJournalCard(sectionEl, dateStr) {
     if (!sectionEl || !dateStr) return;
@@ -998,6 +1075,35 @@ function injectDailyJournalCard(sectionEl, dateStr) {
           class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[136px] appearance-none">${escapeHtml(text)}</textarea>
       </div>`;
     sectionEl.appendChild(wrap);
+}
+
+/** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
+function injectDailyJournalCard(sectionEl, dateStr) {
+    if (!sectionEl || !dateStr) return;
+    ensureDailyJournalVitalsDelegation();
+    sectionEl.querySelector('#dailyCommentSection')?.remove();
+    const text = getDailyCommentTextForTimeline(dateStr);
+    const vitals = getDailyVitalsForTimeline(dateStr);
+    const wrap = document.createElement('div');
+    wrap.id = 'dailyCommentSection';
+    wrap.setAttribute('data-mealog-date', dateStr);
+    wrap.className = 'daily-journal-section w-full max-w-none pb-4 pt-1';
+    wrap.innerHTML = `
+      <div class="w-full border-y border-slate-200 bg-white shadow-sm">
+        <div class="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90">
+          <span class="text-sm font-black text-slate-800">하루 기록</span>
+          <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
+            class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
+        </div>
+        <div class="daily-journal-metrics">
+          ${buildDailyJournalMetricHtml('weight', '체중', 'kg', dateStr, vitals)}
+          ${buildDailyJournalMetricHtml('glucose', '혈당', 'mg/dL', dateStr, vitals)}
+        </div>
+        <textarea id="dailyCommentInput" data-mealog-daily-comment-input data-mealog-date="${escapeHtml(dateStr)}" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="5"
+          class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[136px] appearance-none">${escapeHtml(text)}</textarea>
+      </div>`;
+    sectionEl.appendChild(wrap);
+    applyDailyJournalVitalsUi(wrap);
 }
 
 function buildDailyJournalSummaryRowHtml(dateStr) {

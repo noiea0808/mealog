@@ -4476,6 +4476,26 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     text-shadow: 0 1px 1px rgb(255 255 255 / 0.85);
 }
 
+
+/* 하루 기록: 체중·혈당 토글 오프 — 뒤 입력 영역을 더 흐리게 */
+.daily-journal-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.daily-journal-metric-wrap--off .daily-journal-metric-field {
+    opacity: 0.08;
+    filter: grayscale(1) blur(4px);
+    pointer-events: none;
+}
+#timelineView .daily-journal-section .daily-journal-metric-off-layer {
+    background-color: rgb(241 245 249 / 0.68);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+}
+
 /* 가로 휠(간식 만족도): 좌우 스냅 */
 .mealog-wheel--x .mealog-wheel__indicator {
     left: 50%;

@@ -628,6 +628,51 @@ export const dbOps = {
         }
         return window.userSettings.dailyComments[date] || '';
     },
+
+    getDailyVitals(date) {
+        const raw = window.userSettings?.dailyVitals?.[date];
+        if (!raw || typeof raw !== 'object') {
+            return { weight: '', glucose: '', weightOn: false, glucoseOn: false };
+        }
+        return {
+            weight: raw.weight != null && raw.weight !== '' ? String(raw.weight) : '',
+            glucose: raw.glucose != null && raw.glucose !== '' ? String(raw.glucose) : '',
+            weightOn: raw.weightOn === true,
+            glucoseOn: raw.glucoseOn === true
+        };
+    },
+
+    async saveDailyVitals(date, vitals) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
+            showToast('저장 실패: 로그인이 필요합니다.', 'error');
+            return;
+        }
+        if (isDemoUser(currentUser)) {
+            showToast('샘플 계정에서는 하루 기록을 저장할 수 없습니다.', 'error');
+            return;
+        }
+        if (!vitals || typeof vitals !== 'object') return;
+        try {
+            if (!window.userSettings.dailyVitals) {
+                window.userSettings.dailyVitals = {};
+            }
+            const weight = String(vitals.weight ?? '').trim();
+            const glucose = String(vitals.glucose ?? '').trim();
+            const weightOn = vitals.weightOn === true;
+            const glucoseOn = vitals.glucoseOn === true;
+            const hasData = weightOn || glucoseOn || weight || glucose;
+            if (!hasData) {
+                delete window.userSettings.dailyVitals[date];
+            } else {
+                window.userSettings.dailyVitals[date] = { weight, glucose, weightOn, glucoseOn };
+            }
+            await dbOps.saveSettings(window.userSettings);
+        } catch (e) {
+            console.error('Daily Vitals Save Error:', e);
+            throw e;
+        }
+    },
     
     // 공유 사진 추가 (Cloud Functions 사용 - 레이트 리밋 적용)
     async sharePhotos(photosToShare, mealData) {

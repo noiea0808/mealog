@@ -547,9 +547,45 @@ window.executeDailyShare = async (dateStr) => {
 };
 */
 
+function getDailyJournalSectionForDate(date, sourceEl = null) {
+    const dateStr = String(date || '');
+    const scopedSection = sourceEl?.closest?.('.daily-journal-section');
+    if (scopedSection && (!dateStr || scopedSection.getAttribute('data-mealog-date') === dateStr)) {
+        return scopedSection;
+    }
+    return [...document.querySelectorAll('.daily-journal-section')].find(
+        (el) => el.getAttribute('data-mealog-date') === dateStr
+    );
+}
+
+function getDailyCommentInputForDate(date, sourceEl = null) {
+    const section = getDailyJournalSectionForDate(date, sourceEl);
+    if (section) {
+        const scopedInput = section.querySelector('textarea[data-mealog-daily-comment-input], #dailyCommentInput');
+        if (scopedInput) return scopedInput;
+    }
+    return document.getElementById('dailyCommentInput');
+}
+
+function collectDailyVitalsFromSection(section) {
+    if (!section) {
+        return { weight: '', glucose: '', weightOn: false, glucoseOn: false };
+    }
+    const weightToggle = section.querySelector('[data-vital-toggle="weight"]');
+    const glucoseToggle = section.querySelector('[data-vital-toggle="glucose"]');
+    const weightInput = section.querySelector('[data-vital-input="weight"]');
+    const glucoseInput = section.querySelector('[data-vital-input="glucose"]');
+    return {
+        weight: weightInput?.value?.trim() || '',
+        glucose: glucoseInput?.value?.trim() || '',
+        weightOn: weightToggle?.checked === true,
+        glucoseOn: glucoseToggle?.checked === true
+    };
+}
+
 // 일간보기 하루 기록(일간 코멘트) 저장 함수
-window.saveDailyComment = async (date) => {
-    const input = document.getElementById('dailyCommentInput');
+window.saveDailyComment = async (date, sourceEl = null) => {
+    const input = getDailyCommentInputForDate(date, sourceEl);
     if (!input) {
         console.warn('[saveDailyComment] #dailyCommentInput 없음 — 타임라인「일간」모드에서만 표시됩니다.');
         showToast('하루 기록 영역을 찾을 수 없어요. 타임라인에서「일간」보기로 전환한 뒤 다시 시도해 주세요.', 'error');
@@ -557,12 +593,17 @@ window.saveDailyComment = async (date) => {
     }
     
     const comment = input.value || '';
+    const section = getDailyJournalSectionForDate(date, sourceEl);
+    const vitals = collectDailyVitalsFromSection(section);
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     try {
         await dbOps.saveDailyComment(date, comment);
-        showToast("하루 전체 Comment가 저장되었습니다.", 'success');
+        if (typeof dbOps.saveDailyVitals === 'function') {
+            await dbOps.saveDailyVitals(date, vitals);
+        }
+        showToast('하루 기록이 저장되었습니다.', 'success');
         // 전체 renderTimeline()은 스크롤·레이아웃이 튀므로 생략 — 이미 메모리·Firestore에 반영됨
         if (input) input.blur();
         if (appState.currentTab === 'gallery') {
@@ -672,7 +713,7 @@ window.saveDailyCommentFromModal = async (dateStr) => {
             const d = appState.pageDate;
             const pageStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             if (pageStr === dateStr) {
-                const inlineIn = document.getElementById('dailyCommentInput');
+                const inlineIn = getDailyCommentInputForDate(dateStr);
                 if (inlineIn) inlineIn.value = comment;
             }
         }
@@ -718,7 +759,7 @@ function bindMealogDailyTimelineDelegation() {
             }
         } else if (kind === 'save-comment') {
             if (typeof window.saveDailyComment === 'function') {
-                void window.saveDailyComment(dateStr);
+                void window.saveDailyComment(dateStr, btn);
             } else {
                 console.error('[Mealog] saveDailyComment 미정의');
                 showToast('저장 기능을 불러오지 못했습니다. 페이지를 새로고침 해 주세요.', 'error');
