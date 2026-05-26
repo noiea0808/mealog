@@ -986,6 +986,7 @@ function injectDailyJournalCard(sectionEl, dateStr) {
     const text = getDailyCommentTextForTimeline(dateStr);
     const wrap = document.createElement('div');
     wrap.id = 'dailyCommentSection';
+    wrap.setAttribute('data-mealog-date', dateStr);
     wrap.className = 'daily-journal-section w-full max-w-none pb-4 pt-1';
     wrap.innerHTML = `
       <div class="w-full border-y border-slate-200 bg-white shadow-sm">
@@ -994,10 +995,21 @@ function injectDailyJournalCard(sectionEl, dateStr) {
           <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
             class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
         </div>
-        <textarea id="dailyCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="6"
+        <textarea id="dailyCommentInput" data-mealog-daily-comment-input data-mealog-date="${escapeHtml(dateStr)}" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="6"
           class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[160px] appearance-none">${escapeHtml(text)}</textarea>
       </div>`;
     sectionEl.appendChild(wrap);
+}
+
+function clearStalePageModeTimelineSections(container, currentDateStr) {
+    if (!container || !currentDateStr) return;
+    container.querySelectorAll(':scope > [id^="date-"]').forEach((section) => {
+        if (section.id !== `date-${currentDateStr}`) section.remove();
+    });
+    container.querySelectorAll('#dailyCommentSection').forEach((section) => section.remove());
+    if (Array.isArray(window.loadedDates)) {
+        window.loadedDates = window.loadedDates.filter((d) => d === currentDateStr);
+    }
 }
 
 let timelineViewSelectDelegationBound = false;
@@ -1120,6 +1132,7 @@ export function renderTimeline() {
         const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
         targetDates.push(`${pageYear}-${pageMonth}-${pageDay}`);
     }
+    const currentPageDateStr = state.viewMode === 'page' ? targetDates[0] : '';
 
     // 날짜를 최신순으로 정렬하여 DOM에 추가 (최신 -> 과거)
     let sortedTargetDates = [...targetDates].sort((a, b) => b.localeCompare(a));
@@ -1144,6 +1157,11 @@ export function renderTimeline() {
                 sortedTargetDates.unshift(todayStr);
             }
         }
+    }
+
+    if (state.viewMode === 'page') {
+        clearStalePageModeTimelineSections(container, currentPageDateStr);
+        sortedTargetDates = sortedTargetDates.filter((d) => d === currentPageDateStr);
     }
 
     sortedTargetDates.forEach((dateStr) => {
