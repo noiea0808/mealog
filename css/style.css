@@ -243,6 +243,14 @@ body.keyboard-closed #boardWriteView {
     padding-left: max(0.75rem, 1em);
     padding-right: max(0.75rem, 1em);
 }
+.daily-journal-summary-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
@@ -4442,6 +4450,10 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     opacity: 0.08;
     filter: grayscale(1) blur(5px);
     pointer-events: none;
+}
+.entry-gauge-dial-wrap--off .mealog-wheel__scroller * {
+    opacity: 0.65;
+    filter: blur(1px);
 }
 .entry-gauge-dial-wrap--off .mealog-wheel__item,
 .entry-gauge-dial-wrap--off .mealog-wheel__satiety-label,

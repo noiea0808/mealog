@@ -1000,6 +1000,23 @@ function injectDailyJournalCard(sectionEl, dateStr) {
     sectionEl.appendChild(wrap);
 }
 
+function buildDailyJournalSummaryRowHtml(dateStr) {
+    const text = getDailyCommentTextForTimeline(dateStr).trim();
+    if (!text) return '';
+    const safeText = escapeHtml(text);
+    const safeDate = escapeHtml(dateStr);
+    return `<div class="daily-journal-summary-row card mb-1.5 border border-slate-200 border-l-[4px] border-l-violet-500/70 transition-all !rounded-none cursor-pointer active:scale-[0.98]" data-mealog-daily-summary-date="${safeDate}" onclick='window.openDailyCommentModal && window.openDailyCommentModal(${JSON.stringify(dateStr)})'>
+        <div class="flex items-stretch">
+            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
+                <span class="text-sm font-bold leading-tight text-violet-600 break-words">하루 기록</span>
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-4">
+                <p class="daily-journal-summary-text mb-0 min-w-0 text-xs font-medium leading-relaxed text-slate-400">"${safeText}"</p>
+            </div>
+        </div>
+    </div>`;
+}
+
 let timelineViewSelectDelegationBound = false;
 function ensureTimelineViewSelectDelegation() {
     if (timelineViewSelectDelegationBound) return;
@@ -1438,6 +1455,9 @@ export function renderTimeline() {
                 }
             }
         });
+        if (state.viewMode !== 'page') {
+            html += buildDailyJournalSummaryRowHtml(dateStr);
+        }
         section.innerHTML = html;
         insertTimelineDateSectionInChronologicalOrder(container, section, dateStr);
         pendingTimelineSectionRebuildDates.delete(dateStr);
