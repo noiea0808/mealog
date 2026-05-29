@@ -94,13 +94,21 @@
             margin-left: auto;
             margin-right: auto;
             justify-content: center;
-            /* opacity transition과 keyframes transform 동시 적용 시 합성 충돌 방지 */
             transition: none;
-            animation: landingLoginTitleReveal 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+            animation: none;
         }
-        @keyframes landingLoginTitleReveal {
-            from { transform: translate3d(0, 10px, 0); }
-            to { transform: translate3d(0, 0, 0); }
+        /* 상승 중: 스플래시와 동일한 absolute·가운데 정렬 유지, 세로만 transform */
+        #landingPage.landing-rising #landingSplashTitleAndTagline {
+            position: absolute !important;
+            inset: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            width: auto !important;
+            max-width: none !important;
+            margin: 0 !important;
+            will-change: transform;
         }
         #landingPage.landing-buttons-visible #landingLoginOptions {
             position: relative !important;
@@ -1329,6 +1337,7 @@
                     <div class="flex p-0.5 rounded-xl gap-1">
                         <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
                         <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
+                        <button id="btn-analysis-health" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">건강</button>
                         <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
                     </div>
                 </div>
@@ -1377,6 +1386,36 @@
                     </div>
                 </div>
                 
+                <!-- 건강 분석 섹션 (최근 1주·직접설정) -->
+                <div id="healthAnalysisSection" class="mt-2 hidden">
+                    <div class="space-y-0">
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">체중</h3><span class="text-xs text-slate-400">kg · 일별</span></div>
+                            <div id="healthWeightChartWrap" class="health-vitals-chart-wrap relative min-h-[200px]">
+                                <div class="health-vitals-chart-scroll">
+                                    <div class="health-vitals-chart-inner">
+                                        <canvas id="healthWeightChart" aria-label="체중 추이 차트"></canvas>
+                                        <div class="health-vitals-bubble hidden" role="tooltip" aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                                <p id="healthWeightEmpty" class="hidden text-sm text-slate-400 text-center py-10">이 기간에 체중 기록이 없습니다.</p>
+                            </div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">혈당</h3><span class="text-xs text-slate-400">mg/dL · 일별</span></div>
+                            <div id="healthBloodSugarChartWrap" class="health-vitals-chart-wrap relative min-h-[200px]">
+                                <div class="health-vitals-chart-scroll">
+                                    <div class="health-vitals-chart-inner">
+                                        <canvas id="healthBloodSugarChart" aria-label="혈당 추이 차트"></canvas>
+                                        <div class="health-vitals-bubble hidden" role="tooltip" aria-hidden="true"></div>
+                                    </div>
+                                </div>
+                                <p id="healthBloodSugarEmpty" class="hidden text-sm text-slate-400 text-center py-10">이 기간에 혈당 기록이 없습니다.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 간식 분석 섹션 -->
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
@@ -2199,6 +2238,88 @@
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Journal Modal (하루 기록) -->
+    <div id="dailyJournalModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
+        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)]">
+            <div class="relative shrink-0 py-3 px-4 border-b min-h-[3.25rem] flex items-center justify-center">
+                <h2 id="dailyJournalModalTitle" class="text-base font-bold text-slate-800 tracking-tight">하루 기록</h2>
+                <button type="button" onclick="window.closeDailyJournalModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark text-base"></i></button>
+            </div>
+            <div class="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto overflow-x-hidden pb-8">
+                <div class="mb-2">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-sm font-extrabold text-slate-600 block uppercase">사진</span>
+                        <div class="flex items-center gap-1">
+                            <span class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                            <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('1:1')">1:1</button>
+                            <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('3:4')">3:4</button>
+                            <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('4:3')">4:3</button>
+                            <span id="dailyJournalPhotoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 overflow-x-auto pb-1">
+                        <button type="button" id="dailyJournalImageBtn" onclick="document.getElementById('dailyJournalImageInput').click()" class="flex-shrink-0 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" style="width: 80px; aspect-ratio: 1;">
+                            <i class="fa-solid fa-camera text-xl"></i>
+                        </button>
+                        <div id="dailyJournalPhotoPreviewContainer" class="flex gap-2"></div>
+                    </div>
+                    <input type="file" id="dailyJournalImageInput" class="hidden" accept="image/*" multiple onchange="window.safeCall('handleDailyJournalImages', event)">
+                </div>
+
+                <div id="dailyJournalMetricsSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-2 items-start mb-2">
+                    <div id="dailyJournalWeightSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-1.5">
+                        <div class="flex items-center justify-between gap-1 mb-1">
+                            <span class="text-sm font-extrabold text-slate-600 uppercase leading-tight">체중<span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">kg</span></span>
+                            <label class="entry-gauge-switch shrink-0" title="체중 기록">
+                                <input type="checkbox" id="dailyJournalWeightToggle" class="peer sr-only" role="switch" aria-label="체중 기록 사용">
+                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div id="dailyJournalWeightWrap">
+                            <div id="dailyJournalWeightRecordsWrap" class="relative rounded-lg">
+                                <div id="dailyJournalWeightRecords" class="space-y-1"></div>
+                                <div id="dailyJournalWeightOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
+                                    <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
+                                </div>
+                            </div>
+                            <button type="button" id="dailyJournalWeightAddBtn" class="mt-1 w-full py-1.5 text-[11px] font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
+                        </div>
+                    </div>
+                    <div id="dailyJournalBloodSugarSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-1.5">
+                        <div class="flex items-center justify-between gap-1 mb-1">
+                            <span class="text-sm font-extrabold text-slate-600 uppercase leading-tight">혈당<span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">mg/dL</span></span>
+                            <label class="entry-gauge-switch shrink-0" title="혈당 기록">
+                                <input type="checkbox" id="dailyJournalBloodSugarToggle" class="peer sr-only" role="switch" aria-label="혈당 기록 사용">
+                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
+                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
+                            </label>
+                        </div>
+                        <div id="dailyJournalBloodSugarWrap">
+                            <div id="dailyJournalBloodSugarRecordsWrap" class="relative rounded-lg">
+                                <div id="dailyJournalBloodSugarRecords" class="space-y-1"></div>
+                                <div id="dailyJournalBloodSugarOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
+                                    <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
+                                </div>
+                            </div>
+                            <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1 w-full py-1.5 text-[11px] font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-2 -mx-4">
+                    <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
+                    <textarea id="dailyJournalCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="5" class="w-full py-[0.8rem] px-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[128px] appearance-none"></textarea>
+                </div>
+            </div>
+            <div class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
+                <button type="button" onclick="window.saveDailyJournal()" class="w-full flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
+                    <span>기록 완료</span>
+                </button>
             </div>
         </div>
     </div>

@@ -1,0 +1,45 @@
+---
+description: 로컬 우선 Git 워크플로우 — staging 기준, 사용자가 직접 push
+alwaysApply: true
+---
+
+# 로컬 우선 Git 워크플로우 (MEALOG)
+
+## 기본 원칙
+
+- **로컬 PC가 작업의 기준**이다. Cloud Agent는 보조용이며, 변경은 사용자가 `git push`하기 전까지 원격에 반영되지 않는다.
+- **기본 작업 브랜치는 `staging`**이다. `main`은 배포/릴리스용으로만 사용한다.
+- 작업 시작 전 항상 최신 `staging`을 받는다: `scripts/sync-staging.sh` 또는 `git fetch && git checkout staging && git pull origin staging`
+
+## 브랜치 규칙
+
+- **로컬에서 만드는 브랜치**: `feat/설명`, `fix/설명` (예: `feat/daily-journal-vitals`)
+- **`cursor/*` 브랜치는 Cloud Agent 전용**이다. 로컬 작업 시 새로 만들지 않는다.
+- Cloud Agent가 `cursor/*` 브랜치를 만들었더라도, **`staging`에 merge된 뒤에는 삭제**해도 된다.
+
+## 작업 순서 (로컬)
+
+1. `git checkout staging && git pull origin staging`
+2. (선택) `git checkout -b feat/작업명`
+3. 코드 수정
+4. `git add … && git commit -m "…"`
+5. `git push -u origin feat/작업명` (또는 팀 규칙에 따라 `staging` 직접 push)
+6. GitHub에서 PR: `feat/*` → `staging` → 검토 후 merge
+
+## Agent / Cloud 사용 시
+
+- **일반 Composer·Chat(로컬 모드)**를 우선 사용한다. 변경은 로컬 워킹 트리에 남는다.
+- **Background / Cloud Agent**는 긴급·무인 작업에만 사용한다. 사용 후 반드시 `staging`에 merge하고 `cursor/*` 정리한다.
+- Agent는 **`staging`에서 분기하지 말고**, 이미 열린 `feat/*` 브랜치가 있으면 그 위에서 이어서 작업한다.
+- Agent가 임의로 `cursor/…-9e38` 브랜치를 만들지 않도록, 사용자가 브랜치명을 지정했을 때만 새 브랜치를 만든다.
+
+## 커밋·push
+
+- 의미 있는 단위로 commit 메시지를 작성한다 (한국어 또는 영어, 동사로 시작).
+- push 전 `npm run build`로 config 생성이 깨지지 않는지 확인한다.
+- **사용자가 push를 요청하기 전** 원격 `staging` / `main`에 force push하지 않는다.
+
+## 확인
+
+- 로컬 변경 확인: `git status`, `git log --oneline -5`
+- 원격과 비교: `git fetch origin && git log staging..origin/staging --oneline`

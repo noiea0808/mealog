@@ -6,6 +6,7 @@ import { renderProportionChart } from './charts.js';
 import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters, updateShareButtonStatus } from './insight.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay, getWeekDisplayLabel } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
+import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-charts.js';
 import { toLocalDateString } from '../utils.js';
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
@@ -133,7 +134,16 @@ export function getDashboardData() {
         statsSnackCount = null;
     }
     
-    return { filteredData, mealRecordsForTable: mealFiltered, dateRangeText: label, days: daysDiff, statsMainCount, statsSnackCount };
+    return {
+        filteredData,
+        mealRecordsForTable: mealFiltered,
+        dateRangeText: label,
+        days: daysDiff,
+        statsMainCount,
+        statsSnackCount,
+        startStr,
+        endStr: effectiveEndStr
+    };
 }
 
 /** 기간 탭·날짜 표시 등 기간 UI 즉시 업데이트 (데이터 로드 전 호출하여 체감 반응 속도 개선) */
@@ -288,7 +298,7 @@ export async function updateDashboard() {
     }
 
     
-    const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount } = getDashboardData();
+    const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount, startStr, endStr } = getDashboardData();
 
     // 식사/간식 데이터 분리
     const mainMealsOnly = filteredData.filter(m => {
@@ -325,6 +335,12 @@ export async function updateDashboard() {
     renderProportionChart('snackMateChartContainer', snacksOnly.filter(m => m.withWhom), 'withWhom');
     renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
     renderProportionChart('snackSatietyChartContainer', snacksOnly.filter(m => m.satiety), 'satiety');
+
+    if (state.analysisType === 'health' && startStr && endStr) {
+        renderHealthVitalsCharts(startStr, endStr);
+    } else {
+        destroyHealthVitalsCharts();
+    }
     
     // 식사 기록 모수 분모: 주간·연간·직접설정은 경과한 날짜(오늘 포함)만 사용
     const today = new Date();
@@ -441,21 +457,20 @@ function updateAnalysisTypeUI() {
     const bestBtn = document.getElementById('btn-analysis-best');
     const mainBtn = document.getElementById('btn-analysis-main');
     const snackBtn = document.getElementById('btn-analysis-snack');
+    const healthBtn = document.getElementById('btn-analysis-health');
     const bestSection = document.getElementById('bestAnalysisSection');
     const mainSection = document.getElementById('mainAnalysisSection');
     const snackSection = document.getElementById('snackAnalysisSection');
+    const healthSection = document.getElementById('healthAnalysisSection');
     
     const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-900 border-b-2 border-slate-900";
     const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
     
-    // 최근 1주 또는 직접설정일 때 Best 탭 숨기기
     const shouldHideBest = state.dashboardMode === '7d' || state.dashboardMode === 'custom';
     
     if (bestBtn && mainBtn && snackBtn) {
-        // Best 탭 표시/숨김
         if (shouldHideBest) {
             bestBtn.style.display = 'none';
-            // Best가 활성화되어 있으면 식사로 전환
             if (state.analysisType === 'best') {
                 state.analysisType = 'main';
             }
@@ -467,11 +482,20 @@ function updateAnalysisTypeUI() {
         mainBtn.className = state.analysisType === 'main' ? activeBtnClass : inactiveBtnClass;
         snackBtn.className = state.analysisType === 'snack' ? activeBtnClass : inactiveBtnClass;
     }
+
+    if (healthBtn) {
+        healthBtn.style.display = '';
+        healthBtn.className = state.analysisType === 'health' ? activeBtnClass : inactiveBtnClass;
+    }
     
     if (bestSection && mainSection && snackSection) {
         bestSection.classList.toggle('hidden', state.analysisType !== 'best' || shouldHideBest);
         mainSection.classList.toggle('hidden', state.analysisType !== 'main');
         snackSection.classList.toggle('hidden', state.analysisType !== 'snack');
+    }
+
+    if (healthSection) {
+        healthSection.classList.toggle('hidden', state.analysisType !== 'health');
     }
     
     if (state.analysisType === 'best' && !shouldHideBest) {

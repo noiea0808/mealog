@@ -658,7 +658,7 @@ export function initEventListeners() {
         }
     });
 
-    ['best', 'main', 'snack'].forEach(type => {
+    ['best', 'main', 'snack', 'health'].forEach(type => {
         const btn = document.getElementById(`btn-analysis-${type}`);
         if (btn) {
             btn.addEventListener('click', () => window.setAnalysisType(type));

@@ -14,6 +14,7 @@ import {
     cancelDeleteAccount
 } from '../auth.js';
 import { closeModal } from '../modals/entry-and-core.js';
+import { closeDailyJournalModal } from '../modals/daily-journal.js';
 import { closeSettings } from '../modals/settings.js';
 import { closeDetailModal } from '../analytics/charts.js';
 import { closeCharacterSelectModal, closeShareInsightModal } from '../analytics/insight.js';
@@ -47,7 +48,8 @@ const ESCAPE_OVERLAY_IDS = [
     'logoutConfirmModal',
     'deleteAccountConfirmModal',
     'detailModal',
-    'entryModal'
+    'entryModal',
+    'dailyJournalModal'
 ];
 
 function parseZIndex(el) {
@@ -142,6 +144,9 @@ function closeOverlayById(id) {
             break;
         case 'entryModal':
             closeModal();
+            break;
+        case 'dailyJournalModal':
+            closeDailyJournalModal();
             break;
         default:
             break;

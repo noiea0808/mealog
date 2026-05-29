@@ -227,6 +227,130 @@ body.keyboard-closed #boardWriteView {
     padding-left: 12px;
     padding-right: 22px;
 }
+#healthAnalysisSection .analytics-card-head {
+    padding-left: 12px;
+    padding-right: 22px;
+}
+.health-vitals-chart-wrap {
+    height: 220px;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+.health-vitals-chart-scroll {
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+.health-vitals-chart-scroll--scrollable {
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+.health-vitals-chart-scroll--scrollable::-webkit-scrollbar {
+    height: 3px;
+}
+.health-vitals-chart-scroll--scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+.health-vitals-chart-scroll--scrollable::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.45);
+    border-radius: 999px;
+}
+.health-vitals-chart-inner {
+    position: relative;
+    height: 100%;
+    min-width: 100%;
+}
+.health-vitals-chart-inner canvas {
+    display: block;
+    position: relative;
+    z-index: 1;
+    width: 100% !important;
+    height: 100% !important;
+}
+.health-vitals-chart-wrap--interactive .health-vitals-chart-inner canvas {
+    cursor: pointer;
+}
+.health-vitals-bubble {
+    position: absolute;
+    z-index: 10;
+    top: 4px;
+    max-width: min(220px, calc(100% - 16px));
+    padding: 0.5rem 0.625rem;
+    border-radius: 0.75rem;
+    background: #1e293b;
+    border: 1px solid #334155;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
+    color: #f8fafc;
+    pointer-events: none;
+    transform: translateX(-50%);
+}
+.health-vitals-bubble::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    margin-left: -6px;
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+}
+.health-vitals-bubble--single {
+    max-width: min(240px, calc(100% - 16px));
+}
+.health-vitals-bubble__single-body {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #f8fafc;
+    line-height: 1.35;
+    white-space: nowrap;
+}
+.health-vitals-bubble__title {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #cbd5e1;
+    margin-bottom: 0.25rem;
+    white-space: nowrap;
+}
+.health-vitals-bubble__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.health-vitals-bubble__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    padding: 0.125rem 0;
+    white-space: nowrap;
+}
+.health-vitals-bubble__row + .health-vitals-bubble__row {
+    border-top: 1px solid #334155;
+    margin-top: 0.125rem;
+    padding-top: 0.25rem;
+}
+.health-vitals-bubble__row--solo {
+    justify-content: center;
+}
+.health-vitals-bubble__row--solo .health-vitals-bubble__value {
+    text-align: center;
+}
+.health-vitals-bubble__label {
+    color: #94a3b8;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.health-vitals-bubble__value {
+    color: #f8fafc;
+    font-weight: 700;
+    text-align: right;
+}
 
 /* Tab layout primitives (main app) */
 .ui-tab-view {
@@ -242,6 +366,32 @@ body.keyboard-closed #boardWriteView {
     box-sizing: border-box;
     padding-left: max(0.75rem, 1em);
     padding-right: max(0.75rem, 1em);
+}
+.daily-journal-summary-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    overflow: hidden;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.625;
+    max-height: calc(1.625em * 5);
+    text-overflow: ellipsis;
+}
+.daily-journal-summary-row .flex.items-start {
+    align-items: flex-start;
+}
+/* 하루 기록 모달 — 체중·혈당 number 입력 스피너 숨김 */
+.daily-journal-metric-no-spin {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+.daily-journal-metric-no-spin::-webkit-outer-spin-button,
+.daily-journal-metric-no-spin::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
 .ui-surface-soft { background: #f1f5f9; } /* slate-100 */
@@ -4437,11 +4587,65 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     transform: translateX(11px);
 }
 
-/* 기록 모달: 만족도·포만감 게이지 끔 — 스크롤 영역만 흐리게(중앙 인디케이터는 그대로) */
+/* 기록 모달: 게이지 끔 — 뒤쪽 휠 텍스트가 비활성 상태로 더 흐릿하게 보이도록 처리 */
 .entry-gauge-dial-wrap--off .mealog-wheel__scroller {
-    opacity: 0.18;
-    filter: grayscale(1);
+    opacity: 0.08;
+    filter: grayscale(1) blur(5px);
     pointer-events: none;
+}
+.entry-gauge-dial-wrap--off .mealog-wheel__scroller * {
+    opacity: 0.65;
+    filter: blur(1px);
+}
+.entry-gauge-dial-wrap--off .mealog-wheel__item,
+.entry-gauge-dial-wrap--off .mealog-wheel__satiety-label,
+.entry-gauge-dial-wrap--off .mealog-wheel__stars {
+    color: transparent;
+    text-shadow: 0 0 8px rgb(100 116 139 / 0.28);
+}
+.entry-gauge-dial-wrap--off .mealog-wheel__indicator {
+    opacity: 0.2;
+    filter: blur(2px);
+}
+.entry-gauge-off-layer {
+    background-color: rgb(241 245 249 / 0.82);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+.entry-gauge-off-layer__label {
+    position: relative;
+    z-index: 1;
+    text-shadow: 0 1px 1px rgb(255 255 255 / 0.85);
+}
+
+
+/* 하루 기록: 체중·혈당 토글 오프 — 뒤 입력 영역을 더 흐리게 */
+.daily-journal-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.daily-journal-metric-wrap--off .daily-journal-metric-field {
+    opacity: 0.04;
+    filter: grayscale(1) blur(8px);
+    pointer-events: none;
+}
+.daily-journal-metric-wrap--off .daily-journal-vital-input,
+.daily-journal-metric-wrap--off .daily-journal-metric-field span {
+    color: transparent !important;
+    text-shadow: 0 0 10px rgb(100 116 139 / 0.35);
+}
+#timelineView .daily-journal-section .daily-journal-metric-off-layer {
+    background-color: rgb(248 250 252 / 0.88);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+}
+#timelineView .daily-journal-section .daily-journal-metric-off-layer .entry-gauge-off-layer__label {
+    color: #334155;
+    font-weight: 800;
+    text-shadow: 0 1px 2px rgb(255 255 255 / 0.95), 0 0 1px rgb(255 255 255 / 1);
 }
 
 /* 가로 휠(간식 만족도): 좌우 스냅 */

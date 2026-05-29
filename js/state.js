@@ -84,6 +84,15 @@ export const appState = {
     /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
     entryMealClockPendingExifHhmmMain: null,
     entryMealClockPendingExifHhmmSnack: null,
+
+    /** 하루 기록 모달 */
+    dailyJournalEditingDate: '',
+    dailyJournalPhotos: [],
+    dailyJournalPhotoAspectRatio: '1:1',
+    dailyJournalWeightEnabled: false,
+    dailyJournalBloodSugarEnabled: false,
+    dailyJournalWeightRecords: [],
+    dailyJournalBloodSugarRecords: [],
     
     // 대시보드
     dashboardMode: '7d',
@@ -95,7 +104,7 @@ export const appState = {
     selectedMonthForWeek: new Date().getMonth() + 1,
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
-    analysisType: 'best', // 'best', 'main', or 'snack'
+    analysisType: 'best', // 'best', 'main', 'snack', 'health'
     
     // UI 상호작용
     currentDetailChart: null,
