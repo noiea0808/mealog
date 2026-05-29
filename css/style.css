@@ -301,11 +301,28 @@ body.keyboard-closed #boardWriteView {
     max-width: min(240px, calc(100% - 16px));
 }
 .health-vitals-bubble__single-body {
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #f8fafc;
     line-height: 1.35;
     white-space: nowrap;
+}
+.health-vitals-chart-empty {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 0 1rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    pointer-events: none;
+}
+.health-vitals-chart-empty.hidden {
+    display: none;
+}
+.health-vitals-chart-wrap--empty .health-vitals-chart-scroll {
+    pointer-events: none;
 }
 .health-vitals-bubble__title {
     font-size: 0.6875rem;
@@ -1887,6 +1904,31 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
+}
+/* 하루 기록 모달: 시트 하단 + 액션바에 제스처/네비 세이프 영역 */
+#dailyJournalModal {
+    padding-bottom: 0;
+}
+#dailyJournalModal > div {
+    max-height: min(92vh, 100%);
+    min-height: 0;
+}
+#dailyJournalModalActions {
+    padding-top: 2px !important;
+}
+html:not(.platform-web) #dailyJournalModal #dailyJournalModalActions {
+    padding-bottom: calc(10px + max(12px, calc(8px + env(safe-area-inset-bottom, 0px)), var(--safe-bottom))) !important;
+}
+html.platform-web #dailyJournalModal #dailyJournalModalActions {
+    padding-bottom: calc(8px + max(16px, env(safe-area-inset-bottom, 0px))) !important;
+}
+body.daily-journal-modal-open .bottom-nav,
+body.daily-journal-modal-open #navigationBarOverlay,
+body.daily-journal-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
+body.daily-journal-modal-open #initialRecordsLoadFab.initial-records-load-fab,
+body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
 #galleryContainer .moment-feed-photo {

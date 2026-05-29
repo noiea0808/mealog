@@ -66,6 +66,7 @@ import {
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText,
     openDailyJournalModal, closeDailyJournalModal, saveDailyJournal,
     handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
+    editDailyJournalPhoto,
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
     openDailyCommentModal, closeDailyCommentModal
 } from './modals.js';
@@ -285,6 +286,8 @@ window.moveDailyJournalPhotoOrder = moveDailyJournalPhotoOrder;
 window.Mealog.moveDailyJournalPhotoOrder = moveDailyJournalPhotoOrder;
 window.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
 window.Mealog.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
+window.editDailyJournalPhoto = editDailyJournalPhoto;
+window.Mealog.editDailyJournalPhoto = editDailyJournalPhoto;
 window.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
 window.Mealog.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
 window.removeDailyJournalMetricRecord = removeDailyJournalMetricRecord;

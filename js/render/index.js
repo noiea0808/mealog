@@ -13,6 +13,7 @@ export {
 export { renderEntryChips } from './entry-chips.js';
 export {
     editPhoto,
+    editDailyJournalPhoto,
     openProfilePhotoEdit,
     zoomInPhotoEdit,
     zoomOutPhotoEdit,

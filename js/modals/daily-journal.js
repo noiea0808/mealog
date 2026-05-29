@@ -324,6 +324,9 @@ export function renderDailyJournalPhotoPreviews() {
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, -1)" class="photo-order-btn pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로">
                         <i class="fa-solid fa-chevron-left text-[9px]"></i>
                     </button>
+                    <button type="button" onclick="window.editDailyJournalPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
+                        <i class="fa-solid fa-crop text-[9px]"></i>
+                    </button>
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
                         <i class="fa-solid fa-chevron-right text-[9px]"></i>
                     </button>
@@ -460,13 +463,13 @@ export function openDailyJournalModal(dateStr) {
     renderDailyJournalPhotoPreviews();
     renderDailyJournalAllMetrics();
     modal.classList.remove('hidden');
-    document.body.classList.add('overflow-hidden');
+    document.body.classList.add('overflow-hidden', 'daily-journal-modal-open');
 }
 
 export function closeDailyJournalModal() {
     const modal = document.getElementById('dailyJournalModal');
     if (modal) modal.classList.add('hidden');
-    document.body.classList.remove('overflow-hidden');
+    document.body.classList.remove('overflow-hidden', 'daily-journal-modal-open');
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];
     resetDailyJournalMetricsState();

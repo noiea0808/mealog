@@ -116,12 +116,17 @@ function bubbleRowHtml(row) {
     return `<li class="health-vitals-bubble__row health-vitals-bubble__row--solo"><span class="health-vitals-bubble__value">${escapeHtml(row.valueText)}</span></li>`;
 }
 
+function buildSingleRecordBodyHtml(row) {
+    if (row.label) {
+        return `<div class="health-vitals-bubble__single-body health-vitals-bubble__row"><span class="health-vitals-bubble__label">${escapeHtml(row.label)}</span><span class="health-vitals-bubble__value">${escapeHtml(row.valueText)}</span></div>`;
+    }
+    return `<div class="health-vitals-bubble__single-body health-vitals-bubble__row health-vitals-bubble__row--solo"><span class="health-vitals-bubble__value">${escapeHtml(row.valueText)}</span></div>`;
+}
+
 function buildBubbleInnerHtml(dateStr, rows) {
     const title = formatMealogDateLabel(dateStr);
     if (rows.length === 1) {
-        const r = rows[0];
-        const body = r.label ? `${r.label} · ${r.valueText}` : r.valueText;
-        return `<div class="health-vitals-bubble__title">${escapeHtml(title)}</div><div class="health-vitals-bubble__single-body">${escapeHtml(body)}</div>`;
+        return `<div class="health-vitals-bubble__title">${escapeHtml(title)}</div>${buildSingleRecordBodyHtml(rows[0])}`;
     }
     const listHtml = rows.map(bubbleRowHtml).join('');
     return `<div class="health-vitals-bubble__title">${escapeHtml(title)}</div><ul class="health-vitals-bubble__list">${listHtml}</ul>`;
@@ -559,14 +564,26 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
 
     if (!series.hasAny) {
         canvas.classList.add('hidden');
-        if (wrap) wrap.classList.remove('health-vitals-chart-wrap--interactive');
-        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (wrap) {
+            wrap.classList.remove('health-vitals-chart-wrap--interactive');
+            wrap.classList.add('health-vitals-chart-wrap--empty');
+        }
+        if (emptyEl) {
+            emptyEl.classList.remove('hidden');
+            emptyEl.setAttribute('aria-hidden', 'false');
+        }
         return;
     }
 
     canvas.classList.remove('hidden');
-    if (wrap) wrap.classList.add('health-vitals-chart-wrap--interactive');
-    if (emptyEl) emptyEl.classList.add('hidden');
+    if (wrap) {
+        wrap.classList.add('health-vitals-chart-wrap--interactive');
+        wrap.classList.remove('health-vitals-chart-wrap--empty');
+    }
+    if (emptyEl) {
+        emptyEl.classList.add('hidden');
+        emptyEl.setAttribute('aria-hidden', 'true');
+    }
 
     const layout = computeChartLayout(series.dates.length, wrap);
     applyChartLayout(canvas, layout);
