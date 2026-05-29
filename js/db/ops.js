@@ -44,6 +44,7 @@ export function unwrapMealSaveResult(r) {
     return { mealId: '', savedViaCallableFallback: false };
 }
 import { isDemoUser } from '../demo-account.js';
+import { getDailyJournalFromSettings, normalizeDailyJournalEntry, dailyJournalHasContent } from '../utils/daily-journal-data.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
@@ -592,41 +593,51 @@ export const dbOps = {
     },
 
     async saveDailyComment(date, comment) {
+        const existing = this.getDailyJournal(date);
+        await this.saveDailyJournal(date, {
+            comment: comment != null ? String(comment) : '',
+            photos: existing.photos,
+            photoAspectRatio: existing.photoAspectRatio,
+            weightEnabled: existing.weightEnabled,
+            bloodSugarEnabled: existing.bloodSugarEnabled,
+            weightRecords: existing.weightRecords,
+            bloodSugarRecords: existing.bloodSugarRecords
+        });
+    },
+
+    async saveDailyJournal(date, entry) {
         const currentUser = auth.currentUser || window.currentUser;
         if (!currentUser || currentUser.isAnonymous) {
-            showToast("저장 실패: 로그인이 필요합니다.", 'error');
+            showToast('저장 실패: 로그인이 필요합니다.', 'error');
             return;
         }
         if (isDemoUser(currentUser)) {
             showToast('샘플 계정에서는 하루 기록을 저장할 수 없습니다.', 'error');
             return;
         }
+        const normalized = normalizeDailyJournalEntry(entry);
         try {
-            // 사용자 설정에 dailyComments 필드가 없으면 초기화
             if (!window.userSettings.dailyComments) {
                 window.userSettings.dailyComments = {};
             }
-            
-            // 날짜별 Comment 저장
-            if (comment && comment.trim()) {
-                window.userSettings.dailyComments[date] = comment.trim();
+            if (dailyJournalHasContent(normalized)) {
+                window.userSettings.dailyComments[date] = normalized;
             } else {
-                // 빈 Comment는 삭제
                 delete window.userSettings.dailyComments[date];
             }
-            
-            // 설정 저장
             await dbOps.saveSettings(window.userSettings);
         } catch (e) {
-            console.error("Daily Comment Save Error:", e);
+            console.error('Daily Journal Save Error:', e);
             throw e;
         }
     },
+
+    getDailyJournal(date) {
+        return getDailyJournalFromSettings(window.userSettings, date);
+    },
+
     getDailyComment(date) {
-        if (!window.userSettings || !window.userSettings.dailyComments) {
-            return '';
-        }
-        return window.userSettings.dailyComments[date] || '';
+        return this.getDailyJournal(date).comment || '';
     },
 
     getDailyVitals(date) {

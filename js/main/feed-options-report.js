@@ -229,7 +229,7 @@ window.showFeedOptions = (
                     if (photoUrlArray.length > 0) window.editBestShare(photoUrlArray[0]);
                     else showToast("수정할 베스트 공유를 찾을 수 없습니다.", 'error');
                 } else if (isDailyShare) {
-                    if (photoDate) window.openDailyCommentModal(photoDate);
+                    if (photoDate) window.openDailyJournalModal(photoDate);
                     else showToast("수정할 일간보기 공유를 찾을 수 없습니다.", 'error');
                 } else if (isInsightShare) {
                     const photoUrlArray = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(url => url.trim()).filter(url => url) : [];

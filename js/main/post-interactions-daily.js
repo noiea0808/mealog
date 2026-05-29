@@ -444,13 +444,16 @@ window.confirmDailyShare = async (dateStr, ev) => {
 
         let dailyComment = '';
         try {
-            if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
+            if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
+                dailyComment = window.dbOps.getDailyJournal(dateStr).comment || '';
+            } else if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
                 dailyComment = window.dbOps.getDailyComment(dateStr) || '';
             } else if (window.userSettings && window.userSettings.dailyComments) {
-                dailyComment = window.userSettings.dailyComments[dateStr] || '';
+                const raw = window.userSettings.dailyComments[dateStr];
+                dailyComment = typeof raw === 'string' ? raw : (raw?.comment || '');
             }
         } catch (e) {
-            console.warn('getDailyComment 호출 실패:', e);
+            console.warn('getDailyJournal 호출 실패:', e);
         }
 
         // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
@@ -476,7 +479,8 @@ window.confirmDailyShare = async (dateStr, ev) => {
         window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
         // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
         if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
-        window.sharedPhotosFeed = [dailyShareData, ...window.sharedPhotosFeed];
+        const { sortSharedPhotosByTimestampDesc } = await import('../utils/shared-photo-timestamp.js');
+        window.sharedPhotosFeed = sortSharedPhotosByTimestampDesc([dailyShareData, ...(window.sharedPhotosFeed || [])]);
 
         window.closeDailySharePreviewModal();
         showToast('하루 기록이 피드에 공유되었습니다!', 'success');
@@ -739,11 +743,6 @@ function bindMealogDailyTimelineDelegation() {
     if (!root) return;
     if (_mealogDailyTimelineBound.has(root)) return;
     _mealogDailyTimelineBound.set(root, true);
-    root.addEventListener('mousedown', (e) => {
-        const btn = e.target.closest('button[data-mealog-daily="save-comment"]');
-        if (!btn || !root.contains(btn)) return;
-        e.preventDefault();
-    });
     root.addEventListener('click', (e) => {
         const btn = e.target.closest('button[data-mealog-daily]');
         if (!btn || !root.contains(btn)) return;

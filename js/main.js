@@ -63,7 +63,11 @@ import {
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
-    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText
+    openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText,
+    openDailyJournalModal, closeDailyJournalModal, saveDailyJournal,
+    handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
+    addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
+    openDailyCommentModal, closeDailyCommentModal
 } from './modals.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
@@ -267,6 +271,28 @@ window.openModal = openModal;
 window.Mealog.openModal = openModal;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
+window.openDailyJournalModal = openDailyJournalModal;
+window.Mealog.openDailyJournalModal = openDailyJournalModal;
+window.closeDailyJournalModal = closeDailyJournalModal;
+window.Mealog.closeDailyJournalModal = closeDailyJournalModal;
+window.saveDailyJournal = saveDailyJournal;
+window.Mealog.saveDailyJournal = saveDailyJournal;
+window.handleDailyJournalImages = handleDailyJournalImages;
+window.Mealog.handleDailyJournalImages = handleDailyJournalImages;
+window.removeDailyJournalPhoto = removeDailyJournalPhoto;
+window.Mealog.removeDailyJournalPhoto = removeDailyJournalPhoto;
+window.moveDailyJournalPhotoOrder = moveDailyJournalPhotoOrder;
+window.Mealog.moveDailyJournalPhotoOrder = moveDailyJournalPhotoOrder;
+window.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
+window.Mealog.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
+window.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
+window.Mealog.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
+window.removeDailyJournalMetricRecord = removeDailyJournalMetricRecord;
+window.Mealog.removeDailyJournalMetricRecord = removeDailyJournalMetricRecord;
+window.openDailyCommentModal = openDailyCommentModal;
+window.Mealog.openDailyCommentModal = openDailyCommentModal;
+window.closeDailyCommentModal = closeDailyCommentModal;
+window.Mealog.closeDailyCommentModal = closeDailyCommentModal;
 window.saveEntry = saveEntry;
 window.Mealog.saveEntry = saveEntry;
 window.deleteEntry = deleteEntry;
@@ -1561,46 +1587,89 @@ initAuth(async (user) => {
             }
         }
 
-        // 로그인 필요 시: 아이콘 페이드아웃 → 타이틀 표시 → 상단 플렉 배치 애니 후 버튼 페이드인
+        // 로그인 필요 시: 아이콘 페이드 → 가운데 mealog 표시 → 같은 자리에서 위로 이동 → 상단 레이아웃·버튼
         const showLoginScreen = () => {
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
             const apkSection = document.getElementById('apkDownloadSection');
             if (landingPage) landingPage.classList.add('landing-show-login');
-            // 아이콘↔타이틀 페이드 이후 타이틀 위로 올라가는 애니메이션 시작
-            setTimeout(() => {
-                if (!landingPage) return;
-                requestAnimationFrame(() => {
+
+            const LANDING_ICON_FADE_MS = 400;
+            const LANDING_PAUSE_BEFORE_RISE_MS = 280;
+            const LANDING_RISE_MS = 1050;
+
+            const showLoginButtons = () => {
+                if (landingLoginOptions) {
+                    landingLoginOptions.classList.remove('hidden');
+                    requestAnimationFrame(() => {
+                        landingLoginOptions.classList.add('landing-options-visible');
+                    });
+                }
+                if (apkSection) apkSection.classList.remove('hidden');
+                loadAndShowLoginBanner();
+            };
+
+            const runLandingTitleRise = () => {
+                const titleEl = document.getElementById('landingSplashTitleAndTagline');
+                if (!landingPage || !titleEl) {
+                    landingPage?.classList.add('landing-buttons-visible');
+                    showLoginButtons();
+                    return;
+                }
+
+                const applyFinalLandingLayout = () => {
+                    titleEl.style.transition = 'none';
                     landingPage.classList.add('landing-buttons-visible');
-                    const titleEl = document.getElementById('landingSplashTitleAndTagline');
-                    let buttonsShown = false;
-                    const showButtons = () => {
-                        if (buttonsShown) return;
-                        buttonsShown = true;
-                        if (landingLoginOptions) {
-                            landingLoginOptions.classList.remove('hidden');
-                            requestAnimationFrame(() => {
-                                landingLoginOptions.classList.add('landing-options-visible');
-                            });
-                        }
-                        if (apkSection) apkSection.classList.remove('hidden');
-                        loadAndShowLoginBanner();
-                    };
-                    // animationend로 타이틀 정리 애니메이션 후 버튼 표시 (플렉 상단 배치)
-                    if (titleEl) {
-                        const onEnd = (e) => {
-                            if (e.target !== titleEl) return;
-                            if (e.animationName !== 'landingLoginTitleReveal') return;
-                            titleEl.removeEventListener('animationend', onEnd);
-                            requestAnimationFrame(() => requestAnimationFrame(showButtons)); // 2프레임 대기 후 표시
-                        };
-                        titleEl.addEventListener('animationend', onEnd);
-                        setTimeout(showButtons, 600); // 애니·폴백
-                    } else {
-                        setTimeout(showButtons, 800);
+                    landingPage.classList.remove('landing-rising');
+                    titleEl.classList.remove('landing-title-rising');
+                    titleEl.style.transform = '';
+                    titleEl.style.willChange = '';
+                };
+
+                requestAnimationFrame(() => {
+                    const fromTop = titleEl.getBoundingClientRect().top;
+                    landingPage.classList.add('landing-buttons-visible');
+                    const targetTop = titleEl.getBoundingClientRect().top;
+                    landingPage.classList.remove('landing-buttons-visible');
+                    void titleEl.offsetHeight;
+
+                    let shiftY = targetTop - fromTop;
+                    if (shiftY > 0) shiftY = 0;
+
+                    if (!Number.isFinite(shiftY) || Math.abs(shiftY) < 2) {
+                        applyFinalLandingLayout();
+                        showLoginButtons();
+                        return;
                     }
+
+                    landingPage.classList.add('landing-rising');
+                    titleEl.classList.add('landing-title-rising');
+                    titleEl.style.transition = 'none';
+                    titleEl.style.transform = 'translate3d(0, 0, 0)';
+
+                    requestAnimationFrame(() => {
+                        titleEl.style.transition = `transform ${LANDING_RISE_MS}ms cubic-bezier(0.25, 0.85, 0.35, 1)`;
+                        titleEl.style.transform = `translate3d(0, ${shiftY}px, 0)`;
+
+                        let done = false;
+                        const finish = () => {
+                            if (done) return;
+                            done = true;
+                            titleEl.removeEventListener('transitionend', onTransitionEnd);
+                            applyFinalLandingLayout();
+                            showLoginButtons();
+                        };
+                        const onTransitionEnd = (e) => {
+                            if (e.target !== titleEl || e.propertyName !== 'transform') return;
+                            finish();
+                        };
+                        titleEl.addEventListener('transitionend', onTransitionEnd);
+                        setTimeout(finish, LANDING_RISE_MS + 120);
+                    });
                 });
-            }, 520);
+            };
+
+            setTimeout(runLandingTitleRise, LANDING_ICON_FADE_MS + LANDING_PAUSE_BEFORE_RISE_MS);
         };
         const showOptionsNow = wasExplicitLogout;
         if (showOptionsNow) {
@@ -1937,11 +2006,11 @@ function initDailySwipeGesture() {
     if (!tv) return;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
-    /** 일간 스와이프는 버튼/입력 위에서 시작하지 않음 — pointermove preventDefault가 클릭을 삼켜 공유·저장이 무반응이 되는 문제 방지 */
+    /** 일간 스와이프는 버튼/입력·기록 카드 위에서 시작하지 않음 — pointermove preventDefault가 클릭을 삼켜 공유·저장·기록 모달이 무반응이 되는 문제 방지 */
     const isInteractiveSwipeTarget = (node) => {
         if (!node || node.nodeType !== 1) return false;
         return !!node.closest(
-            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily]'
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily], .card, .snack-tag, [data-mealog-open-date], [data-mealog-open-daily]'
         );
     };
     const SWIPE_TRIGGER_PX = 28;

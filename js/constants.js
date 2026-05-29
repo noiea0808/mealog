@@ -29,6 +29,21 @@ export const SLOTS = [
     { id: 'night', label: '야식', type: 'snack' }
 ];
 
+/** 타임라인 하루 소감 슬롯 (meals 컬렉션과 별도, userSettings.dailyComments) */
+export const DAILY_JOURNAL_SLOT = {
+    id: 'daily_journal',
+    label: '하루 기록',
+    type: 'daily'
+};
+
+export const DAILY_JOURNAL_SLOT_STYLE = {
+    iconBg: 'bg-slate-50',
+    iconText: 'text-slate-400',
+    border: 'border-slate-100',
+    text: 'text-slate-400',
+    listLeft: 'border-l-[4px] border-l-slate-400/60'
+};
+
 export const SLOT_STYLES = {
     'morning': { iconBg: 'bg-amber-50', iconText: 'text-amber-600', border: 'border-amber-200', text: 'text-amber-600', listLeft: 'border-l-[4px] border-l-amber-600/60' },
     'lunch': { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', border: 'border-emerald-200', text: 'text-emerald-600', listLeft: 'border-l-[4px] border-l-emerald-600/60' },
@@ -127,7 +142,9 @@ export const DEFAULT_USER_SETTINGS = {
     entryModalGauges: {
         main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
         snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
-    }
+    },
+    /** 날짜별 하루 소감 — 값: string(구) | { comment, photos[], photoAspectRatio } */
+    dailyComments: {}
 };
 
 // 게시물 신고 사유 (id는 Firestore에 저장, label은 UI 표시)

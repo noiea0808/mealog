@@ -2,6 +2,8 @@
 import {
     SLOTS,
     SLOT_STYLES,
+    DAILY_JOURNAL_SLOT,
+    DAILY_JOURNAL_SLOT_STYLE,
     SATIETY_DATA,
     SNACK_TIMELINE_VIEW_STORAGE_KEY,
     MEAL_TIMELINE_VIEW_STORAGE_KEY
@@ -25,6 +27,16 @@ import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.
 import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 import { updateTrackerStreakLabel } from '../attendance-check.js';
 import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
+import {
+    getDailyJournalFromSettings,
+    dailyJournalHasContent,
+    dailyJournalHasPhotos,
+    dailyJournalHasPendingPhotoUpload,
+    dailyJournalSlotFallbackLine,
+    formatMetricRecordChain,
+    normalizeDailyJournalEntry
+} from '../utils/daily-journal-data.js';
+import { formatMealogDateLabel } from '../utils/date-label.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -142,6 +154,35 @@ function mealEntryRowPointerClass(record) {
     return 'cursor-pointer active:scale-[0.98]';
 }
 
+/** 타임라인 식사·간식 행 탭 → 기록 모달 (인라인 onclick 대신 data 속성 + 위임) */
+function mealTimelineOpenDataAttrs(dateStr, slotId, entryId = null) {
+    const eid =
+        entryId != null && entryId !== '' && entryId !== 'null'
+            ? ` data-mealog-open-entry="${escapeHtml(String(entryId))}"`
+            : '';
+    return `data-mealog-open-date="${escapeHtml(String(dateStr))}" data-mealog-open-slot="${escapeHtml(String(slotId))}"${eid}`;
+}
+
+function applyMealTimelineOpenTarget(el, dateStr, slotId, entryId = null) {
+    if (!el) return;
+    el.setAttribute('data-mealog-open-date', String(dateStr));
+    el.setAttribute('data-mealog-open-slot', String(slotId));
+    if (entryId != null && entryId !== '' && entryId !== 'null') {
+        el.setAttribute('data-mealog-open-entry', String(entryId));
+    } else {
+        el.removeAttribute('data-mealog-open-entry');
+    }
+    el.removeAttribute('onclick');
+}
+
+function clearMealTimelineOpenTarget(el) {
+    if (!el) return;
+    el.removeAttribute('data-mealog-open-date');
+    el.removeAttribute('data-mealog-open-slot');
+    el.removeAttribute('data-mealog-open-entry');
+    el.removeAttribute('onclick');
+}
+
 const MEAL_ROW_POINTER_CLASS_TOKENS = new Set([
     'cursor-pointer',
     'active:scale-[0.98]',
@@ -236,12 +277,9 @@ function applySnackTagPendingUi(tagEl, record) {
     else cls += 'cursor-pointer active:bg-slate-50';
     tagEl.className = cls;
     if (deleting || pending) {
-        tagEl.removeAttribute('onclick');
+        clearMealTimelineOpenTarget(tagEl);
     } else {
-        tagEl.setAttribute(
-            'onclick',
-            `window.openModal(${JSON.stringify(record.date)}, ${JSON.stringify(record.slotId)}, ${JSON.stringify(record.id)})`
-        );
+        applyMealTimelineOpenTarget(tagEl, record.date, record.slotId, record.id);
     }
 }
 
@@ -255,12 +293,9 @@ function applyCardRowPointerAndClick(rowEl, record) {
     if (!rowEl.classList.contains('card')) return;
     rowEl.className = `${stripMealRowPointerClasses(rowEl.className)} ${mealEntryRowPointerClass(record)}`.replace(/\s+/g, ' ').trim();
     if (isMealEntryRowBlocked(record)) {
-        rowEl.removeAttribute('onclick');
+        clearMealTimelineOpenTarget(rowEl);
     } else {
-        rowEl.setAttribute(
-            'onclick',
-            `window.openModal(${JSON.stringify(record.date)}, ${JSON.stringify(record.slotId)}, ${JSON.stringify(record.id)})`
-        );
+        applyMealTimelineOpenTarget(rowEl, record.date, record.slotId, record.id);
     }
     syncMealEntryDeletingOverlayOnCard(rowEl, record);
 }
@@ -745,7 +780,7 @@ function buildSnackTimelineCardHtml(
     const blockOpen = isMealEntryRowBlocked(r);
     const openClick = blockOpen
         ? ''
-        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+        : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
     return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex">
             <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
@@ -774,7 +809,7 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 border-slate-200 ${specificStyle.iconText} flex items-center justify-center overflow-hidden border-r">
                 <span class="text-3xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
@@ -794,7 +829,7 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -812,7 +847,7 @@ function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, null)' class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -859,7 +894,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     const blockMainList = isMealEntryRowBlocked(r);
     const openClickMainList = blockMainList
         ? ''
-        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+        : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
     return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
@@ -930,7 +965,7 @@ function buildSnackListFilledRowHtml(
     const pendingSnackList = isMealEntryRowBlocked(r);
     const openClickSnackList = pendingSnackList
         ? ''
-        : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+        : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
 
     return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
@@ -956,164 +991,229 @@ function buildSnackListFilledRowHtml(
     </div>`;
 }
 
+function dailyJournalOpenDataAttrs(dateStr) {
+    return `data-mealog-open-daily="${escapeHtml(String(dateStr))}"`;
+}
+
+function getDailyJournalForTimeline(dateStr) {
+    try {
+        if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
+            return window.dbOps.getDailyJournal(dateStr);
+        }
+    } catch (_) {}
+    return getDailyJournalFromSettings(window.userSettings, dateStr);
+}
+
+/** 하루 기록 사진이 있을 때 — 식사 행과 동일한 동기화 도트(업로드 중 빨강 / 반영 완료 초록) */
+function dailyJournalPhotoSyncLeadHtml(journal) {
+    if (!dailyJournalHasPhotos(journal)) return '';
+    if (dailyJournalHasPendingPhotoUpload(journal)) {
+        return mealLeadSyncRedDot('등록 중', '하루 기록 사진을 서버에 업로드하는 중이에요.');
+    }
+    const dot = (bg) =>
+        `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
+    return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="사진 서버 반영 완료" aria-label="사진 서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">사진 서버 반영 완료</span>`;
+}
+
+function wrapDailyJournalSlotTextWithSyncLead(journal, innerHtml) {
+    const lead = dailyJournalPhotoSyncLeadHtml(journal);
+    if (!lead) return innerHtml;
+    return `<div class="flex min-w-0 items-start gap-1.5">${lead}<div class="min-w-0 flex-1">${innerHtml}</div></div>`;
+}
+
+function dailyJournalCommentPreviewHtml(comment) {
+    const c = String(comment || '').trim();
+    if (!c) return '';
+    return `<p class="daily-journal-summary-text clear-both mt-1.5 mb-0 min-w-0 text-xs font-medium text-slate-400">"${escapeHtml(c)}"</p>`;
+}
+
+function dailyJournalMetricHashtagSpan(label, chain) {
+    if (!chain) return '';
+    const tagText = `${label} ${chain}`;
+    return `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(tagText)}</span>`;
+}
+
+function dailyJournalMetricsSlotPreviewHtml(journal) {
+    const n = normalizeDailyJournalEntry(journal);
+    const tags = [];
+    if (n.weightEnabled && n.weightRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.weightRecords, { isWeight: true });
+        const span = dailyJournalMetricHashtagSpan('체중', chain);
+        if (span) tags.push(span);
+    }
+    if (n.bloodSugarEnabled && n.bloodSugarRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.bloodSugarRecords, { isWeight: false });
+        const span = dailyJournalMetricHashtagSpan('혈당', chain);
+        if (span) tags.push(span);
+    }
+    if (!tags.length) return '';
+    return `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.join('')}</div>`;
+}
+
+function buildDailyJournalSlotHtml(dateStr) {
+    const journal = getDailyJournalForTimeline(dateStr);
+    const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
+    const mealView = getMealTimelineView();
+    const useListLayout =
+        mealView === 'list' || (mealView === 'mixed' && photos.length === 0);
+
+    if (useListLayout) {
+        return dailyJournalHasContent(journal)
+            ? buildDailyJournalListFilledHtml(dateStr, journal)
+            : buildDailyJournalListEmptyHtml(dateStr);
+    }
+    return buildDailyJournalCardHtml(dateStr, journal);
+}
+
+function buildDailyJournalListEmptyHtml(dateStr) {
+    const style = DAILY_JOURNAL_SLOT_STYLE;
+    const slot = DAILY_JOURNAL_SLOT;
+    const safeLabel = escapeHtml(slot.label);
+    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
+    const listLeft = style.listLeft || '';
+    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex ${hThird}">
+            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
+                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
+            </div>
+            <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
+                <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
+                <span class="text-xs text-slate-400 font-normal">기록하기</span>
+            </div>
+        </div>
+    </div>`;
+}
+
+function buildDailyJournalListFilledHtml(dateStr, journal) {
+    const style = DAILY_JOURNAL_SLOT_STYLE;
+    const slot = DAILY_JOURNAL_SLOT;
+    const comment = String(journal.comment || '').trim();
+    const safeLabel = escapeHtml(slot.label);
+    const listLeft = style.listLeft || '';
+    const metricsHtml = dailyJournalMetricsSlotPreviewHtml(journal);
+    const commentHtml = dailyJournalCommentPreviewHtml(comment);
+    const fallback = dailyJournalSlotFallbackLine(journal);
+    const fallbackHtml = !commentHtml && fallback
+        ? `<p class="mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(fallback)}</p>`
+        : '';
+    const bodyInner =
+        commentHtml +
+        (metricsHtml || '') +
+        fallbackHtml +
+        (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
+    const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
+
+    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex items-stretch">
+            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
+                <span class="text-sm font-bold leading-tight break-words">${safeLabel}</span>
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-2">
+                ${bodyHtml}
+            </div>
+        </div>
+    </div>`;
+}
+
+function buildDailyJournalCardHtml(dateStr, journal) {
+    const style = DAILY_JOURNAL_SLOT_STYLE;
+    const slot = DAILY_JOURNAL_SLOT;
+    const hasContent = dailyJournalHasContent(journal);
+    const comment = String(journal.comment || '').trim();
+    const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
+    const safeLabel = escapeHtml(slot.label);
+
+    let iconHtml = '';
+    if (photos.length > 0) {
+        iconHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null);
+    } else if (hasContent) {
+        iconHtml = `<i class="fa-solid fa-book-open text-2xl ${style.iconText}"></i>`;
+    } else {
+        iconHtml = `<div class="flex flex-col items-center justify-center text-center px-2">
+            <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
+            <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
+        </div>`;
+    }
+
+    const titleLine1 = dailyJournalHasPhotos(journal)
+        ? `<h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${dailyJournalPhotoSyncLeadHtml(journal)}<span class="text-sm font-bold ${style.text} min-w-0">${safeLabel}</span></h4>`
+        : `<span class="text-sm font-bold ${style.text}">${safeLabel}</span>`;
+    const titleLine2 = hasContent
+        ? ''
+        : '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
+    const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);
+    const commentPreview = dailyJournalCommentPreviewHtml(comment);
+    const fallbackPreview =
+        !comment && !metricsPreview && hasContent
+            ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(dailyJournalSlotFallbackLine(journal))}</p>`
+            : '';
+
+    const containerClass = hasContent ? 'border-slate-200' : 'border-slate-200 opacity-80';
+    const iconBoxClass = `bg-slate-100 border-slate-200 ${style.iconText}`;
+
+    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex">
+            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+                ${iconHtml}
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+                <div class="min-w-0">
+                    ${dailyJournalHasPhotos(journal) ? titleLine1 : `<h4 class="mb-0 leading-tight">${titleLine1}</h4>`}
+                    ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}
+                    ${commentPreview}
+                    ${metricsPreview || ''}
+                    ${fallbackPreview}
+                </div>
+            </div>
+        </div>
+    </div>`;
+}
+
 function refreshTimelineAfterSnackViewChange() {
     const container = document.getElementById('timelineContainer');
     if (!container) return;
     container.querySelectorAll(':scope > [id^="date-"]').forEach((el) => el.remove());
-    const dc = document.getElementById('dailyCommentSection');
-    if (dc) dc.remove();
     const lm = document.getElementById('loadMoreMealsBtn');
     if (lm) lm.remove();
     window.loadedDates = [];
     renderTimeline();
 }
 
-function getDailyCommentTextForTimeline(dateStr) {
-    try {
-        if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-            return window.dbOps.getDailyComment(dateStr) || '';
-        }
-    } catch (_) {}
-    const dc = window.userSettings && window.userSettings.dailyComments;
-    if (dc && typeof dc === 'object') return String(dc[dateStr] || '');
-    return '';
+let timelineOpenModalDelegationBound = false;
+/** 타임라인 식사·간식 카드/태그 탭 → 기록 모달 (일간 스와이프·CSP 등으로 인라인 onclick이 무반응일 때 대비) */
+function ensureTimelineOpenModalDelegation() {
+    if (timelineOpenModalDelegationBound) return;
+    timelineOpenModalDelegationBound = true;
+    document.addEventListener(
+        'click',
+        (e) => {
+            const root = document.getElementById('timelineContainer');
+            if (!root) return;
+            if (e.target?.closest?.('.timeline-meal-photo-tap, .meal-sync-retry-btn')) return;
+            const target = e.target.closest('[data-mealog-open-date][data-mealog-open-slot]');
+            if (!target || !root.contains(target)) {
+                const dailyTarget = e.target.closest('[data-mealog-open-daily]');
+                if (!dailyTarget || !root.contains(dailyTarget)) return;
+                const dailyDate = dailyTarget.getAttribute('data-mealog-open-daily');
+                if (!dailyDate || typeof window.openDailyJournalModal !== 'function') return;
+                e.preventDefault();
+                e.stopPropagation();
+                window.openDailyJournalModal(dailyDate);
+                return;
+            }
+            if (target.classList.contains('pointer-events-none')) return;
+            const date = target.getAttribute('data-mealog-open-date');
+            const slotId = target.getAttribute('data-mealog-open-slot');
+            if (!date || !slotId || typeof window.openModal !== 'function') return;
+            const entryId = target.getAttribute('data-mealog-open-entry') || null;
+            e.preventDefault();
+            e.stopPropagation();
+            void window.openModal(date, slotId, entryId);
+        },
+        false
+    );
 }
-
-const TIMELINE_WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
-
-function formatTimelineDateHeaderLabel(dateStr) {
-    const dObj = new Date(String(dateStr) + 'T00:00:00');
-    if (Number.isNaN(dObj.getTime())) return String(dateStr || '');
-    const y = dObj.getFullYear();
-    const m = dObj.getMonth() + 1;
-    const day = dObj.getDate();
-    const wd = TIMELINE_WEEKDAY_KO[dObj.getDay()] || '';
-    return `${y}. ${m}.${day} (${wd})`;
-}
-
-
-
-function getDailyVitalsForTimeline(dateStr) {
-    try {
-        if (window.dbOps && typeof window.dbOps.getDailyVitals === 'function') {
-            return window.dbOps.getDailyVitals(dateStr);
-        }
-    } catch (_) {}
-    const raw = window.userSettings?.dailyVitals?.[dateStr];
-    if (!raw || typeof raw !== 'object') {
-        return { weight: '', glucose: '', weightOn: false, glucoseOn: false };
-    }
-    return {
-        weight: raw.weight != null && raw.weight !== '' ? String(raw.weight) : '',
-        glucose: raw.glucose != null && raw.glucose !== '' ? String(raw.glucose) : '',
-        weightOn: raw.weightOn === true,
-        glucoseOn: raw.glucoseOn === true
-    };
-}
-
-function buildDailyJournalMetricHtml(vital, label, unit, dateStr, vitals) {
-    const on = vital === 'weight' ? vitals.weightOn : vitals.glucoseOn;
-    const val = vital === 'weight' ? vitals.weight : vitals.glucose;
-    const checked = on ? ' checked' : '';
-    const wrapOff = on ? '' : ' daily-journal-metric-wrap--off';
-    const layerHidden = on ? 'hidden ' : '';
-    return `
-        <div class="daily-journal-metric min-w-0">
-          <div class="flex items-center justify-between gap-2 mb-1.5">
-            <span class="text-xs font-extrabold text-slate-600 uppercase">${escapeHtml(label)}</span>
-            <label class="entry-gauge-switch" title="${escapeHtml(label)} 기록">
-              <input type="checkbox" class="peer sr-only daily-journal-vital-toggle" data-vital-toggle="${vital}" data-mealog-date="${escapeHtml(dateStr)}" role="switch" aria-label="${escapeHtml(label)} 기록 사용"${checked}>
-              <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-              <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-            </label>
-          </div>
-          <div class="daily-journal-metric-wrap relative rounded-xl border border-slate-200 bg-slate-50${wrapOff}" data-vital-wrap="${vital}">
-            <div class="daily-journal-metric-field flex items-center gap-2 px-3 py-2.5 min-h-[44px]">
-              <input type="text" inputmode="decimal" autocomplete="off" data-vital-input="${vital}" data-mealog-date="${escapeHtml(dateStr)}" value="${escapeHtml(val)}" placeholder="—" class="daily-journal-vital-input flex-1 min-w-0 bg-transparent border-0 p-0 text-sm font-bold text-slate-800 outline-none focus:ring-0 appearance-none">
-              <span class="text-xs font-bold text-slate-400 shrink-0 tabular-nums">${escapeHtml(unit)}</span>
-            </div>
-            <div class="entry-gauge-off-layer daily-journal-metric-off-layer ${layerHidden}absolute inset-0 z-[5] flex items-center justify-center rounded-xl px-2" data-vital-off="${vital}" aria-hidden="${on ? 'true' : 'false'}" role="status">
-              <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
-            </div>
-          </div>
-        </div>`;
-}
-
-function applyDailyJournalVitalsUi(sectionEl) {
-    if (!sectionEl) return;
-    ['weight', 'glucose'].forEach((vital) => {
-        const toggle = sectionEl.querySelector(`[data-vital-toggle="${vital}"]`);
-        const wrap = sectionEl.querySelector(`[data-vital-wrap="${vital}"]`);
-        const layer = sectionEl.querySelector(`[data-vital-off="${vital}"]`);
-        const on = toggle?.checked === true;
-        if (wrap) wrap.classList.toggle('daily-journal-metric-wrap--off', !on);
-        if (layer) {
-            layer.classList.toggle('hidden', on);
-            layer.setAttribute('aria-hidden', on ? 'true' : 'false');
-        }
-    });
-}
-
-let dailyJournalVitalsDelegationBound = false;
-function ensureDailyJournalVitalsDelegation() {
-    if (dailyJournalVitalsDelegationBound) return;
-    const root = document.getElementById('timelineContainer');
-    if (!root) return;
-    dailyJournalVitalsDelegationBound = true;
-    root.addEventListener('change', (e) => {
-        const t = e.target;
-        if (!t?.classList?.contains('daily-journal-vital-toggle')) return;
-        const section = t.closest('.daily-journal-section');
-        if (!section || !root.contains(section)) return;
-        applyDailyJournalVitalsUi(section);
-    });
-}
-
-/** 일간 보기: 해당 날짜 섹션 하단에 하루 기록 입력(본문 전체 너비) */
-function injectDailyJournalCard(sectionEl, dateStr) {
-    if (!sectionEl || !dateStr) return;
-    ensureDailyJournalVitalsDelegation();
-    sectionEl.querySelector('#dailyCommentSection')?.remove();
-    const text = getDailyCommentTextForTimeline(dateStr);
-    const vitals = getDailyVitalsForTimeline(dateStr);
-    const wrap = document.createElement('div');
-    wrap.id = 'dailyCommentSection';
-    wrap.setAttribute('data-mealog-date', dateStr);
-    wrap.className = 'daily-journal-section w-full max-w-none pb-4 pt-1';
-    wrap.innerHTML = `
-      <div class="w-full border-y border-slate-200 bg-white shadow-sm">
-        <div class="px-4 py-3 flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/90">
-          <span class="text-sm font-black text-slate-800">${escapeHtml(formatTimelineDateHeaderLabel(dateStr))}</span>
-          <button type="button" data-mealog-daily="save-comment" data-mealog-date="${escapeHtml(dateStr)}"
-            class="text-sm font-bold text-emerald-700 hover:text-emerald-800 active:opacity-70 shrink-0 p-0 bg-transparent border-0 cursor-pointer">저장</button>
-        </div>
-        <div class="daily-journal-metrics">
-          ${buildDailyJournalMetricHtml('weight', '체중', 'kg', dateStr, vitals)}
-          ${buildDailyJournalMetricHtml('glucose', '혈당', 'mg/dL', dateStr, vitals)}
-        </div>
-        <textarea id="dailyCommentInput" data-mealog-daily-comment-input data-mealog-date="${escapeHtml(dateStr)}" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="5"
-          class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[136px] appearance-none">${escapeHtml(text)}</textarea>
-      </div>`;
-    sectionEl.appendChild(wrap);
-    applyDailyJournalVitalsUi(wrap);
-}
-
-function buildDailyJournalSummaryRowHtml(dateStr) {
-    const text = getDailyCommentTextForTimeline(dateStr).trim();
-    if (!text) return '';
-    const safeText = escapeHtml(text);
-    const safeDate = escapeHtml(dateStr);
-    return `<div class="daily-journal-summary-row card mb-1.5 border border-slate-200 border-l-[4px] border-l-violet-500/70 transition-all !rounded-none cursor-pointer active:scale-[0.98]" data-mealog-daily-summary-date="${safeDate}" onclick='window.openDailyCommentModal && window.openDailyCommentModal(${JSON.stringify(dateStr)})'>
-        <div class="flex items-start">
-            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r self-stretch">
-                <span class="text-sm font-bold leading-tight text-violet-600 break-words">하루 기록</span>
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col py-2.5 pl-3 pr-4 overflow-hidden">
-                <p class="daily-journal-summary-text mb-0 min-w-0 text-xs font-medium text-slate-400">"${safeText}"</p>
-            </div>
-        </div>
-    </div>`;
-}
+ensureTimelineOpenModalDelegation();
 
 let timelineViewSelectDelegationBound = false;
 function ensureTimelineViewSelectDelegation() {
@@ -1304,7 +1404,7 @@ export function renderTimeline() {
             </button>`;
         }
         let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between">
-            <h3>${escapeHtml(formatTimelineDateHeaderLabel(dateStr))}</h3>
+            <h3>${escapeHtml(formatMealogDateLabel(dateStr))}</h3>
             ${shareButton}
         </div>`;
 
@@ -1393,7 +1493,7 @@ export function renderTimeline() {
                 const mainBlockOpen = r && isMealEntryRowBlocked(r);
                 const mainOpenClick = mainBlockOpen
                     ? ''
-                    : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${r ? JSON.stringify(r.id) : 'null'})'`;
+                    : mealTimelineOpenDataAttrs(dateStr, slot.id, r ? r.id : null);
                 const mainPointer = !r ? 'cursor-pointer active:scale-[0.98]' : mealEntryRowPointerClass(r);
                 const mainRel = r ? mealCardRelativeClass(r) : '';
                 html += `<div ${mainOpenClick} class="card mb-1.5 border ${containerClass} ${mainPointer} transition-all !rounded-none ${mainRel}" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
@@ -1442,7 +1542,7 @@ export function renderTimeline() {
                             if (isLast) {
                                 html += `<div class="relative mb-1.5">
                                 ${cardHtml}
-                                <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                             </div>`;
                             } else {
                                 html += cardHtml;
@@ -1469,7 +1569,7 @@ export function renderTimeline() {
                             if (isLast) {
                                 html += `<div class="relative mb-1.5">
                                     ${rowHtml}
-                                    <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                                 </div>`;
                             } else {
                                 html += rowHtml;
@@ -1511,7 +1611,7 @@ export function renderTimeline() {
                             if (isLast) {
                                 html += `<div class="relative mb-1.5">
                                     ${blockHtml}
-                                    <button type="button" onclick='event.stopPropagation(); window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                                 </div>`;
                             } else {
                                 html += blockHtml;
@@ -1533,7 +1633,7 @@ export function renderTimeline() {
                             const tagBusy = tagDeleting || tagPending;
                             const tagClick = tagBusy
                                 ? ''
-                                : `onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)}, ${JSON.stringify(r.id)})'`;
+                                : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
                             const tagCls = tagDeleting
                                 ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
                                 : tagDeleteFailed
@@ -1547,32 +1647,17 @@ export function renderTimeline() {
                                 ${buildSnackTagRowInnerHtml(r)}
                             </div>`;
                         }).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
-                        <button onclick='window.openModal(${JSON.stringify(dateStr)}, ${JSON.stringify(slot.id)})' class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
+                        <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
                 }
             }
         });
-        if (state.viewMode !== 'page') {
-            html += buildDailyJournalSummaryRowHtml(dateStr);
-        }
+        html += buildDailyJournalSlotHtml(dateStr);
         section.innerHTML = html;
         insertTimelineDateSectionInChronologicalOrder(container, section, dateStr);
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
-
-    if (state.viewMode === 'page') {
-        const py = state.pageDate.getFullYear();
-        const pm = String(state.pageDate.getMonth() + 1).padStart(2, '0');
-        const pd = String(state.pageDate.getDate()).padStart(2, '0');
-        const pageDateStr = `${py}-${pm}-${pd}`;
-        const pageSection = document.getElementById(`date-${pageDateStr}`);
-        if (pageSection) {
-            injectDailyJournalCard(pageSection, pageDateStr);
-        }
-    } else {
-        document.getElementById('dailyCommentSection')?.remove();
-    }
 
     // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
     if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
@@ -1623,6 +1708,7 @@ export function renderTimeline() {
         }
     }
 
+    ensureTimelineOpenModalDelegation();
     ensureTimelineViewSelectDelegation();
     syncSnackViewDropdown(container);
 
