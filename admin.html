@@ -427,6 +427,12 @@
                                             <label class="text-sm font-bold text-slate-700">금지:</label>
                                             <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
                                         </div>
+                                        <div class="flex items-center gap-2 min-w-0 flex-1 sm:flex-none max-w-full sm:max-w-md">
+                                            <label for="feedAuthorSearchInput" class="text-sm font-bold text-slate-700 shrink-0">작성자:</label>
+                                            <input type="search" id="feedAuthorSearchInput" enterkeyhint="search" autocomplete="off" placeholder="닉네임·이메일·UID 검색" class="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30" />
+                                            <button type="button" id="feedAuthorSearchClearBtn" class="hidden shrink-0 px-2.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 border border-slate-200">지우기</button>
+                                        </div>
+                                        <div id="feedAuthorFilterBar" class="hidden basis-full"></div>
                                         <div class="flex gap-2 items-center ml-auto">
                                             <button type="button" id="adminRefreshFeedBtn" onclick="window.refreshFeedManagement()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                                                 <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
