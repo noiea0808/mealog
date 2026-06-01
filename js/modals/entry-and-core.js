@@ -20,6 +20,7 @@ import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } fro
 import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
+import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     isMealEntryPendingSync,
@@ -956,6 +957,17 @@ export async function openModal(date, slotId, entryId = null) {
         
         if (!date || !slotId) {
             console.error('openModal: 필수 파라미터가 없습니다.', { date, slotId });
+            return;
+        }
+
+        if (
+            slotId === 'daily_journal' ||
+            (entryId && String(entryId).startsWith('dailyJournal_')) ||
+            isDailyJournalMealRecord({ date, slotId, id: entryId })
+        ) {
+            if (typeof window.openDailyJournalModal === 'function') {
+                window.openDailyJournalModal(date);
+            }
             return;
         }
 

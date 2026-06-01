@@ -64,7 +64,8 @@ import {
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
     openKakaoPlaceSearch, searchKakaoPlaces, selectKakaoPlace, applyKakaoSearchText, applyKakaoPlaceManualText,
-    openDailyJournalModal, closeDailyJournalModal, saveDailyJournal,
+    openDailyJournalModal, closeDailyJournalModal, saveDailyJournal, deleteDailyJournal,
+    updateDailyJournalShareIndicator, toggleDailyJournalSharePhoto,
     handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
     editDailyJournalPhoto,
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
@@ -277,7 +278,13 @@ window.Mealog.openDailyJournalModal = openDailyJournalModal;
 window.closeDailyJournalModal = closeDailyJournalModal;
 window.Mealog.closeDailyJournalModal = closeDailyJournalModal;
 window.saveDailyJournal = saveDailyJournal;
+window.deleteDailyJournal = deleteDailyJournal;
 window.Mealog.saveDailyJournal = saveDailyJournal;
+window.Mealog.deleteDailyJournal = deleteDailyJournal;
+window.updateDailyJournalShareIndicator = updateDailyJournalShareIndicator;
+window.Mealog.updateDailyJournalShareIndicator = updateDailyJournalShareIndicator;
+window.toggleDailyJournalSharePhoto = toggleDailyJournalSharePhoto;
+window.Mealog.toggleDailyJournalSharePhoto = toggleDailyJournalSharePhoto;
 window.handleDailyJournalImages = handleDailyJournalImages;
 window.Mealog.handleDailyJournalImages = handleDailyJournalImages;
 window.removeDailyJournalPhoto = removeDailyJournalPhoto;
@@ -763,7 +770,13 @@ window.handleSearch = (k) => {
         }).join('');
     c.querySelectorAll('.search-result-item').forEach(el => {
         el.addEventListener('click', () => {
-            window.openModal(el.dataset.date, el.dataset.slotId, el.dataset.entryId);
+            const date = el.dataset.date;
+            const slotId = el.dataset.slotId;
+            if (slotId === 'daily_journal' && date && typeof window.openDailyJournalModal === 'function') {
+                window.openDailyJournalModal(date);
+                return;
+            }
+            window.openModal(date, slotId, el.dataset.entryId);
         });
     });
 };
