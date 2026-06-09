@@ -17,6 +17,7 @@ import {
     serverTimestamp,
     documentId
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { dailyJournalHasContent, normalizeDailyJournalEntry } from '../utils/daily-journal-data.js';
 import {
     getSharedPhotoGroupKey,
     dateKeyFromLocalDate,
@@ -564,14 +565,19 @@ const RECORD_SLOT_7_SUM_IDS = SLOTS.map((s) => `statRecSlot_${s.id}_7Sum`);
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
+    'statDailyJournal7d',
     'statShared7d'
 ];
 
 const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
+    'statDailyJournal7Sum',
     'statShared7Sum'
 ];
+
+/** config/settings dailyComments 스캔 상한 (관리자 새로고침 시 1회) */
+const DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP = 10000;
 
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
@@ -642,7 +648,8 @@ function cloneLast7Breakdown(raw) {
         activeUsers: pick(raw.activeUsers),
         records: pick(raw.records),
         recordsBySlot,
-        sharedPhotos: pick(raw.sharedPhotos)
+        sharedPhotos: pick(raw.sharedPhotos),
+        dailyJournal: pick(raw.dailyJournal)
     };
 }
 
@@ -688,6 +695,7 @@ function cloneWeeklyBreakdown(raw) {
         records: pickWeekArr(raw.records, n),
         recordsBySlot,
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
+        dailyJournal: pickWeekArr(raw.dailyJournal, n),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
     };
 }
@@ -874,6 +882,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (key === 'newUsers') return weeklyBreakdown.newUsers || [];
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
+    if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
     if (key === 'records') return weeklyBreakdown.records || [];
     if (key.startsWith('slot:')) {
         const id = key.slice(5);
@@ -1131,11 +1140,13 @@ export async function getUserStatistics() {
         const zW = () => Array.from({ length: nWeeks }, () => 0);
         const newUsersByDay = z7();
         const recordsByDay = z7();
+        const dailyJournalByDay = z7();
         const activeSetsByDay = Array.from({ length: 7 }, () => new Set());
         const sharedByDayCounts = z7();
 
         const newUsersByWeek = zW();
         const recordsByWeek = zW();
+        const dailyJournalByWeek = zW();
         const activeSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
         const sharedSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
 
@@ -1161,6 +1172,7 @@ export async function getUserStatistics() {
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
+            dailyJournal: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: 0,
@@ -1208,7 +1220,6 @@ export async function getUserStatistics() {
             }
         }
 
-        stats.records.all = recordsAllCount;
         let recordsToday = 0;
         let recordsLast7 = 0;
 
@@ -1251,8 +1262,48 @@ export async function getUserStatistics() {
             }
         });
 
-        stats.records.today = recordsToday;
-        stats.records.last7 = recordsLast7;
+        let dailyJournalAll = 0;
+        let dailyJournalToday = 0;
+        let dailyJournalLast7 = 0;
+        try {
+            const configGroup = collectionGroup(db, 'config');
+            const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
+            configSnap.forEach((docSnap) => {
+                if (docSnap.id !== 'settings') return;
+                const uid = userIdFromMealDocRef(docSnap.ref);
+                if (!uid || excluded.has(uid)) return;
+                const dc = docSnap.data()?.dailyComments;
+                if (!dc || typeof dc !== 'object') return;
+                for (const [dateStr, raw] of Object.entries(dc)) {
+                    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
+                    if (!dailyJournalHasContent(normalizeDailyJournalEntry(raw))) continue;
+                    dailyJournalAll++;
+                    const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
+                    if (wi >= 0) dailyJournalByWeek[wi]++;
+                    if (dateStr === todayStr) dailyJournalToday++;
+                    if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                        dailyJournalLast7++;
+                        const rdi = last7IndexMap.get(dateStr);
+                        if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
+                    }
+                }
+            });
+        } catch (djErr) {
+            console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+        }
+        stats.dailyJournal.all = dailyJournalAll;
+        stats.dailyJournal.today = dailyJournalToday;
+        stats.dailyJournal.last7 = dailyJournalLast7;
+
+        stats.records.all = recordsAllCount + dailyJournalAll;
+        stats.records.today = recordsToday + dailyJournalToday;
+        stats.records.last7 = recordsLast7 + dailyJournalLast7;
+        for (let di = 0; di < 7; di++) {
+            recordsByDay[di] += dailyJournalByDay[di];
+        }
+        for (let wi = 0; wi < nWeeks; wi++) {
+            recordsByWeek[wi] += dailyJournalByWeek[wi];
+        }
 
         SLOTS.forEach((s, i) => {
             const a = slotAgg[s.id];
@@ -1376,7 +1427,8 @@ export async function getUserStatistics() {
             activeUsers: activeSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
-            sharedPhotos: [...sharedByDayCounts]
+            sharedPhotos: [...sharedByDayCounts],
+            dailyJournal: [...dailyJournalByDay]
         };
 
         stats.weeklyBreakdown =
@@ -1396,7 +1448,8 @@ export async function getUserStatistics() {
                           activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
                           records: [...recordsByWeek],
                           recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
-                          sharedPhotos: sharedSetsByWeek.map((s) => s.size)
+                          sharedPhotos: sharedSetsByWeek.map((s) => s.size),
+                          dailyJournal: [...dailyJournalByWeek]
                       };
                   })()
                 : null;
@@ -1449,17 +1502,20 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         set('statActiveUsersAll', stats.activeUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
+        set('statDailyJournalAll', stats.dailyJournal?.all);
 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
         fillDashboard7dNumericRow('statActiveUsers7d', bd?.activeUsers, stats.activeUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
+        fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
+        set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
 
         SLOTS.forEach((s) => {
             const d = stats.recordsBySlot?.[s.id] || { all: 0, last7: 0, today: 0 };
@@ -1470,8 +1526,8 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         });
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', ...recordSlotAll].forEach((id) =>
-            set(id, null)
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll].forEach(
+            (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
         getDashboard7dCellIds().forEach((id) => {
@@ -1547,6 +1603,7 @@ export async function updateStatistics() {
             records: data.records || { all: 0, last7: 0, today: 0 },
             recordsBySlot: data.recordsBySlot && typeof data.recordsBySlot === 'object' ? data.recordsBySlot : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
+            dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
         };
         let last7Breakdown = cloneLast7Breakdown(data.last7Breakdown);
@@ -1604,6 +1661,7 @@ export async function refreshDashboardStats() {
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
                     sharedPhotos: stats.sharedPhotos,
+                    dailyJournal: stats.dailyJournal,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,
