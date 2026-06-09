@@ -17,6 +17,7 @@ import {
     serverTimestamp,
     documentId
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { dailyJournalHasContent, normalizeDailyJournalEntry } from '../utils/daily-journal-data.js';
 import {
     getSharedPhotoGroupKey,
     dateKeyFromLocalDate,
@@ -427,9 +428,9 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
 }
 
 /**
- * 페이지별 집계 (트렌드와 동일하게 dashboardStats 캐시 + 증분으로 읽기 최소화)
+ * 페이지별 집계 (dashboardStats 캐시 + 새로고침 시 usageDaily 전 구간 재스캔)
  * - 화면 로드: 캐시 1회 getDoc만 사용 (updateStatistics)
- * - 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
+ * - 새로고침: usageDaily 전 구간 + 최근 7일 getDocFromServer로 all·주별·7일 일괄 산출
  * - 주별: 일요일 시작 주 메타는 트렌드(getUserStatistics)와 동일, usageDaily 일자를 주 인덱스로 합산
  */
 async function rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks) {
@@ -456,7 +457,7 @@ async function fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout) {
     return rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, weeks.length);
 }
 
-export async function aggregatePageUsageFromFirestore(prevDashboardData) {
+export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     const todayStr = getTodayDateString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -474,97 +475,38 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
     );
     const { byField: byFieldDay, last7Sum } = buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
 
-    const prevPU = prevDashboardData?.pageUsage;
-    const prevMerge =
-        prevPU?.mergeThroughDate && typeof prevPU.mergeThroughDate === 'string' ? prevPU.mergeThroughDate : null;
-    const prevAll = prevPU?.all && typeof prevPU.all === 'object' ? prevPU.all : null;
-
+    // usageDaily 일자는 수십~백여 건 수준이라 새로고침마다 전 구간 재집계(캐시 증분 오염 방지)
     let byFieldAll = zeroPageUsageTotals();
     let todayFieldSnap = zeroPageUsageTotals();
     let weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
 
-    if (!prevMerge || !prevAll) {
-        const q = query(
-            usageCol,
-            where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-            where(documentId(), '<=', todayStr),
-            orderBy(documentId())
-        );
-        const snap = await getDocs(q);
-        snap.docs.forEach((d) => {
-            addDocDataToPageTotals(d.data(), byFieldAll);
-            addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
-        });
-        const tSnap = await getDoc(todayRef);
+    const q = query(
+        usageCol,
+        where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+        where(documentId(), '<=', todayStr),
+        orderBy(documentId())
+    );
+    const snap = await getDocs(q);
+    snap.docs.forEach((d) => {
+        addDocDataToPageTotals(d.data(), byFieldAll);
+        addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
+    });
+    const tSnap = await getDocFromServer(todayRef);
+    if (tSnap.exists()) {
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
-    } else if (prevMerge === todayStr) {
-        for (const def of PAGE_USAGE_METRIC_DEFS) {
-            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
-        }
-        if (!prevPU.todayFieldSnap || typeof prevPU.todayFieldSnap !== 'object') {
-            const q = query(
-                usageCol,
-                where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-                where(documentId(), '<=', todayStr),
-                orderBy(documentId())
-            );
-            const snap = await getDocs(q);
-            byFieldAll = zeroPageUsageTotals();
-            weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
-            snap.docs.forEach((d) => {
-                addDocDataToPageTotals(d.data(), byFieldAll);
-                addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
-            });
-            const tSnap = await getDoc(todayRef);
-            todayFieldSnap = zeroPageUsageTotals();
-            addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
-        } else {
-            const newT = zeroPageUsageTotals();
-            const tSnap = await getDoc(todayRef);
-            addDocDataToPageTotals(tSnap.data(), newT);
-            const oldT = prevPU.todayFieldSnap;
-            for (const def of PAGE_USAGE_METRIC_DEFS) {
-                const f = def.field;
-                byFieldAll[f] = byFieldAll[f] - (Number(oldT[f]) || 0) + (Number(newT[f]) || 0);
-            }
-            todayFieldSnap = newT;
-            weeklyByField = pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)
-                ? clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks)
-                : await rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks);
-            const wi = weekIndexForDateKeyStr(todayStr, sundayKeyToIndex);
-            if (wi >= 0) {
-                for (const def of PAGE_USAGE_METRIC_DEFS) {
-                    const f = def.field;
-                    weeklyByField[f][wi] += (Number(newT[f]) || 0) - (Number(oldT[f]) || 0);
-                }
-            }
-        }
-    } else {
-        for (const def of PAGE_USAGE_METRIC_DEFS) {
-            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
-        }
-        const incQ = query(
-            usageCol,
-            where(documentId(), '>', prevMerge),
-            where(documentId(), '<=', todayStr),
-            orderBy(documentId())
-        );
-        const incSnap = await getDocs(incQ);
-        incSnap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
-        const tSnap = await getDoc(todayRef);
-        addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+    }
 
-        if (pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)) {
-            weeklyByField = clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks);
-            incSnap.docs.forEach((d) => addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex));
-        } else {
-            weeklyByField = await rebuildPageUsageWeeklyFromFirestoreRange(
-                usageCol,
-                todayStr,
-                sundayKeyToIndex,
-                nWeeks
-            );
-        }
+    const hasAnyMetric = PAGE_USAGE_METRIC_DEFS.some((def) => (Number(byFieldAll[def.field]) || 0) > 0);
+    console.log('[대시보드] 페이지별 usageDaily 집계:', {
+        docCount: snap.docs.length,
+        hasAnyMetric,
+        todayStr,
+        rangeFrom: USAGE_DAILY_MIN_ID
+    });
+    if (!hasAnyMetric) {
+        console.warn(
+            '[대시보드] usageDaily에 페이지별 수치가 없습니다. 앱에서 탭 전환 후 Firestore `artifacts/mealog-r0/usageDaily/{오늘}` 문서에 tab_mealdang 등 필드가 생기는지 확인하세요.'
+        );
     }
 
     return {
@@ -623,14 +565,19 @@ const RECORD_SLOT_7_SUM_IDS = SLOTS.map((s) => `statRecSlot_${s.id}_7Sum`);
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
+    'statDailyJournal7d',
     'statShared7d'
 ];
 
 const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
+    'statDailyJournal7Sum',
     'statShared7Sum'
 ];
+
+/** config/settings dailyComments 스캔 상한 (관리자 새로고침 시 1회) */
+const DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP = 10000;
 
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
@@ -701,7 +648,8 @@ function cloneLast7Breakdown(raw) {
         activeUsers: pick(raw.activeUsers),
         records: pick(raw.records),
         recordsBySlot,
-        sharedPhotos: pick(raw.sharedPhotos)
+        sharedPhotos: pick(raw.sharedPhotos),
+        dailyJournal: pick(raw.dailyJournal)
     };
 }
 
@@ -747,6 +695,7 @@ function cloneWeeklyBreakdown(raw) {
         records: pickWeekArr(raw.records, n),
         recordsBySlot,
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
+        dailyJournal: pickWeekArr(raw.dailyJournal, n),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
     };
 }
@@ -933,6 +882,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (key === 'newUsers') return weeklyBreakdown.newUsers || [];
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
+    if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
     if (key === 'records') return weeklyBreakdown.records || [];
     if (key.startsWith('slot:')) {
         const id = key.slice(5);
@@ -1190,11 +1140,13 @@ export async function getUserStatistics() {
         const zW = () => Array.from({ length: nWeeks }, () => 0);
         const newUsersByDay = z7();
         const recordsByDay = z7();
+        const dailyJournalByDay = z7();
         const activeSetsByDay = Array.from({ length: 7 }, () => new Set());
         const sharedByDayCounts = z7();
 
         const newUsersByWeek = zW();
         const recordsByWeek = zW();
+        const dailyJournalByWeek = zW();
         const activeSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
         const sharedSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
 
@@ -1220,6 +1172,7 @@ export async function getUserStatistics() {
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
+            dailyJournal: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: 0,
@@ -1267,7 +1220,6 @@ export async function getUserStatistics() {
             }
         }
 
-        stats.records.all = recordsAllCount;
         let recordsToday = 0;
         let recordsLast7 = 0;
 
@@ -1310,8 +1262,48 @@ export async function getUserStatistics() {
             }
         });
 
-        stats.records.today = recordsToday;
-        stats.records.last7 = recordsLast7;
+        let dailyJournalAll = 0;
+        let dailyJournalToday = 0;
+        let dailyJournalLast7 = 0;
+        try {
+            const configGroup = collectionGroup(db, 'config');
+            const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
+            configSnap.forEach((docSnap) => {
+                if (docSnap.id !== 'settings') return;
+                const uid = userIdFromMealDocRef(docSnap.ref);
+                if (!uid || excluded.has(uid)) return;
+                const dc = docSnap.data()?.dailyComments;
+                if (!dc || typeof dc !== 'object') return;
+                for (const [dateStr, raw] of Object.entries(dc)) {
+                    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
+                    if (!dailyJournalHasContent(normalizeDailyJournalEntry(raw))) continue;
+                    dailyJournalAll++;
+                    const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
+                    if (wi >= 0) dailyJournalByWeek[wi]++;
+                    if (dateStr === todayStr) dailyJournalToday++;
+                    if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                        dailyJournalLast7++;
+                        const rdi = last7IndexMap.get(dateStr);
+                        if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
+                    }
+                }
+            });
+        } catch (djErr) {
+            console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+        }
+        stats.dailyJournal.all = dailyJournalAll;
+        stats.dailyJournal.today = dailyJournalToday;
+        stats.dailyJournal.last7 = dailyJournalLast7;
+
+        stats.records.all = recordsAllCount + dailyJournalAll;
+        stats.records.today = recordsToday + dailyJournalToday;
+        stats.records.last7 = recordsLast7 + dailyJournalLast7;
+        for (let di = 0; di < 7; di++) {
+            recordsByDay[di] += dailyJournalByDay[di];
+        }
+        for (let wi = 0; wi < nWeeks; wi++) {
+            recordsByWeek[wi] += dailyJournalByWeek[wi];
+        }
 
         SLOTS.forEach((s, i) => {
             const a = slotAgg[s.id];
@@ -1435,7 +1427,8 @@ export async function getUserStatistics() {
             activeUsers: activeSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
-            sharedPhotos: [...sharedByDayCounts]
+            sharedPhotos: [...sharedByDayCounts],
+            dailyJournal: [...dailyJournalByDay]
         };
 
         stats.weeklyBreakdown =
@@ -1455,7 +1448,8 @@ export async function getUserStatistics() {
                           activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
                           records: [...recordsByWeek],
                           recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
-                          sharedPhotos: sharedSetsByWeek.map((s) => s.size)
+                          sharedPhotos: sharedSetsByWeek.map((s) => s.size),
+                          dailyJournal: [...dailyJournalByWeek]
                       };
                   })()
                 : null;
@@ -1508,17 +1502,20 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         set('statActiveUsersAll', stats.activeUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
+        set('statDailyJournalAll', stats.dailyJournal?.all);
 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
         fillDashboard7dNumericRow('statActiveUsers7d', bd?.activeUsers, stats.activeUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
+        fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
+        set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
 
         SLOTS.forEach((s) => {
             const d = stats.recordsBySlot?.[s.id] || { all: 0, last7: 0, today: 0 };
@@ -1529,8 +1526,8 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         });
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', ...recordSlotAll].forEach((id) =>
-            set(id, null)
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll].forEach(
+            (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
         getDashboard7dCellIds().forEach((id) => {
@@ -1606,6 +1603,7 @@ export async function updateStatistics() {
             records: data.records || { all: 0, last7: 0, today: 0 },
             recordsBySlot: data.recordsBySlot && typeof data.recordsBySlot === 'object' ? data.recordsBySlot : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
+            dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
         };
         let last7Breakdown = cloneLast7Breakdown(data.last7Breakdown);
@@ -1663,6 +1661,7 @@ export async function refreshDashboardStats() {
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
                     sharedPhotos: stats.sharedPhotos,
+                    dailyJournal: stats.dailyJournal,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,

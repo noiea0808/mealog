@@ -7,12 +7,12 @@ import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../uti
 import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
 import {
     getPostIdFromPhotoGroup,
-    processPhotosToGroups,
     preloadAdjacentGalleryImages
 } from './post-group-utils.js';
 import { fetchUserProfiles, getUserSettings } from './user-profiles.js';
 import { renderBoardPostList } from './board-notice.js';
-import { getSharedPhotoGroupKey } from './post-group-utils.js';
+import { sortSharedPhotosByTimestampDesc } from '../utils/shared-photo-timestamp.js';
+import { docsToSortedPhotoGroups, isMomentPostV2, collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/moment-post-v2.js';
 import { renderPostGroupHtml } from './post-group-html.js';
 import { fetchMissingSharedComments } from './shared-entry-comments.js';
 import {
@@ -311,17 +311,14 @@ export async function appendMomentFeedNextPage(opts = {}) {
         const { loadSharedPhotosPage } = await import('../db.js');
         const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
         appState.galleryFeedNetworkError = false;
-        window.sharedPhotosFeed = [...(window.sharedPhotosFeed || []), ...docs];
+        window.sharedPhotosFeed = collapseDocsToFeedPage(
+            sortSharedPhotosByTimestampDesc([...(window.sharedPhotosFeed || []), ...docs]),
+            999
+        ).feedDocs;
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = nextHasMore;
 
-        const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
-        if (docs.length && loadMoreWrap && loadMoreWrap.parentNode) {
-            await appendGalleryPosts(docs, loadMoreWrap);
-        }
-        if (!nextHasMore && loadMoreWrap && loadMoreWrap.parentNode) {
-            loadMoreWrap.remove();
-        }
+        await renderGallery({ skipScrollToTop: true, forceReload: true });
 
         if (syncFeed) {
             const { renderFeed } = await import('./feed.js');
@@ -340,7 +337,7 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return;
     const container = document.getElementById('galleryContainer');
     if (!container) return;
-    const newGroups = processPhotosToGroups(docs);
+    const newGroups = docsToSortedPhotoGroups(docs);
     if (newGroups.length === 0) return;
     // 새로 추가되는 작성자들의 프로필을 먼저 로드해 두어 닉네임이 '익명'으로 나오지 않도록 함
     await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
@@ -368,7 +365,7 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     } else {
         loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
     }
-    const fullSortedGroups = processPhotosToGroups(window.sharedPhotosFeed || []);
+    const fullSortedGroups = docsToSortedPhotoGroups(window.sharedPhotosFeed || []);
     const appendedEnd = existingCount + newGroups.length;
     setTimeout(() => {
         setupGalleryEventListeners(container, fullSortedGroups, { startIndex: existingCount });
@@ -486,24 +483,7 @@ export async function renderGallery(options = {}) {
             photosToRender = [];
         }
     } else {
-        photosToRender = window.sharedPhotosFeed || [];
-        // 전체보기: 최신순 정렬 보장 (Firestore 혼합 타입·캐시 등으로 정렬 꼬임 방지)
-        const ts = (p) => {
-            const t = p?.timestamp;
-            if (t != null && t !== '') {
-                if (t?.toDate) return t.toDate().getTime();
-                if (typeof t === 'string') return new Date(t).getTime();
-                if (t?.seconds != null) return t.seconds * 1000 + (t.nanoseconds || 0) / 1e6;
-                if (typeof t === 'number') return t;
-            }
-            const d = p?.date, tm = p?.time || '12:00:00';
-            if (d && typeof d === 'string') {
-                const ms = new Date(d + 'T' + (String(tm).split(':').length === 2 ? tm + ':00' : tm)).getTime();
-                if (!isNaN(ms)) return ms;
-            }
-            return 0;
-        };
-        photosToRender = [...photosToRender].sort((a, b) => ts(b) - ts(a));
+        photosToRender = sortSharedPhotosByTimestampDesc(window.sharedPhotosFeed || []);
     }
     
     // 사용자 프로필 뷰일 때 최상단 앱 헤더 숨김
@@ -710,35 +690,21 @@ export async function renderGallery(options = {}) {
         return;
     }
     
-    // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
+    // v2 게시물 + legacy v1 사진 → 그룹화·최신순
     const seen = new Set();
-    const uniquePhotos = photosToRender.filter(photo => {
-        const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
-        if (seen.has(key)) {
-            return false;
-        }
+    const uniquePhotos = photosToRender.filter((photo) => {
+        const key = isMomentPostV2(photo)
+            ? `v2_${photo.postId || photo.id}`
+            : `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) return false;
         seen.add(key);
         return true;
     });
-    
-    // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
-    // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
-    // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
-    const groupedPhotos = {};
-    uniquePhotos.forEach((photo) => {
-        const groupKey = getSharedPhotoGroupKey(photo);
-        if (!groupedPhotos[groupKey]) {
-            groupedPhotos[groupKey] = [];
-        }
-        groupedPhotos[groupKey].push(photo);
-    });
-    
-    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+
     const galleryUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
     await fetchUserProfiles(galleryUserIds);
     if (isGallerySessionStale(mySession)) return;
 
-    // mealHistoryMap: renderPostGroup에서 댓글 등 meal 정보 조회용 (사진 순서 정렬에는 사용하지 않음)
     let mealHistoryMap = new Map();
     if (window.mealHistory && Array.isArray(window.mealHistory)) {
         window.mealHistory.forEach(meal => {
@@ -750,45 +716,8 @@ export async function renderGallery(options = {}) {
             layoutV2: galleryMomentLayoutV2,
             useGalleryPostGap: galleryMomentLayoutV2
         });
-    // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
-    const photoSortTieBreaker = (a, b) => {
-        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
-        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
-        return aKey.localeCompare(bKey, 'en');
-    };
-    Object.keys(groupedPhotos).forEach(groupKey => {
-        const photoGroup = groupedPhotos[groupKey];
-        photoGroup.sort((a, b) => {
-            const ai = a.photoIndex;
-            const bi = b.photoIndex;
-            if (typeof ai === 'number' && typeof bi === 'number') {
-                const cmp = ai - bi;
-                if (cmp !== 0) return cmp;
-            }
-            const ta = new Date(a.timestamp).getTime();
-            const tb = new Date(b.timestamp).getTime();
-            const cmp = ta - tb;
-            return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
-        });
-    });
-    
-    // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
-    let sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
-        // timestamp를 Date로 변환 (이미 ISO 문자열이거나 Date 객체일 수 있음)
-        const getTimestamp = (photo) => {
-            if (!photo.timestamp) return 0;
-            if (photo.timestamp instanceof Date) return photo.timestamp.getTime();
-            if (typeof photo.timestamp === 'string') return new Date(photo.timestamp).getTime();
-            if (photo.timestamp.toDate) return photo.timestamp.toDate().getTime();
-            if (photo.timestamp.seconds) return photo.timestamp.seconds * 1000;
-            return 0;
-        };
-        
-        const timeA = getTimestamp(a[0]);
-        const timeB = getTimestamp(b[0]);
-        const cmp = timeB - timeA; // 최신순 (큰 값이 먼저)
-        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
-    });
+
+    let sortedGroups = docsToSortedPhotoGroups(uniquePhotos);
     
     // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시 (알림에서 한 게시물만 볼 때는 생략해 로딩 단축)
     let tracePostIds = null;
@@ -919,7 +848,7 @@ export async function renderGallery(options = {}) {
                     lm.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5" aria-hidden="true"></i><span class="text-slate-500">불러오는 중…</span>';
                     try {
                         const acc = appState.galleryUserProfileSharedDocs || [];
-                        const currentGridGroups = processPhotosToGroups(acc).length;
+                        const currentGridGroups = countMomentPostsFromDocs(acc);
                         const targetPosts = currentGridGroups + USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
                         if (!appState.galleryUserProfileSharedDocSnaps) {
                             appState.galleryUserProfileSharedDocSnaps = new Map();
@@ -934,7 +863,7 @@ export async function renderGallery(options = {}) {
                         appState.galleryUserProfileSharedDocs = merged;
                         appState.galleryUserProfileSharedLastSnap = lastDocSnap;
                         appState.galleryUserProfileSharedHasMore = hasMore;
-                        const mergedGroups = processPhotosToGroups(merged).length;
+                        const mergedGroups = countMomentPostsFromDocs(merged);
                         appState.galleryUserProfileMomentVisiblePostCount = Math.min(
                             appState.galleryUserProfileMomentVisiblePostCount + USER_PROFILE_MOMENT_GRID_PAGE_SIZE,
                             mergedGroups

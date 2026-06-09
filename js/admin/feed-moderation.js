@@ -5,6 +5,20 @@ import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
+import { fetchAllUsersForAdminAnalytics } from './users.js';
+import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
+import {
+    normalizeDailyJournalEntry,
+    dailyJournalHasContent,
+    dailyJournalRecordedAtMillis,
+    formatMetricRecordChain,
+    getDailyJournalShareEntryId,
+    getDailyJournalMealDocId,
+    dailyJournalEntryToMealDocument,
+    dailyJournalMealDocToModerationFields,
+    isDailyJournalMealRecord,
+    recordedAtIsoToMealTime
+} from '../utils/daily-journal-data.js';
 import {
     collection,
     collectionGroup,
@@ -19,6 +33,7 @@ import {
     where,
     writeBatch,
     deleteDoc,
+    setDoc,
     Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -28,6 +43,13 @@ let feedFilters = {
     hasPhotos: 'all', // 'all', 'yes', 'no'
     banned: 'all' // 'all', 'yes', 'no'
 };
+/** 작성자 닉네임 클릭 시 해당 userId 기록만 표시 */
+let feedAuthorFilter = null; // { userId: string, nickname: string } | null
+/** 닉네임·이메일·UID 검색용 (최초 검색 시 1회 로드) */
+let feedAuthorSearchUsersCache = null;
+let feedAuthorSearchHandlersBound = false;
+let feedAuthorSearchDebounceTimer = null;
+const FEED_AUTHOR_SEARCH_DEBOUNCE_MS = 320;
 let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
@@ -74,10 +96,25 @@ function mealRecordedAtMillis(meal) {
     return 0;
 }
 
-/** 캡처 공유(daily/best/insight) 모니터링 정렬·타임라인 보조 (timestamp 누락·지연 반영 대비) */
-function specialShareSortMillis(row) {
+/**
+ * 모니터링 목록 정렬·기록 일시 컬럼 공통 (최신순만, 유형·작성자 무관)
+ * recordedAt → timestamp → date+time
+ */
+function moderationRecordedAtMillis(row) {
     if (!row) return 0;
-    let ms = mealRecordedAtMillis(row);
+    if (row.isDailyJournal || row.slotId === 'daily_journal' || isDailyJournalMealRecord(row)) {
+        if (typeof row.momentShareAtMillis === 'number' && row.momentShareAtMillis > 0) {
+            return row.momentShareAtMillis;
+        }
+        const ms = dailyJournalRecordedAtMillis(row.dailyJournalEntry || row, row.date);
+        if (ms > 0) return ms;
+        const dk = String(row.date || '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dk)) {
+            const endOfDay = Date.parse(`${dk}T23:59:59`);
+            if (Number.isFinite(endOfDay)) return endOfDay;
+        }
+    }
+    const ms = mealRecordedAtMillis(row);
     if (ms > 0) return ms;
     if (row.isDailyShare && row.date) {
         const raw = String(row.date).trim();
@@ -86,18 +123,7 @@ function specialShareSortMillis(row) {
             if (Number.isFinite(t)) return t;
         }
     }
-    if (row.id && typeof row.id === 'string') {
-        let h = 0;
-        for (let i = 0; i < row.id.length; i++) h = (Math.imul(31, h) + row.id.charCodeAt(i)) | 0;
-        return 1e9 + (Math.abs(h) % 86400000);
-    }
     return 0;
-}
-
-function moderationRowSortMillis(row) {
-    if (!row) return 0;
-    if (row.isDailyShare || row.isBestShare || row.isInsightShare) return specialShareSortMillis(row);
-    return mealRecordedAtMillis(row);
 }
 
 /** 모먼트 목록을 한 번이라도 성공적으로 불러온 뒤에만 필터·페이지 이동이 Firestore를 다시 칩니다 */
@@ -109,7 +135,508 @@ let feedSharedKeysCache = null;
 const ADMIN_FEED_SPECIAL_SHARE_TYPES = ['daily', 'best', 'insight'];
 const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 
+/** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
+const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
+const ADMIN_DAILY_JOURNAL_UID_BATCH = 30;
+
 let moderationSpecialSharesCache = { ts: 0, rows: null };
+let moderationDailyJournalCache = { ts: 0, rows: null };
+
+function formatKoDateLabelFromYmd(dateStr) {
+    const raw = String(dateStr || '').trim();
+    if (!raw) return '';
+    try {
+        const d = new Date(raw.includes('T') ? raw : `${raw}T12:00:00`);
+        if (Number.isNaN(d.getTime())) return raw;
+        return d
+            .toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+            .replace(/\s+/g, '');
+    } catch (_) {
+        return raw;
+    }
+}
+
+function firestoreTimestampToMillis(raw) {
+    if (raw == null) return 0;
+    if (typeof raw.toDate === 'function') {
+        const d = raw.toDate();
+        return Number.isFinite(d.getTime()) ? d.getTime() : 0;
+    }
+    if (typeof raw.seconds === 'number') {
+        return raw.seconds * 1000 + (raw.nanoseconds || 0) / 1e6;
+    }
+    if (typeof raw === 'string' || raw instanceof Date) {
+        const t = Date.parse(raw);
+        return Number.isFinite(t) ? t : 0;
+    }
+    return 0;
+}
+
+function dailyJournalModerationRowKey(userId, dateStr) {
+    return `${String(userId || '')}|${String(dateStr || '').trim()}`;
+}
+
+function settingsDocToDailyJournalRows(docSnap) {
+    if (!docSnap?.id || docSnap.id !== 'settings') return [];
+    const pathParts = docSnap.ref.path.split('/');
+    const uidx = pathParts.indexOf('users');
+    const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
+    if (!userId) return [];
+    const dc = docSnap.data()?.dailyComments;
+    if (!dc || typeof dc !== 'object') return [];
+    const rows = [];
+    for (const [dateStr, raw] of Object.entries(dc)) {
+        const dk = String(dateStr || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+        const entry = normalizeDailyJournalEntry(raw);
+        if (!dailyJournalHasContent(entry)) continue;
+        const recordedAt = entry.recordedAt || '';
+        const mealDocId = getDailyJournalMealDocId(dk) || `dailyJournal_${dk}`;
+        rows.push({
+            id: mealDocId,
+            userId,
+            date: dk,
+            time: recordedAtIsoToMealTime(recordedAt),
+            slotId: 'daily_journal',
+            recordedAt: recordedAt || undefined,
+            isDailyJournal: true,
+            isDailyJournalSlot: true,
+            comment: entry.comment,
+            photos: entry.photos,
+            sharedPhotos: entry.sharedPhotos,
+            dailyJournalEntry: entry,
+            slotDisplayDate: formatKoDateLabelFromYmd(dk),
+            slotDisplayLabel: '하루기록'
+        });
+    }
+    return rows;
+}
+
+/**
+ * sharedPhotos — slotId daily_journal 또는 entryId dailyJournal_YYYY-MM-DD (meals 컬렉션에 없음)
+ */
+async function fetchDailyJournalMomentSharesFromSharedPhotos() {
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    await refreshAppCheckTokenBeforeFirestore();
+    const byDocId = new Map();
+
+    const addDocs = (docs) => {
+        for (const d of docs || []) {
+            if (d?.id && !byDocId.has(d.id)) byDocId.set(d.id, d);
+        }
+    };
+
+    try {
+        const snap = await getDocs(
+            query(sharedColl, where('slotId', '==', 'daily_journal'), limit(ADMIN_DAILY_JOURNAL_ROWS_CAP))
+        );
+        addDocs(snap.docs);
+    } catch (e1) {
+        console.warn(
+            '[관리자 모먼트] 하루기록 sharedPhotos(slotId) 조회 실패 → entryId 범위 조회',
+            e1?.code || e1?.message || e1
+        );
+        try {
+            const snap = await getDocs(
+                query(
+                    sharedColl,
+                    where('entryId', '>=', 'dailyJournal_'),
+                    where('entryId', '<=', 'dailyJournal_\uf8ff'),
+                    limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
+                )
+            );
+            addDocs(snap.docs);
+        } catch (e2) {
+            console.warn(
+                '[관리자 모먼트] 하루기록 sharedPhotos(entryId) 조회 실패',
+                e2?.code || e2?.message || e2
+            );
+        }
+    }
+
+    const groups = new Map();
+    for (const docSnap of byDocId.values()) {
+        const d = docSnap.data() || {};
+        const ty = d.type;
+        if (ty === 'daily' || ty === 'best' || ty === 'insight') continue;
+        const uid = String(d.userId || '').trim();
+        const eid = String(d.entryId || '').trim();
+        const slotId = String(d.slotId || '').trim();
+        if (!uid) continue;
+        if (slotId !== 'daily_journal' && !eid.startsWith('dailyJournal_')) continue;
+        let dateStr = '';
+        if (eid.startsWith('dailyJournal_')) {
+            dateStr = eid.slice('dailyJournal_'.length);
+        } else if (d.date && /^\d{4}-\d{2}-\d{2}$/.test(String(d.date))) {
+            dateStr = String(d.date);
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+
+        const key = dailyJournalModerationRowKey(uid, dateStr);
+        const tsMs = firestoreTimestampToMillis(d.timestamp);
+        const url = String(d.photoUrl || '').trim();
+        let g = groups.get(key);
+        if (!g) {
+            g = {
+                userId: uid,
+                date: dateStr,
+                photoUrls: [],
+                photoIndexByUrl: new Map(),
+                momentShareAtMillis: 0,
+                comment: String(d.comment || '').trim()
+            };
+            groups.set(key, g);
+        }
+        if (tsMs > g.momentShareAtMillis) g.momentShareAtMillis = tsMs;
+        if (!g.comment && d.comment) g.comment = String(d.comment).trim();
+        if (url) {
+            const idx = typeof d.photoIndex === 'number' ? d.photoIndex : g.photoUrls.length;
+            if (!g.photoIndexByUrl.has(url)) {
+                g.photoIndexByUrl.set(url, idx);
+                g.photoUrls.push({ url, idx });
+            }
+        }
+    }
+
+    const rows = [];
+    for (const g of groups.values()) {
+        g.photoUrls.sort((a, b) => a.idx - b.idx);
+        const photos = g.photoUrls.map((p) => p.url);
+        const entry = normalizeDailyJournalEntry({
+            comment: g.comment,
+            photos,
+            sharedPhotos: photos,
+            recordedAt: g.momentShareAtMillis
+                ? new Date(g.momentShareAtMillis).toISOString()
+                : ''
+        });
+        if (!dailyJournalHasContent(entry) && photos.length === 0) continue;
+        rows.push({
+            id: `dailyJournal_${g.userId}_${g.date}`,
+            userId: g.userId,
+            date: g.date,
+            recordedAt: entry.recordedAt || undefined,
+            momentShareAtMillis: g.momentShareAtMillis,
+            momentShared: true,
+            isDailyJournal: true,
+            isDailyJournalSlot: false,
+            comment: entry.comment,
+            photos: entry.photos,
+            dailyJournalEntry: entry,
+            slotDisplayDate: formatKoDateLabelFromYmd(g.date),
+            slotDisplayLabel: '하루기록'
+        });
+    }
+    if (rows.length > 0) {
+        console.log(`[관리자 모먼트] 하루기록 슬롯·모먼트 사진공유 ${rows.length}건(sharedPhotos, slotId≠일간)`);
+    }
+    return rows;
+}
+
+function mergeDailyJournalModerationRows(settingsRows, shareRows) {
+    const byKey = new Map();
+    for (const r of settingsRows || []) {
+        if (!r?.userId || !r?.date) continue;
+        byKey.set(dailyJournalModerationRowKey(r.userId, r.date), { ...r });
+    }
+    for (const sr of shareRows || []) {
+        if (!sr?.userId || !sr?.date) continue;
+        const key = dailyJournalModerationRowKey(sr.userId, sr.date);
+        const existing = byKey.get(key);
+        if (!existing) {
+            byKey.set(key, { ...sr });
+            continue;
+        }
+        existing.momentShared = true;
+        existing.isDailyJournalSlot = existing.isDailyJournalSlot === true || sr.isDailyJournalSlot === true;
+        if (sr.momentShareAtMillis > (existing.momentShareAtMillis || 0)) {
+            existing.momentShareAtMillis = sr.momentShareAtMillis;
+        }
+        const mergedEntry = normalizeDailyJournalEntry({
+            ...(existing.dailyJournalEntry || {}),
+            comment: existing.comment || sr.comment || '',
+            photos:
+                Array.isArray(existing.photos) && existing.photos.length > 0
+                    ? existing.photos
+                    : sr.photos || [],
+            sharedPhotos: sr.dailyJournalEntry?.sharedPhotos?.length
+                ? sr.dailyJournalEntry.sharedPhotos
+                : existing.dailyJournalEntry?.sharedPhotos || [],
+            weightEnabled: existing.dailyJournalEntry?.weightEnabled,
+            bloodSugarEnabled: existing.dailyJournalEntry?.bloodSugarEnabled,
+            weightRecords: existing.dailyJournalEntry?.weightRecords,
+            bloodSugarRecords: existing.dailyJournalEntry?.bloodSugarRecords,
+            recordedAt: existing.dailyJournalEntry?.recordedAt || sr.dailyJournalEntry?.recordedAt
+        });
+        const shareMs = existing.momentShareAtMillis || 0;
+        const entryMs = dailyJournalRecordedAtMillis(mergedEntry, existing.date);
+        if (shareMs > entryMs) {
+            mergedEntry.recordedAt = new Date(shareMs).toISOString();
+        }
+        existing.dailyJournalEntry = mergedEntry;
+        existing.comment = mergedEntry.comment;
+        existing.photos = mergedEntry.photos;
+        existing.recordedAt = mergedEntry.recordedAt || existing.recordedAt;
+        if (!dailyJournalHasContent(mergedEntry) && !(existing.photos?.length > 0)) {
+            byKey.delete(key);
+        } else {
+            byKey.set(key, existing);
+        }
+    }
+    return [...byKey.values()];
+}
+
+function userIdFromSettingsDocRef(ref) {
+    const pathParts = ref.path.split('/');
+    const uidx = pathParts.indexOf('users');
+    return uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
+}
+
+function mergeDailyJournalSlotRowsIntoMap(byKey, rows) {
+    for (const r of rows || []) {
+        if (!r?.userId || !r?.date) continue;
+        const key = dailyJournalModerationRowKey(r.userId, r.date);
+        const prev = byKey.get(key);
+        if (!prev) {
+            byKey.set(key, { ...r, isDailyJournal: true, isDailyJournalSlot: true });
+            continue;
+        }
+        prev.isDailyJournal = true;
+        prev.isDailyJournalSlot = true;
+        if (!prev.comment && r.comment) prev.comment = r.comment;
+        if ((!prev.photos || !prev.photos.length) && r.photos?.length) prev.photos = r.photos;
+        const prevEntry = prev.dailyJournalEntry || {};
+        const nextEntry = r.dailyJournalEntry || {};
+        prev.dailyJournalEntry = normalizeDailyJournalEntry({
+            ...prevEntry,
+            ...nextEntry,
+            photos: prevEntry.photos?.length ? prevEntry.photos : nextEntry.photos,
+            recordedAt: prevEntry.recordedAt || nextEntry.recordedAt
+        });
+        if (!prev.recordedAt && r.recordedAt) prev.recordedAt = r.recordedAt;
+    }
+}
+
+/**
+ * config collectionGroup — users/{uid} 루트 문서 없이 settings 만 있는 계정도 포함
+ */
+async function fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded) {
+    const slotByKey = new Map();
+    let settingsDocs = 0;
+    const configGroup = collectionGroup(db, 'config');
+    const pageSize = 400;
+    let lastDoc = null;
+    for (let page = 0; page < 80; page++) {
+        const q = lastDoc
+            ? query(configGroup, startAfter(lastDoc), limit(pageSize))
+            : query(configGroup, limit(pageSize));
+        const snap = await getDocs(q);
+        if (!snap.docs.length) break;
+        const batchRows = [];
+        snap.forEach((docSnap) => {
+            if (docSnap.id !== 'settings') return;
+            settingsDocs++;
+            const uid = userIdFromSettingsDocRef(docSnap.ref);
+            if (!uid || excluded.has(uid)) return;
+            batchRows.push(...settingsDocToDailyJournalRows(docSnap));
+        });
+        mergeDailyJournalSlotRowsIntoMap(slotByKey, batchRows);
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if (snap.docs.length < pageSize) break;
+        if (slotByKey.size >= ADMIN_DAILY_JOURNAL_ROWS_CAP * 2) break;
+    }
+    return { slotByKey, settingsDocs };
+}
+
+/**
+ * users/{uid}/config/settings 의 dailyComments — collectionGroup(전수) + 사용자별 조회 병합
+ * (일간 캡처 type=daily sharedPhotos 와 별도 — 하루기록 슬롯 저장분만)
+ */
+async function fetchDailyJournalsForModeration() {
+    await refreshAppCheckTokenBeforeFirestore();
+    const slotByKey = new Map();
+    let cgSettingsDocs = 0;
+    let perUserUsers = 0;
+    try {
+        const excluded = await getExcludedAnalyticsUidSet();
+        try {
+            const cg = await fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded);
+            cgSettingsDocs = cg.settingsDocs;
+            for (const [k, v] of cg.slotByKey) slotByKey.set(k, v);
+        } catch (cgErr) {
+            console.warn(
+                '[관리자 모먼트] 하루기록 collectionGroup 조회 실패 — 사용자별 조회만 시도',
+                cgErr?.code || cgErr?.message || cgErr
+            );
+        }
+
+        const usersSnap = await getDocs(collection(db, 'artifacts', appId, 'users'));
+        const userIds = usersSnap.docs.map((d) => d.id).filter((id) => !excluded.has(id));
+        perUserUsers = userIds.length;
+        const perUserRows = [];
+        for (let i = 0; i < userIds.length; i += ADMIN_DAILY_JOURNAL_UID_BATCH) {
+            const chunk = userIds.slice(i, i + ADMIN_DAILY_JOURNAL_UID_BATCH);
+            await Promise.all(
+                chunk.map(async (uid) => {
+                    try {
+                        const snap = await getDoc(
+                            doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings')
+                        );
+                        if (snap.exists()) perUserRows.push(...settingsDocToDailyJournalRows(snap));
+                    } catch (e) {
+                        console.warn(
+                            '[관리자 모먼트] 하루 기록 settings 조회 실패:',
+                            uid,
+                            e?.code || e?.message || e
+                        );
+                    }
+                })
+            );
+        }
+        mergeDailyJournalSlotRowsIntoMap(slotByKey, perUserRows);
+    } catch (err) {
+        console.warn(
+            '[관리자 모먼트] 하루 기록(dailyComments) 조회 실패 — 목록에서 제외합니다.',
+            err?.code || err?.message || err
+        );
+        return [];
+    }
+    const allRows = [...slotByKey.values()];
+    let shareRows = [];
+    try {
+        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos();
+    } catch (e) {
+        console.warn('[관리자 모먼트] 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
+    }
+    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
+    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
+    const capped =
+        merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
+            ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
+            : merged;
+    if (capped.length > 0) {
+        const slotSaveN = capped.filter((r) => r.isDailyJournalSlot === true).length;
+        const momentPhotoN = capped.filter((r) => r.momentShared).length;
+        const dateList = capped.map((r) => r.date).filter(Boolean).sort();
+        const dates = dateList.join(', ');
+        const latest = dateList.length ? dateList[dateList.length - 1] : '';
+        console.log(
+            `[관리자 모먼트] 하루기록 슬롯 ${capped.length}건` +
+                ` (dailyComments ${slotSaveN}건, 모먼트 사진공유 ${momentPhotoN}건 · 일간 캡처는 별도)` +
+                (dates ? ` · 날짜: ${dates}` : '') +
+                (latest ? ` · 최신슬롯일: ${latest}` : '') +
+                (merged.length > capped.length ? ` · 상한 ${ADMIN_DAILY_JOURNAL_ROWS_CAP}` : '') +
+                ` · settings문서 ${cgSettingsDocs} / users컬렉션 ${perUserUsers}`
+        );
+    }
+    await backfillDailyJournalMealMirrors(capped);
+    return capped;
+}
+
+/** settings-only 하루기록 → meals 미러(식사·간식과 동일 형식) — 관리자 새로고침 시 누락분 보강 */
+async function backfillDailyJournalMealMirrors(rows, maxWrites = 150) {
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    let written = 0;
+    const candidates = rows.filter((r) => r?.isDailyJournalSlot && r.userId && r.date);
+    for (const r of candidates) {
+        if (written >= maxWrites) break;
+        const entry = r.dailyJournalEntry || r;
+        if (!dailyJournalHasContent(entry)) continue;
+        const mealId = getDailyJournalMealDocId(r.date);
+        if (!mealId) continue;
+        const mealRef = doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId);
+        try {
+            const ex = await getDoc(mealRef);
+            if (ex.exists()) continue;
+            const mealDoc = dailyJournalEntryToMealDocument(r.date, entry);
+            const prevRecorded = mealDoc.recordedAt;
+            delete mealDoc.id;
+            if (!prevRecorded) mealDoc.recordedAt = new Date().toISOString();
+            await setDoc(mealRef, mealDoc);
+            written++;
+        } catch (e) {
+            console.warn(
+                '[관리자 모먼트] 하루기록 meals 미러 백필 실패',
+                r.userId,
+                r.date,
+                e?.code || e?.message || e
+            );
+        }
+    }
+    if (written > 0) {
+        console.log(`[관리자 모먼트] 하루기록 meals 미러 백필 ${written}건 (최대 ${maxWrites})`);
+    }
+}
+
+/** meals 미러가 있으면 pinned 중복 제외 (legacy settings만 유지) */
+async function filterDailyJournalRowsWithoutMealMirror(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    const slotRows = rows.filter((r) => r?.isDailyJournalSlot && r.userId && r.date);
+    const otherRows = rows.filter((r) => !r?.isDailyJournalSlot);
+    if (!slotRows.length) return rows;
+    const legacy = [];
+    const BATCH = 24;
+    for (let i = 0; i < slotRows.length; i += BATCH) {
+        const chunk = slotRows.slice(i, i + BATCH);
+        await Promise.all(
+            chunk.map(async (r) => {
+                const mealId = getDailyJournalMealDocId(r.date);
+                if (!mealId) {
+                    legacy.push(r);
+                    return;
+                }
+                try {
+                    const snap = await getDoc(
+                        doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId)
+                    );
+                    if (!snap.exists()) legacy.push(r);
+                } catch (_) {
+                    legacy.push(r);
+                }
+            })
+        );
+    }
+    return [...legacy, ...otherRows];
+}
+
+async function getDailyJournalsModerationRowsCached() {
+    const now = Date.now();
+    if (moderationDailyJournalCache.rows && now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return moderationDailyJournalCache.rows;
+    }
+    const rows = await fetchDailyJournalsForModeration();
+    moderationDailyJournalCache = { ts: now, rows };
+    return rows;
+}
+
+/** 하루기록 모먼트 공유 — sharedPhotos 컬렉션 문서 존재 시에만 true (settings.sharedPhotos·photos만으로는 판단 안 함) */
+function isDailyJournalMomentSharedRow(meal) {
+    if (!meal?.isDailyJournal) return false;
+    if (meal.momentShared === true) return true;
+    const eid = meal.date ? getDailyJournalShareEntryId(meal.date) : '';
+    if (!eid || !meal.userId || !feedSharedKeysCache) return false;
+    return feedSharedKeysCache.has(`${meal.userId}_${eid}`);
+}
+
+function formatDailyJournalMetricsAdminHtml(entry) {
+    const n = normalizeDailyJournalEntry(entry);
+    const lines = [];
+    if (n.weightEnabled && n.weightRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.weightRecords, { isWeight: true });
+        if (chain) lines.push({ label: '체중', text: `${chain} kg` });
+    }
+    if (n.bloodSugarEnabled && n.bloodSugarRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.bloodSugarRecords);
+        if (chain) lines.push({ label: '혈당', text: `${chain} mg/dL` });
+    }
+    if (!lines.length) return '<span class="text-slate-300 text-xs">-</span>';
+    return lines
+        .map(
+            (line, i) =>
+                `<div class="font-bold ${i === 0 ? 'text-slate-700' : 'text-slate-600'} break-words${i > 0 ? ' mt-0.5' : ''}">${escapeHtml(line.label)} ${escapeHtml(line.text)}</div>`
+        )
+        .join('');
+}
 
 async function fetchSpecialSharesForModeration() {
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -160,7 +687,7 @@ async function fetchSpecialSharesForModeration() {
     merged.sort((a, b) => {
         const ra = sharedPhotoDocToAdminFeedRow(a);
         const rb = sharedPhotoDocToAdminFeedRow(b);
-        return specialShareSortMillis(rb) - specialShareSortMillis(ra);
+        return moderationRecordedAtMillis(rb) - moderationRecordedAtMillis(ra);
     });
     return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP) : merged;
 }
@@ -225,8 +752,8 @@ function sharedPhotoDocToAdminFeedRow(docSnap) {
         isInsightShare: isInsight
     };
     if (isDaily) {
-        row.slotDisplayDate = '';
-        row.slotDisplayLabel = '하루 기록';
+        row.slotDisplayDate = d.date ? formatKoDateLabelFromYmd(d.date) : '';
+        row.slotDisplayLabel = '일간 캡처';
         if (d.date) row.date = d.date;
     } else if (isBest) {
         row.slotDisplayDate = '';
@@ -252,6 +779,7 @@ function invalidateAdminFeedMonitoringCache() {
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
     moderationSpecialSharesCache = { ts: 0, rows: null };
+    moderationDailyJournalCache = { ts: 0, rows: null };
     feedMealTotalCountKnown = true;
     feedLastDocsByPage = {};
 }
@@ -291,7 +819,185 @@ async function getReportsAggregateCached() {
 let mealsAdminMealsQueryMode = 1;
 
 function feedQueryCacheKey(page) {
-    return `m${mealsAdminMealsQueryMode}_${page}`;
+    const author = feedAuthorFilter?.userId?.trim() || '';
+    return `m${mealsAdminMealsQueryMode}_a${author}_${page}`;
+}
+
+function getFeedAuthorUserId() {
+    return feedAuthorFilter?.userId?.trim() || '';
+}
+
+function filterModerationRowsByAuthor(rows) {
+    const authorUid = getFeedAuthorUserId();
+    if (!authorUid || !Array.isArray(rows)) return rows || [];
+    return rows.filter((r) => r?.userId === authorUid);
+}
+
+function feedAuthorMatchesSearch(user, needleLower) {
+    if (!needleLower) return false;
+    const nick = String(user?.nickname ?? '').toLowerCase();
+    const email = String(user?.email ?? '').toLowerCase();
+    const uid = String(user?.userId ?? '').toLowerCase();
+    return nick.includes(needleLower) || email.includes(needleLower) || uid.includes(needleLower);
+}
+
+async function resolveFeedAuthorNicknameFromUid(uid, rootData = null) {
+    let nickname = '익명';
+    try {
+        const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
+        if (settingsSnap.exists()) {
+            const profile = settingsSnap.data()?.profile;
+            const pn = profile?.nickname;
+            if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') {
+                nickname = String(pn).trim();
+            } else if (settingsSnap.data()?.profileCompleted === true) {
+                nickname = '미설정';
+            }
+        }
+    } catch (_) {}
+    if (nickname === '익명' && rootData?.email) {
+        const local = String(rootData.email).split('@')[0];
+        if (local) nickname = local;
+    }
+    return nickname;
+}
+
+function syncFeedAuthorSearchInput() {
+    const inp = document.getElementById('feedAuthorSearchInput');
+    const clr = document.getElementById('feedAuthorSearchClearBtn');
+    if (!inp) return;
+    if (feedAuthorFilter?.userId) {
+        inp.value = feedAuthorFilter.nickname?.trim() || feedAuthorFilter.userId;
+        if (clr) clr.classList.remove('hidden');
+    } else {
+        inp.value = '';
+        if (clr) clr.classList.add('hidden');
+    }
+}
+
+function ensureFeedAuthorSearchHandlers() {
+    if (feedAuthorSearchHandlersBound) return;
+    const inp = document.getElementById('feedAuthorSearchInput');
+    const clr = document.getElementById('feedAuthorSearchClearBtn');
+    if (!inp) return;
+    feedAuthorSearchHandlersBound = true;
+
+    const runApply = () => {
+        void applyFeedAuthorSearch();
+    };
+
+    inp.addEventListener('input', () => {
+        const q = (inp.value || '').trim();
+        if (clr) clr.classList.toggle('hidden', !q);
+        if (!q) {
+            clearTimeout(feedAuthorSearchDebounceTimer);
+            feedAuthorSearchDebounceTimer = null;
+            if (feedAuthorFilter) void window.clearFeedAuthorFilter();
+            return;
+        }
+        clearTimeout(feedAuthorSearchDebounceTimer);
+        feedAuthorSearchDebounceTimer = setTimeout(() => {
+            feedAuthorSearchDebounceTimer = null;
+            runApply();
+        }, FEED_AUTHOR_SEARCH_DEBOUNCE_MS);
+    });
+    inp.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        clearTimeout(feedAuthorSearchDebounceTimer);
+        feedAuthorSearchDebounceTimer = null;
+        runApply();
+    });
+    if (clr) {
+        clr.addEventListener('click', () => {
+            inp.value = '';
+            clr.classList.add('hidden');
+            void window.clearFeedAuthorFilter();
+        });
+    }
+}
+
+async function applyFeedAuthorSearch() {
+    const inp = document.getElementById('feedAuthorSearchInput');
+    const needle = (inp?.value || '').trim();
+    if (!needle) {
+        await window.clearFeedAuthorFilter();
+        return;
+    }
+    const lower = needle.toLowerCase();
+
+    if (!needle.includes('@') && !/\s/.test(needle) && needle.length >= 10) {
+        try {
+            const snap = await getDoc(doc(db, 'artifacts', appId, 'users', needle));
+            if (snap.exists()) {
+                const nickname = await resolveFeedAuthorNicknameFromUid(needle, snap.data());
+                await window.setFeedAuthorFilter(needle, nickname);
+                syncFeedAuthorSearchInput();
+                return;
+            }
+        } catch (e) {
+            console.warn('[관리자 모먼트] UID 직접 조회 실패:', e?.code || e?.message || e);
+        }
+    }
+
+    if (!feedAuthorSearchUsersCache) {
+        if (inp) inp.disabled = true;
+        try {
+            const users = await fetchAllUsersForAdminAnalytics();
+            feedAuthorSearchUsersCache = users.map((u) => ({
+                userId: u.userId,
+                nickname: u.nickname || '익명',
+                email: u.email || ''
+            }));
+        } catch (e) {
+            console.error('[관리자 모먼트] 사용자 검색 목록 로드 실패:', e);
+            alert('사용자 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+            return;
+        } finally {
+            if (inp) inp.disabled = false;
+        }
+    }
+
+    const matches = feedAuthorSearchUsersCache.filter((u) => feedAuthorMatchesSearch(u, lower));
+    if (matches.length === 0) {
+        alert('검색 조건에 맞는 사용자가 없습니다.\n닉네임·이메일·UID 일부만 입력해도 찾을 수 있습니다.');
+        return;
+    }
+    if (matches.length > 1) {
+        const preview = matches
+            .slice(0, 5)
+            .map((m) => `· ${m.nickname} (${m.userId})`)
+            .join('\n');
+        alert(
+            `검색어와 일치하는 사용자가 ${matches.length}명입니다.\nUID를 입력하거나 검색어를 더 구체적으로 입력해 주세요.\n\n${preview}${matches.length > 5 ? '\n…' : ''}`
+        );
+        return;
+    }
+    const m = matches[0];
+    await window.setFeedAuthorFilter(m.userId, m.nickname);
+    syncFeedAuthorSearchInput();
+}
+
+function updateFeedAuthorFilterBar() {
+    const bar = document.getElementById('feedAuthorFilterBar');
+    syncFeedAuthorSearchInput();
+    if (!bar) return;
+    const authorUid = getFeedAuthorUserId();
+    if (!authorUid) {
+        bar.classList.add('hidden');
+        bar.innerHTML = '';
+        return;
+    }
+    const label = feedAuthorFilter?.nickname?.trim() || '익명';
+    bar.classList.remove('hidden');
+    bar.innerHTML = `
+        <div class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="text-slate-600 font-bold">작성자 필터</span>
+            <span class="px-3 py-1.5 bg-violet-100 text-violet-800 rounded-lg font-bold">${escapeHtml(label)}</span>
+            <span class="text-[11px] text-slate-400 font-mono">${escapeHtml(authorUid)}</span>
+            <button type="button" onclick="window.clearFeedAuthorFilter()" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">필터 해제</button>
+        </div>
+    `;
 }
 
 /**
@@ -324,7 +1030,89 @@ function mealDocSnapToFeedRow(d) {
     const pathParts = d.ref.path.split('/');
     const uidx = pathParts.indexOf('users');
     const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-    return { id: d.id, userId, ...d.data() };
+    const row = { id: d.id, userId, ...d.data() };
+    if (!isDailyJournalMealRecord(row)) return row;
+    const dj = dailyJournalMealDocToModerationFields(row);
+    const dateStr = dj.date || row.date;
+    return {
+        ...row,
+        ...dj,
+        slotDisplayDate: formatKoDateLabelFromYmd(dateStr),
+        slotDisplayLabel: '하루기록'
+    };
+}
+
+function compareModerationRowsDesc(a, b) {
+    const ta = moderationRecordedAtMillis(a);
+    const tb = moderationRecordedAtMillis(b);
+    if (tb !== ta) return tb - ta;
+    return String(b.id || '').localeCompare(String(a.id || ''));
+}
+
+/**
+ * 캡처 공유·하루기록(전량) + meals(배치)를 기록 시각 기준으로 병합해 skip/pageSize 만큼만 수집
+ * (식사만 모아 slice 하면 하루기록이 페이지 밖으로 밀림)
+ */
+async function collectMergedModerationPageItems({
+    skip,
+    pageSize,
+    pinnedRows,
+    mealsGroup,
+    orderParts,
+    batchLimit = 120,
+    maxBatches = 500
+}) {
+    const staticRows = Array.isArray(pinnedRows) ? [...pinnedRows].sort(compareModerationRowsDesc) : [];
+    let staticIdx = 0;
+    let mealCursor = null;
+    let mealBuf = [];
+    let mealBufIdx = 0;
+    let exhausted = false;
+    let batchI = 0;
+    const collected = [];
+    let skipped = 0;
+
+    async function refillMeals() {
+        if (mealBufIdx < mealBuf.length || exhausted) return;
+        const listQ = mealCursor
+            ? query(mealsGroup, ...orderParts, startAfter(mealCursor), limit(batchLimit))
+            : query(mealsGroup, ...orderParts, limit(batchLimit));
+        const snapshot = await getDocs(listQ);
+        batchI++;
+        if (!snapshot.docs.length) {
+            exhausted = true;
+            mealBuf = [];
+            return;
+        }
+        mealBuf = snapshot.docs.map(mealDocSnapToFeedRow);
+        mealBuf.sort(compareModerationRowsDesc);
+        mealBufIdx = 0;
+        mealCursor = snapshot.docs[snapshot.docs.length - 1];
+    }
+
+    while (collected.length < pageSize) {
+        await refillMeals();
+        const nextStatic = staticIdx < staticRows.length ? staticRows[staticIdx] : null;
+        const nextMeal = mealBufIdx < mealBuf.length ? mealBuf[mealBufIdx] : null;
+        if (!nextStatic && !nextMeal) break;
+
+        const pickStatic =
+            nextStatic &&
+            (!nextMeal || moderationRecordedAtMillis(nextStatic) >= moderationRecordedAtMillis(nextMeal));
+        const row = pickStatic ? staticRows[staticIdx++] : mealBuf[mealBufIdx++];
+
+        if (skipped < skip) {
+            skipped++;
+            continue;
+        }
+        collected.push(row);
+    }
+
+    const hasMore =
+        collected.length === pageSize &&
+        (staticIdx < staticRows.length || !exhausted || mealBufIdx < mealBuf.length);
+
+    return { items: collected, hasMore, batchesLoaded: batchI };
 }
 
 /** 피드: sharedPhotos(daily/best/insight) + users/…/meals 를 공유·기록 시각 기준으로 합쳐 한 목록으로 페이지네이션 */
@@ -332,7 +1120,10 @@ async function getFeedPage(options = {}) {
     const page = options.page ?? 1;
     const pageSize = options.pageSize ?? feedPageSize;
     const skip = (page - 1) * pageSize;
-    const mealsGroup = collectionGroup(db, 'meals');
+    const authorUid = getFeedAuthorUserId();
+    const mealsGroup = authorUid
+        ? collection(db, 'artifacts', appId, 'users', authorUid, 'meals')
+        : collectionGroup(db, 'meals');
 
     const orderParts =
         mealsAdminMealsQueryMode === 1
@@ -341,74 +1132,80 @@ async function getFeedPage(options = {}) {
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
-        if (page === 1) {
-            let mealsN = 0;
-            let mealsKnown = true;
-            try {
-                const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
-                mealsN = countSnap.data().count || 0;
-            } catch (cntErr) {
-                mealsKnown = false;
-                console.warn(
-                    '[관리자 모먼트] 식사 건수 집계(getCount) 실패 — 합산 집계는 일부 생략합니다.',
-                    cntErr?.code || cntErr?.message || cntErr
-                );
-            }
-            let specKnown = true;
-            let specN = 0;
-            try {
-                const sc = await getSpecialSharesTimelineCounts();
-                specN = sc.count;
-                specKnown = sc.known;
-            } catch (e) {
-                specKnown = false;
-                console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
-            }
-            feedMealTotalCountKnown = mealsKnown && specKnown;
-            if (feedMealTotalCountKnown) {
-                feedTotalCount = mealsN + specN;
-            } else if (mealsKnown) {
-                feedTotalCount = mealsN + (specKnown ? specN : 0);
-            } else {
-                feedTotalCount = specKnown ? specN : 0;
-            }
-        }
-
         const specRows = await getSpecialSharesModerationRowsCached();
-        const mealRows = [];
-        let mealCursor = null;
-        let exhausted = false;
-        const batchLimit = 120;
-        const maxBatches = 500;
-        let batchI = 0;
+        const journalRowsAll = await getDailyJournalsModerationRowsCached();
+        const journalRows = await filterDailyJournalRowsWithoutMealMirror(journalRowsAll);
+        const specPinned = filterModerationRowsByAuthor(specRows);
+        const journalPinned = filterModerationRowsByAuthor(journalRows);
 
-        while (!exhausted && batchI < maxBatches) {
-            const listQ = mealCursor
-                ? query(mealsGroup, ...orderParts, startAfter(mealCursor), limit(batchLimit))
-                : query(mealsGroup, ...orderParts, limit(batchLimit));
-            const snapshot = await getDocs(listQ);
-            batchI++;
-            if (!snapshot.docs.length) {
-                exhausted = true;
-                break;
+        if (page === 1) {
+            if (authorUid) {
+                let mealsN = 0;
+                let mealsKnown = true;
+                try {
+                    const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
+                    mealsN = countSnap.data().count || 0;
+                } catch (cntErr) {
+                    mealsKnown = false;
+                    console.warn(
+                        '[관리자 모먼트] 작성자 식사 건수 집계 실패',
+                        cntErr?.code || cntErr?.message || cntErr
+                    );
+                }
+                feedMealTotalCountKnown = mealsKnown;
+                feedTotalCount = mealsN + specPinned.length + journalPinned.length;
+            } else {
+                let mealsN = 0;
+                let mealsKnown = true;
+                try {
+                    const countSnap = await getCountFromServer(query(mealsGroup, ...orderParts));
+                    mealsN = countSnap.data().count || 0;
+                } catch (cntErr) {
+                    mealsKnown = false;
+                    console.warn(
+                        '[관리자 모먼트] 식사 건수 집계(getCount) 실패 — 합산 집계는 일부 생략합니다.',
+                        cntErr?.code || cntErr?.message || cntErr
+                    );
+                }
+                let specKnown = true;
+                let specN = 0;
+                try {
+                    const sc = await getSpecialSharesTimelineCounts();
+                    specN = sc.count;
+                    specKnown = sc.known;
+                } catch (e) {
+                    specKnown = false;
+                    console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
+                }
+                let journalN = 0;
+                let journalKnown = true;
+                try {
+                    journalN = journalRows.length;
+                } catch (e) {
+                    journalKnown = false;
+                    console.warn('[관리자 모먼트] 하루 기록 건수 집계 실패', e?.code || e?.message || e);
+                }
+                feedMealTotalCountKnown = mealsKnown && specKnown && journalKnown;
+                if (feedMealTotalCountKnown) {
+                    feedTotalCount = mealsN + specN + journalN;
+                } else if (mealsKnown) {
+                    feedTotalCount = mealsN + (specKnown ? specN : 0) + (journalKnown ? journalN : 0);
+                } else {
+                    feedTotalCount = (specKnown ? specN : 0) + (journalKnown ? journalN : 0);
+                }
             }
-            for (const d of snapshot.docs) {
-                mealRows.push(mealDocSnapToFeedRow(d));
-            }
-            mealCursor = snapshot.docs[snapshot.docs.length - 1];
-
-            const mergedProbe = [...specRows, ...mealRows].sort(
-                (a, b) => moderationRowSortMillis(b) - moderationRowSortMillis(a)
-            );
-            if (mergedProbe.length >= skip + pageSize) break;
         }
 
-        const merged = [...specRows, ...mealRows].sort(
-            (a, b) => moderationRowSortMillis(b) - moderationRowSortMillis(a)
-        );
-        const items = merged.slice(skip, skip + pageSize);
+        const merged = await collectMergedModerationPageItems({
+            skip,
+            pageSize,
+            pinnedRows: [...specPinned, ...journalPinned],
+            mealsGroup,
+            orderParts
+        });
+        const items = merged.items;
         feedLastPageRowCount = items.length;
-        feedLastPageHasMore = items.length === pageSize && (skip + pageSize < merged.length || !exhausted);
+        feedLastPageHasMore = merged.hasMore;
 
         return { items, totalCount: feedTotalCount, hasMore: feedLastPageHasMore };
     } catch (e) {
@@ -432,11 +1229,14 @@ async function ensureSharedKeysForFeedRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return;
     if (!feedSharedKeysCache) feedSharedKeysCache = new Set();
     for (const m of rows) {
-        if (m && (m.isDailyShare || m.isBestShare || m.isInsightShare) && m.userId && m.id) {
+        if (!m?.userId) continue;
+        if (m && (m.isDailyShare || m.isBestShare || m.isInsightShare) && m.id) {
             feedSharedKeysCache.add(`${m.userId}_${m.id}`);
         }
     }
-    const meals = rows.filter((m) => m && !m.isDailyShare && !m.isBestShare && !m.isInsightShare);
+    const meals = rows.filter(
+        (m) => m && !m.isDailyShare && !m.isBestShare && !m.isInsightShare && !m.isDailyJournal
+    );
     if (!meals.length) return;
     const byUser = new Map();
     for (const m of meals) {
@@ -446,8 +1246,51 @@ async function ensureSharedKeysForFeedRows(rows) {
         if (!byUser.has(m.userId)) byUser.set(m.userId, new Set());
         byUser.get(m.userId).add(m.id);
     }
-    if (byUser.size === 0) return;
+    const djByUser = new Map();
+    for (const m of rows) {
+        if (!m?.isDailyJournal || !m.userId || !m.date || m.momentShared === true) continue;
+        const eid = getDailyJournalShareEntryId(m.date);
+        if (!eid) continue;
+        if (!djByUser.has(m.userId)) djByUser.set(m.userId, new Set());
+        djByUser.get(m.userId).add(eid);
+    }
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    for (const [uid, eidSet] of djByUser) {
+        const entryIds = [...eidSet];
+        for (let i = 0; i < entryIds.length; i += 10) {
+            const chunk = entryIds.slice(i, i + 10);
+            try {
+                const q = query(
+                    sharedColl,
+                    where('userId', '==', uid),
+                    where('entryId', 'in', chunk)
+                );
+                const snap = await getDocs(q);
+                snap.docs.forEach((d) => {
+                    const data = d.data();
+                    const eid = data.entryId || null;
+                    if (uid && eid) {
+                        feedSharedKeysCache.add(`${uid}_${eid}`);
+                        const row = rows.find(
+                            (r) =>
+                                r?.isDailyJournal &&
+                                r.userId === uid &&
+                                getDailyJournalShareEntryId(r.date) === eid
+                        );
+                        if (row) {
+                            row.momentShared = true;
+                            const tsMs = firestoreTimestampToMillis(data.timestamp);
+                            if (tsMs > (row.momentShareAtMillis || 0)) row.momentShareAtMillis = tsMs;
+                        }
+                    }
+                });
+            } catch (e) {
+                console.warn('ensureSharedKeysForFeedRows(dailyJournal):', e?.message || e);
+            }
+        }
+    }
+
+    if (byUser.size === 0) return;
     for (const [uid, idSet] of byUser) {
         const ids = [...idSet];
         for (let i = 0; i < ids.length; i += 10) {
@@ -475,6 +1318,8 @@ async function ensureSharedKeysForFeedRows(rows) {
 async function renderFeedManagement() {
     const container = document.getElementById('feedManagementContainer');
     if (!container) return;
+
+    ensureFeedAuthorSearchHandlers();
     
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
     
@@ -483,43 +1328,53 @@ async function renderFeedManagement() {
         const allRows = await getFeedPageWithCache(feedCurrentPage);
         await ensureSharedKeysForFeedRows(allRows);
 
-        console.log('🔍 필터 적용:', feedFilters);
+        console.log('🔍 필터 적용:', feedFilters, feedAuthorFilter);
+        const authorUid = getFeedAuthorUserId();
         let filteredMeals = allRows.filter((meal) => {
+            if (authorUid && meal.userId !== authorUid) return false;
+            const isDailyJournalRow = meal.isDailyJournal === true;
             const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
             const isActuallyShared =
                 isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
-            if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
-            if (feedFilters.shared === 'no' && isActuallyShared) return false;
+            const isDjMomentShared = isDailyJournalRow && isDailyJournalMomentSharedRow(meal);
+            if (isDailyJournalRow) {
+                if (feedFilters.shared === 'yes' && !isDjMomentShared) return false;
+                if (feedFilters.shared === 'no' && isDjMomentShared) return false;
+            } else {
+                if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
+                if (feedFilters.shared === 'no' && isActuallyShared) return false;
+                const isBanned = meal.shareBanned === true;
+                if (feedFilters.banned === 'yes' && !isBanned) return false;
+                if (feedFilters.banned === 'no' && isBanned) return false;
+            }
             const hasPhotos =
                 (meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0) ||
                 Boolean(meal.photoUrl && String(meal.photoUrl).trim());
             if (feedFilters.hasPhotos === 'yes' && !hasPhotos) return false;
             if (feedFilters.hasPhotos === 'no' && hasPhotos) return false;
-            const isBanned = meal.shareBanned === true;
-            if (feedFilters.banned === 'yes' && !isBanned) return false;
-            if (feedFilters.banned === 'no' && isBanned) return false;
             return true;
         });
 
+        const dailyJournalOnPage = filteredMeals.filter((m) => m.isDailyJournal).length;
         console.log(
-            `✅ 필터 적용 후: ${filteredMeals.length}건 (페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 합산 총 ${feedTotalCount}건` : ' / 총 집계 생략'})`
+            `✅ 필터 적용 후: ${filteredMeals.length}건 (하루 기록 ${dailyJournalOnPage}건, 페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 합산 총 ${feedTotalCount}건` : ' / 총 집계 생략'})`
         );
 
-        filteredMeals.sort((a, b) => {
-            const ta = moderationRowSortMillis(a);
-            const tb = moderationRowSortMillis(b);
-            if (tb !== ta) return tb - ta;
-            return String(b.id || '').localeCompare(String(a.id || ''));
-        });
+        filteredMeals.sort(compareModerationRowsDesc);
 
         // 페이지 단위 로드 결과에서만 표시
         const totalPages = computeFeedAdminTotalPages();
         const paginatedMeals = filteredMeals;
 
         if (paginatedMeals.length === 0) {
+            const emptyMsg = authorUid
+                ? '선택한 작성자의 게시물이 없습니다.'
+                : '게시물이 없습니다.';
             container.innerHTML =
-                '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+                `<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>${escapeHtml(emptyMsg)}</p></div>`;
+            updateFeedAuthorFilterBar();
             adminFeedMonitoringLoaded = true;
+            renderFeedPagination(computeFeedAdminTotalPages());
             return;
         }
 
@@ -618,8 +1473,11 @@ async function renderFeedManagement() {
             paginatedMeals.length === 0
                 ? `<tr><td colspan="13" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
                 : paginatedMeals.map((meal, rowIdx) => {
+            const isDailyJournal = meal.isDailyJournal === true;
             const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
-            const targetGroupKey = meal.isBestShare
+            const targetGroupKey = isDailyJournal
+                ? `dailyJournal_${meal.date || ''}_${meal.userId}`
+                : meal.isBestShare
                 ? `best_${meal.id}`
                 : meal.isDailyShare
                     ? `daily_${meal.date || ''}_${meal.userId}`
@@ -642,29 +1500,43 @@ async function renderFeedManagement() {
                       }
                     : baseAuthor;
 
-            const isShared =
-                isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
-            const hasLocalSharedPhotos = meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
+            const isShared = isDailyJournal
+                ? isDailyJournalMomentSharedRow(meal)
+                : isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
+            const hasLocalSharedPhotos =
+                !isDailyJournal &&
+                meal.sharedPhotos &&
+                Array.isArray(meal.sharedPhotos) &&
+                meal.sharedPhotos.length > 0;
             const hasPhotos = (Array.isArray(meal.photos) && meal.photos.length > 0) || Boolean(meal.photoUrl);
             const isBanned = meal.shareBanned === true;
-            const hasDataMismatch = !isCapture && hasLocalSharedPhotos && !isShared;
+            const hasDataMismatch = !isCapture && !isDailyJournal && hasLocalSharedPhotos && !isShared;
 
-            const typeLabel = meal.isBestShare
-                ? '주간 Best'
-                : meal.isDailyShare
-                    ? '하루 기록'
-                    : meal.isInsightShare
-                        ? '밀당의 참견'
-                        : '일반';
+            const typeLabel = isDailyJournal
+                ? meal.momentShared && meal.isDailyJournalSlot !== true
+                    ? '하루기록·모먼트'
+                    : meal.momentShared
+                      ? '하루기록·슬롯+모먼트'
+                      : '하루기록·슬롯'
+                : meal.isBestShare
+                    ? '주간 Best'
+                    : meal.isDailyShare
+                        ? '일간 캡처'
+                        : meal.isInsightShare
+                            ? '밀당의 참견'
+                            : '일반';
 
-            const whereTag = isCapture ? '' : meal.place || meal.snackPlace || '';
-            const whereSubTag = isCapture ? '' : meal.placeDetail || meal.placeMemo || '';
-            const whatTag = isCapture ? '' : meal.category || meal.mealType || meal.snackType || '';
-            const whatSubTag = isCapture ? '' : meal.menuDetail || meal.snackDetail || '';
-            const withTag = isCapture ? '' : meal.withWhom || '';
-            const withSubTag = isCapture ? '' : meal.withWhomDetail || '';
-            const ratingVal = isCapture ? null : meal.snackRating ?? meal.rating;
-            const satietyVal = isCapture ? null : meal.satiety;
+            const whereTag = isCapture || isDailyJournal ? '' : meal.place || meal.snackPlace || '';
+            const whereSubTag = isCapture || isDailyJournal ? '' : meal.placeDetail || meal.placeMemo || '';
+            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.mealType || meal.snackType || '';
+            const whatSubTag = isCapture || isDailyJournal ? '' : meal.menuDetail || meal.snackDetail || '';
+            const withTag = isCapture || isDailyJournal ? '' : meal.withWhom || '';
+            const withSubTag = isCapture || isDailyJournal ? '' : meal.withWhomDetail || '';
+            const ratingVal = isCapture || isDailyJournal ? null : meal.snackRating ?? meal.rating;
+            const satietyVal = isCapture || isDailyJournal ? null : meal.satiety;
+            const dailyJournalMetricsHtml = isDailyJournal
+                ? formatDailyJournalMetricsAdminHtml(meal.dailyJournalEntry)
+                : '';
             const photoUrls = (() => {
                 if (Array.isArray(meal.photos) && meal.photos.length > 0) {
                     return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
@@ -723,7 +1595,7 @@ async function renderFeedManagement() {
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
                     <td class="px-3 py-3 align-middle text-center border-r border-slate-200">
-                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>
+                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''} ${isDailyJournal ? 'data-is-daily-journal="true"' : ''} ${isDailyJournal ? 'disabled title="하루 기록은 이 화면에서 일괄 처리할 수 없습니다"' : ''}>
                     </td>
                     <td class="px-2 py-3 align-middle text-center border-r border-slate-200 w-[56px] min-w-[56px]">
                         <div class="flex flex-col items-center gap-1">
@@ -738,7 +1610,7 @@ async function renderFeedManagement() {
                     </td>
                     <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
-                            <span class="text-sm font-semibold text-slate-800 break-words">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</span>
+                            <button type="button" class="admin-feed-author-filter text-sm font-semibold text-emerald-700 hover:text-emerald-900 hover:underline break-words cursor-pointer bg-transparent border-0 p-0 text-center" data-user-id="${escapeHtml(meal.userId)}" data-nickname="${escapeHtml(userInfo.nickname)}" title="이 작성자 기록만 보기">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</button>
                             ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>
@@ -753,10 +1625,14 @@ async function renderFeedManagement() {
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
-                        <div class="text-xs leading-tight">
+                        ${
+                            isDailyJournal
+                                ? `<div class="text-xs leading-tight">${dailyJournalMetricsHtml}</div>`
+                                : `<div class="text-xs leading-tight">
                             <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
                             <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
-                        </div>
+                        </div>`
+                        }
                     </td>
                     <td class="px-2 py-3 align-middle text-center w-[208px] min-w-[208px] border-r border-slate-200">
                         ${photoUrls.length > 0
@@ -789,7 +1665,11 @@ async function renderFeedManagement() {
                         </div>
                     </td>
                     <td class="px-2 py-3 align-middle text-center w-[56px] min-w-[56px]">
-                        <button type="button" class="admin-feed-row-delete px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded hover:bg-red-100 border border-red-200 transition-colors" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>삭제</button>
+                        ${
+                            isDailyJournal
+                                ? '<span class="text-slate-300 text-xs">-</span>'
+                                : `<button type="button" class="admin-feed-row-delete px-2 py-1 bg-red-50 text-red-700 text-xs font-bold rounded hover:bg-red-100 border border-red-200 transition-colors" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''}>삭제</button>`
+                        }
                     </td>
                 </tr>
             `;
@@ -827,10 +1707,19 @@ async function renderFeedManagement() {
                 void window.adminDeleteSingleFeedPost(btn);
             });
         });
-        
+        container.querySelectorAll('.admin-feed-author-filter').forEach((btn) => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                const uid = btn.getAttribute('data-user-id') || '';
+                const nick = btn.getAttribute('data-nickname') || '';
+                void window.setFeedAuthorFilter(uid, nick);
+            });
+        });
+
         // 페이지네이션 렌더링
         renderFeedPagination(totalPages);
-        
+
+        updateFeedAuthorFilterBar();
         // 토글 버튼 색상 업데이트
         updateFeedFilterToggleColors();
         adminFeedMonitoringLoaded = true;
@@ -918,6 +1807,32 @@ function renderFeedPagination(totalPages) {
     }
     paginationContainer.innerHTML = html;
 }
+
+window.setFeedAuthorFilter = async function (userId, nickname) {
+    const uid = String(userId || '').trim();
+    if (!uid) return;
+    feedAuthorFilter = { userId: uid, nickname: String(nickname || '').trim() || '익명' };
+    feedCurrentPage = 1;
+    feedQueryCache.clear();
+    if (!adminFeedMonitoringLoaded) {
+        updateFeedAuthorFilterBar();
+        return;
+    }
+    await renderFeedManagement();
+};
+
+window.clearFeedAuthorFilter = async function () {
+    if (!feedAuthorFilter) {
+        syncFeedAuthorSearchInput();
+        return;
+    }
+    feedAuthorFilter = null;
+    feedCurrentPage = 1;
+    feedQueryCache.clear();
+    updateFeedAuthorFilterBar();
+    if (!adminFeedMonitoringLoaded) return;
+    await renderFeedManagement();
+};
 
 // 피드 필터 토글
 window.toggleFeedFilter = function(filterType) {
@@ -1737,6 +2652,20 @@ export function refreshAdminMealsFeedSortMode() {
         mealsAdminMealsQueryMode = 1;
         feedLastDocsByPage = {};
         feedCurrentPage = 1;
+    }
+}
+
+window.ensureFeedAuthorSearchHandlers = ensureFeedAuthorSearchHandlers;
+
+if (typeof document !== 'undefined') {
+    const bootFeedAuthorSearch = () => {
+        ensureFeedAuthorSearchHandlers();
+        syncFeedAuthorSearchInput();
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootFeedAuthorSearch, { once: true });
+    } else {
+        bootFeedAuthorSearch();
     }
 }
 

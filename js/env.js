@@ -53,6 +53,22 @@ window.getMealogUiEnvironmentLabelLocalOverride = function getMealogUiEnvironmen
     return null;
 };
 
+/** 운영 앱·웹만 페이지별 usageDaily 집계 대상 (com.mealog.app / www.mealog.net·mealog.net) */
+window.isProductionUsageEnvironment = function isProductionUsageEnvironment() {
+    if (typeof window === 'undefined') return false;
+    try {
+        var cap = window.Capacitor;
+        if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+            var capAppId = cap.config && String(cap.config.appId || '').trim();
+            return capAppId === 'com.mealog.app';
+        }
+    } catch (e) {
+        /* ignore */
+    }
+    var hostname = (window.location && String(window.location.hostname || '').toLowerCase()) || '';
+    return hostname === 'www.mealog.net' || hostname === 'mealog.net';
+};
+
 /**
  * UI 배지용: 로컬 개발 / 스테이징 / 운영
  * — 네이티브 패키지 → 로컬 오버라이드 → 스테이징 URL·APP_ENV → 로컬 호스트.

@@ -44,7 +44,13 @@ export function unwrapMealSaveResult(r) {
     return { mealId: '', savedViaCallableFallback: false };
 }
 import { isDemoUser } from '../demo-account.js';
-import { getDailyJournalFromSettings, normalizeDailyJournalEntry, dailyJournalHasContent } from '../utils/daily-journal-data.js';
+import {
+    getDailyJournalFromSettings,
+    normalizeDailyJournalEntry,
+    dailyJournalHasContent,
+    getDailyJournalMealDocId,
+    dailyJournalEntryToMealDocument
+} from '../utils/daily-journal-data.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
@@ -597,12 +603,47 @@ export const dbOps = {
         await this.saveDailyJournal(date, {
             comment: comment != null ? String(comment) : '',
             photos: existing.photos,
+            sharedPhotos: existing.sharedPhotos,
             photoAspectRatio: existing.photoAspectRatio,
             weightEnabled: existing.weightEnabled,
             bloodSugarEnabled: existing.bloodSugarEnabled,
             weightRecords: existing.weightRecords,
-            bloodSugarRecords: existing.bloodSugarRecords
+            bloodSugarRecords: existing.bloodSugarRecords,
+            recordedAt: existing.recordedAt
         });
+    },
+
+    async syncDailyJournalMealMirror(date, entry) {
+        const currentUser = auth.currentUser || window.currentUser;
+        if (!currentUser?.uid || currentUser.isAnonymous || isDemoUser(currentUser)) return;
+        const mealId = getDailyJournalMealDocId(date);
+        if (!mealId) return;
+        await refreshAppCheckTokenBeforeFirestore();
+        const mealRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', mealId);
+        const normalized = normalizeDailyJournalEntry(entry);
+        if (!dailyJournalHasContent(normalized)) {
+            try {
+                const ex = await getDoc(mealRef);
+                if (ex.exists()) await deleteDoc(mealRef);
+            } catch (e) {
+                console.warn('[dbOps] 하루기록 meals 미러 삭제 실패:', e?.code || e?.message || e);
+            }
+            return;
+        }
+        const mealDoc = dailyJournalEntryToMealDocument(date, normalized);
+        delete mealDoc.id;
+        try {
+            const exSnap = await getDoc(mealRef);
+            if (exSnap.exists() && exSnap.data()?.recordedAt != null) {
+                mealDoc.recordedAt = exSnap.data().recordedAt;
+            } else if (!mealDoc.recordedAt) {
+                mealDoc.recordedAt = new Date().toISOString();
+            }
+            await setDoc(mealRef, stripUndefinedDeep(mealDoc));
+        } catch (e) {
+            console.error('[dbOps] 하루기록 meals 미러 저장 실패:', e);
+            throw e;
+        }
     },
 
     async saveDailyJournal(date, entry) {
@@ -621,11 +662,15 @@ export const dbOps = {
                 window.userSettings.dailyComments = {};
             }
             if (dailyJournalHasContent(normalized)) {
+                const prev = window.userSettings.dailyComments?.[date];
+                const prevRecorded = prev ? normalizeDailyJournalEntry(prev).recordedAt : '';
+                normalized.recordedAt = normalized.recordedAt || prevRecorded || new Date().toISOString();
                 window.userSettings.dailyComments[date] = normalized;
             } else {
                 delete window.userSettings.dailyComments[date];
             }
             await dbOps.saveSettings(window.userSettings);
+            await dbOps.syncDailyJournalMealMirror(date, normalized);
         } catch (e) {
             console.error('Daily Journal Save Error:', e);
             throw e;

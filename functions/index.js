@@ -8,6 +8,7 @@ const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
+const momentPostV2 = require('./momentPostV2.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
 
@@ -1542,6 +1543,12 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
 
   const docRef = await commentsRef.add(commentData);
 
+  try {
+    await bumpMomentPostV2CommentCount(String(postId), 1);
+  } catch (e) {
+    logger.warn('addPostComment: commentCount bump skip', { postId: String(postId).slice(0, 80), err: e?.message });
+  }
+
   if (postOwnerId && postOwnerId !== auth.uid) {
     await sendPushToUser(
       postOwnerId,
@@ -1586,7 +1593,17 @@ exports.deletePostComment = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('permission-denied', '본인의 댓글만 삭제할 수 있습니다.');
   }
 
+  const commentPostId = commentData.postId ? String(commentData.postId) : '';
+
   await commentRef.delete();
+
+  if (commentPostId) {
+    try {
+      await bumpMomentPostV2CommentCount(commentPostId, -1);
+    } catch (e) {
+      logger.warn('deletePostComment: commentCount bump skip', { postId: commentPostId.slice(0, 80), err: e?.message });
+    }
+  }
 
   return { success: true };
 });
@@ -1644,6 +1661,17 @@ exports.submitPostReport = onCall({ region: REGION }, async (request) => {
   return { reportId: reportRef.id };
 });
 
+async function bumpMomentPostV2CommentCount(postId, delta) {
+  if (!postId || !delta) return;
+  const docId = momentPostV2.sanitizeMomentPostDocId(String(postId));
+  const ref = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().schemaVersion !== 2) return;
+  const current = Number(snap.data().commentCount) || 0;
+  if (delta < 0 && current <= 0) return;
+  await ref.update({ commentCount: FieldValue.increment(delta) });
+}
+
 /**
  * 공유 사진 추가 (Callable)
  * photosToShare가 빈 배열이면 공유 해제로 처리
@@ -1677,15 +1705,16 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
 
       // entryId가 있는 경우: 같은 entryId의 기존 문서를 모두 삭제
       if (mealData && mealData.id) {
+        const postId = momentPostV2.mealSharePostId(mealData, auth.uid);
+        momentPostV2.deleteMomentPostV2ByPostId(batch, sharedColl, postId);
+        hasDeletions = true;
         const existingQuery = await sharedColl
           .where('userId', '==', auth.uid)
           .where('entryId', '==', mealData.id)
           .get();
         
-        existingQuery.docs.forEach(docSnap => {
-          batch.delete(docSnap.ref);
-          hasDeletions = true;
-        });
+        momentPostV2.deleteLegacyPhotoDocsForQuery(batch, sharedColl, existingQuery);
+        if (existingQuery.docs.length > 0) hasDeletions = true;
       } else {
         // entryId가 null인 경우: userId로만 필터링 후 entryId null인 것만 삭제
         const existingQuery = await sharedColl
@@ -1694,6 +1723,7 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         
         existingQuery.docs.forEach(docSnap => {
           const data = docSnap.data();
+          if (data.schemaVersion === 2) return;
           if (!data.entryId || data.entryId === null) {
             batch.delete(docSnap.ref);
             hasDeletions = true;
@@ -1729,65 +1759,48 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
 
     const sharedColl = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos');
     const batch = db.batch();
+    const postId = momentPostV2.mealSharePostId(mealData, auth.uid);
+    const docId = momentPostV2.sanitizeMomentPostDocId(postId);
 
-    // entryId가 있는 경우: 같은 entryId의 기존 문서를 모두 삭제
+    // legacy v1 + 기존 v2 삭제 후 재작성
     if (mealData && mealData.id) {
       const existingQuery = await sharedColl
         .where('userId', '==', auth.uid)
         .where('entryId', '==', mealData.id)
         .get();
-      
-      existingQuery.docs.forEach(docSnap => {
-        batch.delete(docSnap.ref);
-      });
+      momentPostV2.deleteLegacyPhotoDocsForQuery(batch, sharedColl, existingQuery);
     } else {
-      // entryId가 null인 경우: userId로만 필터링 후 entryId null인 것만 삭제
       const existingQuery = await sharedColl
         .where('userId', '==', auth.uid)
         .get();
-      
       existingQuery.docs.forEach(docSnap => {
         const data = docSnap.data();
+        if (data.schemaVersion === 2) return;
         if (!data.entryId || data.entryId === null) {
           batch.delete(docSnap.ref);
         }
       });
     }
+    batch.delete(sharedColl.doc(docId));
 
-    // 사진 비율: 모먼트에서 모든 사용자에게 동일하게 표시되도록 문서에 저장 (업로더 mealHistory에만 있으면 다른 사용자는 1:1로 보이는 문제 해결)
-    const aspectRatio = (mealData && mealData.photoAspectRatio === '3:4') ? '3:4'
-      : (mealData && mealData.photoAspectRatio === '4:3') ? '4:3' : '1:1';
+    const existingV2Snap = await sharedColl.doc(docId).get();
+    const preservedCounts =
+      existingV2Snap.exists && existingV2Snap.data().schemaVersion === 2
+        ? {
+            likeCount: Number(existingV2Snap.data().likeCount) || 0,
+            commentCount: Number(existingV2Snap.data().commentCount) || 0
+          }
+        : { likeCount: 0, commentCount: 0 };
 
-    // 새로운 사진들을 추가 (photoIndex로 업로드 순서 저장 → 모든 사용자에게 동일한 사진 순서 보장)
-    photosToShare.forEach((photoUrl, index) => {
-      const docRef = sharedColl.doc();
-      batch.set(docRef, {
-        photoUrl,
-        photoIndex: index,
-        userId: auth.uid,
-        userNickname,
-        userIcon,
-        userPhotoUrl,
-        mealType: (mealData && mealData.mealType) || '',
-        place: (mealData && mealData.place) || '',
-        menuDetail: (mealData && mealData.menuDetail) || '',
-        deliveryVendor: (mealData && mealData.deliveryVendor) || '',
-        deliveryPlaceId: (mealData && mealData.deliveryPlaceId) || '',
-        deliveryPlaceAddress: (mealData && mealData.deliveryPlaceAddress) || '',
-        deliveryPlaceData: (mealData && mealData.deliveryPlaceData && typeof mealData.deliveryPlaceData === 'object')
-          ? mealData.deliveryPlaceData
-          : null,
-        deliveryKakaoPlace: !!(mealData && mealData.deliveryKakaoPlace),
-        snackType: (mealData && mealData.snackType) || '',
-        date: (mealData && mealData.date) || '',
-        slotId: (mealData && mealData.slotId) || '',
-        time: (mealData && mealData.time) || new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-        timestamp: FieldValue.serverTimestamp(),
-        entryId: (mealData && mealData.id) || null,
-        comment: (mealData && mealData.comment) || '',
-        photoAspectRatio: aspectRatio
-      });
+    const v2Fields = momentPostV2.buildMealMomentPostV2Fields({
+      photosToShare,
+      mealData,
+      userId: auth.uid,
+      profile: { nickname: userNickname, icon: userIcon, photoUrl: userPhotoUrl },
+      postId,
+      FieldValue
     });
+    batch.set(sharedColl.doc(docId), { ...v2Fields, ...preservedCounts });
 
     await batch.commit();
 
@@ -1795,7 +1808,7 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
     // 여기서 mealDoc.set을 하면 meals 리스너가 한 번 더 떨어져 onDataUpdate가 이중 호출되고,
     // 타임라인 전체 재렌더가 연속 두 번 발생해 공유 시 브라우저 프리징/CPU 급증의 원인이 됨.
 
-    return { success: true, action: 'share' };
+    return { success: true, action: 'share', postId, id: docId };
   } catch (error) {
     logger.error('sharePhotos error:', error);
     if (error instanceof HttpsError) {
@@ -1803,6 +1816,29 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
     }
     throw new HttpsError('internal', '공유 처리 중 오류가 발생했습니다.');
   }
+});
+
+/**
+ * 관리자: legacy sharedPhotos → v2 게시물 문서 백필
+ * data: { dryRun?: boolean, internalKey?: string }
+ */
+exports.adminMigrateMomentPostsV2 = onCall({ region: REGION, timeoutSeconds: 540, memory: '512MiB' }, async (request) => {
+  const { auth, data } = request;
+  const internalOk = data && data.internalKey === 'mealog-moment-v2-migrate-internal';
+  if (!internalOk) {
+    if (!auth || !auth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(auth.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+    }
+  }
+  const dryRun = !!(data && data.dryRun);
+  const chunkSize = data && data.chunkSize != null ? Number(data.chunkSize) : 40;
+  const cursor = data && data.cursor ? String(data.cursor) : '';
+  const result = await momentPostV2.migrateLegacySharedPhotosToV2(db, APP_ID, { dryRun, chunkSize, cursor });
+  logger.info('adminMigrateMomentPostsV2', { uid: auth && auth.uid, ...result });
+  return result;
 });
 
 /**
@@ -1845,29 +1881,27 @@ exports.createDailyShare = onCall({ region: REGION }, async (request) => {
     .get();
   
   const batch = db.batch();
-  existingQuery.docs.forEach(docSnap => {
-    batch.delete(docSnap.ref);
-  });
+  momentPostV2.deleteLegacyPhotoDocsForQuery(batch, sharedColl, existingQuery);
+  const postId = momentPostV2.dailySharePostId(date, auth.uid);
+  const docId = momentPostV2.sanitizeMomentPostDocId(postId);
+  batch.delete(sharedColl.doc(docId));
 
-  // 새로운 일간보기 공유 추가
-  const docRef = sharedColl.doc();
-  batch.set(docRef, {
-    photoUrl,
-    userId: auth.uid,
-    userNickname,
-    userIcon,
-    userPhotoUrl,
+  const v2Fields = momentPostV2.buildSpecialMomentPostV2Fields({
     type: 'daily',
-    date,
-    timestamp: FieldValue.serverTimestamp(),
-    entryId: null,
-    comment: comment || ''
+    userId: auth.uid,
+    profile: { nickname: userNickname, icon: userIcon, photoUrl: userPhotoUrl },
+    postId,
+    photoUrl,
+    FieldValue,
+    extra: { date, comment: comment || '' }
   });
+  batch.set(sharedColl.doc(docId), v2Fields);
 
   await batch.commit();
 
   return { 
-    id: docRef.id, 
+    id: docId,
+    postId,
     photoUrl,
     userId: auth.uid,
     userNickname,
@@ -1875,7 +1909,9 @@ exports.createDailyShare = onCall({ region: REGION }, async (request) => {
     userPhotoUrl,
     type: 'daily',
     date,
+    schemaVersion: 2,
     timestamp: new Date().toISOString(),
+    sharedAt: new Date().toISOString(),
     entryId: null,
     comment: comment || ''
   };
@@ -1921,30 +1957,27 @@ exports.createBestShare = onCall({ region: REGION }, async (request) => {
     .get();
   
   const batch = db.batch();
-  existingQuery.docs.forEach(docSnap => {
-    batch.delete(docSnap.ref);
-  });
+  momentPostV2.deleteLegacyPhotoDocsForQuery(batch, sharedColl, existingQuery);
+  const postId = momentPostV2.bestSharePostId(periodType, periodText, auth.uid);
+  const docId = momentPostV2.sanitizeMomentPostDocId(postId);
+  batch.delete(sharedColl.doc(docId));
 
-  // 새로운 베스트 공유 추가
-  const docRef = sharedColl.doc();
-  batch.set(docRef, {
-    photoUrl,
-    userId: auth.uid,
-    userNickname,
-    userIcon,
-    userPhotoUrl,
+  const v2Fields = momentPostV2.buildSpecialMomentPostV2Fields({
     type: 'best',
-    periodType,
-    periodText,
-    timestamp: FieldValue.serverTimestamp(),
-    entryId: null,
-    comment: comment || ''
+    userId: auth.uid,
+    profile: { nickname: userNickname, icon: userIcon, photoUrl: userPhotoUrl },
+    postId,
+    photoUrl,
+    FieldValue,
+    extra: { periodType, periodText, comment: comment || '' }
   });
+  batch.set(sharedColl.doc(docId), v2Fields);
 
   await batch.commit();
 
   return { 
-    id: docRef.id, 
+    id: docId,
+    postId,
     photoUrl,
     userId: auth.uid,
     userNickname,
@@ -1953,7 +1986,9 @@ exports.createBestShare = onCall({ region: REGION }, async (request) => {
     type: 'best',
     periodType,
     periodText,
+    schemaVersion: 2,
     timestamp: new Date().toISOString(),
+    sharedAt: new Date().toISOString(),
     entryId: null,
     comment: comment || ''
   };
@@ -1998,29 +2033,27 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     .get();
   
   const batch = db.batch();
-  existingQuery.docs.forEach(docSnap => {
-    batch.delete(docSnap.ref);
-  });
+  momentPostV2.deleteLegacyPhotoDocsForQuery(batch, sharedColl, existingQuery);
+  const postId = momentPostV2.insightSharePostId(dateRangeText, auth.uid);
+  const docId = momentPostV2.sanitizeMomentPostDocId(postId);
+  batch.delete(sharedColl.doc(docId));
 
-  // 새로운 인사이트 공유 추가
-  const docRef = sharedColl.doc();
-  batch.set(docRef, {
-    photoUrl,
-    userId: auth.uid,
-    userNickname,
-    userIcon,
-    userPhotoUrl,
+  const v2Fields = momentPostV2.buildSpecialMomentPostV2Fields({
     type: 'insight',
-    dateRangeText,
-    timestamp: FieldValue.serverTimestamp(),
-    entryId: null,
-    comment: comment || ''
+    userId: auth.uid,
+    profile: { nickname: userNickname, icon: userIcon, photoUrl: userPhotoUrl },
+    postId,
+    photoUrl,
+    FieldValue,
+    extra: { dateRangeText, comment: comment || '' }
   });
+  batch.set(sharedColl.doc(docId), v2Fields);
 
   await batch.commit();
 
   return { 
-    id: docRef.id, 
+    id: docId,
+    postId,
     photoUrl,
     userId: auth.uid,
     userNickname,
@@ -2028,7 +2061,9 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     userPhotoUrl,
     type: 'insight',
     dateRangeText,
+    schemaVersion: 2,
     timestamp: new Date().toISOString(),
+    sharedAt: new Date().toISOString(),
     entryId: null,
     comment: comment || ''
   };

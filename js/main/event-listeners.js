@@ -33,6 +33,8 @@ import {
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
+import { openRecordCameraPicker, openRecordGalleryPicker } from '../modals/entry-and-core.js';
+import { openDailyJournalCameraPicker, openDailyJournalGalleryPicker } from '../modals/daily-journal.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import {
     registerDemoNavGuideHandlers,
@@ -705,6 +707,37 @@ export function initEventListeners() {
         deleteAccountConfirmActionBtn.addEventListener('click', confirmDeleteAccountAction);
     }
 
+    bindRecordPhotoSourcePickersOnce();
     bindMealSyncResendNavButtonOnce();
     registerEscapeCloseModals();
+}
+
+function bindRecordPhotoSourcePickersOnce() {
+    if (document.documentElement.dataset.recordPhotoSourcePickersBound === '1') return;
+    document.documentElement.dataset.recordPhotoSourcePickersBound = '1';
+
+    const bindPair = (cameraId, albumId, onCamera, onAlbum) => {
+        const cameraBtn = document.getElementById(cameraId);
+        const albumBtn = document.getElementById(albumId);
+        if (cameraBtn) {
+            cameraBtn.addEventListener('click', () => {
+                if (cameraBtn.disabled) return;
+                onCamera();
+            });
+        }
+        if (albumBtn) {
+            albumBtn.addEventListener('click', () => {
+                if (albumBtn.disabled) return;
+                onAlbum();
+            });
+        }
+    };
+
+    bindPair('imageCameraBtn', 'imageAlbumBtn', () => openRecordCameraPicker(false), () =>
+        openRecordGalleryPicker(false)
+    );
+    bindPair('snackImageCameraBtn', 'snackImageAlbumBtn', () => openRecordCameraPicker(true), () =>
+        openRecordGalleryPicker(true)
+    );
+    bindPair('dailyJournalCameraBtn', 'dailyJournalAlbumBtn', openDailyJournalCameraPicker, openDailyJournalGalleryPicker);
 }

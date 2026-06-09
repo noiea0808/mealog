@@ -24,8 +24,28 @@ let dragStartOffsetY = 0;
 let isPinching = false;
 let initialPinchDistance = 0;
 let initialPinchScale = 1;
-/** 'meal' | 'profile' | null */
+/** 'meal' | 'dailyJournal' | 'profile' | null */
 let photoEditContext = null;
+
+function getPhotoEditContextPhotos() {
+    if (photoEditContext === 'dailyJournal') return appState.dailyJournalPhotos;
+    if (photoEditContext === 'meal') return appState.currentPhotos;
+    return [];
+}
+
+function isRecordPhotoEditContext() {
+    return photoEditContext === 'meal' || photoEditContext === 'dailyJournal';
+}
+
+async function refreshPhotoEditContextPreviews() {
+    if (photoEditContext === 'dailyJournal') {
+        const { renderDailyJournalPhotoPreviews } = await import('../modals/daily-journal.js');
+        renderDailyJournalPhotoPreviews();
+        return;
+    }
+    const { renderPhotoPreviews } = await import('../render.js');
+    renderPhotoPreviews();
+}
 /** 프로필 편집 시 취소/닫기 시 revoke용 */
 let profilePhotoEditObjectUrl = null;
 /** 'modal' — 전역 사진 편집 모달 | 'avatar' — 프로필 아바타 팝업 안 인라인 */
@@ -70,6 +90,16 @@ export function editPhoto(idx) {
     openPhotoEditModalWithImage(photoSrc);
 }
 
+/** 하루 기록 모달 사진 편집 */
+export function editDailyJournalPhoto(idx) {
+    if (idx < 0 || idx >= appState.dailyJournalPhotos.length) return;
+
+    photoEditContext = 'dailyJournal';
+    profilePhotoEditObjectUrl = null;
+    editingPhotoIndex = idx;
+    openPhotoEditModalWithImage(appState.dailyJournalPhotos[idx]);
+}
+
 // 프로필 사진 편집 모달 열기 (사진 직접 등록 시)
 export function openProfilePhotoEdit(objectUrl) {
     if (!objectUrl) return;
@@ -110,7 +140,14 @@ function openAvatarInlinePhotoEdit(photoSrc) {
 }
 
 function getPhotoEditAspectRatioCss() {
-    const ratio = photoEditContext === 'profile' ? '1:1' : (appState.recordPhotoAspectRatio || '1:1');
+    let ratio = '1:1';
+    if (photoEditContext === 'profile') {
+        ratio = '1:1';
+    } else if (photoEditContext === 'dailyJournal') {
+        ratio = appState.dailyJournalPhotoAspectRatio || '1:1';
+    } else {
+        ratio = appState.recordPhotoAspectRatio || '1:1';
+    }
     if (ratio === '3:4') return '3/4';
     if (ratio === '4:3') return '4/3';
     return '1';
@@ -559,8 +596,9 @@ function updatePhotoEditNavUI() {
     const prev = document.getElementById('photoEditPrevBtn');
     const next = document.getElementById('photoEditNextBtn');
     if (!row || !label || !prev || !next) return;
-    const len = appState.currentPhotos.length;
-    const show = photoEditContext === 'meal' && len > 1 && editingPhotoIndex !== null;
+    const photos = getPhotoEditContextPhotos();
+    const len = photos.length;
+    const show = isRecordPhotoEditContext() && len > 1 && editingPhotoIndex !== null;
     row.classList.toggle('hidden', !show);
     if (!show) return;
     label.textContent = `${editingPhotoIndex + 1} / ${len}`;
@@ -568,9 +606,10 @@ function updatePhotoEditNavUI() {
     next.disabled = editingPhotoIndex >= len - 1;
 }
 
-async function switchMealPhotoEditToIndex(newIndex) {
-    if (photoEditContext !== 'meal' || editingPhotoIndex === null) return;
-    const len = appState.currentPhotos.length;
+async function switchRecordPhotoEditToIndex(newIndex) {
+    if (!isRecordPhotoEditContext() || editingPhotoIndex === null) return;
+    const photos = getPhotoEditContextPhotos();
+    const len = photos.length;
     if (newIndex < 0 || newIndex >= len || newIndex === editingPhotoIndex) return;
     if (!photoEditCanvas || !photoEditCtx || !editingPhotoImage) return;
 
@@ -585,14 +624,13 @@ async function switchMealPhotoEditToIndex(newIndex) {
         return;
     }
 
-    appState.currentPhotos[editingPhotoIndex] = dataUrl;
-    const { renderPhotoPreviews } = await import('../render.js');
-    renderPhotoPreviews();
+    photos[editingPhotoIndex] = dataUrl;
+    await refreshPhotoEditContextPreviews();
 
     detachPhotoEditCanvasListeners();
     editingPhotoIndex = newIndex;
     updatePhotoEditNavUI();
-    const photoSrc = appState.currentPhotos[newIndex];
+    const photoSrc = photos[newIndex];
 
     editingPhotoImage = new Image();
     const src = String(photoSrc || '');
@@ -612,10 +650,10 @@ async function switchMealPhotoEditToIndex(newIndex) {
 
 export async function goToPrevPhotoEdit() {
     if (photoEditNavigating) return;
-    if (photoEditContext !== 'meal' || editingPhotoIndex === null || editingPhotoIndex <= 0) return;
+    if (!isRecordPhotoEditContext() || editingPhotoIndex === null || editingPhotoIndex <= 0) return;
     photoEditNavigating = true;
     try {
-        await switchMealPhotoEditToIndex(editingPhotoIndex - 1);
+        await switchRecordPhotoEditToIndex(editingPhotoIndex - 1);
     } finally {
         photoEditNavigating = false;
     }
@@ -623,12 +661,12 @@ export async function goToPrevPhotoEdit() {
 
 export async function goToNextPhotoEdit() {
     if (photoEditNavigating) return;
-    if (photoEditContext !== 'meal' || editingPhotoIndex === null) return;
-    const len = appState.currentPhotos.length;
+    if (!isRecordPhotoEditContext() || editingPhotoIndex === null) return;
+    const len = getPhotoEditContextPhotos().length;
     if (editingPhotoIndex >= len - 1) return;
     photoEditNavigating = true;
     try {
-        await switchMealPhotoEditToIndex(editingPhotoIndex + 1);
+        await switchRecordPhotoEditToIndex(editingPhotoIndex + 1);
     } finally {
         photoEditNavigating = false;
     }
@@ -682,12 +720,12 @@ export function savePhotoEdit() {
             return;
         }
 
-        if (editingPhotoIndex === null) return;
+        if (editingPhotoIndex === null || !isRecordPhotoEditContext()) return;
         exportPhotoEditCanvasToDataUrl()
             .then(async (dataUrl) => {
-                appState.currentPhotos[editingPhotoIndex] = dataUrl;
-                const { renderPhotoPreviews } = await import('../render.js');
-                renderPhotoPreviews();
+                const photos = getPhotoEditContextPhotos();
+                photos[editingPhotoIndex] = dataUrl;
+                await refreshPhotoEditContextPreviews();
                 closePhotoEditModal();
             })
             .catch((e) => {
@@ -751,6 +789,7 @@ export function closePhotoEditModal() {
 
 // 전역 함수로 노출
 window.editPhoto = editPhoto;
+window.editDailyJournalPhoto = editDailyJournalPhoto;
 window.openProfilePhotoEdit = openProfilePhotoEdit;
 window.closePhotoEditModal = closePhotoEditModal;
 window.resetPhotoEdit = resetPhotoEdit;

@@ -88,6 +88,7 @@ export const appState = {
     /** 하루 기록 모달 */
     dailyJournalEditingDate: '',
     dailyJournalPhotos: [],
+    dailyJournalWantsToShare: false,
     dailyJournalPhotoAspectRatio: '1:1',
     dailyJournalWeightEnabled: false,
     dailyJournalBloodSugarEnabled: false,

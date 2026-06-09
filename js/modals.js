@@ -3,5 +3,6 @@
  */
 export * from './modals/entry-and-core.js';
 export * from './modals/daily-journal.js';
+export { editDailyJournalPhoto } from './render/photo-edit.js';
 export * from './modals/settings.js';
 export * from './modals/kakao-place.js';

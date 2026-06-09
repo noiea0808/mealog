@@ -10,8 +10,9 @@ import {
     getReportsAggregateByGroupKeys
 } from '../db.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
-import { uploadBoardImages } from '../utils.js';
+import { uploadBoardImages, getDisplayProfile } from '../utils.js';
 import { renderFormattedContent } from '../render/utils.js';
+import { fetchUserProfiles } from '../render/user-profiles.js';
 
 /** 밀톡 상세 본문 — `board-notice.js`의 BOARD_DETAIL_BODY_CLASS 와 동일 (서식·줄바꿈 표시) */
 const BOARD_DETAIL_BODY_CLASS =
@@ -144,12 +145,72 @@ const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
 const boardListCache = new Map();
 
 /** HTML 본문에서 평문 한 줄 미리보기 (목록용) */
+const BOARD_CATEGORY_LABELS = {
+    serious: '무거운',
+    chat: '가벼운',
+    food: '먹는',
+    admin: '치프에게'
+};
+
 function boardPostPlainPreview(html, maxLen) {
     const div = document.createElement('div');
     div.innerHTML = html || '';
     const t = (div.textContent || '').replace(/\s+/g, ' ').trim();
     if (!t) return '';
     return t.length > maxLen ? `${t.slice(0, maxLen)}...` : t;
+}
+
+/** Firestore Timestamp·ISO 문자열·{seconds,nanoseconds} 맵 등 혼재 시 정렬용 ms */
+function boardPostTimestampMs(ts) {
+    if (ts == null || ts === '') return 0;
+    if (typeof ts?.toDate === 'function') {
+        const ms = ts.toDate().getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    }
+    if (typeof ts === 'string') {
+        const ms = new Date(ts).getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    }
+    if (ts instanceof Date) {
+        const ms = ts.getTime();
+        return Number.isFinite(ms) ? ms : 0;
+    }
+    if (typeof ts === 'number' && Number.isFinite(ts)) {
+        return ts > 1e12 ? ts : ts * 1000;
+    }
+    if (typeof ts === 'object' && typeof ts.seconds === 'number') {
+        return ts.seconds * 1000 + (ts.nanoseconds || 0) / 1e6;
+    }
+    const ms = new Date(ts).getTime();
+    return Number.isFinite(ms) ? ms : 0;
+}
+
+function formatBoardPostDateTimeLines(ts) {
+    const ms = boardPostTimestampMs(ts);
+    if (!ms) return { dateLine: '-', timeLine: '' };
+    const d = new Date(ms);
+    return {
+        dateLine: d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric' }),
+        timeLine: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+    };
+}
+
+function sortBoardPostRowsByTimestampDesc(rows) {
+    return [...rows].sort((a, b) => boardPostTimestampMs(b.post?.timestamp) - boardPostTimestampMs(a.post?.timestamp));
+}
+
+function resolveBoardPostAuthorLabel(post) {
+    const display = getDisplayProfile(post?.authorId, {
+        nickname: post?.authorNickname,
+        icon: post?.authorIcon,
+        photoUrl: post?.authorPhotoUrl
+    });
+    return display.nickname || '익명';
+}
+
+function boardCategoryLabel(category) {
+    const key = category != null && category in BOARD_CATEGORY_LABELS ? category : '';
+    return key ? BOARD_CATEGORY_LABELS[key] : String(category || '');
 }
 
 function invalidateBoardMonitoringCache() {
@@ -163,57 +224,72 @@ let adminBoardMonitoringLoaded = false;
 
 function paintBoardPostsList(container, rows, reportsMap) {
     window._feedReportDetails = window._feedReportDetails || {};
-    container.innerHTML = rows
+    const bodyRows = rows
         .map(({ id: postId, post }) => {
-            const ts = post.timestamp;
-            const date = ts
-                ? (() => {
-                      const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
-                      return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
-                  })()
-                : '-';
+            const { dateLine, timeLine } = formatBoardPostDateTimeLines(post.timestamp);
+            const authorLabel = resolveBoardPostAuthorLabel(post);
             const reportInfo = reportsMap['board_' + postId];
             if (reportInfo && reportInfo.count > 0) {
                 window._feedReportDetails['board_' + postId] = reportInfo.byReason;
             }
             const reportBadgeHtml =
                 reportInfo && reportInfo.count > 0
-                    ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
+                    ? `<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded cursor-pointer hover:bg-red-200" onclick="event.stopPropagation(); window.showReportDetailPopup('board_${String(postId).replace(/'/g, "\\'")}')">🚩 신고 ${reportInfo.count}</span>`
                     : '';
             const isHidden = post.isHidden === true;
             const safePostId = String(postId).replace(/'/g, "\\'");
             const legacyTitle = post.title && String(post.title).trim() ? String(post.title).trim() : '';
-            const bodyPreview = boardPostPlainPreview(post.content, 120) || '(내용 없음)';
-            return `
-                <div class="border border-slate-200 rounded-xl p-4 ${isHidden ? 'bg-slate-50 opacity-90' : ''} board-list-row hover:bg-slate-50 transition-colors" data-post-id="${postId}">
-                    <div class="flex items-start gap-4">
-                        <div class="flex-shrink-0 pt-0.5">
-                            <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${postId}" title="선택">
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-2 flex-wrap">
-                                <div class="flex-1 min-w-0">
-                                    <div class="board-post-title-link cursor-pointer hover:underline" onclick="event.stopPropagation(); window.selectBoardPost('${safePostId}')">
-                                        ${legacyTitle ? `<div class="font-bold text-slate-800">${escapeHtml(legacyTitle)}</div>` : ''}
-                                        <p class="text-sm text-slate-600 ${legacyTitle ? 'mt-1' : ''}">${escapeHtml(bodyPreview)}</p>
-                                    </div>
-                                </div>
-                                <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
-                                ${isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : ''}
-                                ${reportBadgeHtml}
-                            </div>
-                            <div class="flex items-center gap-4 text-xs text-slate-400">
-                                <span>${escapeHtml(post.authorNickname || '익명')}</span>
-                                <span>${date}</span>
-                                <span>조회 ${post.views || 0}</span>
-                                <span>댓글 ${post.comments || 0}</span>
-                            </div>
-                        </div>
+            const bodyPreview = boardPostPlainPreview(post.content, 160) || '(내용 없음)';
+            const catLabel = boardCategoryLabel(post.category);
+            const views = post.views != null ? Number(post.views) : 0;
+            const comments = post.comments != null ? Number(post.comments) : 0;
+            const metaBadges = [
+                isHidden ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded">가려짐</span>' : '',
+                reportBadgeHtml
+            ]
+                .filter(Boolean)
+                .join(' ');
+            return `<tr class="border-b border-slate-100 ${isHidden ? 'bg-slate-50' : ''} hover:bg-slate-50/80 board-list-row" data-post-id="${escapeHtml(String(postId))}">
+                <td class="px-3 py-2.5 align-top whitespace-nowrap">
+                    <input type="checkbox" class="board-item-checkbox w-4 h-4 rounded border-slate-300" data-post-id="${escapeHtml(String(postId))}" title="선택" onclick="event.stopPropagation()">
+                </td>
+                <td class="px-3 py-2.5 text-sm text-slate-600 tabular-nums whitespace-nowrap align-top leading-snug">
+                    <div>${escapeHtml(dateLine)}</div>
+                    ${timeLine ? `<div class="text-xs text-slate-400 mt-0.5">${escapeHtml(timeLine)}</div>` : ''}
+                </td>
+                <td class="px-3 py-2.5 text-sm text-slate-800 min-w-[7rem] align-top">${escapeHtml(authorLabel)}</td>
+                <td class="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap align-top">${catLabel ? escapeHtml(catLabel) : '—'}</td>
+                <td class="px-3 py-2.5 text-sm text-slate-700 min-w-[14rem] max-w-xl align-top">
+                    <div class="board-post-title-link cursor-pointer min-w-0 hover:underline" onclick="window.selectBoardPost('${safePostId}')">
+                        ${legacyTitle ? `<div class="font-bold text-slate-800 mb-0.5">${escapeHtml(legacyTitle)}</div>` : ''}
+                        <div class="line-clamp-2 break-words" title="${escapeHtml(bodyPreview)}">${escapeHtml(bodyPreview)}</div>
+                        ${metaBadges ? `<div class="flex flex-wrap items-center gap-1 mt-1.5">${metaBadges}</div>` : ''}
                     </div>
-                </div>
-            `;
+                </td>
+                <td class="px-3 py-2.5 text-sm text-slate-600 tabular-nums text-right whitespace-nowrap align-top">${Number.isFinite(views) ? views : 0}</td>
+                <td class="px-3 py-2.5 text-sm text-slate-600 tabular-nums text-right whitespace-nowrap align-top">${Number.isFinite(comments) ? comments : 0}</td>
+            </tr>`;
         })
         .join('');
+
+    container.innerHTML = `
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+            <table class="w-full text-left border-collapse min-w-[720px] admin-board-posts-table">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-700 text-xs font-black">
+                        <th class="px-3 py-2.5 w-10 font-bold">선택</th>
+                        <th class="px-3 py-2.5 whitespace-nowrap font-bold">날짜·시간</th>
+                        <th class="px-3 py-2.5 min-w-[7rem] font-bold">작성자</th>
+                        <th class="px-3 py-2.5 w-24 font-bold">카테고리</th>
+                        <th class="px-3 py-2.5 min-w-[14rem] font-bold">글내용</th>
+                        <th class="px-3 py-2.5 w-16 text-right font-bold">조회</th>
+                        <th class="px-3 py-2.5 w-16 text-right font-bold">댓글</th>
+                    </tr>
+                </thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">최신 글이 위에 표시됩니다. 글내용을 누르면 상세를 볼 수 있습니다.</p>`;
 }
 
 async function renderBoardPosts(category = 'all') {
@@ -232,7 +308,9 @@ async function renderBoardPosts(category = 'all') {
                 container.innerHTML =
                     '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
             } else {
-                paintBoardPostsList(container, cached.rows, cached.reportsMap);
+                const authorIds = cached.rows.map((r) => r.post?.authorId).filter(Boolean);
+                await fetchUserProfiles(authorIds);
+                paintBoardPostsList(container, sortBoardPostRowsByTimestampDesc(cached.rows), cached.reportsMap);
             }
             adminBoardMonitoringLoaded = true;
             return;
@@ -252,7 +330,10 @@ async function renderBoardPosts(category = 'all') {
             getReportsAggregateByGroupKeys()
         ]);
 
-        const rows = postsSnapshot.docs.map((d) => ({ id: d.id, post: d.data() }));
+        let rows = postsSnapshot.docs.map((d) => ({ id: d.id, post: d.data() }));
+        rows = sortBoardPostRowsByTimestampDesc(rows);
+        const authorIds = rows.map((r) => r.post?.authorId).filter(Boolean);
+        await fetchUserProfiles(authorIds);
         boardListCache.set(category, { ts: now, rows, reportsMap });
 
         if (rows.length === 0) {
@@ -385,18 +466,18 @@ async function renderBoardPostDetail(postId) {
         }
         const post = postSnap.data();
         const legacyTitle = post.title && String(post.title).trim() ? String(post.title).trim() : '';
-        const ts = post.timestamp;
-        const dateStr = ts ? (() => {
-            const d = typeof ts?.toDate === 'function' ? ts.toDate() : new Date(ts);
-            return Number.isFinite(d.getTime()) ? d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' }) : '-';
-        })() : '-';
+        const { dateLine, timeLine } = formatBoardPostDateTimeLines(post.timestamp);
+        const dateStr = timeLine ? `${dateLine} ${timeLine}` : dateLine;
+        if (post.authorId) await fetchUserProfiles([post.authorId]);
+        const authorLabel = resolveBoardPostAuthorLabel(post);
+        const catLabel = boardCategoryLabel(post.category) || String(post.category || '');
         container.innerHTML = `
             <div class="mb-2">
-                <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(post.category || '')}</span>
+                <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${escapeHtml(catLabel)}</span>
                 ${post.isHidden === true ? '<span class="px-2 py-0.5 bg-slate-300 text-slate-600 text-xs font-bold rounded ml-1">가려짐</span>' : ''}
             </div>
             ${legacyTitle ? `<div class="text-lg font-bold text-slate-800 mb-2">${escapeHtml(legacyTitle)}</div>` : ''}
-            <div class="text-xs text-slate-400 mb-3">${escapeHtml(post.authorNickname || '익명')} · ${dateStr} · 조회 ${post.views || 0}</div>
+            <div class="text-xs text-slate-400 mb-3">${escapeHtml(authorLabel)} · ${escapeHtml(dateStr)} · 조회 ${post.views || 0}</div>
             <div class="${BOARD_DETAIL_BODY_CLASS}">${renderFormattedContent(post.content || '')}</div>
         `;
         const [comments, adminDisplayName] = await Promise.all([

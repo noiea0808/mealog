@@ -19,6 +19,8 @@ import {
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsSnapshotFallback } from '../utils/meals-snapshot-apply.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
+import { sharedPhotoTimestampMs, sortSharedPhotosByTimestampDesc } from '../utils/shared-photo-timestamp.js';
+import { collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/moment-post-v2.js';
 
 /** 세션당 1회만 실행 (Firestore 읽기 절감) */
 let userDocEnsureDoneForUid = null;
@@ -752,10 +754,18 @@ export function setupListeners(userId, callbacks) {
 /** Firestore Timestamp를 ISO 문자열로 변환 */
 function normalizeSharedPhotoDoc(docSnap) {
     const data = docSnap.data();
+    if (data.sharedAt && data.sharedAt.toDate) {
+        data.sharedAt = data.sharedAt.toDate().toISOString();
+    } else if (data.sharedAt && typeof data.sharedAt === 'object' && data.sharedAt.seconds) {
+        data.sharedAt = new Date(data.sharedAt.seconds * 1000).toISOString();
+    }
     if (data.timestamp && data.timestamp.toDate) {
         data.timestamp = data.timestamp.toDate().toISOString();
     } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
         data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
+    }
+    if (data.schemaVersion === 2 && !data.timestamp && data.sharedAt) {
+        data.timestamp = data.sharedAt;
     }
     return { id: docSnap.id, ...data };
 }
@@ -772,55 +782,21 @@ function applyDemoShiftToSharedDocsIfNeeded(docs) {
 
 /** 프로필 모먼트 그리드와 동일: photoUrl 중복 제거 + 그룹 키 (processPhotosToGroups 길이) */
 function profileMomentGridGroupCount(docs) {
-    return processPhotosToGroups(docs || []).length;
+    return countMomentPostsFromDocs(docs || []);
 }
 
-/** docs를 그룹화했을 때 포스트(그룹) 수 계산 (그룹 키만 세는 버전 — 피드 배치 로직용) */
+/** docs를 그룹화했을 때 포스트(그룹) 수 계산 */
 function countPostsFromDocs(docs) {
-    const seen = new Set();
-    (docs || []).forEach((photo) => {
-        seen.add(getSharedPhotoGroupKey(photo));
-    });
-    return seen.size;
+    return countMomentPostsFromDocs(docs);
 }
 
-/** docs에서 첫 N개 포스트에 해당하는 문서만 반환 (countPostsFromDocs와 동일한 그룹 키 로직) */
+/** docs에서 첫 N개 포스트에 해당하는 문서만 반환 */
 function getDocsForFirstNPosts(docs, n) {
-    const seen = new Set();
-    let postCount = 0;
-    const result = [];
-    for (const photo of docs) {
-        const groupKey = getSharedPhotoGroupKey(photo);
-        if (!seen.has(groupKey)) {
-            if (postCount >= n) break;
-            postCount++;
-            seen.add(groupKey);
-        }
-        result.push(photo);
-    }
-    return result;
+    return collapseDocsToFeedPage(docs, n).feedDocs;
 }
 
-/** timestamp를 ms로 변환 (Firestore Timestamp, ISO 문자열, seconds 등 혼합 형식 대응)
- * timestamp 없으면 date+time 조합으로 fallback (일부 문서에 timestamp 누락 시) */
 function toTimestampMs(photo) {
-    const t = photo?.timestamp;
-    if (t != null && t !== '') {
-        if (t.toDate) return t.toDate().getTime();
-        if (typeof t === 'string') return new Date(t).getTime();
-        if (t.seconds != null) return t.seconds * 1000 + (t.nanoseconds || 0) / 1e6;
-        if (t instanceof Date) return t.getTime();
-        if (typeof t === 'number') return t;
-    }
-    // fallback: date + time
-    const d = photo?.date;
-    const tm = photo?.time || '12:00:00';
-    if (d && typeof d === 'string') {
-        const timePart = String(tm).split(':').length === 2 ? tm + ':00' : tm;
-        const ms = new Date(d + 'T' + timePart).getTime();
-        if (!isNaN(ms)) return ms;
-    }
-    return 0;
+    return sharedPhotoTimestampMs(photo);
 }
 
 /** 모먼트 피드 최신 공유 1건의 시각(ms). 하단 네비 신규 공유 점 표시용 (1회 읽기) */
@@ -846,15 +822,15 @@ export async function peekLatestSharedPhotoTimestampMs() {
 export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = null) {
     if (!window.currentUser) return { docs: [], lastDoc: null, hasMore: false };
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-    const BATCH_SIZE = startAfterDoc ? 30 : 60; // 페이지네이션 시 30건씩 (포스트 10개 충족용)
-    const MAX_DOCS = 120;
+    // v2: 문서 1개 ≈ 게시물 1개. legacy v1 다장 사진 버퍼용 배수.
+    const BATCH_SIZE = startAfterDoc ? Math.max(targetPosts * 2, 15) : Math.max(targetPosts * 2, 20);
+    const MAX_DOCS = Math.max(targetPosts * 4, 40);
     let allDocs = [];
-    let allDocSnaps = []; // DocumentSnapshot 배열 (startAfter용)
+    let allDocSnaps = [];
     let lastDoc = startAfterDoc;
     let hasMore = true;
     let lastBatchFull = false;
 
-    // targetPosts(포스트 수) 충족 시까지 페치 (한 번에 60건 등 가져올 수 있음)
     while (hasMore && countPostsFromDocs(allDocs) < targetPosts && allDocs.length < MAX_DOCS) {
         let q = query(sharedColl, orderBy('timestamp', 'desc'), limit(BATCH_SIZE));
         if (lastDoc) q = query(sharedColl, orderBy('timestamp', 'desc'), startAfter(lastDoc), limit(BATCH_SIZE));
@@ -867,23 +843,19 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
         hasMore = lastBatchFull;
         if (batch.length < BATCH_SIZE) break;
     }
-    // timestamp 혼합 타입 시 Firestore 정렬 꼬임 방지 → 클라이언트에서 최신순 정렬
-    const sorted = [...allDocs].sort((a, b) => toTimestampMs(b) - toTimestampMs(a));
-    // 정렬 후 doc id 순서로 allDocSnaps 재매칭 (정렬과 동일 순서로)
+    const sorted = sortSharedPhotosByTimestampDesc(allDocs);
+    const collapsed = collapseDocsToFeedPage(sorted, targetPosts);
+    const docsToReturn = collapsed.feedDocs;
     const idToSnap = new Map();
     allDocSnaps.forEach(s => idToSnap.set(s.id, s));
     const sortedSnaps = sorted.map(d => idToSnap.get(d.id)).filter(Boolean);
 
-    // 첫 targetPosts개 포스트에 해당하는 문서만 반환 (10건씩 끊어서 표시)
-    const docsToReturn = getDocsForFirstNPosts(sorted, targetPosts);
-    const totalPostsFetched = countPostsFromDocs(sorted);
-    const hasMorePosts = totalPostsFetched > targetPosts || lastBatchFull;
+    const hasMorePosts = collapsed.hasMorePosts || lastBatchFull;
 
-    // lastDoc: 반환하는 마지막 문서의 DocumentSnapshot (다음 페이지 startAfter용)
     let returnLastDoc = null;
     if (docsToReturn.length > 0) {
         const lastId = docsToReturn[docsToReturn.length - 1].id;
-        returnLastDoc = sortedSnaps.find(s => s.id === lastId) || null;
+        returnLastDoc = sortedSnaps.find(s => s.id === lastId) || idToSnap.get(lastId) || null;
     }
 
     const shifted = applyDemoShiftToSharedDocsIfNeeded(docsToReturn);
@@ -979,13 +951,7 @@ const SHARED_PHOTOS_BY_USER_BATCH = 15;
 const SHARED_PHOTOS_BY_USER_MAX_BATCHES = 80;
 
 function normalizeSharedPhotoDocForUserQuery(d) {
-    const data = d.data();
-    if (data.timestamp && data.timestamp.toDate) {
-        data.timestamp = data.timestamp.toDate().toISOString();
-    } else if (data.timestamp && typeof data.timestamp === 'object' && data.timestamp.seconds) {
-        data.timestamp = new Date(data.timestamp.seconds * 1000).toISOString();
-    }
-    return { id: d.id, ...data };
+    return normalizeSharedPhotoDoc(d);
 }
 
 function sortSharedPhotoDocsByTimeDesc(docs) {
@@ -1129,12 +1095,7 @@ export async function loadSharedPhotosByUserUpToPostCount(userId, startAfterSnap
     }
 
     if (profileMomentGridGroupCount(all) > targetTotalPostCount) {
-        const groups = processPhotosToGroups(all);
-        const keepIds = new Set();
-        for (const g of groups.slice(0, targetTotalPostCount)) {
-            for (const p of g) keepIds.add(p.id);
-        }
-        all = sortSharedPhotoDocsByTimeDesc(all.filter((d) => keepIds.has(d.id)));
+        all = collapseDocsToFeedPage(sortSharedPhotoDocsByTimeDesc(all), targetTotalPostCount).feedDocs;
     }
 
     let lastDocSnapOut = last;

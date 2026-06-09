@@ -33,6 +33,9 @@ import {
     dailyJournalHasPhotos,
     dailyJournalHasPendingPhotoUpload,
     dailyJournalSlotFallbackLine,
+    getDailyJournalShareEntryId,
+    isDailyJournalShared,
+    isDailyJournalMealRecord,
     formatMetricRecordChain,
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
@@ -165,6 +168,7 @@ function mealTimelineOpenDataAttrs(dateStr, slotId, entryId = null) {
 
 function applyMealTimelineOpenTarget(el, dateStr, slotId, entryId = null) {
     if (!el) return;
+    if (slotId === 'daily_journal' || (entryId && String(entryId).startsWith('dailyJournal_'))) return;
     el.setAttribute('data-mealog-open-date', String(dateStr));
     el.setAttribute('data-mealog-open-slot', String(slotId));
     if (entryId != null && entryId !== '' && entryId !== 'null') {
@@ -291,6 +295,7 @@ function syncMealEntryDeletingOverlayOnCard(cardEl, record) {
 
 function applyCardRowPointerAndClick(rowEl, record) {
     if (!rowEl.classList.contains('card')) return;
+    if (rowEl.classList.contains('daily-journal-slot') || isDailyJournalMealRecord(record)) return;
     rowEl.className = `${stripMealRowPointerClasses(rowEl.className)} ${mealEntryRowPointerClass(record)}`.replace(/\s+/g, ' ').trim();
     if (isMealEntryRowBlocked(record)) {
         clearMealTimelineOpenTarget(rowEl);
@@ -336,8 +341,10 @@ export function updateTimelineMealEntryPendingIndicators() {
     container.querySelectorAll('[data-entry-id]').forEach((el) => {
         const entryId = el.getAttribute('data-entry-id');
         if (!entryId) return;
+        if (el.classList.contains('daily-journal-slot') || String(entryId).startsWith('dailyJournal_')) return;
         const record = window.mealHistory?.find((m) => m && String(m.id) === String(entryId));
         if (!record) return;
+        if (isDailyJournalMealRecord(record)) return;
 
         if (el.classList.contains('snack-tag')) {
             applySnackTagPendingUi(el, record);
@@ -672,7 +679,7 @@ function buildSnackTimelineViewSelectHtml(current) {
 }
 
 function getDailyShareButtonHtmlForDate(dateStr) {
-    if (appState.viewMode !== 'page') return '';
+    if (!window.currentUser || window.currentUser.isAnonymous) return '';
     const dailyShare =
         window.sharedPhotos && Array.isArray(window.sharedPhotos)
             ? window.sharedPhotos.find(
@@ -995,6 +1002,21 @@ function dailyJournalOpenDataAttrs(dateStr) {
     return `data-mealog-open-daily="${escapeHtml(String(dateStr))}"`;
 }
 
+function dailyJournalCardDataAttrs(dateStr, journal) {
+    const base = dailyJournalOpenDataAttrs(dateStr);
+    const entryId = getDailyJournalShareEntryId(dateStr);
+    if (entryId && dailyJournalHasPhotos(journal)) {
+        return `${base} data-entry-id="${escapeHtml(entryId)}"`;
+    }
+    return base;
+}
+
+function dailyJournalShareArrowHtml(dateStr, journal) {
+    if (!dailyJournalHasPhotos(journal)) return '';
+    const disp = isDailyJournalShared(dateStr, journal) ? 'inline' : 'none';
+    return `<span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${disp}"><i class="fa-solid fa-share"></i></span>`;
+}
+
 function getDailyJournalForTimeline(dateStr) {
     try {
         if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
@@ -1103,10 +1125,10 @@ function buildDailyJournalListFilledHtml(dateStr, journal) {
         (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
     const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
 
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
-                <span class="text-sm font-bold leading-tight break-words">${safeLabel}</span>
+                <span class="text-sm font-bold leading-tight break-words inline-flex items-center justify-center gap-1">${safeLabel}${dailyJournalShareArrowHtml(dateStr, journal)}</span>
             </div>
             <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-2">
                 ${bodyHtml}
@@ -1136,7 +1158,7 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     }
 
     const titleLine1 = dailyJournalHasPhotos(journal)
-        ? `<h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${dailyJournalPhotoSyncLeadHtml(journal)}<span class="text-sm font-bold ${style.text} min-w-0">${safeLabel}</span></h4>`
+        ? `<h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${dailyJournalPhotoSyncLeadHtml(journal)}<span class="text-sm font-bold ${style.text} min-w-0">${safeLabel}</span>${dailyJournalShareArrowHtml(dateStr, journal)}</h4>`
         : `<span class="text-sm font-bold ${style.text}">${safeLabel}</span>`;
     const titleLine2 = hasContent
         ? ''
@@ -1151,7 +1173,7 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     const containerClass = hasContent ? 'border-slate-200' : 'border-slate-200 opacity-80';
     const iconBoxClass = `bg-slate-100 border-slate-200 ${style.iconText}`;
 
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex">
             <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
                 ${iconHtml}
@@ -1190,11 +1212,21 @@ function ensureTimelineOpenModalDelegation() {
             const root = document.getElementById('timelineContainer');
             if (!root) return;
             if (e.target?.closest?.('.timeline-meal-photo-tap, .meal-sync-retry-btn')) return;
+            const dailyTarget = e.target.closest('.daily-journal-slot[data-mealog-open-daily]');
+            if (dailyTarget && root.contains(dailyTarget)) {
+                const dailyDate = dailyTarget.getAttribute('data-mealog-open-daily');
+                if (dailyDate && typeof window.openDailyJournalModal === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.openDailyJournalModal(dailyDate);
+                    return;
+                }
+            }
             const target = e.target.closest('[data-mealog-open-date][data-mealog-open-slot]');
             if (!target || !root.contains(target)) {
-                const dailyTarget = e.target.closest('[data-mealog-open-daily]');
-                if (!dailyTarget || !root.contains(dailyTarget)) return;
-                const dailyDate = dailyTarget.getAttribute('data-mealog-open-daily');
+                const dailyFallback = e.target.closest('[data-mealog-open-daily]');
+                if (!dailyFallback || !root.contains(dailyFallback)) return;
+                const dailyDate = dailyFallback.getAttribute('data-mealog-open-daily');
                 if (!dailyDate || typeof window.openDailyJournalModal !== 'function') return;
                 e.preventDefault();
                 e.stopPropagation();
@@ -1204,8 +1236,19 @@ function ensureTimelineOpenModalDelegation() {
             if (target.classList.contains('pointer-events-none')) return;
             const date = target.getAttribute('data-mealog-open-date');
             const slotId = target.getAttribute('data-mealog-open-slot');
-            if (!date || !slotId || typeof window.openModal !== 'function') return;
             const entryId = target.getAttribute('data-mealog-open-entry') || null;
+            if (
+                slotId === 'daily_journal' ||
+                (entryId && String(entryId).startsWith('dailyJournal_'))
+            ) {
+                if (date && typeof window.openDailyJournalModal === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.openDailyJournalModal(date);
+                }
+                return;
+            }
+            if (!date || !slotId || typeof window.openModal !== 'function') return;
             e.preventDefault();
             e.stopPropagation();
             void window.openModal(date, slotId, entryId);
@@ -1266,10 +1309,17 @@ export function updateTimelineShareIndicators() {
     if (!container) return;
     container.querySelectorAll('[data-entry-id]').forEach(el => {
         const entryId = el.getAttribute('data-entry-id');
-        const record = window.mealHistory?.find(m => m.id === entryId);
+        let record = window.mealHistory?.find((m) => m.id === entryId);
+        if (!record && entryId && entryId.startsWith('dailyJournal_')) {
+            const dateStr = entryId.slice('dailyJournal_'.length);
+            record = getDailyJournalFromSettings(window.userSettings, dateStr);
+        }
         const arrow = el.querySelector('.timeline-share-arrow');
         if (arrow) {
-            arrow.style.display = isEntryShared(entryId, record) ? 'inline' : 'none';
+            const shared = entryId?.startsWith('dailyJournal_')
+                ? isDailyJournalShared(entryId.slice('dailyJournal_'.length), record)
+                : isEntryShared(entryId, record);
+            arrow.style.display = shared ? 'inline' : 'none';
         }
     });
 }
@@ -1386,26 +1436,13 @@ export function renderTimeline() {
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
         section.className = "animate-fade";
-        // 일간보기 모드일 때만 공유 버튼 추가
-        let shareButton = '';
-        if (state.viewMode === 'page') {
-            // 공유 상태 확인 (본인 것만 확인)
-            const dailyShare = window.sharedPhotos && Array.isArray(window.sharedPhotos) 
-                ? window.sharedPhotos.find(photo => 
-                    photo.type === 'daily' && 
-                    photo.date === dateStr && 
-                    photo.userId === window.currentUser?.uid
-                )
-                : null;
-            const isShared = !!dailyShare;
-            
-            shareButton = `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
-                <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
-            </button>`;
-        }
-        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between">
-            <h3>${escapeHtml(formatMealogDateLabel(dateStr))}</h3>
-            ${shareButton}
+        const shareButton = getDailyShareButtonHtmlForDate(dateStr);
+        const shareWrap = shareButton
+            ? `<div class="flex shrink-0 items-center">${shareButton}</div>`
+            : '';
+        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2">
+            <h3 class="min-w-0">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>
+            ${shareWrap}
         </div>`;
 
         SLOTS.forEach(slot => {

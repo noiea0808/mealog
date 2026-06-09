@@ -6,6 +6,10 @@
  */
 import { escapeHtml } from './utils.js';
 import { SLOTS } from '../constants.js';
+import {
+    DAILY_JOURNAL_MOMENT_SLOT_LABEL,
+    isDailyJournalSharePhoto
+} from '../utils/daily-journal-data.js';
 import { buildMomentV2MenuLabelLineInnerHtml } from '../main/moment-feed-v2-wheel-layout.js';
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
@@ -53,7 +57,8 @@ export function getMomentV2DateParts(photo) {
     return { y: '—', mo: '—', day: '—', wd: '—' };
 }
 
-export function getMomentV2SlotWheelLabel(photo, isBest, isDaily, isInsight) {
+export function getMomentV2SlotWheelLabel(photo, isBest, isDaily, isInsight, entryId) {
+    if (isDailyJournalSharePhoto(photo, entryId)) return DAILY_JOURNAL_MOMENT_SLOT_LABEL;
     if (isDaily) return '일간';
     if (isBest) return '베스트';
     if (isInsight) {
@@ -93,6 +98,10 @@ function buildWheelLabelCol(modifier, val, fieldKey) {
 /** 기록 코멘트(소셜 댓글 아님) */
 function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
+    const eid = p?.entryId || groupEntryId;
+    if (isDailyJournalSharePhoto(p, eid)) {
+        return (p?.comment || '').replace(/<[^>]*>/g, '').trim();
+    }
     const isSnack = p?.slotId && SLOTS.find((s) => s.id === p.slotId)?.type === 'snack';
     if (isBestShare || isDailyShare || isInsightShare) {
         return (p?.comment || '').replace(/<[^>]*>/g, '').trim();
@@ -102,7 +111,6 @@ function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) 
     }
     let authorMealComment = '';
     if (p?.comment) authorMealComment = String(p.comment).trim();
-    const eid = p?.entryId || groupEntryId;
     if (!authorMealComment && eid && mealHistoryMap && mealHistoryMap.has(eid)) {
         const mealRecord = mealHistoryMap.get(eid);
         if (mealRecord?.comment) authorMealComment = String(mealRecord.comment).trim();
@@ -124,10 +132,12 @@ function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) 
 export function buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, ctx = {}) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
     const { mealHistoryMap, groupEntryId } = ctx;
-    const menuBase = isDailyShare ? '' : (captionTextPlain || '').trim() || '—';
     return photoGroup.map((p) => {
         const { y, mo, day, wd } = getMomentV2DateParts(p);
-        const slotT = getMomentV2SlotWheelLabel(p, isBestShare, isDailyShare, isInsightShare);
+        const eid = p?.entryId || groupEntryId;
+        const isDj = isDailyJournalSharePhoto(p, eid);
+        const slotT = getMomentV2SlotWheelLabel(p, isBestShare, isDailyShare, isInsightShare, eid);
+        const menuBase = isDailyShare || isDj ? '' : (captionTextPlain || '').trim() || '—';
         const ac = buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId);
         return { y, mo, da: day, wd, slot: slotT, menu: menuBase, ac };
     });
@@ -231,12 +241,14 @@ function buildV2InlineChromeHtml(overlayRow) {
 /**
  * 휠 한 줄(라벨) — 4귀서 R 없음: moment-v2-wheel-caption-row--unit
  */
-export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags) {
+export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags, entryId) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
     const { y, mo, day, wd } = getMomentV2DateParts(photo);
-    const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare);
+    const eid = entryId != null && entryId !== '' ? entryId : photo?.entryId;
+    const isDailyJournalShare = isDailyJournalSharePhoto(photo, eid);
+    const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, eid);
     let menuCol = '';
-    if (!isDailyShare) {
+    if (!isDailyShare && !isDailyJournalShare) {
         const menu = (menuCaptionPlain || '').trim() || '—';
         menuCol = `<div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
             <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">
@@ -365,7 +377,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             : '';
         const momentChrome = overlayRow ? buildV2InlineChromeHtml(overlayRow) : '';
         const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
-        const wheelBlock = buildMomentV2WheelCaptionHtml(photoGroup[0], captionTextPlain, flags);
+        const wheelBlock = buildMomentV2WheelCaptionHtml(photoGroup[0], captionTextPlain, flags, groupEntryId);
         return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
@@ -413,7 +425,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         .map((p, idx) => {
             const hasChrome = idx === 0;
             const inner = buildVScrollPhotoCell(p, idx, ar, hasChrome, postIdForUi, overlayRow);
-            const wheel = buildMomentV2WheelCaptionHtml(p, captionTextPlain, flags);
+            const wheel = buildMomentV2WheelCaptionHtml(p, captionTextPlain, flags, groupEntryId);
             const ac = buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId);
             const hasAc = Boolean((ac || '').trim());
             const acHtml = hasAc

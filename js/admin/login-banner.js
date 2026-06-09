@@ -270,8 +270,9 @@ async function renderLegacyLoginBannerDetail() {
             </div>
             ${img ? `<div class="mb-4"><img src="${img}" alt="" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain max-h-[40vh]"></div>` : '<p class="text-sm text-slate-500 mb-4">등록된 이미지 URL 없음 (공지 랜딩만 가능)</p>'}
             <div class="flex flex-col gap-2 pt-2 border-t border-slate-200">
+                <button type="button" onclick="window.endLegacyLoginBanner()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-bold hover:bg-red-100 border border-red-200">게시 종료</button>
                 <button type="button" onclick="window.openLoginBannerWriteModal('${legacyIdJs}')" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700">신규 캠페인으로 복사·등록</button>
-                <p class="text-xs text-slate-500">캠페인을 등록하면 로그인 화면은 <span class="font-bold">기간·환경에 맞는 캠페인</span>을 우선합니다. 구버전만 쓰려면 캠페인을 비우거나 기간을 조정하세요. 구버전 문서 직접 수정은 Firebase 콘솔에서 할 수 있습니다.</p>
+                <p class="text-xs text-slate-500">게시 종료 시 <span class="font-bold">enabled</span>가 꺼지며 로그인 화면에 더 이상 표시되지 않습니다. 신규 캠페인(<span class="font-mono">loginBanners</span>)이 있으면 기간·환경에 맞는 캠페인이 우선합니다.</p>
             </div>
         `;
     } catch (e) {
@@ -565,6 +566,21 @@ window.submitLoginBanner = async function () {
             submitBtn.disabled = false;
             submitBtn.textContent = isEdit ? '수정' : '등록';
         }
+    }
+};
+
+window.endLegacyLoginBanner = async function () {
+    if (!confirm('구버전 로그인 배너 게시를 종료할까요?\n\n로그인 화면에 더 이상 표시되지 않습니다. (통계·설정 내용은 Firestore에 유지됩니다)')) return;
+    try {
+        await updateDoc(doc(db, 'artifacts', appId, 'config', 'loginBanner'), {
+            enabled: false,
+            updatedAt: serverTimestamp()
+        });
+        alert('게시가 종료되었습니다.');
+        window.backToLoginBannerList();
+    } catch (e) {
+        console.error('구버전 로그인 배너 게시 종료 실패:', e);
+        alert('게시 종료에 실패했습니다: ' + (e.message || e));
     }
 };
 
