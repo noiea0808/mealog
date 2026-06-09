@@ -125,6 +125,21 @@ export async function loadPostInteractions(postEl, postId) {
     }
     
     try {
+        const seedLikeRaw = postEl.getAttribute('data-seed-like-count');
+        const seedCommentRaw = postEl.getAttribute('data-seed-comment-count');
+        if (seedLikeRaw !== null && seedLikeRaw !== '') {
+            postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
+                const n = Number(seedLikeRaw);
+                el.textContent = n > 0 ? String(n) : '';
+            });
+        }
+        if (seedCommentRaw !== null && seedCommentRaw !== '') {
+            postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+                const n = Number(seedCommentRaw);
+                el.textContent = n > 0 ? String(n) : '';
+            });
+        }
+
         const results = await Promise.all(promiseArray);
         let isLiked = false;
         let isBookmarked = false;

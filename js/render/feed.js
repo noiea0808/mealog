@@ -8,9 +8,15 @@ ensureMomentFeedPinchDelegate();
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { getPostIdFromPhotoGroup, getSharedPhotoGroupKey, preloadAdjacentGalleryImages } from './post-group-utils.js';
+import { getPostIdFromPhotoGroup, preloadAdjacentGalleryImages } from './post-group-utils.js';
+import { docsToSortedPhotoGroups, isMomentPostV2 } from '../utils/moment-post-v2.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import {
+    DAILY_JOURNAL_MOMENT_SLOT_LABEL,
+    isDailyJournalSharePhoto
+} from '../utils/daily-journal-data.js';
+import { DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
 import { getMomentsFeedView } from '../db.js';
 import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
@@ -67,60 +73,20 @@ export async function renderFeed() {
         photosToRender = photosToUse.filter(photo => photo.userId === filterUserId);
     }
     
-    // 중복 제거: 같은 photoUrl과 entryId 조합은 하나만 표시
     const seen = new Set();
-    const uniquePhotos = photosToRender.filter(photo => {
-        const key = `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
-        if (seen.has(key)) {
-            return false;
-        }
+    const uniquePhotos = photosToRender.filter((photo) => {
+        const key = isMomentPostV2(photo)
+            ? `v2_${photo.postId || photo.id}`
+            : `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) return false;
         seen.add(key);
         return true;
     });
-    
-    // entryId와 userId로 그룹화 (같은 기록의 사진들을 묶음)
-    // 중요: 하나의 게시물(entryId)은 앨범에 한 번만 표시되어야 하므로, entryId와 userId만 사용
-    // 일간보기 공유(type: 'daily')는 date와 userId로 그룹화
-    const groupedPhotos = {};
-    uniquePhotos.forEach((photo) => {
-        const groupKey = getSharedPhotoGroupKey(photo);
-        if (!groupedPhotos[groupKey]) {
-            groupedPhotos[groupKey] = [];
-        }
-        groupedPhotos[groupKey].push(photo);
-    });
-    
-    // 다른 사용자들의 최신 프로필 미리 로드 (프로필 변경 시 다른 사용자도 최신 설정으로 표시)
+
     const feedUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
     await fetchUserProfiles(feedUserIds);
-    
-    // 각 그룹 내 사진을 Firestore photoIndex 기준으로만 정렬 (글쓴이/다른 사용자 동일 순서 보장)
-    const photoSortTieBreakerSimple = (a, b) => {
-        const aKey = String(a.id ?? normalizeUrl(a.photoUrl) ?? '');
-        const bKey = String(b.id ?? normalizeUrl(b.photoUrl) ?? '');
-        return aKey.localeCompare(bKey, 'en');
-    };
-    Object.keys(groupedPhotos).forEach(groupKey => {
-        const photoGroup = groupedPhotos[groupKey];
-        photoGroup.sort((a, b) => {
-            const ai = a.photoIndex;
-            const bi = b.photoIndex;
-            if (typeof ai === 'number' && typeof bi === 'number') {
-                const cmp = ai - bi;
-                if (cmp !== 0) return cmp;
-            }
-            const cmp = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-            return cmp !== 0 ? cmp : photoSortTieBreakerSimple(a, b);
-        });
-    });
-    
-    // 그룹을 시간순으로 정렬 (동점 시 2차 키로 동일 순서 보장)
-    const sortedGroups = Object.values(groupedPhotos).sort((a, b) => {
-        const timeA = new Date(a[0].timestamp).getTime();
-        const timeB = new Date(b[0].timestamp).getTime();
-        const cmp = timeB - timeA; // 최신순
-        return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
-    });
+
+    const sortedGroups = docsToSortedPhotoGroups(uniquePhotos);
     
     container.innerHTML = sortedGroups.map((photoGroup, groupIdx) => {
         const photo = photoGroup[0]; // 첫 번째 사진의 정보 사용
@@ -163,10 +129,15 @@ export async function renderFeed() {
         const photoDate = photo.date ? new Date(photo.date + 'T00:00:00') : new Date(photo.timestamp);
         const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
         
+        const isDailyJournalShare = isDailyJournalSharePhoto(photo, entryId);
+
         // 끼니 구분 정보 및 색상
         let mealLabel = '';
         let mealLabelStyle = '';
-        if (photo.slotId) {
+        if (isDailyJournalShare) {
+            mealLabel = DAILY_JOURNAL_MOMENT_SLOT_LABEL;
+            mealLabelStyle = `${DAILY_JOURNAL_SLOT_STYLE.text} ${DAILY_JOURNAL_SLOT_STYLE.iconBg}`;
+        } else if (photo.slotId) {
             const slot = SLOTS.find(s => s.id === photo.slotId);
             mealLabel = slot ? slot.label : '';
             if (slot) {
@@ -176,12 +147,15 @@ export async function renderFeed() {
         }
         
         // 간식인지 확인 (slotId로 간식 타입 확인)
-        const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
+        const isSnack =
+            !isDailyJournalShare && photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
         
         // Comment 정보 가져오기
         // 일간보기 공유는 하루 전체 comment를 caption에 표시하므로, 개별 식사 comment는 사용하지 않음
         let comment = '';
-        if (!isDailyShare) {
+        if (isDailyJournalShare) {
+            if (photo.comment) comment = photo.comment;
+        } else if (!isDailyShare) {
             // 1. photo 객체에 comment가 있으면 우선 사용
             // 2. entryId가 있고 mealHistory에서 찾을 수 있으면 사용
             if (photo.comment) {
@@ -194,7 +168,7 @@ export async function renderFeed() {
             }
             
             // entryId가 없어도 comment가 있거나, 같은 날짜/슬롯의 기록을 찾아서 entryId 찾기
-            if (!entryId && window.mealHistory && photo.date && photo.slotId) {
+            if (!entryId && window.mealHistory && photo.date && photo.slotId && !isDailyJournalShare) {
                 // photo의 comment나 다른 정보로 mealHistory에서 매칭되는 기록 찾기
                 const matchingRecord = window.mealHistory.find(m => 
                     m.date === photo.date && 
@@ -226,6 +200,8 @@ export async function renderFeed() {
             if (photo.comment) {
                 caption = photo.comment;
             }
+        } else if (isDailyJournalShare) {
+            caption = '';
         } else if (isSnack) {
             // 간식인 경우: "메뉴 @ 장소" 형식 (장소만 있으면 "@ 장소")
             const menu = photo.menuDetail || photo.snackType;

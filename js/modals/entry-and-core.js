@@ -2598,38 +2598,43 @@ export async function saveEntry() {
                         updateTimelineShareIndicators();
                     }
                     try {
+                        const { buildOptimisticMomentPostV2 } = await import('../utils/moment-post-v2.js');
+                        const { mergeMomentPostIntoFeed, removeMomentPostFromFeed } = await import('../utils/moment-feed-cache.js');
+                        const profile = window.userSettings?.profile || {};
+                        const uid = window.currentUser?.uid;
+
                         await dbOps.sharePhotos(photosToShare, record);
                         console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
-                        // 모먼트 피드에 즉시 반영되도록 sharedPhotosFeed 새로고침 (공유/해제 모두)
-                        const { loadSharedPhotosPage } = await import('../db.js');
-                        const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
-                        let finalDocs = docs;
-                        if (hasPhotosToShare && photosToShare?.length && record?.id) {
-                            // Firestore 전파 지연 시 새 공유가 안 보이는 문제 방지: 낙관적 병합
-                            const hasOurEntry = docs.some(p => p.entryId === record.id);
-                            if (!hasOurEntry) {
-                                const now = new Date().toISOString();
-                                const profile = window.userSettings?.profile || {};
-                                const optimistic = photosToShare.map((url, idx) => ({
-                                    entryId: record.id, photoUrl: url, userId: window.currentUser?.uid,
-                                    userNickname: profile.nickname || '익명', userIcon: profile.icon || '🐻', userPhotoUrl: profile.photoUrl || null,
-                                    date: record.date || '', slotId: record.slotId || '', time: record.time || '',
-                                    timestamp: now, photoIndex: idx,
-                                    photoAspectRatio: (record.photoAspectRatio === '3:4' || record.photoAspectRatio === '4:3') ? record.photoAspectRatio : '1:1'
-                                }));
-                                finalDocs = [...optimistic, ...docs];
-                            }
-                        } else if (hadSharedPhotos && !hasPhotosToShare && record?.id) {
-                            // 공유 해제: 전파 지연 시에도 즉시 피드에서 제거
-                            finalDocs = docs.filter(p => p.entryId !== record.id);
+
+                        if (hasPhotosToShare && photosToShare?.length) {
+                            window.sharedPhotosFeed = mergeMomentPostIntoFeed(
+                                window.sharedPhotosFeed,
+                                buildOptimisticMomentPostV2(record, photosToShare, profile, uid)
+                            );
+                        } else if (record?.id) {
+                            window.sharedPhotosFeed = removeMomentPostFromFeed(window.sharedPhotosFeed, record.id, uid);
                         }
-                        window.sharedPhotosFeed = finalDocs;
-                        if (typeof appState !== 'undefined') {
-                            appState.sharedPhotosFeedLastDoc = lastDoc;
-                            appState.sharedPhotosFeedHasMore = hasMore;
-                        }
+
                         if (appState.currentTab === 'gallery') renderGallery();
                         if (document.getElementById('feedContent')) renderFeed();
+
+                        import('../db.js').then(({ loadSharedPhotosPage }) =>
+                            loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
+                                if (typeof appState !== 'undefined') {
+                                    appState.sharedPhotosFeedLastDoc = lastDoc;
+                                    appState.sharedPhotosFeedHasMore = hasMore;
+                                }
+                                if (!hasPhotosToShare || !record?.id) return;
+                                const serverPost = docs.find(
+                                    (d) => d.schemaVersion === 2 && d.entryId === record.id
+                                );
+                                if (serverPost) {
+                                    window.sharedPhotosFeed = mergeMomentPostIntoFeed(window.sharedPhotosFeed, serverPost);
+                                    if (appState.currentTab === 'gallery') renderGallery();
+                                    if (document.getElementById('feedContent')) renderFeed();
+                                }
+                            })
+                        ).catch(() => {});
                     } catch (e) {
                         shareSyncFailed = true;
                         console.error("공유 처리 실패:", e);

@@ -2,6 +2,7 @@
  * 공유 사진 그룹 키(postId) 계산, 그룹화·정렬, 갤러리/피드 가로 스크롤 인접 이미지 프리로드
  */
 import { normalizeUrl } from '../utils.js';
+import { sharedPhotoTimestampMs, sharedPhotoGroupSortMs } from '../utils/shared-photo-timestamp.js';
 
 /**
  * 모먼트/피드 그룹 키 — 같은 식사·슬롯 다장은 한 게시물로 묶음.
@@ -10,8 +11,16 @@ import { normalizeUrl } from '../utils.js';
 export function getSharedPhotoGroupKey(photo) {
     if (!photo) return 'unknown';
     if (photo.type === 'daily') return `daily_${photo.date || 'no-date'}_${photo.userId || ''}`;
-    if (photo.type === 'best') return `best_${photo.id || 'no-id'}_${photo.userId || ''}`;
-    if (photo.type === 'insight') return `insight_${photo.dateRangeText || 'no-range'}_${photo.userId || ''}`;
+    if (photo.type === 'best') {
+        if (photo.periodType && photo.periodText) {
+            const pt = String(photo.periodText).replace(/\s/g, '_');
+            return `best_${photo.periodType}_${pt}_${photo.userId || ''}`;
+        }
+        return `best_${photo.id || 'no-id'}_${photo.userId || ''}`;
+    }
+    if (photo.type === 'insight') {
+        return `insight_${String(photo.dateRangeText || 'no-range').replace(/\s/g, '_')}_${photo.userId || ''}`;
+    }
     const raw = photo.entryId;
     const eid =
         raw != null && String(raw).trim() !== '' && String(raw).trim() !== 'null'
@@ -28,11 +37,20 @@ export function getSharedPhotoGroupKey(photo) {
 export function getPostIdFromPhotoGroup(photoGroup) {
     const photo = photoGroup[0];
     if (!photo) return null;
+    if (photo.postId) return String(photo.postId);
+    const parent = photo._v2Parent;
+    if (parent?.postId) return String(parent.postId);
     const isDailyShare = photo.type === 'daily';
     const isBestShare = photo.type === 'best';
     const isInsightShare = photo.type === 'insight';
     if (isDailyShare) return `daily_${photo.date || 'no-date'}_${photo.userId || 'unknown'}`;
-    if (isBestShare) return `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+    if (isBestShare) {
+        if (photo.periodType && photo.periodText) {
+            const pt = String(photo.periodText).replace(/\s/g, '_');
+            return `best_${photo.periodType}_${pt}_${photo.userId || 'unknown'}`;
+        }
+        return `best_${photo.id || 'no-id'}_${photo.userId || 'unknown'}`;
+    }
     if (isInsightShare) return `insight_${(photo.dateRangeText || 'no-range').replace(/\s/g, '_')}_${photo.userId || 'unknown'}`;
     return getSharedPhotoGroupKey(photo);
 }
@@ -63,21 +81,12 @@ export function processPhotosToGroups(photos) {
         photoGroup.sort((a, b) => {
             const ai = a.photoIndex, bi = b.photoIndex;
             if (typeof ai === 'number' && typeof bi === 'number' && ai !== bi) return ai - bi;
-            const ta = new Date(a.timestamp).getTime(), tb = new Date(b.timestamp).getTime();
-            const cmp = ta - tb;
+            const cmp = sharedPhotoTimestampMs(a) - sharedPhotoTimestampMs(b);
             return cmp !== 0 ? cmp : photoSortTieBreaker(a, b);
         });
     });
-    const getTimestamp = (photo) => {
-        if (!photo.timestamp) return 0;
-        if (photo.timestamp instanceof Date) return photo.timestamp.getTime();
-        if (typeof photo.timestamp === 'string') return new Date(photo.timestamp).getTime();
-        if (photo.timestamp.toDate) return photo.timestamp.toDate().getTime();
-        if (photo.timestamp.seconds) return photo.timestamp.seconds * 1000;
-        return 0;
-    };
     return Object.values(groupedPhotos).sort((a, b) => {
-        const cmp = getTimestamp(b[0]) - getTimestamp(a[0]);
+        const cmp = sharedPhotoGroupSortMs(b) - sharedPhotoGroupSortMs(a);
         return cmp !== 0 ? cmp : (getPostIdFromPhotoGroup(a) || '').localeCompare(getPostIdFromPhotoGroup(b) || '', 'en');
     });
 }

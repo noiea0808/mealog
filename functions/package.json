@@ -10,6 +10,7 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "migrate:sharedPhotos": "node scripts/migrate-shared-photos-timestamp.js",
+    "migrate:momentPostsV2": "node scripts/migrate-moment-posts-v2.js",
     "backfill:nicknameClaims": "node scripts/backfill-nickname-claims.js",
     "admin:set-nickname": "node scripts/admin-set-user-nickname.js",
     "shift-demo-dates": "node scripts/shift-demo-user-dates.js",

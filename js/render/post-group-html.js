@@ -314,8 +314,15 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
+    const v2Meta = photo._v2Parent || (photo.schemaVersion === 2 ? photo : null);
+    const seedLikeCount = v2Meta && typeof v2Meta.likeCount === 'number' ? v2Meta.likeCount : null;
+    const seedCommentCount = v2Meta && typeof v2Meta.commentCount === 'number' ? v2Meta.commentCount : null;
+    const seedCountAttrs =
+        seedLikeCount != null || seedCommentCount != null
+            ? ` data-seed-like-count="${seedLikeCount != null ? seedLikeCount : ''}" data-seed-comment-count="${seedCommentCount != null ? seedCommentCount : ''}"`
+            : '';
     return `
-            <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}>
+            <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}${seedCountAttrs}>
                 ${
                     layoutV2 && showProfileMomentBack
                         ? `<div class="px-2 pt-2">${profileBackBtn}</div>`
