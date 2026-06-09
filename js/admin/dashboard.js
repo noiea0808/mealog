@@ -427,9 +427,9 @@ export function renderDashboardPageUsage(pageUsage, opts = {}) {
 }
 
 /**
- * 페이지별 집계 (트렌드와 동일하게 dashboardStats 캐시 + 증분으로 읽기 최소화)
+ * 페이지별 집계 (dashboardStats 캐시 + 새로고침 시 usageDaily 전 구간 재스캔)
  * - 화면 로드: 캐시 1회 getDoc만 사용 (updateStatistics)
- * - 새로고침: 최근 7일은 고정 7회 getDoc, 누적(all)은 이전 캐시가 있으면 신규 일자 usageDaily만 추가 조회
+ * - 새로고침: usageDaily 전 구간 + 최근 7일 getDocFromServer로 all·주별·7일 일괄 산출
  * - 주별: 일요일 시작 주 메타는 트렌드(getUserStatistics)와 동일, usageDaily 일자를 주 인덱스로 합산
  */
 async function rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks) {
@@ -456,7 +456,7 @@ async function fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout) {
     return rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, weeks.length);
 }
 
-export async function aggregatePageUsageFromFirestore(prevDashboardData) {
+export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     const todayStr = getTodayDateString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -474,97 +474,38 @@ export async function aggregatePageUsageFromFirestore(prevDashboardData) {
     );
     const { byField: byFieldDay, last7Sum } = buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
 
-    const prevPU = prevDashboardData?.pageUsage;
-    const prevMerge =
-        prevPU?.mergeThroughDate && typeof prevPU.mergeThroughDate === 'string' ? prevPU.mergeThroughDate : null;
-    const prevAll = prevPU?.all && typeof prevPU.all === 'object' ? prevPU.all : null;
-
+    // usageDaily 일자는 수십~백여 건 수준이라 새로고침마다 전 구간 재집계(캐시 증분 오염 방지)
     let byFieldAll = zeroPageUsageTotals();
     let todayFieldSnap = zeroPageUsageTotals();
     let weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
 
-    if (!prevMerge || !prevAll) {
-        const q = query(
-            usageCol,
-            where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-            where(documentId(), '<=', todayStr),
-            orderBy(documentId())
-        );
-        const snap = await getDocs(q);
-        snap.docs.forEach((d) => {
-            addDocDataToPageTotals(d.data(), byFieldAll);
-            addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
-        });
-        const tSnap = await getDoc(todayRef);
+    const q = query(
+        usageCol,
+        where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+        where(documentId(), '<=', todayStr),
+        orderBy(documentId())
+    );
+    const snap = await getDocs(q);
+    snap.docs.forEach((d) => {
+        addDocDataToPageTotals(d.data(), byFieldAll);
+        addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
+    });
+    const tSnap = await getDocFromServer(todayRef);
+    if (tSnap.exists()) {
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
-    } else if (prevMerge === todayStr) {
-        for (const def of PAGE_USAGE_METRIC_DEFS) {
-            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
-        }
-        if (!prevPU.todayFieldSnap || typeof prevPU.todayFieldSnap !== 'object') {
-            const q = query(
-                usageCol,
-                where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-                where(documentId(), '<=', todayStr),
-                orderBy(documentId())
-            );
-            const snap = await getDocs(q);
-            byFieldAll = zeroPageUsageTotals();
-            weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
-            snap.docs.forEach((d) => {
-                addDocDataToPageTotals(d.data(), byFieldAll);
-                addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
-            });
-            const tSnap = await getDoc(todayRef);
-            todayFieldSnap = zeroPageUsageTotals();
-            addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
-        } else {
-            const newT = zeroPageUsageTotals();
-            const tSnap = await getDoc(todayRef);
-            addDocDataToPageTotals(tSnap.data(), newT);
-            const oldT = prevPU.todayFieldSnap;
-            for (const def of PAGE_USAGE_METRIC_DEFS) {
-                const f = def.field;
-                byFieldAll[f] = byFieldAll[f] - (Number(oldT[f]) || 0) + (Number(newT[f]) || 0);
-            }
-            todayFieldSnap = newT;
-            weeklyByField = pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)
-                ? clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks)
-                : await rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, nWeeks);
-            const wi = weekIndexForDateKeyStr(todayStr, sundayKeyToIndex);
-            if (wi >= 0) {
-                for (const def of PAGE_USAGE_METRIC_DEFS) {
-                    const f = def.field;
-                    weeklyByField[f][wi] += (Number(newT[f]) || 0) - (Number(oldT[f]) || 0);
-                }
-            }
-        }
-    } else {
-        for (const def of PAGE_USAGE_METRIC_DEFS) {
-            byFieldAll[def.field] = Number(prevAll[def.field]) || 0;
-        }
-        const incQ = query(
-            usageCol,
-            where(documentId(), '>', prevMerge),
-            where(documentId(), '<=', todayStr),
-            orderBy(documentId())
-        );
-        const incSnap = await getDocs(incQ);
-        incSnap.docs.forEach((d) => addDocDataToPageTotals(d.data(), byFieldAll));
-        const tSnap = await getDoc(todayRef);
-        addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
+    }
 
-        if (pageUsageWeeklyByFieldShapeOk(prevPU, nWeeks)) {
-            weeklyByField = clonePageUsageWeeklyFromPrev(prevPU.weeklyBreakdown.byField, nWeeks);
-            incSnap.docs.forEach((d) => addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex));
-        } else {
-            weeklyByField = await rebuildPageUsageWeeklyFromFirestoreRange(
-                usageCol,
-                todayStr,
-                sundayKeyToIndex,
-                nWeeks
-            );
-        }
+    const hasAnyMetric = PAGE_USAGE_METRIC_DEFS.some((def) => (Number(byFieldAll[def.field]) || 0) > 0);
+    console.log('[대시보드] 페이지별 usageDaily 집계:', {
+        docCount: snap.docs.length,
+        hasAnyMetric,
+        todayStr,
+        rangeFrom: USAGE_DAILY_MIN_ID
+    });
+    if (!hasAnyMetric) {
+        console.warn(
+            '[대시보드] usageDaily에 페이지별 수치가 없습니다. 앱에서 탭 전환 후 Firestore `artifacts/mealog-r0/usageDaily/{오늘}` 문서에 tab_mealdang 등 필드가 생기는지 확인하세요.'
+        );
     }
 
     return {
