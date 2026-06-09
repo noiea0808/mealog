@@ -8,6 +8,11 @@ import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
+import {
+    DAILY_JOURNAL_MOMENT_SLOT_LABEL,
+    isDailyJournalSharePhoto
+} from '../utils/daily-journal-data.js';
+import { DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';
 import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 
 /** 모먼트 공유 → 타임라인 `#timelineMealPhotosOverlay` 휠 모드와 동일한 `row` 페이로드 */
@@ -21,8 +26,11 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     if (entryId && entryId !== '' && entryId !== 'null') recordId = String(entryId);
     else if (photo.id) recordId = String(photo.id);
 
+    const isDailyJournalShare = isDailyJournalSharePhoto(photo, entryId);
+
     let slotTitle = '—';
-    if (isDailyShare) slotTitle = '일간';
+    if (isDailyJournalShare) slotTitle = DAILY_JOURNAL_MOMENT_SLOT_LABEL;
+    else if (isDailyShare) slotTitle = '일간';
     else if (isBestShare) slotTitle = '베스트';
     else if (isInsightShare) {
         const r = String(photo.dateRangeText || '인사이트').replace(/\s+/g, ' ').trim();
@@ -33,8 +41,10 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     }
 
     let menuLine = '';
-    const place = String(photo.place || '').trim();
-    if (isBestShare || isDailyShare || isInsightShare) {
+    const place = isDailyJournalShare ? '' : String(photo.place || '').trim();
+    if (isDailyJournalShare) {
+        menuLine = '';
+    } else if (isBestShare || isDailyShare || isInsightShare) {
         menuLine = isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
     } else if (isSnack) {
         menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
@@ -52,7 +62,9 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
 
     /** 기록/공유 시 작성자가 넣은 코멘트(소셜 댓글 아님) — renderPostGroupHtml `comment`와 동일 규칙 */
     let authorMealComment = '';
-    if (isBestShare || isDailyShare || isInsightShare) {
+    if (isDailyJournalShare) {
+        authorMealComment = (photo.comment || '').replace(/<[^>]*>/g, '').trim();
+    } else if (isBestShare || isDailyShare || isInsightShare) {
         authorMealComment = (photo.comment || '').replace(/<[^>]*>/g, '').trim();
     } else {
         if (photo.comment) authorMealComment = String(photo.comment).trim();
@@ -91,6 +103,7 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
         const altIds = photoGroup.map((p) => p.id).filter(Boolean);
         base.overlayPostAlternateIds = [...new Set(altIds)].filter((id) => id !== ctx.overlayPostId);
         const captionPlain = (() => {
+            if (isDailyJournalShare) return '';
             if (isBestShare || isDailyShare || isInsightShare) {
                 return (photo.comment || '')
                     .replace(/<[^>]*>/g, '')
@@ -146,7 +159,14 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     const dateStr = photoDate.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
     const timeStr = photo.time || new Date(photo.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
     let mealLabel = '', mealLabelStyle = '';
-    if (photo.slotId) {
+    const isBestShare = photo.type === 'best';
+    const isDailyShare = photo.type === 'daily';
+    const isInsightShare = photo.type === 'insight';
+    const isDailyJournalShare = isDailyJournalSharePhoto(photo, entryId);
+    if (isDailyJournalShare) {
+        mealLabel = DAILY_JOURNAL_MOMENT_SLOT_LABEL;
+        mealLabelStyle = `${DAILY_JOURNAL_SLOT_STYLE.text} ${DAILY_JOURNAL_SLOT_STYLE.iconBg}`;
+    } else if (photo.slotId) {
         const slot = SLOTS.find(s => s.id === photo.slotId);
         mealLabel = slot ? slot.label : '';
         if (slot) {
@@ -154,18 +174,18 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
             mealLabelStyle = `${slotStyle.text} ${slotStyle.iconBg}`;
         }
     }
-    const isBestShare = photo.type === 'best';
-    const isDailyShare = photo.type === 'daily';
-    const isInsightShare = photo.type === 'insight';
-    const isSnack = photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
+    const isSnack =
+        !isDailyJournalShare && photo.slotId && SLOTS.find(s => s.id === photo.slotId)?.type === 'snack';
     let comment = '';
-    if (!isDailyShare) {
+    if (isDailyJournalShare) {
+        if (photo.comment) comment = photo.comment;
+    } else if (!isDailyShare) {
         if (photo.comment) comment = photo.comment;
         else if (entryId && mealHistoryMap && mealHistoryMap.has(entryId)) {
             const mealRecord = mealHistoryMap.get(entryId);
             if (mealRecord) comment = mealRecord.comment || '';
         }
-        if (!entryId && window.mealHistory && photo.date && photo.slotId) {
+        if (!entryId && window.mealHistory && photo.date && photo.slotId && !isDailyJournalShare) {
             const matchingRecord = window.mealHistory.find(m =>
                 m.date === photo.date && m.slotId === photo.slotId && (photo.comment ? (m.comment === photo.comment) : true));
             if (matchingRecord) {
@@ -177,6 +197,8 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     let caption = '';
     if (isBestShare || isDailyShare || isInsightShare) {
         if (photo.comment) caption = photo.comment;
+    } else if (isDailyJournalShare) {
+        caption = '';
     } else if (isSnack) {
         const menu = photo.menuDetail || photo.snackType;
         if (photo.place && menu) caption = `<span>${escapeHtml(menu)}</span> @ <span>${escapeHtml(photo.place)}</span>`;
@@ -194,6 +216,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         else if (photo.mealType) caption = escapeHtml(photo.mealType);
     }
     const captionText = (() => {
+        if (isDailyJournalShare) return '';
         if (isBestShare || isDailyShare || isInsightShare) return (photo.comment || '').replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
         if (isSnack) {
             const m = photo.menuDetail || photo.snackType;

@@ -3,9 +3,15 @@ import { appState } from '../state.js';
 import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
 import { uploadBase64ToStorage } from '../utils.js';
-import { getDailyJournalFromSettings, normalizeDailyJournalEntry, dailyJournalHasContent } from '../utils/daily-journal-data.js';
+import {
+    getDailyJournalFromSettings,
+    normalizeDailyJournalEntry,
+    dailyJournalHasContent,
+    getDailyJournalShareEntryId,
+    isDailyJournalShared
+} from '../utils/daily-journal-data.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
-import { invalidateTimelineDateSection } from '../render/index.js';
+import { invalidateTimelineDateSection, updateTimelineShareIndicators } from '../render/index.js';
 import { isDemoUser } from '../demo-account.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
@@ -13,6 +19,7 @@ import {
     mealClock24ToAmPmAndDisplay,
     formatMealClock12TextWhileTyping
 } from '../meal-time-utils.js';
+import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
 
 const MAX_DAILY_JOURNAL_PHOTOS = 5;
 const MAX_DAILY_JOURNAL_METRIC_RECORDS = 3;
@@ -302,7 +309,8 @@ function ensureDailyJournalMetricsDelegation() {
 export function renderDailyJournalPhotoPreviews() {
     const container = document.getElementById('dailyJournalPhotoPreviewContainer');
     const countEl = document.getElementById('dailyJournalPhotoCount');
-    const buttonEl = document.getElementById('dailyJournalImageBtn');
+    const cameraBtn = document.getElementById('dailyJournalCameraBtn');
+    const albumBtn = document.getElementById('dailyJournalAlbumBtn');
     if (!Array.isArray(appState.dailyJournalPhotos)) {
         appState.dailyJournalPhotos = [];
     }
@@ -343,37 +351,98 @@ export function renderDailyJournalPhotoPreviews() {
         countEl.classList.toggle('text-slate-400', currentCount < MAX_DAILY_JOURNAL_PHOTOS);
     }
 
-    if (buttonEl) {
-        const full = currentCount >= MAX_DAILY_JOURNAL_PHOTOS;
-        buttonEl.disabled = full;
-        buttonEl.classList.toggle('opacity-50', full);
-        buttonEl.classList.toggle('cursor-not-allowed', full);
-    }
+    const full = currentCount >= MAX_DAILY_JOURNAL_PHOTOS;
+    setPhotoAddButtonsEnabled([cameraBtn, albumBtn], !full, {
+        disabledTitle: `사진은 최대 ${MAX_DAILY_JOURNAL_PHOTOS}개까지 추가할 수 있습니다`
+    });
 
     syncDailyJournalAspectButtons();
+    updateDailyJournalShareIndicator();
+}
+
+export function updateDailyJournalShareIndicator() {
+    const shareIndicator = document.getElementById('dailyJournalShareIndicator');
+    if (!shareIndicator) return;
+    const photos = appState.dailyJournalPhotos || [];
+    if (photos.length === 0) {
+        shareIndicator.classList.add('hidden');
+        return;
+    }
+    shareIndicator.classList.remove('hidden');
+    if (appState.dailyJournalWantsToShare) {
+        shareIndicator.classList.add('bg-emerald-100', 'text-emerald-600');
+        shareIndicator.classList.remove('bg-slate-50', 'text-slate-400');
+    } else {
+        shareIndicator.classList.remove('bg-emerald-100', 'text-emerald-600');
+        shareIndicator.classList.add('bg-slate-50', 'text-slate-400');
+    }
+}
+
+export function toggleDailyJournalSharePhoto() {
+    const photos = appState.dailyJournalPhotos || [];
+    if (photos.length === 0) {
+        showToast('공유할 사진이 없습니다.', 'error');
+        return;
+    }
+    appState.dailyJournalWantsToShare = !appState.dailyJournalWantsToShare;
+    updateDailyJournalShareIndicator();
+}
+
+function syncDailyJournalSharedPhotosCache(entryId, photoUrls) {
+    const uid = window.currentUser?.uid;
+    if (!entryId || !uid) return;
+    if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
+        window.sharedPhotos = [];
+    }
+    if (photoUrls.length > 0) {
+        const newEntries = photoUrls.map((url) => ({ entryId, photoUrl: url, userId: uid }));
+        window.sharedPhotos = window.sharedPhotos
+            .filter((p) => p.entryId !== entryId)
+            .concat(newEntries);
+    } else {
+        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryId);
+    }
+    updateTimelineShareIndicators();
+}
+
+async function applyDailyJournalMomentShare(dateStr, photos, entry, wantsToShare) {
+    const shareEntryId = getDailyJournalShareEntryId(dateStr);
+    if (!shareEntryId) return;
+    const photosToShare = wantsToShare && photos.length > 0 ? [...photos] : [];
+    const hadShare =
+        (entry.sharedPhotos && entry.sharedPhotos.length > 0) ||
+        isDailyJournalShared(dateStr, entry);
+    if (photosToShare.length === 0 && !hadShare) return;
+
+    const mealData = {
+        id: shareEntryId,
+        date: dateStr,
+        comment: entry.comment || '',
+        photoAspectRatio: entry.photoAspectRatio || '1:1',
+        slotId: 'daily_journal'
+    };
+    await dbOps.sharePhotos(photosToShare, mealData);
+    syncDailyJournalSharedPhotosCache(shareEntryId, photosToShare);
 }
 
 export function setDailyJournalPhotoAspectRatio(ratio) {
     if (!PHOTO_ASPECT_OPTIONS.includes(ratio)) return;
     appState.dailyJournalPhotoAspectRatio = ratio;
     renderDailyJournalPhotoPreviews();
-    const btn = document.getElementById('dailyJournalImageBtn');
-    if (btn) {
-        const css = getDailyJournalAspectCss();
-        btn.style.aspectRatio = css.replace('/', '/');
-    }
 }
 
-export function handleDailyJournalImages(e) {
+export function processDailyJournalImagesFromFiles(files) {
+    const list = Array.from(files || []).filter((f) => f?.type?.startsWith?.('image/'));
+    if (!list.length) return;
+
     const remainingSlots = MAX_DAILY_JOURNAL_PHOTOS - appState.dailyJournalPhotos.length;
     if (remainingSlots <= 0) {
         showToast(`사진은 최대 ${MAX_DAILY_JOURNAL_PHOTOS}개까지 추가할 수 있습니다.`, 'error');
-        e.target.value = '';
         return;
     }
-    const files = Array.from(e.target.files || []);
-    const filesToProcess = files.slice(0, remainingSlots);
-    if (files.length > remainingSlots) {
+
+    const filesToProcess = list.slice(0, remainingSlots);
+    if (list.length > remainingSlots) {
         showToast(`사진은 최대 ${MAX_DAILY_JOURNAL_PHOTOS}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
 
@@ -399,12 +468,40 @@ export function handleDailyJournalImages(e) {
             renderDailyJournalPhotoPreviews();
         })
         .catch(() => showToast('사진 처리 중 오류가 발생했습니다.', 'error'));
+}
 
-    e.target.value = '';
+export function handleDailyJournalImages(e) {
+    processDailyJournalImagesFromFiles(e.target?.files);
+    if (e.target) e.target.value = '';
+}
+
+async function pickDailyJournalImages(source) {
+    const remainingSlots = MAX_DAILY_JOURNAL_PHOTOS - appState.dailyJournalPhotos.length;
+    if (remainingSlots <= 0) {
+        showToast(`사진은 최대 ${MAX_DAILY_JOURNAL_PHOTOS}개까지 추가할 수 있습니다.`, 'error');
+        return;
+    }
+    const files =
+        source === 'camera'
+            ? await pickCameraImage({ facing: 'environment' })
+            : await pickGalleryImages({ multiple: true });
+    if (!files.length) return;
+    processDailyJournalImagesFromFiles(files);
+}
+
+export function openDailyJournalCameraPicker() {
+    return pickDailyJournalImages('camera');
+}
+
+export function openDailyJournalGalleryPicker() {
+    return pickDailyJournalImages('gallery');
 }
 
 export function removeDailyJournalPhoto(idx) {
     appState.dailyJournalPhotos.splice(idx, 1);
+    if (appState.dailyJournalPhotos.length === 0) {
+        appState.dailyJournalWantsToShare = false;
+    }
     renderDailyJournalPhotoPreviews();
 }
 
@@ -436,6 +533,33 @@ function resetDailyJournalMetricsState() {
     appState.dailyJournalBloodSugarRecords = [emptyMetricRow()];
 }
 
+function updateDailyJournalModalActions(hasExisting) {
+    const btnDelete = document.getElementById('btnDailyJournalDelete');
+    const btnSave = document.getElementById('btnDailyJournalSave');
+    if (!btnSave) return;
+
+    if (window.currentUser?.isAnonymous) {
+        btnSave.disabled = true;
+        btnSave.className =
+            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
+        btnSave.innerHTML = '<span>로그인 후 사용할 수 있어요</span>';
+        btnDelete?.classList.add('hidden');
+        return;
+    }
+
+    btnSave.disabled = false;
+    btnSave.className =
+        'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
+
+    if (hasExisting && !isDemoUser(window.currentUser)) {
+        btnDelete?.classList.remove('hidden');
+        btnSave.innerHTML = '<span>수정 완료</span>';
+    } else {
+        btnDelete?.classList.add('hidden');
+        btnSave.innerHTML = '<span>기록 완료</span>';
+    }
+}
+
 export function openDailyJournalModal(dateStr) {
     if (!dateStr) return;
     if (!window.currentUser || window.currentUser.isAnonymous) {
@@ -452,6 +576,8 @@ export function openDailyJournalModal(dateStr) {
     appState.dailyJournalEditingDate = dateStr;
     appState.dailyJournalPhotos = Array.isArray(entry.photos) ? [...entry.photos] : [];
     appState.dailyJournalPhotoAspectRatio = entry.photoAspectRatio || '1:1';
+    appState.dailyJournalWantsToShare =
+        entry.sharedPhotos?.length > 0 || isDailyJournalShared(dateStr, entry);
     loadDailyJournalMetricsFromEntry(entry);
 
     const titleEl = document.getElementById('dailyJournalModalTitle');
@@ -462,6 +588,8 @@ export function openDailyJournalModal(dateStr) {
 
     renderDailyJournalPhotoPreviews();
     renderDailyJournalAllMetrics();
+    updateDailyJournalShareIndicator();
+    updateDailyJournalModalActions(dailyJournalHasContent(entry));
     modal.classList.remove('hidden');
     document.body.classList.add('overflow-hidden', 'daily-journal-modal-open');
 }
@@ -472,6 +600,7 @@ export function closeDailyJournalModal() {
     document.body.classList.remove('overflow-hidden', 'daily-journal-modal-open');
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];
+    appState.dailyJournalWantsToShare = false;
     resetDailyJournalMetricsState();
 }
 
@@ -491,6 +620,41 @@ async function materializeDailyJournalPhotos(photos, dateStr) {
         }
     }
     return out;
+}
+
+export async function deleteDailyJournal() {
+    const dateStr = appState.dailyJournalEditingDate;
+    if (!dateStr) {
+        showToast('날짜 정보를 찾을 수 없습니다.', 'error');
+        return;
+    }
+    if (!window.currentUser || window.currentUser.isAnonymous) {
+        showToast('로그인이 필요합니다.', 'error');
+        return;
+    }
+    if (isDemoUser(window.currentUser)) {
+        showToast('샘플 계정에서는 하루 기록을 삭제할 수 없습니다.', 'error');
+        return;
+    }
+    if (!confirm('정말 이 하루 기록을 삭제하시겠습니까?')) return;
+
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+
+    try {
+        const prev = getDailyJournalFromSettings(window.userSettings, dateStr);
+        await dbOps.saveDailyJournal(dateStr, normalizeDailyJournalEntry(null));
+        await applyDailyJournalMomentShare(dateStr, [], prev, false);
+        closeDailyJournalModal();
+        showToast('하루 기록이 삭제되었습니다.', 'success');
+        invalidateTimelineDateSection(dateStr);
+        if (typeof window.renderTimeline === 'function') window.renderTimeline();
+    } catch (e) {
+        console.error('Daily Journal Delete Error:', e);
+        showToast(getUserFacingErrorMessage(e, 'settings'), 'error');
+    } finally {
+        if (loadingOverlay) loadingOverlay.classList.add('hidden');
+    }
 }
 
 export async function saveDailyJournal() {
@@ -514,7 +678,10 @@ export async function saveDailyJournal() {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
     try {
+        const prev = getDailyJournalFromSettings(window.userSettings, dateStr);
         const photos = await materializeDailyJournalPhotos(appState.dailyJournalPhotos, dateStr);
+        const wantsToShare = appState.dailyJournalWantsToShare === true;
+        const photosToShare = wantsToShare && photos.length > 0 ? [...photos] : [];
         const weightEnabled = appState.dailyJournalWeightEnabled === true;
         const bloodSugarEnabled = appState.dailyJournalBloodSugarEnabled === true;
         const weightRecords = weightEnabled ? collectMetricRecordsFromDom('weight') : [];
@@ -522,13 +689,16 @@ export async function saveDailyJournal() {
         const entry = normalizeDailyJournalEntry({
             comment,
             photos,
+            sharedPhotos: photosToShare,
             photoAspectRatio: appState.dailyJournalPhotoAspectRatio || '1:1',
             weightEnabled: weightEnabled && weightRecords.length > 0,
             bloodSugarEnabled: bloodSugarEnabled && bloodSugarRecords.length > 0,
             weightRecords,
-            bloodSugarRecords
+            bloodSugarRecords,
+            recordedAt: prev.recordedAt || ''
         });
         await dbOps.saveDailyJournal(dateStr, entry);
+        await applyDailyJournalMomentShare(dateStr, photos, entry, wantsToShare);
         closeDailyJournalModal();
         showToast(
             dailyJournalHasContent(entry) ? '하루 기록이 저장되었습니다.' : '하루 기록이 삭제되었습니다.',

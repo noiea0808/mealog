@@ -672,16 +672,6 @@ function updatePhotoAspectButtons() {
         btn.classList.toggle('border-slate-200', !isActive);
         btn.classList.toggle('text-slate-600', !isActive);
     });
-    const aspectCss = ratio === '3:4' ? '3/4' : ratio === '4:3' ? '4/3' : '1';
-    [document.getElementById('imageBtn'), document.getElementById('snackImageBtn')].forEach(btn => {
-        if (btn) {
-            btn.style.width = '80px';
-            btn.style.minWidth = '80px';
-            btn.style.aspectRatio = aspectCss;
-            btn.style.height = '';
-            btn.style.alignSelf = 'flex-start'; // flex 행에서 비율대로만 높이 유지
-        }
-    });
 }
 
 /** 기록 시 모먼트 사진 비율 설정 (1:1 / 3:4 / 4:3) */
@@ -3789,93 +3779,115 @@ function toggleFieldsForSkip(isSkip) {
     syncDeliveryVendorSectionVisibility();
 }
 
-export function handleMultipleImages(e) {
+const RECORD_MAX_PHOTOS = 10;
+
+export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
     const state = appState;
-    const maxPhotos = 10;
+    const list = Array.from(files || []).filter((f) => f?.type?.startsWith?.('image/'));
+    if (!list.length) return;
+
     const currentCount = state.currentPhotos.length;
-    const remainingSlots = maxPhotos - currentCount;
-    
+    const remainingSlots = RECORD_MAX_PHOTOS - currentCount;
+
     if (remainingSlots <= 0) {
-        showToast(`사진은 최대 ${maxPhotos}개까지 추가할 수 있습니다.`, 'error');
-        e.target.value = ''; // 파일 입력 초기화
+        showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다.`, 'error');
         return;
     }
-    
-    const files = Array.from(e.target.files);
-    const filesToProcess = files.slice(0, remainingSlots);
-    
-    if (files.length > remainingSlots) {
-        showToast(`사진은 최대 ${maxPhotos}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
+
+    const filesToProcess = list.slice(0, remainingSlots);
+
+    if (list.length > remainingSlots) {
+        showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
-    
-    // ⚠️ 중요: 파일 선택 순서를 보존하기 위해 Promise 배열로 처리
-    // 각 파일을 인덱스와 함께 처리하여 순서 보장
+
     const filePromises = filesToProcess.map((f, index) => {
         return new Promise((resolve) => {
             const r = new FileReader();
             r.onload = (ev) => {
-                // 편집·미리보기는 원본 data URL 유지. Storage 업로드 시 uploadBase64ToStorage에서만 압축.
                 resolve({ index, dataUrl: ev.target.result });
             };
             r.onerror = () => {
                 console.error('파일 읽기 실패:', f.name);
-                resolve(null); // 실패한 파일은 null로 처리
+                resolve(null);
             };
             r.readAsDataURL(f);
         });
     });
-    
-    // ⚠️ 중요: 모든 파일이 로드된 후 선택 순서대로 정렬하여 추가
-    Promise.all(filePromises).then(async (results) => {
-        // null 제거 및 인덱스 순서대로 정렬
-        const sortedResults = results
-            .filter(r => r !== null)
-            .sort((a, b) => a.index - b.index);
-        
-        // 현재 사진 개수 확인 (다른 작업으로 인해 변경되었을 수 있음)
-        const currentPhotosCount = state.currentPhotos.length;
-        const availableSlots = maxPhotos - currentPhotosCount;
-        
-        // 선택 순서대로 추가
-        sortedResults.slice(0, availableSlots).forEach(({ dataUrl }) => {
-            if (state.currentPhotos.length < maxPhotos) {
-                state.currentPhotos.push(dataUrl);
+
+    Promise.all(filePromises)
+        .then(async (results) => {
+            const sortedResults = results.filter((r) => r !== null).sort((a, b) => a.index - b.index);
+
+            const currentPhotosCount = state.currentPhotos.length;
+            const availableSlots = RECORD_MAX_PHOTOS - currentPhotosCount;
+
+            sortedResults.slice(0, availableSlots).forEach(({ dataUrl }) => {
+                if (state.currentPhotos.length < RECORD_MAX_PHOTOS) {
+                    state.currentPhotos.push(dataUrl);
+                }
+            });
+
+            renderPhotoPreviews();
+            updateShareIndicator();
+
+            const mainSide = !isSnack;
+            const timeOn = isSnack ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true;
+
+            const isNewEntry = !state.currentEditingId && filesToProcess.length > 0;
+            if (isNewEntry) {
+                const hhmmExif = await tryExifTimeHHmmFromImageFile(filesToProcess[0]);
+                if (timeOn) {
+                    const alreadyApplied = mainSide
+                        ? appState.entryMealClockDidApplyPhotoExifMain
+                        : appState.entryMealClockDidApplyPhotoExifSnack;
+                    if (!alreadyApplied && hhmmExif) {
+                        applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(hhmmExif) || hhmmExif);
+                        if (mainSide) appState.entryMealClockDidApplyPhotoExifMain = true;
+                        else appState.entryMealClockDidApplyPhotoExifSnack = true;
+                    }
+                } else if (hhmmExif) {
+                    if (mainSide && appState.entryMealClockPendingExifHhmmMain == null) {
+                        appState.entryMealClockPendingExifHhmmMain = hhmmExif;
+                    }
+                    if (!mainSide && appState.entryMealClockPendingExifHhmmSnack == null) {
+                        appState.entryMealClockPendingExifHhmmSnack = hhmmExif;
+                    }
+                }
             }
+        })
+        .catch((err) => {
+            console.error('파일 처리 중 오류 발생:', err);
+            showToast('사진 처리 중 오류가 발생했습니다.', 'error');
         });
-        
-        renderPhotoPreviews();
-        updateShareIndicator();
+}
 
-        const isSnackInput = e.target && e.target.id === 'snackImageInput';
-        const mainSide = !isSnackInput;
-        const timeOn = isSnackInput ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true;
+export function handleMultipleImages(e) {
+    const isSnack = e.target?.id === 'snackImageInput';
+    processRecordImagesFromFiles(e.target?.files, { isSnack });
+    if (e.target) e.target.value = '';
+}
 
-        /** 신규 기록만: EXIF 시간 1회 반영(off→on은 pending으로 이어짐) */
-        const isNewEntry = !state.currentEditingId && filesToProcess.length > 0;
-        if (isNewEntry) {
-            const hhmmExif = await tryExifTimeHHmmFromImageFile(filesToProcess[0]);
-            if (timeOn) {
-                const alreadyApplied = mainSide ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
-                if (!alreadyApplied && hhmmExif) {
-                    applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(hhmmExif) || hhmmExif);
-                    if (mainSide) appState.entryMealClockDidApplyPhotoExifMain = true;
-                    else appState.entryMealClockDidApplyPhotoExifSnack = true;
-                }
-            } else if (hhmmExif) {
-                if (mainSide && appState.entryMealClockPendingExifHhmmMain == null) {
-                    appState.entryMealClockPendingExifHhmmMain = hhmmExif;
-                }
-                if (!mainSide && appState.entryMealClockPendingExifHhmmSnack == null) {
-                    appState.entryMealClockPendingExifHhmmSnack = hhmmExif;
-                }
-            }
-        }
-    }).catch(err => {
-        console.error('파일 처리 중 오류 발생:', err);
-        showToast('사진 처리 중 오류가 발생했습니다.', 'error');
-    });
-    
-    e.target.value = ''; // 파일 입력 초기화
+async function pickRecordImages(isSnack, source) {
+    const remainingSlots = RECORD_MAX_PHOTOS - appState.currentPhotos.length;
+    if (remainingSlots <= 0) {
+        showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다.`, 'error');
+        return;
+    }
+    const { pickCameraImage, pickGalleryImages } = await import('../utils/image-source-picker.js');
+    const files =
+        source === 'camera'
+            ? await pickCameraImage({ facing: 'environment' })
+            : await pickGalleryImages({ multiple: true });
+    if (!files.length) return;
+    processRecordImagesFromFiles(files, { isSnack });
+}
+
+export function openRecordCameraPicker(isSnack = false) {
+    return pickRecordImages(isSnack, 'camera');
+}
+
+export function openRecordGalleryPicker(isSnack = false) {
+    return pickRecordImages(isSnack, 'gallery');
 }
 
 export function removePhoto(idx) {

@@ -2,6 +2,7 @@
 import { SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
+import { setPhotoAddButtonsEnabled } from './utils/image-source-picker.js';
 
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 
@@ -18,10 +19,12 @@ export function renderPhotoPreviews() {
     const isSnackMode = snackFields && !snackFields.classList.contains('hidden');
     const containerId = isSnackMode ? 'snackPhotoPreviewContainer' : 'photoPreviewContainer';
     const countId = isSnackMode ? 'snackPhotoCount' : 'photoCount';
-    const buttonId = isSnackMode ? 'snackImageBtn' : 'imageBtn';
+    const cameraBtnId = isSnackMode ? 'snackImageCameraBtn' : 'imageCameraBtn';
+    const albumBtnId = isSnackMode ? 'snackImageAlbumBtn' : 'imageAlbumBtn';
     const container = document.getElementById(containerId);
     const countEl = document.getElementById(countId);
-    const buttonEl = document.getElementById(buttonId);
+    const cameraBtn = document.getElementById(cameraBtnId);
+    const albumBtn = document.getElementById(albumBtnId);
     
     // currentPhotos가 배열인지 확인하고, 배열이 아니면 배열로 변환
     if (!Array.isArray(appState.currentPhotos)) {
@@ -70,20 +73,9 @@ export function renderPhotoPreviews() {
         }
     }
     
-    // 버튼 활성/비활성 처리
-    if (buttonEl) {
-        if (currentCount >= maxPhotos) {
-            buttonEl.disabled = true;
-            buttonEl.classList.add('opacity-50', 'cursor-not-allowed');
-            buttonEl.classList.remove('active:bg-slate-100');
-            buttonEl.title = '사진은 최대 10개까지 추가할 수 있습니다';
-        } else {
-            buttonEl.disabled = false;
-            buttonEl.classList.remove('opacity-50', 'cursor-not-allowed');
-            buttonEl.classList.add('active:bg-slate-100');
-            buttonEl.title = '';
-        }
-    }
+    setPhotoAddButtonsEnabled([cameraBtn, albumBtn], currentCount < maxPhotos, {
+        disabledTitle: '사진은 최대 10개까지 추가할 수 있습니다'
+    });
 }
 
 // Comment 확장/축소 토글 함수
