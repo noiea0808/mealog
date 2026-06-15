@@ -398,6 +398,7 @@ export const callableFunctions = {
     adminBackfillUserRootCreatedAtFromAuthRunAll: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuthRunAll'),
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
+    logMealdangAnalysis: httpsCallable(functions, 'logMealdangAnalysis'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
     getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
     confirmApkUpload: httpsCallable(functions, 'confirmApkUpload'),

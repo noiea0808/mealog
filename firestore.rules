@@ -159,6 +159,12 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // 밀당 Gemini 분석 요청·응답 로그 (Cloud Functions Admin SDK만 기록)
+    match /artifacts/{appId}/mealdangAnalysisLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
     
     // 관리 로그 (날짜별 메타 + entries 서브컬렉션) — 관리자만
     match /artifacts/{appId}/adminLogs/{dateKey} {

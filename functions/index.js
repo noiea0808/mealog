@@ -3931,6 +3931,77 @@ async function recordGeminiModelUsage(model) {
   }
 }
 
+function truncateAuditText(value, maxLen) {
+  if (value == null) return '';
+  const s = String(value);
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}…`;
+}
+
+function extractGeminiResponseText(data) {
+  const candidate = data?.candidates?.[0];
+  if (!candidate) return '';
+  const parts = candidate?.content?.parts;
+  if (Array.isArray(parts) && parts.length > 0) {
+    const answerParts = parts.filter((p) => p && typeof p.text === 'string' && p.text.trim() && p.thought !== true);
+    if (answerParts.length) return answerParts.map((p) => p.text.trim()).join('\n').trim();
+    const anyText = parts.map((p) => (p && typeof p.text === 'string' ? p.text.trim() : '')).filter(Boolean);
+    if (anyText.length) return anyText.join('\n').trim();
+  }
+  if (typeof candidate.text === 'string') return candidate.text.trim();
+  return '';
+}
+
+async function recordMealdangAnalysisLog(uid, auditLog, payload = {}) {
+  if (!uid || !auditLog || auditLog.type !== 'mealdang') return;
+  try {
+    const responseText = payload.responseText != null ? String(payload.responseText) : '';
+    const preview = truncateAuditText(responseText, 240);
+    const ref = db.collection('artifacts').doc(APP_ID).collection('mealdangAnalysisLogs').doc();
+    await ref.set({
+      userId: uid,
+      userNickname: truncateAuditText(auditLog.userNickname, 80),
+      dateRangeText: truncateAuditText(auditLog.dateRangeText, 160),
+      characterId: truncateAuditText(auditLog.characterId, 64),
+      characterName: truncateAuditText(auditLog.characterName, 80),
+      mealDataSummary: truncateAuditText(auditLog.mealDataSummary, 12000),
+      mealRecordCount: Number(auditLog.mealRecordCount) || 0,
+      mainMealCount: Number(auditLog.mainMealCount) || 0,
+      mealRecordPercent: Number(auditLog.mealRecordPercent) || 0,
+      hasMealdangMemo: auditLog.hasMealdangMemo === true,
+      model: truncateAuditText(payload.model, 120),
+      finishReason: truncateAuditText(payload.finishReason, 64),
+      status: payload.status === 'error' ? 'error' : 'success',
+      responseText: truncateAuditText(responseText, 20000),
+      responsePreview: preview,
+      errorMessage: truncateAuditText(payload.errorMessage, 500),
+      tokenUsage: payload.tokenUsage || null,
+      requestedAt: FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    logger.warn('recordMealdangAnalysisLog failed', { uid, err: e?.message });
+  }
+}
+
+exports.logMealdangAnalysis = onCall({ region: REGION }, wrapFunction('logMealdangAnalysis', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { auditLog, model, finishReason, responseText, tokenUsage, status, errorMessage } = request.data || {};
+  if (!auditLog || auditLog.type !== 'mealdang') {
+    throw new HttpsError('invalid-argument', 'auditLog(type=mealdang)가 필요합니다.');
+  }
+  await recordMealdangAnalysisLog(request.auth.uid, auditLog, {
+    status: status === 'error' ? 'error' : 'success',
+    model,
+    finishReason,
+    responseText,
+    tokenUsage: tokenUsage || null,
+    errorMessage
+  });
+  return { ok: true };
+}));
+
 exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');

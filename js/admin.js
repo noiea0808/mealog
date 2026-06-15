@@ -51,6 +51,7 @@ import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './
 import './admin/feed-moderation.js';
 import './admin/lounge-chat-moderation.js';
 import './admin/board-moderation.js';
+import './admin/mealdang-analysis-logs.js';
 
 import { app, db, appId, callableFunctions, auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";

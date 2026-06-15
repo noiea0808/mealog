@@ -42,6 +42,25 @@ const GEMINI_MODELS = [
     GEMINI_MEALDANG_MODEL
 ];
 
+function normalizeGeminiTokenUsage(usage) {
+    if (!usage) return null;
+    return {
+        promptTokenCount: usage.promptTokenCount ?? usage.prompt_token_count ?? null,
+        candidatesTokenCount: usage.candidatesTokenCount ?? usage.candidates_token_count ?? null,
+        thoughtsTokenCount: usage.thoughtsTokenCount ?? usage.thoughts_token_count ?? null,
+        totalTokenCount: usage.totalTokenCount ?? usage.total_token_count ?? null
+    };
+}
+
+async function persistMealdangAnalysisLog(payload) {
+    if (!callableFunctions?.logMealdangAnalysis) return;
+    try {
+        await callableFunctions.logMealdangAnalysis(payload);
+    } catch (e) {
+        console.warn('밀당 분석 로그 저장 실패:', e?.message || e);
+    }
+}
+
 // 기본 캐릭터 정의
 const DEFAULT_CHARACTERS = [
     { 
@@ -997,6 +1016,26 @@ async function getInsightFallbackMessages(characterId) {
     };
 }
 
+/** Gemini 프롬프트·관리자 로그용 식사 데이터 요약 텍스트 */
+function buildMealDataSummaryText(analysis, mainMealCount, totalMainSlots, mealRecordPercent) {
+    if (!analysis) return '';
+    let text = `- 본식 기록 비율: ${mainMealCount}회 / ${totalMainSlots}회 (${mealRecordPercent}%)\n`;
+    if (analysis.bySlot && Object.keys(analysis.bySlot).length > 0) {
+        const slotOrder = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
+        slotOrder.forEach(slotId => {
+            const s = analysis.bySlot[slotId];
+            if (!s) return;
+            text += `\n- ${s.label} (${s.count}회)\n`;
+            if (s.mealTypes) text += `  식사방식: ${s.mealTypes}, 메뉴분류: ${s.categories}\n`;
+            if (s.menuDetails && s.menuDetails.length) text += `  메뉴: ${s.menuDetails.slice(0, 3).join(', ')}\n`;
+            if (s.companions) text += `  누구와: ${s.companions}\n`;
+            if (s.snackTypes) text += `  간식종류: ${s.snackTypes}, 장소: ${s.places}\n`;
+            text += `  만족도: ${s.ratingByScore}, 포만감: ${s.satietyByScore}\n`;
+        });
+    }
+    return text.trim();
+}
+
 // Gemini API를 사용하여 코멘트 생성
 async function getGeminiComment(filteredData, characterId = currentCharacter, dateRangeText = '') {
     const character = INSIGHT_CHARACTERS.find(c => c.id === characterId);
@@ -1006,6 +1045,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         return character ? `${character.icon} 이 기간 동안 아직 식사 기록이 없네요. 맛있는 식사 기록을 시작해보세요!` : "이 기간 동안 아직 식사 기록이 없네요.";
     }
     
+    let auditLog = null;
     try {
         // 데이터 분석
         const analysis = analyzeMealData(filteredData, dateRangeText);
@@ -1049,21 +1089,8 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         }
         
         // 식사 데이터 (시간대별로만 전송 - 본식/간식 통합, 중복 제거)
-        prompt += `\n[식사 데이터]\n`;
-        prompt += `- 본식 기록 비율: ${mainMealCount}회 / ${totalMainSlots}회 (${mealRecordPercent}%)\n`;
-        if (analysis.bySlot && Object.keys(analysis.bySlot).length > 0) {
-            const slotOrder = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
-            slotOrder.forEach(slotId => {
-                const s = analysis.bySlot[slotId];
-                if (!s) return;
-                prompt += `\n- ${s.label} (${s.count}회)\n`;
-                if (s.mealTypes) prompt += `  식사방식: ${s.mealTypes}, 메뉴분류: ${s.categories}\n`;
-                if (s.menuDetails && s.menuDetails.length) prompt += `  메뉴: ${s.menuDetails.slice(0, 3).join(', ')}\n`;
-                if (s.companions) prompt += `  누구와: ${s.companions}\n`;
-                if (s.snackTypes) prompt += `  간식종류: ${s.snackTypes}, 장소: ${s.places}\n`;
-                prompt += `  만족도: ${s.ratingByScore}, 포만감: ${s.satietyByScore}\n`;
-            });
-        }
+        const mealDataSummary = buildMealDataSummaryText(analysis, mainMealCount, totalMainSlots, mealRecordPercent);
+        prompt += `\n[식사 데이터]\n${mealDataSummary}\n`;
         
         // 작성 지침 (간결하게)
         prompt += `\n[작성 지침]\n`;
@@ -1100,10 +1127,24 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // v1beta API만 사용 (v1은 이 모델들을 지원하지 않음)
         let lastError = null;
         let data = null;
+        let successfulModel = '';
+        let successfulTokenUsage = null;
         const apiVersion = 'v1beta'; // v1beta만 사용
         
         // 지정된 데이터 분석용 추천 모델 3개만 순차적으로 사용
         const models = GEMINI_MODELS;
+        auditLog = {
+            type: 'mealdang',
+            dateRangeText: dateRangeText || '',
+            characterId: characterId || '',
+            characterName: character?.name || '',
+            userNickname,
+            mealDataSummary,
+            mealRecordCount: filteredData.length,
+            mainMealCount,
+            mealRecordPercent,
+            hasMealdangMemo: !!(userShortcuts && userShortcuts.trim())
+        };
         
         if (isDevMode) {
             console.log('시도할 모델 목록:', models);
@@ -1246,6 +1287,8 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         
                         // 응답이 충분하면 이 모델 사용
                         data = geminiResponse;
+                        successfulModel = model;
+                        successfulTokenUsage = normalizeGeminiTokenUsage(geminiResponse?.usageMetadata);
                         break; // 성공하면 반복 중단
                     } else {
                         // 텍스트를 찾지 못한 경우 - 개발 모드에서만 로깅
@@ -1382,9 +1425,19 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             comment = comment.substring(character.icon.length).trim();
         }
         
+        const responseTextForLog = comment;
         if (character && comment) {
             comment = `${character.icon} ${comment}`;
         }
+
+        void persistMealdangAnalysisLog({
+            auditLog,
+            model: successfulModel,
+            finishReason,
+            responseText: responseTextForLog,
+            tokenUsage: successfulTokenUsage,
+            status: 'success'
+        });
         
         if (isDevMode) {
             console.log('✅ 코멘트 생성 완료:', {
@@ -1397,6 +1450,14 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         
     } catch (error) {
         console.error('Gemini API 오류:', error);
+
+        if (auditLog) {
+            void persistMealdangAnalysisLog({
+                auditLog,
+                status: 'error',
+                errorMessage: error?.message || String(error)
+            });
+        }
         
         // API 키 관련 에러인 경우 명확한 메시지 표시
         if (error.message && (error.message.includes('API 키') || error.message.includes('API key'))) {
