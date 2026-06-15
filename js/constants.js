@@ -17,6 +17,9 @@ export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT = '700';
 /** html2canvas 클론 문서용 @font-face — `css/style.css` 나눔손글씨 가람연꽃과 동일 소스 */
 export const MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS = `@font-face{font-family:'나눔손글씨 가람연꽃';src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/naverfont_04@1.0/Garam.woff') format('woff');font-weight:normal;font-style:normal;font-display:swap;}`;
 
+/** 밀당 AI 코멘트(Gemini) — js/analytics/insight.js · functions callGemini 와 동기화 */
+export const GEMINI_MEALDANG_MODEL = 'gemini-2.5-flash';
+
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export const SLOTS = [

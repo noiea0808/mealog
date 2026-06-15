@@ -8,7 +8,8 @@ import {
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
-    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS
+    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS,
+    GEMINI_MEALDANG_MODEL
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
@@ -38,7 +39,7 @@ function escapeHtml(text) {
 
 // Gemini는 Firebase Callable `callGemini`만 사용 (API 키는 Functions 서버 환경 변수)
 const GEMINI_MODELS = [
-    'gemini-2.5-flash-lite'
+    GEMINI_MEALDANG_MODEL
 ];
 
 // 기본 캐릭터 정의
@@ -1125,7 +1126,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         temperature: 0.7,
                         topK: 40,
                         topP: 0.95,
-                        maxOutputTokens: 1000, // 충분한 토큰 수로 완전한 응답 보장
+                        maxOutputTokens: 4096, // 2.5 Flash thinking 토큰 + 본문 합산 한도
                         stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
                     }
                 };
@@ -1509,7 +1510,38 @@ export async function openShareInsightModal() {
     const insightText = insightTextContent.innerHTML || insightTextContent.textContent || '';
     const characterNameText = insightCharacterName ? insightCharacterName.textContent : '';
     
-    // 스크린샷용 HTML 생성 (캐릭터는 원본 DOM 복제로 삽입)
+    // 밀당 탭과 동일 크기: MEALOG 70×70, 그 외 캐릭터 75×132
+    const isMealogCharacter = !!(insightCharacterIcon?.classList.contains('mealog-character-m') || character?.id === 'mealog');
+    const charW = isMealogCharacter ? 70 : 75;
+    const charH = isMealogCharacter ? 70 : 132;
+    const charBoxStyle = `width: ${charW}px; height: ${charH}px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; box-sizing: border-box; border-radius: 16px;`;
+
+    let characterIconHtml = '';
+    if (insightCharacterIcon) {
+        const iconBox = insightCharacterIcon.querySelector('.insight-character-icon-box');
+        const img = insightCharacterIcon.querySelector('img');
+        if (img && img.src) {
+            const objectFit = (isMealogCharacter || iconBox) ? 'contain' : 'cover';
+            characterIconHtml = `<div style="${charBoxStyle}"><img src="${escapeHtml(img.src)}" alt="" style="width: 100%; height: 100%; object-fit: ${objectFit}; display: block;${isMealogCharacter ? ' border-radius: 16px;' : ''}"></div>`;
+        } else {
+            const content = (insightCharacterIcon.textContent || '').trim();
+            if (content) {
+                if (isMealogCharacter) {
+                    characterIconHtml = `<div style="${charBoxStyle}"><span style="font-size: 24px; font-weight: 900; color: #ffffff; font-family: 'Fredoka', sans-serif;">${escapeHtml(content)}</span></div>`;
+                } else {
+                    characterIconHtml = `<div style="${charBoxStyle}"><span style="font-size: 30px; line-height: 1;">${escapeHtml(content)}</span></div>`;
+                }
+            } else if (character) {
+                if (character.id === 'mealog') {
+                    characterIconHtml = `<div style="${charBoxStyle}"><img src="${MEALOG_ICON_URL}" alt="" style="width: 100%; height: 100%; object-fit: contain; border-radius: 16px;"></div>`;
+                } else if (character.icon) {
+                    characterIconHtml = `<div style="${charBoxStyle}"><span style="font-size: 30px; line-height: 1;">${escapeHtml(character.icon)}</span></div>`;
+                }
+            }
+        }
+    }
+    
+    // 스크린샷용 HTML 생성
     const borderLightGray = '#e2e8f0';
     const borderOuterGray = '#cbd5e1';
     const screenshotHtml = `
@@ -1525,13 +1557,10 @@ export async function openShareInsightModal() {
                     <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35; min-width: 0;">${escapeHtml(userNickname)}에 대한 밀당의 참견</span>
                 </div>
             </div>
-            <!-- 본문: 연회색 배경, 캐릭터+말풍선 (캐릭터는 원본 DOM 복제) -->
-            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px; min-width: 0;">
-                <div style="display: flex; flex-direction: column; gap: 8px; flex-shrink: 0;">
-                    <div id="insightShareCharacterSlot" style="width: 70px; height: 70px; flex-shrink: 0;"></div>
-                    <div style="width: 100%; max-width: 75px; background: #ffca2c; border-radius: 12px; padding: 6px 4px; text-align: center; font-size: 12px; font-weight: 700; color: #1e293b; border: 1px solid rgba(0,0,0,0.08); box-sizing: border-box;">
-                        코멘트
-                    </div>
+            <!-- 본문: 연회색 배경, 캐릭터+말풍선 -->
+            <div style="display: flex; gap: 12px; align-items: flex-start; padding: 2px 16px 16px 16px; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px; min-width: 0;">
+                <div style="flex-shrink: 0; width: 75px; min-width: 60px;">
+                    ${characterIconHtml}
                 </div>
                 <!-- 말풍선 (초록 보더, 흰 배경, 어두운 텍스트) -->
                 <div style="flex: 1; min-width: 0;">
@@ -1551,13 +1580,6 @@ export async function openShareInsightModal() {
     
     // 미리보기 영역에 HTML 표시
     preview.innerHTML = screenshotHtml;
-    
-    // 캐릭터 원본 DOM 복제하여 삽입 (납작해짐 방지)
-    const characterSlot = preview.querySelector('#insightShareCharacterSlot');
-    if (characterSlot && insightCharacterIcon) {
-        const clone = insightCharacterIcon.cloneNode(true);
-        characterSlot.parentNode.replaceChild(clone, characterSlot);
-    }
     
     // 모달 열기
     modal.classList.remove('hidden');

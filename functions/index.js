@@ -19,6 +19,9 @@ const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
+/** 밀당 AI 코멘트(Gemini) — js/constants.js GEMINI_MEALDANG_MODEL 과 동기화 */
+const GEMINI_MEALDANG_MODEL = 'gemini-2.5-flash';
+
 /** settings 문서의 날짜 필드(Timestamp·ISO 문자열 등) → Date */
 function adminSettingsValueToDate(value) {
   if (value == null || value === '') return null;
@@ -3908,6 +3911,26 @@ exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmT
  * Gemini API 프록시 (WebView 차단 우회)
  * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
  */
+async function recordGeminiModelUsage(model) {
+  if (!model || typeof model !== 'string') return;
+  const safeModel = model.trim().slice(0, 120);
+  if (!safeModel) return;
+  try {
+    const dateKey = kstYmdFromMillis(Date.now());
+    if (!/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(dateKey)) return;
+    const ref = db.doc(`artifacts/${APP_ID}/geminiUsageDaily/${dateKey}`);
+    await ref.set(
+      {
+        byModel: { [safeModel]: FieldValue.increment(1) },
+        updatedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    logger.warn('recordGeminiModelUsage failed', { model: safeModel, err: e?.message });
+  }
+}
+
 exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -3937,6 +3960,7 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
     const msg = data?.error?.message || await res.text();
     throw new HttpsError('internal', `Gemini API 오류: ${res.status} - ${msg}`);
   }
+  await recordGeminiModelUsage(model);
   // Callable의 result.data로 전달되므로 Gemini 응답을 그대로 반환
   return data;
 }));
@@ -5458,7 +5482,7 @@ ${summaryText || '(요약 없음)'}
       maxOutputTokens: 96
     }
   };
-  const model = 'gemini-2.5-flash-lite';
+  const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -5480,6 +5504,7 @@ ${summaryText || '(요약 없음)'}
   if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
   text = adminSanitizeWelcomeGeminiOutput(text);
   if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
+  await recordGeminiModelUsage(model);
   return text;
 }
 
