@@ -3789,6 +3789,86 @@ exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('delete
   return { deleted: true };
 }));
 
+/** 관리자 대시보드「페이지별」usageDaily 필드 — js/admin/dashboard.js PAGE_USAGE_METRIC_DEFS 와 동기화 */
+const USAGE_DAILY_METRIC_KEYS = new Set([
+  'tab_mealdang',
+  'mealdang_comment_click',
+  'mealdang_analysis_detail_click',
+  'tab_moment',
+  'tab_mealog',
+  'lounge_mealtalk',
+  'lounge_board',
+  'lounge_notice',
+  'settings_profile',
+  'settings_tags',
+  'settings_mealdang_memo',
+  'settings_push'
+]);
+
+/** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */
+const DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS = new Set([
+  'kakao_4833862234',
+  'IYRL3bfBhKUrwJM6tb8h4BVX8DF3',
+  '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2'
+]);
+
+function isProductionUsageSource(data) {
+  const capAppId = typeof data?.capAppId === 'string' ? data.capAppId.trim() : '';
+  if (capAppId) return capAppId === 'com.mealog.app';
+  const webHost = typeof data?.webHost === 'string' ? data.webHost.toLowerCase().trim() : '';
+  return webHost === 'www.mealog.net' || webHost === 'mealog.net';
+}
+
+async function isUidExcludedFromUsageAnalytics(uid) {
+  if (!uid) return true;
+  try {
+    const snap = await db.doc(`artifacts/${APP_ID}/adminSettings/excludedAnalyticsUids`).get();
+    if (!snap.exists) return DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS.has(uid);
+    const map = snap.data()?.excludedUidMap;
+    if (map && typeof map === 'object') return map[uid] === true;
+    const uids = snap.data()?.uids;
+    if (Array.isArray(uids)) return uids.includes(uid);
+    return false;
+  } catch (e) {
+    logger.warn('isUidExcludedFromUsageAnalytics read failed', { uid, err: e?.message });
+    return DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS.has(uid);
+  }
+}
+
+/**
+ * 페이지별 usageDaily increment (클라이언트 Firestore/App Check 실패 시 폴백, Admin SDK)
+ */
+exports.logUsageMetric = onCall({ region: REGION }, wrapFunction('logUsageMetric', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  if (!isProductionUsageSource(request.data || {})) {
+    return { ok: true, skipped: true, reason: 'not_production' };
+  }
+  if (await isUidExcludedFromUsageAnalytics(uid)) {
+    return { ok: true, skipped: true, reason: 'excluded_uid' };
+  }
+  const key = typeof request.data?.key === 'string' ? request.data.key.trim() : '';
+  if (!key || !USAGE_DAILY_METRIC_KEYS.has(key)) {
+    throw new HttpsError('invalid-argument', '유효한 usage metric key가 필요합니다.');
+  }
+  const dateKey = kstYmdFromMillis(Date.now());
+  if (!/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(dateKey)) {
+    throw new HttpsError('internal', 'usageDaily dateKey 생성 실패');
+  }
+  const ref = db.doc(`artifacts/${APP_ID}/usageDaily/${dateKey}`);
+  await ref.set(
+    {
+      [key]: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+  return { ok: true, dateKey, key };
+}));
+
 /**
  * FCM 토큰 등록 (클라이언트 Firestore/App Check permission-denied 시 폴백, Admin 병합)
  */
