@@ -56,16 +56,19 @@ window.getMealogUiEnvironmentLabelLocalOverride = function getMealogUiEnvironmen
 /** 운영 앱·웹만 페이지별 usageDaily 집계 대상 (com.mealog.app / www.mealog.net·mealog.net) */
 window.isProductionUsageEnvironment = function isProductionUsageEnvironment() {
     if (typeof window === 'undefined') return false;
+    var hostname = (window.location && String(window.location.hostname || '').toLowerCase()) || '';
     try {
         var cap = window.Capacitor;
         if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
             var capAppId = cap.config && String(cap.config.appId || '').trim();
-            return capAppId === 'com.mealog.app';
+            if (capAppId === 'com.mealog.app') return true;
+            if (capAppId === 'com.mealog.app.staging') return false;
+            /* server.url 원격 로드 시 config.appId 가 비는 WebView — 호스트로 운영 여부 판별 */
+            return hostname === 'www.mealog.net' || hostname === 'mealog.net';
         }
     } catch (e) {
         /* ignore */
     }
-    var hostname = (window.location && String(window.location.hostname || '').toLowerCase()) || '';
     return hostname === 'www.mealog.net' || hostname === 'mealog.net';
 };
 

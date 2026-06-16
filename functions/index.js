@@ -3817,7 +3817,8 @@ const DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS = new Set([
 
 function isProductionUsageSource(data) {
   const capAppId = typeof data?.capAppId === 'string' ? data.capAppId.trim() : '';
-  if (capAppId) return capAppId === 'com.mealog.app';
+  if (capAppId === 'com.mealog.app.staging') return false;
+  if (capAppId === 'com.mealog.app') return true;
   const webHost = typeof data?.webHost === 'string' ? data.webHost.toLowerCase().trim() : '';
   return webHost === 'www.mealog.net' || webHost === 'mealog.net';
 }
