@@ -17,6 +17,15 @@ export const MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT = '700';
 /** html2canvas 클론 문서용 @font-face — `css/style.css` 나눔손글씨 가람연꽃과 동일 소스 */
 export const MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS = `@font-face{font-family:'나눔손글씨 가람연꽃';src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/naverfont_04@1.0/Garam.woff') format('woff');font-weight:normal;font-style:normal;font-display:swap;}`;
 
+/** 밀당 AI 코멘트(Gemini) — js/analytics/insight.js · functions callGemini 와 동기화 */
+export const GEMINI_MEALDANG_MODEL = 'gemini-2.5-flash';
+/** 목표: 입력 1,200~2,000 · 출력 150~300 · thinking 0~500 · 합계 1,500~2,800 */
+export const GEMINI_MEALDANG_THINKING_BUDGET = 384;
+export const GEMINI_MEALDANG_MAX_OUTPUT_TOKENS = 768;
+export const GEMINI_MEALDANG_MEMO_MAX_CHARS = 350;
+export const GEMINI_MEALDANG_COMMON_PERSONA_MAX_CHARS = 900;
+export const GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS = 700;
+
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
 export const SLOTS = [

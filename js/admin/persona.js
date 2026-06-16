@@ -4,6 +4,7 @@
 import { app, db, appId, callableFunctions, auth } from '../firebase.js';
 import { uploadPersonaImageToStorage } from '../utils.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { GEMINI_MEALDANG_MODEL } from '../constants.js';
 import {
     collection,
     doc,
@@ -220,6 +221,74 @@ const DEFAULT_CHARACTERS = [
 // 현재 선택된 캐릭터 ID
 let currentEditingCharacterId = null;
 
+function localDateKeyYmdOffsetDays(offsetDays) {
+    const d = new Date();
+    d.setDate(d.getDate() - offsetDays);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** 최근 30일 geminiUsageDaily byModel 합산 */
+async function loadGeminiModelUsageLast30Days() {
+    const keys = [];
+    for (let i = 0; i < 30; i++) keys.push(localDateKeyYmdOffsetDays(i));
+    const snaps = await Promise.all(
+        keys.map((k) => getDoc(doc(db, 'artifacts', appId, 'geminiUsageDaily', k)))
+    );
+    const totals = {};
+    snaps.forEach((snap) => {
+        if (!snap.exists()) return;
+        const byModel = snap.data()?.byModel;
+        if (!byModel || typeof byModel !== 'object') return;
+        Object.entries(byModel).forEach(([model, count]) => {
+            const n = Number(count);
+            if (!Number.isFinite(n) || n <= 0) return;
+            totals[model] = (totals[model] || 0) + n;
+        });
+    });
+    return totals;
+}
+
+function renderPersonaGeminiModelInfo(usageTotals) {
+    const el = document.getElementById('personaGeminiModelInfo');
+    if (!el) return;
+
+    const rows = Object.entries(usageTotals || {})
+        .filter(([, count]) => Number(count) > 0)
+        .sort((a, b) => b[1] - a[1]);
+
+    const usageHtml = rows.length
+        ? `<ul class="mt-1 space-y-0.5">${rows.map(([model, count]) =>
+            `<li><code class="text-slate-500">${escapeHtml(model)}</code> <span class="text-slate-600 font-semibold">${Number(count).toLocaleString('ko-KR')}회</span></li>`
+        ).join('')}</ul>`
+        : '<p class="mt-1 text-slate-400">최근 30일 호출 기록이 없습니다. (Functions 배포 후 새 호출부터 집계됩니다)</p>';
+
+    el.innerHTML = `
+        <p>AI 코멘트 모델: <code class="text-slate-500">${escapeHtml(GEMINI_MEALDANG_MODEL)}</code></p>
+        <div>
+            <p class="text-slate-500 font-semibold">최근 30일 모델별 호출 횟수</p>
+            ${usageHtml}
+        </div>
+    `;
+}
+
+async function refreshPersonaGeminiModelInfo() {
+    const el = document.getElementById('personaGeminiModelInfo');
+    if (!el) return;
+    try {
+        const totals = await loadGeminiModelUsageLast30Days();
+        renderPersonaGeminiModelInfo(totals);
+    } catch (e) {
+        console.error('Gemini 모델 사용량 로드 실패:', e);
+        el.innerHTML = `
+            <p>AI 코멘트 모델: <code class="text-slate-500">${escapeHtml(GEMINI_MEALDANG_MODEL)}</code></p>
+            <p class="text-red-400">최근 30일 사용량을 불러오지 못했습니다.</p>
+        `;
+    }
+}
+
 // 페르소나 캐릭터 렌더링
 async function renderPersonaCharacters() {
     const listContainer = document.getElementById('personaCharactersList');
@@ -321,6 +390,7 @@ async function renderPersonaCharacters() {
                 </div>
             `;
         }).join('');
+        await refreshPersonaGeminiModelInfo();
     } catch (e) {
         console.error("페르소나 캐릭터 렌더링 실패:", e);
         listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i class="fa-solid fa-exclamation-triangle text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';

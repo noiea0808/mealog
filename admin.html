@@ -407,6 +407,9 @@
                             <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-comments mr-2"></i>게시판 관리
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('aiResponses')" id="monitoring-sidebar-aiResponses" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-robot mr-2"></i>AI 응답
+                            </button>
                             <button onclick="window.switchMonitoringSidebar('restaurants')" id="monitoring-sidebar-restaurants" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-utensils mr-2"></i>식당정보
                             </button>
@@ -582,7 +585,34 @@
                                 </div>
                             </div>
                         </div>
-                        
+
+                        <!-- AI 응답 (밀당 Gemini 분석 로그) -->
+                        <div id="monitoring-main-aiResponses" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex flex-wrap gap-3 items-center justify-between">
+                                        <div>
+                                            <h3 class="text-base font-black text-slate-800">AI 응답</h3>
+                                            <p class="text-sm text-slate-600 mt-1">사용자가 밀당 탭에서 COMMENT(Gemini) 분석을 실행할 때의 요청·응답 기록입니다.</p>
+                                        </div>
+                                        <button type="button" id="adminRefreshMealdangAnalysisLogsBtn" onclick="window.refreshMealdangAnalysisLogs(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                                    <div id="mealdangAnalysisLogsList" class="min-w-0">
+                                        <div class="text-center py-10 text-slate-400">
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
+                                        </div>
+                                    </div>
+                                    <div id="mealdangAnalysisLogsDetail" class="min-w-0 lg:sticky lg:top-4"></div>
+                                </div>
+                                <div id="mealdangAnalysisLogsPagination" class="px-6 pb-6 flex justify-center"></div>
+                            </div>
+                        </div>
+
                         <!-- 식당정보 -->
                         <div id="monitoring-main-restaurants" class="monitoring-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
@@ -1556,10 +1586,11 @@
                                             <p class="text-sm">로딩 중...</p>
                                         </div>
                                     </div>
-                                    <!-- AI 코멘트 발송 시 사용하는 구글 AI 모델: gemini-2.5-flash-lite -->
-                                    <p class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400">
-                                        AI 코멘트 모델: <code class="text-slate-500">gemini-2.5-flash-lite</code>
-                                    </p>
+                                    <!-- AI 코멘트 Gemini 모델 · 최근 30일 사용량 (persona.js) -->
+                                    <div id="personaGeminiModelInfo" class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400 space-y-1.5">
+                                        <p>AI 코멘트 모델: <code class="text-slate-500">—</code></p>
+                                        <p class="text-slate-400">최근 30일 모델별 호출 횟수를 불러오는 중…</p>
+                                    </div>
                                 </div>
                             </div>
                             <!-- 캐릭터 편집 뷰 -->

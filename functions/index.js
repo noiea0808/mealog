@@ -19,6 +19,9 @@ const auth = getAuth();
 
 const APP_ID = 'mealog-r0';
 
+/** 밀당 AI 코멘트(Gemini) — js/constants.js GEMINI_MEALDANG_MODEL 과 동기화 */
+const GEMINI_MEALDANG_MODEL = 'gemini-2.5-flash';
+
 /** settings 문서의 날짜 필드(Timestamp·ISO 문자열 등) → Date */
 function adminSettingsValueToDate(value) {
   if (value == null || value === '') return null;
@@ -3789,6 +3792,86 @@ exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('delete
   return { deleted: true };
 }));
 
+/** 관리자 대시보드「페이지별」usageDaily 필드 — js/admin/dashboard.js PAGE_USAGE_METRIC_DEFS 와 동기화 */
+const USAGE_DAILY_METRIC_KEYS = new Set([
+  'tab_mealdang',
+  'mealdang_comment_click',
+  'mealdang_analysis_detail_click',
+  'tab_moment',
+  'tab_mealog',
+  'lounge_mealtalk',
+  'lounge_board',
+  'lounge_notice',
+  'settings_profile',
+  'settings_tags',
+  'settings_mealdang_memo',
+  'settings_push'
+]);
+
+/** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */
+const DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS = new Set([
+  'kakao_4833862234',
+  'IYRL3bfBhKUrwJM6tb8h4BVX8DF3',
+  '4UDeI0Bts0gkwnnrt1WNRgjOQ5x2'
+]);
+
+function isProductionUsageSource(data) {
+  const capAppId = typeof data?.capAppId === 'string' ? data.capAppId.trim() : '';
+  if (capAppId) return capAppId === 'com.mealog.app';
+  const webHost = typeof data?.webHost === 'string' ? data.webHost.toLowerCase().trim() : '';
+  return webHost === 'www.mealog.net' || webHost === 'mealog.net';
+}
+
+async function isUidExcludedFromUsageAnalytics(uid) {
+  if (!uid) return true;
+  try {
+    const snap = await db.doc(`artifacts/${APP_ID}/adminSettings/excludedAnalyticsUids`).get();
+    if (!snap.exists) return DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS.has(uid);
+    const map = snap.data()?.excludedUidMap;
+    if (map && typeof map === 'object') return map[uid] === true;
+    const uids = snap.data()?.uids;
+    if (Array.isArray(uids)) return uids.includes(uid);
+    return false;
+  } catch (e) {
+    logger.warn('isUidExcludedFromUsageAnalytics read failed', { uid, err: e?.message });
+    return DEFAULT_EXCLUDED_USAGE_ANALYTICS_UIDS.has(uid);
+  }
+}
+
+/**
+ * 페이지별 usageDaily increment (클라이언트 Firestore/App Check 실패 시 폴백, Admin SDK)
+ */
+exports.logUsageMetric = onCall({ region: REGION }, wrapFunction('logUsageMetric', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  assertNotReadOnlyDemoAuth(request.auth);
+  const uid = request.auth.uid;
+  if (!isProductionUsageSource(request.data || {})) {
+    return { ok: true, skipped: true, reason: 'not_production' };
+  }
+  if (await isUidExcludedFromUsageAnalytics(uid)) {
+    return { ok: true, skipped: true, reason: 'excluded_uid' };
+  }
+  const key = typeof request.data?.key === 'string' ? request.data.key.trim() : '';
+  if (!key || !USAGE_DAILY_METRIC_KEYS.has(key)) {
+    throw new HttpsError('invalid-argument', '유효한 usage metric key가 필요합니다.');
+  }
+  const dateKey = kstYmdFromMillis(Date.now());
+  if (!/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(dateKey)) {
+    throw new HttpsError('internal', 'usageDaily dateKey 생성 실패');
+  }
+  const ref = db.doc(`artifacts/${APP_ID}/usageDaily/${dateKey}`);
+  await ref.set(
+    {
+      [key]: FieldValue.increment(1),
+      updatedAt: FieldValue.serverTimestamp()
+    },
+    { merge: true }
+  );
+  return { ok: true, dateKey, key };
+}));
+
 /**
  * FCM 토큰 등록 (클라이언트 Firestore/App Check permission-denied 시 폴백, Admin 병합)
  */
@@ -3828,6 +3911,97 @@ exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmT
  * Gemini API 프록시 (WebView 차단 우회)
  * 클라이언트에서 직접 호출 대신 서버에서 Gemini API 호출
  */
+async function recordGeminiModelUsage(model) {
+  if (!model || typeof model !== 'string') return;
+  const safeModel = model.trim().slice(0, 120);
+  if (!safeModel) return;
+  try {
+    const dateKey = kstYmdFromMillis(Date.now());
+    if (!/^20[0-9]{2}-[0-9]{2}-[0-9]{2}$/.test(dateKey)) return;
+    const ref = db.doc(`artifacts/${APP_ID}/geminiUsageDaily/${dateKey}`);
+    await ref.set(
+      {
+        byModel: { [safeModel]: FieldValue.increment(1) },
+        updatedAt: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (e) {
+    logger.warn('recordGeminiModelUsage failed', { model: safeModel, err: e?.message });
+  }
+}
+
+function truncateAuditText(value, maxLen) {
+  if (value == null) return '';
+  const s = String(value);
+  if (s.length <= maxLen) return s;
+  return `${s.slice(0, maxLen)}…`;
+}
+
+function extractGeminiResponseText(data) {
+  const candidate = data?.candidates?.[0];
+  if (!candidate) return '';
+  const parts = candidate?.content?.parts;
+  if (Array.isArray(parts) && parts.length > 0) {
+    const answerParts = parts.filter((p) => p && typeof p.text === 'string' && p.text.trim() && p.thought !== true);
+    if (answerParts.length) return answerParts.map((p) => p.text.trim()).join('\n').trim();
+    const anyText = parts.map((p) => (p && typeof p.text === 'string' ? p.text.trim() : '')).filter(Boolean);
+    if (anyText.length) return anyText.join('\n').trim();
+  }
+  if (typeof candidate.text === 'string') return candidate.text.trim();
+  return '';
+}
+
+async function recordMealdangAnalysisLog(uid, auditLog, payload = {}) {
+  if (!uid || !auditLog || auditLog.type !== 'mealdang') return;
+  try {
+    const responseText = payload.responseText != null ? String(payload.responseText) : '';
+    const preview = truncateAuditText(responseText, 240);
+    const ref = db.collection('artifacts').doc(APP_ID).collection('mealdangAnalysisLogs').doc();
+    await ref.set({
+      userId: uid,
+      userNickname: truncateAuditText(auditLog.userNickname, 80),
+      dateRangeText: truncateAuditText(auditLog.dateRangeText, 160),
+      characterId: truncateAuditText(auditLog.characterId, 64),
+      characterName: truncateAuditText(auditLog.characterName, 80),
+      mealDataSummary: truncateAuditText(auditLog.mealDataSummary, 12000),
+      mealRecordCount: Number(auditLog.mealRecordCount) || 0,
+      mainMealCount: Number(auditLog.mainMealCount) || 0,
+      mealRecordPercent: Number(auditLog.mealRecordPercent) || 0,
+      hasMealdangMemo: auditLog.hasMealdangMemo === true,
+      model: truncateAuditText(payload.model, 120),
+      finishReason: truncateAuditText(payload.finishReason, 64),
+      status: payload.status === 'error' ? 'error' : 'success',
+      responseText: truncateAuditText(responseText, 20000),
+      responsePreview: preview,
+      errorMessage: truncateAuditText(payload.errorMessage, 500),
+      tokenUsage: payload.tokenUsage || null,
+      requestedAt: FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    logger.warn('recordMealdangAnalysisLog failed', { uid, err: e?.message });
+  }
+}
+
+exports.logMealdangAnalysis = onCall({ region: REGION }, wrapFunction('logMealdangAnalysis', async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  const { auditLog, model, finishReason, responseText, tokenUsage, status, errorMessage } = request.data || {};
+  if (!auditLog || auditLog.type !== 'mealdang') {
+    throw new HttpsError('invalid-argument', 'auditLog(type=mealdang)가 필요합니다.');
+  }
+  await recordMealdangAnalysisLog(request.auth.uid, auditLog, {
+    status: status === 'error' ? 'error' : 'success',
+    model,
+    finishReason,
+    responseText,
+    tokenUsage: tokenUsage || null,
+    errorMessage
+  });
+  return { ok: true };
+}));
+
 exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -3857,6 +4031,7 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
     const msg = data?.error?.message || await res.text();
     throw new HttpsError('internal', `Gemini API 오류: ${res.status} - ${msg}`);
   }
+  await recordGeminiModelUsage(model);
   // Callable의 result.data로 전달되므로 Gemini 응답을 그대로 반환
   return data;
 }));
@@ -5378,7 +5553,7 @@ ${summaryText || '(요약 없음)'}
       maxOutputTokens: 96
     }
   };
-  const model = 'gemini-2.5-flash-lite';
+  const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -5400,6 +5575,7 @@ ${summaryText || '(요약 없음)'}
   if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
   text = adminSanitizeWelcomeGeminiOutput(text);
   if (!text) throw new HttpsError('internal', 'Gemini 응답에 텍스트가 없습니다.');
+  await recordGeminiModelUsage(model);
   return text;
 }
 

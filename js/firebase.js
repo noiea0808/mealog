@@ -398,6 +398,7 @@ export const callableFunctions = {
     adminBackfillUserRootCreatedAtFromAuthRunAll: httpsCallable(functions, 'adminBackfillUserRootCreatedAtFromAuthRunAll'),
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
+    logMealdangAnalysis: httpsCallable(functions, 'logMealdangAnalysis'),
     searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
     getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
     confirmApkUpload: httpsCallable(functions, 'confirmApkUpload'),
@@ -413,6 +414,8 @@ export const callableFunctions = {
     getKakaoOAuthAuthorizeUrl: httpsCallable(functions, 'getKakaoOAuthAuthorizeUrl'),
     /** FCM 토큰 문서 저장 폴백 (클라이언트 Firestore/App Check 거절 시) */
     registerFcmToken: httpsCallable(functions, 'registerFcmToken'),
+    /** usageDaily 페이지별 카운터 (클라이언트 Firestore/App Check 거절 시 폴백) */
+    logUsageMetric: httpsCallable(functions, 'logUsageMetric'),
     /** 클라이언트 Firestore permission-denied 시 설정+닉네임클레임 저장 폴백 (Admin) */
     saveArtifactUserSettings: httpsCallable(functions, 'saveArtifactUserSettings'),
     /** users/{uid} 루트 문서(lastLoginAt·createdAt·providerId·email) — 클라이언트 쓰기 거절 시 Admin 병합 */
