@@ -87,6 +87,8 @@ copyCapacitorAsset(pushNotificationsPlugin, 'capacitor-push-notifications-plugin
 copyCapacitorAsset(hapticsPlugin, 'capacitor-haptics-plugin.js');
 const badgePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-badge', 'dist', 'plugin.js');
 copyCapacitorAsset(badgePlugin, 'capacitor-badge-plugin.js');
+const appUpdatePlugin = path.join(root, 'node_modules', '@capawesome', 'capacitor-app-update', 'dist', 'plugin.js');
+copyCapacitorAsset(appUpdatePlugin, 'capacitor-app-update-plugin.js');
 
 // capacitor.config.json에서 appId 읽어 www/js/env.js 의 APP_ENV 만 맞춤 (배지 등 나머지는 루트 env.js 유지)
 const capConfigPath = path.join(root, 'capacitor.config.json');

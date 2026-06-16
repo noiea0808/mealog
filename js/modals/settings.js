@@ -615,6 +615,32 @@ function formatVersionDate(isoStr) {
     return `${y}.${m}.${day}`;
 }
 
+// 운영이 아닌 환경(스테이징/개발)에서만: 버전 번호 7회 연속 탭 → 인앱 업데이트 배너 시뮬레이션
+function attachUpdateBannerDevTrigger(el) {
+    if (!el || el.dataset.updateDevTrigger === '1') return;
+    const label = typeof window.getMealogUiEnvironmentLabel === 'function'
+        ? window.getMealogUiEnvironmentLabel()
+        : '운영';
+    if (label === '운영') return;
+    el.dataset.updateDevTrigger = '1';
+    el.style.cursor = 'pointer';
+    let taps = 0;
+    let timer = null;
+    el.addEventListener('click', () => {
+        taps += 1;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => { taps = 0; }, 1500);
+        if (taps >= 7) {
+            taps = 0;
+            if (timer) clearTimeout(timer);
+            if (typeof window.mealogSimulateUpdateBanner === 'function') {
+                window.mealogSimulateUpdateBanner();
+                showToast('업데이트 배너 시뮬레이션 (스테이징 전용)', 'info');
+            }
+        }
+    });
+}
+
 async function loadVersionInfo() {
     try {
         const response = await fetch('/version.json?t=' + Date.now());
@@ -625,6 +651,7 @@ async function loadVersionInfo() {
 
             if (versionNumberEl && data.version) {
                 versionNumberEl.textContent = data.version;
+                attachUpdateBannerDevTrigger(versionNumberEl);
             }
 
             if (buildDateEl && data.buildDate) {

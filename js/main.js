@@ -18,6 +18,7 @@ import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliab
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { initAppUpdate } from './app-update.js';
 import {
     switchScreen,
     showToast,
@@ -2255,6 +2256,13 @@ console.log('✅ window.renderTimeline 함수 확인:', typeof window.renderTime
 setTimeout(() => {
     warmUpIME();
 }, 500);
+
+// Google Play 인앱 업데이트 확인 (Android 네이티브 전용)
+try {
+    initAppUpdate();
+} catch (e) {
+    console.debug('인앱 업데이트 초기화 실패(무시):', e);
+}
 
 // 에러 핸들링
 window.addEventListener('error', (e) => {
