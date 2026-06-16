@@ -19,6 +19,12 @@ export const MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS = `@font-face{font-family:
 
 /** 밀당 AI 코멘트(Gemini) — js/analytics/insight.js · functions callGemini 와 동기화 */
 export const GEMINI_MEALDANG_MODEL = 'gemini-2.5-flash';
+/** 목표: 입력 1,200~2,000 · 출력 150~300 · thinking 0~500 · 합계 1,500~2,800 */
+export const GEMINI_MEALDANG_THINKING_BUDGET = 384;
+export const GEMINI_MEALDANG_MAX_OUTPUT_TOKENS = 768;
+export const GEMINI_MEALDANG_MEMO_MAX_CHARS = 350;
+export const GEMINI_MEALDANG_COMMON_PERSONA_MAX_CHARS = 900;
+export const GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS = 700;
 
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 

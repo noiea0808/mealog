@@ -35,12 +35,6 @@ function formatLogTimestamp(value) {
     }
 }
 
-function previewText(text, max = 72) {
-    const s = (text || '').replace(/\s+/g, ' ').trim();
-    if (!s) return '—';
-    return s.length <= max ? s : `${s.slice(0, max)}…`;
-}
-
 function statusBadge(status) {
     if (status === 'error') {
         return '<span class="px-2 py-0.5 rounded bg-red-100 text-red-700 text-xs font-bold">실패</span>';
@@ -70,38 +64,33 @@ function renderDetailPanel(data, id) {
         token.totalTokenCount != null ? `합계 ${token.totalTokenCount}` : ''
     ].filter(Boolean).join(' · ');
 
+    const recordSummary = `전체 ${Number(data.mealRecordCount) || 0}건 · 본식 ${Number(data.mainMealCount) || 0}회 (${Number(data.mealRecordPercent) || 0}%)${data.hasMealdangMemo ? ' · 밀당 메모 참고' : ''}`;
+    const responseBody = data.responseText
+        || (data.status === 'error' && data.errorMessage ? data.errorMessage : '')
+        || (data.status === 'error' ? '(응답 없음)' : '(없음)');
+
     el.innerHTML = `
-        <div class="border border-slate-200 rounded-xl overflow-hidden h-full flex flex-col min-h-[280px]">
-            <div class="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-100 bg-slate-50">
                 <h4 class="text-sm font-black text-slate-800">분석 상세</h4>
-                ${statusBadge(data.status)}
             </div>
-            <div class="p-4 space-y-4 overflow-y-auto flex-1 text-sm">
-                <dl class="grid grid-cols-1 sm:grid-cols-[7rem_1fr] gap-x-3 gap-y-2">
-                    <dt class="text-slate-500 font-bold">요청 일시</dt>
-                    <dd class="text-slate-800 tabular-nums">${escapeHtml(formatLogTimestamp(data.requestedAt))}</dd>
-                    <dt class="text-slate-500 font-bold">사용자</dt>
-                    <dd class="text-slate-800 break-words">${escapeHtml(data.userNickname || '익명')} <span class="text-xs text-slate-400 font-mono">(${escapeHtml(data.userId || '')})</span></dd>
-                    <dt class="text-slate-500 font-bold">분석 기간</dt>
-                    <dd class="text-slate-800">${escapeHtml(data.dateRangeText || '—')}</dd>
-                    <dt class="text-slate-500 font-bold">밀당 캐릭터</dt>
-                    <dd class="text-slate-800">${escapeHtml(data.characterName || '—')} <span class="text-xs text-slate-400 font-mono">${data.characterId ? `(${escapeHtml(data.characterId)})` : ''}</span></dd>
-                    <dt class="text-slate-500 font-bold">기록 요약</dt>
-                    <dd class="text-slate-800">전체 ${Number(data.mealRecordCount) || 0}건 · 본식 ${Number(data.mainMealCount) || 0}회 (${Number(data.mealRecordPercent) || 0}%)${data.hasMealdangMemo ? ' · 밀당 메모 참고' : ''}</dd>
-                    <dt class="text-slate-500 font-bold">모델</dt>
-                    <dd class="text-slate-800 font-mono text-xs">${escapeHtml(data.model || '—')}${data.finishReason ? ` · ${escapeHtml(data.finishReason)}` : ''}</dd>
-                    ${tokenLines ? `<dt class="text-slate-500 font-bold">토큰</dt><dd class="text-slate-700 text-xs">${escapeHtml(tokenLines)}</dd>` : ''}
-                    ${data.status === 'error' && data.errorMessage ? `<dt class="text-slate-500 font-bold">오류</dt><dd class="text-red-600 text-xs break-words">${escapeHtml(data.errorMessage)}</dd>` : ''}
+            <div class="p-4 space-y-3 text-sm">
+                <dl class="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-3 items-start">
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">기록 요약</dt>
+                    <dd class="text-slate-800 min-w-0">${escapeHtml(recordSummary)}</dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">모델</dt>
+                    <dd class="text-slate-800 font-mono text-xs min-w-0 break-all">${escapeHtml(data.model || '—')}</dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">토큰</dt>
+                    <dd class="text-slate-700 text-xs min-w-0">${escapeHtml(tokenLines || '—')}</dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">식사 데이터</dt>
+                    <dd class="min-w-0">
+                        <pre class="whitespace-pre-wrap break-words text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-lg p-3 font-sans leading-relaxed m-0">${escapeHtml(data.mealDataSummary || '(없음)')}</pre>
+                    </dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">수신한 답변</dt>
+                    <dd class="min-w-0">
+                        <pre class="whitespace-pre-wrap break-words text-sm text-slate-900 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3 font-sans leading-relaxed m-0">${escapeHtml(responseBody)}</pre>
+                    </dd>
                 </dl>
-                <div>
-                    <p class="text-xs font-bold text-slate-500 mb-1">식사 데이터 (요청 시 전송)</p>
-                    <pre class="whitespace-pre-wrap break-words text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-lg p-3 max-h-48 overflow-y-auto font-sans leading-relaxed">${escapeHtml(data.mealDataSummary || '(없음)')}</pre>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-500 mb-1">수신한 답변</p>
-                    <pre class="whitespace-pre-wrap break-words text-sm text-slate-900 bg-emerald-50/60 border border-emerald-100 rounded-lg p-3 max-h-64 overflow-y-auto font-sans leading-relaxed">${escapeHtml(data.responseText || (data.status === 'error' ? '(응답 없음)' : '(없음)'))}</pre>
-                </div>
-                <p class="text-[11px] text-slate-400 font-mono">ID: ${escapeHtml(id)}</p>
             </div>
         </div>`;
 }
@@ -129,21 +118,19 @@ function paintListTable(rows) {
             <td class="px-3 py-2.5 text-sm text-slate-800 min-w-[6rem] align-top">${escapeHtml(data.userNickname || '익명')}</td>
             <td class="px-3 py-2.5 text-sm text-slate-700 min-w-[7rem] align-top">${escapeHtml(data.dateRangeText || '—')}</td>
             <td class="px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap align-top">${escapeHtml(data.characterName || '—')}</td>
-            <td class="px-3 py-2.5 text-sm text-slate-600 align-top max-w-xs"><span class="line-clamp-2 break-words">${escapeHtml(previewText(data.responsePreview || data.responseText))}</span></td>
             <td class="px-3 py-2.5 align-top whitespace-nowrap">${statusBadge(data.status)}</td>
         </tr>`;
     }).join('');
 
     container.innerHTML = `
         <div class="overflow-x-auto border border-slate-200 rounded-xl">
-            <table class="w-full text-left border-collapse min-w-[720px]">
+            <table class="w-full text-left border-collapse min-w-[560px]">
                 <thead>
                     <tr class="bg-slate-100 text-slate-700 text-xs font-black">
                         <th class="px-3 py-2.5 whitespace-nowrap font-bold">요청 일시</th>
                         <th class="px-3 py-2.5 font-bold">사용자</th>
                         <th class="px-3 py-2.5 font-bold">분석 기간</th>
                         <th class="px-3 py-2.5 font-bold">캐릭터</th>
-                        <th class="px-3 py-2.5 font-bold min-w-[10rem]">답변 미리보기</th>
                         <th class="px-3 py-2.5 font-bold">상태</th>
                     </tr>
                 </thead>

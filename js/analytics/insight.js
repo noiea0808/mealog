@@ -9,7 +9,12 @@ import {
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
     MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS,
-    GEMINI_MEALDANG_MODEL
+    GEMINI_MEALDANG_MODEL,
+    GEMINI_MEALDANG_THINKING_BUDGET,
+    GEMINI_MEALDANG_MAX_OUTPUT_TOKENS,
+    GEMINI_MEALDANG_MEMO_MAX_CHARS,
+    GEMINI_MEALDANG_COMMON_PERSONA_MAX_CHARS,
+    GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
@@ -887,7 +892,7 @@ function analyzeMealData(filteredData, dateRangeText) {
         if (isMain) {
             entry.mealTypes = Object.entries(mealTypeCountS).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음';
             entry.categories = Object.entries(categoryCountS).sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}회`).join(', ') || '없음';
-            entry.menuDetails = [...new Set(menuDetailsS)].slice(0, 5);
+            entry.menuDetails = [...new Set(menuDetailsS)].slice(0, 3);
             entry.companions = Object.keys(withWhomCountS).length ? Object.entries(withWhomCountS).sort((a, b) => b[1] - a[1]).map(([p, n]) => `${p} ${n}회`).join(', ') : '대부분 혼자';
         } else {
             entry.snackTypes = Object.entries(snackTypeCountS).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}회`).join(', ') || '없음';
@@ -1016,21 +1021,71 @@ async function getInsightFallbackMessages(characterId) {
     };
 }
 
+/** Gemini 프롬프트용 텍스트 길이 제한 */
+function truncateForPrompt(text, maxLen) {
+    const s = (text || '').replace(/\s+/g, ' ').trim();
+    if (!s || s.length <= maxLen) return s;
+    return `${s.slice(0, maxLen)}…`;
+}
+
+/** "집밥 2회, 외식 1회" → "집밥2·외식1" (상위 n개) */
+function compactFreqList(freqStr, limit = 2) {
+    if (!freqStr || freqStr === '없음') return '';
+    return freqStr.split(', ').slice(0, limit)
+        .map((part) => part.replace(/ (\d+)회$/, '$1'))
+        .join('·');
+}
+
+function buildMealdangSystemInstruction(commonPersona, character) {
+    const chunks = [];
+    const common = truncateForPrompt(commonPersona, GEMINI_MEALDANG_COMMON_PERSONA_MAX_CHARS);
+    if (common) chunks.push(common);
+    if (character) {
+        const charPrompt = truncateForPrompt(
+            character.systemPrompt || character.persona || '',
+            GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS
+        );
+        if (charPrompt) chunks.push(`캐릭터(${character.name}): ${charPrompt}`);
+    }
+    chunks.push('위 지침과 캐릭터 말투를 유지하고, 사용자 메시지의 식사 데이터만 근거로 짧은 코멘트를 작성하세요.');
+    return chunks.join('\n\n');
+}
+
 /** Gemini 프롬프트·관리자 로그용 식사 데이터 요약 텍스트 */
 function buildMealDataSummaryText(analysis, mainMealCount, totalMainSlots, mealRecordPercent) {
     if (!analysis) return '';
-    let text = `- 본식 기록 비율: ${mainMealCount}회 / ${totalMainSlots}회 (${mealRecordPercent}%)\n`;
+    let text = `본식 ${mainMealCount}/${totalMainSlots} (${mealRecordPercent}%)\n`;
     if (analysis.bySlot && Object.keys(analysis.bySlot).length > 0) {
         const slotOrder = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
         slotOrder.forEach(slotId => {
             const s = analysis.bySlot[slotId];
             if (!s) return;
-            text += `\n- ${s.label} (${s.count}회)\n`;
-            if (s.mealTypes) text += `  식사방식: ${s.mealTypes}, 메뉴분류: ${s.categories}\n`;
-            if (s.menuDetails && s.menuDetails.length) text += `  메뉴: ${s.menuDetails.slice(0, 3).join(', ')}\n`;
-            if (s.companions) text += `  누구와: ${s.companions}\n`;
-            if (s.snackTypes) text += `  간식종류: ${s.snackTypes}, 장소: ${s.places}\n`;
-            text += `  만족도: ${s.ratingByScore}, 포만감: ${s.satietyByScore}\n`;
+            const parts = [];
+            if (s.mealTypes) {
+                const line = compactFreqList(s.mealTypes);
+                if (line) parts.push(line);
+            }
+            if (s.categories) {
+                const line = compactFreqList(s.categories);
+                if (line) parts.push(line);
+            }
+            if (s.menuDetails && s.menuDetails.length) {
+                parts.push(s.menuDetails.slice(0, 2).join(','));
+            }
+            if (s.companions && s.companions !== '대부분 혼자') {
+                parts.push(compactFreqList(s.companions, 1));
+            }
+            if (s.snackTypes) {
+                const line = compactFreqList(s.snackTypes);
+                if (line) parts.push(line);
+            }
+            if (s.places && s.places !== '없음') {
+                parts.push(compactFreqList(s.places, 1));
+            }
+            if (s.ratingByScore && s.ratingByScore !== '없음') {
+                parts.push(s.ratingByScore.split(', ')[0].replace(' ', ''));
+            }
+            text += `${s.label} ${s.count}회: ${parts.join(' | ') || '—'}\n`;
         });
     }
     return text.trim();
@@ -1070,42 +1125,15 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
         // 밀당 메모 가져오기 (AI 분석 참고용)
         const userShortcuts = window.userSettings?.shortcuts || '';
         const userNickname = (window.userSettings?.profile?.nickname || '').trim() || '사용자';
-        
-        // 프롬프트 구성 (간결하고 명확하게)
-        let prompt = '';
-        
-        // 사용자 닉네임 (코멘트에서 사용자 부를 때 사용)
-        prompt += `[대상 사용자]\n이름(닉네임): ${userNickname.replace(/\n/g, ' ')}\n\n`;
-        
-        // 공통 페르소나는 systemInstruction에 포함, 밀당 메모는 프롬프트에 포함 (둘 다 분석 요청에 사용됨)
-        if (userShortcuts && userShortcuts.trim()) {
-            prompt += `[밀당 메모 - 반드시 참고]\n${userShortcuts.trim()}\n\n`;
-        }
-        
-        // 캐릭터 페르소나
-        prompt += `[캐릭터 페르소나]\n당신은 ${character.name}입니다. ${character.persona}\n`;
-        if (character.systemPrompt) {
-            prompt += `${character.systemPrompt}\n`;
-        }
-        
-        // 식사 데이터 (시간대별로만 전송 - 본식/간식 통합, 중복 제거)
         const mealDataSummary = buildMealDataSummaryText(analysis, mainMealCount, totalMainSlots, mealRecordPercent);
-        prompt += `\n[식사 데이터]\n${mealDataSummary}\n`;
         
-        // 작성 지침 (간결하게)
-        prompt += `\n[작성 지침]\n`;
-        if (commonPersona && commonPersona.trim()) {
-            prompt += `- 공통 페르소나의 모든 지침을 반드시 적용\n`;
-        }
+        // 프롬프트 구성 (토큰 절약: 캐릭터·공통 페르소나는 systemInstruction)
+        let prompt = `닉네임: ${userNickname.replace(/\n/g, ' ')}\n`;
         if (userShortcuts && userShortcuts.trim()) {
-            prompt += `- 밀당 메모를 반드시 참고하여 분석 (예: 메뉴 약어 해석, 사용자 상태 고려)\n`;
+            prompt += `밀당메모: ${truncateForPrompt(userShortcuts.trim(), GEMINI_MEALDANG_MEMO_MAX_CHARS)}\n\n`;
         }
-        prompt += `- 캐릭터 고유의 말투와 성격 드러내기\n`;
-        prompt += `- 대상 사용자(위 [대상 사용자]의 이름)를 자연스럽게 부르기 (예: "OO님", "OO야" 등)\n`;
-        prompt += `- 식사 패턴의 재미있는 점 우선 언급\n`;
-        prompt += `- 시간대별 데이터를 활용해 아침/점심/저녁·간식 시간대별 패턴 분석 가능\n`;
-        prompt += `- 자기 소개/기간 언급 금지\n`;
-        prompt += `- 이모지 최대 2개, 한국어만 사용\n`;
+        prompt += `식사데이터:\n${mealDataSummary}\n\n`;
+        prompt += '지침: 닉네임으로 자연스럽게 호칭. 식사 패턴 1~2개만 짚기. 이모지 2개 이하. 한국어만. 자기소개·기간·메타발화 금지. 2~4문장, 120~250자.';
         
         // Gemini 전송 데이터 확인용 로그 (F12 콘솔에서 확인, 배포 환경에서는 콘솔에 window.DEBUG_GEMINI=true 입력 후 코멘트 버튼 클릭)
         const isDevMode = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -1167,15 +1195,15 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                         temperature: 0.7,
                         topK: 40,
                         topP: 0.95,
-                        maxOutputTokens: 4096, // 2.5 Flash thinking 토큰 + 본문 합산 한도
-                        stopSequences: [], // 정지 시퀀스 제거하여 완전한 응답 보장
+                        maxOutputTokens: GEMINI_MEALDANG_MAX_OUTPUT_TOKENS,
+                        thinkingConfig: {
+                            thinkingBudget: GEMINI_MEALDANG_THINKING_BUDGET
+                        }
                     }
                 };
                 
-                // 공통 페르소나가 있으면 system instruction으로 추가
-                if (commonPersona && commonPersona.trim()) {
-                    let systemInstructionText = `${commonPersona.trim()}\n\n위 공통 페르소나를 먼저 적용한 후, 사용자 프롬프트의 캐릭터별 페르소나를 추가로 적용하세요.`;
-                    
+                const systemInstructionText = buildMealdangSystemInstruction(commonPersona, character);
+                if (systemInstructionText) {
                     requestBody.systemInstruction = {
                         parts: [{
                             text: systemInstructionText
@@ -1227,6 +1255,7 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
                     console.log('📊 토큰 사용량:', {
                         입력: usage.promptTokenCount ?? usage.prompt_token_count ?? '-',
                         출력: usage.candidatesTokenCount ?? usage.candidates_token_count ?? '-',
+                        thinking: usage.thoughtsTokenCount ?? usage.thoughts_token_count ?? '-',
                         총합: usage.totalTokenCount ?? usage.total_token_count ?? '-'
                     });
                 }
