@@ -633,9 +633,9 @@ function attachUpdateBannerDevTrigger(el) {
         if (taps >= 7) {
             taps = 0;
             if (timer) clearTimeout(timer);
-            if (typeof window.mealogSimulateUpdateBanner === 'function') {
-                window.mealogSimulateUpdateBanner();
-                showToast('업데이트 배너 시뮬레이션 (스테이징 전용)', 'info');
+            if (typeof window.mealogSimulateUpdateFlow === 'function') {
+                window.mealogSimulateUpdateFlow();
+                showToast('업데이트 흐름 시뮬레이션 (스테이징 전용)', 'info');
             }
         }
     });
