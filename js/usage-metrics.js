@@ -1,5 +1,11 @@
 import { db, appId, appCheckInitPromise, refreshAppCheckTokenBeforeFirestore, callableFunctions } from './firebase.js';
-import { doc, setDoc, increment, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import {
+    doc,
+    setDoc,
+    increment,
+    serverTimestamp,
+    waitForPendingWrites
+} from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { getExcludedAnalyticsUidSet } from './excluded-analytics-uids.js';
 
 function localDateKeyYmd() {
@@ -38,6 +44,7 @@ async function logUsageMetricDirect(key) {
     const ref = doc(db, 'artifacts', appId, 'usageDaily', localDateKeyYmd());
     const payload = { [key]: increment(1), updatedAt: serverTimestamp() };
     await setDoc(ref, payload, { merge: true });
+    await waitForPendingWrites(db);
 }
 
 async function logUsageMetricCallable(key) {
@@ -49,7 +56,7 @@ async function logUsageMetricCallable(key) {
 /**
  * 관리자 대시보드「페이지별」집계용. 하루 1문서(usageDaily/{YYYY-MM-DD})에 필드별 increment.
  * 운영 앱(com.mealog.app)·운영 웹(www.mealog.net / mealog.net)만 기록. 제외 UID·익명·스테이징·로컬은 제외.
- * Firestore 직접 쓰기 실패 시 logUsageMetric Callable(Admin SDK)로 폴백.
+ * 서버 반영은 Callable(Admin SDK) 우선 — Firestore 직접 쓰기는 로컬 캐시만 성공하는 경우가 있어 폴백으로만 사용.
  */
 export async function logUsageMetric(key) {
     try {
@@ -64,32 +71,27 @@ export async function logUsageMetric(key) {
         if (!u || u.isAnonymous) return;
         if ((await getExcludedAnalyticsUidSet()).has(u.uid)) return;
 
-        let directErr = null;
-        try {
-            await prepareUsageMetricWrite();
-            await logUsageMetricDirect(key);
-            return;
-        } catch (e) {
-            directErr = e;
-            if (e?.code === 'permission-denied') {
-                try {
-                    await refreshAppCheckTokenBeforeFirestore({ force: true });
-                    await logUsageMetricDirect(key);
-                    return;
-                } catch (retryErr) {
-                    directErr = retryErr;
-                }
-            }
-        }
-
         try {
             await logUsageMetricCallable(key);
+            return;
         } catch (callableErr) {
-            const code = callableErr?.code || directErr?.code || '';
-            if (code === 'permission-denied' || code === 'unauthenticated') {
-                console.warn('usageDaily 기록 거부(권한):', callableErr?.message || directErr?.message || callableErr);
-            } else {
-                console.warn('usageDaily 기록 실패:', callableErr?.message || directErr?.message || callableErr);
+            try {
+                await prepareUsageMetricWrite();
+                await logUsageMetricDirect(key);
+                return;
+            } catch (directErr) {
+                const code = callableErr?.code || directErr?.code || '';
+                if (code === 'permission-denied' || code === 'unauthenticated') {
+                    console.warn(
+                        'usageDaily 기록 거부(권한):',
+                        callableErr?.message || directErr?.message || callableErr
+                    );
+                } else {
+                    console.warn(
+                        'usageDaily 기록 실패:',
+                        callableErr?.message || directErr?.message || callableErr
+                    );
+                }
             }
         }
     } catch (e) {
