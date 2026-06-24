@@ -47,8 +47,107 @@
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* === Tailwind FOUC 방지 (중요) ===
+           Tailwind CDN은 JS 실행 후에야 클래스를 적용한다. 적용 전 첫 페인트에서
+           hidden/fixed/absolute가 안 먹히면, #landingPage 앞의 모달·요소들이 일반 흐름을
+           차지해 스플래시(아이콘+배지)를 통째로 밀어버린다(세로 드롭의 원인).
+           Tailwind와 동일한 정의를 미리 선언해 첫 페인트부터 위치가 확정되게 한다. */
+        .hidden { display: none; }
+        .fixed { position: fixed; }
+        .absolute { position: absolute; }
+        .relative { position: relative; }
+        /* IME 워밍업용 숨김 input: Tailwind 전에도 화면 밖·투명 고정 */
+        #imeWarmupInput {
+            left: -9999px;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
+        }
         /* 랜딩: 뷰포트 좌우는 html/body 흰색(style.css), 컬럼 내 스플래시 흰 → 로그인부터 초록 */
         /* 랜딩: 아이콘 ↔ 타이틀 전환 페이드 */
+        /* 스플래시 초기 깜빡임 방지(중요):
+           아이콘 크기·세로 중앙정렬을 Tailwind CDN 적용 전에도 확정해 둠.
+           이 critical CSS가 없으면 Tailwind 클래스(flex/justify-center/w-20 등)가
+           늦게 적용되면서 아이콘이 상단→중앙으로 튀는 reflow가 발생한다. */
+        /* 스플래시 통째 이동(아이콘+우상단 배지 동일 벡터) 방지:
+           로딩 중 세로 스크롤바가 나타났다 사라지면 가로폭이 변해 mx-auto 중앙정렬된
+           body가 통째로 좌우로 밀린다. 스크롤바 공간을 항상 예약해 폭을 고정한다. */
+        html.mealog-landing-active {
+            scrollbar-gutter: stable;
+            overflow-y: scroll;
+        }
+        /* body의 Tailwind `max-w-md mx-auto`와 preflight margin 리셋을 미리 확정.
+           브라우저 기본 `body{margin:8px}`가 Tailwind preflight 적용 시 0으로 바뀌며
+           콘텐츠가 통째로 상·좌로 점프하는 것을 막기 위해 처음부터 margin:0 auto로 고정. */
+        html {
+            margin: 0;
+        }
+        body {
+            max-width: 28rem;
+            margin: 0 auto;
+            position: relative;
+        }
+        #landingPage {
+            display: flex;
+            flex-direction: column;
+        }
+        #landingPage:not(.landing-buttons-visible) #landingFlexMain {
+            flex: 1 1 0%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            min-height: 0;
+            position: relative;
+        }
+        #landingSplashTransition {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Tailwind의 `absolute inset-0`를 미리 확정 → 적용 전후 위치 기준이 동일해
+           아이콘이 일반 흐름(static)↔absolute로 바뀌며 미끄러지는 현상 제거 */
+        #landingSplashIconOnly,
+        #landingSplashTitleAndTagline {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        /* 타이틀은 초기에 투명(흐름에서 빠져 아이콘 중앙정렬에 영향 없음) */
+        #landingPage:not(.landing-show-login) #landingSplashTitleAndTagline {
+            opacity: 0;
+        }
+        /* 로그인 묶음의 Tailwind `hidden`을 미리 확정(ID 특이도로 Tailwind 전에도 적용).
+           이게 없으면 첫 페인트에서 버튼들이 flex 흐름을 차지해 아이콘이 위로 밀렸다가,
+           Tailwind가 hidden(display:none)을 적용하는 순간 아이콘이 아래(중앙)로 떨어진다.
+           JS가 `hidden`을 제거하면 이 규칙은 더 이상 매칭되지 않아 정상 표시된다. */
+        #landingLoginOptions.hidden {
+            display: none;
+        }
+        #landingMealogIconWrap {
+            width: 5rem;
+            height: 5rem;
+            overflow: hidden;
+            border-radius: 35%;
+            flex-shrink: 0;
+            background-color: rgba(5, 150, 105, 0.9);
+        }
+        @media (min-width: 640px) {
+            #landingMealogIconWrap { width: 6rem; height: 6rem; }
+        }
+        #landingMealogIcon {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
         /* 스플래시: flexMain 안에서 전환 박스가 세로 전체를 채워 아이콘/타이틀을 화면 중앙에 */
         #landingPage:not(.landing-buttons-visible) #landingSplashTransition {
             flex: 1 1 0%;
@@ -338,13 +437,30 @@
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
                     if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
                     if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
-                    // 스플래시 깜박임 방지: 랜딩 화면이 그려진 후 네이티브 스플래시 숨김
-                    requestAnimationFrame(function() {
+                    // 스플래시 아이콘 흔들림 방지: 폰트 로드 + 레이아웃(safe-area/dvh/Tailwind) 안정화 후에 숨김.
+                    // 너무 일찍 숨기면 reflow 과정(아이콘 상하 점프)이 사용자에게 그대로 노출된다.
+                    var __splashHidden = false;
+                    var __hideSplash = function() {
+                        if (__splashHidden) return;
+                        __splashHidden = true;
+                        var Splash = window.Capacitor?.Plugins?.SplashScreen;
+                        if (Splash) Splash.hide().catch(function() {});
+                    };
+                    var __settleThenHide = function() {
+                        // 폰트 적용 후 2프레임 대기 → 레이아웃 확정된 다음 숨김
                         requestAnimationFrame(function() {
-                            var Splash = window.Capacitor?.Plugins?.SplashScreen;
-                            if (Splash) Splash.hide().catch(function() {});
+                            requestAnimationFrame(__hideSplash);
                         });
-                    });
+                    };
+                    try {
+                        var __fontsReady = (document.fonts && document.fonts.ready)
+                            ? document.fonts.ready : Promise.resolve();
+                        __fontsReady.then(__settleThenHide).catch(__settleThenHide);
+                    } catch (e) {
+                        __settleThenHide();
+                    }
+                    // 안전장치: 폰트/네트워크 지연 시에도 최대 1.5초 후 반드시 숨김
+                    setTimeout(__hideSplash, 1500);
                 }
             } catch (e) {}
         });
@@ -670,7 +786,7 @@
             <!-- 아이콘 ↔ 타이틀 전환 영역 (같은 자리에서 페이드) -->
             <div id="landingSplashTransition" class="relative w-full flex flex-col items-center justify-center">
                 <div id="landingSplashIconOnly" class="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
-                    <div class="w-20 h-20 sm:w-24 sm:h-24 overflow-hidden rounded-[35%] shrink-0 bg-emerald-600/90">
+                    <div id="landingMealogIconWrap" class="w-20 h-20 sm:w-24 sm:h-24 overflow-hidden rounded-[35%] shrink-0 bg-emerald-600/90">
                         <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" id="landingMealogIcon" />
                     </div>
                 </div>
