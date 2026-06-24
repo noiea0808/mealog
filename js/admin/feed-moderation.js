@@ -2550,6 +2550,438 @@ window.bulkDeleteFeedPosts = async function () {
     }
 };
 
+/* ───────────────────────── 모먼트 엑셀 내보내기 ───────────────────────── */
+
+/** 모먼트 기록 시각(날짜/시간)을 KST 기준 문자열로 반환 (export용) */
+function momentExportDateTimeParts(meal) {
+    const kst = { timeZone: 'Asia/Seoul' };
+    const toParts = (d) => {
+        if (!d || !Number.isFinite(d.getTime())) return null;
+        return {
+            date: d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', ...kst }).replace(/\s+/g, ''),
+            time: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, ...kst })
+        };
+    };
+    const fromRaw = (raw) => {
+        if (raw == null) return null;
+        if (raw && typeof raw.toDate === 'function') return toParts(raw.toDate());
+        if (raw instanceof Date) return toParts(raw);
+        if (typeof raw === 'string') return toParts(new Date(raw));
+        if (typeof raw === 'object' && typeof raw.seconds === 'number') {
+            return toParts(new Date(raw.seconds * 1000 + (raw.nanoseconds || 0) / 1e6));
+        }
+        return null;
+    };
+    let p = fromRaw(meal?.recordedAt);
+    if (p) return p;
+    p = fromRaw(meal?.timestamp);
+    if (p) return p;
+    if (meal?.date) {
+        try {
+            let t = meal.time || '00:00';
+            if (t && String(t).split(':').length === 2) t = `${t}:00`;
+            p = toParts(new Date(`${meal.date}T${t}`));
+            if (p) return p;
+        } catch (_) {}
+        return { date: String(meal.date), time: String(meal.time || '') };
+    }
+    return { date: '', time: '' };
+}
+
+/** 하루기록 체중·혈당 지표를 한 줄 텍스트로 (export용) */
+function dailyJournalMetricsPlainText(entry) {
+    const n = normalizeDailyJournalEntry(entry);
+    const parts = [];
+    if (n.weightEnabled && n.weightRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.weightRecords, { isWeight: true });
+        if (chain) parts.push(`체중 ${chain} kg`);
+    }
+    if (n.bloodSugarEnabled && n.bloodSugarRecords.length > 0) {
+        const chain = formatMetricRecordChain(n.bloodSugarRecords);
+        if (chain) parts.push(`혈당 ${chain} mg/dL`);
+    }
+    return parts.join(' / ');
+}
+
+const MOMENT_EXPORT_SLOT_LABELS = {
+    pre_morning: '아침전', morning: '아침', snack1: '오전간식', snack2: '오후간식', night: '야식',
+    breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식',
+    before_breakfast: '아침전', after_breakfast: '아침후', before_lunch: '점심전', after_lunch: '점심후',
+    before_dinner: '저녁전', after_dinner: '저녁후'
+};
+
+/**
+ * 현재 필터(공유/사진/금지/작성자) + 선택 기간에 맞는 전체 모먼트 행을 모아 export용 평면 객체 배열로 반환
+ * @param {{startMs?: number, endMs?: number}} [range] 기록 시각 기준 포함 범위(미지정 시 전체 기간)
+ */
+async function collectMomentRowsForExport(range = {}) {
+    const startMs = Number.isFinite(range.startMs) ? range.startMs : null;
+    const endMs = Number.isFinite(range.endMs) ? range.endMs : null;
+    // getFeedPage 가 page===1 에서 갱신하는 전역값을 보존했다가 복원 (현재 화면 페이지네이션 보호)
+    const snapshot = {
+        feedTotalCount,
+        feedMealTotalCountKnown,
+        feedLastPageRowCount,
+        feedLastPageHasMore,
+        mealsAdminMealsQueryMode
+    };
+
+    let allRows;
+    try {
+        const res = await getFeedPage({ page: 1, pageSize: 100000 });
+        allRows = Array.isArray(res?.items) ? res.items : [];
+    } finally {
+        feedTotalCount = snapshot.feedTotalCount;
+        feedMealTotalCountKnown = snapshot.feedMealTotalCountKnown;
+        feedLastPageRowCount = snapshot.feedLastPageRowCount;
+        feedLastPageHasMore = snapshot.feedLastPageHasMore;
+        mealsAdminMealsQueryMode = snapshot.mealsAdminMealsQueryMode;
+    }
+
+    await ensureSharedKeysForFeedRows(allRows);
+
+    const authorUid = getFeedAuthorUserId();
+    const filtered = allRows.filter((meal) => {
+        if (authorUid && meal.userId !== authorUid) return false;
+        if (startMs !== null || endMs !== null) {
+            const t = moderationRecordedAtMillis(meal);
+            if (Number.isFinite(t)) {
+                if (startMs !== null && t < startMs) return false;
+                if (endMs !== null && t > endMs) return false;
+            }
+        }
+        const isDailyJournalRow = meal.isDailyJournal === true;
+        const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
+        const isActuallyShared =
+            isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
+        const isDjMomentShared = isDailyJournalRow && isDailyJournalMomentSharedRow(meal);
+        if (isDailyJournalRow) {
+            if (feedFilters.shared === 'yes' && !isDjMomentShared) return false;
+            if (feedFilters.shared === 'no' && isDjMomentShared) return false;
+        } else {
+            if (feedFilters.shared === 'yes' && !isActuallyShared) return false;
+            if (feedFilters.shared === 'no' && isActuallyShared) return false;
+            const isBanned = meal.shareBanned === true;
+            if (feedFilters.banned === 'yes' && !isBanned) return false;
+            if (feedFilters.banned === 'no' && isBanned) return false;
+        }
+        const hasPhotos =
+            (Array.isArray(meal.photos) && meal.photos.length > 0) ||
+            Boolean(meal.photoUrl && String(meal.photoUrl).trim());
+        if (feedFilters.hasPhotos === 'yes' && !hasPhotos) return false;
+        if (feedFilters.hasPhotos === 'no' && hasPhotos) return false;
+        return true;
+    });
+
+    filtered.sort(compareModerationRowsDesc);
+
+    // 작성자 닉네임·이메일 조회
+    const userInfoMap = new Map();
+    const userIds = [...new Set(filtered.map((m) => m.userId).filter(Boolean))];
+    const [emailMap] = await Promise.all([
+        fetchAdminEmailsForUserIds(userIds),
+        Promise.all(
+            userIds.map(async (uid) => {
+                const now = Date.now();
+                const hit = feedUserSettingsCache.get(uid);
+                if (hit && now - hit.ts < ADMIN_FEED_CACHE_TTL_MS) {
+                    userInfoMap.set(uid, { nickname: hit.nickname, icon: hit.icon, email: '' });
+                    return;
+                }
+                try {
+                    const settingsSnap = await getDoc(doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings'));
+                    if (settingsSnap.exists()) {
+                        const s = settingsSnap.data();
+                        const row = { nickname: s.profile?.nickname || '익명', icon: s.profile?.icon || '🐻', email: '' };
+                        feedUserSettingsCache.set(uid, { ts: now, nickname: row.nickname, icon: row.icon });
+                        userInfoMap.set(uid, row);
+                    }
+                } catch (e) {
+                    console.warn('[모먼트 내보내기] 사용자 정보 조회 실패:', uid, e);
+                }
+            })
+        )
+    ]);
+    userIds.forEach((uid) => {
+        if (!userInfoMap.has(uid)) userInfoMap.set(uid, { nickname: '익명', icon: '🐻', email: '' });
+        userInfoMap.get(uid).email = emailMap.get(uid) || '';
+    });
+
+    const reportsMap = await getReportsAggregateCached();
+    const total = filtered.length;
+
+    return filtered.map((meal, idx) => {
+        const isDailyJournal = meal.isDailyJournal === true;
+        const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
+        const targetGroupKey = isDailyJournal
+            ? `dailyJournal_${meal.date || ''}_${meal.userId}`
+            : meal.isBestShare
+                ? `best_${meal.id}`
+                : meal.isDailyShare
+                    ? `daily_${meal.date || ''}_${meal.userId}`
+                    : meal.isInsightShare
+                        ? `insight_${meal.dateRangeText || ''}_${meal.userId}`
+                        : `entry_${meal.id}_${meal.userId}`;
+        const reportInfo = reportsMap[targetGroupKey];
+        const reportCount = reportInfo && reportInfo.count > 0 ? reportInfo.count : 0;
+
+        const baseAuthor = userInfoMap.get(meal.userId) || { nickname: '익명', icon: '🐻', email: '' };
+        const nickname =
+            (meal.isBestShare || meal.isDailyShare || meal.isInsightShare) && meal.userNickname
+                ? meal.userNickname
+                : baseAuthor.nickname;
+
+        const isShared = isDailyJournal
+            ? isDailyJournalMomentSharedRow(meal)
+            : isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
+        const isBanned = meal.shareBanned === true;
+
+        const typeLabel = isDailyJournal
+            ? meal.momentShared && meal.isDailyJournalSlot !== true
+                ? '하루기록·모먼트'
+                : meal.momentShared
+                    ? '하루기록·슬롯+모먼트'
+                    : '하루기록·슬롯'
+            : meal.isBestShare
+                ? '주간 Best'
+                : meal.isDailyShare
+                    ? '일간 캡처'
+                    : meal.isInsightShare
+                        ? '밀당의 참견'
+                        : '일반';
+
+        const noTags = isCapture || isDailyJournal;
+        const whereTag = noTags ? '' : meal.place || meal.snackPlace || '';
+        const whereSubTag = noTags ? '' : meal.placeDetail || meal.placeMemo || '';
+        const whatTag = noTags ? '' : meal.category || meal.mealType || meal.snackType || '';
+        const whatSubTag = noTags ? '' : meal.menuDetail || meal.snackDetail || '';
+        const withTag = noTags ? '' : meal.withWhom || '';
+        const withSubTag = noTags ? '' : meal.withWhomDetail || '';
+        const ratingVal = noTags ? '' : meal.snackRating ?? meal.rating ?? '';
+        const satietyVal = noTags ? '' : meal.satiety ?? '';
+
+        const dt = momentExportDateTimeParts(meal);
+        const slotLabel =
+            typeof meal.slotDisplayLabel === 'string'
+                ? meal.slotDisplayLabel
+                : MOMENT_EXPORT_SLOT_LABELS[String(meal.slotId || '').toLowerCase()] || '';
+
+        const photoUrls = Array.isArray(meal.photos) && meal.photos.length > 0
+            ? meal.photos.filter(Boolean)
+            : (meal.photoUrl && String(meal.photoUrl).trim() ? [meal.photoUrl] : []);
+
+        const metricsText = isDailyJournal ? dailyJournalMetricsPlainText(meal.dailyJournalEntry) : '';
+
+        return {
+            번호: total - idx,
+            유형: typeLabel,
+            날짜: dt.date,
+            시간: dt.time,
+            식사구분: slotLabel,
+            어디서: whereTag,
+            어디서_상세: whereSubTag,
+            무엇을: whatTag,
+            무엇을_상세: whatSubTag,
+            누구와: withTag,
+            누구와_상세: withSubTag,
+            만족도: ratingVal === null ? '' : ratingVal,
+            포만감: satietyVal === null ? '' : satietyVal,
+            코멘트: meal.comment ? String(meal.comment) : '',
+            하루기록지표: metricsText,
+            공유여부: isShared ? 'Y' : 'N',
+            금지여부: isBanned ? 'Y' : 'N',
+            신고수: reportCount,
+            사진수: photoUrls.length,
+            작성자: nickname,
+            이메일: baseAuthor.email || '',
+            작성자UID: meal.userId || '',
+            게시물ID: meal.id || ''
+        };
+    });
+}
+
+/** CSV(UTF-8 BOM) 문자열 생성 — SheetJS 로드 실패 시 폴백 */
+function momentRowsToCsv(rows) {
+    if (!rows.length) return '';
+    const headers = Object.keys(rows[0]);
+    const esc = (v) => {
+        const s = v == null ? '' : String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.join(',')];
+    for (const r of rows) lines.push(headers.map((h) => esc(r[h])).join(','));
+    return '\uFEFF' + lines.join('\r\n');
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** KST 기준 오늘 날짜 'YYYY-MM-DD' */
+function kstTodayYmd() {
+    return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+}
+
+/** 'YYYY-MM-DD' → KST 하루 시작/끝 millis */
+function ymdToKstMillis(ymd, endOfDay = false) {
+    if (!ymd) return null;
+    const iso = endOfDay ? `${ymd}T23:59:59.999+09:00` : `${ymd}T00:00:00.000+09:00`;
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * 내보내기 기간 선택 팝업 — 전체 기간 / 기간 선택
+ * @returns {Promise<{startMs: number|null, endMs: number|null, label: string} | null>} 취소 시 null
+ */
+function openMomentExportRangePopup() {
+    return new Promise((resolve) => {
+        const existing = document.getElementById('momentExportRangeModal');
+        if (existing) existing.remove();
+
+        const today = kstTodayYmd();
+        const ago = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+
+        const overlay = document.createElement('div');
+        overlay.id = 'momentExportRangeModal';
+        overlay.className = 'fixed inset-0 z-[700] flex items-center justify-center p-4';
+
+        const bg = document.createElement('div');
+        bg.className = 'absolute inset-0 bg-black/50';
+
+        const panel = document.createElement('div');
+        panel.className = 'relative w-full max-w-md bg-white rounded-2xl p-6 shadow-xl';
+        panel.innerHTML = `
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fa-solid fa-file-excel text-emerald-600 mr-2"></i>모먼트 엑셀 내보내기</h3>
+            <p class="text-sm text-slate-500 mb-4">내보낼 기간을 선택하세요. (현재 필터 조건이 함께 적용됩니다)</p>
+            <div class="space-y-2 mb-4">
+                <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="momentExportRangeMode" value="all" checked class="accent-emerald-600">
+                    <span class="text-sm font-bold text-slate-700">전체 기간</span>
+                </label>
+                <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
+                    <input type="radio" name="momentExportRangeMode" value="range" class="accent-emerald-600">
+                    <span class="text-sm font-bold text-slate-700">기간 선택</span>
+                </label>
+            </div>
+            <div id="momentExportRangeInputs" class="grid grid-cols-2 gap-3 mb-5 opacity-50 pointer-events-none">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">시작일</label>
+                    <input type="date" id="momentExportStartDate" value="${ago}" max="${today}" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">종료일</label>
+                    <input type="date" id="momentExportEndDate" value="${today}" max="${today}" class="w-full p-2 border border-slate-200 rounded-lg text-sm">
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button type="button" id="momentExportCancelBtn" class="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200">취소</button>
+                <button type="button" id="momentExportConfirmBtn" class="flex-1 py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700">내보내기</button>
+            </div>
+        `;
+
+        overlay.appendChild(bg);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        const inputsWrap = panel.querySelector('#momentExportRangeInputs');
+        const startInput = panel.querySelector('#momentExportStartDate');
+        const endInput = panel.querySelector('#momentExportEndDate');
+        const radios = panel.querySelectorAll('input[name="momentExportRangeMode"]');
+
+        const syncInputs = () => {
+            const mode = panel.querySelector('input[name="momentExportRangeMode"]:checked')?.value;
+            const enabled = mode === 'range';
+            inputsWrap.classList.toggle('opacity-50', !enabled);
+            inputsWrap.classList.toggle('pointer-events-none', !enabled);
+        };
+        radios.forEach((r) => r.addEventListener('change', syncInputs));
+
+        let settled = false;
+        const close = (result) => {
+            if (settled) return;
+            settled = true;
+            overlay.remove();
+            resolve(result);
+        };
+
+        bg.addEventListener('click', () => close(null));
+        panel.querySelector('#momentExportCancelBtn').addEventListener('click', () => close(null));
+        panel.querySelector('#momentExportConfirmBtn').addEventListener('click', () => {
+            const mode = panel.querySelector('input[name="momentExportRangeMode"]:checked')?.value;
+            if (mode !== 'range') {
+                close({ startMs: null, endMs: null, label: '전체기간' });
+                return;
+            }
+            const startYmd = startInput.value;
+            const endYmd = endInput.value;
+            if (!startYmd || !endYmd) {
+                alert('시작일과 종료일을 모두 선택하세요.');
+                return;
+            }
+            if (startYmd > endYmd) {
+                alert('시작일이 종료일보다 늦을 수 없습니다.');
+                return;
+            }
+            close({
+                startMs: ymdToKstMillis(startYmd, false),
+                endMs: ymdToKstMillis(endYmd, true),
+                label: `${startYmd.replace(/-/g, '')}-${endYmd.replace(/-/g, '')}`
+            });
+        });
+    });
+}
+
+window.exportMomentsToExcel = async function () {
+    const choice = await openMomentExportRangePopup();
+    if (!choice) return;
+
+    const btn = document.getElementById('adminExportMomentsBtn');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1" aria-hidden="true"></i>수집 중...';
+    }
+    try {
+        const rows = await collectMomentRowsForExport({ startMs: choice.startMs, endMs: choice.endMs });
+        if (!rows.length) {
+            alert('내보낼 모먼트 데이터가 없습니다. (기간·필터 조건을 확인하세요)');
+            return;
+        }
+        const stamp = new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(/[:\s-]/g, '').slice(0, 12);
+        const fileBase = `mealog-moments-${choice.label}-${stamp}`;
+        let usedCsv = false;
+        try {
+            const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '모먼트');
+            XLSX.writeFile(wb, `${fileBase}.xlsx`);
+        } catch (xlsxErr) {
+            console.warn('[모먼트 내보내기] SheetJS 로드 실패 → CSV로 폴백합니다.', xlsxErr);
+            usedCsv = true;
+            const csv = momentRowsToCsv(rows);
+            downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `${fileBase}.csv`);
+        }
+        alert(`모먼트 ${rows.length}건을 ${usedCsv ? 'CSV' : '엑셀(.xlsx)'} 파일로 내보냈습니다.`);
+    } catch (e) {
+        console.error('[모먼트 내보내기] 실패:', e);
+        alert('모먼트 내보내기 중 오류가 발생했습니다: ' + (e?.message || e));
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig;
+        }
+    }
+};
+
 let adminFeedPhotoViewerState = { urls: [], index: 0 };
 
 function ensureAdminFeedPhotoViewerModal() {
