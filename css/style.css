@@ -2025,22 +2025,28 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
 }
-/* 일간 공유 PNG: 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경(고정 aspect 슬롯의 옅은 매트 대신 미리보기와 동일한 인상) */
-#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
-#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
-#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface--daily-share {
+/* 캡처 공유 PNG(베스트/하루 기록): 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
+#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface--capture-share {
     width: 100%;
     min-width: 100%;
     background-color: #ffffff !important;
     --tw-ring-color: rgba(226, 232, 240, 0.45) !important;
 }
-/* 일간 공유: 휠 라벨 폭(--meal-wheel-caption-inner-w)에 맞추면 캡처 PNG가 카드보다 좁아 보임 → 사진 열만 카드 가로 100% */
+/* 캡처 공유: 휠 라벨 폭(--meal-wheel-caption-inner-w)에 맞추면 PNG가 카드보다 좁아 보임 → 사진 열만 카드 가로 100% */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -2048,25 +2054,37 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage {
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack {
     align-items: stretch !important;
 }
-/* 일간: 뷰포트·이미지에 88vh 상한이 있으면 세로만 맞추느라 가로가 줄고 좌우 빈칸 생김 */
+/* 캡처 공유: 뷰포트·이미지에 88vh 상한이 있으면 세로만 맞추느라 가로가 줄고 좌우 빈칸 생김 */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural {
     max-height: none !important;
     overflow: visible !important;
 }
-#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img {
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img {
     max-height: none !important;
     width: 100% !important;
     height: auto !important;

@@ -15,7 +15,7 @@ import { showToast } from '../ui.js';
 import { dbOps } from '../db.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
-import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
+import { getWeekRange, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 
@@ -28,6 +28,19 @@ function escapeHtml(text) {
 }
 
 const BEST_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
+
+function getRecentWeekRangeForBest() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = appState.recentWeekStartDate ? new Date(appState.recentWeekStartDate) : new Date(today);
+    start.setHours(0, 0, 0, 0);
+    if (!appState.recentWeekStartDate) {
+        start.setDate(today.getDate() - 6);
+    }
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start, end };
+}
 
 /** @param {'default' | 'unshare' | 'edit'} variant */
 function applyBestShareSubmitVariant(variant) {
@@ -84,18 +97,16 @@ function setBestShareSubmitEditing(isEditing) {
     }
 }
 
-// 주간 베스트 가져오기 (만족도 4~5점, 전부 표시)
-function getWeekBestMeals(year, month, week) {
-    const { start, end } = getWeekRange(year, month, week);
+function getRangeBestMeals(start, end, minRating = 4) {
     const startStr = toLocalDateString(start);
     const endStr = toLocalDateString(end);
     
-    const weekData = window.mealHistory.filter(m => {
+    const rangeData = window.mealHistory.filter(m => {
         return m.date >= startStr && m.date <= endStr;
     });
     
-    const highRatingMeals = weekData.filter(m => {
-        return m.rating && parseInt(m.rating) >= 4;
+    const highRatingMeals = rangeData.filter(m => {
+        return m.rating && parseInt(m.rating) >= minRating;
     });
     
     // 만족도 내림차순, 날짜 내림차순으로 정렬 (모든 항목 반환)
@@ -107,6 +118,12 @@ function getWeekBestMeals(year, month, week) {
     });
     
     return sorted;
+}
+
+// 주간 베스트 가져오기 (기본 만족도 4~5점, 전부 표시)
+function getWeekBestMeals(year, month, week, minRating = 4) {
+    const { start, end } = getWeekRange(year, month, week);
+    return getRangeBestMeals(start, end, minRating);
 }
 
 // 월간 베스트 가져오기 (각 주간 베스트에서 선정된 것들만)
@@ -271,12 +288,8 @@ function getBestSharePeriodAllowance() {
 function getBestPeriodKey() {
     const state = appState;
     if (state.dashboardMode === '7d') {
-        // 최근1주 = 주별 키 반환
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-        const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
-        return `week_${currentYear}_${currentMonth}_${currentWeek}`;
+        const { start, end } = getRecentWeekRangeForBest();
+        return `recent7d_${toLocalDateString(start)}_${toLocalDateString(end)}`;
     } else if (state.dashboardMode === 'week') {
         const { start } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         const { year, month, week } = getWeekInfoFromDate(start);
@@ -307,20 +320,14 @@ export function renderBestMeals() {
     const periodLabelEl = document.getElementById('bestPeriodLabel');
     
     if (state.dashboardMode === '7d') {
-        // 최근1주 → 주간 베스트 표시
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        const currentMonth = today.getMonth() + 1;
-        const currentWeek = getCurrentWeekInMonth(currentYear, currentMonth);
-        const { start, end } = getWeekRange(currentYear, currentMonth, currentWeek);
-        
-        meals = getWeekBestMeals(currentYear, currentMonth, currentWeek);
-        periodKey = `week_${currentYear}_${currentMonth}_${currentWeek}`;
-        periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (주간 BEST를 표시합니다)`;
+        const { start, end } = getRecentWeekRangeForBest();
+        meals = getRangeBestMeals(start, end, 4);
+        periodKey = getBestPeriodKey();
+        periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (최근1주)`;
     } else if (state.dashboardMode === 'week') {
         // 주간 모드: 해당 기간의 만족도 4~5개 리스트
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
-        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek, 4);
         const { year, month, week } = getWeekInfoFromDate(start);
         periodKey = `week_${year}_${month}_${week}`;
         periodLabel = getWeekDisplayLabel(start, end);
@@ -358,7 +365,7 @@ export function renderBestMeals() {
             const top3 = meals.filter(m => m && m.rating).slice(0, 3);
             return top3.length >= 1; // 최소 1개 이상이면 공유 가능
         };
-        const isShareableMode = state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year';
+        const isShareableMode = state.dashboardMode === '7d' || state.dashboardMode === 'week' || state.dashboardMode === 'month' || state.dashboardMode === 'year';
 
         if (isShareableMode && hasTop3Meals()) {
             shareBtn.classList.remove('hidden');
@@ -368,7 +375,11 @@ export function renderBestMeals() {
             let periodType = '';
             let periodText = '';
             
-            if (state.dashboardMode === 'week') {
+            if (state.dashboardMode === '7d') {
+                periodType = '최근1주';
+                const { start, end } = getRecentWeekRangeForBest();
+                periodText = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)}`;
+            } else if (state.dashboardMode === 'week') {
                 periodType = '주간';
                 const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
                 periodText = getWeekDisplayLabel(start, end);
@@ -406,18 +417,19 @@ export function renderBestMeals() {
         }
     }
     
-    // 연간 모드: 만족도 5점만, 월간 모드: 4점 이상, 주간: 4점 이상
+    // 연간 모드: 만족도 5점만, 그 외 모드: 4점 이상
     const isYearMode = state.dashboardMode === 'year' || state.dashboardMode === 'custom';
     const isMonthMode = state.dashboardMode === 'month';
     const isMonthOrYearMode = isMonthMode || isYearMode;
+    const minRatingForMode = isYearMode ? 5 : 4;
     const filteredMeals = isYearMode
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
-        : meals.filter(m => m && m.rating && parseInt(m.rating) >= 4);
+        : meals.filter(m => m && m.rating && parseInt(m.rating) >= minRatingForMode);
     
     if (filteredMeals.length === 0) {
         const message = isYearMode
             ? '만족도 5점인 기록이 없습니다.'
-            : '만족도 4점 이상인 기록이 없습니다.';
+            : `만족도 ${minRatingForMode}점 이상인 기록이 없습니다.`;
         container.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">${message}</div>`;
         return;
     }
@@ -767,12 +779,17 @@ export async function openShareBestModal() {
     
     const state = appState;
     let meals = [];
-    let periodType = ''; // '주간' or '월간'
+    let periodType = ''; // '최근1주', '주간', '월간', '연간'
     let periodText = '';
     
     // 현재 기간의 베스트 메뉴 가져오기
-    if (state.dashboardMode === 'week') {
-        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
+    if (state.dashboardMode === '7d') {
+        const { start, end } = getRecentWeekRangeForBest();
+        meals = getRangeBestMeals(start, end, 4);
+        periodType = '최근1주';
+        periodText = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)}`;
+    } else if (state.dashboardMode === 'week') {
+        meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek, 4);
         periodType = '주간';
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         periodText = getWeekDisplayLabel(start, end);
@@ -787,7 +804,7 @@ export async function openShareBestModal() {
         periodType = '연간';
         periodText = `${year}년`;
     } else {
-        showToast('주간, 월간, 연간 모드에서만 공유할 수 있습니다.', 'error');
+        showToast('최근1주, 주간, 월간, 연간 모드에서만 공유할 수 있습니다.', 'error');
         return;
     }
 
@@ -802,12 +819,13 @@ export async function openShareBestModal() {
     const existingShare = await checkBestShareStatus(periodType, periodText);
     const isShared = !!existingShare;
     
-    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치) — 연간: 5점만, 월간/주간: 4점 이상
+    // 베스트 탭과 동일한 필터·정렬 적용 후 1~3위만 사용 (미리보기와 화면 목록 일치)
     const periodKey = getBestPeriodKey();
     const isYearModeForShare = state.dashboardMode === 'year' || state.dashboardMode === 'custom';
+    const minRatingForShare = isYearModeForShare ? 5 : 4;
     const filteredForShare = isYearModeForShare
         ? meals.filter(m => m && m.rating && parseInt(m.rating) === 5)
-        : meals.filter(m => m && m.rating && parseInt(m.rating) >= 4);
+        : meals.filter(m => m && m.rating && parseInt(m.rating) >= minRatingForShare);
     const savedOrder = (window.userSettings && window.userSettings.bestMeals ? window.userSettings.bestMeals[periodKey] : null) || [];
     const sortedForShare = [...filteredForShare].sort((a, b) => {
         const aRating = a.rating ? parseInt(a.rating) : 0;
@@ -1144,7 +1162,11 @@ export async function shareBestToFeed() {
     let periodType = '';
     let periodText = '';
     
-    if (state.dashboardMode === 'week') {
+    if (state.dashboardMode === '7d') {
+        periodType = '최근1주';
+        const { start, end } = getRecentWeekRangeForBest();
+        periodText = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)}`;
+    } else if (state.dashboardMode === 'week') {
         periodType = '주간';
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         periodText = getWeekDisplayLabel(start, end);

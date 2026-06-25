@@ -466,7 +466,7 @@ function updateAnalysisTypeUI() {
     const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-900 border-b-2 border-slate-900";
     const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
     
-    const shouldHideBest = state.dashboardMode === '7d' || state.dashboardMode === 'custom';
+    const shouldHideBest = state.dashboardMode === 'custom';
     
     if (bestBtn && mainBtn && snackBtn) {
         if (shouldHideBest) {

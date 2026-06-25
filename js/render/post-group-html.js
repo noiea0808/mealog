@@ -45,7 +45,7 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     if (isDailyJournalShare) {
         menuLine = '';
     } else if (isBestShare || isDailyShare || isInsightShare) {
-        menuLine = isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+        menuLine = isBestShare || isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
     } else if (isSnack) {
         menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
     } else {
@@ -285,7 +285,9 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                       isDaily = p.type === 'daily',
                       isInsight = p.type === 'insight';
                   const inner =
-                      (isBest || isDaily || isInsight)
+                      isBest
+                          ? `<div class="w-full relative overflow-hidden bg-white"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                          : (isDaily || isInsight)
                           ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                           : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                   return `
@@ -314,7 +316,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     const v2PostCaptionAndFetch =
         layoutV2
             ? [
-                  caption && (isBestShare || isInsightShare)
+                  caption && isInsightShare
                       ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
                       : '',
                   !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
