@@ -7020,6 +7020,23 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-height: 40px;
     box-sizing: border-box;
 }
+#adminPage .admin-tabs-row {
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+#adminPage .admin-tabs-row::-webkit-scrollbar {
+    display: none;
+}
+#adminPage .admin-tabs-row .admin-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
+    white-space: nowrap;
+}
+@media (min-width: 1024px) {
+    #adminPage .admin-tabs-row .admin-tab {
+        flex: 1 1 0%;
+    }
+}
 #adminPage .admin-header-compact .admin-tabs-row .admin-tab {
     padding-top: 0.225rem;
     padding-bottom: 0.225rem;

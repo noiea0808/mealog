@@ -6,6 +6,9 @@
     <title>MEALOG 관리자</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Yeon+Sung&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <!-- Favicon 추가 -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍽️</text></svg>">
@@ -117,6 +120,9 @@
                     </button>
                     <button onclick="window.switchAdminTab('adminLog')" id="admin-tab-adminLog" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-clipboard-list mr-2"></i>관리 로그
+                    </button>
+                    <button onclick="window.switchAdminTab('uiGuide')" id="admin-tab-uiGuide" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-palette mr-2"></i>UI가이드
                     </button>
                 </div>
             </div>
@@ -1997,6 +2003,232 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- UI가이드 탭 (사용자 밀로그 UI 시스템) -->
+            <div id="admin-tab-content-uiGuide" class="admin-tab-content hidden">
+                <div class="space-y-4">
+                    <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sm:p-6">
+                        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-black text-emerald-600 uppercase tracking-[0.22em] mb-2">MEALOG UI SYSTEM</p>
+                                <h2 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">UI가이드</h2>
+                                <p class="text-sm text-slate-500 mt-2 leading-relaxed">사용자 밀로그 화면에서 반복적으로 쓰는 컬러, 컴포넌트, 레이아웃 규칙을 한 곳에 모았습니다.</p>
+                            </div>
+                            <div class="rounded-2xl bg-emerald-600 text-white px-5 py-4 shadow-lg shadow-emerald-700/20 min-w-[14rem]">
+                                <p class="text-xs font-bold text-emerald-100">Brand Tone</p>
+                                <p class="text-xl font-black mt-1">따뜻하고 가벼운 식사 기록</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div class="xl:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <div class="flex items-center justify-between gap-3 mb-4">
+                                <h3 class="text-lg font-black text-slate-800">컬러 시스템</h3>
+                                <span class="text-xs font-bold text-slate-400">개선된 컬러 시스템</span>
+                            </div>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div class="rounded-2xl border border-emerald-100 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#10b981]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Green (유지)</p>
+                                        <p class="text-xs text-slate-500 mt-1">#10b981</p>
+                                        <p class="text-xs text-slate-400 mt-2">기본 브랜드, 긍정 상태, 주요 강조</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-100 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#059669]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Green Dark</p>
+                                        <p class="text-xs text-slate-500 mt-1">#059669</p>
+                                        <p class="text-xs text-slate-400 mt-2">CTA hover, 활성 상태, 진한 브랜드 포인트</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-100 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#d1fae5]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Green Pale</p>
+                                        <p class="text-xs text-slate-500 mt-1">#d1fae5</p>
+                                        <p class="text-xs text-slate-400 mt-2">성공 배경, 부드러운 강조 면</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#0f172a]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Slate 900 ★</p>
+                                        <p class="text-xs text-slate-500 mt-1">#0f172a</p>
+                                        <p class="text-xs text-slate-400 mt-2">최상위 제목, 강한 CTA, 명도 대비 보강</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#1e293b]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Slate 800 ★</p>
+                                        <p class="text-xs text-slate-500 mt-1">#1e293b</p>
+                                        <p class="text-xs text-slate-400 mt-2">본문 핵심 텍스트, 보조 강한 버튼</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#64748b]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Slate 500</p>
+                                        <p class="text-xs text-slate-500 mt-1">#64748b</p>
+                                        <p class="text-xs text-slate-400 mt-2">설명 텍스트, 비활성 상태, 보조 정보</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#f1f5f9] border-b border-slate-100"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Slate 100</p>
+                                        <p class="text-xs text-slate-500 mt-1">#f1f5f9</p>
+                                        <p class="text-xs text-slate-400 mt-2">배경 면, 구획, 입력 필드 표면</p>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-amber-100 overflow-hidden bg-white">
+                                    <div class="h-20 bg-[#f59e0b]"></div>
+                                    <div class="p-4">
+                                        <p class="text-sm font-black text-slate-800">Amber (포인트)</p>
+                                        <p class="text-xs text-slate-500 mt-1">#f59e0b</p>
+                                        <p class="text-xs text-slate-400 mt-2">식사·기록 포인트, 주의 환기, 따뜻한 강조</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-4">★ 표시는 새로 추가된 다크 뉴트럴입니다. 그린과 함께 쓰면 명도 대비가 생겨 밋밋함이 사라집니다.</p>
+                        </div>
+
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <h3 class="text-lg font-black text-slate-800 mb-4">타이포그래피 · 폰트</h3>
+                            <div class="space-y-4">
+                                <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Primary UI Font</p>
+                                    <p class="inline-flex items-center rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500 mb-2">폰트명: Pretendard</p>
+                                    <p class="text-2xl font-black text-slate-900 tracking-tight" style="font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">Pretendard</p>
+                                    <p class="text-xs text-slate-500 mt-2">앱 전체 기본 폰트입니다. 본문, 버튼, 폼, 관리자 화면까지 가장 넓게 사용합니다.</p>
+                                    <p class="text-[11px] text-slate-400 mt-2">Weight: 400 / 600 / 700 / 800 / 900</p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Brand / Logo Font</p>
+                                    <p class="inline-flex items-center rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500 mb-2">폰트명: Fredoka</p>
+                                    <p class="text-3xl font-semibold text-emerald-600 tracking-tight lowercase" style="font-family: 'Fredoka', sans-serif;">mealog</p>
+                                    <p class="text-xs text-slate-500 mt-2">MEALOG 로고성 텍스트, 인사이트·밀톡 타이틀, 공유 캡처 헤더에 사용합니다.</p>
+                                    <p class="text-[11px] text-slate-400 mt-2">Weight: 300 / 400 / 500 / 600 / 700</p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Handwriting Font</p>
+                                    <p class="inline-flex items-center rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500 mb-2">폰트명: 나눔손글씨 가람연꽃</p>
+                                    <p class="text-2xl text-slate-900 leading-snug" style="font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;">오늘의 식사 기록</p>
+                                    <p class="text-xs text-slate-500 mt-2">앨범 사진 캡션, 타임라인 사진 팝업, 일간·베스트·인사이트 공유 캡처의 감성 헤더에 사용합니다.</p>
+                                    <p class="text-[11px] text-slate-400 mt-2">Fallback: Nanum Pen Script / cursive</p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Decorative Korean</p>
+                                    <p class="inline-flex items-center rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500 mb-2">폰트명: Yeon Sung</p>
+                                    <p class="text-xl text-slate-900 leading-snug" style="font-family: 'Yeon Sung', serif;">밀당의 참견</p>
+                                    <p class="text-xs text-slate-500 mt-2">일부 캐릭터성 문구와 감성 섹션에서 쓰는 장식용 한글 폰트입니다.</p>
+                                </div>
+                                <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Loaded / Auxiliary</p>
+                                    <p class="inline-flex items-center rounded-full bg-white border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-500 mb-2">폰트명: GmarketSans · NanumSquareRound</p>
+                                    <p class="text-lg font-bold text-slate-800" style="font-family: 'GmarketSans', 'Pretendard', sans-serif;">GmarketSans · NanumSquareRound</p>
+                                    <p class="text-xs text-slate-500 mt-2">프로젝트에 로드되어 있으나 현재 핵심 UI 규칙은 Pretendard와 Fredoka 중심입니다. 새 화면에는 우선순위 폰트부터 적용합니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <h3 class="text-lg font-black text-slate-800 mb-4">컴포넌트 규칙</h3>
+                            <div class="space-y-3">
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div class="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p class="text-sm font-black text-slate-800">카드</p>
+                                            <p class="text-xs text-slate-500 mt-1">흰 배경, 2xl 라운드, 약한 보더와 그림자</p>
+                                        </div>
+                                        <span class="px-3 py-1 rounded-full bg-white border border-slate-200 text-xs font-bold text-slate-500">rounded-2xl</span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" class="px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-700/15">Primary</button>
+                                    <button type="button" class="px-4 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold shadow-md shadow-slate-900/15">Strong</button>
+                                    <button type="button" class="px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold">Secondary</button>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <label class="block">
+                                        <span class="text-xs font-bold text-slate-400 block mb-1 ml-1 uppercase">입력</span>
+                                        <input type="text" value="오늘 먹은 것" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none">
+                                    </label>
+                                    <label class="block">
+                                        <span class="text-xs font-bold text-slate-400 block mb-1 ml-1 uppercase">상태</span>
+                                        <div class="w-full bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 text-sm font-bold text-emerald-700">저장 완료</div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                            <h3 class="text-lg font-black text-slate-800 mb-4">사용자 앱 패턴</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div class="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center mb-3">
+                                        <i class="fa-solid fa-utensils"></i>
+                                    </div>
+                                    <p class="text-sm font-black text-slate-800">기록 중심</p>
+                                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">식사·감정·포만감 입력은 큰 터치 영역과 짧은 문구를 우선합니다.</p>
+                                </div>
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div class="w-11 h-11 rounded-xl bg-orange-500 text-white flex items-center justify-center mb-3">
+                                        <i class="fa-solid fa-heart"></i>
+                                    </div>
+                                    <p class="text-sm font-black text-slate-800">따뜻한 피드백</p>
+                                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">성공·환영 메시지는 부드러운 카드와 긍정 컬러로 표현합니다.</p>
+                                </div>
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div class="w-11 h-11 rounded-xl bg-slate-900 text-white flex items-center justify-center mb-3">
+                                        <i class="fa-solid fa-mobile-screen"></i>
+                                    </div>
+                                    <p class="text-sm font-black text-slate-800">모바일 우선</p>
+                                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">모달은 좁은 화면에서도 한 손 조작이 쉬운 폭과 여백을 사용합니다.</p>
+                                </div>
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                    <div class="w-11 h-11 rounded-xl bg-blue-600 text-white flex items-center justify-center mb-3">
+                                        <i class="fa-solid fa-chart-simple"></i>
+                                    </div>
+                                    <p class="text-sm font-black text-slate-800">가벼운 데이터</p>
+                                    <p class="text-xs text-slate-500 mt-1 leading-relaxed">통계와 인사이트는 숫자보다 의미가 먼저 보이도록 구성합니다.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                        <h3 class="text-lg font-black text-slate-800 mb-4">간격 · 형태 토큰</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Radius</p>
+                                <p class="text-sm font-black text-slate-800 mt-2">rounded-xl / rounded-2xl</p>
+                                <p class="text-xs text-slate-500 mt-1">버튼 12px, 카드 16px 이상</p>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Spacing</p>
+                                <p class="text-sm font-black text-slate-800 mt-2">p-4 / p-5 / p-6</p>
+                                <p class="text-xs text-slate-500 mt-1">모바일 기준 촘촘한 여백</p>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Border</p>
+                                <p class="text-sm font-black text-slate-800 mt-2">border-slate-100/200</p>
+                                <p class="text-xs text-slate-500 mt-1">구획만 약하게 분리</p>
+                            </div>
+                            <div class="rounded-xl bg-slate-50 border border-slate-100 p-4">
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Shadow</p>
+                                <p class="text-sm font-black text-slate-800 mt-2">shadow-sm / shadow-lg</p>
+                                <p class="text-xs text-slate-500 mt-1">카드는 작게, 팝업은 크게</p>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
         </main>
