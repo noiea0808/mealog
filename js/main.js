@@ -438,6 +438,7 @@ window.setViewMode = (m) => {
     appState.viewMode = m;
     document.getElementById('btn-view-list').className = `view-tab ${m === 'list' ? 'active' : 'inactive'}`;
     document.getElementById('btn-view-page').className = `view-tab ${m === 'page' ? 'active' : 'inactive'}`;
+    document.getElementById('timelineView')?.classList.toggle('timeline-view-mode-page', m === 'page');
     if (m === 'list') {
         // 오늘 날짜로 설정
         const today = new Date();
@@ -2023,11 +2024,11 @@ function initDailySwipeGesture() {
     if (!tv) return;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
-    /** 일간 스와이프는 버튼/입력·기록 카드 위에서 시작하지 않음 — pointermove preventDefault가 클릭을 삼켜 공유·저장·기록 모달이 무반응이 되는 문제 방지 */
+    /** 일간 스와이프: 버튼·입력 등 실제 조작 요소만 제외(카드 본문은 스와이프 허용) */
     const isInteractiveSwipeTarget = (node) => {
         if (!node || node.nodeType !== 1) return false;
         return !!node.closest(
-            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily], .card, .snack-tag, [data-mealog-open-date], [data-mealog-open-daily]'
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap'
         );
     };
     const SWIPE_TRIGGER_PX = 28;

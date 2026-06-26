@@ -1700,6 +1700,8 @@ function showBoardPanelScrollbarWhileScrolling(el) {
     const onScroll = (e) => showBoardPanelScrollbarWhileScrolling(e.currentTarget);
     const lounge = document.getElementById('boardLoungeScrollArea');
     if (lounge) lounge.addEventListener('scroll', onScroll, { passive: true });
+    const settingsScroll = document.querySelector('#settingsView .settings-view-content');
+    if (settingsScroll) settingsScroll.addEventListener('scroll', onScroll, { passive: true });
 })();
 
 (function bindFeedManualRefresh() {

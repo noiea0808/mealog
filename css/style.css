@@ -44,7 +44,7 @@ html.platform-web #navigationBarOverlay {
 }
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
 html.platform-native-app .app-chrome-subtab {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
 }
 html.platform-native-app #trackerTabs .view-tab {
     font-size: 0.8125rem;
@@ -1878,9 +1878,10 @@ body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
     padding: 7px 14px;
     border-radius: 9999px;
     border: none;
-    font-size: 13px;
-    font-weight: 400;
-    line-height: 1.2;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1rem;
     white-space: nowrap;
     cursor: pointer;
     background: rgba(0, 0, 0, 0.14);
@@ -1892,7 +1893,7 @@ body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
 .app-chrome-subtab[aria-selected="true"] {
     background: rgba(255, 255, 255, 0.24);
     color: #ffffff;
-    font-weight: 400;
+    font-weight: 600;
 }
 .app-chrome-subtab:hover {
     color: #ffffff;
@@ -1992,32 +1993,37 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-ta
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
     color: rgba(255, 255, 255, 0.68) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-item > span {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span {
     color: rgba(255, 255, 255, 0.88) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-item > span.text-rose-400 {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
     color: rgba(255, 210, 210, 0.92) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot {
     background: transparent !important;
     color: rgba(255, 255, 255, 0.92) !important;
     border: 1px solid transparent;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-full {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full {
     background: rgba(255, 255, 255, 0.22) !important;
     color: #ffffff !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-partial {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
     background: rgba(255, 255, 255, 0.1) !important;
     border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
     color: #ffffff !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-selected {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
     transform: scale(1.08);
     border: 2px solid #ffffff !important;
     background: rgba(255, 255, 255, 0.12) !important;
     color: #ffffff !important;
     font-weight: 800;
+}
+/* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
+#trackerMonthCalendarModal .calendar-dot.dot-none {
+    background: #ecfdf5;
+    color: #64748b;
 }
 
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
@@ -4074,6 +4080,12 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     padding-left: 0 !important;
     padding-right: 0 !important;
     background-color: #f8fafc; /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
+}
+/* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
+#timelineView.timeline-view-mode-page,
+#timelineView.timeline-view-mode-page .card,
+#timelineView.timeline-view-mode-page .date-section-header {
+    touch-action: pan-y;
 }
 #timelineContainer .card {
     border-radius: 0 !important;
@@ -6524,6 +6536,28 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     margin-top: calc(-1 * var(--app-chrome-header-h));
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+}
+/* 사용자 뷰 본문: 밀톡(#boardLoungeScrollArea)과 동일 — 얇은 막대, 스크롤 중에만 표시 */
+#settingsView .settings-view-content {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    -webkit-overflow-scrolling: touch;
+}
+#settingsView .settings-view-content::-webkit-scrollbar {
+    width: 4px;
+}
+#settingsView .settings-view-content::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+#settingsView .settings-view-content::-webkit-scrollbar-track {
+    background: #f8fafc;
+}
+#settingsView .settings-view-content.board-panel-scrollbar-active {
+    scrollbar-color: rgba(148, 163, 184, 0.45) #f8fafc;
+}
+#settingsView .settings-view-content.board-panel-scrollbar-active::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
 }
 /* 라운지 프레임: 서브탭·카테고리 + 본문 스크롤 — #boardListView 좌우 패딩(1rem) 풀블리드 */
 #boardListView #boardLoungeFrame.board-lounge-frame {

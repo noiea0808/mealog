@@ -1838,9 +1838,6 @@ export function refreshTrackerMonthCalendarPopupIfOpen() {
 }
 
 function setupTrackerMonthCalendarModal() {
-    if (trackerMonthCalendarModalBound) return;
-    trackerMonthCalendarModalBound = true;
-
     const backdrop = document.getElementById('trackerMonthCalendarBackdrop');
     const closeBtn = document.getElementById('trackerMonthCalendarClose');
     const prevBtn = document.getElementById('trackerMonthPrevMonth');
@@ -1872,11 +1869,15 @@ function setupTrackerMonthCalendarModal() {
         renderTrackerMonthCalendarPopup();
     };
 
-    if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
-    if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
-    if (prevBtn) prevBtn.addEventListener('click', goPrev);
-    if (nextBtn) nextBtn.addEventListener('click', goNext);
-    if (openBtn) {
+    if (!trackerMonthCalendarModalBound) {
+        trackerMonthCalendarModalBound = true;
+        if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
+        if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
+        if (prevBtn) prevBtn.addEventListener('click', goPrev);
+        if (nextBtn) nextBtn.addEventListener('click', goNext);
+    }
+    if (openBtn && !openBtn.dataset.trackerMonthCalBound) {
+        openBtn.dataset.trackerMonthCalBound = '1';
         openBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
