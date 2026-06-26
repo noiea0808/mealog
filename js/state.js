@@ -62,6 +62,8 @@ export const appState = {
     currentEditingDate: "",
     currentEditingSlotId: "",
     currentPhotos: [], // 미리보기용 원본 data URL(선택 직후) 또는 Storage URL; 업로드 시에만 압축
+    /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
+    currentPhotoMeta: [],
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
@@ -84,6 +86,9 @@ export const appState = {
     /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
     entryMealClockPendingExifHhmmMain: null,
     entryMealClockPendingExifHhmmSnack: null,
+    /** 기록 시간 입력 출처: 'now' | 'photo' | 'manual' | null */
+    entryMealClockSourceMain: null,
+    entryMealClockSourceSnack: null,
 
     /** 하루 기록 모달 */
     dailyJournalEditingDate: '',

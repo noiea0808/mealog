@@ -62,6 +62,17 @@ import {
     mealClock24FromAmPmClock,
     mealClock24ToAmPmAndDisplay
 } from '../meal-time-utils.js';
+import {
+    createPhotoMetaFromFile,
+    normalizePhotoMetaFromRecord,
+    resolveFirstPhotoTakenAt,
+    syncPhotoMetaLength
+} from '../photo-meta.js';
+import {
+    closeTimeSourceSheets,
+    openTimeManualPanel,
+    openTimeSourceSheet
+} from '../time-source-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
@@ -241,6 +252,25 @@ function syncEntryMealClockToggleCheckboxes() {
 }
 
 /** isMain:true = 본식 시간, false = 간식 시간 — 저장값은 24시 "HH:mm" */
+const MEAL_CLOCK_SOURCE_LABELS = {
+    now: '현재 시각',
+    photo: '사진 시각',
+    manual: '직접 입력'
+};
+
+function setEntryMealClockSource(isMain, source) {
+    if (isMain) appState.entryMealClockSourceMain = source || null;
+    else appState.entryMealClockSourceSnack = source || null;
+    updateEntryMealClockSourceLabel(isMain);
+}
+
+function updateEntryMealClockSourceLabel(isMain) {
+    const el = document.getElementById(isMain ? 'entryMealTimeSourceLabelMain' : 'entryMealTimeSourceLabelSnack');
+    if (!el) return;
+    const source = isMain ? appState.entryMealClockSourceMain : appState.entryMealClockSourceSnack;
+    el.textContent = source ? (MEAL_CLOCK_SOURCE_LABELS[source] || '') : '';
+}
+
 function applyMealClockRowFrom24(isMain, hhmm24maybe) {
     const txt = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
     const bridge = document.getElementById(isMain ? 'entryMealTimeBridgeMain' : 'entryMealTimeBridgeSnack');
@@ -251,6 +281,7 @@ function applyMealClockRowFrom24(isMain, hhmm24maybe) {
         txt.value = '';
         if (sel) sel.value = 'pm';
         bridge.value = '';
+        setEntryMealClockSource(isMain, null);
         return;
     }
     bridge.value = n24;
@@ -268,6 +299,55 @@ function getMealClock24FromModal(isMain) {
     return normalizeMealClockInputValue(raw || '');
 }
 
+function getMealClockInitialDate(isMain) {
+    const n24 = getMealClock24FromModal(isMain);
+    const d = new Date();
+    if (n24) {
+        const [h, m] = n24.split(':').map((v) => parseInt(v, 10));
+        d.setHours(h, m, 0, 0);
+    }
+    return d;
+}
+
+function applyMealClockFromDate(isMain, date, source) {
+    if (!date || Number.isNaN(date.getTime())) return;
+    const hhmm = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    applyMealClockRowFrom24(isMain, hhmm);
+    if (source) setEntryMealClockSource(isMain, source);
+}
+
+function openEntryMealTimeSourceSheet(isMain) {
+    const timeOn = isMain ? appState.entryTimeOnMain === true : appState.entryTimeOnSnack === true;
+    if (!timeOn) return;
+
+    openTimeSourceSheet({
+        title: '시간 선택',
+        zIndex: 350,
+        onNow: () => applyMealClockFromDate(isMain, new Date(), 'now'),
+        onPhoto: async () => {
+            const date = await resolveFirstPhotoTakenAt({
+                photoMeta: appState.currentPhotoMeta,
+                photos: appState.currentPhotos
+            });
+            if (!date) {
+                showToast('사진 촬영 시각 정보를 찾을 수 없습니다.', 'info');
+                return;
+            }
+            closeTimeSourceSheets();
+            applyMealClockFromDate(isMain, date, 'photo');
+        },
+        onManual: () => {
+            openTimeManualPanel({
+                mode: 'time',
+                zIndex: 350,
+                initialDate: getMealClockInitialDate(isMain),
+                onApply: (date) => applyMealClockFromDate(isMain, date, 'manual'),
+                onInvalid: () => showToast('올바른 시간을 입력해주세요.', 'error')
+            });
+        }
+    });
+}
+
 function applyEntryMealClockInputVisibility() {
     const onM = appState.entryTimeOnMain === true;
     const onS = appState.entryTimeOnSnack === true;
@@ -275,8 +355,8 @@ function applyEntryMealClockInputVisibility() {
     const inS = document.getElementById('entryMealTimeInputSnack');
     const offM = document.getElementById('entryMealTimeOffDisplayMain');
     const offS = document.getElementById('entryMealTimeOffDisplaySnack');
-    const pickM = document.getElementById('entryMealTimePickBtnMain');
-    const pickS = document.getElementById('entryMealTimePickBtnSnack');
+    const pickM = document.getElementById('entryMealTimeSourceBtnMain');
+    const pickS = document.getElementById('entryMealTimeSourceBtnSnack');
     const amM = document.getElementById('entryMealAmpmMain');
     const amS = document.getElementById('entryMealAmpmSnack');
     const compoundMain = document.getElementById('entryMealClockCompoundMain');
@@ -310,6 +390,8 @@ function applyEntryMealClockInputVisibility() {
     };
     applyOne(onM, inM, offM, pickM, amM, compoundMain);
     applyOne(onS, inS, offS, pickS, amS, compoundSnack);
+    updateEntryMealClockSourceLabel(true);
+    updateEntryMealClockSourceLabel(false);
 }
 
 function finalizeEntryMealClock(savedRecord, isSnackMode) {
@@ -386,10 +468,12 @@ function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
     const hhmm = normalizeMealClockInputValue(hhmmRaw) || hhmmRaw;
     if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
         applyMealClockRowFrom24(true, hhmm);
+        setEntryMealClockSource(true, 'now');
         appState.entryMealClockDidSeedModalOpenMain = true;
     }
     if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
         applyMealClockRowFrom24(false, hhmm);
+        setEntryMealClockSource(false, 'now');
         appState.entryMealClockDidSeedModalOpenSnack = true;
     }
 }
@@ -509,6 +593,7 @@ function initEntryModalGaugeControlsOnce() {
         if (!inp || String(inp.value || '').trim()) return;
         const d = new Date();
         applyMealClockRowFrom24(mainSide, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+        setEntryMealClockSource(mainSide, 'now');
     };
     const applyPendingExifOrFillNowWhenToggleOn = (mainSide) => {
         if (appState.currentEditingId) {
@@ -519,6 +604,7 @@ function initEntryModalGaugeControlsOnce() {
         const applied = mainSide ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
         if (pending != null && String(pending).trim() !== '' && !applied) {
             applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(pending) || pending);
+            setEntryMealClockSource(mainSide, 'photo');
             if (mainSide) {
                 appState.entryMealClockDidApplyPhotoExifMain = true;
                 appState.entryMealClockPendingExifHhmmMain = null;
@@ -536,10 +622,8 @@ function initEntryModalGaugeControlsOnce() {
         if (checked) {
             applyPendingExifOrFillNowWhenToggleOn(true);
         } else {
-            const inp = document.getElementById('entryMealTimeInputMain');
-            if (inp) {
-                applyMealClockRowFrom24(true, '');
-            }
+            applyMealClockRowFrom24(true, '');
+            setEntryMealClockSource(true, null);
         }
         applyEntryMealClockInputVisibility();
         schedulePersistEntryModalGaugePrefs();
@@ -550,10 +634,8 @@ function initEntryModalGaugeControlsOnce() {
         if (checked) {
             applyPendingExifOrFillNowWhenToggleOn(false);
         } else {
-            const inp = document.getElementById('entryMealTimeInputSnack');
-            if (inp) {
-                applyMealClockRowFrom24(false, '');
-            }
+            applyMealClockRowFrom24(false, '');
+            setEntryMealClockSource(false, null);
         }
         applyEntryMealClockInputVisibility();
         schedulePersistEntryModalGaugePrefs();
@@ -568,12 +650,12 @@ function initMealTimeTextInputsOnce() {
     if (window.__mealTimeTextInputsInit) return;
     window.__mealTimeTextInputsInit = true;
 
-    const bindRow = (mainSide, textId, bridgeId, btnId, ampmId) => {
+    const bindRow = (mainSide, textId, bridgeId, sourceBtnId, ampmId) => {
         const text = document.getElementById(textId);
         const bridge = document.getElementById(bridgeId);
-        const btn = document.getElementById(btnId);
+        const sourceBtn = document.getElementById(sourceBtnId);
         const sel = document.getElementById(ampmId);
-        if (!text || !bridge || !btn) return;
+        if (!text || !bridge || !sourceBtn) return;
 
         const selectAllMealClockText = () => {
             try {
@@ -614,27 +696,19 @@ function initMealTimeTextInputsOnce() {
             }
             const raw24 = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', n12) || '';
             applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(raw24) || '');
+            setEntryMealClockSource(mainSide, 'manual');
         });
         if (sel) {
             sel.addEventListener('change', () => {
                 const n24 = getMealClock24FromModal(mainSide);
                 applyMealClockRowFrom24(mainSide, n24 || '');
+                if (n24) setEntryMealClockSource(mainSide, 'manual');
             });
         }
-        btn.addEventListener('click', (e) => {
+        sourceBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            let n = getMealClock24FromModal(mainSide);
-            if (!n) n = '12:00';
-            bridge.value = n;
-            if (typeof bridge.showPicker === 'function') {
-                bridge.showPicker().catch(() => {});
-            } else {
-                try {
-                    bridge.focus({ preventScroll: true });
-                    bridge.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-                } catch (_) {}
-            }
+            openEntryMealTimeSourceSheet(mainSide);
         });
         bridge.addEventListener('change', () => {
             const n = normalizeMealClockInputValue(bridge.value);
@@ -648,8 +722,8 @@ function initMealTimeTextInputsOnce() {
         });
     };
 
-    bindRow(true, 'entryMealTimeInputMain', 'entryMealTimeBridgeMain', 'entryMealTimePickBtnMain', 'entryMealAmpmMain');
-    bindRow(false, 'entryMealTimeInputSnack', 'entryMealTimeBridgeSnack', 'entryMealTimePickBtnSnack', 'entryMealAmpmSnack');
+    bindRow(true, 'entryMealTimeInputMain', 'entryMealTimeBridgeMain', 'entryMealTimeSourceBtnMain', 'entryMealAmpmMain');
+    bindRow(false, 'entryMealTimeInputSnack', 'entryMealTimeBridgeSnack', 'entryMealTimeSourceBtnSnack', 'entryMealAmpmSnack');
 }
 
 function syncEntryModalBodyClass() {
@@ -983,6 +1057,9 @@ export async function openModal(date, slotId, entryId = null) {
         state.currentEditingSlotId = slotId;
         resetEntryMealClockSessionFlagsForOpen(!entryId);
         state.currentPhotos = [];
+        state.currentPhotoMeta = [];
+        state.entryMealClockSourceMain = null;
+        state.entryMealClockSourceSnack = null;
         state.sharedPhotos = []; // 이미 공유된 사진 목록
         state.originalSharedPhotos = []; // 원본 공유 사진 목록 (삭제 추적용)
         state.wantsToShare = false; // 공유를 원하는지 여부
@@ -1184,6 +1261,7 @@ export async function openModal(date, slotId, entryId = null) {
             if (r) {
                 // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
                 state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
+                state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
                 // sharedPhotos도 배열인지 확인
                 state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
                 state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
@@ -1575,6 +1653,7 @@ export async function openModal(date, slotId, entryId = null) {
 }
 
 export function closeModal() {
+    closeTimeSourceSheets();
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
         entryModal.classList.remove('keyboard-open');
@@ -1593,6 +1672,9 @@ export function closeModal() {
     if (state) {
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.currentPhotoMeta = [];
+        state.entryMealClockSourceMain = null;
+        state.entryMealClockSourceSnack = null;
         state.sharedPhotos = [];
         state.originalSharedPhotos = [];
         state.wantsToShare = false;
@@ -1974,6 +2056,7 @@ export async function saveEntry() {
         }
 
         const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
+        const sourcePhotoMeta = syncPhotoMetaLength(state.currentPhotoMeta, sourcePhotos.length);
         /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
         const isLocalPendingPhoto = (photo) =>
             typeof photo === 'string' &&
@@ -2017,6 +2100,7 @@ export async function saveEntry() {
             photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
             // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
             photos: existingPhotoUrls,
+            photoMeta: sourcePhotoMeta,
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : (isS ? (snackPlaceInputVal || appState.selectedSnackPlaceMainTag || '') : placeInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
@@ -2128,7 +2212,8 @@ export async function saveEntry() {
         const optimisticRecord = {
             ...record,
             id: record.id || optimisticTempId,
-            photos: [...sourcePhotos]
+            photos: [...sourcePhotos],
+            photoMeta: sourcePhotoMeta.map((e) => ({ takenAt: e?.takenAt ?? null }))
         };
         if (optimisticTempId) markMealOptimisticSavePending(optimisticTempId);
         if (record.id && !wasNewRecord) {
@@ -2203,6 +2288,9 @@ export async function saveEntry() {
         // 상태 초기화 (모달 닫기 직후)
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.currentPhotoMeta = [];
+        state.entryMealClockSourceMain = null;
+        state.entryMealClockSourceSnack = null;
         state.sharedPhotos = [];
         state.originalSharedPhotos = [];
         state.wantsToShare = false;
@@ -2349,17 +2437,27 @@ export async function saveEntry() {
                                         )
                                     );
                                     let uploadedIndex = 0;
-                                    const finalPhotoUrls = sourcePhotos.reduce((acc, photo) => {
+                                    let metaIndex = 0;
+                                    const finalPhotoUrls = [];
+                                    const finalPhotoMeta = [];
+                                    sourcePhotos.forEach((photo) => {
+                                        const meta = sourcePhotoMeta[metaIndex++] || { takenAt: null };
                                         if (isLocalPendingPhoto(photo)) {
                                             const uploaded = uploadedUrls[uploadedIndex++];
-                                            if (uploaded) acc.push(uploaded);
-                                            return acc;
+                                            if (uploaded) {
+                                                finalPhotoUrls.push(uploaded);
+                                                finalPhotoMeta.push(meta);
+                                            }
+                                            return;
                                         }
-                                        if (typeof photo === 'string' && photo) acc.push(photo);
-                                        return acc;
-                                    }, []);
+                                        if (typeof photo === 'string' && photo) {
+                                            finalPhotoUrls.push(photo);
+                                            finalPhotoMeta.push(meta);
+                                        }
+                                    });
 
                                     record.photos = finalPhotoUrls;
+                                    record.photoMeta = finalPhotoMeta;
                                     photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
                                         ? [...finalPhotoUrls]
                                         : [];
@@ -2376,7 +2474,8 @@ export async function saveEntry() {
                                         if (localIdx >= 0) {
                                             window.mealHistory[localIdx] = {
                                                 ...window.mealHistory[localIdx],
-                                                photos: [...finalPhotoUrls]
+                                                photos: [...finalPhotoUrls],
+                                                photoMeta: record.photoMeta
                                             };
                                         }
                                     }
@@ -2747,6 +2846,7 @@ export async function saveEntry() {
         const state = appState;
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.currentPhotoMeta = [];
     } finally {
         // finally 블록에서도 한 번 더 확인
         if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
@@ -3821,9 +3921,13 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
             const currentPhotosCount = state.currentPhotos.length;
             const availableSlots = RECORD_MAX_PHOTOS - currentPhotosCount;
 
-            sortedResults.slice(0, availableSlots).forEach(({ dataUrl }) => {
+            const exifMetaEntries = await Promise.all(filesToProcess.map((file) => createPhotoMetaFromFile(file)));
+
+            sortedResults.slice(0, availableSlots).forEach(({ index, dataUrl }) => {
                 if (state.currentPhotos.length < RECORD_MAX_PHOTOS) {
                     state.currentPhotos.push(dataUrl);
+                    if (!Array.isArray(state.currentPhotoMeta)) state.currentPhotoMeta = [];
+                    state.currentPhotoMeta.push(exifMetaEntries[index] || { takenAt: null });
                 }
             });
 
@@ -3892,8 +3996,10 @@ export function openRecordGalleryPicker(isSnack = false) {
 
 export function removePhoto(idx) {
     const state = appState;
-    const removedPhoto = state.currentPhotos[idx];
     state.currentPhotos.splice(idx, 1);
+    if (Array.isArray(state.currentPhotoMeta)) {
+        state.currentPhotoMeta.splice(idx, 1);
+    }
     renderPhotoPreviews();
     updateShareIndicator();
 }
@@ -3911,6 +4017,12 @@ export function movePhotoOrder(idx, delta) {
     const tmp = photos[i];
     photos[i] = photos[j];
     photos[j] = tmp;
+    const meta = state.currentPhotoMeta;
+    if (Array.isArray(meta) && meta.length === photos.length) {
+        const tmpMeta = meta[i];
+        meta[i] = meta[j];
+        meta[j] = tmpMeta;
+    }
     renderPhotoPreviews();
 }
 

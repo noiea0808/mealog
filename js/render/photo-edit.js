@@ -3,6 +3,14 @@
  * render.js(미리보기)와 순환 의존을 피하기 위해 저장 후 `renderPhotoPreviews` 는 동적 import 로 호출합니다.
  */
 import { appState } from '../state.js';
+import { tryExifDateFromImageSrc } from '../meal-time-utils.js';
+import { parsePhotoTakenAt } from '../photo-meta.js';
+import { showToast } from '../ui.js';
+import {
+    closeTimeSourceSheets,
+    openTimeManualPanel,
+    openTimeSourceSheet
+} from '../time-source-picker.js';
 
 // 사진 편집 관련 변수
 let editingPhotoIndex = null;
@@ -185,6 +193,150 @@ function formatTimestampOverlayParts(date = new Date()) {
     };
 }
 
+function overlayPartsToDate(overlay) {
+    if (!overlay) return new Date();
+    const monthIndex = TIMESTAMP_MONTHS_EN.indexOf(overlay.month);
+    const [hh, mm] = String(overlay.time || '0:0').split(':').map((v) => parseInt(v, 10) || 0);
+    const year = parseInt(overlay.year, 10) || new Date().getFullYear();
+    const day = parseInt(overlay.day, 10) || 1;
+    return new Date(year, monthIndex >= 0 ? monthIndex : 0, day, hh, mm);
+}
+
+function getEditingPhotoSrc() {
+    if (editingPhotoIndex != null && Array.isArray(appState.currentPhotos)) {
+        return appState.currentPhotos[editingPhotoIndex] || editingPhotoImage?.src || null;
+    }
+    return editingPhotoImage?.src || null;
+}
+
+async function resolveEditingPhotoTakenAt() {
+    if (editingPhotoIndex != null && Array.isArray(appState.currentPhotoMeta)) {
+        const fromMeta = parsePhotoTakenAt(appState.currentPhotoMeta[editingPhotoIndex]);
+        if (fromMeta) return fromMeta;
+    }
+    return tryExifDateFromImageSrc(getEditingPhotoSrc());
+}
+
+function setTimestampOverlayDate(date) {
+    if (!photoEditCanvas || !date || Number.isNaN(date.getTime())) return;
+
+    const parts = formatTimestampOverlayParts(date);
+    if (!photoEditTimestampOverlay) {
+        const width = Math.min(
+            photoEditCanvas.width * 0.688,
+            Math.max(TIMESTAMP_MIN_WIDTH * 0.8, photoEditCanvas.width - 32)
+        );
+        const overlayHeight = getTimestampOverlayHeight({ width });
+        const padding = Math.max(12, Math.round(photoEditCanvas.width * 0.03));
+        photoEditTimestampOverlay = {
+            ...parts,
+            x: padding,
+            y: Math.max(padding, photoEditCanvas.height - overlayHeight - padding),
+            width
+        };
+    } else {
+        Object.assign(photoEditTimestampOverlay, parts);
+    }
+
+    photoEditTimestampSelected = true;
+    clampTimestampOverlay();
+    updateTimestampButtonUI();
+    drawPhotoEdit();
+}
+
+function removeTimestampOverlay() {
+    photoEditTimestampOverlay = null;
+    photoEditTimestampSelected = false;
+    timestampDragMode = null;
+    timestampDragStart = null;
+    updateTimestampButtonUI();
+    drawPhotoEdit();
+}
+
+function openPhotoEditTimestampSheet() {
+    if (!photoEditCanvas || !isMealPhotoEditContext()) return;
+
+    openTimeSourceSheet({
+        title: '시간 표시',
+        zIndex: 420,
+        showRemove: !!photoEditTimestampOverlay,
+        onNow: () => setTimestampOverlayDate(new Date()),
+        onPhoto: async () => {
+            const date = await resolveEditingPhotoTakenAt();
+            if (!date) {
+                showToast('사진 촬영 시각 정보를 찾을 수 없습니다.', 'info');
+                return;
+            }
+            closeTimeSourceSheets();
+            setTimestampOverlayDate(date);
+        },
+        onManual: () => {
+            const initial = photoEditTimestampOverlay
+                ? overlayPartsToDate(photoEditTimestampOverlay)
+                : new Date();
+            openTimeManualPanel({
+                mode: 'datetime',
+                zIndex: 420,
+                initialDate: initial,
+                onApply: (date) => setTimestampOverlayDate(date),
+                onInvalid: () => showToast('올바른 날짜와 시간을 입력해주세요.', 'error')
+            });
+        },
+        onRemove: () => removeTimestampOverlay()
+    });
+}
+
+function pointInRect(point, rect, pad = 6) {
+    if (!point || !rect) return false;
+    return (
+        point.x >= rect.x - pad &&
+        point.x <= rect.x + rect.width + pad &&
+        point.y >= rect.y - pad &&
+        point.y <= rect.y + rect.height + pad
+    );
+}
+
+function computeTimestampOverlayLayout(ctx, overlay = photoEditTimestampOverlay) {
+    if (!ctx || !overlay) return null;
+    const { x, y, width } = overlay;
+    const height = getTimestampOverlayHeight(overlay);
+    const timeFont = Math.max(28, width * 0.25);
+    const dateFont = Math.max(10, timeFont * 0.23);
+    const dateLineHeight = dateFont * 1.08;
+    const dateGap = Math.max(16, width * 0.045);
+    const centerY = y + height / 2;
+
+    ctx.font = `900 ${timeFont}px Pretendard, Arial, sans-serif`;
+    const timeMetrics = ctx.measureText(overlay.time);
+    const timeWidth = timeMetrics.width;
+    const timeAscent = timeMetrics.actualBoundingBoxAscent ?? timeFont * 0.75;
+    const timeDescent = timeMetrics.actualBoundingBoxDescent ?? timeFont * 0.1;
+    const baseY = centerY + (timeAscent - timeDescent) / 2;
+
+    ctx.font = `500 ${dateFont}px Pretendard, Arial, sans-serif`;
+    const dateX = x + timeWidth + dateGap;
+    const yearMetrics = ctx.measureText(overlay.year);
+    const monthMetrics = ctx.measureText(overlay.month);
+    const dayMetrics = ctx.measureText(overlay.day);
+    const dateAscent = dayMetrics.actualBoundingBoxAscent ?? dateFont * 0.75;
+    const dateDescent = dayMetrics.actualBoundingBoxDescent ?? dateFont * 0.1;
+    const dateVisualHeight = dateAscent + dateLineHeight * 2 + dateDescent;
+    const dateStartY = centerY - dateVisualHeight / 2 + dateAscent;
+    const dateMaxW = Math.max(yearMetrics.width, monthMetrics.width, dayMetrics.width);
+    const dateTop = dateStartY - dateAscent;
+    const dateBottom = dateStartY + dateLineHeight * 2 + dateDescent;
+    const hs = TIMESTAMP_HANDLE_SIZE;
+
+    return {
+        box: { x, y, width, height },
+        time: { x, y: baseY - timeAscent, width: timeWidth, height: timeAscent + timeDescent },
+        year: { x: dateX, y: dateTop, width: dateMaxW, height: dateLineHeight },
+        month: { x: dateX, y: dateStartY + dateLineHeight - dateAscent, width: dateMaxW, height: dateLineHeight },
+        day: { x: dateX, y: dateStartY + dateLineHeight * 2 - dateAscent, width: dateMaxW, height: dateLineHeight },
+        handle: { x: x + width - hs, y: y + height - hs, width: hs, height: hs }
+    };
+}
+
 function getTimestampOverlayHeight(overlay = photoEditTimestampOverlay) {
     if (!overlay) return 0;
     return overlay.width * 0.28;
@@ -210,8 +362,10 @@ function clampTimestampOverlay() {
 
 function drawTimestampOverlay(ctx, overlay = photoEditTimestampOverlay, opts = {}) {
     if (!ctx || !overlay) return;
+    const layout = computeTimestampOverlayLayout(ctx, overlay);
+    if (!layout) return;
     const { x, y, width } = overlay;
-    const height = getTimestampOverlayHeight(overlay);
+    const height = layout.box.height;
     const timeFont = Math.max(28, width * 0.25);
     const dateFont = Math.max(10, timeFont * 0.23);
     const dateLineHeight = dateFont * 1.08;
@@ -239,12 +393,12 @@ function drawTimestampOverlay(ctx, overlay = photoEditTimestampOverlay, opts = {
     ctx.letterSpacing = '0.02em';
     const dateMetrics = ctx.measureText(overlay.day);
     const dateAscent = dateMetrics.actualBoundingBoxAscent ?? dateFont * 0.75;
-    const dateDescent = dateMetrics.actualBoundingBoxDescent ?? dateFont * 0.1;
-    const dateVisualHeight = dateAscent + dateLineHeight * 2 + dateDescent;
+    const dateLineHeight2 = dateFont * 1.08;
+    const dateVisualHeight = dateAscent + dateLineHeight2 * 2 + (dateMetrics.actualBoundingBoxDescent ?? dateFont * 0.1);
     const dateStartY = centerY - dateVisualHeight / 2 + dateAscent;
     ctx.fillText(overlay.year, dateX, dateStartY);
-    ctx.fillText(overlay.month, dateX, dateStartY + dateLineHeight);
-    ctx.fillText(overlay.day, dateX, dateStartY + dateLineHeight * 2);
+    ctx.fillText(overlay.month, dateX, dateStartY + dateLineHeight2);
+    ctx.fillText(overlay.day, dateX, dateStartY + dateLineHeight2 * 2);
     ctx.restore();
 
     if (opts.showControls && photoEditTimestampSelected) {
@@ -267,8 +421,9 @@ function drawTimestampOverlay(ctx, overlay = photoEditTimestampOverlay, opts = {
 function getCanvasPointFromEvent(e) {
     if (!photoEditCanvas) return { x: 0, y: 0 };
     const rect = photoEditCanvas.getBoundingClientRect();
-    const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? 0;
-    const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? 0;
+    const touch = e.touches?.[0] ?? e.changedTouches?.[0];
+    const clientX = e.clientX ?? touch?.clientX ?? 0;
+    const clientY = e.clientY ?? touch?.clientY ?? 0;
     return {
         x: ((clientX - rect.left) / Math.max(1, rect.width)) * photoEditCanvas.width,
         y: ((clientY - rect.top) / Math.max(1, rect.height)) * photoEditCanvas.height
@@ -276,15 +431,14 @@ function getCanvasPointFromEvent(e) {
 }
 
 function getTimestampHitMode(point) {
-    if (!photoEditTimestampOverlay) return null;
-    const o = photoEditTimestampOverlay;
-    const h = getTimestampOverlayHeight(o);
-    const inBox = point.x >= o.x && point.x <= o.x + o.width && point.y >= o.y && point.y <= o.y + h;
-    if (!inBox) return null;
-    const inHandle =
-        point.x >= o.x + o.width - TIMESTAMP_HANDLE_SIZE * 1.4 &&
-        point.y >= o.y + h - TIMESTAMP_HANDLE_SIZE * 1.4;
-    return inHandle ? 'resize' : 'move';
+    if (!photoEditTimestampOverlay || !photoEditCtx) return null;
+    const layout = computeTimestampOverlayLayout(photoEditCtx, photoEditTimestampOverlay);
+    if (!layout) return null;
+
+    const handlePad = TIMESTAMP_HANDLE_SIZE * 0.4;
+    if (pointInRect(point, layout.handle, handlePad)) return 'resize';
+    if (pointInRect(point, layout.box)) return 'move';
+    return null;
 }
 
 function updateTimestampButtonUI() {
@@ -307,6 +461,7 @@ function openPhotoEditModalWithImage(photoSrc) {
     photoEditTimestampSelected = false;
     timestampDragMode = null;
     timestampDragStart = null;
+    closeTimeSourceSheets();
     updateTimestampButtonUI();
 
     const wrapper = document.getElementById('photoEditAspectWrapper');
@@ -751,24 +906,7 @@ export function rotatePhotoEdit() {
 }
 
 export function addPhotoEditTimestamp() {
-    if (!photoEditCanvas || !isMealPhotoEditContext()) return;
-    const parts = formatTimestampOverlayParts(new Date());
-    const width = Math.min(
-        photoEditCanvas.width * 0.688,
-        Math.max(TIMESTAMP_MIN_WIDTH * 0.8, photoEditCanvas.width - 32)
-    );
-    const overlayHeight = getTimestampOverlayHeight({ width });
-    const padding = Math.max(12, Math.round(photoEditCanvas.width * 0.03));
-    photoEditTimestampOverlay = {
-        ...parts,
-        x: padding,
-        y: Math.max(padding, photoEditCanvas.height - overlayHeight - padding),
-        width
-    };
-    photoEditTimestampSelected = true;
-    clampTimestampOverlay();
-    updateTimestampButtonUI();
-    drawPhotoEdit();
+    openPhotoEditTimestampSheet();
 }
 
 // 사진 편집 초기화 (리셋)
@@ -802,6 +940,7 @@ export function resetPhotoEdit() {
     photoEditTimestampSelected = false;
     timestampDragMode = null;
     timestampDragStart = null;
+    closeTimeSourceSheets();
     updateTimestampButtonUI();
     
     drawPhotoEdit();
@@ -876,6 +1015,7 @@ async function switchRecordPhotoEditToIndex(newIndex) {
     photoEditTimestampSelected = false;
     timestampDragMode = null;
     timestampDragStart = null;
+    closeTimeSourceSheets();
     updateTimestampButtonUI();
     updatePhotoEditNavUI();
     const photoSrc = photos[newIndex];
@@ -1029,6 +1169,7 @@ export function closePhotoEditModal() {
     photoEditTimestampSelected = false;
     timestampDragMode = null;
     timestampDragStart = null;
+    closeTimeSourceSheets();
     isPinching = false;
     isDraggingPhoto = false;
     photoEditContext = null;
