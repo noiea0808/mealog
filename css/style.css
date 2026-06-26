@@ -6,8 +6,10 @@
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
+    /* 메인 앱·밀톡 공통 페이지 배경 (slate-100) */
+    --app-page-bg: #f1f5f9;
     /* 밀톡 피드 대화 영역 배경 */
-    --board-feed-bg: #f1f5f9;
+    --board-feed-bg: var(--app-page-bg);
     /* 하단 플로팅: 메시지 컴포저·APP 네비 — 화면 좌우에서 띄우는 인셋 (각 변에 동일 값) */
     --app-bottom-floating-inset: 12px;
     /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
@@ -16,7 +18,7 @@
         calc(100vw - 2 * var(--app-bottom-floating-inset))
     );
     /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
-    --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
+    --board-feed-composer-surface: rgba(241, 245, 249, 0.7);
     /*
      * 피드 스크롤 하단 패딩: APP 네비가 아니라 fixed 컴포저(#boardInlineComposer) 기준.
      * = 컴포저 bottom 오프셋(뷰포트 하단~컴포저 밑변) + 컴포저 박스 높이(패딩 0.4rem×2 + 한 줄 행 2.25rem + 테두리) + 새로고침 등 여유.
@@ -102,19 +104,23 @@ html:has(#feedContent[data-moment-feed-layout='2']) {
 body {
     width: 100%;
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; 
-    background-color: #f8fafc; 
+    background-color: var(--app-page-bg); 
     color: #1e293b; 
     overflow-x: clip; 
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-/* 밀톡·피드: 입력창 아래·네비 뒤 연회색(#f8fafc) 구간을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
+/* 밀톡·피드: 입력창 아래·네비 뒤 연회색을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
     background-image: none;
 }
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
+}
+/* 메인 앱(타임라인·밀당·모먼트·설정 등): 하단 safe-area 연회색 통일 */
+body:has(#mainApp:not(.hidden)) #navigationBarOverlay {
+    background-color: var(--app-page-bg) !important;
 }
 /* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (텍스트 입력 포커스 시) — 푸시 설정 스위치(.push-pref-toggle)는 제외 */
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
@@ -406,7 +412,7 @@ body.keyboard-closed #boardWriteView {
     margin: 0;
 }
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
-.ui-surface-soft { background: #f1f5f9; } /* slate-100 */
+.ui-surface-soft { background: var(--app-page-bg); }
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
 .ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
 .ui-stack-sm > * + * { margin-top: 0.5rem; }     /* space-y-2 */
@@ -444,7 +450,7 @@ body.keyboard-closed #boardWriteView {
         90deg,
         #e2e8f0 0%,
         #f1f5f9 16%,
-        #f8fafc 38%,
+        #f1f5f9 38%,
         #f1f5f9 58%,
         #e2e8f0 100%
     );
@@ -1789,6 +1795,15 @@ body:has(#mainApp:not(.hidden)) {
     --app-chrome-subtabs-h: 2.75rem;
     --app-chrome-gradient-subtabs-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h));
     --app-chrome-gradient-timeline-span: calc(var(--safe-top) + var(--app-chrome-header-h) + 7.5rem);
+    --app-chrome-gradient-dashboard-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h) + 24rem);
+    /* 밀당 인사이트: 시작·끝 색은 공통 gradient와 동일, 중간 전환만 완만하게(높이 가변 대응) */
+    --app-chrome-gradient-dashboard-fill: linear-gradient(
+        135deg,
+        var(--timeline-chrome-green-deep) 0%,
+        var(--timeline-chrome-green-mid) 38%,
+        var(--timeline-chrome-green-base) 72%,
+        var(--timeline-chrome-green-light) 100%
+    );
     --app-chrome-gradient: linear-gradient(
         135deg,
         var(--timeline-chrome-green-deep) 0%,
@@ -1825,6 +1840,21 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader {
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #mainAppHeader {
     background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+}
+/* 밀당: 헤더·상태바·인사이트 chrome — 동일 fill gradient + JS 동기화 높이(--app-chrome-gradient-dashboard-sync-h) */
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #statusBarOverlay {
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+}
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader {
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
 }
 body:has(#mainApp:not(.hidden)) #headerAppTitle {
     color: #ffffff !important;
@@ -1904,18 +1934,36 @@ body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
     background: rgba(255, 255, 255, 0.28);
 }
 body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #boardLoungeFrame .board-mealtalk-subtabs,
-body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row,
-body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-chrome-subtabs {
+body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row {
     background: var(--app-chrome-gradient) !important;
     background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
     background-repeat: no-repeat !important;
     background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
     border-bottom: none !important;
 }
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome {
+    background-color: transparent !important;
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    /* 인사이트 chrome 높이(기간탭~식사·간식 기록)에 gradient를 꽉 채움 — sync-h 슬라이스 방식은 하단이 잘리는 문제 */
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+    box-sizing: border-box;
+    padding-bottom: 0.25rem;
+}
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome .dashboard-chrome-subtabs {
+    background: transparent !important;
+}
 body:has(#mainAppHeader.header-scroll-hidden) #boardListView:not(.hidden) .board-mealtalk-subtabs,
-body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) .settings-subtab-row,
-body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) .dashboard-chrome-subtabs {
+body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) .settings-subtab-row {
     background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #statusBarOverlay,
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #mainAppHeader {
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) .dashboard-insight-chrome {
+    background-position: 0 0 !important;
 }
 
 /* 밀로그 전용: 트래커·미니 캘린더 */
@@ -4069,7 +4117,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 }
 .date-section-header { 
     position: relative; 
-    background: rgba(248, 250, 252, 0.95); 
+    background: rgba(241, 245, 249, 0.95); 
     padding: 12px 16px; 
     margin-bottom: 8px; 
 }
@@ -4079,7 +4127,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    background-color: #f8fafc; /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
+    background-color: var(--app-page-bg); /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
 }
 /* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
 #timelineView.timeline-view-mode-page,
@@ -4601,7 +4649,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-size: 0.8125rem;
     font-weight: 600;
     color: #64748b;
-    background: #f8fafc;
+    background: var(--app-page-bg);
     border: 1px solid #e2e8f0;
     border-radius: 9999px;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -4679,9 +4727,9 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     align-items: center; 
     justify-content: center; 
     padding: 6px 10px; 
-    background: #f8fafc; 
+    background: var(--app-page-bg); 
     border-radius: 6px; 
-    border: 1px solid #f1f5f9; 
+    border: 1px solid #e2e8f0; 
     margin-right: 4px; 
     margin-bottom: 4px; 
 }
@@ -5773,12 +5821,125 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView:not(.hidden) {
     padding-top: 0;
 }
-#dashboardView > .dashboard-chrome-subtabs + .card {
+#dashboardView > .dashboard-chrome-subtabs + .card,
+#dashboardView .dashboard-insight-chrome .dashboard-insight-card {
     margin-top: 0 !important;
 }
+#dashboardView .dashboard-insight-chrome .dashboard-insight-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+#dashboardView .dashboard-insight-chrome .dashboard-chrome-subtabs {
+    background: transparent !important;
+}
+#dashboardView .dashboard-insight-chrome .dashboard-insight-period-wrap {
+    margin-bottom: 0.25rem;
+}
+#dashboardView .dashboard-insight-chrome #periodNavigator {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    min-height: 0;
+    margin-top: 0.1875rem;
+    gap: 0.375rem;
+}
+#dashboardView .dashboard-insight-chrome #periodNavigator #periodPrevBtn,
+#dashboardView .dashboard-insight-chrome #periodNavigator #periodNextBtn {
+    width: 1.375rem;
+    height: 1.375rem;
+}
+#dashboardView .dashboard-insight-chrome #periodDisplay {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: rgba(255, 255, 255, 0.92);
+    min-height: 0.875rem;
+}
+#dashboardView .dashboard-insight-chrome .insight-area {
+    align-items: stretch;
+}
+#dashboardView .dashboard-insight-chrome .insight-area > .flex-1 {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#dashboardView .dashboard-insight-chrome #insightBubble.insight-bubble,
+#dashboardView .dashboard-insight-chrome .insight-bubble {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: none;
+    flex: 1 1 auto;
+    align-self: stretch;
+    width: 100%;
+    min-height: 0;
+}
+#dashboardView .dashboard-insight-chrome .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) .insight-character-icon-box {
+    background: rgba(255, 255, 255, 0.14);
+}
+#dashboardView .dashboard-insight-chrome .sticker-badge {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 1rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: none;
+    margin-top: 0.875rem;
+    margin-bottom: 0;
+}
+#dashboardView .dashboard-insight-chrome #mealRecordPercent {
+    color: #fde047;
+    opacity: 1;
+}
+#dashboardView .dashboard-analysis-tab-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+#dashboardView .dashboard-analysis-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 9999px;
+    background: #e8ecf3;
+}
+#dashboardView .dashboard-analysis-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 9999px;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #94a3b8;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#dashboardView .dashboard-analysis-tab:hover {
+    color: #64748b;
+}
+#dashboardView .dashboard-analysis-tab--active,
+#dashboardView .dashboard-analysis-tab.dashboard-analysis-tab--active {
+    background: #059669;
+    color: #ffffff;
+    font-weight: 700;
+}
+#dashboardView .dashboard-analysis-tab--active:hover {
+    color: #ffffff;
+}
 #dashboardView .dashboard-insight-card.ui-card-pad-lg {
-    padding-top: 0.375rem;
-    padding-bottom: 0.375rem;
+    padding-top: 0.1875rem;
+    padding-bottom: 0.5rem;
 }
 /* 베스트/식사/간식 탭과 식사카드 컨테이너 간격 (0.1125rem) */
 #dashboardView #bestAnalysisSection,
@@ -6377,7 +6538,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     border: 1px solid #e2e8f0;
 }
 .board-category-btn:hover:not(.active) {
-    background-color: #f8fafc !important;
+    background-color: var(--app-page-bg) !important;
     color: #0f172a !important;
 }
 .board-category-btn.active {
@@ -6489,7 +6650,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden):has(#boardFeedPanel:not(.hidden)) {
     padding-bottom: 0;
 }
-/* 밀톡: 헤더는 translate로만 숨겨져 레이아웃 슬롯이 남고(내부 스크롤이라 window처럼 안 올라감) body(#f8fafc)가 비침 — 숨김 시 헤더 높이만큼 뷰를 위로 당겨 채움 */
+/* 밀톡: 헤더는 translate로만 숨겨져 레이아웃 슬롯이 남고(내부 스크롤이라 window처럼 안 올라감) body(--app-page-bg)가 비침 — 숨김 시 헤더 높이만큼 뷰를 위로 당겨 채움 */
 body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: calc(-1 * var(--app-chrome-header-h));
     height: calc(100vh - var(--safe-top) - var(--safe-bottom));
@@ -6551,10 +6712,10 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     border-radius: 999px;
 }
 #settingsView .settings-view-content::-webkit-scrollbar-track {
-    background: #f8fafc;
+    background: var(--app-page-bg);
 }
 #settingsView .settings-view-content.board-panel-scrollbar-active {
-    scrollbar-color: rgba(148, 163, 184, 0.45) #f8fafc;
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--app-page-bg);
 }
 #settingsView .settings-view-content.board-panel-scrollbar-active::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.45);
@@ -6589,8 +6750,8 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     scrollbar-color: rgba(148, 163, 184, 0.45) var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardListPanel:not(.hidden)) {
-    background-color: rgb(241 245 249);
-    scrollbar-color: rgba(148, 163, 184, 0.45) rgb(241 245 249);
+    background-color: var(--app-page-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--app-page-bg);
 }
 #boardListView #boardLoungeScrollArea::-webkit-scrollbar {
     width: 4px;

@@ -296,6 +296,10 @@ function displayInsightText(text, characterName = '') {
             bubble.removeEventListener('click', handleInsightBubbleClick);
         }
     }
+
+    if (typeof window.scheduleDashboardInsightGradientSync === 'function') {
+        requestAnimationFrame(() => window.scheduleDashboardInsightGradientSync());
+    }
 }
 
 // 인사이트 페이지 전환

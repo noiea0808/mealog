@@ -1354,6 +1354,7 @@
                 </div>
             </div>
             <div id="dashboardView" class="hidden space-y-3 px-0 pt-0 pb-3">
+                <div class="dashboard-insight-chrome">
                 <div id="insightPeriodTabs" class="app-chrome-subtabs dashboard-chrome-subtabs flex w-full min-w-0 overflow-x-auto scrollbar-hide" role="tablist" aria-label="밀당 기간">
                     <button id="btn-dash-7d" type="button" role="tab" aria-selected="true" class="app-chrome-subtab insight-period-tab active shrink-0">최근 1주</button>
                     <button id="btn-dash-week" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">주간</button>
@@ -1361,7 +1362,7 @@
                     <button id="btn-dash-year" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">연간</button>
                     <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">직접 설정</button>
                 </div>
-                <div class="card ui-card-pad-lg dashboard-insight-card bg-emerald-600 text-white relative overflow-hidden">
+                <div class="card ui-card-pad-lg dashboard-insight-card text-white relative overflow-hidden">
                     <div class="dashboard-insight-period-wrap flex flex-col mb-2 relative z-10">
                         <div id="periodNavigator" class="hidden mt-1.5 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
@@ -1450,14 +1451,15 @@
                         </div>
                     </div>
                 </div>
+                </div>
                 
                 <!-- 분석 타입 선택 스위치 -->
-                <div class="card ui-card-pad-chip mt-3">
-                    <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
-                        <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
-                        <button id="btn-analysis-health" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">건강</button>
-                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
+                <div class="card ui-card-pad-chip mt-3 dashboard-analysis-tab-card">
+                    <div class="dashboard-analysis-tabs flex gap-1">
+                        <button id="btn-analysis-main" type="button" class="dashboard-analysis-tab">식사</button>
+                        <button id="btn-analysis-snack" type="button" class="dashboard-analysis-tab">간식</button>
+                        <button id="btn-analysis-health" type="button" class="dashboard-analysis-tab">건강</button>
+                        <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab dashboard-analysis-tab--active">Best</button>
                     </div>
                 </div>
                 
