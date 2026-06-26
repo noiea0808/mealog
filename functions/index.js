@@ -241,12 +241,36 @@ function fcmTokenMetaUpdatedMs(meta) {
   return 0;
 }
 
+/** 토큰 등록 시 env별 최신 1개(+legacy)만 유지 — 재설치·재등록 잔여 토큰 누적 방지 */
+function pruneUserFcmTokens(tokensMap, activeToken, activeEntry) {
+  const merged = { ...(tokensMap && typeof tokensMap === 'object' ? tokensMap : {}), [activeToken]: activeEntry };
+  const byEnvBest = new Map();
+  for (const [tok, meta] of Object.entries(merged)) {
+    const norm = String(tok || '').trim();
+    if (!norm) continue;
+    const env =
+      meta?.env === 'staging' ? 'staging' : meta?.env === 'production' ? 'production' : 'legacy';
+    const ms = fcmTokenMetaUpdatedMs(meta);
+    const prev = byEnvBest.get(env);
+    if (!prev || ms > prev.ms || (ms === prev.ms && tok === activeToken)) {
+      byEnvBest.set(env, { tok, meta });
+    }
+  }
+  const out = {};
+  for (const { tok, meta } of byEnvBest.values()) {
+    out[tok] = meta;
+  }
+  if (activeToken && !out[activeToken]) {
+    out[activeToken] = activeEntry;
+  }
+  return out;
+}
+
 /**
- * 관리자 브로드캐스트: 사용자당 FCM은 1회만(가장 최근 등록 토큰 1개).
- * - 동일 env에 토큰 여러 개 / targetEnv all일 때 staging+production 각 1통씩이면 기기에서 2번까지 갈 수 있었음 → 1개로 고정.
- * - 키 문자열이 미세하게 다른 중복 저장(공백 등)도 정규화 후 하나로 합침.
+ * 사용자당 FCM 1회만 — 가장 최근 등록 토큰 1개.
+ * - staging+production 토큰 동시 보유, 재설치·재등록 잔여 토큰, 키 공백 차이 등으로 N통 나가던 문제 방지
  */
-function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
+function pickSingleFcmToken(tokensMap, tokenStrings) {
   const bestByNorm = new Map();
   for (const token of tokenStrings) {
     const norm = String(token || '').trim();
@@ -271,11 +295,59 @@ function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
   return best ? [best] : [];
 }
 
+/** 동일 알림이 Android/iOS에서 여러 줄로 쌓이지 않게 collapse 키 생성 */
+function makePushCollapseId(payload, options = {}) {
+  if (typeof options.collapseId === 'string' && options.collapseId.length > 0) {
+    return options.collapseId.slice(0, 64);
+  }
+  if (typeof options.adminCollapseId === 'string' && options.adminCollapseId.length > 0) {
+    return options.adminCollapseId.slice(0, 64);
+  }
+  if (options.adminBroadcast) {
+    const envResolved =
+      options.targetEnv === 'production' || options.targetEnv === 'staging' ? options.targetEnv : 'all';
+    return makeAdminBroadcastCollapseId(payload, envResolved);
+  }
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+  const parts = [
+    String(data.type || options.pushCategory || 'push'),
+    data.postId,
+    data.feedPostId,
+    data.noticeId,
+    data.landingTab,
+    payload?.title,
+    String(payload?.body || '').slice(0, 120)
+  ]
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean);
+  return crypto.createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 32);
+}
+
+const PUSH_SEND_DEDUPE_MS = 45 * 1000;
+
+/** Callable 재시도·이중 트리거로 동일 수신자에게 같은 푸시가 짧은 시간에 2번 나가는 것 방지 */
+async function pushSendDedupeShouldSkip(userId, dedupeKey) {
+  if (!userId || !dedupeKey) return false;
+  const docId = crypto.createHash('sha256').update(`${userId}|${dedupeKey}`).digest('hex').slice(0, 48);
+  const ref = db.collection('artifacts').doc(APP_ID).collection('_pushSendDedupe').doc(docId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    if (snap.exists) {
+      const at = snap.data().at;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : 0;
+      if (ms && now - ms < PUSH_SEND_DEDUPE_MS) return true;
+    }
+    tx.set(ref, { at: FieldValue.serverTimestamp(), userId }, { merge: true });
+    return false;
+  });
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
- * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault' }} options - pushCategory 있으면 사용자 pushPreferences로 필터
+ * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault', dedupeKey?: string }} options
  * @returns {Promise<boolean>} 최소 1건 FCM 전송 성공 시 true
  */
 async function sendPushToUser(userId, payload, options = {}) {
@@ -286,6 +358,17 @@ async function sendPushToUser(userId, payload, options = {}) {
     if (!isPushCategoryAllowedByPrefs(prefs, pushCategory)) {
       logger.info('sendPushToUser: skipped by pushPreferences', { userId, pushCategory });
       return false;
+    }
+  }
+  if (options.dedupeKey) {
+    try {
+      const skip = await pushSendDedupeShouldSkip(userId, options.dedupeKey);
+      if (skip) {
+        logger.info('sendPushToUser: dedupe skip', { userId, dedupeKey: options.dedupeKey });
+        return false;
+      }
+    } catch (e) {
+      logger.warn('sendPushToUser: dedupe check failed (proceeding)', { userId, message: e?.message });
     }
   }
   try {
@@ -308,14 +391,16 @@ async function sendPushToUser(userId, payload, options = {}) {
         return tokenEnv === envFilter;
       })
       : allTokens;
-    if (options.adminBroadcast && tokens.length > 0) {
+    if (tokens.length > 0) {
       const before = tokens.length;
-      tokens = pickSingleFcmTokenForAdminBroadcast(tokensMap, tokens);
-      if (tokens.length !== before || before > 1) {
-        logger.info('sendPushToUser: adminBroadcast single token', {
+      tokens = pickSingleFcmToken(tokensMap, tokens);
+      if (before > 1) {
+        logger.info('sendPushToUser: single token selected', {
           userId,
           before,
-          after: tokens.length
+          after: tokens.length,
+          targetEnv: envFilter || 'all',
+          adminBroadcast: !!options.adminBroadcast
         });
       }
     }
@@ -328,6 +413,8 @@ async function sendPushToUser(userId, payload, options = {}) {
     if (options.adminBroadcast) {
       dataObj.suppressNumericBadge = '1';
     }
+    const collapseId = makePushCollapseId(payload, options);
+    const tagPrefix = options.adminBroadcast ? 'mealog_adm_' : 'mealog_';
     // Android 8+ 채널: 미지정 시 기기/OS별로 트레이 미표시 이슈가 있을 수 있어 FCM 기본 채널 명시
     const androidNotificationBase = {
       title: payload.title,
@@ -335,33 +422,21 @@ async function sendPushToUser(userId, payload, options = {}) {
       channelId: 'fcm_fallback_notification_channel',
       sound: 'default'
     };
+    const androidNotification = {
+      ...androidNotificationBase,
+      tag: `${tagPrefix}${collapseId}`
+    };
+    if (options.adminBroadcast) {
+      androidNotification.notificationCount = 0;
+    }
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
       data: fcmDataStrings(dataObj),
       android: {
         priority: 'high',
-        notification: { ...androidNotificationBase }
-      }
-    };
-    if (options.adminBroadcast) {
-      const collapseId =
-        typeof options.adminCollapseId === 'string' && options.adminCollapseId.length > 0
-          ? options.adminCollapseId.slice(0, 64)
-          : makeAdminBroadcastCollapseId(
-            payload,
-            envFilter || (options.targetEnv === 'staging' || options.targetEnv === 'production' ? options.targetEnv : 'all')
-          );
-      // Android: 동일 tag면 새 알림이 이전 줄을 대체(Callable 중복·재시도로 N줄 쌓임 방지)
-      // iOS: apns-collapse-id로 동일 키 알림 병합
-      message.android = {
-        priority: 'high',
-        notification: {
-          ...androidNotificationBase,
-          notificationCount: 0,
-          tag: `mealog_adm_${collapseId}`
-        }
-      };
-      message.apns = {
+        notification: androidNotification
+      },
+      apns: {
         headers: {
           'apns-priority': '10',
           'apns-collapse-id': collapseId
@@ -369,11 +444,10 @@ async function sendPushToUser(userId, payload, options = {}) {
         payload: {
           aps: {
             sound: 'default'
-            // badge 생략 → 기존 배지 숫자를 이 푸시가 덮어쓰지 않도록
           }
         }
-      };
-    }
+      }
+    };
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
@@ -726,7 +800,10 @@ async function deliverFeedNotifications({ newPostId, senderId, authorNickname, p
             landingTab: 'board'
           }
         },
-        { pushCategory: 'mealTalk' }
+        {
+          pushCategory: 'mealTalk',
+          dedupeKey: `feedActivity:${recipientId}:${newPostId}:${kind}`
+        }
       );
     } catch (e) {
       logger.warn('deliverFeedNotifications: push failed', { recipientId, message: e.message });
@@ -1056,7 +1133,10 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
           postPreview: previewTitle.slice(0, 200)
         }
       },
-      { pushCategory: 'boardComment' }
+      {
+        pushCategory: 'boardComment',
+        dedupeKey: `boardComment:${postAuthorId}:${auth.uid}:${postId}:${text.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -1143,7 +1223,10 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
           postPreview: previewTitle.slice(0, 200)
         }
       },
-      { pushCategory: 'boardComment' }
+      {
+        pushCategory: 'boardComment',
+        dedupeKey: `boardComment:${postAuthorId}:${auth.uid}:${postId}:${text.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -1560,7 +1643,10 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
         body: `${userNickname}님이 댓글을 남겼습니다.`,
         data: { type: 'postComment', postId: String(postId) }
       },
-      { pushCategory: 'momentComment' }
+      {
+        pushCategory: 'momentComment',
+        dedupeKey: `momentComment:${postOwnerId}:${auth.uid}:${postId}:${commentText.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -3896,15 +3982,8 @@ exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmT
   const prev = (snap.exists && snap.data().tokens && typeof snap.data().tokens === 'object') ? snap.data().tokens : {};
   const entry = { updatedAt: FieldValue.serverTimestamp() };
   if (env) entry.env = env;
-  await ref.set(
-    {
-      tokens: {
-        ...prev,
-        [token]: entry
-      }
-    },
-    { merge: true }
-  );
+  const tokens = pruneUserFcmTokens(prev, token, entry);
+  await ref.set({ tokens }, { merge: true });
   return { ok: true };
 }));
 
@@ -4884,6 +4963,81 @@ exports.cancelAdminScheduledPush = onCall({ region: REGION }, async (request) =>
   return { ok: true, id: jobId };
 });
 
+/** 관리자: 예약 푸시 수정 (pending·단일 예약만) */
+exports.updateAdminScheduledPush = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 수정할 수 있습니다.');
+  }
+  const data = request.data || {};
+  const jobId = String(data.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '예약 ID(jobId)가 필요합니다.');
+  }
+  const ref = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').doc(jobId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '예약을 찾을 수 없습니다.');
+  }
+  const cur = snap.data() || {};
+  if (String(cur.status || 'pending') !== 'pending') {
+    throw new HttpsError('failed-precondition', 'pending 상태의 예약만 수정할 수 있습니다.');
+  }
+  if (String(cur.scheduleType || 'once') !== 'once') {
+    throw new HttpsError('failed-precondition', '단일/요일별(개별) 예약만 수정할 수 있습니다.');
+  }
+  const updates = {};
+  if (data.title !== undefined) {
+    const t = String(data.title || '').trim();
+    if (!t) {
+      throw new HttpsError('invalid-argument', '제목을 입력해 주세요.');
+    }
+    if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError('invalid-argument', `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`);
+    }
+    updates.title = t.slice(0, ADMIN_BROADCAST_TITLE_MAX);
+  }
+  if (data.body !== undefined) {
+    const b = String(data.body || '').trim();
+    if (!b) {
+      throw new HttpsError('invalid-argument', '내용을 입력해 주세요.');
+    }
+    if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError('invalid-argument', `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`);
+    }
+    updates.body = b.slice(0, ADMIN_BROADCAST_BODY_MAX);
+  }
+  if (data.landingTab !== undefined) {
+    const tab = String(data.landingTab || '').trim();
+    updates.landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  }
+  if (data.targetEnv !== undefined) {
+    const envRaw = String(data.targetEnv || '').trim();
+    updates.targetEnv = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
+  }
+  if (data.scheduledAtMs !== undefined) {
+    const ms = typeof data.scheduledAtMs === 'number' && !Number.isNaN(data.scheduledAtMs) ? data.scheduledAtMs : null;
+    if (ms == null) {
+      throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
+    }
+    const minLead = Date.now() + 25 * 1000;
+    if (ms < minLead) {
+      throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
+    }
+    updates.scheduledAt = Timestamp.fromMillis(ms);
+  }
+  if (Object.keys(updates).length === 0) {
+    throw new HttpsError('invalid-argument', '수정할 내용이 없습니다.');
+  }
+  updates.updatedAt = FieldValue.serverTimestamp();
+  updates.updatedByUid = callerUid;
+  await ref.update(updates);
+  return { ok: true, id: jobId };
+});
+
 /** 관리자: 발송 기록 삭제 (pending 제외) */
 exports.deleteAdminBroadcastHistory = onCall({ region: REGION }, async (request) => {
   const callerUid = request.auth?.uid;
@@ -4929,16 +5083,19 @@ exports.processScheduledAdminPushes = onSchedule(
     for (const docSnap of snap.docs) {
       const ref = docSnap.ref;
       try {
-        await db.runTransaction(async (transaction) => {
+        const acquired = await db.runTransaction(async (transaction) => {
           const s = await transaction.get(ref);
-          if (!s.exists) return;
+          if (!s.exists) return false;
           const d = s.data();
-          if (d.status !== 'pending') return;
+          if (d.status !== 'pending') return false;
           const sa = d.scheduledAt;
           const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
-          if (!ms || ms > nowMs) return;
+          if (!ms || ms > nowMs) return false;
           transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+          return true;
         });
+
+        if (!acquired) continue;
 
         const after = await ref.get();
         const d = after.data();
@@ -5084,7 +5241,19 @@ exports.onNoticePushOnce = onDocumentWritten(
     const after = afterSnap.data();
     if (!after || after.hidden === true || after.deleted === true) return;
     if ((after.pushFrequency || 'none') !== 'once') return;
-    if (after.pushSentAt) return;
+
+    const noticeRef = afterSnap.ref;
+    const shouldSend = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(noticeRef);
+      if (!snap.exists) return false;
+      const cur = snap.data();
+      if (!cur || cur.hidden === true || cur.deleted === true) return false;
+      if ((cur.pushFrequency || 'none') !== 'once') return false;
+      if (cur.pushSentAt) return false;
+      tx.set(noticeRef, { pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
+      return true;
+    });
+    if (!shouldSend) return;
 
     const title = (after.title || '공지').trim();
     const body = noticePlainTextForPush(after.content || '');
@@ -5096,7 +5265,6 @@ exports.onNoticePushOnce = onDocumentWritten(
 
     try {
       await broadcastNoticePushToAllUsers(payload);
-      await afterSnap.ref.set({ pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
       logger.info('onNoticePushOnce: ok', { noticeId });
     } catch (e) {
       logger.error('onNoticePushOnce failed', { noticeId, message: e?.message });
@@ -5128,7 +5296,18 @@ exports.scheduledNoticeDailyPush = onSchedule(
     for (const docSnap of snap.docs) {
       const n = docSnap.data();
       if (n.hidden === true || n.deleted === true) continue;
-      if (n.lastDailyPushDate === todaySeoul) continue;
+
+      const noticeRef = docSnap.ref;
+      const shouldSend = await db.runTransaction(async (tx) => {
+        const curSnap = await tx.get(noticeRef);
+        if (!curSnap.exists) return false;
+        const cur = curSnap.data();
+        if (cur.hidden === true || cur.deleted === true) return false;
+        if (cur.lastDailyPushDate === todaySeoul) return false;
+        tx.set(noticeRef, { lastDailyPushDate: todaySeoul }, { merge: true });
+        return true;
+      });
+      if (!shouldSend) continue;
 
       const title = (n.title || '공지').trim();
       const body = noticePlainTextForPush(n.content || '');
@@ -5140,7 +5319,6 @@ exports.scheduledNoticeDailyPush = onSchedule(
 
       try {
         await broadcastNoticePushToAllUsers(payload);
-        await docSnap.ref.set({ lastDailyPushDate: todaySeoul }, { merge: true });
         logger.info('scheduledNoticeDailyPush: ok', { noticeId: docSnap.id, todaySeoul });
       } catch (e) {
         logger.error('scheduledNoticeDailyPush failed', { noticeId: docSnap.id, message: e?.message });

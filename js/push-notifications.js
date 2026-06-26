@@ -66,6 +66,31 @@ function getCurrentPushEnv() {
     : 'production';
 }
 
+function fcmTokenUpdatedMsClient(meta) {
+  const u = meta?.updatedAt;
+  if (u && typeof u.toMillis === 'function') return u.toMillis();
+  return 0;
+}
+
+/** env별 최신 토큰만 유지(스테이징·운영·legacy 각 1개) — 재등록 잔여 토큰 누적 방지 */
+function pruneFcmTokensClient(prev, activeToken, activeEntry) {
+  const merged = { ...(prev || {}), [activeToken]: activeEntry };
+  const byEnvBest = new Map();
+  for (const [tok, meta] of Object.entries(merged)) {
+    const env =
+      meta?.env === 'staging' ? 'staging' : meta?.env === 'production' ? 'production' : 'legacy';
+    const ms = fcmTokenUpdatedMsClient(meta);
+    const hit = byEnvBest.get(env);
+    if (!hit || ms > hit.ms || (ms === hit.ms && tok === activeToken)) {
+      byEnvBest.set(env, { tok, meta });
+    }
+  }
+  const out = {};
+  for (const { tok, meta } of byEnvBest.values()) out[tok] = meta;
+  if (activeToken && !out[activeToken]) out[activeToken] = activeEntry;
+  return out;
+}
+
 /**
  * OS 설정에서 이 앱의 알림·권한 화면으로 이동 (강제 허용은 불가 — 사용자가 켜야 함)
  * @returns {Promise<boolean>} 시도했으면 true
@@ -396,16 +421,9 @@ async function saveFcmTokenToFirestoreClient(uid, token, tokenEnv) {
   /** 로컬 캐시/리스너와 어긋난 상태에서 내부 단언이 날 수 있어 서버 스냅샷 우선 */
   const snap = await getDocFromServer(ref);
   const prev = (snap.data() && snap.data().tokens) || {};
-  await setDoc(
-    ref,
-    {
-      tokens: {
-        ...prev,
-        [token]: { updatedAt: serverTimestamp(), env: tokenEnv }
-      }
-    },
-    { merge: true }
-  );
+  const entry = { updatedAt: serverTimestamp(), env: tokenEnv };
+  const tokens = pruneFcmTokensClient(prev, token, entry);
+  await setDoc(ref, { tokens }, { merge: true });
 }
 
 /**
