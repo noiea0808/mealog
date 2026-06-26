@@ -18,6 +18,7 @@ export {
     zoomInPhotoEdit,
     zoomOutPhotoEdit,
     rotatePhotoEdit,
+    addPhotoEditTimestamp,
     resetPhotoEdit,
     savePhotoEdit,
     closePhotoEditModal
