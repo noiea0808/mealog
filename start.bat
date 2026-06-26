@@ -20,8 +20,8 @@ timeout /t 2 /nobreak >nul
 echo.
 echo Server is running.
 echo.
-echo Open pages:
-echo   Double-click open-index.bat - Main App (Incognito)
+echo Open pages (server starts automatically):
+echo   Double-click open-index.bat - Main App
 echo   Double-click open-admin.bat - Admin Page
 echo.
 echo To stop server, close the PowerShell window.
