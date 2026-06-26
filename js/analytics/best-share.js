@@ -567,13 +567,23 @@ export function renderBestMeals() {
         const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
         
+        const showOrderControls = displayMeals.length > 1;
+        const orderControlsHtml = showOrderControls ? `
+                    <div class="absolute top-1/2 right-2 -translate-y-1/2 flex flex-col gap-0.5 z-10">
+                        <button type="button" class="best-order-btn best-order-up-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
+                            <i class="fa-solid fa-chevron-up text-xs"></i>
+                        </button>
+                        <button type="button" class="best-order-btn best-order-down-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
+                            <i class="fa-solid fa-chevron-down text-xs"></i>
+                        </button>
+                    </div>` : '';
+
         return `
-            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-move active:scale-[0.98] transition-all bg-white min-h-[140px]" 
+            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-pointer active:scale-[0.98] transition-all bg-white min-h-[140px]" 
                  data-meal-id="${safeMealId}" 
                  data-rating="${rating}"
                  data-date="${safeDate}"
-                 data-slot-id="${safeSlotId}"
-                 draggable="true">
+                 data-slot-id="${safeSlotId}">
                 <div class="flex relative">
                     <div class="w-[140px] min-h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
                         <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
@@ -600,31 +610,13 @@ export function renderBestMeals() {
                         ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${escapeHtml(meal.comment)}"</p>` : ''}
                         ${tagsHtml}
                     </div>
-                    <div class="absolute top-1/2 right-2 -translate-y-1/2 text-slate-300">
-                        <i class="fa-solid fa-grip-vertical text-sm"></i>
-                    </div>
+                    ${orderControlsHtml}
                 </div>
             </div>
         `;
     }).join('');
     
-    // 월간/연간 모드에서는 만족도 5점 음식만 순서 조정 가능
-    setupDragAndDrop(isMonthOrYearMode && displayMeals.length > 0);
-}
-
-function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.best-meal-item:not(.dragging)')];
-    
-    return draggableElements.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = y - box.top - box.height / 2;
-        
-        if (offset < 0 && offset > closest.offset) {
-            return { offset: offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
+    setupBestOrderControls();
 }
 
 async function updateBestOrder() {
@@ -675,6 +667,8 @@ async function updateBestOrder() {
         }
     });
     
+    updateBestOrderButtonStates();
+
     try {
         if (window.dbOps && window.dbOps.saveSettings) {
             await window.dbOps.saveSettings(window.userSettings);
@@ -684,77 +678,71 @@ async function updateBestOrder() {
     }
 }
 
-function setupDragAndDrop(enableRatingConstraint = false) {
+function updateBestOrderButtonStates() {
     const container = document.getElementById('bestMealsContainer');
     if (!container) return;
-    
-    let draggedElement = null;
-    let isDragging = false;
-    
+
+    const items = container.querySelectorAll('.best-meal-item');
+    items.forEach((item, index) => {
+        const upBtn = item.querySelector('.best-order-up-btn');
+        const downBtn = item.querySelector('.best-order-down-btn');
+        if (upBtn) upBtn.disabled = index === 0;
+        if (downBtn) downBtn.disabled = index === items.length - 1;
+    });
+}
+
+function moveBestMealItem(item, delta) {
+    const container = document.getElementById('bestMealsContainer');
+    if (!container || !item) return;
+
+    const items = Array.from(container.querySelectorAll('.best-meal-item'));
+    const index = items.indexOf(item);
+    const targetIndex = index + delta;
+    if (index === -1 || targetIndex < 0 || targetIndex >= items.length) return;
+
+    const targetItem = items[targetIndex];
+    if (delta < 0) {
+        container.insertBefore(item, targetItem);
+    } else {
+        container.insertBefore(targetItem, item);
+    }
+
+    updateBestOrder();
+}
+
+function setupBestOrderControls() {
+    const container = document.getElementById('bestMealsContainer');
+    if (!container) return;
+
     container.querySelectorAll('.best-meal-item').forEach(item => {
-        // 클릭 이벤트 추가 (드래그 중이 아닐 때만)
         item.addEventListener('click', (e) => {
-            if (!isDragging) {
-                const date = item.getAttribute('data-date');
-                const slotId = item.getAttribute('data-slot-id');
-                const mealId = item.getAttribute('data-meal-id');
-                if (date && slotId && mealId) {
-                    window.openModal(date, slotId, mealId);
-                }
+            if (e.target.closest('.best-order-btn')) return;
+
+            const date = item.getAttribute('data-date');
+            const slotId = item.getAttribute('data-slot-id');
+            const mealId = item.getAttribute('data-meal-id');
+            if (date && slotId && mealId) {
+                window.openModal(date, slotId, mealId);
             }
         });
-        
-        item.addEventListener('dragstart', (e) => {
-            draggedElement = item;
-            isDragging = true;
-            item.classList.add('opacity-50');
-            e.dataTransfer.effectAllowed = 'move';
-        });
-        
-        item.addEventListener('dragend', (e) => {
-            item.classList.remove('opacity-50');
-            isDragging = false;
-            container.querySelectorAll('.best-meal-item').forEach(el => {
-                el.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
-            });
-        });
-        
-        item.addEventListener('dragover', (e) => {
+
+        const upBtn = item.querySelector('.best-order-up-btn');
+        const downBtn = item.querySelector('.best-order-down-btn');
+
+        upBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            
-            if (!draggedElement) return;
-            
-            // 만족도 제약 체크 (월간/연간 모드에서는 모든 음식이 5점이므로 제약 없음, 그냥 순서만 조정)
-            // 제약 로직은 제거 (모두 5점이므로)
-            
-            item.classList.add('border-emerald-400', 'bg-emerald-50');
+            moveBestMealItem(item, -1);
         });
-        
-        item.addEventListener('dragleave', (e) => {
-            item.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
-        });
-        
-        item.addEventListener('drop', (e) => {
+
+        downBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
             e.preventDefault();
-            item.classList.remove('border-emerald-400', 'bg-emerald-50', 'border-red-400', 'bg-red-50');
-            
-            if (!draggedElement || draggedElement === item) return;
-            
-            const container = item.parentElement;
-            const afterElement = getDragAfterElement(container, e.clientY);
-            
-            // 월간/연간 모드에서는 모든 음식이 5점이므로 제약 없음, 순서만 조정
-            
-            if (afterElement == null) {
-                container.appendChild(draggedElement);
-            } else {
-                container.insertBefore(draggedElement, afterElement);
-            }
-            
-            updateBestOrder();
+            moveBestMealItem(item, 1);
         });
     });
+
+    updateBestOrderButtonStates();
 }
 
 // 베스트 공유 상태 확인
