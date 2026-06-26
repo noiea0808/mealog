@@ -1197,12 +1197,12 @@
         <div id="trackerSection" class="sticky z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm safe-area-tracker">
             <div id="trackerHeader" class="flex justify-between items-center mb-2 gap-2">
                 <div class="flex items-center gap-1 min-w-0 flex-1">
-                    <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase truncate">날짜 선택</span>
+                    <span id="trackerTitle" class="text-sm font-normal text-slate-800 tracking-tight truncate">날짜 선택</span>
                     <div class="flex items-center gap-0.5 flex-shrink-0">
-                        <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
-                            <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
-                        </button>
-                        <span id="trackerStreakLabel" class="text-xs text-slate-500 tabular-nums whitespace-nowrap font-normal">0일 연속 기록중 </span>
+                        <span id="trackerStreakLabel" class="tracker-streak-pill tabular-nums whitespace-nowrap" role="status">
+                            <span class="tracker-streak-pill__emoji" aria-hidden="true">🔥</span>
+                            <span class="tracker-streak-pill__text">0일 연속</span>
+                        </span>
                     </div>
                 </div>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
@@ -1230,20 +1230,20 @@
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
-                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
-                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                <div class="app-chrome-subtabs board-mealtalk-subtabs flex w-full min-w-0 overflow-x-auto scrollbar-hide" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="app-chrome-subtab board-list-subtab active relative shrink-0">
                         <span class="relative inline-block">
                             밀톡
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative shrink-0">
                         <span class="relative inline-block">
                             게시판
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative shrink-0">
                         <span class="relative inline-block">
                             공지
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
@@ -1350,18 +1350,17 @@
                     </div>
                 </div>
             </div>
-            <div id="dashboardView" class="hidden space-y-3 px-0 pt-[0.1125rem] pb-3">
-                <!-- Dashboard content remains same -->
-                <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
-                    <div class="flex flex-col mb-4 relative z-10">
-                        <div id="insightPeriodTabs" class="insight-period-tabs flex gap-1.5 items-center flex-wrap">
-                            <button id="btn-dash-7d" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">최근 1주</button>
-                            <button id="btn-dash-week" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">주간</button>
-                            <button id="btn-dash-month" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">월간</button>
-                            <button id="btn-dash-year" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">연간</button>
-                            <button id="btn-dash-custom" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">직접 설정</button>
-                        </div>
-                        <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
+            <div id="dashboardView" class="hidden space-y-3 px-0 pt-0 pb-3">
+                <div id="insightPeriodTabs" class="app-chrome-subtabs dashboard-chrome-subtabs flex w-full min-w-0 overflow-x-auto scrollbar-hide" role="tablist" aria-label="밀당 기간">
+                    <button id="btn-dash-7d" type="button" role="tab" aria-selected="true" class="app-chrome-subtab insight-period-tab active shrink-0">최근 1주</button>
+                    <button id="btn-dash-week" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">주간</button>
+                    <button id="btn-dash-month" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">월간</button>
+                    <button id="btn-dash-year" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">연간</button>
+                    <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">직접 설정</button>
+                </div>
+                <div class="card ui-card-pad-lg dashboard-insight-card bg-emerald-600 text-white relative overflow-hidden">
+                    <div class="dashboard-insight-period-wrap flex flex-col mb-2 relative z-10">
+                        <div id="periodNavigator" class="hidden mt-1.5 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
                                 <i class="fa-solid fa-chevron-left text-sm"></i>
                             </button>
@@ -1370,7 +1369,7 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 custom-date-range">
+                        <div id="customDatePicker" class="hidden mt-1.5 custom-date-range">
                             <div class="custom-date-range-inner">
                                 <div class="custom-date-section">
                                     <label class="custom-date-label" for="customStart">시작</label>
@@ -1389,18 +1388,18 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
+                        <div id="weekPickerContainer" class="hidden mt-1.5 flex gap-2">
                             <input type="month" id="weekMonthInput" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                             <select id="weekSelect" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                                 <option value="1">1주</option>
                             </select>
                         </div>
-                        <div id="monthPickerContainer" class="hidden mt-3">
+                        <div id="monthPickerContainer" class="hidden mt-1.5">
                              <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
                     <!-- 캐릭터와 말풍선 영역 (트위터 스타일) -->
-                    <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
+                    <div class="insight-area flex gap-3 mt-1.5 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
                         <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px] items-center">
                             <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors">
@@ -1566,11 +1565,11 @@
 
             <!-- 사용자 설정 뷰 (다른 탭과 동일하게 전환) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="settings-subtab-row flex w-full px-1 sm:px-2 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
-                    <button id="settingsTabProfile" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight">프로필</button>
-                    <button id="settingsTabTags" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">태그 관리</button>
-                    <button id="settingsTabShortcuts" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">밀당 메모</button>
-                    <button id="settingsTabNotifications" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">푸시 알림</button>
+                <div class="app-chrome-subtabs settings-subtab-row flex w-full flex-shrink-0 overflow-x-auto scrollbar-hide">
+                    <button id="settingsTabProfile" type="button" class="app-chrome-subtab settings-tab active shrink-0">프로필</button>
+                    <button id="settingsTabTags" type="button" class="app-chrome-subtab settings-tab shrink-0">태그 관리</button>
+                    <button id="settingsTabShortcuts" type="button" class="app-chrome-subtab settings-tab shrink-0">밀당 메모</button>
+                    <button id="settingsTabNotifications" type="button" class="app-chrome-subtab settings-tab shrink-0">푸시 알림</button>
                 </div>
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->

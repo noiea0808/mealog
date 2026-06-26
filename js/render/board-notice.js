@@ -284,10 +284,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     const subNotice = document.getElementById('boardSubtabNotice');
     const setSubtabActive = (btn, on) => {
         if (!btn) return;
-        btn.classList.toggle('text-emerald-600', on);
-        btn.classList.toggle('border-emerald-600', on);
-        btn.classList.toggle('text-slate-500', !on);
-        btn.classList.toggle('border-transparent', !on);
+        btn.classList.toggle('active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
     };
     setSubtabActive(subFeed, isFeed);

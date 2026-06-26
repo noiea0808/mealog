@@ -94,7 +94,16 @@ export function updateTrackerStreakLabel() {
     const el = document.getElementById('trackerStreakLabel');
     if (!el) return;
     const n = computeTrackerStreakDisplayDays();
-    el.textContent = `${n}일 연속 기록중 `;
+    let textEl = el.querySelector('.tracker-streak-pill__text');
+    if (!textEl) {
+        el.className = 'tracker-streak-pill tabular-nums whitespace-nowrap';
+        el.setAttribute('role', 'status');
+        el.innerHTML =
+            '<span class="tracker-streak-pill__emoji" aria-hidden="true">🔥</span>' +
+            `<span class="tracker-streak-pill__text">${n}일 연속</span>`;
+        return;
+    }
+    textEl.textContent = `${n}일 연속`;
 }
 
 /**

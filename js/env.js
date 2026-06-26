@@ -114,13 +114,13 @@ window.applyMealogEnvironmentBadge = function applyMealogEnvironmentBadge(el, op
     el.removeAttribute('aria-hidden');
     el.setAttribute('aria-label', '실행 환경: ' + label);
     el.textContent = label;
-    var base = 'text-[10px] font-black tracking-tight shrink-0 leading-none';
+    var base = 'mealog-env-badge text-[10px] font-black tracking-tight shrink-0 leading-none';
     if (label === '개발') {
-        el.className = base + ' text-blue-600';
+        el.className = base + ' mealog-env-badge--dev';
     } else if (label === '스테이징') {
-        el.className = base + ' text-orange-500';
+        el.className = base + ' mealog-env-badge--staging text-orange-500';
     } else {
-        el.className = base + ' text-slate-500';
+        el.className = base + ' mealog-env-badge--prod text-slate-500';
     }
 };
 

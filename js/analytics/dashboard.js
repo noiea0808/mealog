@@ -150,7 +150,7 @@ export function getDashboardData() {
 function updatePeriodUI(state) {
     const periodNavigator = document.getElementById('periodNavigator');
     const periodDisplay = document.getElementById('periodDisplay');
-    const tabBase = "insight-period-tab flex-1 text-xs font-bold transition-colors";
+    const tabBase = 'app-chrome-subtab insight-period-tab shrink-0';
 
     if (state.dashboardMode === '7d') {
         const startDate = state.recentWeekStartDate || (() => {
@@ -218,7 +218,9 @@ function updatePeriodUI(state) {
     ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
         const btn = document.getElementById(`btn-dash-${mode}`);
         if (btn) {
-            btn.className = state.dashboardMode === mode ? `${tabBase} insight-period-tab--selected` : tabBase;
+            const isActive = state.dashboardMode === mode;
+            btn.className = isActive ? `${tabBase} active` : tabBase;
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
         }
     });
 }

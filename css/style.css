@@ -7,7 +7,7 @@
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
     /* 밀톡 피드 대화 영역 배경 */
-    --board-feed-bg: rgb(5 150 105);
+    --board-feed-bg: #f1f5f9;
     /* 하단 플로팅: 메시지 컴포저·APP 네비 — 화면 좌우에서 띄우는 인셋 (각 변에 동일 값) */
     --app-bottom-floating-inset: 12px;
     /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
@@ -43,7 +43,7 @@ html.platform-web #navigationBarOverlay {
     display: none !important;
 }
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
-html.platform-native-app .settings-subtab-row .settings-tab {
+html.platform-native-app .app-chrome-subtab {
     font-size: 0.875rem;
 }
 html.platform-native-app #trackerTabs .view-tab {
@@ -110,13 +110,8 @@ body {
 }
 /* 밀톡·피드: 입력창 아래·네비 뒤 연회색(#f8fafc) 구간을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
-    background-image: linear-gradient(
-        to bottom,
-        #f8fafc 0,
-        #f8fafc max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))),
-        var(--board-feed-bg) max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))) 100%
-    );
-    background-attachment: fixed;
+    background-color: var(--board-feed-bg);
+    background-image: none;
 }
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
@@ -1781,6 +1776,250 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     top: 0 !important;
     padding-top: var(--safe-top) !important;
 }
+
+/* =========================
+   메인 앱 헤더: 녹색 그라데이션 + 흰색 텍스트 (모든 하단 탭)
+   ========================= */
+body:has(#mainApp:not(.hidden)) {
+    --timeline-chrome-green-deep: #064e3b;
+    --timeline-chrome-green-mid: #065f46;
+    --timeline-chrome-green-base: #047857;
+    --timeline-chrome-green-light: #10b981;
+    --app-chrome-header-h: 3.5rem;
+    --app-chrome-subtabs-h: 2.75rem;
+    --app-chrome-gradient-subtabs-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h));
+    --app-chrome-gradient-timeline-span: calc(var(--safe-top) + var(--app-chrome-header-h) + 7.5rem);
+    --app-chrome-gradient: linear-gradient(
+        135deg,
+        var(--timeline-chrome-green-deep) 0%,
+        var(--timeline-chrome-green-mid) 28%,
+        var(--timeline-chrome-green-base) 58%,
+        var(--timeline-chrome-green-light) 100%
+    );
+}
+body:has(#mainApp:not(.hidden)) #statusBarOverlay {
+    background: var(--app-chrome-gradient) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay {
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+}
+/* 웹: 상태바 오버레이를 max-w-md 본문 폭에만 맞춤 (뷰포트 전체로 녹색이 퍼지지 않게) */
+html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
+    left: 50%;
+    right: auto;
+    width: min(100vw, 28rem);
+    transform: translateX(-50%);
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #mainAppHeader {
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+}
+body:has(#mainApp:not(.hidden)) #headerAppTitle {
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-section-label {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger,
+body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle,
+body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger {
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.14);
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger:hover,
+body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle:hover,
+body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+}
+body:has(#mainApp:not(.hidden)) .timeline-search-wrapper.expanded .timeline-search-panel {
+    background: rgba(255, 255, 255, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.32) !important;
+}
+body:has(#mainApp:not(.hidden)) #searchInput {
+    color: #ffffff;
+}
+body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* 라운지·사용자: 헤더 그라데이션 확장 + pill 서브탭 */
+.app-chrome-subtabs {
+    flex-shrink: 0;
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--app-chrome-subtabs-h);
+    height: var(--app-chrome-subtabs-h);
+    padding: 0 1.5rem;
+}
+.app-chrome-subtab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px;
+    border-radius: 9999px;
+    border: none;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.14);
+    color: rgba(255, 255, 255, 0.82);
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.app-chrome-subtab.active,
+.app-chrome-subtab[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.24);
+    color: #ffffff;
+    font-weight: 400;
+}
+.app-chrome-subtab:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.18);
+}
+.app-chrome-subtab.active:hover,
+.app-chrome-subtab[aria-selected="true"]:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #boardLoungeFrame .board-mealtalk-subtabs,
+body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row,
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-chrome-subtabs {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
+    border-bottom: none !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #boardListView:not(.hidden) .board-mealtalk-subtabs,
+body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) .settings-subtab-row,
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) .dashboard-chrome-subtabs {
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+
+/* 밀로그 전용: 트래커·미니 캘린더 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection.tracker-header-hidden {
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
+    color: #ffffff !important;
+}
+/* 연속 기록 pill: 라운드 사각형(🔥) + N일 연속 */
+.tracker-streak-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 3px;
+    border-radius: 9999px;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fde68a;
+    line-height: 1;
+}
+.tracker-streak-pill__emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 12px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.tracker-streak-pill__text {
+    padding-right: 1px;
+}
+/* 실행 환경 배지 — 헤더(녹색) 위에서도 잘 보이게 */
+.mealog-env-badge--dev {
+    color: #fef08a;
+    background: rgba(15, 23, 42, 0.55);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(254, 240, 138, 0.65);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:focus-visible {
+    outline-color: rgba(255, 255, 255, 0.85);
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.active {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-color: transparent !important;
+    color: var(--timeline-chrome-green-mid) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
+    color: rgba(255, 255, 255, 0.68) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-item > span {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-item > span.text-rose-400 {
+    color: rgba(255, 210, 210, 0.92) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+    border: 1px solid transparent;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-full {
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-partial {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .calendar-dot.dot-selected {
+    transform: scale(1.08);
+    border: 2px solid #ffffff !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    font-weight: 800;
+}
+
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
 .demo-nav-guide-panel {
     bottom: calc(66px + var(--safe-bottom));
@@ -4056,11 +4295,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: #ecfdf5;
 }
 .settings-tab {
-    transition: all 0.2s;
-    background-color: transparent;
-}
-.settings-tab.active {
-    background-color: transparent;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 .settings-tab-content {
     min-height: 100%;
@@ -5523,6 +5758,16 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView .card {
     border-radius: 0;
 }
+#dashboardView:not(.hidden) {
+    padding-top: 0;
+}
+#dashboardView > .dashboard-chrome-subtabs + .card {
+    margin-top: 0 !important;
+}
+#dashboardView .dashboard-insight-card.ui-card-pad-lg {
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+}
 /* 베스트/식사/간식 탭과 식사카드 컨테이너 간격 (0.1125rem) */
 #dashboardView #bestAnalysisSection,
 #dashboardView #mainAnalysisSection,
@@ -5546,47 +5791,6 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     margin-left: -1rem !important;
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
-}
-/* 인사이트 기간 탭: 좌우 꽉 채움, 각진 모양 */
-#dashboardView .insight-period-tabs {
-    display: flex;
-    align-items: stretch;
-    gap: 1px;
-    flex-wrap: nowrap;
-    padding: 1px;
-    background: rgb(5, 150, 105);
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    border-radius: 6px;
-}
-#dashboardView .insight-period-tabs .insight-period-tab {
-    margin: 0 !important;
-    padding: 0.375rem 0.25rem !important;
-    min-height: 0 !important;
-    flex: 1 1 0;
-    min-width: 0;
-    height: auto;
-    line-height: 1.25;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    box-sizing: border-box;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.85);
-}
-#dashboardView .insight-period-tabs .insight-period-tab:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
-}
-#dashboardView .insight-period-tabs .insight-period-tab--selected {
-    background: #fff;
-    color: #047857;
-    border-color: #fff;
-}
-#dashboardView .insight-period-tabs .insight-period-tab--selected:hover {
-    background: #f0fdf4;
-    color: #047857;
 }
 /* 인사이트 영역 (트위터 스타일: 깔끔한 카드·타이포 위주) */
 #insightBubble.insight-bubble,
@@ -6252,20 +6456,19 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 /* 밀톡: 피드/게시판 서브탭 아래만 스크롤 (상단 탭은 고정, 본문은 패널 내부 스크롤)
    max-height만 있으면 블록 높이는 내용 높이로만 잡혀 flex:1 자식이 늘지 않음 → 스크롤 영역 0으로 보임 */
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    /* 헤더(밀톡 타이틀) ↔ 서브탭만 촘촘히 — 피드/게시판 탭 높이는 사용자 메뉴 .settings-tab과 동일(px-3 py-2.5) */
-    padding-top: 0.125rem;
+    padding-top: 0;
     padding-bottom: 0.75rem;
     padding-left: 1rem;
     padding-right: 1rem;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background: #fff;
+    background: transparent;
     /* 뷰포트 − 상태바 − 앱 헤더 − 세이프만 (하단 APP 네비는 플로팅 → 본문이 네비 뒤까지 이어지게, 타임라인/모먼트와 동일) */
-    height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    max-height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    max-height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+    height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
     /* 스크롤은 #boardLoungeScrollArea(피드·게시판 본문)만 — 서브탭·카테고리는 #boardLoungeFrame에서 고정 */
     overflow-x: hidden;
     overflow-y: hidden;
@@ -6276,20 +6479,15 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 /* 밀톡: 헤더는 translate로만 숨겨져 레이아웃 슬롯이 남고(내부 스크롤이라 window처럼 안 올라감) body(#f8fafc)가 비침 — 숨김 시 헤더 높이만큼 뷰를 위로 당겨 채움 */
 body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    margin-top: -3.5rem;
+    margin-top: calc(-1 * var(--app-chrome-header-h));
     height: calc(100vh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
-/* 서브탭: 스크롤 영역 밖 — 스크롤바가 올라오지 않음 */
+/* 서브탭: 스크롤 영역 밖 — 스크롤바가 올라오지 않음 (배경·탭 pill은 .app-chrome-subtabs 규칙) */
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs {
-    flex-shrink: 0;
     width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    background: #fff;
-    border-bottom: 1px solid rgb(226 232 240);
 }
 #boardListView #boardCategoryRow {
     flex-shrink: 0;
@@ -6309,7 +6507,23 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     margin-top: 0;
 }
 #boardListView.board-list-view-mealtalk.ui-stack-md > .board-write-fab + #boardLoungeFrame {
-    margin-top: calc(0.75rem * 0.3);
+    margin-top: 0;
+}
+/* 사용자 뷰: 라운지와 동일한 뷰포트 높이(헤더 아래 영역) */
+#settingsView:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+}
+body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
+    margin-top: calc(-1 * var(--app-chrome-header-h));
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
 /* 라운지 프레임: 서브탭·카테고리 + 본문 스크롤 — #boardListView 좌우 패딩(1rem) 풀블리드 */
 #boardListView #boardLoungeFrame.board-lounge-frame {
@@ -6338,8 +6552,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
 }
 #boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
-    /* Firefox: 트랙을 투명으로 두면 우측에 흰색이 비침 */
-    scrollbar-color: rgba(255, 255, 255, 0.35) var(--board-feed-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardListPanel:not(.hidden)) {
     background-color: rgb(241 245 249);
@@ -6688,12 +6901,12 @@ body.feed-bubble-sheet-open {
     scroll-padding-bottom: var(--board-feed-scroll-inset-bottom);
     background: var(--board-feed-bg);
 }
-/* 스크롤 막대: 통합 스크롤(#boardLoungeScrollArea) — 피드(녹색)·게시판(슬레이트) 탭에 맞춤 */
+/* 스크롤 막대: 통합 스크롤(#boardLoungeScrollArea) — 피드(흰색)·게시판(슬레이트) 탭에 맞춤 */
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden)) {
-    scrollbar-color: rgba(255, 255, 255, 0.45) var(--board-feed-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden))::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(148, 163, 184, 0.45);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden)) {
     scrollbar-color: rgba(148, 163, 184, 0.5) rgb(241 245 249);
@@ -6702,8 +6915,7 @@ body.feed-bubble-sheet-open {
     background: rgba(148, 163, 184, 0.45);
 }
 
-/* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
-/* 내 말풍선: 카카오톡 송신 버블 톤을 한 단계 연하게 */
+/* 밀톡 피드 메시지 영역 테마 (흰 배경 + 말풍선) */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
     background: #fff0a8;
     color: #1a1a1a;
@@ -6711,39 +6923,38 @@ body.feed-bubble-sheet-open {
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;
     color: #1e293b;
-    border-color: rgba(255, 255, 255, 0.4);
+    border-color: rgba(226, 232, 240, 0.95);
 }
 #boardListView #boardFeedPanelContent .feed-bubble-meta-time {
-    color: rgba(255, 255, 255, 0.72);
+    color: rgba(100, 116, 139, 0.85);
 }
 #boardListView #boardFeedPanelContent .feed-bubble-author-nick {
-    color: rgba(255, 255, 255, 0.95);
+    color: rgba(51, 65, 85, 0.92);
 }
 #boardListView #boardFeedPanelContent .feed-timeline-empty-title,
 #boardListView #boardFeedPanelContent .feed-timeline-empty-sub {
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(100, 116, 139, 0.75);
 }
 #boardListView #boardFeedPanelContent .feed-timeline-empty-icon {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(148, 163, 184, 0.65);
 }
 #boardListView #boardFeedPanelContent .feed-panel-loading-text,
 #boardListView #boardFeedPanelContent .feed-panel-loading-icon {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(100, 116, 139, 0.8);
 }
 #boardListView #boardFeedPanelContent .feed-panel-error {
-    color: #fecaca;
+    color: #dc2626;
 }
 #boardListView #boardFeedPanelContent .feed-other-avatar-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.35);
 }
-/* 피드 입력창 프로필 아이콘 — 타인 말풍선 아바타와 동일 1px 흰 테두리 */
 #boardListView #boardInlineComposer.board-feed-composer-visible .board-inline-composer-avatar {
-    box-shadow: 0 0 0 1px #fff;
+    box-shadow: 0 0 0 1px rgba(226, 232, 240, 0.95);
 }
 #boardListView #boardFeedPanelContent .feed-refresh-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.35);
 }
 
 /* 하단 앱 네비가 스크롤로 밀려 숨겨진 경우: 입력창을 하단에 붙여 대화 스크롤이 입력 바로 위까지 이어지게 (뷰 높이는 기본과 동일) */
