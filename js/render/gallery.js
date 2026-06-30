@@ -31,6 +31,24 @@ import {
 
 ensureMomentFeedPinchDelegate();
 
+// 모먼트 사진이 한 번이라도 로드되면 img에 `loaded` 표시를 남긴다.
+// 이후 스크롤로 화면을 벗어났다 돌아오며 브라우저가 이미지를 재디코드하느라 잠깐 비더라도,
+// 연회색 배경·로딩 스피너 플레이스홀더를 다시 띄우지 않아 "지난 사진이 잠깐 사라지는" 깜빡임을 없앤다.
+// load 이벤트는 버블되지 않으므로 캡처 단계(3번째 인자 true)로 위임 처리해 동적 삽입 이미지까지 1개 리스너로 처리.
+if (typeof document !== 'undefined' && !window._momentPhotoLoadedTrackerBound) {
+    window._momentPhotoLoadedTrackerBound = true;
+    document.addEventListener(
+        'load',
+        (e) => {
+            const img = e.target;
+            if (img && img.tagName === 'IMG' && img.classList && img.classList.contains('moment-feed-photo')) {
+                img.classList.add('loaded');
+            }
+        },
+        true
+    );
+}
+
 /** `momentsFeedView === 2` — renderGallery 완료 시점 기준 (appendGalleryPosts 등에서 재사용) */
 let galleryMomentLayoutV2 = false;
 
@@ -318,13 +336,23 @@ export async function appendMomentFeedNextPage(opts = {}) {
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = nextHasMore;
 
-        await renderGallery({ skipScrollToTop: true, forceReload: true });
+        // 전체 재렌더(forceReload) 대신 새 게시물만 DOM 끝에 추가한다.
+        // → 기존 게시물·이미지·스크롤 위치가 그대로 유지되어, 더보기 시 스크롤이 위아래로 튀지 않는다.
+        const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
+        const postsInsertPoint = document.getElementById('galleryPostsInsertPoint');
+        let appended = 0;
+        if (loadMoreWrap && postsInsertPoint && !appState.galleryFilterUserId) {
+            appended = (await appendGalleryPosts(docs, loadMoreWrap)) || 0;
+        } else {
+            // 갤러리 구조가 없거나(필터/그리드 모드 등) 부분 추가가 불가능하면 안전하게 전체 렌더로 폴백
+            await renderGallery({ skipScrollToTop: true, forceReload: true });
+        }
 
         if (syncFeed) {
             const { renderFeed } = await import('./feed.js');
             await renderFeed();
         }
-        return { ok: true, appended: docs.length };
+        return { ok: true, appended: appended || docs.length };
     } catch (e) {
         console.error('공유 사진 더보기 실패:', e);
         appState.galleryFeedNetworkError = true;
@@ -334,11 +362,22 @@ export async function appendMomentFeedNextPage(opts = {}) {
 
 /** 더보기 시 새 포스트만 DOM에 추가 (전체 재렌더 없이 깜박임 방지) */
 async function appendGalleryPosts(docs, loadMoreWrap) {
-    if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return;
+    if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return 0;
     const container = document.getElementById('galleryContainer');
-    if (!container) return;
-    const newGroups = docsToSortedPhotoGroups(docs);
-    if (newGroups.length === 0) return;
+    if (!container) return 0;
+    let newGroups = docsToSortedPhotoGroups(docs);
+    if (newGroups.length === 0) return 0;
+    // 이미 DOM에 렌더된 게시물은 제외 (페이지 경계에서 같은 게시물이 두 번 들어가는 것 방지)
+    const existingPostIds = new Set(
+        Array.from(container.querySelectorAll('.instagram-post[data-post-id]'))
+            .map((el) => el.getAttribute('data-post-id'))
+            .filter(Boolean)
+    );
+    newGroups = newGroups.filter((g) => {
+        const pid = getPostIdFromPhotoGroup(g);
+        return pid != null && !existingPostIds.has(String(pid));
+    });
+    if (newGroups.length === 0) return 0;
     // 새로 추가되는 작성자들의 프로필을 먼저 로드해 두어 닉네임이 '익명'으로 나오지 않도록 함
     await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
     let mealHistoryMap = new Map();
@@ -377,6 +416,7 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
             });
         }
     }, 50);
+    return newGroups.length;
 }
 
 
@@ -1222,11 +1262,13 @@ export async function renderGallery(options = {}) {
                             return renderPostGroup(photoGroup, groupIdx);
                         }).join('');
                         
-                        // Placeholder 앞에 포스트 삽입
+                        // Placeholder 앞에 포스트 삽입 (삽입된 노드를 모아 실제 높이 측정)
                         const fragment = document.createDocumentFragment();
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = batchHtml;
+                        const insertedNodes = [];
                         while (tempDiv.firstChild) {
+                            insertedNodes.push(tempDiv.firstChild);
                             fragment.appendChild(tempDiv.firstChild);
                         }
                         
@@ -1240,10 +1282,22 @@ export async function renderGallery(options = {}) {
                         // 초기 10건 이후 삽입분에도 공유 기록 코멘트 플레이스홀더 일괄 조회 (최초 1회 fetch에는 아직 DOM에 없었음)
                         fetchMissingSharedComments(container).catch(() => {});
                         
-                        // Placeholder 높이 조정
+                        // Placeholder 높이 조정 — 추정(600px)이 아니라 "실제 삽입된 높이"만큼만 차감해
+                        // 문서 전체 높이를 보존한다. (추정-실제 오차로 스크롤이 위아래로 튀던 진동 제거)
                         const remaining = sortedGroups.length - renderedCount;
-                        if (remaining > 0 && placeholder) {
-                            placeholder.style.height = `${remaining * estimatedPostHeight}px`;
+                        if (remaining > 0 && placeholder && document.contains(placeholder)) {
+                            let insertedHeight = 0;
+                            for (const node of insertedNodes) {
+                                if (node.nodeType === 1 && document.contains(node)) {
+                                    insertedHeight += node.getBoundingClientRect().height;
+                                }
+                            }
+                            const currentHeight = parseFloat(placeholder.style.height) || ((remaining + batchSize) * estimatedPostHeight);
+                            // 측정 실패(0) 시에만 추정치로 폴백
+                            const nextHeight = insertedHeight > 0
+                                ? Math.max(0, currentHeight - insertedHeight)
+                                : remaining * estimatedPostHeight;
+                            placeholder.style.height = `${nextHeight}px`;
                         } else {
                             if (placeholder && placeholder.parentNode) {
                                 placeholder.remove();

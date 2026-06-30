@@ -1128,7 +1128,10 @@
         <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
         <!-- 네비게이션 바 영역 흰색 오버레이 (Android 15+ edge-to-edge 투명 방지) -->
         <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
-        <header id="mainAppHeader" class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top transition-transform duration-300 ease-out">
+        <!-- 상단 chrome seam 채움: 헤더와 아래 영역(서브탭/기간탭) 사이 서브픽셀 틈을 녹색으로 메움 (콘텐츠 뒤, 컬럼폭) -->
+        <div id="appTopChromeFill" aria-hidden="true"></div>
+        <div id="appTopChrome" class="sticky z-50">
+        <header id="mainAppHeader" class="relative z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
                 <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
                     <div class="relative inline-block shrink-0">
@@ -1194,7 +1197,7 @@
             </div>
         </header>
 
-        <div id="trackerSection" class="sticky z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm safe-area-tracker">
+        <div id="trackerSection" class="relative z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm">
             <div id="trackerHeader" class="flex justify-between items-center mb-2 gap-2">
                 <div class="flex items-center gap-1 min-w-0 flex-1">
                     <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
@@ -1214,6 +1217,7 @@
                 </div>
             </div>
             <div id="miniCalendar" class="calendar-scroll pb-2"></div>
+        </div>
         </div>
 
         <main>

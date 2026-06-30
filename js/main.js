@@ -1842,6 +1842,9 @@ document.addEventListener('visibilitychange', () => {
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시
 let _lastScrollY = 0;
 let _headerScrollRaf = null;
+// 헤더 숨김/표시 토글 직후 쿨다운: 토글로 문서 높이가 바뀌며 발생하는 합성 scroll 이벤트가
+// 곧바로 반대 토글을 일으켜 헤더가 덜덜 떨리는 현상(oscillation)을 방지한다.
+let _chromeToggleLockUntil = 0;
 window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
@@ -1851,6 +1854,12 @@ window.addEventListener('scroll', () => {
     const y = window.scrollY;
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
+        _headerScrollRaf = null;
+        // 쿨다운 중에는 기준값만 따라가고 토글하지 않음 (떨림 차단)
+        if (Date.now() < _chromeToggleLockUntil) {
+            _lastScrollY = y;
+            return;
+        }
         const delta = y - _lastScrollY;
         const scrollThreshold = 8;
         const topThreshold = 24;
@@ -1859,6 +1868,7 @@ window.addEventListener('scroll', () => {
         const atTop = y <= topThreshold;
         const isGallery = appState.currentTab === 'gallery';
         const galleryV2 = isGallery && document.getElementById('galleryContainer')?.classList?.contains('moment-feed-layout-v2');
+        const wasHidden = header.classList.contains('header-scroll-hidden');
         if (isScrollingDown && !atTop) {
             if (!isGallery || galleryV2) {
                 header.classList.add('header-scroll-hidden');
@@ -1870,8 +1880,11 @@ window.addEventListener('scroll', () => {
             if (tracker) tracker.classList.remove('tracker-header-hidden');
             document.body.classList.remove('bottom-nav-scroll-hidden');
         }
+        // 숨김 상태가 실제로 바뀐 경우에만 쿨다운 — 레이아웃 변동(문서 높이) 되먹임 차단
+        if (header.classList.contains('header-scroll-hidden') !== wasHidden) {
+            _chromeToggleLockUntil = Date.now() + 320;
+        }
         _lastScrollY = y;
-        _headerScrollRaf = null;
     });
 }, { passive: true });
 

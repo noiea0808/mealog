@@ -1770,17 +1770,92 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     color: #475569; 
     white-space: nowrap; 
 }
-/* 앱 모드: 상단/하단 시스템 UI(상태바·네비바) 여백 */
-#mainApp header.safe-area-top { top: var(--safe-top); }
-#mainApp .safe-area-tracker { top: calc(var(--safe-top) + 52px); }
+/* 앱 모드: 상단 chrome — #appTopChrome 단일 sticky, 상태바는 #statusBarOverlay */
+#appTopChrome {
+    position: sticky;
+    top: var(--safe-top);
+    z-index: 50;
+    /* 스크롤 중 그라데이션 배경이 매 프레임 repaint되며 생기던 떨림(덜덜) 방지: 독립 GPU 레이어로 승격 */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: transform;
+}
+/* 상태바·네비 오버레이도 동일 레이어 승격 (sticky 헤더와 함께 부드럽게) */
+#statusBarOverlay,
+#navigationBarOverlay {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+/* 라운지·밀당·설정: 헤더(녹색)와 아래 영역(녹색) 사이 서브픽셀 seam을 채우는 컬럼폭 녹색 fill.
+   - position:fixed → 뷰포트 상단 고정(스크롤해도 잔상 띠 없음)
+   - z-index:-1 → 콘텐츠 뒤(페이지 배경 위)에만 깔려 UI를 가리지 않음
+   - width:min(100vw,28rem) 가운데 → 앱 컬럼 밖으로 녹색이 번지지 않음 */
+#appTopChromeFill {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) translateZ(0);
+    width: min(100vw, 28rem);
+    z-index: -1;
+    pointer-events: none;
+    background-repeat: no-repeat;
+    background-color: transparent;
+}
+/* 라운지·설정: 서브탭이 스크롤되지 않고 헤더 아래 고정 → fill을 헤더+서브탭 전체로 덮어
+   빠른 스크롤·오버스크롤로 서브탭 밴드에 틈이 생겨도 녹색 유지 (콘텐츠가 그 밴드로 지나가지 않으므로 녹색 누출 없음) */
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #appTopChromeFill,
+body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) #appTopChromeFill {
+    display: block;
+    height: var(--app-chrome-gradient-subtabs-span);
+    background-image: var(--app-chrome-gradient);
+    background-size: 100% var(--app-chrome-gradient-subtabs-span);
+    background-position: 0 0;
+}
+/* 밀당: 기간탭이 콘텐츠와 함께 스크롤되므로 fill은 헤더 밴드까지만 (그 아래는 콘텐츠가 지나감 → 녹색 선 방지).
+   빠른 스크롤 흰색은 overscroll-behavior로 차단 */
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #appTopChromeFill {
+    display: block;
+    height: calc(var(--safe-top) + var(--app-chrome-header-h));
+    background-image: var(--app-chrome-gradient-dashboard-fill);
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span));
+    background-position: 0 0;
+}
+/* 헤더 숨김 시: 서브탭이 상단으로 올라오므로 fill 높이도 그만큼만 (라운지·설정) */
+body:has(#mainAppHeader.header-scroll-hidden):has(#boardListView:not(.hidden)) #appTopChromeFill,
+body:has(#mainAppHeader.header-scroll-hidden):has(#settingsView:not(.hidden)) #appTopChromeFill {
+    height: calc(var(--safe-top) + var(--app-chrome-subtabs-h));
+}
+/* 라운지·밀당: 빠르게 위로 스크롤(fling) 시 오버스크롤 rubber-band가 상단 흰 바탕을 노출하는 것 방지 */
+html:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)),
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) {
+    overscroll-behavior-y: contain;
+}
+#boardLoungeScrollArea {
+    overscroll-behavior-y: contain;
+}
 
-/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일) */
-#mainAppHeader.header-scroll-hidden { transform: translateY(-100%); }
-/* 헤더 숨김 시 트래커는 상태바 아래에 고정 (padding으로 상태바 영역 확보) */
-#trackerSection { transition: top 0.3s ease-out; }
-#trackerSection.tracker-header-hidden {
-    top: 0 !important;
-    padding-top: var(--safe-top) !important;
+/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일)
+   핵심: 숨김(아래로 스크롤)은 0.3s 부드럽게, 등장(위로 스크롤)은 즉시(transition 없음).
+   → 위로 빠르게 스크롤할 때 헤더가 천천히 내려오며 콘텐츠와의 사이에 흰 틈이 생기던 문제 제거.
+   (HTML의 transition-transform duration-300 클래스를 여기서 덮어씀) */
+#mainAppHeader { transition: none !important; }
+#mainAppHeader.header-scroll-hidden {
+    transition: transform 0.3s ease-out !important;
+    transform: translateY(-100%);
+}
+/* 밀로그: 헤더만 슬라이드·레이아웃 접힘 → 트래커가 wrapper 안에서 자연스럽게 올라옴 (별도 sticky 불필요) */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader.header-scroll-hidden {
+    margin-bottom: calc(-1 * var(--app-chrome-header-h));
+}
+#trackerSection { transition: none; }
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection.tracker-header-hidden {
+    top: auto !important;
+    padding-top: 0 !important;
 }
 
 /* =========================
@@ -1822,6 +1897,19 @@ body:has(#mainApp:not(.hidden)) #statusBarOverlay {
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay {
     background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
 }
+/* 밀로그: 헤더+트래커 단일 sticky wrapper에 gradient — seam 없음 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
+    background: transparent !important;
+    box-shadow: none !important;
+    border-bottom: none !important;
+}
 /* 웹: 상태바 오버레이를 max-w-md 본문 폭에만 맞춤 (뷰포트 전체로 녹색이 퍼지지 않게) */
 html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
     left: 50%;
@@ -1838,10 +1926,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader {
     -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #mainAppHeader {
-    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
-}
-/* 밀당: 헤더·상태바·인사이트 chrome — 동일 fill gradient + JS 동기화 높이(--app-chrome-gradient-dashboard-sync-h) */
+/* 밀당: 상태바 gradient — backdrop·인사이트 chrome과 동기화 */
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #statusBarOverlay {
     background-image: var(--app-chrome-gradient-dashboard-fill) !important;
     background-color: transparent !important;
@@ -1944,7 +2029,6 @@ body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row 
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome {
     background-color: transparent !important;
     background-image: var(--app-chrome-gradient-dashboard-fill) !important;
-    /* 인사이트 chrome 높이(기간탭~식사·간식 기록)에 gradient를 꽉 채움 — sync-h 슬라이스 방식은 하단이 잘리는 문제 */
     background-size: 100% 100% !important;
     background-repeat: no-repeat !important;
     background-position: 0 0 !important;
@@ -1965,18 +2049,17 @@ body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #mainA
 body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) .dashboard-insight-chrome {
     background-position: 0 0 !important;
 }
+/* 밀로그: wrapper 안 헤더·트래커만 개별 gradient 제거 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
+    background: transparent !important;
+    background-image: none !important;
+}
 
 /* 밀로그 전용: 트래커·미니 캘린더 */
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
-    background: var(--app-chrome-gradient) !important;
-    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
     border-bottom: none !important;
     box-shadow: none !important;
-}
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection.tracker-header-hidden {
-    background-position: 0 calc(-1 * var(--safe-top)) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     color: #ffffff !important;
@@ -2226,6 +2309,52 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
 #galleryContainer .moment-feed-photo {
     cursor: zoom-in;
+}
+/* 모먼트 사진 로딩 상태: 슬롯(aspect-ratio로 공간 확보됨)에 연회색 배경 + 중앙 스피너.
+   이미지가 로드되면 그 위를 덮어 스피너가 자연스럽게 가려짐(onload 핸들러 불필요·캐시 이미지도 안전).
+   isolation으로 슬롯 내부 stacking을 격리, 스피너는 z-index:-1 → 배경 위·이미지 아래에 위치 */
+#galleryContainer *:has(> img.moment-feed-photo.object-cover),
+#feedContent *:has(> img.moment-feed-photo.object-cover) {
+    position: relative;
+    isolation: isolate;
+    background-color: #e2e8f0;
+}
+#galleryContainer *:has(> img.moment-feed-photo.object-cover)::after,
+#feedContent *:has(> img.moment-feed-photo.object-cover)::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border: 3px solid rgba(100, 116, 139, 0.25);
+    border-top-color: rgba(71, 85, 105, 0.85);
+    border-radius: 50%;
+    animation: moment-photo-loading-spin 0.8s linear infinite;
+    z-index: -1;
+    pointer-events: none;
+}
+@keyframes moment-photo-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #galleryContainer *:has(> img.moment-feed-photo.object-cover)::after,
+    #feedContent *:has(> img.moment-feed-photo.object-cover)::after {
+        animation: none;
+    }
+}
+/* 한 번이라도 로드된 사진: 재디코드(스크롤 재진입)로 잠깐 비더라도 회색 배경·스피너를 다시 보여주지 않음.
+   → 인스타/페북처럼 "이미 본 사진은 사라지지 않는" 느낌. (최초 로딩 시에만 회색+스피너 노출) */
+#galleryContainer *:has(> img.moment-feed-photo.object-cover.loaded),
+#feedContent *:has(> img.moment-feed-photo.object-cover.loaded) {
+    background-color: transparent;
+}
+#galleryContainer *:has(> img.moment-feed-photo.object-cover.loaded)::after,
+#feedContent *:has(> img.moment-feed-photo.object-cover.loaded)::after {
+    content: none;
 }
 /* 화면2: 라이트박스 없음 — 돋보기 커서 제거 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-carousel-photo,
