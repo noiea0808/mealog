@@ -2,11 +2,17 @@
  * 메인 앱 네트워크 상태 (오프라인 오버레이) + 온라인/포그라운드 복구
  */
 import { hideNetworkErrorOverlay } from '../ui.js';
-import { notifyTransportOfflineUi, clearOfflineDraftFlagsOnMeals } from '../utils/mealog-offline-ui.js';
+import {
+    notifyTransportOfflineUi,
+    clearOfflineDraftFlagsOnMeals,
+    isMealogTransportOffline
+} from '../utils/mealog-offline-ui.js';
 import { auth, db, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
 import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } from '../utils/network-reachability.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
+import { probeMealogRemoteReachable } from '../utils/network-probe.js';
+import { appState } from '../state.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 function mealogMainAppVisible() {
@@ -108,6 +114,29 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
     }
 }
 
+let momentFeedReloadInFlight = false;
+
+/**
+ * 재연결 직후, 모먼트 피드가 네트워크 오류 상태로 멈춰 있고 사용자가 모먼트/앨범 탭을 보고 있으면
+ * '다시 불러오기' 버튼을 누르지 않아도 자동으로 다시 로드한다.
+ * (online/포그라운드 복구에서는 모먼트가 자동 갱신되지 않아 수동 버튼·앱 재시작을 유발하던 문제 보완)
+ */
+function maybeReloadMomentFeedAfterRecovery() {
+    try {
+        if (appState.galleryFeedNetworkError !== true) return;
+        const tab = appState.currentTab;
+        if (tab !== 'feed' && tab !== 'gallery') return;
+        if (typeof window.reloadMomentFeed !== 'function') return;
+        if (momentFeedReloadInFlight) return;
+        momentFeedReloadInFlight = true;
+        void Promise.resolve(window.reloadMomentFeed()).finally(() => {
+            momentFeedReloadInFlight = false;
+        });
+    } catch (_) {
+        momentFeedReloadInFlight = false;
+    }
+}
+
 /** 화면 복귀 시: 브라우저가 온라인으로 보이면 강제 오프라인·오버레이를 풀고 동기화 UI를 재맞춤 */
 function runForegroundMealSyncAndOverlayRecovery() {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
@@ -126,6 +155,7 @@ function runForegroundMealSyncAndOverlayRecovery() {
     void (async () => {
         await new Promise((r) => setTimeout(r, 200));
         await flushMealWriteQueueAndRefreshSyncUi();
+        maybeReloadMomentFeedAfterRecovery();
     })();
 }
 
@@ -186,10 +216,64 @@ export function registerMainNetworkListeners() {
         }
         hideNetworkErrorOverlay();
         scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
-        void flushMealWriteQueueAndRefreshSyncUi();
+        void (async () => {
+            await flushMealWriteQueueAndRefreshSyncUi();
+            maybeReloadMomentFeedAfterRecovery();
+        })();
     });
     registerForegroundRecovery();
     registerConnectionChangeRecovery();
+    startMealogReachabilityHeartbeat();
+}
+
+/**
+ * online 이벤트가 오지 않는 WebView 대비: 앱이 오프라인으로 판단 중이고 화면이 보일 때만
+ * 실제 HTTP 왕복으로 연결을 확인하고, 복구되면 online 이벤트 없이도 강제 오프라인을 풀고
+ * 동기화 UI·모먼트 피드를 자동 복구한다. (연결되면 isMealogTransportOffline()가 false가 되어 자동 중단)
+ */
+const REACHABILITY_HEARTBEAT_MS = 6000;
+let reachabilityHeartbeatTimer = null;
+let reachabilityProbeInFlight = false;
+
+function reachabilityHeartbeatTick() {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (reachabilityProbeInFlight) return;
+    if (!isMealogTransportOffline()) return;
+    reachabilityProbeInFlight = true;
+    void (async () => {
+        let reachable = false;
+        try {
+            reachable = await probeMealogRemoteReachable(5000);
+        } catch (_) {
+            reachable = false;
+        } finally {
+            reachabilityProbeInFlight = false;
+        }
+        if (!reachable) return;
+        clearLocalNetworkForcedOffline();
+        try {
+            clearOfflineDraftFlagsOnMeals();
+        } catch (_) {
+            /* ignore */
+        }
+        try {
+            hideNetworkErrorOverlay();
+        } catch (_) {
+            /* ignore */
+        }
+        scheduleMealogNetworkRecovery(0, { forceAuthRefresh: true });
+        await flushMealWriteQueueAndRefreshSyncUi();
+        maybeReloadMomentFeedAfterRecovery();
+    })();
+}
+
+function startMealogReachabilityHeartbeat() {
+    if (reachabilityHeartbeatTimer) return;
+    try {
+        reachabilityHeartbeatTimer = setInterval(reachabilityHeartbeatTick, REACHABILITY_HEARTBEAT_MS);
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 /** Network Information API: online 이벤트가 안 올 때도 연결 전환 시 복구 */
