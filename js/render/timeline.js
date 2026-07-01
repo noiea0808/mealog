@@ -40,6 +40,7 @@ import {
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
+import { getAiDietReportButtonHtml } from '../modals/diet-report.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -693,6 +694,17 @@ function getDailyShareButtonHtmlForDate(dateStr) {
     </button>`;
 }
 
+/** 날짜 라벨(h3) 바로 오른쪽 — 당일은 diet-report 쪽에서 제외 */
+function getDateHeaderAiReportInlineHtml(dateStr) {
+    const ai = getAiDietReportButtonHtml(dateStr);
+    return ai ? `<span class="ml-2 shrink-0 inline-flex">${ai}</span>` : '';
+}
+
+function buildDateHeaderLeftHtml(h3Html, dateStr) {
+    const aiInline = getDateHeaderAiReportInlineHtml(dateStr);
+    return `<div class="min-w-0 flex items-center flex-wrap">${h3Html}${aiInline}</div>`;
+}
+
 /**
  * 트래커 바로 아래 첫 날짜 헤더: 날짜 오른쪽에 간식 표시 방식 드롭다운 (일간 보기 시 공유 버튼 유지)
  */
@@ -717,7 +729,7 @@ export function syncSnackViewDropdown(container) {
             const mealView = getMealTimelineView();
             header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2 flex-wrap`;
             header.innerHTML = `
-                <div class="min-w-0">${h3Html}</div>
+                ${buildDateHeaderLeftHtml(h3Html, dateStr)}
                 <div class="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
                     ${buildMealTimelineViewSelectHtml(mealView)}
                     ${buildSnackTimelineViewSelectHtml(snackView)}
@@ -725,7 +737,9 @@ export function syncSnackViewDropdown(container) {
                 </div>`;
         } else {
             header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between`;
-            header.innerHTML = shareHtml ? `${h3Html}<div class="flex-shrink-0">${shareHtml}</div>` : h3Html;
+            header.innerHTML = shareHtml
+                ? `${buildDateHeaderLeftHtml(h3Html, dateStr)}<div class="flex-shrink-0">${shareHtml}</div>`
+                : buildDateHeaderLeftHtml(h3Html, dateStr);
         }
     });
 }
@@ -1437,11 +1451,10 @@ export function renderTimeline() {
         section.id = `date-${dateStr}`;
         section.className = "animate-fade";
         const shareButton = getDailyShareButtonHtmlForDate(dateStr);
-        const shareWrap = shareButton
-            ? `<div class="flex shrink-0 items-center">${shareButton}</div>`
-            : '';
+        const shareWrap = shareButton ? `<div class="flex shrink-0 items-center">${shareButton}</div>` : '';
+        const h3Html = `<h3 class="min-w-0">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
         let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2">
-            <h3 class="min-w-0">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>
+            ${buildDateHeaderLeftHtml(h3Html, dateStr)}
             ${shareWrap}
         </div>`;
 

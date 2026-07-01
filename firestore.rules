@@ -135,6 +135,13 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    // AI 식단 분석 리포트 (날짜 단위) - 문서 ID: {userId}_{YYYY-MM-DD}
+    // 생성/수정은 Cloud Functions(Admin SDK)만. 읽기는 관리자 또는 본인(userId 일치).
+    match /artifacts/{appId}/aiDietReports/{reportId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
     
     // 일별 메뉴/페이지 사용량 집계 — 관리자 대시보드「페이지별」용 (제외 UID·데모는 쓰기 불가)
     // adminSettings/excludedAnalyticsUids 의 excludedUidMap 과 동기화. 문서 없을 때는 아래 3개 UID만 서버에서 차단(레거시).

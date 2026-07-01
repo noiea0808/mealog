@@ -85,6 +85,7 @@ import { registerEventListenerManager } from './main/event-listener-manager.js';
 import { registerMomentSyncDevTools } from './main/moment-sync-dev.js';
 
 import { registerMainPostInteractions } from './main/post-interactions-daily.js';
+import './modals/diet-report.js';
 import { registerMainFeedOptionsReport } from './main/feed-options-report.js';
 import { registerMainBoardHandlers } from './main/board-handlers.js';
 registerMainNetworkListeners();

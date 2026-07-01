@@ -2480,6 +2480,23 @@
         </div>
     </div>
 
+    <!-- AI 식단분석 리포트 (밀로그 날짜별) -->
+    <div id="dietReportModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-center justify-center py-4 px-[10px]" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
+            <div class="relative shrink-0 px-5 pt-5 pb-3 border-b border-slate-100">
+                <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-10">AI 식단분석</h2>
+                <button type="button" onclick="window.closeDietReportModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
+                    <i class="fa-solid fa-xmark text-base"></i>
+                </button>
+            </div>
+            <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-5 py-4"></div>
+            <div class="shrink-0 border-t border-slate-200 bg-white px-5 py-4 flex gap-2 rounded-b-2xl">
+                <button type="button" onclick="window.closeDietReportModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">닫기</button>
+                <button type="button" id="dietReportRegenerateBtn" class="hidden flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors disabled:opacity-60">다시 분석하기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Detail Analysis Modal (팝업) -->
     <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4">
         <div class="w-full max-w-md mx-[10px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">

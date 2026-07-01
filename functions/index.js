@@ -5965,3 +5965,463 @@ exports.adminWelcomeGeminiComment = onCall(
     return { comment, analysisAnchorSeoul };
   })
 );
+
+// =========================================================================
+// AI 식단 분석 리포트 (날짜 단위)
+// - 매일 00:10 KST 배치로 "전날" 기록을 분석해 aiDietReports에 저장
+// - 대상: 식사/간식 meal 문서(하루 메모 제외)가 2개 이상인 날짜
+// - 사진: meal 문서당 최대 3장, 전체 안전 상한 12장
+// - 점수(0~100) + 한줄평 + 좋았던 점 + 아쉬운 점, sourceHash로 소급 수정 감지
+// =========================================================================
+
+/** 분석 지원 시작일(서울). 배치 재개 시 사용 */
+const DIET_REPORT_START_DATE = '2026-06-30';
+/** 프롬프트 확정 전까지 00:10 KST 자동 배치만 중지. UI 버튼·regenerateDietReport 수동 분석은 항상 사용 가능 */
+const DIET_REPORT_SCHEDULED_BATCH_ENABLED = false;
+const DIET_REPORT_PROMPT_VERSION = 'diet-v1';
+/** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 3;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 12;
+/** gemini-2.5-flash: 사진+thinking 시 출력 JSON이 잘리지 않도록 thinking 0 · 출력 여유 */
+const DIET_REPORT_MAX_OUTPUT_TOKENS = 768;
+const DIET_REPORT_THINKING_BUDGET = 0;
+
+function dietReportDocId(uid, dateStr) {
+  return `${uid}_${dateStr}`;
+}
+
+/** 재분석 시 관리자 모니터링용 — 최신 문서({uid}_{date})를 덮어쓰기 전 이력으로 보관 */
+async function archiveDietReportSnapshotIfAny(reportRef) {
+  const snap = await reportRef.get();
+  if (!snap.exists) return;
+  const prev = snap.data();
+  if (!prev || prev.generatedAt == null) return;
+  const historyRef = db.collection(`artifacts/${APP_ID}/aiDietReports`).doc();
+  await historyRef.set({
+    ...prev,
+    isHistory: true,
+    isLatest: false,
+    historyOf: reportRef.id,
+    archivedAt: FieldValue.serverTimestamp()
+  });
+}
+
+/** 하루 메모(daily journal) 미러는 분석 대상에서 제외 */
+function isDietAnalyzableMeal(m) {
+  if (!m || typeof m !== 'object') return false;
+  if (m.slotId === 'daily_journal') return false;
+  if (String(m.id || '').startsWith('dailyJournal_')) return false;
+  return true;
+}
+
+/**
+ * 분석 대상 meal 정렬 + sourceHash + 사진 수 + 최신 recordedAt 계산.
+ * sourceHash는 텍스트·사진 URL 조합을 안정적으로 해시하여, 이후 소급 수정 감지에 사용.
+ */
+function buildDietReportSource(meals) {
+  const analyzable = (meals || []).filter(isDietAnalyzableMeal);
+  const sortKey = (m) => `${String(m.slotId || '')}~${String(m.time || '')}~${String(m.id || '')}`;
+  analyzable.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  const parts = [];
+  let maxRecordedAt = '';
+  let photoCount = 0;
+  for (const m of analyzable) {
+    const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    photoCount += photos.length;
+    const ra = m.recordedAt != null ? String(m.recordedAt) : '';
+    if (ra && ra > maxRecordedAt) maxRecordedAt = ra;
+    parts.push(
+      [
+        m.id,
+        m.slotId,
+        m.mealType,
+        m.category,
+        m.snackType,
+        adminMealMenuDetailText(m),
+        adminMealPlaceText(m),
+        m.comment,
+        photos.join('|')
+      ]
+        .map((x) => (x == null ? '' : String(x)))
+        .join('~')
+    );
+  }
+  const hash = crypto.createHash('sha1').update(parts.join('\n')).digest('hex');
+  return { analyzable, hash, maxRecordedAt, photoCount };
+}
+
+/** Firebase Storage 다운로드 URL → Gemini inlineData({ mimeType, data(base64) }). 실패 시 null */
+async function dietFetchStorageImageInline(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== 'string') return null;
+  if (!imageUrl.includes('firebasestorage.googleapis.com')) return null;
+  try {
+    const url = new URL(imageUrl);
+    const m = url.pathname.match(/\/o\/(.+)$/);
+    if (!m) return null;
+    const storagePath = decodeURIComponent(m[1]);
+    const bucket = getStorage().bucket('mealog-r0.firebasestorage.app');
+    const file = bucket.file(storagePath);
+    const [contents] = await file.download();
+    const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    return { mimeType, data: contents.toString('base64') };
+  } catch (e) {
+    logger.warn('dietFetchStorageImageInline failed', { message: e?.message });
+    return null;
+  }
+}
+
+/** 분석 대상 meal → Gemini 텍스트 블록(슬롯별) */
+function formatMealsForDietPrompt(analyzable) {
+  const sorted = [...analyzable].sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+  const lines = [];
+  for (const m of sorted) {
+    const sl = adminSlotLabelKr(m.slotId) || '슬롯';
+    const detail = adminMealSlotDetailForGemini(m);
+    lines.push(`· ${sl}:\n    ${detail}`);
+  }
+  return lines.join('\n');
+}
+
+/** Gemini JSON 응답 파싱(코드펜스 제거 + 방어적 파싱) */
+function parseDietReportJson(text) {
+  let s = (text || '').trim();
+  if (!s) throw new Error('빈 응답');
+  s = s.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  const first = s.indexOf('{');
+  const last = s.lastIndexOf('}');
+  if (first >= 0 && last > first) s = s.slice(first, last + 1);
+  const obj = JSON.parse(s);
+  let score = Number(obj.score);
+  if (!Number.isFinite(score)) throw new Error('score 없음');
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  const clip = (v, max) => (v == null ? '' : String(v)).trim().slice(0, max);
+  const summary = clip(obj.summary, 200);
+  if (!summary) throw new Error('summary 없음');
+  return {
+    score,
+    summary,
+    goodPoint: clip(obj.goodPoint, 200),
+    improvePoint: clip(obj.improvePoint, 200)
+  };
+}
+
+/** Gemini 멀티모달 호출: 하루 식단 텍스트 + 사진 → { score, summary, goodPoint, improvePoint } */
+async function callGeminiDietReport(dateStr, mealText, imageParts) {
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
+  }
+  const prompt = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루(${dateStr}) 식단을 평가한다.
+
+[평가 기준 · 100점 만점]
+- 균형(주식·단백질·채소/과일의 고른 구성)
+- 단백질 충분함
+- 채소·과일 포함 여부
+- 과식·잦은 간식·야식 여부(감점 요인)
+- 기록의 충실도(메뉴·사진 등)
+위 항목을 종합해 0~100점을 매긴다. 데이터가 빈약하면 무리하게 높은 점수를 주지 말 것.
+
+[작성 원칙]
+- 한국어. 담백하고 따뜻한 어투. 캐릭터·이모지·과장 없이.
+- 의학적 진단·치료·질병 단정 표현 금지("~에 좋다/나쁘다" 수준의 일반적 조언까지만).
+- 사진에 음식이 보이면 실제로 반영하되, 데이터에 없는 사실은 지어내지 말 것.
+- summary는 한 줄(공백 포함 60자 내외).
+- goodPoint(좋았던 점), improvePoint(아쉬운 점)은 각각 한 줄, 없으면 빈 문자열.
+
+[식단 데이터 · ${dateStr}]
+${mealText || '(텍스트 기록 없음 — 사진 위주로 판단)'}
+
+[출력 형식]
+아래 JSON만 출력한다. 다른 텍스트·설명·코드펜스 없이 JSON 객체 하나만.
+{"score": 0-100 정수, "summary": "한줄평", "goodPoint": "좋았던 점", "improvePoint": "아쉬운 점"}`;
+
+  const model = GEMINI_MEALDANG_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const generationConfig = {
+    temperature: 0.4,
+    topP: 0.9,
+    maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
+    responseMimeType: 'application/json',
+    thinkingConfig: { thinkingBudget: DIET_REPORT_THINKING_BUDGET }
+  };
+
+  const invoke = async (images) => {
+    const parts = [{ text: prompt }, ...images.map((p) => ({ inlineData: p }))];
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
+      body: JSON.stringify({ contents: [{ parts }], generationConfig })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || (await res.text().catch(() => ''));
+      throw new Error(`Gemini API 오류: ${res.status} - ${msg}`);
+    }
+    await recordGeminiModelUsage(model);
+    const finishReason = data?.candidates?.[0]?.finishReason || '';
+    const text = extractGeminiResponseText(data);
+    if (!text) {
+      throw new Error(`Gemini 응답 텍스트 없음 (finishReason=${finishReason || 'unknown'})`);
+    }
+    let parsed;
+    try {
+      parsed = parseDietReportJson(text);
+    } catch (parseErr) {
+      throw new Error(`JSON 파싱 실패: ${parseErr.message} (finishReason=${finishReason || 'unknown'})`);
+    }
+    return { parsed, tokenUsage: data?.usageMetadata || null, model };
+  };
+
+  const images = Array.isArray(imageParts) ? imageParts : [];
+  try {
+    return await invoke(images);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    const shouldRetryTextOnly =
+      images.length > 0 &&
+      (/Unable to process input image|JSON 파싱 실패|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) ||
+        /image/i.test(msg));
+    if (shouldRetryTextOnly) {
+      logger.warn('callGeminiDietReport: retry text-only', { dateStr, imageCount: images.length, errMsg: msg });
+      return await invoke([]);
+    }
+    throw e;
+  }
+}
+
+/**
+ * 한 사용자·날짜의 리포트를 생성해 저장. 성공 시 status:'ready', 실패 시 status:'error'.
+ * @param {'batch'|'manual'} trigger
+ */
+async function generateAndSaveDietReport(uid, dateStr, meals, trigger) {
+  const { analyzable, hash, maxRecordedAt, photoCount } = buildDietReportSource(meals);
+  const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, dateStr)}`);
+
+  await archiveDietReportSnapshotIfAny(reportRef);
+
+  // 사진 수집: meal 문서당 최대 3장, 하루 전체 최대 12장
+  const imageParts = [];
+  const inputMealsForAnalysis = [];
+  for (const m of analyzable) {
+    if (imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) {
+      const photosOnly = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+      inputMealsForAnalysis.push({
+        slotId: String(m.slotId || ''),
+        slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+        mealId: String(m.id || ''),
+        detailText: adminMealSlotDetailForGemini(m),
+        photoCount: photosOnly.length,
+        analyzedPhotoUrls: []
+      });
+      continue;
+    }
+    const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    const analyzedPhotoUrls = [];
+    let usedForDoc = 0;
+    for (const purl of photos) {
+      if (usedForDoc >= DIET_REPORT_MAX_PHOTOS_PER_DOC || imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) break;
+      const inline = await dietFetchStorageImageInline(purl);
+      if (inline) {
+        imageParts.push(inline);
+        analyzedPhotoUrls.push(purl);
+        usedForDoc += 1;
+      }
+    }
+    inputMealsForAnalysis.push({
+      slotId: String(m.slotId || ''),
+      slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+      mealId: String(m.id || ''),
+      detailText: adminMealSlotDetailForGemini(m),
+      photoCount: photos.length,
+      analyzedPhotoUrls
+    });
+  }
+
+  const mealText = formatMealsForDietPrompt(analyzable);
+  const inputSnapshot = {
+    inputMealText: String(mealText || '').slice(0, 12000),
+    inputMeals: inputMealsForAnalysis
+  };
+  const base = {
+    userId: uid,
+    date: dateStr,
+    mealCount: analyzable.length,
+    photoCount,
+    analyzedPhotoCount: imageParts.length,
+    sourceHash: hash,
+    sourceUpdatedAtMax: maxRecordedAt || null,
+    promptVersion: DIET_REPORT_PROMPT_VERSION,
+    trigger,
+    generatedAt: FieldValue.serverTimestamp(),
+    ...inputSnapshot
+  };
+
+  try {
+    const { parsed, tokenUsage, model } = await callGeminiDietReport(dateStr, mealText, imageParts);
+    await reportRef.set(
+      {
+        ...base,
+        status: 'ready',
+        isLatest: true,
+        isHistory: false,
+        score: parsed.score,
+        summary: parsed.summary,
+        goodPoint: parsed.goodPoint,
+        improvePoint: parsed.improvePoint,
+        modelVersion: model,
+        tokensUsed: tokenUsage,
+        errorMessage: FieldValue.delete(),
+        historyOf: FieldValue.delete(),
+        archivedAt: FieldValue.delete()
+      },
+      { merge: true }
+    );
+    return { status: 'ready' };
+  } catch (e) {
+    logger.warn('generateAndSaveDietReport failed', { uid, dateStr, errMsg: e?.message });
+    await reportRef.set(
+      {
+        ...base,
+        status: 'error',
+        isLatest: true,
+        isHistory: false,
+        modelVersion: GEMINI_MEALDANG_MODEL,
+        errorMessage: String(e?.message || e).slice(0, 500),
+        historyOf: FieldValue.delete(),
+        archivedAt: FieldValue.delete()
+      },
+      { merge: true }
+    );
+    return { status: 'error', error: e };
+  }
+}
+
+/**
+ * 매일 00:10 KST: 전날(서울) 기록 스캔 → 식사/간식 2개 이상 사용자만 리포트 생성.
+ * collectionGroup('meals').where('date','==',전일)로 전 사용자 meal을 한 번에 조회 후 uid별 그룹핑.
+ */
+exports.scheduledDailyDietAnalysis = onSchedule(
+  {
+    schedule: '10 0 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '1GiB'
+  },
+  async () => {
+    if (!DIET_REPORT_SCHEDULED_BATCH_ENABLED) {
+      logger.info('scheduledDailyDietAnalysis: 스케줄 배치 비활성(DIET_REPORT_SCHEDULED_BATCH_ENABLED=false), 건너뜀');
+      return;
+    }
+    const todaySeoul = adminSeoulYmdFromDate(new Date());
+    const targetDate = adminYmdAddDays(todaySeoul, -1);
+    if (targetDate < DIET_REPORT_START_DATE) {
+      logger.info('scheduledDailyDietAnalysis: 시작일 이전, 건너뜀', { targetDate });
+      return;
+    }
+
+    const snap = await db.collectionGroup('meals').where('date', '==', targetDate).get();
+    const byUser = new Map();
+    snap.forEach((docSnap) => {
+      const segs = docSnap.ref.path.split('/');
+      const uid = segs[3]; // artifacts/{appId}/users/{uid}/meals/{mealId}
+      if (!uid) return;
+      if (!byUser.has(uid)) byUser.set(uid, []);
+      byUser.get(uid).push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    const candidates = [];
+    for (const [uid, meals] of byUser) {
+      const analyzableCount = meals.filter(isDietAnalyzableMeal).length;
+      if (analyzableCount >= 2) candidates.push({ uid, meals });
+    }
+    logger.info('scheduledDailyDietAnalysis: 후보', { targetDate, candidates: candidates.length });
+
+    let ok = 0;
+    let err = 0;
+    let skip = 0;
+    // rate limit 방지: 순차 처리
+    for (const { uid, meals } of candidates) {
+      const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, targetDate)}`);
+      const existing = await reportRef.get();
+      if (existing.exists && existing.data().status === 'ready') {
+        skip += 1;
+        continue;
+      }
+      const r = await generateAndSaveDietReport(uid, targetDate, meals, 'batch');
+      if (r.status === 'ready') ok += 1;
+      else err += 1;
+    }
+    logger.info('scheduledDailyDietAnalysis: 완료', { targetDate, ok, err, skip });
+  }
+);
+
+/**
+ * 수동 재분석(사용자 AI 리포트 버튼 / 관리자). DIET_REPORT_SCHEDULED_BATCH_ENABLED 와 무관하게 항상 동작.
+ * 요청: { date: 'YYYY-MM-DD', userId?: string }
+ */
+exports.regenerateDietReport = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '1GiB' },
+  wrapFunction('regenerateDietReport', async (request) => {
+    const callerAuth = request.auth;
+    if (!callerAuth || !callerAuth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    const d = request.data || {};
+    const dateStr = String(d.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      throw new HttpsError('invalid-argument', 'date(YYYY-MM-DD)가 필요합니다.');
+    }
+    const todaySeoul = adminSeoulYmdFromDate(new Date());
+    if (dateStr >= todaySeoul) {
+      throw new HttpsError('failed-precondition', '오늘·미래 날짜는 분석할 수 없습니다.');
+    }
+
+    let targetUid = callerAuth.uid;
+    if (d.userId && String(d.userId) !== callerAuth.uid) {
+      if (!(await isAdminByUid(callerAuth.uid))) {
+        throw new HttpsError('permission-denied', '다른 사용자의 리포트는 관리자만 재생성할 수 있습니다.');
+      }
+      targetUid = String(d.userId);
+    }
+
+    const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(targetUid, dateStr)}`);
+    const existing = await reportRef.get();
+    if (existing.exists) {
+      const g = existing.data().generatedAt;
+      const gms = g && typeof g.toMillis === 'function' ? g.toMillis() : 0;
+      if (gms && Date.now() - gms < 30000) {
+        throw new HttpsError('resource-exhausted', '방금 생성했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    }
+
+    const meals = await adminFetchMealsForDates(targetUid, [dateStr]);
+    const analyzable = meals.filter(isDietAnalyzableMeal);
+    if (analyzable.length < 2) {
+      throw new HttpsError('failed-precondition', '해당 날짜에 식사/간식 기록이 2개 이상 있어야 분석할 수 있습니다.');
+    }
+
+    const r = await generateAndSaveDietReport(targetUid, dateStr, meals, 'manual');
+    if (r.status !== 'ready') {
+      const saved = (await reportRef.get()).data() || {};
+      const detail = saved.errorMessage || 'AI 분석에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      throw new HttpsError('internal', detail);
+    }
+    const saved = (await reportRef.get()).data() || {};
+    return {
+      ok: true,
+      report: {
+        date: dateStr,
+        status: saved.status,
+        score: saved.score,
+        summary: saved.summary,
+        goodPoint: saved.goodPoint,
+        improvePoint: saved.improvePoint,
+        mealCount: saved.mealCount,
+        photoCount: saved.photoCount,
+        analyzedPhotoCount: saved.analyzedPhotoCount
+      }
+    };
+  })
+);
