@@ -11,8 +11,7 @@ import {
     parseAiMealReport,
     extractAiMealReportSource,
     renderAiMealReportCardHtml,
-    extractAnalyzedPhotoUrlsForDisplay,
-    AI_MEAL_REPORT_PHOTO_THUMB_PX
+    extractAnalyzedPhotoUrlsForDisplay
 } from '../utils/ai-meal-report.js';
 import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage, shareBlobsToExternal } from '../utils.js';
 import { MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
@@ -40,6 +39,9 @@ let _snsShareCachePromiseKey = '';
 let _shareCaptureFontCssPromise = null;
 
 const DIET_REPORT_SHARE_CAPTURE_SCALE = 2;
+/** SNS 공유 캡처용 분석 사진 썸네일(px) — 420px 카드 기준 3열+간격 */
+const DIET_REPORT_SHARE_PHOTO_THUMB_PX = 118;
+const DIET_REPORT_SHARE_PHOTO_GAP_PX = 8;
 
 /** @type {Map<string, boolean>} */
 const _aiDietReportReadyByDate = new Map();
@@ -215,6 +217,18 @@ function setSnsShareButtonPreparing(preparing) {
     }
 }
 
+/** 백그라운드 캐시용 — 공유 아이콘은 유지하고 살짝 흐리게만 */
+function setSnsShareButtonCacheBusy(busy) {
+    const btn = document.getElementById('dietReportSnsShareBtn');
+    if (!btn || btn.classList.contains('hidden')) return;
+    btn.classList.toggle('opacity-60', !!busy);
+    if (busy) {
+        btn.setAttribute('aria-busy', 'true');
+    } else {
+        btn.removeAttribute('aria-busy');
+    }
+}
+
 async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
     if (!dateStr || !report) {
         clearSnsShareBlobCache();
@@ -228,7 +242,7 @@ async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
         return;
     }
 
-    setSnsShareButtonPreparing(true);
+    setSnsShareButtonCacheBusy(true);
     _snsShareCachePromiseKey = cacheKey;
     _snsShareCachePromise = (async () => {
         try {
@@ -250,7 +264,7 @@ async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
         await _snsShareCachePromise;
     } finally {
         if (_snsShareCachePromiseKey === cacheKey) {
-            setSnsShareButtonPreparing(false);
+            setSnsShareButtonCacheBusy(false);
             _snsShareCachePromise = null;
             _snsShareCachePromiseKey = '';
         }
@@ -263,8 +277,10 @@ function setSnsShareButton(visible) {
     btn.classList.toggle('hidden', !visible);
     if (!visible) {
         setSnsShareButtonPreparing(false);
+        setSnsShareButtonCacheBusy(false);
     } else if (!_snsShareCachePromise) {
         btn.disabled = false;
+        btn.classList.remove('opacity-60');
     }
 }
 
@@ -318,7 +334,9 @@ function renderLoading(mode = 'fetch') {
     clearSnsShareBlobCache();
     setModalSubtitle('');
     setFooterButtons({ regen: false, share: false });
-    setSnsShareButton(false);
+    if (!isAiDietReportReady(_currentDate)) {
+        setSnsShareButton(false);
+    }
 }
 
 function renderEmpty(dateStr, mealCount) {
@@ -476,6 +494,7 @@ export async function openDietReportModal(dateStr) {
     if (title) title.textContent = `AI 식단분석 · ${formatMealogDateLabel(dateStr)}`;
 
     setModalVisible(true);
+    void getShareCaptureFontCss();
 
     const mealCount = countAnalyzableMealsForDate(dateStr);
     if (mealCount < 2) {
@@ -483,6 +502,10 @@ export async function openDietReportModal(dateStr) {
         setAiDietReportReady(dateStr, false);
         updateAiDietReportButtonsInTimeline();
         return;
+    }
+
+    if (isAiDietReportReady(dateStr)) {
+        setSnsShareButton(true);
     }
 
     renderLoading('fetch');
@@ -559,6 +582,13 @@ async function hydrateCaptureImagesAsBase64(root) {
     );
 }
 
+/** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
+function buildDietReportShareCaptureBadgeHtml() {
+    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 12px;border-radius:9999px;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;white-space:nowrap;line-height:1.2;">
+        <span style="font-size:10px;line-height:1;" aria-hidden="true">✨</span>AI식단분석
+    </span>`;
+}
+
 /** 리포트 카드 → 캡처용 인라인 스타일 HTML */
 function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const e = typeof esc === 'function' ? esc : (s) => s;
@@ -594,9 +624,10 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         : '';
 
     const urls = (photoUrls || []).filter(Boolean).slice(0, 3);
-    const thumb = AI_MEAL_REPORT_PHOTO_THUMB_PX;
+    const thumb = DIET_REPORT_SHARE_PHOTO_THUMB_PX;
+    const gap = DIET_REPORT_SHARE_PHOTO_GAP_PX;
     const photosHtml = urls.length
-        ? `<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;padding:10px 18px 6px;background:#f8fafc;">${urls
+        ? `<div style="display:flex;justify-content:center;gap:${gap}px;padding:6px 16px 2px;background:#f8fafc;">${urls
               .map(
                   (url) =>
                       `<div style="width:${thumb}px;height:${thumb}px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;background:#f1f5f9;">
@@ -608,12 +639,15 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
 
     return `
     <div style="width:420px;background:#ffffff;border:1px solid #cbd5e1;border-radius:20px;overflow:hidden;font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;box-sizing:border-box;">
-        <div style="background:#ffffff;padding:14px 18px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <span style="font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.2;">mealog</span>
-            <span style="font-size:12px;color:#64748b;line-height:1.35;">${e(dateLabel)}</span>
+        <div style="background:#ffffff;padding:12px 16px 10px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+                <span style="font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.2;flex-shrink:0;">mealog</span>
+                ${buildDietReportShareCaptureBadgeHtml()}
+            </div>
+            <span style="font-size:12px;color:#64748b;line-height:1.35;flex-shrink:0;text-align:right;">${e(dateLabel)}</span>
         </div>
         ${photosHtml}
-        <div style="padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px;background:#ffffff;">
+        <div style="padding:10px 18px 18px;display:flex;flex-direction:column;gap:10px;background:#ffffff;">
             ${topRow}
             ${titleHtml}
             ${summaryHtml}
@@ -736,15 +770,19 @@ async function shareDietReportToSns() {
 
     const snsBtn = document.getElementById('dietReportSnsShareBtn');
     _sharing = true;
-    if (snsBtn && !_snsShareCachePromise) snsBtn.disabled = true;
 
     try {
-        await refreshSnsShareBlobCache(_currentDate, _currentReport, _currentReportDoc);
+        if (!_snsShareBlob) {
+            setSnsShareButtonPreparing(true);
+            await refreshSnsShareBlobCache(_currentDate, _currentReport, _currentReportDoc);
+            setSnsShareButtonPreparing(false);
+        }
         if (!_snsShareBlob) {
             showToast('공유 이미지를 만들지 못했어요.', 'error');
             return;
         }
 
+        if (snsBtn) snsBtn.disabled = true;
         await shareBlobsToExternal([_snsShareBlob], {
             appendLogo: false,
             resize: false,
@@ -757,6 +795,7 @@ async function shareDietReportToSns() {
         }
     } finally {
         _sharing = false;
+        setSnsShareButtonPreparing(false);
         if (snsBtn && !_snsShareCachePromise) snsBtn.disabled = false;
     }
 }
