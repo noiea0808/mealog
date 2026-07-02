@@ -1460,15 +1460,15 @@
                 <!-- 분석 타입 선택 스위치 -->
                 <div class="card ui-card-pad-chip mt-3 dashboard-analysis-tab-card">
                     <div class="dashboard-analysis-tabs flex gap-1">
-                        <button id="btn-analysis-main" type="button" class="dashboard-analysis-tab">식사</button>
+                        <button id="btn-analysis-main" type="button" class="dashboard-analysis-tab dashboard-analysis-tab--active">식사</button>
                         <button id="btn-analysis-snack" type="button" class="dashboard-analysis-tab">간식</button>
                         <button id="btn-analysis-health" type="button" class="dashboard-analysis-tab">건강</button>
-                        <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab dashboard-analysis-tab--active">Best</button>
+                        <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab">Best</button>
                     </div>
                 </div>
                 
                 <!-- Best 분석 섹션 -->
-                <div id="bestAnalysisSection" class="mt-2">
+                <div id="bestAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-3">
                         <div class="card ui-card-pad-compact">
                             <div class="ui-card-head">
@@ -1486,7 +1486,7 @@
                 </div>
                 
                 <!-- 식사 분석 섹션 -->
-                <div id="mainAnalysisSection" class="mt-2 hidden">
+                <div id="mainAnalysisSection" class="mt-2">
                     <div class="space-y-0">
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">어떻게</h3><button onclick="window.openDetailModal('mealType', '어디서 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
@@ -2484,11 +2484,16 @@
     <div id="dietReportModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-center justify-center py-4 px-[10px]" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
         <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
             <div class="relative shrink-0 px-4 pt-4 pb-2.5 border-b border-slate-100">
-                <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-10">AI 식단분석</h2>
-                <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-10 leading-snug"></p>
-                <button type="button" onclick="window.closeDietReportModal()" class="absolute top-4 right-3 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
-                    <i class="fa-solid fa-xmark text-base"></i>
-                </button>
+                <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-[4.5rem]">AI 식단분석</h2>
+                <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-[4.5rem] leading-snug"></p>
+                <div class="absolute top-4 right-3 flex items-center gap-0.5">
+                    <button type="button" id="dietReportSnsShareBtn" class="hidden flex items-center justify-center w-9 h-9 rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-emerald-700 hover:border-slate-300 transition-colors disabled:opacity-50 shadow-sm" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
+                        <i class="fa-solid fa-share-nodes text-[1.05rem]" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" onclick="window.closeDietReportModal()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
+                        <i class="fa-solid fa-xmark text-base"></i>
+                    </button>
+                </div>
             </div>
             <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-4 py-3"></div>
             <div class="shrink-0 border-t border-slate-200 bg-white flex overflow-hidden rounded-b-2xl min-h-[3.25rem]">

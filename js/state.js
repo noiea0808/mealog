@@ -110,7 +110,7 @@ export const appState = {
     selectedMonthForWeek: new Date().getMonth() + 1,
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
-    analysisType: 'best', // 'best', 'main', 'snack', 'health'
+    analysisType: 'main', // 'best', 'main', 'snack', 'health'
     
     // UI 상호작용
     currentDetailChart: null,

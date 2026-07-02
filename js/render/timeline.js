@@ -46,6 +46,46 @@ import {
     refreshAiDietReportFlagsForDates
 } from '../modals/diet-report.js';
 
+const MAIN_MEAL_SLOT_FA_ICONS = {
+    morning: 'fa-cloud-sun',
+    lunch: 'fa-burger',
+    dinner: 'fa-moon'
+};
+
+function mainMealSlotFaIcon(slotId) {
+    return MAIN_MEAL_SLOT_FA_ICONS[slotId] || 'fa-utensils';
+}
+
+function mainMealSlotIconHtml(slotId, iconTextClass = 'text-slate-400', size = 'lg') {
+    const sizeClass = size === 'sm' ? 'text-lg' : 'text-2xl';
+    return `<i class="fa-solid ${mainMealSlotFaIcon(slotId)} ${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
+}
+
+function mainMealSlotListTitleHtml(slot, specificStyle) {
+    return `<div class="flex items-center justify-center gap-1.5 min-w-0">
+        ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'sm')}
+        <span class="text-sm font-bold leading-tight">${escapeHtml(slot.label)}</span>
+    </div>`;
+}
+
+function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
+    if (!r) {
+        return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
+    }
+    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    if (mainPhotoUrls.length > 0) {
+        return buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover', {
+            dateStr,
+            slotId: slot.id,
+            recordId: r.id
+        });
+    }
+    if (r.mealType === 'Skip') {
+        return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
+    }
+    return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
+}
+
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
  * — 삭제예정·등록예정: 밝은 칩 / 삭제 진행·등록 진행(온라인): 빨간 도트 / 동기화 필요: 재시도 도트
@@ -886,13 +926,12 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
 
 /** 본식 목록형: 기록 없음 */
 function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
-    const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
-                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
+                ${mainMealSlotListTitleHtml(slot, specificStyle)}
             </div>
             <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
                 <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
@@ -906,7 +945,6 @@ function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
 function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
     const p = String(r.place || '').trim();
     const safePlaceLine = escapeHtml(p || '—');
-    const safeSlotTitle = escapeHtml(slot.label);
     const m = formatMealMenuDisplayLine(r);
     const menuLine =
         r.mealType === 'Skip'
@@ -940,7 +978,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
-                <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
+                ${mainMealSlotListTitleHtml(slot, specificStyle)}
                 <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
             </div>
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
@@ -1541,26 +1579,7 @@ export function renderTimeline() {
                     titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
                     titleLine2 = '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
                 }
-                let iconHtml = '';
-                if (!r) {
-                    iconHtml = `<div class="flex flex-col items-center justify-center text-center px-2">
-                        <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
-                        <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
-                    </div>`;
-                } else {
-                    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
-                    if (mainPhotoUrls.length > 0) {
-                        iconHtml = buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover', {
-                            dateStr,
-                            slotId: slot.id,
-                            recordId: r.id
-                        });
-                    } else if (r.mealType === 'Skip') {
-                        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
-                    } else {
-                        iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
-                    }
-                }
+                let iconHtml = buildMainMealPhotoAreaHtml(slot, r, dateStr, specificStyle.iconText);
                 const mainBlockOpen = r && isMealEntryRowBlocked(r);
                 const mainOpenClick = mainBlockOpen
                     ? ''

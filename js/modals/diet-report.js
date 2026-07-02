@@ -3,7 +3,7 @@
  */
 import { db, appId, callableFunctions } from '../firebase.js';
 import { dbOps } from '../db.js';
-import { showToast } from '../ui.js';
+import { showToast, showLoading, hideLoading } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
@@ -13,7 +13,7 @@ import {
     renderAiMealReportCardHtml,
     extractAnalyzedPhotoUrlsForDisplay
 } from '../utils/ai-meal-report.js';
-import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage } from '../utils.js';
+import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage, shareBlobsToExternal } from '../utils.js';
 import { MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
 import {
     findDietReportMomentShare,
@@ -29,6 +29,9 @@ let _sharing = false;
 let _currentReport = null;
 /** Firestore 원문(분석 사진 URL 등) — 모먼트 공유 캡처용 */
 let _currentReportDoc = null;
+/** SNS 공유용 캡처 이미지(클릭 직후 공유 시트 열기 — 사용자 제스처 유지) */
+let _snsShareBlob = null;
+let _snsShareBlobKey = '';
 
 /** @type {Map<string, boolean>} */
 const _aiDietReportReadyByDate = new Map();
@@ -165,6 +168,41 @@ function setModalSubtitle(text) {
     }
 }
 
+function clearSnsShareBlobCache() {
+    _snsShareBlob = null;
+    _snsShareBlobKey = '';
+}
+
+async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
+    if (!dateStr || !report) {
+        clearSnsShareBlobCache();
+        return;
+    }
+    const cacheKey = `${dateStr}:${report.title || ''}:${report.score ?? ''}`;
+    if (_snsShareBlob && _snsShareBlobKey === cacheKey) return;
+
+    try {
+        const canvas = await captureDietReportShareCanvas(dateStr, report, reportDoc);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) {
+            clearSnsShareBlobCache();
+            return;
+        }
+        _snsShareBlob = blob;
+        _snsShareBlobKey = cacheKey;
+    } catch (e) {
+        console.warn('diet report SNS share cache failed', e);
+        clearSnsShareBlobCache();
+    }
+}
+
+function setSnsShareButton(visible) {
+    const btn = document.getElementById('dietReportSnsShareBtn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !visible);
+    btn.disabled = false;
+}
+
 const DIET_REPORT_SHARE_BTN_BASE =
     'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 transition-colors disabled:opacity-60 min-w-0';
 
@@ -212,8 +250,10 @@ function renderLoading(mode = 'fetch') {
         </div>`;
     _currentReport = null;
     _currentReportDoc = null;
+    clearSnsShareBlobCache();
     setModalSubtitle('');
     setFooterButtons({ regen: false, share: false });
+    setSnsShareButton(false);
 }
 
 function renderEmpty(dateStr, mealCount) {
@@ -226,8 +266,10 @@ function renderEmpty(dateStr, mealCount) {
                 <p class="text-xs text-slate-500 mt-2 leading-relaxed">해당 날짜에 식사·간식 기록이 <strong class="text-slate-700">2건 이상</strong> 있어야 AI 분석을 받을 수 있어요.<br>현재 ${mealCount}건</p>
             </div>`;
         _currentReport = null;
+        clearSnsShareBlobCache();
         setModalSubtitle('');
         setFooterButtons({ regen: false, share: false });
+        setSnsShareButton(false);
         return;
     }
     body.innerHTML = `
@@ -244,8 +286,10 @@ function renderEmpty(dateStr, mealCount) {
     });
     _currentReport = null;
     _currentReportDoc = null;
+    clearSnsShareBlobCache();
     setModalSubtitle('');
     setFooterButtons({ regen: false, share: false });
+    setSnsShareButton(false);
 }
 
 function renderError(message) {
@@ -257,8 +301,11 @@ function renderError(message) {
             <p class="text-xs text-red-600/90 mt-2 leading-relaxed">${escapeHtml(message || '잠시 후 다시 시도해 주세요.')}</p>
         </div>`;
     _currentReport = null;
+    _currentReportDoc = null;
+    clearSnsShareBlobCache();
     setModalSubtitle('');
     setFooterButtons({ regen: true, share: false });
+    setSnsShareButton(false);
 }
 
 function renderReport(data) {
@@ -293,6 +340,8 @@ function renderReport(data) {
         share: !!report,
         shareMode: momentShare ? 'unshare' : 'share'
     });
+    setSnsShareButton(!!report);
+    void refreshSnsShareBlobCache(reportDate, report, data);
 }
 
 async function fetchReportDoc(dateStr) {
@@ -398,8 +447,10 @@ export function closeDietReportModal() {
     _loading = false;
     _currentReport = null;
     _currentReportDoc = null;
+    clearSnsShareBlobCache();
     setModalSubtitle('');
     setFooterButtons({ regen: false, share: false });
+    setSnsShareButton(false);
     setModalVisible(false);
 }
 
@@ -535,10 +586,7 @@ async function unshareDietReportFromMoment(dateStr, existingShare) {
     }
 }
 
-async function performDietReportMomentShare(dateStr, report, reportDoc) {
-    if (_sharing) return;
-    _sharing = true;
-
+async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
     const photoUrls = reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc) : [];
     const holder = document.createElement('div');
     holder.style.position = 'fixed';
@@ -560,7 +608,7 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
             /* ignore */
         }
 
-        const canvas = await captureWithGhostStrategy(target, {
+        return await captureWithGhostStrategy(target, {
             captureWidth: 420,
             onclone: (clonedDoc) => {
                 if (fontCSS) {
@@ -570,7 +618,17 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
                 }
             }
         });
+    } finally {
+        if (holder.parentNode) holder.parentNode.removeChild(holder);
+    }
+}
 
+async function performDietReportMomentShare(dateStr, report, reportDoc) {
+    if (_sharing) return;
+    _sharing = true;
+
+    try {
+        const canvas = await captureDietReportShareCanvas(dateStr, report, reportDoc);
         const base64Image = canvas.toDataURL('image/png');
         const photoUrl = await uploadBase64ToStorage(
             base64Image,
@@ -606,8 +664,46 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
         console.error('performDietReportMomentShare failed', e);
         showToast(e?.message || e?.details || '모먼트 공유에 실패했어요.', 'error');
     } finally {
-        if (holder.parentNode) holder.parentNode.removeChild(holder);
         _sharing = false;
+    }
+}
+
+async function shareDietReportToSns() {
+    if (_sharing) return;
+    if (!_currentReport || !_currentDate) {
+        showToast('공유할 리포트가 없어요.', 'info');
+        return;
+    }
+
+    const snsBtn = document.getElementById('dietReportSnsShareBtn');
+    _sharing = true;
+    if (snsBtn) snsBtn.disabled = true;
+
+    try {
+        if (!_snsShareBlob) {
+            showLoading('공유 준비 중…');
+            await refreshSnsShareBlobCache(_currentDate, _currentReport, _currentReportDoc);
+            hideLoading();
+        }
+        if (!_snsShareBlob) {
+            showToast('공유 이미지를 만들지 못했어요.', 'error');
+            return;
+        }
+
+        await shareBlobsToExternal([_snsShareBlob], {
+            appendLogo: false,
+            resize: false,
+            fileNamePrefix: `mealog_ai_diet_${_currentDate}`
+        });
+    } catch (e) {
+        if (e?.name !== 'AbortError') {
+            console.error('shareDietReportToSns failed', e);
+            showToast(e?.message || 'SNS 공유에 실패했어요.', 'error');
+        }
+    } finally {
+        hideLoading();
+        _sharing = false;
+        if (snsBtn) snsBtn.disabled = false;
     }
 }
 
@@ -650,6 +746,10 @@ document.getElementById('dietReportRegenerateBtn')?.addEventListener('click', ()
 
 document.getElementById('dietReportShareBtn')?.addEventListener('click', () => {
     void shareDietReportToMoment();
+});
+
+document.getElementById('dietReportSnsShareBtn')?.addEventListener('click', () => {
+    void shareDietReportToSns();
 });
 
 const _dietReportTimelineBound = new WeakMap();

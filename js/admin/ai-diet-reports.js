@@ -130,44 +130,27 @@ function renderUsageStatsPanel(stats) {
     if (!el) return;
 
     if (!stats || stats.totals.reports === 0) {
-        el.innerHTML = `
-            <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-500">
-                최근 7일간 생성된 리포트가 없습니다.
-            </div>`;
+        el.innerHTML = `<p class="text-[11px] text-slate-500 leading-snug">최근 7일간 생성된 리포트가 없습니다.</p>`;
         el.classList.remove('hidden');
         return;
     }
 
     const { totals, models } = stats;
-    const modelChips = models
+    const modelParts = models
         .map((m) => {
-            const tokenPart = m.tokens
-                ? `<span class="text-emerald-700 font-sans tabular-nums">${m.tokens.toLocaleString('ko-KR')} tok</span>`
-                : '';
-            return `<span class="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-mono text-slate-700">
-                ${escapeHtml(m.name)}
-                <span class="text-slate-400 font-sans font-bold">${m.count}건</span>
-                ${tokenPart}
-            </span>`;
+            const tokenPart = m.tokens ? ` ${m.tokens.toLocaleString('ko-KR')} tok` : '';
+            return `${escapeHtml(m.name)} ${m.count}건${tokenPart}`;
         })
-        .join('');
+        .join(' ');
 
-    el.innerHTML = `
-        <div class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 space-y-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <p class="text-xs font-black text-slate-700">최근 7일 Gemini 사용량</p>
-                <p class="text-[11px] text-slate-500 tabular-nums">${totals.reports}건 분석 · 토큰 기록 ${totals.withTokens}건</p>
-            </div>
-            <div class="flex flex-wrap gap-2">${modelChips || '<span class="text-xs text-slate-500">모델 정보 없음</span>'}</div>
-            <p class="text-xs text-slate-600 tabular-nums leading-relaxed">
-                <span class="font-bold text-slate-700">토큰 합계</span>
-                · 입력 ${totals.prompt.toLocaleString('ko-KR')}
-                · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
-                    totals.thoughts ? ` · thinking ${totals.thoughts.toLocaleString('ko-KR')}` : ''
-                }
-                · <strong class="text-emerald-700">총 ${totals.total.toLocaleString('ko-KR')}</strong>
-            </p>
-        </div>`;
+    el.innerHTML = `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal">
+        <span class="font-black text-slate-700">최근 7일 Gemini 사용량</span>
+        ${totals.reports}건 분석 · 토큰 기록 ${totals.withTokens}건
+        ${modelParts ? ` ${modelParts}` : ''}
+        입력 ${totals.prompt.toLocaleString('ko-KR')} · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
+            totals.thoughts ? ` · thinking ${totals.thoughts.toLocaleString('ko-KR')}` : ''
+        } · <strong class="text-emerald-700">총 ${totals.total.toLocaleString('ko-KR')}</strong>
+    </p>`;
     el.classList.remove('hidden');
 }
 
@@ -203,7 +186,7 @@ function renderInputMealsSection(data) {
 
     if (!meals.length && !mealText && !dailyJournalComment) {
         return `
-            <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-500 leading-relaxed">
+            <div class="rounded-lg border border-dashed border-slate-200 bg-slate-50/80 p-2 text-[11px] text-slate-500 leading-snug">
                 이 리포트 생성 시점에 저장된 입력 데이터가 없습니다. (배포 이전 리포트이거나 분석 전 실패)
             </div>`;
     }
@@ -230,43 +213,43 @@ function renderInputMealsSection(data) {
                       )
                       .join('')}</div>`
                 : '';
-            return `<div class="rounded-lg border border-slate-200 bg-white p-3">
-                <div class="flex items-center justify-between gap-2 mb-1.5">
-                    <p class="text-xs font-black text-slate-800">${escapeHtml(m.slotLabel || m.slotId || '슬롯')}</p>
-                    <span class="text-[11px] text-slate-500 shrink-0">${escapeHtml(photoMeta)}</span>
+            return `<div class="rounded-lg border border-slate-200 bg-white p-2">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <p class="text-[11px] font-black text-slate-800">${escapeHtml(m.slotLabel || m.slotId || '슬롯')}</p>
+                    <span class="text-[10px] text-slate-500 shrink-0">${escapeHtml(photoMeta)}</span>
                 </div>
                 ${metaLine}
-                <pre class="whitespace-pre-wrap break-words text-xs text-slate-700 leading-relaxed m-0 font-sans">${escapeHtml(m.detailText || '(내용 없음)')}</pre>
+                <pre class="whitespace-pre-wrap break-words text-[11px] text-slate-700 leading-snug m-0 font-sans">${escapeHtml(m.detailText || '(내용 없음)')}</pre>
                 ${thumbs}
             </div>`;
         })
         .join('');
 
     const dailyJournalBlock = dailyJournalComment
-        ? `<div class="rounded-lg border border-violet-200 bg-violet-50/60 p-3">
-                <p class="text-xs font-black text-violet-800 mb-1.5">하루소감</p>
-                <p class="whitespace-pre-wrap break-words text-xs text-slate-700 leading-relaxed m-0">${escapeHtml(dailyJournalComment)}</p>
+        ? `<div class="rounded-lg border border-violet-200 bg-violet-50/60 p-2">
+                <p class="text-[11px] font-black text-violet-800 mb-1">하루소감</p>
+                <p class="whitespace-pre-wrap break-words text-[11px] text-slate-700 leading-snug m-0">${escapeHtml(dailyJournalComment)}</p>
            </div>`
         : '';
 
     const promptBlock = mealText
-        ? `<details class="mt-3 rounded-lg border border-slate-200 bg-slate-50/80">
-                <summary class="cursor-pointer select-none px-3 py-2 text-xs font-bold text-slate-600">Gemini 전송 텍스트 블록</summary>
-                <pre class="whitespace-pre-wrap break-words text-xs text-slate-700 leading-relaxed m-0 px-3 pb-3 pt-1 font-sans max-h-64 overflow-y-auto">${escapeHtml(mealText)}</pre>
+        ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                <summary class="cursor-pointer select-none px-2 py-1 text-[11px] font-bold text-slate-600">Gemini 전송 텍스트 블록</summary>
+                <pre class="whitespace-pre-wrap break-words text-[11px] text-slate-700 leading-snug m-0 px-2 pb-2 pt-0.5 font-sans max-h-48 overflow-y-auto">${escapeHtml(mealText)}</pre>
            </details>`
         : '';
 
-    return `<div class="space-y-2">${mealCards}${dailyJournalBlock}${promptBlock}</div>`;
+    return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${promptBlock}</div>`;
 }
 
 function renderDetailEmpty() {
     const el = document.getElementById('aiDietReportsDetail');
     if (!el) return;
     el.innerHTML = `
-        <div class="h-full min-h-[280px] flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 p-6">
-            <i class="fa-solid fa-clipboard-check text-3xl mb-3 opacity-40" aria-hidden="true"></i>
-            <p class="text-sm font-bold text-slate-500">목록에서 리포트를 선택하세요</p>
-            <p class="text-xs mt-1 text-center">날짜별 AI 응답·분석 입력·상세가 표시됩니다.</p>
+        <div class="h-full min-h-[12rem] flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50 p-3">
+            <i class="fa-solid fa-clipboard-check text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+            <p class="text-xs font-bold text-slate-500">목록에서 리포트를 선택하세요</p>
+            <p class="text-[11px] mt-0.5 text-center">날짜별 AI 응답·분석 입력·상세가 표시됩니다.</p>
         </div>`;
 }
 
@@ -282,26 +265,26 @@ function renderDetailPanel(data, id) {
 
     const responseBlock =
         data.status === 'error'
-            ? `<pre class="whitespace-pre-wrap break-words text-sm text-red-800 bg-red-50/60 border border-red-100 rounded-lg p-3 font-sans leading-relaxed m-0">${escapeHtml(data.errorMessage || '(오류 메시지 없음)')}</pre>`
+            ? `<pre class="whitespace-pre-wrap break-words text-xs text-red-800 bg-red-50/60 border border-red-100 rounded-lg p-2 font-sans leading-snug m-0">${escapeHtml(data.errorMessage || '(오류 메시지 없음)')}</pre>`
             : `${renderAiMealReportCardHtml(parsedReport, escapeHtml, {
                   photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
               })}${
                   rawResponse
-                      ? `<details class="mt-2 rounded-lg border border-slate-200 bg-slate-50/80">
-                            <summary class="cursor-pointer select-none px-3 py-2 text-xs font-bold text-slate-500">AI 응답 원문</summary>
-                            <pre class="whitespace-pre-wrap break-words text-xs text-slate-600 leading-relaxed m-0 px-3 pb-3 pt-1 font-mono max-h-48 overflow-y-auto">${escapeHtml(rawResponse)}</pre>
+                      ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
+                            <summary class="cursor-pointer select-none px-2 py-1 text-[11px] font-bold text-slate-500">AI 응답 원문</summary>
+                            <pre class="whitespace-pre-wrap break-words text-[11px] text-slate-600 leading-snug m-0 px-2 pb-2 pt-0.5 font-mono max-h-40 overflow-y-auto">${escapeHtml(rawResponse)}</pre>
                          </details>`
                       : ''
               }`;
 
     el.innerHTML = `
-        <div class="border border-slate-200 rounded-xl overflow-hidden">
-            <div class="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
-                <h4 class="text-sm font-black text-slate-800">${escapeHtml(data.date || '')} 리포트</h4>
-                <span class="text-xs text-slate-500 truncate max-w-[12rem]" title="${escapeHtml(previewLine)}">${escapeHtml(previewLine)}</span>
+        <div class="border border-slate-200 rounded-lg overflow-hidden">
+            <div class="px-2 py-1.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+                <h4 class="text-xs font-black text-slate-800">${escapeHtml(data.date || '')} 리포트</h4>
+                <span class="text-[11px] text-slate-500 truncate max-w-[12rem]" title="${escapeHtml(previewLine)}">${escapeHtml(previewLine)}</span>
             </div>
-            <div class="p-4 space-y-3 text-sm">
-                <dl class="grid grid-cols-[5.5rem_1fr] gap-x-3 gap-y-3 items-start">
+            <div class="p-2 space-y-2 text-xs">
+                <dl class="grid grid-cols-[4.5rem_1fr] gap-x-2 gap-y-1.5 items-start">
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">상태</dt>
                     <dd class="min-w-0">${statusBadge(data.status)} ${triggerBadge(data.trigger)} ${reportKindBadge(data)}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">사용자</dt>
@@ -329,10 +312,10 @@ function paintListTable(rows) {
 
     if (!rows.length) {
         container.innerHTML = `
-            <div class="text-center py-12 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                <i class="fa-solid fa-inbox text-2xl mb-2 opacity-40" aria-hidden="true"></i>
-                <p class="text-sm font-bold">리포트가 없습니다</p>
-                <p class="text-xs mt-1">분석 요청마다 생성 시각 기준으로 쌓입니다. 같은 날짜 재분석도 이력으로 남습니다.</p>
+            <div class="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-lg">
+                <i class="fa-solid fa-inbox text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
+                <p class="text-xs font-bold">리포트가 없습니다</p>
+                <p class="text-[11px] mt-0.5">분석 요청마다 생성 시각 기준으로 쌓입니다. 같은 날짜 재분석도 이력으로 남습니다.</p>
             </div>`;
         renderDetailEmpty();
         return;
@@ -344,32 +327,32 @@ function paintListTable(rows) {
         const tokenCompact = formatTokensCompact(data.tokensUsed);
         const tokenTitle = formatTokensDetail(data.tokensUsed);
         return `<tr class="border-b border-slate-100 cursor-pointer hover:bg-slate-50/90 ${active ? 'bg-emerald-50/80' : ''}" onclick="window.selectAiDietReport('${safeId}')" data-report-id="${escapeHtml(String(id))}">
-            <td class="px-3 py-2.5 text-sm text-slate-700 tabular-nums whitespace-nowrap align-top leading-snug">${escapeHtml(data.date || '—')}</td>
-            <td class="px-3 py-2.5 text-sm text-slate-500 tabular-nums whitespace-nowrap align-top leading-snug">${escapeHtml(formatTimestamp(data.generatedAt))}</td>
-            <td class="px-3 py-2.5 text-sm text-slate-800 min-w-[8rem] align-top break-all">${escapeHtml(data._email || data.userId || '—')}</td>
-            <td class="px-3 py-2.5 text-sm text-slate-500 tabular-nums whitespace-nowrap align-top">${Number(data.photoCount) || 0}</td>
-            <td class="px-3 py-2.5 text-xs text-slate-600 tabular-nums whitespace-nowrap align-top" title="${escapeHtml(tokenTitle)}">${escapeHtml(tokenCompact)}</td>
-            <td class="px-3 py-2.5 align-top whitespace-nowrap">${statusBadge(data.status)} ${triggerBadge(data.trigger)} ${reportKindBadge(data)}</td>
+            <td class="px-2 py-1.5 text-xs text-slate-700 tabular-nums whitespace-nowrap align-top leading-snug">${escapeHtml(data.date || '—')}</td>
+            <td class="px-2 py-1.5 text-xs text-slate-500 tabular-nums whitespace-nowrap align-top leading-snug">${escapeHtml(formatTimestamp(data.generatedAt))}</td>
+            <td class="px-2 py-1.5 text-xs text-slate-800 min-w-[8rem] align-top break-all">${escapeHtml(data._email || data.userId || '—')}</td>
+            <td class="px-2 py-1.5 text-xs text-slate-500 tabular-nums whitespace-nowrap align-top">${Number(data.photoCount) || 0}</td>
+            <td class="px-2 py-1.5 text-[11px] text-slate-600 tabular-nums whitespace-nowrap align-top" title="${escapeHtml(tokenTitle)}">${escapeHtml(tokenCompact)}</td>
+            <td class="px-2 py-1.5 align-top whitespace-nowrap">${statusBadge(data.status)} ${triggerBadge(data.trigger)} ${reportKindBadge(data)}</td>
         </tr>`;
     }).join('');
 
     container.innerHTML = `
-        <div class="overflow-x-auto border border-slate-200 rounded-xl">
-            <table class="w-full text-left border-collapse min-w-[600px]">
+        <div class="overflow-x-auto border border-slate-200 rounded-lg">
+            <table class="w-full text-left border-collapse min-w-[560px]">
                 <thead>
-                    <tr class="bg-slate-100 text-slate-700 text-xs font-black">
-                        <th class="px-3 py-2.5 whitespace-nowrap font-bold">식단 날짜</th>
-                        <th class="px-3 py-2.5 whitespace-nowrap font-bold">생성 시각</th>
-                        <th class="px-3 py-2.5 font-bold">사용자</th>
-                        <th class="px-3 py-2.5 font-bold">사진</th>
-                        <th class="px-3 py-2.5 font-bold">토큰</th>
-                        <th class="px-3 py-2.5 font-bold">상태</th>
+                    <tr class="bg-slate-100 text-slate-700 text-[11px] font-black">
+                        <th class="px-2 py-1.5 whitespace-nowrap font-bold">식단 날짜</th>
+                        <th class="px-2 py-1.5 whitespace-nowrap font-bold">생성 시각</th>
+                        <th class="px-2 py-1.5 font-bold">사용자</th>
+                        <th class="px-2 py-1.5 font-bold">사진</th>
+                        <th class="px-2 py-1.5 font-bold">토큰</th>
+                        <th class="px-2 py-1.5 font-bold">상태</th>
                     </tr>
                 </thead>
                 <tbody>${body}</tbody>
             </table>
         </div>
-        <p class="text-xs text-slate-400 mt-2">행을 클릭하면 오른쪽에 상세 내용이 표시됩니다. 토큰 열에 마우스를 올리면 입력·출력 상세를 볼 수 있습니다.</p>`;
+        <p class="text-[11px] text-slate-400 mt-1">행을 클릭하면 오른쪽에 상세 내용이 표시됩니다. 토큰 열에 마우스를 올리면 입력·출력 상세를 볼 수 있습니다.</p>`;
 }
 
 function renderPagination() {
@@ -380,7 +363,7 @@ function renderPagination() {
         return;
     }
     el.innerHTML = `
-        <button type="button" onclick="window.loadMoreAiDietReports()" class="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">
+        <button type="button" onclick="window.loadMoreAiDietReports()" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors">
             더 보기
         </button>`;
 }
@@ -406,10 +389,10 @@ export async function renderAiDietReports({ append = false } = {}) {
     if (!listEl) return;
 
     if (!append) {
-        listEl.innerHTML = '<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">불러오는 중…</p></div>';
+        listEl.innerHTML = '<div class="text-center py-5 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-lg mb-1.5"></i><p class="text-xs">불러오는 중…</p></div>';
         const statsEl = document.getElementById('aiDietReportsUsageStats');
         if (statsEl) {
-            statsEl.innerHTML = '<div class="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1.5"></i>최근 7일 사용량 집계 중…</div>';
+            statsEl.innerHTML = '<p class="text-[11px] text-slate-400 leading-snug"><i class="fa-solid fa-spinner fa-spin mr-1"></i>최근 7일 사용량 집계 중…</p>';
             statsEl.classList.remove('hidden');
         }
     }
@@ -455,10 +438,7 @@ export async function renderAiDietReports({ append = false } = {}) {
             } else {
                 const statsEl = document.getElementById('aiDietReportsUsageStats');
                 if (statsEl) {
-                    statsEl.innerHTML = `
-                        <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 text-xs text-slate-500">
-                            최근 7일 사용량을 불러오지 못했습니다.
-                        </div>`;
+                    statsEl.innerHTML = '<p class="text-[11px] text-slate-500 leading-snug">최근 7일 사용량을 불러오지 못했습니다.</p>';
                     statsEl.classList.remove('hidden');
                 }
             }
@@ -470,7 +450,7 @@ export async function renderAiDietReports({ append = false } = {}) {
         }
     } catch (e) {
         console.error('aiDietReports load failed', e);
-        listEl.innerHTML = `<div class="text-center py-10 text-red-500 text-sm">목록을 불러오지 못했습니다.<br><span class="text-xs text-slate-500">${escapeHtml(e.message || String(e))}</span></div>`;
+        listEl.innerHTML = `<div class="text-center py-5 text-red-500 text-xs">목록을 불러오지 못했습니다.<br><span class="text-[11px] text-slate-500">${escapeHtml(e.message || String(e))}</span></div>`;
         renderDetailEmpty();
     }
 }

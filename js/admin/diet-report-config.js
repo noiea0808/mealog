@@ -156,7 +156,6 @@ export async function loadDietReportBatchSettings() {
 export async function saveDietReportBatchSettings(buttonEl) {
     const enabledEl = document.getElementById('dietReportBatchEnabled');
     const timeEl = document.getElementById('dietReportBatchRunTime');
-    const meta = document.getElementById('dietReportBatchMeta');
     if (!enabledEl || !timeEl) return;
     const batchEnabled = enabledEl.checked === true;
     const batchRunTime = normalizeBatchRunTime(timeEl.value || '00:10');
@@ -173,11 +172,7 @@ export async function saveDietReportBatchSettings(buttonEl) {
             },
             { merge: true }
         );
-        if (meta) {
-            meta.textContent = batchEnabled
-                ? `저장됨 · 매일 ${batchRunTime}(서울)에 배치 실행`
-                : '저장됨 · 배치 비활성';
-        }
+        await loadDietReportBatchSettings();
     }, { loadingLabel: '저장 중…' });
 }
 
