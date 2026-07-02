@@ -112,6 +112,9 @@
                     <button onclick="window.switchAdminTab('monitoring')" id="admin-tab-monitoring" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-chart-line mr-2"></i>모니터링
                     </button>
+                    <button onclick="window.switchAdminTab('ai')" id="admin-tab-ai" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
+                        <i class="fa-solid fa-robot mr-2"></i>AI
+                    </button>
                     <button onclick="window.switchAdminTab('alerts')" id="admin-tab-alerts" class="admin-tab flex-1 px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 transition-colors">
                         <i class="fa-solid fa-bell mr-2"></i>알림
                     </button>
@@ -413,12 +416,6 @@
                             <button onclick="window.switchMonitoringSidebar('board')" id="monitoring-sidebar-board" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-comments mr-2"></i>게시판 관리
                             </button>
-                            <button onclick="window.switchMonitoringSidebar('aiResponses')" id="monitoring-sidebar-aiResponses" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                <i class="fa-solid fa-robot mr-2"></i>AI 응답
-                            </button>
-                            <button onclick="window.switchMonitoringSidebar('aiDietReports')" id="monitoring-sidebar-aiDietReports" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                <i class="fa-solid fa-clipboard-check mr-2"></i>AI 식단분석
-                            </button>
                             <button onclick="window.switchMonitoringSidebar('restaurants')" id="monitoring-sidebar-restaurants" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-utensils mr-2"></i>식당정보
                             </button>
@@ -598,60 +595,6 @@
                             </div>
                         </div>
 
-                        <!-- AI 응답 (밀당 Gemini 분석 로그) -->
-                        <div id="monitoring-main-aiResponses" class="monitoring-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex flex-wrap gap-3 items-center justify-between">
-                                        <div>
-                                            <h3 class="text-base font-black text-slate-800">AI 응답</h3>
-                                            <p class="text-sm text-slate-600 mt-1">사용자가 밀당 탭에서 COMMENT(Gemini) 분석을 실행할 때의 요청·응답 기록입니다.</p>
-                                        </div>
-                                        <button type="button" id="adminRefreshMealdangAnalysisLogsBtn" onclick="window.refreshMealdangAnalysisLogs(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                            <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                                    <div id="mealdangAnalysisLogsList" class="min-w-0">
-                                        <div class="text-center py-10 text-slate-400">
-                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
-                                            <p class="text-sm"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
-                                        </div>
-                                    </div>
-                                    <div id="mealdangAnalysisLogsDetail" class="min-w-0 lg:sticky lg:top-4"></div>
-                                </div>
-                                <div id="mealdangAnalysisLogsPagination" class="px-6 pb-6 flex justify-center"></div>
-                            </div>
-                        </div>
-
-                        <!-- AI 식단분석 (날짜 단위 자동/수동 리포트) -->
-                        <div id="monitoring-main-aiDietReports" class="monitoring-main-section hidden">
-                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <div class="p-6 border-b border-slate-100">
-                                    <div class="flex flex-wrap gap-3 items-center justify-between">
-                                        <div>
-                                            <h3 class="text-base font-black text-slate-800">AI 식단분석</h3>
-                                            <p class="text-sm text-slate-600 mt-1">분석 요청마다 기록됩니다. 같은 날짜를 다시 분석해도 이력이 모두 남습니다.</p>
-                                        </div>
-                                        <button type="button" id="adminRefreshAiDietReportsBtn" onclick="window.refreshAiDietReports(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                            <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                                    <div id="aiDietReportsList" class="min-w-0">
-                                        <div class="text-center py-10 text-slate-400">
-                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
-                                            <p class="text-sm"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
-                                        </div>
-                                    </div>
-                                    <div id="aiDietReportsDetail" class="min-w-0 lg:sticky lg:top-4"></div>
-                                </div>
-                                <div id="aiDietReportsPagination" class="px-6 pb-6 flex justify-center"></div>
-                            </div>
-                        </div>
-
                         <!-- 식당정보 -->
                         <div id="monitoring-main-restaurants" class="monitoring-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
@@ -758,6 +701,184 @@
                                     </div>
                                     <div id="adminCreatedAtBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI 탭 -->
+            <div id="admin-tab-content-ai" class="admin-tab-content hidden">
+                <div class="space-y-4">
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3">
+                        <div class="flex gap-2 overflow-x-auto scrollbar-hide">
+                            <button onclick="window.switchAiSidebar('characters')" id="ai-sidebar-characters" class="ai-subtab-btn px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
+                            </button>
+                            <button onclick="window.switchAiSidebar('aiResponses')" id="ai-sidebar-aiResponses" class="ai-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-message mr-2"></i>AI 응답
+                            </button>
+                            <button onclick="window.switchAiSidebar('dietPrompt')" id="ai-sidebar-dietPrompt" class="ai-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-file-lines mr-2"></i>식단분석 프롬프트
+                            </button>
+                            <button onclick="window.switchAiSidebar('aiDietReports')" id="ai-sidebar-aiDietReports" class="ai-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-clipboard-check mr-2"></i>AI 식단분석
+                            </button>
+                        </div>
+                    </div>
+                    <div class="min-w-0">
+                        <!-- AI 캐릭터 관리 -->
+                        <div id="ai-main-characters" class="ai-main-section">
+                            <div id="characters-list-view" class="characters-sub-view">
+                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                                    <div class="flex justify-between items-center mb-4">
+                                        <h2 class="text-lg font-black text-slate-800">캐릭터 목록</h2>
+                                        <button onclick="window.addNewCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                            <i class="fa-solid fa-plus mr-2"></i>추가
+                                        </button>
+                                    </div>
+                                    <div id="personaCharactersList" class="flex flex-col gap-2">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
+                                            <p class="text-sm">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                    <div id="personaGeminiModelInfo" class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400 space-y-1.5">
+                                        <p>AI 코멘트 모델: <code class="text-slate-500">—</code></p>
+                                        <p class="text-slate-400">최근 30일 모델별 호출 횟수를 불러오는 중…</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="character-edit-view" class="characters-sub-view hidden">
+                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                    <div class="p-6 border-b border-slate-100">
+                                        <div class="flex justify-between items-center">
+                                            <div class="flex items-center gap-3">
+                                                <button onclick="window.showCharacterListView()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-arrow-left mr-2"></i>목록
+                                                </button>
+                                                <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    <i class="fa-solid fa-save mr-2"></i>저장
+                                                </button>
+                                                <button type="button" onclick="window.refreshPersona(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="personaCharacterEditorContent" class="p-6">
+                                        <div class="text-center py-12 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
+                                            <p class="text-sm font-bold">로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI 응답 (밀당 Gemini 분석 로그) -->
+                        <div id="ai-main-aiResponses" class="ai-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex flex-wrap gap-3 items-center justify-between">
+                                        <div>
+                                            <h3 class="text-base font-black text-slate-800">AI 응답</h3>
+                                            <p class="text-sm text-slate-600 mt-1">사용자가 밀당 탭에서 COMMENT(Gemini) 분석을 실행할 때의 요청·응답 기록입니다.</p>
+                                        </div>
+                                        <button type="button" id="adminRefreshMealdangAnalysisLogsBtn" onclick="window.refreshMealdangAnalysisLogs(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                                    <div id="mealdangAnalysisLogsList" class="min-w-0">
+                                        <div class="text-center py-10 text-slate-400">
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
+                                        </div>
+                                    </div>
+                                    <div id="mealdangAnalysisLogsDetail" class="min-w-0 lg:sticky lg:top-4"></div>
+                                </div>
+                                <div id="mealdangAnalysisLogsPagination" class="px-6 pb-6 flex justify-center"></div>
+                            </div>
+                        </div>
+
+                        <!-- 식단분석 프롬프트 -->
+                        <div id="ai-main-dietPrompt" class="ai-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+                                <div>
+                                    <h3 class="text-base font-black text-slate-800">식단분석 프롬프트</h3>
+                                    <p class="text-sm text-slate-600 mt-1">Gemini에 전달할 지시문입니다. <code class="text-xs bg-slate-100 px-1 rounded">{{date}}</code>(분석 날짜), <code class="text-xs bg-slate-100 px-1 rounded">{{mealText}}</code>(슬롯별 식단 텍스트) 치환자를 사용할 수 있습니다.</p>
+                                </div>
+                                <textarea id="dietReportPromptInput" rows="22" spellcheck="false" class="w-full font-mono text-sm leading-relaxed px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 resize-y min-h-[20rem]" placeholder="프롬프트를 입력하세요…"></textarea>
+                                <div class="flex flex-wrap gap-2 items-center">
+                                    <button type="button" onclick="window.saveDietReportPrompt(this)" class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                        <i class="fa-solid fa-save" aria-hidden="true"></i><span>저장</span>
+                                    </button>
+                                    <button type="button" onclick="window.resetDietReportPromptToDefault()" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                        기본값 복원
+                                    </button>
+                                </div>
+                                <p id="dietReportPromptMeta" class="text-xs text-slate-400" aria-live="polite"></p>
+                            </div>
+                        </div>
+
+                        <!-- AI 식단분석 (날짜 단위 자동/수동 리포트) -->
+                        <div id="ai-main-aiDietReports" class="ai-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-4">
+                                <div class="p-6 border-b border-slate-100">
+                                    <h3 class="text-base font-black text-slate-800">자동 배치 설정</h3>
+                                </div>
+                                <div class="p-6 space-y-2">
+                                    <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+                                        <div class="min-w-0 max-w-md">
+                                            <div class="flex items-center gap-2.5">
+                                                <span class="text-sm font-bold text-slate-800">배치 활성화</span>
+                                                <label class="relative inline-flex h-[19px] w-[35px] shrink-0 cursor-pointer" aria-label="배치 활성화">
+                                                    <input type="checkbox" id="dietReportBatchEnabled" class="peer sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 rounded" role="switch">
+                                                    <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                                    <span class="pointer-events-none absolute left-[1.5px] top-[1.5px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[16px]"></span>
+                                                </label>
+                                            </div>
+                                            <p class="text-xs text-slate-500 leading-relaxed mt-1.5">최근 7일 이내 기록이 있는 사용자를 대상으로, 각 사용자의 <strong class="font-semibold text-slate-600">가장 최근 기록일</strong>(배치 실행일 제외) 식단을 분석합니다. 해당 날짜에 이미 분석 내역(자동·수동)이 있으면 건너뜁니다.</p>
+                                        </div>
+                                        <div class="flex items-center gap-2 shrink-0 pt-0.5">
+                                            <label for="dietReportBatchRunTime" class="text-sm font-bold text-slate-700 whitespace-nowrap">실행 시각 (서울)</label>
+                                            <input type="time" id="dietReportBatchRunTime" value="00:10" class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30">
+                                        </div>
+                                        <button type="button" onclick="window.saveDietReportBatchSettings(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors shrink-0 mt-0.5">
+                                            <i class="fa-solid fa-save" aria-hidden="true"></i><span>설정 저장</span>
+                                        </button>
+                                    </div>
+                                    <p id="dietReportBatchMeta" class="text-xs text-slate-400" aria-live="polite"></p>
+                                </div>
+                            </div>
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div class="flex flex-wrap gap-3 items-center justify-between">
+                                        <div>
+                                            <h3 class="text-base font-black text-slate-800">AI 식단분석</h3>
+                                            <p class="text-sm text-slate-600 mt-1">분석 요청마다 기록됩니다. 같은 날짜를 다시 분석해도 이력이 모두 남습니다.</p>
+                                        </div>
+                                        <button type="button" id="adminRefreshAiDietReportsBtn" onclick="window.refreshAiDietReports(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                            <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="aiDietReportsUsageStats" class="px-6 pb-4 hidden" aria-live="polite"></div>
+                                <div class="p-6 pt-0 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                                    <div id="aiDietReportsList" class="min-w-0">
+                                        <div class="text-center py-10 text-slate-400">
+                                            <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
+                                        </div>
+                                    </div>
+                                    <div id="aiDietReportsDetail" class="min-w-0 lg:sticky lg:top-4"></div>
+                                </div>
+                                <div id="aiDietReportsPagination" class="px-6 pb-6 flex justify-center"></div>
                             </div>
                         </div>
                     </div>
@@ -1364,9 +1485,6 @@
                                     <button onclick="window.switchContentSidebar('mealog')" id="content-sidebar-mealog" class="w-auto px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
                                         <i class="fa-solid fa-robot mr-2"></i>MEALOG
                                     </button>
-                                    <button onclick="window.switchContentSidebar('characters')" id="content-sidebar-characters" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
-                                        <i class="fa-solid fa-user-astronaut mr-2"></i>AI 캐릭터
-                                    </button>
                                     <button onclick="window.switchContentSidebar('terms')" id="content-sidebar-terms" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                         <i class="fa-solid fa-file-contract mr-2"></i>약관
                                     </button>
@@ -1415,61 +1533,6 @@
                                     <button onclick="window.addMealogComment()" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
                                         <i class="fa-solid fa-plus mr-2"></i>메시지 추가
                                     </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- AI 캐릭터 관리 -->
-                        <div id="content-main-characters" class="content-main-section hidden">
-                            <!-- 캐릭터 목록 뷰 -->
-                            <div id="characters-list-view" class="characters-sub-view">
-                                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-                                    <div class="flex justify-between items-center mb-4">
-                                        <h2 class="text-lg font-black text-slate-800">캐릭터 목록</h2>
-                                        <button onclick="window.addNewCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>추가
-                                        </button>
-                                    </div>
-                                    <div id="personaCharactersList" class="flex flex-col gap-2">
-                                        <div class="text-center py-8 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i>
-                                            <p class="text-sm">로딩 중...</p>
-                                        </div>
-                                    </div>
-                                    <!-- AI 코멘트 Gemini 모델 · 최근 30일 사용량 (persona.js) -->
-                                    <div id="personaGeminiModelInfo" class="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-400 space-y-1.5">
-                                        <p>AI 코멘트 모델: <code class="text-slate-500">—</code></p>
-                                        <p class="text-slate-400">최근 30일 모델별 호출 횟수를 불러오는 중…</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- 캐릭터 편집 뷰 -->
-                            <div id="character-edit-view" class="characters-sub-view hidden">
-                                <div id="personaCharacterEditor" class="bg-white rounded-2xl shadow-sm border border-slate-100">
-                                    <div class="p-6 border-b border-slate-100">
-                                        <div class="flex justify-between items-center">
-                                            <div class="flex items-center gap-3">
-                                                <button onclick="window.showCharacterListView()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-arrow-left mr-2"></i>목록
-                                                </button>
-                                                <h2 class="text-lg font-black text-slate-800">캐릭터 편집</h2>
-                                            </div>
-                                            <div class="flex gap-2">
-                                                <button onclick="window.saveCharacter()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
-                                                    <i class="fa-solid fa-save mr-2"></i>저장
-                                                </button>
-                                                <button type="button" onclick="window.refreshPersona(this)" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
-                                                    <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="personaCharacterEditorContent" class="p-6">
-                                        <div class="text-center py-12 text-slate-400">
-                                            <i class="fa-solid fa-spinner fa-spin text-3xl mb-3"></i>
-                                            <p class="text-sm font-bold">로딩 중...</p>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>

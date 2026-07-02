@@ -41,6 +41,7 @@ import { loadLoginBannerConfig } from './admin/login-banner.js';
 import { loadTagsContent } from './admin/tags.js';
 import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
+import { loadDietReportPromptEditor, loadDietReportBatchSettings } from './admin/diet-report-config.js';
 import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 import { runAdminUserCreatedAtBackfill } from './admin/user-createdat-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
@@ -53,6 +54,7 @@ import './admin/lounge-chat-moderation.js';
 import './admin/board-moderation.js';
 import './admin/mealdang-analysis-logs.js';
 import './admin/ai-diet-reports.js';
+import './admin/diet-report-config.js';
 
 import { app, db, appId, callableFunctions, auth } from './firebase.js';
 import { GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -157,6 +159,8 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'monitoring') {
         switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
+    } else if (tab === 'ai') {
+        switchAiSidebar('characters');
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
@@ -498,6 +502,37 @@ window.switchMonitoringSidebar = function(section) {
     /* 데이터는 각 섹션의「새로고침」버튼에서만 로드 (탭/서브메뉴 진입 시 Firestore 조회 없음) */
 };
 
+const AI_SIDEBAR_SECTIONS = ['characters', 'aiResponses', 'dietPrompt', 'aiDietReports'];
+
+// AI 탭 사이드바 전환
+window.switchAiSidebar = function (section) {
+    if (!AI_SIDEBAR_SECTIONS.includes(section)) return;
+    document.querySelectorAll('.ai-subtab-btn').forEach((btn) => {
+        btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        btn.classList.add('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
+    });
+    document.querySelectorAll('.ai-main-section').forEach((sec) => {
+        sec.classList.add('hidden');
+    });
+    const activeSidebarBtn = document.getElementById(`ai-sidebar-${section}`);
+    const activeMainSection = document.getElementById(`ai-main-${section}`);
+    if (activeSidebarBtn) {
+        activeSidebarBtn.classList.add('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
+        activeSidebarBtn.classList.remove('text-slate-500', 'bg-white', 'border-slate-200', 'hover:bg-slate-50');
+    }
+    if (activeMainSection) {
+        activeMainSection.classList.remove('hidden');
+    }
+    resetAdminScrollTop();
+    if (section === 'characters') {
+        showCharacterListView();
+    } else if (section === 'dietPrompt') {
+        void loadDietReportPromptEditor();
+    } else if (section === 'aiDietReports') {
+        void loadDietReportBatchSettings();
+    }
+};
+
 // 콘텐츠 관리 관련 함수들
 
 const ALERTS_SIDEBAR_SECTIONS = ['pushMessage', 'notice', 'popup', 'loginBanner'];
@@ -556,6 +591,11 @@ window.switchContentSidebar = function (section, opts) {
         setTimeout(() => window.switchAlertsSidebar(section), 0);
         return;
     }
+    if (section === 'characters') {
+        window.switchAdminTab('ai');
+        setTimeout(() => window.switchAiSidebar('characters'), 0);
+        return;
+    }
     // 모든 사이드바 버튼 비활성화
     document.querySelectorAll('[id^="content-sidebar-"]').forEach((btn) => {
         btn.classList.remove('text-emerald-600', 'bg-emerald-50', 'border-emerald-200');
@@ -598,8 +638,6 @@ window.switchContentSidebar = function (section, opts) {
     // 섹션별 데이터 로드
     if (section === 'mealog') {
         loadMealogComments();
-    } else if (section === 'characters') {
-        showCharacterListView();
     } else if (section === 'terms') {
         loadTermsContent();
         // 약관관리 탭이 기본이므로 약관이력은 나중에 로드

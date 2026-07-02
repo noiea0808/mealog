@@ -40,7 +40,11 @@ import {
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
-import { getAiDietReportButtonHtml } from '../modals/diet-report.js';
+import {
+    getAiDietReportButtonHtml,
+    isAiDietReportDateVisible,
+    refreshAiDietReportFlagsForDates
+} from '../modals/diet-report.js';
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -649,18 +653,29 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
     </div>`;
 }
 
+const DATE_HEADER_ACTION_HEIGHT_CLASS = 'date-section-header__action-btn';
+
 function buildMealTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
     const mixedSel = current === 'mixed' ? ' selected' : '';
-    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
-            <label for="mealTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">식사보기</label>
-            <select id="mealTimelineViewSelect" class="meal-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,8rem)] shadow-sm" title="식사보기: 카드·목록·자동(사진 있으면 카드, 없으면 목록)">
+    return `<label class="timeline-view-picker timeline-view-picker--meal ${DATE_HEADER_ACTION_HEIGHT_CLASS}" title="식사보기: 카드·목록·자동(사진 있으면 카드, 없으면 목록)">
+            <select id="mealTimelineViewSelect" class="meal-timeline-view-select timeline-view-picker__select" aria-label="식사 보기 방식">
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
-        </div>`;
+            <span class="timeline-view-picker__visual" aria-hidden="true">
+                <span class="timeline-view-picker__icon"><i class="fa-solid fa-utensils"></i></span>
+                <span class="timeline-view-picker__body">
+                    <span class="timeline-view-picker__category">식사</span>
+                    <span class="timeline-view-picker__value-row">
+                        <span class="timeline-view-picker__value">${current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동'}</span>
+                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                    </span>
+                </span>
+            </span>
+        </label>`;
 }
 
 function buildSnackTimelineViewSelectHtml(current) {
@@ -668,15 +683,26 @@ function buildSnackTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
     const mixedSel = current === 'mixed' ? ' selected' : '';
-    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
-            <label for="snackTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">간식보기</label>
-            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,10rem)] shadow-sm" title="간식보기: 태그·카드·목록·자동(건별 사진 있으면 카드, 없으면 목록)">
+    const valueLabel =
+        current === 'tags' ? '태그' : current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동';
+    return `<label class="timeline-view-picker timeline-view-picker--snack ${DATE_HEADER_ACTION_HEIGHT_CLASS}" title="간식보기: 태그·카드·목록·자동(건별 사진 있으면 카드, 없으면 목록)">
+            <select id="snackTimelineViewSelect" class="snack-timeline-view-select timeline-view-picker__select" aria-label="간식 보기 방식">
                 <option value="tags"${tagsSel}>태그</option>
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
-        </div>`;
+            <span class="timeline-view-picker__visual" aria-hidden="true">
+                <span class="timeline-view-picker__icon"><i class="fa-solid fa-cookie"></i></span>
+                <span class="timeline-view-picker__body">
+                    <span class="timeline-view-picker__category">간식</span>
+                    <span class="timeline-view-picker__value-row">
+                        <span class="timeline-view-picker__value">${valueLabel}</span>
+                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                    </span>
+                </span>
+            </span>
+        </label>`;
 }
 
 function getDailyShareButtonHtmlForDate(dateStr) {
@@ -689,20 +715,34 @@ function getDailyShareButtonHtmlForDate(dateStr) {
               )
             : null;
     const isShared = !!dailyShare;
-    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
-        <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+    const styleCls = isShared
+        ? 'date-section-header__share-btn--shared'
+        : 'date-section-header__share-btn--default';
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
+        <i class="fa-solid fa-share text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }
 
-/** 날짜 라벨(h3) 바로 오른쪽 — 당일은 diet-report 쪽에서 제외 */
-function getDateHeaderAiReportInlineHtml(dateStr) {
-    const ai = getAiDietReportButtonHtml(dateStr);
-    return ai ? `<span class="ml-2 shrink-0 inline-flex">${ai}</span>` : '';
+function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false } = {}) {
+    const parts = [];
+    if (includeViewPickers) {
+        parts.push(buildMealTimelineViewSelectHtml(getMealTimelineView()));
+        parts.push(buildSnackTimelineViewSelectHtml(getSnackTimelineView()));
+    }
+    const share = getDailyShareButtonHtmlForDate(dateStr);
+    if (share) parts.push(share);
+    if (!parts.length) return '';
+    return `<div class="date-section-header__actions">${parts.join('')}</div>`;
 }
 
-function buildDateHeaderLeftHtml(h3Html, dateStr) {
-    const aiInline = getDateHeaderAiReportInlineHtml(dateStr);
-    return `<div class="min-w-0 flex items-center flex-wrap">${h3Html}${aiInline}</div>`;
+function buildDateHeaderDateHtml(dateStr) {
+    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
+}
+
+function buildDateHeaderLeftHtml(dateStr) {
+    const ai = getAiDietReportButtonHtml(dateStr);
+    const aiInline = ai ? `<span class="ml-2 shrink-0 inline-flex">${ai}</span>` : '';
+    return `<div class="min-w-0 flex items-center flex-wrap">${buildDateHeaderDateHtml(dateStr)}${aiInline}</div>`;
 }
 
 /**
@@ -715,32 +755,13 @@ export function syncSnackViewDropdown(container) {
     sections.forEach((section, index) => {
         const header = section.querySelector('.date-section-header');
         if (!header) return;
-        const h3 = header.querySelector('h3');
-        if (!h3) return;
-        const h3Html = h3.outerHTML;
         const dateStr = section.id.replace(/^date-/, '');
-        const dObj = new Date(dateStr + 'T00:00:00');
-        const dayOfWeek = dObj.getDay();
-        const dayColorClass = dayOfWeek === 0 || dayOfWeek === 6 ? 'text-rose-400' : 'text-slate-800';
-        const shareHtml = getDailyShareButtonHtmlForDate(dateStr);
+        const leftHtml = buildDateHeaderLeftHtml(dateStr);
+        const includeViewPickers = index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE;
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers });
 
-        if (index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE) {
-            const snackView = getSnackTimelineView();
-            const mealView = getMealTimelineView();
-            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2 flex-wrap`;
-            header.innerHTML = `
-                ${buildDateHeaderLeftHtml(h3Html, dateStr)}
-                <div class="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
-                    ${buildMealTimelineViewSelectHtml(mealView)}
-                    ${buildSnackTimelineViewSelectHtml(snackView)}
-                    ${shareHtml}
-                </div>`;
-        } else {
-            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between`;
-            header.innerHTML = shareHtml
-                ? `${buildDateHeaderLeftHtml(h3Html, dateStr)}<div class="flex-shrink-0">${shareHtml}</div>`
-                : buildDateHeaderLeftHtml(h3Html, dateStr);
-        }
+        header.className = 'date-section-header flex items-center gap-2';
+        header.innerHTML = rightHtml ? `${leftHtml}${rightHtml}` : leftHtml;
     });
 }
 
@@ -1285,6 +1306,8 @@ function ensureTimelineViewSelectDelegation() {
                 try {
                     localStorage.setItem(SNACK_TIMELINE_VIEW_STORAGE_KEY, t.value);
                 } catch (_) {}
+                const valueEl = t.closest('.timeline-view-picker')?.querySelector('.timeline-view-picker__value');
+                if (valueEl) valueEl.textContent = t.options[t.selectedIndex]?.textContent || '';
                 refreshTimelineAfterSnackViewChange();
                 return;
             }
@@ -1292,6 +1315,8 @@ function ensureTimelineViewSelectDelegation() {
                 try {
                     localStorage.setItem(MEAL_TIMELINE_VIEW_STORAGE_KEY, t.value);
                 } catch (_) {}
+                const valueEl = t.closest('.timeline-view-picker')?.querySelector('.timeline-view-picker__value');
+                if (valueEl) valueEl.textContent = t.options[t.selectedIndex]?.textContent || '';
                 refreshTimelineAfterSnackViewChange();
             }
         },
@@ -1444,18 +1469,14 @@ export function renderTimeline() {
         if (existingSection) return;
         
         window.loadedDates.push(dateStr);
-        const dObj = new Date(dateStr + 'T00:00:00');
-        const dayOfWeek = dObj.getDay();
-        let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
-        section.className = "animate-fade";
-        const shareButton = getDailyShareButtonHtmlForDate(dateStr);
-        const shareWrap = shareButton ? `<div class="flex shrink-0 items-center">${shareButton}</div>` : '';
-        const h3Html = `<h3 class="min-w-0">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
-        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2">
-            ${buildDateHeaderLeftHtml(h3Html, dateStr)}
-            ${shareWrap}
+        section.className = 'animate-fade timeline-date-card';
+        const leftHtml = buildDateHeaderLeftHtml(dateStr);
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr);
+        let html = `<div class="date-section-header flex items-center gap-2">
+            ${leftHtml}
+            ${rightHtml}
         </div>`;
 
         SLOTS.forEach(slot => {
@@ -1768,6 +1789,11 @@ export function renderTimeline() {
 
     updateTimelineMealEntryPendingIndicators();
     updateTrackerStreakLabel();
+
+    const reportCheckDates = (window.loadedDates || []).filter((d) => isAiDietReportDateVisible(d));
+    if (reportCheckDates.length) {
+        void refreshAiDietReportFlagsForDates(reportCheckDates);
+    }
 }
 
 let miniCalendarPointerDragBound = false;

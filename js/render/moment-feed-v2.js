@@ -11,6 +11,7 @@ import {
     isDailyJournalSharePhoto
 } from '../utils/daily-journal-data.js';
 import { buildMomentV2MenuLabelLineInnerHtml } from '../main/moment-feed-v2-wheel-layout.js';
+import { isDietReportInsightShare, DIET_REPORT_MOMENT_SLOT_LABEL } from '../utils/diet-report-share.js';
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -62,6 +63,7 @@ export function getMomentV2SlotWheelLabel(photo, isBest, isDaily, isInsight, ent
     if (isDaily) return '일간';
     if (isBest) return '베스트';
     if (isInsight) {
+        if (isDietReportInsightShare(photo)) return DIET_REPORT_MOMENT_SLOT_LABEL;
         const r = String(photo?.dateRangeText || '인사이트').replace(/\s+/g, '').trim();
         return r.length > 14 ? `${r.slice(0, 14)}…` : r || '인사이트';
     }
@@ -289,7 +291,7 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         : '';
     const maxH = 'min(88vh, calc(100dvh - 7rem))';
     /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
-    if (isDaily || isBest) {
+    if (isDaily || isBest || isDietReportInsightShare(p)) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}

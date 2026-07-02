@@ -2483,16 +2483,27 @@
     <!-- AI 식단분석 리포트 (밀로그 날짜별) -->
     <div id="dietReportModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-center justify-center py-4 px-[10px]" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
         <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
-            <div class="relative shrink-0 px-5 pt-5 pb-3 border-b border-slate-100">
+            <div class="relative shrink-0 px-4 pt-4 pb-2.5 border-b border-slate-100">
                 <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-10">AI 식단분석</h2>
-                <button type="button" onclick="window.closeDietReportModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
+                <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-10 leading-snug"></p>
+                <button type="button" onclick="window.closeDietReportModal()" class="absolute top-4 right-3 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
                     <i class="fa-solid fa-xmark text-base"></i>
                 </button>
             </div>
-            <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-5 py-4"></div>
-            <div class="shrink-0 border-t border-slate-200 bg-white px-5 py-4 flex gap-2 rounded-b-2xl">
-                <button type="button" onclick="window.closeDietReportModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 transition-colors">닫기</button>
-                <button type="button" id="dietReportRegenerateBtn" class="hidden flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors disabled:opacity-60">다시 분석하기</button>
+            <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-4 py-3"></div>
+            <div class="shrink-0 border-t border-slate-200 bg-white flex overflow-hidden rounded-b-2xl min-h-[3.25rem]">
+                <button type="button" onclick="window.closeDietReportModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 transition-colors">
+                    <span class="text-sm font-bold text-slate-700">닫기</span>
+                    <span class="text-[11px] text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="dietReportRegenerateBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors disabled:opacity-60 min-w-0">
+                    <span class="diet-report-btn-main text-sm font-bold">다시 분석</span>
+                    <span class="text-[11px] text-slate-500 font-medium">새로 생성</span>
+                </button>
+                <button type="button" id="dietReportShareBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-60 min-w-0">
+                    <span class="diet-report-btn-main text-sm font-bold">모먼트 공유</span>
+                    <span class="diet-report-btn-sub text-[11px] text-white/80 font-medium">피드에 공유</span>
+                </button>
             </div>
         </div>
     </div>

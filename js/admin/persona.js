@@ -964,6 +964,11 @@ async function renderPersonaSettings() {
 // 페르소나 새로고침 (콘텐츠 관리로 이동)
 window.refreshPersona = async function (buttonEl) {
     await runAdminRefreshAction(buttonEl || null, async () => {
+        const aiCharactersSection = document.getElementById('ai-main-characters');
+        if (aiCharactersSection && !aiCharactersSection.classList.contains('hidden')) {
+            showCharacterListView();
+            return;
+        }
         const activeSection = document.querySelector('.content-main-section:not(.hidden)');
         if (activeSection) {
             const sectionId = activeSection.id.replace('content-main-', '');
@@ -973,7 +978,7 @@ window.refreshPersona = async function (buttonEl) {
                 window.switchAlertsSidebar(sectionId);
                 return;
             }
-            if (sectionId === 'mealog' || sectionId === 'characters') {
+            if (sectionId === 'mealog') {
                 window.switchContentSidebar(sectionId);
             }
         } else {
