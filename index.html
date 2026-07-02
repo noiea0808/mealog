@@ -692,24 +692,43 @@
                             id="attendanceWelcomeMealSnackSwitch"
                             class="flex items-center gap-0 rounded-lg border border-slate-200/80 bg-slate-100/95 p-0.5 shadow-sm"
                             role="group"
-                            aria-label="식사 또는 간식"
+                            aria-label="AI리포트·식사·간식"
                         >
                             <button
                                 type="button"
+                                id="attendanceWelcomeBtnReport"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
+                            >
+                                AI리포트
+                            </button>
+                            <button
+                                type="button"
                                 id="attendanceWelcomeBtnMeal"
-                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
                             >
                                 식사
                             </button>
                             <button
                                 type="button"
                                 id="attendanceWelcomeBtnSnack"
-                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
                             >
                                 간식
                             </button>
                         </div>
                         <p id="attendanceWelcomeRecordCount" class="m-0 w-full text-center text-[11px] font-bold leading-tight text-slate-700 tabular-nums" aria-live="polite">기록 0회</p>
+                        <div id="attendanceWelcomeReportDateNav" class="hidden attendance-welcome-report-date-nav flex w-full items-center justify-center gap-1" role="group" aria-label="리포트 날짜">
+                            <button type="button" id="attendanceWelcomeReportPrev" class="attendance-welcome-report-nav-btn" aria-label="이전 리포트">
+                                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            </button>
+                            <span id="attendanceWelcomeReportDateLabel" class="attendance-welcome-report-date-label tabular-nums" aria-live="polite"></span>
+                            <button type="button" id="attendanceWelcomeReportNext" class="attendance-welcome-report-nav-btn" aria-label="다음 리포트">
+                                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="attendanceWelcomeReportPanel" class="hidden w-full px-2 py-1 box-border">
+                        <div id="attendanceWelcomeReportContent" class="attendance-welcome-report-content w-full" role="region" aria-label="AI 식단분석 리포트"></div>
                     </div>
                     <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
                         <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>

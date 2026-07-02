@@ -5363,6 +5363,28 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 }
 
 /* 기록 완료 중앙 팝업 (0.5s) */
+/* 중앙 축하 팝업(기록 완료·웰컴): 배경 스크롤·터치 차단 — JS scroll-lock과 함께 사용 */
+html.mealog-scroll-locked {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+body.mealog-scroll-locked {
+    overflow: hidden !important;
+    position: fixed;
+    width: 100%;
+    left: 0;
+    right: 0;
+    overscroll-behavior: none;
+}
+#successPopup:not(.hidden),
+#attendancePopup:not(.hidden) {
+    touch-action: none;
+    overscroll-behavior: contain;
+}
+#successPopupBackdrop,
+#attendancePopupBackdrop {
+    touch-action: none;
+}
 @keyframes successPopupFade {
     0% { opacity: 0; }
     20% { opacity: 1; }
@@ -5616,8 +5638,27 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 #attendancePopupContent.attendance-popup-welcome-charts .attendance-popup-welcome-charts-wrap {
     margin-top: -0.55rem;
 }
+/* AI리포트 탭: 웰컴 차트 박스만 폭 +30% (19rem → 24.7rem). 상단 아이콘·문구는 기존 크기 유지 */
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) {
+    max-width: min(92vw, 28.6rem);
+    overflow: visible;
+}
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) > .popup-celebrate-ring--check,
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) > #attendancePopupTextSvg {
+    width: 100%;
+    max-width: 22rem;
+    align-self: center;
+}
+#attendancePopupWelcomeCharts:has(#attendanceWelcomeReportPanel:not(.hidden)) {
+    width: min(calc(92vw - 1rem), 24.7rem);
+    max-width: 24.7rem;
+    align-self: center;
+}
 .attendance-welcome-chart-shell {
     backdrop-filter: blur(2px);
+}
+button.attendance-welcome-kind-btn {
+    font-size: 12px;
 }
 button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
     background: rgb(16 185 129);
@@ -5626,6 +5667,100 @@ button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
 }
 button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     color: rgb(51 65 85);
+}
+#attendanceWelcomeBtnReport.hidden {
+    display: none;
+}
+.attendance-welcome-report-content {
+    max-height: min(17.5rem, 52vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+}
+.attendance-welcome-report-content::-webkit-scrollbar {
+    width: 1px;
+    height: 1px;
+}
+.attendance-welcome-report-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.attendance-welcome-report-content::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+}
+.attendance-welcome-report-date-nav {
+    min-height: 1.375rem;
+}
+.attendance-welcome-report-date-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: rgb(51 65 85);
+    letter-spacing: -0.01em;
+}
+.attendance-welcome-report-nav-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgb(100 116 139);
+    font-size: 0.6875rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.attendance-welcome-report-nav-btn:hover:not(:disabled):not(.attendance-welcome-report-nav-btn--disabled) {
+    color: rgb(5 122 85);
+    background: rgb(236 253 245 / 0.9);
+}
+.attendance-welcome-report-nav-btn:disabled,
+.attendance-welcome-report-nav-btn.attendance-welcome-report-nav-btn--disabled {
+    opacity: 0.28;
+    cursor: default;
+    pointer-events: none;
+}
+.attendance-welcome-report-nav-btn.hidden {
+    display: none;
+}
+.attendance-welcome-report-content .ai-meal-report-card {
+    box-shadow: 0 1px 10px -3px rgb(15 23 42 / 0.1);
+    cursor: pointer;
+}
+.attendance-welcome-report-content .ai-meal-report-card > div {
+    padding: 0.75rem;
+    gap: 0.5rem;
+}
+.attendance-welcome-report-content .ai-meal-report-card h3 {
+    font-size: 0.875rem;
+}
+.attendance-welcome-report-empty {
+    border-radius: 0.75rem;
+    border: 1px dashed rgb(226 232 240);
+    background: rgb(248 250 252 / 0.9);
+    padding: 0.875rem 0.75rem;
+    text-align: center;
+}
+.attendance-welcome-report-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 5.5rem;
+    color: rgb(100 116 139);
+    font-size: 0.75rem;
+    font-weight: 700;
 }
 /* 터치는 시작 요소의 touch-action이 적용됨 — 자식(SVG 등)이 auto면 가로 팬이 브라우저 스크롤로 소모되어 스와이프가 취소됨. pan-y만 허용해 가로 드래그는 JS(Pointer)로 처리 */
 .attendance-welcome-chart-viewport,

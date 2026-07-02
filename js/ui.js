@@ -6,6 +6,17 @@ import {
     clearLoadingFoodIconInlineAnimation,
     getSpinnerMessageStepMs,
 } from './loading-spinner-config.js';
+import { isDemoUser } from './demo-account.js';
+import { fetchLatestReadyDietReport, fetchReadyDietReportDates, fetchReadyDietReportByDate } from './utils/diet-report-latest.js';
+import {
+    parseAiMealReport,
+    extractAiMealReportSource,
+    renderAiMealReportCardHtml,
+    extractAnalyzedPhotoUrlsForDisplay
+} from './utils/ai-meal-report.js';
+import { escapeHtml } from './render/utils.js';
+import { formatMealogDateLabel } from './utils/date-label.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
@@ -276,6 +287,32 @@ export function showToast(message, type = 'info') {
 }
 
 let successPopupTimer = null;
+let successPopupScrollLocked = false;
+let attendancePopupScrollLocked = false;
+
+function lockSuccessPopupScroll() {
+    if (successPopupScrollLocked) return;
+    lockBodyScroll();
+    successPopupScrollLocked = true;
+}
+
+function unlockSuccessPopupScroll() {
+    if (!successPopupScrollLocked) return;
+    unlockBodyScroll();
+    successPopupScrollLocked = false;
+}
+
+function lockAttendancePopupScroll() {
+    if (attendancePopupScrollLocked) return;
+    lockBodyScroll();
+    attendancePopupScrollLocked = true;
+}
+
+function unlockAttendancePopupScroll() {
+    if (!attendancePopupScrollLocked) return;
+    unlockBodyScroll();
+    attendancePopupScrollLocked = false;
+}
 
 /**
  * 기록 완료 중앙 팝업 (0.5초)
@@ -352,11 +389,13 @@ export function showSuccessPopup(message = '기록 완료', durationMs = 800) {
         }
     }
     document.body.classList.add('success-popup-anim');
+    lockSuccessPopupScroll();
 
     successPopupTimer = setTimeout(() => {
         document.body.classList.remove('success-popup-anim');
         popup.classList.add('hidden');
         if (confetti) confetti.innerHTML = '';
+        unlockSuccessPopupScroll();
         successPopupTimer = null;
     }, Math.max(0, Number(durationMs) || 800));
 }
@@ -372,6 +411,7 @@ export function dismissSuccessPopup() {
     document.body.classList.remove('success-popup-anim');
     if (popup) popup.classList.add('hidden');
     if (confetti) confetti.innerHTML = '';
+    unlockSuccessPopupScroll();
 }
 
 function ensureAttendancePopupCloseBound() {
@@ -512,11 +552,95 @@ function buildWelcomeChartSlideHtml(slide) {
     return `<div class="attendance-welcome-slide-inner flex w-full justify-center px-1">${svg}</div>`;
 }
 
-/** @type {'meal'|'snack'} */
-let welcomeChartKind = 'meal';
+/** @type {'report'|'meal'|'snack'} */
+let welcomeChartKind = 'report';
 
 let attendanceWelcomeSlideIdx = 0;
 let attendanceWelcomeDragStartX = null;
+/** @type {string} */
+let welcomeLatestReportDate = '';
+/** @type {string[]} */
+let welcomeReportDates = [];
+let welcomeReportIndex = 0;
+/** @type {Map<string, object>} */
+const welcomeReportDataCache = new Map();
+
+function resetWelcomeReportNavState() {
+    welcomeLatestReportDate = '';
+    welcomeReportDates = [];
+    welcomeReportIndex = 0;
+    welcomeReportDataCache.clear();
+}
+
+function getWelcomeCurrentReportDate() {
+    return welcomeReportDates[welcomeReportIndex] || welcomeLatestReportDate || '';
+}
+
+function renderWelcomeReportCardHtml(data) {
+    const source = extractAiMealReportSource(data);
+    const report = parseAiMealReport(source);
+    return report
+        ? renderAiMealReportCardHtml(report, escapeHtml, {
+              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+          })
+        : renderAiMealReportCardHtml(null, escapeHtml);
+}
+
+function updateWelcomeReportDateNavUi() {
+    const countEl = document.getElementById('attendanceWelcomeRecordCount');
+    const nav = document.getElementById('attendanceWelcomeReportDateNav');
+    const label = document.getElementById('attendanceWelcomeReportDateLabel');
+    const prevBtn = document.getElementById('attendanceWelcomeReportPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeReportNext');
+    const onReport = welcomeChartKind === 'report';
+    const dateStr = getWelcomeCurrentReportDate();
+    const hasReports = onReport && dateStr && welcomeReportDates.length > 0;
+
+    if (countEl) {
+        countEl.classList.toggle('hidden', hasReports);
+        if (!hasReports && onReport) {
+            countEl.textContent = 'AI 식단분석';
+        }
+    }
+    if (nav) {
+        nav.classList.toggle('hidden', !hasReports);
+    }
+    if (!hasReports) return;
+
+    if (label) {
+        label.textContent = formatMealogDateLabel(dateStr);
+    }
+    const showArrows = welcomeReportDates.length > 1;
+    const atLatest = welcomeReportIndex <= 0;
+    const atOldest = welcomeReportIndex >= welcomeReportDates.length - 1;
+    if (prevBtn) {
+        prevBtn.classList.toggle('hidden', !showArrows);
+        prevBtn.disabled = atOldest;
+        prevBtn.classList.toggle('attendance-welcome-report-nav-btn--disabled', atOldest);
+        prevBtn.setAttribute('aria-disabled', atOldest ? 'true' : 'false');
+    }
+    if (nextBtn) {
+        nextBtn.classList.toggle('hidden', !showArrows);
+        nextBtn.disabled = atLatest;
+        nextBtn.classList.toggle('attendance-welcome-report-nav-btn--disabled', atLatest);
+        nextBtn.setAttribute('aria-disabled', atLatest ? 'true' : 'false');
+    }
+}
+
+function welcomeShowsReportTab() {
+    return !!(window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser));
+}
+
+function getWelcomeDefaultChartKind() {
+    return welcomeShowsReportTab() ? 'report' : 'meal';
+}
+
+function prefetchWelcomeLatestDietReport() {
+    const uid = window.currentUser?.uid;
+    if (!uid || !welcomeShowsReportTab()) return;
+    void fetchLatestReadyDietReport(uid);
+    void fetchReadyDietReportDates(uid);
+}
 
 function applyAttendanceWelcomeSlideTransform() {
     const track = document.getElementById('attendanceWelcomeChartTrack');
@@ -532,36 +656,198 @@ function applyAttendanceWelcomeSlideTransform() {
     }
 }
 
-function updateWelcomeMealSnackSwitchUi() {
+function updateWelcomeKindSwitchUi() {
+    const reportBtn = document.getElementById('attendanceWelcomeBtnReport');
     const mealBtn = document.getElementById('attendanceWelcomeBtnMeal');
     const snackBtn = document.getElementById('attendanceWelcomeBtnSnack');
     const countEl = document.getElementById('attendanceWelcomeRecordCount');
-    if (!mealBtn || !snackBtn) return;
-    const onMeal = welcomeChartKind === 'meal';
-    mealBtn.classList.toggle('attendance-welcome-kind--active', onMeal);
-    mealBtn.setAttribute('aria-pressed', onMeal ? 'true' : 'false');
-    snackBtn.classList.toggle('attendance-welcome-kind--active', !onMeal);
-    snackBtn.setAttribute('aria-pressed', onMeal ? 'false' : 'true');
-    if (countEl) {
+    const showReport = welcomeShowsReportTab();
+
+    if (reportBtn) {
+        reportBtn.classList.toggle('hidden', !showReport);
+        const onReport = welcomeChartKind === 'report';
+        reportBtn.classList.toggle('attendance-welcome-kind--active', onReport);
+        reportBtn.setAttribute('aria-pressed', onReport ? 'true' : 'false');
+    }
+    if (mealBtn) {
+        const onMeal = welcomeChartKind === 'meal';
+        mealBtn.classList.toggle('attendance-welcome-kind--active', onMeal);
+        mealBtn.setAttribute('aria-pressed', onMeal ? 'true' : 'false');
+    }
+    if (snackBtn) {
+        const onSnack = welcomeChartKind === 'snack';
+        snackBtn.classList.toggle('attendance-welcome-kind--active', onSnack);
+        snackBtn.setAttribute('aria-pressed', onSnack ? 'true' : 'false');
+    }
+    if (countEl && welcomeChartKind !== 'report') {
         const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
         countEl.textContent = `기록 ${n}회`;
+        countEl.classList.remove('hidden');
+        document.getElementById('attendanceWelcomeReportDateNav')?.classList.add('hidden');
+    }
+    if (welcomeChartKind === 'report') {
+        updateWelcomeReportDateNavUi();
     }
 }
 
-function bindAttendanceWelcomeMealSnackSwitchOnce() {
+function bindAttendanceWelcomeKindSwitchOnce() {
     const sw = document.getElementById('attendanceWelcomeMealSnackSwitch');
     if (!sw || sw.dataset.bound === '1') return;
     sw.dataset.bound = '1';
     sw.addEventListener('click', (e) => {
+        const reportHit = e.target.closest('#attendanceWelcomeBtnReport');
         const mealHit = e.target.closest('#attendanceWelcomeBtnMeal');
         const snackHit = e.target.closest('#attendanceWelcomeBtnSnack');
-        if (!mealHit && !snackHit) return;
-        const next = mealHit ? 'meal' : 'snack';
-        if (next === welcomeChartKind) return;
+        let next = null;
+        if (reportHit && welcomeShowsReportTab()) next = 'report';
+        else if (mealHit) next = 'meal';
+        else if (snackHit) next = 'snack';
+        if (!next || next === welcomeChartKind) return;
         welcomeChartKind = next;
-        updateWelcomeMealSnackSwitchUi();
+        updateWelcomeKindSwitchUi();
         renderAttendanceWelcomeChartsArea();
     });
+}
+
+function bindWelcomeReportPanelOnce() {
+    const panel = document.getElementById('attendanceWelcomeReportContent');
+    if (!panel || panel.dataset.bound === '1') return;
+    panel.dataset.bound = '1';
+    panel.addEventListener('click', (e) => {
+        if (e.target.closest('.attendance-welcome-report-nav-btn')) return;
+        const dateStr = getWelcomeCurrentReportDate();
+        if (!dateStr || typeof window.openDietReportModal !== 'function') return;
+        closeAttendancePopup();
+        void window.openDietReportModal(dateStr);
+    });
+}
+
+function bindWelcomeReportDateNavOnce() {
+    const prevBtn = document.getElementById('attendanceWelcomeReportPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeReportNext');
+    if (!prevBtn || !nextBtn || prevBtn.dataset.bound === '1') return;
+    prevBtn.dataset.bound = '1';
+    nextBtn.dataset.bound = '1';
+
+    const navigate = async (delta) => {
+        if (welcomeChartKind !== 'report') return;
+        const nextIdx = welcomeReportIndex + delta;
+        if (nextIdx < 0 || nextIdx >= welcomeReportDates.length) return;
+
+        const uid = window.currentUser?.uid;
+        const dateStr = welcomeReportDates[nextIdx];
+        if (!uid || !dateStr) return;
+
+        welcomeReportIndex = nextIdx;
+        welcomeLatestReportDate = dateStr;
+        updateWelcomeReportDateNavUi();
+
+        const content = document.getElementById('attendanceWelcomeReportContent');
+        if (!content) return;
+
+        let data = welcomeReportDataCache.get(dateStr);
+        if (!data) {
+            content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+            const result = await fetchReadyDietReportByDate(uid, dateStr);
+            if (welcomeChartKind !== 'report' || welcomeReportDates[welcomeReportIndex] !== dateStr) return;
+            if (!result?.data) return;
+            data = result.data;
+            welcomeReportDataCache.set(dateStr, data);
+        }
+
+        content.innerHTML = renderWelcomeReportCardHtml(data);
+    };
+
+    prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void navigate(1);
+    });
+    nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void navigate(-1);
+    });
+}
+
+async function loadWelcomeReportAtIndex(uid, index) {
+    const dateStr = welcomeReportDates[index];
+    if (!uid || !dateStr) return false;
+
+    welcomeReportIndex = index;
+    welcomeLatestReportDate = dateStr;
+
+    let data = welcomeReportDataCache.get(dateStr);
+    if (!data) {
+        const result = await fetchReadyDietReportByDate(uid, dateStr);
+        if (!result?.data) return false;
+        data = result.data;
+        welcomeReportDataCache.set(dateStr, data);
+    }
+    return data;
+}
+
+async function renderWelcomeReportPanel() {
+    const panel = document.getElementById('attendanceWelcomeReportPanel');
+    const content = document.getElementById('attendanceWelcomeReportContent');
+    const vp = document.getElementById('attendanceWelcomeChartViewport');
+    const dots = document.getElementById('attendanceWelcomeChartDots');
+    if (!panel || !content) return;
+
+    panel.classList.remove('hidden');
+    if (vp) vp.classList.add('hidden');
+    if (dots) dots.classList.add('hidden');
+
+    const uid = window.currentUser?.uid;
+    if (!uid) {
+        resetWelcomeReportNavState();
+        content.innerHTML = `<div class="attendance-welcome-report-empty"><p class="text-xs font-bold text-slate-600 m-0">로그인이 필요해요</p></div>`;
+        updateWelcomeKindSwitchUi();
+        return;
+    }
+
+    content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+    updateWelcomeKindSwitchUi();
+
+    let dates = [];
+    try {
+        dates = await fetchReadyDietReportDates(uid);
+    } catch (e) {
+        console.warn('welcome diet report dates failed', e);
+    }
+
+    if (welcomeChartKind !== 'report') return;
+
+    welcomeReportDates = dates;
+    welcomeReportIndex = 0;
+    welcomeReportDataCache.clear();
+
+    if (dates.length === 0) {
+        resetWelcomeReportNavState();
+        content.innerHTML = `<div class="attendance-welcome-report-empty">
+            <p class="text-xs font-bold text-slate-700 m-0">아직 AI 리포트가 없어요</p>
+            <p class="text-[11px] text-slate-500 mt-1.5 mb-0 leading-snug">식사·간식 기록이 2건 이상인 날부터 분석돼요.</p>
+        </div>`;
+        updateWelcomeKindSwitchUi();
+        return;
+    }
+
+    const data = await loadWelcomeReportAtIndex(uid, 0);
+    if (welcomeChartKind !== 'report') return;
+
+    if (!data) {
+        resetWelcomeReportNavState();
+        content.innerHTML = `<div class="attendance-welcome-report-empty">
+            <p class="text-xs font-bold text-slate-700 m-0">아직 AI 리포트가 없어요</p>
+            <p class="text-[11px] text-slate-500 mt-1.5 mb-0 leading-snug">식사·간식 기록이 2건 이상인 날부터 분석돼요.</p>
+        </div>`;
+        updateWelcomeKindSwitchUi();
+        return;
+    }
+
+    welcomeReportDataCache.set(welcomeLatestReportDate, data);
+    content.innerHTML = renderWelcomeReportCardHtml(data);
+    updateWelcomeKindSwitchUi();
+    bindWelcomeReportPanelOnce();
+    bindWelcomeReportDateNavOnce();
 }
 
 function bindAttendanceWelcomeAnalysisMoreOnce() {
@@ -647,9 +933,25 @@ function renderAttendanceWelcomeChartsArea() {
     const track = document.getElementById('attendanceWelcomeChartTrack');
     const dots = document.getElementById('attendanceWelcomeChartDots');
     const vp = document.getElementById('attendanceWelcomeChartViewport');
+    const reportPanel = document.getElementById('attendanceWelcomeReportPanel');
     if (!wrap || !track || !dots || !vp) return;
 
-    const slides = getWelcomeWeekDonutSlides(7, welcomeChartKind);
+    updateWelcomeKindSwitchUi();
+    bindAttendanceWelcomeKindSwitchOnce();
+    bindAttendanceWelcomeAnalysisMoreOnce();
+
+    if (welcomeChartKind === 'report' && welcomeShowsReportTab()) {
+        wrap.classList.remove('hidden');
+        void renderWelcomeReportPanel();
+        return;
+    }
+
+    if (reportPanel) reportPanel.classList.add('hidden');
+    vp.classList.remove('hidden');
+    dots.classList.remove('hidden');
+
+    const chartKind = welcomeChartKind === 'snack' ? 'snack' : 'meal';
+    const slides = getWelcomeWeekDonutSlides(7, chartKind);
     const n = slides.length;
     track.dataset.slideCount = String(n);
     vp.dataset.slideCount = String(n);
@@ -673,9 +975,7 @@ function renderAttendanceWelcomeChartsArea() {
 
     wrap.classList.remove('hidden');
     track.style.transform = 'translateX(0)';
-    updateWelcomeMealSnackSwitchUi();
-    bindAttendanceWelcomeMealSnackSwitchOnce();
-    bindAttendanceWelcomeAnalysisMoreOnce();
+    updateWelcomeKindSwitchUi();
     bindAttendanceWelcomeChartsOnce();
 }
 
@@ -694,9 +994,19 @@ export function closeAttendancePopup() {
     if (welcomeTrack) welcomeTrack.style.transform = '';
     attendanceWelcomeSlideIdx = 0;
     attendanceWelcomeDragStartX = null;
-    welcomeChartKind = 'meal';
-    updateWelcomeMealSnackSwitchUi();
+    welcomeChartKind = getWelcomeDefaultChartKind();
+    resetWelcomeReportNavState();
+    const reportPanel = document.getElementById('attendanceWelcomeReportPanel');
+    const reportContent = document.getElementById('attendanceWelcomeReportContent');
+    if (reportPanel) reportPanel.classList.add('hidden');
+    if (reportContent) reportContent.innerHTML = '';
+    const chartVp = document.getElementById('attendanceWelcomeChartViewport');
+    const chartDots = document.getElementById('attendanceWelcomeChartDots');
+    if (chartVp) chartVp.classList.remove('hidden');
+    if (chartDots) chartDots.classList.remove('hidden');
+    updateWelcomeKindSwitchUi();
     document.body.classList.remove('attendance-popup-anim');
+    unlockAttendancePopupScroll();
     if (popup) popup.classList.add('hidden');
     try {
         if (typeof window.flushPendingContentPopup === 'function') window.flushPendingContentPopup();
@@ -812,7 +1122,10 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     textSvg.setAttribute('height', String(vbH));
 
     if (showWelcomeCharts) {
+        welcomeChartKind = getWelcomeDefaultChartKind();
+        resetWelcomeReportNavState();
         attendanceWelcomeSlideIdx = 0;
+        prefetchWelcomeLatestDietReport();
         renderAttendanceWelcomeChartsArea();
         attendanceContent?.classList.add('attendance-popup-welcome-charts');
     } else {
@@ -824,6 +1137,7 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     popup.classList.remove('hidden');
     void popup.offsetHeight;
     document.body.classList.add('attendance-popup-anim');
+    lockAttendancePopupScroll();
     return true;
 }
 
