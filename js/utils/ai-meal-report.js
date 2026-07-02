@@ -102,17 +102,21 @@ export function extractAnalyzedPhotoUrlsForDisplay(data, maxTotal = 3) {
     return urls.filter(Boolean).slice(0, maxTotal);
 }
 
+/** 리포트 카드·공유 캡처 공통 분석 사진 썸네일 크기(px) */
+export const AI_MEAL_REPORT_PHOTO_THUMB_PX = 72;
+
 function renderAiMealReportPhotosHtml(photoUrls, esc) {
     if (!photoUrls?.length) return '';
+    const sizeClass = 'h-[4.5rem] w-[4.5rem]';
     const cells = photoUrls
         .map(
             (url, i) =>
-                `<div class="aspect-square rounded-lg overflow-hidden border border-slate-200/90 bg-slate-100">
+                `<div class="${sizeClass} shrink-0 rounded-lg overflow-hidden border border-slate-200/90 bg-slate-100">
                     <img src="${esc(url)}" alt="분석 사진 ${i + 1}" class="w-full h-full object-cover" loading="lazy" decoding="async">
                 </div>`
         )
         .join('');
-    return `<div class="grid grid-cols-3 gap-1.5">${cells}</div>`;
+    return `<div class="flex flex-wrap justify-center gap-2.5">${cells}</div>`;
 }
 
 /**

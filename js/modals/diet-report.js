@@ -3,7 +3,7 @@
  */
 import { db, appId, callableFunctions } from '../firebase.js';
 import { dbOps } from '../db.js';
-import { showToast, showLoading, hideLoading } from '../ui.js';
+import { showToast } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
@@ -11,7 +11,8 @@ import {
     parseAiMealReport,
     extractAiMealReportSource,
     renderAiMealReportCardHtml,
-    extractAnalyzedPhotoUrlsForDisplay
+    extractAnalyzedPhotoUrlsForDisplay,
+    AI_MEAL_REPORT_PHOTO_THUMB_PX
 } from '../utils/ai-meal-report.js';
 import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage, shareBlobsToExternal } from '../utils.js';
 import { MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
@@ -32,6 +33,13 @@ let _currentReportDoc = null;
 /** SNS 공유용 캡처 이미지(클릭 직후 공유 시트 열기 — 사용자 제스처 유지) */
 let _snsShareBlob = null;
 let _snsShareBlobKey = '';
+/** @type {Promise<void> | null} */
+let _snsShareCachePromise = null;
+let _snsShareCachePromiseKey = '';
+/** @type {Promise<string> | null} */
+let _shareCaptureFontCssPromise = null;
+
+const DIET_REPORT_SHARE_CAPTURE_SCALE = 2;
 
 /** @type {Map<string, boolean>} */
 const _aiDietReportReadyByDate = new Map();
@@ -173,26 +181,79 @@ function clearSnsShareBlobCache() {
     _snsShareBlobKey = '';
 }
 
+function getShareCaptureFontCss() {
+    if (!_shareCaptureFontCssPromise) {
+        _shareCaptureFontCssPromise = (async () => {
+            try {
+                const fredokaRes = await fetch(
+                    'https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap'
+                );
+                return (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+            } catch (_) {
+                return MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+            }
+        })();
+    }
+    return _shareCaptureFontCssPromise;
+}
+
+function setSnsShareButtonPreparing(preparing) {
+    const btn = document.getElementById('dietReportSnsShareBtn');
+    if (!btn || btn.classList.contains('hidden')) return;
+    const icon = btn.querySelector('i');
+    if (!icon) return;
+    if (preparing) {
+        btn.disabled = true;
+        icon.className = 'fa-solid fa-spinner fa-spin text-[1.05rem]';
+        btn.setAttribute('aria-label', '공유 이미지 준비 중');
+        btn.title = '공유 이미지 준비 중…';
+    } else {
+        btn.disabled = false;
+        icon.className = 'fa-solid fa-share-nodes text-[1.05rem]';
+        btn.setAttribute('aria-label', '다른 SNS에 공유');
+        btn.title = '다른 SNS에 공유';
+    }
+}
+
 async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
     if (!dateStr || !report) {
         clearSnsShareBlobCache();
         return;
     }
-    const cacheKey = `${dateStr}:${report.title || ''}:${report.score ?? ''}`;
+    const cacheKey = `${dateStr}:${report.title || ''}:${report.score ?? ''}:${reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc).join('|') : ''}`;
     if (_snsShareBlob && _snsShareBlobKey === cacheKey) return;
 
-    try {
-        const canvas = await captureDietReportShareCanvas(dateStr, report, reportDoc);
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
-        if (!blob) {
+    if (_snsShareCachePromise && _snsShareCachePromiseKey === cacheKey) {
+        await _snsShareCachePromise;
+        return;
+    }
+
+    setSnsShareButtonPreparing(true);
+    _snsShareCachePromiseKey = cacheKey;
+    _snsShareCachePromise = (async () => {
+        try {
+            const canvas = await captureDietReportShareCanvas(dateStr, report, reportDoc);
+            const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+            if (!blob) {
+                clearSnsShareBlobCache();
+                return;
+            }
+            _snsShareBlob = blob;
+            _snsShareBlobKey = cacheKey;
+        } catch (e) {
+            console.warn('diet report SNS share cache failed', e);
             clearSnsShareBlobCache();
-            return;
         }
-        _snsShareBlob = blob;
-        _snsShareBlobKey = cacheKey;
-    } catch (e) {
-        console.warn('diet report SNS share cache failed', e);
-        clearSnsShareBlobCache();
+    })();
+
+    try {
+        await _snsShareCachePromise;
+    } finally {
+        if (_snsShareCachePromiseKey === cacheKey) {
+            setSnsShareButtonPreparing(false);
+            _snsShareCachePromise = null;
+            _snsShareCachePromiseKey = '';
+        }
     }
 }
 
@@ -200,7 +261,11 @@ function setSnsShareButton(visible) {
     const btn = document.getElementById('dietReportSnsShareBtn');
     if (!btn) return;
     btn.classList.toggle('hidden', !visible);
-    btn.disabled = false;
+    if (!visible) {
+        setSnsShareButtonPreparing(false);
+    } else if (!_snsShareCachePromise) {
+        btn.disabled = false;
+    }
 }
 
 const DIET_REPORT_SHARE_BTN_BASE =
@@ -454,48 +519,44 @@ export function closeDietReportModal() {
     setModalVisible(false);
 }
 
-/** Firebase Storage URL → base64 (html2canvas CORS taint 방지, 인사이트 공유와 동일) */
+async function resolveCaptureImageDataUrl(img) {
+    if (img.src.includes('firebasestorage.googleapis.com')) {
+        const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
+        return result?.data?.dataUrl || null;
+    }
+    const res = await fetch(img.src, { mode: 'cors' });
+    const blob = await res.blob();
+    return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+    });
+}
+
+function applyDataUrlToCaptureImage(img, dataUrl) {
+    return new Promise((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('이미지 로드 실패'));
+        img.src = dataUrl;
+        if (img.complete && img.naturalWidth > 0) resolve();
+    });
+}
+
+/** Firebase Storage URL → base64 (html2canvas CORS taint 방지) — 사진 병렬 변환 */
 async function hydrateCaptureImagesAsBase64(root) {
     if (!root) return;
-    const imgs = root.querySelectorAll('img[src^="http"]');
-    const loadPromises = [];
-    for (const img of imgs) {
-        try {
-            if (img.src.includes('firebasestorage.googleapis.com')) {
-                const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
-                const dataUrl = result?.data?.dataUrl;
-                if (!dataUrl) continue;
-                loadPromises.push(
-                    new Promise((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('이미지 로드 실패'));
-                        img.src = dataUrl;
-                        if (img.complete && img.naturalWidth > 0) resolve();
-                    })
-                );
-            } else {
-                const res = await fetch(img.src, { mode: 'cors' });
-                const blob = await res.blob();
-                const dataUrl = await new Promise((resolve) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result);
-                    reader.readAsDataURL(blob);
-                });
-                loadPromises.push(
-                    new Promise((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('이미지 로드 실패'));
-                        img.src = dataUrl;
-                        if (img.complete && img.naturalWidth > 0) resolve();
-                    })
-                );
+    const imgs = [...root.querySelectorAll('img[src^="http"]')];
+    await Promise.all(
+        imgs.map(async (img) => {
+            try {
+                const dataUrl = await resolveCaptureImageDataUrl(img);
+                if (!dataUrl) return;
+                await applyDataUrlToCaptureImage(img, dataUrl);
+            } catch (e) {
+                console.warn('diet report share image base64 failed:', e);
             }
-        } catch (e) {
-            console.warn('diet report share image base64 failed:', e);
-        }
-    }
-    await Promise.all(loadPromises).catch(() => {});
-    await new Promise((r) => setTimeout(r, 150));
+        })
+    );
 }
 
 /** 리포트 카드 → 캡처용 인라인 스타일 HTML */
@@ -533,11 +594,12 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         : '';
 
     const urls = (photoUrls || []).filter(Boolean).slice(0, 3);
+    const thumb = AI_MEAL_REPORT_PHOTO_THUMB_PX;
     const photosHtml = urls.length
-        ? `<div style="display:flex;gap:0;width:100%;background:#f1f5f9;">${urls
+        ? `<div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;padding:10px 18px 6px;background:#f8fafc;">${urls
               .map(
                   (url) =>
-                      `<div style="flex:1;min-width:0;aspect-ratio:1;overflow:hidden;">
+                      `<div style="width:${thumb}px;height:${thumb}px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;background:#f1f5f9;">
                     <img src="${e(url)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">
                 </div>`
               )
@@ -598,18 +660,15 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
     document.body.appendChild(holder);
 
     try {
-        await hydrateCaptureImagesAsBase64(target);
-        await document.fonts.ready;
-        let fontCSS = '';
-        try {
-            const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
-            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
-        } catch (_) {
-            /* ignore */
-        }
+        const [fontCSS] = await Promise.all([
+            getShareCaptureFontCss(),
+            hydrateCaptureImagesAsBase64(target),
+            document.fonts.ready
+        ]);
 
         return await captureWithGhostStrategy(target, {
             captureWidth: 420,
+            scale: DIET_REPORT_SHARE_CAPTURE_SCALE,
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');
@@ -677,14 +736,10 @@ async function shareDietReportToSns() {
 
     const snsBtn = document.getElementById('dietReportSnsShareBtn');
     _sharing = true;
-    if (snsBtn) snsBtn.disabled = true;
+    if (snsBtn && !_snsShareCachePromise) snsBtn.disabled = true;
 
     try {
-        if (!_snsShareBlob) {
-            showLoading('공유 준비 중…');
-            await refreshSnsShareBlobCache(_currentDate, _currentReport, _currentReportDoc);
-            hideLoading();
-        }
+        await refreshSnsShareBlobCache(_currentDate, _currentReport, _currentReportDoc);
         if (!_snsShareBlob) {
             showToast('공유 이미지를 만들지 못했어요.', 'error');
             return;
@@ -701,9 +756,8 @@ async function shareDietReportToSns() {
             showToast(e?.message || 'SNS 공유에 실패했어요.', 'error');
         }
     } finally {
-        hideLoading();
         _sharing = false;
-        if (snsBtn) snsBtn.disabled = false;
+        if (snsBtn && !_snsShareCachePromise) snsBtn.disabled = false;
     }
 }
 
