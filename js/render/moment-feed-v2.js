@@ -138,8 +138,12 @@ export function buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, 
         const { y, mo, day, wd } = getMomentV2DateParts(p);
         const eid = p?.entryId || groupEntryId;
         const isDj = isDailyJournalSharePhoto(p, eid);
+        const isDietReportShare = isInsightShare && isDietReportInsightShare(p);
         const slotT = getMomentV2SlotWheelLabel(p, isBestShare, isDailyShare, isInsightShare, eid);
-        const menuBase = isBestShare || isDailyShare || isDj ? '' : (captionTextPlain || '').trim() || '—';
+        const menuBase =
+            isBestShare || isDailyShare || isDj || isDietReportShare
+                ? ''
+                : (captionTextPlain || '').trim() || '—';
         const ac = buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId);
         return { y, mo, da: day, wd, slot: slotT, menu: menuBase, ac };
     });
@@ -248,9 +252,10 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags, en
     const { y, mo, day, wd } = getMomentV2DateParts(photo);
     const eid = entryId != null && entryId !== '' ? entryId : photo?.entryId;
     const isDailyJournalShare = isDailyJournalSharePhoto(photo, eid);
+    const isDietReportShare = isInsightShare && isDietReportInsightShare(photo);
     const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, eid);
     let menuCol = '';
-    if (!isBestShare && !isDailyShare && !isDailyJournalShare) {
+    if (!isBestShare && !isDailyShare && !isDailyJournalShare && !isDietReportShare) {
         const menu = (menuCaptionPlain || '').trim() || '—';
         menuCol = `<div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
             <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">

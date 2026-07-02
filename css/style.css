@@ -5376,6 +5376,11 @@ body.mealog-scroll-locked {
     right: 0;
     overscroll-behavior: none;
 }
+html.mealog-scroll-locked #mainApp,
+html.mealog-scroll-locked #landingPage {
+    pointer-events: none;
+    touch-action: none;
+}
 #successPopup:not(.hidden),
 #attendancePopup:not(.hidden) {
     touch-action: none;

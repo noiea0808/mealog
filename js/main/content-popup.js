@@ -17,6 +17,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { renderFormattedContent } from '../render/utils.js';
 import { getMealogClientEnv } from '../utils.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 function setContentPopupWidth() {
     const inner = document.getElementById('contentPopupModalInner');
@@ -241,6 +242,7 @@ export function registerContentPopup() {
                 };
             }
             updatePopupNavButtons();
+            lockBodyScroll();
             modal.classList.remove('hidden');
         } catch (e) {
             console.warn('콘텐츠 팝업 조회 실패:', e);
@@ -280,5 +282,6 @@ export function registerContentPopup() {
             nextBtn.disabled = false;
         }
         modal.classList.add('hidden');
+        unlockBodyScroll();
     };
 }

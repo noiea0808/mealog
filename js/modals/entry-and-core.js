@@ -74,6 +74,7 @@ import {
     openTimeSourceSheet
 } from '../time-source-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
@@ -1621,6 +1622,7 @@ export async function openModal(date, slotId, entryId = null) {
 
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
+            lockBodyScroll();
             entryModal.classList.remove('hidden');
             window.__entryModalOpenGeneration = (window.__entryModalOpenGeneration || 0) + 1;
             entryModal.classList.remove('keyboard-open');
@@ -1660,6 +1662,7 @@ export function closeModal() {
         entryModal.style.height = '';
         entryModal.style.top = '';
         entryModal.classList.add('hidden');
+        unlockBodyScroll();
     }
     syncEntryModalBodyClass();
     // 모달을 닫을 때 로딩 오버레이도 숨김
@@ -2194,6 +2197,7 @@ export async function saveEntry() {
             typeof window.__entryModalOpenGeneration === 'number' ? window.__entryModalOpenGeneration : 0;
         if (entryModal) {
             entryModal.classList.add('hidden');
+            unlockBodyScroll();
             syncEntryModalBodyClass();
         }
 
@@ -2861,6 +2865,7 @@ export async function saveEntry() {
                 saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen;
             if (!staleWouldCloseFresh) {
                 entryModalFinally.classList.add('hidden');
+                unlockBodyScroll();
                 syncEntryModalBodyClass();
                 console.log('finally 블록에서 모달 닫기');
             }

@@ -21,6 +21,7 @@ import {
     isDietReportInsightShare
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -162,8 +163,11 @@ function formatReportGeneratedAt(value) {
 function setModalVisible(visible) {
     const modal = document.getElementById('dietReportModal');
     if (!modal) return;
+    const wasVisible = !modal.classList.contains('hidden');
     modal.classList.toggle('hidden', !visible);
     document.body.classList.toggle('diet-report-modal-open', visible);
+    if (visible && !wasVisible) lockBodyScroll();
+    else if (!visible && wasVisible) unlockBodyScroll();
 }
 
 function setModalSubtitle(text) {

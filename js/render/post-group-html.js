@@ -48,7 +48,10 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     if (isDailyJournalShare) {
         menuLine = '';
     } else if (isBestShare || isDailyShare || isInsightShare) {
-        menuLine = isBestShare || isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+        menuLine =
+            isBestShare || isDailyShare || isDietReportInsightShare(photo)
+                ? ''
+                : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
     } else if (isSnack) {
         menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
     } else {

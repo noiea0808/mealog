@@ -13,6 +13,7 @@ import {
 import { formatMealogDateLabel } from '../utils/date-label.js';
 import { invalidateTimelineDateSection, updateTimelineShareIndicators } from '../render/index.js';
 import { isDemoUser } from '../demo-account.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     mealClock24FromAmPmClock,
@@ -591,13 +592,15 @@ export function openDailyJournalModal(dateStr) {
     updateDailyJournalShareIndicator();
     updateDailyJournalModalActions(dailyJournalHasContent(entry));
     modal.classList.remove('hidden');
-    document.body.classList.add('overflow-hidden', 'daily-journal-modal-open');
+    lockBodyScroll();
+    document.body.classList.add('daily-journal-modal-open');
 }
 
 export function closeDailyJournalModal() {
     const modal = document.getElementById('dailyJournalModal');
     if (modal) modal.classList.add('hidden');
-    document.body.classList.remove('overflow-hidden', 'daily-journal-modal-open');
+    unlockBodyScroll();
+    document.body.classList.remove('daily-journal-modal-open');
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];
     appState.dailyJournalWantsToShare = false;

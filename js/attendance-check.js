@@ -7,7 +7,7 @@
 import { isDemoUser } from './demo-account.js';
 import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
 import { getRecordCountForIso } from './meal-record-count.js';
-import { showAttendancePopup } from './ui.js';
+import { showAttendancePopup, prepareWelcomeReportState } from './ui.js';
 import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -859,7 +859,11 @@ export function scheduleAttendanceCheckIfNeeded() {
                 if (!passesWelcomeFrequency(uid, picked.markKind, sub.frequency)) return;
                 if (!shouldShowWelcomeNow()) return;
                 const streakHead = resolveHasRecordHeadline(sub, picked.slot, streak);
-                if (showAttendancePopup(streakHead, '', picked.welcomeIcon)) {
+                const welcomePrepared = await prepareWelcomeReportState(uid);
+                if (!window.currentUser || window.currentUser.uid !== uid || window.currentUser.isAnonymous) return;
+                if (!isMainScreenVisibleForWelcome()) return;
+                if (!shouldShowWelcomeNow()) return;
+                if (showAttendancePopup(streakHead, '', picked.welcomeIcon, welcomePrepared)) {
                     markWelcomeForFrequency(uid, picked.markKind, sub.frequency);
                 }
             } finally {

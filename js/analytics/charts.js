@@ -3,6 +3,7 @@ import { logUsageMetric } from '../usage-metrics.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getDayName } from './date-utils.js';
 
 const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
@@ -760,10 +761,12 @@ export function openDetailModal(key, title) {
     }
     
     document.getElementById('detailModal').classList.remove('hidden');
+    lockBodyScroll();
 }
 
 export function closeDetailModal() {
     document.getElementById('detailModal').classList.add('hidden');
+    unlockBodyScroll();
     if (window.currentDetailChart) {
         window.currentDetailChart.destroy();
         window.currentDetailChart = null;

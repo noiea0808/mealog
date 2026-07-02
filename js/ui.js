@@ -635,6 +635,39 @@ function getWelcomeDefaultChartKind() {
     return welcomeShowsReportTab() ? 'report' : 'meal';
 }
 
+/**
+ * 웰컴 차트 표시 전 리포트 날짜·본문을 미리 로드.
+ * 리포트 없으면 식사 분석 탭, 있으면 전체 리포트를 캐시한 뒤 팝업에서 즉시 렌더.
+ * @returns {Promise<{ chartKind: 'report'|'meal', dates: string[], dataCache: Map<string, object> }>}
+ */
+export async function prepareWelcomeReportState(uid) {
+    const empty = { chartKind: /** @type {'meal'} */ ('meal'), dates: [], dataCache: new Map() };
+    if (!uid || !welcomeShowsReportTab()) return empty;
+
+    let dates = [];
+    try {
+        dates = await fetchReadyDietReportDates(uid);
+    } catch (e) {
+        console.warn('prepareWelcomeReportState dates failed', e);
+        return empty;
+    }
+
+    if (!dates.length) return empty;
+
+    const dataCache = new Map();
+    await Promise.all(
+        dates.map(async (dateStr) => {
+            const result = await fetchReadyDietReportByDate(uid, dateStr);
+            if (result?.data) dataCache.set(dateStr, result.data);
+        })
+    );
+
+    const validDates = dates.filter((d) => dataCache.has(d));
+    if (!validDates.length) return empty;
+
+    return { chartKind: 'report', dates: validDates, dataCache };
+}
+
 function prefetchWelcomeLatestDietReport() {
     const uid = window.currentUser?.uid;
     if (!uid || !welcomeShowsReportTab()) return;
@@ -801,6 +834,16 @@ async function renderWelcomeReportPanel() {
         resetWelcomeReportNavState();
         content.innerHTML = `<div class="attendance-welcome-report-empty"><p class="text-xs font-bold text-slate-600 m-0">로그인이 필요해요</p></div>`;
         updateWelcomeKindSwitchUi();
+        return;
+    }
+
+    const preloadedDate = welcomeReportDates[welcomeReportIndex];
+    if (preloadedDate && welcomeReportDataCache.has(preloadedDate)) {
+        welcomeLatestReportDate = preloadedDate;
+        content.innerHTML = renderWelcomeReportCardHtml(welcomeReportDataCache.get(preloadedDate));
+        updateWelcomeKindSwitchUi();
+        bindWelcomeReportPanelOnce();
+        bindWelcomeReportDateNavOnce();
         return;
     }
 
@@ -1024,9 +1067,10 @@ const ATTENDANCE_POPUP_MAX_AUX_LINES = 12;
  * @param {string} line1 첫 블록(멀티라인 가능)
  * @param {string} [line2] 추가 블록(멀티라인 가능)
  * @param {'noRecord'|'hasRecord'|'hasRecordRestart'} [welcomeIcon] 기록 없음=하트, 연속 있음=따봉, 어제 끊김=새싹
+ * @param {{ chartKind?: 'report'|'meal', dates?: string[], dataCache?: Map<string, object> }|null} [welcomePrepared] prepareWelcomeReportState 결과
  * @returns {boolean} 실제로 팝업을 띄웠으면 true(빈 문구·DOM 없음 등으로 스킵이면 false)
  */
-export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord') {
+export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord', welcomePrepared = null) {
     const splitLines = (s) => {
         const out = [];
         if (s == null || s === '') return out;
@@ -1122,10 +1166,23 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     textSvg.setAttribute('height', String(vbH));
 
     if (showWelcomeCharts) {
-        welcomeChartKind = getWelcomeDefaultChartKind();
-        resetWelcomeReportNavState();
         attendanceWelcomeSlideIdx = 0;
-        prefetchWelcomeLatestDietReport();
+        if (welcomePrepared) {
+            welcomeChartKind = welcomePrepared.chartKind === 'report' ? 'report' : 'meal';
+            welcomeReportDates = welcomePrepared.dates ? welcomePrepared.dates.slice() : [];
+            welcomeReportIndex = 0;
+            welcomeLatestReportDate = welcomeReportDates[0] || '';
+            welcomeReportDataCache.clear();
+            if (welcomePrepared.dataCache) {
+                for (const [k, v] of welcomePrepared.dataCache) {
+                    welcomeReportDataCache.set(k, v);
+                }
+            }
+        } else {
+            welcomeChartKind = getWelcomeDefaultChartKind();
+            resetWelcomeReportNavState();
+            prefetchWelcomeLatestDietReport();
+        }
         renderAttendanceWelcomeChartsArea();
         attendanceContent?.classList.add('attendance-popup-welcome-charts');
     } else {

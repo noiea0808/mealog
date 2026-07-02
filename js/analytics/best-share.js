@@ -12,6 +12,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { dbOps } from '../db.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
@@ -938,6 +939,7 @@ export async function openShareBestModal() {
     preview.innerHTML = screenshotHtml;
     
     // 모달 열기
+    lockBodyScroll();
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -966,6 +968,7 @@ export function closeShareBestModal() {
     const modal = document.getElementById('bestShareModal');
     if (modal) {
         modal.classList.add('hidden');
+        unlockBodyScroll();
     }
 }
 
@@ -975,6 +978,7 @@ export function showBestSharePeriodNotice(message) {
     const messageEl = document.getElementById('bestSharePeriodNoticeMessage');
     if (modal && messageEl) {
         messageEl.textContent = message || '해당 기간이 더 경과된 후에 베스트 공유가 가능해요.';
+        lockBodyScroll();
         modal.classList.remove('hidden');
     }
 }
@@ -984,6 +988,7 @@ export function closeBestSharePeriodNotice() {
     const modal = document.getElementById('bestSharePeriodNoticeModal');
     if (modal) {
         modal.classList.add('hidden');
+        unlockBodyScroll();
     }
 }
 
@@ -1031,6 +1036,7 @@ export async function openEditBestShareModal(photoUrl) {
     preview.innerHTML = existingImageHtml;
     
     // 모달 열기
+    lockBodyScroll();
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
