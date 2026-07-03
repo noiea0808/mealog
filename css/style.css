@@ -144,9 +144,19 @@ body:has(#searchInput:focus) #navigationBarOverlay,
 body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
     display: block !important;
 }
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
+body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
+}
+/* 식사 기록 모달 열림: 입력 포커스로 body padding·배경 chrome이 튀지 않도록 전역 규칙 예외 */
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #mainAppHeader,
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #statusBarOverlay,
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #trackerSection:not(.hidden) {
+    display: block !important;
 }
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
@@ -2307,6 +2317,18 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 }
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
+}
+/* 저장 중: 스크롤 영역·액션 버튼 비활성 (모달은 열린 채 스피너 표시) */
+#entryModal.entry-modal-saving #modalScrollArea {
+    pointer-events: none;
+    opacity: 0.72;
+}
+#entryModal.entry-modal-saving #entryModalActions button:not(#btnSave) {
+    pointer-events: none;
+    opacity: 0.45;
+}
+#entryModal.entry-modal-saving #btnSave {
+    cursor: wait;
 }
 /* 하루 기록 모달: 시트 하단 + 액션바에 제스처/네비 세이프 영역 */
 #dailyJournalModal {

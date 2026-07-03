@@ -757,6 +757,47 @@ export function setRecordPhotoAspectRatio(value) {
     renderPhotoPreviews(); // 등록 화면 다중 미리보기도 선택 비율로 갱신
 }
 
+/** 기록 모달 입력 포커스 해제(칩·태그 탭 시 키보드 닫기) */
+function dismissEntryModalFocusedInput() {
+    const entryModal = document.getElementById('entryModal');
+    if (!entryModal || entryModal.classList.contains('hidden')) return;
+    const active = document.activeElement;
+    if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
+        active.blur();
+    }
+}
+
+/** 저장 중 모달 UI (입력·닫기 비활성, 저장 버튼 스피너) */
+function setEntryModalSavingState(saving) {
+    const entryModal = document.getElementById('entryModal');
+    if (!entryModal) return;
+    entryModal.classList.toggle('entry-modal-saving', saving);
+    entryModal.setAttribute('aria-busy', saving ? 'true' : 'false');
+    const btnSave = document.getElementById('btnSave');
+    const btnDelete = document.getElementById('btnDelete');
+    const closeBtn = entryModal.querySelector('button[onclick*="closeModal"]');
+    if (btnSave) {
+        btnSave.disabled = saving;
+        if (saving) {
+            if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
+            btnSave.innerHTML =
+                '<i class="fa-solid fa-spinner fa-spin text-sm" aria-hidden="true"></i><span class="mt-0.5">저장 중…</span>';
+        } else if (btnSave.dataset.defaultHtml) {
+            btnSave.innerHTML = btnSave.dataset.defaultHtml;
+        }
+    }
+    if (btnDelete) btnDelete.disabled = saving;
+    if (closeBtn) closeBtn.disabled = saving;
+}
+
+/** 저장 성공 후 모달 닫기 (저장 중 사용자가 새 모달을 연 경우 stale 완료는 무시) */
+function finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen) {
+    const gen = window.__entryModalOpenGeneration || 0;
+    if (saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen) return;
+    setEntryModalSavingState(false);
+    closeModal();
+}
+
 /** 포커스된 입력이 고정 모달 안에 있을 때, WebView가 텍스트 레이어를 안 그리는 경우 재페인트 유도 */
 function nudgeEntryModalInputRepaint(entryModal) {
     const el = document.activeElement;
@@ -780,6 +821,9 @@ function initEntryModalKeyboardHandling(entryModal) {
     let lastAppliedVh = NaN;
     let lastAppliedVtop = NaN;
     let viewportGeomRaf = null;
+    let viewportCheckTimer = null;
+
+    const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
     const applyViewportGeometry = (vh, vtop) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
@@ -828,20 +872,24 @@ function initEntryModalKeyboardHandling(entryModal) {
             nudgeEntryModalInputRepaint(entryModal);
         });
     });
+    const scheduleViewportCheck = () => {
+        if (viewportCheckTimer != null) clearTimeout(viewportCheckTimer);
+        requestAnimationFrame(() => {
+            viewportCheckTimer = setTimeout(() => {
+                viewportCheckTimer = null;
+                checkViewport();
+            }, 80);
+        });
+    };
+
     const setKeyboardOpen = (open) => {
         if (open) {
             entryModal.classList.add('keyboard-open');
-            // focusin 직후에는 visualViewport가 아직 키보드 이전 값이라 height/top이 한 번 틀어지고
-            // 첫 필드만 상태창 인근까지 밀리는 경우가 있음 → 동기 1회 적용 생략, rAF/지연으로 맞춤
+            // focusin 직후 visualViewport가 아직 키보드 이전 값 → rAF+debounce로 geometry 맞춤
             lastAppliedVh = NaN;
             lastAppliedVtop = NaN;
-            const bump = () => scheduleViewportGeometryFromVv();
-            bump();
-            requestAnimationFrame(() => {
-                bump();
-                requestAnimationFrame(bump);
-            });
-            [16, 50, 100, 200, 350].forEach((ms) => setTimeout(bump, ms));
+            scheduleViewportGeometryFromVv();
+            scheduleViewportCheck();
         } else {
             entryModal.classList.remove('keyboard-open');
             lastAppliedVh = NaN;
@@ -849,6 +897,10 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (viewportGeomRaf != null) {
                 cancelAnimationFrame(viewportGeomRaf);
                 viewportGeomRaf = null;
+            }
+            if (viewportCheckTimer != null) {
+                clearTimeout(viewportCheckTimer);
+                viewportCheckTimer = null;
             }
             entryModal.style.height = '';
             entryModal.style.top = '';
@@ -863,48 +915,30 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (e.target.matches('input, textarea')) setKeyboardOpen(true);
     });
     entryModal.addEventListener('focusout', (e) => {
-        if (e.target.matches('input, textarea')) {
-            [100, 300, 500].forEach(ms => setTimeout(() => {
-                if (entryModal.classList.contains('hidden')) return;
-                const vh = window.visualViewport?.height ?? window.innerHeight;
-                const threshold = (baselineHeight || window.innerHeight) * 0.85;
-                if (vh >= threshold) setKeyboardOpen(false);
-            }, ms));
-        }
+        if (e.target.matches('input, textarea')) scheduleViewportCheck();
     });
+    const checkViewport = () => {
+        if (entryModal.classList.contains('hidden')) return;
+        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const threshold = getViewportThreshold();
+        if (vh >= threshold) {
+            setKeyboardOpen(false);
+            return;
+        }
+        // 키보드가 아직 올라와 있으면 포커스 유무와 관계없이 geometry 유지 (칩 탭 등 focusout 깜빡임 방지)
+        if (!entryModal.classList.contains('keyboard-open')) {
+            entryModal.classList.add('keyboard-open');
+            lastAppliedVh = NaN;
+            lastAppliedVtop = NaN;
+        }
+        if (imeComposing) return;
+        scheduleViewportGeometryFromVv();
+    };
     if (window.visualViewport) {
-        const checkViewport = () => {
-            if (entryModal.classList.contains('hidden')) return;
-            const vh = window.visualViewport.height;
-            const vtop = window.visualViewport?.offsetTop ?? 0;
-            const active = document.activeElement;
-            const isInputFocused = active && entryModal.contains(active) && (active.matches('input, textarea') || active.isContentEditable);
-            const threshold = (baselineHeight || window.innerHeight) * 0.85;
-            const viewportRestored = vh >= threshold;
-            if (viewportRestored) {
-                setKeyboardOpen(false);
-            } else if (isInputFocused) {
-                entryModal.classList.add('keyboard-open');
-                // IME 조합 중에는 fixed 모달 height/top 변경 금지 (기존엔 setKeyboardOpen(true)로 조합 중에도 갱신되어 미표시 유발)
-                if (imeComposing) return;
-                scheduleViewportGeometryFromVv();
-            } else {
-                setKeyboardOpen(false);
-            }
-        };
-        const runCheck = () => {
-            [0, 100, 250, 400].forEach(ms => setTimeout(checkViewport, ms));
-        };
-        window.visualViewport.addEventListener('resize', runCheck);
-        window.visualViewport.addEventListener('scroll', runCheck);
+        window.visualViewport.addEventListener('resize', scheduleViewportCheck);
+        window.visualViewport.addEventListener('scroll', scheduleViewportCheck);
     }
-    window.addEventListener('resize', () => {
-        if (!entryModal.classList.contains('hidden') && entryModal.classList.contains('keyboard-open')) {
-            const vh = window.visualViewport?.height ?? window.innerHeight;
-            const threshold = (baselineHeight || window.innerHeight) * 0.85;
-            if (vh >= threshold) setKeyboardOpen(false);
-        }
-    });
+    window.addEventListener('resize', scheduleViewportCheck);
 }
 
 // 카카오 SDK 로드 함수
@@ -1250,6 +1284,7 @@ export async function openModal(date, slotId, entryId = null) {
                 btnSave.disabled = false;
                 btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
                 btnSave.innerHTML = '<span>' + (entryId ? '수정 완료' : '기록 완료') + '</span>';
+                delete btnSave.dataset.defaultHtml;
                 btnSave.removeAttribute('title');
             }
         }
@@ -1622,6 +1657,7 @@ export async function openModal(date, slotId, entryId = null) {
 
         const entryModal = document.getElementById('entryModal');
         if (entryModal) {
+            setEntryModalSavingState(false);
             lockBodyScroll();
             entryModal.classList.remove('hidden');
             window.__entryModalOpenGeneration = (window.__entryModalOpenGeneration || 0) + 1;
@@ -1655,9 +1691,11 @@ export async function openModal(date, slotId, entryId = null) {
 }
 
 export function closeModal() {
+    if (document.getElementById('entryModal')?.classList.contains('entry-modal-saving')) return;
     closeTimeSourceSheets();
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
+        setEntryModalSavingState(false);
         entryModal.classList.remove('keyboard-open');
         entryModal.style.height = '';
         entryModal.style.top = '';
@@ -1799,7 +1837,9 @@ export async function saveEntry() {
     const entryModal = document.getElementById('entryModal');
     /** openModal이 열릴 때마다 증가. 저장 비동기 완료 시점에 사용자가 새 모달을 열었는지 구분 */
     let saveStartedUnderModalGen = null;
-    
+
+    if (entryModal?.classList.contains('entry-modal-saving')) return;
+
     // 모바일 IME(한글 등) 조합 중인 텍스트가 input.value에 반영되도록 blur 후 대기
     // 스페이스/선택 전에 '기록 완료'를 누르면 조합 중인 글자가 누락되는 문제 방지
     const active = document.activeElement;
@@ -2192,14 +2232,10 @@ export async function saveEntry() {
         
         console.log('저장 시작:', record);
 
-        // 진행 상태는 타임라인 슬롯 텍스트 왼쪽 인라인 스피너로만 표시 (전역 오버레이 미사용)
+        // 진행 상태: 모달은 열린 채 저장 UI + 타임라인 슬롯 인라인 스피너
         saveStartedUnderModalGen =
             typeof window.__entryModalOpenGeneration === 'number' ? window.__entryModalOpenGeneration : 0;
-        if (entryModal) {
-            entryModal.classList.add('hidden');
-            unlockBodyScroll();
-            syncEntryModalBodyClass();
-        }
+        setEntryModalSavingState(true);
 
         // 현재 탭과 편집 날짜를 미리 저장 (상태 초기화 전에)
         const currentTab = state.currentTab;
@@ -2288,18 +2324,8 @@ export async function saveEntry() {
         // 상태 초기화 전에 originalSharedPhotos 확인
         const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
         let sharedPhotosUpdated = false;
-        
-        // 상태 초기화 (모달 닫기 직후)
-        state.currentEditingId = null;
-        state.currentPhotos = [];
-        state.currentPhotoMeta = [];
-        state.entryMealClockSourceMain = null;
-        state.entryMealClockSourceSnack = null;
-        state.sharedPhotos = [];
-        state.originalSharedPhotos = [];
-        state.wantsToShare = false;
-        
-        // 저장 실행 (모달은 닫힌 상태, 타임라인에 인라인 스피너 표시)
+
+        // 저장 실행 (모달 열린 채, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
         /** 사진 N장 Storage + 재저장 상한 — grace 칩 전환(30초)과 동일 티밍 요청에 맞춤 */
@@ -2637,6 +2663,7 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
+            finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -2754,6 +2781,7 @@ export async function saveEntry() {
             }
         } catch (saveError) {
             console.error('dbOps.save 오류:', saveError);
+            setEntryModalSavingState(false);
             try {
                 showToast(getUserFacingErrorMessage(saveError, 'save'), 'error');
             } catch (_) {
@@ -2835,40 +2863,10 @@ export async function saveEntry() {
             loadingOverlay.classList.add('hidden');
             console.log('오류 발생 후 로딩 오버레이 숨김');
         }
-        // 오류 발생 시에도 모달 닫기
-        const entryModalErr = document.getElementById('entryModal');
-        if (entryModalErr) {
-            const gen = window.__entryModalOpenGeneration || 0;
-            const staleWouldCloseFresh =
-                saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen;
-            if (!staleWouldCloseFresh) {
-                entryModalErr.classList.add('hidden');
-                syncEntryModalBodyClass();
-                console.log('오류 발생 후 모달 닫기');
-            }
-        }
-        const state = appState;
-        state.currentEditingId = null;
-        state.currentPhotos = [];
-        state.currentPhotoMeta = [];
+        setEntryModalSavingState(false);
     } finally {
-        // finally 블록에서도 한 번 더 확인
         if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
             loadingOverlay.classList.add('hidden');
-            console.log('finally 블록에서 로딩 오버레이 숨김');
-        }
-        // finally: 저장 중 사용자가 '+ 추가' 등으로 새 모달을 연 경우(stale 완료)에는 닫지 않음
-        const entryModalFinally = document.getElementById('entryModal');
-        if (entryModalFinally && !entryModalFinally.classList.contains('hidden')) {
-            const gen = window.__entryModalOpenGeneration || 0;
-            const staleWouldCloseFresh =
-                saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen;
-            if (!staleWouldCloseFresh) {
-                entryModalFinally.classList.add('hidden');
-                unlockBodyScroll();
-                syncEntryModalBodyClass();
-                console.log('finally 블록에서 모달 닫기');
-            }
         }
     }
 }
@@ -3768,6 +3766,7 @@ function initEntryModalSubtagDragScroll() {
 setTimeout(initEntryModalSubtagDragScroll, 0);
 
 export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subContainerId = null) {
+    dismissEntryModalFocusedInput();
     const container = btn.parentElement.closest('.sub-chip-wrapper') ? btn.parentElement.parentElement : btn.parentElement;
     const isActive = btn.classList.contains('active');
     
