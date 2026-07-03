@@ -43,6 +43,22 @@ const DIET_REPORT_SHARE_CAPTURE_SCALE = 2;
 /** SNS 공유 캡처용 분석 사진 썸네일(px) — 420px 카드 기준 3열+간격 */
 const DIET_REPORT_SHARE_PHOTO_THUMB_PX = 118;
 const DIET_REPORT_SHARE_PHOTO_GAP_PX = 8;
+/**
+ * html2canvas는 flex/vertical-align 중앙 정렬을 LIVE DOM과 다르게 그림.
+ * 인라인 style + 캡처 직전 DOM + onclone 삼중 보정(일간 공유 Ghost Hack과 동일 계열).
+ */
+const DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX = 4;
+const DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX = 12;
+const DIET_REPORT_CAPTURE_MOOD_GAP_PX = 8;
+
+function dietReportCaptureYOffsetStyle(px) {
+    return `position:relative;top:${px}px;`;
+}
+
+/** pill — 고정 height/inner-flex 금지(html2canvas에서 텍스트가 박스 밖으로 사라짐). 패딩+line-height:1만 사용 */
+function buildDietReportCapturePillStyle(padding, colors) {
+    return `display:inline-block;padding:${padding};border-radius:9999px;box-sizing:border-box;white-space:nowrap;line-height:1;${colors}`;
+}
 
 /** @type {Map<string, boolean>} */
 const _aiDietReportReadyByDate = new Map();
@@ -586,11 +602,32 @@ async function hydrateCaptureImagesAsBase64(root) {
     );
 }
 
+/** html2canvas 캡처 대상 — mood 외부 위치만 보정 (pill 내부는 패딩으로 처리) */
+function applyDietReportCaptureAlignFix(root) {
+    if (!root?.querySelector) return;
+
+    const badge = root.querySelector('[data-diet-report-capture-badge]');
+    if (badge) {
+        badge.style.display = 'inline-block';
+        badge.style.lineHeight = '1';
+        badge.style.padding = '4px 12px';
+    }
+
+    const mood = root.querySelector('[data-diet-report-capture-mood]');
+    if (mood) {
+        mood.style.position = 'relative';
+        mood.style.top = `${DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX}px`;
+        mood.style.display = 'inline-block';
+        mood.style.lineHeight = '1';
+        mood.style.padding = '4px 10px';
+    }
+}
+
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
 function buildDietReportShareCaptureBadgeHtml() {
-    return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;padding:4px 12px;border-radius:9999px;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;white-space:nowrap;line-height:1;flex-shrink:0;">
-        <span style="font-size:10px;line-height:1;display:inline-flex;align-items:center;" aria-hidden="true">✨</span>AI식단분석
-    </span>`;
+    const colors =
+        'font-size:11px;font-weight:700;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;';
+    return `<span data-diet-report-capture-badge="1" style="${buildDietReportCapturePillStyle('4px 12px', colors)}">✨AI식단분석</span>`;
 }
 
 /** 리포트 카드 → 캡처용 인라인 스타일 HTML */
@@ -605,16 +642,21 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const highlight = (report?.highlight || '').trim();
     const nudge = (report?.nudge || '').trim();
 
+    const moodColors =
+        'font-size:12px;font-weight:700;background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;';
     const moodPill = mood
-        ? `<span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:9999px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;border:1px solid #ddd6fe;line-height:1;flex-shrink:0;">${e(mood)}</span>`
+        ? `<span data-diet-report-capture-mood="1" style="${dietReportCaptureYOffsetStyle(DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX)}margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
         : '';
-    const topRow = hasScore
-        ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                <span style="display:inline-flex;align-items:baseline;font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>
-                ${moodPill}
-           </div>`
-        : (moodPill ? `<div>${moodPill}</div>` : '');
-    const titleHtml = title
+    const scoreSpan = hasScore
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
+        : '';
+    // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
+    const scoreRow =
+        scoreSpan || moodPill
+            ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}${moodPill}</div>`
+            : '';
+    // 2행: 제목(report.title)
+    const subjectHtml = title
         ? `<div style="font-size:17px;font-weight:800;color:#1e293b;line-height:1.35;">${e(title)}</div>`
         : '';
     const summaryHtml = summary
@@ -631,7 +673,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const thumb = DIET_REPORT_SHARE_PHOTO_THUMB_PX;
     const gap = DIET_REPORT_SHARE_PHOTO_GAP_PX;
     const photosHtml = urls.length
-        ? `<div style="display:flex;justify-content:center;gap:${gap}px;padding:6px 16px 2px;background:#f8fafc;">${urls
+        ? `<div style="display:flex;justify-content:flex-start;gap:${gap}px;padding:6px 16px 2px;background:#f8fafc;">${urls
               .map(
                   (url) =>
                       `<div style="width:${thumb}px;height:${thumb}px;flex-shrink:0;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;background:#f1f5f9;">
@@ -643,17 +685,19 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
 
     return `
     <div style="width:420px;background:#ffffff;border:1px solid #cbd5e1;border-radius:20px;overflow:hidden;font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;box-sizing:border-box;">
-        <div style="background:#ffffff;padding:12px 16px 10px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                <span style="display:inline-flex;align-items:center;font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1;flex-shrink:0;">mealog</span>
-                ${buildDietReportShareCaptureBadgeHtml()}
+        <div style="background:#ffffff;padding:12px 16px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;overflow:visible;">
+            <div style="min-width:0;white-space:nowrap;line-height:1;overflow:visible;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-spacing:0;width:auto;display:inline-table;"><tr>
+                    <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
+                    <td style="vertical-align:middle;padding:${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px;line-height:1;">${buildDietReportShareCaptureBadgeHtml()}</td>
+                </tr></table>
             </div>
             <span style="font-size:12px;color:#64748b;line-height:1.35;flex-shrink:0;text-align:right;">${e(dateLabel)}</span>
         </div>
         ${photosHtml}
         <div style="padding:10px 18px 18px;display:flex;flex-direction:column;gap:10px;background:#ffffff;">
-            ${topRow}
-            ${titleHtml}
+            ${scoreRow}
+            ${subjectHtml}
             ${summaryHtml}
             ${highlightHtml}
             ${nudgeHtml}
@@ -704,6 +748,8 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
             document.fonts.ready
         ]);
 
+        applyDietReportCaptureAlignFix(target);
+
         return await captureWithGhostStrategy(target, {
             captureWidth: 420,
             scale: DIET_REPORT_SHARE_CAPTURE_SCALE,
@@ -713,6 +759,7 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
                     style.textContent = fontCSS;
                     clonedDoc.head.appendChild(style);
                 }
+                applyDietReportCaptureAlignFix(clonedDoc.body || clonedDoc.documentElement || clonedDoc);
             }
         });
     } finally {
