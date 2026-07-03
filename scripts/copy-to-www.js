@@ -12,6 +12,7 @@ const toCopy = [
   'kakao-app-oauth-bridge.html',
   'privacy.html',
   'manifest.json',
+  'favicon.ico',
   'sw.js',
   'version.json',
   'css',
