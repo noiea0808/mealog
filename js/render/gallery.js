@@ -32,22 +32,27 @@ import {
 
 ensureMomentFeedPinchDelegate();
 
-// 모먼트 사진이 한 번이라도 로드되면 img에 `loaded` 표시를 남긴다.
-// 이후 스크롤로 화면을 벗어났다 돌아오며 브라우저가 이미지를 재디코드하느라 잠깐 비더라도,
-// 연회색 배경·로딩 스피너 플레이스홀더를 다시 띄우지 않아 "지난 사진이 잠깐 사라지는" 깜빡임을 없앤다.
-// load 이벤트는 버블되지 않으므로 캡처 단계(3번째 인자 true)로 위임 처리해 동적 삽입 이미지까지 1개 리스너로 처리.
+// 모먼트 사진: 로드 완료 전 슬롯만 보이고, `loaded` 후 이미지 노출.
+// 한 번 로드된 사진은 재디코드 시에도 다시 숨기지 않음.
+// load/error 이벤트는 버블되지 않으므로 캡처 단계로 위임.
 if (typeof document !== 'undefined' && !window._momentPhotoLoadedTrackerBound) {
     window._momentPhotoLoadedTrackerBound = true;
-    document.addEventListener(
-        'load',
-        (e) => {
-            const img = e.target;
-            if (img && img.tagName === 'IMG' && img.classList && img.classList.contains('moment-feed-photo')) {
-                img.classList.add('loaded');
-            }
-        },
-        true
-    );
+    const markLoaded = (img) => {
+        if (img?.tagName === 'IMG' && img.classList?.contains('moment-feed-photo')) {
+            img.classList.add('loaded');
+        }
+    };
+    document.addEventListener('load', (e) => markLoaded(e.target), true);
+    document.addEventListener('error', (e) => markLoaded(e.target), true);
+}
+
+/** 캐시·즉시 완료된 이미지에 `loaded` 부여 (동적 삽입 직후 호출) */
+export function markMomentFeedPhotosLoadedIn(root) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('img.moment-feed-photo').forEach((img) => {
+        if (img.classList.contains('loaded')) return;
+        if (img.complete) img.classList.add('loaded');
+    });
 }
 
 /** `momentsFeedView === 2` — renderGallery 완료 시점 기준 (appendGalleryPosts 등에서 재사용) */
@@ -362,6 +367,7 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
         if (!isLoggedIn) { btn.classList.add('opacity-50', 'cursor-not-allowed'); btn.title = '로그인이 필요합니다'; if (btn.tagName === 'INPUT') { btn.disabled = true; btn.placeholder = '로그인 후 댓글을 달아보세요'; } }
         else { btn.classList.remove('opacity-50', 'cursor-not-allowed'); btn.title = ''; if (btn.tagName === 'INPUT') { btn.disabled = false; btn.placeholder = '댓글 달기...'; } }
     });
+    markMomentFeedPhotosLoadedIn(container);
     if (container.classList.contains('moment-feed-layout-v2') || container.getAttribute('data-moment-feed-layout') === '2') {
         setupMomentFeedV2WheelLayout(container);
     }
@@ -1251,6 +1257,7 @@ export async function renderGallery(options = {}) {
             fragment.appendChild(tempDiv.firstChild);
         }
         replaceMomentSkeletonWithBatch(postsInsertPoint, fragment, batch.length);
+        markMomentFeedPhotosLoadedIn(postsInsertPoint);
         const batchSize = batch.length;
         renderedIndex += batchSize;
         applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);
@@ -1348,7 +1355,10 @@ export async function renderGallery(options = {}) {
                         if (placeholder && placeholder.parentNode) {
                             placeholder.parentNode.insertBefore(fragment, placeholder);
                         }
-                        
+                        insertedNodes.forEach((node) => {
+                            if (node.nodeType === 1) markMomentFeedPhotosLoadedIn(node);
+                        });
+
                         const batchSize = batch.length;
                         renderedCount += batchSize;
                         applyMomentCaptionLayoutForRange(renderedCount - batchSize, renderedCount);

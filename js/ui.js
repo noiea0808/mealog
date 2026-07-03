@@ -1207,6 +1207,9 @@ export function switchScreen(isLoggedIn) {
     if (!landing || !main) return;
 
     if (isLoggedIn) {
+        if (typeof window.dismissMealogBootSplash === 'function') {
+            window.dismissMealogBootSplash();
+        }
         document.documentElement.classList.remove('mealog-landing-active');
         // 랜딩만 페이드 아웃, 메인은 즉시 표시 (스피너 끝난 뒤 추가 페이드 없음)
         landing.classList.add('screen-transition-exit');

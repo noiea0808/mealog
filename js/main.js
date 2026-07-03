@@ -1638,6 +1638,9 @@ initAuth(async (user) => {
 
         // 로그인 필요 시: 아이콘 페이드 → 가운데 mealog 표시 → 같은 자리에서 위로 이동 → 상단 레이아웃·버튼
         const showLoginScreen = () => {
+            if (typeof window.dismissMealogBootSplash === 'function') {
+                window.dismissMealogBootSplash();
+            }
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
             const apkSection = document.getElementById('apkDownloadSection');
@@ -1810,6 +1813,9 @@ initAuth(async (user) => {
             if (appState.statsUnsubscribe) {
                 appState.statsUnsubscribe();
                 appState.statsUnsubscribe = null;
+            }
+            if (typeof window.dismissMealogBootSplash === 'function') {
+                window.dismissMealogBootSplash();
             }
             showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: false });
             void import('./demo-account.js').then(async (mod) => {

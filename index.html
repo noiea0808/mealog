@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ko" class="mealog-landing-active">
+<html lang="ko" class="mealog-landing-active mealog-boot-active">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
@@ -73,6 +73,10 @@
            로딩 중 세로 스크롤바가 나타났다 사라지면 가로폭이 변해 mx-auto 중앙정렬된
            body가 통째로 좌우로 밀린다. 스크롤바 공간을 항상 예약해 폭을 고정한다. */
         html.mealog-landing-active {
+            overflow-y: auto;
+        }
+        /* 네이티브 WebView: scrollbar-gutter가 mx-auto body를 좌우 비대칭 → 아이콘 왼쪽 치우침 */
+        html.mealog-landing-active.platform-web {
             scrollbar-gutter: stable;
             overflow-y: scroll;
         }
@@ -86,10 +90,61 @@
             max-width: 28rem;
             margin: 0 auto;
             position: relative;
+            background: #ffffff;
+        }
+        /* style.css와 동일 — 첫 페인트부터 dvh·safe-top 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
+        :root {
+            --safe-top: max(env(safe-area-inset-top, 28px), 28px);
+            --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
         }
         #landingPage {
             display: flex;
             flex-direction: column;
+            position: relative;
+            width: 100%;
+            min-height: 100dvh;
+            box-sizing: border-box;
+            padding-top: var(--safe-top);
+            background: #ffffff;
+        }
+        /* 기동 스플래시: #landingPage flex·safe-area reflow와 완전 분리 (뷰포트 정중앙 flex) */
+        #bootSplashOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            pointer-events: none;
+        }
+        #bootSplashOverlay.boot-splash-done {
+            display: none;
+        }
+        .boot-splash-icon-wrap {
+            width: 5rem;
+            height: 5rem;
+            overflow: hidden;
+            border-radius: 35%;
+            flex-shrink: 0;
+            background-color: rgba(5, 150, 105, 0.9);
+        }
+        @media (min-width: 640px) {
+            .boot-splash-icon-wrap { width: 6rem; height: 6rem; }
+        }
+        .boot-splash-icon-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+        /* 부트 오버레이가 아이콘 담당 — 로그인 전환 전까지 랜딩 쪽 아이콘은 표시하지 않음 */
+        #landingPage:not(.landing-show-login) #landingSplashIconOnly {
+            visibility: hidden;
+        }
+        #landingPage.landing-show-login #landingSplashIconOnly {
+            visibility: visible;
         }
         #landingPage:not(.landing-buttons-visible) #landingFlexMain {
             flex: 1 1 0%;
@@ -407,6 +462,15 @@
     <!-- 앱에서 구글 네이티브 로그인: npm 모듈 해석 불가하므로 스크립트로 로드 -->
     <script src="js/capacitor.js"></script>
     <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
+    <script>
+        (function () {
+            try {
+                if (window.Capacitor?.isNativePlatform?.()) {
+                    document.documentElement.classList.add('platform-native-app');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script>window.capacitorExports=window.capacitorExports||window.Capacitor;</script>
     <script src="js/capacitor-app-plugin.js"></script>
     <script src="js/capacitor-browser-plugin.js"></script>
@@ -420,50 +484,143 @@
     <script src="js/capacitor-haptics-plugin.js"></script>
     <script src="js/capacitor-app-update-plugin.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
-                window.refreshMealogAppEnvironmentBadges();
+        (function mealogLandingBoot() {
+            function markLandingLayoutReady() {
+                var lp = document.getElementById('landingPage');
+                if (lp) lp.classList.add('landing-layout-ready');
             }
-            // Web: 핸폰 네비 없음 → safe-bottom 0으로 하단 공백 제거
-            try {
-                if (!window.Capacitor?.isNativePlatform?.()) {
-                    document.documentElement.classList.add('platform-web');
+
+            var bootDismissed = false;
+            var bootWatchersStarted = false;
+            function dismissBootSplash() {
+                if (bootDismissed) return;
+                bootDismissed = true;
+                document.documentElement.classList.remove('mealog-boot-active');
+                var overlay = document.getElementById('bootSplashOverlay');
+                if (overlay) overlay.classList.add('boot-splash-done');
+                markLandingLayoutReady();
+            }
+            window.dismissMealogBootSplash = dismissBootSplash;
+
+            function shouldDismissBootNow() {
+                var lp = document.getElementById('landingPage');
+                var main = document.getElementById('mainApp');
+                if (lp && (lp.classList.contains('landing-show-login') || lp.classList.contains('screen-transition-exit'))) {
+                    return true;
                 }
-            } catch (e) {}
-            try {
-                if (window.Capacitor?.isNativePlatform?.()) {
+                if (main && !main.classList.contains('hidden')) return true;
+                return false;
+            }
+
+            function startBootDismissWatchers() {
+                if (bootWatchersStarted || bootDismissed) return;
+                bootWatchersStarted = true;
+                if (shouldDismissBootNow()) {
+                    dismissBootSplash();
+                    return;
+                }
+                var lp = document.getElementById('landingPage');
+                var main = document.getElementById('mainApp');
+                var obs = new MutationObserver(function () {
+                    if (shouldDismissBootNow()) {
+                        dismissBootSplash();
+                        obs.disconnect();
+                    }
+                });
+                if (lp) obs.observe(lp, { attributes: true, attributeFilter: ['class'] });
+                if (main) obs.observe(main, { attributes: true, attributeFilter: ['class'] });
+                window.addEventListener('mealog:mainScreenShown', dismissBootSplash, { once: true });
+                setTimeout(dismissBootSplash, 3500);
+            }
+
+            /** #landingPage 높이가 연속 N프레임 동일할 때까지 대기 (Tailwind·dvh·safe-area reflow 수렴) */
+            function waitLandingLayoutSettle(done) {
+                var lp = document.getElementById('landingPage');
+                if (!lp) {
+                    done();
+                    return;
+                }
+                var lastH = -1;
+                var stable = 0;
+                var frame = 0;
+                var maxFrames = 90;
+                function tick() {
+                    frame++;
+                    var h = Math.round(lp.getBoundingClientRect().height);
+                    if (h > 0 && h === lastH) stable++;
+                    else {
+                        stable = 0;
+                        lastH = h;
+                    }
+                    if (stable >= 6 || frame >= maxFrames) {
+                        requestAnimationFrame(function () {
+                            requestAnimationFrame(done);
+                        });
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            }
+
+            function settleLandingThen(done) {
+                var fontsReady = (document.fonts && document.fonts.ready)
+                    ? document.fonts.ready
+                    : Promise.resolve();
+                var run = function () {
+                    waitLandingLayoutSettle(function () {
+                        if (typeof done === 'function') done();
+                    });
+                };
+                fontsReady.then(run).catch(run);
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
+                    window.refreshMealogAppEnvironmentBadges();
+                }
+                var isNative = false;
+                try {
+                    isNative = !!window.Capacitor?.isNativePlatform?.();
+                } catch (e) {}
+
+                if (!isNative) {
+                    document.documentElement.classList.add('platform-web');
+                    settleLandingThen(startBootDismissWatchers);
+                    return;
+                }
+
+                try {
                     document.documentElement.classList.add('platform-native-app');
                     var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
-                    if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
-                    if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
-                    // 스플래시 아이콘 흔들림 방지: 폰트 로드 + 레이아웃(safe-area/dvh/Tailwind) 안정화 후에 숨김.
-                    // 너무 일찍 숨기면 reflow 과정(아이콘 상하 점프)이 사용자에게 그대로 노출된다.
-                    var __splashHidden = false;
-                    var __hideSplash = function() {
-                        if (__splashHidden) return;
-                        __splashHidden = true;
-                        var Splash = window.Capacitor?.Plugins?.SplashScreen;
-                        if (Splash) Splash.hide().catch(function() {});
-                    };
-                    var __settleThenHide = function() {
-                        // 폰트 적용 후 2프레임 대기 → 레이아웃 확정된 다음 숨김
-                        requestAnimationFrame(function() {
-                            requestAnimationFrame(__hideSplash);
-                        });
-                    };
-                    try {
-                        var __fontsReady = (document.fonts && document.fonts.ready)
-                            ? document.fonts.ready : Promise.resolve();
-                        __fontsReady.then(__settleThenHide).catch(__settleThenHide);
-                    } catch (e) {
-                        __settleThenHide();
+                    if (!st || st === '0px' || parseFloat(st) < 20) {
+                        document.documentElement.style.setProperty('--safe-top', '28px');
                     }
-                    // 안전장치: 폰트/네트워크 지연 시에도 최대 1.5초 후 반드시 숨김
-                    setTimeout(__hideSplash, 1500);
+                    if (!sb || sb === '0px' || parseFloat(sb) < 20) {
+                        document.documentElement.style.setProperty('--safe-bottom', '48px');
+                    }
+                    var splashHidden = false;
+                    var hideNativeSplash = function () {
+                        if (splashHidden) return;
+                        splashHidden = true;
+                        var Splash = window.Capacitor?.Plugins?.SplashScreen;
+                        if (Splash) Splash.hide().catch(function () {});
+                    };
+                    /* 네이티브 스플래시만 먼저 제거 → bootSplashOverlay가 동일 아이콘으로 이어 받음 */
+                    settleLandingThen(function () {
+                        hideNativeSplash();
+                        startBootDismissWatchers();
+                    });
+                    setTimeout(function () {
+                        hideNativeSplash();
+                        if (!bootDismissed) startBootDismissWatchers();
+                    }, 2800);
+                } catch (e) {
+                    dismissBootSplash();
                 }
-            } catch (e) {}
-        });
+            });
+        })();
         window.addEventListener('load', function() {
             if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
                 window.refreshMealogAppEnvironmentBadges();
@@ -623,6 +780,12 @@
     </script>
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
+    <!-- 기동 스플래시: body/max-w 컬럼·#landingPage flex와 무관하게 뷰포트 정중앙 (네이티브 스플래시 → 웹 전환 브릿지) -->
+    <div id="bootSplashOverlay" aria-hidden="true">
+        <div class="boot-splash-icon-wrap">
+            <img src="assets/icon-only.png" alt="" width="80" height="80" decoding="sync" />
+        </div>
+    </div>
     <!-- IME 워밍업용 숨김 input: 앱 첫 기동 시 한글 입력 미표시 현상 완화 -->
     <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
