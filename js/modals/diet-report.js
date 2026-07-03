@@ -588,8 +588,8 @@ async function hydrateCaptureImagesAsBase64(root) {
 
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
 function buildDietReportShareCaptureBadgeHtml() {
-    return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:4px 12px;border-radius:9999px;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;white-space:nowrap;line-height:1.2;">
-        <span style="font-size:10px;line-height:1;" aria-hidden="true">✨</span>AI식단분석
+    return `<span style="display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:11px;font-weight:700;padding:4px 12px;border-radius:9999px;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;white-space:nowrap;line-height:1;flex-shrink:0;">
+        <span style="font-size:10px;line-height:1;display:inline-flex;align-items:center;" aria-hidden="true">✨</span>AI식단분석
     </span>`;
 }
 
@@ -606,11 +606,11 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const nudge = (report?.nudge || '').trim();
 
     const moodPill = mood
-        ? `<span style="display:inline-block;padding:4px 10px;border-radius:9999px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;border:1px solid #ddd6fe;">${e(mood)}</span>`
+        ? `<span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 10px;border-radius:9999px;background:#ede9fe;color:#5b21b6;font-size:12px;font-weight:700;border:1px solid #ddd6fe;line-height:1;flex-shrink:0;">${e(mood)}</span>`
         : '';
     const topRow = hasScore
-        ? `<div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
-                <span style="font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>
+        ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="display:inline-flex;align-items:baseline;font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>
                 ${moodPill}
            </div>`
         : (moodPill ? `<div>${moodPill}</div>` : '');
@@ -645,7 +645,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     <div style="width:420px;background:#ffffff;border:1px solid #cbd5e1;border-radius:20px;overflow:hidden;font-family:Pretendard,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;box-sizing:border-box;">
         <div style="background:#ffffff;padding:12px 16px 10px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;">
             <div style="display:flex;align-items:center;gap:10px;min-width:0;">
-                <span style="font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.2;flex-shrink:0;">mealog</span>
+                <span style="display:inline-flex;align-items:center;font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1;flex-shrink:0;">mealog</span>
                 ${buildDietReportShareCaptureBadgeHtml()}
             </div>
             <span style="font-size:12px;color:#64748b;line-height:1.35;flex-shrink:0;text-align:right;">${e(dateLabel)}</span>

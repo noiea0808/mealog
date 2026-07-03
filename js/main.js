@@ -600,6 +600,7 @@ window.toggleSearch = () => {
         window.toggleGalleryTracePanel();
         return;
     }
+    if (appState.currentTab !== 'timeline') return;
     const panel = document.getElementById('timelineSearchPanel');
     if (!panel) return;
     if (panel.classList.contains('expanded')) {
@@ -649,11 +650,9 @@ window.updateGalleryTraceFilterBarUI = () => {
         if (!btn) return;
         const icon = btn.querySelector('i');
         const isActive = f === trace;
-        btn.classList.toggle('bg-slate-100', isActive);
-        btn.classList.toggle('text-slate-700', isActive && trace !== 'like');
-        btn.classList.remove('text-red-500');
+        btn.classList.toggle('gallery-trace-btn--active', isActive);
+        btn.classList.remove('bg-slate-100', 'text-slate-700', 'text-red-500');
         if (trace === 'like') {
-            if (isActive) { btn.classList.add('text-red-500'); }
             if (icon) {
                 icon.classList.remove('fa-regular', 'fa-solid', 'fa-heart');
                 icon.classList.add(isActive ? 'fa-solid' : 'fa-regular', 'fa-heart');

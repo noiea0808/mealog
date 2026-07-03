@@ -104,6 +104,7 @@ import {
     applyOptimisticFeedPost,
     removePendingFeedPosts,
     syncBoardFeedComposerVisibility,
+    syncBoardTracePanelVisibility,
     renderBoardDetail,
     renderNoticeDetail,
     escapeHtml,
@@ -294,7 +295,6 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     const boardListView = document.getElementById('boardListView');
     const boardDetailView = document.getElementById('boardDetailView');
     const boardWriteView = document.getElementById('boardWriteView');
-    const tracePanel = document.getElementById('galleryTraceFilterPanel');
 
     if (appState.boardDetailOpenedFromGallery) {
         appState.boardDetailOpenedFromGallery = false;
@@ -314,9 +314,7 @@ window.backToBoardList = (optimisticPost = null, options = null) => {
     if (boardListView) boardListView.classList.remove('hidden');
     if (boardDetailView) boardDetailView.classList.add('hidden');
     if (boardWriteView) boardWriteView.classList.add('hidden');
-    if (tracePanel && appState.currentTab === 'board' && appState.boardListSubTab === 'board') {
-        tracePanel.classList.remove('hidden');
-    }
+    syncBoardTracePanelVisibility();
     
     window.currentBoardPostId = null;
     window.currentEditingPostId = null;

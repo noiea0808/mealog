@@ -39,7 +39,7 @@ import {
     formatMetricRecordChain,
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
-import { formatMealogDateLabel } from '../utils/date-label.js';
+import { formatMealogDateLabel, isWeekendIsoDate } from '../utils/date-label.js';
 import {
     getAiDietReportButtonHtml,
     isAiDietReportDateVisible,
@@ -776,7 +776,8 @@ function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false }
 }
 
 function buildDateHeaderDateHtml(dateStr) {
-    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
+    const weekendCls = isWeekendIsoDate(dateStr) ? ' date-section-header__date--weekend' : '';
+    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
 }
 
 function buildDateHeaderLeftHtml(dateStr) {

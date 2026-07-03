@@ -77,6 +77,16 @@ export function syncBoardFeedComposerVisibility() {
     }
 }
 
+/** 라운지 헤더 흔적(돋보기) 패널: 게시판·공지 서브탭에서만 표시 */
+export function syncBoardTracePanelVisibility() {
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
+    if (!tracePanel || appState.currentTab !== 'board') return;
+    const sub = appState.boardListSubTab;
+    const show = sub === 'board' || sub === 'notice';
+    tracePanel.classList.toggle('hidden', !show);
+    if (!show) tracePanel.classList.remove('expanded');
+}
+
 async function getNotices() {
     try {
         const { collection, getDocs, query, orderBy, where } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
@@ -274,10 +284,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     if (typeof window.syncBoardInlineComposerAvatar === 'function') {
         window.syncBoardInlineComposerAvatar();
     }
-    const tracePanel = document.getElementById('galleryTraceFilterPanel');
-    if (tracePanel && appState.currentTab === 'board') {
-        tracePanel.classList.toggle('hidden', !isUserBoard);
-    }
+    syncBoardTracePanelVisibility();
 
     const subFeed = document.getElementById('boardSubtabFeed');
     const subBoard = document.getElementById('boardSubtabBoard');

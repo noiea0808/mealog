@@ -55,6 +55,55 @@ export function getPostIdFromPhotoGroup(photoGroup) {
     return getSharedPhotoGroupKey(photo);
 }
 
+/** 흔적 필터 매칭 후보 — getPostIdFromPhotoGroup과 동일 규칙 + legacy 문서 id만 (과매칭 방지) */
+export function getTraceMatchCandidateIdsForPhotoGroup(photoGroup) {
+    const photo = photoGroup?.[0];
+    const ids = new Set();
+    if (!photo) return ids;
+
+    const primary = getPostIdFromPhotoGroup(photoGroup);
+    if (primary) ids.add(String(primary));
+
+    if (photo.postId) ids.add(String(photo.postId));
+    const parent = photo._v2Parent;
+    if (parent?.postId) ids.add(String(parent.postId));
+
+    const rawEntry = photo.entryId;
+    const eid =
+        rawEntry != null && String(rawEntry).trim() !== '' && String(rawEntry).trim() !== 'null'
+            ? String(rawEntry).trim()
+            : '';
+    const uid = String(photo.userId || '').trim();
+    if (eid && uid) ids.add(`${eid}_${uid}`);
+
+    if (photo.type === 'daily' && photo.date && uid) ids.add(`daily_${photo.date}_${uid}`);
+    if (photo.type === 'best') {
+        if (photo.periodType && photo.periodText) {
+            ids.add(`best_${photo.periodType}_${String(photo.periodText).replace(/\s/g, '_')}_${uid}`);
+        } else if (photo.id) {
+            ids.add(`best_${photo.id}_${uid}`);
+        }
+    }
+    if (photo.type === 'insight' && photo.dateRangeText) {
+        ids.add(`insight_${String(photo.dateRangeText).replace(/\s/g, '_')}_${uid}`);
+    }
+
+    // 구버전: 북마크가 sharedPhotos 문서 id로 저장된 경우만
+    if (photo.id) ids.add(String(photo.id));
+    if (parent?.id) ids.add(String(parent.id));
+
+    return ids;
+}
+
+export function photoGroupMatchesTracePostIds(photoGroup, tracePostIds) {
+    if (!tracePostIds) return true;
+    if (tracePostIds.size === 0) return false;
+    for (const id of getTraceMatchCandidateIdsForPhotoGroup(photoGroup)) {
+        if (tracePostIds.has(id)) return true;
+    }
+    return false;
+}
+
 /** photos 배열을 그룹화·정렬하여 sortedGroups 반환 (appendGalleryPosts에서 재사용) */
 export function processPhotosToGroups(photos) {
     if (!photos || photos.length === 0) return [];

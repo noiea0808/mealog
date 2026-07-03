@@ -51,9 +51,6 @@ html.platform-native-app .app-chrome-subtab {
 html.platform-native-app #trackerTabs .view-tab {
     font-size: 0.8125rem;
 }
-html.platform-native-app #mainAppHeader .header-section-label {
-    font-size: 0.8125rem;
-}
 html.platform-native-app .notification-popup .notification-tab-btn {
     font-size: 0.8125rem;
 }
@@ -130,8 +127,21 @@ body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="t
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
 }
-/* 밀로그 검색창 포커스 시: 헤더 유지 (입력 텍스트 보이도록) */
-body:has(#searchInput:focus) #mainAppHeader {
+/* 밀로그 검색창 포커스·확장 시: 헤더·트래커·상태바 유지 (입력·필터 사용 중 chrome 숨김 방지) */
+body:has(#searchInput:focus) #mainAppHeader,
+body:has(#timelineSearchPanel.expanded) #mainAppHeader,
+body:has(#searchInput:focus) #trackerSection:not(.hidden),
+body:has(#timelineSearchPanel.expanded) #trackerSection:not(.hidden),
+body:has(#searchInput:focus) #statusBarOverlay,
+body:has(#timelineSearchPanel.expanded) #statusBarOverlay {
+    display: block !important;
+}
+body:has(#searchInput:focus) .bottom-nav,
+body:has(#timelineSearchPanel.expanded) .bottom-nav {
+    display: flex !important;
+}
+body:has(#searchInput:focus) #navigationBarOverlay,
+body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
     display: block !important;
 }
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
@@ -556,10 +566,6 @@ body.keyboard-closed #boardWriteView {
 /* 헤더 타이틀: text-2xl(1.5rem) 대비 20% 확대 = 1.8rem */
 header .mealog-title { 
     font-size: 1.8rem; 
-}
-.header-section-label {
-    color: #047857;
-    transition: opacity 0.15s ease;
 }
 /* 서브 타이틀 (INSIGHT, MEAL TALK, 게시글, 글쓰기) – Pretendard, 700, 대문자 */
 .sub-title { 
@@ -1944,9 +1950,6 @@ body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader {
 body:has(#mainApp:not(.hidden)) #headerAppTitle {
     color: #ffffff !important;
 }
-body:has(#mainApp:not(.hidden)) #mainAppHeader .header-section-label {
-    color: rgba(255, 255, 255, 0.88) !important;
-}
 body:has(#mainApp:not(.hidden)) .header-right .notification-trigger,
 body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle,
 body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn {
@@ -1962,6 +1965,30 @@ body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn:hover {
     color: #ffffff !important;
     background: rgba(255, 255, 255, 0.2);
     border-radius: 9999px;
+}
+/* 헤더 흔적 필터 활성: 반투명 원형 (bg-slate-100 사각형 방지) */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn.gallery-trace-btn--active {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-radius: 9999px;
+}
+/* 헤더 우측 FA 아이콘: 종(bell)과 동일하게 text-stroke 없이 글리프 두께 통일 */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .timeline-search-toggle i,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .gallery-trace-btn i,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .notification-trigger .fa-bell {
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+}
+/* 모먼트·밀당·라운지 헤더 돋보기(fa-solid): 선 1px 얇게 — 헤더 배경색 stroke로 글리프 외곽 깎기 */
+body:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass {
+    -webkit-text-stroke: 1px #047857 !important;
+    paint-order: stroke fill;
+}
+body:has(#mainApp:not(.hidden)) #galleryView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden)) #dashboardView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden)) #boardListView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass {
+    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.2) !important;
 }
 body:has(#mainApp:not(.hidden)) .timeline-search-wrapper.expanded .timeline-search-panel {
     background: rgba(255, 255, 255, 0.16) !important;
@@ -4299,6 +4326,9 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-weight: 700;
     letter-spacing: -0.025em;
 }
+.date-section-header h3.date-section-header__date--weekend {
+    color: #f43f5e;
+}
 /* 타임라인 헤더 — 식사/간식 보기 피커 (첨부 디자인) */
 .timeline-view-picker {
     --tvp-scale: 1.3;
@@ -6570,21 +6600,39 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     /* 클릭 시 작아졌다 커졌다 효과 없음 */
 }
 
-/* 앨범·밀톡 검색 패널: 좋아요/댓글/북마크 아이콘 두께·색상을 돋보기와 동일하게 */
+/* 앨범·밀톡 흔적 필터: FA regular/solid 글리프 그대로 (text-stroke 없음) */
 .gallery-trace-btn .fa-heart,
 .gallery-trace-btn .fa-comment,
 .gallery-trace-btn .fa-bookmark {
-    color: #64748b;                    /* slate-500 - 돋보기와 동일 */
-    -webkit-text-stroke: 0.6px #64748b;  /* 선 두께 돋보기와 비슷하게 */
+    color: #64748b;
+    -webkit-text-stroke: 0;
+}
+/* 메인 헤더(녹색 그라데이션): 흔적 필터 아이콘 흰색 */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-heart,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-comment,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-bookmark {
+    color: rgba(255, 255, 255, 0.95) !important;
+    -webkit-text-stroke: 0 !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-magnifying-glass {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="like"].gallery-trace-btn--active .fa-heart {
+    color: #fecaca !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="like"]:hover .fa-heart {
+    color: #fca5a5 !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
+    color: #ffffff !important;
 }
 .gallery-trace-btn[data-trace="like"]:hover .fa-heart {
     color: #ef4444;
-    -webkit-text-stroke: 0.6px #ef4444;
 }
 .gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
 .gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
     color: #475569;
-    -webkit-text-stroke: 0.6px #475569;
 }
 .post-like-icon.fa-regular,
 .post-bookmark-icon.fa-regular,
