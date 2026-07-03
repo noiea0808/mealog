@@ -13,6 +13,7 @@ import {
 } from './firebase.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { showToast } from './ui.js';
+import { getMealogClientEnv } from './utils.js';
 import { doc, getDocFromServer, setDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -49,21 +50,11 @@ function isAndroid() {
 
 /** 스테이징/프로덕션 앱 패키지 (알림 설정 화면 intent용) */
 function getAndroidApplicationId() {
-  const capAppId = String(window.Capacitor?.config?.appId || '').trim();
-  if (capAppId === 'com.mealog.app.staging') return 'com.mealog.app.staging';
-  if (capAppId === 'com.mealog.app') return 'com.mealog.app';
-  return typeof window.APP_ENV !== 'undefined' && window.APP_ENV === 'staging'
-    ? 'com.mealog.app.staging'
-    : 'com.mealog.app';
+  return getMealogClientEnv() === 'staging' ? 'com.mealog.app.staging' : 'com.mealog.app';
 }
 
 function getCurrentPushEnv() {
-  const capAppId = String(window.Capacitor?.config?.appId || '').trim();
-  if (capAppId === 'com.mealog.app.staging') return 'staging';
-  if (capAppId === 'com.mealog.app') return 'production';
-  return typeof window.APP_ENV !== 'undefined' && window.APP_ENV === 'staging'
-    ? 'staging'
-    : 'production';
+  return getMealogClientEnv();
 }
 
 function fcmTokenUpdatedMsClient(meta) {

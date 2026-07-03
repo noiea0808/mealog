@@ -57,13 +57,19 @@ window.getMealogUiEnvironmentLabelLocalOverride = function getMealogUiEnvironmen
 window.isProductionUsageEnvironment = function isProductionUsageEnvironment() {
     if (typeof window === 'undefined') return false;
     var hostname = (window.location && String(window.location.hostname || '').toLowerCase()) || '';
+    var appEnv = String(window.APP_ENV || '').toLowerCase();
     try {
         var cap = window.Capacitor;
         if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
-            var capAppId = cap.config && String(cap.config.appId || '').trim();
-            if (capAppId === 'com.mealog.app') return true;
-            if (capAppId === 'com.mealog.app.staging') return false;
-            /* server.url 원격 로드 시 config.appId 가 비는 WebView — 호스트로 운영 여부 판별 */
+            /*
+             * 네이티브(설치형)는 Capacitor 가 window.Capacitor.config 를 주입하지 않아
+             * config.appId 로 운영 여부를 알 수 없다. 번들 앱은 WebView 호스트가 localhost 라
+             * 호스트 판별도 불가하므로, 빌드시 확정되는 APP_ENV(운영 번들=production,
+             * 스테이징 번들=staging)로 판별한다.
+             */
+            if (appEnv === 'staging') return false;
+            if (appEnv === 'production') return true;
+            /* server.url 원격 로드(호스트가 실제 도메인)인 경우 대비 폴백 */
             return hostname === 'www.mealog.net' || hostname === 'mealog.net';
         }
     } catch (e) {

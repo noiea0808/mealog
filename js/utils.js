@@ -10,17 +10,37 @@ const isProduction = () => {
 
 /**
  * 스테이징/운영 구분 (푸시·콘텐츠 팝업·연속기록 팝업 등과 동일 기준)
- * — 네이티브는 앱 패키지, 웹은 APP_ENV 후 로컬 호스트.
+ * — 네이티브(설치형)는 빌드 확정 APP_ENV, 웹은 APP_ENV·호스트.
  */
 export function getMealogClientEnv() {
     if (typeof window === 'undefined') return 'production';
-    // 네이티브는 패키지 ID가 최우선(WebView 호스트가 localhost여도 운영/스테이징 오판 방지)
+
+    const appEnv = String(window.APP_ENV || '').toLowerCase();
+    const hostname = (window.location.hostname || '').toLowerCase();
     const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+
+    // Capacitor 가 config 를 주입하는 경우에만(폴백)
     if (capAppId === 'com.mealog.app.staging') return 'staging';
     if (capAppId === 'com.mealog.app') return 'production';
-    if (window.APP_ENV === 'staging') return 'staging';
-    const hostname = (window.location.hostname || '').toLowerCase();
-    // 스테이징 전용 웹 호스트(env.js 배지 로직과 동일)
+
+    try {
+        const cap = window.Capacitor;
+        if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+            /*
+             * 설치형 앱은 WebView 호스트가 localhost 이지만 운영/스테이징이 아님.
+             * config.appId 도 주입되지 않으므로 빌드시 확정되는 APP_ENV 로 판별.
+             */
+            if (appEnv === 'staging') return 'staging';
+            if (appEnv === 'production') return 'production';
+            // server.url 원격 로드 WebView 폴백
+            if (hostname.includes('staging')) return 'staging';
+            return hostname === 'www.mealog.net' || hostname === 'mealog.net' ? 'production' : 'staging';
+        }
+    } catch (e) {
+        /* ignore */
+    }
+
+    if (appEnv === 'staging') return 'staging';
     if (hostname.includes('staging')) return 'staging';
     const isLocal =
         hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.startsWith('192.168.');

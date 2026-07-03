@@ -3909,6 +3909,14 @@ function isProductionUsageSource(data) {
   const capAppId = typeof data?.capAppId === 'string' ? data.capAppId.trim() : '';
   if (capAppId === 'com.mealog.app.staging') return false;
   if (capAppId === 'com.mealog.app') return true;
+  // 네이티브(설치형)는 Capacitor 가 config.appId 를 주입하지 않아 capAppId 가 비고, 번들 앱은
+  // WebView 호스트가 localhost 라 호스트 판별도 불가하다. 빌드시 확정되는 APP_ENV 로 판별.
+  const isNative = data?.isNative === true;
+  const appEnv = typeof data?.appEnv === 'string' ? data.appEnv.toLowerCase().trim() : '';
+  if (isNative) {
+    if (appEnv === 'staging') return false;
+    if (appEnv === 'production') return true;
+  }
   const webHost = typeof data?.webHost === 'string' ? data.webHost.toLowerCase().trim() : '';
   return webHost === 'www.mealog.net' || webHost === 'mealog.net';
 }
