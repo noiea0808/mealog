@@ -8107,6 +8107,30 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: #0f172a;
 }
 
+/* 관리자 > AI > AI 식단분석: 목록·상세 독립 스크롤 */
+#adminPage #ai-main-aiDietReports .admin-ai-diet-panels {
+    min-height: 0;
+}
+#adminPage #ai-main-aiDietReports .admin-ai-diet-panel-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    min-height: 10rem;
+}
+@media (min-width: 1024px) {
+    #adminPage #ai-main-aiDietReports .admin-ai-diet-panel-scroll {
+        max-height: calc(100vh - 17.5rem);
+    }
+}
+@media (max-width: 1023px) {
+    #adminPage #ai-main-aiDietReports #aiDietReportsList.admin-ai-diet-panel-scroll {
+        max-height: min(40vh, 22rem);
+    }
+    #adminPage #ai-main-aiDietReports #aiDietReportsDetail.admin-ai-diet-panel-scroll {
+        max-height: min(55vh, 32rem);
+    }
+}
+
 /* 콘텐츠 팝업: 이미지 좌우 꽉 채움 (박스 폭 100%), 세로는 비율 유지 */
 .content-popup-images {
     margin-left: 0;

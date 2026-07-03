@@ -242,6 +242,16 @@ function renderInputMealsSection(data) {
     return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${promptBlock}</div>`;
 }
 
+function renderListInitial() {
+    const el = document.getElementById('aiDietReportsList');
+    if (!el) return;
+    el.innerHTML = `
+        <div class="text-center py-5 text-slate-400">
+            <i class="fa-solid fa-rotate-right text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
+            <p class="text-xs"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
+        </div>`;
+}
+
 function renderDetailEmpty() {
     const el = document.getElementById('aiDietReportsDetail');
     if (!el) return;
@@ -304,6 +314,7 @@ function renderDetailPanel(data, id) {
                 </dl>
             </div>
         </div>`;
+    el.scrollTop = 0;
 }
 
 function paintListTable(rows) {
@@ -488,4 +499,5 @@ window.loadMoreAiDietReports = async function () {
     await renderAiDietReports({ append: true });
 };
 
+renderListInitial();
 renderDetailEmpty();
