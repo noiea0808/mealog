@@ -11,7 +11,7 @@ import {
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
-import { getRecordCountForIso } from '../meal-record-count.js';
+import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
     getMealRowSyncLeadKind,
     isMealEntryPendingSync,
@@ -1853,6 +1853,7 @@ function renderTrackerMonthCalendarPopup() {
     const pageM = appState.pageDate.getMonth() + 1;
     const pageD = appState.pageDate.getDate();
     const activeIso = `${pageY}-${pad2(pageM)}-${pad2(pageD)}`;
+    const historyByDate = buildMealHistoryCountByDate();
 
     const parts = [];
     for (let i = 0; i < firstDow; i++) {
@@ -1860,7 +1861,7 @@ function renderTrackerMonthCalendarPopup() {
     }
     for (let d = 1; d <= dim; d++) {
         const iso = `${y}-${pad2(m)}-${pad2(d)}`;
-        const c = getRecordCountForIso(iso);
+        const c = getRecordCountForIso(iso, historyByDate);
         const st = c >= 3 ? 'dot-full' : c > 0 ? 'dot-partial' : 'dot-none';
         const sel = iso === activeIso ? 'dot-selected' : '';
         parts.push(
@@ -2111,37 +2112,59 @@ function setupMiniCalendarPointerDrag(container) {
     );
 }
 
-export function renderMiniCalendar() {
-    const state = appState;
-    const container = document.getElementById('miniCalendar');
-    if (!container || !window.currentUser) return;
-    container.innerHTML = "";
-    // 로컬 날짜로 변환하여 시간대 문제 방지
-    const pageYear = state.pageDate.getFullYear();
-    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
-    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
-    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
-    
+function dotStatusFromCount(count) {
+    return count >= 3 ? 'dot-full' : count > 0 ? 'dot-partial' : 'dot-none';
+}
+
+/** 오늘 포함 과거 61일 스펙 (로컬 날짜) */
+function buildMiniCalendarDaySpecs(activeStr) {
+    const days = [];
     for (let i = 60; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        // 로컬 날짜로 변환하여 시간대 문제 방지
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         const iso = `${year}-${month}-${day}`;
-        const count = getRecordCountForIso(iso);
-        let status = count >= 3 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
-        let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
-        const item = document.createElement('div');
-        item.className = "calendar-item flex flex-col items-center gap-1 flex-shrink-0";
-        item.setAttribute('data-tracker-date', iso);
-        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
-            <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
-        item.onclick = () => window.jumpToDate(iso);
-        container.appendChild(item);
+        days.push({
+            iso,
+            dayNum: d.getDate(),
+            dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
+            weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
+            isActive: iso === activeStr
+        });
     }
+    return days;
+}
 
+function canPatchMiniCalendarDom(container, days) {
+    const items = container.querySelectorAll('.calendar-item');
+    if (items.length !== days.length) return false;
+    for (let i = 0; i < days.length; i++) {
+        if (items[i].getAttribute('data-tracker-date') !== days[i].iso) return false;
+    }
+    return true;
+}
+
+function patchMiniCalendarItem(item, day, count) {
+    item.setAttribute('data-tracker-date', day.iso);
+    const label = item.querySelector('span');
+    if (label) {
+        label.className = `text-[11px] font-bold ${day.dayColorClass}`;
+        label.textContent = day.weekdayLabel;
+    }
+    let dot = item.querySelector('.calendar-dot');
+    if (!dot) {
+        dot = document.createElement('div');
+        item.appendChild(dot);
+    }
+    dot.id = `dot-${day.iso}`;
+    dot.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+    dot.textContent = String(day.dayNum);
+    item.onclick = () => window.jumpToDate(day.iso);
+}
+
+function finishMiniCalendarAfterRender(container, activeStr) {
     setupMiniCalendarPointerDrag(container);
     setupMiniCalendarScrollTitle(container);
     setupTrackerMonthCalendarModal();
@@ -2153,8 +2176,6 @@ export function renderMiniCalendar() {
     });
 
     setTimeout(() => {
-        // 데이터 리스너 재렌더마다 가로 스크롤이 계속 움직이지 않도록,
-        // 같은 날짜(activeStr)로는 짧은 시간 내 자동 scrollIntoView를 1회로 제한
         const now = Date.now();
         const lastKey = window._miniCalLastAutoScrollKey || '';
         const lastAt = window._miniCalLastAutoScrollAt || 0;
@@ -2171,4 +2192,61 @@ export function renderMiniCalendar() {
 
     refreshTrackerMonthCalendarPopupIfOpen();
     updateTrackerStreakLabel();
+}
+
+/** 미니 캘린더 DOM 재구성 없이 점(dot)·연속일 라벨만 갱신 */
+export function refreshMiniCalendarDots() {
+    const state = appState;
+    const container = document.getElementById('miniCalendar');
+    if (!container || !window.currentUser) return;
+    const pageYear = state.pageDate.getFullYear();
+    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    const historyByDate = buildMealHistoryCountByDate();
+    const days = buildMiniCalendarDaySpecs(activeStr);
+
+    days.forEach((day) => {
+        const dotEl = document.getElementById(`dot-${day.iso}`);
+        if (!dotEl) return;
+        const count = getRecordCountForIso(day.iso, historyByDate);
+        dotEl.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+    });
+    refreshTrackerMonthCalendarPopupIfOpen();
+    updateTrackerStreakLabel();
+}
+
+export function renderMiniCalendar() {
+    const state = appState;
+    const container = document.getElementById('miniCalendar');
+    if (!container || !window.currentUser) return;
+    const pageYear = state.pageDate.getFullYear();
+    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    const days = buildMiniCalendarDaySpecs(activeStr);
+    const historyByDate = buildMealHistoryCountByDate();
+
+    if (canPatchMiniCalendarDom(container, days)) {
+        const items = container.querySelectorAll('.calendar-item');
+        days.forEach((day, i) => {
+            patchMiniCalendarItem(items[i], day, getRecordCountForIso(day.iso, historyByDate));
+        });
+        finishMiniCalendarAfterRender(container, activeStr);
+        return;
+    }
+
+    container.innerHTML = '';
+    days.forEach((day) => {
+        const count = getRecordCountForIso(day.iso, historyByDate);
+        const item = document.createElement('div');
+        item.className = 'calendar-item flex flex-col items-center gap-1 flex-shrink-0';
+        item.setAttribute('data-tracker-date', day.iso);
+        item.innerHTML = `<span class="text-[11px] font-bold ${day.dayColorClass}">${day.weekdayLabel}</span>
+            <div id="dot-${day.iso}" class="calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}">${day.dayNum}</div>`;
+        item.onclick = () => window.jumpToDate(day.iso);
+        container.appendChild(item);
+    });
+
+    finishMiniCalendarAfterRender(container, activeStr);
 }

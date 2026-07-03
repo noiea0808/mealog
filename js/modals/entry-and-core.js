@@ -6,6 +6,7 @@ import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../rend
 import { dbOps, unwrapMealSaveResult } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
+import { invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import {
     renderTimeline,
     renderMiniCalendar,
@@ -2276,6 +2277,7 @@ export async function saveEntry() {
             window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
         };
         applyOptimisticMealRecord();
+        invalidateMealHistoryCountCache();
         // 공유 아이콘도 서버 반영 전에 즉시 낙관 반영
         if (optimisticRecord.id && !isShareBanned) {
             if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];

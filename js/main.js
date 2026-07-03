@@ -53,7 +53,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -1348,7 +1348,7 @@ initAuth(async (user) => {
                     // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
-                onDataUpdate: () => {
+                onDataUpdate: (update = { source: 'meals', mode: 'initial' }) => {
                     scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
@@ -1369,16 +1369,34 @@ initAuth(async (user) => {
                         window._recordsLoadHidePending = false;
                         hideLoading();
                     }
-                    // 저장 직후 800ms 동안은 재렌더 스킵 (낙관 반영 + jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게)
-                    if (window._timelineRerenderFreezeUntil && Date.now() < window._timelineRerenderFreezeUntil) return;
-                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
-                    dataUpdateTimer = setTimeout(() => {
-                        dataUpdateTimer = null;
-                        if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
-                        // 리스트 모드에서도 pageDate는 jumpToDate·미니캘 선택값을 유지 (매 동기화마다 오늘로 덮으면
-                        // 다른 날짜를 보는 중에 헤더/스크롤이 엇나감)
-                        // 데이터 동기화(낙관→서버) 시 전체 재렌더해도, 이미 타임라인 초기 스크롤을 마친 뒤면
-                        // hasScrolledToToday를 리셋하지 않고 스크롤 Y만 복원 → 오늘로 재스크롤·화면 흔들림 방지
+                    const mode = update?.mode || 'initial';
+                    // 저장 직후 freeze 구간: 전체/부분 재렌더 스킵 (metadataOnly·statsOnly는 경량 패치만 허용)
+                    const frozen =
+                        window._timelineRerenderFreezeUntil &&
+                        Date.now() < window._timelineRerenderFreezeUntil;
+                    if (frozen && mode !== 'metadataOnly' && mode !== 'statsOnly') return;
+
+                    const runTimelinePatch = () => {
+                        if (appState.currentTab !== 'timeline') return;
+                        if (mode === 'none') return;
+                        if (mode === 'metadataOnly') {
+                            updateTimelineMealEntryPendingIndicators();
+                            updateTimelineShareIndicators();
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        if (mode === 'statsOnly') {
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        if (mode === 'mealData') {
+                            const dates = Array.isArray(update.changedDates) ? update.changedDates : [];
+                            dates.forEach((d) => invalidateTimelineDateSection(d));
+                            renderTimeline();
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        // initial: 첫 로드·fallback — 전체 재구성
                         const preserveTimelineScroll = window.hasScrolledToToday === true;
                         const savedScrollY = window.scrollY;
                         window.loadedDates = [];
@@ -1386,16 +1404,15 @@ initAuth(async (user) => {
                             window.hasScrolledToToday = false;
                         }
                         const container = document.getElementById('timelineContainer');
-                        if (container) container.innerHTML = "";
+                        if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    // 기본은 사용자가 보고 있던 scrollY 그대로 복원 (사용자 스크롤을 JS가 잡아당기지 않게)
-                                    // 단, jumpToDate 직후 잠깐만 "해당 날짜 섹션 앵커"를 허용 (저장 직후 1회 중앙 정렬 유지용)
                                     const allowAnchor =
-                                        window._timelineAnchorScrollUntil && Date.now() < window._timelineAnchorScrollUntil;
+                                        window._timelineAnchorScrollUntil &&
+                                        Date.now() < window._timelineAnchorScrollUntil;
                                     if (allowAnchor) {
                                         const pd = appState.pageDate;
                                         if (pd instanceof Date && !isNaN(+pd)) {
@@ -1411,7 +1428,10 @@ initAuth(async (user) => {
                                                 const totalOffset = headerHeight + trackerHeight;
                                                 const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                                                 const offsetPosition = elementTop - totalOffset - 16;
-                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                                window.scrollTo({
+                                                    top: Math.max(0, offsetPosition),
+                                                    behavior: 'instant'
+                                                });
                                                 return;
                                             }
                                         }
@@ -1420,6 +1440,17 @@ initAuth(async (user) => {
                                 });
                             });
                         }
+                    };
+
+                    if (mode === 'metadataOnly' || mode === 'statsOnly') {
+                        runTimelinePatch();
+                        return;
+                    }
+
+                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
+                    dataUpdateTimer = setTimeout(() => {
+                        dataUpdateTimer = null;
+                        runTimelinePatch();
                     }, 120);
                 },
                 settingsUnsubscribe: appState.settingsUnsubscribe,

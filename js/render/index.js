@@ -4,6 +4,7 @@ export { escapeHtml, sanitizeFormattedText, renderFormattedContent, stripDangero
 export {
     renderTimeline,
     renderMiniCalendar,
+    refreshMiniCalendarDots,
     updateTimelineShareIndicators,
     updateTimelineMealEntryPendingIndicators,
     invalidateTimelineDateSection,
