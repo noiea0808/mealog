@@ -137,6 +137,7 @@ export function openTimeManualPanel(options = {}) {
  *   onNow: () => void,
  *   onPhoto: () => void | Promise<void>,
  *   onManual: () => void,
+ *   onEmpty?: () => void,
  *   onRemove?: () => void,
  * }} options
  */
@@ -145,9 +146,11 @@ export function openTimeSourceSheet(options = {}) {
         title = '시간 선택',
         zIndex = 420,
         showRemove = false,
+        showEmpty = false,
         onNow,
         onPhoto,
         onManual,
+        onEmpty,
         onRemove
     } = options;
 
@@ -161,6 +164,12 @@ export function openTimeSourceSheet(options = {}) {
 
     const rowBase =
         'flex w-full items-center justify-center gap-2 border-0 bg-transparent px-4 py-[calc(0.75rem*1.2)] text-center text-base outline-none active:bg-slate-100';
+
+    const emptyRow = showEmpty
+        ? `<button type="button" data-time-source-option="empty" class="${rowBase} text-slate-900">
+                <i class="fa-regular fa-circle-xmark shrink-0 text-sm text-slate-500" aria-hidden="true"></i>미입력
+           </button>`
+        : '';
 
     const removeRow = showRemove
         ? `<button type="button" data-time-source-option="remove" class="${rowBase} text-red-700 active:bg-red-50">
@@ -184,6 +193,7 @@ export function openTimeSourceSheet(options = {}) {
                 <button type="button" data-time-source-option="manual" class="${rowBase} text-slate-900">
                     <i class="fa-solid fa-pen shrink-0 text-sm text-slate-500" aria-hidden="true"></i>직접 입력
                 </button>
+                ${emptyRow}
                 ${removeRow}
             </div>
             <button type="button" data-time-source-dismiss class="w-full border-t border-slate-200 bg-transparent py-3 text-center text-base text-slate-700 outline-none active:bg-slate-100">닫기</button>
@@ -210,6 +220,11 @@ export function openTimeSourceSheet(options = {}) {
 
     root.querySelector('[data-time-source-option="manual"]')?.addEventListener('click', () => {
         onManual?.();
+    });
+
+    root.querySelector('[data-time-source-option="empty"]')?.addEventListener('click', () => {
+        closeTimeSourceSheets();
+        onEmpty?.();
     });
 
     root.querySelector('[data-time-source-option="remove"]')?.addEventListener('click', () => {

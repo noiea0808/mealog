@@ -537,12 +537,10 @@ function snackMealClockMinutesFromMidnight(r) {
 
 export function sortSnackSlotRecordsChronological(records) {
     return [...records].sort((a, b) => {
-        const ca = snackHasMealClockForSort(a);
-        const cb = snackHasMealClockForSort(b);
-        /** 시간 기록 있음 먼저(위), 없음은 나중(아래) — 화면 세로는 시간 오름차순 후 생성순 */
-        if (ca !== cb) return ca ? -1 : 1;
-
-        if (ca && cb) {
+        const ha = snackHasMealClockForSort(a);
+        const hb = snackHasMealClockForSort(b);
+        /** 사용자가 시간을 입력한 두 기록만 시각(HH:mm) 순으로 정렬 */
+        if (ha && hb) {
             const ma = snackMealClockMinutesFromMidnight(a);
             const mb = snackMealClockMinutesFromMidnight(b);
             if (ma !== mb) return ma - mb;
@@ -553,7 +551,7 @@ export function sortSnackSlotRecordsChronological(records) {
             if (ta !== tb) return ta - tb;
             return String(a.id || '').localeCompare(String(b.id || ''));
         }
-
+        /** 그 외: recordedAt·생성순 (슬롯 변경 시 recordedAt 갱신 → 이동 항목이 뒷번호) */
         const ra = mealRecordedAtPrimaryMs(a);
         const rb = mealRecordedAtPrimaryMs(b);
         const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);

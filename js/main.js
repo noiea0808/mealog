@@ -72,6 +72,7 @@ import {
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
     openDailyCommentModal, closeDailyCommentModal
 } from './modals.js';
+import { openQuickEntryModal } from './modals/entry-quick-open.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
@@ -273,6 +274,8 @@ window.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.Mealog.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.openModal = openModal;
 window.Mealog.openModal = openModal;
+window.openQuickEntryModal = openQuickEntryModal;
+window.Mealog.openQuickEntryModal = openQuickEntryModal;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
 window.openDailyJournalModal = openDailyJournalModal;

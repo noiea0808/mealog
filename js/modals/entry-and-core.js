@@ -89,6 +89,7 @@ import {
     inferEntryFormModeFromRecord,
     applyEntryFormModeToModalUI,
     closeEntrySlotPicker,
+    closeEntryHeaderDatePicker,
 } from './entry-modal-header.js';
 import {
     bindEntryQuickInputOnce,
@@ -362,6 +363,7 @@ function openEntryMealTimeSourceSheet(isMain) {
     openTimeSourceSheet({
         title: '시간 선택',
         zIndex: 350,
+        showEmpty: true,
         onNow: () => applyMealClockFromDate(isMain, new Date(), 'now'),
         onPhoto: async () => {
             const date = await resolveFirstPhotoTakenAt({
@@ -383,6 +385,10 @@ function openEntryMealTimeSourceSheet(isMain) {
                 onApply: (date) => applyMealClockFromDate(isMain, date, 'manual'),
                 onInvalid: () => showToast('올바른 시간을 입력해주세요.', 'error')
             });
+        },
+        onEmpty: () => {
+            applyMealClockRowFrom24(isMain, '');
+            setEntryMealClockSource(isMain, null);
         }
     });
 }
@@ -1549,6 +1555,7 @@ export function closeModal() {
     if (document.getElementById('entryModal')?.classList.contains('entry-modal-saving')) return;
     closeTimeSourceSheets();
     closeEntrySlotPicker();
+    closeEntryHeaderDatePicker();
     const entryModal = document.getElementById('entryModal');
     if (entryModal) {
         setEntryModalSavingState(false);
@@ -1911,6 +1918,13 @@ export async function saveEntry() {
         if (!isSk && timeOn && normalizedClock) {
             timeSortStr = `${normalizedClock}:00`;
         }
+        const slotChanged = Boolean(
+            idToUse && existingRecord && existingRecord.slotId !== state.currentEditingSlotId
+        );
+        const dateChanged = Boolean(
+            idToUse && existingRecord && existingRecord.date !== state.currentEditingDate
+        );
+
         const record = {
             id: idToUse,
             date: state.currentEditingDate,
@@ -1935,6 +1949,9 @@ export async function saveEntry() {
             time: timeSortStr,
         };
         if (!idToUse) {
+            record.recordedAt = new Date().toISOString();
+        } else if (slotChanged || dateChanged) {
+            // 슬롯·날짜 변경 시 해당 슬롯에서 뒷번호(맨 뒤)로 쌓이도록 기록 시각 갱신
             record.recordedAt = new Date().toISOString();
         } else if (existingRecord?.recordedAt) {
             record.recordedAt = existingRecord.recordedAt;
@@ -3266,7 +3283,7 @@ function renderSatietyButtons(containerId, selected) {
     if (!container) return;
     container.innerHTML = SATIETY_DATA.map(
         (d) =>
-            `<button type="button" onclick="window.setSatiety(${d.val})" class="entry-gauge-satiety-btn flex flex-1 min-w-0 flex-col items-center justify-center gap-1 px-0.5 py-1.5 rounded-xl transition-all ${d.val === selected ? 'entry-gauge-satiety-btn--selected opacity-100 grayscale-0' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100'}">
+            `<button type="button" onclick="window.setSatiety(${d.val})" class="entry-gauge-satiety-btn flex shrink-0 flex-col items-center justify-center gap-1 px-0.5 py-1.5 rounded-xl transition-all ${d.val === selected ? 'entry-gauge-satiety-btn--selected opacity-100 grayscale-0' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100'}">
                 <i class="fa-solid ${d.icon} ${d.color}"></i>
                 <span class="entry-gauge-satiety-btn__label font-bold leading-tight text-center ${d.val === selected ? 'text-slate-800' : 'text-slate-400'}">${d.label}</span>
             </button>`

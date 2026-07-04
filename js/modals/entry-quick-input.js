@@ -68,8 +68,11 @@ export function syncEntryFieldQuickInputToggles() {
     const modeKey = getEntryFormModeKey();
     const prefs = getFieldPrefs(modeKey);
     QUICK_FIELDS.forEach((field) => {
-        const el = document.querySelector(`[data-entry-quick-field="${field}"]`);
-        if (el) el.checked = prefs[field] !== false;
+        const btn = document.querySelector(`.entry-field-quick-toggle[data-entry-quick-field="${field}"]`);
+        if (!btn) return;
+        const on = prefs[field] !== false;
+        btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+        btn.classList.toggle('entry-field-quick-toggle--open', on);
     });
 }
 
@@ -152,11 +155,12 @@ export function bindEntryQuickInputOnce() {
     quickInputBound = true;
     const root = document.getElementById('entryModal');
     if (!root) return;
-    root.addEventListener('change', (e) => {
-        const input = e.target.closest('[data-entry-quick-field]');
-        if (!input || !root.contains(input)) return;
-        const field = input.getAttribute('data-entry-quick-field');
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('.entry-field-quick-toggle[data-entry-quick-field]');
+        if (!btn || !root.contains(btn)) return;
+        const field = btn.getAttribute('data-entry-quick-field');
         if (!field || !QUICK_FIELDS.includes(/** @type {EntryQuickField} */ (field))) return;
-        setEntryFieldQuickInputEnabled(/** @type {EntryQuickField} */ (field), input.checked);
+        const nextOn = btn.getAttribute('aria-expanded') !== 'true';
+        setEntryFieldQuickInputEnabled(/** @type {EntryQuickField} */ (field), nextOn);
     });
 }

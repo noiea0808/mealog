@@ -25,6 +25,8 @@ import {
     refreshNavFeedUpdateDots
 } from './nav-feed-update-dots.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
+import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
 
 const HEADER_TITLE_BY_TAB = {
     dashboard: 'meal-dang',
@@ -336,6 +338,8 @@ export function registerMainTabSwitch() {
                 setTimeout(() => window.checkAndShowContentPopup(tab), 200);
             }
             syncBoardFeedComposerVisibility();
+            syncEntryQuickInputFabVisibility();
+            refreshMealSyncResendNavButton();
             scheduleNavDotsAfterTabSwitch(prevTab, tab);
             console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
         } catch (error) {
@@ -345,4 +349,6 @@ export function registerMainTabSwitch() {
         }
     };
     syncBoardFeedComposerVisibility();
+    syncEntryQuickInputFabVisibility();
+    refreshMealSyncResendNavButton();
 }

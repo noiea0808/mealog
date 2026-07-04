@@ -12,6 +12,7 @@ import { appState } from '../state.js';
 import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { countOfflineDraftMeals, isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
+import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
 
 const MEAL_SYNC_FAB_ARIA_IDLE = '동기화가 필요한 기록 재시도';
 const MEAL_SYNC_FAB_ARIA_OFFLINE = '오프라인 — 저장 대기 기록 보기';
@@ -44,11 +45,15 @@ function runChainRelinkAnimation(btn) {
     }, 720);
 }
 
+function fabShouldStackAbovePrimary() {
+    return appState.currentTab === 'board' || appState.currentTab === 'timeline';
+}
+
 function syncInitialRecordsLoadFabStacked() {
     try {
         const initialFab = document.getElementById('initialRecordsLoadFab');
         if (!initialFab || initialFab.classList.contains('hidden')) return;
-        initialFab.classList.toggle('initial-records-load-fab--stacked', appState.currentTab === 'board');
+        initialFab.classList.toggle('initial-records-load-fab--stacked', fabShouldStackAbovePrimary());
     } catch (_) {
         /* ignore */
     }
@@ -84,7 +89,7 @@ export function refreshMealSyncResendNavButton() {
     if (transportOff) {
         btn.classList.remove('hidden');
         btn.classList.add('meal-sync-resend-fab--transport-offline');
-        btn.classList.toggle('meal-sync-resend-fab--stacked', appState.currentTab === 'board');
+        btn.classList.toggle('meal-sync-resend-fab--stacked', fabShouldStackAbovePrimary());
         btn.setAttribute('aria-label', MEAL_SYNC_FAB_ARIA_OFFLINE);
         btn.setAttribute('title', '오프라인 — 연결되면 자동으로 동기화돼요');
         const offlineBadgeNum =
@@ -109,7 +114,7 @@ export function refreshMealSyncResendNavButton() {
     const badgeNum = scheduled > 0 ? scheduled : retry;
     if (showFab) {
         btn.classList.remove('hidden');
-        btn.classList.toggle('meal-sync-resend-fab--stacked', appState.currentTab === 'board');
+        btn.classList.toggle('meal-sync-resend-fab--stacked', fabShouldStackAbovePrimary());
         btn.setAttribute('aria-label', MEAL_SYNC_FAB_ARIA_IDLE);
         btn.setAttribute('title', '등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다');
         if (badge) {
@@ -123,6 +128,7 @@ export function refreshMealSyncResendNavButton() {
         if (badge) badge.classList.add('hidden', 'meal-sync-resend-fab__badge--retry-only');
     }
     syncInitialRecordsLoadFabStacked();
+    syncEntryQuickInputFabVisibility();
 }
 
 let mealSyncResendNavBound = false;
