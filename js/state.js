@@ -68,8 +68,8 @@ export const appState = {
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
     wantsToShare: false, // 공유를 원하는지 여부
-    currentRating: 3,
-    currentSatiety: 3,
+    currentRating: null,
+    currentSatiety: null,
     /** 기록 모달: 만족도·포만감 게이지 사용 여부 (식사 슬롯 vs 간식 슬롯 각각) */
     entryGaugeRatingOnMain: false,
     entryGaugeRatingOnSnack: false,

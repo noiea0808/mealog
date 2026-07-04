@@ -5392,6 +5392,52 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     flex: 0 0 auto;
     scroll-snap-align: center;
 }
+
+/* 기록 모달 — 시간 휠 피커 */
+.mealog-wheel--time-picker-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0.375rem;
+}
+.mealog-wheel--time-col {
+    flex: 1;
+    min-width: 0;
+    max-width: 6.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+.mealog-wheel--time-col__label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #64748b;
+    line-height: 1;
+}
+.mealog-wheel--time {
+    width: 100%;
+}
+.mealog-wheel--time .mealog-wheel__indicator {
+    width: calc(100% - 0.5rem);
+    margin-left: calc(-50% + 50%);
+    left: 50%;
+}
+.mealog-wheel--time .mealog-wheel__item {
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 기록 모달 — 만족도·포만감 라벨 옆 초기화(확장 버튼과 동일 크기) */
+#entryModal .entry-gauge-reset-toggle.entry-field-quick-toggle {
+    background: #ffffff;
+}
+#entryModal .entry-gauge-reset-toggle.entry-field-quick-toggle:hover {
+    background: #ffffff;
+}
+#entryModal .entry-sheet-zone--metrics .entry-axis-label-group .entry-field-quick-toggle__icon.fa-rotate-left {
+    font-size: 0.5625rem;
+}
 /* 트랙 안 아이콘 3개(이전/현재/다음) */
 .mealog-dial-track-icons {
     position: absolute;

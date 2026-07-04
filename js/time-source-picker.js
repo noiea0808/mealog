@@ -35,6 +35,7 @@ export function timeInputValueToDate(value, baseDate = new Date()) {
 export function closeTimeSourceSheets() {
     document.getElementById(SHEET_ID)?.remove();
     document.getElementById(MANUAL_SHEET_ID)?.remove();
+    document.getElementById('mealClockWheelPickerSheet')?.remove();
     if (escapeHandler) {
         document.removeEventListener('keydown', escapeHandler);
         escapeHandler = null;

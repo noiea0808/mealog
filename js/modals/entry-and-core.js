@@ -71,9 +71,9 @@ import {
 } from '../photo-meta.js';
 import {
     closeTimeSourceSheets,
-    openTimeManualPanel,
     openTimeSourceSheet
 } from '../time-source-picker.js';
+import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { ENTRY_DOM } from './entry-form-config.js';
@@ -271,6 +271,9 @@ function syncEntryGaugesFromDetailRecordPrefs(prefs, modeKey) {
     }
 
     applyEntryGaugeDialUi();
+    setRating(appState.currentRating);
+    renderSatietyButtons('satietyContainer', appState.currentSatiety);
+    renderSatietyButtons('snackSatietyContainer', appState.currentSatiety);
 
     const mainSide = !isSnack;
     if (prefs.time && !wasTimeOn) {
@@ -295,7 +298,8 @@ function syncEntryGaugesFromDetailRecordPrefs(prefs, modeKey) {
 const MEAL_CLOCK_SOURCE_LABELS = {
     now: '현재 시각',
     photo: '사진 시각',
-    manual: '직접 입력'
+    manual: '직접 입력',
+    empty: '미입력',
 };
 
 function setEntryMealClockSource(isMain, source) {
@@ -321,7 +325,12 @@ function applyMealClockRowFrom24(isMain, hhmm24maybe) {
         txt.value = '';
         if (sel) sel.value = 'pm';
         bridge.value = '';
-        setEntryMealClockSource(isMain, null);
+        const curSource = isMain ? appState.entryMealClockSourceMain : appState.entryMealClockSourceSnack;
+        if (curSource !== 'empty') {
+            setEntryMealClockSource(isMain, null);
+        } else {
+            updateEntryMealClockSourceLabel(isMain);
+        }
         return;
     }
     bridge.value = n24;
@@ -378,17 +387,15 @@ function openEntryMealTimeSourceSheet(isMain) {
             applyMealClockFromDate(isMain, date, 'photo');
         },
         onManual: () => {
-            openTimeManualPanel({
-                mode: 'time',
+            openMealClockWheelPanel({
                 zIndex: 350,
                 initialDate: getMealClockInitialDate(isMain),
                 onApply: (date) => applyMealClockFromDate(isMain, date, 'manual'),
-                onInvalid: () => showToast('올바른 시간을 입력해주세요.', 'error')
             });
         },
         onEmpty: () => {
             applyMealClockRowFrom24(isMain, '');
-            setEntryMealClockSource(isMain, null);
+            setEntryMealClockSource(isMain, 'empty');
         }
     });
 }
@@ -529,6 +536,9 @@ function schedulePersistEntryModalGaugePrefs() {
 
 function finalizeEntryModalGauges() {
     applyEntryGaugeDialUi();
+    setRating(appState.currentRating);
+    renderSatietyButtons('satietyContainer', appState.currentSatiety);
+    renderSatietyButtons('snackSatietyContainer', appState.currentSatiety);
 }
 
 function initEntryModalGaugeControlsOnce() {
@@ -1201,8 +1211,8 @@ export async function openModal(date, slotId, entryId = null) {
                 
                 const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
                 const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
-                window.setRating(Number.isFinite(rn) ? rn : 3);
-                window.setSatiety(Number.isFinite(sn) ? sn : 3);
+                window.setRating(Number.isFinite(rn) ? rn : null);
+                window.setSatiety(Number.isFinite(sn) ? sn : null);
                 
                 // 공유 인디케이터 표시
                 updateShareIndicator();
@@ -1464,8 +1474,8 @@ export async function openModal(date, slotId, entryId = null) {
                 
             }
         } else {
-            window.setRating(3);
-            window.setSatiety(3);
+            window.setRating(null);
+            window.setSatiety(null);
         }
 
         if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
@@ -1533,8 +1543,8 @@ export async function openModal(date, slotId, entryId = null) {
             // 휠 다이얼 초기 스냅(모달이 실제로 열린 뒤에 한 번 더 맞춤)
             setTimeout(() => {
                 try {
-                    window.setRating?.(appState.currentRating || 3);
-                    window.setSatiety?.(appState.currentSatiety || 3);
+                    window.setRating?.(appState.currentRating);
+                    window.setSatiety?.(appState.currentSatiety);
                     applyEntryGaugeDialUi();
                 } catch (_) {}
             }, 0);
@@ -1939,8 +1949,8 @@ export async function saveEntry() {
             menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
             place: isSk ? '' : (isS ? (entryWhereInputVal || appState.selectedSnackPlaceMainTag || '') : entryWhereInputVal),
             comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
-            rating: isSk ? null : (rateOn ? state.currentRating : null),
-            satiety: isSk ? null : (satOn ? state.currentSatiety : null),
+            rating: isSk ? null : (rateOn && state.currentRating != null && Number(state.currentRating) > 0 ? Number(state.currentRating) : null),
+            satiety: isSk ? null : (satOn && state.currentSatiety != null && Number(state.currentSatiety) > 0 ? Number(state.currentSatiety) : null),
             mealClock: mealClockVal,
             // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
             time: timeSortStr,
@@ -3262,35 +3272,50 @@ export async function retryPendingMealEntriesOnAppReady() {
 }
 
 export function setRating(s) {
-    appState.currentRating = s;
+    const rating = s != null && Number(s) > 0 ? Number(s) : null;
+    appState.currentRating = rating;
     const paintStarRow = (containerId) => {
         const el = document.getElementById(containerId);
         if (!el) return;
         const sts = el.children;
+        const active = rating || 0;
         for (let i = 0; i < 5; i++) {
-            sts[i].className = i < s ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+            sts[i].className = i < active ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
         }
     };
     paintStarRow('starContainer');
     paintStarRow('snackStarContainer');
 }
 
+export function resetRating() {
+    setRating(null);
+}
+
+export function resetSatiety() {
+    appState.currentSatiety = null;
+    renderSatietyButtons('satietyContainer', null);
+    renderSatietyButtons('snackSatietyContainer', null);
+}
+
 function renderSatietyButtons(containerId, selected) {
     const container = document.getElementById(containerId);
     if (!container) return;
+    const sel = selected != null && Number(selected) > 0 ? Number(selected) : null;
     container.innerHTML = SATIETY_DATA.map(
         (d) =>
-            `<button type="button" onclick="window.setSatiety(${d.val})" class="entry-gauge-satiety-btn flex shrink-0 flex-col items-center justify-center gap-1 px-0.5 py-1.5 rounded-xl transition-all ${d.val === selected ? 'entry-gauge-satiety-btn--selected opacity-100 grayscale-0' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100'}">
+            `<button type="button" onclick="window.setSatiety(${d.val})" class="entry-gauge-satiety-btn flex shrink-0 flex-col items-center justify-center gap-1 px-0.5 py-1.5 rounded-xl transition-all ${d.val === sel ? 'entry-gauge-satiety-btn--selected opacity-100 grayscale-0' : 'opacity-40 grayscale hover:grayscale-0 hover:opacity-100'}">
                 <i class="fa-solid ${d.icon} ${d.color}"></i>
-                <span class="entry-gauge-satiety-btn__label font-bold leading-tight text-center ${d.val === selected ? 'text-slate-800' : 'text-slate-400'}">${d.label}</span>
+                <span class="entry-gauge-satiety-btn__label font-bold leading-tight text-center ${d.val === sel ? 'text-slate-800' : 'text-slate-400'}">${d.label}</span>
             </button>`
     ).join('');
 }
 
 export function setSatiety(s) {
-    appState.currentSatiety = s;
-    renderSatietyButtons('satietyContainer', s);
-    renderSatietyButtons('snackSatietyContainer', s);
+    const nextVal = s != null && Number(s) > 0 ? Number(s) : null;
+    const toggled = appState.currentSatiety === nextVal ? null : nextVal;
+    appState.currentSatiety = toggled;
+    renderSatietyButtons('satietyContainer', toggled);
+    renderSatietyButtons('snackSatietyContainer', toggled);
 }
 
 /** 서브 칩 오른쪽 × — data-chip-delete(JSON) 위임 (특수문자·따옴표 안전) */

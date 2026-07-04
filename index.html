@@ -2296,10 +2296,15 @@
                         <div id="reviewSection" class="hidden">
                         <div id="ratingSection" class="entry-form-field-section hidden">
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
-                                <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                    <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
-                                    <span>만족도</span>
-                                </span>
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <span>만족도</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="ratingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="starContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="만족도 선택">
@@ -2316,10 +2321,15 @@
                         </div>
                         <div id="satietySection" class="entry-form-field-section hidden">
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
-                                <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                    <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
-                                    <span>포만감</span>
-                                </span>
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <span>포만감</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="satietyGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="satietyContainer" class="entry-gauge-satiety flex w-full items-stretch" role="group" aria-label="포만감 선택"></div>
@@ -2373,10 +2383,15 @@
                         <div id="snackReviewSection" class="hidden">
                         <div id="snackRatingSection" class="entry-form-field-section hidden">
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
-                                <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                    <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
-                                    <span>만족도</span>
-                                </span>
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <span>만족도</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="snackRatingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="snackStarContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="간식 만족도 선택">
@@ -2392,10 +2407,15 @@
                         </div>
                         <div id="snackSatietySection" class="entry-form-field-section hidden">
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
-                                <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                    <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
-                                    <span>포만감</span>
-                                </span>
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <span>포만감</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="snackSatietyGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="snackSatietyContainer" class="entry-gauge-satiety flex w-full items-stretch" role="group" aria-label="간식 포만감 선택"></div>
