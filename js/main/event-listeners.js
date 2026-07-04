@@ -33,7 +33,7 @@ import {
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
-import { openQuickEntryModal } from '../modals/entry-quick-open.js';
+import { triggerQuickEntryFromFab } from '../modals/entry-quick-open.js';
 import { openRecordCameraPicker, openRecordGalleryPicker } from '../modals/entry-and-core.js';
 import { openDailyJournalCameraPicker, openDailyJournalGalleryPicker } from '../modals/daily-journal.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
@@ -396,6 +396,7 @@ export function initEventListeners() {
 
     (function initSubmitButtonFirstTap() {
         const SUBMIT_DEBOUNCE_MS = 500;
+        const PRESS_CLASS = 'btn-is-pressed';
         let lastRun = 0;
         const runOnce = (fn) => {
             const now = Date.now();
@@ -403,13 +404,43 @@ export function initEventListeners() {
             lastRun = now;
             fn();
         };
+        const bindPressFeedback = (el) => {
+            if (!el || el.dataset.pressFeedbackBound === '1') return;
+            el.dataset.pressFeedbackBound = '1';
+            const pressOn = () => {
+                if (!el.disabled) el.classList.add(PRESS_CLASS);
+            };
+            const pressOff = () => el.classList.remove(PRESS_CLASS);
+            el.addEventListener('mousedown', pressOn);
+            el.addEventListener('mouseup', pressOff);
+            el.addEventListener('mouseleave', pressOff);
+            el.addEventListener('touchstart', pressOn, { passive: true });
+            el.addEventListener('touchend', pressOff, { passive: true });
+            el.addEventListener('touchcancel', pressOff, { passive: true });
+        };
         const addSubmitHandlers = (el, fn) => {
             if (!el) return;
-            el.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
-            el.addEventListener('touchend', (e) => { e.preventDefault(); runOnce(fn); }, { passive: false });
-            el.addEventListener('click', (e) => { e.preventDefault(); runOnce(fn); });
+            bindPressFeedback(el);
+            el.addEventListener('touchstart', (e) => {
+                if (!el.disabled) el.classList.add(PRESS_CLASS);
+                e.preventDefault();
+            }, { passive: false });
+            el.addEventListener('touchend', (e) => {
+                el.classList.remove(PRESS_CLASS);
+                e.preventDefault();
+                runOnce(fn);
+            }, { passive: false });
+            el.addEventListener('touchcancel', () => el.classList.remove(PRESS_CLASS));
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                el.classList.remove(PRESS_CLASS);
+                runOnce(fn);
+            });
         };
         addSubmitHandlers(document.getElementById('btnSave'), () => window.saveEntry());
+        addSubmitHandlers(document.getElementById('sharePhotoIndicator'), () => window.toggleSharePhoto());
+        addSubmitHandlers(document.getElementById('photoEditSaveBtn'), () => window.savePhotoEdit());
+        bindPressFeedback(document.getElementById('btnDelete'));
         addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
@@ -713,8 +744,9 @@ export function initEventListeners() {
 
     const entryQuickInputFab = document.getElementById('entryQuickInputFab');
     if (entryQuickInputFab) {
-        entryQuickInputFab.addEventListener('click', () => {
-            void openQuickEntryModal();
+        entryQuickInputFab.addEventListener('click', (e) => {
+            e.preventDefault();
+            void triggerQuickEntryFromFab(entryQuickInputFab);
         });
     }
 

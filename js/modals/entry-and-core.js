@@ -685,7 +685,7 @@ function setEntryModalSavingState(saving) {
         if (saving) {
             if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
             btnSave.innerHTML =
-                '<i class="fa-solid fa-spinner fa-spin text-sm" aria-hidden="true"></i><span class="mt-0.5">저장 중…</span>';
+                '<span class="entry-action-btn__inner"><i class="fa-solid fa-spinner fa-spin text-sm" aria-hidden="true"></i><span class="mt-0.5">저장 중…</span></span>';
         } else if (btnSave.dataset.defaultHtml) {
             btnSave.innerHTML = btnSave.dataset.defaultHtml;
         }
@@ -1151,8 +1151,8 @@ export async function openModal(date, slotId, entryId = null) {
             } else {
                 // 일반 모드: 버튼 활성화 및 텍스트 설정
                 btnSave.disabled = false;
-                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
-                btnSave.innerHTML = '<span>' + (entryId ? '수정 완료' : '기록 완료') + '</span>';
+                btnSave.className = 'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
+                btnSave.innerHTML = '<span class="entry-action-btn__inner"><span>' + (entryId ? '수정 완료' : '기록 완료') + '</span></span>';
                 delete btnSave.dataset.defaultHtml;
                 btnSave.removeAttribute('title');
             }
@@ -3696,65 +3696,56 @@ export function updateShareIndicator() {
     const state = appState;
     const shareIndicator = document.getElementById('sharePhotoIndicator');
     if (!shareIndicator) return;
-    
-    // 공유 금지 체크
-    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
-    
-    // 사진이 있으면 항상 인디케이터 표시 (공유 가능 상태)
-    if (state.currentPhotos.length > 0) {
-        if (isShareBanned) {
-            // 공유 금지된 경우: 비활성화 스타일로 표시
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-red-50', 'border-red-300', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-slate-50', 'border-slate-200', 'text-emerald-600', 'text-slate-400');
-            shareIndicator.title = '공유가 금지된 게시물입니다';
-        } else if (state.wantsToShare) {
-            // 공유를 원하는 경우 활성화 스타일
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'bg-red-50', 'border-red-300', 'text-slate-400', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.title = '';
-        } else {
-            // 사진은 있지만 아직 공유하지 않은 경우도 표시 (비활성화 스타일)
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-red-50', 'border-red-300', 'text-emerald-600', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.title = '';
-        }
-    } else {
+
+    const isShareBanned = state.currentEditingId
+        ? window.mealHistory.find((m) => m.id === state.currentEditingId)?.shareBanned === true
+        : false;
+
+    shareIndicator.classList.remove('entry-action-btn--share-on', 'entry-action-btn--share-banned');
+    shareIndicator.disabled = false;
+    shareIndicator.removeAttribute('aria-disabled');
+
+    if (state.currentPhotos.length === 0) {
         shareIndicator.classList.add('hidden');
+        shareIndicator.title = '';
+        return;
+    }
+
+    shareIndicator.classList.remove('hidden');
+
+    if (isShareBanned) {
+        shareIndicator.classList.add('entry-action-btn--share-banned');
+        shareIndicator.disabled = true;
+        shareIndicator.setAttribute('aria-disabled', 'true');
+        shareIndicator.title = '공유가 금지된 게시물입니다';
+        return;
+    }
+
+    shareIndicator.title = state.wantsToShare ? '모먼트에 공유됩니다' : '모먼트에 공유하기';
+    if (state.wantsToShare) {
+        shareIndicator.classList.add('entry-action-btn--share-on');
     }
 }
 
 export function toggleSharePhoto() {
     const state = appState;
     const shareIndicator = document.getElementById('sharePhotoIndicator');
-    if (!shareIndicator) return;
-    
+    if (!shareIndicator || shareIndicator.disabled || shareIndicator.classList.contains('hidden')) return;
+
     if (state.currentPhotos.length === 0) {
-        showToast("공유할 사진이 없습니다.", 'error');
+        showToast('공유할 사진이 없습니다.', 'error');
         return;
     }
-    
-    // 공유 금지 체크
-    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+
+    const isShareBanned = state.currentEditingId
+        ? window.mealHistory.find((m) => m.id === state.currentEditingId)?.shareBanned === true
+        : false;
     if (isShareBanned) {
-        showToast("공유가 금지된 게시물입니다.", 'error');
+        showToast('공유가 금지된 게시물입니다.', 'error');
         return;
     }
-    
-    const isCurrentlySharing = shareIndicator.classList.contains('bg-emerald-100');
-    
-    if (isCurrentlySharing) {
-        // 공유 해제
-        state.wantsToShare = false;
-        shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-        shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
-    } else {
-        // 공유 설정
-        state.wantsToShare = true;
-        shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400');
-        shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-    }
+
+    state.wantsToShare = !state.wantsToShare;
+    updateShareIndicator();
 }
 

@@ -2507,15 +2507,19 @@
             <div id="entryModalActions" class="entry-modal-actions shrink-0 overflow-hidden">
                 <div class="flex items-stretch">
                     <button id="btnDelete" onclick="window.deleteEntry()" class="entry-action-btn entry-action-btn--delete hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5">
-                        <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
-                        <span class="text-xs font-bold leading-tight">삭제</span>
+                        <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5">
+                            <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                            <span class="text-xs font-bold leading-tight">삭제</span>
+                        </span>
                     </button>
                     <button type="button" id="btnSave" class="entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5">
-                        <span>기록 완료</span>
+                        <span class="entry-action-btn__inner"><span>기록 완료</span></span>
                     </button>
-                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
-                        <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
-                        <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
+                    <button type="button" id="sharePhotoIndicator" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
+                        <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5 min-w-0">
+                            <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
+                            <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
+                        </span>
                     </button>
                 </div>
             </div>
@@ -2845,8 +2849,8 @@
                 <button type="button" onclick="window.resetPhotoEdit()" class="py-3.5 bg-slate-100 text-slate-800 font-semibold text-sm rounded-bl-2xl border-r border-slate-200 active:bg-slate-200">
                     초기화
                 </button>
-                <button type="button" onclick="window.savePhotoEdit()" class="py-3.5 bg-black text-white font-semibold text-sm rounded-br-2xl active:bg-neutral-900">
-                    저장
+                <button type="button" id="photoEditSaveBtn" class="photo-edit-save-btn py-3.5 bg-black text-white font-semibold text-sm rounded-br-2xl">
+                    <span class="entry-action-btn__inner">저장</span>
                 </button>
             </div>
         </div>
