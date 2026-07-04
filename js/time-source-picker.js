@@ -81,7 +81,7 @@ export function openTimeManualPanel(options = {}) {
 
     const root = document.createElement('div');
     root.id = MANUAL_SHEET_ID;
-    root.className = 'fixed inset-0 flex items-end sm:items-center justify-center p-4 pointer-events-none';
+    root.className = 'fixed inset-0 flex items-center justify-center p-4 pointer-events-none';
     root.style.zIndex = String(zIndex);
     root.setAttribute('role', 'presentation');
 
@@ -158,7 +158,7 @@ export function openTimeSourceSheet(options = {}) {
 
     const root = document.createElement('div');
     root.id = SHEET_ID;
-    root.className = 'fixed inset-0 flex items-end sm:items-center justify-center p-4 pointer-events-none';
+    root.className = 'fixed inset-0 flex items-center justify-center p-4 pointer-events-none';
     root.style.zIndex = String(zIndex);
     root.setAttribute('role', 'presentation');
 

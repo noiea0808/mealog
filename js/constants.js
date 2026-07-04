@@ -28,6 +28,9 @@ export const GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS = 700;
 
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
+/** 기록 입력 시트 — 식사·간식 사진 최대 장수 */
+export const RECORD_MAX_PHOTOS = 5;
+
 export const SLOTS = [
     { id: 'pre_morning', label: '아침 전 간식', type: 'snack' },
     { id: 'morning', label: '아침', type: 'main' },

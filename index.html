@@ -2164,6 +2164,7 @@
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
                             <span>음식 사진</span>
+                            <span id="photoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
                             <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
@@ -2178,7 +2179,6 @@
                                 <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
                                 <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
                                 <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
-                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold ml-1">0/5</span>
                             </div>
                         </div>
                     </div>
@@ -2192,6 +2192,7 @@
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
                             <span>간식 사진</span>
+                            <span id="snackPhotoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
                             <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
@@ -2206,7 +2207,6 @@
                                 <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
                                 <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
                                 <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
-                                <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold ml-1">0/5</span>
                             </div>
                         </div>
                     </div>
@@ -2461,7 +2461,7 @@
                     </div>
                     <div id="entryDetailRecordPanel" class="entry-detail-record-panel">
                         <div class="entry-detail-record-header-static">
-                            <span class="entry-detail-record-title">더 적기</span>
+                            <span class="entry-detail-record-title">상세 보기</span>
                             <div id="entryDetailRecordChips" class="entry-detail-record-chips" role="group" aria-label="상세기록 항목">
                             <button type="button" data-field="with" class="entry-detail-record-chip" aria-pressed="false">
                                 <i class="fa-solid fa-user-group" aria-hidden="true"></i>

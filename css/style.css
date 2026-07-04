@@ -8755,25 +8755,32 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     margin-top: 0.375rem;
 }
 #entryModal .entry-photo-aspect-tools {
-    opacity: 0.7;
+    opacity: 1;
 }
 #entryModal .entry-photo-aspect-tools .photo-aspect-btn {
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--entry-text-muted);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    color: var(--entry-text-secondary);
     border-color: var(--entry-border-soft);
     background: transparent;
 }
-#entryModal .entry-photo-aspect-tools .photo-aspect-btn[data-aspect="1:1"].border-emerald-500,
-#entryModal .entry-photo-aspect-tools .photo-aspect-btn.border-emerald-500 {
+#entryModal .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: #6ee7b7;
     color: var(--entry-accent-dark);
+    font-weight: 800;
 }
-#entryModal #photoCount,
-#entryModal #snackPhotoCount {
+#entryModal .entry-photo-count {
+    margin-left: 0.375rem;
+    font-size: 0.625rem;
+    font-weight: 700;
     color: var(--entry-text-muted);
-    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+}
+#entryModal .entry-photo-count.text-emerald-600 {
+    color: var(--entry-accent-dark);
 }
 
 /* ── 만족도·포만감·시간 ── */
@@ -9072,9 +9079,15 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease;
 }
-.entry-header-date-picker__nav-btn:hover {
+.entry-header-date-picker__nav-btn:hover:not(:disabled):not(.entry-header-date-picker__nav-btn--disabled) {
     background: #f1f5f9;
     border-color: #cbd5e1;
+}
+.entry-header-date-picker__nav-btn:disabled,
+.entry-header-date-picker__nav-btn.entry-header-date-picker__nav-btn--disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 .entry-header-date-picker__weekdays {
     display: grid;
@@ -9112,12 +9125,18 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .entry-header-date-picker__day--empty {
     pointer-events: none;
 }
-.entry-header-date-picker__day:hover:not(.is-selected) {
+.entry-header-date-picker__day:hover:not(.is-selected):not(.is-disabled) {
     background: #f1f5f9;
 }
-.entry-header-date-picker__day.is-today:not(.is-selected) {
+.entry-header-date-picker__day.is-today:not(.is-selected):not(.is-disabled) {
     color: #059669;
     background: #ecfdf5;
+}
+.entry-header-date-picker__day.is-disabled,
+.entry-header-date-picker__day:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 .entry-header-date-picker__day.is-selected {
     background: #10b981;

@@ -132,6 +132,50 @@ function localTodayIso() {
 
 
 
+function isFutureEntryHeaderDateIso(iso) {
+
+    const todayIso = localTodayIso();
+
+    return Boolean(iso && iso > todayIso);
+
+}
+
+
+
+function isMonthAfterCurrentCalendarMonth(year, month) {
+
+    const now = new Date();
+
+    const ty = now.getFullYear();
+
+    const tm = now.getMonth();
+
+    return year > ty || (year === ty && month > tm);
+
+}
+
+
+
+function syncEntryHeaderDatePickerNav() {
+
+    const nextBtn = document.getElementById('entryHeaderDatePickerNext');
+
+    if (!nextBtn || !datePickerView) return;
+
+    const { year, month } = datePickerView;
+
+    const atCurrentMonth = !isMonthAfterCurrentCalendarMonth(year, month);
+
+    nextBtn.disabled = atCurrentMonth;
+
+    nextBtn.setAttribute('aria-disabled', atCurrentMonth ? 'true' : 'false');
+
+    nextBtn.classList.toggle('entry-header-date-picker__nav-btn--disabled', atCurrentMonth);
+
+}
+
+
+
 function syncEntryHeaderDateButtonLabel() {
 
     const btn = document.getElementById('entryHeaderDateBtn');
@@ -442,15 +486,23 @@ function renderEntryHeaderDatePicker() {
 
         if (iso === todayIso) classes.push('is-today');
 
+        const isFuture = iso > todayIso;
+
+        if (isFuture) classes.push('is-disabled');
+
+        const disabledAttr = isFuture ? ' disabled aria-disabled="true"' : '';
+
         parts.push(
 
-            `<button type="button" class="${classes.join(' ')}" data-date="${iso}">${dayNum}</button>`
+            `<button type="button" class="${classes.join(' ')}" data-date="${iso}"${disabledAttr}>${dayNum}</button>`
 
         );
 
     }
 
     grid.innerHTML = parts.join('');
+
+    syncEntryHeaderDatePickerNav();
 
 }
 
@@ -481,6 +533,8 @@ export function closeEntryHeaderDatePicker() {
 
 
 function selectEntryHeaderDate(iso) {
+
+    if (isFutureEntryHeaderDateIso(iso)) return;
 
     const input = document.getElementById('entryHeaderDate');
 
@@ -517,6 +571,8 @@ function shiftDatePickerMonth(delta) {
         year += 1;
 
     }
+
+    if (delta > 0 && isMonthAfterCurrentCalendarMonth(year, month)) return;
 
     datePickerView = { year, month };
 
@@ -590,7 +646,7 @@ export function bindEntryModalHeaderOnce() {
 
         const btn = e.target.closest('[data-date]');
 
-        if (!btn) return;
+        if (!btn || btn.disabled || btn.classList.contains('is-disabled')) return;
 
         const iso = btn.getAttribute('data-date');
 

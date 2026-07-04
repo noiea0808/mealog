@@ -1,5 +1,5 @@
 // 렌더링 관련 함수들
-import { SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS } from './constants.js';
+import { SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, RECORD_MAX_PHOTOS } from './constants.js';
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
 import { setPhotoAddButtonsEnabled } from './utils/image-source-picker.js';
@@ -30,7 +30,7 @@ export function renderPhotoPreviews() {
         appState.currentPhotos = appState.currentPhotos ? [appState.currentPhotos] : [];
     }
     
-    const maxPhotos = 10;
+    const maxPhotos = RECORD_MAX_PHOTOS;
     const currentCount = appState.currentPhotos.length;
     
     if (container) {
@@ -49,7 +49,7 @@ export function renderPhotoPreviews() {
                         <i class="fa-solid fa-chevron-left text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.editPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
-                        <i class="fa-solid fa-crop text-[9px]"></i>
+                        <i class="fa-solid fa-pen-to-square text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.movePhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
                         <i class="fa-solid fa-chevron-right text-[9px]"></i>
@@ -73,7 +73,7 @@ export function renderPhotoPreviews() {
     }
     
     setPhotoAddButtonsEnabled([cameraBtn, albumBtn], currentCount < maxPhotos, {
-        disabledTitle: '사진은 최대 10개까지 추가할 수 있습니다'
+        disabledTitle: `사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다`
     });
 }
 

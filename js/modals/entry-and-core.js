@@ -1,5 +1,5 @@
 // 모달 및 입력 처리 관련 함수들
-import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
+import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
@@ -636,13 +636,10 @@ function syncEntryModalBodyClass() {
 /** 기록 사진 비율 버튼 UI 동기화 + 카메라(등록) 버튼 비율 적용 */
 function updatePhotoAspectButtons() {
     const ratio = appState.recordPhotoAspectRatio || '1:1';
-    document.querySelectorAll('.photo-aspect-btn').forEach(btn => {
+    document.querySelectorAll('#entryModal .photo-aspect-btn').forEach((btn) => {
         const isActive = btn.getAttribute('data-aspect') === ratio;
-        btn.classList.toggle('bg-emerald-100', isActive);
-        btn.classList.toggle('border-emerald-300', isActive);
-        btn.classList.toggle('text-emerald-700', isActive);
-        btn.classList.toggle('border-slate-200', !isActive);
-        btn.classList.toggle('text-slate-600', !isActive);
+        btn.classList.toggle('photo-aspect-btn--active', isActive);
+        btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
     });
 }
 
@@ -3524,8 +3521,6 @@ function toggleFieldsForSkip(isSkip) {
     }
     syncDeliveryVendorSectionVisibility();
 }
-
-const RECORD_MAX_PHOTOS = 10;
 
 export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
     const state = appState;
