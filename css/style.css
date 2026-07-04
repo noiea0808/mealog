@@ -6,8 +6,10 @@
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
     --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
+    /* 메인 앱·밀톡 공통 페이지 배경 (slate-100) */
+    --app-page-bg: #f1f5f9;
     /* 밀톡 피드 대화 영역 배경 */
-    --board-feed-bg: rgb(5 150 105);
+    --board-feed-bg: var(--app-page-bg);
     /* 하단 플로팅: 메시지 컴포저·APP 네비 — 화면 좌우에서 띄우는 인셋 (각 변에 동일 값) */
     --app-bottom-floating-inset: 12px;
     /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
@@ -16,7 +18,7 @@
         calc(100vw - 2 * var(--app-bottom-floating-inset))
     );
     /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
-    --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
+    --board-feed-composer-surface: rgba(241, 245, 249, 0.7);
     /*
      * 피드 스크롤 하단 패딩: APP 네비가 아니라 fixed 컴포저(#boardInlineComposer) 기준.
      * = 컴포저 bottom 오프셋(뷰포트 하단~컴포저 밑변) + 컴포저 박스 높이(패딩 0.4rem×2 + 한 줄 행 2.25rem + 테두리) + 새로고침 등 여유.
@@ -43,13 +45,10 @@ html.platform-web #navigationBarOverlay {
     display: none !important;
 }
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
-html.platform-native-app .settings-subtab-row .settings-tab {
-    font-size: 0.875rem;
-}
-html.platform-native-app #trackerTabs .view-tab {
+html.platform-native-app .app-chrome-subtab {
     font-size: 0.8125rem;
 }
-html.platform-native-app #mainAppHeader .header-section-label {
+html.platform-native-app #trackerTabs .view-tab {
     font-size: 0.8125rem;
 }
 html.platform-native-app .notification-popup .notification-tab-btn {
@@ -102,24 +101,23 @@ html:has(#feedContent[data-moment-feed-layout='2']) {
 body {
     width: 100%;
     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; 
-    background-color: #f8fafc; 
+    background-color: var(--app-page-bg); 
     color: #1e293b; 
     overflow-x: clip; 
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-/* 밀톡·피드: 입력창 아래·네비 뒤 연회색(#f8fafc) 구간을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
+/* 밀톡·피드: 입력창 아래·네비 뒤 연회색을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
-    background-image: linear-gradient(
-        to bottom,
-        #f8fafc 0,
-        #f8fafc max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))),
-        var(--board-feed-bg) max(0px, calc(100dvh - 7.25rem - var(--safe-bottom))) 100%
-    );
-    background-attachment: fixed;
+    background-color: var(--board-feed-bg);
+    background-image: none;
 }
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
+}
+/* 메인 앱(타임라인·밀당·모먼트·설정 등): 하단 safe-area 연회색 통일 */
+body:has(#mainApp:not(.hidden)) #navigationBarOverlay {
+    background-color: var(--app-page-bg) !important;
 }
 /* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (텍스트 입력 포커스 시) — 푸시 설정 스위치(.push-pref-toggle)는 제외 */
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
@@ -129,13 +127,36 @@ body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="t
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
 }
-/* 밀로그 검색창 포커스 시: 헤더 유지 (입력 텍스트 보이도록) */
-body:has(#searchInput:focus) #mainAppHeader {
+/* 밀로그 검색창 포커스·확장 시: 헤더·트래커·상태바 유지 (입력·필터 사용 중 chrome 숨김 방지) */
+body:has(#searchInput:focus) #mainAppHeader,
+body:has(#timelineSearchPanel.expanded) #mainAppHeader,
+body:has(#searchInput:focus) #trackerSection:not(.hidden),
+body:has(#timelineSearchPanel.expanded) #trackerSection:not(.hidden),
+body:has(#searchInput:focus) #statusBarOverlay,
+body:has(#timelineSearchPanel.expanded) #statusBarOverlay {
     display: block !important;
 }
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
+body:has(#searchInput:focus) .bottom-nav,
+body:has(#timelineSearchPanel.expanded) .bottom-nav {
+    display: flex !important;
+}
+body:has(#searchInput:focus) #navigationBarOverlay,
+body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
+    display: block !important;
+}
+body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
+}
+/* 식사 기록 모달 열림: 입력 포커스로 body padding·배경 chrome이 튀지 않도록 전역 규칙 예외 */
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #mainAppHeader,
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #statusBarOverlay,
+body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #trackerSection:not(.hidden) {
+    display: block !important;
 }
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
     padding-bottom: 1rem !important;
@@ -411,7 +432,7 @@ body.keyboard-closed #boardWriteView {
     margin: 0;
 }
 /* 모먼트 좌우: #galleryView 단일 규칙(아래)에서 처리 — .ui-tab-view 기본 padding과 중복되지 않게 둠 */
-.ui-surface-soft { background: #f1f5f9; } /* slate-100 */
+.ui-surface-soft { background: var(--app-page-bg); }
 .ui-stack-lg > * + * { margin-top: 1rem; }       /* space-y-4 */
 .ui-stack-md > * + * { margin-top: 0.75rem; }    /* space-y-3 */
 .ui-stack-sm > * + * { margin-top: 0.5rem; }     /* space-y-2 */
@@ -449,7 +470,7 @@ body.keyboard-closed #boardWriteView {
         90deg,
         #e2e8f0 0%,
         #f1f5f9 16%,
-        #f8fafc 38%,
+        #f1f5f9 38%,
         #f1f5f9 58%,
         #e2e8f0 100%
     );
@@ -555,10 +576,6 @@ body.keyboard-closed #boardWriteView {
 /* 헤더 타이틀: text-2xl(1.5rem) 대비 20% 확대 = 1.8rem */
 header .mealog-title { 
     font-size: 1.8rem; 
-}
-.header-section-label {
-    color: #047857;
-    transition: opacity 0.15s ease;
 }
 /* 서브 타이틀 (INSIGHT, MEAL TALK, 게시글, 글쓰기) – Pretendard, 700, 대문자 */
 .sub-title { 
@@ -1688,7 +1705,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     flex-flow: row nowrap;
     align-items: center;
     gap: 4px;
-    margin-top: 2px;
+    margin-top: 0;
     padding-bottom: 2px;
     width: 100%;
     max-width: 100%;
@@ -1769,18 +1786,414 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     color: #475569; 
     white-space: nowrap; 
 }
-/* 앱 모드: 상단/하단 시스템 UI(상태바·네비바) 여백 */
-#mainApp header.safe-area-top { top: var(--safe-top); }
-#mainApp .safe-area-tracker { top: calc(var(--safe-top) + 52px); }
-
-/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일) */
-#mainAppHeader.header-scroll-hidden { transform: translateY(-100%); }
-/* 헤더 숨김 시 트래커는 상태바 아래에 고정 (padding으로 상태바 영역 확보) */
-#trackerSection { transition: top 0.3s ease-out; }
-#trackerSection.tracker-header-hidden {
-    top: 0 !important;
-    padding-top: var(--safe-top) !important;
+/* 앱 모드: 상단 chrome — #appTopChrome 단일 sticky, 상태바는 #statusBarOverlay */
+#appTopChrome {
+    position: sticky;
+    top: var(--safe-top);
+    z-index: 50;
+    /* 스크롤 중 그라데이션 배경이 매 프레임 repaint되며 생기던 떨림(덜덜) 방지: 독립 GPU 레이어로 승격 */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: transform;
 }
+/* 상태바·네비 오버레이도 동일 레이어 승격 (sticky 헤더와 함께 부드럽게) */
+#statusBarOverlay,
+#navigationBarOverlay {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+}
+/* 라운지·밀당·설정: 헤더(녹색)와 아래 영역(녹색) 사이 서브픽셀 seam을 채우는 컬럼폭 녹색 fill.
+   - position:fixed → 뷰포트 상단 고정(스크롤해도 잔상 띠 없음)
+   - z-index:-1 → 콘텐츠 뒤(페이지 배경 위)에만 깔려 UI를 가리지 않음
+   - width:min(100vw,28rem) 가운데 → 앱 컬럼 밖으로 녹색이 번지지 않음 */
+#appTopChromeFill {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%) translateZ(0);
+    width: min(100vw, 28rem);
+    z-index: -1;
+    pointer-events: none;
+    background-repeat: no-repeat;
+    background-color: transparent;
+}
+/* 라운지·설정: 서브탭이 스크롤되지 않고 헤더 아래 고정 → fill을 헤더+서브탭 전체로 덮어
+   빠른 스크롤·오버스크롤로 서브탭 밴드에 틈이 생겨도 녹색 유지 (콘텐츠가 그 밴드로 지나가지 않으므로 녹색 누출 없음) */
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #appTopChromeFill,
+body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) #appTopChromeFill {
+    display: block;
+    height: var(--app-chrome-gradient-subtabs-span);
+    background-image: var(--app-chrome-gradient);
+    background-size: 100% var(--app-chrome-gradient-subtabs-span);
+    background-position: 0 0;
+}
+/* 밀당: 기간탭이 콘텐츠와 함께 스크롤되므로 fill은 헤더 밴드까지만 (그 아래는 콘텐츠가 지나감 → 녹색 선 방지).
+   빠른 스크롤 흰색은 overscroll-behavior로 차단 */
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #appTopChromeFill {
+    display: block;
+    height: calc(var(--safe-top) + var(--app-chrome-header-h));
+    background-image: var(--app-chrome-gradient-dashboard-fill);
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span));
+    background-position: 0 0;
+}
+/* 헤더 숨김 시: 서브탭이 상단으로 올라오므로 fill 높이도 그만큼만 (라운지·설정) */
+body:has(#mainAppHeader.header-scroll-hidden):has(#boardListView:not(.hidden)) #appTopChromeFill,
+body:has(#mainAppHeader.header-scroll-hidden):has(#settingsView:not(.hidden)) #appTopChromeFill {
+    height: calc(var(--safe-top) + var(--app-chrome-subtabs-h));
+}
+/* 라운지·밀당: 빠르게 위로 스크롤(fling) 시 오버스크롤 rubber-band가 상단 흰 바탕을 노출하는 것 방지 */
+html:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)),
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) {
+    overscroll-behavior-y: contain;
+}
+#boardLoungeScrollArea {
+    overscroll-behavior-y: contain;
+}
+
+/* 스크롤 시 헤더 숨김 (인스타/페이스북 스타일)
+   핵심: 숨김(아래로 스크롤)은 0.3s 부드럽게, 등장(위로 스크롤)은 즉시(transition 없음).
+   → 위로 빠르게 스크롤할 때 헤더가 천천히 내려오며 콘텐츠와의 사이에 흰 틈이 생기던 문제 제거.
+   (HTML의 transition-transform duration-300 클래스를 여기서 덮어씀) */
+#mainAppHeader { transition: none !important; }
+#mainAppHeader.header-scroll-hidden {
+    transition: transform 0.3s ease-out !important;
+    transform: translateY(-100%);
+}
+/* 밀로그: 헤더만 슬라이드·레이아웃 접힘 → 트래커가 wrapper 안에서 자연스럽게 올라옴 (별도 sticky 불필요) */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader.header-scroll-hidden {
+    margin-bottom: calc(-1 * var(--app-chrome-header-h));
+}
+#trackerSection { transition: none; }
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection.tracker-header-hidden {
+    top: auto !important;
+    padding-top: 0 !important;
+}
+
+/* =========================
+   메인 앱 헤더: 녹색 그라데이션 + 흰색 텍스트 (모든 하단 탭)
+   ========================= */
+body:has(#mainApp:not(.hidden)) {
+    --timeline-chrome-green-deep: #064e3b;
+    --timeline-chrome-green-mid: #065f46;
+    --timeline-chrome-green-base: #047857;
+    --timeline-chrome-green-light: #10b981;
+    --app-chrome-header-h: 3.5rem;
+    --app-chrome-subtabs-h: 2.75rem;
+    --app-chrome-gradient-subtabs-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h));
+    --app-chrome-gradient-timeline-span: calc(var(--safe-top) + var(--app-chrome-header-h) + 7.5rem);
+    --app-chrome-gradient-dashboard-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h) + 24rem);
+    /* 밀당 인사이트: 시작·끝 색은 공통 gradient와 동일, 중간 전환만 완만하게(높이 가변 대응) */
+    --app-chrome-gradient-dashboard-fill: linear-gradient(
+        135deg,
+        var(--timeline-chrome-green-deep) 0%,
+        var(--timeline-chrome-green-mid) 38%,
+        var(--timeline-chrome-green-base) 72%,
+        var(--timeline-chrome-green-light) 100%
+    );
+    --app-chrome-gradient: linear-gradient(
+        135deg,
+        var(--timeline-chrome-green-deep) 0%,
+        var(--timeline-chrome-green-mid) 28%,
+        var(--timeline-chrome-green-base) 58%,
+        var(--timeline-chrome-green-light) 100%
+    );
+}
+body:has(#mainApp:not(.hidden)) #statusBarOverlay {
+    background: var(--app-chrome-gradient) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay {
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+}
+/* 밀로그: 헤더+트래커 단일 sticky wrapper에 gradient — seam 없음 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
+    background: transparent !important;
+    box-shadow: none !important;
+    border-bottom: none !important;
+}
+/* 웹: 상태바 오버레이를 max-w-md 본문 폭에만 맞춤 (뷰포트 전체로 녹색이 퍼지지 않게) */
+html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
+    left: 50%;
+    right: auto;
+    width: min(100vw, 28rem);
+    transform: translateX(-50%);
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+}
+/* 밀당: 상태바 gradient — backdrop·인사이트 chrome과 동기화 */
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #statusBarOverlay {
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+}
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader {
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    background-color: transparent !important;
+    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainApp:not(.hidden)) #headerAppTitle {
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger,
+body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle,
+body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger {
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.14);
+}
+body:has(#mainApp:not(.hidden)) .header-right .notification-trigger:hover,
+body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle:hover,
+body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+}
+/* 헤더 흔적 필터 활성: 반투명 원형 (bg-slate-100 사각형 방지) */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn.gallery-trace-btn--active {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border-radius: 9999px;
+}
+/* 헤더 우측 FA 아이콘: 종(bell)과 동일하게 text-stroke 없이 글리프 두께 통일 */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .timeline-search-toggle i,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .gallery-trace-btn i,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .notification-trigger .fa-bell {
+    -webkit-text-stroke: 0;
+    paint-order: normal;
+}
+/* 모먼트·밀당·라운지 헤더 돋보기(fa-solid): 선 1px 얇게 — 헤더 배경색 stroke로 글리프 외곽 깎기 */
+body:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass {
+    -webkit-text-stroke: 1px #047857 !important;
+    paint-order: stroke fill;
+}
+body:has(#mainApp:not(.hidden)) #galleryView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden)) #dashboardView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
+body:has(#mainApp:not(.hidden)) #boardListView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass {
+    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.2) !important;
+}
+body:has(#mainApp:not(.hidden)) .timeline-search-wrapper.expanded .timeline-search-panel {
+    background: rgba(255, 255, 255, 0.16) !important;
+    border-color: rgba(255, 255, 255, 0.32) !important;
+}
+body:has(#mainApp:not(.hidden)) #searchInput {
+    color: #ffffff;
+}
+body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* 라운지·사용자: 헤더 그라데이션 확장 + pill 서브탭 */
+.app-chrome-subtabs {
+    flex-shrink: 0;
+    min-width: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--app-chrome-subtabs-h);
+    height: var(--app-chrome-subtabs-h);
+    padding: 0 1.5rem;
+}
+.app-chrome-subtab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 14px;
+    border-radius: 9999px;
+    border: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1rem;
+    white-space: nowrap;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.14);
+    color: rgba(255, 255, 255, 0.82);
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.app-chrome-subtab.active,
+.app-chrome-subtab[aria-selected="true"] {
+    background: rgba(255, 255, 255, 0.24);
+    color: #ffffff;
+    font-weight: 600;
+}
+.app-chrome-subtab:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.18);
+}
+.app-chrome-subtab.active:hover,
+.app-chrome-subtab[aria-selected="true"]:hover {
+    background: rgba(255, 255, 255, 0.28);
+}
+body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #boardLoungeFrame .board-mealtalk-subtabs,
+body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row {
+    background: var(--app-chrome-gradient) !important;
+    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
+    border-bottom: none !important;
+}
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome {
+    background-color: transparent !important;
+    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
+    background-size: 100% 100% !important;
+    background-repeat: no-repeat !important;
+    background-position: 0 0 !important;
+    box-sizing: border-box;
+    padding-bottom: 0.25rem;
+}
+body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome .dashboard-chrome-subtabs {
+    background: transparent !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #boardListView:not(.hidden) .board-mealtalk-subtabs,
+body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) .settings-subtab-row {
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #statusBarOverlay,
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #mainAppHeader {
+    background-position: 0 calc(-1 * var(--safe-top)) !important;
+}
+body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) .dashboard-insight-chrome {
+    background-position: 0 0 !important;
+}
+/* 밀로그: wrapper 안 헤더·트래커만 개별 gradient 제거 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
+    background: transparent !important;
+    background-image: none !important;
+}
+
+/* 밀로그 전용: 트래커·미니 캘린더 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
+    color: #ffffff !important;
+}
+/* 연속 기록 pill: 라운드 사각형(🔥) + N일 연속 */
+.tracker-streak-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 8px 2px 3px;
+    border-radius: 9999px;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fde68a;
+    line-height: 1;
+}
+.tracker-streak-pill__emoji {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.1);
+    font-size: 12px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.tracker-streak-pill__text {
+    padding-right: 1px;
+}
+/* 실행 환경 배지 — 헤더(녹색) 위에서도 잘 보이게 */
+.mealog-env-badge--dev {
+    color: #fef08a;
+    background: rgba(15, 23, 42, 0.55);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(254, 240, 138, 0.65);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:hover {
+    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:focus-visible {
+    outline-color: rgba(255, 255, 255, 0.85);
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.active {
+    background: rgba(255, 255, 255, 0.96) !important;
+    border-color: transparent !important;
+    color: var(--timeline-chrome-green-mid) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
+    color: rgba(255, 255, 255, 0.68) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
+    color: rgba(255, 210, 210, 0.92) !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.92) !important;
+    border: 1px solid transparent;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full {
+    background: rgba(255, 255, 255, 0.22) !important;
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+    color: #ffffff !important;
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
+    transform: scale(1.08);
+    border: 2px solid #ffffff !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #ffffff !important;
+    font-weight: 800;
+}
+/* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
+#trackerMonthCalendarModal .calendar-dot.dot-none {
+    background: #ecfdf5;
+    color: #64748b;
+}
+
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
 .demo-nav-guide-panel {
     bottom: calc(66px + var(--safe-bottom));
@@ -1881,6 +2294,7 @@ body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
 body.entry-modal-open .bottom-nav,
 body.entry-modal-open #navigationBarOverlay,
 body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
+body.entry-modal-open #entryQuickInputFab.entry-quick-input-fab,
 body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab,
 body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
@@ -1905,6 +2319,18 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
 }
+/* 저장 중: 스크롤 영역·액션 버튼 비활성 (모달은 열린 채 스피너 표시) */
+#entryModal.entry-modal-saving #modalScrollArea {
+    pointer-events: none;
+    opacity: 0.72;
+}
+#entryModal.entry-modal-saving #entryModalActions button:not(#btnSave) {
+    pointer-events: none;
+    opacity: 0.45;
+}
+#entryModal.entry-modal-saving #btnSave {
+    cursor: wait;
+}
 /* 하루 기록 모달: 시트 하단 + 액션바에 제스처/네비 세이프 영역 */
 #dailyJournalModal {
     padding-bottom: 0;
@@ -1925,6 +2351,7 @@ html.platform-web #dailyJournalModal #dailyJournalModalActions {
 body.daily-journal-modal-open .bottom-nav,
 body.daily-journal-modal-open #navigationBarOverlay,
 body.daily-journal-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
+body.daily-journal-modal-open #entryQuickInputFab.entry-quick-input-fab,
 body.daily-journal-modal-open #initialRecordsLoadFab.initial-records-load-fab,
 body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
@@ -1933,6 +2360,25 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
 #galleryContainer .moment-feed-photo {
     cursor: zoom-in;
+}
+/* 모먼트 피드: 로드 완료 전 고정 슬롯만, 로드 완료 후 이미지 노출 (스피너 없음) */
+#galleryContainer img.moment-feed-photo:not(.loaded),
+#feedContent img.moment-feed-photo:not(.loaded) {
+    opacity: 0 !important;
+    visibility: hidden !important;
+}
+/* 캡처 공유 PNG(h-auto): 로드 전 3:4 플레이스홀더로 영역 확보 */
+#galleryContainer .moment-v2-photo-surface--capture-share:not(:has(> img.moment-feed-photo.loaded)),
+#feedContent .moment-v2-photo-surface--capture-share:not(:has(> img.moment-feed-photo.loaded)),
+#galleryContainer .moment-feed-photo-slot--capture:not(:has(> img.moment-feed-photo.loaded)),
+#feedContent .moment-feed-photo-slot--capture:not(:has(> img.moment-feed-photo.loaded)) {
+    aspect-ratio: 3 / 4;
+}
+#galleryContainer .moment-v2-photo-surface--capture-share:has(> img.moment-feed-photo.loaded),
+#feedContent .moment-v2-photo-surface--capture-share:has(> img.moment-feed-photo.loaded),
+#galleryContainer .moment-feed-photo-slot--capture:has(> img.moment-feed-photo.loaded),
+#feedContent .moment-feed-photo-slot--capture:has(> img.moment-feed-photo.loaded) {
+    aspect-ratio: auto;
 }
 /* 화면2: 라이트박스 없음 — 돋보기 커서 제거 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-carousel-photo,
@@ -2025,22 +2471,28 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
 }
-/* 일간 공유 PNG: 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경(고정 aspect 슬롯의 옅은 매트 대신 미리보기와 동일한 인상) */
-#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
-#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--daily-share,
-#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface--daily-share {
+/* 캡처 공유 PNG(베스트/하루 기록): 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
+#moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface--capture-share {
     width: 100%;
     min-width: 100%;
     background-color: #ffffff !important;
     --tw-ring-color: rgba(226, 232, 240, 0.45) !important;
 }
-/* 일간 공유: 휠 라벨 폭(--meal-wheel-caption-inner-w)에 맞추면 캡처 PNG가 카드보다 좁아 보임 → 사진 열만 카드 가로 100% */
+/* 캡처 공유: 휠 라벨 폭(--meal-wheel-caption-inner-w)에 맞추면 PNG가 카드보다 좁아 보임 → 사진 열만 카드 가로 100% */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-photo-shell,
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .timeline-meal-photos-carousel-zone,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-photo-shell,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .timeline-meal-photos-carousel-zone {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -2048,25 +2500,37 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-stage,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-stage {
     padding-left: 0 !important;
     padding-right: 0 !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-wheel-center-stack,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-wheel-center-stack {
     align-items: stretch !important;
 }
-/* 일간: 뷰포트·이미지에 88vh 상한이 있으면 세로만 맞추느라 가로가 줄고 좌우 빈칸 생김 */
+/* 캡처 공유: 뷰포트·이미지에 88vh 상한이 있으면 세로만 맞추느라 가로가 줄고 좌우 빈칸 생김 */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural {
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-carousel-viewport--natural,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-carousel-viewport--natural {
     max-height: none !important;
     overflow: visible !important;
 }
-#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-daily-share-img {
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-daily-share='1'] .moment-v2-capture-share-img,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img,
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope[data-moment-v2-best-share='1'] .moment-v2-capture-share-img {
     max-height: none !important;
     width: 100% !important;
     height: auto !important;
@@ -3735,23 +4199,18 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-family: inherit;
     font-weight: 400;
 }
-/* 기록 등록 모달: 포커스된 입력창 연한 초록 강조 */
+/* 기록 등록 모달: 포커스 — entry-sheet 디자인 토큰과 통일 */
 #entryModal #modalScrollArea input[type="text"]:focus,
 #entryModal #modalScrollArea input[type="text"]:focus-visible,
 #entryModal #modalScrollArea textarea:focus,
 #entryModal #modalScrollArea textarea:focus-visible {
-    background-color: #ecfdf5;
-    border-color: #a7f3d0;
-    box-shadow: inset 0 0 0 1px rgba(167, 243, 208, 0.85);
-    transition:
-        background-color 0.15s ease,
-        border-color 0.15s ease,
-        box-shadow 0.15s ease;
+    background-color: var(--entry-input-bg-focus, #fff);
+    border-color: var(--entry-accent, #10b981);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring, rgb(16 185 129 / 0.18));
 }
-/* 배달 업체 입력은 기본 투명 배경 — 포커스 시에만 연한 초록 */
 #entryModal #modalScrollArea #deliveryVendorInput:focus,
 #entryModal #modalScrollArea #deliveryVendorInput:focus-visible {
-    background-color: #ecfdf5;
+    background-color: var(--entry-input-bg-focus, #fff);
 }
 /* 캡쳐 3종세트 모달: 좌우 여백 확보(좁은 기기에서 캐릭터·입력창 잘림 방지), 가로 스크롤 방지 */
 #bestShareModal,
@@ -3806,17 +4265,185 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 }
 .date-section-header { 
     position: relative; 
-    background: rgba(248, 250, 252, 0.95); 
-    padding: 12px 16px; 
-    margin-bottom: 8px; 
+    background: #ffffff; 
+    padding: 12px 8px 12px 16px; 
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
-.date-section-header h3 { color: #1e293b; }
-.date-section-header.text-rose-400 h3 { color: #fb7185; }
+.date-section-header__actions {
+    display: inline-flex;
+    align-items: stretch;
+    gap: calc(0.375rem * 1.3);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.date-section-header__action-btn {
+    height: 2.5rem;
+    box-sizing: border-box;
+}
+.date-section-header__share-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1875rem;
+    padding: 0 0.375rem;
+    border-radius: 0.625rem;
+    border-width: 1px;
+    border-style: solid;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    transition: opacity 0.15s;
+}
+.date-section-header__share-btn:active {
+    opacity: 0.7;
+}
+.date-section-header__share-btn--default {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    color: #047857;
+}
+.date-section-header__share-btn--shared {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #047857;
+}
+/* 트래커 #trackerTitle 과 동일 크기·자간, 색상 블랙·볼드 */
+.date-section-header h3 {
+    color: #000000;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}
+.date-section-header h3.date-section-header__date--weekend {
+    color: #f43f5e;
+}
+/* 타임라인 헤더 — 식사/간식 보기 피커 (첨부 디자인) */
+.timeline-view-picker {
+    --tvp-scale: 1.3;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    height: 2.5rem;
+    min-width: calc(3.35rem * var(--tvp-scale));
+    padding: 0 calc(0.25rem * var(--tvp-scale));
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+.timeline-view-picker:focus-within {
+    outline: 2px solid rgba(16, 185, 129, 0.45);
+    outline-offset: 1px;
+}
+.timeline-view-picker__select {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+}
+.timeline-view-picker__select option {
+    font-size: 0.6875rem;
+    line-height: 1.3;
+}
+.timeline-view-picker__visual {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(0.3125rem * var(--tvp-scale));
+    width: 100%;
+    height: 100%;
+    padding-inline: calc(0.125rem * (var(--tvp-scale) - 1));
+    box-sizing: border-box;
+    pointer-events: none;
+}
+.timeline-view-picker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: calc(0.875rem * var(--tvp-scale));
+    color: #94a3b8;
+    font-size: calc(0.75rem * var(--tvp-scale));
+    line-height: 1;
+}
+.timeline-view-picker__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: calc(0.0625rem * var(--tvp-scale));
+    min-width: 0;
+}
+.timeline-view-picker__category {
+    font-size: 0.625rem;
+    font-weight: 400;
+    line-height: 1.2;
+    color: #64748b;
+    white-space: nowrap;
+}
+.timeline-view-picker__value-row {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(0.125rem * var(--tvp-scale));
+    min-width: 0;
+}
+.timeline-view-picker__value {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #000000;
+    white-space: nowrap;
+}
+.timeline-view-picker__chevron {
+    flex-shrink: 0;
+    color: #000000;
+    font-size: calc(0.5rem * var(--tvp-scale));
+    line-height: 1;
+    margin-inline-start: calc(0.0625rem * (var(--tvp-scale) - 1));
+}
+/* 타임라인 — 날짜별 카드 묶음 (헤더 ~ 하루기록 슬롯) */
+#timelineContainer > .timeline-date-card {
+    margin: 0 10px 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+#timelineContainer > .timeline-date-card:first-child {
+    margin-top: 8px;
+}
+#timelineContainer > .timeline-date-card .date-section-header {
+    border-bottom: 1px solid #eef2f6;
+}
+#timelineContainer > .timeline-date-card > *:last-child {
+    margin-bottom: 0 !important;
+}
 /* 타임라인: 식사 카드가 화면 양옆에 꽉 차도록 좌우 패딩 제거 */
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    background-color: #f8fafc; /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
+    background-color: var(--app-page-bg); /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
+}
+/* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
+#timelineView.timeline-view-mode-page,
+#timelineView.timeline-view-mode-page .card,
+#timelineView.timeline-view-mode-page .date-section-header {
+    touch-action: pan-y;
 }
 #timelineContainer .card {
     border-radius: 0 !important;
@@ -4038,11 +4665,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: #ecfdf5;
 }
 .settings-tab {
-    transition: all 0.2s;
-    background-color: transparent;
-}
-.settings-tab.active {
-    background-color: transparent;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 .settings-tab-content {
     min-height: 100%;
@@ -4336,7 +4959,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-size: 0.8125rem;
     font-weight: 600;
     color: #64748b;
-    background: #f8fafc;
+    background: var(--app-page-bg);
     border: 1px solid #e2e8f0;
     border-radius: 9999px;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -4414,9 +5037,9 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     align-items: center; 
     justify-content: center; 
     padding: 6px 10px; 
-    background: #f8fafc; 
+    background: var(--app-page-bg); 
     border-radius: 6px; 
-    border: 1px solid #f1f5f9; 
+    border: 1px solid #e2e8f0; 
     margin-right: 4px; 
     margin-bottom: 4px; 
 }
@@ -4629,7 +5252,19 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     transform: translateX(11px);
 }
 
-/* 기록 모달: 게이지 끔 — 뒤쪽 휠 텍스트가 비활성 상태로 더 흐릿하게 보이도록 처리 */
+/* 기록 모달: 게이지 끔 — 뒤쪽 별·포만감 버튼이 비활성 상태로 더 흐릿하게 보이도록 처리 */
+.entry-gauge-dial-wrap--off .entry-gauge-stars,
+.entry-gauge-dial-wrap--off .entry-gauge-satiety {
+    opacity: 0.12;
+    filter: grayscale(1) blur(4px);
+    pointer-events: none;
+}
+.entry-gauge-dial-wrap--off .entry-gauge-stars *,
+.entry-gauge-dial-wrap--off .entry-gauge-satiety * {
+    opacity: 0.65;
+    filter: blur(1px);
+}
+/* (타임라인·모먼트 등 다른 화면용 mealog-wheel 유지) */
 .entry-gauge-dial-wrap--off .mealog-wheel__scroller {
     opacity: 0.08;
     filter: grayscale(1) blur(5px);
@@ -4658,6 +5293,44 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     position: relative;
     z-index: 1;
     text-shadow: 0 1px 1px rgb(255 255 255 / 0.85);
+}
+
+/* 기록 모달: 만족도·포만감 입력 밴드 (별 5개 너비에 맞춤) */
+.entry-gauge-band {
+    width: 12.25rem;
+    max-width: 100%;
+    margin-left: auto;
+}
+#ratingGaugeDialWrap,
+#snackRatingGaugeDialWrap {
+    min-height: 2.25rem;
+}
+#satietyGaugeDialWrap,
+#snackSatietyGaugeDialWrap {
+    min-height: 3.75rem;
+}
+.entry-gauge-stars {
+    gap: 0;
+}
+.entry-gauge-satiety {
+    gap: 0.125rem;
+}
+.entry-gauge-satiety-btn {
+    min-width: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+#entryModal .entry-gauge-satiety-btn i {
+    font-size: 1.62rem;
+    line-height: 1;
+}
+#entryModal .entry-gauge-satiety-btn__label {
+    font-size: 0.75rem;
+}
+#entryModal .entry-gauge-satiety-btn--selected {
+    filter: none;
+    transform: none;
 }
 
 
@@ -4719,6 +5392,52 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     flex: 0 0 auto;
     scroll-snap-align: center;
 }
+
+/* 기록 모달 — 시간 휠 피커 */
+.mealog-wheel--time-picker-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0.375rem;
+}
+.mealog-wheel--time-col {
+    flex: 1;
+    min-width: 0;
+    max-width: 6.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+.mealog-wheel--time-col__label {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #64748b;
+    line-height: 1;
+}
+.mealog-wheel--time {
+    width: 100%;
+}
+.mealog-wheel--time .mealog-wheel__indicator {
+    width: calc(100% - 0.5rem);
+    margin-left: calc(-50% + 50%);
+    left: 50%;
+}
+.mealog-wheel--time .mealog-wheel__item {
+    font-size: 0.9375rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 기록 모달 — 만족도·포만감 라벨 옆 초기화(확장 버튼과 동일 크기) */
+#entryModal .entry-gauge-reset-toggle.entry-field-quick-toggle {
+    background: #ffffff;
+}
+#entryModal .entry-gauge-reset-toggle.entry-field-quick-toggle:hover {
+    background: #ffffff;
+}
+#entryModal .entry-sheet-zone--metrics .entry-axis-label-group .entry-field-quick-toggle__icon.fa-rotate-left {
+    font-size: 0.5625rem;
+}
 /* 트랙 안 아이콘 3개(이전/현재/다음) */
 .mealog-dial-track-icons {
     position: absolute;
@@ -4762,6 +5481,33 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 }
 
 /* 기록 완료 중앙 팝업 (0.5s) */
+/* 중앙 축하 팝업(기록 완료·웰컴): 배경 스크롤·터치 차단 — JS scroll-lock과 함께 사용 */
+html.mealog-scroll-locked {
+    overflow: hidden !important;
+    overscroll-behavior: none;
+}
+body.mealog-scroll-locked {
+    overflow: hidden !important;
+    position: fixed;
+    width: 100%;
+    left: 0;
+    right: 0;
+    overscroll-behavior: none;
+}
+html.mealog-scroll-locked #mainApp,
+html.mealog-scroll-locked #landingPage {
+    pointer-events: none;
+    touch-action: none;
+}
+#successPopup:not(.hidden),
+#attendancePopup:not(.hidden) {
+    touch-action: none;
+    overscroll-behavior: contain;
+}
+#successPopupBackdrop,
+#attendancePopupBackdrop {
+    touch-action: none;
+}
 @keyframes successPopupFade {
     0% { opacity: 0; }
     20% { opacity: 1; }
@@ -5015,8 +5761,27 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 #attendancePopupContent.attendance-popup-welcome-charts .attendance-popup-welcome-charts-wrap {
     margin-top: -0.55rem;
 }
+/* AI리포트 탭: 웰컴 차트 박스만 폭 +30% (19rem → 24.7rem). 상단 아이콘·문구는 기존 크기 유지 */
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) {
+    max-width: min(92vw, 28.6rem);
+    overflow: visible;
+}
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) > .popup-celebrate-ring--check,
+#attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) > #attendancePopupTextSvg {
+    width: 100%;
+    max-width: 22rem;
+    align-self: center;
+}
+#attendancePopupWelcomeCharts:has(#attendanceWelcomeReportPanel:not(.hidden)) {
+    width: min(calc(92vw - 1rem), 24.7rem);
+    max-width: 24.7rem;
+    align-self: center;
+}
 .attendance-welcome-chart-shell {
     backdrop-filter: blur(2px);
+}
+button.attendance-welcome-kind-btn {
+    font-size: 12px;
 }
 button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
     background: rgb(16 185 129);
@@ -5025,6 +5790,100 @@ button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
 }
 button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     color: rgb(51 65 85);
+}
+#attendanceWelcomeBtnReport.hidden {
+    display: none;
+}
+.attendance-welcome-report-content {
+    max-height: min(17.5rem, 52vh);
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+}
+.attendance-welcome-report-content::-webkit-scrollbar {
+    width: 1px;
+    height: 1px;
+}
+.attendance-welcome-report-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.attendance-welcome-report-content::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
+}
+.attendance-welcome-report-date-nav {
+    min-height: 1.375rem;
+}
+.attendance-welcome-report-date-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: rgb(51 65 85);
+    letter-spacing: -0.01em;
+}
+.attendance-welcome-report-nav-btn {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgb(100 116 139);
+    font-size: 0.6875rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.attendance-welcome-report-nav-btn:hover:not(:disabled):not(.attendance-welcome-report-nav-btn--disabled) {
+    color: rgb(5 122 85);
+    background: rgb(236 253 245 / 0.9);
+}
+.attendance-welcome-report-nav-btn:disabled,
+.attendance-welcome-report-nav-btn.attendance-welcome-report-nav-btn--disabled {
+    opacity: 0.28;
+    cursor: default;
+    pointer-events: none;
+}
+.attendance-welcome-report-nav-btn.hidden {
+    display: none;
+}
+.attendance-welcome-report-content .ai-meal-report-card {
+    box-shadow: 0 1px 10px -3px rgb(15 23 42 / 0.1);
+    cursor: pointer;
+}
+.attendance-welcome-report-content .ai-meal-report-card > div {
+    padding: 0.75rem;
+    gap: 0.5rem;
+}
+.attendance-welcome-report-content .ai-meal-report-card h3 {
+    font-size: 0.875rem;
+}
+.attendance-welcome-report-empty {
+    border-radius: 0.75rem;
+    border: 1px dashed rgb(226 232 240);
+    background: rgb(248 250 252 / 0.9);
+    padding: 0.875rem 0.75rem;
+    text-align: center;
+}
+.attendance-welcome-report-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 5.5rem;
+    color: rgb(100 116 139);
+    font-size: 0.75rem;
+    font-weight: 700;
 }
 /* 터치는 시작 요소의 touch-action이 적용됨 — 자식(SVG 등)이 auto면 가로 팬이 브라우저 스크롤로 소모되어 스와이프가 취소됨. pan-y만 허용해 가로 드래그는 JS(Pointer)로 처리 */
 .attendance-welcome-chart-viewport,
@@ -5505,6 +6364,129 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView .card {
     border-radius: 0;
 }
+#dashboardView:not(.hidden) {
+    padding-top: 0;
+}
+#dashboardView > .dashboard-chrome-subtabs + .card,
+#dashboardView .dashboard-insight-chrome .dashboard-insight-card {
+    margin-top: 0 !important;
+}
+#dashboardView .dashboard-insight-chrome .dashboard-insight-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+#dashboardView .dashboard-insight-chrome .dashboard-chrome-subtabs {
+    background: transparent !important;
+}
+#dashboardView .dashboard-insight-chrome .dashboard-insight-period-wrap {
+    margin-bottom: 0.25rem;
+}
+#dashboardView .dashboard-insight-chrome #periodNavigator {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+    min-height: 0;
+    margin-top: 0.1875rem;
+    gap: 0.375rem;
+}
+#dashboardView .dashboard-insight-chrome #periodNavigator #periodPrevBtn,
+#dashboardView .dashboard-insight-chrome #periodNavigator #periodNextBtn {
+    width: 1.375rem;
+    height: 1.375rem;
+}
+#dashboardView .dashboard-insight-chrome #periodDisplay {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: rgba(255, 255, 255, 0.92);
+    min-height: 0.875rem;
+}
+#dashboardView .dashboard-insight-chrome .insight-area {
+    align-items: stretch;
+}
+#dashboardView .dashboard-insight-chrome .insight-area > .flex-1 {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#dashboardView .dashboard-insight-chrome #insightBubble.insight-bubble,
+#dashboardView .dashboard-insight-chrome .insight-bubble {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow: none;
+    flex: 1 1 auto;
+    align-self: stretch;
+    width: 100%;
+    min-height: 0;
+}
+#dashboardView .dashboard-insight-chrome .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) .insight-character-icon-box {
+    background: rgba(255, 255, 255, 0.14);
+}
+#dashboardView .dashboard-insight-chrome .sticker-badge {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 1rem;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: none;
+    margin-top: 0.875rem;
+    margin-bottom: 0;
+}
+#dashboardView .dashboard-insight-chrome #mealRecordPercent {
+    color: #fde047;
+    opacity: 1;
+}
+#dashboardView .dashboard-analysis-tab-card {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+#dashboardView .dashboard-analysis-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 9999px;
+    background: #e8ecf3;
+}
+#dashboardView .dashboard-analysis-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 9999px;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #94a3b8;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#dashboardView .dashboard-analysis-tab:hover {
+    color: #64748b;
+}
+#dashboardView .dashboard-analysis-tab--active,
+#dashboardView .dashboard-analysis-tab.dashboard-analysis-tab--active {
+    background: #059669;
+    color: #ffffff;
+    font-weight: 700;
+}
+#dashboardView .dashboard-analysis-tab--active:hover {
+    color: #ffffff;
+}
+#dashboardView .dashboard-insight-card.ui-card-pad-lg {
+    padding-top: 0.1875rem;
+    padding-bottom: 0.5rem;
+}
 /* 베스트/식사/간식 탭과 식사카드 컨테이너 간격 (0.1125rem) */
 #dashboardView #bestAnalysisSection,
 #dashboardView #mainAnalysisSection,
@@ -5528,47 +6510,6 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     margin-left: -1rem !important;
     margin-right: -1rem !important;
     width: calc(100% + 2rem) !important;
-}
-/* 인사이트 기간 탭: 좌우 꽉 채움, 각진 모양 */
-#dashboardView .insight-period-tabs {
-    display: flex;
-    align-items: stretch;
-    gap: 1px;
-    flex-wrap: nowrap;
-    padding: 1px;
-    background: rgb(5, 150, 105);
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    border-radius: 6px;
-}
-#dashboardView .insight-period-tabs .insight-period-tab {
-    margin: 0 !important;
-    padding: 0.375rem 0.25rem !important;
-    min-height: 0 !important;
-    flex: 1 1 0;
-    min-width: 0;
-    height: auto;
-    line-height: 1.25;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    border: 1px solid transparent;
-    box-sizing: border-box;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.85);
-}
-#dashboardView .insight-period-tabs .insight-period-tab:hover {
-    color: #fff;
-    background: rgba(255, 255, 255, 0.12);
-}
-#dashboardView .insight-period-tabs .insight-period-tab--selected {
-    background: #fff;
-    color: #047857;
-    border-color: #fff;
-}
-#dashboardView .insight-period-tabs .insight-period-tab--selected:hover {
-    background: #f0fdf4;
-    color: #047857;
 }
 /* 인사이트 영역 (트위터 스타일: 깔끔한 카드·타이포 위주) */
 #insightBubble.insight-bubble,
@@ -5747,21 +6688,39 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     /* 클릭 시 작아졌다 커졌다 효과 없음 */
 }
 
-/* 앨범·밀톡 검색 패널: 좋아요/댓글/북마크 아이콘 두께·색상을 돋보기와 동일하게 */
+/* 앨범·밀톡 흔적 필터: FA regular/solid 글리프 그대로 (text-stroke 없음) */
 .gallery-trace-btn .fa-heart,
 .gallery-trace-btn .fa-comment,
 .gallery-trace-btn .fa-bookmark {
-    color: #64748b;                    /* slate-500 - 돋보기와 동일 */
-    -webkit-text-stroke: 0.6px #64748b;  /* 선 두께 돋보기와 비슷하게 */
+    color: #64748b;
+    -webkit-text-stroke: 0;
+}
+/* 메인 헤더(녹색 그라데이션): 흔적 필터 아이콘 흰색 */
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-heart,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-comment,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-bookmark {
+    color: rgba(255, 255, 255, 0.95) !important;
+    -webkit-text-stroke: 0 !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn .fa-magnifying-glass {
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="like"].gallery-trace-btn--active .fa-heart {
+    color: #fecaca !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="like"]:hover .fa-heart {
+    color: #fca5a5 !important;
+}
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
+body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
+    color: #ffffff !important;
 }
 .gallery-trace-btn[data-trace="like"]:hover .fa-heart {
     color: #ef4444;
-    -webkit-text-stroke: 0.6px #ef4444;
 }
 .gallery-trace-btn[data-trace="comment"]:hover .fa-comment,
 .gallery-trace-btn[data-trace="bookmark"]:hover .fa-bookmark {
     color: #475569;
-    -webkit-text-stroke: 0.6px #475569;
 }
 .post-like-icon.fa-regular,
 .post-bookmark-icon.fa-regular,
@@ -5936,6 +6895,36 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     pointer-events: none;
 }
 
+/* 밀로그 퀵입력 FAB — 게시판 글쓰기와 동일 스타일·위치 */
+#entryQuickInputFab.entry-quick-input-fab {
+    position: fixed;
+    bottom: calc(72px + var(--safe-bottom));
+    right: calc(50% - min(46vw, 13rem) + 1.25rem);
+    z-index: 40;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #059669 !important;
+    color: white !important;
+    box-shadow: 0 2px 12px rgba(5, 150, 105, 0.4);
+    border: none;
+    transition: box-shadow 0.2s, background-color 0.2s;
+}
+#entryQuickInputFab.entry-quick-input-fab:hover {
+    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.45);
+}
+#entryQuickInputFab.entry-quick-input-fab:active {
+    background-color: #047857 !important;
+}
+#entryQuickInputFab.entry-quick-input-fab.hidden {
+    display: none !important;
+    pointer-events: none;
+}
+
 /* 초기 기록 로딩 스피너 — mealSyncResendBtn 과 동일 위치·크기(48px), 음식 아이콘만 */
 #initialRecordsLoadFab.initial-records-load-fab,
 #galleryMomentsRefreshFab.initial-records-load-fab {
@@ -6083,7 +7072,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     display: none !important;
     pointer-events: none;
 }
-/* 밀톡 화면에서 글쓰기 FAB( z-40 )와 겹치지 않도록 한 단 올림 */
+/* 밀톡·밀로그 화면에서 글쓰기/퀵입력 FAB( z-40 )와 겹치지 않도록 한 단 올림 */
 #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--stacked {
     bottom: calc(128px + var(--safe-bottom));
 }
@@ -6143,7 +7132,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     border: 1px solid #e2e8f0;
 }
 .board-category-btn:hover:not(.active) {
-    background-color: #f8fafc !important;
+    background-color: var(--app-page-bg) !important;
     color: #0f172a !important;
 }
 .board-category-btn.active {
@@ -6234,20 +7223,19 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 /* 밀톡: 피드/게시판 서브탭 아래만 스크롤 (상단 탭은 고정, 본문은 패널 내부 스크롤)
    max-height만 있으면 블록 높이는 내용 높이로만 잡혀 flex:1 자식이 늘지 않음 → 스크롤 영역 0으로 보임 */
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    /* 헤더(밀톡 타이틀) ↔ 서브탭만 촘촘히 — 피드/게시판 탭 높이는 사용자 메뉴 .settings-tab과 동일(px-3 py-2.5) */
-    padding-top: 0.125rem;
+    padding-top: 0;
     padding-bottom: 0.75rem;
     padding-left: 1rem;
     padding-right: 1rem;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background: #fff;
+    background: transparent;
     /* 뷰포트 − 상태바 − 앱 헤더 − 세이프만 (하단 APP 네비는 플로팅 → 본문이 네비 뒤까지 이어지게, 타임라인/모먼트와 동일) */
-    height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    max-height: calc(100vh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
-    max-height: calc(100dvh - var(--safe-top) - 3.5rem - var(--safe-bottom));
+    height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
     /* 스크롤은 #boardLoungeScrollArea(피드·게시판 본문)만 — 서브탭·카테고리는 #boardLoungeFrame에서 고정 */
     overflow-x: hidden;
     overflow-y: hidden;
@@ -6256,22 +7244,17 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden):has(#boardFeedPanel:not(.hidden)) {
     padding-bottom: 0;
 }
-/* 밀톡: 헤더는 translate로만 숨겨져 레이아웃 슬롯이 남고(내부 스크롤이라 window처럼 안 올라감) body(#f8fafc)가 비침 — 숨김 시 헤더 높이만큼 뷰를 위로 당겨 채움 */
+/* 밀톡: 헤더는 translate로만 숨겨져 레이아웃 슬롯이 남고(내부 스크롤이라 window처럼 안 올라감) body(--app-page-bg)가 비침 — 숨김 시 헤더 높이만큼 뷰를 위로 당겨 채움 */
 body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    margin-top: -3.5rem;
+    margin-top: calc(-1 * var(--app-chrome-header-h));
     height: calc(100vh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
-/* 서브탭: 스크롤 영역 밖 — 스크롤바가 올라오지 않음 */
+/* 서브탭: 스크롤 영역 밖 — 스크롤바가 올라오지 않음 (배경·탭 pill은 .app-chrome-subtabs 규칙) */
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs {
-    flex-shrink: 0;
     width: 100%;
-    min-width: 0;
-    box-sizing: border-box;
-    background: #fff;
-    border-bottom: 1px solid rgb(226 232 240);
 }
 #boardListView #boardCategoryRow {
     flex-shrink: 0;
@@ -6291,7 +7274,45 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     margin-top: 0;
 }
 #boardListView.board-list-view-mealtalk.ui-stack-md > .board-write-fab + #boardLoungeFrame {
-    margin-top: calc(0.75rem * 0.3);
+    margin-top: 0;
+}
+/* 사용자 뷰: 라운지와 동일한 뷰포트 높이(헤더 아래 영역) */
+#settingsView:not(.hidden) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+}
+body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
+    margin-top: calc(-1 * var(--app-chrome-header-h));
+    height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
+}
+/* 사용자 뷰 본문: 밀톡(#boardLoungeScrollArea)과 동일 — 얇은 막대, 스크롤 중에만 표시 */
+#settingsView .settings-view-content {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    -webkit-overflow-scrolling: touch;
+}
+#settingsView .settings-view-content::-webkit-scrollbar {
+    width: 4px;
+}
+#settingsView .settings-view-content::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+}
+#settingsView .settings-view-content::-webkit-scrollbar-track {
+    background: var(--app-page-bg);
+}
+#settingsView .settings-view-content.board-panel-scrollbar-active {
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--app-page-bg);
+}
+#settingsView .settings-view-content.board-panel-scrollbar-active::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.45);
 }
 /* 라운지 프레임: 서브탭·카테고리 + 본문 스크롤 — #boardListView 좌우 패딩(1rem) 풀블리드 */
 #boardListView #boardLoungeFrame.board-lounge-frame {
@@ -6320,12 +7341,11 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
 }
 #boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
-    /* Firefox: 트랙을 투명으로 두면 우측에 흰색이 비침 */
-    scrollbar-color: rgba(255, 255, 255, 0.35) var(--board-feed-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea.board-lounge-scroll-area:has(#boardListPanel:not(.hidden)) {
-    background-color: rgb(241 245 249);
-    scrollbar-color: rgba(148, 163, 184, 0.45) rgb(241 245 249);
+    background-color: var(--app-page-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--app-page-bg);
 }
 #boardListView #boardLoungeScrollArea::-webkit-scrollbar {
     width: 4px;
@@ -6670,12 +7690,12 @@ body.feed-bubble-sheet-open {
     scroll-padding-bottom: var(--board-feed-scroll-inset-bottom);
     background: var(--board-feed-bg);
 }
-/* 스크롤 막대: 통합 스크롤(#boardLoungeScrollArea) — 피드(녹색)·게시판(슬레이트) 탭에 맞춤 */
+/* 스크롤 막대: 통합 스크롤(#boardLoungeScrollArea) — 피드(흰색)·게시판(슬레이트) 탭에 맞춤 */
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden)) {
-    scrollbar-color: rgba(255, 255, 255, 0.45) var(--board-feed-bg);
+    scrollbar-color: rgba(148, 163, 184, 0.45) var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardFeedPanel:not(.hidden))::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(148, 163, 184, 0.45);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden)) {
     scrollbar-color: rgba(148, 163, 184, 0.5) rgb(241 245 249);
@@ -6684,8 +7704,7 @@ body.feed-bubble-sheet-open {
     background: rgba(148, 163, 184, 0.45);
 }
 
-/* 밀톡 피드 메시지 영역 테마 (--board-feed-bg + 말풍선) */
-/* 내 말풍선: 카카오톡 송신 버블 톤을 한 단계 연하게 */
+/* 밀톡 피드 메시지 영역 테마 (흰 배경 + 말풍선) */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
     background: #fff0a8;
     color: #1a1a1a;
@@ -6693,39 +7712,38 @@ body.feed-bubble-sheet-open {
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;
     color: #1e293b;
-    border-color: rgba(255, 255, 255, 0.4);
+    border-color: rgba(226, 232, 240, 0.95);
 }
 #boardListView #boardFeedPanelContent .feed-bubble-meta-time {
-    color: rgba(255, 255, 255, 0.72);
+    color: rgba(100, 116, 139, 0.85);
 }
 #boardListView #boardFeedPanelContent .feed-bubble-author-nick {
-    color: rgba(255, 255, 255, 0.95);
+    color: rgba(51, 65, 85, 0.92);
 }
 #boardListView #boardFeedPanelContent .feed-timeline-empty-title,
 #boardListView #boardFeedPanelContent .feed-timeline-empty-sub {
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(100, 116, 139, 0.75);
 }
 #boardListView #boardFeedPanelContent .feed-timeline-empty-icon {
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(148, 163, 184, 0.65);
 }
 #boardListView #boardFeedPanelContent .feed-panel-loading-text,
 #boardListView #boardFeedPanelContent .feed-panel-loading-icon {
-    color: rgba(255, 255, 255, 0.75);
+    color: rgba(100, 116, 139, 0.8);
 }
 #boardListView #boardFeedPanelContent .feed-panel-error {
-    color: #fecaca;
+    color: #dc2626;
 }
 #boardListView #boardFeedPanelContent .feed-other-avatar-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.35);
 }
-/* 피드 입력창 프로필 아이콘 — 타인 말풍선 아바타와 동일 1px 흰 테두리 */
 #boardListView #boardInlineComposer.board-feed-composer-visible .board-inline-composer-avatar {
-    box-shadow: 0 0 0 1px #fff;
+    box-shadow: 0 0 0 1px rgba(226, 232, 240, 0.95);
 }
 #boardListView #boardFeedPanelContent .feed-refresh-btn:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.35);
 }
 
 /* 하단 앱 네비가 스크롤로 밀려 숨겨진 경우: 입력창을 하단에 붙여 대화 스크롤이 입력 바로 위까지 이어지게 (뷰 높이는 기본과 동일) */
@@ -7020,6 +8038,23 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-height: 40px;
     box-sizing: border-box;
 }
+#adminPage .admin-tabs-row {
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+#adminPage .admin-tabs-row::-webkit-scrollbar {
+    display: none;
+}
+#adminPage .admin-tabs-row .admin-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
+    white-space: nowrap;
+}
+@media (min-width: 1024px) {
+    #adminPage .admin-tabs-row .admin-tab {
+        flex: 1 1 0%;
+    }
+}
 #adminPage .admin-header-compact .admin-tabs-row .admin-tab {
     padding-top: 0.225rem;
     padding-bottom: 0.225rem;
@@ -7195,6 +8230,30 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: #0f172a;
 }
 
+/* 관리자 > AI > AI 식단분석: 목록·상세 독립 스크롤 */
+#adminPage #ai-main-aiDietReports .admin-ai-diet-panels {
+    min-height: 0;
+}
+#adminPage #ai-main-aiDietReports .admin-ai-diet-panel-scroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    min-height: 10rem;
+}
+@media (min-width: 1024px) {
+    #adminPage #ai-main-aiDietReports .admin-ai-diet-panel-scroll {
+        max-height: calc(100vh - 17.5rem);
+    }
+}
+@media (max-width: 1023px) {
+    #adminPage #ai-main-aiDietReports #aiDietReportsList.admin-ai-diet-panel-scroll {
+        max-height: min(40vh, 22rem);
+    }
+    #adminPage #ai-main-aiDietReports #aiDietReportsDetail.admin-ai-diet-panel-scroll {
+        max-height: min(55vh, 32rem);
+    }
+}
+
 /* 콘텐츠 팝업: 이미지 좌우 꽉 채움 (박스 폭 100%), 세로는 비율 유지 */
 .content-popup-images {
     margin-left: 0;
@@ -7286,4 +8345,920 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .content-popup-counter-bar.popup-counter-empty .content-popup-counter-text { visibility: hidden; }
 .content-popup-footer-close:hover {
     color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   기록 시트 — 디자인 시스템 (위계: 핵심 입력 › 부가 › 메모)
+   ═══════════════════════════════════════════════════════════ */
+#entryModal {
+    --entry-accent: #10b981;
+    --entry-accent-dark: #059669;
+    --entry-accent-soft: #ecfdf5;
+    --entry-accent-ring: rgb(16 185 129 / 0.18);
+    --entry-surface: #ffffff;
+    --entry-surface-body: #f1f5f9;
+    --entry-surface-muted: #f1f5f9;
+    --entry-surface-subtle: #f1f5f9;
+    --entry-text-primary: #1e293b;
+    --entry-text-secondary: #64748b;
+    --entry-text-muted: #94a3b8;
+    --entry-border: #e2e8f0;
+    --entry-border-soft: #e2e8f0;
+    --entry-border-row: #cbd5e1;
+    --entry-input-bg: #f1f5f9;
+    --entry-input-bg-focus: #ffffff;
+    --entry-radius: 0.75rem;
+    --entry-radius-lg: 1rem;
+    --entry-form-divider: 1px solid var(--entry-border-soft);
+    --entry-form-label-w: 7.25rem;
+    --entry-form-row-gap: 0.625rem;
+    --entry-form-core-gap: 0;
+    --entry-form-input-pl: 0.5rem;
+    --entry-form-core-input-pl: 0;
+    --entry-form-content-offset: calc(var(--entry-form-label-w) + var(--entry-form-row-gap) + var(--entry-form-input-pl));
+    --entry-form-row-h: 2.625rem;
+    --entry-action-icon: #76a797;
+}
+
+/* ── 헤더: 메타(날짜·슬롯) — 조용하게 ── */
+#entryModal .entry-modal-panel {
+    box-shadow: 0 -8px 32px rgb(15 23 42 / 0.12);
+}
+#entryModal .entry-modal-grabber {
+    width: 2.25rem;
+    height: 0.25rem;
+    margin: 0.5rem auto 0;
+    border-radius: 9999px;
+    background: #cbd5e1;
+}
+#entryModal .entry-modal-header {
+    background: var(--entry-surface);
+    border-bottom: 1px solid var(--entry-border-soft);
+}
+.entry-header-controls {
+    min-width: 0;
+    gap: 0.375rem;
+}
+#entryModal .entry-header-date,
+#entryModal .entry-header-slot {
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #0f172a;
+    background: var(--entry-surface-muted);
+    border: 1px solid var(--entry-border-soft);
+    border-radius: var(--entry-radius);
+    padding-top: 0.375rem;
+    padding-bottom: 0.375rem;
+    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+/* 본식 슬롯: 타임라인 아이콘 톤과 동일한 연한 배경 */
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-date,
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-slot,
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-form-mode-switch {
+    background: #fffbeb;
+}
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-date,
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-slot,
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-form-mode-switch {
+    background: #ecfdf5;
+}
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-date,
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-slot,
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-form-mode-switch {
+    background: #f0f9ff;
+}
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-date:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-slot:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="morning"] button.entry-header-date:focus {
+    background: #fffbeb;
+    border-color: var(--entry-border-soft);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-date:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-slot:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="lunch"] button.entry-header-date:focus {
+    background: #ecfdf5;
+    border-color: var(--entry-border-soft);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-date:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-slot:focus,
+#entryModal .entry-header-controls[data-entry-slot-theme="dinner"] button.entry-header-date:focus {
+    background: #f0f9ff;
+    border-color: var(--entry-border-soft);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+#entryModal .entry-header-date:focus,
+#entryModal .entry-header-slot:focus {
+    outline: none;
+    background: var(--entry-surface);
+    border-color: var(--entry-border-soft);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+    color: #0f172a;
+}
+#entryModal .entry-header-date {
+    flex: 0 1 auto;
+    min-width: 6.5rem;
+    max-width: 8.25rem;
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    text-align: center;
+}
+#entryModal button.entry-header-date:focus {
+    outline: none;
+    background: var(--entry-surface);
+    border-color: var(--entry-border-soft);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+    color: #0f172a;
+}
+#entryModal .entry-header-slot {
+    flex: 1 1 0;
+    min-width: 6.75rem;
+    text-align: center;
+    text-align-last: center;
+    padding-left: 0.375rem;
+    padding-right: 1.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.35rem center;
+    background-size: 0.875rem;
+}
+#entryModal .entry-header-close {
+    color: var(--entry-text-muted);
+}
+#entryModal .entry-header-close:hover {
+    color: var(--entry-text-secondary);
+    background: var(--entry-surface-muted);
+}
+.entry-form-mode-switch {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    flex: 0 0 auto;
+    padding: 2px;
+    min-width: 0;
+    border: 1px solid var(--entry-border-soft);
+    border-radius: 9999px;
+    background: var(--entry-surface-muted);
+}
+#entryModal .entry-form-mode-switch button.entry-form-mode-btn {
+    flex: 1 1 50%;
+    padding: 0.3rem 0.5rem;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: #0f172a;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.25;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+#entryModal .entry-form-mode-switch button.entry-form-mode-btn.entry-form-mode-btn--active {
+    background: var(--entry-surface);
+    color: var(--entry-accent-dark);
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+#entryModal .entry-form-mode-switch button.entry-form-mode-btn:not(.entry-form-mode-btn--active):hover {
+    color: var(--entry-text-secondary);
+}
+
+/* ── 본문 영역 ── */
+#entryModal .entry-sheet-body {
+    background: var(--entry-surface-body);
+}
+#entryModal .entry-sheet-zone--media {
+    background: var(--entry-surface);
+    padding: 0;
+    border-bottom: none;
+}
+#entryModal .entry-sheet-zone--core {
+    background: var(--entry-surface);
+    padding: 0;
+}
+#entryModal #entryAxisFields + #entryMealExtras,
+#entryModal #entryAxisFields + #entrySnackExtras {
+    margin-top: 0;
+}
+#entryModal .entry-sheet-zone--metrics {
+    background: var(--entry-surface-muted);
+    padding: 0;
+}
+#entryModal .entry-sheet-zone--memo {
+    background: #e2e8f0;
+}
+
+/* ── 항목별 빠른 입력 — 화살표 토글 ── */
+#entryModal .entry-axis-label-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: var(--entry-form-label-w);
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    grid-column: 1;
+}
+#entryModal .entry-axis-label-group .entry-axis-label {
+    min-width: 0;
+    white-space: nowrap;
+}
+#entryModal .entry-field-quick-toggle {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    padding: 0;
+    border: 1px solid var(--entry-border);
+    border-radius: 9999px;
+    background: var(--entry-surface-muted);
+    color: var(--entry-text-muted);
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+#entryModal .entry-field-quick-toggle:hover {
+    color: var(--entry-text-secondary);
+    border-color: var(--entry-border-row);
+}
+#entryModal .entry-field-quick-toggle--open,
+#entryModal .entry-field-quick-toggle[aria-expanded="true"] {
+    color: var(--entry-accent-dark);
+    border-color: #a7f3d0;
+    background: var(--entry-accent-soft);
+}
+#entryModal .entry-field-quick-toggle__icon {
+    font-size: 0.5625rem;
+    line-height: 1;
+    transition: transform 0.2s ease;
+}
+#entryModal .entry-field-quick-toggle--open .entry-field-quick-toggle__icon,
+#entryModal .entry-field-quick-toggle[aria-expanded="true"] .entry-field-quick-toggle__icon {
+    transform: rotate(90deg);
+}
+
+#entryFormFieldStack {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+#entryFormFieldStack > #entryAxisFields,
+#entryFormFieldStack > #entryMealExtras,
+#entryFormFieldStack > #entrySnackExtras {
+    margin: 0;
+}
+
+/* ── 필드 행 ── */
+#entryModal .entry-form-field-section {
+    margin: 0;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--entry-border-row);
+    background: transparent;
+}
+#entryModal .entry-sheet-zone--core .entry-form-field-section:last-child,
+#entryModal .entry-sheet-zone--metrics .entry-form-field-section:last-child {
+    border-bottom: 1px solid var(--entry-border-row);
+}
+#entryModal .entry-form-field-chips:not(.hidden) {
+    margin-top: 0.375rem;
+    margin-bottom: 0;
+}
+#entryModal .entry-form-field-subtags {
+    margin-top: 0.25rem;
+}
+#entryModal .entry-form-field-subtags:empty {
+    display: none;
+    margin: 0;
+    padding: 0;
+}
+#entryModal #entryWhereChips:not(.hidden),
+#entryModal #entryWhatChips:not(.hidden),
+#entryModal #entryWithChips:not(.hidden),
+#entryModal #entryWhereSuggestions,
+#entryModal #entryWhatSuggestions,
+#entryModal #entryWithSuggestions {
+    padding-left: calc(var(--entry-form-label-w) + var(--entry-form-core-gap) + var(--entry-form-core-input-pl));
+}
+
+/* ── 어디서·무엇을·누구와: 타이틀↔입력 간격 50% ── */
+#entryModal .entry-sheet-zone--core .entry-axis-input-row {
+    gap: var(--entry-form-core-gap) !important;
+}
+#entryModal .entry-sheet-zone--core .entry-axis-input-col {
+    padding-left: var(--entry-form-core-input-pl) !important;
+}
+
+/* ── 라벨: 14px·검정 통일 ── */
+#entryModal .entry-axis-label {
+    min-width: var(--entry-form-label-w);
+    line-height: 1.25;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+#entryModal .entry-axis-label-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: auto;
+}
+#entryModal .entry-axis-icon {
+    width: 1.05rem;
+    font-size: 0.9rem;
+    line-height: 1;
+    text-align: center;
+    flex-shrink: 0;
+}
+#entryModal .entry-photo-header .entry-axis-icon {
+    color: #8b5cf6;
+}
+#entryModal #entryWhereSection .entry-axis-icon {
+    color: #10b981;
+}
+#entryModal #entryWhatSection .entry-axis-icon {
+    color: #f97316;
+}
+#entryModal #entryWithSection .entry-axis-icon {
+    color: #6366f1;
+}
+#entryModal #ratingSection .entry-axis-icon,
+#entryModal #snackRatingSection .entry-axis-icon {
+    color: #f59e0b;
+}
+#entryModal #satietySection .entry-axis-icon,
+#entryModal #snackSatietySection .entry-axis-icon {
+    color: #ec4899;
+}
+#entryModal #entryMealTimeSectionMain .entry-axis-icon,
+#entryModal #entryMealTimeSectionSnack .entry-axis-icon {
+    color: #0ea5e9;
+}
+
+#entryModal .entry-axis-input-row {
+    width: 100%;
+    gap: var(--entry-form-row-gap);
+    align-items: center;
+    display: grid;
+    grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
+}
+#entryModal .entry-axis-input-row > .entry-axis-label.entry-axis-label-with-icon {
+    grid-column: 1;
+}
+#entryModal .entry-axis-input-col {
+    grid-column: 2;
+    min-width: 0;
+    padding-left: var(--entry-form-input-pl);
+    width: 100%;
+}
+
+/* ── 입력 필드 (핵심 강조) ── */
+#entryModal .entry-axis-input-col input[type="text"],
+#entryModal .entry-comment-textarea {
+    background: var(--entry-input-bg);
+    border: 1px solid transparent;
+    border-radius: var(--entry-radius);
+    color: var(--entry-text-primary);
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#entryModal .entry-sheet-zone--core #entryWhereSection input[type="text"],
+#entryModal .entry-sheet-zone--core #entryWhatSection input[type="text"],
+#entryModal .entry-sheet-zone--core #entryWithSection input[type="text"] {
+    font-size: 0.9375rem;
+}
+#entryModal .entry-axis-input-col input[type="text"]::placeholder,
+#entryModal .entry-comment-textarea::placeholder {
+    color: var(--entry-text-muted);
+    font-weight: 500;
+}
+#entryModal #entryWhereSection input[type="text"]::placeholder,
+#entryModal #entryWhatSection input[type="text"]::placeholder,
+#entryModal #entryWithSection input[type="text"]::placeholder {
+    font-size: 0.75rem;
+}
+#entryModal .entry-axis-input-col input[type="text"]:focus,
+#entryModal .entry-comment-textarea:focus {
+    outline: none;
+    background: var(--entry-input-bg-focus);
+    border-color: var(--entry-accent);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+#entryModal #entryWhereKakaoBtn.entry-inline-action-btn,
+#entryModal .entry-inline-action-btn {
+    width: 1.8rem;
+    height: 1.8rem;
+    padding: 0;
+    border: 1px solid var(--entry-border, #e2e8f0);
+    border-radius: 0.625rem;
+    background: #ffffff;
+    color: var(--entry-action-icon);
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+#entryModal #entryWhereKakaoBtn.entry-inline-action-btn i,
+#entryModal .entry-inline-action-btn i {
+    font-size: 0.75rem;
+    color: var(--entry-action-icon);
+}
+#entryModal #entryWhereKakaoBtn.entry-inline-action-btn:hover,
+#entryModal .entry-inline-action-btn:hover {
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+#entryModal #entryWhereKakaoBtn.entry-inline-action-btn:active,
+#entryModal .entry-inline-action-btn:active {
+    background: #f8fafc;
+    border-color: var(--entry-action-icon);
+}
+
+/* ── 사진 (보조) ── */
+#entryModal .entry-photo-section {
+    margin-bottom: 0;
+    padding: 0.625rem 1rem;
+    border-bottom: 1px solid var(--entry-border-row);
+}
+#entryModal .entry-photo-header {
+    margin-bottom: 0;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header {
+    margin-bottom: 0.375rem;
+}
+#entryModal .entry-photo-preview-row {
+    padding: 0;
+    margin: 0;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    margin-top: 0.375rem;
+    padding-bottom: 0.5rem;
+}
+#entryModal .record-photo-add-btn {
+    border: 1px solid var(--entry-border, #e2e8f0);
+    background: #ffffff;
+    color: var(--entry-action-icon);
+    box-sizing: border-box;
+}
+#entryModal .record-photo-add-btn i {
+    font-size: 1.125rem;
+    color: var(--entry-action-icon);
+}
+#entryModal .record-photo-add-btn:hover {
+    background: #ffffff;
+    border-color: #cbd5e1;
+}
+#entryModal .record-photo-add-btn:active {
+    background: #f8fafc;
+    border-color: var(--entry-action-icon);
+}
+#entryModal .entry-photo-aspect-tools {
+    opacity: 1;
+}
+#entryModal .entry-photo-aspect-tools .photo-aspect-btn {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    color: var(--entry-text-secondary);
+    border-color: var(--entry-border-soft);
+    background: transparent;
+}
+#entryModal .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+    background: var(--entry-accent-soft);
+    border-color: #6ee7b7;
+    color: var(--entry-accent-dark);
+    font-weight: 800;
+}
+#entryModal .entry-photo-count {
+    margin-left: 0.375rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: var(--entry-text-muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+}
+#entryModal .entry-photo-count.text-emerald-600 {
+    color: var(--entry-accent-dark);
+}
+
+/* ── 만족도·포만감·시간 ── */
+#entryModal .entry-gauge-band {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+}
+#entryModal #ratingSection .entry-axis-input-row,
+#entryModal #snackRatingSection .entry-axis-input-row {
+    min-height: var(--entry-form-row-h);
+}
+#entryModal .entry-gauge-stars {
+    width: 100%;
+    justify-content: flex-end !important;
+    gap: 0.625rem;
+}
+#entryModal .entry-gauge-stars .star-btn {
+    padding: 2px;
+    flex-shrink: 0;
+}
+#entryModal .entry-gauge-satiety {
+    width: 100%;
+    max-width: 100%;
+    gap: 0.625rem;
+    justify-content: flex-end !important;
+}
+#entryModal .entry-gauge-satiety-btn {
+    flex: 0 0 auto !important;
+    min-width: 0;
+    padding-left: 0.125rem;
+    padding-right: 0.125rem;
+}
+#entryModal #satietySection .entry-axis-input-row,
+#entryModal #snackSatietySection .entry-axis-input-row {
+    align-items: center;
+}
+#entryModal .entry-meal-clock-compound {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    background: #ffffff;
+    border: 1px solid var(--entry-border-row);
+    border-radius: var(--entry-radius);
+    box-sizing: border-box;
+}
+#entryModal #entryMealTimeSectionMain .entry-meal-clock-compound,
+#entryModal #entryMealTimeSectionSnack .entry-meal-clock-compound {
+    height: var(--entry-form-row-h);
+    min-height: var(--entry-form-row-h);
+}
+#entryModal #entryMealTimeSectionMain .entry-meal-time-source-btn,
+#entryModal #entryMealTimeSectionSnack .entry-meal-time-source-btn {
+    min-height: var(--entry-form-row-h);
+    background: #ffffff;
+    border-color: var(--entry-border-soft);
+    font-size: 12px;
+}
+#entryModal .entry-meal-clock-compound .entry-meal-ampm {
+    background: #ffffff;
+    border-color: var(--entry-border-soft);
+    font-size: 12px;
+}
+#entryModal .entry-meal-clock-compound .entry-meal-time-off-display {
+    background: #ffffff;
+    justify-content: flex-end;
+    text-align: right;
+    padding-right: 0.75rem;
+    font-size: 12px;
+}
+#entryModal #entryMealTimeInputMain,
+#entryModal #entryMealTimeInputSnack {
+    text-align: right;
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+    background: #ffffff;
+    font-size: 12px;
+}
+#entryModal .entry-meal-clock-compound:focus-within {
+    background: #ffffff;
+    border-color: var(--entry-accent);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+
+#entryModal #modalScrollArea > #entryCommentDetailFooter {
+    margin-top: 0 !important;
+}
+
+/* 빠른 입력 OFF: 텍스트·시간 행 높이 통일 */
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryMealTimeSectionMain .entry-axis-input-row,
+#entryModal #entryMealTimeSectionSnack .entry-axis-input-row,
+#entryModal .entry-photo-header {
+    min-height: var(--entry-form-row-h);
+}
+#entryModal .entry-photo-header {
+    display: grid;
+    grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
+}
+#entryModal .entry-photo-header > .entry-axis-label {
+    grid-column: 1;
+}
+#entryModal .entry-photo-header > .entry-axis-input-col {
+    grid-column: 2;
+    padding-left: var(--entry-form-input-pl);
+}
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col > input,
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col .relative > input,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-col > input,
+#entryModal #entryWhatSection.entry-field-quick-off #entryWhatInput,
+#entryModal #entryWhatSection.entry-field-quick-off #deliveryVendorInput,
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-col > input {
+    height: var(--entry-form-row-h);
+    min-height: var(--entry-form-row-h);
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* ── 메모·더 적기 (하단 보조) ── */
+#entryModal .entry-comment-detail-footer {
+    margin-top: 0;
+    padding: 0;
+    background: transparent;
+    border-top: none;
+}
+#entryModal .entry-comment-section {
+    padding: 0.625rem 1rem;
+    margin: 0;
+    border-bottom: 1px solid var(--entry-border-row);
+    background: #e2e8f0;
+}
+#entryModal .entry-comment-heading {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: #0f172a;
+    line-height: 1.25;
+    margin-bottom: 0.375rem;
+    text-transform: none;
+}
+#entryModal .entry-comment-heading-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+#entryModal .entry-comment-icon {
+    font-size: 1.05rem;
+    line-height: 1;
+    color: var(--entry-action-icon);
+    flex-shrink: 0;
+}
+#entryModal .entry-comment-textarea {
+    min-height: 4.5rem;
+    box-sizing: border-box;
+}
+#entryModal .entry-detail-record-panel {
+    margin: 0;
+    padding: 0.625rem 1rem;
+    border: 0;
+    border-bottom: 1px solid var(--entry-border-row);
+    border-radius: 0;
+    background: #e2e8f0;
+    box-sizing: border-box;
+}
+#entryModal .entry-detail-record-header-static {
+    display: grid;
+    grid-template-columns: var(--entry-form-label-w, 7.25rem) minmax(0, 1fr);
+    gap: 0;
+    align-items: center;
+    flex-wrap: nowrap;
+    min-height: var(--entry-form-row-h);
+}
+#entryModal .entry-detail-record-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #0f172a;
+    line-height: 1.25;
+    flex-shrink: 0;
+    min-width: 0;
+    white-space: nowrap;
+    grid-column: 1;
+}
+#entryModal .entry-detail-record-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    margin-top: 0;
+    margin-left: 0;
+    padding-left: var(--entry-form-core-input-pl, 0);
+    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
+    grid-column: 2;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+#entryModal .entry-detail-record-chips::-webkit-scrollbar {
+    display: none;
+}
+#entryModal .entry-detail-record-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--entry-border-soft);
+    border-radius: 9999px;
+    background: var(--entry-surface);
+    color: var(--entry-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+#entryModal .entry-detail-record-chip i {
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+#entryModal .entry-detail-record-chip[data-field="with"] i {
+    color: #6366f1;
+}
+#entryModal .entry-detail-record-chip[data-field="rating"] i {
+    color: #f59e0b;
+}
+#entryModal .entry-detail-record-chip[data-field="satiety"] i {
+    color: #ec4899;
+}
+#entryModal .entry-detail-record-chip[data-field="time"] i {
+    color: #0ea5e9;
+}
+#entryModal .entry-detail-record-chip:hover {
+    border-color: var(--entry-border);
+    color: var(--entry-text-secondary);
+}
+#entryModal .entry-detail-record-chip--active {
+    border-color: #6ee7b7;
+    background: var(--entry-accent-soft);
+    color: var(--entry-accent-dark);
+}
+
+/* ── 헤더 날짜 캘린더 (중앙 오버레이) ── */
+.entry-header-date-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+}
+.entry-header-date-picker.hidden {
+    display: none !important;
+}
+.entry-header-date-picker__backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    background: rgb(15 23 42 / 0.5);
+    cursor: pointer;
+}
+.entry-header-date-picker__panel {
+    position: relative;
+    width: min(21rem, 92vw);
+    padding: 1.25rem 1rem 1rem;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 20px 48px rgb(15 23 42 / 0.2);
+}
+.entry-header-date-picker__nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.875rem;
+}
+.entry-header-date-picker__month {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+}
+.entry-header-date-picker__nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid var(--entry-border-soft, #e2e8f0);
+    border-radius: 9999px;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.entry-header-date-picker__nav-btn:hover:not(:disabled):not(.entry-header-date-picker__nav-btn--disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+.entry-header-date-picker__nav-btn:disabled,
+.entry-header-date-picker__nav-btn.entry-header-date-picker__nav-btn--disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.entry-header-date-picker__weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+    margin-bottom: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-align: center;
+}
+.entry-header-date-picker__grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+}
+.entry-header-date-picker__day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+    aspect-ratio: 1;
+    max-height: 2.75rem;
+    border: 0;
+    border-radius: 0.625rem;
+    background: transparent;
+    color: #0f172a;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.entry-header-date-picker__day--empty {
+    pointer-events: none;
+}
+.entry-header-date-picker__day:hover:not(.is-selected):not(.is-disabled) {
+    background: #f1f5f9;
+}
+.entry-header-date-picker__day.is-today:not(.is-selected):not(.is-disabled) {
+    color: #059669;
+    background: #ecfdf5;
+}
+.entry-header-date-picker__day.is-disabled,
+.entry-header-date-picker__day:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.entry-header-date-picker__day.is-selected {
+    background: #10b981;
+    color: #ffffff;
+}
+
+/* ── 칩 (빠른 입력) ── */
+#entryModal .chip {
+    margin-right: 2px;
+    margin-bottom: 2px;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    border-color: var(--entry-border-soft);
+    color: var(--entry-text-secondary);
+    background: var(--entry-surface);
+}
+#entryModal .chip.active {
+    background: var(--entry-accent-dark);
+    border-color: var(--entry-accent-dark);
+    color: #fff;
+}
+
+/* ── 하단 액션 (기록 완료 강조) ── */
+#entryModal .entry-modal-actions {
+    background: var(--entry-surface);
+    border-top: 1px solid var(--entry-border-soft);
+    box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
+}
+#entryModal .entry-action-btn--save {
+    background: linear-gradient(180deg, var(--entry-accent) 0%, var(--entry-accent-dark) 100%);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    transition: filter 0.15s ease, transform 0.1s ease;
+}
+#entryModal .entry-action-btn--save:hover {
+    filter: brightness(1.05);
+}
+#entryModal .entry-action-btn--save:active {
+    filter: brightness(0.95);
+    transform: scale(0.995);
+}
+#entryModal .entry-action-btn--delete {
+    background: #fff1f2;
+    color: #e11d48;
+    border-right: 1px solid var(--entry-border-soft);
+}
+#entryModal .entry-action-btn--share {
+    background: var(--entry-surface-muted);
+    color: var(--entry-text-muted);
+    border-left: 1px solid var(--entry-border-soft);
 }

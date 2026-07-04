@@ -241,12 +241,36 @@ function fcmTokenMetaUpdatedMs(meta) {
   return 0;
 }
 
+/** 토큰 등록 시 env별 최신 1개(+legacy)만 유지 — 재설치·재등록 잔여 토큰 누적 방지 */
+function pruneUserFcmTokens(tokensMap, activeToken, activeEntry) {
+  const merged = { ...(tokensMap && typeof tokensMap === 'object' ? tokensMap : {}), [activeToken]: activeEntry };
+  const byEnvBest = new Map();
+  for (const [tok, meta] of Object.entries(merged)) {
+    const norm = String(tok || '').trim();
+    if (!norm) continue;
+    const env =
+      meta?.env === 'staging' ? 'staging' : meta?.env === 'production' ? 'production' : 'legacy';
+    const ms = fcmTokenMetaUpdatedMs(meta);
+    const prev = byEnvBest.get(env);
+    if (!prev || ms > prev.ms || (ms === prev.ms && tok === activeToken)) {
+      byEnvBest.set(env, { tok, meta });
+    }
+  }
+  const out = {};
+  for (const { tok, meta } of byEnvBest.values()) {
+    out[tok] = meta;
+  }
+  if (activeToken && !out[activeToken]) {
+    out[activeToken] = activeEntry;
+  }
+  return out;
+}
+
 /**
- * 관리자 브로드캐스트: 사용자당 FCM은 1회만(가장 최근 등록 토큰 1개).
- * - 동일 env에 토큰 여러 개 / targetEnv all일 때 staging+production 각 1통씩이면 기기에서 2번까지 갈 수 있었음 → 1개로 고정.
- * - 키 문자열이 미세하게 다른 중복 저장(공백 등)도 정규화 후 하나로 합침.
+ * 사용자당 FCM 1회만 — 가장 최근 등록 토큰 1개.
+ * - staging+production 토큰 동시 보유, 재설치·재등록 잔여 토큰, 키 공백 차이 등으로 N통 나가던 문제 방지
  */
-function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
+function pickSingleFcmToken(tokensMap, tokenStrings) {
   const bestByNorm = new Map();
   for (const token of tokenStrings) {
     const norm = String(token || '').trim();
@@ -271,11 +295,59 @@ function pickSingleFcmTokenForAdminBroadcast(tokensMap, tokenStrings) {
   return best ? [best] : [];
 }
 
+/** 동일 알림이 Android/iOS에서 여러 줄로 쌓이지 않게 collapse 키 생성 */
+function makePushCollapseId(payload, options = {}) {
+  if (typeof options.collapseId === 'string' && options.collapseId.length > 0) {
+    return options.collapseId.slice(0, 64);
+  }
+  if (typeof options.adminCollapseId === 'string' && options.adminCollapseId.length > 0) {
+    return options.adminCollapseId.slice(0, 64);
+  }
+  if (options.adminBroadcast) {
+    const envResolved =
+      options.targetEnv === 'production' || options.targetEnv === 'staging' ? options.targetEnv : 'all';
+    return makeAdminBroadcastCollapseId(payload, envResolved);
+  }
+  const data = payload?.data && typeof payload.data === 'object' ? payload.data : {};
+  const parts = [
+    String(data.type || options.pushCategory || 'push'),
+    data.postId,
+    data.feedPostId,
+    data.noticeId,
+    data.landingTab,
+    payload?.title,
+    String(payload?.body || '').slice(0, 120)
+  ]
+    .map((x) => String(x ?? '').trim())
+    .filter(Boolean);
+  return crypto.createHash('sha256').update(parts.join('\n')).digest('hex').slice(0, 32);
+}
+
+const PUSH_SEND_DEDUPE_MS = 45 * 1000;
+
+/** Callable 재시도·이중 트리거로 동일 수신자에게 같은 푸시가 짧은 시간에 2번 나가는 것 방지 */
+async function pushSendDedupeShouldSkip(userId, dedupeKey) {
+  if (!userId || !dedupeKey) return false;
+  const docId = crypto.createHash('sha256').update(`${userId}|${dedupeKey}`).digest('hex').slice(0, 48);
+  const ref = db.collection('artifacts').doc(APP_ID).collection('_pushSendDedupe').doc(docId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    if (snap.exists) {
+      const at = snap.data().at;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : 0;
+      if (ms && now - ms < PUSH_SEND_DEDUPE_MS) return true;
+    }
+    tx.set(ref, { at: FieldValue.serverTimestamp(), userId }, { merge: true });
+    return false;
+  });
+}
+
 /**
  * 특정 사용자의 FCM 토큰들에 푸시 알림 전송 (실패 시 로그만, 호출자 대기 안 함)
  * @param {string} userId - 수신자 uid
  * @param {{ title: string, body: string, data?: object }} payload
- * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault' }} options - pushCategory 있으면 사용자 pushPreferences로 필터
+ * @param {{ adminBroadcast?: boolean, pushCategory?: 'momentComment'|'boardComment'|'mealTalk'|'adminDefault', dedupeKey?: string }} options
  * @returns {Promise<boolean>} 최소 1건 FCM 전송 성공 시 true
  */
 async function sendPushToUser(userId, payload, options = {}) {
@@ -286,6 +358,17 @@ async function sendPushToUser(userId, payload, options = {}) {
     if (!isPushCategoryAllowedByPrefs(prefs, pushCategory)) {
       logger.info('sendPushToUser: skipped by pushPreferences', { userId, pushCategory });
       return false;
+    }
+  }
+  if (options.dedupeKey) {
+    try {
+      const skip = await pushSendDedupeShouldSkip(userId, options.dedupeKey);
+      if (skip) {
+        logger.info('sendPushToUser: dedupe skip', { userId, dedupeKey: options.dedupeKey });
+        return false;
+      }
+    } catch (e) {
+      logger.warn('sendPushToUser: dedupe check failed (proceeding)', { userId, message: e?.message });
     }
   }
   try {
@@ -308,14 +391,16 @@ async function sendPushToUser(userId, payload, options = {}) {
         return tokenEnv === envFilter;
       })
       : allTokens;
-    if (options.adminBroadcast && tokens.length > 0) {
+    if (tokens.length > 0) {
       const before = tokens.length;
-      tokens = pickSingleFcmTokenForAdminBroadcast(tokensMap, tokens);
-      if (tokens.length !== before || before > 1) {
-        logger.info('sendPushToUser: adminBroadcast single token', {
+      tokens = pickSingleFcmToken(tokensMap, tokens);
+      if (before > 1) {
+        logger.info('sendPushToUser: single token selected', {
           userId,
           before,
-          after: tokens.length
+          after: tokens.length,
+          targetEnv: envFilter || 'all',
+          adminBroadcast: !!options.adminBroadcast
         });
       }
     }
@@ -328,6 +413,8 @@ async function sendPushToUser(userId, payload, options = {}) {
     if (options.adminBroadcast) {
       dataObj.suppressNumericBadge = '1';
     }
+    const collapseId = makePushCollapseId(payload, options);
+    const tagPrefix = options.adminBroadcast ? 'mealog_adm_' : 'mealog_';
     // Android 8+ 채널: 미지정 시 기기/OS별로 트레이 미표시 이슈가 있을 수 있어 FCM 기본 채널 명시
     const androidNotificationBase = {
       title: payload.title,
@@ -335,33 +422,21 @@ async function sendPushToUser(userId, payload, options = {}) {
       channelId: 'fcm_fallback_notification_channel',
       sound: 'default'
     };
+    const androidNotification = {
+      ...androidNotificationBase,
+      tag: `${tagPrefix}${collapseId}`
+    };
+    if (options.adminBroadcast) {
+      androidNotification.notificationCount = 0;
+    }
     const message = {
       notification: { title: payload.title, body: payload.body || '' },
       data: fcmDataStrings(dataObj),
       android: {
         priority: 'high',
-        notification: { ...androidNotificationBase }
-      }
-    };
-    if (options.adminBroadcast) {
-      const collapseId =
-        typeof options.adminCollapseId === 'string' && options.adminCollapseId.length > 0
-          ? options.adminCollapseId.slice(0, 64)
-          : makeAdminBroadcastCollapseId(
-            payload,
-            envFilter || (options.targetEnv === 'staging' || options.targetEnv === 'production' ? options.targetEnv : 'all')
-          );
-      // Android: 동일 tag면 새 알림이 이전 줄을 대체(Callable 중복·재시도로 N줄 쌓임 방지)
-      // iOS: apns-collapse-id로 동일 키 알림 병합
-      message.android = {
-        priority: 'high',
-        notification: {
-          ...androidNotificationBase,
-          notificationCount: 0,
-          tag: `mealog_adm_${collapseId}`
-        }
-      };
-      message.apns = {
+        notification: androidNotification
+      },
+      apns: {
         headers: {
           'apns-priority': '10',
           'apns-collapse-id': collapseId
@@ -369,11 +444,10 @@ async function sendPushToUser(userId, payload, options = {}) {
         payload: {
           aps: {
             sound: 'default'
-            // badge 생략 → 기존 배지 숫자를 이 푸시가 덮어쓰지 않도록
           }
         }
-      };
-    }
+      }
+    };
     const results = await Promise.allSettled(
       tokens.map((token) => messaging.send({ ...message, token }))
     );
@@ -726,7 +800,10 @@ async function deliverFeedNotifications({ newPostId, senderId, authorNickname, p
             landingTab: 'board'
           }
         },
-        { pushCategory: 'mealTalk' }
+        {
+          pushCategory: 'mealTalk',
+          dedupeKey: `feedActivity:${recipientId}:${newPostId}:${kind}`
+        }
       );
     } catch (e) {
       logger.warn('deliverFeedNotifications: push failed', { recipientId, message: e.message });
@@ -1056,7 +1133,10 @@ exports.addBoardComment = onCall({ region: REGION }, wrapFunction('addBoardComme
           postPreview: previewTitle.slice(0, 200)
         }
       },
-      { pushCategory: 'boardComment' }
+      {
+        pushCategory: 'boardComment',
+        dedupeKey: `boardComment:${postAuthorId}:${auth.uid}:${postId}:${text.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -1143,7 +1223,10 @@ exports.addBoardCommentAsAdmin = onCall({ region: REGION }, async (request) => {
           postPreview: previewTitle.slice(0, 200)
         }
       },
-      { pushCategory: 'boardComment' }
+      {
+        pushCategory: 'boardComment',
+        dedupeKey: `boardComment:${postAuthorId}:${auth.uid}:${postId}:${text.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -1560,7 +1643,10 @@ exports.addPostComment = onCall({ region: REGION }, wrapFunction('addPostComment
         body: `${userNickname}님이 댓글을 남겼습니다.`,
         data: { type: 'postComment', postId: String(postId) }
       },
-      { pushCategory: 'momentComment' }
+      {
+        pushCategory: 'momentComment',
+        dedupeKey: `momentComment:${postOwnerId}:${auth.uid}:${postId}:${commentText.trim().slice(0, 200)}`
+      }
     );
   }
 
@@ -2007,11 +2093,14 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
 
-  const { photoUrl, dateRangeText, comment } = data;
+  const { photoUrl, dateRangeText, comment, date } = data;
   
   if (!photoUrl || !dateRangeText) {
     throw new HttpsError('invalid-argument', '사진 URL과 날짜 범위 텍스트가 필요합니다.');
   }
+
+  const dietReportDate =
+    date && /^\d{4}-\d{2}-\d{2}$/.test(String(date).trim()) ? String(date).trim() : null;
 
   const userSettingsRef = db.collection('artifacts').doc(APP_ID)
     .collection('users').doc(auth.uid)
@@ -2048,7 +2137,7 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     postId,
     photoUrl,
     FieldValue,
-    extra: { dateRangeText, comment: comment || '' }
+    extra: { dateRangeText, comment: comment || '', ...(dietReportDate ? { date: dietReportDate } : {}) }
   });
   batch.set(sharedColl.doc(docId), v2Fields);
 
@@ -2064,6 +2153,7 @@ exports.createInsightShare = onCall({ region: REGION }, async (request) => {
     userPhotoUrl,
     type: 'insight',
     dateRangeText,
+    ...(dietReportDate ? { date: dietReportDate } : {}),
     schemaVersion: 2,
     timestamp: new Date().toISOString(),
     sharedAt: new Date().toISOString(),
@@ -3819,6 +3909,14 @@ function isProductionUsageSource(data) {
   const capAppId = typeof data?.capAppId === 'string' ? data.capAppId.trim() : '';
   if (capAppId === 'com.mealog.app.staging') return false;
   if (capAppId === 'com.mealog.app') return true;
+  // 네이티브(설치형)는 Capacitor 가 config.appId 를 주입하지 않아 capAppId 가 비고, 번들 앱은
+  // WebView 호스트가 localhost 라 호스트 판별도 불가하다. 빌드시 확정되는 APP_ENV 로 판별.
+  const isNative = data?.isNative === true;
+  const appEnv = typeof data?.appEnv === 'string' ? data.appEnv.toLowerCase().trim() : '';
+  if (isNative) {
+    if (appEnv === 'staging') return false;
+    if (appEnv === 'production') return true;
+  }
   const webHost = typeof data?.webHost === 'string' ? data.webHost.toLowerCase().trim() : '';
   return webHost === 'www.mealog.net' || webHost === 'mealog.net';
 }
@@ -3896,15 +3994,8 @@ exports.registerFcmToken = onCall({ region: REGION }, wrapFunction('registerFcmT
   const prev = (snap.exists && snap.data().tokens && typeof snap.data().tokens === 'object') ? snap.data().tokens : {};
   const entry = { updatedAt: FieldValue.serverTimestamp() };
   if (env) entry.env = env;
-  await ref.set(
-    {
-      tokens: {
-        ...prev,
-        [token]: entry
-      }
-    },
-    { merge: true }
-  );
+  const tokens = pruneUserFcmTokens(prev, token, entry);
+  await ref.set({ tokens }, { merge: true });
   return { ok: true };
 }));
 
@@ -4884,6 +4975,81 @@ exports.cancelAdminScheduledPush = onCall({ region: REGION }, async (request) =>
   return { ok: true, id: jobId };
 });
 
+/** 관리자: 예약 푸시 수정 (pending·단일 예약만) */
+exports.updateAdminScheduledPush = onCall({ region: REGION }, async (request) => {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', '관리자만 수정할 수 있습니다.');
+  }
+  const data = request.data || {};
+  const jobId = String(data.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '예약 ID(jobId)가 필요합니다.');
+  }
+  const ref = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').doc(jobId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    throw new HttpsError('not-found', '예약을 찾을 수 없습니다.');
+  }
+  const cur = snap.data() || {};
+  if (String(cur.status || 'pending') !== 'pending') {
+    throw new HttpsError('failed-precondition', 'pending 상태의 예약만 수정할 수 있습니다.');
+  }
+  if (String(cur.scheduleType || 'once') !== 'once') {
+    throw new HttpsError('failed-precondition', '단일/요일별(개별) 예약만 수정할 수 있습니다.');
+  }
+  const updates = {};
+  if (data.title !== undefined) {
+    const t = String(data.title || '').trim();
+    if (!t) {
+      throw new HttpsError('invalid-argument', '제목을 입력해 주세요.');
+    }
+    if (t.length > ADMIN_BROADCAST_TITLE_MAX) {
+      throw new HttpsError('invalid-argument', `제목은 ${ADMIN_BROADCAST_TITLE_MAX}자 이하로 입력해 주세요.`);
+    }
+    updates.title = t.slice(0, ADMIN_BROADCAST_TITLE_MAX);
+  }
+  if (data.body !== undefined) {
+    const b = String(data.body || '').trim();
+    if (!b) {
+      throw new HttpsError('invalid-argument', '내용을 입력해 주세요.');
+    }
+    if (b.length > ADMIN_BROADCAST_BODY_MAX) {
+      throw new HttpsError('invalid-argument', `내용은 ${ADMIN_BROADCAST_BODY_MAX}자 이하로 입력해 주세요.`);
+    }
+    updates.body = b.slice(0, ADMIN_BROADCAST_BODY_MAX);
+  }
+  if (data.landingTab !== undefined) {
+    const tab = String(data.landingTab || '').trim();
+    updates.landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  }
+  if (data.targetEnv !== undefined) {
+    const envRaw = String(data.targetEnv || '').trim();
+    updates.targetEnv = ADMIN_PUSH_TARGET_ENVS.has(envRaw) ? envRaw : 'all';
+  }
+  if (data.scheduledAtMs !== undefined) {
+    const ms = typeof data.scheduledAtMs === 'number' && !Number.isNaN(data.scheduledAtMs) ? data.scheduledAtMs : null;
+    if (ms == null) {
+      throw new HttpsError('invalid-argument', '예약 시각(scheduledAtMs)이 올바르지 않습니다.');
+    }
+    const minLead = Date.now() + 25 * 1000;
+    if (ms < minLead) {
+      throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
+    }
+    updates.scheduledAt = Timestamp.fromMillis(ms);
+  }
+  if (Object.keys(updates).length === 0) {
+    throw new HttpsError('invalid-argument', '수정할 내용이 없습니다.');
+  }
+  updates.updatedAt = FieldValue.serverTimestamp();
+  updates.updatedByUid = callerUid;
+  await ref.update(updates);
+  return { ok: true, id: jobId };
+});
+
 /** 관리자: 발송 기록 삭제 (pending 제외) */
 exports.deleteAdminBroadcastHistory = onCall({ region: REGION }, async (request) => {
   const callerUid = request.auth?.uid;
@@ -4929,16 +5095,19 @@ exports.processScheduledAdminPushes = onSchedule(
     for (const docSnap of snap.docs) {
       const ref = docSnap.ref;
       try {
-        await db.runTransaction(async (transaction) => {
+        const acquired = await db.runTransaction(async (transaction) => {
           const s = await transaction.get(ref);
-          if (!s.exists) return;
+          if (!s.exists) return false;
           const d = s.data();
-          if (d.status !== 'pending') return;
+          if (d.status !== 'pending') return false;
           const sa = d.scheduledAt;
           const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
-          if (!ms || ms > nowMs) return;
+          if (!ms || ms > nowMs) return false;
           transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+          return true;
         });
+
+        if (!acquired) continue;
 
         const after = await ref.get();
         const d = after.data();
@@ -5084,7 +5253,19 @@ exports.onNoticePushOnce = onDocumentWritten(
     const after = afterSnap.data();
     if (!after || after.hidden === true || after.deleted === true) return;
     if ((after.pushFrequency || 'none') !== 'once') return;
-    if (after.pushSentAt) return;
+
+    const noticeRef = afterSnap.ref;
+    const shouldSend = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(noticeRef);
+      if (!snap.exists) return false;
+      const cur = snap.data();
+      if (!cur || cur.hidden === true || cur.deleted === true) return false;
+      if ((cur.pushFrequency || 'none') !== 'once') return false;
+      if (cur.pushSentAt) return false;
+      tx.set(noticeRef, { pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
+      return true;
+    });
+    if (!shouldSend) return;
 
     const title = (after.title || '공지').trim();
     const body = noticePlainTextForPush(after.content || '');
@@ -5096,7 +5277,6 @@ exports.onNoticePushOnce = onDocumentWritten(
 
     try {
       await broadcastNoticePushToAllUsers(payload);
-      await afterSnap.ref.set({ pushSentAt: FieldValue.serverTimestamp() }, { merge: true });
       logger.info('onNoticePushOnce: ok', { noticeId });
     } catch (e) {
       logger.error('onNoticePushOnce failed', { noticeId, message: e?.message });
@@ -5128,7 +5308,18 @@ exports.scheduledNoticeDailyPush = onSchedule(
     for (const docSnap of snap.docs) {
       const n = docSnap.data();
       if (n.hidden === true || n.deleted === true) continue;
-      if (n.lastDailyPushDate === todaySeoul) continue;
+
+      const noticeRef = docSnap.ref;
+      const shouldSend = await db.runTransaction(async (tx) => {
+        const curSnap = await tx.get(noticeRef);
+        if (!curSnap.exists) return false;
+        const cur = curSnap.data();
+        if (cur.hidden === true || cur.deleted === true) return false;
+        if (cur.lastDailyPushDate === todaySeoul) return false;
+        tx.set(noticeRef, { lastDailyPushDate: todaySeoul }, { merge: true });
+        return true;
+      });
+      if (!shouldSend) continue;
 
       const title = (n.title || '공지').trim();
       const body = noticePlainTextForPush(n.content || '');
@@ -5140,7 +5331,6 @@ exports.scheduledNoticeDailyPush = onSchedule(
 
       try {
         await broadcastNoticePushToAllUsers(payload);
-        await docSnap.ref.set({ lastDailyPushDate: todaySeoul }, { merge: true });
         logger.info('scheduledNoticeDailyPush: ok', { noticeId: docSnap.id, todaySeoul });
       } catch (e) {
         logger.error('scheduledNoticeDailyPush failed', { noticeId: docSnap.id, message: e?.message });
@@ -5269,6 +5459,39 @@ function adminMealPlaceText(d) {
   return (d.snackPlace != null ? String(d.snackPlace) : '').trim();
 }
 
+const ADMIN_SATIETY_LABELS = {
+  1: '한입만',
+  2: '가볍게',
+  3: '적당히',
+  4: '든든하게',
+  5: '과식'
+};
+
+function adminMealTimeText(d) {
+  const mc = (d.mealClock != null ? String(d.mealClock) : '').trim();
+  if (mc && /^\d{1,2}:\d{2}/.test(mc)) {
+    const hm = mc.match(/^(\d{1,2}):(\d{2})/);
+    if (hm) return `${String(hm[1]).padStart(2, '0')}:${hm[2]}`;
+  }
+  const t = (d.time != null ? String(d.time) : '').trim();
+  if (!t) return '';
+  const hm = t.match(/^(\d{1,2}):(\d{2})/);
+  return hm ? `${String(hm[1]).padStart(2, '0')}:${hm[2]}` : '';
+}
+
+function adminMealRatingText(d) {
+  const n = Number(d.rating);
+  if (!Number.isFinite(n) || n < 1 || n > 5) return '';
+  return `만족도 ${Math.round(n)}/5`;
+}
+
+function adminMealSatietyText(d) {
+  const n = Number(d.satiety);
+  if (!Number.isFinite(n) || n < 1 || n > 5) return '';
+  const label = ADMIN_SATIETY_LABELS[Math.round(n)] || '';
+  return label ? `포만감 ${Math.round(n)}/5 (${label})` : `포만감 ${Math.round(n)}/5`;
+}
+
 /** 한 줄 요약(웰컴 API 표시용): 입력창 메뉴·메모 등 포함 */
 function adminMealShortLine(d) {
   const mt = (d.mealType || '').trim();
@@ -5288,7 +5511,7 @@ function adminMealShortLine(d) {
   const dv = (d.deliveryVendor || '').trim();
   if (dv) bits.push(`배달:${adminTruncateText(dv, 20)}`);
   const cm = adminTruncateText(d.comment, 40);
-  if (cm) bits.push(`메모:${cm}`);
+  if (cm) bits.push(`코멘트:${cm}`);
   return bits.filter(Boolean).slice(0, 9).join('·');
 }
 
@@ -5314,7 +5537,13 @@ function adminMealSlotDetailForGemini(d) {
   const dv = (d.deliveryVendor || '').trim();
   if (dv) lines.push(`배달/업체: ${dv}`);
   const cm = (d.comment != null ? String(d.comment) : '').trim();
-  if (cm) lines.push(`메모: ${cm.length > 200 ? `${cm.slice(0, 198)}…` : cm}`);
+  if (cm) lines.push(`코멘트: ${cm.length > 200 ? `${cm.slice(0, 198)}…` : cm}`);
+  const timeTxt = adminMealTimeText(d);
+  if (timeTxt) lines.push(`시간: ${timeTxt}`);
+  const ratingTxt = adminMealRatingText(d);
+  if (ratingTxt) lines.push(ratingTxt);
+  const satietyTxt = adminMealSatietyText(d);
+  if (satietyTxt) lines.push(satietyTxt);
   return lines.join('\n    ');
 }
 
@@ -5323,6 +5552,52 @@ async function adminFetchMealsForDates(uid, datesYmd) {
   const mealsRef = db.collection('artifacts').doc(APP_ID).collection('users').doc(uid).collection('meals');
   const snap = await mealsRef.where('date', 'in', datesYmd).get();
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+function adminNormalizeDailyJournalEntry(raw) {
+  const empty = { comment: '' };
+  if (raw == null || raw === '') return { ...empty };
+  if (typeof raw === 'string') return { comment: String(raw).trim() };
+  if (typeof raw === 'object') {
+    return { comment: String(raw.comment || '').trim() };
+  }
+  return { ...empty };
+}
+
+/** userSettings.dailyComments[date] — 없으면 meals 미러(dailyJournal_*) 폴백 */
+async function adminFetchDailyJournalForDate(uid, dateStr) {
+  const dk = String(dateStr || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return adminNormalizeDailyJournalEntry(null);
+  try {
+    const settingsRef = db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`);
+    const snap = await settingsRef.get();
+    const dailyComments = snap.exists ? snap.data().dailyComments : null;
+    if (dailyComments && dailyComments[dk] != null) {
+      return adminNormalizeDailyJournalEntry(dailyComments[dk]);
+    }
+  } catch (e) {
+    logger.warn('adminFetchDailyJournalForDate settings failed', { uid, dateStr: dk, errMsg: e?.message });
+  }
+  try {
+    const mealSnap = await db.doc(`artifacts/${APP_ID}/users/${uid}/meals/dailyJournal_${dk}`).get();
+    if (mealSnap.exists) {
+      return adminNormalizeDailyJournalEntry(mealSnap.data());
+    }
+  } catch (e) {
+    logger.warn('adminFetchDailyJournalForDate meal mirror failed', { uid, dateStr: dk, errMsg: e?.message });
+  }
+  return adminNormalizeDailyJournalEntry(null);
+}
+
+function formatDailyJournalBlockForDiet(dateStr, entry) {
+  const comment = adminNormalizeDailyJournalEntry(entry).comment;
+  if (!comment) return '';
+  const clipped = comment.length > 800 ? `${comment.slice(0, 798)}…` : comment;
+  return `\n\n[하루소감 · ${dateStr}]\n${clipped}`;
+}
+
+function adminMealCommentText(d) {
+  return (d.comment != null ? String(d.comment) : '').trim();
 }
 
 function adminFormatMealsSummary(meals, datesChronologicalAsc) {
@@ -5785,5 +6060,566 @@ exports.adminWelcomeGeminiComment = onCall(
       logger.warn('adminWelcomeGeminiComment save', { userId, message: e.message });
     }
     return { comment, analysisAnchorSeoul };
+  })
+);
+
+// =========================================================================
+// AI 식단 분석 리포트 (날짜 단위)
+// - 매일 00:10 KST 배치로 "전날" 기록을 분석해 aiDietReports에 저장
+// - 대상: 식사/간식 meal 문서(하루 메모 제외)가 2개 이상인 날짜
+// - 사진: meal 문서당 최대 3장, 전체 안전 상한 12장
+// - 점수(0~100) + 한줄평 + 좋았던 점 + 아쉬운 점, sourceHash로 소급 수정 감지
+// =========================================================================
+
+/** 분석 지원 시작일(서울). 배치 재개 시 사용 */
+const DIET_REPORT_START_DATE = '2026-06-30';
+const DIET_REPORT_PROMPT_VERSION = 'diet-v1';
+const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/dietReportConfig`);
+const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
+
+[평가 기준 · 100점 만점]
+- 균형(주식·단백질·채소/과일의 고른 구성)
+- 단백질 충분함
+- 채소·과일 포함 여부
+- 과식·잦은 간식·야식 여부(감점 요인)
+- 기록의 충실도(메뉴·사진 등)
+위 항목을 종합해 0~100점을 매긴다. 데이터가 빈약하면 무리하게 높은 점수를 주지 말 것.
+
+[작성 원칙]
+- 한국어. 담백하고 따뜻한 어투. 캐릭터·이모지·과장 없이.
+- 의학적 진단·치료·질병 단정 표현 금지("~에 좋다/나쁘다" 수준의 일반적 조언까지만).
+- 사진에 음식이 보이면 실제로 반영하되, 데이터에 없는 사실은 지어내지 말 것.
+- summary는 한 줄(공백 포함 60자 내외).
+- goodPoint(좋았던 점), improvePoint(아쉬운 점)은 각각 한 줄, 없으면 빈 문자열.
+
+[식단 데이터 · {{date}}]
+{{mealText}}
+
+[출력 형식]
+아래 JSON만 출력한다. 다른 텍스트·설명·코드펜스 없이 JSON 객체 하나만.
+{"score": 0-100 정수, "summary": "한줄평", "goodPoint": "좋았던 점", "improvePoint": "아쉬운 점"}`;
+/** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 3;
+/** gemini-2.5-flash: 사진+thinking 시 출력 JSON이 잘리지 않도록 thinking 0 · 출력 여유 */
+const DIET_REPORT_MAX_OUTPUT_TOKENS = 1024;
+const DIET_REPORT_THINKING_BUDGET = 0;
+
+function dietReportDocId(uid, dateStr) {
+  return `${uid}_${dateStr}`;
+}
+
+function normalizeDietBatchRunTime(raw) {
+  const s = String(raw || '').trim();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return '00:10';
+  const h = Math.min(23, Math.max(0, Number(m[1])));
+  const min = Math.min(59, Math.max(0, Number(m[2])));
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+function adminSeoulHmFromDate(date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${hour}:${minute}`;
+}
+
+function parseHmToMinutes(hm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 15분 주기 스케줄에서 설정 시각(HH:mm) 구간에 들어왔는지 */
+function isWithinDietBatchRunWindow(now, runTimeHm, windowMinutes = 15) {
+  const runMins = parseHmToMinutes(runTimeHm);
+  const nowMins = parseHmToMinutes(adminSeoulHmFromDate(now));
+  if (runMins == null || nowMins == null) return false;
+  return nowMins >= runMins && nowMins < runMins + windowMinutes;
+}
+
+async function fetchDietReportConfig() {
+  const snap = await DIET_REPORT_CONFIG_REF().get();
+  const d = snap.exists ? snap.data() : {};
+  const promptTemplate =
+    (d.promptTemplate && String(d.promptTemplate).trim()) || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+  return {
+    promptTemplate,
+    promptVersion: d.promptVersion || DIET_REPORT_PROMPT_VERSION,
+    batchEnabled: d.batchEnabled === true,
+    batchRunTime: normalizeDietBatchRunTime(d.batchRunTime),
+    lastBatchRunDate: d.lastBatchRunDate ? String(d.lastBatchRunDate) : null
+  };
+}
+
+function buildDietReportPromptText(dateStr, mealText, promptTemplate) {
+  const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+  const mealBlock = mealText || '(텍스트 기록 없음 — 사진 위주로 판단)';
+  return tpl.replace(/\{\{date\}\}/g, dateStr).replace(/\{\{mealText\}\}/g, mealBlock);
+}
+
+/** aiDietReports 문서에 완료된 분석(자동·수동)이 있는지 */
+function dietReportAlreadyAnalyzed(data) {
+  if (!data || typeof data !== 'object') return false;
+  return data.status === 'ready';
+}
+
+/** 재분석 시 관리자 모니터링용 — 최신 문서({uid}_{date})를 덮어쓰기 전 이력으로 보관 */
+async function archiveDietReportSnapshotIfAny(reportRef) {
+  const snap = await reportRef.get();
+  if (!snap.exists) return;
+  const prev = snap.data();
+  if (!prev || prev.generatedAt == null) return;
+  const historyRef = db.collection(`artifacts/${APP_ID}/aiDietReports`).doc();
+  await historyRef.set({
+    ...prev,
+    isHistory: true,
+    isLatest: false,
+    historyOf: reportRef.id,
+    archivedAt: FieldValue.serverTimestamp()
+  });
+}
+
+/** 하루 메모(daily journal) 미러는 분석 대상에서 제외 */
+function isDietAnalyzableMeal(m) {
+  if (!m || typeof m !== 'object') return false;
+  if (m.slotId === 'daily_journal') return false;
+  if (String(m.id || '').startsWith('dailyJournal_')) return false;
+  return true;
+}
+
+/**
+ * 분석 대상 meal 정렬 + sourceHash + 사진 수 + 최신 recordedAt 계산.
+ * sourceHash는 텍스트·사진 URL 조합을 안정적으로 해시하여, 이후 소급 수정 감지에 사용.
+ */
+function buildDietReportSource(meals) {
+  const analyzable = (meals || []).filter(isDietAnalyzableMeal);
+  const sortKey = (m) => `${String(m.slotId || '')}~${String(m.time || '')}~${String(m.id || '')}`;
+  analyzable.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  const parts = [];
+  let maxRecordedAt = '';
+  let photoCount = 0;
+  for (const m of analyzable) {
+    const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    photoCount += photos.length;
+    const ra = m.recordedAt != null ? String(m.recordedAt) : '';
+    if (ra && ra > maxRecordedAt) maxRecordedAt = ra;
+    parts.push(
+      [
+        m.id,
+        m.slotId,
+        m.mealType,
+        m.category,
+        m.snackType,
+        adminMealMenuDetailText(m),
+        adminMealPlaceText(m),
+        m.comment,
+        m.rating,
+        m.satiety,
+        adminMealTimeText(m),
+        photos.join('|')
+      ]
+        .map((x) => (x == null ? '' : String(x)))
+        .join('~')
+    );
+  }
+  const hash = crypto.createHash('sha1').update(parts.join('\n')).digest('hex');
+  return { analyzable, hash, maxRecordedAt, photoCount };
+}
+
+/** Firebase Storage 다운로드 URL → Gemini inlineData({ mimeType, data(base64) }). 실패 시 null */
+async function dietFetchStorageImageInline(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== 'string') return null;
+  if (!imageUrl.includes('firebasestorage.googleapis.com')) return null;
+  try {
+    const url = new URL(imageUrl);
+    const m = url.pathname.match(/\/o\/(.+)$/);
+    if (!m) return null;
+    const storagePath = decodeURIComponent(m[1]);
+    const bucket = getStorage().bucket('mealog-r0.firebasestorage.app');
+    const file = bucket.file(storagePath);
+    const [contents] = await file.download();
+    const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
+    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    return { mimeType, data: contents.toString('base64') };
+  } catch (e) {
+    logger.warn('dietFetchStorageImageInline failed', { message: e?.message });
+    return null;
+  }
+}
+
+/** 분석 대상 meal → Gemini 텍스트 블록(슬롯별) */
+function formatMealsForDietPrompt(analyzable) {
+  const sorted = [...analyzable].sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+  const lines = [];
+  for (const m of sorted) {
+    const sl = adminSlotLabelKr(m.slotId) || '슬롯';
+    const detail = adminMealSlotDetailForGemini(m);
+    lines.push(`· ${sl}:\n    ${detail}`);
+  }
+  return lines.join('\n');
+}
+
+/** Gemini 응답 텍스트 정규화(코드펜스 제거). 출력 스키마 검증 없음 */
+function normalizeDietReportResponseText(text) {
+  let s = (text || '').trim();
+  if (!s) throw new Error('빈 응답');
+  s = s.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  return s.slice(0, 16000);
+}
+
+/** Gemini 멀티모달 호출 — 프롬프트에 따른 응답 텍스트를 그대로 반환 */
+async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplate) {
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
+  }
+  const prompt = buildDietReportPromptText(dateStr, mealText, promptTemplate);
+
+  const model = GEMINI_MEALDANG_MODEL;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const generationConfig = {
+    temperature: 0.4,
+    topP: 0.9,
+    maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
+    thinkingConfig: { thinkingBudget: DIET_REPORT_THINKING_BUDGET }
+  };
+
+  const invoke = async (images) => {
+    const parts = [{ text: prompt }, ...images.map((p) => ({ inlineData: p }))];
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
+      body: JSON.stringify({ contents: [{ parts }], generationConfig })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || (await res.text().catch(() => ''));
+      throw new Error(`Gemini API 오류: ${res.status} - ${msg}`);
+    }
+    await recordGeminiModelUsage(model);
+    const finishReason = data?.candidates?.[0]?.finishReason || '';
+    const text = extractGeminiResponseText(data);
+    if (!text) {
+      throw new Error(`Gemini 응답 텍스트 없음 (finishReason=${finishReason || 'unknown'})`);
+    }
+    const responseText = normalizeDietReportResponseText(text);
+    return { responseText, tokenUsage: data?.usageMetadata || null, model };
+  };
+
+  const images = Array.isArray(imageParts) ? imageParts : [];
+  try {
+    return await invoke(images);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    const shouldRetryTextOnly =
+      images.length > 0 &&
+      (/Unable to process input image|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) || /image/i.test(msg));
+    if (shouldRetryTextOnly) {
+      logger.warn('callGeminiDietReport: retry text-only', { dateStr, imageCount: images.length, errMsg: msg });
+      return await invoke([]);
+    }
+    throw e;
+  }
+}
+
+/**
+ * 한 사용자·날짜의 리포트를 생성해 저장. 성공 시 status:'ready', 실패 시 status:'error'.
+ * @param {'batch'|'manual'} trigger
+ * @param {object} [dietConfig] fetchDietReportConfig() 결과(배치 루프에서 재사용)
+ */
+async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfig) {
+  const config = dietConfig || (await fetchDietReportConfig());
+  const { analyzable, hash: mealHash, maxRecordedAt, photoCount } = buildDietReportSource(meals);
+  if (analyzable.length < 2) {
+    throw new Error('해당 날짜에 식사/간식 기록이 2개 이상 있어야 분석할 수 있습니다.');
+  }
+  const dailyJournalEntry = await adminFetchDailyJournalForDate(uid, dateStr);
+  const dailyJournalBlock = formatDailyJournalBlockForDiet(dateStr, dailyJournalEntry);
+  const hash = crypto
+    .createHash('sha1')
+    .update(`${mealHash}\n${dailyJournalBlock}`)
+    .digest('hex');
+  const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, dateStr)}`);
+
+  await archiveDietReportSnapshotIfAny(reportRef);
+
+  // 사진 수집: meal 문서당 최대 3장, 하루 전체 최대 12장
+  const imageParts = [];
+  const inputMealsForAnalysis = [];
+  for (const m of analyzable) {
+    if (imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) {
+      const photosOnly = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+      inputMealsForAnalysis.push({
+        slotId: String(m.slotId || ''),
+        slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+        mealId: String(m.id || ''),
+        detailText: adminMealSlotDetailForGemini(m),
+        comment: adminMealCommentText(m) || null,
+        time: adminMealTimeText(m) || null,
+        rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
+        satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
+        photoCount: photosOnly.length,
+        analyzedPhotoUrls: []
+      });
+      continue;
+    }
+    const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    const analyzedPhotoUrls = [];
+    let usedForDoc = 0;
+    for (const purl of photos) {
+      if (usedForDoc >= DIET_REPORT_MAX_PHOTOS_PER_DOC || imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) break;
+      const inline = await dietFetchStorageImageInline(purl);
+      if (inline) {
+        imageParts.push(inline);
+        analyzedPhotoUrls.push(purl);
+        usedForDoc += 1;
+      }
+    }
+    inputMealsForAnalysis.push({
+      slotId: String(m.slotId || ''),
+      slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+      mealId: String(m.id || ''),
+      detailText: adminMealSlotDetailForGemini(m),
+      comment: adminMealCommentText(m) || null,
+      time: adminMealTimeText(m) || null,
+      rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
+      satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
+      photoCount: photos.length,
+      analyzedPhotoUrls
+    });
+  }
+
+  const mealText = formatMealsForDietPrompt(analyzable) + dailyJournalBlock;
+  const inputSnapshot = {
+    inputMealText: String(mealText || '').slice(0, 12000),
+    inputMeals: inputMealsForAnalysis,
+    inputDailyJournalComment: adminNormalizeDailyJournalEntry(dailyJournalEntry).comment.slice(0, 4000) || null
+  };
+  const base = {
+    userId: uid,
+    date: dateStr,
+    mealCount: analyzable.length,
+    photoCount,
+    analyzedPhotoCount: imageParts.length,
+    sourceHash: hash,
+    sourceUpdatedAtMax: maxRecordedAt || null,
+    promptVersion: config.promptVersion,
+    trigger,
+    generatedAt: FieldValue.serverTimestamp(),
+    ...inputSnapshot
+  };
+
+  try {
+    const { responseText, tokenUsage, model } = await callGeminiDietReport(
+      dateStr,
+      mealText,
+      imageParts,
+      config.promptTemplate
+    );
+    await reportRef.set(
+      {
+        ...base,
+        status: 'ready',
+        isLatest: true,
+        isHistory: false,
+        responseText,
+        modelVersion: model,
+        tokensUsed: tokenUsage,
+        score: FieldValue.delete(),
+        summary: FieldValue.delete(),
+        goodPoint: FieldValue.delete(),
+        improvePoint: FieldValue.delete(),
+        errorMessage: FieldValue.delete(),
+        historyOf: FieldValue.delete(),
+        archivedAt: FieldValue.delete()
+      },
+      { merge: true }
+    );
+    return { status: 'ready' };
+  } catch (e) {
+    logger.warn('generateAndSaveDietReport failed', { uid, dateStr, errMsg: e?.message });
+    await reportRef.set(
+      {
+        ...base,
+        status: 'error',
+        isLatest: true,
+        isHistory: false,
+        modelVersion: GEMINI_MEALDANG_MODEL,
+        errorMessage: String(e?.message || e).slice(0, 500),
+        historyOf: FieldValue.delete(),
+        archivedAt: FieldValue.delete()
+      },
+      { merge: true }
+    );
+    return { status: 'error', error: e };
+  }
+}
+
+/**
+ * 15분마다 실행 — adminSettings/dietReportConfig 의 batchEnabled·batchRunTime 에 맞춰 하루 1회 배치.
+ * 대상: 최근 7일(배치 실행일 제외) 기록이 있는 사용자 → 각 사용자의 가장 최근 기록일 분석.
+ * 해당 날짜에 분석 이력(자동·수동)이 있으면 skip.
+ */
+exports.scheduledDailyDietAnalysis = onSchedule(
+  {
+    schedule: '*/15 * * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '1GiB'
+  },
+  async () => {
+    const config = await fetchDietReportConfig();
+    if (!config.batchEnabled) {
+      logger.info('scheduledDailyDietAnalysis: batch disabled in adminSettings, skip');
+      return;
+    }
+    const now = new Date();
+    if (!isWithinDietBatchRunWindow(now, config.batchRunTime, 15)) {
+      return;
+    }
+    const todaySeoul = adminSeoulYmdFromDate(now);
+    if (config.lastBatchRunDate === todaySeoul) {
+      logger.info('scheduledDailyDietAnalysis: already ran today', { todaySeoul });
+      return;
+    }
+
+    const windowStart = adminYmdAddDays(todaySeoul, -7);
+    const snap = await db
+      .collectionGroup('meals')
+      .where('date', '>=', windowStart)
+      .where('date', '<', todaySeoul)
+      .get();
+
+    const byUser = new Map();
+    snap.forEach((docSnap) => {
+      const segs = docSnap.ref.path.split('/');
+      const uid = segs[3];
+      if (!uid) return;
+      const date = String(docSnap.data()?.date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      if (!byUser.has(uid)) {
+        byUser.set(uid, { maxDate: date, mealsByDate: new Map() });
+      }
+      const row = byUser.get(uid);
+      if (date > row.maxDate) row.maxDate = date;
+      if (!row.mealsByDate.has(date)) row.mealsByDate.set(date, []);
+      row.mealsByDate.get(date).push({ id: docSnap.id, ...docSnap.data() });
+    });
+
+    const candidates = [];
+    for (const [uid, row] of byUser) {
+      const meals = row.mealsByDate.get(row.maxDate) || [];
+      const analyzableCount = meals.filter(isDietAnalyzableMeal).length;
+      if (analyzableCount >= 2) candidates.push({ uid, targetDate: row.maxDate, meals });
+    }
+    logger.info('scheduledDailyDietAnalysis: 후보', {
+      todaySeoul,
+      windowStart,
+      candidates: candidates.length,
+      batchRunTime: config.batchRunTime
+    });
+
+    let ok = 0;
+    let err = 0;
+    let skip = 0;
+    for (const { uid, targetDate, meals } of candidates) {
+      if (targetDate < DIET_REPORT_START_DATE) {
+        skip += 1;
+        continue;
+      }
+      const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, targetDate)}`);
+      const existing = await reportRef.get();
+      if (existing.exists && dietReportAlreadyAnalyzed(existing.data())) {
+        skip += 1;
+        continue;
+      }
+      const r = await generateAndSaveDietReport(uid, targetDate, meals, 'batch', config);
+      if (r.status === 'ready') ok += 1;
+      else err += 1;
+    }
+
+    await DIET_REPORT_CONFIG_REF().set(
+      {
+        lastBatchRunDate: todaySeoul,
+        lastBatchRunAt: FieldValue.serverTimestamp(),
+        lastBatchStats: { ok, err, skip, candidates: candidates.length }
+      },
+      { merge: true }
+    );
+    logger.info('scheduledDailyDietAnalysis: 완료', { todaySeoul, ok, err, skip });
+  }
+);
+
+/**
+ * 수동 재분석(사용자 AI 리포트 버튼 / 관리자). 배치 on/off 와 무관하게 항상 동작.
+ * 요청: { date: 'YYYY-MM-DD', userId?: string }
+ */
+exports.regenerateDietReport = onCall(
+  { region: REGION, timeoutSeconds: 120, memory: '1GiB' },
+  wrapFunction('regenerateDietReport', async (request) => {
+    const callerAuth = request.auth;
+    if (!callerAuth || !callerAuth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    const d = request.data || {};
+    const dateStr = String(d.date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      throw new HttpsError('invalid-argument', 'date(YYYY-MM-DD)가 필요합니다.');
+    }
+    const todaySeoul = adminSeoulYmdFromDate(new Date());
+    if (dateStr >= todaySeoul) {
+      throw new HttpsError('failed-precondition', '오늘·미래 날짜는 분석할 수 없습니다.');
+    }
+
+    let targetUid = callerAuth.uid;
+    if (d.userId && String(d.userId) !== callerAuth.uid) {
+      if (!(await isAdminByUid(callerAuth.uid))) {
+        throw new HttpsError('permission-denied', '다른 사용자의 리포트는 관리자만 재생성할 수 있습니다.');
+      }
+      targetUid = String(d.userId);
+    }
+
+    const reportRef = db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(targetUid, dateStr)}`);
+    const existing = await reportRef.get();
+    if (existing.exists) {
+      const g = existing.data().generatedAt;
+      const gms = g && typeof g.toMillis === 'function' ? g.toMillis() : 0;
+      if (gms && Date.now() - gms < 30000) {
+        throw new HttpsError('resource-exhausted', '방금 생성했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    }
+
+    const meals = await adminFetchMealsForDates(targetUid, [dateStr]);
+    const analyzable = meals.filter(isDietAnalyzableMeal);
+    if (analyzable.length < 2) {
+      throw new HttpsError('failed-precondition', '해당 날짜에 식사/간식 기록이 2개 이상 있어야 분석할 수 있습니다.');
+    }
+
+    const r = await generateAndSaveDietReport(targetUid, dateStr, meals, 'manual');
+    if (r.status !== 'ready') {
+      const saved = (await reportRef.get()).data() || {};
+      const detail = saved.errorMessage || 'AI 분석에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+      throw new HttpsError('internal', detail);
+    }
+    const saved = (await reportRef.get()).data() || {};
+    return {
+      ok: true,
+      report: {
+        date: dateStr,
+        status: saved.status,
+        responseText: saved.responseText || '',
+        mealCount: saved.mealCount,
+        photoCount: saved.photoCount,
+        analyzedPhotoCount: saved.analyzedPhotoCount
+      }
+    };
   })
 );

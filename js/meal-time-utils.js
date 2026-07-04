@@ -105,31 +105,65 @@ export function mealClock24ToAmPmAndDisplay(hhmm24) {
 }
 
 /**
- * 사진 파일 EXIF에서 촬영 시각 → "HH:mm" (로컬). 없으면 null.
+ * EXIF DateTimeOriginal / CreateDate / ModifyDate → Date (로컬). 없으면 null.
  */
-export async function tryExifTimeHHmmFromImageFile(file) {
-    if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) return null;
+async function parseExifDateFromImageBlob(blob) {
+    if (!blob || typeof blob.type !== 'string' || !blob.type.startsWith('image/')) return null;
     try {
         const mod = await import('https://esm.sh/exifr@7.1.3');
         const exifr = mod.default || mod;
-        const out = await exifr.parse(file, { pick: ['DateTimeOriginal', 'CreateDate', 'ModifyDate'] });
+        const out = await exifr.parse(blob, { pick: ['DateTimeOriginal', 'CreateDate', 'ModifyDate'] });
         let dt =
             out?.DateTimeOriginal ||
             out?.CreateDate ||
             out?.ModifyDate ||
             null;
-        let d = null;
-        if (dt instanceof Date && !Number.isNaN(dt.getTime())) {
-            d = dt;
-        } else if (dt) {
+        if (dt instanceof Date && !Number.isNaN(dt.getTime())) return dt;
+        if (dt) {
             const x = new Date(dt);
-            d = Number.isNaN(x.getTime()) ? null : x;
+            return Number.isNaN(x.getTime()) ? null : x;
         }
-        if (!d) return null;
-        const hh = String(d.getHours()).padStart(2, '0');
-        const mm = String(d.getMinutes()).padStart(2, '0');
-        return `${hh}:${mm}`;
+        return null;
     } catch (_) {
         return null;
     }
+}
+
+/**
+ * 사진 파일 EXIF에서 촬영 시각 → Date (로컬). 없으면 null.
+ */
+export async function tryExifDateFromImageFile(file) {
+    if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) return null;
+    return parseExifDateFromImageBlob(file);
+}
+
+/**
+ * data URL / blob URL / http(s) URL / File → EXIF 촬영 시각 Date. 없으면 null.
+ */
+export async function tryExifDateFromImageSrc(src) {
+    if (!src) return null;
+    try {
+        if (src instanceof File) return tryExifDateFromImageFile(src);
+        const s = String(src);
+        if (s.startsWith('data:') || s.startsWith('blob:') || s.startsWith('http')) {
+            const res = await fetch(s);
+            if (!res.ok) return null;
+            const blob = await res.blob();
+            return parseExifDateFromImageBlob(blob);
+        }
+    } catch (_) {
+        return null;
+    }
+    return null;
+}
+
+/**
+ * 사진 파일 EXIF에서 촬영 시각 → "HH:mm" (로컬). 없으면 null.
+ */
+export async function tryExifTimeHHmmFromImageFile(file) {
+    const d = await tryExifDateFromImageFile(file);
+    if (!d) return null;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
 }

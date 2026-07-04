@@ -18,7 +18,9 @@ export {
     changeMonth,
     changeYear,
     changeRecentWeek,
-    navigatePeriod
+    navigatePeriod,
+    syncDashboardInsightGradientHeight,
+    scheduleDashboardInsightGradientSync
 } from './analytics/dashboard.js';
 
 // Insight 관련 함수들

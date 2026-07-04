@@ -27,7 +27,7 @@ import {
 } from './meal-entry-pending.js';
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
-import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { appState } from '../state.js';
 
 /** mealHistory에서 YYYY-MM-DD 최소일 (없으면 null). limit(50)으로 초기 스냅샷에 구멍이 생길 때 loaded 범위와 일치시키기 위함 */
@@ -81,6 +81,37 @@ function triggerLoadMyShares() {
     }).catch(() => {});
 }
 
+/** 동기화·타임스탬프 필드만 바뀐 경우 DOM 재구성 불필요 */
+const MEAL_SYNC_ONLY_KEYS = new Set([
+    '_localSaveFailed',
+    'is_sync_error',
+    'recordedAt',
+    'updatedAt',
+    'timestamp'
+]);
+
+function stableMealDisplayJson(rec) {
+    if (!rec || typeof rec !== 'object') return '';
+    const keys = Object.keys(rec).filter((k) => !MEAL_SYNC_ONLY_KEYS.has(k)).sort();
+    const o = {};
+    for (const k of keys) {
+        const v = rec[k];
+        if (v !== undefined) o[k] = v;
+    }
+    return JSON.stringify(o);
+}
+
+/** id·표시 필드 변경 여부 (sync 플래그만 바뀌면 false) */
+function mealRecordDisplayChanged(prev, next) {
+    if (!prev || !next) return true;
+    if (String(prev.id) !== String(next.id)) return true;
+    return stableMealDisplayJson(prev) !== stableMealDisplayJson(next);
+}
+
+function notifyMealsDataUpdate(onDataUpdate, payload) {
+    if (typeof onDataUpdate === 'function') onDataUpdate(payload);
+}
+
 /**
  * @param {*} snap QuerySnapshot
  * @param {{ mergeStatsIntoDaily: () => void, onDataUpdate?: () => void, slice50: boolean }} opts
@@ -96,6 +127,7 @@ function applyDemoMealsBranch(snap, { mergeStatsIntoDaily, onDataUpdate, slice50
     window.mealHistory = applyDemoDateShiftToMeals(rawMeals, shift).sort(
         (a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time)
     );
+    invalidateMealHistoryCountCache();
     const rawDates = rawMeals
         .map((m) => m.date)
         .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
@@ -125,7 +157,7 @@ function applyDemoMealsBranch(snap, { mergeStatsIntoDaily, onDataUpdate, slice50
             markMealEntryServerSynced(d.id);
         }
     });
-    if (onDataUpdate) onDataUpdate();
+    if (onDataUpdate) notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });
     triggerLoadMyShares();
 }
 
@@ -152,7 +184,12 @@ export function applyMealsSnapshotPrimary(p) {
         return { uidMismatch: false };
     }
 
-    if (loadState.isInitialLoad) {
+    let hasMealDataChanges = false;
+    let hasSyncOnlyChanges = false;
+    const changedDates = new Set();
+    const wasInitialLoad = loadState.isInitialLoad;
+
+    if (wasInitialLoad) {
         const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
         const serverMapped = snap.docs
             .map((d) => {
@@ -171,6 +208,7 @@ export function applyMealsSnapshotPrimary(p) {
         const minActual = minMealDateYmd(window.mealHistory);
         window.loadedMealsDateRange = { start: minActual ?? cutoffDateStr, end: todayStr };
         loadState.isInitialLoad = false;
+        invalidateMealHistoryCountCache();
         snap.docs.forEach((d) => {
             if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
                 onMealDocFirestoreServerAcknowledged(d.id, null);
@@ -213,6 +251,8 @@ export function applyMealsSnapshotPrimary(p) {
                     window.mealHistory = window.mealHistory.filter((m) => m.id !== rid);
                 }
                 hasChanges = true;
+                hasMealDataChanges = true;
+                if (prev?.date) changedDates.add(prev.date);
                 return;
             }
             const docData = { id: change.doc.id, ...change.doc.data() };
@@ -268,14 +308,33 @@ export function applyMealsSnapshotPrimary(p) {
                         }
                     }
                     window.mealHistory[index] = mergedRow;
+                    if (mealRecordDisplayChanged(localRecord, mergedRow)) {
+                        hasMealDataChanges = true;
+                        if (docData.date) changedDates.add(docData.date);
+                        if (localRecord?.date && localRecord.date !== docData.date) {
+                            changedDates.add(localRecord.date);
+                        }
+                    } else {
+                        hasSyncOnlyChanges = true;
+                    }
                 } else {
-                    const tempIdx = window.mealHistory.findIndex(
+                    let tempIdx = window.mealHistory.findIndex(
                         (m) =>
                             typeof m?.id === 'string' &&
                             m.id.startsWith('temp_') &&
                             m.date === docData.date &&
-                            m.slotId === docData.slotId
+                            m.slotId === docData.slotId &&
+                            mgrSync.hasOptimisticTemp(m.id)
                     );
+                    if (tempIdx < 0) {
+                        tempIdx = window.mealHistory.findIndex(
+                            (m) =>
+                                typeof m?.id === 'string' &&
+                                m.id.startsWith('temp_') &&
+                                m.date === docData.date &&
+                                m.slotId === docData.slotId
+                        );
+                    }
                     if (tempIdx >= 0) {
                         const tempRecord = window.mealHistory[tempIdx];
                         const tempPhotos = Array.isArray(tempRecord?.photos)
@@ -318,6 +377,8 @@ export function applyMealsSnapshotPrimary(p) {
                         if (mgrSync.hasPendingPhotoEntry(tempRecord.id)) {
                             mgrSync.movePendingPhotoTempToReal(tempRecord.id, docData.id);
                         }
+                        hasMealDataChanges = true;
+                        if (docData.date) changedDates.add(docData.date);
                     } else {
                         window.mealHistory.push(docData);
                         if (serverAcked) {
@@ -330,6 +391,8 @@ export function applyMealsSnapshotPrimary(p) {
                             window.mealHistory[window.mealHistory.length - 1] = row;
                             onMealDocFirestoreServerAcknowledged(docData.id, null);
                         }
+                        hasMealDataChanges = true;
+                        if (docData.date) changedDates.add(docData.date);
                     }
                 }
                 hasChanges = true;
@@ -339,6 +402,7 @@ export function applyMealsSnapshotPrimary(p) {
         if (hasChanges) {
             window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.mealHistory = dedupeMealListOnly(window.mealHistory);
+            invalidateMealHistoryCountCache();
             const minD = minMealDateYmd(window.mealHistory);
             if (window.loadedMealsDateRange && minD) {
                 window.loadedMealsDateRange = { ...window.loadedMealsDateRange, start: minD };
@@ -359,7 +423,19 @@ export function applyMealsSnapshotPrimary(p) {
     }
 
     clearStuckMealPendingFlags();
-    if (onDataUpdate) onDataUpdate();
+    if (onDataUpdate) {
+        if (wasInitialLoad) {
+            notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });
+        } else if (hasMealDataChanges) {
+            notifyMealsDataUpdate(onDataUpdate, {
+                source: 'meals',
+                mode: 'mealData',
+                changedDates: [...changedDates]
+            });
+        } else if (hasSyncOnlyChanges) {
+            notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'metadataOnly' });
+        }
+    }
     if (!demo) {
         scheduleReconcileStaleMealSyncDotsAfterSnapshot();
     }
@@ -405,6 +481,7 @@ export function applyMealsSnapshotFallback(p) {
         })
         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
     window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
+    invalidateMealHistoryCountCache();
     const minF = minMealDateYmd(window.mealHistory);
     window.loadedMealsDateRange = {
         start: minF ?? cutoffDateStr,
@@ -429,7 +506,7 @@ export function applyMealsSnapshotFallback(p) {
         window.__mealogMealsWindowFullyLoaded = true;
         mergeStatsIntoDaily();
     }
-    if (onDataUpdate) onDataUpdate();
+    if (onDataUpdate) notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });
     if (!demo) {
         scheduleReconcileStaleMealSyncDotsAfterSnapshot();
     }

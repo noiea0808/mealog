@@ -10,7 +10,8 @@ import {
     updateTimelineShareIndicators,
     renderGallery,
     renderBoard,
-    syncBoardFeedComposerVisibility
+    syncBoardFeedComposerVisibility,
+    syncBoardTracePanelVisibility
 } from '../render/index.js';
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
@@ -24,8 +25,16 @@ import {
     refreshNavFeedUpdateDots
 } from './nav-feed-update-dots.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
+import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
 
-const HEADER_SECTION_BY_TAB = { dashboard: '밀당', timeline: '밀로그', gallery: '모먼트', board: '라운지', settings: '사용자' };
+const HEADER_TITLE_BY_TAB = {
+    dashboard: 'meal-dang',
+    timeline: 'mealog',
+    gallery: 'moment',
+    board: 'lounge',
+    settings: 'profile'
+};
 
 let _tabSwitchNavDotsTimer = null;
 const TAB_SWITCH_NAV_DOTS_DEBOUNCE_MS = 380;
@@ -39,10 +48,10 @@ function scheduleNavDotsAfterTabSwitch(prevTab, tab) {
     }, TAB_SWITCH_NAV_DOTS_DEBOUNCE_MS);
 }
 
-function updateHeaderSectionLabel(tab) {
-    const el = document.getElementById('headerSectionLabel');
+function updateHeaderTitle(tab) {
+    const el = document.getElementById('headerAppTitle');
     if (!el) return;
-    el.textContent = HEADER_SECTION_BY_TAB[tab] ?? '밀로그';
+    el.textContent = HEADER_TITLE_BY_TAB[tab] ?? 'mealog';
 }
 
 export function registerMainTabSwitch() {
@@ -80,7 +89,7 @@ export function registerMainTabSwitch() {
                 const mainHeader = document.querySelector('#mainApp > header');
                 if (mainHeader) mainHeader.classList.remove('hidden');
             }
-            updateHeaderSectionLabel(tab);
+            updateHeaderTitle(tab);
             document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
             document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
             document.getElementById('dashboardView').classList.toggle('hidden', tab !== 'dashboard');
@@ -192,8 +201,10 @@ export function registerMainTabSwitch() {
                     }
                 }
                 if (tracePanel) {
-                    if (tab === 'gallery' || tab === 'board') {
+                    if (tab === 'gallery') {
                         tracePanel.classList.remove('hidden');
+                    } else if (tab === 'board') {
+                        syncBoardTracePanelVisibility();
                     } else {
                         tracePanel.classList.add('hidden');
                         tracePanel.classList.remove('expanded');
@@ -327,6 +338,8 @@ export function registerMainTabSwitch() {
                 setTimeout(() => window.checkAndShowContentPopup(tab), 200);
             }
             syncBoardFeedComposerVisibility();
+            syncEntryQuickInputFabVisibility();
+            refreshMealSyncResendNavButton();
             scheduleNavDotsAfterTabSwitch(prevTab, tab);
             console.log('[탭전환] 완료:', { 현재탭: appState.currentTab });
         } catch (error) {
@@ -336,4 +349,6 @@ export function registerMainTabSwitch() {
         }
     };
     syncBoardFeedComposerVisibility();
+    syncEntryQuickInputFabVisibility();
+    refreshMealSyncResendNavButton();
 }

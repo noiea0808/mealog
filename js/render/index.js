@@ -4,6 +4,7 @@ export { escapeHtml, sanitizeFormattedText, renderFormattedContent, stripDangero
 export {
     renderTimeline,
     renderMiniCalendar,
+    refreshMiniCalendarDots,
     updateTimelineShareIndicators,
     updateTimelineMealEntryPendingIndicators,
     invalidateTimelineDateSection,
@@ -18,6 +19,7 @@ export {
     zoomInPhotoEdit,
     zoomOutPhotoEdit,
     rotatePhotoEdit,
+    addPhotoEditTimestamp,
     resetPhotoEdit,
     savePhotoEdit,
     closePhotoEditModal
@@ -28,7 +30,7 @@ export {
     preloadAdjacentGalleryImages
 } from './post-group-utils.js';
 export { fetchUserProfiles, getUserSettings } from './user-profiles.js';
-export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility } from './board-notice.js';
+export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility, syncBoardTracePanelVisibility } from './board-notice.js';
 export {
     renderBoardFeedTab,
     scrollFeedPanelToBottom,

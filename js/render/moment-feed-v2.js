@@ -11,6 +11,7 @@ import {
     isDailyJournalSharePhoto
 } from '../utils/daily-journal-data.js';
 import { buildMomentV2MenuLabelLineInnerHtml } from '../main/moment-feed-v2-wheel-layout.js';
+import { isDietReportInsightShare, DIET_REPORT_MOMENT_SLOT_LABEL } from '../utils/diet-report-share.js';
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -62,6 +63,7 @@ export function getMomentV2SlotWheelLabel(photo, isBest, isDaily, isInsight, ent
     if (isDaily) return '일간';
     if (isBest) return '베스트';
     if (isInsight) {
+        if (isDietReportInsightShare(photo)) return DIET_REPORT_MOMENT_SLOT_LABEL;
         const r = String(photo?.dateRangeText || '인사이트').replace(/\s+/g, '').trim();
         return r.length > 14 ? `${r.slice(0, 14)}…` : r || '인사이트';
     }
@@ -136,8 +138,12 @@ export function buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, 
         const { y, mo, day, wd } = getMomentV2DateParts(p);
         const eid = p?.entryId || groupEntryId;
         const isDj = isDailyJournalSharePhoto(p, eid);
+        const isDietReportShare = isInsightShare && isDietReportInsightShare(p);
         const slotT = getMomentV2SlotWheelLabel(p, isBestShare, isDailyShare, isInsightShare, eid);
-        const menuBase = isDailyShare || isDj ? '' : (captionTextPlain || '').trim() || '—';
+        const menuBase =
+            isBestShare || isDailyShare || isDj || isDietReportShare
+                ? ''
+                : (captionTextPlain || '').trim() || '—';
         const ac = buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId);
         return { y, mo, da: day, wd, slot: slotT, menu: menuBase, ac };
     });
@@ -246,9 +252,10 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags, en
     const { y, mo, day, wd } = getMomentV2DateParts(photo);
     const eid = entryId != null && entryId !== '' ? entryId : photo?.entryId;
     const isDailyJournalShare = isDailyJournalSharePhoto(photo, eid);
+    const isDietReportShare = isInsightShare && isDietReportInsightShare(photo);
     const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, eid);
     let menuCol = '';
-    if (!isDailyShare && !isDailyJournalShare) {
+    if (!isBestShare && !isDailyShare && !isDailyJournalShare && !isDietReportShare) {
         const menu = (menuCaptionPlain || '').trim() || '—';
         menuCol = `<div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
             <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">
@@ -288,14 +295,14 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         </div>`
         : '';
     const maxH = 'min(88vh, calc(100dvh - 7rem))';
-    /** 일간 캡처 PNG: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
-    if (isDaily) {
-        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--daily-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
-            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-daily-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+    /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
+    if (isDaily || isBest || isDietReportInsightShare(p)) {
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
+            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
-    if (isBest || isInsight) {
+    if (isInsight) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
@@ -343,6 +350,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
     const flags = { isBestShare, isDailyShare, isInsightShare };
     const rootDailyAttr = isDailyShare ? ' data-moment-v2-daily-share="1"' : '';
+    const rootBestAttr = isBestShare ? ' data-moment-v2-best-share="1"' : '';
     const postIdForUi = String(overlayRow?.overlayPostId || String(postIdParam || ''));
     const postIdJs = postIdJsParam != null ? postIdJsParam : JSON.stringify(String(postIdForUi || ''));
     const n = photoGroup.length;
@@ -378,7 +386,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         const momentChrome = overlayRow ? buildV2InlineChromeHtml(overlayRow) : '';
         const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
         const wheelBlock = buildMomentV2WheelCaptionHtml(photoGroup[0], captionTextPlain, flags, groupEntryId);
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch gap-px overflow-hidden rounded-lg" data-moment-v2-hpost-ambient data-moment-v2-hstrip-bgs="${bgsJson}">
@@ -455,7 +463,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         })
         .join('');
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch gap-px" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>

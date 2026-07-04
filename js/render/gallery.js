@@ -7,6 +7,7 @@ import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../uti
 import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
 import {
     getPostIdFromPhotoGroup,
+    photoGroupMatchesTracePostIds,
     preloadAdjacentGalleryImages
 } from './post-group-utils.js';
 import { fetchUserProfiles, getUserSettings } from './user-profiles.js';
@@ -30,6 +31,29 @@ import {
 } from './moment-feed-skeleton.js';
 
 ensureMomentFeedPinchDelegate();
+
+// 모먼트 사진: 로드 완료 전 슬롯만 보이고, `loaded` 후 이미지 노출.
+// 한 번 로드된 사진은 재디코드 시에도 다시 숨기지 않음.
+// load/error 이벤트는 버블되지 않으므로 캡처 단계로 위임.
+if (typeof document !== 'undefined' && !window._momentPhotoLoadedTrackerBound) {
+    window._momentPhotoLoadedTrackerBound = true;
+    const markLoaded = (img) => {
+        if (img?.tagName === 'IMG' && img.classList?.contains('moment-feed-photo')) {
+            img.classList.add('loaded');
+        }
+    };
+    document.addEventListener('load', (e) => markLoaded(e.target), true);
+    document.addEventListener('error', (e) => markLoaded(e.target), true);
+}
+
+/** 캐시·즉시 완료된 이미지에 `loaded` 부여 (동적 삽입 직후 호출) */
+export function markMomentFeedPhotosLoadedIn(root) {
+    if (!root?.querySelectorAll) return;
+    root.querySelectorAll('img.moment-feed-photo').forEach((img) => {
+        if (img.classList.contains('loaded')) return;
+        if (img.complete) img.classList.add('loaded');
+    });
+}
 
 /** `momentsFeedView === 2` — renderGallery 완료 시점 기준 (appendGalleryPosts 등에서 재사용) */
 let galleryMomentLayoutV2 = false;
@@ -113,6 +137,56 @@ let intersectionObserver = null;
 let placeholderObserver = null;
 let galleryAbortController = null;
 let previousGalleryPostIds = new Set();
+let previousGalleryTraceFilter = null;
+
+function dedupeGalleryPhotos(photos) {
+    const seen = new Set();
+    return (photos || []).filter((photo) => {
+        const key = isMomentPostV2(photo)
+            ? `v2_${photo.postId || photo.id}`
+            : `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+/**
+ * 흔적 필터용 피드 확장 검색 — sharedPhotosFeed는 건드리지 않음(필터 해제 시 원래 피드 유지).
+ * @returns {Promise<object[]>} 필터 매칭 탐색에 쓸 문서 목록
+ */
+async function expandFeedForTraceFilter(tracePostIds, mySession) {
+    const base = [...(window.sharedPhotosFeed || [])];
+    if (!tracePostIds?.size || appState.galleryFilterUserId) return base;
+
+    const hasMatch = (docs) =>
+        docsToSortedPhotoGroups(dedupeGalleryPhotos(docs)).some((g) =>
+            photoGroupMatchesTracePostIds(g, tracePostIds)
+        );
+
+    let docs = base;
+    if (hasMatch(docs)) return docs;
+
+    const MAX_PAGES = 12;
+    const { loadSharedPhotosPage } = await import('../db.js');
+    let cursor = appState.sharedPhotosFeedLastDoc;
+    let hasMore = appState.sharedPhotosFeedHasMore;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+        if (!hasMore && !cursor) break;
+        const { docs: newDocs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, cursor);
+        if (isGallerySessionStale(mySession)) return docs;
+        if (!newDocs?.length) break;
+        docs = collapseDocsToFeedPage(
+            sortSharedPhotosByTimestampDesc([...docs, ...newDocs]),
+            999
+        ).feedDocs;
+        cursor = lastDoc;
+        hasMore = nextHasMore;
+        if (hasMatch(docs)) break;
+    }
+    return docs;
+}
 
 function isGallerySessionStale(sessionAtStart) {
     return sessionAtStart !== galleryRenderSession;
@@ -293,6 +367,7 @@ function setupGalleryEventListeners(container, sortedGroups, opts = null) {
         if (!isLoggedIn) { btn.classList.add('opacity-50', 'cursor-not-allowed'); btn.title = '로그인이 필요합니다'; if (btn.tagName === 'INPUT') { btn.disabled = true; btn.placeholder = '로그인 후 댓글을 달아보세요'; } }
         else { btn.classList.remove('opacity-50', 'cursor-not-allowed'); btn.title = ''; if (btn.tagName === 'INPUT') { btn.disabled = false; btn.placeholder = '댓글 달기...'; } }
     });
+    markMomentFeedPhotosLoadedIn(container);
     if (container.classList.contains('moment-feed-layout-v2') || container.getAttribute('data-moment-feed-layout') === '2') {
         setupMomentFeedV2WheelLayout(container);
     }
@@ -318,13 +393,28 @@ export async function appendMomentFeedNextPage(opts = {}) {
         appState.sharedPhotosFeedLastDoc = lastDoc;
         appState.sharedPhotosFeedHasMore = nextHasMore;
 
-        await renderGallery({ skipScrollToTop: true, forceReload: true });
+        // 전체 재렌더(forceReload) 대신 새 게시물만 DOM 끝에 추가한다.
+        // → 기존 게시물·이미지·스크롤 위치가 그대로 유지되어, 더보기 시 스크롤이 위아래로 튀지 않는다.
+        const loadMoreWrap = document.getElementById('galleryLoadMoreWrap');
+        const postsInsertPoint = document.getElementById('galleryPostsInsertPoint');
+        let appended = 0;
+        if (
+            loadMoreWrap &&
+            postsInsertPoint &&
+            !appState.galleryFilterUserId &&
+            !appState.galleryTraceFilter
+        ) {
+            appended = (await appendGalleryPosts(docs, loadMoreWrap)) || 0;
+        } else {
+            // 갤러리 구조가 없거나(필터/그리드 모드 등) 부분 추가가 불가능하면 안전하게 전체 렌더로 폴백
+            await renderGallery({ skipScrollToTop: true, forceReload: true });
+        }
 
         if (syncFeed) {
             const { renderFeed } = await import('./feed.js');
             await renderFeed();
         }
-        return { ok: true, appended: docs.length };
+        return { ok: true, appended: appended || docs.length };
     } catch (e) {
         console.error('공유 사진 더보기 실패:', e);
         appState.galleryFeedNetworkError = true;
@@ -334,11 +424,22 @@ export async function appendMomentFeedNextPage(opts = {}) {
 
 /** 더보기 시 새 포스트만 DOM에 추가 (전체 재렌더 없이 깜박임 방지) */
 async function appendGalleryPosts(docs, loadMoreWrap) {
-    if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return;
+    if (!docs || docs.length === 0 || !loadMoreWrap || !loadMoreWrap.parentNode) return 0;
     const container = document.getElementById('galleryContainer');
-    if (!container) return;
-    const newGroups = docsToSortedPhotoGroups(docs);
-    if (newGroups.length === 0) return;
+    if (!container) return 0;
+    let newGroups = docsToSortedPhotoGroups(docs);
+    if (newGroups.length === 0) return 0;
+    // 이미 DOM에 렌더된 게시물은 제외 (페이지 경계에서 같은 게시물이 두 번 들어가는 것 방지)
+    const existingPostIds = new Set(
+        Array.from(container.querySelectorAll('.instagram-post[data-post-id]'))
+            .map((el) => el.getAttribute('data-post-id'))
+            .filter(Boolean)
+    );
+    newGroups = newGroups.filter((g) => {
+        const pid = getPostIdFromPhotoGroup(g);
+        return pid != null && !existingPostIds.has(String(pid));
+    });
+    if (newGroups.length === 0) return 0;
     // 새로 추가되는 작성자들의 프로필을 먼저 로드해 두어 닉네임이 '익명'으로 나오지 않도록 함
     await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
     let mealHistoryMap = new Map();
@@ -377,6 +478,7 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
             });
         }
     }, 50);
+    return newGroups.length;
 }
 
 
@@ -691,15 +793,7 @@ export async function renderGallery(options = {}) {
     }
     
     // v2 게시물 + legacy v1 사진 → 그룹화·최신순
-    const seen = new Set();
-    const uniquePhotos = photosToRender.filter((photo) => {
-        const key = isMomentPostV2(photo)
-            ? `v2_${photo.postId || photo.id}`
-            : `${photo.photoUrl}_${photo.entryId || 'no-entry'}_${photo.userId}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
+    const uniquePhotos = dedupeGalleryPhotos(photosToRender);
 
     const galleryUserIds = [...new Set(uniquePhotos.map(p => p.userId).filter(Boolean))];
     await fetchUserProfiles(galleryUserIds);
@@ -719,9 +813,14 @@ export async function renderGallery(options = {}) {
 
     let sortedGroups = docsToSortedPhotoGroups(uniquePhotos);
     
-    // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물만 표시 (알림에서 한 게시물만 볼 때는 생략해 로딩 단축)
+    // 앨범 흔적 필터: 본인이 좋아요/댓글/북마크한 게시물 (피드에 로드된 범위 + 필요 시 추가 로드)
     let tracePostIds = null;
+    let traceListCount = 0;
     if (appState.galleryTraceFilter && !appState.galleryFilterPostId && window.currentUser && !window.currentUser.isAnonymous && window.postInteractions) {
+        if (appState.galleryTraceFilter !== previousGalleryTraceFilter) {
+            previousGalleryPostIds.clear();
+            previousGalleryTraceFilter = appState.galleryTraceFilter;
+        }
         let list = [];
         if (appState.galleryTraceFilter === 'like') {
             list = await window.postInteractions.getPostIdsLikedByUser(window.currentUser.uid);
@@ -731,8 +830,20 @@ export async function renderGallery(options = {}) {
             list = await window.postInteractions.getPostIdsBookmarkedByUser(window.currentUser.uid);
         }
         if (isGallerySessionStale(mySession)) return;
+        traceListCount = list.length;
         tracePostIds = new Set(list);
-        sortedGroups = sortedGroups.filter(g => tracePostIds.has(getPostIdFromPhotoGroup(g)));
+        if (traceListCount > 0 && !filterUserId) {
+            const traceFeedDocs = await expandFeedForTraceFilter(tracePostIds, mySession);
+            if (isGallerySessionStale(mySession)) return;
+            const expandedUnique = dedupeGalleryPhotos(
+                sortSharedPhotosByTimestampDesc(traceFeedDocs)
+            );
+            sortedGroups = docsToSortedPhotoGroups(expandedUnique);
+        }
+        sortedGroups = sortedGroups.filter((g) => photoGroupMatchesTracePostIds(g, tracePostIds));
+    } else if (appState.galleryTraceFilter !== previousGalleryTraceFilter) {
+        previousGalleryPostIds.clear();
+        previousGalleryTraceFilter = appState.galleryTraceFilter;
     }
     
     // 알림에서 클릭 시 해당 게시물만 필터
@@ -765,9 +876,12 @@ export async function renderGallery(options = {}) {
     }
     
     const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
-    const traceEmptyMsg = tracePostIds && sortedGroups.length === 0
-        ? (traceEmptyLabels[appState.galleryTraceFilter] || '') + ' 게시물이 없습니다'
-        : null;
+    const traceEmptyMsg =
+        tracePostIds && sortedGroups.length === 0
+            ? traceListCount === 0
+                ? `${traceEmptyLabels[appState.galleryTraceFilter] || ''} 게시물이 없습니다`
+                : `${traceEmptyLabels[appState.galleryTraceFilter] || ''} 게시물을 피드에서 찾지 못했어요`
+            : null;
     
     const traceEmptyIcon = appState.galleryTraceFilter === 'like' ? 'fa-heart' : (appState.galleryTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
     
@@ -888,11 +1002,13 @@ export async function renderGallery(options = {}) {
     
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
-    const hasSignificantChanges = 
+    const hasSignificantChanges =
+        !!appState.galleryTraceFilter ||
         previousGalleryPostIds.size === 0 || // 초기 로드
         currentPostIds.size === 0 || // 모든 포스트 삭제
         Math.abs(currentPostIds.size - previousGalleryPostIds.size) > 5 || // 5개 이상 차이
-        Array.from(currentPostIds).slice(0, 10).some(id => !previousGalleryPostIds.has(id)); // 상위 10개 중 새 포스트 있음
+        Array.from(currentPostIds).some((id) => !previousGalleryPostIds.has(id)) ||
+        Array.from(previousGalleryPostIds).some((id) => !currentPostIds.has(id));
     
     // AbortSignal 체크: 취소되었으면 중단
     if (abortSignal.aborted) {
@@ -914,7 +1030,10 @@ export async function renderGallery(options = {}) {
         ` : ''));
     
     // 더보기 표시 여부 (타임라인처럼 초기 구조에 포함하여 누락 방지)
-    const canLoadMore = !filterUserId && !appState.galleryFilterPostId &&
+    const canLoadMore =
+        !filterUserId &&
+        !appState.galleryFilterPostId &&
+        !appState.galleryTraceFilter &&
         (appState.sharedPhotosFeedHasMore || (sortedGroups.length >= 10 && appState.sharedPhotosFeedLastDoc));
     const loadMoreHtml = canLoadMore ? `
         <div id="galleryLoadMoreWrap" class="flex justify-center py-6">
@@ -1138,6 +1257,7 @@ export async function renderGallery(options = {}) {
             fragment.appendChild(tempDiv.firstChild);
         }
         replaceMomentSkeletonWithBatch(postsInsertPoint, fragment, batch.length);
+        markMomentFeedPhotosLoadedIn(postsInsertPoint);
         const batchSize = batch.length;
         renderedIndex += batchSize;
         applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);
@@ -1222,28 +1342,45 @@ export async function renderGallery(options = {}) {
                             return renderPostGroup(photoGroup, groupIdx);
                         }).join('');
                         
-                        // Placeholder 앞에 포스트 삽입
+                        // Placeholder 앞에 포스트 삽입 (삽입된 노드를 모아 실제 높이 측정)
                         const fragment = document.createDocumentFragment();
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = batchHtml;
+                        const insertedNodes = [];
                         while (tempDiv.firstChild) {
+                            insertedNodes.push(tempDiv.firstChild);
                             fragment.appendChild(tempDiv.firstChild);
                         }
                         
                         if (placeholder && placeholder.parentNode) {
                             placeholder.parentNode.insertBefore(fragment, placeholder);
                         }
-                        
+                        insertedNodes.forEach((node) => {
+                            if (node.nodeType === 1) markMomentFeedPhotosLoadedIn(node);
+                        });
+
                         const batchSize = batch.length;
                         renderedCount += batchSize;
                         applyMomentCaptionLayoutForRange(renderedCount - batchSize, renderedCount);
                         // 초기 10건 이후 삽입분에도 공유 기록 코멘트 플레이스홀더 일괄 조회 (최초 1회 fetch에는 아직 DOM에 없었음)
                         fetchMissingSharedComments(container).catch(() => {});
                         
-                        // Placeholder 높이 조정
+                        // Placeholder 높이 조정 — 추정(600px)이 아니라 "실제 삽입된 높이"만큼만 차감해
+                        // 문서 전체 높이를 보존한다. (추정-실제 오차로 스크롤이 위아래로 튀던 진동 제거)
                         const remaining = sortedGroups.length - renderedCount;
-                        if (remaining > 0 && placeholder) {
-                            placeholder.style.height = `${remaining * estimatedPostHeight}px`;
+                        if (remaining > 0 && placeholder && document.contains(placeholder)) {
+                            let insertedHeight = 0;
+                            for (const node of insertedNodes) {
+                                if (node.nodeType === 1 && document.contains(node)) {
+                                    insertedHeight += node.getBoundingClientRect().height;
+                                }
+                            }
+                            const currentHeight = parseFloat(placeholder.style.height) || ((remaining + batchSize) * estimatedPostHeight);
+                            // 측정 실패(0) 시에만 추정치로 폴백
+                            const nextHeight = insertedHeight > 0
+                                ? Math.max(0, currentHeight - insertedHeight)
+                                : remaining * estimatedPostHeight;
+                            placeholder.style.height = `${nextHeight}px`;
                         } else {
                             if (placeholder && placeholder.parentNode) {
                                 placeholder.remove();

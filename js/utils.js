@@ -10,17 +10,37 @@ const isProduction = () => {
 
 /**
  * 스테이징/운영 구분 (푸시·콘텐츠 팝업·연속기록 팝업 등과 동일 기준)
- * — 네이티브는 앱 패키지, 웹은 APP_ENV 후 로컬 호스트.
+ * — 네이티브(설치형)는 빌드 확정 APP_ENV, 웹은 APP_ENV·호스트.
  */
 export function getMealogClientEnv() {
     if (typeof window === 'undefined') return 'production';
-    // 네이티브는 패키지 ID가 최우선(WebView 호스트가 localhost여도 운영/스테이징 오판 방지)
+
+    const appEnv = String(window.APP_ENV || '').toLowerCase();
+    const hostname = (window.location.hostname || '').toLowerCase();
     const capAppId = String(window.Capacitor?.config?.appId || '').trim();
+
+    // Capacitor 가 config 를 주입하는 경우에만(폴백)
     if (capAppId === 'com.mealog.app.staging') return 'staging';
     if (capAppId === 'com.mealog.app') return 'production';
-    if (window.APP_ENV === 'staging') return 'staging';
-    const hostname = (window.location.hostname || '').toLowerCase();
-    // 스테이징 전용 웹 호스트(env.js 배지 로직과 동일)
+
+    try {
+        const cap = window.Capacitor;
+        if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+            /*
+             * 설치형 앱은 WebView 호스트가 localhost 이지만 운영/스테이징이 아님.
+             * config.appId 도 주입되지 않으므로 빌드시 확정되는 APP_ENV 로 판별.
+             */
+            if (appEnv === 'staging') return 'staging';
+            if (appEnv === 'production') return 'production';
+            // server.url 원격 로드 WebView 폴백
+            if (hostname.includes('staging')) return 'staging';
+            return hostname === 'www.mealog.net' || hostname === 'mealog.net' ? 'production' : 'staging';
+        }
+    } catch (e) {
+        /* ignore */
+    }
+
+    if (appEnv === 'staging') return 'staging';
     if (hostname.includes('staging')) return 'staging';
     const isLocal =
         hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.startsWith('192.168.');
@@ -187,14 +207,15 @@ export function getProfileAvatarDisplay(profile) {
     return { type: 'default', value: '' };
 }
 
+import { getInputIdForSuggestionsContainer } from './modals/entry-form-config.js';
+
 export function getInputIdFromContainer(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;
-    if (containerId === 'restaurantSuggestions') return 'placeInput';
-    if (containerId === 'menuSuggestions') return 'menuDetailInput';
-    if (containerId === 'peopleSuggestions') return 'withWhomInput';
-    if (containerId === 'snackSuggestions') return 'snackDetailInput';
-    if (containerId === 'snackPlaceSuggestions') return 'snackPlaceInput';
+    const mapped = getInputIdForSuggestionsContainer(containerId);
+    if (mapped) return mapped;
+    const dataId = container.getAttribute('data-input-id');
+    if (dataId) return dataId;
     return null;
 }
 
@@ -1264,86 +1285,129 @@ function resizeBlobForShare(blob, maxWidth = 1200) {
     });
 }
 
-/**
- * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
- * 웹: Web Share API(navigator.share). 네이티브 앱: Capacitor Share만 사용(웹뷰 공유와 수신 앱 호환).
- * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
- * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
- * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
- * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
- * @returns {Promise<boolean>} - 공유 성공 여부
- */
-export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
-    const urls = typeof photoUrls === 'string'
-        ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
-        : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
-    if (urls.length === 0) return false;
+function downloadBlob(blob, filename = 'mealog_share.jpg') {
+    if (!blob) return false;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return true;
+}
 
+/**
+ * 준비된 이미지 Blob을 카카오톡·인스타 등 외부 앱으로 공유합니다.
+ * @param {Blob[]} blobs
+ * @param {{ caption?: string, appendLogo?: boolean, resize?: boolean, fileNamePrefix?: string }} [options]
+ * @returns {Promise<boolean>}
+ */
+export async function shareBlobsToExternal(blobs, options = {}) {
+    const {
+        caption = '',
+        appendLogo = true,
+        resize = true,
+        fileNamePrefix = 'mealog'
+    } = options;
     const captionText = (caption || '').trim();
     const isNative = typeof window.Capacitor !== 'undefined' && window.Capacitor?.isNativePlatform?.();
 
-    // 공통: 이미지 fetch → blob (캡션·리사이즈 적용)
-    const blobs = [];
-    for (let i = 0; i < Math.min(urls.length, 5); i++) {
-        const url = urls[i];
-        try {
-            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
-            if (!res.ok) continue;
-            let blob = await res.blob();
-            if (!blob.type || !blob.type.startsWith('image/')) continue;
-            if (!skipCaptionBar && captionText) {
-                blob = await addCaptionToImage(blob, captionText);
-            }
-            blob = await resizeBlobForShare(blob);
-            blobs.push(blob);
-        } catch (imgErr) {
-            console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
-        }
-    }
-    if (blobs.length === 0) {
+    let prepared = (Array.isArray(blobs) ? blobs : []).filter((b) => b && b.size > 0);
+    if (!prepared.length) {
         if (typeof window.showToast === 'function') {
-            window.showToast('사진을 불러오지 못했습니다. (네트워크 또는 접근 제한)', 'error');
+            window.showToast('공유할 이미지가 없습니다.', 'error');
         }
         return false;
     }
-    try {
-        const logoBlob = await createMealogLogoImage();
-        if (logoBlob && logoBlob.size > 0) blobs.push(logoBlob);
-    } catch (_) {}
 
-    // 1) Web Share API — 브라우저 전용. 앱은 아래 Capacitor로만 공유(웹뷰 navigator.share + 일부 수신 앱 조합에서 프리징 방지).
-    if (!isNative && navigator.share) {
-        const files = blobs.map((blob, i) => {
-            const ext = i >= blobs.length - 1 && blobs[blobs.length - 1] === blob ? 'jpg' : (urls[i]?.split('.').pop()?.split('?')[0] || 'jpg');
+    if (resize) {
+        prepared = await Promise.all(prepared.map((blob) => resizeBlobForShare(blob)));
+    }
+    const mainBlobCount = prepared.length;
+    if (appendLogo) {
+        try {
+            const logoBlob = await createMealogLogoImage();
+            if (logoBlob && logoBlob.size > 0) prepared.push(logoBlob);
+        } catch (_) {}
+    }
+
+    const webShareFiles = (fileBlobs) =>
+        fileBlobs.map((blob, i) => {
+            const isLogo = appendLogo && i === fileBlobs.length - 1 && fileBlobs.length > mainBlobCount;
+            const ext = blob.type === 'image/png' ? 'png' : 'jpg';
             const mime = blob.type || (ext === 'png' ? 'image/png' : 'image/jpeg');
-            const name = i < urls.length ? `mealog_${i + 1}.${ext}` : 'mealog_logo.jpg';
+            const name = isLogo ? 'mealog_logo.jpg' : `${fileNamePrefix}_${i + 1}.${ext}`;
             return new File([blob], name, { type: mime, lastModified: Date.now() });
         });
+
+    const tryWebShare = async (fileBlobs) => {
+        if (isNative || !navigator.share || !fileBlobs.length) return null;
+        const files = webShareFiles(fileBlobs);
         const shareData = { files };
-        if (!navigator.canShare || navigator.canShare(shareData)) {
-            try {
-                await navigator.share(shareData);
-                if (typeof window.showToast === 'function') {
-                    window.showToast('공유되었습니다.', 'success');
-                }
-                return true;
-            } catch (e) {
-                if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
-                console.error('sharePhotosToExternal(웹) 실패:', e);
-                if (typeof window.showToast === 'function') window.showToast('공유에 실패했습니다.', 'error');
-                return false;
-            }
+        if (navigator.canShare && !navigator.canShare(shareData)) return null;
+        await navigator.share(shareData);
+        if (typeof window.showToast === 'function') {
+            window.showToast('공유되었습니다.', 'success');
         }
-    } else if (!isNative) {
+        return true;
+    };
+
+    // 1) Web Share API
+    if (!isNative && navigator.share) {
+        try {
+            const shared = await tryWebShare(prepared);
+            if (shared) return true;
+        } catch (e) {
+            if (e.name === 'AbortError' || (e.message && /cancelled|canceled/i.test(e.message))) return false;
+            if (e.name === 'NotAllowedError' && prepared.length > 1) {
+                try {
+                    const shared = await tryWebShare([prepared[0]]);
+                    if (shared) return true;
+                } catch (e2) {
+                    if (e2.name === 'AbortError' || (e2.message && /cancelled|canceled/i.test(e2.message))) return false;
+                }
+            }
+            if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+                if (downloadBlob(prepared[0], `${fileNamePrefix}.jpg`)) {
+                    if (typeof window.showToast === 'function') {
+                        window.showToast('브라우저에서 공유를 허용하지 않아 이미지를 저장했어요.', 'info');
+                    }
+                    return true;
+                }
+            }
+            console.error('shareBlobsToExternal(웹) 실패:', e);
+            if (typeof window.showToast === 'function') window.showToast('공유에 실패했습니다.', 'error');
+            return false;
+        }
+        if (downloadBlob(prepared[0], `${fileNamePrefix}.jpg`)) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('이 기기에서는 공유 창을 열 수 없어 이미지를 저장했어요.', 'info');
+            }
+            return true;
+        }
         if (typeof window.showToast === 'function') {
             window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
         }
         return false;
     }
 
-    // 2) 앱 전용 폴백: Capacitor Share + Filesystem (스크립트로 로드된 플러그인 사용, dynamic import 불가 환경 대응)
-    if (!isNative) return false;
+    if (!isNative) {
+        if (downloadBlob(prepared[0], `${fileNamePrefix}.jpg`)) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('이미지를 저장했어요. 앨범에서 공유해 주세요.', 'info');
+            }
+            return true;
+        }
+        if (typeof window.showToast === 'function') {
+            window.showToast('이 기기에서는 공유 기능을 지원하지 않습니다.', 'error');
+        }
+        return false;
+    }
 
+    // 2) 앱 전용: Capacitor Share + Filesystem
     const Share = window.Capacitor?.Plugins?.Share;
     const Filesystem = window.Capacitor?.Plugins?.Filesystem;
     const DirectoryCache = (Filesystem?.Directory?.Cache !== undefined) ? Filesystem.Directory.Cache : 'CACHE';
@@ -1359,9 +1423,9 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         const prefix = `mealog_share_${Date.now()}`;
         const fileUris = [];
         step = '파일 저장';
-        for (let i = 0; i < blobs.length; i++) {
+        for (let i = 0; i < prepared.length; i++) {
             const path = `${prefix}_${i}.jpg`;
-            const base64 = await blobToBase64(blobs[i]);
+            const base64 = await blobToBase64(prepared[i]);
             if (!base64 || base64.length > 6 * 1024 * 1024) continue;
             await Filesystem.writeFile({
                 path,
@@ -1422,7 +1486,7 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         try {
             window.__lastShareError = errDetail;
         } catch (_) {}
-        console.error('sharePhotosToExternal(네이티브 폴백) 실패:', step, e);
+        console.error('shareBlobsToExternal(네이티브) 실패:', step, e);
         if (typeof window.showToast === 'function') {
             const stepMsg = step ? ` (${step} 단계)` : '';
             const shortMsg = (msg.length > 60 ? msg.slice(0, 60) + '…' : msg)
@@ -1431,6 +1495,56 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
         }
         return false;
     }
+}
+
+/**
+ * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
+ * 웹: Web Share API(navigator.share). 네이티브 앱: Capacitor Share만 사용(웹뷰 공유와 수신 앱 호환).
+ * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
+ * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
+ * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
+ * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
+ * @returns {Promise<boolean>} - 공유 성공 여부
+ */
+export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
+    const urls = typeof photoUrls === 'string'
+        ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
+        : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
+    if (urls.length === 0) return false;
+
+    const captionText = (caption || '').trim();
+
+    // 공통: 이미지 fetch → blob (캡션·리사이즈 적용)
+    const blobs = [];
+    for (let i = 0; i < Math.min(urls.length, 5); i++) {
+        const url = urls[i];
+        try {
+            const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+            if (!res.ok) continue;
+            let blob = await res.blob();
+            if (!blob.type || !blob.type.startsWith('image/')) continue;
+            if (!skipCaptionBar && captionText) {
+                blob = await addCaptionToImage(blob, captionText);
+            }
+            blob = await resizeBlobForShare(blob);
+            blobs.push(blob);
+        } catch (imgErr) {
+            console.warn('SNS 공유용 이미지 로드 실패:', url?.slice(0, 60), imgErr);
+        }
+    }
+    if (blobs.length === 0) {
+        if (typeof window.showToast === 'function') {
+            window.showToast('사진을 불러오지 못했습니다. (네트워크 또는 접근 제한)', 'error');
+        }
+        return false;
+    }
+
+    return shareBlobsToExternal(blobs, {
+        caption: captionText,
+        appendLogo: true,
+        resize: false,
+        fileNamePrefix: 'mealog'
+    });
 }
 
 

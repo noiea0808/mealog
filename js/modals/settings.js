@@ -694,14 +694,10 @@ export function switchSettingsTab(tab) {
     const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
     const notificationsContent = document.getElementById('settingsTabContentNotifications');
     
-    const settingsTabInactiveClass =
-        'settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight';
-    const settingsTabActiveClass =
-        'settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight';
+    const settingsTabs = [profileTab, tagsTab, shortcutsTab, notificationsTab];
 
-    // 모든 탭 비활성화
-    [profileTab, tagsTab, shortcutsTab, notificationsTab].forEach((t) => {
-        if (t) t.className = settingsTabInactiveClass;
+    settingsTabs.forEach((t) => {
+        if (t) t.classList.remove('active');
     });
     
     // 모든 콘텐츠 숨기기
@@ -712,7 +708,7 @@ export function switchSettingsTab(tab) {
     if (tab === 'profile') {
         // 프로필 탭 활성화
         if (profileTab) {
-            profileTab.className = settingsTabActiveClass;
+            profileTab.classList.add('active');
             profileTab.textContent = '프로필';
         }
         if (profileContent) profileContent.classList.remove('hidden');
@@ -720,7 +716,7 @@ export function switchSettingsTab(tab) {
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
-            tagsTab.className = settingsTabActiveClass;
+            tagsTab.classList.add('active');
             tagsTab.textContent = '태그 관리';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
@@ -728,14 +724,14 @@ export function switchSettingsTab(tab) {
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
-            shortcutsTab.className = settingsTabActiveClass;
+            shortcutsTab.classList.add('active');
             shortcutsTab.textContent = '밀당 메모';
         }
         if (shortcutsContent) shortcutsContent.classList.remove('hidden');
         logUsageMetric('settings_mealdang_memo').catch(() => {});
     } else if (tab === 'notifications') {
         if (notificationsTab) {
-            notificationsTab.className = settingsTabActiveClass;
+            notificationsTab.classList.add('active');
             notificationsTab.textContent = '푸시 알림';
         }
         if (notificationsContent) notificationsContent.classList.remove('hidden');

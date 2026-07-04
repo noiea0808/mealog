@@ -4,11 +4,11 @@ import { callableFunctions } from '../firebase.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
 
+import { ENTRY_DOM } from './entry-form-config.js';
+
 export function openKakaoPlaceSearch(mode = 'meal') {
     const targetId =
-        mode === 'snack' ? 'snackPlaceInput' :
-        mode === 'deliveryVendor' ? 'deliveryVendorInput' :
-        'placeInput';
+        mode === 'deliveryVendor' ? 'deliveryVendorInput' : ENTRY_DOM.whereInput;
     const targetInput = document.getElementById(targetId);
     if (!targetInput) return;
     window._kakaoPlaceSearchTarget = targetId;
@@ -17,7 +17,7 @@ export function openKakaoPlaceSearch(mode = 'meal') {
 
 // 카카오 검색 모달 생성 함수
 function createKakaoSearchModal() {
-    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const targetId = window._kakaoPlaceSearchTarget || ENTRY_DOM.whereInput;
     const targetInput = document.getElementById(targetId);
     if (!targetInput) return;
     
@@ -227,7 +227,7 @@ export async function searchKakaoPlaces() {
 /** 검색 모달의 텍스트를 카카오 결과 없이 그대로 장소명으로 반영 (직접 입력) */
 export function applyKakaoPlaceManualText() {
     const searchInput = document.getElementById('kakaoSearchInput');
-    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const targetId = window._kakaoPlaceSearchTarget || ENTRY_DOM.whereInput;
     const placeInput = document.getElementById(targetId);
     if (!searchInput || !placeInput) return;
     const text = searchInput.value.trim();
@@ -247,7 +247,7 @@ export function applyKakaoPlaceManualText() {
 
 // 카카오 장소 선택
 export function selectKakaoPlace(placeName, address, placeId = null, placeDataB64 = null) {
-    const targetId = window._kakaoPlaceSearchTarget || 'placeInput';
+    const targetId = window._kakaoPlaceSearchTarget || ENTRY_DOM.whereInput;
     const placeInput = document.getElementById(targetId);
     if (placeInput) {
         placeInput.value = placeName;

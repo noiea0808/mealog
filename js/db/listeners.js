@@ -641,7 +641,7 @@ export function setupListeners(userId, callbacks) {
                 });
             }).catch(() => {});
         }
-        if (onDataUpdate) onDataUpdate();
+        if (onDataUpdate) onDataUpdate({ source: 'stats', mode: 'statsOnly' });
     };
     const statsUnsubscribes = statsYearsToListen.map(year =>
         onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'stats', 'years', year), onStatsYearSnapshot(year), (err) => {

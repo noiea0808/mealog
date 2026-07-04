@@ -11,7 +11,7 @@ import {
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
-import { getRecordCountForIso } from '../meal-record-count.js';
+import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
     getMealRowSyncLeadKind,
     isMealEntryPendingSync,
@@ -39,7 +39,58 @@ import {
     formatMetricRecordChain,
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
-import { formatMealogDateLabel } from '../utils/date-label.js';
+import { formatMealogDateLabel, isWeekendIsoDate } from '../utils/date-label.js';
+import {
+    getAiDietReportButtonHtml,
+    isAiDietReportDateVisible,
+    refreshAiDietReportFlagsForDates
+} from '../modals/diet-report.js';
+
+const MAIN_MEAL_SLOT_FA_ICONS = {
+    morning: 'fa-cloud-sun',
+    lunch: 'fa-burger',
+    dinner: 'fa-moon'
+};
+
+function mainMealSlotFaIcon(slotId) {
+    return MAIN_MEAL_SLOT_FA_ICONS[slotId] || 'fa-utensils';
+}
+
+function mainMealSlotIconHtml(slotId, iconTextClass = 'text-slate-400', size = 'lg') {
+    const sizeClass = size === 'sm' ? 'text-lg' : 'text-2xl';
+    return `<i class="fa-solid ${mainMealSlotFaIcon(slotId)} ${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
+}
+
+function mainMealSlotListTitleHtml(slot, specificStyle, displayLabel = null) {
+    const label = displayLabel != null ? displayLabel : slot.label;
+    return `<div class="flex items-center justify-center gap-1.5 min-w-0">
+        ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'sm')}
+        <span class="text-sm font-bold leading-tight">${escapeHtml(label)}</span>
+    </div>`;
+}
+
+/** 슬롯 라벨 — 동일 슬롯에 2건 이상이면 아침1·점심2·야식1 형식 */
+function slotOrdinalTitle(slot, ordinal1Based, totalInSlot) {
+    return totalInSlot > 1 ? `${slot.label}${ordinal1Based}` : slot.label;
+}
+
+function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
+    if (!r) {
+        return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
+    }
+    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    if (mainPhotoUrls.length > 0) {
+        return buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover', {
+            dateStr,
+            slotId: slot.id,
+            recordId: r.id
+        });
+    }
+    if (r.mealType === 'Skip') {
+        return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
+    }
+    return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
+}
 
 /**
  * 기록 행 제목 왼쪽: 동기화 표시
@@ -486,12 +537,10 @@ function snackMealClockMinutesFromMidnight(r) {
 
 export function sortSnackSlotRecordsChronological(records) {
     return [...records].sort((a, b) => {
-        const ca = snackHasMealClockForSort(a);
-        const cb = snackHasMealClockForSort(b);
-        /** 시간 기록 있음 먼저(위), 없음은 나중(아래) — 화면 세로는 시간 오름차순 후 생성순 */
-        if (ca !== cb) return ca ? -1 : 1;
-
-        if (ca && cb) {
+        const ha = snackHasMealClockForSort(a);
+        const hb = snackHasMealClockForSort(b);
+        /** 사용자가 시간을 입력한 두 기록만 시각(HH:mm) 순으로 정렬 */
+        if (ha && hb) {
             const ma = snackMealClockMinutesFromMidnight(a);
             const mb = snackMealClockMinutesFromMidnight(b);
             if (ma !== mb) return ma - mb;
@@ -502,7 +551,7 @@ export function sortSnackSlotRecordsChronological(records) {
             if (ta !== tb) return ta - tb;
             return String(a.id || '').localeCompare(String(b.id || ''));
         }
-
+        /** 그 외: recordedAt·생성순 (슬롯 변경 시 recordedAt 갱신 → 이동 항목이 뒷번호) */
         const ra = mealRecordedAtPrimaryMs(a);
         const rb = mealRecordedAtPrimaryMs(b);
         const ta = Number.isFinite(ra) ? ra : mealRecordAuxChronoMs(a) || mealRecordTimeSortMs(a);
@@ -529,7 +578,7 @@ export function getMealPhotoUrlsForTimeline(r) {
 }
 
 /**
- * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯만(본식 1행, 간식은 기록마다 1행)
+ * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯마다 1행(다건이면 아침1·점심2 등)
  * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean,photoAspectRatio?:string}>}
  */
 export function buildMealPhotoViewerRowsForDate(dateStr) {
@@ -537,15 +586,10 @@ export function buildMealPhotoViewerRowsForDate(dateStr) {
     const history = window.mealHistory || [];
     SLOTS.forEach((slot) => {
         const recordsRaw = history.filter((m) => m.date === dateStr && m.slotId === slot.id);
-        const records = slot.type === 'snack' ? sortSnackSlotRecordsChronological(recordsRaw) : recordsRaw;
-        if (slot.type === 'main') {
-            const r = records[0];
-            if (r) rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, 1, 1));
-        } else {
-            records.forEach((r, idx) => {
-                rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, idx + 1, records.length));
-            });
-        }
+        const records = sortSnackSlotRecordsChronological(recordsRaw);
+        records.forEach((r, idx) => {
+            rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, idx + 1, records.length));
+        });
     });
     return rows;
 }
@@ -586,7 +630,7 @@ export function findMealPhotoViewerRowIndex(rows, slotId, recordId, dateStr = nu
 }
 
 function mealPhotoViewerSlotTitle(slot, ordinal1Based, totalInSlot) {
-    return slot.type === 'snack' && totalInSlot > 1 ? `${slot.label}${ordinal1Based}` : slot.label;
+    return slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
 }
 
 function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSlot) {
@@ -648,18 +692,29 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
     </div>`;
 }
 
+const DATE_HEADER_ACTION_HEIGHT_CLASS = 'date-section-header__action-btn';
+
 function buildMealTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
     const mixedSel = current === 'mixed' ? ' selected' : '';
-    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
-            <label for="mealTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">식사보기</label>
-            <select id="mealTimelineViewSelect" class="meal-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,8rem)] shadow-sm" title="식사보기: 카드·목록·자동(사진 있으면 카드, 없으면 목록)">
+    return `<label class="timeline-view-picker timeline-view-picker--meal ${DATE_HEADER_ACTION_HEIGHT_CLASS}" title="식사보기: 카드·목록·자동(사진 있으면 카드, 없으면 목록)">
+            <select id="mealTimelineViewSelect" class="meal-timeline-view-select timeline-view-picker__select" aria-label="식사 보기 방식">
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
-        </div>`;
+            <span class="timeline-view-picker__visual" aria-hidden="true">
+                <span class="timeline-view-picker__icon"><i class="fa-solid fa-utensils"></i></span>
+                <span class="timeline-view-picker__body">
+                    <span class="timeline-view-picker__category">식사</span>
+                    <span class="timeline-view-picker__value-row">
+                        <span class="timeline-view-picker__value">${current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동'}</span>
+                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                    </span>
+                </span>
+            </span>
+        </label>`;
 }
 
 function buildSnackTimelineViewSelectHtml(current) {
@@ -667,15 +722,26 @@ function buildSnackTimelineViewSelectHtml(current) {
     const cardsSel = current === 'cards' ? ' selected' : '';
     const listSel = current === 'list' ? ' selected' : '';
     const mixedSel = current === 'mixed' ? ' selected' : '';
-    return `<div class="flex flex-col items-center gap-0.5 flex-shrink-0">
-            <label for="snackTimelineViewSelect" class="text-[10px] font-bold text-slate-500 leading-tight whitespace-nowrap text-center">간식보기</label>
-            <select id="snackTimelineViewSelect" class="snack-timeline-view-select text-[11px] font-bold text-slate-600 bg-white border border-slate-200 rounded-lg px-2 py-1 max-w-[min(100%,10rem)] shadow-sm" title="간식보기: 태그·카드·목록·자동(건별 사진 있으면 카드, 없으면 목록)">
+    const valueLabel =
+        current === 'tags' ? '태그' : current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동';
+    return `<label class="timeline-view-picker timeline-view-picker--snack ${DATE_HEADER_ACTION_HEIGHT_CLASS}" title="간식보기: 태그·카드·목록·자동(건별 사진 있으면 카드, 없으면 목록)">
+            <select id="snackTimelineViewSelect" class="snack-timeline-view-select timeline-view-picker__select" aria-label="간식 보기 방식">
                 <option value="tags"${tagsSel}>태그</option>
                 <option value="cards"${cardsSel}>카드</option>
                 <option value="list"${listSel}>목록</option>
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
-        </div>`;
+            <span class="timeline-view-picker__visual" aria-hidden="true">
+                <span class="timeline-view-picker__icon"><i class="fa-solid fa-cookie"></i></span>
+                <span class="timeline-view-picker__body">
+                    <span class="timeline-view-picker__category">간식</span>
+                    <span class="timeline-view-picker__value-row">
+                        <span class="timeline-view-picker__value">${valueLabel}</span>
+                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                    </span>
+                </span>
+            </span>
+        </label>`;
 }
 
 function getDailyShareButtonHtmlForDate(dateStr) {
@@ -688,9 +754,35 @@ function getDailyShareButtonHtmlForDate(dateStr) {
               )
             : null;
     const isShared = !!dailyShare;
-    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 rounded-lg ${isShared ? 'bg-slate-800 text-white' : 'text-slate-600'}">
-        <i class="fa-solid fa-share text-[12px] mr-1"></i>${isShared ? '공유됨' : '공유하기'}
+    const styleCls = isShared
+        ? 'date-section-header__share-btn--shared'
+        : 'date-section-header__share-btn--default';
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
+        <i class="fa-solid fa-share text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
+}
+
+function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false } = {}) {
+    const parts = [];
+    if (includeViewPickers) {
+        parts.push(buildMealTimelineViewSelectHtml(getMealTimelineView()));
+        parts.push(buildSnackTimelineViewSelectHtml(getSnackTimelineView()));
+    }
+    const share = getDailyShareButtonHtmlForDate(dateStr);
+    if (share) parts.push(share);
+    if (!parts.length) return '';
+    return `<div class="date-section-header__actions">${parts.join('')}</div>`;
+}
+
+function buildDateHeaderDateHtml(dateStr) {
+    const weekendCls = isWeekendIsoDate(dateStr) ? ' date-section-header__date--weekend' : '';
+    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
+}
+
+function buildDateHeaderLeftHtml(dateStr) {
+    const ai = getAiDietReportButtonHtml(dateStr);
+    const aiInline = ai ? `<span class="ml-2 shrink-0 inline-flex">${ai}</span>` : '';
+    return `<div class="min-w-0 flex items-center flex-wrap">${buildDateHeaderDateHtml(dateStr)}${aiInline}</div>`;
 }
 
 /**
@@ -703,30 +795,13 @@ export function syncSnackViewDropdown(container) {
     sections.forEach((section, index) => {
         const header = section.querySelector('.date-section-header');
         if (!header) return;
-        const h3 = header.querySelector('h3');
-        if (!h3) return;
-        const h3Html = h3.outerHTML;
         const dateStr = section.id.replace(/^date-/, '');
-        const dObj = new Date(dateStr + 'T00:00:00');
-        const dayOfWeek = dObj.getDay();
-        const dayColorClass = dayOfWeek === 0 || dayOfWeek === 6 ? 'text-rose-400' : 'text-slate-800';
-        const shareHtml = getDailyShareButtonHtmlForDate(dateStr);
+        const leftHtml = buildDateHeaderLeftHtml(dateStr);
+        const includeViewPickers = index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE;
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers });
 
-        if (index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE) {
-            const snackView = getSnackTimelineView();
-            const mealView = getMealTimelineView();
-            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2 flex-wrap`;
-            header.innerHTML = `
-                <div class="min-w-0">${h3Html}</div>
-                <div class="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
-                    ${buildMealTimelineViewSelectHtml(mealView)}
-                    ${buildSnackTimelineViewSelectHtml(snackView)}
-                    ${shareHtml}
-                </div>`;
-        } else {
-            header.className = `date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between`;
-            header.innerHTML = shareHtml ? `${h3Html}<div class="flex-shrink-0">${shareHtml}</div>` : h3Html;
-        }
+        header.className = 'date-section-header flex items-center gap-2';
+        header.innerHTML = rightHtml ? `${leftHtml}${rightHtml}` : leftHtml;
     });
 }
 
@@ -746,8 +821,7 @@ function buildSnackTimelineCardHtml(
         String(r.menuDetail || r.snackType || '').trim() ||
         (r.category && String(r.category).trim()) ||
         '';
-    const showOrdinal = totalInSlot > 1;
-    const slotTitleForCard = showOrdinal ? `${slot.label}${ordinal1Based}` : slot.label;
+    const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
     const safeSlotLabel = escapeHtml(slotTitleForCard);
     const safePlace = escapeHtml(p);
     let titleLine1 = '';
@@ -812,6 +886,94 @@ function buildSnackTimelineCardHtml(
     </div>`;
 }
 
+function buildMainMealTimelineCardHtml(
+    dateStr,
+    slot,
+    r,
+    specificStyle,
+    cardMbClass = 'mb-1.5',
+    ordinal1Based = 1,
+    totalInSlot = 1
+) {
+    const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
+    const safeSlotLabel = escapeHtml(slotTitleForCard);
+    let titleLine1 = '';
+    let titleLine2 = '';
+    let tagsHtml = '';
+    if (r.mealType === 'Skip') {
+        titleLine1 = 'Skip';
+    } else {
+        const p = r.place || '';
+        const m = formatMealMenuDisplayLine(r);
+        const safePlace = escapeHtml(p);
+        if (p) {
+            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
+        } else {
+            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
+        }
+        const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
+        titleLine2 = escapeHtml(menuLine);
+        const tags = [];
+        const clockTagMain = mealClockTagLabelFromRecord(r);
+        if (clockTagMain) tags.push(clockTagMain);
+        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+        if (r.withWhomDetail) tags.push(r.withWhomDetail);
+        else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+        if (r.satiety) {
+            const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+            if (sData) tags.push(sData.label);
+        }
+        if (tags.length > 0) {
+            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
+                .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
+                .join('')}</div>`;
+        }
+    }
+    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
+    const iconHtml = buildMainMealPhotoAreaHtml(slot, r, dateStr, specificStyle.iconText);
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const blockOpen = isMealEntryRowBlocked(r);
+    const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+        <div class="flex">
+            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+                ${iconHtml}
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+                <div class="min-w-0 overflow-hidden">
+                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
+                            <span class="text-[13px]">⭐</span>
+                            <span class="text-[12px] font-black">${ratingVal}</span>
+                        </span>
+                    </div>
+                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
+                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
+                </div>
+                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
+                ${tagsHtml}
+            </div>
+        </div>
+    </div>`;
+}
+
+function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
+    const safeSlotLabel = escapeHtml(slot.label);
+    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+        <div class="flex">
+            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+                ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'lg')}
+            </div>
+            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+                <h4 class="mb-0 leading-tight"><span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span></h4>
+                <p class="mt-1.5 mb-0"><span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span></p>
+            </div>
+        </div>
+    </div>`;
+}
+
 function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
@@ -851,13 +1013,12 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
 
 /** 본식 목록형: 기록 없음 */
 function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
-    const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
-                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
+                ${mainMealSlotListTitleHtml(slot, specificStyle)}
             </div>
             <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
                 <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
@@ -868,10 +1029,18 @@ function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
 }
 
 /** 본식 목록형: 기록 있음 — 좌 슬롯·@장소 / 우 메뉴·코멘트·태그(카드형과 동일 float 배지 + 코멘트 clear) */
-function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbClass = 'mb-1.5') {
+function buildMainMealListFilledRowHtml(
+    dateStr,
+    slot,
+    r,
+    specificStyle,
+    cardMbClass = 'mb-1.5',
+    ordinal1Based = 1,
+    totalInSlot = 1
+) {
+    const slotTitle = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
     const p = String(r.place || '').trim();
     const safePlaceLine = escapeHtml(p || '—');
-    const safeSlotTitle = escapeHtml(slot.label);
     const m = formatMealMenuDisplayLine(r);
     const menuLine =
         r.mealType === 'Skip'
@@ -905,7 +1074,7 @@ function buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, cardMbC
     return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
-                <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
+                ${mainMealSlotListTitleHtml(slot, specificStyle, slotTitle)}
                 <span class="text-xs font-bold text-slate-500 leading-snug">@ ${safePlaceLine}</span>
             </div>
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
@@ -943,8 +1112,7 @@ function buildSnackListFilledRowHtml(
         String(r.menuDetail || r.snackType || '').trim() ||
         (r.category && String(r.category).trim()) ||
         '';
-    const showOrdinal = totalInSlot > 1;
-    const slotTitle = showOrdinal ? `${slot.label}${ordinal1Based}` : slot.label;
+    const slotTitle = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
     const safeSlotTitle = escapeHtml(slotTitle);
     const safePlaceLine = escapeHtml(p || '—');
 
@@ -1271,6 +1439,8 @@ function ensureTimelineViewSelectDelegation() {
                 try {
                     localStorage.setItem(SNACK_TIMELINE_VIEW_STORAGE_KEY, t.value);
                 } catch (_) {}
+                const valueEl = t.closest('.timeline-view-picker')?.querySelector('.timeline-view-picker__value');
+                if (valueEl) valueEl.textContent = t.options[t.selectedIndex]?.textContent || '';
                 refreshTimelineAfterSnackViewChange();
                 return;
             }
@@ -1278,6 +1448,8 @@ function ensureTimelineViewSelectDelegation() {
                 try {
                     localStorage.setItem(MEAL_TIMELINE_VIEW_STORAGE_KEY, t.value);
                 } catch (_) {}
+                const valueEl = t.closest('.timeline-view-picker')?.querySelector('.timeline-view-picker__value');
+                if (valueEl) valueEl.textContent = t.options[t.selectedIndex]?.textContent || '';
                 refreshTimelineAfterSnackViewChange();
             }
         },
@@ -1430,138 +1602,95 @@ export function renderTimeline() {
         if (existingSection) return;
         
         window.loadedDates.push(dateStr);
-        const dObj = new Date(dateStr + 'T00:00:00');
-        const dayOfWeek = dObj.getDay();
-        let dayColorClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "text-rose-400" : "text-slate-800";
         const section = document.createElement('div');
         section.id = `date-${dateStr}`;
-        section.className = "animate-fade";
-        const shareButton = getDailyShareButtonHtmlForDate(dateStr);
-        const shareWrap = shareButton
-            ? `<div class="flex shrink-0 items-center">${shareButton}</div>`
-            : '';
-        let html = `<div class="date-section-header text-sm font-black ${dayColorClass} px-4 flex items-center justify-between gap-2">
-            <h3 class="min-w-0">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>
-            ${shareWrap}
+        section.className = 'animate-fade timeline-date-card';
+        const leftHtml = buildDateHeaderLeftHtml(dateStr);
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr);
+        let html = `<div class="date-section-header flex items-center gap-2">
+            ${leftHtml}
+            ${rightHtml}
         </div>`;
 
         SLOTS.forEach(slot => {
             const recordsRaw = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
-            const records = slot.type === 'snack' ? sortSnackSlotRecordsChronological(recordsRaw) : recordsRaw;
+            const records = sortSnackSlotRecordsChronological(recordsRaw);
+            const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             if (slot.type === 'main') {
-                const r = records[0];
-                const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
                 const mealView = getMealTimelineView();
-                const mainMealUseListLayout =
-                    mealView === 'list' ||
-                    (mealView === 'mixed' &&
-                        (!r || getMealPhotoUrlsForTimeline(r).length === 0));
-                if (mainMealUseListLayout) {
-                    if (r) {
-                        html += buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, 'mb-1.5');
+                const mainAddBtn = (label) =>
+                    `<button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(label)} 추가">+ 추가</button>`;
+                if (mealView === 'list') {
+                    if (records.length > 0) {
+                        html += `<div class="main-slot-list-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const rowHtml = buildMainMealListFilledRowHtml(
+                                dateStr,
+                                slot,
+                                r,
+                                specificStyle,
+                                isLast ? 'mb-0' : 'mb-1.5',
+                                idx + 1,
+                                records.length
+                            );
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">${rowHtml}${mainAddBtn(slot.label)}</div>`;
+                            } else {
+                                html += rowHtml;
+                            }
+                        });
+                        html += `</div>`;
+                    } else {
+                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
+                    }
+                } else if (mealView === 'mixed') {
+                    if (records.length > 0) {
+                        html += `<div class="main-slot-mixed-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
+                            const mb = isLast ? 'mb-0' : 'mb-1.5';
+                            const blockHtml = hasPhotos
+                                ? buildMainMealTimelineCardHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length)
+                                : buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length);
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
+                            } else {
+                                html += blockHtml;
+                            }
+                        });
+                        html += `</div>`;
                     } else {
                         html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
                     }
                 } else {
-                let containerClass = r ? 'border-slate-200' : 'border-slate-200 opacity-80';
-                let titleClass = r ? 'text-slate-800' : 'text-slate-300';
-                let iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-                const safeSlotLabel = escapeHtml(slot.label);
-                let titleLine1 = '';
-                let titleLine2 = '';
-                let tagsHtml = '';
-                if (r) {
-                    if (r.mealType === 'Skip') {
-                        titleLine1 = 'Skip';
-                    } else {
-                        const p = r.place || '';
-                        const m = formatMealMenuDisplayLine(r);
-                        // 첫 번째 줄: "아침 @ 장소" 형식 (아침/점심/저녁 텍스트 색상 적용, @부터 회색)
-                        const safePlace = escapeHtml(p);
-                        if (p) {
-                            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
-                        } else {
-                            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-                        }
-                        // 두 번째 줄: 메뉴 (본식 카테고리만 있을 때도 한 줄 표시)
-                        const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
-                        titleLine2 = escapeHtml(menuLine);
-                        const tags = [];
-                        const clockTagMain = mealClockTagLabelFromRecord(r);
-                        if (clockTagMain) tags.push(clockTagMain);
-                        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
-                        if (r.withWhomDetail) tags.push(r.withWhomDetail);
-                        else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
-                        if (r.satiety) {
-                            const sData = SATIETY_DATA.find(d => d.val === r.satiety);
-                            if (sData) tags.push(sData.label);
-                        }
-                        if (tags.length > 0) {
-                            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.map(t => 
-                                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
-                            ).join('')}</div>`;
-                        }
-                    }
-                } else {
-                    // 기록되지 않은 카드에도 끼니 표시
-                    titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-                    titleLine2 = '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
-                }
-                let iconHtml = '';
-                if (!r) {
-                    iconHtml = `<div class="flex flex-col items-center justify-center text-center px-2">
-                        <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
-                        <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
-                    </div>`;
-                } else {
-                    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
-                    if (mainPhotoUrls.length > 0) {
-                        iconHtml = buildTimelinePhotoCellInnerHtml(mainPhotoUrls, 'object-cover', {
-                            dateStr,
-                            slotId: slot.id,
-                            recordId: r.id
+                    if (records.length > 0) {
+                        html += `<div class="main-slot-card-group">`;
+                        records.forEach((r, idx) => {
+                            const isLast = idx === records.length - 1;
+                            const cardHtml = buildMainMealTimelineCardHtml(
+                                dateStr,
+                                slot,
+                                r,
+                                specificStyle,
+                                isLast ? 'mb-0' : 'mb-1.5',
+                                idx + 1,
+                                records.length
+                            );
+                            if (isLast) {
+                                html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
+                            } else {
+                                html += cardHtml;
+                            }
                         });
-                    } else if (r.mealType === 'Skip') {
-                        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
+                        html += `</div>`;
                     } else {
-                        iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
+                        html += buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle);
                     }
-                }
-                const mainBlockOpen = r && isMealEntryRowBlocked(r);
-                const mainOpenClick = mainBlockOpen
-                    ? ''
-                    : mealTimelineOpenDataAttrs(dateStr, slot.id, r ? r.id : null);
-                const mainPointer = !r ? 'cursor-pointer active:scale-[0.98]' : mealEntryRowPointerClass(r);
-                const mainRel = r ? mealCardRelativeClass(r) : '';
-                html += `<div ${mainOpenClick} class="card mb-1.5 border ${containerClass} ${mainPointer} transition-all !rounded-none ${mainRel}" ${r ? `data-entry-id="${escapeHtml(String(r.id))}"` : ''}>
-                    <div class="flex">
-                        <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
-                            ${iconHtml}
-                        </div>
-                        <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                            ${r ? `<div class="min-w-0 overflow-hidden">
-                                <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
-                                    <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                                    <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                                        <span class="text-[13px]">⭐</span>
-                                        <span class="text-[12px] font-black">${r.rating || '-'}</span>
-                                    </span>
-                                </div>
-                                <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
-                                ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
-                            </div>` : `<div class="min-w-0">
-                                <h4 class="mb-0 leading-tight">${titleLine1}</h4>
-                                ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}
-                            </div>`}
-                            ${r && r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
-                            ${tagsHtml}
-                        </div>
-                    </div>
-                </div>`;
                 }
             } else {
                 const snackView = getSnackTimelineView();
-                const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
                 if (snackView === 'cards') {
                     if (records.length > 0) {
                         html += `<div class="snack-slot-card-group">`;
@@ -1755,6 +1884,11 @@ export function renderTimeline() {
 
     updateTimelineMealEntryPendingIndicators();
     updateTrackerStreakLabel();
+
+    const reportCheckDates = (window.loadedDates || []).filter((d) => isAiDietReportDateVisible(d));
+    if (reportCheckDates.length) {
+        void refreshAiDietReportFlagsForDates(reportCheckDates);
+    }
 }
 
 let miniCalendarPointerDragBound = false;
@@ -1794,6 +1928,7 @@ function renderTrackerMonthCalendarPopup() {
     const pageM = appState.pageDate.getMonth() + 1;
     const pageD = appState.pageDate.getDate();
     const activeIso = `${pageY}-${pad2(pageM)}-${pad2(pageD)}`;
+    const historyByDate = buildMealHistoryCountByDate();
 
     const parts = [];
     for (let i = 0; i < firstDow; i++) {
@@ -1801,7 +1936,7 @@ function renderTrackerMonthCalendarPopup() {
     }
     for (let d = 1; d <= dim; d++) {
         const iso = `${y}-${pad2(m)}-${pad2(d)}`;
-        const c = getRecordCountForIso(iso);
+        const c = getRecordCountForIso(iso, historyByDate);
         const st = c >= 3 ? 'dot-full' : c > 0 ? 'dot-partial' : 'dot-none';
         const sel = iso === activeIso ? 'dot-selected' : '';
         parts.push(
@@ -1838,9 +1973,6 @@ export function refreshTrackerMonthCalendarPopupIfOpen() {
 }
 
 function setupTrackerMonthCalendarModal() {
-    if (trackerMonthCalendarModalBound) return;
-    trackerMonthCalendarModalBound = true;
-
     const backdrop = document.getElementById('trackerMonthCalendarBackdrop');
     const closeBtn = document.getElementById('trackerMonthCalendarClose');
     const prevBtn = document.getElementById('trackerMonthPrevMonth');
@@ -1872,11 +2004,15 @@ function setupTrackerMonthCalendarModal() {
         renderTrackerMonthCalendarPopup();
     };
 
-    if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
-    if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
-    if (prevBtn) prevBtn.addEventListener('click', goPrev);
-    if (nextBtn) nextBtn.addEventListener('click', goNext);
-    if (openBtn) {
+    if (!trackerMonthCalendarModalBound) {
+        trackerMonthCalendarModalBound = true;
+        if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
+        if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
+        if (prevBtn) prevBtn.addEventListener('click', goPrev);
+        if (nextBtn) nextBtn.addEventListener('click', goNext);
+    }
+    if (openBtn && !openBtn.dataset.trackerMonthCalBound) {
+        openBtn.dataset.trackerMonthCalBound = '1';
         openBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -2051,37 +2187,59 @@ function setupMiniCalendarPointerDrag(container) {
     );
 }
 
-export function renderMiniCalendar() {
-    const state = appState;
-    const container = document.getElementById('miniCalendar');
-    if (!container || !window.currentUser) return;
-    container.innerHTML = "";
-    // 로컬 날짜로 변환하여 시간대 문제 방지
-    const pageYear = state.pageDate.getFullYear();
-    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
-    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
-    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
-    
+function dotStatusFromCount(count) {
+    return count >= 3 ? 'dot-full' : count > 0 ? 'dot-partial' : 'dot-none';
+}
+
+/** 오늘 포함 과거 61일 스펙 (로컬 날짜) */
+function buildMiniCalendarDaySpecs(activeStr) {
+    const days = [];
     for (let i = 60; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        // 로컬 날짜로 변환하여 시간대 문제 방지
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         const iso = `${year}-${month}-${day}`;
-        const count = getRecordCountForIso(iso);
-        let status = count >= 3 ? "dot-full" : (count > 0 ? "dot-partial" : "dot-none");
-        let dayColorClass = (d.getDay() === 0 || d.getDay() === 6) ? "text-rose-400" : "text-slate-400";
-        const item = document.createElement('div');
-        item.className = "calendar-item flex flex-col items-center gap-1 flex-shrink-0";
-        item.setAttribute('data-tracker-date', iso);
-        item.innerHTML = `<span class="text-[11px] font-bold ${dayColorClass}">${d.toLocaleDateString('ko-KR', { weekday: 'narrow' })}</span>
-            <div id="dot-${iso}" class="calendar-dot ${status} ${iso === activeStr ? 'dot-selected' : ''}">${d.getDate()}</div>`;
-        item.onclick = () => window.jumpToDate(iso);
-        container.appendChild(item);
+        days.push({
+            iso,
+            dayNum: d.getDate(),
+            dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
+            weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
+            isActive: iso === activeStr
+        });
     }
+    return days;
+}
 
+function canPatchMiniCalendarDom(container, days) {
+    const items = container.querySelectorAll('.calendar-item');
+    if (items.length !== days.length) return false;
+    for (let i = 0; i < days.length; i++) {
+        if (items[i].getAttribute('data-tracker-date') !== days[i].iso) return false;
+    }
+    return true;
+}
+
+function patchMiniCalendarItem(item, day, count) {
+    item.setAttribute('data-tracker-date', day.iso);
+    const label = item.querySelector('span');
+    if (label) {
+        label.className = `text-[11px] font-bold ${day.dayColorClass}`;
+        label.textContent = day.weekdayLabel;
+    }
+    let dot = item.querySelector('.calendar-dot');
+    if (!dot) {
+        dot = document.createElement('div');
+        item.appendChild(dot);
+    }
+    dot.id = `dot-${day.iso}`;
+    dot.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+    dot.textContent = String(day.dayNum);
+    item.onclick = () => window.jumpToDate(day.iso);
+}
+
+function finishMiniCalendarAfterRender(container, activeStr) {
     setupMiniCalendarPointerDrag(container);
     setupMiniCalendarScrollTitle(container);
     setupTrackerMonthCalendarModal();
@@ -2093,8 +2251,6 @@ export function renderMiniCalendar() {
     });
 
     setTimeout(() => {
-        // 데이터 리스너 재렌더마다 가로 스크롤이 계속 움직이지 않도록,
-        // 같은 날짜(activeStr)로는 짧은 시간 내 자동 scrollIntoView를 1회로 제한
         const now = Date.now();
         const lastKey = window._miniCalLastAutoScrollKey || '';
         const lastAt = window._miniCalLastAutoScrollAt || 0;
@@ -2111,4 +2267,61 @@ export function renderMiniCalendar() {
 
     refreshTrackerMonthCalendarPopupIfOpen();
     updateTrackerStreakLabel();
+}
+
+/** 미니 캘린더 DOM 재구성 없이 점(dot)·연속일 라벨만 갱신 */
+export function refreshMiniCalendarDots() {
+    const state = appState;
+    const container = document.getElementById('miniCalendar');
+    if (!container || !window.currentUser) return;
+    const pageYear = state.pageDate.getFullYear();
+    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    const historyByDate = buildMealHistoryCountByDate();
+    const days = buildMiniCalendarDaySpecs(activeStr);
+
+    days.forEach((day) => {
+        const dotEl = document.getElementById(`dot-${day.iso}`);
+        if (!dotEl) return;
+        const count = getRecordCountForIso(day.iso, historyByDate);
+        dotEl.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+    });
+    refreshTrackerMonthCalendarPopupIfOpen();
+    updateTrackerStreakLabel();
+}
+
+export function renderMiniCalendar() {
+    const state = appState;
+    const container = document.getElementById('miniCalendar');
+    if (!container || !window.currentUser) return;
+    const pageYear = state.pageDate.getFullYear();
+    const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
+    const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
+    const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    const days = buildMiniCalendarDaySpecs(activeStr);
+    const historyByDate = buildMealHistoryCountByDate();
+
+    if (canPatchMiniCalendarDom(container, days)) {
+        const items = container.querySelectorAll('.calendar-item');
+        days.forEach((day, i) => {
+            patchMiniCalendarItem(items[i], day, getRecordCountForIso(day.iso, historyByDate));
+        });
+        finishMiniCalendarAfterRender(container, activeStr);
+        return;
+    }
+
+    container.innerHTML = '';
+    days.forEach((day) => {
+        const count = getRecordCountForIso(day.iso, historyByDate);
+        const item = document.createElement('div');
+        item.className = 'calendar-item flex flex-col items-center gap-1 flex-shrink-0';
+        item.setAttribute('data-tracker-date', day.iso);
+        item.innerHTML = `<span class="text-[11px] font-bold ${day.dayColorClass}">${day.weekdayLabel}</span>
+            <div id="dot-${day.iso}" class="calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}">${day.dayNum}</div>`;
+        item.onclick = () => window.jumpToDate(day.iso);
+        container.appendChild(item);
+    });
+
+    finishMiniCalendarAfterRender(container, activeStr);
 }

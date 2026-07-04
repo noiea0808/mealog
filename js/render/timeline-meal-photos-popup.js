@@ -4,6 +4,7 @@
  */
 import { escapeHtml } from './utils.js';
 import { appState } from '../state.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { processPhotosToGroups } from './post-group-utils.js';
 import { appendMomentFeedNextPage } from './gallery.js';
 import {
@@ -2269,7 +2270,7 @@ function getOverlay() {
         el.classList.remove('timeline-meal-photos-overlay--moment-feed');
         document.body.classList.remove('meal-photo-moment-chrome-hidden');
         el._mealPhotoMomentNavState = null;
-        document.body.classList.remove('overflow-hidden');
+        unlockBodyScroll();
         const hdClose = el._mealCarouselHStripDrag;
         if (hdClose?.hstrip) {
             try {
@@ -2480,7 +2481,7 @@ export function openTimelineMealPhotosPopup(btn) {
         capShow?.classList.add('flex');
         rebuildMealPhotoWheelPickers(el);
         el.classList.remove('hidden');
-        document.body.classList.add('overflow-hidden');
+        lockBodyScroll();
         el._mealPhotosLayout?.();
         syncMealPhotoWheelCaptionPhotoMinWidth(el);
         requestAnimationFrame(() => {
@@ -2518,7 +2519,7 @@ export function openTimelineMealPhotosPopup(btn) {
         vtrack.innerHTML = slide;
         el._mealPhotosBindRowTracks?.();
         el.classList.remove('hidden');
-        document.body.classList.add('overflow-hidden');
+        lockBodyScroll();
         el._mealPhotosLayout?.();
         vtrack.scrollTop = 0;
         requestAnimationFrame(() => {
@@ -2718,7 +2719,7 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
     capShow?.classList.add('flex');
     rebuildMealPhotoWheelPickers(el);
     el.classList.remove('hidden');
-    document.body.classList.add('overflow-hidden');
+    lockBodyScroll();
     el._mealPhotosLayout?.();
     syncMealPhotoWheelCaptionPhotoMinWidth(el);
 

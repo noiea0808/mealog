@@ -28,6 +28,9 @@ export const GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS = 700;
 
 export const DEFAULT_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
 
+/** 기록 입력 시트 — 식사·간식 사진 최대 장수 */
+export const RECORD_MAX_PHOTOS = 5;
+
 export const SLOTS = [
     { id: 'pre_morning', label: '아침 전 간식', type: 'snack' },
     { id: 'morning', label: '아침', type: 'main' },
@@ -151,6 +154,16 @@ export const DEFAULT_USER_SETTINGS = {
     entryModalGauges: {
         main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
         snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
+    },
+    /** 기록 모달: 메인 태그 칩(빠른 입력) — 항목별·식사/간식별 기억 (신규: 접힘) */
+    entryModalQuickInput: {
+        meal: { where: false, what: false, with: false },
+        snack: { where: false, what: false, with: false },
+    },
+    /** 기록 모달: 상세 기록(누구와·만족도·포만감·시간) 항목별 on/off */
+    entryModalDetailRecord: {
+        main: { with: false, rating: false, satiety: false, time: false },
+        snack: { with: false, rating: false, satiety: false, time: false },
     },
     /** 날짜별 하루 소감 — 값: string(구) | { comment, photos[], photoAspectRatio } */
     dailyComments: {}

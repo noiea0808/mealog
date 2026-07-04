@@ -33,6 +33,7 @@ import {
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
+import { openQuickEntryModal } from '../modals/entry-quick-open.js';
 import { openRecordCameraPicker, openRecordGalleryPicker } from '../modals/entry-and-core.js';
 import { openDailyJournalCameraPicker, openDailyJournalGalleryPicker } from '../modals/daily-journal.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
@@ -709,6 +710,14 @@ export function initEventListeners() {
 
     bindRecordPhotoSourcePickersOnce();
     bindMealSyncResendNavButtonOnce();
+
+    const entryQuickInputFab = document.getElementById('entryQuickInputFab');
+    if (entryQuickInputFab) {
+        entryQuickInputFab.addEventListener('click', () => {
+            void openQuickEntryModal();
+        });
+    }
+
     registerEscapeCloseModals();
 }
 

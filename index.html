@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko" class="mealog-landing-active">
+<html lang="ko" class="mealog-landing-active mealog-boot-active">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="description" content="우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인">
-    <meta name="theme-color" content="#10b981">
+    <meta name="theme-color" content="#056c5b">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,14 +28,11 @@
     
     <title>MEALOG-함께한, 맛있었던 이야기</title>
     
-    <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
-    <link rel="shortcut icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>" type="image/svg+xml">
-    
-    <!-- PWA Manifest -->
-    <!-- manifest.json 파일이 없으면 주석 처리 -->
-    <!-- <link rel="manifest" href="./manifest.json"> -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%23059669'/><text x='50%25' y='50%25' font-size='120' text-anchor='middle' dominant-baseline='central' fill='white'>🍽️</text></svg>">
+    <!-- Favicon / PWA icons -->
+    <link rel="icon" href="assets/icon_192.png" type="image/png" sizes="192x192">
+    <link rel="shortcut icon" href="assets/icon_32.png" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="assets/icon_180.png" sizes="180x180">
+    <link rel="manifest" href="./manifest.json">
     
     <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -73,6 +70,10 @@
            로딩 중 세로 스크롤바가 나타났다 사라지면 가로폭이 변해 mx-auto 중앙정렬된
            body가 통째로 좌우로 밀린다. 스크롤바 공간을 항상 예약해 폭을 고정한다. */
         html.mealog-landing-active {
+            overflow-y: auto;
+        }
+        /* 네이티브 WebView: scrollbar-gutter가 mx-auto body를 좌우 비대칭 → 아이콘 왼쪽 치우침 */
+        html.mealog-landing-active.platform-web {
             scrollbar-gutter: stable;
             overflow-y: scroll;
         }
@@ -86,10 +87,61 @@
             max-width: 28rem;
             margin: 0 auto;
             position: relative;
+            background: #ffffff;
+        }
+        /* style.css와 동일 — 첫 페인트부터 dvh·safe-top 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
+        :root {
+            --safe-top: max(env(safe-area-inset-top, 28px), 28px);
+            --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
         }
         #landingPage {
             display: flex;
             flex-direction: column;
+            position: relative;
+            width: 100%;
+            min-height: 100dvh;
+            box-sizing: border-box;
+            padding-top: var(--safe-top);
+            background: #ffffff;
+        }
+        /* 기동 스플래시: #landingPage flex·safe-area reflow와 완전 분리 (뷰포트 정중앙 flex) */
+        #bootSplashOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            pointer-events: none;
+        }
+        #bootSplashOverlay.boot-splash-done {
+            display: none;
+        }
+        .boot-splash-icon-wrap {
+            width: 5rem;
+            height: 5rem;
+            overflow: hidden;
+            border-radius: 35%;
+            flex-shrink: 0;
+            background-color: rgba(5, 150, 105, 0.9);
+        }
+        @media (min-width: 640px) {
+            .boot-splash-icon-wrap { width: 6rem; height: 6rem; }
+        }
+        .boot-splash-icon-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+        /* 부트 오버레이가 아이콘 담당 — 로그인 전환 전까지 랜딩 쪽 아이콘은 표시하지 않음 */
+        #landingPage:not(.landing-show-login) #landingSplashIconOnly {
+            visibility: hidden;
+        }
+        #landingPage.landing-show-login #landingSplashIconOnly {
+            visibility: visible;
         }
         #landingPage:not(.landing-buttons-visible) #landingFlexMain {
             flex: 1 1 0%;
@@ -407,6 +459,15 @@
     <!-- 앱에서 구글 네이티브 로그인: npm 모듈 해석 불가하므로 스크립트로 로드 -->
     <script src="js/capacitor.js"></script>
     <script>window.Capacitor=window.Capacitor||(window.capacitorExports&&window.capacitorExports.Capacitor);</script>
+    <script>
+        (function () {
+            try {
+                if (window.Capacitor?.isNativePlatform?.()) {
+                    document.documentElement.classList.add('platform-native-app');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script>window.capacitorExports=window.capacitorExports||window.Capacitor;</script>
     <script src="js/capacitor-app-plugin.js"></script>
     <script src="js/capacitor-browser-plugin.js"></script>
@@ -420,50 +481,143 @@
     <script src="js/capacitor-haptics-plugin.js"></script>
     <script src="js/capacitor-app-update-plugin.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
-                window.refreshMealogAppEnvironmentBadges();
+        (function mealogLandingBoot() {
+            function markLandingLayoutReady() {
+                var lp = document.getElementById('landingPage');
+                if (lp) lp.classList.add('landing-layout-ready');
             }
-            // Web: 핸폰 네비 없음 → safe-bottom 0으로 하단 공백 제거
-            try {
-                if (!window.Capacitor?.isNativePlatform?.()) {
-                    document.documentElement.classList.add('platform-web');
+
+            var bootDismissed = false;
+            var bootWatchersStarted = false;
+            function dismissBootSplash() {
+                if (bootDismissed) return;
+                bootDismissed = true;
+                document.documentElement.classList.remove('mealog-boot-active');
+                var overlay = document.getElementById('bootSplashOverlay');
+                if (overlay) overlay.classList.add('boot-splash-done');
+                markLandingLayoutReady();
+            }
+            window.dismissMealogBootSplash = dismissBootSplash;
+
+            function shouldDismissBootNow() {
+                var lp = document.getElementById('landingPage');
+                var main = document.getElementById('mainApp');
+                if (lp && (lp.classList.contains('landing-show-login') || lp.classList.contains('screen-transition-exit'))) {
+                    return true;
                 }
-            } catch (e) {}
-            try {
-                if (window.Capacitor?.isNativePlatform?.()) {
+                if (main && !main.classList.contains('hidden')) return true;
+                return false;
+            }
+
+            function startBootDismissWatchers() {
+                if (bootWatchersStarted || bootDismissed) return;
+                bootWatchersStarted = true;
+                if (shouldDismissBootNow()) {
+                    dismissBootSplash();
+                    return;
+                }
+                var lp = document.getElementById('landingPage');
+                var main = document.getElementById('mainApp');
+                var obs = new MutationObserver(function () {
+                    if (shouldDismissBootNow()) {
+                        dismissBootSplash();
+                        obs.disconnect();
+                    }
+                });
+                if (lp) obs.observe(lp, { attributes: true, attributeFilter: ['class'] });
+                if (main) obs.observe(main, { attributes: true, attributeFilter: ['class'] });
+                window.addEventListener('mealog:mainScreenShown', dismissBootSplash, { once: true });
+                setTimeout(dismissBootSplash, 3500);
+            }
+
+            /** #landingPage 높이가 연속 N프레임 동일할 때까지 대기 (Tailwind·dvh·safe-area reflow 수렴) */
+            function waitLandingLayoutSettle(done) {
+                var lp = document.getElementById('landingPage');
+                if (!lp) {
+                    done();
+                    return;
+                }
+                var lastH = -1;
+                var stable = 0;
+                var frame = 0;
+                var maxFrames = 90;
+                function tick() {
+                    frame++;
+                    var h = Math.round(lp.getBoundingClientRect().height);
+                    if (h > 0 && h === lastH) stable++;
+                    else {
+                        stable = 0;
+                        lastH = h;
+                    }
+                    if (stable >= 6 || frame >= maxFrames) {
+                        requestAnimationFrame(function () {
+                            requestAnimationFrame(done);
+                        });
+                        return;
+                    }
+                    requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            }
+
+            function settleLandingThen(done) {
+                var fontsReady = (document.fonts && document.fonts.ready)
+                    ? document.fonts.ready
+                    : Promise.resolve();
+                var run = function () {
+                    waitLandingLayoutSettle(function () {
+                        if (typeof done === 'function') done();
+                    });
+                };
+                fontsReady.then(run).catch(run);
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
+                    window.refreshMealogAppEnvironmentBadges();
+                }
+                var isNative = false;
+                try {
+                    isNative = !!window.Capacitor?.isNativePlatform?.();
+                } catch (e) {}
+
+                if (!isNative) {
+                    document.documentElement.classList.add('platform-web');
+                    settleLandingThen(startBootDismissWatchers);
+                    return;
+                }
+
+                try {
                     document.documentElement.classList.add('platform-native-app');
                     var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
                     var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
-                    if (!st || st === '0px' || parseFloat(st) < 20) document.documentElement.style.setProperty('--safe-top', '28px');
-                    if (!sb || sb === '0px' || parseFloat(sb) < 20) document.documentElement.style.setProperty('--safe-bottom', '48px');
-                    // 스플래시 아이콘 흔들림 방지: 폰트 로드 + 레이아웃(safe-area/dvh/Tailwind) 안정화 후에 숨김.
-                    // 너무 일찍 숨기면 reflow 과정(아이콘 상하 점프)이 사용자에게 그대로 노출된다.
-                    var __splashHidden = false;
-                    var __hideSplash = function() {
-                        if (__splashHidden) return;
-                        __splashHidden = true;
-                        var Splash = window.Capacitor?.Plugins?.SplashScreen;
-                        if (Splash) Splash.hide().catch(function() {});
-                    };
-                    var __settleThenHide = function() {
-                        // 폰트 적용 후 2프레임 대기 → 레이아웃 확정된 다음 숨김
-                        requestAnimationFrame(function() {
-                            requestAnimationFrame(__hideSplash);
-                        });
-                    };
-                    try {
-                        var __fontsReady = (document.fonts && document.fonts.ready)
-                            ? document.fonts.ready : Promise.resolve();
-                        __fontsReady.then(__settleThenHide).catch(__settleThenHide);
-                    } catch (e) {
-                        __settleThenHide();
+                    if (!st || st === '0px' || parseFloat(st) < 20) {
+                        document.documentElement.style.setProperty('--safe-top', '28px');
                     }
-                    // 안전장치: 폰트/네트워크 지연 시에도 최대 1.5초 후 반드시 숨김
-                    setTimeout(__hideSplash, 1500);
+                    if (!sb || sb === '0px' || parseFloat(sb) < 20) {
+                        document.documentElement.style.setProperty('--safe-bottom', '48px');
+                    }
+                    var splashHidden = false;
+                    var hideNativeSplash = function () {
+                        if (splashHidden) return;
+                        splashHidden = true;
+                        var Splash = window.Capacitor?.Plugins?.SplashScreen;
+                        if (Splash) Splash.hide().catch(function () {});
+                    };
+                    /* 네이티브 스플래시만 먼저 제거 → bootSplashOverlay가 동일 아이콘으로 이어 받음 */
+                    settleLandingThen(function () {
+                        hideNativeSplash();
+                        startBootDismissWatchers();
+                    });
+                    setTimeout(function () {
+                        hideNativeSplash();
+                        if (!bootDismissed) startBootDismissWatchers();
+                    }, 2800);
+                } catch (e) {
+                    dismissBootSplash();
                 }
-            } catch (e) {}
-        });
+            });
+        })();
         window.addEventListener('load', function() {
             if (typeof window.refreshMealogAppEnvironmentBadges === 'function') {
                 window.refreshMealogAppEnvironmentBadges();
@@ -623,6 +777,12 @@
     </script>
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
+    <!-- 기동 스플래시: body/max-w 컬럼·#landingPage flex와 무관하게 뷰포트 정중앙 (네이티브 스플래시 → 웹 전환 브릿지) -->
+    <div id="bootSplashOverlay" aria-hidden="true">
+        <div class="boot-splash-icon-wrap">
+            <img src="assets/icon-only.png" alt="" width="80" height="80" decoding="sync" />
+        </div>
+    </div>
     <!-- IME 워밍업용 숨김 input: 앱 첫 기동 시 한글 입력 미표시 현상 완화 -->
     <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
@@ -692,24 +852,43 @@
                             id="attendanceWelcomeMealSnackSwitch"
                             class="flex items-center gap-0 rounded-lg border border-slate-200/80 bg-slate-100/95 p-0.5 shadow-sm"
                             role="group"
-                            aria-label="식사 또는 간식"
+                            aria-label="AI리포트·식사·간식"
                         >
                             <button
                                 type="button"
+                                id="attendanceWelcomeBtnReport"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
+                            >
+                                AI리포트
+                            </button>
+                            <button
+                                type="button"
                                 id="attendanceWelcomeBtnMeal"
-                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
                             >
                                 식사
                             </button>
                             <button
                                 type="button"
                                 id="attendanceWelcomeBtnSnack"
-                                class="attendance-welcome-kind-btn rounded-md px-2.5 py-1 text-[13px] font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
                             >
                                 간식
                             </button>
                         </div>
                         <p id="attendanceWelcomeRecordCount" class="m-0 w-full text-center text-[11px] font-bold leading-tight text-slate-700 tabular-nums" aria-live="polite">기록 0회</p>
+                        <div id="attendanceWelcomeReportDateNav" class="hidden attendance-welcome-report-date-nav flex w-full items-center justify-center gap-1" role="group" aria-label="리포트 날짜">
+                            <button type="button" id="attendanceWelcomeReportPrev" class="attendance-welcome-report-nav-btn" aria-label="이전 리포트">
+                                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            </button>
+                            <span id="attendanceWelcomeReportDateLabel" class="attendance-welcome-report-date-label tabular-nums" aria-live="polite"></span>
+                            <button type="button" id="attendanceWelcomeReportNext" class="attendance-welcome-report-nav-btn" aria-label="다음 리포트">
+                                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="attendanceWelcomeReportPanel" class="hidden w-full px-2 py-1 box-border">
+                        <div id="attendanceWelcomeReportContent" class="attendance-welcome-report-content w-full" role="region" aria-label="AI 식단분석 리포트"></div>
                     </div>
                     <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
                         <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>
@@ -1128,17 +1307,17 @@
         <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
         <!-- 네비게이션 바 영역 흰색 오버레이 (Android 15+ edge-to-edge 투명 방지) -->
         <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
-        <header id="mainAppHeader" class="sticky z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] safe-area-top transition-transform duration-300 ease-out">
+        <!-- 상단 chrome seam 채움: 헤더와 아래 영역(서브탭/기간탭) 사이 서브픽셀 틈을 녹색으로 메움 (콘텐츠 뒤, 컬럼폭) -->
+        <div id="appTopChromeFill" aria-hidden="true"></div>
+        <div id="appTopChrome" class="sticky z-50">
+        <header id="mainAppHeader" class="relative z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
-                <div class="flex items-baseline gap-2 min-w-0 flex-shrink-0">
+                <div class="flex items-center gap-2 min-w-0 flex-shrink-0">
                     <div class="relative inline-block shrink-0">
                         <h1 id="headerAppTitle" class="mealog-title text-2xl text-emerald-600 tracking-tighter">mealog</h1>
                         <div class="absolute -top-1 left-full ml-1.5 z-10 pointer-events-none whitespace-nowrap leading-none">
                             <span id="headerEnvBadge" class="hidden shrink-0" role="status"></span>
                         </div>
-                    </div>
-                    <div class="relative overflow-visible">
-                        <span id="headerSectionLabel" class="header-section-label text-xs font-semibold tracking-tight">밀로그</span>
                     </div>
                 </div>
                 <!-- 우측: 돋보기 → 알림 (밀로그 검색 확장 시 flex로 sub-title까지 확장) -->
@@ -1194,15 +1373,18 @@
             </div>
         </header>
 
-        <div id="trackerSection" class="sticky z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm safe-area-tracker">
+        <div id="trackerSection" class="relative z-40 px-6 py-3 bg-white border-b border-slate-100 shadow-sm">
             <div id="trackerHeader" class="flex justify-between items-center mb-2 gap-2">
                 <div class="flex items-center gap-1 min-w-0 flex-1">
-                    <span id="trackerTitle" class="text-sm font-black text-slate-800 tracking-tight uppercase truncate">날짜 선택</span>
+                    <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
+                        <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
+                    </button>
+                    <span id="trackerTitle" class="text-sm font-normal text-slate-800 tracking-tight truncate">날짜 선택</span>
                     <div class="flex items-center gap-0.5 flex-shrink-0">
-                        <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
-                            <i class="fa-regular fa-calendar text-[15px] leading-none" aria-hidden="true"></i>
-                        </button>
-                        <span id="trackerStreakLabel" class="text-xs text-slate-500 tabular-nums whitespace-nowrap font-normal">0일 연속 기록중 </span>
+                        <span id="trackerStreakLabel" class="tracker-streak-pill tabular-nums whitespace-nowrap" role="status">
+                            <span class="tracker-streak-pill__emoji" aria-hidden="true">🔥</span>
+                            <span class="tracker-streak-pill__text">0일 연속</span>
+                        </span>
                     </div>
                 </div>
                 <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
@@ -1211,6 +1393,7 @@
                 </div>
             </div>
             <div id="miniCalendar" class="calendar-scroll pb-2"></div>
+        </div>
         </div>
 
         <main>
@@ -1230,20 +1413,20 @@
                     <i class="fa-solid fa-pen text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
-                <div class="board-mealtalk-subtabs flex w-full min-w-0 pt-2 pb-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
-                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors">
+                <div class="app-chrome-subtabs board-mealtalk-subtabs flex w-full min-w-0 overflow-x-auto scrollbar-hide" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="app-chrome-subtab board-list-subtab active relative shrink-0">
                         <span class="relative inline-block">
                             밀톡
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative shrink-0">
                         <span class="relative inline-block">
                             게시판
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="board-list-subtab relative flex flex-1 items-center justify-center px-2 py-2.5 text-sm font-bold text-slate-500 border-b-2 border-transparent transition-colors">
+                    <button type="button" id="boardSubtabNotice" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative shrink-0">
                         <span class="relative inline-block">
                             공지
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
@@ -1350,18 +1533,18 @@
                     </div>
                 </div>
             </div>
-            <div id="dashboardView" class="hidden space-y-3 px-0 pt-[0.1125rem] pb-3">
-                <!-- Dashboard content remains same -->
-                <div class="card ui-card-pad-lg bg-emerald-600 text-white relative overflow-hidden">
-                    <div class="flex flex-col mb-4 relative z-10">
-                        <div id="insightPeriodTabs" class="insight-period-tabs flex gap-1.5 items-center flex-wrap">
-                            <button id="btn-dash-7d" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">최근 1주</button>
-                            <button id="btn-dash-week" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">주간</button>
-                            <button id="btn-dash-month" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">월간</button>
-                            <button id="btn-dash-year" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">연간</button>
-                            <button id="btn-dash-custom" class="insight-period-tab px-3 py-1.5 text-xs font-bold text-white/90 transition-colors rounded-full">직접 설정</button>
-                        </div>
-                        <div id="periodNavigator" class="hidden mt-3 flex items-center justify-center gap-3">
+            <div id="dashboardView" class="hidden space-y-3 px-0 pt-0 pb-3">
+                <div class="dashboard-insight-chrome">
+                <div id="insightPeriodTabs" class="app-chrome-subtabs dashboard-chrome-subtabs flex w-full min-w-0 overflow-x-auto scrollbar-hide" role="tablist" aria-label="밀당 기간">
+                    <button id="btn-dash-7d" type="button" role="tab" aria-selected="true" class="app-chrome-subtab insight-period-tab active shrink-0">최근 1주</button>
+                    <button id="btn-dash-week" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">주간</button>
+                    <button id="btn-dash-month" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">월간</button>
+                    <button id="btn-dash-year" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">연간</button>
+                    <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">직접 설정</button>
+                </div>
+                <div class="card ui-card-pad-lg dashboard-insight-card text-white relative overflow-hidden">
+                    <div class="dashboard-insight-period-wrap flex flex-col mb-2 relative z-10">
+                        <div id="periodNavigator" class="hidden mt-1.5 flex items-center justify-center gap-3">
                             <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
                                 <i class="fa-solid fa-chevron-left text-sm"></i>
                             </button>
@@ -1370,7 +1553,7 @@
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
-                        <div id="customDatePicker" class="hidden mt-3 custom-date-range">
+                        <div id="customDatePicker" class="hidden mt-1.5 custom-date-range">
                             <div class="custom-date-range-inner">
                                 <div class="custom-date-section">
                                     <label class="custom-date-label" for="customStart">시작</label>
@@ -1389,18 +1572,18 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="weekPickerContainer" class="hidden mt-3 flex gap-2">
+                        <div id="weekPickerContainer" class="hidden mt-1.5 flex gap-2">
                             <input type="month" id="weekMonthInput" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                             <select id="weekSelect" onchange="window.safeCall('updateSelectedWeek')" class="flex-1 bg-white/20 text-white text-[10px] rounded p-1 border-none outline-none">
                                 <option value="1">1주</option>
                             </select>
                         </div>
-                        <div id="monthPickerContainer" class="hidden mt-3">
+                        <div id="monthPickerContainer" class="hidden mt-1.5">
                              <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white/20 text-white text-sm rounded p-2 border-none outline-none">
                         </div>
                     </div>
                     <!-- 캐릭터와 말풍선 영역 (트위터 스타일) -->
-                    <div class="insight-area flex gap-3 mt-3 relative z-10 items-start">
+                    <div class="insight-area flex gap-3 mt-1.5 relative z-10 items-start">
                         <!-- 밀당 캐릭터 선택 창 -->
                         <div class="insight-character-column relative flex-shrink-0 flex flex-col gap-2 w-[75px] items-center">
                             <button id="insightCharacterBtn" onclick="window.openCharacterSelectModal()" class="insight-character-btn w-[75px] h-[132px] rounded-2xl flex flex-col items-center justify-center transition-colors">
@@ -1448,19 +1631,20 @@
                         </div>
                     </div>
                 </div>
+                </div>
                 
                 <!-- 분석 타입 선택 스위치 -->
-                <div class="card ui-card-pad-chip mt-3">
-                    <div class="flex p-0.5 rounded-xl gap-1">
-                        <button id="btn-analysis-main" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">식사</button>
-                        <button id="btn-analysis-snack" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">간식</button>
-                        <button id="btn-analysis-health" class="flex-1 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">건강</button>
-                        <button id="btn-analysis-best" class="flex-1 py-1 text-xs font-bold bg-white text-slate-700 rounded-lg shadow-sm transition-all">Best</button>
+                <div class="card ui-card-pad-chip mt-3 dashboard-analysis-tab-card">
+                    <div class="dashboard-analysis-tabs flex gap-1">
+                        <button id="btn-analysis-main" type="button" class="dashboard-analysis-tab dashboard-analysis-tab--active">식사</button>
+                        <button id="btn-analysis-snack" type="button" class="dashboard-analysis-tab">간식</button>
+                        <button id="btn-analysis-health" type="button" class="dashboard-analysis-tab">건강</button>
+                        <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab">Best</button>
                     </div>
                 </div>
                 
                 <!-- Best 분석 섹션 -->
-                <div id="bestAnalysisSection" class="mt-2">
+                <div id="bestAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-3">
                         <div class="card ui-card-pad-compact">
                             <div class="ui-card-head">
@@ -1478,7 +1662,7 @@
                 </div>
                 
                 <!-- 식사 분석 섹션 -->
-                <div id="mainAnalysisSection" class="mt-2 hidden">
+                <div id="mainAnalysisSection" class="mt-2">
                     <div class="space-y-0">
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head"><h3 class="ui-section-label">어떻게</h3><button onclick="window.openDetailModal('mealType', '어디서 / 시간대')" class="ui-section-action font-bold">상세 <i class="fa-solid fa-chevron-right text-[10px]"></i></button></div>
@@ -1566,11 +1750,11 @@
 
             <!-- 사용자 설정 뷰 (다른 탭과 동일하게 전환) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="settings-subtab-row flex w-full px-1 sm:px-2 pt-2 pb-0 border-b border-slate-200 flex-shrink-0 bg-white">
-                    <button id="settingsTabProfile" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-emerald-600 border-b-2 border-emerald-600 transition-colors leading-tight">프로필</button>
-                    <button id="settingsTabTags" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">태그 관리</button>
-                    <button id="settingsTabShortcuts" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">밀당 메모</button>
-                    <button id="settingsTabNotifications" type="button" class="settings-tab flex-1 min-w-0 basis-0 flex items-center justify-center px-0.5 py-2.5 text-[11px] sm:text-sm font-bold text-slate-500 border-b-2 border-transparent hover:text-slate-700 hover:border-slate-300 transition-colors leading-tight">푸시 알림</button>
+                <div class="app-chrome-subtabs settings-subtab-row flex w-full flex-shrink-0 overflow-x-auto scrollbar-hide">
+                    <button id="settingsTabProfile" type="button" class="app-chrome-subtab settings-tab active shrink-0">프로필</button>
+                    <button id="settingsTabTags" type="button" class="app-chrome-subtab settings-tab shrink-0">태그 관리</button>
+                    <button id="settingsTabShortcuts" type="button" class="app-chrome-subtab settings-tab shrink-0">밀당 메모</button>
+                    <button id="settingsTabNotifications" type="button" class="app-chrome-subtab settings-tab shrink-0">푸시 알림</button>
                 </div>
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->
@@ -1812,6 +1996,9 @@
             <i class="fa-solid fa-spinner meal-sync-resend-fab__spinner text-lg fa-spin" aria-hidden="true"></i>
             <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
         </button>
+        <button type="button" id="entryQuickInputFab" class="entry-quick-input-fab hidden" title="빠른 기록" aria-label="빠른 기록">
+            <i class="fa-solid fa-plus text-lg" aria-hidden="true"></i>
+        </button>
 
         <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
         <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
@@ -1955,415 +2142,399 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)]">
-            <div class="relative shrink-0 py-3 px-4 border-b min-h-[3.25rem] flex items-center justify-center">
-                <h2 id="modalTitle" class="text-base font-bold text-slate-800 tracking-tight">기록하기</h2>
-                <button onclick="window.closeModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark text-base"></i></button>
+        <div class="entry-modal-panel w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
+            <div class="entry-modal-header shrink-0">
+                <div class="entry-modal-grabber" aria-hidden="true"></div>
+                <div class="flex items-center gap-2 min-w-0 px-4 py-2.5">
+                    <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
+                        <input type="hidden" id="entryHeaderDate" value="">
+                        <button type="button" id="entryHeaderDateBtn" aria-label="날짜" aria-haspopup="dialog" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800 outline-none transition-colors">날짜</button>
+                        <select id="entryHeaderSlotSelect" aria-label="시간대" class="entry-header-slot shrink min-w-0 py-1.5 rounded-lg font-bold text-slate-800 outline-none transition-colors appearance-none"></select>
+                        <div id="entryFormModeSwitch" class="entry-form-mode-switch shrink-0" role="group" aria-label="식사·간식">
+                            <button type="button" id="entryFormModeBtnMeal" data-mode="meal" class="entry-form-mode-btn entry-form-mode-btn--active" aria-pressed="true">식사</button>
+                            <button type="button" id="entryFormModeBtnSnack" data-mode="snack" class="entry-form-mode-btn" aria-pressed="false">간식</button>
+                        </div>
+                    </div>
+                    <button type="button" onclick="window.closeModal()" class="entry-header-close shrink-0 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기"><i class="fa-solid fa-xmark text-base"></i></button>
+                </div>
             </div>
-            <div id="modalScrollArea" class="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto overflow-x-hidden pb-8">
-                <div id="mainMealFields">
-                    <div class="mb-2">
-                        <div class="flex items-center justify-between mb-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 block uppercase">음식 사진</span>
-                            <div class="flex items-center gap-1">
-                                <span id="photoAspectLabelMeal" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+            <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
+                <div id="entryMealPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
+                            <span>음식 사진</span>
+                            <span id="photoCount" class="entry-photo-count">0/5</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
+                                <button type="button" id="imageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
+                                    <i class="fa-solid fa-camera" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" id="imageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                    <i class="fa-solid fa-image" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
                                 <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
                                 <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
                                 <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-meal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
-                                <span id="photoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
                             </div>
                         </div>
-                        <div class="flex gap-2 overflow-x-auto pb-1">
-                            <div class="flex gap-1.5 shrink-0 self-start">
-                                <button type="button" id="imageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                    <i class="fa-solid fa-camera text-lg" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" id="imageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                    <i class="fa-regular fa-image text-lg" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                            <div id="photoPreviewContainer" class="flex gap-2"></div>
-                        </div>
+                    </div>
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
+                        <div id="photoPreviewContainer" class="flex gap-2 min-w-0"></div>
+                    </div>
                         <input type="file" id="imageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
-                    </div>
-                    
-                    <div class="pt-3 pb-[3px] -mx-4 bg-orange-50/50 border-b border-orange-100 rounded-none mb-2">
-                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어떻게</span>
-                            <div id="typeChips" class="flex flex-wrap gap-1"></div>
-                        </div>
-                        <div class="mt-2 px-4 min-w-0">
-                            <div class="relative">
-                                <button type="button" id="kakaoSearchBtn" onclick="window.openKakaoPlaceSearch()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
-                                    <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
-                                </button>
-                                <input id="placeInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            </div>
-                            <div id="restaurantSuggestions" class="entry-subtag-suggestions"></div>
-                        </div>
-                    </div>
-                    
-                    <div id="optionalFields" class="space-y-2">
-                        <div class="pt-3 pb-[3px] -mx-4 bg-slate-50 border-b border-slate-200 rounded-none">
-                            <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
-                                <div id="categoryChips" class="flex flex-wrap gap-1"></div>
-                            </div>
-                            <div class="mt-2 px-4 min-w-0">
-                                <div id="mealWhatInputArea" class="w-full min-w-0">
-                                    <div id="deliveryVendorSection" class="hidden">
-                                        <div class="relative w-full">
-                                            <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
-                                                <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
-                                            </button>
-                                            <input id="deliveryVendorInput" type="text" placeholder="어느 식당 음식인가요?" class="w-full py-[0.6rem] pl-[46px] pr-3 rounded-2xl outline-none text-sm font-bold border-0 bg-transparent focus:ring-1 focus:ring-slate-200 focus:ring-offset-0 transition-all">
-                                        </div>
-                                    </div>
-                                    <div id="menuDetailInputRow" class="w-full">
-                                        <input id="menuDetailInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                        <div id="menuSuggestions" class="entry-subtag-suggestions"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="pt-3 pb-[3px] -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
-                            <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
-                                <div id="withChips" class="flex flex-wrap gap-1"></div>
-                            </div>
-                            <div class="mt-2 px-4 min-w-0">
-                                <input id="withWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                <div id="peopleSuggestions" class="entry-subtag-suggestions"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="reviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-5">
-                        <div id="ratingSection" class="min-w-0">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">만족도</span>
-                                <label class="entry-gauge-switch" title="만족도 기록·통계 반영">
-                                    <input type="checkbox" id="entryGaugeRatingToggleMain" class="peer sr-only" role="switch" aria-label="만족도 기록 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <span id="ratingDialValue" class="hidden">3/5</span>
-                            <div id="ratingGaugeDialWrap" class="relative mt-2 rounded-xl">
-                                <div class="mealog-wheel entry-gauge-dial" role="group" aria-label="만족도 선택">
-                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                    <div id="ratingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="만족도">
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    </div>
-                                </div>
-                                <div id="ratingGaugeOffLayerMain" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92 px-2" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="satietySection" class="min-w-0">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">포만감</span>
-                                <label class="entry-gauge-switch" title="포만감 기록·통계 반영">
-                                    <input type="checkbox" id="entryGaugeSatietyToggleMain" class="peer sr-only" role="switch" aria-label="포만감 기록 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <div id="satietyGaugeDialWrap" class="relative mt-2 rounded-xl">
-                                <div class="mealog-wheel entry-gauge-dial mealog-wheel--satiety" role="group" aria-label="포만감 선택">
-                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                    <div id="satietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="포만감">
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-cookie-bite"></i><span class="mealog-wheel__satiety-label">한입만</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile-wink"></i><span class="mealog-wheel__satiety-label">가볍게</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile"></i><span class="mealog-wheel__satiety-label">적당히</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin"></i><span class="mealog-wheel__satiety-label">든든하게</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin-beam-sweat"></i><span class="mealog-wheel__satiety-label">과식</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    </div>
-                                </div>
-                                <div id="satietyGaugeOffLayerMain" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92 px-2" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="entryMealTimeSectionMain" class="py-2 -mx-4 px-4 border-y border-slate-200/90 rounded-none mb-2">
-                        <div class="flex items-center justify-between gap-3 min-w-0">
-                            <div class="flex items-center shrink-0">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">시간</span>
-                                <label class="entry-gauge-switch ml-[3ch] shrink-0" title="카드 태그·정렬에 기록 시간 반영">
-                                    <input type="checkbox" id="entryMealClockToggleMain" class="peer sr-only" role="switch" aria-label="기록 시간 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <div id="entryMealClockInputWrapMain" class="flex min-w-0 flex-1 justify-end">
-                                <div class="flex max-w-[min(100%,22rem)] min-w-[12rem] flex-col items-end gap-1.5">
-                                    <div class="meal-clock-row flex min-w-0 max-w-full flex-wrap items-center justify-end pl-6">
-                                        <div id="entryMealClockCompoundMain" class="entry-meal-clock-compound flex min-h-[42px] min-w-[12rem] w-full max-w-[min(100%,22rem)] overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
-                                            <label for="entryMealAmpmMain" class="sr-only">오전 또는 오후</label>
-                                            <select id="entryMealAmpmMain"
-                                                class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                                                <option value="am">오전</option>
-                                                <option value="pm">오후</option>
-                                            </select>
-                                            <div class="relative min-w-0 flex-1 sm:max-w-[9rem]">
-                                                <div id="entryMealTimeOffDisplayMain"
-                                                    class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 pr-10 text-sm font-bold tabular-nums text-slate-400"
-                                                    aria-hidden="true">-- : -- : --</div>
-                                                <input type="text" id="entryMealTimeInputMain"
-                                                    maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                                                    placeholder="시:분"
-                                                    class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-10 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
-                                                <input type="time" step="60" id="entryMealTimeBridgeMain"
-                                                    tabindex="-1" aria-hidden="true"
-                                                    class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
-                                                <button type="button" id="entryMealTimePickBtnMain"
-                                                    class="pointer-events-none absolute right-1 top-1/2 z-[3] flex h-[2.125rem] w-[2.125rem] -translate-y-1/2 shrink-0 items-center justify-center rounded-lg text-slate-500 opacity-0 hover:bg-slate-100 hover:text-slate-700"
-                                                    aria-label="시계에서 시간 선택"><i class="fa-regular fa-clock text-[15px]"></i></button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-2 -mx-4 mt-2">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
-                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="6" class="w-full p-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[160px] appearance-none"></textarea>
-                    </div>
                 </div>
-                
-                <div id="snackFields" class="hidden">
-                    <div class="mb-2">
-                        <div class="flex items-center justify-between mb-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 block uppercase">간식 사진</span>
-                            <div class="flex items-center gap-1">
-                                <span id="photoAspectLabelSnack" class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
+                <div id="entrySnackPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media hidden">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
+                            <span>간식 사진</span>
+                            <span id="snackPhotoCount" class="entry-photo-count">0/5</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
+                                <button type="button" id="snackImageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
+                                    <i class="fa-solid fa-camera" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" id="snackImageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                    <i class="fa-solid fa-image" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
                                 <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setRecordPhotoAspectRatio('1:1')">1:1</button>
                                 <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('3:4')">3:4</button>
                                 <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-snack px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setRecordPhotoAspectRatio('4:3')">4:3</button>
-                                <span id="snackPhotoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
                             </div>
                         </div>
-                        <div class="flex gap-2 overflow-x-auto pb-1">
-                            <div class="flex gap-1.5 shrink-0 self-start">
-                                <button type="button" id="snackImageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                    <i class="fa-solid fa-camera text-lg" aria-hidden="true"></i>
-                                </button>
-                                <button type="button" id="snackImageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                    <i class="fa-regular fa-image text-lg" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                            <div id="snackPhotoPreviewContainer" class="flex gap-2"></div>
-                        </div>
+                    </div>
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
+                        <div id="snackPhotoPreviewContainer" class="flex gap-2 min-w-0"></div>
+                    </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
-                    </div>
-                    <div class="pt-3 pb-[3px] -mx-4 bg-orange-50/50 border-b border-orange-100 rounded-none mb-2">
-                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">어디서</span>
-                            <div id="snackPlaceTypeChips" class="flex flex-wrap gap-1"></div>
-                        </div>
-                        <div class="mt-2 px-4 min-w-0">
-                            <div class="relative">
-                                <button type="button" id="snackKakaoSearchBtn" onclick="window.openKakaoPlaceSearch('snack')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="장소 검색">
-                                    <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
+                </div>
+                <div id="entryFormFieldStack">
+                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
+                    <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off">
+                        <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                            <div class="entry-axis-label-group shrink-0">
+                                <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                    <i class="fa-solid fa-location-dot entry-axis-icon" aria-hidden="true"></i>
+                                    <span id="entryWhereLabel">어디서</span>
+                                </span>
+                                <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
+                                    <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                 </button>
-                                <input id="snackPlaceInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="snackPlaceSuggestions" class="entry-subtag-suggestions" data-input-id="snackPlaceInput"></div>
-                        </div>
-                    </div>
-                    <div class="space-y-2">
-                    <div class="pt-3 pb-[3px] -mx-4 bg-slate-50 border-b border-slate-200 rounded-none">
-                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">무엇을</span>
-                            <div id="snackTypeChips" class="flex flex-wrap gap-1"></div>
-                        </div>
-                        <div class="mt-2 px-4 min-w-0">
-                            <input id="snackDetailInput" type="text" placeholder="무엇을 드셨나요?" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackSuggestions" class="entry-subtag-suggestions"></div>
-                        </div>
-                    </div>
-                    <div class="pt-3 pb-[3px] -mx-4 bg-blue-50/50 border-b border-blue-100 rounded-none mb-2">
-                        <div class="pl-4 pr-4 flex flex-col gap-1.5">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase text-left leading-tight ml-[5px]">누구와</span>
-                            <div id="snackWithChips" class="flex flex-wrap gap-1"></div>
-                        </div>
-                        <div class="mt-2 px-4 min-w-0">
-                            <input id="snackWithWhomInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                            <div id="snackPeopleSuggestions" class="entry-subtag-suggestions" data-input-id="snackWithWhomInput"></div>
-                        </div>
-                    </div>
-                    </div>
-                    <div id="snackReviewSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-3 items-start mb-2">
-                        <div id="snackRatingSection" class="min-w-0">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">만족도</span>
-                                <label class="entry-gauge-switch" title="만족도 기록·통계 반영">
-                                    <input type="checkbox" id="entryGaugeRatingToggleSnack" class="peer sr-only" role="switch" aria-label="만족도 기록 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <div id="snackRatingGaugeDialWrap" class="relative mt-2 rounded-xl">
-                                <div class="mealog-wheel entry-gauge-dial" role="group" aria-label="간식 만족도 선택">
-                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                    <div id="snackRatingWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 만족도">
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5">
-                                            <span class="mealog-wheel__stars" aria-hidden="true"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></span>
-                                        </div>
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    </div>
-                                </div>
-                                <div id="ratingGaugeOffLayerSnack" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92 px-2" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
+                            <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                <div class="relative min-w-0">
+                                    <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
+                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                    </button>
+                                    <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                                 </div>
                             </div>
                         </div>
-                        <div id="snackSatietySection" class="min-w-0">
-                            <div class="flex items-center justify-between gap-2">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">포만감</span>
-                                <label class="entry-gauge-switch" title="포만감 기록·통계 반영">
-                                    <input type="checkbox" id="entryGaugeSatietyToggleSnack" class="peer sr-only" role="switch" aria-label="포만감 기록 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <div id="snackSatietyGaugeDialWrap" class="relative mt-2 rounded-xl">
-                                <div class="mealog-wheel entry-gauge-dial mealog-wheel--satiety" role="group" aria-label="간식 포만감 선택">
-                                    <div class="mealog-wheel__indicator" aria-hidden="true"></div>
-                                    <div id="snackSatietyWheel" class="mealog-wheel__scroller" role="listbox" aria-label="간식 포만감">
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="1" data-icon="fa-cookie-bite" data-color="#5C6BC0">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-cookie-bite"></i><span class="mealog-wheel__satiety-label">한입만</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="2" data-icon="fa-face-smile-wink" data-color="#26C6DA">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile-wink"></i><span class="mealog-wheel__satiety-label">가볍게</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="3" data-icon="fa-face-smile" data-color="#66BB6A">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-smile"></i><span class="mealog-wheel__satiety-label">적당히</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="4" data-icon="fa-face-grin" data-color="#FFC107">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin"></i><span class="mealog-wheel__satiety-label">든든하게</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__item" role="option" aria-selected="false" data-val="5" data-icon="fa-face-grin-beam-sweat" data-color="#F06292">
-                                            <span class="mealog-wheel__satiety-cell"><i class="fa-solid fa-face-grin-beam-sweat"></i><span class="mealog-wheel__satiety-label">과식</span></span>
-                                        </div>
-                                        <div class="mealog-wheel__pad" aria-hidden="true"></div>
-                                    </div>
-                                </div>
-                                <div id="satietyGaugeOffLayerSnack" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100/92 px-2" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-sm font-bold text-slate-500">오프상태입니다</span>
-                                </div>
-                            </div>
-                        </div>
+                        <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                        <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWhereInput"></div>
                     </div>
-                    <div id="entryMealTimeSectionSnack" class="py-2 -mx-4 px-4 border-y border-slate-200/90 rounded-none mb-2">
-                        <div class="flex items-center justify-between gap-3 min-w-0">
-                            <div class="flex items-center shrink-0">
-                                <span class="text-sm font-extrabold text-slate-600 uppercase">시간</span>
-                                <label class="entry-gauge-switch ml-[3ch] shrink-0" title="카드 태그·정렬에 기록 시간 반영">
-                                    <input type="checkbox" id="entryMealClockToggleSnack" class="peer sr-only" role="switch" aria-label="간식 기록 시간 사용">
-                                    <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                    <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                                </label>
-                            </div>
-                            <div id="entryMealClockInputWrapSnack" class="flex min-w-0 flex-1 justify-end">
-                                <div class="flex max-w-[min(100%,22rem)] min-w-[12rem] flex-col items-end gap-1.5">
-                                    <div class="meal-clock-row flex min-w-0 max-w-full flex-wrap items-center justify-end pl-6">
-                                        <div id="entryMealClockCompoundSnack" class="entry-meal-clock-compound flex min-h-[42px] min-w-[12rem] w-full max-w-[min(100%,22rem)] overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
-                                            <label for="entryMealAmpmSnack" class="sr-only">오전 또는 오후</label>
-                                            <select id="entryMealAmpmSnack"
-                                                class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                                                <option value="am">오전</option>
-                                                <option value="pm">오후</option>
-                                            </select>
-                                            <div class="relative min-w-0 flex-1 sm:max-w-[9rem]">
-                                                <div id="entryMealTimeOffDisplaySnack"
-                                                    class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 pr-10 text-sm font-bold tabular-nums text-slate-400"
-                                                    aria-hidden="true">-- : -- : --</div>
-                                                <input type="text" id="entryMealTimeInputSnack"
-                                                    maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                                                    placeholder="시:분"
-                                                    class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-10 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
-                                                <input type="time" step="60" id="entryMealTimeBridgeSnack"
-                                                    tabindex="-1" aria-hidden="true"
-                                                    class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
-                                                <button type="button" id="entryMealTimePickBtnSnack"
-                                                    class="pointer-events-none absolute right-1 top-1/2 z-[3] flex h-[2.125rem] w-[2.125rem] -translate-y-1/2 shrink-0 items-center justify-center rounded-lg text-slate-500 opacity-0 hover:bg-slate-100 hover:text-slate-700"
-                                                    aria-label="시계에서 시간 선택"><i class="fa-regular fa-clock text-[15px]"></i></button>
+                    <div id="optionalFields">
+                        <div id="entryWhatSection" class="entry-form-field-section entry-field-quick-off">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-utensils entry-axis-icon" aria-hidden="true"></i>
+                                        <span>무엇을</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="what" aria-expanded="false" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
+                                        <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <div id="mealWhatInputArea" class="w-full min-w-0">
+                                        <div id="deliveryVendorSection" class="hidden">
+                                            <div class="relative w-full">
+                                                <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
+                                                    <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
+                                                </button>
+                                                <input id="deliveryVendorInput" type="text" placeholder="어느 식당 음식인가요?" class="w-full py-[0.6rem] pl-[46px] pr-3 rounded-2xl outline-none text-sm font-bold border-0 bg-transparent focus:ring-1 focus:ring-slate-200 focus:ring-offset-0 transition-all">
                                             </div>
                                         </div>
+                                        <div id="menuDetailInputRow" class="w-full">
+                                            <input id="entryWhatInput" type="text" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                            <div id="entryWhatSuggestions" class="entry-form-field-subtags entry-subtag-suggestions"></div>
+                        </div>
+                        <div id="entryWithSection" class="entry-form-field-section hidden">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-user-group entry-axis-icon" aria-hidden="true"></i>
+                                        <span>누구와</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
+                                        <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
+                                </div>
+                            </div>
+                            <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                            <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWithInput"></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="entryMealExtras" class="entry-sheet-zone entry-sheet-zone--metrics">
+                    <div id="entryDetailMealFields">
+                        <div id="reviewSection" class="hidden">
+                        <div id="ratingSection" class="entry-form-field-section hidden">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <span>만족도</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <div id="ratingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
+                                        <div id="starContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="만족도 선택">
+                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i class="fa-solid fa-star"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <span id="ratingDialValue" class="hidden">3/5</span>
+                        </div>
+                        <div id="satietySection" class="entry-form-field-section hidden">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <span>포만감</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <div id="satietyGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
+                                        <div id="satietyContainer" class="entry-gauge-satiety flex w-full items-stretch" role="group" aria-label="포만감 선택"></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="mb-2 -mx-4">
-                        <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
-                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="5" class="w-full py-[0.8rem] px-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[128px] appearance-none"></textarea>
+
+                    <div id="entryMealTimeSectionMain" class="entry-form-field-section hidden">
+                        <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                                <i class="fa-regular fa-clock entry-axis-icon" aria-hidden="true"></i>
+                                <span>시간</span>
+                            </span>
+                            <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                <div id="entryMealClockCompoundMain" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                    <button type="button" id="entryMealTimeSourceBtnMain"
+                                        class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
+                                        aria-label="시간 선택 방식" aria-haspopup="dialog">
+                                        <span id="entryMealTimeSourceLabelMain" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
+                                        <i class="fa-solid fa-chevron-down shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                    </button>
+                                    <label for="entryMealAmpmMain" class="sr-only">오전 또는 오후</label>
+                                    <select id="entryMealAmpmMain"
+                                        class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                        <option value="am">오전</option>
+                                        <option value="pm">오후</option>
+                                    </select>
+                                    <div class="relative min-w-0 flex-1">
+                                        <div id="entryMealTimeOffDisplayMain"
+                                            class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 text-sm font-bold tabular-nums text-slate-400"
+                                            aria-hidden="true">-- : -- : --</div>
+                                        <input type="text" id="entryMealTimeInputMain"
+                                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                            placeholder="시:분"
+                                            class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                        <input type="time" step="60" id="entryMealTimeBridgeMain"
+                                            tabindex="-1" aria-hidden="true"
+                                            class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+
+                <div id="entrySnackExtras" class="entry-sheet-zone entry-sheet-zone--metrics hidden">
+                    <div id="entryDetailSnackFields">
+                        <div id="snackReviewSection" class="hidden">
+                        <div id="snackRatingSection" class="entry-form-field-section hidden">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <span>만족도</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <div id="snackRatingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
+                                        <div id="snackStarContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="간식 만족도 선택">
+                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i class="fa-solid fa-star"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="snackSatietySection" class="entry-form-field-section hidden">
+                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                                <div class="entry-axis-label-group shrink-0">
+                                    <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <span>포만감</span>
+                                    </span>
+                                    <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
+                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    </button>
+                                </div>
+                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                    <div id="snackSatietyGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
+                                        <div id="snackSatietyContainer" class="entry-gauge-satiety flex w-full items-stretch" role="group" aria-label="간식 포만감 선택"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="entryMealTimeSectionSnack" class="entry-form-field-section hidden">
+                        <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                                <i class="fa-regular fa-clock entry-axis-icon" aria-hidden="true"></i>
+                                <span>시간</span>
+                            </span>
+                            <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                                <div id="entryMealClockCompoundSnack" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                    <button type="button" id="entryMealTimeSourceBtnSnack"
+                                        class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
+                                        aria-label="시간 선택 방식" aria-haspopup="dialog">
+                                        <span id="entryMealTimeSourceLabelSnack" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
+                                        <i class="fa-solid fa-chevron-down shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                    </button>
+                                    <label for="entryMealAmpmSnack" class="sr-only">오전 또는 오후</label>
+                                    <select id="entryMealAmpmSnack"
+                                        class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                        <option value="am">오전</option>
+                                        <option value="pm">오후</option>
+                                    </select>
+                                    <div class="relative min-w-0 flex-1">
+                                        <div id="entryMealTimeOffDisplaySnack"
+                                            class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 text-sm font-bold tabular-nums text-slate-400"
+                                            aria-hidden="true">-- : -- : --</div>
+                                        <input type="text" id="entryMealTimeInputSnack"
+                                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                            placeholder="시:분"
+                                            class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm font-bold tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                        <input type="time" step="60" id="entryMealTimeBridgeSnack"
+                                            tabindex="-1" aria-hidden="true"
+                                            class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+                </div>
+
+                <div id="entryCommentDetailFooter" class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo -mx-0">
+                    <div id="entryCommentSectionMeal" class="entry-comment-section">
+                        <span class="entry-comment-heading entry-comment-heading-with-icon">
+                            <i class="fa-regular fa-comment-dots entry-comment-icon" aria-hidden="true"></i>
+                            <span>메모</span>
+                        </span>
+                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
+                    </div>
+                    <div id="entryCommentSectionSnack" class="entry-comment-section hidden">
+                        <span class="entry-comment-heading entry-comment-heading-with-icon">
+                            <i class="fa-regular fa-comment-dots entry-comment-icon" aria-hidden="true"></i>
+                            <span>메모</span>
+                        </span>
+                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
+                    </div>
+                    <div id="entryDetailRecordPanel" class="entry-detail-record-panel">
+                        <div class="entry-detail-record-header-static">
+                            <span class="entry-detail-record-title">상세 보기</span>
+                            <div id="entryDetailRecordChips" class="entry-detail-record-chips" role="group" aria-label="상세기록 항목">
+                            <button type="button" data-field="with" class="entry-detail-record-chip" aria-pressed="false">
+                                <i class="fa-solid fa-user-group" aria-hidden="true"></i>
+                                <span>누구와</span>
+                            </button>
+                            <button type="button" data-field="rating" class="entry-detail-record-chip" aria-pressed="false">
+                                <i class="fa-regular fa-star" aria-hidden="true"></i>
+                                <span>만족도</span>
+                            </button>
+                            <button type="button" data-field="satiety" class="entry-detail-record-chip" aria-pressed="false">
+                                <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+                                <span>포만감</span>
+                            </button>
+                            <button type="button" data-field="time" class="entry-detail-record-chip" aria-pressed="false">
+                                <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                                <span>시간</span>
+                            </button>
+                        </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div id="entryModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
-                <div class="flex items-stretch divide-x divide-slate-200">
-                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
+            <div id="entryModalActions" class="entry-modal-actions shrink-0 overflow-hidden">
+                <div class="flex items-stretch">
+                    <button id="btnDelete" onclick="window.deleteEntry()" class="entry-action-btn entry-action-btn--delete hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5">
                         <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
                         <span class="text-xs font-bold leading-tight">삭제</span>
                     </button>
-                    <button type="button" id="btnSave" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
+                    <button type="button" id="btnSave" class="entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5">
                         <span>기록 완료</span>
                     </button>
-                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
+                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
                         <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
+                </div>
+            </div>
+            <div id="entryHeaderDatePicker" class="entry-header-date-picker hidden" role="dialog" aria-modal="true" aria-label="날짜 선택">
+                <button type="button" class="entry-header-date-picker__backdrop" aria-label="닫기"></button>
+                <div class="entry-header-date-picker__panel">
+                    <div class="entry-header-date-picker__nav">
+                        <button type="button" id="entryHeaderDatePickerPrev" class="entry-header-date-picker__nav-btn" aria-label="이전 달">
+                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <span id="entryHeaderDatePickerMonthLabel" class="entry-header-date-picker__month"></span>
+                        <button type="button" id="entryHeaderDatePickerNext" class="entry-header-date-picker__nav-btn" aria-label="다음 달">
+                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div class="entry-header-date-picker__weekdays" aria-hidden="true">
+                        <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+                    </div>
+                    <div id="entryHeaderDatePickerGrid" class="entry-header-date-picker__grid"></div>
                 </div>
             </div>
         </div>
@@ -2462,6 +2633,39 @@
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI 식단분석 리포트 (밀로그 날짜별) -->
+    <div id="dietReportModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-center justify-center py-4 px-[10px]" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
+            <div class="relative shrink-0 px-4 pt-4 pb-2.5 border-b border-slate-100">
+                <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-[4.5rem]">AI 식단분석</h2>
+                <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-[4.5rem] leading-snug"></p>
+                <div class="absolute top-4 right-3 flex items-center gap-0.5">
+                    <button type="button" id="dietReportSnsShareBtn" class="hidden flex items-center justify-center w-9 h-9 rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-emerald-700 hover:border-slate-300 transition-colors disabled:opacity-50 shadow-sm" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
+                        <i class="fa-solid fa-share-nodes text-[1.05rem]" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" onclick="window.closeDietReportModal()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
+                        <i class="fa-solid fa-xmark text-base"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-4 py-3"></div>
+            <div class="shrink-0 border-t border-slate-200 bg-white flex overflow-hidden rounded-b-2xl min-h-[3.25rem]">
+                <button type="button" onclick="window.closeDietReportModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 transition-colors">
+                    <span class="text-sm font-bold text-slate-700">닫기</span>
+                    <span class="text-[11px] text-slate-500 font-medium">이전 화면으로</span>
+                </button>
+                <button type="button" id="dietReportRegenerateBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors disabled:opacity-60 min-w-0">
+                    <span class="diet-report-btn-main text-sm font-bold">다시 분석</span>
+                    <span class="text-[11px] text-slate-500 font-medium">새로 생성</span>
+                </button>
+                <button type="button" id="dietReportShareBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-60 min-w-0">
+                    <span class="diet-report-btn-main text-sm font-bold">모먼트 공유</span>
+                    <span class="diet-report-btn-sub text-[11px] text-white/80 font-medium">피드에 공유</span>
+                </button>
             </div>
         </div>
     </div>
@@ -2631,6 +2835,9 @@
                     </button>
                     <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
                         <i class="fa-solid fa-rotate-right"></i> 회전
+                    </button>
+                    <button type="button" id="photoEditTimestampBtn" onclick="window.addPhotoEditTimestamp()" class="hidden flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
+                        <i class="fa-regular fa-clock"></i> 시간
                     </button>
                 </div>
             </div>

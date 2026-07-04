@@ -53,12 +53,12 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, updateTimelineShareIndicators, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, setSatiety, selectTag,
+    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     fillProfileActivityStats,
@@ -72,6 +72,7 @@ import {
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
     openDailyCommentModal, closeDailyCommentModal
 } from './modals.js';
+import { openQuickEntryModal } from './modals/entry-quick-open.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
 import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
@@ -85,6 +86,7 @@ import { registerEventListenerManager } from './main/event-listener-manager.js';
 import { registerMomentSyncDevTools } from './main/moment-sync-dev.js';
 
 import { registerMainPostInteractions } from './main/post-interactions-daily.js';
+import './modals/diet-report.js';
 import { registerMainFeedOptionsReport } from './main/feed-options-report.js';
 import { registerMainBoardHandlers } from './main/board-handlers.js';
 registerMainNetworkListeners();
@@ -272,6 +274,8 @@ window.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.Mealog.handleSetupPhotoUpload = handleSetupPhotoUpload;
 window.openModal = openModal;
 window.Mealog.openModal = openModal;
+window.openQuickEntryModal = openQuickEntryModal;
+window.Mealog.openQuickEntryModal = openQuickEntryModal;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
 window.openDailyJournalModal = openDailyJournalModal;
@@ -314,8 +318,12 @@ window.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
 window.Mealog.retryMealEntryDeleteSync = retryMealEntryDeleteSync;
 window.setRating = setRating;
 window.Mealog.setRating = setRating;
+window.resetRating = resetRating;
+window.Mealog.resetRating = resetRating;
 window.setSatiety = setSatiety;
 window.Mealog.setSatiety = setSatiety;
+window.resetSatiety = resetSatiety;
+window.Mealog.resetSatiety = resetSatiety;
 window.selectTag = selectTag;
 window.Mealog.selectTag = selectTag;
 window.handleMultipleImages = handleMultipleImages;
@@ -438,6 +446,7 @@ window.setViewMode = (m) => {
     appState.viewMode = m;
     document.getElementById('btn-view-list').className = `view-tab ${m === 'list' ? 'active' : 'inactive'}`;
     document.getElementById('btn-view-page').className = `view-tab ${m === 'page' ? 'active' : 'inactive'}`;
+    document.getElementById('timelineView')?.classList.toggle('timeline-view-mode-page', m === 'page');
     if (m === 'list') {
         // 오늘 날짜로 설정
         const today = new Date();
@@ -598,6 +607,7 @@ window.toggleSearch = () => {
         window.toggleGalleryTracePanel();
         return;
     }
+    if (appState.currentTab !== 'timeline') return;
     const panel = document.getElementById('timelineSearchPanel');
     if (!panel) return;
     if (panel.classList.contains('expanded')) {
@@ -647,11 +657,9 @@ window.updateGalleryTraceFilterBarUI = () => {
         if (!btn) return;
         const icon = btn.querySelector('i');
         const isActive = f === trace;
-        btn.classList.toggle('bg-slate-100', isActive);
-        btn.classList.toggle('text-slate-700', isActive && trace !== 'like');
-        btn.classList.remove('text-red-500');
+        btn.classList.toggle('gallery-trace-btn--active', isActive);
+        btn.classList.remove('bg-slate-100', 'text-slate-700', 'text-red-500');
         if (trace === 'like') {
-            if (isActive) { btn.classList.add('text-red-500'); }
             if (icon) {
                 icon.classList.remove('fa-regular', 'fa-solid', 'fa-heart');
                 icon.classList.add(isActive ? 'fa-solid' : 'fa-regular', 'fa-heart');
@@ -1280,13 +1288,7 @@ initAuth(async (user) => {
                 // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
                 // 로그인 직후 자동 저장은 하지 않습니다. (중복 저장 방지)
         
-        // 중복 기록 자동 정리 (한 번만 실행)
-        if (!window._duplicateCleanupDone && window.mealHistory && window.mealHistory.length > 0) {
-            window._duplicateCleanupDone = true;
-            setTimeout(async () => {
-                await dbOps.removeDuplicateMeals();
-            }, 2000);
-        }
+        // 중복 기록 자동 정리 — 본식 다건 허용으로 비활성화 (removeDuplicateMeals는 서버에서 2건째 본식 삭제함)
         
         // ✅ 게스트(익명) 모드: meals/settings/stats 리스너 없음(기록·설정 제한).
         // 모먼트 피드는 탭 진입 시 loadSharedPhotosPage, 타임라인 공유 표시는 loadMyShares 등 getDocs로 로드.
@@ -1347,7 +1349,7 @@ initAuth(async (user) => {
                     // 약관 모달은 auth-flow.js에서만 관리하므로 여기서는 닫지 않음
                     // onSettingsUpdate에서 약관 모달을 닫으면 타이밍 이슈로 인해 모달이 잠깐 표시되었다가 사라질 수 있음
                 },
-                onDataUpdate: () => {
+                onDataUpdate: (update = { source: 'meals', mode: 'initial' }) => {
                     scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
@@ -1368,16 +1370,34 @@ initAuth(async (user) => {
                         window._recordsLoadHidePending = false;
                         hideLoading();
                     }
-                    // 저장 직후 800ms 동안은 재렌더 스킵 (낙관 반영 + jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게)
-                    if (window._timelineRerenderFreezeUntil && Date.now() < window._timelineRerenderFreezeUntil) return;
-                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
-                    dataUpdateTimer = setTimeout(() => {
-                        dataUpdateTimer = null;
-                        if (appState.currentTab !== 'timeline') return; // 대기 중 탭 바뀌면 스킵
-                        // 리스트 모드에서도 pageDate는 jumpToDate·미니캘 선택값을 유지 (매 동기화마다 오늘로 덮으면
-                        // 다른 날짜를 보는 중에 헤더/스크롤이 엇나감)
-                        // 데이터 동기화(낙관→서버) 시 전체 재렌더해도, 이미 타임라인 초기 스크롤을 마친 뒤면
-                        // hasScrolledToToday를 리셋하지 않고 스크롤 Y만 복원 → 오늘로 재스크롤·화면 흔들림 방지
+                    const mode = update?.mode || 'initial';
+                    // 저장 직후 freeze 구간: 전체/부분 재렌더 스킵 (metadataOnly·statsOnly는 경량 패치만 허용)
+                    const frozen =
+                        window._timelineRerenderFreezeUntil &&
+                        Date.now() < window._timelineRerenderFreezeUntil;
+                    if (frozen && mode !== 'metadataOnly' && mode !== 'statsOnly') return;
+
+                    const runTimelinePatch = () => {
+                        if (appState.currentTab !== 'timeline') return;
+                        if (mode === 'none') return;
+                        if (mode === 'metadataOnly') {
+                            updateTimelineMealEntryPendingIndicators();
+                            updateTimelineShareIndicators();
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        if (mode === 'statsOnly') {
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        if (mode === 'mealData') {
+                            const dates = Array.isArray(update.changedDates) ? update.changedDates : [];
+                            dates.forEach((d) => invalidateTimelineDateSection(d));
+                            renderTimeline();
+                            refreshMiniCalendarDots();
+                            return;
+                        }
+                        // initial: 첫 로드·fallback — 전체 재구성
                         const preserveTimelineScroll = window.hasScrolledToToday === true;
                         const savedScrollY = window.scrollY;
                         window.loadedDates = [];
@@ -1385,16 +1405,15 @@ initAuth(async (user) => {
                             window.hasScrolledToToday = false;
                         }
                         const container = document.getElementById('timelineContainer');
-                        if (container) container.innerHTML = "";
+                        if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
-                                    // 기본은 사용자가 보고 있던 scrollY 그대로 복원 (사용자 스크롤을 JS가 잡아당기지 않게)
-                                    // 단, jumpToDate 직후 잠깐만 "해당 날짜 섹션 앵커"를 허용 (저장 직후 1회 중앙 정렬 유지용)
                                     const allowAnchor =
-                                        window._timelineAnchorScrollUntil && Date.now() < window._timelineAnchorScrollUntil;
+                                        window._timelineAnchorScrollUntil &&
+                                        Date.now() < window._timelineAnchorScrollUntil;
                                     if (allowAnchor) {
                                         const pd = appState.pageDate;
                                         if (pd instanceof Date && !isNaN(+pd)) {
@@ -1410,7 +1429,10 @@ initAuth(async (user) => {
                                                 const totalOffset = headerHeight + trackerHeight;
                                                 const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                                                 const offsetPosition = elementTop - totalOffset - 16;
-                                                window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'instant' });
+                                                window.scrollTo({
+                                                    top: Math.max(0, offsetPosition),
+                                                    behavior: 'instant'
+                                                });
                                                 return;
                                             }
                                         }
@@ -1419,6 +1441,17 @@ initAuth(async (user) => {
                                 });
                             });
                         }
+                    };
+
+                    if (mode === 'metadataOnly' || mode === 'statsOnly') {
+                        runTimelinePatch();
+                        return;
+                    }
+
+                    if (dataUpdateTimer) clearTimeout(dataUpdateTimer);
+                    dataUpdateTimer = setTimeout(() => {
+                        dataUpdateTimer = null;
+                        runTimelinePatch();
                     }, 120);
                 },
                 settingsUnsubscribe: appState.settingsUnsubscribe,
@@ -1606,6 +1639,9 @@ initAuth(async (user) => {
 
         // 로그인 필요 시: 아이콘 페이드 → 가운데 mealog 표시 → 같은 자리에서 위로 이동 → 상단 레이아웃·버튼
         const showLoginScreen = () => {
+            if (typeof window.dismissMealogBootSplash === 'function') {
+                window.dismissMealogBootSplash();
+            }
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
             const apkSection = document.getElementById('apkDownloadSection');
@@ -1779,6 +1815,9 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe();
                 appState.statsUnsubscribe = null;
             }
+            if (typeof window.dismissMealogBootSplash === 'function') {
+                window.dismissMealogBootSplash();
+            }
             showLoading('샘플 타임라인을 불러오는 중...', { dimBackground: false, skipOnLoginScreen: false });
             void import('./demo-account.js').then(async (mod) => {
                 if (!(await mod.isDemoCredentialsConfigured())) {
@@ -1841,6 +1880,9 @@ document.addEventListener('visibilitychange', () => {
 // 아래로 스크롤 시 헤더·하단 네비 숨김, 위로 스크롤 시 다시 표시
 let _lastScrollY = 0;
 let _headerScrollRaf = null;
+// 헤더 숨김/표시 토글 직후 쿨다운: 토글로 문서 높이가 바뀌며 발생하는 합성 scroll 이벤트가
+// 곧바로 반대 토글을 일으켜 헤더가 덜덜 떨리는 현상(oscillation)을 방지한다.
+let _chromeToggleLockUntil = 0;
 window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
@@ -1850,6 +1892,12 @@ window.addEventListener('scroll', () => {
     const y = window.scrollY;
     if (_headerScrollRaf) cancelAnimationFrame(_headerScrollRaf);
     _headerScrollRaf = requestAnimationFrame(() => {
+        _headerScrollRaf = null;
+        // 쿨다운 중에는 기준값만 따라가고 토글하지 않음 (떨림 차단)
+        if (Date.now() < _chromeToggleLockUntil) {
+            _lastScrollY = y;
+            return;
+        }
         const delta = y - _lastScrollY;
         const scrollThreshold = 8;
         const topThreshold = 24;
@@ -1858,6 +1906,7 @@ window.addEventListener('scroll', () => {
         const atTop = y <= topThreshold;
         const isGallery = appState.currentTab === 'gallery';
         const galleryV2 = isGallery && document.getElementById('galleryContainer')?.classList?.contains('moment-feed-layout-v2');
+        const wasHidden = header.classList.contains('header-scroll-hidden');
         if (isScrollingDown && !atTop) {
             if (!isGallery || galleryV2) {
                 header.classList.add('header-scroll-hidden');
@@ -1869,8 +1918,11 @@ window.addEventListener('scroll', () => {
             if (tracker) tracker.classList.remove('tracker-header-hidden');
             document.body.classList.remove('bottom-nav-scroll-hidden');
         }
+        // 숨김 상태가 실제로 바뀐 경우에만 쿨다운 — 레이아웃 변동(문서 높이) 되먹임 차단
+        if (header.classList.contains('header-scroll-hidden') !== wasHidden) {
+            _chromeToggleLockUntil = Date.now() + 320;
+        }
         _lastScrollY = y;
-        _headerScrollRaf = null;
     });
 }, { passive: true });
 
@@ -2023,11 +2075,11 @@ function initDailySwipeGesture() {
     if (!tv) return;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
-    /** 일간 스와이프는 버튼/입력·기록 카드 위에서 시작하지 않음 — pointermove preventDefault가 클릭을 삼켜 공유·저장·기록 모달이 무반응이 되는 문제 방지 */
+    /** 일간 스와이프: 버튼·입력 등 실제 조작 요소만 제외(카드 본문은 스와이프 허용) */
     const isInteractiveSwipeTarget = (node) => {
         if (!node || node.nodeType !== 1) return false;
         return !!node.closest(
-            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily], .card, .snack-tag, [data-mealog-open-date], [data-mealog-open-daily]'
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap'
         );
     };
     const SWIPE_TRIGGER_PX = 28;

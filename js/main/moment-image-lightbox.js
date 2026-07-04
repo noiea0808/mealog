@@ -3,6 +3,7 @@
  * 다중 장: 좌우 스와이프로 전환 · 두 손가락 핀치로 확대/축소
  * post-group-html: .gallery-photo-scroll[data-moment-urls], 슬라이드 [data-moment-i]
  */
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 let _overlay = null;
 let _urls = [];
@@ -98,6 +99,7 @@ function resetLbTransform() {
 export function closeMomentImageLightbox() {
     if (!_overlay || _overlay.classList.contains('hidden')) return;
     _overlay.classList.add('hidden');
+    unlockBodyScroll();
     _overlay.setAttribute('aria-hidden', 'true');
     const img = _overlay.querySelector('[data-moment-lb-img]');
     if (img) {
@@ -334,6 +336,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
     }
 
     syncMomentLightboxUi();
+    lockBodyScroll();
     _overlay.classList.remove('hidden');
     _overlay.setAttribute('aria-hidden', 'false');
 

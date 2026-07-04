@@ -150,7 +150,7 @@ export function getDashboardData() {
 function updatePeriodUI(state) {
     const periodNavigator = document.getElementById('periodNavigator');
     const periodDisplay = document.getElementById('periodDisplay');
-    const tabBase = "insight-period-tab flex-1 text-xs font-bold transition-colors";
+    const tabBase = 'app-chrome-subtab insight-period-tab shrink-0';
 
     if (state.dashboardMode === '7d') {
         const startDate = state.recentWeekStartDate || (() => {
@@ -218,7 +218,9 @@ function updatePeriodUI(state) {
     ['7d', 'week', 'month', 'year', 'custom'].forEach(mode => {
         const btn = document.getElementById(`btn-dash-${mode}`);
         if (btn) {
-            btn.className = state.dashboardMode === mode ? `${tabBase} insight-period-tab--selected` : tabBase;
+            const isActive = state.dashboardMode === mode;
+            btn.className = isActive ? `${tabBase} active` : tabBase;
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
         }
     });
 }
@@ -450,6 +452,57 @@ export async function updateDashboard() {
             }
         })();
     }
+
+    scheduleDashboardInsightGradientSync();
+}
+
+let dashboardInsightGradientObs = null;
+
+/** 밀당 인사이트 chrome 높이에 맞춰 헤더·상태바 gradient 캔버스 높이 동기화 */
+export function syncDashboardInsightGradientHeight() {
+    const dashView = document.getElementById('dashboardView');
+    const chrome = dashView?.querySelector('.dashboard-insight-chrome');
+    const root = document.documentElement;
+    if (!dashView || dashView.classList.contains('hidden') || !chrome) {
+        root.style.removeProperty('--app-chrome-gradient-dashboard-sync-h');
+        return;
+    }
+    const chromeH = Math.ceil(chrome.getBoundingClientRect().height);
+    if (!chromeH) return;
+    const styles = getComputedStyle(root);
+    const safeTop = parseFloat(styles.getPropertyValue('--safe-top')) || 0;
+    const headerH = parseFloat(styles.getPropertyValue('--app-chrome-header-h')) || 56;
+    root.style.setProperty('--app-chrome-gradient-dashboard-sync-h', `${safeTop + headerH + chromeH}px`);
+}
+
+export function scheduleDashboardInsightGradientSync() {
+    if (appState.currentTab !== 'dashboard') return;
+    requestAnimationFrame(() => {
+        syncDashboardInsightGradientHeight();
+        requestAnimationFrame(syncDashboardInsightGradientHeight);
+    });
+}
+
+if (typeof window !== 'undefined') {
+    window.scheduleDashboardInsightGradientSync = scheduleDashboardInsightGradientSync;
+}
+
+function ensureDashboardInsightGradientObserver() {
+    if (dashboardInsightGradientObs) return;
+    const chrome = document.querySelector('#dashboardView .dashboard-insight-chrome');
+    const card = chrome?.querySelector('.dashboard-insight-card');
+    if (!chrome || typeof ResizeObserver === 'undefined') return;
+    dashboardInsightGradientObs = new ResizeObserver(() => scheduleDashboardInsightGradientSync());
+    dashboardInsightGradientObs.observe(chrome);
+    if (card) dashboardInsightGradientObs.observe(card);
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', ensureDashboardInsightGradientObserver, { once: true });
+    } else {
+        ensureDashboardInsightGradientObserver();
+    }
 }
 
 function updateAnalysisTypeUI() {
@@ -463,10 +516,10 @@ function updateAnalysisTypeUI() {
     const snackSection = document.getElementById('snackAnalysisSection');
     const healthSection = document.getElementById('healthAnalysisSection');
     
-    const activeBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-900 border-b-2 border-slate-900";
-    const inactiveBtnClass = "flex-1 py-2.5 text-sm font-semibold transition-all relative text-slate-400 hover:text-slate-600 border-b-2 border-transparent";
+    const activeBtnClass = 'dashboard-analysis-tab dashboard-analysis-tab--active';
+    const inactiveBtnClass = 'dashboard-analysis-tab';
     
-    const shouldHideBest = state.dashboardMode === '7d' || state.dashboardMode === 'custom';
+    const shouldHideBest = state.dashboardMode === 'custom';
     
     if (bestBtn && mainBtn && snackBtn) {
         if (shouldHideBest) {

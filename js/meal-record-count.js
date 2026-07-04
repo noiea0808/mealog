@@ -117,19 +117,50 @@ export function clearMealsWindowStatsReconcileMeta() {
     } catch (_) {
         /* ignore */
     }
+    invalidateMealHistoryCountCache();
+}
+
+/** mealHistory 일자별 건수 인덱스 (O(n) 1회). 미니캘 61일·연속일 루프에서 filter 반복 방지 */
+export function buildMealHistoryCountByDate() {
+    const byDate = Object.create(null);
+    const hist = typeof window !== 'undefined' ? window.mealHistory : null;
+    if (!Array.isArray(hist)) return byDate;
+    for (const m of hist) {
+        if (!m?.date || typeof m.date !== 'string') continue;
+        const d = m.date.trim().slice(0, 10);
+        if (!isValidYmd(d)) continue;
+        byDate[d] = (byDate[d] || 0) + 1;
+    }
+    return byDate;
+}
+
+let _mealHistoryCountIndex = null;
+let _mealHistoryCountCacheEpoch = 0;
+let _mealHistoryCountCacheBuiltEpoch = -1;
+
+/** mealHistory 변경·낙관 반영 후 호출 */
+export function invalidateMealHistoryCountCache() {
+    _mealHistoryCountCacheEpoch += 1;
+}
+
+function mealHistoryCountFromIndex(iso, historyByDate) {
+    if (historyByDate) return historyByDate[iso] || 0;
+    if (!_mealHistoryCountIndex || _mealHistoryCountCacheBuiltEpoch !== _mealHistoryCountCacheEpoch) {
+        _mealHistoryCountIndex = buildMealHistoryCountByDate();
+        _mealHistoryCountCacheBuiltEpoch = _mealHistoryCountCacheEpoch;
+    }
+    return _mealHistoryCountIndex[iso] || 0;
 }
 
 /**
  * @param {string} iso YYYY-MM-DD
+ * @param {Record<string, number>|null|undefined} [historyByDate] buildMealHistoryCountByDate() 결과(배치 조회 시)
  * @returns {number}
  */
-export function getRecordCountForIso(iso) {
+export function getRecordCountForIso(iso, historyByDate) {
     if (!isValidYmd(iso)) return 0;
     const statsCount = (window.dailyStats && window.dailyStats[iso]?.count) ?? 0;
-    const historyCount =
-        window.mealHistory && Array.isArray(window.mealHistory)
-            ? window.mealHistory.filter((m) => m && m.date === iso).length
-            : 0;
+    const historyCount = mealHistoryCountFromIndex(iso, historyByDate);
 
     if (historyCount > 0) {
         getStreakEmptyDayTrustSet()?.delete(iso);

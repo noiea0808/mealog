@@ -1,5 +1,5 @@
 /**
- * 관리자 > 모니터링 > AI 응답 (밀당 Gemini 분석 로그)
+ * 관리자 > AI > AI 응답 (밀당 Gemini 분석 로그)
  */
 import { db, appId } from '../firebase.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';

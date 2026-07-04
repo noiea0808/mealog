@@ -62,12 +62,14 @@ export const appState = {
     currentEditingDate: "",
     currentEditingSlotId: "",
     currentPhotos: [], // 미리보기용 원본 data URL(선택 직후) 또는 Storage URL; 업로드 시에만 압축
+    /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
+    currentPhotoMeta: [],
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
     wantsToShare: false, // 공유를 원하는지 여부
-    currentRating: 3,
-    currentSatiety: 3,
+    currentRating: null,
+    currentSatiety: null,
     /** 기록 모달: 만족도·포만감 게이지 사용 여부 (식사 슬롯 vs 간식 슬롯 각각) */
     entryGaugeRatingOnMain: false,
     entryGaugeRatingOnSnack: false,
@@ -76,6 +78,8 @@ export const appState = {
     /** 기록 모달: 식사/간식 각각 시간 항목 on */
     entryTimeOnMain: false,
     entryTimeOnSnack: false,
+    /** 기록 시트 통합: meal | snack (openModal에서 슬롯 기준 설정) */
+    entryFormMode: 'meal',
     /** 신규 기록 모달: 시간 자동 채우기 1회 제한용 */
     entryMealClockDidSeedModalOpenMain: false,
     entryMealClockDidSeedModalOpenSnack: false,
@@ -84,6 +88,9 @@ export const appState = {
     /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
     entryMealClockPendingExifHhmmMain: null,
     entryMealClockPendingExifHhmmSnack: null,
+    /** 기록 시간 입력 출처: 'now' | 'photo' | 'manual' | null */
+    entryMealClockSourceMain: null,
+    entryMealClockSourceSnack: null,
 
     /** 하루 기록 모달 */
     dailyJournalEditingDate: '',
@@ -105,7 +112,7 @@ export const appState = {
     selectedMonthForWeek: new Date().getMonth() + 1,
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
-    analysisType: 'best', // 'best', 'main', 'snack', 'health'
+    analysisType: 'main', // 'best', 'main', 'snack', 'health'
     
     // UI 상호작용
     currentDetailChart: null,

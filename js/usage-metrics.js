@@ -18,9 +18,12 @@ function localDateKeyYmd() {
 
 function getUsageMetricSourcePayload() {
     let capAppId = '';
+    let isNative = false;
     try {
         const cap = typeof window !== 'undefined' ? window.Capacitor : null;
+        // Capacitor 는 window.Capacitor.config 를 주입하지 않아 보통 비어 있음(폴백용으로만 유지)
         if (cap?.config?.appId) capAppId = String(cap.config.appId).trim();
+        if (cap && typeof cap.isNativePlatform === 'function') isNative = cap.isNativePlatform();
     } catch (_) {
         /* ignore */
     }
@@ -28,7 +31,10 @@ function getUsageMetricSourcePayload() {
         typeof window !== 'undefined' && window.location?.hostname
             ? String(window.location.hostname).toLowerCase()
             : '';
-    return { capAppId, webHost };
+    // 네이티브 번들 앱은 config.appId·호스트로 운영 판별이 불가하므로 빌드 확정 APP_ENV 를 함께 전송
+    const appEnv =
+        typeof window !== 'undefined' ? String(window.APP_ENV || '').toLowerCase() : '';
+    return { capAppId, webHost, appEnv, isNative };
 }
 
 async function prepareUsageMetricWrite() {

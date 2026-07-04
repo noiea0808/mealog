@@ -1,6 +1,8 @@
 @echo off
-REM Open main app page in Naver Whale (fallback: default browser)
+cd /d "%~dp0"
+call "%~dp0ensure-server.bat"
 
+REM Open main app page in Naver Whale (fallback: default browser)
 set "URL=http://localhost:8000/index.html"
 set "WHALE=%LOCALAPPDATA%\Naver\Naver Whale\Application\whale.exe"
 if not exist "%WHALE%" set "WHALE=C:\Program Files\Naver\Naver Whale\Application\whale.exe"

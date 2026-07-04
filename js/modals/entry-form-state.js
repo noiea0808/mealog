@@ -1,0 +1,184 @@
+/**
+ * 기록 시트 FormState — DOM 읽기·검증·Firestore 저장 필드 해석
+ */
+import { ENTRY_DOM, getEntryModeConfig } from './entry-form-config.js';
+
+/** @param {string} chipContainerId */
+export function getActiveChipLabel(chipContainerId) {
+    const root = document.getElementById(chipContainerId);
+    if (!root) return '';
+    const active = root.querySelector('button.chip.active');
+    return active ? active.innerText.trim() : '';
+}
+
+/** @param {string} containerId */
+export function collectActiveSubChipLabels(containerId) {
+    const root = document.getElementById(containerId);
+    if (!root) return [];
+    return [...root.querySelectorAll('button.sub-chip.active')].map((el) =>
+        el.textContent.replace(/\s*★\s*$/, '').trim()
+    ).filter(Boolean);
+}
+
+/** @typedef {{ mode: 'meal'|'snack', axis1Chip: string, placeInput: string, axis2Chip: string, whatInput: string, withChip: string, withInput: string, deliveryVendor: string }} EntryFormValues */
+
+/** @returns {EntryFormValues} */
+export function readEntryFormFromDom(mode) {
+    const d = ENTRY_DOM;
+    return {
+        mode,
+        axis1Chip: getActiveChipLabel(d.whereChips),
+        placeInput: (document.getElementById(d.whereInput)?.value || '').trim(),
+        axis2Chip: getActiveChipLabel(d.whatChips),
+        whatInput: (document.getElementById(d.whatInput)?.value || '').trim(),
+        withChip: getActiveChipLabel(d.withChips),
+        withInput: (document.getElementById(d.withInput)?.value || '').trim(),
+        deliveryVendor: (document.getElementById('deliveryVendorInput')?.value || '').trim(),
+    };
+}
+
+/**
+ * 입력 시트 전체(칩·텍스트·사진·만족도·포만감·시간·코멘트) 중 하나라도 있으면 저장 가능
+ * @returns {boolean} true = 저장 가능
+ */
+export function validateEntryForm(form, ctx = {}) {
+    if (ctx.isSkip) return true;
+
+    const d = ENTRY_DOM;
+    const isSnack = form.mode === 'snack';
+
+    const hasAxisFields =
+        Boolean((form.axis1Chip || '').trim()) ||
+        Boolean((form.axis2Chip || '').trim()) ||
+        Boolean((form.withChip || '').trim()) ||
+        Boolean((form.placeInput || '').trim()) ||
+        Boolean((form.whatInput || '').trim()) ||
+        Boolean((form.withInput || '').trim()) ||
+        Boolean((form.deliveryVendor || '').trim()) ||
+        collectActiveSubChipLabels(d.whereSuggestions).length > 0 ||
+        collectActiveSubChipLabels(d.whatSuggestions).length > 0 ||
+        collectActiveSubChipLabels(d.withSuggestions).length > 0 ||
+        Boolean((ctx.selectedSnackPlaceMainTag || '').trim());
+
+    const commentEl = document.getElementById(isSnack ? 'snackCommentInput' : 'generalCommentInput');
+    const hasComment = Boolean((commentEl?.value || '').trim());
+
+    const hasPhotos = Array.isArray(ctx.photos) && ctx.photos.some(Boolean);
+
+    const hasRating = ctx.ratingOn === true;
+    const hasSatiety = ctx.satietyOn === true;
+    const hasTime = ctx.timeOn === true && Boolean((ctx.mealClock24 || '').trim());
+
+    return hasAxisFields || hasComment || hasPhotos || hasRating || hasSatiety || hasTime;
+}
+
+/**
+ * @param {EntryFormValues} form
+ * @param {{ selectedSnackPlaceMainTag?: string|null }} ctx
+ */
+export function resolveEntrySaveFields(form, ctx = {}) {
+    const cfg = getEntryModeConfig(form.mode);
+    const d = ENTRY_DOM;
+    const isMeal = form.mode === 'meal';
+    const isSnack = form.mode === 'snack';
+
+    const mealType = isMeal ? form.axis1Chip : '';
+    const isSkip = isMeal && (mealType === 'Skip' || mealType === '건너뜀');
+
+    const hasMenuSub = collectActiveSubChipLabels(d.whatSuggestions).length > 0;
+    const hasPeopleSub = collectActiveSubChipLabels(d.withSuggestions).length > 0;
+    const hasRestaurantSub = isMeal ? collectActiveSubChipLabels(d.whereSuggestions).length > 0 : 0;
+    const hasSnackPlaceSub = isSnack ? collectActiveSubChipLabels(d.whereSuggestions).length > 0 : 0;
+
+    let mealTypeResolved = mealType;
+    if (isMeal && !isSkip && !(mealType || '').trim()) {
+        const hasAnyHowAxis =
+            (form.placeInput || '').trim() ||
+            hasRestaurantSub ||
+            (form.whatInput || '').trim() ||
+            hasMenuSub ||
+            (form.withInput || '').trim() ||
+            hasPeopleSub;
+        if (hasAnyHowAxis) mealTypeResolved = '기타';
+    }
+
+    let categoryResolved = isMeal ? form.axis2Chip : '';
+    if (isMeal && !isSkip && !(categoryResolved || '').trim() && ((form.whatInput || '').trim() || hasMenuSub)) {
+        categoryResolved = '기타';
+    }
+
+    let withWhomResolved = form.withChip;
+    if (!isSkip && !(withWhomResolved || '').trim() && (((form.withInput || '').trim()) || hasPeopleSub)) {
+        withWhomResolved = '기타';
+    }
+
+    let snackTypeResolved = isSnack ? form.axis2Chip : '';
+    if (isSnack) {
+        const hasSnackAnyAxis =
+            (form.whatInput || '').trim() ||
+            hasMenuSub ||
+            (form.withInput || '').trim() ||
+            hasPeopleSub ||
+            (form.placeInput || '').trim() ||
+            hasSnackPlaceSub;
+        if (!(snackTypeResolved || '').trim() && hasSnackAnyAxis) {
+            snackTypeResolved = '기타';
+        }
+    }
+
+    const selectedSnackPlaceMain = ctx.selectedSnackPlaceMainTag || null;
+    let snackPlaceMainResolved = '';
+    if (isSnack && !isSkip) {
+        const hasPlaceBody = (form.placeInput || '').trim() || hasSnackPlaceSub;
+        snackPlaceMainResolved = selectedSnackPlaceMain || (hasPlaceBody ? '기타' : '');
+    }
+
+    return {
+        isSkip,
+        mealTypeResolved,
+        categoryResolved,
+        withWhomResolved,
+        snackTypeResolved,
+        snackPlaceMainResolved,
+        hasRestaurantSub,
+        hasSnackPlaceSub,
+        hasMenuSub,
+        hasPeopleSub,
+        subTagPlaceParent: isMeal ? mealTypeResolved : snackPlaceMainResolved || form.placeInput,
+    };
+}
+
+/** 입력란이 비어 있을 때 활성 서브칩을 쉼표로 합침 */
+export function mergeEntrySubChipsIntoInputs() {
+    const d = ENTRY_DOM;
+    const merge = (containerId, inputId) => {
+        const input = document.getElementById(inputId);
+        if (!input || input.value.trim()) return;
+        const labels = collectActiveSubChipLabels(containerId);
+        if (labels.length) input.value = labels.join(', ');
+    };
+    merge(d.whatSuggestions, d.whatInput);
+    merge(d.withSuggestions, d.withInput);
+    merge(d.whereSuggestions, d.whereInput);
+}
+
+/** @param {EntryFormMode} mode */
+export function applyEntryModeLabels(mode) {
+    const cfg = getEntryModeConfig(mode);
+    const labelEl = document.getElementById(ENTRY_DOM.whereLabel);
+    const whatInput = document.getElementById(ENTRY_DOM.whatInput);
+    if (labelEl) labelEl.textContent = cfg.whereLabel;
+    if (whatInput) whatInput.placeholder = cfg.whatPlaceholder;
+}
+
+/** @param {EntryFormMode} mode */
+export function setEntryExtrasVisibility(mode) {
+    const isSnack = mode === 'snack';
+    const d = ENTRY_DOM;
+    document.getElementById(d.mealPhoto)?.classList.toggle('hidden', isSnack);
+    document.getElementById(d.mealExtras)?.classList.toggle('hidden', isSnack);
+    document.getElementById(d.snackPhoto)?.classList.toggle('hidden', !isSnack);
+    document.getElementById(d.snackExtras)?.classList.toggle('hidden', !isSnack);
+    document.getElementById('entryCommentSectionMeal')?.classList.toggle('hidden', isSnack);
+    document.getElementById('entryCommentSectionSnack')?.classList.toggle('hidden', !isSnack);
+}

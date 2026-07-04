@@ -13,6 +13,7 @@ import {
     isDailyJournalSharePhoto
 } from '../utils/daily-journal-data.js';
 import { DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';
+import { isDietReportInsightShare, DIET_REPORT_MOMENT_SLOT_LABEL } from '../utils/diet-report-share.js';
 import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 
 /** 모먼트 공유 → 타임라인 `#timelineMealPhotosOverlay` 휠 모드와 동일한 `row` 페이로드 */
@@ -33,8 +34,10 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     else if (isDailyShare) slotTitle = '일간';
     else if (isBestShare) slotTitle = '베스트';
     else if (isInsightShare) {
-        const r = String(photo.dateRangeText || '인사이트').replace(/\s+/g, ' ').trim();
-        slotTitle = r.length > 20 ? `${r.slice(0, 20)}…` : r || '인사이트';
+        slotTitle = isDietReportInsightShare(photo) ? DIET_REPORT_MOMENT_SLOT_LABEL : (() => {
+            const r = String(photo.dateRangeText || '인사이트').replace(/\s+/g, ' ').trim();
+            return r.length > 20 ? `${r.slice(0, 20)}…` : r || '인사이트';
+        })();
     } else if (photo.slotId) {
         const slot = SLOTS.find((s) => s.id === photo.slotId);
         slotTitle = slot ? slot.label : '—';
@@ -45,7 +48,10 @@ export function buildSharedMomentWheelOverlayRow(photoGroup, mealHistoryMap, ctx
     if (isDailyJournalShare) {
         menuLine = '';
     } else if (isBestShare || isDailyShare || isInsightShare) {
-        menuLine = isDailyShare ? '' : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
+        menuLine =
+            isBestShare || isDailyShare || isDietReportInsightShare(photo)
+                ? ''
+                : (photo.comment || '').replace(/<[^>]*>/g, '').trim() || '—';
     } else if (isSnack) {
         menuLine = String(photo.menuDetail || photo.snackType || '').trim() || '간식';
     } else {
@@ -284,8 +290,11 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                   const isBest = p.type === 'best',
                       isDaily = p.type === 'daily',
                       isInsight = p.type === 'insight';
+                  const isDietReportShare = isDietReportInsightShare(p);
                   const inner =
-                      (isBest || isDaily || isInsight)
+                      isBest || isDietReportShare
+                          ? `<div class="w-full relative overflow-hidden bg-white moment-feed-photo-slot--capture"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                          : (isDaily || isInsight)
                           ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                           : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                   return `
@@ -314,7 +323,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
     const v2PostCaptionAndFetch =
         layoutV2
             ? [
-                  caption && (isBestShare || isInsightShare)
+                  caption && isInsightShare
                       ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
                       : '',
                   !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost

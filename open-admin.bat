@@ -1,7 +1,8 @@
 @echo off
-REM Open admin page in incognito/private mode
+cd /d "%~dp0"
+call "%~dp0ensure-server.bat"
 
-REM Try Chrome incognito mode
+REM Open admin page in incognito/private mode
 start chrome --incognito http://localhost:8000/admin.html 2>nul
 if %errorlevel% neq 0 (
     REM If Chrome not found, try Edge InPrivate mode
