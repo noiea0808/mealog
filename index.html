@@ -2139,9 +2139,10 @@
 
     <!-- Entry Modal -->
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)]">
-            <div class="entry-modal-header shrink-0 border-b border-slate-200 px-4 py-2.5">
-                <div class="flex items-center gap-2 min-w-0">
+        <div class="entry-modal-panel w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
+            <div class="entry-modal-header shrink-0">
+                <div class="entry-modal-grabber" aria-hidden="true"></div>
+                <div class="flex items-center gap-2 min-w-0 px-4 py-2.5">
                     <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
                         <input type="date" id="entryHeaderDate" aria-label="날짜" class="entry-header-date shrink-0 min-w-0 flex-1 max-w-[9.5rem] py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-800 outline-none focus:border-emerald-400 transition-colors">
                         <select id="entryHeaderSlotSelect" aria-label="시간대" class="entry-header-slot shrink min-w-0 flex-[1.4] py-1.5 pl-2 pr-7 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-800 outline-none focus:border-emerald-400 transition-colors appearance-none"></select>
@@ -2153,8 +2154,8 @@
                     <button type="button" onclick="window.closeModal()" class="entry-header-close shrink-0 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기"><i class="fa-solid fa-xmark text-base"></i></button>
                 </div>
             </div>
-            <div id="modalScrollArea" class="flex-1 min-h-0 p-4 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
-                <div id="entryMealPhoto" class="entry-photo-section">
+            <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
+                <div id="entryMealPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media">
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0 mb-1.5">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
@@ -2182,7 +2183,7 @@
                     </div>
                         <input type="file" id="imageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
-                <div id="entrySnackPhoto" class="entry-photo-section hidden">
+                <div id="entrySnackPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media hidden">
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0 mb-1.5">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
@@ -2211,7 +2212,7 @@
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
                 <div id="entryFormFieldStack">
-                <div id="entryAxisFields">
+                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
                     <div id="entryWhereSection" class="entry-form-field-section">
                         <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1"></div>
                         <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
@@ -2292,7 +2293,7 @@
                         </div>
                     </div>
                 </div>
-                <div id="entryMealExtras">
+                <div id="entryMealExtras" class="entry-sheet-zone entry-sheet-zone--metrics">
                     <div id="entryDetailMealFields">
                         <div id="reviewSection" class="hidden">
                         <div id="ratingSection" class="entry-form-field-section hidden">
@@ -2369,7 +2370,7 @@
                     </div>
                 </div>
 
-                <div id="entrySnackExtras" class="hidden">
+                <div id="entrySnackExtras" class="entry-sheet-zone entry-sheet-zone--metrics hidden">
                     <div id="entryDetailSnackFields">
                         <div id="snackReviewSection" class="hidden">
                         <div id="snackRatingSection" class="entry-form-field-section hidden">
@@ -2445,18 +2446,18 @@
                 </div>
                 </div>
 
-                <div id="entryCommentDetailFooter" class="entry-comment-detail-footer -mx-4">
+                <div id="entryCommentDetailFooter" class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo -mx-0">
                     <div id="entryCommentSectionMeal" class="entry-comment-section">
-                        <span class="entry-comment-heading">COMMENT</span>
+                        <span class="entry-comment-heading">메모</span>
                         <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
                     </div>
                     <div id="entryCommentSectionSnack" class="entry-comment-section hidden">
-                        <span class="entry-comment-heading">COMMENT</span>
+                        <span class="entry-comment-heading">메모</span>
                         <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
                     </div>
                     <div id="entryDetailRecordPanel" class="entry-detail-record-panel">
                         <div class="entry-detail-record-header-static">
-                            <span class="entry-detail-record-title">상세기록</span>
+                            <span class="entry-detail-record-title">더 적기</span>
                             <div id="entryDetailRecordChips" class="entry-detail-record-chips" role="group" aria-label="상세기록 항목">
                             <button type="button" data-field="with" class="entry-detail-record-chip" aria-pressed="false">
                                 <i class="fa-solid fa-user-group" aria-hidden="true"></i>
@@ -2479,16 +2480,16 @@
                     </div>
                 </div>
             </div>
-            <div id="entryModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
-                <div class="flex items-stretch divide-x divide-slate-200">
-                    <button id="btnDelete" onclick="window.deleteEntry()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
+            <div id="entryModalActions" class="entry-modal-actions shrink-0 overflow-hidden">
+                <div class="flex items-stretch">
+                    <button id="btnDelete" onclick="window.deleteEntry()" class="entry-action-btn entry-action-btn--delete hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5">
                         <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
                         <span class="text-xs font-bold leading-tight">삭제</span>
                     </button>
-                    <button type="button" id="btnSave" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
+                    <button type="button" id="btnSave" class="entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5">
                         <span>기록 완료</span>
                     </button>
-                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
+                    <button type="button" id="sharePhotoIndicator" onclick="window.toggleSharePhoto()" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
                         <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
