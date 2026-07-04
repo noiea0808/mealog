@@ -75,6 +75,9 @@ export function renderPhotoPreviews() {
     setPhotoAddButtonsEnabled([cameraBtn, albumBtn], currentCount < maxPhotos, {
         disabledTitle: `사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다`
     });
+
+    const sectionId = isSnackMode ? 'entrySnackPhoto' : 'entryMealPhoto';
+    document.getElementById(sectionId)?.classList.toggle('entry-photo-section--has-photos', currentCount > 0);
 }
 
 // Comment 확장/축소 토글 함수

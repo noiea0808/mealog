@@ -2160,7 +2160,7 @@
             </div>
             <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
                 <div id="entryMealPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media">
-                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0 mb-1.5">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
                             <span>음식 사진</span>
@@ -2182,13 +2182,13 @@
                             </div>
                         </div>
                     </div>
-                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto pb-2">
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
                         <div id="photoPreviewContainer" class="flex gap-2 min-w-0"></div>
                     </div>
                         <input type="file" id="imageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
                 <div id="entrySnackPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media hidden">
-                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0 mb-1.5">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
                             <span>간식 사진</span>
@@ -2210,21 +2210,21 @@
                             </div>
                         </div>
                     </div>
-                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto pb-2">
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
                         <div id="snackPhotoPreviewContainer" class="flex gap-2 min-w-0"></div>
                     </div>
                         <input type="file" id="snackImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
                 <div id="entryFormFieldStack">
                 <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
-                    <div id="entryWhereSection" class="entry-form-field-section">
+                    <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off">
                         <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                             <div class="entry-axis-label-group shrink-0">
                                 <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
                                     <i class="fa-solid fa-location-dot entry-axis-icon" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
-                                <button type="button" class="entry-field-quick-toggle entry-field-quick-toggle--open shrink-0" data-entry-quick-field="where" aria-expanded="true" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
+                                <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
                                     <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                 </button>
                             </div>
@@ -2237,18 +2237,18 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1"></div>
+                        <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                         <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWhereInput"></div>
                     </div>
                     <div id="optionalFields">
-                        <div id="entryWhatSection" class="entry-form-field-section">
+                        <div id="entryWhatSection" class="entry-form-field-section entry-field-quick-off">
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
                                         <i class="fa-solid fa-utensils entry-axis-icon" aria-hidden="true"></i>
                                         <span>무엇을</span>
                                     </span>
-                                    <button type="button" class="entry-field-quick-toggle entry-field-quick-toggle--open shrink-0" data-entry-quick-field="what" aria-expanded="true" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
+                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="what" aria-expanded="false" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
                                         <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -2268,7 +2268,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1"></div>
+                            <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                             <div id="entryWhatSuggestions" class="entry-form-field-subtags entry-subtag-suggestions"></div>
                         </div>
                         <div id="entryWithSection" class="entry-form-field-section hidden">
@@ -2278,7 +2278,7 @@
                                         <i class="fa-solid fa-user-group entry-axis-icon" aria-hidden="true"></i>
                                         <span>누구와</span>
                                     </span>
-                                    <button type="button" class="entry-field-quick-toggle entry-field-quick-toggle--open shrink-0" data-entry-quick-field="with" aria-expanded="true" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
+                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
                                         <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -2286,7 +2286,7 @@
                                     <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                                 </div>
                             </div>
-                            <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1"></div>
+                            <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                             <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWithInput"></div>
                         </div>
                     </div>

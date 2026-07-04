@@ -8488,12 +8488,12 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #entryModal .entry-sheet-zone--media {
     background: var(--entry-surface);
-    padding: 0.75rem 1rem 0;
+    padding: 0;
     border-bottom: none;
 }
 #entryModal .entry-sheet-zone--core {
     background: var(--entry-surface);
-    padding: 0.125rem 0;
+    padding: 0;
 }
 #entryModal #entryAxisFields + #entryMealExtras,
 #entryModal #entryAxisFields + #entrySnackExtras {
@@ -8501,7 +8501,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #entryModal .entry-sheet-zone--metrics {
     background: var(--entry-surface-muted);
-    padding: 0.125rem 0;
+    padding: 0;
 }
 #entryModal .entry-sheet-zone--memo {
     background: #e2e8f0;
@@ -8736,8 +8736,22 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 /* ── 사진 (보조) ── */
 #entryModal .entry-photo-section {
     margin-bottom: 0;
-    padding-bottom: 0.625rem;
+    padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
+}
+#entryModal .entry-photo-header {
+    margin-bottom: 0;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header {
+    margin-bottom: 0.375rem;
+}
+#entryModal .entry-photo-preview-row {
+    padding: 0;
+    margin: 0;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    margin-top: 0.375rem;
+    padding-bottom: 0.5rem;
 }
 #entryModal .record-photo-add-btn {
     border: 1px solid var(--entry-border, #e2e8f0);
@@ -8756,10 +8770,6 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .record-photo-add-btn:active {
     background: #f8fafc;
     border-color: var(--entry-action-icon);
-}
-#entryModal .entry-photo-preview-row {
-    padding-left: 0;
-    margin-top: 0.375rem;
 }
 #entryModal .entry-photo-aspect-tools {
     opacity: 1;
@@ -8795,6 +8805,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     width: 100%;
     max-width: 100%;
     margin-left: 0;
+}
+#entryModal #ratingSection .entry-axis-input-row,
+#entryModal #snackRatingSection .entry-axis-input-row {
+    min-height: var(--entry-form-row-h);
 }
 #entryModal .entry-gauge-stars {
     width: 100%;
@@ -8913,7 +8927,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-top: none;
 }
 #entryModal .entry-comment-section {
-    padding: 0.875rem 1rem 0.625rem;
+    padding: 0.625rem 1rem;
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
     background: #e2e8f0;
@@ -8943,21 +8957,24 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-height: 4.5rem;
     box-sizing: border-box;
 }
-.entry-detail-record-panel {
+#entryModal .entry-detail-record-panel {
     margin: 0;
-    padding: 0.625rem 1rem 0.875rem;
+    padding: 0.625rem 1rem;
     border: 0;
+    border-bottom: 1px solid var(--entry-border-row);
     border-radius: 0;
-    background: transparent;
+    background: #e2e8f0;
+    box-sizing: border-box;
 }
-.entry-detail-record-header-static {
+#entryModal .entry-detail-record-header-static {
     display: grid;
     grid-template-columns: var(--entry-form-label-w, 7.25rem) minmax(0, 1fr);
     gap: 0;
     align-items: center;
     flex-wrap: nowrap;
+    min-height: var(--entry-form-row-h);
 }
-.entry-detail-record-title {
+#entryModal .entry-detail-record-title {
     font-size: 0.875rem;
     font-weight: 600;
     letter-spacing: 0;
@@ -8969,7 +8986,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     white-space: nowrap;
     grid-column: 1;
 }
-.entry-detail-record-chips {
+#entryModal .entry-detail-record-chips {
     display: flex;
     flex-wrap: nowrap;
     gap: 0.3rem;
@@ -8984,10 +9001,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     scrollbar-width: none;
     -ms-overflow-style: none;
 }
-.entry-detail-record-chips::-webkit-scrollbar {
+#entryModal .entry-detail-record-chips::-webkit-scrollbar {
     display: none;
 }
-.entry-detail-record-chip {
+#entryModal .entry-detail-record-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -9004,27 +9021,27 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     white-space: nowrap;
     transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
-.entry-detail-record-chip i {
+#entryModal .entry-detail-record-chip i {
     font-size: 0.75rem;
     opacity: 0.9;
 }
-.entry-detail-record-chip[data-field="with"] i {
+#entryModal .entry-detail-record-chip[data-field="with"] i {
     color: #6366f1;
 }
-.entry-detail-record-chip[data-field="rating"] i {
+#entryModal .entry-detail-record-chip[data-field="rating"] i {
     color: #f59e0b;
 }
-.entry-detail-record-chip[data-field="satiety"] i {
+#entryModal .entry-detail-record-chip[data-field="satiety"] i {
     color: #ec4899;
 }
-.entry-detail-record-chip[data-field="time"] i {
+#entryModal .entry-detail-record-chip[data-field="time"] i {
     color: #0ea5e9;
 }
-.entry-detail-record-chip:hover {
+#entryModal .entry-detail-record-chip:hover {
     border-color: var(--entry-border);
     color: var(--entry-text-secondary);
 }
-.entry-detail-record-chip--active {
+#entryModal .entry-detail-record-chip--active {
     border-color: #6ee7b7;
     background: var(--entry-accent-soft);
     color: var(--entry-accent-dark);

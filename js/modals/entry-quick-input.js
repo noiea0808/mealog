@@ -17,7 +17,7 @@ const FIELD_DOM = {
     with: { chips: ENTRY_DOM.withChips, section: ENTRY_DOM.withSection },
 };
 
-const DEFAULT_FIELD_PREFS = { where: true, what: true, with: true };
+const DEFAULT_FIELD_PREFS = { where: false, what: false, with: false };
 
 let quickInputSaveTimeout = null;
 
@@ -26,14 +26,20 @@ function getEntryFormModeKey() {
 }
 
 function migrateQuickInputPrefs(cur) {
+    if (!cur || typeof cur !== 'object') {
+        return {
+            meal: { ...DEFAULT_FIELD_PREFS },
+            snack: { ...DEFAULT_FIELD_PREFS },
+        };
+    }
     if (cur?.meal?.where !== undefined || cur?.snack?.where !== undefined) {
         return {
             meal: { ...DEFAULT_FIELD_PREFS, ...cur?.meal },
             snack: { ...DEFAULT_FIELD_PREFS, ...cur?.snack },
         };
     }
-    const mainOn = cur?.main !== false;
-    const snackOn = cur?.snack !== false;
+    const mainOn = cur?.main === true;
+    const snackOn = cur?.snack === true;
     return {
         meal: { where: mainOn, what: mainOn, with: mainOn },
         snack: { where: snackOn, what: snackOn, with: snackOn },
