@@ -1281,13 +1281,7 @@ initAuth(async (user) => {
                 // 중요: providerId와 email은 처음 로그인 시 약관 동의 또는 프로필 설정 시에만 설정됩니다.
                 // 로그인 직후 자동 저장은 하지 않습니다. (중복 저장 방지)
         
-        // 중복 기록 자동 정리 (한 번만 실행)
-        if (!window._duplicateCleanupDone && window.mealHistory && window.mealHistory.length > 0) {
-            window._duplicateCleanupDone = true;
-            setTimeout(async () => {
-                await dbOps.removeDuplicateMeals();
-            }, 2000);
-        }
+        // 중복 기록 자동 정리 — 본식 다건 허용으로 비활성화 (removeDuplicateMeals는 서버에서 2건째 본식 삭제함)
         
         // ✅ 게스트(익명) 모드: meals/settings/stats 리스너 없음(기록·설정 제한).
         // 모먼트 피드는 탭 진입 시 loadSharedPhotosPage, 타임라인 공유 표시는 loadMyShares 등 getDocs로 로드.

@@ -207,14 +207,15 @@ export function getProfileAvatarDisplay(profile) {
     return { type: 'default', value: '' };
 }
 
+import { getInputIdForSuggestionsContainer } from './modals/entry-form-config.js';
+
 export function getInputIdFromContainer(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;
-    if (containerId === 'restaurantSuggestions') return 'placeInput';
-    if (containerId === 'menuSuggestions') return 'menuDetailInput';
-    if (containerId === 'peopleSuggestions') return 'withWhomInput';
-    if (containerId === 'snackSuggestions') return 'snackDetailInput';
-    if (containerId === 'snackPlaceSuggestions') return 'snackPlaceInput';
+    const mapped = getInputIdForSuggestionsContainer(containerId);
+    if (mapped) return mapped;
+    const dataId = container.getAttribute('data-input-id');
+    if (dataId) return dataId;
     return null;
 }
 

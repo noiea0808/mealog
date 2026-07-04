@@ -15,8 +15,7 @@ function getRecordPhotoAspectRatioCss() {
 }
 
 export function renderPhotoPreviews() {
-    const snackFields = document.getElementById('snackFields');
-    const isSnackMode = snackFields && !snackFields.classList.contains('hidden');
+    const isSnackMode = appState.entryFormMode === 'snack';
     const containerId = isSnackMode ? 'snackPhotoPreviewContainer' : 'photoPreviewContainer';
     const countId = isSnackMode ? 'snackPhotoCount' : 'photoCount';
     const cameraBtnId = isSnackMode ? 'snackImageCameraBtn' : 'imageCameraBtn';

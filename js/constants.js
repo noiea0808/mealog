@@ -152,6 +152,16 @@ export const DEFAULT_USER_SETTINGS = {
         main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
         snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
     },
+    /** 기록 모달: 메인 태그 칩(빠른 입력) — 항목별·식사/간식별 기억 */
+    entryModalQuickInput: {
+        meal: { where: true, what: true, with: true },
+        snack: { where: true, what: true, with: true },
+    },
+    /** 기록 모달: 상세 기록(누구와·만족도·포만감·시간) 항목별 on/off */
+    entryModalDetailRecord: {
+        main: { with: false, rating: false, satiety: false, time: false },
+        snack: { with: false, rating: false, satiety: false, time: false },
+    },
     /** 날짜별 하루 소감 — 값: string(구) | { comment, photos[], photoAspectRatio } */
     dailyComments: {}
 };

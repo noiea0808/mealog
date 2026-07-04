@@ -78,6 +78,8 @@ export const appState = {
     /** 기록 모달: 식사/간식 각각 시간 항목 on */
     entryTimeOnMain: false,
     entryTimeOnSnack: false,
+    /** 기록 시트 통합: meal | snack (openModal에서 슬롯 기준 설정) */
+    entryFormMode: 'meal',
     /** 신규 기록 모달: 시간 자동 채우기 1회 제한용 */
     entryMealClockDidSeedModalOpenMain: false,
     entryMealClockDidSeedModalOpenSnack: false,

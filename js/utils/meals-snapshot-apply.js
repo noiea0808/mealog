@@ -318,13 +318,23 @@ export function applyMealsSnapshotPrimary(p) {
                         hasSyncOnlyChanges = true;
                     }
                 } else {
-                    const tempIdx = window.mealHistory.findIndex(
+                    let tempIdx = window.mealHistory.findIndex(
                         (m) =>
                             typeof m?.id === 'string' &&
                             m.id.startsWith('temp_') &&
                             m.date === docData.date &&
-                            m.slotId === docData.slotId
+                            m.slotId === docData.slotId &&
+                            mgrSync.hasOptimisticTemp(m.id)
                     );
+                    if (tempIdx < 0) {
+                        tempIdx = window.mealHistory.findIndex(
+                            (m) =>
+                                typeof m?.id === 'string' &&
+                                m.id.startsWith('temp_') &&
+                                m.date === docData.date &&
+                                m.slotId === docData.slotId
+                        );
+                    }
                     if (tempIdx >= 0) {
                         const tempRecord = window.mealHistory[tempIdx];
                         const tempPhotos = Array.isArray(tempRecord?.photos)

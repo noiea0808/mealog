@@ -5255,7 +5255,19 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     transform: translateX(11px);
 }
 
-/* 기록 모달: 게이지 끔 — 뒤쪽 휠 텍스트가 비활성 상태로 더 흐릿하게 보이도록 처리 */
+/* 기록 모달: 게이지 끔 — 뒤쪽 별·포만감 버튼이 비활성 상태로 더 흐릿하게 보이도록 처리 */
+.entry-gauge-dial-wrap--off .entry-gauge-stars,
+.entry-gauge-dial-wrap--off .entry-gauge-satiety {
+    opacity: 0.12;
+    filter: grayscale(1) blur(4px);
+    pointer-events: none;
+}
+.entry-gauge-dial-wrap--off .entry-gauge-stars *,
+.entry-gauge-dial-wrap--off .entry-gauge-satiety * {
+    opacity: 0.65;
+    filter: blur(1px);
+}
+/* (타임라인·모먼트 등 다른 화면용 mealog-wheel 유지) */
 .entry-gauge-dial-wrap--off .mealog-wheel__scroller {
     opacity: 0.08;
     filter: grayscale(1) blur(5px);
@@ -5284,6 +5296,44 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     position: relative;
     z-index: 1;
     text-shadow: 0 1px 1px rgb(255 255 255 / 0.85);
+}
+
+/* 기록 모달: 만족도·포만감 입력 밴드 (별 5개 너비에 맞춤) */
+.entry-gauge-band {
+    width: 12.25rem;
+    max-width: 100%;
+    margin-left: auto;
+}
+#ratingGaugeDialWrap,
+#snackRatingGaugeDialWrap {
+    min-height: 2.25rem;
+}
+#satietyGaugeDialWrap,
+#snackSatietyGaugeDialWrap {
+    min-height: 3.75rem;
+}
+.entry-gauge-stars {
+    gap: 0;
+}
+.entry-gauge-satiety {
+    gap: 0.125rem;
+}
+.entry-gauge-satiety-btn {
+    min-width: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+}
+#entryModal .entry-gauge-satiety-btn i {
+    font-size: 1.8rem;
+    line-height: 1;
+}
+#entryModal .entry-gauge-satiety-btn__label {
+    font-size: 0.75rem;
+}
+#entryModal .entry-gauge-satiety-btn--selected {
+    filter: none;
+    transform: none;
 }
 
 
@@ -8222,4 +8272,316 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .content-popup-counter-bar.popup-counter-empty .content-popup-counter-text { visibility: hidden; }
 .content-popup-footer-close:hover {
     color: #fff;
+}
+
+/* 기록 모달 — 헤더 (날짜·슬롯·식사/간식) */
+.entry-header-controls {
+    min-width: 0;
+}
+#entryModal .entry-header-date,
+#entryModal .entry-header-slot {
+    font-variant-numeric: tabular-nums;
+}
+#entryModal .entry-header-slot {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.4rem center;
+    background-size: 1rem;
+}
+.entry-form-mode-switch {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    padding: 2px;
+    min-width: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    background: #fff;
+}
+button.entry-form-mode-btn {
+    flex: 1 1 50%;
+    padding: 0.35rem 0.75rem;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+button.entry-form-mode-btn.entry-form-mode-btn--active {
+    background: rgb(16 185 129);
+    color: #fff;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+button.entry-form-mode-btn:not(.entry-form-mode-btn--active):hover {
+    color: #0f172a;
+}
+
+/* 기록 모달 — 항목별 빠른 입력 스위치 */
+#entryModal .entry-axis-label-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: var(--entry-form-label-w);
+}
+#entryModal .entry-field-quick-switch .entry-gauge-switch__track {
+    width: 1.625rem;
+    height: 0.9375rem;
+}
+#entryModal .entry-field-quick-switch .entry-gauge-switch__thumb {
+    width: 0.6875rem;
+    height: 0.6875rem;
+}
+#entryModal .entry-field-quick-switch input.peer:checked ~ .entry-gauge-switch__thumb {
+    transform: translateX(0.6875rem);
+}
+
+.entry-header-edit-btn:focus-visible {
+    outline: 2px solid rgba(16, 185, 129, 0.45);
+    outline-offset: 1px;
+}
+
+/* 기록 모달 — 슬롯 피커 */
+.entry-slot-picker-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.125rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #fff;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.entry-slot-picker-btn:hover {
+    border-color: #a7f3d0;
+    background: #f8fafc;
+}
+.entry-slot-picker-btn--active {
+    border-color: #10b981;
+    background: #ecfdf5;
+}
+.entry-slot-picker-btn__label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.25;
+}
+.entry-slot-picker-btn__type {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #94a3b8;
+    line-height: 1.2;
+}
+body.entry-slot-picker-open {
+    overflow: hidden;
+}
+
+/* 기록 모달 — 입력 항목 행 공통 (라벨·입력열 그리드 정렬) */
+#entryModal {
+    --entry-form-divider: 1px solid #e2e8f0;
+    --entry-form-label-w: 5.5rem;
+    --entry-form-row-gap: 0.75rem;
+    --entry-form-input-pl: 0.5rem;
+    --entry-form-content-offset: calc(var(--entry-form-label-w) + var(--entry-form-row-gap) + var(--entry-form-input-pl));
+}
+#entryFormFieldStack {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+#entryFormFieldStack > #entryAxisFields,
+#entryFormFieldStack > #entryMealExtras,
+#entryFormFieldStack > #entrySnackExtras {
+    margin: 0;
+}
+#entryModal .entry-form-field-section {
+    margin: 0 -1rem;
+    padding: 0.5rem 1rem;
+    border-bottom: var(--entry-form-divider);
+    background: #fff;
+}
+#entryModal #entryWhereSection.entry-form-field-section {
+    border-top: var(--entry-form-divider);
+}
+#entryModal .entry-form-field-section:last-child {
+    border-bottom: var(--entry-form-divider);
+}
+#entryModal .entry-form-field-chips:not(.hidden) {
+    margin-bottom: 0.375rem;
+}
+#entryModal #entryWhereChips:not(.hidden),
+#entryModal #entryWhatChips:not(.hidden),
+#entryModal #entryWithChips:not(.hidden) {
+    padding-left: var(--entry-form-content-offset);
+}
+#entryModal .entry-axis-label {
+    min-width: var(--entry-form-label-w);
+    line-height: 1.25;
+}
+#entryModal .entry-axis-label-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: var(--entry-form-label-w);
+}
+#entryModal .entry-axis-icon {
+    width: 1rem;
+    font-size: 0.8125rem;
+    line-height: 1;
+    text-align: center;
+    color: #64748b;
+    flex-shrink: 0;
+}
+#entryModal .entry-axis-input-row {
+    width: 100%;
+    gap: var(--entry-form-row-gap);
+    align-items: center;
+}
+#entryModal .entry-axis-input-col {
+    min-width: 0;
+    padding-left: var(--entry-form-input-pl);
+}
+#entryModal .entry-gauge-band {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+}
+#entryModal .entry-gauge-stars {
+    width: 100%;
+}
+#entryModal #satietySection .entry-axis-input-row,
+#entryModal #snackSatietySection .entry-axis-input-row {
+    align-items: center;
+}
+/* 사진 섹션 — 폼 그리드와 동일 정렬 */
+#entryModal .entry-photo-section {
+    margin-bottom: 0;
+    padding-bottom: 0.375rem;
+    border-bottom: var(--entry-form-divider);
+}
+#entryModal .entry-photo-preview-row {
+    padding-left: var(--entry-form-content-offset);
+}
+#entryModal #modalScrollArea > #entryCommentDetailFooter {
+    margin-top: 0 !important;
+}
+/* 빠른 입력 OFF(항목별): 텍스트·시간 행 높이 통일 (42px) */
+#entryModal {
+    --entry-form-row-h: 2.625rem;
+}
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryMealTimeSectionMain .entry-axis-input-row,
+#entryModal #entryMealTimeSectionSnack .entry-axis-input-row,
+#entryModal .entry-photo-header {
+    min-height: var(--entry-form-row-h);
+}
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col > input,
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col .relative > input,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-col > input,
+#entryModal #entryWhatSection.entry-field-quick-off #entryWhatInput,
+#entryModal #entryWhatSection.entry-field-quick-off #deliveryVendorInput,
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-col > input {
+    height: var(--entry-form-row-h);
+    min-height: var(--entry-form-row-h);
+    box-sizing: border-box;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+#entryModal .entry-comment-textarea {
+    box-sizing: border-box;
+}
+/* 기록 모달 — COMMENT + 상세기록 하단 (연회색, 좌우 끝까지) */
+#entryModal .entry-comment-detail-footer {
+    margin-top: 0;
+    padding: 0.625rem 0 0;
+    background: #f8fafc;
+    border-top: none;
+}
+#entryModal .entry-comment-section {
+    padding: 0.625rem 1rem;
+    margin: 0;
+}
+#entryModal .entry-comment-heading {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+    line-height: 1.25;
+    margin-bottom: 0.375rem;
+}
+#entryModal .entry-comment-textarea {
+    background: #fff;
+}
+/* 기록 모달 — 상세기록 */
+.entry-detail-record-panel {
+    margin: 0;
+    padding: 0.625rem 1rem;
+    border: 0;
+    border-top: var(--entry-form-divider);
+    border-radius: 0;
+    background: transparent;
+}
+.entry-detail-record-header-static {
+    display: flex;
+    align-items: center;
+    gap: var(--entry-form-row-gap, 0.75rem);
+    flex-wrap: nowrap;
+}
+.entry-detail-record-title {
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.25;
+    flex-shrink: 0;
+    min-width: var(--entry-form-label-w, 4.75rem);
+}
+.entry-detail-record-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0;
+    margin-left: 0;
+    padding-left: var(--entry-form-input-pl, 0.5rem);
+    justify-content: flex-start;
+    flex: 1;
+    min-width: 0;
+}
+.entry-detail-record-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.625rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    background: #fff;
+    color: #64748b;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.entry-detail-record-chip i {
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+.entry-detail-record-chip:hover {
+    border-color: #cbd5e1;
+    color: #334155;
+}
+.entry-detail-record-chip--active {
+    border-color: #a7f3d0;
+    background: #ecfdf5;
+    color: #047857;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
 }
