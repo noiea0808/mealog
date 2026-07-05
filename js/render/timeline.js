@@ -1496,7 +1496,33 @@ export function updateTimelineShareIndicators() {
     });
 }
 
-export function renderTimeline() {
+export function renderTimelineDateSections(dateStrs) {
+    if (!Array.isArray(dateStrs) || !dateStrs.length) return;
+    const valid = dateStrs.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
+    if (!valid.length) return;
+    renderTimeline({ onlyDates: valid });
+}
+
+/** loadMoreMeals 직후 — 새로 가져온 기록이 속한 날짜만 추출 */
+export function mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart) {
+    const prev = typeof prevRangeStart === 'string' ? prevRangeStart : null;
+    const next = typeof newRangeStart === 'string' ? newRangeStart : null;
+    return [
+        ...new Set(
+            (Array.isArray(newMeals) ? newMeals : [])
+                .map((m) => m?.date)
+                .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+                .filter((d) => (!next || d >= next) && (!prev || d < prev))
+        )
+    ].sort((a, b) => b.localeCompare(a));
+}
+
+/** @param {{ onlyDates?: string[] }} [options] onlyDates — 지정 날짜 섹션만 추가/갱신(전체 재렌더 생략) */
+export function renderTimeline(options = {}) {
+    const onlyDates = Array.isArray(options.onlyDates)
+        ? options.onlyDates.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+        : null;
+    const incrementalDates = onlyDates && onlyDates.length > 0;
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     /* 검색 모드일 때는 타임라인 렌더하지 않음 (검색 결과만 표시) */
@@ -1521,7 +1547,11 @@ export function renderTimeline() {
     const todayStr = `${year}-${month}-${day}`;
     
     const targetDates = [];
-    if (state.viewMode === 'list') {
+    if (incrementalDates) {
+        onlyDates.forEach((d) => {
+            if (!targetDates.includes(d)) targetDates.push(d);
+        });
+    } else if (state.viewMode === 'list') {
         // 초기 로드 시 오늘 날짜를 무조건 첫 번째로 추가
         if (window.loadedDates.length === 0) {
             targetDates.push(todayStr);
@@ -1565,7 +1595,12 @@ export function renderTimeline() {
     if (state.viewMode === 'list' && sortedTargetDates.includes(todayStr)) {
         sortedTargetDates = sortedTargetDates.filter(d => d !== todayStr);
         sortedTargetDates.unshift(todayStr);
-    } else if (state.viewMode === 'list' && !window.loadedDates.includes(todayStr) && !sortedTargetDates.includes(todayStr)) {
+    } else if (
+        !incrementalDates &&
+        state.viewMode === 'list' &&
+        !window.loadedDates.includes(todayStr) &&
+        !sortedTargetDates.includes(todayStr)
+    ) {
         // 오늘 날짜가 아직 추가되지 않았다면 강제로 맨 앞에 추가
         sortedTargetDates.unshift(todayStr);
     }
@@ -1825,8 +1860,8 @@ export function renderTimeline() {
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
 
-    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
-    if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
+    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만 — 증분 갱신 시 스크롤 유지)
+    if (!incrementalDates && state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
         const todaySection = document.getElementById(`date-${todayStr}`);
         if (todaySection) {
             setTimeout(() => {

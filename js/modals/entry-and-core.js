@@ -9,6 +9,7 @@ import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../
 import { invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import {
     renderTimeline,
+    renderTimelineDateSections,
     renderMiniCalendar,
     updateTimelineShareIndicators,
     updateTimelineMealEntryPendingIndicators,
@@ -57,7 +58,6 @@ import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import {
     normalizeMealClockInputValue,
-    tryExifTimeHHmmFromImageFile,
     formatMealClock12TextWhileTyping,
     normalizeMealClock12InputValue,
     mealClock24FromAmPmClock,
@@ -222,37 +222,11 @@ function applyEntryGaugeDialUi() {
     );
 }
 
-function fillMealClockNowIfEmpty(isMain) {
-    const inp = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
-    if (!inp || String(inp.value || '').trim()) return;
-    const d = new Date();
-    applyMealClockRowFrom24(
-        isMain,
-        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    );
-    setEntryMealClockSource(isMain, 'now');
-}
-
-function applyPendingExifOrFillNowWhenTimeEnabled(isMain) {
-    if (appState.currentEditingId) {
-        fillMealClockNowIfEmpty(isMain);
-        return;
+function applyDefaultEmptyMealClockWhenTimeEnabled(isMain) {
+    if (!getMealClock24FromModal(isMain)) {
+        applyMealClockRowFrom24(isMain, '');
+        setEntryMealClockSource(isMain, 'empty');
     }
-    const pending = isMain ? appState.entryMealClockPendingExifHhmmMain : appState.entryMealClockPendingExifHhmmSnack;
-    const applied = isMain ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
-    if (pending != null && String(pending).trim() !== '' && !applied) {
-        applyMealClockRowFrom24(isMain, normalizeMealClockInputValue(pending) || pending);
-        setEntryMealClockSource(isMain, 'photo');
-        if (isMain) {
-            appState.entryMealClockDidApplyPhotoExifMain = true;
-            appState.entryMealClockPendingExifHhmmMain = null;
-        } else {
-            appState.entryMealClockDidApplyPhotoExifSnack = true;
-            appState.entryMealClockPendingExifHhmmSnack = null;
-        }
-        return;
-    }
-    fillMealClockNowIfEmpty(isMain);
 }
 
 /** 상세기록 칩 prefs → 만족도·포만감·시간 on/off (개별 토글 대체) */
@@ -277,7 +251,7 @@ function syncEntryGaugesFromDetailRecordPrefs(prefs, modeKey) {
 
     const mainSide = !isSnack;
     if (prefs.time && !wasTimeOn) {
-        applyPendingExifOrFillNowWhenTimeEnabled(mainSide);
+        applyDefaultEmptyMealClockWhenTimeEnabled(mainSide);
     } else if (!prefs.time && wasTimeOn) {
         applyMealClockRowFrom24(mainSide, '');
         setEntryMealClockSource(mainSide, null);
@@ -493,20 +467,17 @@ function resetEntryMealClockSessionFlagsForOpen(isNewEntry) {
     }
 }
 
-/** 신규 + 해당 슬롯 시간 on: 모달 오픈 시각으로 1회만 채움 */
+/** 신규 + 해당 슬롯 시간 on: 기본은 미입력(라벨만 1회 세팅) */
 function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
     if (entryId) return;
-    const d = new Date();
-    const hhmmRaw = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const hhmm = normalizeMealClockInputValue(hhmmRaw) || hhmmRaw;
     if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
-        applyMealClockRowFrom24(true, hhmm);
-        setEntryMealClockSource(true, 'now');
+        applyMealClockRowFrom24(true, '');
+        setEntryMealClockSource(true, 'empty');
         appState.entryMealClockDidSeedModalOpenMain = true;
     }
     if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
-        applyMealClockRowFrom24(false, hhmm);
-        setEntryMealClockSource(false, 'now');
+        applyMealClockRowFrom24(false, '');
+        setEntryMealClockSource(false, 'empty');
         appState.entryMealClockDidSeedModalOpenSnack = true;
     }
 }
@@ -685,7 +656,7 @@ function setEntryModalSavingState(saving) {
         if (saving) {
             if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
             btnSave.innerHTML =
-                '<span class="entry-action-btn__inner"><i class="fa-solid fa-spinner fa-spin text-sm" aria-hidden="true"></i><span class="mt-0.5">저장 중…</span></span>';
+                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i class="fa-solid fa-spinner fa-spin text-sm shrink-0" aria-hidden="true"></i><span>저장 중…</span></span>';
         } else if (btnSave.dataset.defaultHtml) {
             btnSave.innerHTML = btnSave.dataset.defaultHtml;
         }
@@ -1561,11 +1532,14 @@ function applyTimelineMealSaveFailureState(record, optimisticTempId, optimisticS
     }
 }
 
-function refreshTimelineAfterMealSaveResult() {
+function refreshTimelineAfterMealSaveResult(dateStr) {
     try {
-        /* renderTimeline 끝에서 updateTimelineMealEntryPendingIndicators 호출 — 먼저 DOM 전체를 그린 뒤 패치 */
         if (appState.currentTab === 'timeline') {
-            renderTimeline();
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                renderTimelineDateSections([dateStr]);
+            } else {
+                renderTimeline();
+            }
         } else {
             updateTimelineMealEntryPendingIndicators();
         }
@@ -1596,7 +1570,7 @@ async function focusTimelineAfterMealSaveFailure(record, editingDateStr, optimis
         updateTimelineShareIndicators();
         updateTimelineMealEntryPendingIndicators();
     } else {
-        refreshTimelineAfterMealSaveResult();
+        refreshTimelineAfterMealSaveResult(record?.date || focusIso || undefined);
     }
 }
 
@@ -1999,7 +1973,8 @@ export async function saveEntry() {
                 // (스크롤은 아래 서버 저장 완료 후 1회만 중앙 정렬)
                 if (window.jumpToDate) await window.jumpToDate(editingDate, { scroll: false, onceKey: `save-optimistic:${String(editingDate)}` });
                 updateTimelineShareIndicators();
-                renderTimeline();
+                invalidateTimelineDateSection(editingDate);
+                renderTimelineDateSections([editingDate]);
             } catch (e) {
                 console.warn('저장 직후 타임라인 낙관 반영 실패:', e);
             }
@@ -2117,7 +2092,7 @@ export async function saveEntry() {
             if (record.date) invalidateTimelineDateSection(record.date);
             if (currentTab === 'timeline') {
                 try {
-                    renderTimeline();
+                    if (record.date) renderTimelineDateSections([record.date]);
                 } catch (e) {
                     console.warn('저장 직후 타임라인 갱신:', e);
                 }
@@ -2291,7 +2266,7 @@ export async function saveEntry() {
                             }
                         });
                     }
-                    refreshTimelineAfterMealSaveResult();
+                    refreshTimelineAfterMealSaveResult(record?.date || editingDate || undefined);
                 } catch (uploadPhaseError) {
                     photoUploadPhaseFailed = true;
                     if (record?.id) markMealEntrySaveFailedById(String(record.id));
@@ -2327,7 +2302,7 @@ export async function saveEntry() {
                 markMealEntryServerWorkComplete(record.id, optimisticTempId, optimisticSlotKey);
                 if (currentTab === 'timeline') {
                     try {
-                        renderTimeline();
+                        if (record.date) renderTimelineDateSections([record.date]);
                     } catch (_) {
                         /* ignore */
                     }
@@ -2509,6 +2484,10 @@ export async function saveEntry() {
                             // 저장 플로우에서는 "해당 날짜 중앙 정렬"을 1회만 수행
                             const key = record && record.id ? `save-final:${String(record.id)}` : `save-final:${String(editingDate)}`;
                             await window.jumpToDate(String(editingDate), { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
+                        } else if (editingDate) {
+                            invalidateTimelineDateSection(String(editingDate));
+                            renderTimelineDateSections([String(editingDate)]);
+                            renderMiniCalendar();
                         } else {
                             renderTimeline();
                             renderMiniCalendar();
@@ -2578,6 +2557,10 @@ function rerenderAfterMealDelete(mealDate) {
             if (appState.currentTab === 'timeline' && mealDate && typeof window.jumpToDate === 'function') {
                 // 삭제 직후 리스너/재렌더가 연속으로 들어와도 스크롤은 1회만
                 await window.jumpToDate(mealDate, { scroll: true, behavior: 'smooth', onceKey: `delete:${String(mealDate)}`, anchorAfterRenderMs: 1400 });
+            } else if (mealDate) {
+                invalidateTimelineDateSection(mealDate);
+                renderTimelineDateSections([mealDate]);
+                renderMiniCalendar();
             } else {
                 renderTimeline();
                 renderMiniCalendar();
@@ -2840,7 +2823,7 @@ export async function retryMealEntrySync(entryIdRaw) {
                         markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
                         invalidateTimelineDateSection(record.date);
                         updateTimelineMealEntryPendingIndicators();
-                        if (appState.currentTab === 'timeline') renderTimeline();
+                        if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
                         void import('../main/meal-sync-resend-header.js').then((m) => {
                             try {
                                 if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
@@ -3004,7 +2987,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('서버에 등록했습니다.', 'success');
         invalidateTimelineDateSection(record.date);
         updateTimelineMealEntryPendingIndicators();
-        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
     } catch (e) {
         console.error('retryMealEntrySync:', e);
         showToast(getUserFacingErrorMessage(e, 'save'), 'error');
@@ -3498,31 +3481,6 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
             renderPhotoPreviews();
             updateShareIndicator();
-
-            const mainSide = !isSnack;
-            const timeOn = isSnack ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true;
-
-            const isNewEntry = !state.currentEditingId && filesToProcess.length > 0;
-            if (isNewEntry) {
-                const hhmmExif = await tryExifTimeHHmmFromImageFile(filesToProcess[0]);
-                if (timeOn) {
-                    const alreadyApplied = mainSide
-                        ? appState.entryMealClockDidApplyPhotoExifMain
-                        : appState.entryMealClockDidApplyPhotoExifSnack;
-                    if (!alreadyApplied && hhmmExif) {
-                        applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(hhmmExif) || hhmmExif);
-                        if (mainSide) appState.entryMealClockDidApplyPhotoExifMain = true;
-                        else appState.entryMealClockDidApplyPhotoExifSnack = true;
-                    }
-                } else if (hhmmExif) {
-                    if (mainSide && appState.entryMealClockPendingExifHhmmMain == null) {
-                        appState.entryMealClockPendingExifHhmmMain = hhmmExif;
-                    }
-                    if (!mainSide && appState.entryMealClockPendingExifHhmmSnack == null) {
-                        appState.entryMealClockPendingExifHhmmSnack = hhmmExif;
-                    }
-                }
-            }
         })
         .catch((err) => {
             console.error('파일 처리 중 오류 발생:', err);

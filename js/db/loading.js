@@ -35,14 +35,14 @@ export async function loadStatsForYears(years) {
 export async function loadMoreMeals(amount = 1, unit = 'month') {
     if (!window.currentUser) {
         console.error("로그인이 필요합니다.");
-        return 0;
+        return { count: 0, newMeals: [] };
     }
     
     try {
         const currentStart = window.loadedMealsDateRange?.start;
         if (!currentStart) {
             console.error("로드된 데이터 범위 정보가 없습니다.");
-            return 0;
+            return { count: 0, newMeals: [] };
         }
         
         // 추가로 로드할 시작 날짜 계산
@@ -50,7 +50,7 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         const rawCurrentStart = shift ? addDaysToYmd(currentStart, -shift) : currentStart;
         if (!rawCurrentStart) {
             console.error('데모 날짜 역변환 실패');
-            return 0;
+            return { count: 0, newMeals: [] };
         }
         const newStartDate = new Date(rawCurrentStart + 'T00:00:00');
         if (unit === 'week') {
@@ -86,7 +86,7 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
             window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
         }
         
-        return newMeals.length;
+        return { count: newMeals.length, newMeals };
     } catch (e) {
         console.error("Load More Meals Error:", e);
         // 인덱스 없을 경우 fallback 시도

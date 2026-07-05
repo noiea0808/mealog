@@ -116,8 +116,10 @@ async function refreshTimelineFull(dateStr, currentTab) {
     void import('../render/timeline.js').then((mod) => {
         try {
             if (dateStr && mod.invalidateTimelineDateSection) mod.invalidateTimelineDateSection(dateStr);
-            if (currentTab === 'timeline' && mod.renderTimeline) mod.renderTimeline();
-            else if (mod.updateTimelineMealEntryPendingIndicators) mod.updateTimelineMealEntryPendingIndicators();
+            if (currentTab === 'timeline') {
+                if (dateStr && mod.renderTimelineDateSections) mod.renderTimelineDateSections([dateStr]);
+                else if (mod.renderTimeline) mod.renderTimeline();
+            } else if (mod.updateTimelineMealEntryPendingIndicators) mod.updateTimelineMealEntryPendingIndicators();
         } catch (_) {
             /* ignore */
         }

@@ -405,6 +405,47 @@ body.keyboard-closed #boardWriteView {
     padding-left: max(0.75rem, 1em);
     padding-right: max(0.75rem, 1em);
 }
+/* meals 리스너 degraded: 일부만 표시 / 인덱스·재시도 안내 */
+.meals-load-degraded-banner {
+    margin: 0 0 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid #fcd34d;
+    background: #fffbeb;
+    color: #92400e;
+}
+.meals-load-degraded-banner__inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.meals-load-degraded-banner__text {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+.meals-load-degraded-banner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+.meals-load-degraded-banner__link {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #b45309;
+    text-decoration: underline;
+}
+.meals-load-degraded-banner__retry {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.5rem;
+    border: 1px solid #f59e0b;
+    background: #fff;
+    color: #b45309;
+}
 .daily-journal-summary-text {
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -9252,6 +9293,12 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     gap: inherit;
     min-width: 0;
     transition: transform 0.08s ease;
+}
+#entryModal .entry-action-btn__inner--loading {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
 }
 #entryModal .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
 #entryModal .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {

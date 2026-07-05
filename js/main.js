@@ -53,7 +53,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, mealDatesFromNewlyLoadedChunk, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -117,6 +117,7 @@ window.Mealog.removeDuplicateMeals = window.removeDuplicateMeals;
 window.showToast = showToast;
 window.Mealog.showToast = showToast;
 window.renderTimeline = renderTimeline;
+window.renderTimelineDateSections = renderTimelineDateSections;
 window.Mealog.renderTimeline = renderTimeline;
 window.updateTimelineShareIndicators = updateTimelineShareIndicators;
 window.Mealog.updateTimelineShareIndicators = updateTimelineShareIndicators;
@@ -796,13 +797,18 @@ window.loadMoreMealsTimeline = async () => {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
     try {
-        const count = await loadMoreMeals(1); // 1개월 더 로드
+        const prevRangeStart = window.loadedMealsDateRange?.start;
+        const scrollY = window.scrollY;
+        const { count, newMeals } = await loadMoreMeals(1);
         if (count > 0) {
-            window.loadedDates = [];
-            const container = document.getElementById('timelineContainer');
-            if (container) container.innerHTML = "";
-            renderTimeline();
-            // 새로 로드된 meal에 공유 표시만 있고 모먼트에 없으면 동기화
+            const newRangeStart = window.loadedMealsDateRange?.start;
+            const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
+            if (dates.length) {
+                renderTimelineDateSections(dates);
+            }
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+            });
             syncOrphanedSharesToMoment().then((synced) => {
                 if (synced > 0) {
                     updateTimelineShareIndicators();
@@ -1393,7 +1399,11 @@ initAuth(async (user) => {
                         if (mode === 'mealData') {
                             const dates = Array.isArray(update.changedDates) ? update.changedDates : [];
                             dates.forEach((d) => invalidateTimelineDateSection(d));
-                            renderTimeline();
+                            if (dates.length) {
+                                renderTimelineDateSections(dates);
+                            } else {
+                                renderTimeline();
+                            }
                             refreshMiniCalendarDots();
                             return;
                         }
@@ -2018,7 +2028,15 @@ window.addEventListener('scroll', () => {
             const nextOldestStr = `${nextOldest.getFullYear()}-${String(nextOldest.getMonth() + 1).padStart(2, '0')}-${String(nextOldest.getDate()).padStart(2, '0')}`;
             if (nextOldestStr < range.start) {
                 try {
-                    await loadMoreMeals(1, 'week'); // 스크롤 시 1주일씩 로드
+                    const prevRangeStart = range.start;
+                    const { count, newMeals } = await loadMoreMeals(1, 'week');
+                    if (count > 0) {
+                        const newRangeStart = window.loadedMealsDateRange?.start;
+                        const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
+                        if (dates.length) {
+                            renderTimelineDateSections(dates);
+                        }
+                    }
                 } catch (e) {
                     console.warn('스크롤 시 추가 로드 실패:', e);
                 }

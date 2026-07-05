@@ -3,6 +3,8 @@
 export { escapeHtml, sanitizeFormattedText, renderFormattedContent, stripDangerousTagsOnly, getPlainTextPreview } from './utils.js';
 export {
     renderTimeline,
+    renderTimelineDateSections,
+    mealDatesFromNewlyLoadedChunk,
     renderMiniCalendar,
     refreshMiniCalendarDots,
     updateTimelineShareIndicators,

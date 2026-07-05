@@ -17,7 +17,15 @@ import {
     hydrateMealSyncErrorIdsFromStorage,
     hydrateMealSyncAbandonedIdsFromStorage
 } from '../utils/meal-entry-pending.js';
-import { applyMealsSnapshotPrimary, applyMealsSnapshotFallback } from '../utils/meals-snapshot-apply.js';
+import { applyMealsSnapshotPrimary, applyMealsOneTimeFetchResult } from '../utils/meals-snapshot-apply.js';
+import {
+    MEALS_LISTENER_FALLBACK_LIMIT,
+    isFirestoreIndexError,
+    extractFirestoreIndexLink,
+    clearMealsLoadDegradedUi,
+    showMealsLoadDegradedUi,
+    setMealsListenerRetryHandler
+} from '../utils/meals-listener-degraded.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
 import { sharedPhotoTimestampMs, sortSharedPhotosByTimestampDesc } from '../utils/shared-photo-timestamp.js';
 import { collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/moment-post-v2.js';
@@ -661,40 +669,51 @@ export function setupListeners(userId, callbacks) {
     const todayStr = new Date().toISOString().split('T')[0];
     
     const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-    // limit(50): 초기 읽기/전송량 제한 → 나머지는 loadMoreMeals로 로드
-    // 데모: 고정 샘플 날짜가 7일 밖이면 비어 보이므로 날짜 필터 없이 최근 50건만 로드 후 화면용 날짜 시프트
-    const mealsQuery = demo
-        ? query(mealsColl, orderBy('date', 'desc'), limit(50))
-        : query(
-            mealsColl,
-            where('date', '>=', cutoffDateStr),
-            orderBy('date', 'desc'),
-            limit(50)
-        );
-    
-    let isInitialLoad = true;
-    /** primary 또는 fallback 중 현재 활성 meals onSnapshot 해제 함수 (fallback 시 이전 Watch 반드시 해제) */
+    const buildMealsPrimaryQuery = () =>
+        demo
+            ? query(mealsColl, orderBy('date', 'desc'), limit(MEALS_LISTENER_FALLBACK_LIMIT))
+            : query(
+                  mealsColl,
+                  where('date', '>=', cutoffDateStr),
+                  orderBy('date', 'desc'),
+                  limit(MEALS_LISTENER_FALLBACK_LIMIT)
+              );
+
     let mealsListenerUnsub = null;
-    mealsListenerUnsub = onSnapshot(
-        mealsQuery,
-        { includeMetadataChanges: true },
-        (snap) => {
-            const loadState = { isInitialLoad };
-            const r = applyMealsSnapshotPrimary({
+
+    const runMealsLimitedOneTimeFetch = async () => {
+        try {
+            const limitedQuery = query(
+                mealsColl,
+                orderBy('date', 'desc'),
+                limit(MEALS_LISTENER_FALLBACK_LIMIT)
+            );
+            const snap = await getDocs(limitedQuery);
+            const r = applyMealsOneTimeFetchResult({
                 snap,
                 demo,
                 userId,
                 cutoffDateStr,
                 todayStr,
-                loadState,
                 mergeStatsIntoDaily,
-                onDataUpdate
+                onDataUpdate,
+                limit: MEALS_LISTENER_FALLBACK_LIMIT
             });
-            isInitialLoad = loadState.isInitialLoad;
-            if (r.uidMismatch) return;
-        }, (error) => {
-        console.error("Meals Listener Error:", error);
-        // 사용자 ID 재확인
+            if (!r.uidMismatch) {
+                showMealsLoadDegradedUi('partial');
+            }
+        } catch (fetchErr) {
+            console.error('Meals limited one-time fetch failed:', fetchErr);
+            showMealsLoadDegradedUi('fetch-failed', {
+                errorMessage: fetchErr?.message || String(fetchErr)
+            });
+        } finally {
+            hideLoading();
+        }
+    };
+
+    const handleMealsListenerError = (error) => {
+        console.error('Meals Listener Error:', error);
         if (window.currentUser && userId !== window.currentUser.uid) {
             console.error('⚠️ 데이터 리스너 에러 핸들러: 사용자 ID 불일치! 리스너 무시');
             return;
@@ -704,48 +723,81 @@ export function setupListeners(userId, callbacks) {
             notifyTransportOfflineUi();
             return;
         }
-        // 인덱스가 없을 경우 fallback: 전체 컬렉션 사용 (경고만 표시)
-        console.warn("날짜 범위 쿼리 실패, 전체 컬렉션으로 fallback");
-        try {
-            if (mealsListenerUnsub) mealsListenerUnsub();
-        } catch (_) {
-            /* 이미 끊긴 리스너일 수 있음 */
-        }
-        const fallbackQuery = collection(db, 'artifacts', appId, 'users', userId, 'meals');
-        const fallbackFirstSnapshotState = { value: true };
-        mealsListenerUnsub = onSnapshot(
-            fallbackQuery,
-            { includeMetadataChanges: true },
-            (snap) => {
-                const r = applyMealsSnapshotFallback({
-                    snap,
-                    demo,
-                    userId,
-                    cutoffDateStr,
-                    todayStr,
-                    mergeStatsIntoDaily,
-                    onDataUpdate,
-                    firstSnapshotState: fallbackFirstSnapshotState
-                });
-                if (r.uidMismatch) return;
-            },
-            (err2) => {
-                console.error('Meals fallback listener error:', err2);
-                hideLoading();
-                if (isLikelyNetworkError(err2)) {
-                    notifyTransportOfflineUi();
-                }
-            }
-        );
-    });
 
-    const dataUnsubscribe = () => {
         try {
             if (mealsListenerUnsub) mealsListenerUnsub();
         } catch (_) {
             /* noop */
         }
         mealsListenerUnsub = null;
+
+        if (isFirestoreIndexError(error)) {
+            const indexLink = extractFirestoreIndexLink(error);
+            console.error(
+                'Meals primary query failed (Firestore index required). Deploy: firebase deploy --only firestore:indexes',
+                { code: error?.code, message: error?.message, indexLink }
+            );
+            showMealsLoadDegradedUi('index', {
+                indexLink,
+                errorMessage: error?.message || String(error)
+            });
+            hideLoading();
+            return;
+        }
+
+        console.warn(
+            'Meals primary onSnapshot failed; one-time limited getDocs (no realtime).',
+            error
+        );
+        void runMealsLimitedOneTimeFetch();
+    };
+
+    const attachMealsRealtimeListener = () => {
+        clearMealsLoadDegradedUi();
+        try {
+            if (mealsListenerUnsub) mealsListenerUnsub();
+        } catch (_) {
+            /* noop */
+        }
+
+        let isInitialLoad = true;
+        mealsListenerUnsub = onSnapshot(
+            buildMealsPrimaryQuery(),
+            { includeMetadataChanges: true },
+            (snap) => {
+                clearMealsLoadDegradedUi();
+                const loadState = { isInitialLoad };
+                const r = applyMealsSnapshotPrimary({
+                    snap,
+                    demo,
+                    userId,
+                    cutoffDateStr,
+                    todayStr,
+                    loadState,
+                    mergeStatsIntoDaily,
+                    onDataUpdate
+                });
+                isInitialLoad = loadState.isInitialLoad;
+                if (r.uidMismatch) return;
+            },
+            handleMealsListenerError
+        );
+    };
+
+    setMealsListenerRetryHandler(() => {
+        attachMealsRealtimeListener();
+    });
+    attachMealsRealtimeListener();
+
+    const dataUnsubscribe = () => {
+        setMealsListenerRetryHandler(null);
+        try {
+            if (mealsListenerUnsub) mealsListenerUnsub();
+        } catch (_) {
+            /* noop */
+        }
+        mealsListenerUnsub = null;
+        clearMealsLoadDegradedUi();
     };
 
     return { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe };
