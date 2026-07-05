@@ -892,8 +892,9 @@ export class MealSyncManager {
 
     isRowBlocked(record) {
         if (!record) return false;
-        if (this.isDeleting(record)) return true;
-        return this.isPendingSync(record);
+        // 삭제 진행 중에만 행 열기 차단. 등록 대기(pending)는 ID 선발급으로 setDoc이 멱등이라
+        // 수정·삭제 모두 안전 — 열어서 편집/삭제할 수 있게 허용 (오프라인 삭제불가 이슈 해소)
+        return this.isDeleting(record);
     }
 
     countCloudFabManualRetryEntries() {

@@ -45,6 +45,20 @@ export function setMealsListenerRetryHandler(fn) {
     retryHandler = typeof fn === 'function' ? fn : null;
 }
 
+/**
+ * meals 리스너가 강등(1회 조회 폴백) 상태면 실시간 리스너 재부착 시도.
+ * 온라인 복구·포그라운드 복귀 시 호출 — 사용자가 '다시 시도'를 누르지 않아도 자동 복구.
+ * @returns {boolean} 재부착을 시도했으면 true
+ */
+export function retryMealsListenerIfDegraded() {
+    if (typeof window === 'undefined') return false;
+    if (window.__mealogMealsLoadDegraded !== true) return false;
+    if (!retryHandler) return false;
+    console.log('[meals-listener] 강등 상태 감지 — 실시간 리스너 자동 재부착 시도');
+    retryHandler();
+    return true;
+}
+
 export function clearMealsLoadDegradedUi() {
     window.__mealogMealsLoadDegraded = false;
     window.__mealogMealsLoadDegradedReason = null;

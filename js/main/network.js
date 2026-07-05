@@ -78,6 +78,14 @@ export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
  * `online` 이벤트가 안 오는 모바일·웹뷰에서도 `visibilitychange` / resume 경로에서 동일 호출.
  */
 async function flushMealWriteQueueAndRefreshSyncUi() {
+    // meals 실시간 리스너가 강등(1회 조회 폴백) 상태였다면 온라인 복구 시 자동 재부착
+    void import('../utils/meals-listener-degraded.js').then((dg) => {
+        try {
+            if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+        } catch (_) {
+            /* ignore */
+        }
+    });
     try {
         await waitForPendingWrites(db);
     } catch (_) {

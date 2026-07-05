@@ -3,7 +3,7 @@ import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETT
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
-import { dbOps, unwrapMealSaveResult } from '../db.js';
+import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
 import { invalidateMealHistoryCountCache } from '../meal-record-count.js';
@@ -1220,18 +1220,18 @@ function activateSavedRecordTags(r, isS) {
 
     if (r.menuDetail) {
         const detailValues = r.menuDetail.split(',').map((v) => v.trim()).filter(Boolean);
-        const activeValues = activateSubChipsByTexts(ENTRY_DOM.whatSuggestions, detailValues);
+        activateSubChipsByTexts(ENTRY_DOM.whatSuggestions, detailValues);
         const entryWhatInput = document.getElementById(ENTRY_DOM.whatInput);
-        if (entryWhatInput) {
-            entryWhatInput.value = activeValues.length > 0 ? activeValues.join(', ') : r.menuDetail;
+        if (entryWhatInput && detailValues.length > 0) {
+            entryWhatInput.value = detailValues.join(', ');
         }
     }
     if (r.withWhomDetail) {
         const detailValues = r.withWhomDetail.split(',').map((v) => v.trim()).filter(Boolean);
-        const activeValues = activateSubChipsByTexts(ENTRY_DOM.withSuggestions, detailValues);
+        activateSubChipsByTexts(ENTRY_DOM.withSuggestions, detailValues);
         const entryWithInput = document.getElementById(ENTRY_DOM.withInput);
-        if (entryWithInput && activeValues.length > 0) {
-            entryWithInput.value = activeValues.join(', ');
+        if (entryWithInput && detailValues.length > 0) {
+            entryWithInput.value = detailValues.join(', ');
         }
     }
 
@@ -1308,7 +1308,9 @@ export async function openModal(date, slotId, entryId = null) {
                 showToast('삭제 중입니다. 잠시 후 다시 시도해 주세요.', 'info');
                 return;
             }
-            if (pendingRec && isMealEntryPendingSync(pendingRec)) {
+            // 등록 대기(pending) 항목도 열기 허용 (ID 선발급 후 setDoc은 멱등이라 수정·삭제 안전).
+            // 단 temp_ 폴백 행은 실제 문서 ID가 없어 수정 저장이 불가 — 기존대로 차단
+            if (pendingRec && String(entryId).startsWith('temp_') && isMealEntryPendingSync(pendingRec)) {
                 showToast('서버에 등록 중입니다. 잠시 후 다시 시도해 주세요.', 'info');
                 return;
             }
@@ -1919,9 +1921,15 @@ export async function saveEntry() {
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
         
-        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영용 임시 레코드
+        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영
         const wasNewRecord = !record.id;
-        const optimisticTempId = wasNewRecord ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
+        // 신규 기록: 문서 ID 클라이언트 선발급 — 오프라인에서도 ID가 확정되어
+        // 낙관 레코드·삭제·재시도(setDoc 멱등)가 같은 ID로 동작 (temp ID는 발급 실패 시 폴백)
+        if (wasNewRecord) {
+            record.id = generateMealDocId(window.currentUser?.uid) || null;
+        }
+        const optimisticTempId =
+            wasNewRecord && !record.id ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
         const optimisticSlotKey = `${record.date || ''}__${record.slotId || ''}`;
         const hasPendingBase64Photos = sourcePhotos.some(isLocalPendingPhoto);
         if (hasPendingBase64Photos) {
@@ -1934,7 +1942,7 @@ export async function saveEntry() {
             photoMeta: sourcePhotoMeta.map((e) => ({ takenAt: e?.takenAt ?? null }))
         };
         if (optimisticTempId) markMealOptimisticSavePending(optimisticTempId);
-        if (record.id && !wasNewRecord) {
+        if (record.id) {
             clearMealEntryServerSynced(record.id);
             markMealEntrySaveInFlight(record.id);
         }
@@ -1996,11 +2004,21 @@ export async function saveEntry() {
         }
         
         // 공유 상태 변경 여부 추적 변수 (함수 스코프)
-        // 상태 초기화 전에 originalSharedPhotos 확인
+        // 상태 초기화 전에 originalSharedPhotos 확인 (closeModal이 state를 리셋하므로 닫기 전에 캡처)
         const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
         let sharedPhotosUpdated = false;
 
-        // 저장 실행 (모달 열린 채, 타임라인에 인라인 스피너 표시)
+        // 로컬 낙관 반영 완료 → 시트는 즉시 닫는다 (오프라인 우선: 서버 동기화는 백그라운드 진행,
+        // 진행 상태는 타임라인 도트·칩으로 표시). 서버 실패 시에도 입력 내용은 로컬에 남는다.
+        finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
+        if (wasNewRecord) {
+            showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
+        }
+        if (isMealActionEffectiveOffline()) {
+            showToast('오프라인 상태예요. 연결되면 서버에 자동 등록됩니다.', 'info');
+        }
+
+        // 저장 실행 (백그라운드, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
         /** 사진 N장 Storage + 재저장 상한 — grace 칩 전환(30초)과 동일 티밍 요청에 맞춤 */
@@ -2009,11 +2027,22 @@ export async function saveEntry() {
         let photoUploadPhaseFailed = false;
         try {
             const saveResult = unwrapMealSaveResult(
-                await saveWithTimeout(() => dbOps.save(record, true), {
+                await saveWithTimeout(() => dbOps.save(record, true, { isNewRecord: wasNewRecord }), {
                     timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
                     onTimeout: () => {
                         const mid = record.id || optimisticTempId;
-                        if (mid) getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
+                        if (!mid) return;
+                        if (String(mid).startsWith('temp_')) {
+                            // ID 선발급 실패 폴백(temp): 큐 추적이 불가하므로 기존대로 실패 처리
+                            getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
+                        } else {
+                            // setDoc이 Firestore 로컬 큐에 남아 있을 가능성이 높음 — 실패가 아닌 '등록 예정'
+                            getMealSyncManager().promoteToRegisterScheduledChip(String(mid), {
+                                optimisticTempId,
+                                dateStr: record.date,
+                                currentTab
+                            });
+                        }
                     }
                 })
             );
@@ -2338,7 +2367,7 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
-            finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
+            // 모달은 낙관 반영 직후 이미 닫힘 — 여기서는 서버 결과 병합만
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
@@ -2358,10 +2387,7 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
-            // 기록 완료 중앙 팝업 — 신규 기록에만 (사진 업로드 실패 시에는 오해 소지가 있어 띄우지 않음)
-            if (wasNewRecord && !photoUploadPhaseFailed) {
-                showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
-            }
+            // 기록 완료 팝업은 낙관 반영 직후(모달 닫을 때) 이미 표시함
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             
@@ -2455,8 +2481,48 @@ export async function saveEntry() {
                 }
             }
         } catch (saveError) {
+            const timedOutId = record.id ? String(record.id) : null;
+            if (saveError?.__mealogSaveTimeout && timedOutId && !timedOutId.startsWith('temp_')) {
+                // 타임아웃 = 대부분 오프라인 큐 대기. onTimeout에서 이미 '등록 예정' 칩으로 승격됨.
+                // 실패로 표시하지 않고 큐 flush(재연결·재기동)를 기다린다.
+                console.warn('dbOps.save 타임아웃 — Firestore 로컬 큐 대기(등록 예정):', timedOutId);
+                // base64 사진이 남아 있으면 사진 대기 플래그 유지 (재시도 시 Storage 업로드 필요)
+                if (!hasPendingBase64Photos) {
+                    markMealEntryServerWorkComplete(timedOutId, optimisticTempId, optimisticSlotKey);
+                }
+                try {
+                    showToast('연결되면 서버에 자동 등록돼요. 등록 예정으로 표시됩니다.', 'info');
+                } catch (_) {
+                    /* ignore */
+                }
+                void import('../utils/mealog-offline-ui.js').then((m) => {
+                    try {
+                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
+                            m.markMealOfflineDraftForRecord(timedOutId);
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                    void import('../main/meal-sync-resend-header.js').then((h) => {
+                        try {
+                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
+                        } catch (_) {
+                            /* ignore */
+                        }
+                    });
+                });
+                try {
+                    if (record.date) {
+                        invalidateTimelineDateSection(record.date);
+                        if (appState.currentTab === 'timeline') renderTimelineDateSections([record.date]);
+                    }
+                    updateTimelineMealEntryPendingIndicators();
+                } catch (_) {
+                    /* ignore */
+                }
+                return;
+            }
             console.error('dbOps.save 오류:', saveError);
-            setEntryModalSavingState(false);
             try {
                 showToast(getUserFacingErrorMessage(saveError, 'save'), 'error');
             } catch (_) {
@@ -2594,11 +2660,9 @@ export async function deleteEntry() {
         showToast('이미 삭제 처리 중입니다.', 'info');
         return;
     }
-    if (delRecForPending && isMealEntryPendingSync(delRecForPending)) {
-        showToast('서버에 등록 중에는 삭제할 수 없습니다.', 'info');
-        return;
-    }
-    
+    // 등록 대기(pending) 항목도 삭제 허용: ID 선발급으로 deleteDoc을 같은 ID로 큐잉하면
+    // Firestore가 생성→삭제 순서로 적용하므로 서버 정합이 유지된다.
+
     // 삭제 확인 다이얼로그
     if (!confirm("정말 이 기록을 삭제하시겠습니까?")) {
         return;
@@ -2606,6 +2670,27 @@ export async function deleteEntry() {
     
     // 삭제할 ID를 미리 저장 (모달 닫기 전에)
     const entryIdToDelete = state.currentEditingId;
+
+    // temp_ 폴백 레코드(구버전 낙관 행): 서버 문서·큐 추적이 없으므로 로컬에서만 제거
+    if (String(entryIdToDelete).startsWith('temp_')) {
+        const tempRec = window.mealHistory?.find((m) => m.id === entryIdToDelete) || null;
+        window.closeModal();
+        try {
+            getMealSyncManager().removeTempRowSideEffects(tempRec || { id: entryIdToDelete });
+        } catch (_) {
+            /* ignore */
+        }
+        if (Array.isArray(window.mealHistory)) {
+            window.mealHistory = window.mealHistory.filter((m) => m.id !== entryIdToDelete);
+        }
+        if (Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        invalidateMealHistoryCountCache();
+        rerenderAfterMealDelete(tempRec?.date);
+        showToast('기록이 삭제되었습니다.', 'success');
+        return;
+    }
 
     /** closeModal 전에 캐시에서 확보 — 닫은 뒤에는 편집 id가 비워져 찾기 실패하는 경우 방지 */
     let mealForDelete = window.mealHistory?.find((m) => m.id === entryIdToDelete);
@@ -2685,8 +2770,11 @@ export async function deleteEntry() {
     }, DELETE_SCHEDULED_CHIP_MS);
 
     try {
+        const deletePromise = dbOps.delete(entryIdToDelete);
+        // 타임아웃 이후 늦게 거절돼도 unhandledrejection으로 새지 않게 관찰
+        deletePromise.catch(() => {});
         await Promise.race([
-            dbOps.delete(entryIdToDelete),
+            deletePromise,
             new Promise((_, reject) => {
                 setTimeout(() => {
                     const e = new Error('deadline-exceeded');
@@ -2706,6 +2794,19 @@ export async function deleteEntry() {
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (error?.__mealogDeleteTimeout) {
+            // 타임아웃 = 대부분 오프라인 큐 대기. deleteDoc은 로컬 큐에 남아 재연결 시 서버에 반영된다.
+            // 실패·롤백하지 않고 삭제 예약 상태 유지 (스냅샷 removed·reconcile이 완료 처리)
+            console.warn('deleteEntry 타임아웃 — 삭제 큐 대기(삭제 예약):', entryIdToDelete);
+            showToast('연결되면 서버에 삭제가 반영돼요.', 'info');
+            try {
+                updateTimelineMealEntryPendingIndicators();
+            } catch (_) {
+                /* ignore */
+            }
+            rerenderAfterMealDelete(mealDate);
+            return;
+        }
         if (deleteOptCtx) {
             try {
                 rollbackOptimisticMealDelete(deleteOptCtx);
@@ -2878,9 +2979,11 @@ export async function retryMealEntrySync(entryIdRaw) {
                 markMealEntryServerWorkComplete(realId, entryId, slotKeyMerge);
             } else {
                 delete payload.id;
+                const retryTempSavePromise = dbOps.save(payload, true);
+                retryTempSavePromise.catch(() => {});
                 const retrySaveRes = unwrapMealSaveResult(
                     await Promise.race([
-                        dbOps.save(payload, true),
+                        retryTempSavePromise,
                         new Promise((_, reject) => {
                             setTimeout(() => {
                                 const e = new Error('deadline-exceeded');
@@ -2945,9 +3048,11 @@ export async function retryMealEntrySync(entryIdRaw) {
                 console.error('retryMealEntrySync: 사진 Storage 업로드 실패', upErr);
                 throw upErr;
             }
+            const retryRealSavePromise = dbOps.save(payloadOut, true);
+            retryRealSavePromise.catch(() => {});
             const retryElseRes = unwrapMealSaveResult(
                 await Promise.race([
-                    dbOps.save(payloadOut, true),
+                    retryRealSavePromise,
                     new Promise((_, reject) => {
                         setTimeout(() => {
                             const e = new Error('deadline-exceeded');
@@ -2989,6 +3094,18 @@ export async function retryMealEntrySync(entryIdRaw) {
         updateTimelineMealEntryPendingIndicators();
         if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
     } catch (e) {
+        if (e?.__mealogSaveTimeout && !entryId.startsWith('temp_')) {
+            // 재시도 중 타임아웃(대개 아직 오프라인): setDoc은 로컬 큐에 남음 — 실패 대신 등록 예정 유지
+            console.warn('retryMealEntrySync 타임아웃 — 로컬 큐 대기(등록 예정):', entryId);
+            getMealSyncManager().promoteToRegisterScheduledChip(entryId, {
+                dateStr: record.date,
+                currentTab: appState.currentTab
+            });
+            showToast('연결되면 서버에 자동 등록돼요.', 'info');
+            invalidateTimelineDateSection(record.date);
+            updateTimelineMealEntryPendingIndicators();
+            return;
+        }
         console.error('retryMealEntrySync:', e);
         showToast(getUserFacingErrorMessage(e, 'save'), 'error');
         clearMealEntrySaveInFlight(entryId);
@@ -3065,8 +3182,10 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     }, RETRY_DELETE_CHIP_MS);
 
     try {
+        const retryDeletePromise = dbOps.delete(entryId);
+        retryDeletePromise.catch(() => {});
         await Promise.race([
-            dbOps.delete(entryId),
+            retryDeletePromise,
             new Promise((_, reject) => {
                 setTimeout(() => {
                     const e = new Error('deadline-exceeded');
@@ -3084,6 +3203,17 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (error?.__mealogDeleteTimeout) {
+            console.warn('retryMealEntryDeleteSync 타임아웃 — 삭제 큐 대기(삭제 예약):', entryId);
+            showToast('연결되면 서버에 삭제가 반영돼요.', 'info');
+            try {
+                updateTimelineMealEntryPendingIndicators();
+            } catch (_) {
+                /* ignore */
+            }
+            rerenderAfterMealDelete(mealDate);
+            return;
+        }
         if (deleteRetryOptCtx) {
             try {
                 rollbackOptimisticMealDelete(deleteRetryOptCtx);

@@ -103,6 +103,23 @@ async function resolveUserForFirestoreWrite() {
     return null;
 }
 
+/**
+ * 신규 meal 문서 ID 클라이언트 선발급 (오프라인 우선 저장용).
+ * addDoc과 달리 서버 왕복 없이 즉시 ID가 확정되므로, 오프라인에서도
+ * 낙관 레코드·삭제 큐잉·재시도(setDoc 멱등)가 모두 같은 ID로 동작한다.
+ * @param {string} [uid]
+ * @returns {string} 새 문서 ID ('' 반환 시 호출자가 temp 폴백)
+ */
+export function generateMealDocId(uid) {
+    try {
+        const userId = uid || auth.currentUser?.uid || (typeof window !== 'undefined' ? window.currentUser?.uid : null);
+        if (!userId) return '';
+        return doc(collection(db, 'artifacts', appId, 'users', userId, 'meals')).id;
+    } catch (_) {
+        return '';
+    }
+}
+
 function stripUndefinedDeep(value) {
     if (value === undefined) return undefined;
     if (value === null) return null;
@@ -134,9 +151,10 @@ export const dbOps = {
     /**
      * @param {object} record
      * @param {boolean} [silent]
+     * @param {{ isNewRecord?: boolean }} [opts] — ID 선발급된 신규 문서 여부 (mealCount 증가용)
      * @returns {Promise<MealSaveResult>}
      */
-    async save(record, silent = false) {
+    async save(record, silent = false, opts = {}) {
         let currentUser = await resolveUserForFirestoreWrite();
         if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
             logger.warn('[dbOps] auth/window UID 불일치 — auth 기준으로 저장', {
@@ -157,8 +175,13 @@ export const dbOps = {
         }
         try {
             const runWrite = async () => {
-                if (typeof currentUser.getIdToken === 'function') {
-                    await currentUser.getIdToken(false);
+                // 오프라인에서 캐시 토큰이 만료돼 getIdToken이 실패해도 Firestore 로컬 큐잉은 가능해야 함 — 비치명 처리
+                try {
+                    if (typeof currentUser.getIdToken === 'function') {
+                        await currentUser.getIdToken(false);
+                    }
+                } catch (tokenErr) {
+                    console.warn('[dbOps] getIdToken 실패 (오프라인 큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
                 }
                 await appCheckInitPromise;
                 await refreshAppCheckTokenBeforeFirestore();
@@ -177,23 +200,18 @@ export const dbOps = {
                 if (Object.prototype.hasOwnProperty.call(dataToSave, 'sharedPhotos')) {
                     dataToSave.sharedPhotos = sanitizePhotoArray(dataToSave.sharedPhotos);
                 }
+                // recordedAt: 서버 getDoc으로 보존하던 방식은 오프라인에서 저장 자체를 막음.
+                // 호출자(saveEntry·재시도)가 기존 recordedAt을 record에 실어 보내므로 그 값을 신뢰한다.
+                const callerRecordedAt =
+                    typeof dataToSave.recordedAt === 'string' && dataToSave.recordedAt
+                        ? dataToSave.recordedAt
+                        : null;
                 delete dataToSave.recordedAt;
                 const docId = dataToSave.id;
                 delete dataToSave.id;
                 const cleaned = stripUndefinedDeep(dataToSave);
+                cleaned.recordedAt = callerRecordedAt || new Date().toISOString();
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
-                if (docId) {
-                    const exRef = doc(coll, docId);
-                    const exSnap = await getDoc(exRef);
-                    if (exSnap.exists() && exSnap.data().recordedAt != null) {
-                        cleaned.recordedAt = exSnap.data().recordedAt;
-                    } else {
-                        // 신규 문서이거나, 구문서에 recordedAt 이 없을 때: 슬롯 date 가 아닌 실제 저장 시각(Now)
-                        cleaned.recordedAt = new Date().toISOString();
-                    }
-                } else {
-                    cleaned.recordedAt = new Date().toISOString();
-                }
                 logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave: cleaned });
                 const mealPathHint = docId
                     ? `artifacts/${appId}/users/${currentUser.uid}/meals/${docId}`
@@ -201,13 +219,15 @@ export const dbOps = {
                 try {
                     if (docId) {
                         await setDoc(doc(coll, docId), cleaned);
+                        // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
+                        if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);
                         if (!silent) {
                             showToast("기록이 수정되었습니다.", 'success');
                         }
                         return { mealId: String(docId), savedViaCallableFallback: false };
                     }
                     const docRef = await addDoc(coll, cleaned);
-                    await bumpUserMealCount(currentUser.uid, 1);
+                    void bumpUserMealCount(currentUser.uid, 1);
                     logger.log('식사 기록 저장 성공:', docRef.id);
                     if (!silent) {
                         showToast("식사가 기록되었습니다.", 'success');
@@ -307,8 +327,13 @@ export const dbOps = {
             logger.log('[dbOps] deleteArtifactUserMeal 폴백:', deleted ? '삭제됨' : '문서 없음');
         };
         try {
-            if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(false);
+            // 오프라인에서도 deleteDoc 로컬 큐잉이 가능하도록 토큰 갱신 실패는 비치명 처리
+            try {
+                if (typeof currentUser.getIdToken === 'function') {
+                    await currentUser.getIdToken(false);
+                }
+            } catch (tokenErr) {
+                console.warn('[dbOps] delete getIdToken 실패 (큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
             }
             await appCheckInitPromise;
             await refreshAppCheckTokenBeforeFirestore();
