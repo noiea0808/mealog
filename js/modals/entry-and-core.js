@@ -76,7 +76,7 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { ENTRY_DOM } from './entry-form-config.js';
+import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
@@ -953,6 +953,363 @@ function loadKakaoSDK() {
     });
 }
 
+function resetEntryModalScrollTop() {
+    const scrollArea = document.getElementById('modalScrollArea');
+    if (!scrollArea) return;
+    scrollArea.scrollTop = 0;
+    if (typeof scrollArea.scrollTo === 'function') {
+        scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+}
+
+async function fetchMealRecordForEdit(entryId) {
+    if (!entryId || !window.currentUser?.uid) return null;
+    const cached = window.mealHistory?.find((m) => m.id === entryId);
+    if (cached) return cached;
+
+    const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+    let savedRecord = null;
+    const mergeRec = (snap) => {
+        if (!snap.exists()) return;
+        let rec = { id: snap.id, ...snap.data() };
+        const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+        if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+        savedRecord = rec;
+        const hist = window.mealHistory || [];
+        if (!hist.some((m) => m.id === entryId)) {
+            window.mealHistory = [...hist, rec].sort(
+                (a, b) =>
+                    (b.date || '').localeCompare(a.date || '') ||
+                    (b.time || '').localeCompare(a.time || '')
+            );
+        }
+    };
+    try {
+        await refreshAppCheckTokenBeforeFirestore();
+        mergeRec(await getDoc(ref));
+    } catch (e) {
+        const isPerm =
+            e?.code === 'permission-denied' ||
+            e?.code === 'PERMISSION_DENIED' ||
+            /permission/i.test(String(e?.message || ''));
+        if (isPerm) {
+            try {
+                await refreshAppCheckTokenBeforeFirestore();
+                await new Promise((r) => setTimeout(r, 400));
+                mergeRec(await getDoc(ref));
+            } catch (e2) {
+                console.warn('openModal: meal 단건 조회 실패', entryId, e2);
+            }
+        } else {
+            console.warn('openModal: meal 단건 조회 실패', entryId, e);
+        }
+    }
+    return savedRecord;
+}
+
+function resetEntryModalFormFields() {
+    const entryModal = document.getElementById('entryModal');
+    entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
+
+    document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
+
+    ['entryWhereInput', 'entryWhatInput', 'entryWithInput', 'deliveryVendorInput', 'generalCommentInput', 'snackCommentInput'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    const entryWhereInput = document.getElementById('entryWhereInput');
+    if (entryWhereInput) {
+        entryWhereInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
+        entryWhereInput.removeAttribute('data-kakao-place-id');
+        entryWhereInput.removeAttribute('data-kakao-place-address');
+        entryWhereInput.removeAttribute('data-kakao-place-data');
+        entryWhereInput.removeAttribute('data-kakao-place-name');
+    }
+    const deliveryVendorInput = document.getElementById('deliveryVendorInput');
+    if (deliveryVendorInput) {
+        deliveryVendorInput.placeholder = '어느 식당 음식인가요?';
+        deliveryVendorInput.removeAttribute('data-kakao-place-id');
+        deliveryVendorInput.removeAttribute('data-kakao-place-address');
+        deliveryVendorInput.removeAttribute('data-kakao-place-data');
+        deliveryVendorInput.removeAttribute('data-kakao-place-name');
+    }
+    document.getElementById('deliveryVendorSection')?.classList.add('hidden');
+
+    const mainPhotoContainer = document.getElementById('photoPreviewContainer');
+    const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
+    if (mainPhotoContainer) mainPhotoContainer.innerHTML = '';
+    if (snackPhotoContainer) snackPhotoContainer.innerHTML = '';
+
+    resetEntryModalScrollTop();
+
+    ['entryWhereSuggestions', 'entryWhatSuggestions', 'entryWithSuggestions'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('no-scrollbar');
+            el.classList.remove('scrollbar-hide');
+        }
+    });
+}
+
+function applyEntryModalSaveButtonState(entryId, savedRecord) {
+    const btnSave = document.getElementById('btnSave');
+    if (!btnSave) return;
+    if (window.currentUser && window.currentUser.isAnonymous) {
+        btnSave.disabled = true;
+        btnSave.className =
+            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
+        btnSave.innerText = '로그인 후 사용할 수 있어요';
+        btnSave.removeAttribute('title');
+    } else if (entryId && savedRecord && isMealEntrySaveFailed(savedRecord)) {
+        btnSave.disabled = true;
+        btnSave.className =
+            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-400 text-white text-sm font-bold transition-colors cursor-not-allowed';
+        btnSave.innerHTML = '<span class="leading-tight text-center">서버 등록 후 수정 가능</span>';
+        btnSave.title = '서버 등록 후 수정이 가능합니다';
+    } else {
+        btnSave.disabled = false;
+        btnSave.className = 'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
+        btnSave.innerHTML =
+            '<span class="entry-action-btn__inner"><span>' + (entryId ? '수정 완료' : '기록 완료') + '</span></span>';
+        delete btnSave.dataset.defaultHtml;
+        btnSave.removeAttribute('title');
+    }
+}
+
+function populateSavedRecordIntoForm(r, isS, state) {
+    state.currentPhotos = Array.isArray(r.photos) ? r.photos : r.photos ? [r.photos] : [];
+    state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
+    state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : r.sharedPhotos ? [r.sharedPhotos] : [];
+    state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : r.sharedPhotos ? [r.sharedPhotos] : [];
+    state.recordPhotoAspectRatio =
+        r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio) ? r.photoAspectRatio : '1:1';
+
+    const isShareBanned = r.shareBanned === true;
+    state.wantsToShare = isShareBanned ? false : state.sharedPhotos && state.sharedPhotos.length > 0;
+
+    renderPhotoPreviews();
+    updateShareIndicator();
+    updatePhotoAspectButtons();
+
+    setVal('entryWhereInput', r.place || '');
+    const _pi = document.getElementById('entryWhereInput');
+    if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
+        if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
+        _pi.setAttribute(
+            'data-kakao-place-address',
+            r.placeAddress != null && r.placeAddress !== undefined ? String(r.placeAddress) : ''
+        );
+        if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
+        _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
+    }
+    setVal('entryWhatInput', r.menuDetail || '');
+    setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
+    const _dvi = document.getElementById('deliveryVendorInput');
+    if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
+        if (r.deliveryPlaceId) _dvi.setAttribute('data-kakao-place-id', r.deliveryPlaceId);
+        _dvi.setAttribute(
+            'data-kakao-place-address',
+            r.deliveryPlaceAddress != null && r.deliveryPlaceAddress !== undefined ? String(r.deliveryPlaceAddress) : ''
+        );
+        if (r.deliveryPlaceData && typeof r.deliveryPlaceData === 'object') {
+            _dvi.setAttribute('data-kakao-place-data', JSON.stringify(r.deliveryPlaceData));
+        }
+        const dn = (r.deliveryPlaceData && r.deliveryPlaceData.name) || r.deliveryVendor || '';
+        _dvi.setAttribute('data-kakao-place-name', dn);
+    }
+    setVal('entryWithInput', r.withWhomDetail || '');
+    setVal('generalCommentInput', r.comment || '');
+    setVal('snackCommentInput', r.comment || '');
+
+    const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
+    const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
+    window.setRating(Number.isFinite(rn) ? rn : null);
+    window.setSatiety(Number.isFinite(sn) ? sn : null);
+    updateShareIndicator();
+
+    if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
+        const inSharedColl = window.sharedPhotos?.some?.((p) => p.entryId === r.id);
+        if (!inSharedColl) {
+            dbOps
+                .sharePhotos(r.sharedPhotos, r)
+                .then(() => {
+                    if (!window.sharedPhotos) window.sharedPhotos = [];
+                    const newEntries = r.sharedPhotos.map((url) => ({
+                        entryId: r.id,
+                        photoUrl: url,
+                        userId: window.currentUser?.uid,
+                    }));
+                    window.sharedPhotos = (window.sharedPhotos || []).filter((p) => p.entryId !== r.id).concat(newEntries);
+                    updateTimelineShareIndicators();
+                    if (appState.currentTab === 'gallery') renderGallery();
+                    showToast('모먼트에 반영되었습니다.', 'success');
+                })
+                .catch((e) => {
+                    console.warn('모먼트 동기화 실패 (무시):', e);
+                });
+        }
+    }
+}
+
+function activateChipByText(containerId, text) {
+    if (!text) return;
+    const trimmed = String(text).trim();
+    document.getElementById(containerId)?.querySelectorAll('button.chip').forEach((ch) => {
+        if (ch.innerText.trim() === trimmed) ch.classList.add('active');
+    });
+}
+
+function activateSubChipsByTexts(containerId, texts) {
+    const values = (Array.isArray(texts) ? texts : [texts]).map((v) => String(v).trim()).filter(Boolean);
+    if (!values.length) return [];
+    const activeValues = [];
+    document.getElementById(containerId)?.querySelectorAll('button.sub-chip').forEach((ch) => {
+        const chipText = ch.innerText.trim().replace(/\s*★\s*$/, '');
+        if (values.includes(chipText)) {
+            ch.classList.add('active');
+            activeValues.push(chipText);
+        }
+    });
+    return activeValues;
+}
+
+/** 수정 모드: renderEntryChips 직후 1회 태그·서브태그 활성화 */
+function activateSavedRecordTags(r, isS) {
+    if (!r) return;
+
+    const subTags = window.userSettings?.subTags || {};
+    const cfg = getEntryModeConfig(isS ? 'snack' : 'meal');
+
+    if (r.mealType) activateChipByText(ENTRY_DOM.whereChips, r.mealType);
+    if (r.category) activateChipByText(ENTRY_DOM.whatChips, r.category);
+    if (r.withWhom) activateChipByText(ENTRY_DOM.withChips, r.withWhom);
+    if (r.snackType) activateChipByText(ENTRY_DOM.whatChips, r.snackType);
+
+    let snackMainTag = '';
+    if (!isS) {
+        if (r.mealType) {
+            window.renderSecondary(
+                ENTRY_DOM.whereSuggestions,
+                subTags.place || [],
+                ENTRY_DOM.whereInput,
+                r.mealType.trim(),
+                cfg.axis1SubTagKey
+            );
+        }
+        if (r.category) {
+            window.renderSecondary(
+                ENTRY_DOM.whatSuggestions,
+                subTags[cfg.axis2SubTagsKey] || [],
+                ENTRY_DOM.whatInput,
+                r.category.trim(),
+                cfg.axis2SubTagKey
+            );
+        }
+        if (r.withWhom) {
+            window.renderSecondary(
+                ENTRY_DOM.withSuggestions,
+                subTags.people || [],
+                ENTRY_DOM.withInput,
+                r.withWhom.trim(),
+                ENTRY_MODE_CONFIG.withSubTagKey
+            );
+        }
+        if (r.place) activateSubChipsByTexts(ENTRY_DOM.whereSuggestions, [r.place]);
+    } else {
+        const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+        snackMainTag =
+            (r.snackPlaceMain || '').trim() ||
+            (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
+        if (snackMainTag) {
+            appState.selectedSnackPlaceMainTag = snackMainTag;
+            activateChipByText(ENTRY_DOM.whereChips, snackMainTag);
+            window.renderSecondary(
+                ENTRY_DOM.whereSuggestions,
+                subTags.place || [],
+                ENTRY_DOM.whereInput,
+                snackMainTag,
+                cfg.axis1SubTagKey
+            );
+        }
+        if (r.snackType) {
+            window.renderSecondary(
+                ENTRY_DOM.whatSuggestions,
+                subTags[cfg.axis2SubTagsKey] || [],
+                ENTRY_DOM.whatInput,
+                r.snackType,
+                cfg.axis2SubTagKey
+            );
+        }
+        const placeDetail = (r.place || '').trim();
+        if (placeDetail && placeDetail !== snackMainTag) {
+            activateSubChipsByTexts(ENTRY_DOM.whereSuggestions, [placeDetail]);
+        }
+    }
+
+    if (r.menuDetail) {
+        const detailValues = r.menuDetail.split(',').map((v) => v.trim()).filter(Boolean);
+        const activeValues = activateSubChipsByTexts(ENTRY_DOM.whatSuggestions, detailValues);
+        const entryWhatInput = document.getElementById(ENTRY_DOM.whatInput);
+        if (entryWhatInput) {
+            entryWhatInput.value = activeValues.length > 0 ? activeValues.join(', ') : r.menuDetail;
+        }
+    }
+    if (r.withWhomDetail) {
+        const detailValues = r.withWhomDetail.split(',').map((v) => v.trim()).filter(Boolean);
+        const activeValues = activateSubChipsByTexts(ENTRY_DOM.withSuggestions, detailValues);
+        const entryWithInput = document.getElementById(ENTRY_DOM.withInput);
+        if (entryWithInput && activeValues.length > 0) {
+            entryWithInput.value = activeValues.join(', ');
+        }
+    }
+
+    if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
+        toggleFieldsForSkip(true);
+    }
+
+    syncDeliveryVendorSectionVisibility();
+}
+
+function ensureEntryWhatInputSnackCompositionInit() {
+    const entryWhatInput = document.getElementById('entryWhatInput');
+    if (!entryWhatInput || entryWhatInput._snackCompositionInit) return;
+    const updateSnackSuggestions = () => {
+        const subTags = window.userSettings.subTags.snack || [];
+        const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
+        window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+    };
+    addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
+    entryWhatInput._snackCompositionInit = true;
+}
+
+function revealEntryModalShell() {
+    const entryModal = document.getElementById('entryModal');
+    if (!entryModal) {
+        console.error('entryModal 요소를 찾을 수 없습니다.');
+        return null;
+    }
+    setEntryModalSavingState(false);
+    bindEntryModalHeaderOnce();
+    refreshEntryModalHeader();
+    lockBodyScroll();
+    const openGen = (window.__entryModalOpenGeneration || 0) + 1;
+    window.__entryModalOpenGeneration = openGen;
+    entryModal.classList.remove('hidden');
+    entryModal.classList.remove('keyboard-open');
+    entryModal.style.height = '';
+    entryModal.style.top = '';
+    resetEntryModalScrollTop();
+    requestAnimationFrame(resetEntryModalScrollTop);
+    setTimeout(resetEntryModalScrollTop, 60);
+    initEntryModalKeyboardHandling(entryModal);
+    if (typeof entryModal.setKeyboardBaseline === 'function') {
+        entryModal.setKeyboardBaseline();
+    }
+    syncEntryModalBodyClass();
+    return openGen;
+}
+
 export async function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
@@ -1005,552 +1362,94 @@ export async function openModal(date, slotId, entryId = null) {
         // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
         state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
         
-        // entryId가 있으면 저장된 태그 정보를 미리 저장
-        let savedRecord = null;
-        if (entryId) {
-            savedRecord = window.mealHistory.find(m => m.id === entryId);
-        }
-        // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
-        // App Check 토큰 지연 시 permission-denied → 토큰 갱신 후 1회 재시도
-        if (entryId && !savedRecord && window.currentUser?.uid) {
-            const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
-            const mergeRec = (snap) => {
-                if (!snap.exists()) return;
-                let rec = { id: snap.id, ...snap.data() };
-                const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
-                if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
-                savedRecord = rec;
-                const hist = window.mealHistory || [];
-                if (!hist.some((m) => m.id === entryId)) {
-                    window.mealHistory = [...hist, rec].sort(
-                        (a, b) =>
-                            (b.date || '').localeCompare(a.date || '') ||
-                            (b.time || '').localeCompare(a.time || '')
-                    );
-                }
-            };
-            try {
-                await refreshAppCheckTokenBeforeFirestore();
-                const snap = await getDoc(ref);
-                mergeRec(snap);
-            } catch (e) {
-                const isPerm =
-                    e?.code === 'permission-denied' ||
-                    e?.code === 'PERMISSION_DENIED' ||
-                    /permission/i.test(String(e?.message || ''));
-                if (isPerm) {
-                    try {
-                        await refreshAppCheckTokenBeforeFirestore();
-                        await new Promise((r) => setTimeout(r, 400));
-                        mergeRec(await getDoc(ref));
-                    } catch (e2) {
-                        console.warn('openModal: meal 단건 조회 실패', entryId, e2);
-                    }
-                } else {
-                    console.warn('openModal: meal 단건 조회 실패', entryId, e);
-                }
-            }
-        }
-        
-        // 모든 칩의 active 클래스 제거 (renderEntryChips 전에)
-        document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
-        
-        // 공유 인디케이터 숨기기
-        const shareIndicator = document.getElementById('sharePhotoIndicator');
-        if (shareIndicator) shareIndicator.classList.add('hidden');
-        
-        ['entryWhereInput', 'entryWhatInput', 'entryWithInput', 'deliveryVendorInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        
-        const entryWhereInput = document.getElementById('entryWhereInput');
-        if (entryWhereInput) {
-            entryWhereInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
-            entryWhereInput.removeAttribute('data-kakao-place-id');
-            entryWhereInput.removeAttribute('data-kakao-place-address');
-            entryWhereInput.removeAttribute('data-kakao-place-data');
-            entryWhereInput.removeAttribute('data-kakao-place-name');
-        }
-        const deliveryVendorInput = document.getElementById('deliveryVendorInput');
-        if (deliveryVendorInput) {
-            deliveryVendorInput.placeholder = '어느 식당 음식인가요?';
-            deliveryVendorInput.removeAttribute('data-kakao-place-id');
-            deliveryVendorInput.removeAttribute('data-kakao-place-address');
-            deliveryVendorInput.removeAttribute('data-kakao-place-data');
-            deliveryVendorInput.removeAttribute('data-kakao-place-name');
-        }
-        document.getElementById('deliveryVendorSection')?.classList.add('hidden');
-        
-        const mainPhotoContainer = document.getElementById('photoPreviewContainer');
-        const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
-        if (mainPhotoContainer) mainPhotoContainer.innerHTML = "";
-        if (snackPhotoContainer) snackPhotoContainer.innerHTML = "";
-        
-        const resetModalScrollTop = () => {
-            const scrollArea = document.getElementById('modalScrollArea');
-            if (!scrollArea) return;
-            scrollArea.scrollTop = 0;
-            if (typeof scrollArea.scrollTo === 'function') {
-                scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-            }
-        };
-        // 모달 내부 스크롤 복원 이슈 대응: 즉시 + 다음 프레임 + 짧은 지연에 걸쳐 상단 고정
-        resetModalScrollTop();
-        
-        ['entryWhereSuggestions', 'entryWhatSuggestions', 'entryWithSuggestions'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.classList.add('no-scrollbar');
-                el.classList.remove('scrollbar-hide');
-            }
-        });
-        
-        const slot = SLOTS.find(s => s.id === slotId);
+        const slot = SLOTS.find((s) => s.id === slotId);
         if (!slot) {
             console.error('슬롯을 찾을 수 없습니다:', slotId);
             return;
         }
+
+        let savedRecord = entryId ? window.mealHistory?.find((m) => m.id === entryId) ?? null : null;
+
+        resetEntryModalFormFields();
+
         appState.entryFormMode = inferEntryFormModeFromRecord(savedRecord, slot);
         const isS = appState.entryFormMode === 'snack';
         applyEntryFormModeToModalUI(appState.entryFormMode);
         document.getElementById('optionalFields')?.classList.remove('hidden');
         document.getElementById('btnDelete')?.classList.add('hidden');
-        
         updatePhotoAspectButtons();
-        
-        if (isS) {
-            appState.selectedSnackPlaceMainTag = null;
-        }
-        
-        if (!isS) {
-            toggleFieldsForSkip(false);
-        }
-        
-        // 칩 렌더링 (필드 표시/숨김 처리 후)
-        renderEntryChips();
-        const btnSave = document.getElementById('btnSave');
-        if (btnSave) {
-            if (window.currentUser && window.currentUser.isAnonymous) {
-                // 게스트 모드: 버튼 비활성화
-                btnSave.disabled = true;
-                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
-                btnSave.innerText = '로그인 후 사용할 수 있어요';
-                btnSave.removeAttribute('title');
-            } else if (
-                entryId &&
-                savedRecord &&
-                isMealEntrySaveFailed(savedRecord)
-            ) {
-                btnSave.disabled = true;
-                btnSave.className =
-                    'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-400 text-white text-sm font-bold transition-colors cursor-not-allowed';
-                btnSave.innerHTML =
-                    '<span class="leading-tight text-center">서버 등록 후 수정 가능</span>';
-                btnSave.title = '서버 등록 후 수정이 가능합니다';
-            } else {
-                // 일반 모드: 버튼 활성화 및 텍스트 설정
-                btnSave.disabled = false;
-                btnSave.className = 'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
-                btnSave.innerHTML = '<span class="entry-action-btn__inner"><span>' + (entryId ? '수정 완료' : '기록 완료') + '</span></span>';
-                delete btnSave.dataset.defaultHtml;
-                btnSave.removeAttribute('title');
-            }
-        }
-        
-        // 칩 렌더링 (필드 표시/숨김 처리 후)
-        renderEntryChips();
-        
-        if (entryId && savedRecord) {
-            const r = savedRecord;
-            if (r) {
-                // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
-                state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
-                state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
-                // sharedPhotos도 배열인지 확인
-                state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
-                state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
-                state.recordPhotoAspectRatio = (r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio)) ? r.photoAspectRatio : '1:1';
-                
-                // 공유 금지 체크
-                const isShareBanned = r.shareBanned === true;
-                if (isShareBanned) {
-                    // 공유 금지된 경우 공유 상태를 false로 설정
-                    state.wantsToShare = false;
-                } else {
-                    state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
-                }
-                
-                // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
-                renderPhotoPreviews();
-                // 공유 인디케이터 업데이트
-                updateShareIndicator();
-                setVal('entryWhereInput', r.place || "");
-                const _pi = document.getElementById('entryWhereInput');
-                if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
-                    if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
-                    _pi.setAttribute('data-kakao-place-address', (r.placeAddress != null && r.placeAddress !== undefined) ? String(r.placeAddress) : '');
-                    if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
-                    _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
-                }
-                setVal('entryWhatInput', r.menuDetail || "");
-                setVal('deliveryVendorInput', (!isS ? (r.deliveryVendor || '') : ''));
-                const _dvi = document.getElementById('deliveryVendorInput');
-                if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
-                    if (r.deliveryPlaceId) _dvi.setAttribute('data-kakao-place-id', r.deliveryPlaceId);
-                    _dvi.setAttribute('data-kakao-place-address', (r.deliveryPlaceAddress != null && r.deliveryPlaceAddress !== undefined) ? String(r.deliveryPlaceAddress) : '');
-                    if (r.deliveryPlaceData && typeof r.deliveryPlaceData === 'object') {
-                        _dvi.setAttribute('data-kakao-place-data', JSON.stringify(r.deliveryPlaceData));
-                    }
-                    const dn = (r.deliveryPlaceData && r.deliveryPlaceData.name) || r.deliveryVendor || '';
-                    _dvi.setAttribute('data-kakao-place-name', dn);
-                }
-                setVal('entryWithInput', r.withWhomDetail || "");
-                setVal('generalCommentInput', r.comment || "");
-                setVal('snackCommentInput', r.comment || "");
-                
-                const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
-                const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
-                window.setRating(Number.isFinite(rn) ? rn : null);
-                window.setSatiety(Number.isFinite(sn) ? sn : null);
-                
-                // 공유 인디케이터 표시
-                updateShareIndicator();
+        if (isS) appState.selectedSnackPlaceMainTag = null;
+        if (!isS) toggleFieldsForSkip(false);
 
-                // meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션(모먼트)에 없으면 동기화 시도
-                if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
-                    const inSharedColl = window.sharedPhotos?.some?.(p => p.entryId === r.id);
-                    if (!inSharedColl) {
-                        dbOps.sharePhotos(r.sharedPhotos, r).then(() => {
-                            if (!window.sharedPhotos) window.sharedPhotos = [];
-                            const newEntries = r.sharedPhotos.map(url => ({ entryId: r.id, photoUrl: url, userId: window.currentUser?.uid }));
-                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== r.id).concat(newEntries);
-                            updateTimelineShareIndicators();
-                            if (appState.currentTab === 'gallery') renderGallery();
-                            showToast('모먼트에 반영되었습니다.', 'success');
-                        }).catch((e) => {
-                            console.warn('모먼트 동기화 실패 (무시):', e);
-                        });
-                    }
-                }
-
-                // 태그 활성화 처리 함수
-                const activateTags = () => {
-                    // 식사 방식 (mealType)
-                    if (r.mealType) {
-                        const entryWhereChips = document.getElementById('entryWhereChips');
-                        if (entryWhereChips) {
-                            entryWhereChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.mealType.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 메뉴 카테고리 (category)
-                    if (r.category) {
-                        const entryWhatChips = document.getElementById('entryWhatChips');
-                        if (entryWhatChips) {
-                            entryWhatChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.category.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 함께한 사람 (withWhom)
-                    if (r.withWhom) {
-                        const chipId = isS ? 'entryWithChips' : 'entryWithChips';
-                        const entryWithChips = document.getElementById(chipId);
-                        if (entryWithChips) {
-                            entryWithChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.withWhom.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 간식 타입 (snackType)
-                    if (r.snackType) {
-                        const entryWhatChips = document.getElementById('entryWhatChips');
-                        if (entryWhatChips) {
-                            entryWhatChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.snackType.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 간식 어디서 (snackPlaceMain + place 상세)
-                    if (isS) {
-                        const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
-                        const mainTag = (r.snackPlaceMain || '').trim() ||
-                            (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
-                        if (mainTag) {
-                            appState.selectedSnackPlaceMainTag = mainTag;
-                            const subTags = window.userSettings?.subTags?.place || [];
-                            window.renderSecondary('entryWhereSuggestions', subTags, 'entryWhereInput', mainTag, 'place');
-                            const entryWhereChips = document.getElementById('entryWhereChips');
-                            if (entryWhereChips) {
-                                entryWhereChips.querySelectorAll('button.chip').forEach(ch => {
-                                    if (ch.innerText.trim() === mainTag) {
-                                        ch.classList.add('active');
-                                    }
-                                });
-                            }
-                        }
-                        const placeDetail = (r.place || '').trim();
-                        if (placeDetail && placeDetail !== mainTag) {
-                            setVal('entryWhereInput', placeDetail);
-                            const entryWhereSuggestions = document.getElementById('entryWhereSuggestions');
-                            if (entryWhereSuggestions) {
-                                entryWhereSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                    const chipText = ch.innerText.trim().replace(/\s*★\s*$/, '');
-                                    if (chipText === placeDetail) {
-                                        ch.classList.add('active');
-                                    }
-                                });
-                            }
-                        }
-                    }
-                    
-                    // 장소 (place) - sub-chip (본식)
-                    if (!isS && r.place) {
-                        const entryWhereSuggestions = document.getElementById('entryWhereSuggestions');
-                        if (entryWhereSuggestions) {
-                            entryWhereSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.place.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 메뉴 상세 (본식 menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
-                    if (!isS && r.menuDetail) {
-                        const entryWhatSuggestions = document.getElementById('entryWhatSuggestions');
-                        const entryWhatInput = document.getElementById('entryWhatInput');
-                        if (entryWhatSuggestions && entryWhatInput) {
-                            // 쉼표로 구분된 여러 값 처리
-                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWhatSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            // input에 선택된 값들 저장
-                            if (activeValues.length > 0) {
-                                entryWhatInput.value = activeValues.join(', ');
-                            } else {
-                                // 자주 사용한 태그에 없는 경우 입력값 그대로 표시
-                                entryWhatInput.value = r.menuDetail;
-                            }
-                        }
-                    }
-                    // 간식 무엇을 (menuDetail → entryWhatInput / entryWhatSuggestions)
-                    if (isS && r.menuDetail) {
-                        const entryWhatSuggestions = document.getElementById('entryWhatSuggestions');
-                        const entryWhatInput = document.getElementById('entryWhatInput');
-                        if (entryWhatSuggestions && entryWhatInput) {
-                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWhatSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            if (activeValues.length > 0) {
-                                entryWhatInput.value = activeValues.join(', ');
-                            } else {
-                                entryWhatInput.value = r.menuDetail;
-                            }
-                        }
-                    }
-                    
-                    // 함께한 사람 상세 (본식 withWhomDetail) - sub-chip (다중 선택 가능)
-                    if (!isS && r.withWhomDetail) {
-                        const entryWithSuggestions = document.getElementById('entryWithSuggestions');
-                        const entryWithInput = document.getElementById('entryWithInput');
-                        if (entryWithSuggestions && entryWithInput) {
-                            // 쉼표로 구분된 여러 값 처리
-                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWithSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            // input에 선택된 값들 저장
-                            if (activeValues.length > 0) {
-                                entryWithInput.value = activeValues.join(', ');
-                            }
-                        }
-                    }
-                    // 간식 누구와 상세 (entryWithSuggestions)
-                    if (isS && r.withWhomDetail) {
-                        const entryWithSuggestions = document.getElementById('entryWithSuggestions');
-                        const entryWithInput = document.getElementById('entryWithInput');
-                        if (entryWithSuggestions && entryWithInput) {
-                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWithSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            if (activeValues.length > 0) {
-                                entryWithInput.value = activeValues.join(', ');
-                            }
-                        }
-                    }
-                };
-                
-                // DOM 렌더링 완료 후 태그 활성화 (여러 번 시도)
-                const tryActivateTags = (attempts = 0) => {
-                    if (attempts > 20) {
-                        console.warn('태그 활성화 실패: 최대 시도 횟수 초과');
-                        return;
-                    }
-                    
-                    requestAnimationFrame(() => {
-                        const entryWhereChips = document.getElementById('entryWhereChips');
-                        const hasChips = entryWhereChips && entryWhereChips.querySelectorAll('button.chip').length > 0;
-                        
-                        if (hasChips || attempts > 10) {
-                            activateTags();
-                            // sub-chip은 나중에 렌더링될 수 있으므로 여러 번 재시도
-                            setTimeout(() => {
-                                activateTags();
-                                setTimeout(() => {
-                                    activateTags();
-                                    syncDeliveryVendorSectionVisibility();
-                                }, 100);
-                            }, 100);
-                        } else {
-                            setTimeout(() => tryActivateTags(attempts + 1), 50);
-                        }
-                    });
-                };
-                
-                // 즉시 한 번 시도하고, 그 다음 재시도
-                setTimeout(() => tryActivateTags(), 50);
-                
-                // Skip 선택 시 필드 숨기기 처리
-                if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
-                    setTimeout(() => {
-                        toggleFieldsForSkip(true);
-                    }, 100);
-                }
-                
-                // 간식 타입 선택 시 추천 태그 업데이트
-                if (isS && r.snackType) {
-                    const subTags = window.userSettings.subTags.snack || [];
-                    window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', r.snackType, 'snack');
-                }
-                // 간식 어디서: snackPlaceMain 기준 추천 태그 표시
-                if (isS && (r.snackPlaceMain || r.place)) {
-                    const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
-                    const mainTag = (r.snackPlaceMain || '').trim() ||
-                        (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
-                    if (mainTag) {
-                        appState.selectedSnackPlaceMainTag = mainTag;
-                        const subTags = window.userSettings?.subTags?.place || [];
-                        window.renderSecondary('entryWhereSuggestions', subTags, 'entryWhereInput', mainTag, 'place');
-                    }
-                }
-                
-            }
-        } else {
-            window.setRating(null);
-            window.setSatiety(null);
-        }
-
-        if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
-            document.getElementById('btnDelete')?.classList.remove('hidden');
-        }
-        
-        // 간식 모드일 때 초기 추천 태그 표시
-        if (isS) {
-            const subTags = window.userSettings.subTags.snack || [];
-            const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-            window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
-        } else {
-            /** 신규 기록만 즉시 동기화. 수정 모드는 tryActivateTags 끝에서 sync(배달 식당 필드 복원 후)하므로,
-             * 여기서 먼저 호출하면 칩이 아직 '배달/포장'이 아니어서 deliveryVendorInput 이 비워짐 */
-            if (!(entryId && savedRecord)) {
-                setTimeout(() => syncDeliveryVendorSectionVisibility(), 0);
-            }
-        }
-        
-        // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
-        // 조합(composition) 중에는 DOM 업데이트 지연 → 한글 IME 모바일 텍스트 미표시 이슈 방지
-        const entryWhatInput = document.getElementById('entryWhatInput');
-        if (entryWhatInput) {
-            if (entryWhatInput._snackCompositionInit) {
-                // 이미 초기화됨 (모달 재오픈 시 중복 방지)
-            } else {
-                const updateSnackSuggestions = () => {
-                    const subTags = window.userSettings.subTags.snack || [];
-                    const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-                    window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
-                };
-                addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
-                entryWhatInput._snackCompositionInit = true;
-            }
-        }
-        
         initEntryModalGaugeControlsOnce();
         bindEntryQuickInputOnce();
         bindEntryDetailRecordOnce();
         finalizeEntryModalQuickInput();
-        finalizeEntryModalDetailRecord(entryId && savedRecord ? savedRecord : null);
-        finalizeEntryModalGauges();
-        finalizeEntryMealClock(entryId && savedRecord ? savedRecord : null, isS);
-        seedEntryMealClockOnModalOpenAfterFinalize(entryId, isS);
+        ensureEntryWhatInputSnackCompositionInit();
 
-        const entryModal = document.getElementById('entryModal');
-        if (entryModal) {
-            setEntryModalSavingState(false);
-            bindEntryModalHeaderOnce();
-            refreshEntryModalHeader();
-            lockBodyScroll();
-            entryModal.classList.remove('hidden');
-            window.__entryModalOpenGeneration = (window.__entryModalOpenGeneration || 0) + 1;
-            entryModal.classList.remove('keyboard-open');
-            entryModal.style.height = '';
-            entryModal.style.top = '';
-            resetModalScrollTop();
-            requestAnimationFrame(resetModalScrollTop);
-            setTimeout(resetModalScrollTop, 60);
-            initEntryModalKeyboardHandling(entryModal);
-            if (typeof entryModal.setKeyboardBaseline === 'function') {
-                entryModal.setKeyboardBaseline();
+        const openGen = revealEntryModalShell();
+        if (!openGen) return;
+        const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
+
+        const completeEntryModalOpen = async () => {
+            if (isStaleOpen()) return;
+
+            if (entryId && !savedRecord) {
+                savedRecord = await fetchMealRecordForEdit(entryId);
+                if (isStaleOpen()) return;
             }
-            syncEntryModalBodyClass();
-            // 휠 다이얼 초기 스냅(모달이 실제로 열린 뒤에 한 번 더 맞춤)
-            setTimeout(() => {
+
+            if (savedRecord) {
+                const modeFromRec = inferEntryFormModeFromRecord(savedRecord, slot);
+                if (modeFromRec !== appState.entryFormMode) {
+                    appState.entryFormMode = modeFromRec;
+                    applyEntryFormModeToModalUI(modeFromRec);
+                    finalizeEntryModalQuickInput();
+                }
+            }
+            const isSnack = appState.entryFormMode === 'snack';
+
+            renderEntryChips();
+            applyEntryModalSaveButtonState(entryId, savedRecord);
+
+            if (entryId && savedRecord) {
+                populateSavedRecordIntoForm(savedRecord, isSnack, state);
+                activateSavedRecordTags(savedRecord, isSnack);
+            } else {
+                window.setRating(null);
+                window.setSatiety(null);
+            }
+
+            if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
+                document.getElementById('btnDelete')?.classList.remove('hidden');
+            }
+
+            if (isSnack && !(entryId && savedRecord)) {
+                const subTags = window.userSettings.subTags.snack || [];
+                const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
+                window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+            } else if (!isSnack && !(entryId && savedRecord)) {
+                syncDeliveryVendorSectionVisibility();
+            }
+
+            finalizeEntryModalDetailRecord(entryId && savedRecord ? savedRecord : null);
+            finalizeEntryModalGauges();
+            finalizeEntryMealClock(entryId && savedRecord ? savedRecord : null, isSnack);
+            seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnack);
+
+            requestAnimationFrame(() => {
+                if (isStaleOpen()) return;
                 try {
                     window.setRating?.(appState.currentRating);
                     window.setSatiety?.(appState.currentSatiety);
                     applyEntryGaugeDialUi();
                 } catch (_) {}
-            }, 0);
-        } else {
-            console.error('entryModal 요소를 찾을 수 없습니다.');
-        }
+            });
+        };
+
+        requestAnimationFrame(() => {
+            void completeEntryModalOpen();
+        });
     } catch (error) {
         console.error('openModal 오류:', error);
         const loadingOverlay = document.getElementById('loadingOverlay');
