@@ -74,10 +74,51 @@ export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
 }
 
 /**
+ * 모먼트「다시 불러오기」·당겨서 새로고침 직전: 원격 핑으로 연결을 확인하고
+ * 로컬 강제 오프라인·Auth/App Check 를 갱신한다.
+ * @returns {Promise<boolean>} 원격 서버 도달 가능 여부
+ */
+export async function prepareMomentFeedNetworkForReload() {
+    let reachable = false;
+    try {
+        reachable = await probeMealogRemoteReachable(5000);
+    } catch (_) {
+        reachable = false;
+    }
+    if (reachable) {
+        clearLocalNetworkForcedOffline();
+        try {
+            clearOfflineDraftFlagsOnMeals();
+        } catch (_) {
+            /* ignore */
+        }
+        try {
+            hideNetworkErrorOverlay();
+        } catch (_) {
+            /* ignore */
+        }
+    }
+    try {
+        await runMealogNetworkRecovery({ forceAuthRefresh: reachable });
+    } catch (_) {
+        /* ignore */
+    }
+    return reachable;
+}
+
+/**
  * Firestore 로컬 쓰기 큐가 비면 식사 동기화 UI(초록 도트)·삭제 완료 처리를 `reconcile`로 맞춤.
  * `online` 이벤트가 안 오는 모바일·웹뷰에서도 `visibilitychange` / resume 경로에서 동일 호출.
  */
 async function flushMealWriteQueueAndRefreshSyncUi() {
+    // meals 실시간 리스너가 강등(1회 조회 폴백) 상태였다면 온라인 복구 시 자동 재부착
+    void import('../utils/meals-listener-degraded.js').then((dg) => {
+        try {
+            if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+        } catch (_) {
+            /* ignore */
+        }
+    });
     try {
         await waitForPendingWrites(db);
     } catch (_) {

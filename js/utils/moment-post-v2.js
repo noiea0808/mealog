@@ -37,6 +37,8 @@ export function momentPostV2ToPhotoGroup(doc) {
     return [{
       id: doc.id,
       photoUrl: doc.photoUrl,
+      photoDisplayUrl: doc.photoDisplayUrl || '',
+      photoThumbUrl: doc.photoThumbUrl || '',
       photoIndex: 0,
       photoAspectRatio: aspectDefault,
       userId: doc.userId,
@@ -67,6 +69,8 @@ export function momentPostV2ToPhotoGroup(doc) {
   return photos.map((p, idx) => ({
     id: doc.id,
     photoUrl: p.url || p.photoUrl || '',
+    photoDisplayUrl: p.displayUrl || p.photoDisplayUrl || '',
+    photoThumbUrl: p.thumbUrl || p.photoThumbUrl || '',
     photoIndex: typeof p.index === 'number' ? p.index : idx,
     photoAspectRatio:
       p.aspectRatio === '3:4' || p.aspectRatio === '4:3' ? p.aspectRatio : aspectDefault,
@@ -170,11 +174,25 @@ export function buildOptimisticMomentPostV2(record, photosToShare, profile, user
   const now = new Date().toISOString();
   const aspectRatio =
     record?.photoAspectRatio === '3:4' || record?.photoAspectRatio === '4:3' ? record.photoAspectRatio : '1:1';
-  const photos = (photosToShare || []).map((url, index) => ({
-    url,
-    index,
-    aspectRatio
-  }));
+  // record.photos ↔ photoDisplayUrls/photoThumbUrls(index 정렬)에서 공유 URL별 파생본 매칭
+  const recPhotos = Array.isArray(record?.photos) ? record.photos : [];
+  const recDisplay = Array.isArray(record?.photoDisplayUrls) ? record.photoDisplayUrls : [];
+  const recThumb = Array.isArray(record?.photoThumbUrls) ? record.photoThumbUrls : [];
+  const displayByUrl = new Map();
+  const thumbByUrl = new Map();
+  recPhotos.forEach((u, i) => {
+    if (typeof u !== 'string' || !u) return;
+    if (recDisplay[i]) displayByUrl.set(u, recDisplay[i]);
+    if (recThumb[i]) thumbByUrl.set(u, recThumb[i]);
+  });
+  const photos = (photosToShare || []).map((url, index) => {
+    const photo = { url, index, aspectRatio };
+    const d = displayByUrl.get(url);
+    const t = thumbByUrl.get(url);
+    if (d) photo.displayUrl = d;
+    if (t) photo.thumbUrl = t;
+    return photo;
+  });
   return {
     schemaVersion: 2,
     id: sanitizeMomentPostDocId(postId),
@@ -185,6 +203,8 @@ export function buildOptimisticMomentPostV2(record, photosToShare, profile, user
     timestamp: now,
     photos,
     photoUrl: photos[0]?.url || '',
+    photoDisplayUrl: photos[0]?.displayUrl || '',
+    photoThumbUrl: photos[0]?.thumbUrl || '',
     photoIndex: 0,
     photoAspectRatio: aspectRatio,
     userNickname: profile?.nickname || '익명',

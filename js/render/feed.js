@@ -23,6 +23,7 @@ import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
 import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
 import { markMomentFeedPhotosLoadedIn } from './gallery.js';
+import { getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 
 export async function renderFeed() {
     const container = document.getElementById('feedContent');
@@ -299,12 +300,15 @@ export async function renderFeed() {
                       const isDaily = p.type === 'daily';
                       const isInsight = p.type === 'insight';
                       const photoBanned = p.banned === true;
+                      const originalUrl = String(p.photoUrl || '');
+                      const displayRaw = getDisplayImageUrl(p, 0, 'feed.v1') || originalUrl;
+                      const displayFallback = imgFallbackAttrs(originalUrl, displayRaw, escapeHtml, 'feed.v1');
                       const inner =
                           isBest
-                              ? `<div class="w-full relative overflow-hidden bg-white moment-feed-photo-slot--capture"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                              ? `<div class="w-full relative overflow-hidden bg-white moment-feed-photo-slot--capture"><img src="${escapeHtml(originalUrl)}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                               : (isDaily || isInsight)
-                              ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
-                              : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                              ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${escapeHtml(originalUrl)}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                              : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${escapeHtml(displayRaw)}"${displayFallback} alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover ${photoBanned ? 'opacity-50' : ''}" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                       const bannedOverlay =
                           photoBanned && !(isBest || isDaily || isInsight)
                               ? `

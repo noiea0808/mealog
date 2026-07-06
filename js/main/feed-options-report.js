@@ -571,12 +571,7 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
         setTimeout(() => { window._feedPostDeleteInProgress = false; }, 1000);
     }
     
-    const mealSync =
-        record && validEntryId && !isBestShare && !isDailyShare && !isInsightShare
-            ? { mealEntryId: validEntryId, mealSharedPhotos: record.sharedPhotos || [] }
-            : null;
-
-    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare, mealSync).catch(() => {
+    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare).catch(() => {
         if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
         if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
         if (appState.currentTab === 'timeline') {

@@ -443,10 +443,10 @@ export function applyMealsSnapshotPrimary(p) {
 }
 
 /**
- * 날짜 범위 쿼리 실패 시 fallback 전체 컬렉션 리스너 콜백 본문
- * @param {{ snap: *, demo: boolean, userId: string, cutoffDateStr: string, todayStr: string, mergeStatsIntoDaily: () => void, onDataUpdate?: () => void, firstSnapshotState: { value: boolean } }} p
+ * primary onSnapshot 실패 시 1회성 getDocs 결과 반영 (limit·비실시간)
+ * @param {{ snap: *, demo: boolean, userId: string, cutoffDateStr: string, todayStr: string, mergeStatsIntoDaily: () => void, onDataUpdate?: () => void, limit?: number }} p
  */
-export function applyMealsSnapshotFallback(p) {
+export function applyMealsOneTimeFetchResult(p) {
     const {
         snap,
         demo,
@@ -455,11 +455,11 @@ export function applyMealsSnapshotFallback(p) {
         todayStr,
         mergeStatsIntoDaily,
         onDataUpdate,
-        firstSnapshotState
+        limit: fetchLimit = 50
     } = p;
 
     if (window.currentUser && userId !== window.currentUser.uid) {
-        console.error('⚠️ Fallback 리스너: 사용자 ID 불일치! 무시');
+        console.error('⚠️ Meals 1회 조회: 사용자 ID 불일치! 무시');
         return { uidMismatch: true };
     }
 
@@ -487,30 +487,24 @@ export function applyMealsSnapshotFallback(p) {
         start: minF ?? cutoffDateStr,
         end: todayStr
     };
-    const allowFromCacheAck = firstSnapshotState.value;
     snap.docs.forEach((d) => {
-        if (
-            mealDocSnapshotAppearsServerAcked(d.metadata, {
-                allowFromCacheAck
-            })
-        ) {
+        if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
             onMealDocFirestoreServerAcknowledged(d.id, null);
         }
     });
-    firstSnapshotState.value = false;
-    if (!demo) {
-        const wr = window.loadedMealsDateRange;
-        window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
-        window.__mealogMealsQueryEnd = wr?.end || todayStr;
-        // 전체 컬렉션 스냅샷: 날짜 범위 내 실제 끼니 유무는 mealHistory와 일치
-        window.__mealogMealsWindowFullyLoaded = true;
-        mergeStatsIntoDaily();
-    }
+    const wr = window.loadedMealsDateRange;
+    window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
+    window.__mealogMealsQueryEnd = wr?.end || todayStr;
+    window.__mealogMealsWindowFullyLoaded = snap.docs.length < fetchLimit;
+    mergeStatsIntoDaily();
     if (onDataUpdate) notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });
-    if (!demo) {
-        scheduleReconcileStaleMealSyncDotsAfterSnapshot();
-    }
+    scheduleReconcileStaleMealSyncDotsAfterSnapshot();
     return { uidMismatch: false };
+}
+
+/** @deprecated applyMealsOneTimeFetchResult 사용 */
+export function applyMealsSnapshotFallback(p) {
+    return applyMealsOneTimeFetchResult(p);
 }
 
 MealSyncManager.prototype.applyPrimaryMealsSnapshot = function (ctx) {
@@ -518,5 +512,5 @@ MealSyncManager.prototype.applyPrimaryMealsSnapshot = function (ctx) {
 };
 
 MealSyncManager.prototype.applyFallbackMealsSnapshot = function (ctx) {
-    return applyMealsSnapshotFallback(ctx);
+    return applyMealsOneTimeFetchResult(ctx);
 };

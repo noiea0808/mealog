@@ -1,14 +1,15 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
-import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
+import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
-import { dbOps, unwrapMealSaveResult } from '../db.js';
+import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
 import { invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import {
     renderTimeline,
+    renderTimelineDateSections,
     renderMiniCalendar,
     updateTimelineShareIndicators,
     updateTimelineMealEntryPendingIndicators,
@@ -22,6 +23,7 @@ import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
+import { getSharedPhotoUrlsForEntry } from '../utils/moment-share-state.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     isMealEntryPendingSync,
@@ -57,7 +59,6 @@ import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import {
     normalizeMealClockInputValue,
-    tryExifTimeHHmmFromImageFile,
     formatMealClock12TextWhileTyping,
     normalizeMealClock12InputValue,
     mealClock24FromAmPmClock,
@@ -76,7 +77,7 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { ENTRY_DOM } from './entry-form-config.js';
+import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
@@ -222,37 +223,11 @@ function applyEntryGaugeDialUi() {
     );
 }
 
-function fillMealClockNowIfEmpty(isMain) {
-    const inp = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
-    if (!inp || String(inp.value || '').trim()) return;
-    const d = new Date();
-    applyMealClockRowFrom24(
-        isMain,
-        `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-    );
-    setEntryMealClockSource(isMain, 'now');
-}
-
-function applyPendingExifOrFillNowWhenTimeEnabled(isMain) {
-    if (appState.currentEditingId) {
-        fillMealClockNowIfEmpty(isMain);
-        return;
+function applyDefaultEmptyMealClockWhenTimeEnabled(isMain) {
+    if (!getMealClock24FromModal(isMain)) {
+        applyMealClockRowFrom24(isMain, '');
+        setEntryMealClockSource(isMain, 'empty');
     }
-    const pending = isMain ? appState.entryMealClockPendingExifHhmmMain : appState.entryMealClockPendingExifHhmmSnack;
-    const applied = isMain ? appState.entryMealClockDidApplyPhotoExifMain : appState.entryMealClockDidApplyPhotoExifSnack;
-    if (pending != null && String(pending).trim() !== '' && !applied) {
-        applyMealClockRowFrom24(isMain, normalizeMealClockInputValue(pending) || pending);
-        setEntryMealClockSource(isMain, 'photo');
-        if (isMain) {
-            appState.entryMealClockDidApplyPhotoExifMain = true;
-            appState.entryMealClockPendingExifHhmmMain = null;
-        } else {
-            appState.entryMealClockDidApplyPhotoExifSnack = true;
-            appState.entryMealClockPendingExifHhmmSnack = null;
-        }
-        return;
-    }
-    fillMealClockNowIfEmpty(isMain);
 }
 
 /** 상세기록 칩 prefs → 만족도·포만감·시간 on/off (개별 토글 대체) */
@@ -277,7 +252,7 @@ function syncEntryGaugesFromDetailRecordPrefs(prefs, modeKey) {
 
     const mainSide = !isSnack;
     if (prefs.time && !wasTimeOn) {
-        applyPendingExifOrFillNowWhenTimeEnabled(mainSide);
+        applyDefaultEmptyMealClockWhenTimeEnabled(mainSide);
     } else if (!prefs.time && wasTimeOn) {
         applyMealClockRowFrom24(mainSide, '');
         setEntryMealClockSource(mainSide, null);
@@ -493,20 +468,17 @@ function resetEntryMealClockSessionFlagsForOpen(isNewEntry) {
     }
 }
 
-/** 신규 + 해당 슬롯 시간 on: 모달 오픈 시각으로 1회만 채움 */
+/** 신규 + 해당 슬롯 시간 on: 기본은 미입력(라벨만 1회 세팅) */
 function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
     if (entryId) return;
-    const d = new Date();
-    const hhmmRaw = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-    const hhmm = normalizeMealClockInputValue(hhmmRaw) || hhmmRaw;
     if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
-        applyMealClockRowFrom24(true, hhmm);
-        setEntryMealClockSource(true, 'now');
+        applyMealClockRowFrom24(true, '');
+        setEntryMealClockSource(true, 'empty');
         appState.entryMealClockDidSeedModalOpenMain = true;
     }
     if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
-        applyMealClockRowFrom24(false, hhmm);
-        setEntryMealClockSource(false, 'now');
+        applyMealClockRowFrom24(false, '');
+        setEntryMealClockSource(false, 'empty');
         appState.entryMealClockDidSeedModalOpenSnack = true;
     }
 }
@@ -685,7 +657,7 @@ function setEntryModalSavingState(saving) {
         if (saving) {
             if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
             btnSave.innerHTML =
-                '<i class="fa-solid fa-spinner fa-spin text-sm" aria-hidden="true"></i><span class="mt-0.5">저장 중…</span>';
+                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i class="fa-solid fa-spinner fa-spin text-sm shrink-0" aria-hidden="true"></i><span>저장 중…</span></span>';
         } else if (btnSave.dataset.defaultHtml) {
             btnSave.innerHTML = btnSave.dataset.defaultHtml;
         }
@@ -953,6 +925,342 @@ function loadKakaoSDK() {
     });
 }
 
+function resetEntryModalScrollTop() {
+    const scrollArea = document.getElementById('modalScrollArea');
+    if (!scrollArea) return;
+    scrollArea.scrollTop = 0;
+    if (typeof scrollArea.scrollTo === 'function') {
+        scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+}
+
+async function fetchMealRecordForEdit(entryId) {
+    if (!entryId || !window.currentUser?.uid) return null;
+    const cached = window.mealHistory?.find((m) => m.id === entryId);
+    if (cached) return cached;
+
+    const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
+    let savedRecord = null;
+    const mergeRec = (snap) => {
+        if (!snap.exists()) return;
+        let rec = { id: snap.id, ...snap.data() };
+        const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
+        if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
+        savedRecord = rec;
+        const hist = window.mealHistory || [];
+        if (!hist.some((m) => m.id === entryId)) {
+            window.mealHistory = [...hist, rec].sort(
+                (a, b) =>
+                    (b.date || '').localeCompare(a.date || '') ||
+                    (b.time || '').localeCompare(a.time || '')
+            );
+        }
+    };
+    try {
+        await refreshAppCheckTokenBeforeFirestore();
+        mergeRec(await getDoc(ref));
+    } catch (e) {
+        const isPerm =
+            e?.code === 'permission-denied' ||
+            e?.code === 'PERMISSION_DENIED' ||
+            /permission/i.test(String(e?.message || ''));
+        if (isPerm) {
+            try {
+                await refreshAppCheckTokenBeforeFirestore();
+                await new Promise((r) => setTimeout(r, 400));
+                mergeRec(await getDoc(ref));
+            } catch (e2) {
+                console.warn('openModal: meal 단건 조회 실패', entryId, e2);
+            }
+        } else {
+            console.warn('openModal: meal 단건 조회 실패', entryId, e);
+        }
+    }
+    return savedRecord;
+}
+
+function resetEntryModalFormFields() {
+    const entryModal = document.getElementById('entryModal');
+    entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
+
+    document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
+
+    ['entryWhereInput', 'entryWhatInput', 'entryWithInput', 'deliveryVendorInput', 'generalCommentInput', 'snackCommentInput'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
+    const entryWhereInput = document.getElementById('entryWhereInput');
+    if (entryWhereInput) {
+        entryWhereInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
+        entryWhereInput.removeAttribute('data-kakao-place-id');
+        entryWhereInput.removeAttribute('data-kakao-place-address');
+        entryWhereInput.removeAttribute('data-kakao-place-data');
+        entryWhereInput.removeAttribute('data-kakao-place-name');
+    }
+    const deliveryVendorInput = document.getElementById('deliveryVendorInput');
+    if (deliveryVendorInput) {
+        deliveryVendorInput.placeholder = '어느 식당 음식인가요?';
+        deliveryVendorInput.removeAttribute('data-kakao-place-id');
+        deliveryVendorInput.removeAttribute('data-kakao-place-address');
+        deliveryVendorInput.removeAttribute('data-kakao-place-data');
+        deliveryVendorInput.removeAttribute('data-kakao-place-name');
+    }
+    document.getElementById('deliveryVendorSection')?.classList.add('hidden');
+
+    const mainPhotoContainer = document.getElementById('photoPreviewContainer');
+    const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
+    if (mainPhotoContainer) mainPhotoContainer.innerHTML = '';
+    if (snackPhotoContainer) snackPhotoContainer.innerHTML = '';
+
+    resetEntryModalScrollTop();
+
+    ['entryWhereSuggestions', 'entryWhatSuggestions', 'entryWithSuggestions'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.add('no-scrollbar');
+            el.classList.remove('scrollbar-hide');
+        }
+    });
+}
+
+function applyEntryModalSaveButtonState(entryId, savedRecord) {
+    const btnSave = document.getElementById('btnSave');
+    if (!btnSave) return;
+    if (window.currentUser && window.currentUser.isAnonymous) {
+        btnSave.disabled = true;
+        btnSave.className =
+            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
+        btnSave.innerText = '로그인 후 사용할 수 있어요';
+        btnSave.removeAttribute('title');
+    } else if (entryId && savedRecord && isMealEntrySaveFailed(savedRecord)) {
+        btnSave.disabled = true;
+        btnSave.className =
+            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-400 text-white text-sm font-bold transition-colors cursor-not-allowed';
+        btnSave.innerHTML = '<span class="leading-tight text-center">서버 등록 후 수정 가능</span>';
+        btnSave.title = '서버 등록 후 수정이 가능합니다';
+    } else {
+        btnSave.disabled = false;
+        btnSave.className = 'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
+        btnSave.innerHTML =
+            '<span class="entry-action-btn__inner"><span>' + (entryId ? '수정 완료' : '기록 완료') + '</span></span>';
+        delete btnSave.dataset.defaultHtml;
+        btnSave.removeAttribute('title');
+    }
+}
+
+function populateSavedRecordIntoForm(r, isS, state) {
+    state.currentPhotos = Array.isArray(r.photos) ? r.photos : r.photos ? [r.photos] : [];
+    state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
+    const isShareBanned = r.shareBanned === true;
+    const sharedUrls = r.id ? getSharedPhotoUrlsForEntry(r.id) : [];
+    state.sharedPhotos = sharedUrls;
+    state.originalSharedPhotos = [...sharedUrls];
+    state.recordPhotoAspectRatio =
+        r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio) ? r.photoAspectRatio : '1:1';
+
+    state.wantsToShare = isShareBanned ? false : sharedUrls.length > 0;
+
+    renderPhotoPreviews();
+    updateShareIndicator();
+    updatePhotoAspectButtons();
+
+    setVal('entryWhereInput', r.place || '');
+    const _pi = document.getElementById('entryWhereInput');
+    if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
+        if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
+        _pi.setAttribute(
+            'data-kakao-place-address',
+            r.placeAddress != null && r.placeAddress !== undefined ? String(r.placeAddress) : ''
+        );
+        if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
+        _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
+    }
+    setVal('entryWhatInput', r.menuDetail || '');
+    setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
+    const _dvi = document.getElementById('deliveryVendorInput');
+    if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
+        if (r.deliveryPlaceId) _dvi.setAttribute('data-kakao-place-id', r.deliveryPlaceId);
+        _dvi.setAttribute(
+            'data-kakao-place-address',
+            r.deliveryPlaceAddress != null && r.deliveryPlaceAddress !== undefined ? String(r.deliveryPlaceAddress) : ''
+        );
+        if (r.deliveryPlaceData && typeof r.deliveryPlaceData === 'object') {
+            _dvi.setAttribute('data-kakao-place-data', JSON.stringify(r.deliveryPlaceData));
+        }
+        const dn = (r.deliveryPlaceData && r.deliveryPlaceData.name) || r.deliveryVendor || '';
+        _dvi.setAttribute('data-kakao-place-name', dn);
+    }
+    setVal('entryWithInput', r.withWhomDetail || '');
+    setVal('generalCommentInput', r.comment || '');
+    setVal('snackCommentInput', r.comment || '');
+
+    const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
+    const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
+    window.setRating(Number.isFinite(rn) ? rn : null);
+    window.setSatiety(Number.isFinite(sn) ? sn : null);
+    updateShareIndicator();
+
+}
+
+function activateChipByText(containerId, text) {
+    if (!text) return;
+    const trimmed = String(text).trim();
+    document.getElementById(containerId)?.querySelectorAll('button.chip').forEach((ch) => {
+        if (ch.innerText.trim() === trimmed) ch.classList.add('active');
+    });
+}
+
+function activateSubChipsByTexts(containerId, texts) {
+    const values = (Array.isArray(texts) ? texts : [texts]).map((v) => String(v).trim()).filter(Boolean);
+    if (!values.length) return [];
+    const activeValues = [];
+    document.getElementById(containerId)?.querySelectorAll('button.sub-chip').forEach((ch) => {
+        const chipText = ch.innerText.trim().replace(/\s*★\s*$/, '');
+        if (values.includes(chipText)) {
+            ch.classList.add('active');
+            activeValues.push(chipText);
+        }
+    });
+    return activeValues;
+}
+
+/** 수정 모드: renderEntryChips 직후 1회 태그·서브태그 활성화 */
+function activateSavedRecordTags(r, isS) {
+    if (!r) return;
+
+    const subTags = window.userSettings?.subTags || {};
+    const cfg = getEntryModeConfig(isS ? 'snack' : 'meal');
+
+    if (r.mealType) activateChipByText(ENTRY_DOM.whereChips, r.mealType);
+    if (r.category) activateChipByText(ENTRY_DOM.whatChips, r.category);
+    if (r.withWhom) activateChipByText(ENTRY_DOM.withChips, r.withWhom);
+    if (r.snackType) activateChipByText(ENTRY_DOM.whatChips, r.snackType);
+
+    let snackMainTag = '';
+    if (!isS) {
+        if (r.mealType) {
+            window.renderSecondary(
+                ENTRY_DOM.whereSuggestions,
+                subTags.place || [],
+                ENTRY_DOM.whereInput,
+                r.mealType.trim(),
+                cfg.axis1SubTagKey
+            );
+        }
+        if (r.category) {
+            window.renderSecondary(
+                ENTRY_DOM.whatSuggestions,
+                subTags[cfg.axis2SubTagsKey] || [],
+                ENTRY_DOM.whatInput,
+                r.category.trim(),
+                cfg.axis2SubTagKey
+            );
+        }
+        if (r.withWhom) {
+            window.renderSecondary(
+                ENTRY_DOM.withSuggestions,
+                subTags.people || [],
+                ENTRY_DOM.withInput,
+                r.withWhom.trim(),
+                ENTRY_MODE_CONFIG.withSubTagKey
+            );
+        }
+        if (r.place) activateSubChipsByTexts(ENTRY_DOM.whereSuggestions, [r.place]);
+    } else {
+        const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
+        snackMainTag =
+            (r.snackPlaceMain || '').trim() ||
+            (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
+        if (snackMainTag) {
+            appState.selectedSnackPlaceMainTag = snackMainTag;
+            activateChipByText(ENTRY_DOM.whereChips, snackMainTag);
+            window.renderSecondary(
+                ENTRY_DOM.whereSuggestions,
+                subTags.place || [],
+                ENTRY_DOM.whereInput,
+                snackMainTag,
+                cfg.axis1SubTagKey
+            );
+        }
+        if (r.snackType) {
+            window.renderSecondary(
+                ENTRY_DOM.whatSuggestions,
+                subTags[cfg.axis2SubTagsKey] || [],
+                ENTRY_DOM.whatInput,
+                r.snackType,
+                cfg.axis2SubTagKey
+            );
+        }
+        const placeDetail = (r.place || '').trim();
+        if (placeDetail && placeDetail !== snackMainTag) {
+            activateSubChipsByTexts(ENTRY_DOM.whereSuggestions, [placeDetail]);
+        }
+    }
+
+    if (r.menuDetail) {
+        const detailValues = r.menuDetail.split(',').map((v) => v.trim()).filter(Boolean);
+        activateSubChipsByTexts(ENTRY_DOM.whatSuggestions, detailValues);
+        const entryWhatInput = document.getElementById(ENTRY_DOM.whatInput);
+        if (entryWhatInput && detailValues.length > 0) {
+            entryWhatInput.value = detailValues.join(', ');
+        }
+    }
+    if (r.withWhomDetail) {
+        const detailValues = r.withWhomDetail.split(',').map((v) => v.trim()).filter(Boolean);
+        activateSubChipsByTexts(ENTRY_DOM.withSuggestions, detailValues);
+        const entryWithInput = document.getElementById(ENTRY_DOM.withInput);
+        if (entryWithInput && detailValues.length > 0) {
+            entryWithInput.value = detailValues.join(', ');
+        }
+    }
+
+    if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
+        toggleFieldsForSkip(true);
+    }
+
+    syncDeliveryVendorSectionVisibility();
+}
+
+function ensureEntryWhatInputSnackCompositionInit() {
+    const entryWhatInput = document.getElementById('entryWhatInput');
+    if (!entryWhatInput || entryWhatInput._snackCompositionInit) return;
+    const updateSnackSuggestions = () => {
+        const subTags = window.userSettings.subTags.snack || [];
+        const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
+        window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+    };
+    addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
+    entryWhatInput._snackCompositionInit = true;
+}
+
+function revealEntryModalShell() {
+    const entryModal = document.getElementById('entryModal');
+    if (!entryModal) {
+        console.error('entryModal 요소를 찾을 수 없습니다.');
+        return null;
+    }
+    setEntryModalSavingState(false);
+    bindEntryModalHeaderOnce();
+    refreshEntryModalHeader();
+    lockBodyScroll();
+    const openGen = (window.__entryModalOpenGeneration || 0) + 1;
+    window.__entryModalOpenGeneration = openGen;
+    entryModal.classList.remove('hidden');
+    entryModal.classList.remove('keyboard-open');
+    entryModal.style.height = '';
+    entryModal.style.top = '';
+    resetEntryModalScrollTop();
+    requestAnimationFrame(resetEntryModalScrollTop);
+    setTimeout(resetEntryModalScrollTop, 60);
+    initEntryModalKeyboardHandling(entryModal);
+    if (typeof entryModal.setKeyboardBaseline === 'function') {
+        entryModal.setKeyboardBaseline();
+    }
+    syncEntryModalBodyClass();
+    return openGen;
+}
+
 export async function openModal(date, slotId, entryId = null) {
     try {
         const state = appState;
@@ -980,7 +1288,9 @@ export async function openModal(date, slotId, entryId = null) {
                 showToast('삭제 중입니다. 잠시 후 다시 시도해 주세요.', 'info');
                 return;
             }
-            if (pendingRec && isMealEntryPendingSync(pendingRec)) {
+            // 등록 대기(pending) 항목도 열기 허용 (ID 선발급 후 setDoc은 멱등이라 수정·삭제 안전).
+            // 단 temp_ 폴백 행은 실제 문서 ID가 없어 수정 저장이 불가 — 기존대로 차단
+            if (pendingRec && String(entryId).startsWith('temp_') && isMealEntryPendingSync(pendingRec)) {
                 showToast('서버에 등록 중입니다. 잠시 후 다시 시도해 주세요.', 'info');
                 return;
             }
@@ -1005,552 +1315,94 @@ export async function openModal(date, slotId, entryId = null) {
         // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
         state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
         
-        // entryId가 있으면 저장된 태그 정보를 미리 저장
-        let savedRecord = null;
-        if (entryId) {
-            savedRecord = window.mealHistory.find(m => m.id === entryId);
-        }
-        // 타임라인 DOM은 loadedDates로 갱신이 스킵될 수 있어, 카드의 id와 mealHistory가 어긋나면 빈 모달이 됨 → 단건 조회
-        // App Check 토큰 지연 시 permission-denied → 토큰 갱신 후 1회 재시도
-        if (entryId && !savedRecord && window.currentUser?.uid) {
-            const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryId);
-            const mergeRec = (snap) => {
-                if (!snap.exists()) return;
-                let rec = { id: snap.id, ...snap.data() };
-                const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
-                if (shift) rec = applyDemoDateShiftToMealRecord(rec, shift);
-                savedRecord = rec;
-                const hist = window.mealHistory || [];
-                if (!hist.some((m) => m.id === entryId)) {
-                    window.mealHistory = [...hist, rec].sort(
-                        (a, b) =>
-                            (b.date || '').localeCompare(a.date || '') ||
-                            (b.time || '').localeCompare(a.time || '')
-                    );
-                }
-            };
-            try {
-                await refreshAppCheckTokenBeforeFirestore();
-                const snap = await getDoc(ref);
-                mergeRec(snap);
-            } catch (e) {
-                const isPerm =
-                    e?.code === 'permission-denied' ||
-                    e?.code === 'PERMISSION_DENIED' ||
-                    /permission/i.test(String(e?.message || ''));
-                if (isPerm) {
-                    try {
-                        await refreshAppCheckTokenBeforeFirestore();
-                        await new Promise((r) => setTimeout(r, 400));
-                        mergeRec(await getDoc(ref));
-                    } catch (e2) {
-                        console.warn('openModal: meal 단건 조회 실패', entryId, e2);
-                    }
-                } else {
-                    console.warn('openModal: meal 단건 조회 실패', entryId, e);
-                }
-            }
-        }
-        
-        // 모든 칩의 active 클래스 제거 (renderEntryChips 전에)
-        document.querySelectorAll('.chip, .sub-chip').forEach(el => el.classList.remove('active'));
-        
-        // 공유 인디케이터 숨기기
-        const shareIndicator = document.getElementById('sharePhotoIndicator');
-        if (shareIndicator) shareIndicator.classList.add('hidden');
-        
-        ['entryWhereInput', 'entryWhatInput', 'entryWithInput', 'deliveryVendorInput', 'generalCommentInput', 'snackCommentInput'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.value = '';
-        });
-        
-        const entryWhereInput = document.getElementById('entryWhereInput');
-        if (entryWhereInput) {
-            entryWhereInput.placeholder = '돋보기 버튼으로 장소 검색 또는 직접 입력';
-            entryWhereInput.removeAttribute('data-kakao-place-id');
-            entryWhereInput.removeAttribute('data-kakao-place-address');
-            entryWhereInput.removeAttribute('data-kakao-place-data');
-            entryWhereInput.removeAttribute('data-kakao-place-name');
-        }
-        const deliveryVendorInput = document.getElementById('deliveryVendorInput');
-        if (deliveryVendorInput) {
-            deliveryVendorInput.placeholder = '어느 식당 음식인가요?';
-            deliveryVendorInput.removeAttribute('data-kakao-place-id');
-            deliveryVendorInput.removeAttribute('data-kakao-place-address');
-            deliveryVendorInput.removeAttribute('data-kakao-place-data');
-            deliveryVendorInput.removeAttribute('data-kakao-place-name');
-        }
-        document.getElementById('deliveryVendorSection')?.classList.add('hidden');
-        
-        const mainPhotoContainer = document.getElementById('photoPreviewContainer');
-        const snackPhotoContainer = document.getElementById('snackPhotoPreviewContainer');
-        if (mainPhotoContainer) mainPhotoContainer.innerHTML = "";
-        if (snackPhotoContainer) snackPhotoContainer.innerHTML = "";
-        
-        const resetModalScrollTop = () => {
-            const scrollArea = document.getElementById('modalScrollArea');
-            if (!scrollArea) return;
-            scrollArea.scrollTop = 0;
-            if (typeof scrollArea.scrollTo === 'function') {
-                scrollArea.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-            }
-        };
-        // 모달 내부 스크롤 복원 이슈 대응: 즉시 + 다음 프레임 + 짧은 지연에 걸쳐 상단 고정
-        resetModalScrollTop();
-        
-        ['entryWhereSuggestions', 'entryWhatSuggestions', 'entryWithSuggestions'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.classList.add('no-scrollbar');
-                el.classList.remove('scrollbar-hide');
-            }
-        });
-        
-        const slot = SLOTS.find(s => s.id === slotId);
+        const slot = SLOTS.find((s) => s.id === slotId);
         if (!slot) {
             console.error('슬롯을 찾을 수 없습니다:', slotId);
             return;
         }
+
+        let savedRecord = entryId ? window.mealHistory?.find((m) => m.id === entryId) ?? null : null;
+
+        resetEntryModalFormFields();
+
         appState.entryFormMode = inferEntryFormModeFromRecord(savedRecord, slot);
         const isS = appState.entryFormMode === 'snack';
         applyEntryFormModeToModalUI(appState.entryFormMode);
         document.getElementById('optionalFields')?.classList.remove('hidden');
         document.getElementById('btnDelete')?.classList.add('hidden');
-        
         updatePhotoAspectButtons();
-        
-        if (isS) {
-            appState.selectedSnackPlaceMainTag = null;
-        }
-        
-        if (!isS) {
-            toggleFieldsForSkip(false);
-        }
-        
-        // 칩 렌더링 (필드 표시/숨김 처리 후)
-        renderEntryChips();
-        const btnSave = document.getElementById('btnSave');
-        if (btnSave) {
-            if (window.currentUser && window.currentUser.isAnonymous) {
-                // 게스트 모드: 버튼 비활성화
-                btnSave.disabled = true;
-                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
-                btnSave.innerText = '로그인 후 사용할 수 있어요';
-                btnSave.removeAttribute('title');
-            } else if (
-                entryId &&
-                savedRecord &&
-                isMealEntrySaveFailed(savedRecord)
-            ) {
-                btnSave.disabled = true;
-                btnSave.className =
-                    'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-400 text-white text-sm font-bold transition-colors cursor-not-allowed';
-                btnSave.innerHTML =
-                    '<span class="leading-tight text-center">서버 등록 후 수정 가능</span>';
-                btnSave.title = '서버 등록 후 수정이 가능합니다';
-            } else {
-                // 일반 모드: 버튼 활성화 및 텍스트 설정
-                btnSave.disabled = false;
-                btnSave.className = 'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
-                btnSave.innerHTML = '<span>' + (entryId ? '수정 완료' : '기록 완료') + '</span>';
-                delete btnSave.dataset.defaultHtml;
-                btnSave.removeAttribute('title');
-            }
-        }
-        
-        // 칩 렌더링 (필드 표시/숨김 처리 후)
-        renderEntryChips();
-        
-        if (entryId && savedRecord) {
-            const r = savedRecord;
-            if (r) {
-                // photos가 배열인지 확인하고, 배열이 아니면 배열로 변환
-                state.currentPhotos = Array.isArray(r.photos) ? r.photos : (r.photos ? [r.photos] : []);
-                state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
-                // sharedPhotos도 배열인지 확인
-                state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : (r.sharedPhotos ? [r.sharedPhotos] : []);
-                state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : (r.sharedPhotos ? [r.sharedPhotos] : []); // 원본 복사 (삭제 추적용)
-                state.recordPhotoAspectRatio = (r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio)) ? r.photoAspectRatio : '1:1';
-                
-                // 공유 금지 체크
-                const isShareBanned = r.shareBanned === true;
-                if (isShareBanned) {
-                    // 공유 금지된 경우 공유 상태를 false로 설정
-                    state.wantsToShare = false;
-                } else {
-                    state.wantsToShare = (state.sharedPhotos && state.sharedPhotos.length > 0); // 이미 공유된 사진이 있으면 공유 상태로
-                }
-                
-                // 필드 표시/숨김 처리 후에 renderPhotoPreviews 호출
-                renderPhotoPreviews();
-                // 공유 인디케이터 업데이트
-                updateShareIndicator();
-                setVal('entryWhereInput', r.place || "");
-                const _pi = document.getElementById('entryWhereInput');
-                if (_pi && (r.placeId || r.placeAddress || r.placeData)) {
-                    if (r.placeId) _pi.setAttribute('data-kakao-place-id', r.placeId);
-                    _pi.setAttribute('data-kakao-place-address', (r.placeAddress != null && r.placeAddress !== undefined) ? String(r.placeAddress) : '');
-                    if (r.placeData && typeof r.placeData === 'object') _pi.setAttribute('data-kakao-place-data', JSON.stringify(r.placeData));
-                    _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
-                }
-                setVal('entryWhatInput', r.menuDetail || "");
-                setVal('deliveryVendorInput', (!isS ? (r.deliveryVendor || '') : ''));
-                const _dvi = document.getElementById('deliveryVendorInput');
-                if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
-                    if (r.deliveryPlaceId) _dvi.setAttribute('data-kakao-place-id', r.deliveryPlaceId);
-                    _dvi.setAttribute('data-kakao-place-address', (r.deliveryPlaceAddress != null && r.deliveryPlaceAddress !== undefined) ? String(r.deliveryPlaceAddress) : '');
-                    if (r.deliveryPlaceData && typeof r.deliveryPlaceData === 'object') {
-                        _dvi.setAttribute('data-kakao-place-data', JSON.stringify(r.deliveryPlaceData));
-                    }
-                    const dn = (r.deliveryPlaceData && r.deliveryPlaceData.name) || r.deliveryVendor || '';
-                    _dvi.setAttribute('data-kakao-place-name', dn);
-                }
-                setVal('entryWithInput', r.withWhomDetail || "");
-                setVal('generalCommentInput', r.comment || "");
-                setVal('snackCommentInput', r.comment || "");
-                
-                const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
-                const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
-                window.setRating(Number.isFinite(rn) ? rn : null);
-                window.setSatiety(Number.isFinite(sn) ? sn : null);
-                
-                // 공유 인디케이터 표시
-                updateShareIndicator();
+        if (isS) appState.selectedSnackPlaceMainTag = null;
+        if (!isS) toggleFieldsForSkip(false);
 
-                // meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션(모먼트)에 없으면 동기화 시도
-                if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
-                    const inSharedColl = window.sharedPhotos?.some?.(p => p.entryId === r.id);
-                    if (!inSharedColl) {
-                        dbOps.sharePhotos(r.sharedPhotos, r).then(() => {
-                            if (!window.sharedPhotos) window.sharedPhotos = [];
-                            const newEntries = r.sharedPhotos.map(url => ({ entryId: r.id, photoUrl: url, userId: window.currentUser?.uid }));
-                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== r.id).concat(newEntries);
-                            updateTimelineShareIndicators();
-                            if (appState.currentTab === 'gallery') renderGallery();
-                            showToast('모먼트에 반영되었습니다.', 'success');
-                        }).catch((e) => {
-                            console.warn('모먼트 동기화 실패 (무시):', e);
-                        });
-                    }
-                }
-
-                // 태그 활성화 처리 함수
-                const activateTags = () => {
-                    // 식사 방식 (mealType)
-                    if (r.mealType) {
-                        const entryWhereChips = document.getElementById('entryWhereChips');
-                        if (entryWhereChips) {
-                            entryWhereChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.mealType.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 메뉴 카테고리 (category)
-                    if (r.category) {
-                        const entryWhatChips = document.getElementById('entryWhatChips');
-                        if (entryWhatChips) {
-                            entryWhatChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.category.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 함께한 사람 (withWhom)
-                    if (r.withWhom) {
-                        const chipId = isS ? 'entryWithChips' : 'entryWithChips';
-                        const entryWithChips = document.getElementById(chipId);
-                        if (entryWithChips) {
-                            entryWithChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.withWhom.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 간식 타입 (snackType)
-                    if (r.snackType) {
-                        const entryWhatChips = document.getElementById('entryWhatChips');
-                        if (entryWhatChips) {
-                            entryWhatChips.querySelectorAll('button.chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.snackType.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 간식 어디서 (snackPlaceMain + place 상세)
-                    if (isS) {
-                        const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
-                        const mainTag = (r.snackPlaceMain || '').trim() ||
-                            (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
-                        if (mainTag) {
-                            appState.selectedSnackPlaceMainTag = mainTag;
-                            const subTags = window.userSettings?.subTags?.place || [];
-                            window.renderSecondary('entryWhereSuggestions', subTags, 'entryWhereInput', mainTag, 'place');
-                            const entryWhereChips = document.getElementById('entryWhereChips');
-                            if (entryWhereChips) {
-                                entryWhereChips.querySelectorAll('button.chip').forEach(ch => {
-                                    if (ch.innerText.trim() === mainTag) {
-                                        ch.classList.add('active');
-                                    }
-                                });
-                            }
-                        }
-                        const placeDetail = (r.place || '').trim();
-                        if (placeDetail && placeDetail !== mainTag) {
-                            setVal('entryWhereInput', placeDetail);
-                            const entryWhereSuggestions = document.getElementById('entryWhereSuggestions');
-                            if (entryWhereSuggestions) {
-                                entryWhereSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                    const chipText = ch.innerText.trim().replace(/\s*★\s*$/, '');
-                                    if (chipText === placeDetail) {
-                                        ch.classList.add('active');
-                                    }
-                                });
-                            }
-                        }
-                    }
-                    
-                    // 장소 (place) - sub-chip (본식)
-                    if (!isS && r.place) {
-                        const entryWhereSuggestions = document.getElementById('entryWhereSuggestions');
-                        if (entryWhereSuggestions) {
-                            entryWhereSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                if (ch.innerText.trim() === r.place.trim()) {
-                                    ch.classList.add('active');
-                                }
-                            });
-                        }
-                    }
-                    
-                    // 메뉴 상세 (본식 menuDetail) - sub-chip (다중 선택 가능, 쉼표로 구분)
-                    if (!isS && r.menuDetail) {
-                        const entryWhatSuggestions = document.getElementById('entryWhatSuggestions');
-                        const entryWhatInput = document.getElementById('entryWhatInput');
-                        if (entryWhatSuggestions && entryWhatInput) {
-                            // 쉼표로 구분된 여러 값 처리
-                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWhatSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            // input에 선택된 값들 저장
-                            if (activeValues.length > 0) {
-                                entryWhatInput.value = activeValues.join(', ');
-                            } else {
-                                // 자주 사용한 태그에 없는 경우 입력값 그대로 표시
-                                entryWhatInput.value = r.menuDetail;
-                            }
-                        }
-                    }
-                    // 간식 무엇을 (menuDetail → entryWhatInput / entryWhatSuggestions)
-                    if (isS && r.menuDetail) {
-                        const entryWhatSuggestions = document.getElementById('entryWhatSuggestions');
-                        const entryWhatInput = document.getElementById('entryWhatInput');
-                        if (entryWhatSuggestions && entryWhatInput) {
-                            const detailValues = r.menuDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWhatSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            if (activeValues.length > 0) {
-                                entryWhatInput.value = activeValues.join(', ');
-                            } else {
-                                entryWhatInput.value = r.menuDetail;
-                            }
-                        }
-                    }
-                    
-                    // 함께한 사람 상세 (본식 withWhomDetail) - sub-chip (다중 선택 가능)
-                    if (!isS && r.withWhomDetail) {
-                        const entryWithSuggestions = document.getElementById('entryWithSuggestions');
-                        const entryWithInput = document.getElementById('entryWithInput');
-                        if (entryWithSuggestions && entryWithInput) {
-                            // 쉼표로 구분된 여러 값 처리
-                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWithSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            // input에 선택된 값들 저장
-                            if (activeValues.length > 0) {
-                                entryWithInput.value = activeValues.join(', ');
-                            }
-                        }
-                    }
-                    // 간식 누구와 상세 (entryWithSuggestions)
-                    if (isS && r.withWhomDetail) {
-                        const entryWithSuggestions = document.getElementById('entryWithSuggestions');
-                        const entryWithInput = document.getElementById('entryWithInput');
-                        if (entryWithSuggestions && entryWithInput) {
-                            const detailValues = r.withWhomDetail.split(',').map(v => v.trim()).filter(v => v);
-                            const activeValues = [];
-                            entryWithSuggestions.querySelectorAll('button.sub-chip').forEach(ch => {
-                                const chipText = ch.innerText.trim();
-                                if (detailValues.includes(chipText)) {
-                                    ch.classList.add('active');
-                                    activeValues.push(chipText);
-                                }
-                            });
-                            if (activeValues.length > 0) {
-                                entryWithInput.value = activeValues.join(', ');
-                            }
-                        }
-                    }
-                };
-                
-                // DOM 렌더링 완료 후 태그 활성화 (여러 번 시도)
-                const tryActivateTags = (attempts = 0) => {
-                    if (attempts > 20) {
-                        console.warn('태그 활성화 실패: 최대 시도 횟수 초과');
-                        return;
-                    }
-                    
-                    requestAnimationFrame(() => {
-                        const entryWhereChips = document.getElementById('entryWhereChips');
-                        const hasChips = entryWhereChips && entryWhereChips.querySelectorAll('button.chip').length > 0;
-                        
-                        if (hasChips || attempts > 10) {
-                            activateTags();
-                            // sub-chip은 나중에 렌더링될 수 있으므로 여러 번 재시도
-                            setTimeout(() => {
-                                activateTags();
-                                setTimeout(() => {
-                                    activateTags();
-                                    syncDeliveryVendorSectionVisibility();
-                                }, 100);
-                            }, 100);
-                        } else {
-                            setTimeout(() => tryActivateTags(attempts + 1), 50);
-                        }
-                    });
-                };
-                
-                // 즉시 한 번 시도하고, 그 다음 재시도
-                setTimeout(() => tryActivateTags(), 50);
-                
-                // Skip 선택 시 필드 숨기기 처리
-                if (r.mealType === 'Skip' || r.mealType === '건너뜀') {
-                    setTimeout(() => {
-                        toggleFieldsForSkip(true);
-                    }, 100);
-                }
-                
-                // 간식 타입 선택 시 추천 태그 업데이트
-                if (isS && r.snackType) {
-                    const subTags = window.userSettings.subTags.snack || [];
-                    window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', r.snackType, 'snack');
-                }
-                // 간식 어디서: snackPlaceMain 기준 추천 태그 표시
-                if (isS && (r.snackPlaceMain || r.place)) {
-                    const snackPlaceMainList = window.userSettings?.tags?.snackPlaceMain || ['집', '사무실', '카페'];
-                    const mainTag = (r.snackPlaceMain || '').trim() ||
-                        (r.place && snackPlaceMainList.includes(r.place.trim()) ? r.place.trim() : '');
-                    if (mainTag) {
-                        appState.selectedSnackPlaceMainTag = mainTag;
-                        const subTags = window.userSettings?.subTags?.place || [];
-                        window.renderSecondary('entryWhereSuggestions', subTags, 'entryWhereInput', mainTag, 'place');
-                    }
-                }
-                
-            }
-        } else {
-            window.setRating(null);
-            window.setSatiety(null);
-        }
-
-        if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
-            document.getElementById('btnDelete')?.classList.remove('hidden');
-        }
-        
-        // 간식 모드일 때 초기 추천 태그 표시
-        if (isS) {
-            const subTags = window.userSettings.subTags.snack || [];
-            const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-            window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
-        } else {
-            /** 신규 기록만 즉시 동기화. 수정 모드는 tryActivateTags 끝에서 sync(배달 식당 필드 복원 후)하므로,
-             * 여기서 먼저 호출하면 칩이 아직 '배달/포장'이 아니어서 deliveryVendorInput 이 비워짐 */
-            if (!(entryId && savedRecord)) {
-                setTimeout(() => syncDeliveryVendorSectionVisibility(), 0);
-            }
-        }
-        
-        // 입력 필드에 이벤트 리스너 추가 (간식 입력 시 추천 태그 업데이트)
-        // 조합(composition) 중에는 DOM 업데이트 지연 → 한글 IME 모바일 텍스트 미표시 이슈 방지
-        const entryWhatInput = document.getElementById('entryWhatInput');
-        if (entryWhatInput) {
-            if (entryWhatInput._snackCompositionInit) {
-                // 이미 초기화됨 (모달 재오픈 시 중복 방지)
-            } else {
-                const updateSnackSuggestions = () => {
-                    const subTags = window.userSettings.subTags.snack || [];
-                    const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-                    window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
-                };
-                addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
-                entryWhatInput._snackCompositionInit = true;
-            }
-        }
-        
         initEntryModalGaugeControlsOnce();
         bindEntryQuickInputOnce();
         bindEntryDetailRecordOnce();
         finalizeEntryModalQuickInput();
-        finalizeEntryModalDetailRecord(entryId && savedRecord ? savedRecord : null);
-        finalizeEntryModalGauges();
-        finalizeEntryMealClock(entryId && savedRecord ? savedRecord : null, isS);
-        seedEntryMealClockOnModalOpenAfterFinalize(entryId, isS);
+        ensureEntryWhatInputSnackCompositionInit();
 
-        const entryModal = document.getElementById('entryModal');
-        if (entryModal) {
-            setEntryModalSavingState(false);
-            bindEntryModalHeaderOnce();
-            refreshEntryModalHeader();
-            lockBodyScroll();
-            entryModal.classList.remove('hidden');
-            window.__entryModalOpenGeneration = (window.__entryModalOpenGeneration || 0) + 1;
-            entryModal.classList.remove('keyboard-open');
-            entryModal.style.height = '';
-            entryModal.style.top = '';
-            resetModalScrollTop();
-            requestAnimationFrame(resetModalScrollTop);
-            setTimeout(resetModalScrollTop, 60);
-            initEntryModalKeyboardHandling(entryModal);
-            if (typeof entryModal.setKeyboardBaseline === 'function') {
-                entryModal.setKeyboardBaseline();
+        const openGen = revealEntryModalShell();
+        if (!openGen) return;
+        const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
+
+        const completeEntryModalOpen = async () => {
+            if (isStaleOpen()) return;
+
+            if (entryId && !savedRecord) {
+                savedRecord = await fetchMealRecordForEdit(entryId);
+                if (isStaleOpen()) return;
             }
-            syncEntryModalBodyClass();
-            // 휠 다이얼 초기 스냅(모달이 실제로 열린 뒤에 한 번 더 맞춤)
-            setTimeout(() => {
+
+            if (savedRecord) {
+                const modeFromRec = inferEntryFormModeFromRecord(savedRecord, slot);
+                if (modeFromRec !== appState.entryFormMode) {
+                    appState.entryFormMode = modeFromRec;
+                    applyEntryFormModeToModalUI(modeFromRec);
+                    finalizeEntryModalQuickInput();
+                }
+            }
+            const isSnack = appState.entryFormMode === 'snack';
+
+            renderEntryChips();
+            applyEntryModalSaveButtonState(entryId, savedRecord);
+
+            if (entryId && savedRecord) {
+                populateSavedRecordIntoForm(savedRecord, isSnack, state);
+                activateSavedRecordTags(savedRecord, isSnack);
+            } else {
+                window.setRating(null);
+                window.setSatiety(null);
+            }
+
+            if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
+                document.getElementById('btnDelete')?.classList.remove('hidden');
+            }
+
+            if (isSnack && !(entryId && savedRecord)) {
+                const subTags = window.userSettings.subTags.snack || [];
+                const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
+                window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+            } else if (!isSnack && !(entryId && savedRecord)) {
+                syncDeliveryVendorSectionVisibility();
+            }
+
+            finalizeEntryModalDetailRecord(entryId && savedRecord ? savedRecord : null);
+            finalizeEntryModalGauges();
+            finalizeEntryMealClock(entryId && savedRecord ? savedRecord : null, isSnack);
+            seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnack);
+
+            requestAnimationFrame(() => {
+                if (isStaleOpen()) return;
                 try {
                     window.setRating?.(appState.currentRating);
                     window.setSatiety?.(appState.currentSatiety);
                     applyEntryGaugeDialUi();
                 } catch (_) {}
-            }, 0);
-        } else {
-            console.error('entryModal 요소를 찾을 수 없습니다.');
-        }
+            });
+        };
+
+        requestAnimationFrame(() => {
+            void completeEntryModalOpen();
+        });
     } catch (error) {
         console.error('openModal 오류:', error);
         const loadingOverlay = document.getElementById('loadingOverlay');
@@ -1662,11 +1514,14 @@ function applyTimelineMealSaveFailureState(record, optimisticTempId, optimisticS
     }
 }
 
-function refreshTimelineAfterMealSaveResult() {
+function refreshTimelineAfterMealSaveResult(dateStr) {
     try {
-        /* renderTimeline 끝에서 updateTimelineMealEntryPendingIndicators 호출 — 먼저 DOM 전체를 그린 뒤 패치 */
         if (appState.currentTab === 'timeline') {
-            renderTimeline();
+            if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                renderTimelineDateSections([dateStr]);
+            } else {
+                renderTimeline();
+            }
         } else {
             updateTimelineMealEntryPendingIndicators();
         }
@@ -1697,7 +1552,7 @@ async function focusTimelineAfterMealSaveFailure(record, editingDateStr, optimis
         updateTimelineShareIndicators();
         updateTimelineMealEntryPendingIndicators();
     } else {
-        refreshTimelineAfterMealSaveResult();
+        refreshTimelineAfterMealSaveResult(record?.date || focusIso || undefined);
     }
 }
 
@@ -2031,9 +1886,8 @@ export async function saveEntry() {
         let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
             ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
-        
-        // record에 sharedPhotos 필드 추가
-        record.sharedPhotos = photosToShare;
+        // sharedPhotos 필드는 sharedPhotos 컬렉션(서버 sharePhotos)이 canonical — meal save에 포함하지 않음
+        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
         
         console.log('저장 시작:', record);
 
@@ -2046,9 +1900,15 @@ export async function saveEntry() {
         const currentTab = state.currentTab;
         const editingDate = state.currentEditingDate;
         
-        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영용 임시 레코드
+        // 서버 저장 전 UI를 먼저 갱신하기 위한 낙관 반영
         const wasNewRecord = !record.id;
-        const optimisticTempId = wasNewRecord ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
+        // 신규 기록: 문서 ID 클라이언트 선발급 — 오프라인에서도 ID가 확정되어
+        // 낙관 레코드·삭제·재시도(setDoc 멱등)가 같은 ID로 동작 (temp ID는 발급 실패 시 폴백)
+        if (wasNewRecord) {
+            record.id = generateMealDocId(window.currentUser?.uid) || null;
+        }
+        const optimisticTempId =
+            wasNewRecord && !record.id ? `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` : null;
         const optimisticSlotKey = `${record.date || ''}__${record.slotId || ''}`;
         const hasPendingBase64Photos = sourcePhotos.some(isLocalPendingPhoto);
         if (hasPendingBase64Photos) {
@@ -2061,7 +1921,7 @@ export async function saveEntry() {
             photoMeta: sourcePhotoMeta.map((e) => ({ takenAt: e?.takenAt ?? null }))
         };
         if (optimisticTempId) markMealOptimisticSavePending(optimisticTempId);
-        if (record.id && !wasNewRecord) {
+        if (record.id) {
             clearMealEntryServerSynced(record.id);
             markMealEntrySaveInFlight(record.id);
         }
@@ -2100,7 +1960,8 @@ export async function saveEntry() {
                 // (스크롤은 아래 서버 저장 완료 후 1회만 중앙 정렬)
                 if (window.jumpToDate) await window.jumpToDate(editingDate, { scroll: false, onceKey: `save-optimistic:${String(editingDate)}` });
                 updateTimelineShareIndicators();
-                renderTimeline();
+                invalidateTimelineDateSection(editingDate);
+                renderTimelineDateSections([editingDate]);
             } catch (e) {
                 console.warn('저장 직후 타임라인 낙관 반영 실패:', e);
             }
@@ -2121,12 +1982,20 @@ export async function saveEntry() {
             }
         }
         
-        // 공유 상태 변경 여부 추적 변수 (함수 스코프)
-        // 상태 초기화 전에 originalSharedPhotos 확인
-        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
+        // 공유 상태 변경 여부 추적 (closeModal 전에 originalSharedPhotos 기준으로 캡처됨)
         let sharedPhotosUpdated = false;
 
-        // 저장 실행 (모달 열린 채, 타임라인에 인라인 스피너 표시)
+        // 로컬 낙관 반영 완료 → 시트는 즉시 닫는다 (오프라인 우선: 서버 동기화는 백그라운드 진행,
+        // 진행 상태는 타임라인 도트·칩으로 표시). 서버 실패 시에도 입력 내용은 로컬에 남는다.
+        finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
+        if (wasNewRecord) {
+            showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
+        }
+        if (isMealActionEffectiveOffline()) {
+            showToast('오프라인 상태예요. 연결되면 서버에 자동 등록됩니다.', 'info');
+        }
+
+        // 저장 실행 (백그라운드, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
         /** 사진 N장 Storage + 재저장 상한 — grace 칩 전환(30초)과 동일 티밍 요청에 맞춤 */
@@ -2135,11 +2004,22 @@ export async function saveEntry() {
         let photoUploadPhaseFailed = false;
         try {
             const saveResult = unwrapMealSaveResult(
-                await saveWithTimeout(() => dbOps.save(record, true), {
+                await saveWithTimeout(() => dbOps.save(record, true, { isNewRecord: wasNewRecord }), {
                     timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
                     onTimeout: () => {
                         const mid = record.id || optimisticTempId;
-                        if (mid) getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
+                        if (!mid) return;
+                        if (String(mid).startsWith('temp_')) {
+                            // ID 선발급 실패 폴백(temp): 큐 추적이 불가하므로 기존대로 실패 처리
+                            getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
+                        } else {
+                            // setDoc이 Firestore 로컬 큐에 남아 있을 가능성이 높음 — 실패가 아닌 '등록 예정'
+                            getMealSyncManager().promoteToRegisterScheduledChip(String(mid), {
+                                optimisticTempId,
+                                dateStr: record.date,
+                                currentTab
+                            });
+                        }
                     }
                 })
             );
@@ -2218,7 +2098,7 @@ export async function saveEntry() {
             if (record.date) invalidateTimelineDateSection(record.date);
             if (currentTab === 'timeline') {
                 try {
-                    renderTimeline();
+                    if (record.date) renderTimelineDateSections([record.date]);
                 } catch (e) {
                     console.warn('저장 직후 타임라인 갱신:', e);
                 }
@@ -2262,37 +2142,51 @@ export async function saveEntry() {
                                     const dataUrlsForUpload = await Promise.all(
                                         base64Photos.map((photo) => ensureDataUrlForStorage(photo))
                                     );
-                                    const uploadedUrls = await Promise.all(
+                                    // 신규 업로드: 원본 + 표시용(800px) + 썸네일(200px) 파생본 동시 생성. 파생본은 best-effort.
+                                    const uploadedVariants = await Promise.all(
                                         dataUrlsForUpload.map((photo) =>
-                                            uploadBase64ToStorage(photo, window.currentUser.uid, record.id)
+                                            uploadMealPhotoVariants(photo, window.currentUser.uid, record.id)
                                         )
                                     );
                                     let uploadedIndex = 0;
                                     let metaIndex = 0;
                                     const finalPhotoUrls = [];
                                     const finalPhotoMeta = [];
+                                    // photos와 index 정렬 유지. 기존 URL(수정 건)은 파생본 미상 → '' (원본 fallback)
+                                    const finalDisplayUrls = [];
+                                    const finalThumbUrls = [];
                                     sourcePhotos.forEach((photo) => {
                                         const meta = sourcePhotoMeta[metaIndex++] || { takenAt: null };
                                         if (isLocalPendingPhoto(photo)) {
-                                            const uploaded = uploadedUrls[uploadedIndex++];
-                                            if (uploaded) {
-                                                finalPhotoUrls.push(uploaded);
+                                            const variant = uploadedVariants[uploadedIndex++];
+                                            if (variant && variant.url) {
+                                                finalPhotoUrls.push(variant.url);
                                                 finalPhotoMeta.push(meta);
+                                                finalDisplayUrls.push(variant.displayUrl || '');
+                                                finalThumbUrls.push(variant.thumbUrl || '');
                                             }
                                             return;
                                         }
                                         if (typeof photo === 'string' && photo) {
                                             finalPhotoUrls.push(photo);
                                             finalPhotoMeta.push(meta);
+                                            finalDisplayUrls.push('');
+                                            finalThumbUrls.push('');
                                         }
                                     });
 
                                     record.photos = finalPhotoUrls;
                                     record.photoMeta = finalPhotoMeta;
+                                    // 파생본이 하나라도 있을 때만 신규 필드 저장(기존 데이터 스키마 오염 방지)
+                                    if (finalDisplayUrls.some(Boolean)) {
+                                        record.photoDisplayUrls = finalDisplayUrls;
+                                    }
+                                    if (finalThumbUrls.some(Boolean)) {
+                                        record.photoThumbUrls = finalThumbUrls;
+                                    }
                                     photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
                                         ? [...finalPhotoUrls]
                                         : [];
-                                    record.sharedPhotos = photosToShare;
 
                                     const photoSaveRes = unwrapMealSaveResult(await dbOps.save(record, true));
                                     photoPhaseSavedViaCallable = photoSaveRes.savedViaCallableFallback;
@@ -2306,7 +2200,9 @@ export async function saveEntry() {
                                             window.mealHistory[localIdx] = {
                                                 ...window.mealHistory[localIdx],
                                                 photos: [...finalPhotoUrls],
-                                                photoMeta: record.photoMeta
+                                                photoMeta: record.photoMeta,
+                                                ...(record.photoDisplayUrls ? { photoDisplayUrls: [...record.photoDisplayUrls] } : {}),
+                                                ...(record.photoThumbUrls ? { photoThumbUrls: [...record.photoThumbUrls] } : {})
                                             };
                                         }
                                     }
@@ -2321,7 +2217,6 @@ export async function saveEntry() {
                                     photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
                                         ? [...existingPhotoUrls]
                                         : [];
-                                    record.sharedPhotos = photosToShare;
                                     if (window.mealHistory && record.id) {
                                         const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
                                         if (hi >= 0) {
@@ -2392,7 +2287,7 @@ export async function saveEntry() {
                             }
                         });
                     }
-                    refreshTimelineAfterMealSaveResult();
+                    refreshTimelineAfterMealSaveResult(record?.date || editingDate || undefined);
                 } catch (uploadPhaseError) {
                     photoUploadPhaseFailed = true;
                     if (record?.id) markMealEntrySaveFailedById(String(record.id));
@@ -2428,7 +2323,7 @@ export async function saveEntry() {
                 markMealEntryServerWorkComplete(record.id, optimisticTempId, optimisticSlotKey);
                 if (currentTab === 'timeline') {
                     try {
-                        renderTimeline();
+                        if (record.date) renderTimelineDateSections([record.date]);
                     } catch (_) {
                         /* ignore */
                     }
@@ -2448,7 +2343,6 @@ export async function saveEntry() {
                     photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
                         ? [...existingPhotoUrls]
                         : [];
-                    record.sharedPhotos = photosToShare;
                     if (window.mealHistory) {
                         const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
                         if (hi >= 0) {
@@ -2464,11 +2358,14 @@ export async function saveEntry() {
             }
 
             console.log('저장 완료');
-            finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
+            // 모달은 낙관 반영 직후 이미 닫힘 — 여기서는 서버 결과 병합만
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
+                const prevShared = idx >= 0 ? window.mealHistory[idx].sharedPhotos : undefined;
                 const merged = { ...record };
+                delete merged.sharedPhotos;
+                if (prevShared !== undefined) merged.sharedPhotos = prevShared;
                 if (photoUploadPhaseFailed) {
                     merged._localSaveFailed = true;
                     merged.is_sync_error = true;
@@ -2484,17 +2381,14 @@ export async function saveEntry() {
                 }
                 window.mealHistory.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.time || '').localeCompare(a.time || ''));
             }
-            // 기록 완료 중앙 팝업 — 신규 기록에만 (사진 업로드 실패 시에는 오해 소지가 있어 띄우지 않음)
-            if (wasNewRecord && !photoUploadPhaseFailed) {
-                showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
-            }
+            // 기록 완료 팝업은 낙관 반영 직후(모달 닫을 때) 이미 표시함
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             
             /** 모먼트(sharedPhotos 컬렉션) 동기화 실패 시 공유 성공 토스트를 막기 위함 */
             let shareSyncFailed = false;
             // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
-            // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            // sharePhotos: sharedPhotos 컬렉션 쓰기 + 서버가 meals.sharedPhotos 미러링
             // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
             if (record.id) {
                 // 현재 공유할 사진이 있는지 확인
@@ -2526,6 +2420,16 @@ export async function saveEntry() {
 
                         await dbOps.sharePhotos(photosToShare, record);
                         console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
+
+                        if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
+                            const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
+                            if (hi >= 0) {
+                                window.mealHistory[hi] = {
+                                    ...window.mealHistory[hi],
+                                    sharedPhotos: hasPhotosToShare ? [...photosToShare] : []
+                                };
+                            }
+                        }
 
                         if (hasPhotosToShare && photosToShare?.length) {
                             window.sharedPhotosFeed = mergeMomentPostIntoFeed(
@@ -2581,8 +2485,48 @@ export async function saveEntry() {
                 }
             }
         } catch (saveError) {
+            const timedOutId = record.id ? String(record.id) : null;
+            if (saveError?.__mealogSaveTimeout && timedOutId && !timedOutId.startsWith('temp_')) {
+                // 타임아웃 = 대부분 오프라인 큐 대기. onTimeout에서 이미 '등록 예정' 칩으로 승격됨.
+                // 실패로 표시하지 않고 큐 flush(재연결·재기동)를 기다린다.
+                console.warn('dbOps.save 타임아웃 — Firestore 로컬 큐 대기(등록 예정):', timedOutId);
+                // base64 사진이 남아 있으면 사진 대기 플래그 유지 (재시도 시 Storage 업로드 필요)
+                if (!hasPendingBase64Photos) {
+                    markMealEntryServerWorkComplete(timedOutId, optimisticTempId, optimisticSlotKey);
+                }
+                try {
+                    showToast('연결되면 서버에 자동 등록돼요. 등록 예정으로 표시됩니다.', 'info');
+                } catch (_) {
+                    /* ignore */
+                }
+                void import('../utils/mealog-offline-ui.js').then((m) => {
+                    try {
+                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
+                            m.markMealOfflineDraftForRecord(timedOutId);
+                        }
+                    } catch (_) {
+                        /* ignore */
+                    }
+                    void import('../main/meal-sync-resend-header.js').then((h) => {
+                        try {
+                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
+                        } catch (_) {
+                            /* ignore */
+                        }
+                    });
+                });
+                try {
+                    if (record.date) {
+                        invalidateTimelineDateSection(record.date);
+                        if (appState.currentTab === 'timeline') renderTimelineDateSections([record.date]);
+                    }
+                    updateTimelineMealEntryPendingIndicators();
+                } catch (_) {
+                    /* ignore */
+                }
+                return;
+            }
             console.error('dbOps.save 오류:', saveError);
-            setEntryModalSavingState(false);
             try {
                 showToast(getUserFacingErrorMessage(saveError, 'save'), 'error');
             } catch (_) {
@@ -2610,6 +2554,10 @@ export async function saveEntry() {
                             // 저장 플로우에서는 "해당 날짜 중앙 정렬"을 1회만 수행
                             const key = record && record.id ? `save-final:${String(record.id)}` : `save-final:${String(editingDate)}`;
                             await window.jumpToDate(String(editingDate), { scroll: true, behavior: 'smooth', onceKey: key, anchorAfterRenderMs: 1400 });
+                        } else if (editingDate) {
+                            invalidateTimelineDateSection(String(editingDate));
+                            renderTimelineDateSections([String(editingDate)]);
+                            renderMiniCalendar();
                         } else {
                             renderTimeline();
                             renderMiniCalendar();
@@ -2679,6 +2627,10 @@ function rerenderAfterMealDelete(mealDate) {
             if (appState.currentTab === 'timeline' && mealDate && typeof window.jumpToDate === 'function') {
                 // 삭제 직후 리스너/재렌더가 연속으로 들어와도 스크롤은 1회만
                 await window.jumpToDate(mealDate, { scroll: true, behavior: 'smooth', onceKey: `delete:${String(mealDate)}`, anchorAfterRenderMs: 1400 });
+            } else if (mealDate) {
+                invalidateTimelineDateSection(mealDate);
+                renderTimelineDateSections([mealDate]);
+                renderMiniCalendar();
             } else {
                 renderTimeline();
                 renderMiniCalendar();
@@ -2712,11 +2664,9 @@ export async function deleteEntry() {
         showToast('이미 삭제 처리 중입니다.', 'info');
         return;
     }
-    if (delRecForPending && isMealEntryPendingSync(delRecForPending)) {
-        showToast('서버에 등록 중에는 삭제할 수 없습니다.', 'info');
-        return;
-    }
-    
+    // 등록 대기(pending) 항목도 삭제 허용: ID 선발급으로 deleteDoc을 같은 ID로 큐잉하면
+    // Firestore가 생성→삭제 순서로 적용하므로 서버 정합이 유지된다.
+
     // 삭제 확인 다이얼로그
     if (!confirm("정말 이 기록을 삭제하시겠습니까?")) {
         return;
@@ -2724,6 +2674,27 @@ export async function deleteEntry() {
     
     // 삭제할 ID를 미리 저장 (모달 닫기 전에)
     const entryIdToDelete = state.currentEditingId;
+
+    // temp_ 폴백 레코드(구버전 낙관 행): 서버 문서·큐 추적이 없으므로 로컬에서만 제거
+    if (String(entryIdToDelete).startsWith('temp_')) {
+        const tempRec = window.mealHistory?.find((m) => m.id === entryIdToDelete) || null;
+        window.closeModal();
+        try {
+            getMealSyncManager().removeTempRowSideEffects(tempRec || { id: entryIdToDelete });
+        } catch (_) {
+            /* ignore */
+        }
+        if (Array.isArray(window.mealHistory)) {
+            window.mealHistory = window.mealHistory.filter((m) => m.id !== entryIdToDelete);
+        }
+        if (Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
+        }
+        invalidateMealHistoryCountCache();
+        rerenderAfterMealDelete(tempRec?.date);
+        showToast('기록이 삭제되었습니다.', 'success');
+        return;
+    }
 
     /** closeModal 전에 캐시에서 확보 — 닫은 뒤에는 편집 id가 비워져 찾기 실패하는 경우 방지 */
     let mealForDelete = window.mealHistory?.find((m) => m.id === entryIdToDelete);
@@ -2803,8 +2774,11 @@ export async function deleteEntry() {
     }, DELETE_SCHEDULED_CHIP_MS);
 
     try {
+        const deletePromise = dbOps.delete(entryIdToDelete);
+        // 타임아웃 이후 늦게 거절돼도 unhandledrejection으로 새지 않게 관찰
+        deletePromise.catch(() => {});
         await Promise.race([
-            dbOps.delete(entryIdToDelete),
+            deletePromise,
             new Promise((_, reject) => {
                 setTimeout(() => {
                     const e = new Error('deadline-exceeded');
@@ -2824,6 +2798,19 @@ export async function deleteEntry() {
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (error?.__mealogDeleteTimeout) {
+            // 타임아웃 = 대부분 오프라인 큐 대기. deleteDoc은 로컬 큐에 남아 재연결 시 서버에 반영된다.
+            // 실패·롤백하지 않고 삭제 예약 상태 유지 (스냅샷 removed·reconcile이 완료 처리)
+            console.warn('deleteEntry 타임아웃 — 삭제 큐 대기(삭제 예약):', entryIdToDelete);
+            showToast('연결되면 서버에 삭제가 반영돼요.', 'info');
+            try {
+                updateTimelineMealEntryPendingIndicators();
+            } catch (_) {
+                /* ignore */
+            }
+            rerenderAfterMealDelete(mealDate);
+            return;
+        }
         if (deleteOptCtx) {
             try {
                 rollbackOptimisticMealDelete(deleteOptCtx);
@@ -2893,9 +2880,7 @@ async function materializeBase64PhotosOnRecord(record, mealId) {
         .map((p) => (needsUpload(p) ? uploaded[i++] : p))
         .filter((p) => typeof p === 'string' && p);
     const next = { ...record, photos: finalPhotos };
-    const httpsUrls = finalPhotos.filter((p) => typeof p === 'string' && /^https?:\/\//.test(p));
-    const hadShared = Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0;
-    next.sharedPhotos = hadShared && httpsUrls.length > 0 ? httpsUrls : [];
+    delete next.sharedPhotos;
     return next;
 }
 
@@ -2941,7 +2926,7 @@ export async function retryMealEntrySync(entryIdRaw) {
                         markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
                         invalidateTimelineDateSection(record.date);
                         updateTimelineMealEntryPendingIndicators();
-                        if (appState.currentTab === 'timeline') renderTimeline();
+                        if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
                         void import('../main/meal-sync-resend-header.js').then((m) => {
                             try {
                                 if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
@@ -2996,9 +2981,11 @@ export async function retryMealEntrySync(entryIdRaw) {
                 markMealEntryServerWorkComplete(realId, entryId, slotKeyMerge);
             } else {
                 delete payload.id;
+                const retryTempSavePromise = dbOps.save(payload, true);
+                retryTempSavePromise.catch(() => {});
                 const retrySaveRes = unwrapMealSaveResult(
                     await Promise.race([
-                        dbOps.save(payload, true),
+                        retryTempSavePromise,
                         new Promise((_, reject) => {
                             setTimeout(() => {
                                 const e = new Error('deadline-exceeded');
@@ -3063,9 +3050,11 @@ export async function retryMealEntrySync(entryIdRaw) {
                 console.error('retryMealEntrySync: 사진 Storage 업로드 실패', upErr);
                 throw upErr;
             }
+            const retryRealSavePromise = dbOps.save(payloadOut, true);
+            retryRealSavePromise.catch(() => {});
             const retryElseRes = unwrapMealSaveResult(
                 await Promise.race([
-                    dbOps.save(payloadOut, true),
+                    retryRealSavePromise,
                     new Promise((_, reject) => {
                         setTimeout(() => {
                             const e = new Error('deadline-exceeded');
@@ -3105,8 +3094,20 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('서버에 등록했습니다.', 'success');
         invalidateTimelineDateSection(record.date);
         updateTimelineMealEntryPendingIndicators();
-        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
     } catch (e) {
+        if (e?.__mealogSaveTimeout && !entryId.startsWith('temp_')) {
+            // 재시도 중 타임아웃(대개 아직 오프라인): setDoc은 로컬 큐에 남음 — 실패 대신 등록 예정 유지
+            console.warn('retryMealEntrySync 타임아웃 — 로컬 큐 대기(등록 예정):', entryId);
+            getMealSyncManager().promoteToRegisterScheduledChip(entryId, {
+                dateStr: record.date,
+                currentTab: appState.currentTab
+            });
+            showToast('연결되면 서버에 자동 등록돼요.', 'info');
+            invalidateTimelineDateSection(record.date);
+            updateTimelineMealEntryPendingIndicators();
+            return;
+        }
         console.error('retryMealEntrySync:', e);
         showToast(getUserFacingErrorMessage(e, 'save'), 'error');
         clearMealEntrySaveInFlight(entryId);
@@ -3183,8 +3184,10 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     }, RETRY_DELETE_CHIP_MS);
 
     try {
+        const retryDeletePromise = dbOps.delete(entryId);
+        retryDeletePromise.catch(() => {});
         await Promise.race([
-            dbOps.delete(entryId),
+            retryDeletePromise,
             new Promise((_, reject) => {
                 setTimeout(() => {
                     const e = new Error('deadline-exceeded');
@@ -3202,6 +3205,17 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     } catch (error) {
         deleteSettled = true;
         window.clearTimeout(inflightTimer);
+        if (error?.__mealogDeleteTimeout) {
+            console.warn('retryMealEntryDeleteSync 타임아웃 — 삭제 큐 대기(삭제 예약):', entryId);
+            showToast('연결되면 서버에 삭제가 반영돼요.', 'info');
+            try {
+                updateTimelineMealEntryPendingIndicators();
+            } catch (_) {
+                /* ignore */
+            }
+            rerenderAfterMealDelete(mealDate);
+            return;
+        }
         if (deleteRetryOptCtx) {
             try {
                 rollbackOptimisticMealDelete(deleteRetryOptCtx);
@@ -3599,31 +3613,6 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
             renderPhotoPreviews();
             updateShareIndicator();
-
-            const mainSide = !isSnack;
-            const timeOn = isSnack ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true;
-
-            const isNewEntry = !state.currentEditingId && filesToProcess.length > 0;
-            if (isNewEntry) {
-                const hhmmExif = await tryExifTimeHHmmFromImageFile(filesToProcess[0]);
-                if (timeOn) {
-                    const alreadyApplied = mainSide
-                        ? appState.entryMealClockDidApplyPhotoExifMain
-                        : appState.entryMealClockDidApplyPhotoExifSnack;
-                    if (!alreadyApplied && hhmmExif) {
-                        applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(hhmmExif) || hhmmExif);
-                        if (mainSide) appState.entryMealClockDidApplyPhotoExifMain = true;
-                        else appState.entryMealClockDidApplyPhotoExifSnack = true;
-                    }
-                } else if (hhmmExif) {
-                    if (mainSide && appState.entryMealClockPendingExifHhmmMain == null) {
-                        appState.entryMealClockPendingExifHhmmMain = hhmmExif;
-                    }
-                    if (!mainSide && appState.entryMealClockPendingExifHhmmSnack == null) {
-                        appState.entryMealClockPendingExifHhmmSnack = hhmmExif;
-                    }
-                }
-            }
         })
         .catch((err) => {
             console.error('파일 처리 중 오류 발생:', err);
@@ -3696,65 +3685,56 @@ export function updateShareIndicator() {
     const state = appState;
     const shareIndicator = document.getElementById('sharePhotoIndicator');
     if (!shareIndicator) return;
-    
-    // 공유 금지 체크
-    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
-    
-    // 사진이 있으면 항상 인디케이터 표시 (공유 가능 상태)
-    if (state.currentPhotos.length > 0) {
-        if (isShareBanned) {
-            // 공유 금지된 경우: 비활성화 스타일로 표시
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-red-50', 'border-red-300', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-slate-50', 'border-slate-200', 'text-emerald-600', 'text-slate-400');
-            shareIndicator.title = '공유가 금지된 게시물입니다';
-        } else if (state.wantsToShare) {
-            // 공유를 원하는 경우 활성화 스타일
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-            shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'bg-red-50', 'border-red-300', 'text-slate-400', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.title = '';
-        } else {
-            // 사진은 있지만 아직 공유하지 않은 경우도 표시 (비활성화 스타일)
-            shareIndicator.classList.remove('hidden');
-            shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
-            shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'bg-red-50', 'border-red-300', 'text-emerald-600', 'text-red-400', 'cursor-not-allowed');
-            shareIndicator.title = '';
-        }
-    } else {
+
+    const isShareBanned = state.currentEditingId
+        ? window.mealHistory.find((m) => m.id === state.currentEditingId)?.shareBanned === true
+        : false;
+
+    shareIndicator.classList.remove('entry-action-btn--share-on', 'entry-action-btn--share-banned');
+    shareIndicator.disabled = false;
+    shareIndicator.removeAttribute('aria-disabled');
+
+    if (state.currentPhotos.length === 0) {
         shareIndicator.classList.add('hidden');
+        shareIndicator.title = '';
+        return;
+    }
+
+    shareIndicator.classList.remove('hidden');
+
+    if (isShareBanned) {
+        shareIndicator.classList.add('entry-action-btn--share-banned');
+        shareIndicator.disabled = true;
+        shareIndicator.setAttribute('aria-disabled', 'true');
+        shareIndicator.title = '공유가 금지된 게시물입니다';
+        return;
+    }
+
+    shareIndicator.title = state.wantsToShare ? '모먼트에 공유됩니다' : '모먼트에 공유하기';
+    if (state.wantsToShare) {
+        shareIndicator.classList.add('entry-action-btn--share-on');
     }
 }
 
 export function toggleSharePhoto() {
     const state = appState;
     const shareIndicator = document.getElementById('sharePhotoIndicator');
-    if (!shareIndicator) return;
-    
+    if (!shareIndicator || shareIndicator.disabled || shareIndicator.classList.contains('hidden')) return;
+
     if (state.currentPhotos.length === 0) {
-        showToast("공유할 사진이 없습니다.", 'error');
+        showToast('공유할 사진이 없습니다.', 'error');
         return;
     }
-    
-    // 공유 금지 체크
-    const isShareBanned = state.currentEditingId ? (window.mealHistory.find(m => m.id === state.currentEditingId)?.shareBanned === true) : false;
+
+    const isShareBanned = state.currentEditingId
+        ? window.mealHistory.find((m) => m.id === state.currentEditingId)?.shareBanned === true
+        : false;
     if (isShareBanned) {
-        showToast("공유가 금지된 게시물입니다.", 'error');
+        showToast('공유가 금지된 게시물입니다.', 'error');
         return;
     }
-    
-    const isCurrentlySharing = shareIndicator.classList.contains('bg-emerald-100');
-    
-    if (isCurrentlySharing) {
-        // 공유 해제
-        state.wantsToShare = false;
-        shareIndicator.classList.remove('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-        shareIndicator.classList.add('bg-slate-50', 'border-slate-200', 'text-slate-400');
-    } else {
-        // 공유 설정
-        state.wantsToShare = true;
-        shareIndicator.classList.remove('bg-slate-50', 'border-slate-200', 'text-slate-400');
-        shareIndicator.classList.add('bg-emerald-100', 'border-emerald-300', 'text-emerald-600');
-    }
+
+    state.wantsToShare = !state.wantsToShare;
+    updateShareIndicator();
 }
 

@@ -44,7 +44,10 @@ export async function saveWithTimeout(run, opts) {
     });
 
     try {
-        const result = await Promise.race([run(), timeoutPromise]);
+        const runPromise = Promise.resolve().then(run);
+        // 타임아웃으로 race가 끝난 뒤 원 프라미스가 늦게 거절돼도 unhandledrejection으로 새지 않게 관찰
+        runPromise.catch(() => {});
+        const result = await Promise.race([runPromise, timeoutPromise]);
         done = true;
         return result;
     } finally {

@@ -10,6 +10,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
+import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
@@ -84,7 +85,7 @@ function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
             dateStr,
             slotId: slot.id,
             recordId: r.id
-        });
+        }, getMealThumbUrlsForTimeline(r));
     }
     if (r.mealType === 'Skip') {
         return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
@@ -449,15 +450,9 @@ const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
 /** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시) */
 const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 
-// entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
-// record: meal 문서 (sharedPhotos 필드 있음). sharedPhotos 컬렉션과 meal 문서가 불일치할 수 있어 둘 다 확인
+// entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
 function isEntryShared(entryId, record) {
     if (!entryId) return false;
-    // 1) meal 문서에 sharedPhotos가 있으면 공유됨 (상세보기와 일치)
-    if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0) {
-        return true;
-    }
-    // 2) sharedPhotos 컬렉션(모먼트 피드)에 entryId가 있으면 공유됨
     if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
         return window.sharedPhotos.some(photo => photo.entryId === entryId);
     }
@@ -578,6 +573,17 @@ export function getMealPhotoUrlsForTimeline(r) {
 }
 
 /**
+ * 타임라인 썸네일 표시용 URL(원본과 index 정렬).
+ * 신규 업로드는 200px thumb → 없으면 800px display → 없으면 원본.
+ * 반환 배열은 getMealPhotoUrlsForTimeline과 같은 길이/순서를 유지한다(팝업 원본과 매칭).
+ */
+export function getMealThumbUrlsForTimeline(r) {
+    const originals = getMealPhotoUrlsForTimeline(r);
+    if (originals.length === 0) return [];
+    return originals.map((orig, i) => getThumbImageUrl(r, i, 'timeline.cell') || orig);
+}
+
+/**
  * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯마다 1행(다건이면 아침1·점심2 등)
  * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean,photoAspectRatio?:string}>}
  */
@@ -671,12 +677,21 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
     };
 }
 
-/** 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n — 탭 시 전역 사진 팝업(부모 카드 onclick 전파 차단) */
-function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null) {
+/**
+ * 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n — 탭 시 전역 사진 팝업(부모 카드 onclick 전파 차단)
+ * @param {string[]} urls 원본 URL(팝업/확대 보기용)
+ * @param {string} imgClass
+ * @param {object|null} viewCtx
+ * @param {string[]|null} thumbUrls 표시용 썸네일 URL(원본과 index 정렬). 미제공 시 원본 사용.
+ */
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null) {
     const first = urls[0];
     if (!first) return '';
     const n = urls.length;
     const enc = encodeURIComponent(JSON.stringify(urls));
+    // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
+    const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
+    const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml, 'timeline.cell');
     const badge =
         n > 1
             ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
@@ -686,7 +701,7 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
             ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
             : '';
     return `<div class="absolute inset-0 overflow-hidden">
-        <img src="${escapeHtml(first)}" class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false">
+        <img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
         <button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>
     </div>`;
@@ -851,7 +866,7 @@ function buildSnackTimelineCardHtml(
     let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     if (snackPhotoUrls.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id });
+        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id }, getMealThumbUrlsForTimeline(r));
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
     } else {
@@ -1496,7 +1511,33 @@ export function updateTimelineShareIndicators() {
     });
 }
 
-export function renderTimeline() {
+export function renderTimelineDateSections(dateStrs) {
+    if (!Array.isArray(dateStrs) || !dateStrs.length) return;
+    const valid = dateStrs.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
+    if (!valid.length) return;
+    renderTimeline({ onlyDates: valid });
+}
+
+/** loadMoreMeals 직후 — 새로 가져온 기록이 속한 날짜만 추출 */
+export function mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart) {
+    const prev = typeof prevRangeStart === 'string' ? prevRangeStart : null;
+    const next = typeof newRangeStart === 'string' ? newRangeStart : null;
+    return [
+        ...new Set(
+            (Array.isArray(newMeals) ? newMeals : [])
+                .map((m) => m?.date)
+                .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+                .filter((d) => (!next || d >= next) && (!prev || d < prev))
+        )
+    ].sort((a, b) => b.localeCompare(a));
+}
+
+/** @param {{ onlyDates?: string[] }} [options] onlyDates — 지정 날짜 섹션만 추가/갱신(전체 재렌더 생략) */
+export function renderTimeline(options = {}) {
+    const onlyDates = Array.isArray(options.onlyDates)
+        ? options.onlyDates.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+        : null;
+    const incrementalDates = onlyDates && onlyDates.length > 0;
     const state = appState;
     if (!window.currentUser || state.currentTab !== 'timeline') return;
     /* 검색 모드일 때는 타임라인 렌더하지 않음 (검색 결과만 표시) */
@@ -1521,7 +1562,11 @@ export function renderTimeline() {
     const todayStr = `${year}-${month}-${day}`;
     
     const targetDates = [];
-    if (state.viewMode === 'list') {
+    if (incrementalDates) {
+        onlyDates.forEach((d) => {
+            if (!targetDates.includes(d)) targetDates.push(d);
+        });
+    } else if (state.viewMode === 'list') {
         // 초기 로드 시 오늘 날짜를 무조건 첫 번째로 추가
         if (window.loadedDates.length === 0) {
             targetDates.push(todayStr);
@@ -1565,7 +1610,12 @@ export function renderTimeline() {
     if (state.viewMode === 'list' && sortedTargetDates.includes(todayStr)) {
         sortedTargetDates = sortedTargetDates.filter(d => d !== todayStr);
         sortedTargetDates.unshift(todayStr);
-    } else if (state.viewMode === 'list' && !window.loadedDates.includes(todayStr) && !sortedTargetDates.includes(todayStr)) {
+    } else if (
+        !incrementalDates &&
+        state.viewMode === 'list' &&
+        !window.loadedDates.includes(todayStr) &&
+        !sortedTargetDates.includes(todayStr)
+    ) {
         // 오늘 날짜가 아직 추가되지 않았다면 강제로 맨 앞에 추가
         sortedTargetDates.unshift(todayStr);
     }
@@ -1825,8 +1875,8 @@ export function renderTimeline() {
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
 
-    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만)
-    if (state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
+    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만 — 증분 갱신 시 스크롤 유지)
+    if (!incrementalDates && state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
         const todaySection = document.getElementById(`date-${todayStr}`);
         if (todaySection) {
             setTimeout(() => {

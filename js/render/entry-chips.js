@@ -163,7 +163,9 @@ export function renderEntryChips() {
             const text = getSubTagItemText(item);
             if (!text) return '';
             const active = currentValues.includes(text);
-            const star = isFavorite ? ' ★' : '';
+            const star = isFavorite
+                ? ' <i class="fa-solid fa-star sub-chip-favorite-star" aria-hidden="true"></i>'
+                : '';
             const sourceFull = item._sourceFull ? String(item._sourceFull) : '';
             const sourceAttr = sourceFull
                 ? ` data-source-full="${sourceFull.replace(/"/g, '&quot;')}"`

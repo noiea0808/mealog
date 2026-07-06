@@ -4,7 +4,7 @@
 
 - **`main/network.js`** — 오프라인/온라인 시 네트워크 오버레이 (`registerMainNetworkListeners`)
 - **`main/cleanup.js`** — `window.cleanupFirestoreListeners` 등록 (`registerMainCleanup`)
-- **`main/shares-sync.js`** — `syncOrphanedSharesToMoment` (meal의 sharedPhotos → 컬렉션 동기화)
+- **`main/shares-sync.js`** — `refreshMyMomentShares` / `syncOrphanedSharesToMoment`(캐시 갱신, canonical: `sharedPhotos` 컬렉션)
 - **`main/gallery-pull-refresh.js`** — 모먼트 갤러리 당겨서 새로고침 (`setupGalleryPullToRefresh`)
 - **`main/notifications.js`** — 알림 읽음 상태(Firestore), 팝업 목록, 빨간 점, `updateAppBadge`, `navigateToNotificationPost`, 실시간 리스너 (`startNotificationListeners` / `stopNotificationListeners` export)
 - **`main/tabs.js`** — `registerMainTabSwitch()`로 `window.switchMainTab` 등록 (헤더 라벨, 뷰 표시, 모먼트/타임라인/대시보드/밀톡 전환 로직)

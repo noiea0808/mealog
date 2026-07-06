@@ -1,7 +1,7 @@
 // 데이터베이스 모듈 인덱스 파일
 // 모든 db 관련 기능을 re-export하여 기존 import 경로 유지
 
-export { dbOps, unwrapMealSaveResult } from './db/ops.js';
+export { dbOps, unwrapMealSaveResult, generateMealDocId } from './db/ops.js';
 export {
     setupListeners,
     getSharedPhotosByUser,

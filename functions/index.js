@@ -9,6 +9,7 @@ const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
+const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
 
@@ -1825,9 +1826,9 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
         await batch.commit();
       }
 
-      // meal 문서의 sharedPhotos 필드는 호출 전에 클라이언트 save(record)에서 이미 반영됨.
-      // 여기서 mealDoc.set을 하면 meals 리스너가 한 번 더 떨어져 onDataUpdate가 이중 호출되고,
-      // 타임라인 전체 재렌더가 연속 두 번 발생해 공유 시 브라우저 프리징/CPU 급증의 원인이 됨.
+      if (mealData && mealData.id) {
+        await momentPostV2.syncMealSharedPhotosMirror(db, APP_ID, auth.uid, mealData.id, []);
+      }
 
       return { success: true, action: 'unshare' };
     }
@@ -1893,9 +1894,9 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
 
     await batch.commit();
 
-    // meal 문서의 sharedPhotos 필드는 호출 전에 클라이언트 save(record)에서 이미 반영됨.
-    // 여기서 mealDoc.set을 하면 meals 리스너가 한 번 더 떨어져 onDataUpdate가 이중 호출되고,
-    // 타임라인 전체 재렌더가 연속 두 번 발생해 공유 시 브라우저 프리징/CPU 급증의 원인이 됨.
+    if (mealData && mealData.id) {
+      await momentPostV2.syncMealSharedPhotosMirror(db, APP_ID, auth.uid, mealData.id, photosToShare);
+    }
 
     return { success: true, action: 'share', postId, id: docId };
   } catch (error) {
@@ -1929,6 +1930,38 @@ exports.adminMigrateMomentPostsV2 = onCall({ region: REGION, timeoutSeconds: 540
   logger.info('adminMigrateMomentPostsV2', { uid: auth && auth.uid, ...result });
   return result;
 });
+
+/**
+ * 관리자: meals photoDisplayUrls / photoThumbUrls 선택 백필 (최근 N일)
+ * data: { dryRun?, daysBack?, scanLimit?, maxProcess?, cursorDocPath?, concurrency?, syncSharedPhotos? }
+ */
+exports.adminBackfillMealPhotoVariants = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '1GiB' },
+  async (request) => {
+    const { auth, data } = request;
+    if (!auth || !auth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(auth.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+    }
+    const bucket = getStorage().bucket(mealPhotoVariantsBackfill.STORAGE_BUCKET);
+    const result = await mealPhotoVariantsBackfill.runMealPhotoVariantsBackfillBatch(db, APP_ID, bucket, {
+      dryRun: !!(data && data.dryRun),
+      daysBack: data && data.daysBack != null ? Number(data.daysBack) : 60,
+      scanLimit: data && data.scanLimit != null ? Number(data.scanLimit) : 80,
+      maxProcess: data && data.maxProcess != null ? Number(data.maxProcess) : 15,
+      cursorDocPath: data && data.cursorDocPath ? String(data.cursorDocPath) : undefined,
+      concurrency: data && data.concurrency != null ? Number(data.concurrency) : 5,
+      syncSharedPhotos: data && data.syncSharedPhotos === false ? false : true
+    });
+    logger.info('adminBackfillMealPhotoVariants', { uid: auth.uid, ...result });
+    if (result.aborted) {
+      throw new HttpsError('resource-exhausted', '실패율이 임계치를 초과해 배치를 중단했습니다.', result);
+    }
+    return result;
+  }
+);
 
 /**
  * 일간보기 공유 (Callable)
@@ -2314,27 +2347,21 @@ exports.unsharePhotos = onCall({ region: REGION }, async (request) => {
     await batch.commit();
   }
 
-  /** 클라이언트 setDoc 직후 Watch 스트림에서 Firestore INTERNAL ASSERTION(b815)가 나는 경우가 있어, 식사 문서는 Admin으로만 병합 */
+  /** meals.sharedPhotos 미러 — canonical은 sharedPhotos 컬렉션 */
   const mealEntryIdRaw = data && data.mealEntryId;
-  const mealEntryId = typeof mealEntryIdRaw === 'string' ? mealEntryIdRaw.trim() : '';
+  const mealEntryIdFromPayload = typeof mealEntryIdRaw === 'string' ? mealEntryIdRaw.trim() : '';
+  const entryIdStr = typeof entryId === 'string' ? entryId.trim() : '';
+  const mealIdToMirror = mealEntryIdFromPayload || entryIdStr;
   const msp = data && data.mealSharedPhotos;
   if (
-    mealEntryId &&
-    Array.isArray(msp) &&
+    mealIdToMirror &&
+    !mealIdToMirror.startsWith('dailyJournal_') &&
     !isBestShare &&
     !isDailyShare &&
     !isInsightShare
   ) {
-    const safeUrls = msp
-      .filter((u) => typeof u === 'string' && u.length > 0 && u.length < 4096 && !u.startsWith('data:'))
-      .slice(0, 80);
-    const mealRef = db.doc(`artifacts/${APP_ID}/users/${auth.uid}/meals/${mealEntryId}`);
-    const mealSnap = await mealRef.get();
-    if (mealSnap.exists) {
-      await mealRef.set({ sharedPhotos: safeUrls }, { merge: true });
-    } else {
-      logger.warn('unsharePhotos: meals 문서 없음 — sharedPhotos 스킵', { mealEntryId });
-    }
+    const mirrorUrls = Array.isArray(msp) ? msp : [];
+    await momentPostV2.syncMealSharedPhotosMirror(db, APP_ID, auth.uid, mealIdToMirror, mirrorUrls);
   }
 
   return { success: true, deletedCount: photosToDelete.length };
@@ -3808,6 +3835,13 @@ exports.saveArtifactUserMeal = onCall({ region: REGION }, wrapFunction('saveArti
   } else {
     // 신규 문서이거나 recordedAt 누락: 슬롯 날짜로 추론하지 않고 이번 저장 시각(ISO)으로 둔다
     cleaned.recordedAt = new Date().toISOString();
+  }
+
+  // sharedPhotos는 sharedPhotos 컬렉션이 canonical — meal 저장 시 기존 미러만 보존
+  if (existedBefore && existingSnap.data()?.sharedPhotos != null) {
+    cleaned.sharedPhotos = existingSnap.data().sharedPhotos;
+  } else {
+    delete cleaned.sharedPhotos;
   }
 
   await mealRef.set(cleaned, { merge: false });

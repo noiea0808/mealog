@@ -116,8 +116,10 @@ async function refreshTimelineFull(dateStr, currentTab) {
     void import('../render/timeline.js').then((mod) => {
         try {
             if (dateStr && mod.invalidateTimelineDateSection) mod.invalidateTimelineDateSection(dateStr);
-            if (currentTab === 'timeline' && mod.renderTimeline) mod.renderTimeline();
-            else if (mod.updateTimelineMealEntryPendingIndicators) mod.updateTimelineMealEntryPendingIndicators();
+            if (currentTab === 'timeline') {
+                if (dateStr && mod.renderTimelineDateSections) mod.renderTimelineDateSections([dateStr]);
+                else if (mod.renderTimeline) mod.renderTimeline();
+            } else if (mod.updateTimelineMealEntryPendingIndicators) mod.updateTimelineMealEntryPendingIndicators();
         } catch (_) {
             /* ignore */
         }
@@ -890,8 +892,9 @@ export class MealSyncManager {
 
     isRowBlocked(record) {
         if (!record) return false;
-        if (this.isDeleting(record)) return true;
-        return this.isPendingSync(record);
+        // 삭제 진행 중에만 행 열기 차단. 등록 대기(pending)는 ID 선발급으로 setDoc이 멱등이라
+        // 수정·삭제 모두 안전 — 열어서 편집/삭제할 수 있게 허용 (오프라인 삭제불가 이슈 해소)
+        return this.isDeleting(record);
     }
 
     countCloudFabManualRetryEntries() {

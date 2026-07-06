@@ -16,14 +16,16 @@
     "shift-demo-dates": "node scripts/shift-demo-user-dates.js",
     "set-demo-password": "node scripts/set-demo-user-password.js",
     "migrate:fixTermsAndCreatedAt": "node scripts/fix-settings-terms-and-user-createdAt.js",
-    "migrate:backfillCreatedAtFromAuth": "node scripts/backfill-user-root-createdAt-from-auth.js"
+    "migrate:backfillCreatedAtFromAuth": "node scripts/backfill-user-root-createdAt-from-auth.js",
+    "backfill:mealPhotoVariants": "node scripts/backfill-meal-photo-variants.js"
   },
   "engines": {
     "node": "20"
   },
   "dependencies": {
     "firebase-admin": "^12.0.0",
-    "firebase-functions": "^7.0.3"
+    "firebase-functions": "^7.0.3",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"

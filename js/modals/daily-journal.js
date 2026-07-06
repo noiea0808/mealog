@@ -11,7 +11,7 @@ import {
     isDailyJournalShared
 } from '../utils/daily-journal-data.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
-import { invalidateTimelineDateSection, updateTimelineShareIndicators } from '../render/index.js';
+import { invalidateTimelineDateSection, renderTimelineDateSections, updateTimelineShareIndicators } from '../render/index.js';
 import { isDemoUser } from '../demo-account.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
@@ -651,7 +651,7 @@ export async function deleteDailyJournal() {
         closeDailyJournalModal();
         showToast('하루 기록이 삭제되었습니다.', 'success');
         invalidateTimelineDateSection(dateStr);
-        if (typeof window.renderTimeline === 'function') window.renderTimeline();
+        renderTimelineDateSections([dateStr]);
     } catch (e) {
         console.error('Daily Journal Delete Error:', e);
         showToast(getUserFacingErrorMessage(e, 'settings'), 'error');
@@ -708,7 +708,7 @@ export async function saveDailyJournal() {
             'success'
         );
         invalidateTimelineDateSection(dateStr);
-        if (typeof window.renderTimeline === 'function') window.renderTimeline();
+        renderTimelineDateSections([dateStr]);
     } catch (e) {
         console.error('Daily Journal Save Error:', e);
         showToast(getUserFacingErrorMessage(e, 'settings'), 'error');

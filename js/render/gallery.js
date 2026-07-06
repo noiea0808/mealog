@@ -3,6 +3,7 @@
  */
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
+import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
 import {
@@ -32,14 +33,33 @@ import {
 
 ensureMomentFeedPinchDelegate();
 
+// 모먼트 네트워크 오류 화면「다시 불러오기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
+if (typeof document !== 'undefined' && !window._galleryMomentRetryDelegateBound) {
+    window._galleryMomentRetryDelegateBound = true;
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('#galleryMomentRetryLoadBtn');
+        if (!btn) return;
+        if (typeof window.reloadMomentFeed !== 'function') return;
+        e.preventDefault();
+        void window.reloadMomentFeed();
+    });
+}
+
 // 모먼트 사진: 로드 완료 전 슬롯만 보이고, `loaded` 후 이미지 노출.
 // 한 번 로드된 사진은 재디코드 시에도 다시 숨기지 않음.
 // load/error 이벤트는 버블되지 않으므로 캡처 단계로 위임.
+// 세션 동안 한 번이라도 로드 완료된 URL을 기억해, 전체 재렌더로 <img>가 새로 생겨도
+// 캐시된 사진은 처음부터 `loaded`로 노출한다(재렌더마다 숨김→재노출 깜빡임 제거).
+const momentLoadedPhotoUrls =
+    (typeof window !== 'undefined' && (window._momentLoadedPhotoUrls = window._momentLoadedPhotoUrls || new Set())) ||
+    new Set();
 if (typeof document !== 'undefined' && !window._momentPhotoLoadedTrackerBound) {
     window._momentPhotoLoadedTrackerBound = true;
     const markLoaded = (img) => {
         if (img?.tagName === 'IMG' && img.classList?.contains('moment-feed-photo')) {
             img.classList.add('loaded');
+            const src = img.currentSrc || img.src;
+            if (src) momentLoadedPhotoUrls.add(src);
         }
     };
     document.addEventListener('load', (e) => markLoaded(e.target), true);
@@ -51,7 +71,11 @@ export function markMomentFeedPhotosLoadedIn(root) {
     if (!root?.querySelectorAll) return;
     root.querySelectorAll('img.moment-feed-photo').forEach((img) => {
         if (img.classList.contains('loaded')) return;
-        if (img.complete) img.classList.add('loaded');
+        const src = img.currentSrc || img.src;
+        // 디코드 성공(naturalHeight>0) 또는 이번 세션에서 이미 로드된 URL이면 즉시 노출.
+        if ((img.complete && img.naturalHeight > 0) || (src && momentLoadedPhotoUrls.has(src))) {
+            img.classList.add('loaded');
+        }
     });
 }
 
@@ -66,13 +90,16 @@ function buildUserProfileMomentGridHtml(sortedGroups) {
     const cells = sortedGroups.map((photoGroup) => {
         const postId = getPostIdFromPhotoGroup(photoGroup);
         const first = photoGroup[0];
-        const url = first?.photoUrl || '';
+        const originalUrl = first?.photoUrl || '';
+        // 작은 그리드 셀: 200px thumb 우선(없으면 display→원본), 로딩 실패 시 원본 폴백.
+        const thumbUrl = getThumbImageUrl(first, 0, 'gallery.profile-grid') || originalUrl;
         const n = photoGroup.length;
         const multi = n > 1;
         const encId = encodeURIComponent(postId || '');
-        const safeSrc = escapeHtml(url);
-        const imgOrPlaceholder = url
-            ? `<img src="${safeSrc}" alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
+        const safeSrc = escapeHtml(thumbUrl);
+        const thumbFallback = imgFallbackAttrs(originalUrl, thumbUrl, escapeHtml, 'gallery.profile-grid');
+        const imgOrPlaceholder = originalUrl
+            ? `<img src="${safeSrc}"${thumbFallback} alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
             : `<div class="absolute inset-0 flex items-center justify-center text-slate-400"><i class="fa-solid fa-image text-2xl" aria-hidden="true"></i></div>`;
         const badge = multi
             ? `<span class="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-black leading-none text-white shadow-sm" title="사진 ${n}장" aria-hidden="true">
@@ -114,7 +141,7 @@ function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
                 <i class="fa-regular fa-wifi text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
                 <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
                 <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
-                <button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                <button type="button" id="galleryMomentRetryLoadBtn" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
                     <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
                 </button>
             </div>`;
@@ -466,6 +493,8 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     } else {
         loadMoreWrap.parentNode.insertBefore(fragment, loadMoreWrap);
     }
+    // 삽입 직후 즉시(50ms 대기 없이) 캐시된 사진을 노출해 더보기 시 깜빡임 제거
+    markMomentFeedPhotosLoadedIn(container);
     const fullSortedGroups = docsToSortedPhotoGroups(window.sharedPhotosFeed || []);
     const appendedEnd = existingCount + newGroups.length;
     setTimeout(() => {
@@ -1002,13 +1031,16 @@ export async function renderGallery(options = {}) {
     
     // ===== DIFFING: 변경사항이 작으면 차등 업데이트, 크면 전체 재렌더링 =====
     const currentPostIds = new Set(sortedGroups.map(g => getPostIdFromPhotoGroup(g)));
+    // 삭제(공유해제·차단·순서 재정렬 가능성)는 부분 갱신으로 안전히 반영하기 어려우므로 전체 재렌더로 폴백.
+    // 추가만 있는 경우(그것도 소량)만 차등(맨 위 prepend) 경로로 처리해 기존 사진·스크롤을 보존한다.
+    const removedPostIds = Array.from(previousGalleryPostIds).filter((id) => !currentPostIds.has(id));
+    const addedPostIds = Array.from(currentPostIds).filter((id) => !previousGalleryPostIds.has(id));
     const hasSignificantChanges =
         !!appState.galleryTraceFilter ||
         previousGalleryPostIds.size === 0 || // 초기 로드
         currentPostIds.size === 0 || // 모든 포스트 삭제
-        Math.abs(currentPostIds.size - previousGalleryPostIds.size) > 5 || // 5개 이상 차이
-        Array.from(currentPostIds).some((id) => !previousGalleryPostIds.has(id)) ||
-        Array.from(previousGalleryPostIds).some((id) => !currentPostIds.has(id));
+        removedPostIds.length > 0 || // 삭제·재정렬 → 전체 재렌더로 정합성 보장
+        addedPostIds.length > 5; // 대량 추가 → 전체 재렌더
     
     // AbortSignal 체크: 취소되었으면 중단
     if (abortSignal.aborted) {
@@ -1085,6 +1117,8 @@ export async function renderGallery(options = {}) {
                 } else {
                     container.appendChild(fragment);
                 }
+                // 삽입 직후 즉시 캐시된 사진 노출 (재렌더 깜빡임 제거)
+                markMomentFeedPhotosLoadedIn(container);
                 
                 // 이전 포스트 ID 목록 업데이트
                 previousGalleryPostIds = new Set(currentPostIds);

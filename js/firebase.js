@@ -10,7 +10,8 @@ import {
     persistentLocalCache,
     persistentSingleTabManager,
     terminate,
-    clearIndexedDbPersistence
+    clearIndexedDbPersistence,
+    waitForPendingWrites
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
@@ -275,6 +276,16 @@ export async function recoverFirestoreAfterWatchAssertion(reason = '', opts = {}
     firestoreRecoverInFlight = (async () => {
         try {
             console.warn('[Firestore] Watch 내부 오류 복구 시도:', reason || '(detail omitted)');
+            // clearIndexedDbPersistence는 로컬 쓰기 큐도 지운다 — 미전송 쓰기 유실을 막기 위해
+            // 짧은 시간(4s) 안에 flush를 시도한 뒤 진행 (오프라인이면 타임아웃 후 그대로 진행)
+            try {
+                await Promise.race([
+                    waitForPendingWrites(db),
+                    new Promise((resolve) => setTimeout(resolve, 4000))
+                ]);
+            } catch (e) {
+                console.warn('[Firestore] recover 전 waitForPendingWrites:', e?.message || e);
+            }
             try {
                 await terminate(db);
             } catch (e) {

@@ -53,7 +53,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, mealDatesFromNewlyLoadedChunk, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -74,7 +74,7 @@ import {
 } from './modals.js';
 import { openQuickEntryModal } from './modals/entry-quick-open.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
-import { registerMainNetworkListeners, runMealogNetworkRecovery } from './main/network.js';
+import { registerMainNetworkListeners, runMealogNetworkRecovery, prepareMomentFeedNetworkForReload } from './main/network.js';
 import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
@@ -84,6 +84,7 @@ import { registerContentPopup, recordBannerView, recordBannerClick } from './mai
 import { initEventListeners } from './main/event-listeners.js';
 import { registerEventListenerManager } from './main/event-listener-manager.js';
 import { registerMomentSyncDevTools } from './main/moment-sync-dev.js';
+import { initImageLoadingDebug } from './utils/image-loading-debug.js';
 
 import { registerMainPostInteractions } from './main/post-interactions-daily.js';
 import './modals/diet-report.js';
@@ -95,6 +96,7 @@ registerMainTabSwitch();
 registerContentPopup();
 registerEventListenerManager();
 registerMomentSyncDevTools();
+initImageLoadingDebug();
 try {
     registerMainPostInteractions();
 } catch (e) {
@@ -117,6 +119,7 @@ window.Mealog.removeDuplicateMeals = window.removeDuplicateMeals;
 window.showToast = showToast;
 window.Mealog.showToast = showToast;
 window.renderTimeline = renderTimeline;
+window.renderTimelineDateSections = renderTimelineDateSections;
 window.Mealog.renderTimeline = renderTimeline;
 window.updateTimelineShareIndicators = updateTimelineShareIndicators;
 window.Mealog.updateTimelineShareIndicators = updateTimelineShareIndicators;
@@ -128,55 +131,61 @@ window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
 window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
+let reloadMomentFeedInFlight = false;
+
 /** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
 window.reloadMomentFeed = async function reloadMomentFeed() {
+    if (reloadMomentFeedInFlight) return;
+    reloadMomentFeedInFlight = true;
     invalidateGalleryRenderSession();
+    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
-        await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
-    } catch (e) {
-        console.warn('모먼트: Firestore 인스턴스 복구 실패(이어서 로드 시도):', e?.message || e);
-    }
-    try {
-        await runMealogNetworkRecovery();
-    } catch (_) {
-        /* 오프라인 복귀 시도만 하고 실패해도 getDocsFromServer로 재시도 */
-    }
-    appState.galleryFeedNetworkError = false;
-    if (appState.galleryFilterUserId) {
-        appState.galleryUserProfileSharedDocs = null;
-        appState.galleryUserProfileSharedLastSnap = null;
-        appState.galleryUserProfileSharedHasMore = true;
-        appState.galleryUserProfileSharedDocSnaps = new Map();
+        await prepareMomentFeedNetworkForReload();
         try {
+            await Promise.race([
+                recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true }),
+                new Promise((resolve) => setTimeout(resolve, 6000))
+            ]);
+        } catch (e) {
+            console.warn('모먼트: Firestore 인스턴스 복구 실패(이어서 로드 시도):', e?.message || e);
+        }
+        appState.galleryFeedNetworkError = false;
+        if (appState.galleryFilterUserId) {
+            appState.galleryUserProfileSharedDocs = null;
+            appState.galleryUserProfileSharedLastSnap = null;
+            appState.galleryUserProfileSharedHasMore = true;
+            appState.galleryUserProfileSharedDocSnaps = new Map();
+            try {
+                invalidateGalleryRenderSession();
+                await renderGallery({ forceReload: true });
+            } catch (e) {
+                console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
+            }
+            if (typeof renderFeed === 'function') renderFeed();
+            return;
+        }
+        window.sharedPhotosFeed = [];
+        appState.sharedPhotosFeedLastDoc = null;
+        appState.sharedPhotosFeedHasMore = false;
+        try {
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
+            appState.galleryFeedNetworkError = false;
+            window.sharedPhotosFeed = docs;
+            appState.sharedPhotosFeedLastDoc = lastDoc;
+            appState.sharedPhotosFeedHasMore = hasMore;
+            appState.sharedPhotosFeedPrefetchedAt = Date.now();
             invalidateGalleryRenderSession();
             await renderGallery({ forceReload: true });
         } catch (e) {
-            console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
+            console.error('공유 사진 로드 실패:', e);
+            appState.galleryFeedNetworkError = true;
+            invalidateGalleryRenderSession();
+            await renderGallery({ forceReload: true });
         }
         if (typeof renderFeed === 'function') renderFeed();
-        return;
-    }
-    window.sharedPhotosFeed = [];
-    appState.sharedPhotosFeedLastDoc = null;
-    appState.sharedPhotosFeedHasMore = false;
-    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
-    try {
-        const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
-        appState.galleryFeedNetworkError = false;
-        window.sharedPhotosFeed = docs;
-        appState.sharedPhotosFeedLastDoc = lastDoc;
-        appState.sharedPhotosFeedHasMore = hasMore;
-        appState.sharedPhotosFeedPrefetchedAt = Date.now();
-        invalidateGalleryRenderSession();
-        await renderGallery({ forceReload: true });
-    } catch (e) {
-        console.error('공유 사진 로드 실패:', e);
-        appState.galleryFeedNetworkError = true;
-        invalidateGalleryRenderSession();
-        await renderGallery({ forceReload: true });
     } finally {
+        reloadMomentFeedInFlight = false;
         hideLoading();
-        if (typeof renderFeed === 'function') renderFeed();
     }
 };
 window.Mealog.reloadMomentFeed = window.reloadMomentFeed;
@@ -796,18 +805,20 @@ window.loadMoreMealsTimeline = async () => {
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
     try {
-        const count = await loadMoreMeals(1); // 1개월 더 로드
+        const prevRangeStart = window.loadedMealsDateRange?.start;
+        const scrollY = window.scrollY;
+        const { count, newMeals } = await loadMoreMeals(1);
         if (count > 0) {
-            window.loadedDates = [];
-            const container = document.getElementById('timelineContainer');
-            if (container) container.innerHTML = "";
-            renderTimeline();
-            // 새로 로드된 meal에 공유 표시만 있고 모먼트에 없으면 동기화
-            syncOrphanedSharesToMoment().then((synced) => {
-                if (synced > 0) {
-                    updateTimelineShareIndicators();
-                    showToast('모먼트에 반영되었습니다.', 'success');
-                }
+            const newRangeStart = window.loadedMealsDateRange?.start;
+            const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
+            if (dates.length) {
+                renderTimelineDateSections(dates);
+            }
+            requestAnimationFrame(() => {
+                window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+            });
+            syncOrphanedSharesToMoment().then(() => {
+                updateTimelineShareIndicators();
             }).catch(() => {});
             renderMiniCalendar();
             showToast(`${count}개의 기록을 불러왔습니다.`, 'success');
@@ -1393,7 +1404,11 @@ initAuth(async (user) => {
                         if (mode === 'mealData') {
                             const dates = Array.isArray(update.changedDates) ? update.changedDates : [];
                             dates.forEach((d) => invalidateTimelineDateSection(d));
-                            renderTimeline();
+                            if (dates.length) {
+                                renderTimelineDateSections(dates);
+                            } else {
+                                renderTimeline();
+                            }
                             refreshMiniCalendarDots();
                             return;
                         }
@@ -2018,7 +2033,15 @@ window.addEventListener('scroll', () => {
             const nextOldestStr = `${nextOldest.getFullYear()}-${String(nextOldest.getMonth() + 1).padStart(2, '0')}-${String(nextOldest.getDate()).padStart(2, '0')}`;
             if (nextOldestStr < range.start) {
                 try {
-                    await loadMoreMeals(1, 'week'); // 스크롤 시 1주일씩 로드
+                    const prevRangeStart = range.start;
+                    const { count, newMeals } = await loadMoreMeals(1, 'week');
+                    if (count > 0) {
+                        const newRangeStart = window.loadedMealsDateRange?.start;
+                        const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
+                        if (dates.length) {
+                            renderTimelineDateSections(dates);
+                        }
+                    }
                 } catch (e) {
                     console.warn('스크롤 시 추가 로드 실패:', e);
                 }
