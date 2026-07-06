@@ -96,21 +96,29 @@ export async function loadPostInteractions(postEl, postId) {
     }
     
     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
-    
+
+    // 화면2(v2): 좋아요/댓글 "개수"는 문서 시드값(likeCount/commentCount)으로 이미 표시되고,
+    // 댓글 본문은 패널이 숨겨져 있어 사용자가 시트를 열 때 viewAllComments가 로드한다.
+    // → 스크롤 중에는 전체 목록 조회(getLikes/getComments)를 생략해 Firestore 읽기·DOM 갱신을 줄인다.
+    //    (v1은 하단에 댓글 미리보기가 노출되므로 기존대로 전체 조회 유지)
+    const isV2Card = postEl.getAttribute('data-moment-card-layout') === '2';
+
     // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
     const alternatePostIds = (postEl.getAttribute('data-post-id-alternates') || '').split(',').filter(Boolean);
-    const promiseArray = [
-        window.postInteractions.getLikes(postId).catch(e => {
-            console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
-            return [];
-        }),
-        window.postInteractions.getComments(postId, alternatePostIds).catch(e => {
-            console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
-            return [];
-        })
-    ];
+    const promiseArray = isV2Card
+        ? []
+        : [
+              window.postInteractions.getLikes(postId).catch(e => {
+                  console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
+                  return [];
+              }),
+              window.postInteractions.getComments(postId, alternatePostIds).catch(e => {
+                  console.error(`댓글 목록 가져오기 실패 (postId: ${postId}):`, e);
+                  return [];
+              })
+          ];
     
-    // 로그인한 사용자만 좋아요/북마크 상태 확인
+    // 로그인한 사용자만 좋아요/북마크 상태 확인 (v2도 버튼 on/off 표시엔 필요)
     if (isLoggedIn) {
         promiseArray.unshift(
             window.postInteractions.isLiked(postId, window.currentUser.uid).catch(e => {
@@ -143,12 +151,15 @@ export async function loadPostInteractions(postEl, postId) {
         const results = await Promise.all(promiseArray);
         let isLiked = false;
         let isBookmarked = false;
-        let likes = [];
-        let comments = [];
+        // v2는 목록을 조회하지 않으므로 null → 이후 카운트/댓글 갱신을 건너뛰고 시드값을 유지
+        let likes = null;
+        let comments = null;
         
-        if (isLoggedIn) {
+        if (isLoggedIn && !isV2Card) {
             [isLiked, isBookmarked, likes, comments] = results;
-        } else {
+        } else if (isLoggedIn && isV2Card) {
+            [isLiked, isBookmarked] = results;
+        } else if (!isLoggedIn && !isV2Card) {
             [likes, comments] = results;
         }
         
@@ -214,17 +225,21 @@ export async function loadPostInteractions(postEl, postId) {
             });
         }
 
-        // 좋아요 수 업데이트
-        const likeCount = likes && Array.isArray(likes) ? likes.length : 0;
-        postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((likeCountEl) => {
-            likeCountEl.textContent = likeCount > 0 ? likeCount : '';
-        });
+        // 좋아요 수 업데이트 (v2는 likes 미조회 → 시드값 유지)
+        if (Array.isArray(likes)) {
+            const likeCount = likes.length;
+            postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((likeCountEl) => {
+                likeCountEl.textContent = likeCount > 0 ? likeCount : '';
+            });
+        }
 
-        // 댓글 수 업데이트
-        const commentCount = comments && Array.isArray(comments) ? comments.length : 0;
-        postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((commentCountEl) => {
-            commentCountEl.textContent = commentCount > 0 ? commentCount : '';
-        });
+        // 댓글 수 업데이트 (v2는 comments 미조회 → 시드값 유지)
+        if (Array.isArray(comments)) {
+            const commentCount = comments.length;
+            postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((commentCountEl) => {
+                commentCountEl.textContent = commentCount > 0 ? commentCount : '';
+            });
+        }
 
         // 댓글 아이콘: 사용자가 댓글 단 경우 채우기 (fa-solid)
         if (isLoggedIn && comments && Array.isArray(comments)) {
@@ -257,8 +272,10 @@ export async function loadPostInteractions(postEl, postId) {
             applyStackCommentBtnVisual(postId);
         }
         
-        // 댓글 표시 (최대 2개) — 등록 시간 포함
-        const commentsListEl = postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`);
+        // 댓글 표시 (최대 2개) — 등록 시간 포함 (v2는 comments 미조회 → 시트 열 때 로드하므로 건너뜀)
+        const commentsListEl = Array.isArray(comments)
+            ? postEl.querySelector(`.post-comments-list[data-post-id="${postId}"]`)
+            : null;
         if (commentsListEl) {
             const commentSection = postEl.querySelector(`#comment-section-${CSS.escape(postId)}`);
             if (comments.length > 0) {

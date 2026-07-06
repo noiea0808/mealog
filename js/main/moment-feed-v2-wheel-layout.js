@@ -555,6 +555,21 @@ export function getMomentV2CarouselActiveIndex(strip) {
     return idx;
 }
 
+/** 다장 hstrip: 활성 슬롯 기준 다음 1~2장을 네트워크 캐시에 미리 로드(디코드 강제 X, 개수 상한). */
+function preloadMomentV2HstripAdjacent(strip, idx) {
+    if (!strip) return;
+    const cells = strip.querySelectorAll('.moment-v2-h-slide');
+    if (cells.length <= 1) return;
+    for (const nextIdx of [idx + 1, idx + 2]) {
+        if (nextIdx < 0 || nextIdx >= cells.length) continue;
+        const img = cells[nextIdx]?.querySelector?.('img');
+        const url = (img && (img.getAttribute('src') || img.src)) || '';
+        if (!url) continue;
+        const pre = new Image();
+        pre.src = url;
+    }
+}
+
 /** 다장: 게시물 전역 배경(라벨·코멘트까지)을 활성 사진 URL로 갱신 */
 function syncMomentV2HstripBgToIndex(strip, idx) {
     const stage = strip?.closest?.('[data-moment-v2-wheel-stage]');
@@ -794,6 +809,7 @@ function bindOneMomentV2WheelStage(stageEl) {
             const pageCur = stageEl.querySelector('[data-carousel-badge-cur]');
             if (pageCur) pageCur.textContent = String(idx + 1);
             syncMomentV2HstripBgToIndex(strip, idx);
+            preloadMomentV2HstripAdjacent(strip, idx);
         }
         /* 다장: 사진만 스와이프 — 휠 라벨/기록은 스냅 시 갱신하지 않음(단일·첫 슬롯과 동일) */
         if (labels.length && strip && !isVScroll && !photosOnlySwipe) {

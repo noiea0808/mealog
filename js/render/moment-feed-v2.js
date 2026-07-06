@@ -298,18 +298,18 @@ function buildV2RawPhotoBlock(p, idx, ar) {
     /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
     if (isDaily || isBest || isDietReportInsightShare(p)) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
-            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
     if (isInsight) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
-            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+            <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
     return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
-        <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx === 0 ? 'eager' : 'lazy'}" />
+        <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
         ${bannedOverlay}
     </div>`;
 }
