@@ -3,6 +3,7 @@
  */
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
+import { pickThumbUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
 import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
 import {
@@ -77,13 +78,16 @@ function buildUserProfileMomentGridHtml(sortedGroups) {
     const cells = sortedGroups.map((photoGroup) => {
         const postId = getPostIdFromPhotoGroup(photoGroup);
         const first = photoGroup[0];
-        const url = first?.photoUrl || '';
+        const originalUrl = first?.photoUrl || '';
+        // 작은 그리드 셀: 200px thumb 우선(없으면 display→원본), 로딩 실패 시 원본 폴백.
+        const thumbUrl = pickThumbUrl(first) || originalUrl;
         const n = photoGroup.length;
         const multi = n > 1;
         const encId = encodeURIComponent(postId || '');
-        const safeSrc = escapeHtml(url);
-        const imgOrPlaceholder = url
-            ? `<img src="${safeSrc}" alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
+        const safeSrc = escapeHtml(thumbUrl);
+        const thumbFallback = imgFallbackAttrs(originalUrl, thumbUrl, escapeHtml);
+        const imgOrPlaceholder = originalUrl
+            ? `<img src="${safeSrc}"${thumbFallback} alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
             : `<div class="absolute inset-0 flex items-center justify-center text-slate-400"><i class="fa-solid fa-image text-2xl" aria-hidden="true"></i></div>`;
         const badge = multi
             ? `<span class="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-black leading-none text-white shadow-sm" title="사진 ${n}장" aria-hidden="true">
