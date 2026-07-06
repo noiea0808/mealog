@@ -687,13 +687,9 @@ export async function renderGallery(options = {}) {
                             iconEl.classList.add('bg-cover', 'bg-center');
                             iconEl.classList.remove('bg-slate-200', 'bg-indigo-100');
                         } else {
-                            if (avatar.type === 'default') {
-                                iconEl.innerHTML = '<i class="fa-solid fa-user text-sm text-slate-500"></i>';
-                            } else {
-                                iconEl.textContent = avatar.value;
-                            }
+                            iconEl.textContent = avatar.value;
                             iconEl.style.backgroundImage = '';
-                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${avatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}`;
+                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 bg-slate-200 ${avatar.type === 'emoji' ? '' : 'text-slate-700'}`;
                         }
                     }
                     if (photoEl && disp.photoUrl) {
@@ -724,7 +720,7 @@ export async function renderGallery(options = {}) {
                         ${initialAvatar.type === 'photo' ? `
                             <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 ${initialAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">${initialAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(initialAvatar.value)}</div>
+                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 bg-slate-200 ${initialAvatar.type === 'emoji' ? '' : 'text-slate-700'}">${escapeHtml(initialAvatar.value)}</div>
                         `}
                         <div class="flex-1 min-w-0">
                             <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>

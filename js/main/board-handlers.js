@@ -1741,11 +1741,8 @@ window.syncBoardInlineComposerAvatar = () => {
         el.style.backgroundImage = `url(${av.value})`;
         el.style.backgroundSize = 'cover';
         el.style.backgroundPosition = 'center';
-    } else if (av.type === 'default') {
-        el.className = `${baseClass} bg-slate-200 flex items-center justify-center text-slate-500`;
-        el.innerHTML = '<i class="fa-solid fa-user text-xs"></i>';
     } else {
-        el.className = `${baseClass} bg-slate-200 flex items-center justify-center text-[11px] font-bold text-slate-700`;
+        el.className = `${baseClass} bg-slate-200 flex items-center justify-center ${av.type === 'emoji' ? 'text-base' : 'text-[11px] font-bold text-slate-700'}`;
         el.textContent = av.value || '?';
     }
 };

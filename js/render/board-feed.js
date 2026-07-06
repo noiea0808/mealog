@@ -288,7 +288,7 @@ function feedOtherAuthorAvatarBlock(post, authorDisplay) {
             ? `<img src="${photoSrc}" alt="" width="36" height="36" class="h-9 w-9 rounded-full object-cover bg-slate-200 block" loading="lazy" decoding="async">`
             : authorAvatar.type === 'emoji'
               ? `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-lg leading-none" style="font-family: system-ui, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">${escapeHtml(authorAvatar.value)}</span>`
-              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-slate-500"><i class="fa-solid fa-user text-sm" aria-hidden="true"></i></span>`;
+              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-sm font-bold text-slate-700">${escapeHtml(authorAvatar.value)}</span>`;
 
     return `
         <button type="button" class="feed-other-avatar-btn flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full p-0 shadow-sm outline-none ring-1 ring-white focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:opacity-90 ${authorAvatar.type === 'photo' && photoSrc ? 'border-0 bg-slate-200' : 'border-0 bg-transparent'}"
