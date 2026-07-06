@@ -10,7 +10,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
-import { pickMealThumbUrl, imgFallbackAttrs } from '../utils/image-variants.js';
+import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
@@ -586,10 +586,7 @@ export function getMealPhotoUrlsForTimeline(r) {
 export function getMealThumbUrlsForTimeline(r) {
     const originals = getMealPhotoUrlsForTimeline(r);
     if (originals.length === 0) return [];
-    return originals.map((orig, i) => {
-        const thumb = pickMealThumbUrl(r, i);
-        return thumb || orig;
-    });
+    return originals.map((orig, i) => getThumbImageUrl(r, i, 'timeline.cell') || orig);
 }
 
 /**
@@ -700,7 +697,7 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
     const enc = encodeURIComponent(JSON.stringify(urls));
     // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
     const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
-    const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml);
+    const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml, 'timeline.cell');
     const badge =
         n > 1
             ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`

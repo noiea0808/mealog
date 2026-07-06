@@ -84,6 +84,7 @@ import { registerContentPopup, recordBannerView, recordBannerClick } from './mai
 import { initEventListeners } from './main/event-listeners.js';
 import { registerEventListenerManager } from './main/event-listener-manager.js';
 import { registerMomentSyncDevTools } from './main/moment-sync-dev.js';
+import { initImageLoadingDebug } from './utils/image-loading-debug.js';
 
 import { registerMainPostInteractions } from './main/post-interactions-daily.js';
 import './modals/diet-report.js';
@@ -95,6 +96,7 @@ registerMainTabSwitch();
 registerContentPopup();
 registerEventListenerManager();
 registerMomentSyncDevTools();
+initImageLoadingDebug();
 try {
     registerMainPostInteractions();
 } catch (e) {
