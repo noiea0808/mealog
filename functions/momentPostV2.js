@@ -38,12 +38,36 @@ function mealAspectRatio(mealData) {
   return '1:1';
 }
 
-function buildPhotosArray(photosToShare, aspectRatio) {
-  return (photosToShare || []).map((url, index) => ({
-    url,
-    index,
-    aspectRatio: aspectRatio || '1:1'
-  }));
+/** mealData의 원본 photos ↔ photoDisplayUrls/photoThumbUrls(index 정렬)를 URL 키 맵으로 변환 */
+function buildDerivativeMaps(mealData) {
+  const displayByUrl = new Map();
+  const thumbByUrl = new Map();
+  const photos = mealData && Array.isArray(mealData.photos) ? mealData.photos : [];
+  const disp = mealData && Array.isArray(mealData.photoDisplayUrls) ? mealData.photoDisplayUrls : [];
+  const thumb = mealData && Array.isArray(mealData.photoThumbUrls) ? mealData.photoThumbUrls : [];
+  photos.forEach((u, i) => {
+    if (typeof u !== 'string' || !u) return;
+    if (typeof disp[i] === 'string' && disp[i]) displayByUrl.set(u, disp[i]);
+    if (typeof thumb[i] === 'string' && thumb[i]) thumbByUrl.set(u, thumb[i]);
+  });
+  return { displayByUrl, thumbByUrl };
+}
+
+function buildPhotosArray(photosToShare, aspectRatio, derivativeMaps) {
+  const displayByUrl = (derivativeMaps && derivativeMaps.displayByUrl) || null;
+  const thumbByUrl = (derivativeMaps && derivativeMaps.thumbByUrl) || null;
+  return (photosToShare || []).map((url, index) => {
+    const photo = {
+      url,
+      index,
+      aspectRatio: aspectRatio || '1:1'
+    };
+    const d = displayByUrl ? displayByUrl.get(url) : '';
+    const t = thumbByUrl ? thumbByUrl.get(url) : '';
+    if (d) photo.displayUrl = d;
+    if (t) photo.thumbUrl = t;
+    return photo;
+  });
 }
 
 function buildMealMomentPostV2Fields({
@@ -55,7 +79,7 @@ function buildMealMomentPostV2Fields({
   FieldValue
 }) {
   const aspectRatio = mealAspectRatio(mealData);
-  const photos = buildPhotosArray(photosToShare, aspectRatio);
+  const photos = buildPhotosArray(photosToShare, aspectRatio, buildDerivativeMaps(mealData));
   const ts = FieldValue.serverTimestamp();
   return {
     schemaVersion: 2,
@@ -67,6 +91,8 @@ function buildMealMomentPostV2Fields({
     timestamp: ts,
     photos,
     photoUrl: photos[0] ? photos[0].url : '',
+    photoDisplayUrl: photos[0] && photos[0].displayUrl ? photos[0].displayUrl : '',
+    photoThumbUrl: photos[0] && photos[0].thumbUrl ? photos[0].thumbUrl : '',
     photoIndex: 0,
     photoAspectRatio: aspectRatio,
     userNickname: profile.nickname || '익명',

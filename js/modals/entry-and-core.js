@@ -1,7 +1,7 @@
 // 모달 및 입력 처리 관련 함수들
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
-import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, normalizeBirthdateRaw } from '../utils.js';
+import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
 import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
@@ -2165,33 +2165,48 @@ export async function saveEntry() {
                                     const dataUrlsForUpload = await Promise.all(
                                         base64Photos.map((photo) => ensureDataUrlForStorage(photo))
                                     );
-                                    const uploadedUrls = await Promise.all(
+                                    // 신규 업로드: 원본 + 표시용(800px) + 썸네일(200px) 파생본 동시 생성. 파생본은 best-effort.
+                                    const uploadedVariants = await Promise.all(
                                         dataUrlsForUpload.map((photo) =>
-                                            uploadBase64ToStorage(photo, window.currentUser.uid, record.id)
+                                            uploadMealPhotoVariants(photo, window.currentUser.uid, record.id)
                                         )
                                     );
                                     let uploadedIndex = 0;
                                     let metaIndex = 0;
                                     const finalPhotoUrls = [];
                                     const finalPhotoMeta = [];
+                                    // photos와 index 정렬 유지. 기존 URL(수정 건)은 파생본 미상 → '' (원본 fallback)
+                                    const finalDisplayUrls = [];
+                                    const finalThumbUrls = [];
                                     sourcePhotos.forEach((photo) => {
                                         const meta = sourcePhotoMeta[metaIndex++] || { takenAt: null };
                                         if (isLocalPendingPhoto(photo)) {
-                                            const uploaded = uploadedUrls[uploadedIndex++];
-                                            if (uploaded) {
-                                                finalPhotoUrls.push(uploaded);
+                                            const variant = uploadedVariants[uploadedIndex++];
+                                            if (variant && variant.url) {
+                                                finalPhotoUrls.push(variant.url);
                                                 finalPhotoMeta.push(meta);
+                                                finalDisplayUrls.push(variant.displayUrl || '');
+                                                finalThumbUrls.push(variant.thumbUrl || '');
                                             }
                                             return;
                                         }
                                         if (typeof photo === 'string' && photo) {
                                             finalPhotoUrls.push(photo);
                                             finalPhotoMeta.push(meta);
+                                            finalDisplayUrls.push('');
+                                            finalThumbUrls.push('');
                                         }
                                     });
 
                                     record.photos = finalPhotoUrls;
                                     record.photoMeta = finalPhotoMeta;
+                                    // 파생본이 하나라도 있을 때만 신규 필드 저장(기존 데이터 스키마 오염 방지)
+                                    if (finalDisplayUrls.some(Boolean)) {
+                                        record.photoDisplayUrls = finalDisplayUrls;
+                                    }
+                                    if (finalThumbUrls.some(Boolean)) {
+                                        record.photoThumbUrls = finalThumbUrls;
+                                    }
                                     photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
                                         ? [...finalPhotoUrls]
                                         : [];
@@ -2209,7 +2224,9 @@ export async function saveEntry() {
                                             window.mealHistory[localIdx] = {
                                                 ...window.mealHistory[localIdx],
                                                 photos: [...finalPhotoUrls],
-                                                photoMeta: record.photoMeta
+                                                photoMeta: record.photoMeta,
+                                                ...(record.photoDisplayUrls ? { photoDisplayUrls: [...record.photoDisplayUrls] } : {}),
+                                                ...(record.photoThumbUrls ? { photoThumbUrls: [...record.photoThumbUrls] } : {})
                                             };
                                         }
                                     }

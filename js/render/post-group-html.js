@@ -6,6 +6,7 @@ import { SLOTS, SLOT_STYLES } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { pickDisplayUrl, pickThumbUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { getPostIdFromPhotoGroup } from './post-group-utils.js';
 import { formatMealMenuDisplayLine, mergeMealDisplayFields } from '../utils/meal-display-line.js';
 import {
@@ -291,12 +292,16 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                       isDaily = p.type === 'daily',
                       isInsight = p.type === 'insight';
                   const isDietReportShare = isDietReportInsightShare(p);
+                  // 공유 캡처 PNG(best/daily/insight/diet)는 원본 유지. 일반 식사 사진만 800px display 우선 + 실패 시 원본 폴백.
+                  const originalUrl = String(p.photoUrl || '');
+                  const displayRaw = pickDisplayUrl(p) || originalUrl;
+                  const displayFallback = imgFallbackAttrs(originalUrl, displayRaw, escapeHtml);
                   const inner =
                       isBest || isDietReportShare
-                          ? `<div class="w-full relative overflow-hidden bg-white moment-feed-photo-slot--capture"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                          ? `<div class="w-full relative overflow-hidden bg-white moment-feed-photo-slot--capture"><img src="${originalUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo relative block w-full h-auto object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
                           : (isDaily || isInsight)
-                          ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
-                          : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${p.photoUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
+                          ? `<div class="w-full relative overflow-hidden bg-slate-100" style="aspect-ratio: ${momentAspectCss};"><img src="${originalUrl}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-contain object-center" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`
+                          : `<div class="w-full relative overflow-hidden" style="aspect-ratio: ${momentAspectCss};"><img src="${escapeHtml(displayRaw)}"${displayFallback} alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-feed-photo absolute inset-0 w-full h-full object-cover" loading="${idx <= 1 ? 'eager' : 'lazy'}"></div>`;
                   return `
             <div class="flex-shrink-0 w-full snap-start relative" data-moment-i="${idx}">
                 <div class="moment-feed-pinch-host w-full relative">${inner}</div>
@@ -403,7 +408,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                 </div>`
                 }
                 ${!isBestShare && !isDailyShare && !isInsightShare && caption && !layoutV2 ? (() => {
-                    const firstPhotoUrl = photoGroup[0]?.photoUrl || '';
+                    const firstPhotoUrl = pickThumbUrl(photoGroup[0]) || photoGroup[0]?.photoUrl || '';
                     const urlForCss = firstPhotoUrl ? firstPhotoUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\\/g, '\\\\').replace(/'/g, '\\27') : '';
                     return `
                 <div class="gallery-caption-wrap">

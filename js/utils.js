@@ -595,6 +595,110 @@ export async function uploadImageToStorage(file, userId, entryId = null) {
     }
 }
 
+/**
+ * dataURL을 긴 변 기준 maxEdge로 리사이즈한 JPEG Blob 생성.
+ * 용량(maxKB)은 주된 기준이 아니라 보조 안전장치 — 목표 초과 시 품질만 소폭 낮춘다(해상도 유지 우선).
+ */
+function resizeDataUrlToBlob(dataUrl, { maxEdge, quality = 0.8, maxKB = 0 } = {}) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            try {
+                let width = img.width;
+                let height = img.height;
+                const longEdge = Math.max(width, height);
+                if (maxEdge && longEdge > maxEdge) {
+                    const scale = maxEdge / longEdge;
+                    width = Math.max(1, Math.round(width * scale));
+                    height = Math.max(1, Math.round(height * scale));
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                let q = quality;
+                const attempt = () => {
+                    canvas.toBlob(
+                        (blob) => {
+                            if (!blob) {
+                                reject(new Error('파생본 생성 실패'));
+                                return;
+                            }
+                            // 용량은 보조 안전장치: 목표 초과 시 품질만 하한(0.5)까지 소폭 인하
+                            if (maxKB && blob.size > maxKB * 1024 && q > 0.5) {
+                                q = Math.max(0.5, q - 0.08);
+                                attempt();
+                                return;
+                            }
+                            resolve(blob);
+                        },
+                        'image/jpeg',
+                        q
+                    );
+                };
+                attempt();
+            } catch (e) {
+                reject(e);
+            }
+        };
+        img.onerror = () => reject(new Error('파생본용 이미지 로드 실패'));
+        img.src = dataUrl;
+    });
+}
+
+/** 리사이즈 파생본을 meals 경로에 업로드하고 다운로드 URL 반환 */
+async function uploadResizedVariant(dataUrl, userId, entryId, { maxEdge, quality, maxKB, variant }) {
+    const blob = await resizeDataUrlToBlob(dataUrl, { maxEdge, quality, maxKB });
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 9);
+    const fileName = `${timestamp}_${randomStr}_${variant}.jpg`;
+    const path = entryId
+        ? `users/${userId}/meals/${entryId}/${fileName}`
+        : `users/${userId}/temp/${fileName}`;
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob);
+    return getDownloadURL(storageRef);
+}
+
+/**
+ * 식사 사진 1장을 원본 + 표시용(800px) + 썸네일(200px)로 업로드.
+ * - 원본 업로드는 필수(실패 시 throw). 파생본은 best-effort — 실패해도 ''로 두어 원본 fallback.
+ * - 원본/파생본을 병렬 업로드해 저장 지연을 최소화한다.
+ * @returns {Promise<{url:string, displayUrl:string, thumbUrl:string}>}
+ */
+export async function uploadMealPhotoVariants(dataUrl, userId, entryId) {
+    const [origRes, dispRes, thumbRes] = await Promise.allSettled([
+        uploadBase64ToStorage(dataUrl, userId, entryId),
+        uploadResizedVariant(dataUrl, userId, entryId, {
+            maxEdge: 800,
+            quality: 0.8,
+            maxKB: 300,
+            variant: 'd'
+        }),
+        uploadResizedVariant(dataUrl, userId, entryId, {
+            maxEdge: 200,
+            quality: 0.75,
+            maxKB: 60,
+            variant: 't'
+        })
+    ]);
+    if (origRes.status !== 'fulfilled' || !origRes.value) {
+        throw origRes.reason || new Error('원본 이미지 업로드 실패');
+    }
+    if (dispRes.status !== 'fulfilled') {
+        console.warn('display(800px) 파생본 실패 — 원본 사용:', dispRes.reason);
+    }
+    if (thumbRes.status !== 'fulfilled') {
+        console.warn('thumb(200px) 파생본 실패 — 상위 해상도 사용:', thumbRes.reason);
+    }
+    return {
+        url: origRes.value,
+        displayUrl: dispRes.status === 'fulfilled' ? dispRes.value || '' : '',
+        thumbUrl: thumbRes.status === 'fulfilled' ? thumbRes.value || '' : ''
+    };
+}
+
 // base64 데이터 URL의 바이트 크기 계산 (패딩 제외)
 function getBase64ByteSize(dataUrl) {
     const base64Data = (dataUrl && dataUrl.indexOf(',') >= 0) ? dataUrl.split(',')[1] : dataUrl;

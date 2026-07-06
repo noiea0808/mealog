@@ -10,6 +10,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
+import { pickMealThumbUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
@@ -84,7 +85,7 @@ function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
             dateStr,
             slotId: slot.id,
             recordId: r.id
-        });
+        }, getMealThumbUrlsForTimeline(r));
     }
     if (r.mealType === 'Skip') {
         return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
@@ -578,6 +579,20 @@ export function getMealPhotoUrlsForTimeline(r) {
 }
 
 /**
+ * 타임라인 썸네일 표시용 URL(원본과 index 정렬).
+ * 신규 업로드는 200px thumb → 없으면 800px display → 없으면 원본.
+ * 반환 배열은 getMealPhotoUrlsForTimeline과 같은 길이/순서를 유지한다(팝업 원본과 매칭).
+ */
+export function getMealThumbUrlsForTimeline(r) {
+    const originals = getMealPhotoUrlsForTimeline(r);
+    if (originals.length === 0) return [];
+    return originals.map((orig, i) => {
+        const thumb = pickMealThumbUrl(r, i);
+        return thumb || orig;
+    });
+}
+
+/**
  * 사진 뷰어용: 해당 날짜·SLOTS 순서 — 기록이 있는 슬롯마다 1행(다건이면 아침1·점심2 등)
  * @returns {Array<{dateStr:string,slotId:string,recordId:string|null,slotTitle:string,urls:string[],menuLine:string,place:string,mealType:string|null,slotType:string,isEmptyRow:boolean,photoAspectRatio?:string}>}
  */
@@ -671,12 +686,21 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
     };
 }
 
-/** 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n — 탭 시 전역 사진 팝업(부모 카드 onclick 전파 차단) */
-function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null) {
+/**
+ * 좌측 140×140 사진 칸: 첫 장 + 다중 등록 시 우상단 1/n — 탭 시 전역 사진 팝업(부모 카드 onclick 전파 차단)
+ * @param {string[]} urls 원본 URL(팝업/확대 보기용)
+ * @param {string} imgClass
+ * @param {object|null} viewCtx
+ * @param {string[]|null} thumbUrls 표시용 썸네일 URL(원본과 index 정렬). 미제공 시 원본 사용.
+ */
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null) {
     const first = urls[0];
     if (!first) return '';
     const n = urls.length;
     const enc = encodeURIComponent(JSON.stringify(urls));
+    // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
+    const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
+    const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml);
     const badge =
         n > 1
             ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
@@ -686,7 +710,7 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
             ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
             : '';
     return `<div class="absolute inset-0 overflow-hidden">
-        <img src="${escapeHtml(first)}" class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false">
+        <img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
         <button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>
     </div>`;
@@ -851,7 +875,7 @@ function buildSnackTimelineCardHtml(
     let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     if (snackPhotoUrls.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id });
+        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id }, getMealThumbUrlsForTimeline(r));
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
     } else {

@@ -5,6 +5,7 @@
  * 용어: 글쓴이의 기록 = **코멘트** / 달린 소셜 = **댓글**
  */
 import { escapeHtml } from './utils.js';
+import { pickDisplayUrl, pickThumbUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { SLOTS } from '../constants.js';
 import {
     DAILY_JOURNAL_MOMENT_SLOT_LABEL,
@@ -287,7 +288,12 @@ function buildV2RawPhotoBlock(p, idx, ar) {
     const isDaily = p.type === 'daily';
     const isInsight = p.type === 'insight';
     const arCss = aspectToCss(ar);
-    const url = escapeHtml(String(p.photoUrl || ''));
+    const originalUrl = String(p.photoUrl || '');
+    // 공유 캡처 PNG(daily/best/insight)는 파생본 강제 금지 — 원본 유지. 일반 식사 사진만 800px display 우선.
+    const url = escapeHtml(originalUrl);
+    const displayRaw = pickDisplayUrl(p) || originalUrl;
+    const displayUrl = escapeHtml(displayRaw);
+    const displayFallback = imgFallbackAttrs(originalUrl, displayRaw, escapeHtml);
     const photoBanned = p.banned === true && !isBest && !isDaily && !isInsight;
     const bannedOverlay = photoBanned
         ? `<div class="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center bg-orange-500/20">
@@ -309,7 +315,7 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         </div>`;
     }
     return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
-        <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
+        <img src="${displayUrl}"${displayFallback} alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
         ${bannedOverlay}
     </div>`;
 }
@@ -363,8 +369,8 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const socialPanelBelow = postIdForUi && postIdJs ? buildV2SocialCommentPanelHtml(postIdForUi, postIdJs) : '';
 
     if (n > 1) {
-        const bgsJson = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p?.photoUrl || '')));
-        const bg0 = String(photoGroup[0]?.photoUrl || '').trim();
+        const bgsJson = encodeURIComponent(JSON.stringify(photoGroup.map((p) => pickThumbUrl(p) || p?.photoUrl || '')));
+        const bg0 = String(pickThumbUrl(photoGroup[0]) || photoGroup[0]?.photoUrl || '').trim();
         const hpostBgBlock =
             !isDailyShare && bg0.length > 0
                 ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg moment-v2-hpost-bg-wrap" data-moment-v2-hpost-backdrop="1" aria-hidden="true">
@@ -439,7 +445,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             const acHtml = hasAc
                 ? `<div class="whitespace-pre-wrap break-words">${escapeHtml(ac)}</div>`
                 : '';
-            const bgUrl = String(p?.photoUrl || '').trim();
+            const bgUrl = String(pickThumbUrl(p) || p?.photoUrl || '').trim();
             const bgBlock =
                 p.type !== 'daily' && bgUrl.length > 0
                     ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden moment-v2-v-unit-bg-wrap" aria-hidden="true" data-moment-v2-bg-clip>
