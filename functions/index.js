@@ -9,6 +9,7 @@ const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
+const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
 
@@ -1929,6 +1930,38 @@ exports.adminMigrateMomentPostsV2 = onCall({ region: REGION, timeoutSeconds: 540
   logger.info('adminMigrateMomentPostsV2', { uid: auth && auth.uid, ...result });
   return result;
 });
+
+/**
+ * 관리자: meals photoDisplayUrls / photoThumbUrls 선택 백필 (최근 N일)
+ * data: { dryRun?, daysBack?, scanLimit?, maxProcess?, cursorDocPath?, concurrency?, syncSharedPhotos? }
+ */
+exports.adminBackfillMealPhotoVariants = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '1GiB' },
+  async (request) => {
+    const { auth, data } = request;
+    if (!auth || !auth.uid) {
+      throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    }
+    if (!(await isAdminByUid(auth.uid))) {
+      throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+    }
+    const bucket = getStorage().bucket(mealPhotoVariantsBackfill.STORAGE_BUCKET);
+    const result = await mealPhotoVariantsBackfill.runMealPhotoVariantsBackfillBatch(db, APP_ID, bucket, {
+      dryRun: !!(data && data.dryRun),
+      daysBack: data && data.daysBack != null ? Number(data.daysBack) : 60,
+      scanLimit: data && data.scanLimit != null ? Number(data.scanLimit) : 80,
+      maxProcess: data && data.maxProcess != null ? Number(data.maxProcess) : 15,
+      cursorDocPath: data && data.cursorDocPath ? String(data.cursorDocPath) : undefined,
+      concurrency: data && data.concurrency != null ? Number(data.concurrency) : 5,
+      syncSharedPhotos: data && data.syncSharedPhotos === false ? false : true
+    });
+    logger.info('adminBackfillMealPhotoVariants', { uid: auth.uid, ...result });
+    if (result.aborted) {
+      throw new HttpsError('resource-exhausted', '실패율이 임계치를 초과해 배치를 중단했습니다.', result);
+    }
+    return result;
+  }
+);
 
 /**
  * 일간보기 공유 (Callable)
