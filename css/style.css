@@ -1775,6 +1775,18 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     max-width: none;
     margin-right: 0;
     margin-bottom: 0;
+    color: #1e293b;
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+}
+#entryModal .sub-chip {
+    color: #1e293b;
+}
+#entryModal .entry-subtag-suggestions .sub-chip .sub-chip-favorite-star {
+    color: #eab308;
+    margin-left: 3px;
+    font-size: 9px;
+    line-height: 1;
 }
 /* 기록 모달 서브태그: 선택 시 슬레이트 600 (이전 대비 배경 살짝 연함) */
 #entryModal .entry-subtag-suggestions .sub-chip.active {
@@ -1782,8 +1794,9 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     color: #fff !important;
     border-color: #475569 !important;
 }
+#entryModal .entry-subtag-suggestions .sub-chip.active .sub-chip-favorite-star,
 #entryModal .entry-subtag-suggestions .sub-chip.active .fa-star {
-    color: #fff !important;
+    color: #facc15 !important;
 }
 .sub-chip { 
     display: inline-flex; 

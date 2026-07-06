@@ -268,18 +268,7 @@ export function registerMainTabSwitch() {
                                 hideLoading();
                             });
                     }
-                    syncOrphanedSharesToMoment().then((synced) => {
-                        if (synced > 0) {
-                            updateTimelineShareIndicators();
-                            showToast('모먼트에 반영되었습니다.', 'success');
-                            loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
-                                window.sharedPhotosFeed = docs;
-                                appState.sharedPhotosFeedLastDoc = lastDoc;
-                                appState.sharedPhotosFeedHasMore = hasMore;
-                                if (appState.currentTab === 'gallery') renderGallery();
-                            });
-                        }
-                    });
+                    syncOrphanedSharesToMoment().catch(() => {});
                 } else {
                     renderGallery();
                 }
@@ -310,12 +299,10 @@ export function registerMainTabSwitch() {
                     window.sharedPhotos = myShares;
                     if (appState.currentTab !== 'timeline') return;
                     updateTimelineShareIndicators();
-                    syncOrphanedSharesToMoment().then((synced) => {
-                        if (synced > 0 && appState.currentTab === 'timeline') {
-                            updateTimelineShareIndicators();
-                            showToast('모먼트에 반영되었습니다.', 'success');
-                        }
-                    });
+                    syncOrphanedSharesToMoment().then(() => {
+                        if (appState.currentTab !== 'timeline') return;
+                        updateTimelineShareIndicators();
+                    }).catch(() => {});
                 }).catch(e => {
                     console.error('본인 공유 로드 실패:', e);
                     window.sharedPhotos = [];

@@ -326,6 +326,23 @@ async function migrateLegacySharedPhotosToV2(db, appId, options = {}) {
   };
 }
 
+/** meals 문서 sharedPhotos 미러 — canonical은 sharedPhotos 컬렉션, meal 필드는 서버만 갱신 */
+function sanitizeMealSharedPhotoUrls(urls) {
+  return (urls || [])
+    .filter((u) => typeof u === 'string' && u.length > 0 && u.length < 4096 && !u.startsWith('data:'))
+    .slice(0, 80);
+}
+
+async function syncMealSharedPhotosMirror(db, appId, uid, mealId, urls) {
+  const mid = mealId != null ? String(mealId).trim() : '';
+  if (!mid || mid.startsWith('dailyJournal_')) return false;
+  const mealRef = db.collection('artifacts').doc(appId).collection('users').doc(uid).collection('meals').doc(mid);
+  const mealSnap = await mealRef.get();
+  if (!mealSnap.exists) return false;
+  await mealRef.set({ sharedPhotos: sanitizeMealSharedPhotoUrls(urls) }, { merge: true });
+  return true;
+}
+
 module.exports = {
   sanitizeMomentPostDocId,
   mealSharePostId,
@@ -336,5 +353,6 @@ module.exports = {
   buildSpecialMomentPostV2Fields,
   deleteLegacyPhotoDocsForQuery,
   deleteMomentPostV2ByPostId,
-  migrateLegacySharedPhotosToV2
+  migrateLegacySharedPhotosToV2,
+  syncMealSharedPhotosMirror
 };

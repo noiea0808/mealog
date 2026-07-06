@@ -1,60 +1,26 @@
 /**
- * meal 문서에는 sharedPhotos가 있는데 sharedPhotos 컬렉션에 없으면 동기화 (모먼트 피드 반영)
- * 14일: 진입 속도 개선. 과거 고아는 당겨서 새로고침 시 동기화
+ * 본인 모먼트 공유 목록 캐시 갱신 (canonical: sharedPhotos 컬렉션)
  */
-import { dbOps, loadMealsForDateRange, hasSharedPhotosForEntry } from '../db.js';
-import { showToast } from '../ui.js';
-
-const EXISTS_CHECK_CONCURRENCY = 12;
+import { refreshMySharesCache } from '../utils/moment-share-state.js';
 
 /**
- * 고아 여부는 sharedPhotos에서 userId+entryId로 직접 조회 (loadMyShares 100건 제한 없음).
- * @returns {Promise<number>} 새로 동기화된 건수
+ * @returns {Promise<object[]>} 갱신된 window.sharedPhotos
+ */
+export async function refreshMyMomentShares() {
+    try {
+        return await refreshMySharesCache();
+    } catch (e) {
+        console.warn('본인 공유 캐시 갱신 실패:', e);
+        window.sharedPhotos = [];
+        return [];
+    }
+}
+
+/**
+ * @deprecated syncOrphanedSharesToMoment 대체 — 고아 보정 없이 캐시만 갱신
+ * @returns {Promise<number>} 항상 0 (하위 호환)
  */
 export async function syncOrphanedSharesToMoment() {
-    if (!window.currentUser || window.currentUser.isAnonymous) return 0;
-    const today = new Date();
-    const fourteenDaysAgo = new Date(today);
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-    const endStr = today.toISOString().split('T')[0];
-    const startStr = fourteenDaysAgo.toISOString().split('T')[0];
-    try {
-        await loadMealsForDateRange(startStr, endStr); // 14일 범위
-    } catch (e) {
-        console.warn('동기화 전 meal 로드 실패 (계속 진행):', e);
-    }
-    const candidates = (window.mealHistory || []).filter(m =>
-        m.id && m.sharedPhotos && Array.isArray(m.sharedPhotos) && m.sharedPhotos.length > 0 && !m.shareBanned
-    );
-    const validUrls = (url) => typeof url === 'string' && url && !url.startsWith('data:image');
-
-    const entryIds = [...new Set(candidates.map((m) => m.id))];
-    /** @type {Map<string, boolean>} */
-    const existsByEntryId = new Map();
-    for (let i = 0; i < entryIds.length; i += EXISTS_CHECK_CONCURRENCY) {
-        const chunk = entryIds.slice(i, i + EXISTS_CHECK_CONCURRENCY);
-        const results = await Promise.all(chunk.map((id) => hasSharedPhotosForEntry(id)));
-        chunk.forEach((id, j) => existsByEntryId.set(id, results[j]));
-    }
-
-    let synced = 0;
-    for (const m of candidates) {
-        if (synced >= 30) break;
-        if (existsByEntryId.get(m.id)) continue;
-        const urls = m.sharedPhotos.filter(validUrls);
-        if (urls.length === 0) continue;
-        try {
-            await dbOps.sharePhotos(urls, m);
-            if (!window.sharedPhotos) window.sharedPhotos = [];
-            const newEntries = urls.map(url => ({ entryId: m.id, photoUrl: url, userId: window.currentUser?.uid }));
-            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== m.id).concat(newEntries);
-            existsByEntryId.set(m.id, true);
-            synced++;
-        } catch (e) {
-            console.warn('모먼트 동기화 실패:', m.id, e);
-            const msg = e?.message || e?.details || '';
-            if (synced === 0) showToast(msg ? `모먼트 동기화 실패: ${msg}` : '모먼트 동기화에 실패했습니다.', 'error');
-        }
-    }
-    return synced;
+    await refreshMyMomentShares();
+    return 0;
 }

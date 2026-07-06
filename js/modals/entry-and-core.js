@@ -23,6 +23,7 @@ import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
+import { getSharedPhotoUrlsForEntry } from '../utils/moment-share-state.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     isMealEntryPendingSync,
@@ -1051,13 +1052,14 @@ function applyEntryModalSaveButtonState(entryId, savedRecord) {
 function populateSavedRecordIntoForm(r, isS, state) {
     state.currentPhotos = Array.isArray(r.photos) ? r.photos : r.photos ? [r.photos] : [];
     state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
-    state.sharedPhotos = Array.isArray(r.sharedPhotos) ? r.sharedPhotos : r.sharedPhotos ? [r.sharedPhotos] : [];
-    state.originalSharedPhotos = Array.isArray(r.sharedPhotos) ? [...r.sharedPhotos] : r.sharedPhotos ? [r.sharedPhotos] : [];
+    const isShareBanned = r.shareBanned === true;
+    const sharedUrls = r.id ? getSharedPhotoUrlsForEntry(r.id) : [];
+    state.sharedPhotos = sharedUrls;
+    state.originalSharedPhotos = [...sharedUrls];
     state.recordPhotoAspectRatio =
         r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio) ? r.photoAspectRatio : '1:1';
 
-    const isShareBanned = r.shareBanned === true;
-    state.wantsToShare = isShareBanned ? false : state.sharedPhotos && state.sharedPhotos.length > 0;
+    state.wantsToShare = isShareBanned ? false : sharedUrls.length > 0;
 
     renderPhotoPreviews();
     updateShareIndicator();
@@ -1099,28 +1101,6 @@ function populateSavedRecordIntoForm(r, isS, state) {
     window.setSatiety(Number.isFinite(sn) ? sn : null);
     updateShareIndicator();
 
-    if (r.id && r.sharedPhotos && Array.isArray(r.sharedPhotos) && r.sharedPhotos.length > 0 && !r.shareBanned) {
-        const inSharedColl = window.sharedPhotos?.some?.((p) => p.entryId === r.id);
-        if (!inSharedColl) {
-            dbOps
-                .sharePhotos(r.sharedPhotos, r)
-                .then(() => {
-                    if (!window.sharedPhotos) window.sharedPhotos = [];
-                    const newEntries = r.sharedPhotos.map((url) => ({
-                        entryId: r.id,
-                        photoUrl: url,
-                        userId: window.currentUser?.uid,
-                    }));
-                    window.sharedPhotos = (window.sharedPhotos || []).filter((p) => p.entryId !== r.id).concat(newEntries);
-                    updateTimelineShareIndicators();
-                    if (appState.currentTab === 'gallery') renderGallery();
-                    showToast('모먼트에 반영되었습니다.', 'success');
-                })
-                .catch((e) => {
-                    console.warn('모먼트 동기화 실패 (무시):', e);
-                });
-        }
-    }
 }
 
 function activateChipByText(containerId, text) {
@@ -1906,9 +1886,8 @@ export async function saveEntry() {
         let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
             ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
-        
-        // record에 sharedPhotos 필드 추가
-        record.sharedPhotos = photosToShare;
+        // sharedPhotos 필드는 sharedPhotos 컬렉션(서버 sharePhotos)이 canonical — meal save에 포함하지 않음
+        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
         
         console.log('저장 시작:', record);
 
@@ -2003,9 +1982,7 @@ export async function saveEntry() {
             }
         }
         
-        // 공유 상태 변경 여부 추적 변수 (함수 스코프)
-        // 상태 초기화 전에 originalSharedPhotos 확인 (closeModal이 state를 리셋하므로 닫기 전에 캡처)
-        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
+        // 공유 상태 변경 여부 추적 (closeModal 전에 originalSharedPhotos 기준으로 캡처됨)
         let sharedPhotosUpdated = false;
 
         // 로컬 낙관 반영 완료 → 시트는 즉시 닫는다 (오프라인 우선: 서버 동기화는 백그라운드 진행,
@@ -2210,7 +2187,6 @@ export async function saveEntry() {
                                     photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
                                         ? [...finalPhotoUrls]
                                         : [];
-                                    record.sharedPhotos = photosToShare;
 
                                     const photoSaveRes = unwrapMealSaveResult(await dbOps.save(record, true));
                                     photoPhaseSavedViaCallable = photoSaveRes.savedViaCallableFallback;
@@ -2241,7 +2217,6 @@ export async function saveEntry() {
                                     photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
                                         ? [...existingPhotoUrls]
                                         : [];
-                                    record.sharedPhotos = photosToShare;
                                     if (window.mealHistory && record.id) {
                                         const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
                                         if (hi >= 0) {
@@ -2368,7 +2343,6 @@ export async function saveEntry() {
                     photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
                         ? [...existingPhotoUrls]
                         : [];
-                    record.sharedPhotos = photosToShare;
                     if (window.mealHistory) {
                         const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
                         if (hi >= 0) {
@@ -2388,7 +2362,10 @@ export async function saveEntry() {
             // 낙관적 반영: 리스너 도착 전에 mealHistory에 즉시 반영해 스크롤·렌더가 최신 데이터 기준으로 동작
             if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
                 const idx = window.mealHistory.findIndex(m => m.id === record.id);
+                const prevShared = idx >= 0 ? window.mealHistory[idx].sharedPhotos : undefined;
                 const merged = { ...record };
+                delete merged.sharedPhotos;
+                if (prevShared !== undefined) merged.sharedPhotos = prevShared;
                 if (photoUploadPhaseFailed) {
                     merged._localSaveFailed = true;
                     merged.is_sync_error = true;
@@ -2411,7 +2388,7 @@ export async function saveEntry() {
             /** 모먼트(sharedPhotos 컬렉션) 동기화 실패 시 공유 성공 토스트를 막기 위함 */
             let shareSyncFailed = false;
             // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
-            // sharePhotos 함수가 기존 문서 삭제 + 새 문서 추가 + record.sharedPhotos 필드 업데이트를 모두 처리
+            // sharePhotos: sharedPhotos 컬렉션 쓰기 + 서버가 meals.sharedPhotos 미러링
             // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
             if (record.id) {
                 // 현재 공유할 사진이 있는지 확인
@@ -2443,6 +2420,16 @@ export async function saveEntry() {
 
                         await dbOps.sharePhotos(photosToShare, record);
                         console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
+
+                        if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
+                            const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
+                            if (hi >= 0) {
+                                window.mealHistory[hi] = {
+                                    ...window.mealHistory[hi],
+                                    sharedPhotos: hasPhotosToShare ? [...photosToShare] : []
+                                };
+                            }
+                        }
 
                         if (hasPhotosToShare && photosToShare?.length) {
                             window.sharedPhotosFeed = mergeMomentPostIntoFeed(
@@ -2893,9 +2880,7 @@ async function materializeBase64PhotosOnRecord(record, mealId) {
         .map((p) => (needsUpload(p) ? uploaded[i++] : p))
         .filter((p) => typeof p === 'string' && p);
     const next = { ...record, photos: finalPhotos };
-    const httpsUrls = finalPhotos.filter((p) => typeof p === 'string' && /^https?:\/\//.test(p));
-    const hadShared = Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0;
-    next.sharedPhotos = hadShared && httpsUrls.length > 0 ? httpsUrls : [];
+    delete next.sharedPhotos;
     return next;
 }
 

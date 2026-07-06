@@ -209,6 +209,8 @@ export const dbOps = {
                 delete dataToSave.recordedAt;
                 const docId = dataToSave.id;
                 delete dataToSave.id;
+                // sharedPhotos: sharedPhotos 컬렉션이 canonical — 클라이언트 meal 저장은 미러를 덮어쓰지 않음
+                delete dataToSave.sharedPhotos;
                 const cleaned = stripUndefinedDeep(dataToSave);
                 cleaned.recordedAt = callerRecordedAt || new Date().toISOString();
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
@@ -218,6 +220,22 @@ export const dbOps = {
                     : `artifacts/${appId}/users/${currentUser.uid}/meals/(addDoc)`;
                 try {
                     if (docId) {
+                        let preservedSharedPhotos;
+                        try {
+                            const existingSnap = await getDoc(doc(coll, docId));
+                            if (existingSnap.exists() && Array.isArray(existingSnap.data()?.sharedPhotos)) {
+                                preservedSharedPhotos = existingSnap.data().sharedPhotos;
+                            }
+                        } catch (_) {
+                            /* 오프라인 등 — 기존 mealHistory 미러로 폴백 */
+                            const fromHist = window.mealHistory?.find((m) => m && m.id === docId);
+                            if (fromHist && Array.isArray(fromHist.sharedPhotos)) {
+                                preservedSharedPhotos = fromHist.sharedPhotos;
+                            }
+                        }
+                        if (preservedSharedPhotos !== undefined) {
+                            cleaned.sharedPhotos = preservedSharedPhotos;
+                        }
                         await setDoc(doc(coll, docId), cleaned);
                         // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
                         if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);

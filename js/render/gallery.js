@@ -33,6 +33,18 @@ import {
 
 ensureMomentFeedPinchDelegate();
 
+// 모먼트 네트워크 오류 화면「다시 불러오기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
+if (typeof document !== 'undefined' && !window._galleryMomentRetryDelegateBound) {
+    window._galleryMomentRetryDelegateBound = true;
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('#galleryMomentRetryLoadBtn');
+        if (!btn) return;
+        if (typeof window.reloadMomentFeed !== 'function') return;
+        e.preventDefault();
+        void window.reloadMomentFeed();
+    });
+}
+
 // 모먼트 사진: 로드 완료 전 슬롯만 보이고, `loaded` 후 이미지 노출.
 // 한 번 로드된 사진은 재디코드 시에도 다시 숨기지 않음.
 // load/error 이벤트는 버블되지 않으므로 캡처 단계로 위임.
@@ -129,7 +141,7 @@ function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
                 <i class="fa-regular fa-wifi text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
                 <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
                 <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
-                <button type="button" onclick="window.reloadMomentFeed && window.reloadMomentFeed()" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
+                <button type="button" id="galleryMomentRetryLoadBtn" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
                     <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
                 </button>
             </div>`;

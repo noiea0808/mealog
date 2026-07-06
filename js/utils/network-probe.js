@@ -42,7 +42,8 @@ export async function probeMealogNetworkReachable(timeoutMs = 8000) {
  * @returns {Promise<boolean>}
  */
 export async function probeMealogRemoteReachable(timeoutMs = 5000) {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+    // navigator.onLine 은 Android WebView에서 재연결 후에도 false 로 남는 경우가 많아
+    // 실제 원격 fetch 로만 판별한다.
     if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
     const ctrl = new AbortController();
     const tid = setTimeout(() => ctrl.abort(), timeoutMs);

@@ -450,15 +450,9 @@ const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
 /** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시) */
 const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 
-// entryId가 실제로 공유되었는지 확인하는 헬퍼 함수
-// record: meal 문서 (sharedPhotos 필드 있음). sharedPhotos 컬렉션과 meal 문서가 불일치할 수 있어 둘 다 확인
+// entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
 function isEntryShared(entryId, record) {
     if (!entryId) return false;
-    // 1) meal 문서에 sharedPhotos가 있으면 공유됨 (상세보기와 일치)
-    if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos) && record.sharedPhotos.length > 0) {
-        return true;
-    }
-    // 2) sharedPhotos 컬렉션(모먼트 피드)에 entryId가 있으면 공유됨
     if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
         return window.sharedPhotos.some(photo => photo.entryId === entryId);
     }

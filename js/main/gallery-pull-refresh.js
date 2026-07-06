@@ -4,10 +4,10 @@
 import { appState } from '../state.js';
 import { loadSharedPhotosPageReliable } from '../db.js';
 import { recoverFirestoreAfterWatchAssertion } from '../firebase.js';
-import { runMealogNetworkRecovery } from './network.js';
+import { prepareMomentFeedNetworkForReload } from './network.js';
 import { showToast } from '../ui.js';
 import { applyLoadingFoodIconDurationSeconds } from '../loading-spinner-config.js';
-import { renderGallery, invalidateGalleryRenderSession, updateTimelineShareIndicators } from '../render/index.js';
+import { renderGallery, invalidateGalleryRenderSession } from '../render/index.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 export function setupGalleryPullToRefresh() {
@@ -45,7 +45,7 @@ export function setupGalleryPullToRefresh() {
                 console.warn('갤러리 새로고침: Firestore 복구 실패(이어서 시도):', e?.message || e);
             }
             try {
-                await runMealogNetworkRecovery();
+                await prepareMomentFeedNetworkForReload();
             } catch (_) {
                 /* ignore */
             }
@@ -57,11 +57,7 @@ export function setupGalleryPullToRefresh() {
                 invalidateGalleryRenderSession();
                 await renderGallery({ forceReload: true });
             } else {
-                const synced = await syncOrphanedSharesToMoment();
-                if (synced > 0) {
-                    updateTimelineShareIndicators();
-                    showToast('모먼트에 반영되었습니다.', 'success');
-                }
+                await syncOrphanedSharesToMoment();
                 const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
                 appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = docs;

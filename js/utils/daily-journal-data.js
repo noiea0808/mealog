@@ -106,11 +106,13 @@ export function getDailyJournalShareEntryId(dateStr) {
 }
 
 export function isDailyJournalShared(dateStr, entry) {
+    const entryId = getDailyJournalShareEntryId(dateStr);
+    if (entryId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+        if (window.sharedPhotos.some((p) => p.entryId === entryId)) return true;
+    }
     const n = normalizeDailyJournalEntry(entry);
     if (n.sharedPhotos && n.sharedPhotos.length > 0) return true;
-    const entryId = getDailyJournalShareEntryId(dateStr);
-    if (!entryId || !window.sharedPhotos || !Array.isArray(window.sharedPhotos)) return false;
-    return window.sharedPhotos.some((p) => p.entryId === entryId);
+    return false;
 }
 
 export function getDailyJournalFromSettings(settings, dateStr) {
