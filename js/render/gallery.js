@@ -1106,29 +1106,40 @@ export async function renderGallery(options = {}) {
                     fragment.appendChild(tempDiv.firstChild);
                 }
                 
-                // 헤더 다음에 삽입
-                const firstPost = container.querySelector('.instagram-post');
-                if (firstPost) {
-                    container.insertBefore(fragment, firstPost);
-                } else {
-                    container.appendChild(fragment);
+                // 게시물은 #galleryPostsInsertPoint 안에만 삽입 (전체 렌더·더보기와 동일)
+                const postsInsertPoint = document.getElementById('galleryPostsInsertPoint');
+                let diffInserted = false;
+                if (postsInsertPoint && document.contains(postsInsertPoint) && !isGallerySessionStale(mySession)) {
+                    const firstPost = postsInsertPoint.querySelector('.instagram-post');
+                    if (firstPost && firstPost.parentNode === postsInsertPoint) {
+                        postsInsertPoint.insertBefore(fragment, firstPost);
+                        diffInserted = true;
+                    } else {
+                        postsInsertPoint.insertBefore(fragment, postsInsertPoint.firstChild);
+                        diffInserted = true;
+                    }
                 }
-                // 삽입 직후 즉시 캐시된 사진 노출 (재렌더 깜빡임 제거)
-                markMomentFeedPhotosLoadedIn(container);
-                
-                // 이전 포스트 ID 목록 업데이트
-                previousGalleryPostIds = new Set(currentPostIds);
-                
-                // 이벤트 리스너만 다시 설정 (전체 재렌더링 없이)
-                setTimeout(() => {
-                    if (abortSignal.aborted) return;
-                    setupGalleryEventListeners(container, sortedGroups, { abortSignal });
-                    fetchMissingSharedComments(container).catch(() => {});
-                    setupIntersectionObserver(container, abortSignal);
-                }, 50);
-                
-                isRenderingGallery = false;
-                return; // 차등 업데이트 완료
+                if (!diffInserted) {
+                    // insert point 없음·세션 만료·DOM 경합 → 전체 재렌더로 폴백
+                    container.innerHTML = headerHtml + '<div id="galleryPostsInsertPoint"></div>' + loadMoreHtml;
+                } else {
+                    // 삽입 직후 즉시 캐시된 사진 노출 (재렌더 깜빡임 제거)
+                    markMomentFeedPhotosLoadedIn(container);
+
+                    // 이전 포스트 ID 목록 업데이트
+                    previousGalleryPostIds = new Set(currentPostIds);
+
+                    // 이벤트 리스너만 다시 설정 (전체 재렌더링 없이)
+                    setTimeout(() => {
+                        if (abortSignal.aborted || isGallerySessionStale(mySession)) return;
+                        setupGalleryEventListeners(container, sortedGroups, { abortSignal });
+                        fetchMissingSharedComments(container).catch(() => {});
+                        setupIntersectionObserver(container, abortSignal);
+                    }, 50);
+
+                    isRenderingGallery = false;
+                    return; // 차등 업데이트 완료
+                }
             }
         }
         
@@ -1206,9 +1217,9 @@ export async function renderGallery(options = {}) {
     const POSTS_PER_BATCH = 2; // 한 번에 렌더링할 포스트 수 (작게 설정하여 블로킹 방지)
     
     function renderNextBatch() {
-        // AbortSignal 체크
-        if (abortSignal.aborted) {
-            console.log('[renderGallery] AbortSignal 감지 - 배치 렌더링 중단');
+        // AbortSignal·세션 만료 체크 (탭 전환·재렌더 경합 시 중간 상태 고착 방지)
+        if (abortSignal.aborted || isGallerySessionStale(mySession)) {
+            console.log('[renderGallery] AbortSignal/세션 만료 — 배치 렌더링 중단');
             isRenderingGallery = false;
             return;
         }
@@ -1288,6 +1299,9 @@ export async function renderGallery(options = {}) {
         }
         replaceMomentSkeletonWithBatch(postsInsertPoint, fragment, batch.length);
         markMomentFeedPhotosLoadedIn(postsInsertPoint);
+        if (galleryMomentLayoutV2) {
+            setupMomentFeedV2WheelLayout(postsInsertPoint);
+        }
         const batchSize = batch.length;
         renderedIndex += batchSize;
         applyMomentCaptionLayoutForRange(renderedIndex - batchSize, renderedIndex);

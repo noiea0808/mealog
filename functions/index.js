@@ -1874,13 +1874,23 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
     batch.delete(sharedColl.doc(docId));
 
     const existingV2Snap = await sharedColl.doc(docId).get();
-    const preservedCounts =
-      existingV2Snap.exists && existingV2Snap.data().schemaVersion === 2
-        ? {
-            likeCount: Number(existingV2Snap.data().likeCount) || 0,
-            commentCount: Number(existingV2Snap.data().commentCount) || 0
-          }
-        : { likeCount: 0, commentCount: 0 };
+    const existingV2Data =
+      existingV2Snap.exists && existingV2Snap.data().schemaVersion === 2 ? existingV2Snap.data() : null;
+    const preservedCounts = existingV2Data
+      ? {
+          likeCount: Number(existingV2Data.likeCount) || 0,
+          commentCount: Number(existingV2Data.commentCount) || 0
+        }
+      : { likeCount: 0, commentCount: 0 };
+
+    // 기존 게시물의 사진 목록과 이번 공유 목록을 비교 (추가/삭제/순서 변경 감지)
+    const existingPhotoUrls =
+      existingV2Data && Array.isArray(existingV2Data.photos)
+        ? existingV2Data.photos.map((p) => (p && p.url) || '')
+        : [];
+    const photosChanged =
+      existingPhotoUrls.length !== photosToShare.length ||
+      existingPhotoUrls.some((u, i) => u !== photosToShare[i]);
 
     const v2Fields = momentPostV2.buildMealMomentPostV2Fields({
       photosToShare,
@@ -1890,7 +1900,23 @@ exports.sharePhotos = onCall({ region: REGION }, async (request) => {
       postId,
       FieldValue
     });
-    batch.set(sharedColl.doc(docId), { ...v2Fields, ...preservedCounts });
+
+    // 정책(b): 사진이 추가/변경되면 "새 활동"으로 보고 sharedAt을 갱신해 피드 최상단으로 올린다.
+    // 사진 목록에 변화가 없으면(코멘트·메뉴 등만 수정) 기존 sharedAt을 보존해 피드 순서가 뒤섞이지 않게 한다.
+    const preservedTimestamps =
+      existingV2Data && !photosChanged && existingV2Data.sharedAt
+        ? {
+            sharedAt: existingV2Data.sharedAt,
+            timestamp: existingV2Data.timestamp || existingV2Data.sharedAt
+          }
+        : {};
+
+    batch.set(sharedColl.doc(docId), {
+      ...v2Fields,
+      ...preservedCounts,
+      ...preservedTimestamps,
+      updatedAt: FieldValue.serverTimestamp()
+    });
 
     await batch.commit();
 

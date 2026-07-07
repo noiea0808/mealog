@@ -441,12 +441,45 @@ function syncMomentV2WheelCaptionInnerWidth(stageEl) {
         wRef = cap || photoShell || stageEl;
         br = wRef.getBoundingClientRect();
     }
-    const w = Math.max(40, Math.floor(br.width));
+    const MIN_APPLY_PX = 120;
+    let w = Math.floor(br.width);
+    if (w < MIN_APPLY_PX) {
+        const fallbacks = [
+            stageEl.closest('[data-moment-v2-root]'),
+            stageEl.closest('.moment-feed-v2-scope'),
+            stageEl.closest('.instagram-post'),
+            document.getElementById('galleryPostsInsertPoint'),
+            document.getElementById('galleryContainer'),
+            document.getElementById('feedContent')
+        ];
+        for (const el of fallbacks) {
+            if (!el?.getBoundingClientRect) continue;
+            const rw = Math.floor(el.getBoundingClientRect().width);
+            if (rw >= MIN_APPLY_PX) {
+                w = rw;
+                break;
+            }
+        }
+    }
+    const rows = stageEl.querySelectorAll('.moment-v2-wheel-caption-row');
+    const list = rows.length > 0 ? rows : (cap ? cap.querySelectorAll('.moment-v2-wheel-caption-row') : []);
+    if (w < MIN_APPLY_PX) {
+        /* 배치 렌더·이미지 로드 전 등 — 40px 등 잘못된 폭을 고정하지 않고 CSS 기본(100%) 유지 */
+        stageEl.style.removeProperty('--meal-wheel-caption-inner-w');
+        if (cap) cap.style.removeProperty('--meal-wheel-caption-inner-w');
+        list.forEach((innerRow) => {
+            if (!innerRow) return;
+            innerRow.style.removeProperty('width');
+            innerRow.style.maxWidth = '100%';
+            innerRow.style.marginLeft = 'auto';
+            innerRow.style.marginRight = 'auto';
+            innerRow.style.boxSizing = 'border-box';
+        });
+        return;
+    }
     const wStr = `${w}px`;
     stageEl.style.setProperty('--meal-wheel-caption-inner-w', wStr);
     if (cap) cap.style.setProperty('--meal-wheel-caption-inner-w', wStr);
-    const rows = stageEl.querySelectorAll('.moment-v2-wheel-caption-row');
-    const list = rows.length > 0 ? rows : (cap ? cap.querySelectorAll('.moment-v2-wheel-caption-row') : []);
     list.forEach((innerRow) => {
         if (!innerRow) return;
         innerRow.style.width = wStr;
@@ -793,6 +826,8 @@ function bindOneMomentV2WheelStage(stageEl) {
     let captionScrollRaf = null;
 
     const runAfterIndexChange = () => {
+        /* 사진 스와이프 중에도 폭은 항상 재측정(40px 고정·좁은 띠 멈춤 방지). 휠 라벨 애니만 스냅 이후. */
+        syncMomentV2WheelCaptionInnerWidth(stageEl);
         const isVScroll = !strip;
         if (strip) {
             const w = strip.clientWidth || 0;
@@ -800,7 +835,6 @@ function bindOneMomentV2WheelStage(stageEl) {
                 return;
             }
         }
-        syncMomentV2WheelCaptionInnerWidth(stageEl);
         const labels = parseMomentV2Labels(root);
         const photosOnlySwipe = root?.getAttribute?.('data-moment-v2-swipe-photos-only') === '1';
         let idx = 0;
@@ -854,7 +888,6 @@ function bindOneMomentV2WheelStage(stageEl) {
             }
         }
         if (!isVScroll && !photosOnlySwipe) onMomentV2ActivePhotoMaybeChangedForAuthorComment(stageEl);
-        syncMomentV2WheelCaptionInnerWidth(stageEl);
     };
 
     /** 팝업 `onHScroll` + `syncMealPhotoHstripIndexFromScroll`과 동일: 스냅에 붙었을 때만 휠·라벨·슬랩·primary 갱신 */

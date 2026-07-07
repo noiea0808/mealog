@@ -9,13 +9,23 @@ export function isEntrySharedInMoment(entryId) {
     return window.sharedPhotos.some((p) => p && p.entryId === entryId);
 }
 
-/** 컬렉션 캐시에서 해당 entry의 공유 사진 URL 목록 */
+/** 컬렉션 캐시에서 해당 entry의 공유 사진 URL 목록 (v2 photos[] 포함) */
 export function getSharedPhotoUrlsForEntry(entryId) {
     if (!entryId || !window.sharedPhotos || !Array.isArray(window.sharedPhotos)) return [];
-    return window.sharedPhotos
-        .filter((p) => p && p.entryId === entryId)
-        .map((p) => p.photoUrl || p.url)
-        .filter((u) => typeof u === 'string' && u.length > 0);
+    const urls = [];
+    for (const p of window.sharedPhotos) {
+        if (!p || p.entryId !== entryId) continue;
+        if (p.schemaVersion === 2 && Array.isArray(p.photos) && p.photos.length > 0) {
+            for (const ph of p.photos) {
+                const u = ph?.url || ph?.photoUrl;
+                if (typeof u === 'string' && u.length > 0) urls.push(u);
+            }
+            continue;
+        }
+        const u = p.photoUrl || p.url;
+        if (typeof u === 'string' && u.length > 0) urls.push(u);
+    }
+    return urls;
 }
 
 /** loadMyShares로 window.sharedPhotos 갱신 */
