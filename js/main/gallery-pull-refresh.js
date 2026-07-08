@@ -40,11 +40,6 @@ export function setupGalleryPullToRefresh() {
         try {
             invalidateGalleryRenderSession();
             try {
-                await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
-            } catch (e) {
-                console.warn('갤러리 새로고침: Firestore 복구 실패(이어서 시도):', e?.message || e);
-            }
-            try {
                 await prepareMomentFeedNetworkForReload();
             } catch (_) {
                 /* ignore */
@@ -55,10 +50,33 @@ export function setupGalleryPullToRefresh() {
                 appState.galleryUserProfileSharedHasMore = true;
                 appState.galleryUserProfileSharedDocSnaps = new Map();
                 invalidateGalleryRenderSession();
-                await renderGallery({ forceReload: true });
+                try {
+                    await renderGallery({ forceReload: true });
+                } catch (e) {
+                    console.warn('갤러리 새로고침(프로필) 첫 로드 실패, Firestore 복구 후 재시도:', e?.message || e);
+                    try {
+                        await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
+                    } catch (recoverErr) {
+                        console.warn('갤러리 새로고침: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    }
+                    invalidateGalleryRenderSession();
+                    await renderGallery({ forceReload: true });
+                }
             } else {
                 await syncOrphanedSharesToMoment();
-                const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
+                let loadResult;
+                try {
+                    loadResult = await loadSharedPhotosPageReliable(10);
+                } catch (firstErr) {
+                    console.warn('갤러리 새로고침: 첫 로드 실패, Firestore 복구 후 재시도:', firstErr?.message || firstErr);
+                    try {
+                        await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
+                    } catch (recoverErr) {
+                        console.warn('갤러리 새로고침: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    }
+                    loadResult = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2 });
+                }
+                const { docs, lastDoc, hasMore } = loadResult;
                 appState.galleryFeedNetworkError = false;
                 window.sharedPhotosFeed = docs;
                 appState.sharedPhotosFeedLastDoc = lastDoc;
