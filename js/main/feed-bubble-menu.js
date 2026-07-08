@@ -156,26 +156,34 @@ function openEditFeedModal(postId) {
     const wrap = document.createElement('div');
     wrap.id = 'feedBubbleEditOverlay';
     wrap.className =
-        'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-slate-900/45';
+        'fixed inset-0 z-[210] flex items-center justify-center px-4 py-6 bg-slate-900/45';
     wrap.innerHTML = `
-        <div class="feed-bubble-edit-panel w-full max-w-xs rounded-2xl bg-white p-4 shadow-xl" role="dialog" aria-modal="true" aria-labelledby="feedEditTitle">
-            <h2 id="feedEditTitle" class="mb-2 text-sm text-slate-800">메시지 수정</h2>
-            <textarea id="feedBubbleEditTa" rows="3" maxlength="280" class="w-full resize-none rounded-xl border border-slate-200 p-3 text-sm text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"></textarea>
-            <p class="mb-2 mt-1 text-xs text-slate-400"><span id="feedBubbleEditCount">0</span>/280</p>
+        <div class="feed-bubble-edit-panel w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:mx-4" role="dialog" aria-modal="true" aria-labelledby="feedEditTitle">
+            <h2 id="feedEditTitle" class="mb-3 text-base font-bold text-slate-800">메시지 수정</h2>
+            <textarea id="feedBubbleEditTa" rows="6" maxlength="280" class="feed-bubble-edit-input w-full min-h-[10rem] max-h-[min(44vh,18rem)] resize-none rounded-xl border border-slate-200 p-4 text-base leading-relaxed text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"></textarea>
+            <p class="mb-3 mt-2 text-sm text-slate-400"><span id="feedBubbleEditCount">0</span>/280</p>
             <div class="flex justify-end gap-2">
-                <button type="button" id="feedBubbleEditCancel" class="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-600 active:bg-slate-200">취소</button>
-                <button type="button" id="feedBubbleEditSave" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white active:bg-emerald-700">저장</button>
+                <button type="button" id="feedBubbleEditCancel" class="rounded-lg bg-slate-100 px-5 py-2.5 text-base text-slate-600 active:bg-slate-200">취소</button>
+                <button type="button" id="feedBubbleEditSave" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-base font-semibold text-white active:bg-emerald-700">저장</button>
             </div>
         </div>`;
     document.body.appendChild(wrap);
     const ta = wrap.querySelector('#feedBubbleEditTa');
     const countEl = wrap.querySelector('#feedBubbleEditCount');
     ta.value = initial;
+    const autoResizeTa = () => {
+        ta.style.height = 'auto';
+        const cap = Math.min(288, Math.floor((window.innerHeight || 640) * 0.44));
+        ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 160), cap)}px`;
+    };
     const updCount = () => {
         if (countEl) countEl.textContent = String((ta.value || '').length);
     };
     updCount();
-    ta.addEventListener('input', updCount);
+    ta.addEventListener('input', () => {
+        updCount();
+        autoResizeTa();
+    });
 
     const close = () => wrap.remove();
 
@@ -196,7 +204,10 @@ function openEditFeedModal(postId) {
             btn.disabled = false;
         }
     });
-    setTimeout(() => ta.focus(), 50);
+    setTimeout(() => {
+        ta.focus();
+        autoResizeTa();
+    }, 50);
 }
 
 function showFeedBubbleSheet({ postId, isMine, bubble }) {
