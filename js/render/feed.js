@@ -346,8 +346,8 @@ export async function renderFeed() {
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 ' + avIconCls}">
-                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? `<i class="fa-solid fa-user ${avIconCls}"></i>` : escapeHtml(avatarDisplay.value))}
+                        <div class="${avSize} rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 bg-slate-200 ${avatarDisplay.type === 'emoji' ? avIconCls : 'text-sm font-bold text-slate-700'}">
+                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
                     <div class="flex-1 min-w-0 mr-2">

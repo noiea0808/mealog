@@ -139,8 +139,14 @@ const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
 const ADMIN_DAILY_JOURNAL_UID_BATCH = 30;
 
-let moderationSpecialSharesCache = { ts: 0, rows: null };
-let moderationDailyJournalCache = { ts: 0, rows: null };
+let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
+let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
+
+/** 모니터링 캐시 키 — 전체(__all__) vs 작성자 UID */
+function moderationCacheScopeKey(authorUid) {
+    const uid = String(authorUid || '').trim();
+    return uid || '__all__';
+}
 
 function formatKoDateLabelFromYmd(dateStr) {
     const raw = String(dateStr || '').trim();
@@ -214,11 +220,14 @@ function settingsDocToDailyJournalRows(docSnap) {
 
 /**
  * sharedPhotos — slotId daily_journal 또는 entryId dailyJournal_YYYY-MM-DD (meals 컬렉션에 없음)
+ * @param {string} [authorUid] — 지정 시 해당 사용자 sharedPhotos만 조회
  */
-async function fetchDailyJournalMomentSharesFromSharedPhotos() {
+async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
+    const scopedUid = String(authorUid || '').trim();
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byDocId = new Map();
+    const userFilter = scopedUid ? [where('userId', '==', scopedUid)] : [];
 
     const addDocs = (docs) => {
         for (const d of docs || []) {
@@ -228,7 +237,12 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos() {
 
     try {
         const snap = await getDocs(
-            query(sharedColl, where('slotId', '==', 'daily_journal'), limit(ADMIN_DAILY_JOURNAL_ROWS_CAP))
+            query(
+                sharedColl,
+                ...userFilter,
+                where('slotId', '==', 'daily_journal'),
+                limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
+            )
         );
         addDocs(snap.docs);
     } catch (e1) {
@@ -240,6 +254,7 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos() {
             const snap = await getDocs(
                 query(
                     sharedColl,
+                    ...userFilter,
                     where('entryId', '>=', 'dailyJournal_'),
                     where('entryId', '<=', 'dailyJournal_\uf8ff'),
                     limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
@@ -423,10 +438,12 @@ function mergeDailyJournalSlotRowsIntoMap(byKey, rows) {
 async function fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded) {
     const slotByKey = new Map();
     let settingsDocs = 0;
+    let paginationComplete = true;
     const configGroup = collectionGroup(db, 'config');
     const pageSize = 400;
+    const maxPages = 80;
     let lastDoc = null;
-    for (let page = 0; page < 80; page++) {
+    for (let page = 0; page < maxPages; page++) {
         const q = lastDoc
             ? query(configGroup, startAfter(lastDoc), limit(pageSize))
             : query(configGroup, limit(pageSize));
@@ -444,56 +461,110 @@ async function fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded) {
         lastDoc = snap.docs[snap.docs.length - 1];
         if (snap.docs.length < pageSize) break;
         if (slotByKey.size >= ADMIN_DAILY_JOURNAL_ROWS_CAP * 2) break;
+        if (page === maxPages - 1 && snap.docs.length === pageSize) {
+            paginationComplete = false;
+        }
     }
-    return { slotByKey, settingsDocs };
+    return { slotByKey, settingsDocs, paginationComplete };
+}
+
+/**
+ * 작성자 필터: 단일 사용자 settings + scoped sharedPhotos만 조회
+ */
+async function fetchDailyJournalsForModerationForAuthor(authorUid) {
+    await refreshAppCheckTokenBeforeFirestore();
+    const slotByKey = new Map();
+    try {
+        const excluded = await getExcludedAnalyticsUidSet();
+        if (excluded.has(authorUid)) return [];
+        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', authorUid, 'config', 'settings'));
+        if (snap.exists()) {
+            mergeDailyJournalSlotRowsIntoMap(slotByKey, settingsDocToDailyJournalRows(snap));
+        }
+    } catch (err) {
+        console.warn(
+            '[관리자 모먼트] 작성자 하루기록 settings 조회 실패 — 목록에서 제외합니다.',
+            authorUid,
+            err?.code || err?.message || err
+        );
+        return [];
+    }
+    const allRows = [...slotByKey.values()];
+    let shareRows = [];
+    try {
+        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos(authorUid);
+    } catch (e) {
+        console.warn('[관리자 모먼트] 작성자 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
+    }
+    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
+    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
+    return merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
+        ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
+        : merged;
 }
 
 /**
  * users/{uid}/config/settings 의 dailyComments — collectionGroup(전수) + 사용자별 조회 병합
  * (일간 캡처 type=daily sharedPhotos 와 별도 — 하루기록 슬롯 저장분만)
+ * @param {string} [authorUid] — 지정 시 scoped 조회 (전체 users/settings 스캔 생략)
  */
-async function fetchDailyJournalsForModeration() {
+async function fetchDailyJournalsForModeration(authorUid = '') {
+    const scopedUid = String(authorUid || '').trim();
+    if (scopedUid) {
+        return fetchDailyJournalsForModerationForAuthor(scopedUid);
+    }
+
     await refreshAppCheckTokenBeforeFirestore();
     const slotByKey = new Map();
     let cgSettingsDocs = 0;
     let perUserUsers = 0;
+    let cgFailed = false;
+    let cgPaginationComplete = true;
+    let runPerUserFallback = true;
     try {
         const excluded = await getExcludedAnalyticsUidSet();
         try {
             const cg = await fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded);
             cgSettingsDocs = cg.settingsDocs;
+            cgPaginationComplete = cg.paginationComplete !== false;
             for (const [k, v] of cg.slotByKey) slotByKey.set(k, v);
         } catch (cgErr) {
+            cgFailed = true;
             console.warn(
                 '[관리자 모먼트] 하루기록 collectionGroup 조회 실패 — 사용자별 조회만 시도',
                 cgErr?.code || cgErr?.message || cgErr
             );
         }
 
-        const usersSnap = await getDocs(collection(db, 'artifacts', appId, 'users'));
-        const userIds = usersSnap.docs.map((d) => d.id).filter((id) => !excluded.has(id));
-        perUserUsers = userIds.length;
-        const perUserRows = [];
-        for (let i = 0; i < userIds.length; i += ADMIN_DAILY_JOURNAL_UID_BATCH) {
-            const chunk = userIds.slice(i, i + ADMIN_DAILY_JOURNAL_UID_BATCH);
-            await Promise.all(
-                chunk.map(async (uid) => {
-                    try {
-                        const snap = await getDoc(
-                            doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings')
-                        );
-                        if (snap.exists()) perUserRows.push(...settingsDocToDailyJournalRows(snap));
-                    } catch (e) {
-                        console.warn(
-                            '[관리자 모먼트] 하루 기록 settings 조회 실패:',
-                            uid,
-                            e?.code || e?.message || e
-                        );
-                    }
-                })
-            );
+        runPerUserFallback = cgFailed || !cgPaginationComplete;
+        if (runPerUserFallback) {
+            const usersSnap = await getDocs(collection(db, 'artifacts', appId, 'users'));
+            const userIds = usersSnap.docs.map((d) => d.id).filter((id) => !excluded.has(id));
+            perUserUsers = userIds.length;
+            const perUserRows = [];
+            for (let i = 0; i < userIds.length; i += ADMIN_DAILY_JOURNAL_UID_BATCH) {
+                const chunk = userIds.slice(i, i + ADMIN_DAILY_JOURNAL_UID_BATCH);
+                await Promise.all(
+                    chunk.map(async (uid) => {
+                        try {
+                            const snap = await getDoc(
+                                doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings')
+                            );
+                            if (snap.exists()) perUserRows.push(...settingsDocToDailyJournalRows(snap));
+                        } catch (e) {
+                            console.warn(
+                                '[관리자 모먼트] 하루 기록 settings 조회 실패:',
+                                uid,
+                                e?.code || e?.message || e
+                            );
+                        }
+                    })
+                );
+            }
+            mergeDailyJournalSlotRowsIntoMap(slotByKey, perUserRows);
+        } else {
+            console.log('[관리자 모먼트] 하루기록 collectionGroup 완료 — per-user settings 조회 생략');
         }
-        mergeDailyJournalSlotRowsIntoMap(slotByKey, perUserRows);
     } catch (err) {
         console.warn(
             '[관리자 모먼트] 하루 기록(dailyComments) 조회 실패 — 목록에서 제외합니다.',
@@ -526,10 +597,10 @@ async function fetchDailyJournalsForModeration() {
                 (dates ? ` · 날짜: ${dates}` : '') +
                 (latest ? ` · 최신슬롯일: ${latest}` : '') +
                 (merged.length > capped.length ? ` · 상한 ${ADMIN_DAILY_JOURNAL_ROWS_CAP}` : '') +
-                ` · settings문서 ${cgSettingsDocs} / users컬렉션 ${perUserUsers}`
+                ` · settings문서 ${cgSettingsDocs} / users컬렉션 ${perUserUsers}` +
+                (runPerUserFallback ? ' · fallback:per-user' : ' · cg-only')
         );
     }
-    await backfillDailyJournalMealMirrors(capped);
     return capped;
 }
 
@@ -599,13 +670,18 @@ async function filterDailyJournalRowsWithoutMealMirror(rows) {
     return [...legacy, ...otherRows];
 }
 
-async function getDailyJournalsModerationRowsCached() {
+async function getDailyJournalsModerationRowsCached(authorUid = '') {
+    const scopeKey = moderationCacheScopeKey(authorUid);
     const now = Date.now();
-    if (moderationDailyJournalCache.rows && now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+    if (
+        moderationDailyJournalCache.rows &&
+        moderationDailyJournalCache.scopeKey === scopeKey &&
+        now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
         return moderationDailyJournalCache.rows;
     }
-    const rows = await fetchDailyJournalsForModeration();
-    moderationDailyJournalCache = { ts: now, rows };
+    const rows = await fetchDailyJournalsForModeration(authorUid);
+    moderationDailyJournalCache = { ts: now, rows, scopeKey };
     return rows;
 }
 
@@ -638,7 +714,8 @@ function formatDailyJournalMetricsAdminHtml(entry) {
         .join('');
 }
 
-async function fetchSpecialSharesForModeration() {
+async function fetchSpecialSharesForModeration(authorUid = '') {
+    const scopedUid = String(authorUid || '').trim();
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byId = new Map();
@@ -647,6 +724,38 @@ async function fetchSpecialSharesForModeration() {
         for (const d of docs || []) {
             if (d?.id && !byId.has(d.id)) byId.set(d.id, d);
         }
+    }
+
+    if (scopedUid) {
+        for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
+            try {
+                const snap = await getDocs(
+                    query(
+                        sharedColl,
+                        where('userId', '==', scopedUid),
+                        where('type', '==', ty),
+                        limit(ADMIN_FEED_SPECIAL_ROWS_CAP)
+                    )
+                );
+                addDocs(snap.docs);
+            } catch (e) {
+                console.warn(
+                    '[관리자 모먼트] 작성자 특수 공유 조회 실패:',
+                    ty,
+                    scopedUid,
+                    e?.code || e?.message || e
+                );
+            }
+        }
+        const merged = [...byId.values()];
+        merged.sort((a, b) => {
+            const ra = sharedPhotoDocToAdminFeedRow(a);
+            const rb = sharedPhotoDocToAdminFeedRow(b);
+            return moderationRecordedAtMillis(rb) - moderationRecordedAtMillis(ra);
+        });
+        return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP
+            ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP)
+            : merged;
     }
 
     try {
@@ -692,14 +801,19 @@ async function fetchSpecialSharesForModeration() {
     return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP) : merged;
 }
 
-async function getSpecialSharesModerationRowsCached() {
+async function getSpecialSharesModerationRowsCached(authorUid = '') {
+    const scopeKey = moderationCacheScopeKey(authorUid);
     const now = Date.now();
-    if (moderationSpecialSharesCache.rows && now - moderationSpecialSharesCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+    if (
+        moderationSpecialSharesCache.rows &&
+        moderationSpecialSharesCache.scopeKey === scopeKey &&
+        now - moderationSpecialSharesCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
         return moderationSpecialSharesCache.rows;
     }
-    const docs = await fetchSpecialSharesForModeration();
+    const docs = await fetchSpecialSharesForModeration(authorUid);
     const rows = docs.map(sharedPhotoDocToAdminFeedRow);
-    moderationSpecialSharesCache = { ts: now, rows };
+    moderationSpecialSharesCache = { ts: now, rows, scopeKey };
     return rows;
 }
 
@@ -778,8 +892,8 @@ function invalidateAdminFeedMonitoringCache() {
     feedReportsAggCache = { ts: 0, map: null };
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
-    moderationSpecialSharesCache = { ts: 0, rows: null };
-    moderationDailyJournalCache = { ts: 0, rows: null };
+    moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
+    moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
     feedMealTotalCountKnown = true;
     feedLastDocsByPage = {};
 }
@@ -1121,6 +1235,7 @@ async function getFeedPage(options = {}) {
     const pageSize = options.pageSize ?? feedPageSize;
     const skip = (page - 1) * pageSize;
     const authorUid = getFeedAuthorUserId();
+    // TODO(모니터링 2차): 작성자 필터 시 postReports 전수 집계·ensureSharedKeys 범위 축소
     const mealsGroup = authorUid
         ? collection(db, 'artifacts', appId, 'users', authorUid, 'meals')
         : collectionGroup(db, 'meals');
@@ -1132,8 +1247,8 @@ async function getFeedPage(options = {}) {
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
-        const specRows = await getSpecialSharesModerationRowsCached();
-        const journalRowsAll = await getDailyJournalsModerationRowsCached();
+        const specRows = await getSpecialSharesModerationRowsCached(authorUid);
+        const journalRowsAll = await getDailyJournalsModerationRowsCached(authorUid);
         const journalRows = await filterDailyJournalRowsWithoutMealMirror(journalRowsAll);
         const specPinned = filterModerationRowsByAuthor(specRows);
         const journalPinned = filterModerationRowsByAuthor(journalRows);
@@ -1884,6 +1999,12 @@ window.refreshFeedManagement = async function () {
         mealsAdminMealsQueryMode = 1;
         await renderFeedManagement();
     });
+};
+
+/** 하루기록 meals 미러 백필 — 조회 경로와 분리된 수동 액션 (콘솔·스크립트용) */
+window.adminBackfillDailyJournalMealMirrors = async function () {
+    const rows = await fetchDailyJournalsForModeration();
+    await backfillDailyJournalMealMirrors(rows);
 };
 
 // 신고 상세 팝업 (사유별 건수)

@@ -374,8 +374,8 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                             ${isGuestPost ? '<span class="absolute bottom-0 right-0 bg-black/70 text-white text-[8px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-white">게</span>' : ''}
                         </div>
                     ` : `
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 ${avatarDisplay.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200 text-lg'}">
-                            ${isGuestPost ? '게' : (avatarDisplay.type === 'default' ? '<i class="fa-solid fa-user text-lg"></i>' : escapeHtml(avatarDisplay.value))}
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 border-slate-300 bg-slate-200 ${avatarDisplay.type === 'emoji' ? 'text-lg' : 'text-sm font-bold text-slate-700'}">
+                            ${isGuestPost ? '게' : escapeHtml(avatarDisplay.value)}
                         </div>
                     `}
                     <div class="flex-1 min-w-0">

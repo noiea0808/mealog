@@ -1114,6 +1114,13 @@ function refreshAccountAvatarModalPreview() {
         img.classList.add('hidden');
         img.removeAttribute('src');
         icon.classList.remove('hidden');
+        const nicknameVal =
+            appState?.tempSettings?.profile?.nickname ||
+            window.userSettings?.profile?.nickname ||
+            '';
+        const firstChar = nicknameVal ? [...String(nicknameVal).trim()][0] : '?';
+        icon.className = 'text-6xl font-bold text-slate-400';
+        icon.textContent = firstChar;
     }
 }
 
@@ -1271,8 +1278,10 @@ export function renderSettingsProfileAvatarPreview() {
                 'profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0';
             textPreview.textContent = firstChar;
         } else {
-            textPreview.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-2xl"></i>';
-            textPreview.classList.add('flex', 'items-center', 'justify-center');
+            textPreview.innerHTML = '';
+            textPreview.className =
+                'profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0';
+            textPreview.textContent = firstChar;
         }
     }
 
@@ -1306,9 +1315,10 @@ export function renderSettingsProfileAvatarPreview() {
             accountAv.className =
                 'flex h-full w-full items-center justify-center rounded-full bg-slate-100 bg-cover bg-center';
         } else {
-            accountAv.innerHTML = '<i class="fa-solid fa-user text-slate-400 text-2xl"></i>';
+            accountAv.innerHTML = '';
             accountAv.className =
-                'flex h-full w-full items-center justify-center rounded-full bg-slate-100';
+                'flex h-full w-full items-center justify-center rounded-full bg-slate-100 text-2xl font-bold text-slate-500';
+            accountAv.textContent = firstChar;
         }
         if (photoDeleteBtn && type === 'photo' && photoUrl) {
             photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing || appState.profileEditScope !== 'full');

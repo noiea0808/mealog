@@ -17,6 +17,7 @@ import {
 import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
+import { getProfileAvatarDisplay } from './utils.js';
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
@@ -1309,14 +1310,16 @@ export function updateHeaderUI() {
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
                 iconEl.style.position = 'relative';
+                iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300';
                 
                 // 게스트 모드이면 '게' 오버레이 추가
                 if (isGuest) {
                     iconEl.innerHTML = '<span style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">게</span>';
                 }
             } else {
-                // 사진이 없으면 회색 사람 아이콘 (게스트/일반 동일)
-                iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
+                const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: p.photoUrl });
+                iconEl.className = `w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300 ${av.type === 'emoji' ? 'text-base' : 'text-sm font-bold text-slate-600'}`;
+                iconEl.textContent = isGuest ? '게' : av.value;
             }
         }
         

@@ -558,10 +558,8 @@ function buildMomentOverlayChromeHtml(row) {
         avatarBlock = a.isGuestPost
             ? `<div class="relative shrink-0">${inner}<span class="absolute bottom-0 right-0 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white/40 bg-black/50 text-[7px] font-bold text-white">게</span></div>`
             : inner;
-    } else if (a.avatarType === 'default') {
-        avatarBlock = `<div class="timeline-meal-photo-moment-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/30 shadow-inner"><i class="fa-solid fa-user text-sm text-white/90" aria-hidden="true"></i></div>`;
     } else {
-        const ch = escapeHtml(String(a.avatarValue || '').slice(0, 1));
+        const ch = escapeHtml(String(a.avatarValue || '?'));
         avatarBlock = `<div class="timeline-meal-photo-moment-avatar flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-800/30 text-sm font-medium text-white/95 shadow-inner">${ch}</div>`;
     }
     return `<div class="timeline-meal-photo-moment-chrome pointer-events-none absolute inset-0 z-[18] flex flex-col">

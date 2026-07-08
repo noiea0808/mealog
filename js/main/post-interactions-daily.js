@@ -38,6 +38,7 @@ import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } fro
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     getDisplayProfile,
+    getProfileAvatarDisplay,
     uploadBoardImages,
     captureWithGhostStrategy,
     addCompositionAwareInput,
@@ -1581,26 +1582,26 @@ window.toggleCommentInput = (postId) => {
                 } catch (_) {}
             }
             syncMomentV2SocialCommentEmptyOverlay(postId);
-            // 입력창 왼쪽 아바타 반영 (사진 > 이모지 > 기본)
+            // 입력창 왼쪽 아바타 반영 (사진 > 이모지 > 닉네임 첫 글자)
             try {
                 const avatarEl = commentSection?.querySelector?.('.moment-v2-social-comments-input-avatar');
                 if (avatarEl) {
-                    const p = window.userSettings?.profile || {};
-                    const icon = (p.icon != null && String(p.icon).trim() !== '') ? String(p.icon) : '';
-                    const photo = (p.photoUrl != null && String(p.photoUrl).trim() !== '') ? String(p.photoUrl) : '';
+                    const display = getDisplayProfile(
+                        window.currentUser?.uid,
+                        window.userSettings?.profile || {}
+                    );
+                    const av = getProfileAvatarDisplay(display);
                     avatarEl.innerHTML = '';
-                    if (photo) {
+                    if (av.type === 'photo') {
                         const img = document.createElement('img');
                         img.alt = '';
                         img.decoding = 'async';
                         img.loading = 'lazy';
                         img.referrerPolicy = 'no-referrer';
-                        img.src = photo;
+                        img.src = av.value;
                         avatarEl.appendChild(img);
-                    } else if (icon) {
-                        avatarEl.textContent = icon;
                     } else {
-                        avatarEl.textContent = '🙂';
+                        avatarEl.textContent = av.value;
                     }
                 }
             } catch (_) {}

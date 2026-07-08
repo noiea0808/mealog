@@ -97,6 +97,9 @@ html:has(#feedContent[data-moment-feed-layout='2']) {
     min-height: 0;
     scroll-snap-align: none;
     scroll-snap-stop: normal;
+    /* 화면 밖 게시물 페인트·레이아웃 생략 — 세로 피드 스크롤 부하 감소 */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 480px;
 }
 body {
     width: 100%;
@@ -3924,7 +3927,13 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     flex: 0 0 auto;
     min-height: 0;
     box-sizing: border-box;
-    transition: min-height 0.08s ease-out;
+    transition: none;
+}
+/* 세로 피드 스크롤 중: 블러 배경 페인트 생략(GPU 부하 완화), 스크롤 멈추면 복구 */
+html.mv2-feed-scrolling .moment-v2-hpost-bg-img,
+html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
+    filter: none !important;
+    opacity: 0.35;
 }
 /* 사진 비율(1:1·3:4·4:3)과 무관하게: 카드 높이는 콘텐츠에 맞춤 — min-height로 짧은 비율 아래 빈 띠(블록 내 여백) 생기지 않음 */
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-center-stack,

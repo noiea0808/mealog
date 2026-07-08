@@ -192,19 +192,32 @@ export function getDisplayProfile(authorId, stored = {}, options = {}) {
 }
 
 /**
- * 프로필 아바타에 표시할 내용 반환 (사진 > 이모지 아이콘 > 기본 회색 사람 아이콘)
- * 기본 동물 아이콘(🐻 등)은 예전 기본값이므로 미설정으로 간주하고 기본 아이콘을 표시합니다.
+ * 프로필 아바타에 표시할 내용 반환 (사진 > 사용자 지정 이모지 > 닉네임 첫 글자)
+ * 기본 동물 아이콘(🐻 등)은 예전 기본값이므로 미설정으로 간주합니다.
  * @param {{ nickname?: string, icon?: string|null, photoUrl?: string|null }} profile - getDisplayProfile 결과
- * @returns {{ type: 'photo'|'emoji'|'default', value: string }}
+ * @returns {{ type: 'photo'|'emoji'|'initial', value: string }}
  */
 const DEFAULT_AVATAR_ICONS = ['🐻', '🐰', '🐱', '🐶', '🦊', '🦁', '🐼', '🐨'];
+
+/** 닉네임 첫 글자(서로게이트 쌍 이모지 등은 첫 문자 단위) */
+export function getProfileNicknameInitial(nickname) {
+    const nick = nickname != null ? String(nickname).trim() : '';
+    if (!nick) return '?';
+    const ch = [...nick][0];
+    return ch || '?';
+}
+
+/** 아바타 원 안에 텍스트(이모지·이니셜)로 표시하는 타입인지 */
+export function profileAvatarShowsText(type) {
+    return type === 'emoji' || type === 'initial';
+}
 
 export function getProfileAvatarDisplay(profile) {
     const photoRaw = profile.photoUrl != null ? String(profile.photoUrl).trim() : '';
     if (photoRaw) return { type: 'photo', value: photoRaw };
     const icon = profile.icon != null && profile.icon !== '' ? profile.icon : null;
     if (icon && !DEFAULT_AVATAR_ICONS.includes(icon)) return { type: 'emoji', value: icon };
-    return { type: 'default', value: '' };
+    return { type: 'initial', value: getProfileNicknameInitial(profile.nickname) };
 }
 
 import { getInputIdForSuggestionsContainer } from './modals/entry-form-config.js';

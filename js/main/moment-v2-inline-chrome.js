@@ -299,6 +299,17 @@ export function runMomentV2InlineChromeLayout(frame) {
     syncBottomRowCenters(frame);
 }
 
+function bindVscrollClipImageLoadLayout(vClips) {
+    vClips.forEach((clip) => {
+        clip.querySelectorAll?.('img.timeline-meal-photo-img').forEach((img) => {
+            if (img.complete && (img.naturalHeight || 0) > 0) return;
+            const relayout = () => runVscrollClipLayout(clip);
+            img.addEventListener('load', relayout, { once: true });
+            img.addEventListener('error', relayout, { once: true });
+        });
+    });
+}
+
 export function ensureMomentV2InlineChromeForFrame(frame) {
     if (!frame || frame._momentV2InlineChromeBound) return;
     frame._momentV2InlineChromeBound = true;
@@ -331,12 +342,21 @@ export function ensureMomentV2InlineChromeForFrame(frame) {
     if (typeof window !== 'undefined' && 'onscrollend' in window) {
         hstrip?.addEventListener('scrollend', () => applySettled(false), { passive: true });
     }
+    /* 세로 피드(vscroll): 클립·이미지가 같이 움직이므로 window scroll마다 getBoundingClientRect 할 필요 없음 */
     if (vClips.length) {
-        window.addEventListener('scroll', onHScroll, { passive: true });
+        bindVscrollClipImageLoadLayout(vClips);
     }
     const onResize = () => applySettled(true);
     window.addEventListener('resize', onResize, { passive: true });
-    const ro = new ResizeObserver(() => onResize());
+    let resizeRaf = null;
+    const onResizeDeferred = () => {
+        if (resizeRaf != null) return;
+        resizeRaf = requestAnimationFrame(() => {
+            resizeRaf = null;
+            onResize();
+        });
+    };
+    const ro = new ResizeObserver(() => onResizeDeferred());
     ro.observe(frame);
     if (hstrip) ro.observe(hstrip);
     vClips.forEach((c) => ro.observe(c));

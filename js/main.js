@@ -141,14 +141,6 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
     showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
         await prepareMomentFeedNetworkForReload();
-        try {
-            await Promise.race([
-                recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true }),
-                new Promise((resolve) => setTimeout(resolve, 6000))
-            ]);
-        } catch (e) {
-            console.warn('모먼트: Firestore 인스턴스 복구 실패(이어서 로드 시도):', e?.message || e);
-        }
         appState.galleryFeedNetworkError = false;
         if (appState.galleryFilterUserId) {
             appState.galleryUserProfileSharedDocs = null;
@@ -159,7 +151,21 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
                 invalidateGalleryRenderSession();
                 await renderGallery({ forceReload: true });
             } catch (e) {
-                console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', e);
+                console.warn('모먼트(프로필) 첫 로드 실패, Firestore 복구 후 재시도:', e?.message || e);
+                try {
+                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                } catch (recoverErr) {
+                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                }
+                try {
+                    invalidateGalleryRenderSession();
+                    await renderGallery({ forceReload: true });
+                } catch (retryErr) {
+                    console.error('모먼트(프로필) 다시 불러오기 렌더 실패:', retryErr);
+                    appState.galleryFeedNetworkError = true;
+                    invalidateGalleryRenderSession();
+                    await renderGallery({ forceReload: true });
+                }
             }
             if (typeof renderFeed === 'function') renderFeed();
             return;
@@ -168,7 +174,19 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         appState.sharedPhotosFeedLastDoc = null;
         appState.sharedPhotosFeedHasMore = false;
         try {
-            const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10);
+            let loadResult;
+            try {
+                loadResult = await loadSharedPhotosPageReliable(10);
+            } catch (firstErr) {
+                console.warn('모먼트: 첫 로드 실패, Firestore 복구 후 재시도:', firstErr?.message || firstErr);
+                try {
+                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                } catch (recoverErr) {
+                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                }
+                loadResult = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2 });
+            }
+            const { docs, lastDoc, hasMore } = loadResult;
             appState.galleryFeedNetworkError = false;
             window.sharedPhotosFeed = docs;
             appState.sharedPhotosFeedLastDoc = lastDoc;

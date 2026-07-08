@@ -519,8 +519,8 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                             ${authorAvatar.type === 'photo' ? `
                                 <div class="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                             ` : `
-                                <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
-                                    ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
+                                <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 bg-slate-200 ${authorAvatar.type === 'emoji' ? '' : 'text-slate-700'}">
+                                    ${escapeHtml(authorAvatar.value)}
                                 </div>
                             `}
                             </div>
@@ -657,8 +657,8 @@ export async function renderBoardDetail(postId) {
                         ${authorAvatar.type === 'photo' ? `
                             <div class="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
                         ` : `
-                            <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 ${authorAvatar.type === 'default' ? 'bg-slate-200 text-slate-500' : 'bg-slate-200'}">
-                                ${authorAvatar.type === 'default' ? '<i class="fa-solid fa-user text-sm"></i>' : escapeHtml(authorAvatar.value)}
+                            <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 bg-slate-200 ${authorAvatar.type === 'emoji' ? '' : 'text-slate-700'}">
+                                ${escapeHtml(authorAvatar.value)}
                             </div>
                         `}
                         </div>

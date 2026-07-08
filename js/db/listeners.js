@@ -914,6 +914,31 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
     return { docs: shifted, lastDoc: returnLastDoc, hasMore: hasMorePosts };
 }
 
+/** getDocsFromServer가 끊긴 WebChannel에서 무한 대기하는 것을 막기 위한 시도당 상한 */
+const SHARED_PHOTOS_SERVER_FETCH_TIMEOUT_MS = 10000;
+
+function createMomentFeedFetchTimeoutError(timeoutMs) {
+    const err = new Error(`Moment feed server fetch timed out after ${timeoutMs}ms`);
+    err.code = 'mealog-timeout';
+    return err;
+}
+
+/**
+ * @param {Promise<T>} promise
+ * @param {number} timeoutMs
+ * @returns {Promise<T>}
+ * @template T
+ */
+function withMomentFeedFetchTimeout(promise, timeoutMs = SHARED_PHOTOS_SERVER_FETCH_TIMEOUT_MS) {
+    let timer = 0;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(createMomentFeedFetchTimeoutError(timeoutMs)), timeoutMs);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 /**
  * 모먼트 피드 첫 로드/재시도용: 오프라인·불안정 직후 getDocsFromServer 일시 실패 시 재시도.
  * (다시 불러오기·당겨서 새로고침에서 공통 사용)
@@ -921,13 +946,17 @@ export async function loadSharedPhotosPage(targetPosts = 10, startAfterDoc = nul
 export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterDoc = null, opts = {}) {
     const maxAttempts = opts.maxAttempts ?? 3;
     const baseDelayMs = opts.baseDelayMs ?? 320;
+    const timeoutMs = opts.timeoutMs ?? SHARED_PHOTOS_SERVER_FETCH_TIMEOUT_MS;
     let lastErr;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
             if (attempt > 0) {
                 await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
             }
-            return await loadSharedPhotosPage(targetPosts, startAfterDoc);
+            return await withMomentFeedFetchTimeout(
+                loadSharedPhotosPage(targetPosts, startAfterDoc),
+                timeoutMs
+            );
         } catch (e) {
             lastErr = e;
         }

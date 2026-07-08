@@ -1887,7 +1887,9 @@ export async function saveEntry() {
             ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
             : [];                        // 공유 비활성화 또는 금지: 빈 배열
         // sharedPhotos 필드는 sharedPhotos 컬렉션(서버 sharePhotos)이 canonical — meal save에 포함하지 않음
-        const hadSharedPhotos = state.originalSharedPhotos && state.originalSharedPhotos.length > 0;
+        // closeModal()이 originalSharedPhotos를 비우므로, 공유 비교용 목록은 여기서 스냅샷으로 고정한다.
+        const originalShareList = Array.isArray(state.originalSharedPhotos) ? [...state.originalSharedPhotos] : [];
+        const hadSharedPhotos = originalShareList.length > 0;
         
         console.log('저장 시작:', record);
 
@@ -2393,11 +2395,16 @@ export async function saveEntry() {
             if (record.id) {
                 // 현재 공유할 사진이 있는지 확인
                 const hasPhotosToShare = photosToShare && photosToShare.length > 0;
-                
-                // 공유 상태가 변경된 경우에만 호출
-                // 1. 공유할 사진이 있는 경우 (공유 설정)
-                // 2. 기존에 공유된 사진이 있었는데 지금은 없는 경우 (공유 해제)
-                if (hasPhotosToShare || hadSharedPhotos) {
+
+                // 공유 목록이 실제로 바뀐 경우에만 서버 재공유(sharePhotos)를 호출한다.
+                // (originalShareList는 closeModal 전에 캡처한 스냅샷 — state.originalSharedPhotos는 닫힌 뒤 비어 있음)
+                // 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
+                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제 시에만 최신으로 이동)
+                const shareListChanged =
+                    photosToShare.length !== originalShareList.length ||
+                    photosToShare.some((url, i) => url !== originalShareList[i]);
+
+                if (shareListChanged) {
                     sharedPhotosUpdated = true;
                     // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
                     if (record.id) {
