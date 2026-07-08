@@ -7,11 +7,17 @@ import {
     clearOfflineDraftFlagsOnMeals,
     isMealogTransportOffline
 } from '../utils/mealog-offline-ui.js';
-import { auth, db, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { auth, db, refreshAppCheckTokenBeforeFirestore, kickFirestoreTransportReconnect, rebindFirestoreListenersIfRegistered } from '../firebase.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
 import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } from '../utils/network-reachability.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 import { probeMealogRemoteReachable } from '../utils/network-probe.js';
+import {
+    markMealogFirestoreActivity,
+    markMealogRemoteProbeSuccess,
+    isMealogFirestoreActivityStale,
+    shouldProbeMealogNetworkConnectivity
+} from '../utils/network-activity.js';
 import { appState } from '../state.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -28,9 +34,7 @@ let recoveryTimer = null;
 let recoveryInFlight = null;
 
 /**
- * App Check·Auth 토큰 갱신.
- * 주의: 앱에서 disableNetwork를 쓰지 않으므로 enableNetwork는 호출하지 않는다.
- * (매 visibility/복귀마다 enableNetwork → Watch 재구독 → Firestore ca9/b815 assertion 폭주)
+ * App Check·Auth 토큰 갱신. Firestore 전송 재연결은 `runMealogConnectivityRecovery`에서 조건부로 수행.
  */
 export async function runMealogNetworkRecovery(options = {}) {
     const forceAuthRefresh = options.forceAuthRefresh === true;
@@ -86,6 +90,7 @@ export async function prepareMomentFeedNetworkForReload() {
         reachable = false;
     }
     if (reachable) {
+        markMealogRemoteProbeSuccess();
         clearLocalNetworkForcedOffline();
         try {
             clearOfflineDraftFlagsOnMeals();
@@ -156,6 +161,77 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
 }
 
 let momentFeedReloadInFlight = false;
+const FIRESTORE_STALE_ACTIVITY_MS = 45000;
+let connectivityRecoveryInFlight = null;
+
+/**
+ * 원격 프로브 성공 시 토큰 갱신 + (필요 시) Firestore transport kick + 리스너 재부착.
+ * @param {{ reason?: string, forceTransportKick?: boolean, skipProbe?: boolean }} [options]
+ * @returns {Promise<boolean>}
+ */
+export async function runMealogConnectivityRecovery(options = {}) {
+    const reason = options.reason || '';
+    const forceTransportKick = options.forceTransportKick === true;
+    const skipProbe = options.skipProbe === true;
+    if (connectivityRecoveryInFlight) return connectivityRecoveryInFlight;
+    connectivityRecoveryInFlight = (async () => {
+        try {
+            let reachable = true;
+            if (!skipProbe) {
+                try {
+                    reachable = await probeMealogRemoteReachable(5000);
+                } catch (_) {
+                    reachable = false;
+                }
+            }
+            if (!reachable) return false;
+
+            const wasForcedOffline = isMealogTransportOffline();
+            const stale = isMealogFirestoreActivityStale(FIRESTORE_STALE_ACTIVITY_MS);
+
+            markMealogRemoteProbeSuccess();
+            clearLocalNetworkForcedOffline();
+            try {
+                clearOfflineDraftFlagsOnMeals();
+            } catch (_) {
+                /* ignore */
+            }
+            try {
+                hideNetworkErrorOverlay();
+            } catch (_) {
+                /* ignore */
+            }
+
+            await runMealogNetworkRecovery({ forceAuthRefresh: true });
+
+            const needTransportKick = forceTransportKick || stale || wasForcedOffline;
+            if (needTransportKick) {
+                const kicked = await kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
+                    force: forceTransportKick
+                });
+                if (kicked) {
+                    markMealogFirestoreActivity();
+                }
+                rebindFirestoreListenersIfRegistered();
+            } else {
+                void import('../utils/meals-listener-degraded.js').then((dg) => {
+                    try {
+                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                });
+            }
+
+            await flushMealWriteQueueAndRefreshSyncUi();
+            maybeReloadMomentFeedAfterRecovery();
+            return true;
+        } finally {
+            connectivityRecoveryInFlight = null;
+        }
+    })();
+    return connectivityRecoveryInFlight;
+}
 
 /**
  * 재연결 직후, 모먼트 피드가 네트워크 오류 상태로 멈춰 있고 사용자가 모먼트/앨범 탭을 보고 있으면
@@ -178,26 +254,9 @@ function maybeReloadMomentFeedAfterRecovery() {
     }
 }
 
-/** 화면 복귀 시: 브라우저가 온라인으로 보이면 강제 오프라인·오버레이를 풀고 동기화 UI를 재맞춤 */
+/** 화면 복귀 시: 원격 연결 확인 후 transport kick·동기화 UI 재맞춤 */
 function runForegroundMealSyncAndOverlayRecovery() {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-    clearLocalNetworkForcedOffline();
-    try {
-        clearOfflineDraftFlagsOnMeals();
-    } catch (_) {
-        /* ignore */
-    }
-    try {
-        hideNetworkErrorOverlay();
-    } catch (_) {
-        /* ignore */
-    }
-    scheduleMealogNetworkRecovery(400, { forceAuthRefresh: false });
-    void (async () => {
-        await new Promise((r) => setTimeout(r, 200));
-        await flushMealWriteQueueAndRefreshSyncUi();
-        maybeReloadMomentFeedAfterRecovery();
-    })();
+    void runMealogConnectivityRecovery({ reason: 'foreground' });
 }
 
 function registerForegroundRecovery() {
@@ -249,18 +308,7 @@ export function registerMainNetworkListeners() {
         }
     });
     window.addEventListener('online', () => {
-        clearLocalNetworkForcedOffline();
-        try {
-            clearOfflineDraftFlagsOnMeals();
-        } catch (_) {
-            /* ignore */
-        }
-        hideNetworkErrorOverlay();
-        scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
-        void (async () => {
-            await flushMealWriteQueueAndRefreshSyncUi();
-            maybeReloadMomentFeedAfterRecovery();
-        })();
+        void runMealogConnectivityRecovery({ reason: 'online', forceTransportKick: true });
     });
     registerForegroundRecovery();
     registerConnectionChangeRecovery();
@@ -268,44 +316,20 @@ export function registerMainNetworkListeners() {
 }
 
 /**
- * online 이벤트가 오지 않는 WebView 대비: 앱이 오프라인으로 판단 중이고 화면이 보일 때만
- * 실제 HTTP 왕복으로 연결을 확인하고, 복구되면 online 이벤트 없이도 강제 오프라인을 풀고
- * 동기화 UI·모먼트 피드를 자동 복구한다. (연결되면 isMealogTransportOffline()가 false가 되어 자동 중단)
+ * online 이벤트가 오지 않는 WebView 대비: 로컬 오프라인 또는 Firestore 활동 정체 시
+ * 원격 프로브 → transport kick → 리스너·모먼트 자동 복구.
  */
 const REACHABILITY_HEARTBEAT_MS = 6000;
 let reachabilityHeartbeatTimer = null;
 let reachabilityProbeInFlight = false;
 
 function reachabilityHeartbeatTick() {
-    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+    if (!shouldProbeMealogNetworkConnectivity(FIRESTORE_STALE_ACTIVITY_MS)) return;
     if (reachabilityProbeInFlight) return;
-    if (!isMealogTransportOffline()) return;
     reachabilityProbeInFlight = true;
-    void (async () => {
-        let reachable = false;
-        try {
-            reachable = await probeMealogRemoteReachable(5000);
-        } catch (_) {
-            reachable = false;
-        } finally {
-            reachabilityProbeInFlight = false;
-        }
-        if (!reachable) return;
-        clearLocalNetworkForcedOffline();
-        try {
-            clearOfflineDraftFlagsOnMeals();
-        } catch (_) {
-            /* ignore */
-        }
-        try {
-            hideNetworkErrorOverlay();
-        } catch (_) {
-            /* ignore */
-        }
-        scheduleMealogNetworkRecovery(0, { forceAuthRefresh: true });
-        await flushMealWriteQueueAndRefreshSyncUi();
-        maybeReloadMomentFeedAfterRecovery();
-    })();
+    void runMealogConnectivityRecovery({ reason: 'heartbeat' }).finally(() => {
+        reachabilityProbeInFlight = false;
+    });
 }
 
 function startMealogReachabilityHeartbeat() {
@@ -329,13 +353,13 @@ function registerConnectionChangeRecovery() {
             'change',
             () => {
                 try {
-                    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
                     const now = Date.now();
                     if (now - lastConnectionRecoverAt < CONNECTION_RECOVER_MIN_MS) return;
                     lastConnectionRecoverAt = now;
-                    clearLocalNetworkForcedOffline();
-                    scheduleMealogNetworkRecovery(250, { forceAuthRefresh: true });
-                    void flushMealWriteQueueAndRefreshSyncUi();
+                    void runMealogConnectivityRecovery({
+                        reason: 'connection-change',
+                        forceTransportKick: true
+                    });
                 } catch (_) {
                     /* ignore */
                 }

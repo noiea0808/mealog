@@ -7,6 +7,7 @@ import { isLikelyNetworkTransportFailure } from '../ui.js';
 import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
+import { markMealogFirestoreActivity } from './network-activity.js';
 
 let fetchBridgeInstalled = false;
 
@@ -80,9 +81,8 @@ export function installFetchFailureAppOfflineBridge() {
     w.fetch = function fetchWithOfflineBridge() {
         return orig.apply(this, arguments).then(
             (res) => {
-                // 전송이 한 번이라도 성공하면(HTTP 응답 수신) 로컬 강제 오프라인 해제.
-                // 불안정 망에서 offline/online 이벤트 없이 끊겼다가 복구되는 경우가 많아 이 경로가 필수.
                 clearLocalNetworkForcedOffline();
+                markMealogFirestoreActivity();
                 return res;
             },
             (err) => {

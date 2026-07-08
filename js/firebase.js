@@ -11,7 +11,9 @@ import {
     persistentSingleTabManager,
     terminate,
     clearIndexedDbPersistence,
-    waitForPendingWrites
+    waitForPendingWrites,
+    disableNetwork,
+    enableNetwork
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
@@ -242,6 +244,64 @@ export const apiKey = "";
 let firestoreListenersRebind = null;
 export function registerFirestoreListenersRebind(fn) {
     firestoreListenersRebind = typeof fn === 'function' ? fn : null;
+}
+
+/** 복구·전환 후 등록된 onSnapshot 리스너 재부착 */
+export function rebindFirestoreListenersIfRegistered() {
+    if (!firestoreListenersRebind) return false;
+    try {
+        firestoreListenersRebind();
+        return true;
+    } catch (e) {
+        console.warn('[Firestore] 리스너 재등록 실패:', e?.message || e);
+        return false;
+    }
+}
+
+let listenersRebindTimer = 0;
+
+/** 네트워크 오류로 리스너가 끊긴 뒤 백오프 재부착 */
+export function scheduleFirestoreListenersRebind(delayMs = 3000) {
+    if (listenersRebindTimer) clearTimeout(listenersRebindTimer);
+    listenersRebindTimer = setTimeout(() => {
+        listenersRebindTimer = 0;
+        rebindFirestoreListenersIfRegistered();
+    }, delayMs);
+}
+
+let lastTransportKickAt = 0;
+const TRANSPORT_KICK_MIN_INTERVAL_MS = 12000;
+let transportKickInFlight = null;
+
+/**
+ * Wi-Fi↔LTE 등 전환 후 죽은 WebChannel을 가볍게 재연결 (terminate 없음).
+ * assertion 폭주 방지를 위해 최소 간격을 둔다.
+ * @param {string} [reason]
+ * @param {{ force?: boolean }} [opts]
+ * @returns {Promise<boolean>}
+ */
+export async function kickFirestoreTransportReconnect(reason = '', opts = {}) {
+    const force = opts.force === true;
+    const now = Date.now();
+    if (!force && lastTransportKickAt > 0 && now - lastTransportKickAt < TRANSPORT_KICK_MIN_INTERVAL_MS) {
+        return false;
+    }
+    if (transportKickInFlight) return transportKickInFlight;
+    transportKickInFlight = (async () => {
+        try {
+            console.warn('[Firestore] transport kick:', reason || '(no reason)');
+            await disableNetwork(db);
+            await enableNetwork(db);
+            lastTransportKickAt = Date.now();
+            return true;
+        } catch (e) {
+            console.warn('[Firestore] transport kick 실패:', e?.message || e);
+            return false;
+        } finally {
+            transportKickInFlight = null;
+        }
+    })();
+    return transportKickInFlight;
 }
 
 let firestoreRecoverInFlight = null;
