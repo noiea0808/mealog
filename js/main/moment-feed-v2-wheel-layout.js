@@ -22,6 +22,13 @@ const MOMENT_V2_PORTAL_ID = 'moment-v2-fixed-caption-layer';
  */
 function restoreAllMomentV2PortaledCaptions() {
     if (typeof document === 'undefined') return;
+    const layer = document.getElementById(MOMENT_V2_PORTAL_ID);
+    const inner =
+        layer?.querySelector?.(':scope > .moment-v2-dock-portal-inner') ||
+        layer?.querySelector?.(':scope > .moment-feed-v2-scope') ||
+        layer;
+    const portaled = inner?.querySelectorAll?.('.moment-v2-caption-footer[data-moment-v2-caption][data-moment-v2-portaled="1"]');
+    if (!portaled?.length) return;
     if (typeof window !== 'undefined' && window._mv2DockSlabCapRo) {
         try {
             window._mv2DockSlabCapRo.disconnect();
@@ -29,13 +36,8 @@ function restoreAllMomentV2PortaledCaptions() {
         window._mv2DockSlabCapRo = null;
         window._mv2DockSlabCapEl = null;
     }
-    const layer = document.getElementById(MOMENT_V2_PORTAL_ID);
-    const inner =
-        layer?.querySelector?.(':scope > .moment-v2-dock-portal-inner') ||
-        layer?.querySelector?.(':scope > .moment-feed-v2-scope') ||
-        layer;
     if (!inner) return;
-    inner.querySelectorAll('.moment-v2-caption-footer[data-moment-v2-caption]').forEach((cap) => {
+    portaled.forEach((cap) => {
         const p = cap._mv2OriginalParent;
         if (p) {
             if (cap._mv2OriginalNext) p.insertBefore(cap, cap._mv2OriginalNext);
@@ -692,9 +694,52 @@ function snapMomentV2HstripToNearestSlide(strip) {
 }
 
 let _v2CapFixRaf = 0;
+/** 세로 피드 스크롤 중: ResizeObserver·폭 동기화 등 무거운 layout read/write 억제 */
+let _mv2FeedScrollActive = false;
+let _mv2FeedScrollEndTimer = 0;
+const MV2_FEED_SCROLL_SETTLE_MS = 200;
+const MV2_VIEWPORT_SYNC_MARGIN_PX = 240;
+
+function isMomentV2FeedScrollActive() {
+    return _mv2FeedScrollActive;
+}
+
+function isMomentV2StageNearViewport(stageEl, margin = MV2_VIEWPORT_SYNC_MARGIN_PX) {
+    if (!stageEl?.getBoundingClientRect || typeof window === 'undefined') return false;
+    const r = stageEl.getBoundingClientRect();
+    const vh = window.innerHeight || 0;
+    return r.bottom >= -margin && r.top <= vh + margin;
+}
+
+function markMomentV2FeedScrolling() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    _mv2FeedScrollActive = true;
+    document.documentElement.classList.add('mv2-feed-scrolling');
+    if (_mv2FeedScrollEndTimer) clearTimeout(_mv2FeedScrollEndTimer);
+    _mv2FeedScrollEndTimer = setTimeout(() => {
+        _mv2FeedScrollEndTimer = 0;
+        _mv2FeedScrollActive = false;
+        document.documentElement.classList.remove('mv2-feed-scrolling');
+        scheduleMomentV2SplitCaptionLayout();
+        flushMomentV2DeferredStageLayouts();
+    }, MV2_FEED_SCROLL_SETTLE_MS);
+}
+
+function flushMomentV2DeferredStageLayouts() {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('.moment-v2-wheel-stage').forEach((st) => {
+        if (!st?._mv2ResizePending || !st.isConnected) return;
+        st._mv2ResizePending = false;
+        if (!isMomentV2StageNearViewport(st)) return;
+        if (typeof st._momentV2RunLayout === 'function') {
+            st._momentV2RunLayout();
+        }
+    });
+}
 
 function scheduleMomentV2SplitCaptionLayout() {
     if (typeof window === 'undefined') return;
+    if (_mv2FeedScrollActive) return;
     if (_v2CapFixRaf) return;
     _v2CapFixRaf = requestAnimationFrame(() => {
         _v2CapFixRaf = 0;
@@ -704,17 +749,26 @@ function scheduleMomentV2SplitCaptionLayout() {
 
 /** 인플로 복원 → primary 도크(앱 네비 위) → 휠 행(--meal-wheel-caption-inner-w) 동기화 */
 function runMomentV2SplitCaptionLayout() {
-    if (typeof document === 'undefined') return;
+    if (typeof document === 'undefined' || _mv2FeedScrollActive) return;
     restoreAllMomentV2PortaledCaptions();
     runMomentV2PrimaryFixedDock();
     document.querySelectorAll('.moment-v2-wheel-stage--split-caption').forEach((st) => {
-        if (st?.isConnected) syncMomentV2WheelCaptionInnerWidth(st);
+        if (st?.isConnected && isMomentV2StageNearViewport(st)) {
+            syncMomentV2WheelCaptionInnerWidth(st);
+        }
     });
+}
+
+function ensureMomentV2FeedScrollGate() {
+    if (typeof window === 'undefined' || window._mv2FeedScrollGate) return;
+    window._mv2FeedScrollGate = true;
+    window.addEventListener('scroll', markMomentV2FeedScrolling, { passive: true, capture: true });
 }
 
 function ensureMomentV2PrimaryCaptionGlobalListeners() {
     if (typeof window === 'undefined' || window._mv2PrimaryCaptionVfix) return;
     window._mv2PrimaryCaptionVfix = true;
+    ensureMomentV2FeedScrollGate();
     const on = () => scheduleMomentV2SplitCaptionLayout();
     if (typeof window !== 'undefined' && 'onscrollend' in window) {
         window.addEventListener('scrollend', on, { passive: true });
@@ -725,7 +779,7 @@ function ensureMomentV2PrimaryCaptionGlobalListeners() {
             t = setTimeout(() => {
                 t = 0;
                 on();
-            }, 120);
+            }, MV2_FEED_SCROLL_SETTLE_MS);
         };
         window.addEventListener('scroll', debounced, { passive: true, capture: true });
     }
@@ -908,7 +962,13 @@ function bindOneMomentV2WheelStage(stageEl) {
         });
     };
 
-    const rafSync = () => requestAnimationFrame(runAfterIndexChange);
+    const rafSync = () => {
+        if (isMomentV2FeedScrollActive()) {
+            stageEl._mv2ResizePending = true;
+            return;
+        }
+        requestAnimationFrame(runAfterIndexChange);
+    };
 
     bindMomentV2CarouselAreaWheel(photoShell, strip, stageEl);
     if (strip) {
