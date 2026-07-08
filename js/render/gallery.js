@@ -410,8 +410,8 @@ export async function appendMomentFeedNextPage(opts = {}) {
     const hasMore = appState.sharedPhotosFeedHasMore || appState.sharedPhotosFeedLastDoc;
     if (!hasMore) return { ok: false, reason: 'no-more' };
     try {
-        const { loadSharedPhotosPage } = await import('../db.js');
-        const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, appState.sharedPhotosFeedLastDoc);
+        const { loadSharedPhotosPageReliable } = await import('../db.js');
+        const { docs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPageReliable(10, appState.sharedPhotosFeedLastDoc, { maxAttempts: 2, timeoutMs: 8000 });
         appState.galleryFeedNetworkError = false;
         window.sharedPhotosFeed = collapseDocsToFeedPage(
             sortSharedPhotosByTimestampDesc([...(window.sharedPhotosFeed || []), ...docs]),
@@ -1578,8 +1578,8 @@ export async function clearGalleryFilter() {
     // 전체 피드로 복귀 시 첫 페이지 로드 (sharedPhotosFeed 초기화)
     if (window.sharedPhotosFeed.length === 0) {
         try {
-            const { loadSharedPhotosPage } = await import('../db.js');
-            const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);
+            const { loadSharedPhotosPageReliable } = await import('../db.js');
+            const { docs, lastDoc, hasMore } = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2, timeoutMs: 8000 });
             appState.galleryFeedNetworkError = false;
             window.sharedPhotosFeed = docs;
             appState.sharedPhotosFeedLastDoc = lastDoc;

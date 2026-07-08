@@ -2,7 +2,7 @@
  * 메인 하단 탭 전환 (window.switchMainTab)
  */
 import { appState } from '../state.js';
-import { loadSharedPhotosPage, loadMyShares } from '../db.js';
+import { loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares } from '../db.js';
 import { showToast, showLoading, hideLoading } from '../ui.js';
 import {
     renderTimeline,
@@ -250,7 +250,8 @@ export function registerMainTabSwitch() {
                         appState.sharedPhotosFeedHasMore = false;
                         appState.galleryFeedNetworkError = false;
                         showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
-                        loadSharedPhotosPage(10)
+                        // 반쯤 끊긴 채널에서 무한 대기하지 않도록 타임아웃·재시도가 있는 reliable 버전 사용
+                        loadSharedPhotosPageReliable(10, null, { maxAttempts: 2, timeoutMs: 8000 })
                             .then(({ docs, lastDoc, hasMore }) => {
                                 appState.galleryFeedNetworkError = false;
                                 window.sharedPhotosFeed = docs;

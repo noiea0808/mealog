@@ -7,7 +7,6 @@ import { isLikelyNetworkTransportFailure } from '../ui.js';
 import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
-import { markMealogFirestoreActivity } from './network-activity.js';
 
 let fetchBridgeInstalled = false;
 
@@ -81,8 +80,11 @@ export function installFetchFailureAppOfflineBridge() {
     w.fetch = function fetchWithOfflineBridge() {
         return orig.apply(this, arguments).then(
             (res) => {
+                // HTTP 도달성 회복은 로컬 오프라인 플래그만 해제한다.
+                // Firestore 활동 시각(markMealogFirestoreActivity)은 여기서 갱신하지 않는다 —
+                // Wi-Fi↔LTE 전환 시 일반 fetch는 되는데 Firestore WebChannel만 죽은 경우,
+                // 이 갱신이 stale 감지를 무력화해 transport kick을 막았다.
                 clearLocalNetworkForcedOffline();
-                markMealogFirestoreActivity();
                 return res;
             },
             (err) => {

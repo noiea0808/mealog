@@ -22,6 +22,16 @@ export function setupGalleryPullToRefresh() {
     let isPulling = false;
     let isRefreshing = false;
 
+    const REFRESH_WATCHDOG_MS = 20000;
+    let refreshWatchdogTimer = 0;
+    const hideRefreshFab = () => {
+        const fab = document.getElementById('galleryMomentsRefreshFab');
+        if (fab) {
+            fab.classList.add('hidden');
+            fab.setAttribute('aria-hidden', 'true');
+        }
+    };
+
     const doRefresh = async () => {
         if (isRefreshing) return;
         isRefreshing = true;
@@ -31,6 +41,13 @@ export function setupGalleryPullToRefresh() {
             refreshFab.classList.remove('hidden');
             refreshFab.setAttribute('aria-hidden', 'false');
         }
+        // 어떤 로드/복구 경로가 멈춰도 새로고침 FAB가 영원히 남지 않도록 하는 안전장치
+        if (refreshWatchdogTimer) clearTimeout(refreshWatchdogTimer);
+        refreshWatchdogTimer = setTimeout(() => {
+            refreshWatchdogTimer = 0;
+            isRefreshing = false;
+            hideRefreshFab();
+        }, REFRESH_WATCHDOG_MS);
         try {
             applyLoadingFoodIconDurationSeconds();
         } catch (_) {
@@ -98,6 +115,10 @@ export function setupGalleryPullToRefresh() {
             }
             if (typeof showToast === 'function') showToast('새로고침에 실패했습니다.', 'error');
         } finally {
+            if (refreshWatchdogTimer) {
+                clearTimeout(refreshWatchdogTimer);
+                refreshWatchdogTimer = 0;
+            }
             isRefreshing = false;
             if (refreshFab) {
                 refreshFab.classList.add('hidden');

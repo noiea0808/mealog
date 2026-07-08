@@ -30,6 +30,25 @@ function mealogMainAppVisible() {
     }
 }
 
+/**
+ * 반쯤 끊긴(half-open) 연결에서 영원히 resolve되지 않는 Promise가 복구 체인을 마비시키는 것을 막는 상한.
+ * 타임아웃 시 reject하지 않고 조용히 넘어간다(복구는 best-effort).
+ * @param {Promise<T>} promise
+ * @param {number} timeoutMs
+ * @param {T} [fallbackValue]
+ * @returns {Promise<T>}
+ * @template T
+ */
+function withMealogRecoveryTimeout(promise, timeoutMs, fallbackValue = undefined) {
+    let timer = 0;
+    const timeoutPromise = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
+    });
+    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeoutPromise]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
+
 let recoveryTimer = null;
 let recoveryInFlight = null;
 
@@ -103,11 +122,11 @@ export async function prepareMomentFeedNetworkForReload() {
             /* ignore */
         }
     }
-    try {
-        await runMealogNetworkRecovery({ forceAuthRefresh: reachable });
-    } catch (_) {
-        /* ignore */
-    }
+    // 토큰 갱신이 half-open에서 멈춰 「당겨서 새로고침」 FAB가 영원히 남는 것을 막기 위해 상한을 둔다.
+    await withMealogRecoveryTimeout(
+        runMealogNetworkRecovery({ forceAuthRefresh: reachable }),
+        WRITE_QUEUE_FLUSH_TIMEOUT_MS
+    );
     return reachable;
 }
 
@@ -124,11 +143,8 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
             /* ignore */
         }
     });
-    try {
-        await waitForPendingWrites(db);
-    } catch (_) {
-        /* ignore */
-    }
+    // half-open 채널에서 waitForPendingWrites가 영원히 대기하면 복구 체인 전체가 멈추므로 상한을 둔다.
+    await withMealogRecoveryTimeout(waitForPendingWrites(db), WRITE_QUEUE_FLUSH_TIMEOUT_MS);
     try {
         const m = await import('../utils/meal-entry-pending.js');
         if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
@@ -162,6 +178,10 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
 
 let momentFeedReloadInFlight = false;
 const FIRESTORE_STALE_ACTIVITY_MS = 45000;
+/** waitForPendingWrites 등 쓰기 큐 flush 상한 */
+const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
+/** 복구 1회 전체 상한 — 내부 await가 무한 대기해도 in-flight 플래그가 반드시 풀리도록 보장 */
+const CONNECTIVITY_RECOVERY_TIMEOUT_MS = 20000;
 let connectivityRecoveryInFlight = null;
 
 /**
@@ -169,67 +189,81 @@ let connectivityRecoveryInFlight = null;
  * @param {{ reason?: string, forceTransportKick?: boolean, skipProbe?: boolean }} [options]
  * @returns {Promise<boolean>}
  */
-export async function runMealogConnectivityRecovery(options = {}) {
+export function runMealogConnectivityRecovery(options = {}) {
     const reason = options.reason || '';
     const forceTransportKick = options.forceTransportKick === true;
     const skipProbe = options.skipProbe === true;
     if (connectivityRecoveryInFlight) return connectivityRecoveryInFlight;
-    connectivityRecoveryInFlight = (async () => {
-        try {
-            let reachable = true;
-            if (!skipProbe) {
-                try {
-                    reachable = await probeMealogRemoteReachable(5000);
-                } catch (_) {
-                    reachable = false;
-                }
-            }
-            if (!reachable) return false;
 
-            const wasForcedOffline = isMealogTransportOffline();
-            const stale = isMealogFirestoreActivityStale(FIRESTORE_STALE_ACTIVITY_MS);
-
-            markMealogRemoteProbeSuccess();
-            clearLocalNetworkForcedOffline();
+    const work = (async () => {
+        let reachable = true;
+        if (!skipProbe) {
             try {
-                clearOfflineDraftFlagsOnMeals();
+                reachable = await probeMealogRemoteReachable(5000);
             } catch (_) {
-                /* ignore */
+                reachable = false;
             }
-            try {
-                hideNetworkErrorOverlay();
-            } catch (_) {
-                /* ignore */
-            }
-
-            await runMealogNetworkRecovery({ forceAuthRefresh: true });
-
-            const needTransportKick = forceTransportKick || stale || wasForcedOffline;
-            if (needTransportKick) {
-                const kicked = await kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
-                    force: forceTransportKick
-                });
-                if (kicked) {
-                    markMealogFirestoreActivity();
-                }
-                rebindFirestoreListenersIfRegistered();
-            } else {
-                void import('../utils/meals-listener-degraded.js').then((dg) => {
-                    try {
-                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-                    } catch (_) {
-                        /* ignore */
-                    }
-                });
-            }
-
-            await flushMealWriteQueueAndRefreshSyncUi();
-            maybeReloadMomentFeedAfterRecovery();
-            return true;
-        } finally {
-            connectivityRecoveryInFlight = null;
         }
+        if (!reachable) return false;
+
+        const wasForcedOffline = isMealogTransportOffline();
+        const stale = isMealogFirestoreActivityStale(FIRESTORE_STALE_ACTIVITY_MS);
+
+        markMealogRemoteProbeSuccess();
+        clearLocalNetworkForcedOffline();
+        try {
+            clearOfflineDraftFlagsOnMeals();
+        } catch (_) {
+            /* ignore */
+        }
+        try {
+            hideNetworkErrorOverlay();
+        } catch (_) {
+            /* ignore */
+        }
+
+        // 토큰 갱신도 half-open에서 멈출 수 있어 상한을 둔다.
+        await withMealogRecoveryTimeout(
+            runMealogNetworkRecovery({ forceAuthRefresh: true }),
+            WRITE_QUEUE_FLUSH_TIMEOUT_MS
+        );
+
+        const needTransportKick = forceTransportKick || stale || wasForcedOffline;
+        if (needTransportKick) {
+            const kicked = await withMealogRecoveryTimeout(
+                kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
+                    force: forceTransportKick
+                }),
+                WRITE_QUEUE_FLUSH_TIMEOUT_MS,
+                false
+            );
+            if (kicked) {
+                markMealogFirestoreActivity();
+            }
+            rebindFirestoreListenersIfRegistered();
+        } else {
+            void import('../utils/meals-listener-degraded.js').then((dg) => {
+                try {
+                    if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+                } catch (_) {
+                    /* ignore */
+                }
+            });
+        }
+
+        await flushMealWriteQueueAndRefreshSyncUi();
+        maybeReloadMomentFeedAfterRecovery();
+        return true;
     })();
+
+    // 내부 body가 어떤 이유로든 settle되지 않아도 상한 뒤 플래그를 풀어 다음 트리거가 재시도할 수 있게 한다.
+    connectivityRecoveryInFlight = withMealogRecoveryTimeout(
+        work,
+        CONNECTIVITY_RECOVERY_TIMEOUT_MS,
+        false
+    ).finally(() => {
+        connectivityRecoveryInFlight = null;
+    });
     return connectivityRecoveryInFlight;
 }
 
