@@ -150,17 +150,31 @@ export function bindMealSyncResendNavButtonOnce() {
             return;
         }
 
-        const offline =
-            (typeof navigator !== 'undefined' && navigator.onLine === false) || !!appState.localNetworkForcedOffline;
-        if (offline) {
-            showToast('오프라인 상태라 지금 등록할 수 없습니다. 네트워크 연결 후 다시 눌러 주세요.', 'info');
-            return;
-        }
+        // navigator.onLine 은 Wi-Fi↔LTE 전환 후 false 로 고착되는 경우가 많아 하드 게이트로 쓰지 않는다.
+        // 사용자가 명시적으로 재전송을 눌렀으므로 실제 원격 프로브로 연결을 확인하고, 도달 가능하면 진행한다.
         setMealSyncFabBusy(btn, true);
-        showToast('서버에 반영 중입니다…', 'info');
         void (async () => {
             const { retryPendingMealEntriesOnAppReady } = await import('../modals/entry-and-core.js');
             try {
+                let reachable = false;
+                try {
+                    const { probeMealogRemoteReachable } = await import('../utils/network-probe.js');
+                    reachable = await probeMealogRemoteReachable(5000);
+                } catch (_) {
+                    reachable = false;
+                }
+                if (!reachable) {
+                    showToast('오프라인 상태라 지금 등록할 수 없습니다. 네트워크 연결 후 다시 눌러 주세요.', 'info');
+                    return;
+                }
+                // 프로브 성공 — 전환 직후 고착된 로컬 오프라인 플래그 해제 후 진행
+                try {
+                    const { clearLocalNetworkForcedOffline } = await import('../utils/network-reachability.js');
+                    clearLocalNetworkForcedOffline();
+                } catch (_) {
+                    /* ignore */
+                }
+                showToast('서버에 반영 중입니다…', 'info');
                 try {
                     await waitForPendingWrites(db);
                 } catch (e) {

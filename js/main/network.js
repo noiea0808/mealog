@@ -183,6 +183,27 @@ const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
 /** 복구 1회 전체 상한 — 내부 await가 무한 대기해도 in-flight 플래그가 반드시 풀리도록 보장 */
 const CONNECTIVITY_RECOVERY_TIMEOUT_MS = 20000;
 let connectivityRecoveryInFlight = null;
+let pendingRetryAfterRecoveryInFlight = false;
+
+/**
+ * 연결 복구 직후 서버 미등록(실패·abandon·register_scheduled) 식사 기록을 자동 재전송.
+ * entry-and-core 는 무겁고 순환 의존 가능성이 있어 동적 import. 내부에 항목별 in-flight 가드가 있어 중복 안전.
+ */
+async function retryPendingMealEntriesAfterRecovery() {
+    if (pendingRetryAfterRecoveryInFlight) return;
+    if (!window.currentUser || window.currentUser.isAnonymous) return;
+    pendingRetryAfterRecoveryInFlight = true;
+    try {
+        const mod = await import('../modals/entry-and-core.js');
+        if (typeof mod.retryPendingMealEntriesOnAppReady === 'function') {
+            await mod.retryPendingMealEntriesOnAppReady();
+        }
+    } catch (_) {
+        /* ignore */
+    } finally {
+        pendingRetryAfterRecoveryInFlight = false;
+    }
+}
 
 /**
  * 원격 프로브 성공 시 토큰 갱신 + (필요 시) Firestore transport kick + 리스너 재부착.
@@ -252,6 +273,12 @@ export function runMealogConnectivityRecovery(options = {}) {
         }
 
         await flushMealWriteQueueAndRefreshSyncUi();
+        // 실제로 나쁜 상태(오프라인/stale/강제 kick)에서 복구된 경우에만 서버 미등록 기록을 자동 재전송.
+        // Firestore 로컬 큐에 없는 항목(실패 처리·Callable 폴백·register_scheduled)은 waitForPendingWrites
+        // 만으로는 다시 올라가지 않으므로, online/포그라운드/connection-change/heartbeat 복구 시 함께 밀어준다.
+        if (needTransportKick) {
+            await retryPendingMealEntriesAfterRecovery();
+        }
         maybeReloadMomentFeedAfterRecovery();
         return true;
     })();
@@ -293,6 +320,30 @@ function runForegroundMealSyncAndOverlayRecovery() {
     void runMealogConnectivityRecovery({ reason: 'foreground' });
 }
 
+/** 오프라인 진입 시 공통 UI 처리 (window 'offline' 이벤트·Capacitor Network 단절 공용) */
+function applyOfflineUiTransition() {
+    try {
+        applyMealSyncAbandonOnOffline();
+        void import('../render/timeline.js').then((m) => {
+            try {
+                m.updateTimelineMealEntryPendingIndicators();
+            } catch (_) {
+                /* ignore */
+            }
+        });
+        try {
+            refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
+    } catch (_) {
+        /* ignore */
+    }
+    if (mealogMainAppVisible() && window.currentUser) {
+        notifyTransportOfflineUi();
+    }
+}
+
 function registerForegroundRecovery() {
     document.addEventListener(
         'visibilitychange',
@@ -302,50 +353,61 @@ function registerForegroundRecovery() {
         },
         { passive: true }
     );
-    void (async () => {
-        try {
-            const { App } = await import('@capacitor/app');
-            if (App?.addListener) {
-                await App.addListener('resume', () => {
-                    runForegroundMealSyncAndOverlayRecovery();
-                });
-            }
-        } catch (_) {
-            /* 웹 전용 빌드 등 */
+    // bare import('@capacitor/app')는 WebView에서 pending 되는 경우가 있어 스크립트로 등록된 window.Capacitor.Plugins.App 사용
+    try {
+        const App = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.App : null;
+        if (App?.addListener) {
+            App.addListener('resume', () => {
+                runForegroundMealSyncAndOverlayRecovery();
+            });
         }
-    })();
+    } catch (_) {
+        /* 웹 전용 빌드 등 */
+    }
+}
+
+/**
+ * Capacitor Network 플러그인: Wi-Fi↔LTE 전환·단절을 네이티브에서 신뢰성 있게 통지.
+ * WebView의 online/offline 이벤트가 안 오거나 늦는 문제를 보완한다.
+ */
+function registerCapacitorNetworkRecovery() {
+    try {
+        const Network = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Network : null;
+        if (!Network?.addListener) return;
+        Network.addListener('networkStatusChange', (status) => {
+            try {
+                if (status && status.connected === false) {
+                    // 실패 확인 전이라도 네이티브가 단절을 알려주면 즉시 오프라인 UI로
+                    appState.localNetworkForcedOffline = true;
+                    applyOfflineUiTransition();
+                    return;
+                }
+                // connected === true 또는 연결타입 변경(wifi↔cellular) — 죽은 채널 재연결 + 미전송 재전송
+                void runMealogConnectivityRecovery({
+                    reason: 'cap-network',
+                    forceTransportKick: true
+                });
+            } catch (_) {
+                /* ignore */
+            }
+        });
+    } catch (_) {
+        /* 플러그인 미탑재(웹 등) */
+    }
 }
 
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
     installFetchFailureAppOfflineBridge();
     window.addEventListener('offline', () => {
-        try {
-            applyMealSyncAbandonOnOffline();
-            void import('../render/timeline.js').then((m) => {
-                try {
-                    m.updateTimelineMealEntryPendingIndicators();
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-            try {
-                refreshMealSyncResendNavButton();
-            } catch (_) {
-                /* ignore */
-            }
-        } catch (_) {
-            /* ignore */
-        }
-        if (mealogMainAppVisible() && window.currentUser) {
-            notifyTransportOfflineUi();
-        }
+        applyOfflineUiTransition();
     });
     window.addEventListener('online', () => {
         void runMealogConnectivityRecovery({ reason: 'online', forceTransportKick: true });
     });
     registerForegroundRecovery();
     registerConnectionChangeRecovery();
+    registerCapacitorNetworkRecovery();
     startMealogReachabilityHeartbeat();
 }
 
