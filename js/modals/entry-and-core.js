@@ -3370,8 +3370,10 @@ function initEntryModalSubChipDeleteDelegation() {
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
+const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-suggestions, .entry-detail-record-chips';
+
 /**
- * 기록 모달 '나만의 태그 / 최근 태그' 줄: 마우스로 누른 채 좌우 드래그하면 가로 스크롤 (클릭과 구분).
+ * 기록 모달 가로 스크롤 줄(서브태그·상세보기 칩): 드래그로 좌우 스크롤 (탭/클릭과 구분).
  */
 function initEntryModalSubtagDragScroll() {
     const root = document.getElementById('entryModal');
@@ -3384,10 +3386,15 @@ function initEntryModalSubtagDragScroll() {
     /** @type {{ el: HTMLElement, pointerId: number, startX: number, startY: number, startScrollLeft: number, dragging: boolean } | null} */
     let state = null;
 
+    const markDragging = (el, on) => {
+        el.classList.toggle('entry-hscroll-strip--dragging', on);
+        el.classList.toggle('entry-subtag-suggestions--dragging', on && el.classList.contains('entry-subtag-suggestions'));
+    };
+
     const release = () => {
         if (!state) return;
         const { el, pointerId } = state;
-        el.classList.remove('entry-subtag-suggestions--dragging');
+        markDragging(el, false);
         try {
             el.releasePointerCapture(pointerId);
         } catch (_) {}
@@ -3395,12 +3402,13 @@ function initEntryModalSubtagDragScroll() {
     };
 
     root.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || e.pointerType !== 'mouse') return;
-        /** 칩 버튼·삭제 버튼은 짧은 클릭으로 선택·삭제 — 가로 드래그 스크롤과 충돌 방지 */
-        if (e.target.closest?.('button')) return;
-        const el = e.target.closest?.('.entry-subtag-suggestions');
+        if (e.button !== 0) return;
+        const el = e.target.closest?.(ENTRY_MODAL_HSCROLL_STRIP_SELECTOR);
         if (!el || !root.contains(el)) return;
         if (el.scrollWidth <= el.clientWidth + 1) return;
+        const onButton = !!e.target.closest?.('button');
+        /** 서브태그 줄: 마우스는 버튼 클릭 우선. 상세보기 칩·터치는 드래그 스크롤 허용 */
+        if (e.pointerType === 'mouse' && onButton && el.classList.contains('entry-subtag-suggestions')) return;
         state = {
             el,
             pointerId: e.pointerId,
@@ -3425,7 +3433,7 @@ function initEntryModalSubtagDragScroll() {
             }
             if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
             state.dragging = true;
-            state.el.classList.add('entry-subtag-suggestions--dragging');
+            markDragging(state.el, true);
         }
         state.el.scrollLeft = state.startScrollLeft - dx;
         e.preventDefault();
@@ -3437,7 +3445,7 @@ function initEntryModalSubtagDragScroll() {
         release();
         if (wasDrag) {
             const killClick = (ev) => {
-                const strip = ev.target.closest?.('.entry-subtag-suggestions');
+                const strip = ev.target.closest?.(ENTRY_MODAL_HSCROLL_STRIP_SELECTOR);
                 if (!strip || !root.contains(strip)) return;
                 ev.preventDefault();
                 ev.stopPropagation();

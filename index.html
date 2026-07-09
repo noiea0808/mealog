@@ -304,6 +304,12 @@
         html.platform-native-app #landingBottomFixed {
             padding-bottom: max(env(safe-area-inset-bottom), 48px);
         }
+        html.platform-native-inset-padded #landingPage {
+            padding-top: 0;
+        }
+        html.platform-native-inset-padded #landingBottomFixed {
+            padding-bottom: 0;
+        }
         .platform-web #landingBottomFixed {
             padding-bottom: 0;
         }
@@ -590,14 +596,39 @@
 
                 try {
                     document.documentElement.classList.add('platform-native-app');
-                    var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
-                    var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
-                    if (!st || st === '0px' || parseFloat(st) < 20) {
-                        document.documentElement.style.setProperty('--safe-top', '28px');
+                    function readEnvSafeInset(edge) {
+                        var prop = edge === 'top' ? 'paddingTop' : 'paddingBottom';
+                        var envName = edge === 'top' ? 'safe-area-inset-top' : 'safe-area-inset-bottom';
+                        var probe = document.createElement('div');
+                        probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;' + prop + ':env(' + envName + ', 0px);';
+                        document.documentElement.appendChild(probe);
+                        var px = parseFloat(getComputedStyle(probe)[prop]) || 0;
+                        document.documentElement.removeChild(probe);
+                        return px;
                     }
-                    if (!sb || sb === '0px' || parseFloat(sb) < 20) {
-                        document.documentElement.style.setProperty('--safe-bottom', '48px');
+                    function applyNativeSafeAreaMode() {
+                        var top = readEnvSafeInset('top');
+                        var bottom = readEnvSafeInset('bottom');
+                        var padded = top < 1 && bottom < 1;
+                        document.documentElement.classList.toggle('platform-native-inset-padded', padded);
+                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !padded);
+                        document.documentElement.style.setProperty('--safe-top', padded ? '0px' : (top + 'px'));
+                        document.documentElement.style.setProperty('--safe-bottom', padded ? '0px' : (bottom + 'px'));
                     }
+                    applyNativeSafeAreaMode();
+                    requestAnimationFrame(function () {
+                        applyNativeSafeAreaMode();
+                        requestAnimationFrame(applyNativeSafeAreaMode);
+                    });
+                    window.addEventListener('load', function () {
+                        applyNativeSafeAreaMode();
+                        setTimeout(applyNativeSafeAreaMode, 300);
+                    });
+                    var resizeTimer;
+                    window.addEventListener('resize', function () {
+                        clearTimeout(resizeTimer);
+                        resizeTimer = setTimeout(applyNativeSafeAreaMode, 120);
+                    });
                     var splashHidden = false;
                     var hideNativeSplash = function () {
                         if (splashHidden) return;
