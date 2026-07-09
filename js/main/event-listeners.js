@@ -405,35 +405,54 @@ export function initEventListeners() {
             fn();
         };
         const bindPressFeedback = (el) => {
-            if (!el || el.dataset.pressFeedbackBound === '1') return;
+            if (!el || el.dataset.pressFeedbackBound === '1') return null;
             el.dataset.pressFeedbackBound = '1';
+            const MIN_PRESS_MS = 90;
+            let pressStartedAt = 0;
+            let pressReleaseTimer = null;
             const pressOn = () => {
-                if (!el.disabled) el.classList.add(PRESS_CLASS);
+                if (!el.disabled) {
+                    clearTimeout(pressReleaseTimer);
+                    pressStartedAt = Date.now();
+                    el.classList.add(PRESS_CLASS);
+                }
             };
-            const pressOff = () => el.classList.remove(PRESS_CLASS);
+            const pressOff = () => {
+                const elapsed = Date.now() - pressStartedAt;
+                const delay = Math.max(0, MIN_PRESS_MS - elapsed);
+                clearTimeout(pressReleaseTimer);
+                pressReleaseTimer = setTimeout(() => {
+                    el.classList.remove(PRESS_CLASS);
+                }, delay);
+            };
             el.addEventListener('mousedown', pressOn);
             el.addEventListener('mouseup', pressOff);
             el.addEventListener('mouseleave', pressOff);
             el.addEventListener('touchstart', pressOn, { passive: true });
             el.addEventListener('touchend', pressOff, { passive: true });
             el.addEventListener('touchcancel', pressOff, { passive: true });
+            return { pressOn, pressOff };
         };
         const addSubmitHandlers = (el, fn) => {
             if (!el) return;
-            bindPressFeedback(el);
-            el.addEventListener('touchstart', (e) => {
+            const press = bindPressFeedback(el);
+            const pressOn = press?.pressOn || (() => {
                 if (!el.disabled) el.classList.add(PRESS_CLASS);
+            });
+            const pressOff = press?.pressOff || (() => el.classList.remove(PRESS_CLASS));
+            el.addEventListener('touchstart', (e) => {
+                pressOn();
                 e.preventDefault();
             }, { passive: false });
             el.addEventListener('touchend', (e) => {
-                el.classList.remove(PRESS_CLASS);
+                pressOff();
                 e.preventDefault();
                 runOnce(fn);
             }, { passive: false });
-            el.addEventListener('touchcancel', () => el.classList.remove(PRESS_CLASS));
+            el.addEventListener('touchcancel', pressOff);
             el.addEventListener('click', (e) => {
                 e.preventDefault();
-                el.classList.remove(PRESS_CLASS);
+                pressOff();
                 runOnce(fn);
             });
         };
