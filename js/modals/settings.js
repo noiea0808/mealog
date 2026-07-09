@@ -399,8 +399,6 @@ export function openSettings() {
                             <span id="accountHeaderNickname" class="text-base font-bold text-slate-800 truncate min-w-0 flex-1 max-w-[min(100%,14rem)]">-</span>
                             <div id="accountNicknameInputHost" class="hidden min-w-0 flex-1 max-w-[min(100%,14rem)] flex justify-end items-center"></div>
                             <div id="accountNicknameActions" class="flex shrink-0 items-center gap-1">
-                                <button type="button" id="accountNicknameSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="닉네임 저장">저장</button>
-                                <button type="button" id="accountNicknameCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
                                 <button type="button" id="accountEditNicknameBtn" data-action="edit" class="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-100/80 transition inline-flex items-center justify-center" title="닉네임 수정" aria-label="닉네임 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
                             </div>
                         </div>
@@ -413,10 +411,6 @@ export function openSettings() {
                             </div>
                             <div id="accountBirthdateEditorRow" class="hidden w-full flex flex-row flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
                                 <div id="accountBirthdateEditHost" class="min-w-0 flex max-w-full flex-wrap items-center justify-end gap-2"></div>
-                                <div id="accountBirthdateActionsEdit" class="shrink-0 flex items-center gap-1">
-                                    <button type="button" id="accountBirthdateSaveBtn" class="px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="생년월일 저장">저장</button>
-                                    <button type="button" id="accountBirthdateCancelBtn" class="px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -567,26 +561,18 @@ export function openSettings() {
 
             const nickPencil = document.getElementById('accountEditNicknameBtn');
             const bdPencil = document.getElementById('accountEditBirthdateBtn');
-            const nickSave = document.getElementById('accountNicknameSaveBtn');
-            const nickCancel = document.getElementById('accountNicknameCancelBtn');
-            const bdSave = document.getElementById('accountBirthdateSaveBtn');
-            const bdCancel = document.getElementById('accountBirthdateCancelBtn');
             if (nickPencil) {
                 nickPencil.onclick = (e) => {
                     e.preventDefault();
                     handleProfileFieldPencilOrSave('nickname');
                 };
             }
-            if (nickSave) nickSave.onclick = (e) => { e.preventDefault(); void saveProfileSingleField('nickname'); };
-            if (nickCancel) nickCancel.onclick = (e) => { e.preventDefault(); cancelInlineProfileFieldEdit(); };
             if (bdPencil) {
                 bdPencil.onclick = (e) => {
                     e.preventDefault();
                     handleProfileFieldPencilOrSave('birthdate');
                 };
             }
-            if (bdSave) bdSave.onclick = (e) => { e.preventDefault(); void saveProfileSingleField('birthdate'); };
-            if (bdCancel) bdCancel.onclick = (e) => { e.preventDefault(); cancelInlineProfileFieldEdit(); };
 
             const bdInput = document.getElementById('settingBirthdate');
             if (bdInput && !bdInput._accountCardSync) {
@@ -595,6 +581,7 @@ export function openSettings() {
                 bdInput.addEventListener('input', syncBd);
                 addCompositionAwareInput(bdInput, syncBd);
             }
+            initProfileFieldEditModalOnce();
         }
     }
 
@@ -833,33 +820,13 @@ function applyTempSettingsToProfileDom() {
 }
 
 function setAccountFieldButtonMode(field, mode) {
-    const showSaveCancel = mode === 'save';
-    if (field === 'nickname') {
-        const pencil = document.getElementById('accountEditNicknameBtn');
-        const saveB = document.getElementById('accountNicknameSaveBtn');
-        const cancelB = document.getElementById('accountNicknameCancelBtn');
-        pencil?.classList.toggle('hidden', showSaveCancel);
-        saveB?.classList.toggle('hidden', !showSaveCancel);
-        cancelB?.classList.toggle('hidden', !showSaveCancel);
-        return;
-    }
-    if (field === 'birthdate') {
-        /* 생년월일은 편집 행 전환으로 처리(mountBirthdateInline / unmountBirthdateInline) */
-        return;
-    }
-    const map = { bio: ['accountEditBioBtn', 'accountBioSaveBtn', 'accountBioCancelBtn'], lifestyle: ['accountEditLifestyleBtn', 'accountLifestyleSaveBtn', 'accountLifestyleCancelBtn'] };
-    const ids = map[field];
-    if (!ids) return;
-    const [pencilId, saveId, cancelId] = ids;
-    document.getElementById(pencilId)?.classList.toggle('hidden', showSaveCancel);
-    document.getElementById(saveId)?.classList.toggle('hidden', !showSaveCancel);
-    document.getElementById(cancelId)?.classList.toggle('hidden', !showSaveCancel);
+    /* 인라인 저장/취소 제거 — 연필만 유지, 편집은 팝업 */
+    void field;
+    void mode;
 }
 
 function resetAllProfileFieldActionButtons() {
-    setAccountFieldButtonMode('nickname', 'edit');
-    setAccountFieldButtonMode('bio', 'edit');
-    setAccountFieldButtonMode('lifestyle', 'edit');
+    /* no-op: 인라인 저장/취소 버튼 없음 */
 }
 
 function unmountNicknameInline() {
@@ -894,51 +861,159 @@ function unmountBirthdateInline() {
         defaultParent.appendChild(edit);
     }
     if (edit) edit.classList.add('hidden');
-    /* host(#accountBirthdateEditHost)에 hidden을 붙이면 다음 편집 시 입력란이 보이지 않음 — editorRow만 토글 */
     host?.classList.remove('hidden');
     viewRow?.classList.remove('hidden');
     editorRow?.classList.add('hidden');
 }
 
-function mountNicknameInline() {
-    const host = document.getElementById('accountNicknameInputHost');
-    const span = document.getElementById('accountHeaderNickname');
-    const input = document.getElementById('settingNickname');
-    if (!host || !input || !span) return;
-    span.classList.add('hidden');
-    host.classList.remove('hidden');
-    host.appendChild(input);
-    input.classList.remove('hidden');
-    input.disabled = false;
-    input.className =
-        'profile-settings-nickname-inline w-full min-w-0 max-w-full text-right text-sm font-bold text-slate-800 bg-white px-2 py-1.5';
-    setAccountFieldButtonMode('nickname', 'save');
-    requestAnimationFrame(() => input.focus());
+const PROFILE_FIELD_EDIT_TITLES = {
+    nickname: '닉네임 수정',
+    birthdate: '생년월일 수정',
+    bio: '소개 수정',
+    lifestyle: '라이프 스타일 수정'
+};
+
+function syncProfileFieldEditGenderUI() {
+    const selected = (document.getElementById('profileFieldEditGender')?.value || '').trim();
+    document.querySelectorAll('.profile-field-edit-gender-btn').forEach((btn) => {
+        const active = (btn.getAttribute('data-value') || '') === selected;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-500', !active);
+        btn.classList.toggle('border-slate-200', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
 }
 
-function mountBirthdateInline() {
-    const host = document.getElementById('accountBirthdateEditHost');
-    const viewRow = document.getElementById('accountBirthdateViewRow');
-    const editorRow = document.getElementById('accountBirthdateEditorRow');
-    const edit = document.getElementById('settingBirthdateEdit');
-    if (!host || !edit || !viewRow || !editorRow) return;
-    viewRow.classList.add('hidden');
-    editorRow.classList.remove('hidden');
-    host.classList.remove('hidden');
-    host.appendChild(edit);
-    edit.classList.remove('hidden');
-    const bdInput = document.getElementById('settingBirthdate');
-    if (bdInput) {
-        bdInput.className =
-            'profile-settings-nickname-inline w-[9.5rem] max-w-full min-w-0 text-right text-sm font-bold text-slate-800 px-2 py-1.5';
-        setupBirthdateInputFormatting(bdInput);
+function syncProfileFieldEditLifestyleUI() {
+    const selected = (document.getElementById('profileFieldEditLifestyle')?.value || '').trim();
+    document.querySelectorAll('.profile-field-edit-lifestyle-btn').forEach((btn) => {
+        const active = (btn.getAttribute('data-value') || '') === selected;
+        btn.classList.toggle('bg-emerald-600', active);
+        btn.classList.toggle('text-white', active);
+        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('bg-white', !active);
+        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('border-slate-200', !active);
+    });
+}
+
+function closeProfileFieldEditModal() {
+    const modal = document.getElementById('profileFieldEditModal');
+    if (modal) modal.classList.add('hidden');
+    if (appState.profileEditScope && appState.profileEditScope !== 'full') {
+        setProfileSettingsEditMode(false);
     }
-    syncGenderButtonsUIFromHidden();
-    requestAnimationFrame(() => bdInput?.focus());
 }
 
-/** 인라인 편집 취소(프로필 필드만 스냅샷 복구 — 밀당 메모 등 다른 설정은 유지) */
+function openProfileFieldEditModal(field) {
+    initProfileFieldEditModalOnce();
+    const modal = document.getElementById('profileFieldEditModal');
+    if (!modal) return;
+    const titleEl = document.getElementById('profileFieldEditTitle');
+    if (titleEl) titleEl.textContent = PROFILE_FIELD_EDIT_TITLES[field] || '수정';
+
+    ['nickname', 'birthdate', 'bio', 'lifestyle'].forEach((f) => {
+        document.getElementById(`profileFieldEditPanel${f.charAt(0).toUpperCase()}${f.slice(1)}`)?.classList.add('hidden');
+    });
+    const panelMap = {
+        nickname: 'profileFieldEditPanelNickname',
+        birthdate: 'profileFieldEditPanelBirthdate',
+        bio: 'profileFieldEditPanelBio',
+        lifestyle: 'profileFieldEditPanelLifestyle'
+    };
+    document.getElementById(panelMap[field])?.classList.remove('hidden');
+
+    const p = appState.tempSettings?.profile || {};
+    if (field === 'nickname') {
+        const input = document.getElementById('profileFieldEditNickname');
+        if (input) input.value = p.nickname || '';
+    } else if (field === 'birthdate') {
+        const input = document.getElementById('profileFieldEditBirthdate');
+        if (input) {
+            input.value = p.birthdate || '';
+            setupBirthdateInputFormatting(input);
+        }
+        const genderEl = document.getElementById('profileFieldEditGender');
+        if (genderEl) genderEl.value = p.gender || '';
+        syncProfileFieldEditGenderUI();
+        const hint = document.getElementById('profileFieldEditBirthdateHint');
+        const changeCount = Number(p.birthdateChangeCount || 0);
+        if (hint) {
+            hint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+        }
+    } else if (field === 'bio') {
+        const input = document.getElementById('profileFieldEditBio');
+        const countEl = document.getElementById('profileFieldEditBioCount');
+        if (input) {
+            input.value = p.bio || '';
+            if (countEl) countEl.textContent = String((p.bio || '').length);
+            if (!input._profileFieldEditBioInit) {
+                addCompositionAwareInput(input, () => {
+                    if (countEl) countEl.textContent = String(input.value.length);
+                });
+                input._profileFieldEditBioInit = true;
+            }
+        }
+    } else if (field === 'lifestyle') {
+        const hidden = document.getElementById('profileFieldEditLifestyle');
+        if (hidden) hidden.value = p.lifestyle || '';
+        syncProfileFieldEditLifestyleUI();
+    }
+
+    modal.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        if (field === 'nickname') document.getElementById('profileFieldEditNickname')?.focus();
+        else if (field === 'birthdate') document.getElementById('profileFieldEditBirthdate')?.focus();
+        else if (field === 'bio') document.getElementById('profileFieldEditBio')?.focus();
+        else if (field === 'lifestyle') document.querySelector('.profile-field-edit-lifestyle-btn')?.focus();
+    });
+}
+
+function initProfileFieldEditModalOnce() {
+    const modal = document.getElementById('profileFieldEditModal');
+    if (!modal || modal._profileFieldEditInit) return;
+    modal._profileFieldEditInit = true;
+
+    const closeBtn = document.getElementById('profileFieldEditCloseBtn');
+    const cancelBtn = document.getElementById('profileFieldEditCancelBtn');
+    const saveBtn = document.getElementById('profileFieldEditSaveBtn');
+    if (closeBtn) closeBtn.onclick = (e) => { e.preventDefault(); closeProfileFieldEditModal(); };
+    if (cancelBtn) cancelBtn.onclick = (e) => { e.preventDefault(); closeProfileFieldEditModal(); };
+    if (saveBtn) {
+        saveBtn.onclick = (e) => {
+            e.preventDefault();
+            const field = appState.profileEditScope;
+            if (field && field !== 'full') void saveProfileSingleField(field);
+        };
+    }
+    modal.onclick = (e) => {
+        if (e.target === modal) closeProfileFieldEditModal();
+    };
+
+    document.querySelectorAll('.profile-field-edit-gender-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('profileFieldEditGender');
+            if (hidden) hidden.value = v;
+            syncProfileFieldEditGenderUI();
+        });
+    });
+    document.querySelectorAll('.profile-field-edit-lifestyle-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const v = btn.getAttribute('data-value') || '';
+            const hidden = document.getElementById('profileFieldEditLifestyle');
+            if (hidden) hidden.value = v;
+            syncProfileFieldEditLifestyleUI();
+        });
+    });
+}
+
+/** 인라인/팝업 편집 취소(프로필 필드만 스냅샷 복구 — 밀당 메모 등 다른 설정은 유지) */
 export function cancelInlineProfileFieldEdit() {
+    closeProfileFieldEditModal();
     unmountNicknameInline();
     unmountBirthdateInline();
     resetAllProfileFieldActionButtons();
@@ -960,7 +1035,7 @@ export async function saveProfileSingleField(field) {
     _saveProfileSingleFieldBusy = true;
     try {
         if (field === 'nickname') {
-            const newNickname = (document.getElementById('settingNickname')?.value || '').trim();
+            const newNickname = (document.getElementById('profileFieldEditNickname')?.value || '').trim();
             const existingNickname = (window.userSettings?.profile?.nickname || '').trim();
             if (!newNickname) {
                 showToast('닉네임을 입력해주세요.', 'error');
@@ -986,9 +1061,11 @@ export async function saveProfileSingleField(field) {
                 state.tempSettings.profileCompleted = true;
                 state.tempSettings.profileCompletedAt = state.tempSettings.profileCompletedAt || new Date().toISOString();
             }
+            const nickDom = document.getElementById('settingNickname');
+            if (nickDom) nickDom.value = state.tempSettings.profile.nickname;
         } else if (field === 'birthdate') {
-            const newBirthdate = (document.getElementById('settingBirthdate')?.value || '').trim();
-            const newGenderRaw = (document.getElementById('settingGender')?.value || '').trim();
+            const newBirthdate = (document.getElementById('profileFieldEditBirthdate')?.value || '').trim();
+            const newGenderRaw = (document.getElementById('profileFieldEditGender')?.value || '').trim();
             const newGender = newGenderRaw === 'male' || newGenderRaw === 'female' ? newGenderRaw : null;
             const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
             const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
@@ -1027,12 +1104,22 @@ export async function saveProfileSingleField(field) {
                     null;
             }
             state.tempSettings.profile.gender = newGender;
+            const bdDom = document.getElementById('settingBirthdate');
+            if (bdDom) bdDom.value = state.tempSettings.profile.birthdate || '';
+            const genderDom = document.getElementById('settingGender');
+            if (genderDom) genderDom.value = newGender || '';
         } else if (field === 'bio') {
-            state.tempSettings.profile.bio = (document.getElementById('settingBio')?.value || '').trim() || '';
+            state.tempSettings.profile.bio = (document.getElementById('profileFieldEditBio')?.value || '').trim() || '';
+            const bioDom = document.getElementById('settingBio');
+            if (bioDom) bioDom.value = state.tempSettings.profile.bio;
+            const bioCharCount = document.getElementById('bioCharCount');
+            if (bioCharCount) bioCharCount.textContent = String(state.tempSettings.profile.bio.length);
         } else if (field === 'lifestyle') {
-            const newLifestyle = (document.getElementById('settingLifestyle')?.value || '').trim();
+            const newLifestyle = (document.getElementById('profileFieldEditLifestyle')?.value || '').trim();
             const existingLifestyle = (window.userSettings?.profile?.lifestyle || '').trim();
             state.tempSettings.profile.lifestyle = newLifestyle || existingLifestyle || '';
+            const lifeDom = document.getElementById('settingLifestyle');
+            if (lifeDom) lifeDom.value = state.tempSettings.profile.lifestyle;
         }
 
         await dbOps.saveSettings(state.tempSettings);
@@ -1041,6 +1128,8 @@ export async function saveProfileSingleField(field) {
         showToast('저장되었습니다.', 'success');
         updateHeaderUI();
 
+        const modal = document.getElementById('profileFieldEditModal');
+        if (modal) modal.classList.add('hidden');
         unmountNicknameInline();
         unmountBirthdateInline();
         resetAllProfileFieldActionButtons();
@@ -1058,19 +1147,7 @@ export async function saveProfileSingleField(field) {
 
 function startInlineProfileFieldEdit(field) {
     setProfileSettingsEditMode(true, field);
-    if (field === 'nickname') {
-        mountNicknameInline();
-    } else if (field === 'birthdate') {
-        mountBirthdateInline();
-    } else if (field === 'bio') {
-        setAccountFieldButtonMode('bio', 'save');
-        requestAnimationFrame(() => document.getElementById('settingBio')?.focus());
-    } else if (field === 'lifestyle') {
-        setAccountFieldButtonMode('lifestyle', 'save');
-        requestAnimationFrame(() =>
-            document.querySelector('.profile-lifestyle-chips .settings-lifestyle-btn')?.focus()
-        );
-    }
+    openProfileFieldEditModal(field);
 }
 
 function handleProfileFieldPencilOrSave(field) {
@@ -1086,12 +1163,16 @@ function handleProfileFieldPencilOrSave(field) {
     if (!allowed.includes(field)) return;
 
     if (appState.profileEditScope && appState.profileEditScope !== 'full') {
-        cancelInlineProfileFieldEdit();
+        const modal = document.getElementById('profileFieldEditModal');
+        if (modal && !modal.classList.contains('hidden')) {
+            modal.classList.add('hidden');
+        }
+        setProfileSettingsEditMode(false);
     }
     startInlineProfileFieldEdit(field);
 }
 
-/** 연필 → 같은 위치 인라인 편집, 버튼은 저장으로 전환 후 항목만 저장 */
+/** 연필 → 팝업 편집 후 항목만 저장 */
 export function activateAccountFieldEdit(field) {
     handleProfileFieldPencilOrSave(field);
 }
@@ -1381,10 +1462,10 @@ function setProfileSettingsEditMode(isEditing, editScope = 'full') {
     const showNicknameRow = !!(loggedIn && editing && scope === 'full');
     const showBirthdateRow = !!(loggedIn && editing && scope === 'full');
 
-    const enableNickname = !!(editing && (scope === 'full' || scope === 'nickname'));
-    const enableBirthdate = !!(editing && (scope === 'full' || scope === 'birthdate'));
-    const enableBio = !!(editing && (scope === 'full' || scope === 'bio'));
-    const enableLifestyle = !!(editing && (scope === 'full' || scope === 'lifestyle'));
+    const enableNickname = !!(editing && scope === 'full');
+    const enableBirthdate = !!(editing && scope === 'full');
+    const enableBio = !!(editing && scope === 'full');
+    const enableLifestyle = !!(editing && scope === 'full');
     const enablePhotoStub = !!(editing && scope === 'full');
 
     const nicknameInput = document.getElementById('settingNickname');
@@ -1439,7 +1520,8 @@ function setProfileSettingsEditMode(isEditing, editScope = 'full') {
 
     document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
         btn.disabled = !enableLifestyle;
-        btn.classList.toggle('opacity-60', !enableLifestyle);
+        /* 보기 모드에서도 선택 칩이 흐려지지 않도록 opacity 미적용 (편집은 팝업) */
+        btn.classList.remove('opacity-60');
         btn.classList.toggle('cursor-not-allowed', !enableLifestyle);
     });
 
@@ -1524,6 +1606,7 @@ window.renderSettingsProfileAvatarPreview = renderSettingsProfileAvatarPreview;
 window.syncAccountCardFromProfileFields = syncAccountCardDisplayFields;
 window.activateAccountFieldEdit = activateAccountFieldEdit;
 window.handleProfileFieldPencilOrSave = handleProfileFieldPencilOrSave;
+window.closeProfileFieldEditModal = closeProfileFieldEditModal;
 window.syncSettingsGenderButtonsUI = syncGenderButtonsUIFromHidden;
 window.openAccountAvatarModal = openAccountAvatarModal;
 window.closeAccountAvatarModal = closeAccountAvatarModal;

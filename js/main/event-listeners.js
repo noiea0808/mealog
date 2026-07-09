@@ -49,9 +49,7 @@ import {
     openSettings,
     switchSettingsTab,
     saveProfileSettings,
-    initPushPreferencesControlsOnce,
-    saveProfileSingleField,
-    cancelInlineProfileFieldEdit
+    initPushPreferencesControlsOnce
 } from '../modals.js';
 
 /** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
@@ -545,14 +543,6 @@ export function initEventListeners() {
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('bio');
         });
     }
-    document.getElementById('accountBioSaveBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        void saveProfileSingleField('bio');
-    });
-    document.getElementById('accountBioCancelBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        cancelInlineProfileFieldEdit();
-    });
     const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
     if (accountEditLifestyleBtn) {
         accountEditLifestyleBtn.addEventListener('click', (e) => {
@@ -560,14 +550,6 @@ export function initEventListeners() {
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('lifestyle');
         });
     }
-    document.getElementById('accountLifestyleSaveBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        void saveProfileSingleField('lifestyle');
-    });
-    document.getElementById('accountLifestyleCancelBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        cancelInlineProfileFieldEdit();
-    });
 
     const cancelProfileSettingsBtn = document.getElementById('cancelProfileSettingsBtn');
     if (cancelProfileSettingsBtn) {
@@ -602,9 +584,8 @@ export function initEventListeners() {
 
     document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const s = appState.profileEditScope;
-            if (!appState.isProfileEditing || (s !== 'full' && s !== 'lifestyle')) {
-                showToast('라이프 스타일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
+            if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+                showToast('라이프 스타일 연필을 눌러 수정할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';
@@ -623,9 +604,8 @@ export function initEventListeners() {
     });
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const s = appState.profileEditScope;
-            if (!appState.isProfileEditing || (s !== 'full' && s !== 'birthdate')) {
-                showToast('생년월일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
+            if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+                showToast('생년월일 연필을 눌러 수정할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';

@@ -5034,7 +5034,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     padding: 0.5rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #64748b;
+    color: #0f172a;
     background: var(--app-page-bg);
     border: 1px solid #e2e8f0;
     border-radius: 9999px;
@@ -5045,9 +5045,11 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     background: #f1f5f9;
     border-color: #cbd5e1;
 }
-/* 라이프스타일 칩: 선택 시 검정으로 표시 (JS가 bg-emerald-600 등 붙여도 여기서 덮어씀) */
+/* 라이프스타일 칩: 선택 시 검정 배경 + 흰 글씨 (프로필 목록·편집 팝업 공통) */
 .profile-settings-list .settings-lifestyle-btn.bg-emerald-600,
-.profile-settings-list .profile-lifestyle-chip.bg-emerald-600 {
+.profile-settings-list .profile-lifestyle-chip.bg-emerald-600,
+#profileFieldEditModal .profile-lifestyle-chip.bg-emerald-600,
+#profileFieldEditModal .profile-field-edit-lifestyle-btn.bg-emerald-600 {
     background: #1e293b !important;
     border-color: #1e293b !important;
     color: #fff !important;
