@@ -45,8 +45,9 @@ html.platform-web #navigationBarOverlay {
     display: none !important;
 }
 /*
- * 구형 Android WebView(Chromium <140): @capacitor-community/safe-area가 decorView padding으로
- * 시스템 바 영역을 처리하고 env(safe-area-inset-*)는 0 → CSS/오버레이 중복 inset 방지
+ * 구형 Android WebView(Chromium <140) 전용: @capacitor-community/safe-area가 decorView padding으로
+ * 시스템 바를 처리하고 env()는 0 → CSS/오버레이 중복 inset 방지.
+ * Chromium≥140·iOS 등 최신 기기에는 index.html applyNativeSafeAreaMode가 이 클래스를 붙이지 않음.
  */
 html.platform-native-inset-padded {
     --safe-top: 0px;

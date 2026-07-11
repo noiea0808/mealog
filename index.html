@@ -596,6 +596,8 @@
 
                 try {
                     document.documentElement.classList.add('platform-native-app');
+                    var SAFE_TOP_MIN = 28;
+                    var SAFE_BOTTOM_MIN = 48;
                     function readEnvSafeInset(edge) {
                         var prop = edge === 'top' ? 'paddingTop' : 'paddingBottom';
                         var envName = edge === 'top' ? 'safe-area-inset-top' : 'safe-area-inset-bottom';
@@ -606,14 +608,31 @@
                         document.documentElement.removeChild(probe);
                         return px;
                     }
+                    /** Android WebView Chromium 메이저 — safe-area 플러그인 decorView 패딩은 <140만 */
+                    function getChromiumMajorVersion() {
+                        var ua = navigator.userAgent || '';
+                        var m = ua.match(/Chrom(?:e|ium)\/(\d+)/);
+                        return m ? parseInt(m[1], 10) : 0;
+                    }
                     function applyNativeSafeAreaMode() {
                         var top = readEnvSafeInset('top');
                         var bottom = readEnvSafeInset('bottom');
-                        var padded = top < 1 && bottom < 1;
-                        document.documentElement.classList.toggle('platform-native-inset-padded', padded);
-                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !padded);
-                        document.documentElement.style.setProperty('--safe-top', padded ? '0px' : (top + 'px'));
-                        document.documentElement.style.setProperty('--safe-bottom', padded ? '0px' : (bottom + 'px'));
+                        var envHasInsets = top >= 1 || bottom >= 1;
+                        var chromium = getChromiumMajorVersion();
+                        /* env=0 이어도 Chromium≥140·iOS 등은 decorView 패딩 없음 → 0으로 만들면 시스템 바 침범 */
+                        var legacyPaddedWebView = !envHasInsets && chromium > 0 && chromium < 140;
+                        document.documentElement.classList.toggle('platform-native-inset-padded', legacyPaddedWebView);
+                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !legacyPaddedWebView);
+                        if (legacyPaddedWebView) {
+                            document.documentElement.style.setProperty('--safe-top', '0px');
+                            document.documentElement.style.setProperty('--safe-bottom', '0px');
+                        } else if (envHasInsets) {
+                            document.documentElement.style.setProperty('--safe-top', Math.max(top, SAFE_TOP_MIN) + 'px');
+                            document.documentElement.style.setProperty('--safe-bottom', Math.max(bottom, SAFE_BOTTOM_MIN) + 'px');
+                        } else {
+                            document.documentElement.style.setProperty('--safe-top', SAFE_TOP_MIN + 'px');
+                            document.documentElement.style.setProperty('--safe-bottom', SAFE_BOTTOM_MIN + 'px');
+                        }
                     }
                     applyNativeSafeAreaMode();
                     requestAnimationFrame(function () {
