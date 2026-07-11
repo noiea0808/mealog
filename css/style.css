@@ -44,6 +44,18 @@ html.platform-web {
 html.platform-web #navigationBarOverlay {
     display: none !important;
 }
+/*
+ * 구형 Android WebView(Chromium <140): @capacitor-community/safe-area가 decorView padding으로
+ * 시스템 바 영역을 처리하고 env(safe-area-inset-*)는 0 → CSS/오버레이 중복 inset 방지
+ */
+html.platform-native-inset-padded {
+    --safe-top: 0px;
+    --safe-bottom: 0px;
+}
+html.platform-native-inset-padded #statusBarOverlay,
+html.platform-native-inset-padded #navigationBarOverlay {
+    display: none !important;
+}
 /* 네이티브 앱: 상단·탭·설정 서브탭·알림 탭·하단 아이콘 등 메뉴성 UI만 글자/아이콘 최소 크기 보강 (브레이크포인트는 그대로) */
 html.platform-native-app .app-chrome-subtab {
     font-size: 0.8125rem;
@@ -1760,7 +1772,8 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     overscroll-behavior-x: contain;
     cursor: grab;
 }
-#entryModal .entry-subtag-suggestions.entry-subtag-suggestions--dragging {
+#entryModal .entry-subtag-suggestions.entry-subtag-suggestions--dragging,
+#entryModal .entry-subtag-suggestions.entry-hscroll-strip--dragging {
     cursor: grabbing;
     user-select: none;
 }
@@ -5021,7 +5034,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     padding: 0.5rem 0.75rem;
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #64748b;
+    color: #0f172a;
     background: var(--app-page-bg);
     border: 1px solid #e2e8f0;
     border-radius: 9999px;
@@ -5032,9 +5045,11 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     background: #f1f5f9;
     border-color: #cbd5e1;
 }
-/* 라이프스타일 칩: 선택 시 검정으로 표시 (JS가 bg-emerald-600 등 붙여도 여기서 덮어씀) */
+/* 라이프스타일 칩: 선택 시 검정 배경 + 흰 글씨 (프로필 목록·편집 팝업 공통) */
 .profile-settings-list .settings-lifestyle-btn.bg-emerald-600,
-.profile-settings-list .profile-lifestyle-chip.bg-emerald-600 {
+.profile-settings-list .profile-lifestyle-chip.bg-emerald-600,
+#profileFieldEditModal .profile-lifestyle-chip.bg-emerald-600,
+#profileFieldEditModal .profile-field-edit-lifestyle-btn.bg-emerald-600 {
     background: #1e293b !important;
     border-color: #1e293b !important;
     color: #fff !important;
@@ -9103,21 +9118,44 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #entryModal .entry-detail-record-chips {
     display: flex;
-    flex-wrap: nowrap;
+    flex-flow: row nowrap;
+    align-items: center;
     gap: 0.3rem;
     margin-top: 0;
     margin-left: 0;
     padding-left: var(--entry-form-core-input-pl, 0);
-    justify-content: flex-end;
+    padding-bottom: 2px;
+    justify-content: flex-start;
     flex: 1;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     grid-column: 2;
     overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    cursor: grab;
 }
 #entryModal .entry-detail-record-chips::-webkit-scrollbar {
     display: none;
+}
+#entryModal .entry-detail-record-chips.entry-hscroll-strip--dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+@media (max-width: 380px) {
+    #entryModal .entry-detail-record-header-static {
+        grid-template-columns: minmax(0, 1fr);
+        row-gap: 0.375rem;
+    }
+    #entryModal .entry-detail-record-chips {
+        grid-column: 1;
+        padding-left: 0;
+    }
 }
 #entryModal .entry-detail-record-chip {
     display: inline-flex;
@@ -9315,6 +9353,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
 }
+#entryModal .entry-action-btn {
+    transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+}
 /* 버튼 배경은 영역 전체 유지, 내부 콘텐츠만 축소 → 주변 하얀 여백 방지 */
 #entryModal .entry-action-btn__inner {
     display: flex;
@@ -9323,7 +9364,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     justify-content: inherit;
     gap: inherit;
     min-width: 0;
-    transition: transform 0.08s ease;
+    transition: transform 0.1s ease;
 }
 #entryModal .entry-action-btn__inner--loading {
     flex-direction: row;
@@ -9341,15 +9382,14 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.01em;
-    transition: background 0.1s ease, box-shadow 0.1s ease;
 }
 #entryModal .entry-action-btn--save:hover:not(:disabled) {
     background: #1e293b;
 }
 #entryModal .entry-action-btn--save:active:not(:disabled),
 #entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
-    background: #020617;
-    box-shadow: inset 0 3px 12px rgb(0 0 0 / 0.45);
+    background: #059669;
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.22);
 }
 #entryModal .entry-action-btn--save:disabled {
     cursor: not-allowed;
@@ -9359,34 +9399,35 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: #fff1f2;
     color: #e11d48;
     border-right: 1px solid var(--entry-border-soft);
-    transition: background 0.1s ease, box-shadow 0.1s ease;
 }
 #entryModal .entry-action-btn--delete:hover:not(:disabled) {
     background: #ffe4e6;
 }
 #entryModal .entry-action-btn--delete:active:not(:disabled),
 #entryModal .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
-    background: #fecdd3;
-    box-shadow: inset 0 3px 10px rgb(225 29 72 / 0.28);
+    background: #fda4af;
+    color: #9f1239;
+    box-shadow: inset 0 2px 10px rgb(159 18 57 / 0.22);
 }
 #entryModal .entry-action-btn--share {
     background: var(--entry-surface-muted);
     color: var(--entry-text-muted);
     border-left: 1px solid var(--entry-border-soft);
-    transition: background 0.1s ease, box-shadow 0.1s ease;
 }
 #entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
     background: var(--entry-border-soft);
 }
 #entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
 #entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
-    background: #e2e8f0;
-    box-shadow: inset 0 3px 10px rgb(15 23 42 / 0.16);
+    background: #cbd5e1;
+    color: #334155;
+    box-shadow: inset 0 2px 10px rgb(15 23 42 / 0.14);
 }
 #entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
 #entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
-    background: #d1fae5;
-    box-shadow: inset 0 3px 10px rgb(5 150 105 / 0.22);
+    background: #6ee7b7;
+    color: #047857;
+    box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.2);
 }
 #entryModal .entry-action-btn--share.entry-action-btn--share-on {
     background: var(--entry-accent-soft);
@@ -9409,16 +9450,16 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 
 /* 사진 편집 모달 — 저장 버튼 눌림 */
 #photoEditModal .photo-edit-save-btn {
-    transition: background 0.1s ease, box-shadow 0.1s ease;
+    transition: background 0.14s ease, box-shadow 0.14s ease;
 }
 #photoEditModal .photo-edit-save-btn .entry-action-btn__inner {
     display: inline-flex;
-    transition: transform 0.08s ease;
+    transition: transform 0.1s ease;
 }
 #photoEditModal .photo-edit-save-btn:active,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed {
-    background: #0a0a0a;
-    box-shadow: inset 0 3px 14px rgb(0 0 0 / 0.5);
+    background: #059669;
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.25);
 }
 #photoEditModal .photo-edit-save-btn:active .entry-action-btn__inner,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed .entry-action-btn__inner {

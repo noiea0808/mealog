@@ -80,8 +80,10 @@ export function installFetchFailureAppOfflineBridge() {
     w.fetch = function fetchWithOfflineBridge() {
         return orig.apply(this, arguments).then(
             (res) => {
-                // 전송이 한 번이라도 성공하면(HTTP 응답 수신) 로컬 강제 오프라인 해제.
-                // 불안정 망에서 offline/online 이벤트 없이 끊겼다가 복구되는 경우가 많아 이 경로가 필수.
+                // HTTP 도달성 회복은 로컬 오프라인 플래그만 해제한다.
+                // Firestore 활동 시각(markMealogFirestoreActivity)은 여기서 갱신하지 않는다 —
+                // Wi-Fi↔LTE 전환 시 일반 fetch는 되는데 Firestore WebChannel만 죽은 경우,
+                // 이 갱신이 stale 감지를 무력화해 transport kick을 막았다.
                 clearLocalNetworkForcedOffline();
                 return res;
             },

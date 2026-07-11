@@ -6,6 +6,18 @@ import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { addDaysToYmd, applyDemoDateShiftToDailyStats, applyDemoDateShiftToMeals } from '../demo-date-shift.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
+import { onMealDocFirestoreServerAcknowledged } from '../utils/meal-entry-pending.js';
+
+/** getDocs로 서버에서 읽은 meal 문서 — 타임라인 동기화 도트를 반영 완료로 표시 */
+function acknowledgeServerMealDocsFromGetDocs(docs) {
+    if (!Array.isArray(docs)) return;
+    for (const d of docs) {
+        if (!d?.id) continue;
+        const id = String(d.id);
+        if (id.startsWith('temp_')) continue;
+        onMealDocFirestoreServerAcknowledged(id, null);
+    }
+}
 
 /** 연도별 stats 로드 (config/stats/years/{year}) - 대시보드에서 과거 연도 조회 시 */
 export async function loadStatsForYears(years) {
@@ -68,6 +80,7 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         );
         
         const snapshot = await getDocs(q);
+        acknowledgeServerMealDocsFromGetDocs(snapshot.docs);
         let additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         if (shift) {
             additionalMeals = applyDemoDateShiftToMeals(additionalMeals, shift);
@@ -80,11 +93,11 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         if (newMeals.length > 0) {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            
-            // 로드된 범위 업데이트 (데모는 화면 좌표)
-            const displayNewStart = shift ? addDaysToYmd(newStartStrRaw, shift) : newStartStrRaw;
-            window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
         }
+
+        // 기록이 0건인 주도 범위를 전진해야 빈 구간에서 fetch가 멈춘다
+        const displayNewStart = shift ? addDaysToYmd(newStartStrRaw, shift) : newStartStrRaw;
+        window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
         
         return { count: newMeals.length, newMeals };
     } catch (e) {
@@ -137,6 +150,7 @@ export async function loadMealsForDateRange(startDate, endDate) {
         );
         
         const snapshot = await getDocs(q);
+        acknowledgeServerMealDocsFromGetDocs(snapshot.docs);
         let additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         if (shift) {
             additionalMeals = applyDemoDateShiftToMeals(additionalMeals, shift);

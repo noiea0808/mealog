@@ -1,10 +1,12 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
-import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { db, appId, refreshAppCheckTokenBeforeFirestore, scheduleFirestoreListenersRebind } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, isLikelyNetworkError } from '../ui.js';
 import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
+import { tryMarkAppOfflineFromNetworkFailure } from '../utils/network-reachability.js';
+import { markMealogFirestoreActivity } from '../utils/network-activity.js';
 import { isDemoUser } from '../demo-account.js';
 import {
     applyDemoDateShiftToDailyComments,
@@ -146,6 +148,9 @@ export function setupListeners(userId, callbacks) {
     let migrationInProgress = false; // 마이그레이션 중복 실행 방지
     
     const settingsUnsubscribe = onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings'), async (snap) => {
+        if (!snap.metadata.fromCache) {
+            markMealogFirestoreActivity();
+        }
         // 사용자 ID 재확인 (리스너 내부에서)
         if (window.currentUser && userId !== window.currentUser.uid) {
             console.error('⚠️ ⚠️ ⚠️ 설정 리스너 콜백: 사용자 ID 불일치 감지!', {
@@ -541,7 +546,9 @@ export function setupListeners(userId, callbacks) {
 
         if (isLikelyNetworkError(error)) {
             hideLoading();
+            tryMarkAppOfflineFromNetworkFailure(error);
             notifyTransportOfflineUi();
+            scheduleFirestoreListenersRebind(3500);
             return;
         }
 
@@ -631,6 +638,9 @@ export function setupListeners(userId, callbacks) {
         }
     };
     const onStatsYearSnapshot = (year) => (snap) => {
+        if (!snap.metadata.fromCache) {
+            markMealogFirestoreActivity();
+        }
         if (window.currentUser && userId !== window.currentUser.uid) return;
         if (snap.exists() && snap.data().daily) {
             statsYearData[year] = snap.data().daily;
@@ -680,6 +690,20 @@ export function setupListeners(userId, callbacks) {
               );
 
     let mealsListenerUnsub = null;
+    let mealsNetworkRetryTimer = 0;
+
+    const scheduleMealsListenerNetworkRetry = () => {
+        if (mealsNetworkRetryTimer) return;
+        mealsNetworkRetryTimer = setTimeout(() => {
+            mealsNetworkRetryTimer = 0;
+            attachMealsRealtimeListener();
+        }, 4000);
+    };
+
+    const markMealsListenerNetworkDegraded = () => {
+        window.__mealogMealsLoadDegraded = true;
+        window.__mealogMealsRealtimeListenerActive = false;
+    };
 
     const runMealsLimitedOneTimeFetch = async () => {
         try {
@@ -720,7 +744,16 @@ export function setupListeners(userId, callbacks) {
         }
         if (isLikelyNetworkError(error)) {
             hideLoading();
+            tryMarkAppOfflineFromNetworkFailure(error);
             notifyTransportOfflineUi();
+            try {
+                if (mealsListenerUnsub) mealsListenerUnsub();
+            } catch (_) {
+                /* noop */
+            }
+            mealsListenerUnsub = null;
+            markMealsListenerNetworkDegraded();
+            scheduleMealsListenerNetworkRetry();
             return;
         }
 
@@ -765,6 +798,9 @@ export function setupListeners(userId, callbacks) {
             buildMealsPrimaryQuery(),
             { includeMetadataChanges: true },
             (snap) => {
+                if (!snap.metadata.fromCache) {
+                    markMealogFirestoreActivity();
+                }
                 clearMealsLoadDegradedUi();
                 const loadState = { isInitialLoad };
                 const r = applyMealsSnapshotPrimary({
@@ -791,6 +827,10 @@ export function setupListeners(userId, callbacks) {
 
     const dataUnsubscribe = () => {
         setMealsListenerRetryHandler(null);
+        if (mealsNetworkRetryTimer) {
+            clearTimeout(mealsNetworkRetryTimer);
+            mealsNetworkRetryTimer = 0;
+        }
         try {
             if (mealsListenerUnsub) mealsListenerUnsub();
         } catch (_) {
@@ -953,10 +993,12 @@ export async function loadSharedPhotosPageReliable(targetPosts = 10, startAfterD
             if (attempt > 0) {
                 await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
             }
-            return await withMomentFeedFetchTimeout(
+            const result = await withMomentFeedFetchTimeout(
                 loadSharedPhotosPage(targetPosts, startAfterDoc),
                 timeoutMs
             );
+            markMealogFirestoreActivity();
+            return result;
         } catch (e) {
             lastErr = e;
         }

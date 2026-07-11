@@ -304,6 +304,12 @@
         html.platform-native-app #landingBottomFixed {
             padding-bottom: max(env(safe-area-inset-bottom), 48px);
         }
+        html.platform-native-inset-padded #landingPage {
+            padding-top: 0;
+        }
+        html.platform-native-inset-padded #landingBottomFixed {
+            padding-bottom: 0;
+        }
         .platform-web #landingBottomFixed {
             padding-bottom: 0;
         }
@@ -480,6 +486,7 @@
     <script src="js/capacitor-push-notifications-plugin.js"></script>
     <script src="js/capacitor-haptics-plugin.js"></script>
     <script src="js/capacitor-app-update-plugin.js"></script>
+    <script src="js/capacitor-network-plugin.js"></script>
     <script>
         (function mealogLandingBoot() {
             function markLandingLayoutReady() {
@@ -589,14 +596,39 @@
 
                 try {
                     document.documentElement.classList.add('platform-native-app');
-                    var st = getComputedStyle(document.documentElement).getPropertyValue('--safe-top').trim();
-                    var sb = getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom').trim();
-                    if (!st || st === '0px' || parseFloat(st) < 20) {
-                        document.documentElement.style.setProperty('--safe-top', '28px');
+                    function readEnvSafeInset(edge) {
+                        var prop = edge === 'top' ? 'paddingTop' : 'paddingBottom';
+                        var envName = edge === 'top' ? 'safe-area-inset-top' : 'safe-area-inset-bottom';
+                        var probe = document.createElement('div');
+                        probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;' + prop + ':env(' + envName + ', 0px);';
+                        document.documentElement.appendChild(probe);
+                        var px = parseFloat(getComputedStyle(probe)[prop]) || 0;
+                        document.documentElement.removeChild(probe);
+                        return px;
                     }
-                    if (!sb || sb === '0px' || parseFloat(sb) < 20) {
-                        document.documentElement.style.setProperty('--safe-bottom', '48px');
+                    function applyNativeSafeAreaMode() {
+                        var top = readEnvSafeInset('top');
+                        var bottom = readEnvSafeInset('bottom');
+                        var padded = top < 1 && bottom < 1;
+                        document.documentElement.classList.toggle('platform-native-inset-padded', padded);
+                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !padded);
+                        document.documentElement.style.setProperty('--safe-top', padded ? '0px' : (top + 'px'));
+                        document.documentElement.style.setProperty('--safe-bottom', padded ? '0px' : (bottom + 'px'));
                     }
+                    applyNativeSafeAreaMode();
+                    requestAnimationFrame(function () {
+                        applyNativeSafeAreaMode();
+                        requestAnimationFrame(applyNativeSafeAreaMode);
+                    });
+                    window.addEventListener('load', function () {
+                        applyNativeSafeAreaMode();
+                        setTimeout(applyNativeSafeAreaMode, 300);
+                    });
+                    var resizeTimer;
+                    window.addEventListener('resize', function () {
+                        clearTimeout(resizeTimer);
+                        resizeTimer = setTimeout(applyNativeSafeAreaMode, 120);
+                    });
                     var splashHidden = false;
                     var hideNativeSplash = function () {
                         if (splashHidden) return;
@@ -1809,11 +1841,7 @@
                                 <div class="profile-settings-label-row flex items-center justify-between gap-2 w-full min-w-0">
                                     <div class="flex items-center gap-1 min-w-0 shrink">
                                         <label class="profile-settings-label profile-settings-label-inline mb-0 min-w-0" for="settingBio">소개</label>
-                                        <div class="flex items-center gap-1 shrink-0">
-                                            <button type="button" id="accountBioSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="소개 저장">저장</button>
-                                            <button type="button" id="accountBioCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
-                                            <button type="button" id="accountEditBioBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="소개 수정" aria-label="소개 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
-                                        </div>
+                                        <button type="button" id="accountEditBioBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="소개 수정" aria-label="소개 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
                                     </div>
                                     <p class="profile-settings-bio-count shrink-0 text-right text-slate-400 text-xs tabular-nums leading-none"><span id="bioCharCount">0</span>/200</p>
                                 </div>
@@ -1827,11 +1855,7 @@
                                 <div class="profile-settings-label-row flex items-center gap-1 w-full min-w-0">
                                     <div class="flex items-center gap-1 min-w-0 shrink">
                                         <span class="profile-settings-label profile-settings-label-inline mb-0 min-w-0 shrink">라이프 스타일</span>
-                                        <div class="flex items-center gap-1 shrink-0">
-                                            <button type="button" id="accountLifestyleSaveBtn" class="hidden px-0 py-0 text-[12px] font-bold text-emerald-700 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="저장" aria-label="라이프 스타일 저장">저장</button>
-                                            <button type="button" id="accountLifestyleCancelBtn" class="hidden px-0 py-0 text-[12px] font-bold text-slate-500 bg-transparent border-0 shadow-none hover:underline underline-offset-2" title="취소" aria-label="취소">취소</button>
-                                            <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
-                                        </div>
+                                        <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="p-0.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-slate-100 inline-flex items-center justify-center" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
                                     </div>
                                 </div>
                                 <div class="profile-settings-field py-2 w-full min-w-0">
@@ -2102,6 +2126,65 @@
                     <span class="text-base font-bold text-slate-700">취소</span>
                 </button>
                 <button type="button" id="accountAvatarModalApplyBtn" class="flex items-center justify-center px-2 py-3 bg-emerald-50 hover:bg-emerald-100/90 active:bg-emerald-100 transition-colors">
+                    <span class="text-base font-bold text-emerald-800">저장</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 설정: 프로필 항목 편집 (닉네임/생년월일/소개/라이프스타일) -->
+    <div id="profileFieldEditModal" class="hidden fixed inset-0 z-[406] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="profileFieldEditTitle">
+        <div class="relative w-full max-w-none sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,36rem)]">
+            <div class="relative flex items-center justify-between gap-2 px-4 pt-3.5 pb-2 border-b border-slate-100">
+                <h3 id="profileFieldEditTitle" class="text-base font-bold text-slate-800">수정</h3>
+                <button type="button" id="profileFieldEditCloseBtn" class="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="px-4 py-4 overflow-y-auto min-h-0 flex-1">
+                <div id="profileFieldEditPanelNickname" class="hidden space-y-2">
+                    <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditNickname">닉네임</label>
+                    <input type="text" id="profileFieldEditNickname" maxlength="20" placeholder="닉네임을 입력하세요" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500" autocomplete="nickname">
+                    <p class="text-xs text-slate-400">최대 20자</p>
+                </div>
+                <div id="profileFieldEditPanelBirthdate" class="hidden space-y-3">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditBirthdate">생년월일</label>
+                        <input type="text" id="profileFieldEditBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="YYYY-MM-DD" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500" aria-label="생년월일 (YYYY-MM-DD)">
+                        <p id="profileFieldEditBirthdateHint" class="text-xs text-slate-400">가입 후 1회만 수정 가능</p>
+                    </div>
+                    <div class="space-y-2">
+                        <span class="block text-sm font-semibold text-slate-600">성별</span>
+                        <input type="hidden" id="profileFieldEditGender" value="">
+                        <div class="flex items-center gap-2" role="group" aria-label="성별">
+                            <button type="button" class="profile-field-edit-gender-btn flex-1 min-h-[44px] rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-500 transition-colors" data-value="male">남</button>
+                            <button type="button" class="profile-field-edit-gender-btn flex-1 min-h-[44px] rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-500 transition-colors" data-value="female">여</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="profileFieldEditPanelBio" class="hidden space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="text-sm font-semibold text-slate-600" for="profileFieldEditBio">소개</label>
+                        <p class="text-xs text-slate-400 tabular-nums"><span id="profileFieldEditBioCount">0</span>/200</p>
+                    </div>
+                    <textarea id="profileFieldEditBio" maxlength="200" rows="5" placeholder="자신을 소개해주세요" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500"></textarea>
+                </div>
+                <div id="profileFieldEditPanelLifestyle" class="hidden space-y-2">
+                    <span class="block text-sm font-semibold text-slate-600">라이프 스타일</span>
+                    <input type="hidden" id="profileFieldEditLifestyle" value="">
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="학생">학생</button>
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="주부">주부</button>
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="직장인">직장인</button>
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="자영업">자영업</button>
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="프리랜서">프리랜서</button>
+                        <button type="button" class="profile-field-edit-lifestyle-btn profile-lifestyle-chip" data-value="기타">기타</button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 border-t border-slate-200">
+                <button type="button" id="profileFieldEditCancelBtn" class="flex items-center justify-center min-h-[48px] px-2 py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
+                    <span class="text-base font-bold text-slate-700">취소</span>
+                </button>
+                <button type="button" id="profileFieldEditSaveBtn" class="flex items-center justify-center min-h-[48px] px-2 py-3 bg-emerald-50 hover:bg-emerald-100/90 active:bg-emerald-100 transition-colors">
                     <span class="text-base font-bold text-emerald-800">저장</span>
                 </button>
             </div>

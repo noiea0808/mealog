@@ -49,9 +49,7 @@ import {
     openSettings,
     switchSettingsTab,
     saveProfileSettings,
-    initPushPreferencesControlsOnce,
-    saveProfileSingleField,
-    cancelInlineProfileFieldEdit
+    initPushPreferencesControlsOnce
 } from '../modals.js';
 
 /** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
@@ -405,35 +403,54 @@ export function initEventListeners() {
             fn();
         };
         const bindPressFeedback = (el) => {
-            if (!el || el.dataset.pressFeedbackBound === '1') return;
+            if (!el || el.dataset.pressFeedbackBound === '1') return null;
             el.dataset.pressFeedbackBound = '1';
+            const MIN_PRESS_MS = 90;
+            let pressStartedAt = 0;
+            let pressReleaseTimer = null;
             const pressOn = () => {
-                if (!el.disabled) el.classList.add(PRESS_CLASS);
+                if (!el.disabled) {
+                    clearTimeout(pressReleaseTimer);
+                    pressStartedAt = Date.now();
+                    el.classList.add(PRESS_CLASS);
+                }
             };
-            const pressOff = () => el.classList.remove(PRESS_CLASS);
+            const pressOff = () => {
+                const elapsed = Date.now() - pressStartedAt;
+                const delay = Math.max(0, MIN_PRESS_MS - elapsed);
+                clearTimeout(pressReleaseTimer);
+                pressReleaseTimer = setTimeout(() => {
+                    el.classList.remove(PRESS_CLASS);
+                }, delay);
+            };
             el.addEventListener('mousedown', pressOn);
             el.addEventListener('mouseup', pressOff);
             el.addEventListener('mouseleave', pressOff);
             el.addEventListener('touchstart', pressOn, { passive: true });
             el.addEventListener('touchend', pressOff, { passive: true });
             el.addEventListener('touchcancel', pressOff, { passive: true });
+            return { pressOn, pressOff };
         };
         const addSubmitHandlers = (el, fn) => {
             if (!el) return;
-            bindPressFeedback(el);
-            el.addEventListener('touchstart', (e) => {
+            const press = bindPressFeedback(el);
+            const pressOn = press?.pressOn || (() => {
                 if (!el.disabled) el.classList.add(PRESS_CLASS);
+            });
+            const pressOff = press?.pressOff || (() => el.classList.remove(PRESS_CLASS));
+            el.addEventListener('touchstart', (e) => {
+                pressOn();
                 e.preventDefault();
             }, { passive: false });
             el.addEventListener('touchend', (e) => {
-                el.classList.remove(PRESS_CLASS);
+                pressOff();
                 e.preventDefault();
                 runOnce(fn);
             }, { passive: false });
-            el.addEventListener('touchcancel', () => el.classList.remove(PRESS_CLASS));
+            el.addEventListener('touchcancel', pressOff);
             el.addEventListener('click', (e) => {
                 e.preventDefault();
-                el.classList.remove(PRESS_CLASS);
+                pressOff();
                 runOnce(fn);
             });
         };
@@ -526,14 +543,6 @@ export function initEventListeners() {
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('bio');
         });
     }
-    document.getElementById('accountBioSaveBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        void saveProfileSingleField('bio');
-    });
-    document.getElementById('accountBioCancelBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        cancelInlineProfileFieldEdit();
-    });
     const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
     if (accountEditLifestyleBtn) {
         accountEditLifestyleBtn.addEventListener('click', (e) => {
@@ -541,14 +550,6 @@ export function initEventListeners() {
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('lifestyle');
         });
     }
-    document.getElementById('accountLifestyleSaveBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        void saveProfileSingleField('lifestyle');
-    });
-    document.getElementById('accountLifestyleCancelBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        cancelInlineProfileFieldEdit();
-    });
 
     const cancelProfileSettingsBtn = document.getElementById('cancelProfileSettingsBtn');
     if (cancelProfileSettingsBtn) {
@@ -583,9 +584,8 @@ export function initEventListeners() {
 
     document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const s = appState.profileEditScope;
-            if (!appState.isProfileEditing || (s !== 'full' && s !== 'lifestyle')) {
-                showToast('라이프 스타일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
+            if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+                showToast('라이프 스타일 연필을 눌러 수정할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';
@@ -604,9 +604,8 @@ export function initEventListeners() {
     });
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const s = appState.profileEditScope;
-            if (!appState.isProfileEditing || (s !== 'full' && s !== 'birthdate')) {
-                showToast('생년월일 연필을 눌러 수정한 뒤 선택할 수 있습니다.', 'info');
+            if (!appState.isProfileEditing || appState.profileEditScope !== 'full') {
+                showToast('생년월일 연필을 눌러 수정할 수 있습니다.', 'info');
                 return;
             }
             const v = btn.getAttribute('data-value') || '';
