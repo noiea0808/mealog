@@ -258,6 +258,16 @@ function stripMealRowPointerClasses(className) {
 /** invalidate 후 renderTimeline이 targetDates에 해당 날짜를 넣지 못하면 섹션이 영구히 비어 실패 아이콘이 안 그려질 수 있음 */
 const pendingTimelineSectionRebuildDates = new Set();
 
+/** 초기 '오늘로 이동' 예약 — 추가 로드 renderTimeline 시 중복·역스크롤 방지 */
+let timelineScrollToTodayTimer = null;
+
+function cancelTimelineScrollToToday() {
+    if (timelineScrollToTodayTimer != null) {
+        clearTimeout(timelineScrollToTodayTimer);
+        timelineScrollToTodayTimer = null;
+    }
+}
+
 /** 날짜 섹션은 최신일이 위(먼저) — appendChild만 쓰면 invalidate 후 재삽입 시 해당 일이 맨 아래로 가버림 */
 function insertTimelineDateSectionInChronologicalOrder(container, section, dateStr) {
     if (!container || !section || typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -1518,7 +1528,58 @@ export function renderTimelineDateSections(dateStrs) {
     renderTimeline({ onlyDates: valid });
 }
 
-/** loadMoreMeals 직후 — 새로 가져온 기록이 속한 날짜만 추출 */
+/** 로컬 달력 YYYY-MM-DD */
+export function localTodayYmd(baseDate = new Date()) {
+    const d = baseDate instanceof Date ? new Date(baseDate) : new Date();
+    d.setHours(0, 0, 0, 0);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function ymdByOffsetFromToday(todayStr, dayOffset) {
+    const today = new Date(`${todayStr}T00:00:00`);
+    today.setDate(today.getDate() - dayOffset);
+    return localTodayYmd(today);
+}
+
+/**
+ * 오늘 이전 달력에서 아직 그리지 않은 날짜를 최신→과거 순으로 최대 count개 수집.
+ * loadedDates 개수 기반 점프 대신, 구멍을 메우며 연속 frontier를 따라간다.
+ */
+export function collectNextPastTimelineDates({
+    todayStr = localTodayYmd(),
+    count = 5,
+    loadedDates = window.loadedDates,
+    extraDates = [],
+    maxScan = 730
+} = {}) {
+    const skip = new Set(
+        [...(Array.isArray(loadedDates) ? loadedDates : []), ...(Array.isArray(extraDates) ? extraDates : [])]
+            .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d))
+    );
+    const out = [];
+    let offset = 1;
+    while (out.length < count && offset <= maxScan) {
+        const dateStr = ymdByOffsetFromToday(todayStr, offset);
+        offset += 1;
+        if (dateStr >= todayStr) continue;
+        if (skip.has(dateStr)) continue;
+        out.push(dateStr);
+        skip.add(dateStr);
+    }
+    return out;
+}
+
+/** 다음에 그릴 과거 날짜 묶음 중 가장 오래된 날 (fetch 필요 여부 판단) */
+export function getOldestPendingPastTimelineDate(options = {}) {
+    const dates = collectNextPastTimelineDates(options);
+    if (!dates.length) return null;
+    return dates[dates.length - 1];
+}
+
+/** @deprecated sparse 날짜 렌더는 누락을 유발함 — 호환용으로만 유지 */
 export function mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart) {
     const prev = typeof prevRangeStart === 'string' ? prevRangeStart : null;
     const next = typeof newRangeStart === 'string' ? newRangeStart : null;
@@ -1574,27 +1635,14 @@ export function renderTimeline(options = {}) {
             // 오늘 날짜가 아직 로드되지 않았다면 추가
             targetDates.push(todayStr);
         }
-        
-        // 이미 로드된 과거 날짜 수를 계산 (오늘 날짜 제외)
-        const pastLoadedDates = window.loadedDates.filter(d => d < todayStr);
-        const pastLoadedCount = pastLoadedDates.length;
-        
-        // 과거 날짜를 순차적으로 추가 (어제부터 시작)
-        for (let i = 1; i <= 5; i++) {
-            const dayOffset = pastLoadedCount + i;
-            const d = new Date(today);
-            d.setDate(d.getDate() - dayOffset);
-            // 로컬 날짜로 변환하여 시간대 문제 방지
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            const dateStr = `${year}-${month}-${day}`;
-            // 과거 날짜만 추가하고 중복 체크
-            if (dateStr < todayStr && !window.loadedDates.includes(dateStr) && !targetDates.includes(dateStr)) {
-                targetDates.push(dateStr);
-            }
-        }
-        
+
+        // 이미 그린 날짜(희소 삽입 포함)는 건너뛰고, 아직 안 그린 과거 달력 날짜를 최대 5일 확보
+        collectNextPastTimelineDates({
+            todayStr,
+            count: 5,
+            loadedDates: window.loadedDates,
+            extraDates: targetDates
+        }).forEach((dateStr) => targetDates.push(dateStr));
     } else {
         // page 모드: 선택한 날짜만 표시 (로컬 날짜로 변환)
         const pageYear = state.pageDate.getFullYear();
@@ -1875,11 +1923,20 @@ export function renderTimeline(options = {}) {
         pendingTimelineSectionRebuildDates.delete(dateStr);
     });
 
-    // 최근 날짜(오늘)로 스크롤 (초기 로드 시에만 — 증분 갱신 시 스크롤 유지)
-    if (!incrementalDates && state.viewMode === 'list' && sortedTargetDates.length > 0 && !window.hasScrolledToToday) {
+    // 최근 날짜(오늘)로 스크롤 (초기 로드·화면 상단에 있을 때만)
+    cancelTimelineScrollToToday();
+    if (
+        !incrementalDates &&
+        state.viewMode === 'list' &&
+        sortedTargetDates.length > 0 &&
+        !window.hasScrolledToToday &&
+        window.scrollY < 80
+    ) {
         const todaySection = document.getElementById(`date-${todayStr}`);
         if (todaySection) {
-            setTimeout(() => {
+            timelineScrollToTodayTimer = setTimeout(() => {
+                timelineScrollToTodayTimer = null;
+                if (window.hasScrolledToToday || window.scrollY >= 80) return;
                 const trackerSection = document.getElementById('trackerSection');
                 const trackerHeight = trackerSection ? trackerSection.offsetHeight : 0;
                 const headerHeight = 73;

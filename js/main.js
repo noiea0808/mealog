@@ -53,7 +53,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, mealDatesFromNewlyLoadedChunk, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -817,32 +817,53 @@ window.handleSearch = (k) => {
     });
 };
 
-// 더보기 함수 (타임라인용)
+/** 스크롤·더보기 공통: 다음 5일을 그리기 전에 필요한 만큼 1주 단위로 fetch */
+async function ensureMealsLoadedForNextTimelineDays(dayCount = 5) {
+    let totalNew = 0;
+    for (let i = 0; i < 8; i++) {
+        const range = window.loadedMealsDateRange;
+        if (!range?.start) break;
+        const oldestNeeded = getOldestPendingPastTimelineDate({
+            todayStr: localTodayYmd(),
+            count: dayCount,
+            loadedDates: window.loadedDates
+        });
+        if (!oldestNeeded || oldestNeeded >= range.start) break;
+        const prevStart = range.start;
+        const { count } = await loadMoreMeals(1, 'week');
+        totalNew += count;
+        // 범위가 안 움직이면 무한 루프 방지
+        if (window.loadedMealsDateRange?.start === prevStart) break;
+    }
+    return totalNew;
+}
+
+// 더보기 함수 (타임라인용) — 스크롤과 동일: 1주 fetch + 연속 5일 렌더
 window.loadMoreMealsTimeline = async () => {
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 
     try {
-        const prevRangeStart = window.loadedMealsDateRange?.start;
+        window.hasScrolledToToday = true;
         const scrollY = window.scrollY;
-        const { count, newMeals } = await loadMoreMeals(1);
+        const pendingBefore = getOldestPendingPastTimelineDate({
+            todayStr: localTodayYmd(),
+            count: 5,
+            loadedDates: window.loadedDates
+        });
+        const count = await ensureMealsLoadedForNextTimelineDays(5);
+        renderTimeline();
+        requestAnimationFrame(() => {
+            window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+        });
+        syncOrphanedSharesToMoment().then(() => {
+            updateTimelineShareIndicators();
+        }).catch(() => {});
+        renderMiniCalendar();
         if (count > 0) {
-            const newRangeStart = window.loadedMealsDateRange?.start;
-            const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
-            if (dates.length) {
-                renderTimelineDateSections(dates);
-            }
-            requestAnimationFrame(() => {
-                window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
-            });
-            syncOrphanedSharesToMoment().then(() => {
-                updateTimelineShareIndicators();
-            }).catch(() => {});
-            renderMiniCalendar();
             showToast(`${count}개의 기록을 불러왔습니다.`, 'success');
-        } else {
-            showToast("더 이상 불러올 기록이 없습니다.", 'info');
-            // 더보기 버튼 제거
+        } else if (!pendingBefore) {
+            showToast('더 이상 불러올 기록이 없습니다.', 'info');
             const loadMoreBtn = document.getElementById('loadMoreMealsBtn');
             if (loadMoreBtn) loadMoreBtn.remove();
         }
@@ -2032,40 +2053,31 @@ if (document.readyState === 'loading') {
 }
 
 // 스크롤 이벤트 리스너 (타임라인 하단 근처에서 더 오래된 기록 자동 로드)
+// 더보기 버튼과 동일: 필요 시 1주 단위 fetch → 연속 5일 렌더
 let scrollTimeout;
 window.addEventListener('scroll', () => { 
     const state = appState;
     if (state.currentTab !== 'timeline' || state.viewMode !== 'list' || !window.currentUser) return;
+    // 사용자가 아래로 스크롤했으면 초기 '오늘로 이동' 비활성화
+    if (window.scrollY > 120) {
+        window.hasScrolledToToday = true;
+    }
     if ((window.innerHeight + window.scrollY) < document.body.offsetHeight - 400) return;
     // 디바운싱: 연속 호출 방지
     clearTimeout(scrollTimeout);
     scrollTimeout = setTimeout(async () => {
         if (appState.currentTab !== 'timeline') return;
-        const range = window.loadedMealsDateRange;
-        if (range) {
-            const today = new Date();
-            const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-            const pastLoadedCount = (window.loadedDates || []).filter(d => d < todayStr).length;
-            const nextOldest = new Date(today);
-            nextOldest.setDate(nextOldest.getDate() - (pastLoadedCount + 5));
-            const nextOldestStr = `${nextOldest.getFullYear()}-${String(nextOldest.getMonth() + 1).padStart(2, '0')}-${String(nextOldest.getDate()).padStart(2, '0')}`;
-            if (nextOldestStr < range.start) {
-                try {
-                    const prevRangeStart = range.start;
-                    const { count, newMeals } = await loadMoreMeals(1, 'week');
-                    if (count > 0) {
-                        const newRangeStart = window.loadedMealsDateRange?.start;
-                        const dates = mealDatesFromNewlyLoadedChunk(newMeals, prevRangeStart, newRangeStart);
-                        if (dates.length) {
-                            renderTimelineDateSections(dates);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('스크롤 시 추가 로드 실패:', e);
-                }
-            }
+        const scrollY = window.scrollY;
+        window.hasScrolledToToday = true;
+        try {
+            await ensureMealsLoadedForNextTimelineDays(5);
+        } catch (e) {
+            console.warn('스크롤 시 추가 로드 실패:', e);
         }
         renderTimeline();
+        requestAnimationFrame(() => {
+            window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+        });
         renderMiniCalendar();
     }, 100);
 });
