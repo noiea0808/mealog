@@ -18,6 +18,7 @@ import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliab
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { initTimelineSearchModal, openTimelineSearchModal, clearTimelineSearchResults } from './timeline-search.js';
 import { initAppUpdate } from './app-update.js';
 import {
     switchScreen,
@@ -598,70 +599,17 @@ window.toggleGalleryTracePanel = () => {
     if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
 };
 
-/** 타임라인 검색 확장 너비: timeline-search-expanded 시 flex로 처리, 그 외 폴백 */
-function updateTimelineSearchExpandWidth() {
-    const wrapper = document.getElementById('timelineSearchPanel');
-    const panel = wrapper?.querySelector('.timeline-search-panel');
-    const header = document.getElementById('mainAppHeader');
-    if (!wrapper || !panel || !header) return;
-    if (!wrapper.classList.contains('expanded')) {
-        panel.style.width = '';
-        wrapper.style.width = '';
-        return;
-    }
-    /* timeline-search-expanded 클래스가 있으면 flex로 sub-title까지 확장 (CSS에서 처리) */
-    if (header.classList.contains('timeline-search-expanded')) {
-        wrapper.style.width = '';
-        return;
-    }
-    /* 폴백: JS로 너비 계산 */
-    const leftBlock = document.querySelector('header .mealog-title')?.parentElement;
-    if (!leftBlock) return;
-    const leftBlockRight = leftBlock.getBoundingClientRect().right;
-    const headerRect = header.getBoundingClientRect();
-    const headerRight = headerRect.right - 24; /* px-6 */
-    const notificationWrap = document.getElementById('notificationWrap');
-    const notificationWidth = (notificationWrap && !notificationWrap.classList.contains('hidden'))
-        ? notificationWrap.getBoundingClientRect().width : 0;
-    const gap = 8; /* gap-2 */
-    let w = headerRight - leftBlockRight - 8 - notificationWidth - gap;
-    w = Math.max(96, w);
-    wrapper.style.width = `${w}px`;
-}
-
 window.toggleSearch = () => {
     if (appState.currentTab === 'gallery' || appState.currentTab === 'board') {
         window.toggleGalleryTracePanel();
         return;
     }
     if (appState.currentTab !== 'timeline') return;
-    const panel = document.getElementById('timelineSearchPanel');
-    if (!panel) return;
-    if (panel.classList.contains('expanded')) {
-        window.closeSearch();
-    } else {
-        panel.classList.add('expanded');
-        document.getElementById('mainAppHeader')?.classList.add('timeline-search-expanded');
-        requestAnimationFrame(updateTimelineSearchExpandWidth);
-        document.getElementById('searchInput')?.focus();
-    }
+    openTimelineSearchModal();
 };
 
 window.closeSearch = () => {
-    const wrapper = document.getElementById('timelineSearchPanel');
-    const header = document.getElementById('mainAppHeader');
-    if (header) header.classList.remove('timeline-search-expanded');
-    if (wrapper) {
-        wrapper.classList.remove('expanded');
-        const panel = wrapper.querySelector('.timeline-search-panel');
-        if (panel) panel.style.width = '';
-        wrapper.style.width = '';
-    }
-    document.getElementById('searchInput')?.blur();
-    const inp = document.getElementById('searchInput');
-    if (inp) inp.value = '';
-    window.currentSearchQuery = '';
-    window.loadedDates = [];
+    clearTimelineSearchResults();
     const tc = document.getElementById('timelineContainer');
     if (tc) tc.innerHTML = '';
     renderTimeline();
@@ -672,9 +620,6 @@ window.clearGalleryFilterPostId = () => {
     renderGallery();
 };
 
-window.addEventListener('resize', updateTimelineSearchExpandWidth);
-
-// 앨범/밀톡 흔적 필터 패널 버튼 상태 갱신
 window.updateGalleryTraceFilterBarUI = () => {
     const panel = document.getElementById('galleryTraceFilterPanel');
     if (!panel) return;
@@ -727,94 +672,6 @@ window.setGalleryTraceFilter = (value) => {
         const category = window.currentBoardCategory || 'all';
         renderBoard(category);
     }
-};
-
-/** 검색어를 붉은색으로 강조한 HTML 반환 */
-function highlightKeyword(text, keyword) {
-    if (!keyword || !text) return escapeHtml(String(text ?? ''));
-    const k = keyword.toLowerCase();
-    const t = String(text);
-    const idx = t.toLowerCase().indexOf(k);
-    if (idx < 0) return escapeHtml(t);
-    const before = t.slice(0, idx);
-    const match = t.slice(idx, idx + k.length);
-    const after = t.slice(idx + k.length);
-    return escapeHtml(before) + `<span class="text-red-600 font-bold">${escapeHtml(match)}</span>` + highlightKeyword(after, keyword);
-}
-window.handleSearch = (k) => {
-    const c = document.getElementById('timelineContainer');
-    if (!c) return;
-    const q = (k || '').trim();
-    window.currentSearchQuery = q;
-    if (!q) {
-        window.loadedDates = [];
-        c.innerHTML = "";
-        renderTimeline();
-        return;
-    }
-    const kw = q.toLowerCase();
-    const res = (window.mealHistory || []).filter(m =>
-        (m.menuDetail?.toLowerCase().includes(kw) ||
-         m.deliveryVendor?.toLowerCase().includes(kw) ||
-         m.place?.toLowerCase().includes(kw) ||
-         m.category?.toLowerCase().includes(kw) ||
-         (m.withWhomDetail || m.withWhom || '')?.toLowerCase().includes(kw) ||
-         m.snackDetail?.toLowerCase().includes(kw) ||
-         m.snackType?.toLowerCase().includes(kw))
-    );
-    const fmt = (v) => (v == null || v === '' || v === undefined) ? '-' : String(v);
-    const fmtDate = (d) => {
-        if (!d) return '-';
-        const [y, m, n] = String(d).split('-');
-        return m && n ? `${parseInt(m, 10)}월 ${parseInt(n, 10)}일` : d;
-    };
-    const satietyData = (v) => SATIETY_DATA?.find(d => d.val === parseInt(v, 10));
-    const ratingStarsHtml = (rating) => {
-        const n = rating ? parseInt(rating, 10) : 0;
-        if (n < 1 || n > 5) return '';
-        return `<span class="inline-flex items-center gap-0.5 text-yellow-500" title="만족도 ${n}점">${'<i class="fa-solid fa-star text-sm"></i>'.repeat(n)}</span>`;
-    };
-    const satietyIconHtml = (v) => {
-        const s = satietyData(v);
-        if (!s) return '';
-        return `<span class="inline-flex items-center ${s.color}" title="${escapeHtml(s.label)}"><i class="fa-solid ${s.icon} text-sm"></i></span>`;
-    };
-    const isSnack = (r) => r.slotId === 'snack' || (r.slotId && String(r.slotId).toLowerCase().includes('snack'));
-    const safe = (x) => escapeHtml(String(x ?? ''));
-    const hl = (text) => highlightKeyword(text, q);
-    c.innerHTML = `<div class="px-2 py-3 text-sm font-bold text-slate-500">결과 ${res.length}건</div>` +
-        res.map(r => {
-            const how = isSnack(r) ? (r.mealType || r.snackType || '-') : (r.mealType || '-');
-            const where = isSnack(r) ? (r.snackPlace || r.place || '-') : (r.place || '-');
-            const what = isSnack(r) ? (r.snackDetail || r.snackType || '-') : (r.menuDetail || r.category || '-');
-            const whom = r.withWhomDetail || r.withWhom || '-';
-            const rating = isSnack(r) ? (r.snackRating ?? r.rating) : r.rating;
-            const ratingHtml = ratingStarsHtml(rating);
-            const satietyHtml = satietyIconHtml(r.satiety);
-            const textItems = [how, what, whom].map(v => v === '-' ? '' : hl(v)).filter(Boolean);
-            const iconItems = [ratingHtml, satietyHtml].filter(Boolean);
-            const textPart = textItems.length > 0 ? textItems.join('<span class="text-slate-300 mx-1">·</span>') : '';
-            const iconPart = iconItems.length > 0 ? iconItems.map(h => `<span class="inline-flex items-center">${h}</span>`).join('<span class="text-slate-300 mx-1">·</span>') : '';
-            const tagsHtml = [textPart, iconPart].filter(Boolean).join('<span class="text-slate-300 mx-1">·</span>');
-            return `<div class="search-result-item px-3 py-3 mb-3 border border-slate-200 rounded-xl active:bg-slate-50 transition-colors cursor-pointer" data-date="${safe(r.date)}" data-slot-id="${safe(r.slotId)}" data-entry-id="${safe(r.id)}">
-                <div class="flex items-center gap-2 flex-wrap">
-                    <span class="text-sm font-bold text-slate-800">${hl(fmtDate(r.date))}</span>
-                    ${where !== '-' ? `<span class="text-slate-400">|</span><span class="text-sm text-slate-600">${hl(where)}</span>` : ''}
-                </div>
-                <div class="mt-2 flex flex-wrap items-center gap-1 text-sm text-slate-600">${tagsHtml}</div>
-            </div>`;
-        }).join('');
-    c.querySelectorAll('.search-result-item').forEach(el => {
-        el.addEventListener('click', () => {
-            const date = el.dataset.date;
-            const slotId = el.dataset.slotId;
-            if (slotId === 'daily_journal' && date && typeof window.openDailyJournalModal === 'function') {
-                window.openDailyJournalModal(date);
-                return;
-            }
-            window.openModal(date, slotId, el.dataset.entryId);
-        });
-    });
 };
 
 /** 스크롤·더보기 공통: 다음 5일을 그리기 전에 필요한 만큼 1주 단위로 fetch */

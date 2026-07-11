@@ -165,7 +165,6 @@ export function registerMainTabSwitch() {
                 if (demoLoginWrap) demoLoginWrap.classList.remove('hidden');
                 if (timelineSearchPanel) {
                     timelineSearchPanel.classList.add('hidden');
-                    timelineSearchPanel.classList.remove('expanded');
                 }
                 if (tracePanel) {
                     tracePanel.classList.add('hidden');
@@ -197,7 +196,6 @@ export function registerMainTabSwitch() {
                         timelineSearchPanel.classList.remove('hidden');
                     } else {
                         timelineSearchPanel.classList.add('hidden');
-                        timelineSearchPanel.classList.remove('expanded');
                     }
                 }
                 if (tracePanel) {

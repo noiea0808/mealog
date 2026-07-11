@@ -3,6 +3,7 @@
  */
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { initTimelineSearchModal } from '../timeline-search.js';
 import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
 import {
     handleGoogleLogin,
@@ -326,13 +327,7 @@ export function initEventListeners() {
     if (searchTriggerBtn) {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput && !searchInput._searchCompositionInit) {
-        addCompositionAwareInput(searchInput, () => {
-            window.handleSearch(searchInput.value);
-        });
-        searchInput._searchCompositionInit = true;
-    }
+    initTimelineSearchModal();
 
     const notificationTriggerBtn = document.getElementById('notificationTriggerBtn');
     if (notificationTriggerBtn) {
