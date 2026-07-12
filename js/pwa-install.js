@@ -1,6 +1,6 @@
 /**
  * 로그인 화면 하단 앱 설치 유도
- * Android: Play Store · iOS: 홈 화면 추가 · PC: 바로가기(앱 설치)
+ * Android: Play Store · iOS: 홈 화면 추가 · PC: 즐겨찾기 안내
  */
 
 let deferredInstallPrompt = null;
@@ -49,10 +49,10 @@ function getPromoElements() {
     };
 }
 
-function updateDesktopInstallButtonVisibility() {
-    const btn = document.getElementById('desktopShortcutInstallBtn');
-    if (!btn) return;
-    btn.classList.toggle('hidden', !deferredInstallPrompt);
+function updateDesktopPwaInstallOptionalVisibility() {
+    const wrap = document.getElementById('desktopPwaInstallOptional');
+    if (!wrap) return;
+    wrap.classList.toggle('hidden', !deferredInstallPrompt);
 }
 
 export function initDeferredInstallPrompt() {
@@ -60,11 +60,11 @@ export function initDeferredInstallPrompt() {
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredInstallPrompt = e;
-        updateDesktopInstallButtonVisibility();
+        updateDesktopPwaInstallOptionalVisibility();
     });
     window.addEventListener('appinstalled', () => {
         deferredInstallPrompt = null;
-        updateDesktopInstallButtonVisibility();
+        updateDesktopPwaInstallOptionalVisibility();
         closeDesktopShortcutGuideModal();
     });
 }
@@ -112,7 +112,7 @@ export function closePwaInstallGuideModal() {
 export function openDesktopShortcutGuideModal() {
     const modal = document.getElementById('desktopShortcutGuideModal');
     if (!modal) return;
-    updateDesktopInstallButtonVisibility();
+    updateDesktopPwaInstallOptionalVisibility();
     modal.classList.remove('hidden');
 }
 
@@ -131,8 +131,17 @@ async function tryTriggerDesktopPwaInstall() {
         return false;
     }
     deferredInstallPrompt = null;
-    updateDesktopInstallButtonVisibility();
+    updateDesktopPwaInstallOptionalVisibility();
     return true;
+}
+
+/** PC: 즐겨찾기는 브라우저가 자동 추가를 막음 → 안내 모달. PWA 지원 시에만 원클릭 바탕화면 추가 시도 */
+async function handleDesktopPromoClick() {
+    if (deferredInstallPrompt) {
+        const installed = await tryTriggerDesktopPwaInstall();
+        if (installed) return;
+    }
+    openDesktopShortcutGuideModal();
 }
 
 export function registerPwaInstallGuideHandlers() {
@@ -165,7 +174,7 @@ export function registerPwaInstallGuideHandlers() {
     const desktopInstallBtn = document.getElementById('desktopShortcutInstallBtn');
 
     if (desktopOpenBtn) {
-        desktopOpenBtn.addEventListener('click', openDesktopShortcutGuideModal);
+        desktopOpenBtn.addEventListener('click', handleDesktopPromoClick);
     }
     if (desktopCloseBtn) {
         desktopCloseBtn.addEventListener('click', closeDesktopShortcutGuideModal);

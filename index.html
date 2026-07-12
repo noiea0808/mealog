@@ -1084,8 +1084,8 @@
         </div>
         <div id="desktopShortcutSection" class="landing-app-promo-bar hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
             <button type="button" id="desktopShortcutOpenGuideBtn" class="landing-app-promo-link flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
-                <i class="fa-solid fa-desktop text-base shrink-0" aria-hidden="true"></i>
-                <span>바로가기 추가하기</span>
+                <i class="fa-regular fa-star text-base shrink-0" aria-hidden="true"></i>
+                <span>즐겨찾기에 추가하기</span>
             </button>
         </div>
     </div>
@@ -1125,7 +1125,7 @@
         </div>
     </div>
 
-    <!-- PC 바로가기(PWA) 설치 가이드 -->
+    <!-- PC 즐겨찾기 추가 가이드 -->
     <div id="desktopShortcutGuideModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm" aria-modal="true" role="dialog" aria-labelledby="desktopShortcutGuideTitle">
         <div id="desktopShortcutGuideBackdrop" class="absolute inset-0" aria-hidden="true"></div>
         <div class="relative bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200/80 overflow-hidden">
@@ -1135,27 +1135,30 @@
                         <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" />
                     </div>
                     <div class="min-w-0 flex-1">
-                        <h2 id="desktopShortcutGuideTitle" class="text-base font-black text-slate-900 leading-snug">PC에서 앱처럼 사용하기</h2>
-                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">Chrome·Edge에서 바로가기를 추가하면 창 없이 앱처럼 바로 열 수 있어요.</p>
+                        <h2 id="desktopShortcutGuideTitle" class="text-base font-black text-slate-900 leading-snug">즐겨찾기에 추가하기</h2>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">브라우저 보안 정책상 웹사이트에서 즐겨찾기를 자동으로 추가할 수 없어요. 아래 방법으로 저장해 주세요.</p>
                     </div>
                 </div>
             </div>
             <ol class="px-5 py-4 space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
-                    <span>주소창 오른쪽 <strong class="text-slate-900">앱 설치</strong> 아이콘(⊕)을 클릭하거나,</span>
+                    <span><i class="fa-solid fa-keyboard text-emerald-500/80 mr-1" aria-hidden="true"></i>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
                 </li>
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
-                    <span>브라우저 메뉴(⋮)에서 <strong class="text-slate-900">앱 설치</strong> / <strong class="text-slate-900">MEALOG 설치</strong>를 선택해주세요.</span>
+                    <span><i class="fa-regular fa-star text-emerald-500/80 mr-1" aria-hidden="true"></i>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
                 </li>
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
-                    <span>설치하면 바탕화면·시작 메뉴에서 밀로그를 바로 실행할 수 있어요.</span>
+                    <span><i class="fa-solid fa-folder text-emerald-500/80 mr-1" aria-hidden="true"></i>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
                 </li>
             </ol>
-            <div class="px-5 pb-5 space-y-2">
-                <button type="button" id="desktopShortcutInstallBtn" class="hidden w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors">지금 설치</button>
+            <div id="desktopPwaInstallOptional" class="hidden px-5 pb-2">
+                <p class="text-[11px] text-slate-400 leading-relaxed mb-2">Chrome·Edge에서 지원될 때만, 즐겨찾기와 별도로 바탕화면 바로가기를 한 번에 추가할 수 있어요.</p>
+                <button type="button" id="desktopShortcutInstallBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors">바탕화면 바로가기 추가</button>
+            </div>
+            <div class="px-5 pb-5 pt-1">
                 <button type="button" id="desktopShortcutGuideCloseBtn" class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 active:bg-slate-300 transition-colors">확인</button>
             </div>
         </div>
