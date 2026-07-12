@@ -34,6 +34,9 @@ const ESCAPE_OVERLAY_IDS = [
     'demoIntroModal',
     'trackerMonthCalendarModal',
     'timelineSearchModal',
+    'momentSearchModal',
+    'boardSearchModal',
+    'notificationModal',
     'contentPopupModal',
     'bestSharePeriodNoticeModal',
     'passwordResetSuccessModal',
@@ -98,6 +101,15 @@ function closeOverlayById(id) {
             break;
         case 'timelineSearchModal':
             if (typeof window.closeTimelineSearchModal === 'function') window.closeTimelineSearchModal();
+            break;
+        case 'momentSearchModal':
+            if (typeof window.closeMomentSearchModal === 'function') window.closeMomentSearchModal();
+            break;
+        case 'boardSearchModal':
+            if (typeof window.closeBoardSearchModal === 'function') window.closeBoardSearchModal();
+            break;
+        case 'notificationModal':
+            if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
             break;
         case 'contentPopupModal':
             if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);

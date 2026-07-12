@@ -64,7 +64,7 @@ html.platform-native-app .app-chrome-subtab {
 html.platform-native-app #trackerTabs .view-tab {
     font-size: 0.8125rem;
 }
-html.platform-native-app .notification-popup .notification-tab-btn {
+html.platform-native-app .notification-modal .notification-tab-btn {
     font-size: 0.8125rem;
 }
 html.platform-native-app .bottom-nav button i {

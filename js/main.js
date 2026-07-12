@@ -19,6 +19,8 @@ import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { initTimelineSearchModal, openTimelineSearchModal, clearTimelineSearchResults } from './timeline-search.js';
+import { initMomentSearchModal, openMomentSearchModal } from './moment-search.js';
+import { openBoardSearchModal } from './board-search.js';
 import { initAppUpdate } from './app-update.js';
 import {
     switchScreen,
@@ -600,8 +602,15 @@ window.toggleGalleryTracePanel = () => {
 };
 
 window.toggleSearch = () => {
-    if (appState.currentTab === 'gallery' || appState.currentTab === 'board') {
-        window.toggleGalleryTracePanel();
+    if (appState.currentTab === 'board') {
+        const sub = appState.boardListSubTab;
+        if (sub === 'board' || sub === 'notice') {
+            openBoardSearchModal();
+        }
+        return;
+    }
+    if (appState.currentTab === 'gallery') {
+        openMomentSearchModal();
         return;
     }
     if (appState.currentTab !== 'timeline') return;

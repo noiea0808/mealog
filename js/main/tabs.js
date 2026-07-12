@@ -11,7 +11,7 @@ import {
     renderGallery,
     renderBoard,
     syncBoardFeedComposerVisibility,
-    syncBoardTracePanelVisibility
+    syncBoardSearchPanelVisibility
 } from '../render/index.js';
 import { updateDashboard } from '../analytics.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
@@ -77,6 +77,19 @@ export function registerMainTabSwitch() {
             }
             if (prevTab !== tab) {
                 if (prevTab === 'timeline' && typeof window.closeSearch === 'function') window.closeSearch();
+                if (prevTab === 'gallery' && typeof window.clearGallerySearch === 'function') {
+                    appState.gallerySearchActive = false;
+                    appState.gallerySearchKeyword = '';
+                    appState.gallerySearchDateRange = null;
+                    appState.galleryTraceFilter = null;
+                }
+                if (prevTab === 'board') {
+                    appState.boardSearchActive = false;
+                    appState.boardSearchKeyword = '';
+                    appState.boardSearchDateRange = null;
+                    appState.boardTraceFilter = null;
+                    if (typeof window.closeBoardSearchModal === 'function') window.closeBoardSearchModal();
+                }
                 if ((prevTab === 'gallery' || prevTab === 'board') && tab !== 'gallery' && tab !== 'board') {
                     const tracePanel = document.getElementById('galleryTraceFilterPanel');
                     if (tracePanel) {
@@ -155,6 +168,10 @@ export function registerMainTabSwitch() {
             }
 
             const searchBtn = document.getElementById('searchTriggerBtn');
+            const gallerySearchBtn = document.getElementById('gallerySearchTriggerBtn');
+            const boardSearchBtn = document.getElementById('boardSearchTriggerBtn');
+            const gallerySearchPanel = document.getElementById('gallerySearchPanel');
+            const boardSearchPanel = document.getElementById('boardSearchPanel');
             const tracePanel = document.getElementById('galleryTraceFilterPanel');
             const timelineSearchPanel = document.getElementById('timelineSearchPanel');
             const notificationWrap = document.getElementById('notificationWrap');
@@ -166,6 +183,8 @@ export function registerMainTabSwitch() {
                 if (timelineSearchPanel) {
                     timelineSearchPanel.classList.add('hidden');
                 }
+                if (gallerySearchPanel) gallerySearchPanel.classList.add('hidden');
+                if (boardSearchPanel) boardSearchPanel.classList.add('hidden');
                 if (tracePanel) {
                     tracePanel.classList.add('hidden');
                     tracePanel.classList.remove('expanded');
@@ -183,14 +202,15 @@ export function registerMainTabSwitch() {
                     if (showNotification) {
                         notificationWrap.classList.remove('hidden');
                         if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
-                        const popup = document.getElementById('notificationPopup');
-                        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+                        const modal = document.getElementById('notificationModal');
+                        if (modal && !modal.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
                     } else {
                         notificationWrap.classList.add('hidden');
                         if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
                     }
                 }
                 if (searchBtn) searchBtn.style.display = (tab === 'timeline') ? 'flex' : 'none';
+                if (gallerySearchBtn) gallerySearchBtn.style.display = (tab === 'gallery') ? 'flex' : 'none';
                 if (timelineSearchPanel) {
                     if (tab === 'timeline') {
                         timelineSearchPanel.classList.remove('hidden');
@@ -198,15 +218,23 @@ export function registerMainTabSwitch() {
                         timelineSearchPanel.classList.add('hidden');
                     }
                 }
-                if (tracePanel) {
+                if (gallerySearchPanel) {
                     if (tab === 'gallery') {
-                        tracePanel.classList.remove('hidden');
-                    } else if (tab === 'board') {
-                        syncBoardTracePanelVisibility();
+                        gallerySearchPanel.classList.remove('hidden');
                     } else {
-                        tracePanel.classList.add('hidden');
-                        tracePanel.classList.remove('expanded');
+                        gallerySearchPanel.classList.add('hidden');
                     }
+                }
+                if (boardSearchPanel) {
+                    if (tab === 'board') {
+                        syncBoardSearchPanelVisibility();
+                    } else {
+                        boardSearchPanel.classList.add('hidden');
+                    }
+                }
+                if (tracePanel) {
+                    tracePanel.classList.add('hidden');
+                    tracePanel.classList.remove('expanded');
                 }
             }
 

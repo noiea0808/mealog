@@ -195,6 +195,11 @@ window.switchBoardListSubTab = (sub) => {
         return;
     }
     appState.boardListSubTab = next;
+    appState.boardSearchActive = false;
+    appState.boardSearchKeyword = '';
+    appState.boardSearchDateRange = null;
+    appState.boardTraceFilter = null;
+    if (typeof window.closeBoardSearchModal === 'function') window.closeBoardSearchModal();
     if (next === 'feed') logUsageMetric('lounge_mealtalk').catch(() => {});
     else if (next === 'board') logUsageMetric('lounge_board').catch(() => {});
     else logUsageMetric('lounge_notice').catch(() => {});
