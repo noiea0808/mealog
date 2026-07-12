@@ -3,6 +3,10 @@
  */
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { initTimelineSearchModal } from '../timeline-search.js';
+import { initMomentSearchModal } from '../moment-search.js';
+import { initBoardSearchModal } from '../board-search.js';
+import { initNotificationModal } from './notifications.js';
 import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
 import {
     handleGoogleLogin,
@@ -31,6 +35,10 @@ import {
     confirmLogoutAction
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import {
+    configureLandingAppPromo,
+    registerPwaInstallGuideHandlers,
+} from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import { triggerQuickEntryFromFab } from '../modals/entry-quick-open.js';
@@ -133,11 +141,8 @@ function initMainAppKeyboardHandling() {
 export function initEventListeners() {
     registerDemoIntroModalHandlers();
     registerDemoNavGuideHandlers();
-
-    const apkDownloadSection = document.getElementById('apkDownloadSection');
-    if (apkDownloadSection && window.Capacitor?.isNativePlatform?.()) {
-        apkDownloadSection.style.display = 'none';
-    }
+    configureLandingAppPromo();
+    registerPwaInstallGuideHandlers();
 
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {
@@ -326,19 +331,29 @@ export function initEventListeners() {
     if (searchTriggerBtn) {
         searchTriggerBtn.addEventListener('click', window.toggleSearch);
     }
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput && !searchInput._searchCompositionInit) {
-        addCompositionAwareInput(searchInput, () => {
-            window.handleSearch(searchInput.value);
+    const gallerySearchTriggerBtn = document.getElementById('gallerySearchTriggerBtn');
+    if (gallerySearchTriggerBtn) {
+        gallerySearchTriggerBtn.addEventListener('click', () => {
+            if (typeof window.openMomentSearchModal === 'function') window.openMomentSearchModal();
         });
-        searchInput._searchCompositionInit = true;
+    }
+    initTimelineSearchModal();
+    initMomentSearchModal();
+    initBoardSearchModal();
+    initNotificationModal();
+
+    const boardSearchTriggerBtn = document.getElementById('boardSearchTriggerBtn');
+    if (boardSearchTriggerBtn) {
+        boardSearchTriggerBtn.addEventListener('click', () => {
+            if (typeof window.openBoardSearchModal === 'function') window.openBoardSearchModal();
+        });
     }
 
     const notificationTriggerBtn = document.getElementById('notificationTriggerBtn');
     if (notificationTriggerBtn) {
         notificationTriggerBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            window.toggleNotificationPopup();
+            if (typeof window.openNotificationModal === 'function') window.openNotificationModal();
         });
     }
 
@@ -357,13 +372,6 @@ export function initEventListeners() {
                 showToast('로그인 화면으로 이동하지 못했습니다.', 'error');
             }
         });
-    }
-    document.addEventListener('click', () => {
-        if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
-    });
-    const notificationPopup = document.getElementById('notificationPopup');
-    if (notificationPopup) {
-        notificationPopup.addEventListener('click', (e) => e.stopPropagation());
     }
 
     const galleryTraceFilterPanel = document.getElementById('galleryTraceFilterPanel');

@@ -7,6 +7,7 @@ import { feedOperations } from '../db.js';
 import { renderBoardFeedTab } from '../render/board-feed.js';
 import { getDisplayProfile, lightUiHaptic } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
+import { updateFeedCharRemainingUi } from '../feed-char-count.js';
 
 const LONG_PRESS_MS = 520;
 const MOVE_CANCEL_PX = 16;
@@ -161,7 +162,9 @@ function openEditFeedModal(postId) {
         <div class="feed-bubble-edit-panel w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:mx-4" role="dialog" aria-modal="true" aria-labelledby="feedEditTitle">
             <h2 id="feedEditTitle" class="mb-3 text-base font-bold text-slate-800">메시지 수정</h2>
             <textarea id="feedBubbleEditTa" rows="6" maxlength="280" class="feed-bubble-edit-input w-full min-h-[10rem] max-h-[min(44vh,18rem)] resize-none rounded-xl border border-slate-200 p-4 text-base leading-relaxed text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"></textarea>
-            <p class="mb-3 mt-2 text-sm text-slate-400"><span id="feedBubbleEditCount">0</span>/280</p>
+            <p class="mb-3 mt-2 flex justify-end min-h-[1rem]">
+                <span id="feedBubbleEditCount" class="hidden text-xs leading-none" aria-live="polite" aria-hidden="true"></span>
+            </p>
             <div class="flex justify-end gap-2">
                 <button type="button" id="feedBubbleEditCancel" class="rounded-lg bg-slate-100 px-5 py-2.5 text-base text-slate-600 active:bg-slate-200">취소</button>
                 <button type="button" id="feedBubbleEditSave" class="rounded-lg bg-emerald-600 px-5 py-2.5 text-base font-semibold text-white active:bg-emerald-700">저장</button>
@@ -177,7 +180,7 @@ function openEditFeedModal(postId) {
         ta.style.height = `${Math.min(Math.max(ta.scrollHeight, 160), cap)}px`;
     };
     const updCount = () => {
-        if (countEl) countEl.textContent = String((ta.value || '').length);
+        updateFeedCharRemainingUi(countEl, (ta.value || '').length);
     };
     updCount();
     ta.addEventListener('input', () => {

@@ -60,8 +60,8 @@ window.pushMomentMentionNotification = (postId, actorNickname, atMs) => {
     saveMv2MentionNotifs(filtered);
     // 팝업 열려 있으면 즉시 갱신
     try {
-        const popup = document.getElementById('notificationPopup');
-        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') {
+        const modal = document.getElementById('notificationModal');
+        if (modal && !modal.classList.contains('hidden') && typeof window.loadNotificationList === 'function') {
             window.loadNotificationList();
         }
         if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
@@ -158,25 +158,29 @@ async function setNotificationReadState(state) {
     }
 }
 
-window.toggleNotificationPopup = () => {
-    const popup = document.getElementById('notificationPopup');
-    if (!popup) return;
-    const isOpen = !popup.classList.contains('hidden');
-    if (isOpen) {
-        window.closeNotificationPopup();
-        return;
-    }
+window.openNotificationModal = () => {
+    const modal = document.getElementById('notificationModal');
+    if (!modal) return;
+    if (!modal.classList.contains('hidden')) return;
     notificationListActiveTab = 'unread';
-    popup.classList.remove('hidden');
+    modal.classList.remove('hidden');
     try { localStorage.setItem(NOTIFICATION_LAST_OPENED_KEY, String(Date.now())); } catch (_) {}
     if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
     window.loadNotificationList();
 };
 
+/** @deprecated toggle 대신 openNotificationModal 사용 */
+window.toggleNotificationPopup = window.openNotificationModal;
+
 window.closeNotificationPopup = () => {
-    const popup = document.getElementById('notificationPopup');
-    if (popup) popup.classList.add('hidden');
+    document.getElementById('notificationModal')?.classList.add('hidden');
 };
+
+export function initNotificationModal() {
+    document.getElementById('notificationBackdrop')?.addEventListener('click', window.closeNotificationPopup);
+    document.getElementById('notificationCloseBtn')?.addEventListener('click', window.closeNotificationPopup);
+    document.getElementById('notificationDismissBtn')?.addEventListener('click', window.closeNotificationPopup);
+}
 
 function getNotificationReadPostIds() {
     const state = getNotificationReadState();
@@ -532,8 +536,8 @@ function onNotificationChange() {
     clearTimeout(notificationDebounceTimer);
     notificationDebounceTimer = setTimeout(() => {
         if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
-        const popup = document.getElementById('notificationPopup');
-        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+        const modal = document.getElementById('notificationModal');
+        if (modal && !modal.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
     }, NOTIFICATION_DEBOUNCE_MS);
 }
 
@@ -571,8 +575,8 @@ export function stopNotificationListeners() {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && window.currentUser && !window.currentUser.isAnonymous) {
         if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
-        const popup = document.getElementById('notificationPopup');
-        if (popup && !popup.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
+        const modal = document.getElementById('notificationModal');
+        if (modal && !modal.classList.contains('hidden') && typeof window.loadNotificationList === 'function') window.loadNotificationList();
         startNotificationListeners();
     } else if (document.visibilityState === 'hidden') {
         stopNotificationListeners();

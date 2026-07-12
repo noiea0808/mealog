@@ -21,6 +21,7 @@ import { closeCharacterSelectModal, closeShareInsightModal } from '../analytics/
 import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/best-share.js';
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
+import { closePwaInstallGuideModal, closeDesktopShortcutGuideModal } from '../pwa-install.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
 import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 
@@ -32,7 +33,13 @@ const ESCAPE_OVERLAY_IDS = [
     'domainErrorModal',
     'profileSetupModal',
     'demoIntroModal',
+    'pwaInstallGuideModal',
+    'desktopShortcutGuideModal',
     'trackerMonthCalendarModal',
+    'timelineSearchModal',
+    'momentSearchModal',
+    'boardSearchModal',
+    'notificationModal',
     'contentPopupModal',
     'bestSharePeriodNoticeModal',
     'passwordResetSuccessModal',
@@ -92,8 +99,26 @@ function closeOverlayById(id) {
         case 'demoIntroModal':
             dismissDemoIntroModal();
             break;
+        case 'pwaInstallGuideModal':
+            closePwaInstallGuideModal();
+            break;
+        case 'desktopShortcutGuideModal':
+            closeDesktopShortcutGuideModal();
+            break;
         case 'trackerMonthCalendarModal':
             document.getElementById('trackerMonthCalendarModal')?.classList.add('hidden');
+            break;
+        case 'timelineSearchModal':
+            if (typeof window.closeTimelineSearchModal === 'function') window.closeTimelineSearchModal();
+            break;
+        case 'momentSearchModal':
+            if (typeof window.closeMomentSearchModal === 'function') window.closeMomentSearchModal();
+            break;
+        case 'boardSearchModal':
+            if (typeof window.closeBoardSearchModal === 'function') window.closeBoardSearchModal();
+            break;
+        case 'notificationModal':
+            if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
             break;
         case 'contentPopupModal':
             if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);

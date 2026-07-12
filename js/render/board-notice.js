@@ -7,6 +7,13 @@ import { getDisplayProfile, getProfileAvatarDisplay, SEOUL_LOCALE_OPTIONS } from
 import { getAdminDisplayName } from '../db.js';
 import { fetchUserProfiles } from './user-profiles.js';
 import { isDemoUser } from '../demo-account.js';
+import {
+    timestampToYmd,
+    isYmdInRange,
+    boardPostMatchesKeyword,
+    noticeMatchesKeyword,
+    formatBoardSearchSummary
+} from '../board-search-filter.js';
 
 /** 목록 카드 본문 미리보기: 서식·줄바꿈 유지, 최대 3줄 */
 const BOARD_LIST_PREVIEW_CLASS =
@@ -77,14 +84,64 @@ export function syncBoardFeedComposerVisibility() {
     }
 }
 
-/** 라운지 헤더 흔적(돋보기) 패널: 게시판·공지 서브탭에서만 표시 */
-export function syncBoardTracePanelVisibility() {
-    const tracePanel = document.getElementById('galleryTraceFilterPanel');
-    if (!tracePanel || appState.currentTab !== 'board') return;
+/** 라운지 헤더 검색 버튼: 게시판·공지 서브탭에서만 표시 */
+export function syncBoardSearchPanelVisibility() {
+    const panel = document.getElementById('boardSearchPanel');
+    if (!panel || appState.currentTab !== 'board') return;
     const sub = appState.boardListSubTab;
     const show = sub === 'board' || sub === 'notice';
-    tracePanel.classList.toggle('hidden', !show);
-    if (!show) tracePanel.classList.remove('expanded');
+    panel.classList.toggle('hidden', !show);
+}
+
+/** @deprecated syncBoardSearchPanelVisibility 사용 */
+export function syncBoardTracePanelVisibility() {
+    syncBoardSearchPanelVisibility();
+    const tracePanel = document.getElementById('galleryTraceFilterPanel');
+    if (tracePanel) tracePanel.classList.add('hidden');
+}
+
+function updateBoardSearchBanner(resultCount) {
+    const banner = document.getElementById('boardSearchBanner');
+    const countEl = document.getElementById('boardSearchBannerCount');
+    const summaryEl = document.getElementById('boardSearchBannerSummary');
+    if (!banner || !countEl || !summaryEl) return;
+    if (!appState.boardSearchActive) {
+        banner.classList.add('hidden');
+        countEl.textContent = '';
+        summaryEl.textContent = '';
+        return;
+    }
+    banner.classList.remove('hidden');
+    countEl.textContent = `검색 결과 ${resultCount}건`;
+    summaryEl.textContent = formatBoardSearchSummary();
+}
+
+function applyBoardSearchToPosts(posts) {
+    if (!appState.boardSearchActive || !Array.isArray(posts)) return posts;
+    const range = appState.boardSearchDateRange;
+    const keyword = (appState.boardSearchKeyword || '').trim();
+    return posts.filter((post) => {
+        const ymd = timestampToYmd(post?.timestamp);
+        if (range?.start && range?.end && !isYmdInRange(ymd, range.start, range.end)) return false;
+        if (keyword && !boardPostMatchesKeyword(post, keyword)) return false;
+        return true;
+    });
+}
+
+function applyBoardSearchToNotices(notices, { likedIds, commentedIds, bookmarkedIds }) {
+    if (!appState.boardSearchActive || !Array.isArray(notices)) return notices;
+    const range = appState.boardSearchDateRange;
+    const keyword = (appState.boardSearchKeyword || '').trim();
+    const trace = appState.boardTraceFilter;
+    return notices.filter((notice) => {
+        const ymd = timestampToYmd(notice?.timestamp);
+        if (range?.start && range?.end && !isYmdInRange(ymd, range.start, range.end)) return false;
+        if (trace === 'like' && !likedIds.has(notice.id)) return false;
+        if (trace === 'comment' && !commentedIds.has(notice.id)) return false;
+        if (trace === 'bookmark' && !bookmarkedIds.has(notice.id)) return false;
+        if (keyword && !noticeMatchesKeyword(notice, keyword)) return false;
+        return true;
+    });
 }
 
 async function getNotices() {
@@ -116,8 +173,11 @@ async function renderNotices() {
         const activeNotices = notices.filter(n => n && !n.deleted && !n.hidden); // 삭제·숨김 아닌 공지만 표시 (밀로그·밀톡용)
         
         if (activeNotices.length === 0) {
-            noticesContainer.innerHTML = '';
-            noticesContainer.classList.add('hidden');
+            updateBoardSearchBanner(0);
+            noticesContainer.innerHTML = appState.boardSearchActive
+                ? `<div class="flex flex-col items-center justify-center py-12 text-center"><i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i><p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p></div>`
+                : '';
+            noticesContainer.classList.toggle('hidden', !appState.boardSearchActive);
             return;
         }
         
@@ -174,8 +234,25 @@ async function renderNotices() {
             return { noticeId: n.id, likes: 0, dislikes: 0 };
         }));
         const reactionMap = new Map(reactionCounts.map(r => [r.noticeId, r]));
+
+        const displayNotices = applyBoardSearchToNotices(sortedNotices, {
+            likedIds: likedNoticeIds,
+            commentedIds: commentedNoticeIds,
+            bookmarkedIds: bookmarkedNoticeIds
+        });
+        updateBoardSearchBanner(displayNotices.length);
+
+        if (displayNotices.length === 0 && appState.boardSearchActive) {
+            noticesContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i>
+                    <p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p>
+                </div>`;
+            noticesContainer.classList.remove('hidden');
+            return;
+        }
         
-        noticesContainer.innerHTML = sortedNotices.map((notice, index) => {
+        noticesContainer.innerHTML = displayNotices.map((notice, index) => {
             let date = notice.timestamp ? (() => {
                 // timestamp 안전하게 변환
                 if (notice.timestamp.toDate && typeof notice.timestamp.toDate === 'function') {
@@ -284,7 +361,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     if (typeof window.syncBoardInlineComposerAvatar === 'function') {
         window.syncBoardInlineComposerAvatar();
     }
-    syncBoardTracePanelVisibility();
+    syncBoardSearchPanelVisibility();
 
     const subFeed = document.getElementById('boardSubtabFeed');
     const subBoard = document.getElementById('boardSubtabBoard');
@@ -299,6 +376,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     setSubtabActive(subNotice, isNotice);
 
     if (isFeed) {
+        updateBoardSearchBanner(0);
         const { renderBoardFeedTab } = await import('./board-feed.js');
         await renderBoardFeedTab();
         return;
@@ -324,7 +402,11 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     if (!window.boardOperations) return;
     
     const excludePostId = options?.excludePostId ?? null;
-    const hasFilter = appState.boardTraceFilter && window.currentUser && !window.currentUser.isAnonymous;
+    const hasFilter =
+        appState.boardSearchActive &&
+        appState.boardTraceFilter &&
+        window.currentUser &&
+        !window.currentUser.isAnonymous;
     const tracePromise = hasFilter ? (() => {
         const f = appState.boardTraceFilter;
         if (f === 'like') return window.boardOperations.getPostIdsLikedByUser(window.currentUser.uid);
@@ -354,6 +436,8 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             const postIdsCommentedByUser = new Set(commented || []);
             let merged = [optWithTimestamp, ...(posts || []).filter(p => p.id !== optimisticPost.id)];
             merged = tracePostIds2 ? merged.filter(p => tracePostIds2.has(p.id)) : merged;
+            merged = applyBoardSearchToPosts(merged);
+            updateBoardSearchBanner(merged.length);
             merged.sort((a, b) => (new Date(b.timestamp || 0).getTime()) - (new Date(a.timestamp || 0).getTime()));
             window._boardPostsCache = merged;
             await renderBoardPostList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
@@ -383,6 +467,8 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
             let merged = tracePostIds2 ? (posts || []).filter(p => tracePostIds2.has(p.id)) : (posts || []);
             merged = merged.filter(p => p.isHidden !== true);
             merged = merged.filter(p => p.id !== excludePostId);
+            merged = applyBoardSearchToPosts(merged);
+            updateBoardSearchBanner(merged.length);
             window._boardPostsCache = merged;
             await renderBoardPostList(container, merged, likedPostIds2, bookmarkedPostIds2, tracePostIds2, postIdsCommentedByUser);
             window.refreshNavFeedUpdateDots?.().catch(() => {});
@@ -415,6 +501,8 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
         
         let filteredPosts = tracePostIds ? posts.filter(p => tracePostIds.has(p.id)) : posts;
         if (excludePostId) filteredPosts = filteredPosts.filter(p => p.id !== excludePostId);
+        filteredPosts = applyBoardSearchToPosts(filteredPosts);
+        updateBoardSearchBanner(filteredPosts.length);
         
         filteredPosts.sort((a, b) => {
             const getTimestamp = (post) => {
@@ -449,6 +537,14 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
     await fetchUserProfiles(authorIds);
     const demo = isDemoUser(window.currentUser);
     if (filteredPosts.length === 0) {
+        if (appState.boardSearchActive) {
+            container.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i>
+                <p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p>
+            </div>`;
+            return;
+        }
         const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
         const traceEmptyMsg = tracePostIds
             ? (traceEmptyLabels[appState.boardTraceFilter] || '') + ' 게시글이 없습니다'

@@ -35,7 +35,7 @@ export {
     preloadAdjacentGalleryImages
 } from './post-group-utils.js';
 export { fetchUserProfiles, getUserSettings } from './user-profiles.js';
-export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility, syncBoardTracePanelVisibility } from './board-notice.js';
+export { renderBoard, renderBoardDetail, renderNoticeDetail, renderBoardPostList, syncBoardFeedComposerVisibility, syncBoardSearchPanelVisibility, syncBoardTracePanelVisibility } from './board-notice.js';
 export {
     renderBoardFeedTab,
     scrollFeedPanelToBottom,

@@ -14,6 +14,11 @@ import {
 import { fetchUserProfiles, getUserSettings } from './user-profiles.js';
 import { renderBoardPostList } from './board-notice.js';
 import { sortSharedPhotosByTimestampDesc } from '../utils/shared-photo-timestamp.js';
+import {
+    getPhotoGroupDateYmd,
+    photoGroupMatchesKeyword,
+    formatGallerySearchSummary
+} from '../moment-search-filter.js';
 import { docsToSortedPhotoGroups, isMomentPostV2, collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/moment-post-v2.js';
 import { renderPostGroupHtml } from './post-group-html.js';
 import { fetchMissingSharedComments } from './shared-entry-comments.js';
@@ -178,6 +183,30 @@ function dedupeGalleryPhotos(photos) {
     });
 }
 
+async function expandFeedForGallerySearch(mySession, maxPages = 12) {
+    const base = [...(window.sharedPhotosFeed || [])];
+    if (appState.galleryFilterUserId) return base;
+
+    const { loadSharedPhotosPage } = await import('../db.js');
+    let docs = base;
+    let cursor = appState.sharedPhotosFeedLastDoc;
+    let hasMore = appState.sharedPhotosFeedHasMore;
+
+    for (let page = 0; page < maxPages; page++) {
+        if (!hasMore && !cursor) break;
+        const { docs: newDocs, lastDoc, hasMore: nextHasMore } = await loadSharedPhotosPage(10, cursor);
+        if (isGallerySessionStale(mySession)) return docs;
+        if (!newDocs?.length) break;
+        docs = collapseDocsToFeedPage(
+            sortSharedPhotosByTimestampDesc([...docs, ...newDocs]),
+            999
+        ).feedDocs;
+        cursor = lastDoc;
+        hasMore = nextHasMore;
+    }
+    return docs;
+}
+
 /**
  * 흔적 필터용 피드 확장 검색 — sharedPhotosFeed는 건드리지 않음(필터 해제 시 원래 피드 유지).
  * @returns {Promise<object[]>} 필터 매칭 탐색에 쓸 문서 목록
@@ -246,6 +275,13 @@ function applyMomentCaptionLayoutForRange(startInclusive, endExclusive) {
 }
 
 function setupGalleryEventListeners(container, sortedGroups, opts = null) {
+    const exitSearchBtn = document.getElementById('gallerySearchExitBtn');
+    if (exitSearchBtn && !exitSearchBtn._gallerySearchBound) {
+        exitSearchBtn._gallerySearchBound = true;
+        exitSearchBtn.addEventListener('click', () => {
+            if (typeof window.clearGallerySearch === 'function') window.clearGallerySearch();
+        });
+    }
     const abortSignal = opts && typeof opts === 'object' && opts.abortSignal !== undefined ? opts.abortSignal : (opts && typeof opts.addEventListener === 'function' ? opts : null);
     const startIndex = opts && typeof opts === 'object' && typeof opts.startIndex === 'number' ? opts.startIndex : 0;
     const scrollContainers = container.querySelectorAll('.gallery-photo-scroll');
@@ -429,7 +465,8 @@ export async function appendMomentFeedNextPage(opts = {}) {
             loadMoreWrap &&
             postsInsertPoint &&
             !appState.galleryFilterUserId &&
-            !appState.galleryTraceFilter
+            !appState.galleryTraceFilter &&
+            !appState.gallerySearchActive
         ) {
             appended = (await appendGalleryPosts(docs, loadMoreWrap)) || 0;
         } else {
@@ -613,6 +650,11 @@ export async function renderGallery(options = {}) {
             appState.galleryFeedNetworkError = true;
             photosToRender = [];
         }
+    } else if (appState.gallerySearchActive && !filterUserId) {
+        const expanded = await expandFeedForGallerySearch(mySession);
+        if (isGallerySessionStale(mySession)) return;
+        photosToRender = sortSharedPhotosByTimestampDesc(expanded);
+        appState.galleryFeedNetworkError = false;
     } else {
         photosToRender = sortSharedPhotosByTimestampDesc(window.sharedPhotosFeed || []);
     }
@@ -870,6 +912,19 @@ export async function renderGallery(options = {}) {
         previousGalleryPostIds.clear();
         previousGalleryTraceFilter = appState.galleryTraceFilter;
     }
+
+    if (appState.gallerySearchActive && appState.gallerySearchDateRange) {
+        const { start, end } = appState.gallerySearchDateRange;
+        sortedGroups = sortedGroups.filter((g) => {
+            const ymd = getPhotoGroupDateYmd(g);
+            return ymd && ymd >= start && ymd <= end;
+        });
+    }
+
+    const searchKeyword = (appState.gallerySearchKeyword || '').trim();
+    if (appState.gallerySearchActive && searchKeyword) {
+        sortedGroups = sortedGroups.filter((g) => photoGroupMatchesKeyword(g, searchKeyword, mealHistoryMap));
+    }
     
     // 알림에서 클릭 시 해당 게시물만 필터
     const filterPostId = appState.galleryFilterPostId;
@@ -901,8 +956,12 @@ export async function renderGallery(options = {}) {
     }
     
     const traceEmptyLabels = { like: '좋아요한', comment: '댓글 단', bookmark: '북마크한' };
+    const searchEmptyMsg =
+        appState.gallerySearchActive && sortedGroups.length === 0
+            ? '검색 조건에 맞는 게시물이 없습니다'
+            : null;
     const traceEmptyMsg =
-        tracePostIds && sortedGroups.length === 0
+        !searchEmptyMsg && tracePostIds && sortedGroups.length === 0
             ? traceListCount === 0
                 ? `${traceEmptyLabels[appState.galleryTraceFilter] || ''} 게시물이 없습니다`
                 : `${traceEmptyLabels[appState.galleryTraceFilter] || ''} 게시물을 피드에서 찾지 못했어요`
@@ -1032,11 +1091,25 @@ export async function renderGallery(options = {}) {
     const removedPostIds = Array.from(previousGalleryPostIds).filter((id) => !currentPostIds.has(id));
     const addedPostIds = Array.from(currentPostIds).filter((id) => !previousGalleryPostIds.has(id));
     const hasSignificantChanges =
+        !!appState.gallerySearchActive ||
         !!appState.galleryTraceFilter ||
         previousGalleryPostIds.size === 0 || // 초기 로드
         currentPostIds.size === 0 || // 모든 포스트 삭제
         removedPostIds.length > 0 || // 삭제·재정렬 → 전체 재렌더로 정합성 보장
         addedPostIds.length > 5; // 대량 추가 → 전체 재렌더
+    
+    const emptyMsg = showNetworkErrorEmpty ? null : (searchEmptyMsg || filterPostEmptyMsg || traceEmptyMsg);
+    const emptyIcon = searchEmptyMsg ? 'fa-magnifying-glass' : (filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon);
+
+    const gallerySearchBanner = appState.gallerySearchActive && !filterUserId
+        ? `<div class="px-4 py-2.5 mb-1 flex items-start justify-between gap-2 border-b border-slate-100 bg-white sticky top-0 z-20">
+            <div class="min-w-0">
+                <div class="text-sm font-bold text-slate-700">검색 결과 ${sortedGroups.length}건</div>
+                <div class="text-xs text-slate-500 mt-0.5 truncate">${escapeHtml(formatGallerySearchSummary())}</div>
+            </div>
+            <button type="button" id="gallerySearchExitBtn" class="shrink-0 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors">검색 종료</button>
+        </div>`
+        : '';
     
     // AbortSignal 체크: 취소되었으면 중단
     if (abortSignal.aborted) {
@@ -1046,9 +1119,7 @@ export async function renderGallery(options = {}) {
     }
     
     // 헤더와 빈 메시지만 먼저 렌더링 (네트워크 오류 > 알림/흔적 필터 빈 메시지)
-    const emptyMsg = showNetworkErrorEmpty ? null : (filterPostEmptyMsg || traceEmptyMsg);
-    const emptyIcon = filterPostEmptyMsg ? 'fa-comment' : traceEmptyIcon;
-    const headerHtml = userProfileHeader + (showNetworkErrorEmpty
+    const headerHtml = gallerySearchBanner + userProfileHeader + (showNetworkErrorEmpty
         ? buildGalleryEmptyMomentBlock(true, filterUserId)
         : (emptyMsg ? `
             <div class="flex flex-col items-center justify-center py-20 text-center">
@@ -1059,6 +1130,7 @@ export async function renderGallery(options = {}) {
     
     // 더보기 표시 여부 (타임라인처럼 초기 구조에 포함하여 누락 방지)
     const canLoadMore =
+        !appState.gallerySearchActive &&
         !filterUserId &&
         !appState.galleryFilterPostId &&
         !appState.galleryTraceFilter &&

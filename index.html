@@ -100,6 +100,7 @@
             position: relative;
             width: 100%;
             min-height: 100dvh;
+            min-height: 100svh;
             box-sizing: border-box;
             padding-top: var(--safe-top);
             background: #ffffff;
@@ -275,9 +276,28 @@
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease; }
         /* 로그인 레이아웃: flexMain 구간·gap까지 paint 일치 */
+        #landingPage.landing-show-login,
+        #landingPage.landing-buttons-visible {
+            background: #059669;
+        }
         #landingPage.landing-show-login #landingFlexMain,
         #landingPage.landing-buttons-visible #landingFlexMain {
             background: #059669;
+        }
+        /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 초록 — 열 바깥(뷰포트 좌우)은 html 흰색 유지 */
+        html.mealog-landing-login.platform-web::before {
+            content: '';
+            position: fixed;
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 28rem;
+            top: 0;
+            bottom: 0;
+            background: #059669;
+            z-index: 199;
+            pointer-events: none;
         }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
         #landingPage.screen-transition-exit { opacity: 0; transition: opacity 0.3s ease-out; pointer-events: none; }
@@ -295,8 +315,11 @@
             padding-bottom: 0;
             background-color: #ffffff;
         }
+        html.mealog-landing-login #landingBottomFixed {
+            background-color: #059669;
+        }
         #landingBottomFixed #loginBannerSection,
-        #landingBottomFixed #apkDownloadSection {
+        #landingBottomFixed .landing-app-promo-bar {
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
@@ -314,21 +337,21 @@
             padding-bottom: 0;
         }
         /*
-          플레이 스토어(1번)
+          로그인 하단 앱 설치 유도(Android Play Store / iOS PWA)
           · PC 웹(640px↑): 섹션·링크 모두 얇은 상하 패딩만
           · 모바일 웹: env(safe-area-inset-bottom) 반영 → 홈 인디케이터/네비 위에 붙음, 0이면 화면 맨 아래 + 최소 0.375rem
         */
-        #apkDownloadSection {
+        .landing-app-promo-bar {
             background-color: #064e3b;
             padding-top: 0.5rem;
             padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
         }
         @media (min-width: 640px) {
-            html.platform-web #apkDownloadSection {
+            html.platform-web .landing-app-promo-bar {
                 padding-top: 0.5rem;
                 padding-bottom: 0.5rem;
             }
-            html.platform-web #apkDownloadLink {
+            html.platform-web .landing-app-promo-link {
                 padding-top: 0.25rem !important;
                 padding-bottom: 0.25rem !important;
             }
@@ -596,6 +619,8 @@
 
                 try {
                     document.documentElement.classList.add('platform-native-app');
+                    var SAFE_TOP_MIN = 28;
+                    var SAFE_BOTTOM_MIN = 48;
                     function readEnvSafeInset(edge) {
                         var prop = edge === 'top' ? 'paddingTop' : 'paddingBottom';
                         var envName = edge === 'top' ? 'safe-area-inset-top' : 'safe-area-inset-bottom';
@@ -606,14 +631,31 @@
                         document.documentElement.removeChild(probe);
                         return px;
                     }
+                    /** Android WebView Chromium 메이저 — safe-area 플러그인 decorView 패딩은 <140만 */
+                    function getChromiumMajorVersion() {
+                        var ua = navigator.userAgent || '';
+                        var m = ua.match(/Chrom(?:e|ium)\/(\d+)/);
+                        return m ? parseInt(m[1], 10) : 0;
+                    }
                     function applyNativeSafeAreaMode() {
                         var top = readEnvSafeInset('top');
                         var bottom = readEnvSafeInset('bottom');
-                        var padded = top < 1 && bottom < 1;
-                        document.documentElement.classList.toggle('platform-native-inset-padded', padded);
-                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !padded);
-                        document.documentElement.style.setProperty('--safe-top', padded ? '0px' : (top + 'px'));
-                        document.documentElement.style.setProperty('--safe-bottom', padded ? '0px' : (bottom + 'px'));
+                        var envHasInsets = top >= 1 || bottom >= 1;
+                        var chromium = getChromiumMajorVersion();
+                        /* env=0 이어도 Chromium≥140·iOS 등은 decorView 패딩 없음 → 0으로 만들면 시스템 바 침범 */
+                        var legacyPaddedWebView = !envHasInsets && chromium > 0 && chromium < 140;
+                        document.documentElement.classList.toggle('platform-native-inset-padded', legacyPaddedWebView);
+                        document.documentElement.classList.toggle('platform-native-inset-passthrough', !legacyPaddedWebView);
+                        if (legacyPaddedWebView) {
+                            document.documentElement.style.setProperty('--safe-top', '0px');
+                            document.documentElement.style.setProperty('--safe-bottom', '0px');
+                        } else if (envHasInsets) {
+                            document.documentElement.style.setProperty('--safe-top', Math.max(top, SAFE_TOP_MIN) + 'px');
+                            document.documentElement.style.setProperty('--safe-bottom', Math.max(bottom, SAFE_BOTTOM_MIN) + 'px');
+                        } else {
+                            document.documentElement.style.setProperty('--safe-top', SAFE_TOP_MIN + 'px');
+                            document.documentElement.style.setProperty('--safe-bottom', SAFE_BOTTOM_MIN + 'px');
+                        }
                     }
                     applyNativeSafeAreaMode();
                     requestAnimationFrame(function () {
@@ -689,14 +731,6 @@
                     });
             });
         }
-        
-        // PWA 설치 프롬프트
-        let deferredPrompt;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            console.log('PWA 설치 가능');
-        });
         
         // 전역 에러 핸들러 (모든 JavaScript 오류 캐치)
         window.addEventListener('error', (e) => {
@@ -1035,12 +1069,98 @@
         <div id="loginBannerSection" class="hidden w-full shrink-0" style="height: 160px;">
             <img id="loginBannerImage" src="" alt="" class="hidden w-full h-full object-cover object-center pointer-events-none">
         </div>
-        <!-- 웹에서만 표시 (Capacitor 네이티브에서는 숨김) -->
-        <div id="apkDownloadSection" class="hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
-            <a href="https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" id="apkDownloadLink" class="flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
-                <i class="fa-solid fa-mobile-screen mr-1"></i>
+        <!-- Android → Play Store · iOS → 홈 화면 추가 · PC → 바로가기 (네이티브·설치된 PWA에서는 숨김) -->
+        <div id="apkDownloadSection" class="landing-app-promo-bar hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
+            <a href="https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share" target="_blank" rel="noopener noreferrer" id="apkDownloadLink" class="landing-app-promo-link flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
+                <i class="fa-brands fa-android text-base shrink-0" aria-hidden="true"></i>
                 <span>구글 플레이 스토어에서 밀로그 앱 다운로드</span>
             </a>
+        </div>
+        <div id="pwaInstallSection" class="landing-app-promo-bar hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
+            <button type="button" id="pwaInstallOpenGuideBtn" class="landing-app-promo-link flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
+                <i class="fa-brands fa-apple text-base shrink-0" aria-hidden="true"></i>
+                <span>홈 화면에 추가하고 앱처럼 사용하기</span>
+            </button>
+        </div>
+        <div id="desktopShortcutSection" class="landing-app-promo-bar hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
+            <button type="button" id="desktopShortcutOpenGuideBtn" class="landing-app-promo-link flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
+                <i class="fa-regular fa-star text-base shrink-0" aria-hidden="true"></i>
+                <span>즐겨찾기에 추가하기</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- iOS PWA 설치 가이드 -->
+    <div id="pwaInstallGuideModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm" aria-modal="true" role="dialog" aria-labelledby="pwaInstallGuideTitle">
+        <div id="pwaInstallGuideBackdrop" class="absolute inset-0" aria-hidden="true"></div>
+        <div class="relative bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200/80 overflow-hidden">
+            <div class="px-5 pt-5 pb-4 border-b border-slate-100">
+                <div class="flex items-start gap-3">
+                    <div class="shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden">
+                        <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="pwaInstallGuideTitle" class="text-base font-black text-slate-900 leading-snug">아이폰에서 앱처럼 사용하기</h2>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">Safari·Chrome 등 브라우저에서 홈 화면에 추가하면 앱처럼 바로 열 수 있어요.</p>
+                    </div>
+                </div>
+            </div>
+            <ol class="px-5 py-4 space-y-3 text-sm text-slate-700 leading-relaxed list-none">
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
+                    <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><i class="fa-solid fa-arrow-up-from-bracket text-emerald-600 mx-0.5" aria-hidden="true"></i>을 눌러주세요.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
+                    <span>메뉴에서 <strong class="text-slate-900">홈 화면에 추가</strong>를 선택해주세요.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
+                    <span>오른쪽 상단 <strong class="text-slate-900">추가</strong>를 누르면 완료! 홈 화면의 밀로그 아이콘으로 실행할 수 있어요.</span>
+                </li>
+            </ol>
+            <div class="px-5 pb-5">
+                <button type="button" id="pwaInstallGuideCloseBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PC 즐겨찾기 추가 가이드 -->
+    <div id="desktopShortcutGuideModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm" aria-modal="true" role="dialog" aria-labelledby="desktopShortcutGuideTitle">
+        <div id="desktopShortcutGuideBackdrop" class="absolute inset-0" aria-hidden="true"></div>
+        <div class="relative bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200/80 overflow-hidden">
+            <div class="px-5 pt-5 pb-4 border-b border-slate-100">
+                <div class="flex items-start gap-3">
+                    <div class="shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden">
+                        <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 id="desktopShortcutGuideTitle" class="text-base font-black text-slate-900 leading-snug">즐겨찾기에 추가하기</h2>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">브라우저 보안 정책상 웹사이트에서 즐겨찾기를 자동으로 추가할 수 없어요. 아래 방법으로 저장해 주세요.</p>
+                    </div>
+                </div>
+            </div>
+            <ol class="px-5 py-4 space-y-3 text-sm text-slate-700 leading-relaxed list-none">
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
+                    <span><i class="fa-solid fa-keyboard text-emerald-500/80 mr-1" aria-hidden="true"></i>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
+                    <span><i class="fa-regular fa-star text-emerald-500/80 mr-1" aria-hidden="true"></i>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
+                    <span><i class="fa-solid fa-folder text-emerald-500/80 mr-1" aria-hidden="true"></i>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
+                </li>
+            </ol>
+            <div id="desktopPwaInstallOptional" class="hidden px-5 pb-2">
+                <p class="text-[11px] text-slate-400 leading-relaxed mb-2">Chrome·Edge에서 지원될 때만, 즐겨찾기와 별도로 바탕화면 바로가기를 한 번에 추가할 수 있어요.</p>
+                <button type="button" id="desktopShortcutInstallBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors">바탕화면 바로가기 추가</button>
+            </div>
+            <div class="px-5 pb-5 pt-1">
+                <button type="button" id="desktopShortcutGuideCloseBtn" class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 active:bg-slate-300 transition-colors">확인</button>
+            </div>
         </div>
     </div>
 
@@ -1354,14 +1474,21 @@
                 </div>
                 <!-- 우측: 돋보기 → 알림 (밀로그 검색 확장 시 flex로 sub-title까지 확장) -->
                 <div class="header-right flex items-center gap-2 flex-shrink-0">
-                    <!-- 돋보기: 모먼트(타임라인) = 검색, 밀로그/라운지 = 하트·댓글·북마크·돋보기 -->
-                    <div id="timelineSearchPanel" class="timeline-search-wrapper hidden relative overflow-visible">
-                        <div class="timeline-search-panel flex items-center overflow-hidden">
-                            <input type="text" id="searchInput" placeholder="메뉴, 장소 검색..." class="flex-1 min-w-0 bg-transparent border-0 pl-3 pr-1 py-1.5 text-sm outline-none focus:ring-0">
-                            <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="검색">
-                                <i class="fa-solid fa-magnifying-glass text-sm"></i>
-                            </button>
-                        </div>
+                    <!-- 돋보기: 밀로그(타임라인) = 검색 팝업, 모먼트/라운지 = 하트·댓글·북마크·돋보기 -->
+                    <div id="timelineSearchPanel" class="hidden">
+                        <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="기록 검색">
+                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                        </button>
+                    </div>
+                    <div id="gallerySearchPanel" class="hidden">
+                        <button type="button" id="gallerySearchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="모먼트 검색">
+                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                        </button>
+                    </div>
+                    <div id="boardSearchPanel" class="hidden">
+                        <button type="button" id="boardSearchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="게시판 검색">
+                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                        </button>
                     </div>
                     <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out">
                         <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-red-500 active:opacity-80 transition-colors flex-shrink-0">
@@ -1383,19 +1510,6 @@
                             <i class="fa-regular fa-bell text-lg"></i>
                             <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
                         </button>
-                        <div id="notificationPopup" class="notification-popup absolute right-0 top-full mt-1.5 w-80 max-h-[70vh] overflow-hidden hidden rounded-xl border border-slate-200 bg-white shadow-lg z-[60]">
-                            <div class="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100">
-                                <span class="font-semibold text-sm text-slate-700">알림</span>
-                                <button type="button" id="notificationMarkAllReadBtn" class="text-xs font-medium text-emerald-600 hover:text-emerald-700 active:opacity-80 ml-auto">모두 읽음</button>
-                            </div>
-                            <div class="flex gap-1 px-2 pt-2 pb-1" role="tablist" aria-label="알림 구분">
-                                <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80">새 알림</button>
-                                <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70">읽은 알림</button>
-                            </div>
-                            <div id="notificationList" class="overflow-y-auto max-h-[52vh] p-2 min-h-[100px]"></div>
-                            <div id="notificationEmpty" class="p-4 text-center text-slate-400 text-sm hidden"></div>
-                            <p id="notificationReadHint" class="hidden px-3 pb-2 text-[10px] leading-snug text-slate-400 text-center border-t border-slate-50 pt-2">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
-                        </div>
                     </div>
                     <!-- 체험(더미) 계정: 돋보기·알림 대신 로그인 유도 -->
                     <div id="headerDemoLoginWrap" class="hidden flex items-center flex-shrink-0">
@@ -1503,9 +1617,20 @@
                             <i class="fa-solid fa-arrow-up text-sm"></i>
                         </button>
                     </div>
-                    <span id="boardInlineComposerCount" class="sr-only" aria-live="polite">0/280</span>
+                    <div class="board-feed-composer-count-row flex justify-end pr-[4.75rem] pl-10 pt-0.5">
+                        <span id="boardInlineComposerCount" class="hidden text-[11px] leading-none" aria-live="polite" aria-hidden="true"></span>
+                    </div>
                 </div>
                 <div id="boardListPanel" class="board-list-panel hidden">
+                    <div id="boardSearchBanner" class="hidden mb-3 rounded-xl border border-slate-100 bg-white px-4 py-2.5">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <div id="boardSearchBannerCount" class="text-sm font-bold text-slate-700"></div>
+                                <div id="boardSearchBannerSummary" class="mt-0.5 truncate text-xs text-slate-500"></div>
+                            </div>
+                            <button type="button" id="boardSearchExitBtn" class="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200 active:bg-slate-300">검색 종료</button>
+                        </div>
+                    </div>
                     <div id="noticesContainer" class="mb-4 ui-stack-md">
                         <!-- 공지가 여기에 동적으로 추가됨 -->
                     </div>
@@ -2029,6 +2154,176 @@
             <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-sm"></i></button>
             <h3 id="demoNavGuideTitle" class="text-sm font-black text-slate-900 tracking-tight"></h3>
             <p id="demoNavGuideDesc" class="text-sm text-slate-700 mt-1 leading-relaxed"></p>
+        </div>
+    </div>
+
+    <!-- 모먼트 검색 (기간 + 흔적 + 키워드) -->
+    <div id="momentSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
+        <button type="button" id="momentSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
+        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+            <div class="p-5 pb-4 max-h-[min(80vh,32rem)] overflow-y-auto">
+                <div class="mb-4 flex items-center justify-between gap-2">
+                    <h2 id="momentSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">모먼트 검색</h2>
+                    <button type="button" id="momentSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
+                            <button type="button" data-moment-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
+                            <button type="button" data-moment-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
+                            <button type="button" data-moment-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
+                            <button type="button" data-moment-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
+                        </div>
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <label for="momentSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
+                                <input type="date" id="momentSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                            <div>
+                                <label for="momentSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
+                                <input type="date" id="momentSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
+                            <button type="button" data-moment-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i class="fa-regular fa-heart text-sm"></i> 좋아요</button>
+                            <button type="button" data-moment-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-comment text-sm"></i> 댓글</button>
+                            <button type="button" data-moment-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-bookmark text-sm"></i> 북마크</button>
+                            <button type="button" data-moment-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-solid fa-magnifying-glass text-sm"></i> 검색어</button>
+                        </div>
+                        <div id="momentSearchKeywordWrap" class="mt-3 hidden">
+                            <label for="momentSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
+                            <input type="search" id="momentSearchKeyword" placeholder="닉네임, 메뉴, 장소, 코멘트…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
+                        </div>
+                        <p class="mt-1.5 text-[11px] text-slate-400">선택하지 않으면 해당 기간의 전체 게시물을 보여줍니다.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
+                <button type="button" id="momentSearchCancelBtn" class="py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 border-r border-slate-200 active:bg-slate-200 rounded-bl-2xl">취소</button>
+                <button type="button" id="momentSearchSubmitBtn" class="py-3.5 bg-black text-sm font-semibold text-white active:bg-slate-900 rounded-br-2xl">검색</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 라운지 게시판·공지 검색 (기간 + 흔적 + 키워드) -->
+    <div id="boardSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
+        <button type="button" id="boardSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
+        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+            <div class="max-h-[min(80vh,32rem)] overflow-y-auto p-5 pb-4">
+                <div class="mb-4 flex items-center justify-between gap-2">
+                    <h2 id="boardSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">게시판 검색</h2>
+                    <button type="button" id="boardSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
+                            <button type="button" data-board-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
+                            <button type="button" data-board-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
+                            <button type="button" data-board-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
+                            <button type="button" data-board-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
+                        </div>
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <label for="boardSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
+                                <input type="date" id="boardSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                            <div>
+                                <label for="boardSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
+                                <input type="date" id="boardSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
+                            <button type="button" data-board-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i class="fa-regular fa-heart text-sm"></i> 좋아요</button>
+                            <button type="button" data-board-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-comment text-sm"></i> 댓글</button>
+                            <button type="button" data-board-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-bookmark text-sm"></i> 북마크</button>
+                            <button type="button" data-board-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-solid fa-magnifying-glass text-sm"></i> 검색어</button>
+                        </div>
+                        <div id="boardSearchKeywordWrap" class="mt-3 hidden">
+                            <label for="boardSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
+                            <input type="search" id="boardSearchKeyword" placeholder="제목, 본문, 닉네임…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
+                        </div>
+                        <p class="mt-1.5 text-[11px] text-slate-400">선택하지 않으면 해당 기간의 전체 글을 보여줍니다.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
+                <button type="button" id="boardSearchCancelBtn" class="rounded-bl-2xl border-r border-slate-200 bg-slate-100 py-3.5 text-sm font-semibold text-slate-800 active:bg-slate-200">취소</button>
+                <button type="button" id="boardSearchSubmitBtn" class="rounded-br-2xl bg-black py-3.5 text-sm font-semibold text-white active:bg-slate-900">검색</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 알림 (중앙 팝업) -->
+    <div id="notificationModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
+        <button type="button" id="notificationBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
+        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl max-h-[min(85vh,36rem)]">
+            <div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
+                <h2 id="notificationModalTitle" class="text-lg font-bold tracking-tight text-slate-800">알림</h2>
+                <div class="flex items-center gap-1">
+                    <button type="button" id="notificationMarkAllReadBtn" class="rounded-lg px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 active:opacity-80">모두 읽음</button>
+                    <button type="button" id="notificationCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+            </div>
+            <div class="flex shrink-0 gap-1 px-3 pt-3 pb-1" role="tablist" aria-label="알림 구분">
+                <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80">새 알림</button>
+                <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70">읽은 알림</button>
+            </div>
+            <div id="notificationList" class="min-h-[120px] flex-1 overflow-y-auto p-2"></div>
+            <div id="notificationEmpty" class="hidden p-4 text-center text-sm text-slate-400"></div>
+            <p id="notificationReadHint" class="hidden shrink-0 border-t border-slate-50 px-3 pb-3 pt-2 text-center text-[10px] leading-snug text-slate-400">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
+            <div class="shrink-0 border-t border-slate-200">
+                <button type="button" id="notificationDismissBtn" class="w-full py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 active:bg-slate-200 rounded-b-2xl">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 밀로그 기록 검색 (기간 + 키워드) -->
+    <div id="timelineSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
+        <button type="button" id="timelineSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
+        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
+            <div class="p-5 pb-4">
+                <div class="mb-4 flex items-center justify-between gap-2">
+                    <h2 id="timelineSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">기록 검색</h2>
+                    <button type="button" id="timelineSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
+                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
+                            <button type="button" data-timeline-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
+                            <button type="button" data-timeline-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
+                            <button type="button" data-timeline-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
+                            <button type="button" data-timeline-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
+                        </div>
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <label for="timelineSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
+                                <input type="date" id="timelineSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                            <div>
+                                <label for="timelineSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
+                                <input type="date" id="timelineSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="timelineSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
+                        <input type="search" id="timelineSearchKeyword" placeholder="메뉴, 장소, 함께한 사람…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+            </div>
+            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
+                <button type="button" id="timelineSearchCancelBtn" class="py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 border-r border-slate-200 active:bg-slate-200 rounded-bl-2xl">취소</button>
+                <button type="button" id="timelineSearchSubmitBtn" class="py-3.5 bg-black text-sm font-semibold text-white active:bg-slate-900 rounded-br-2xl">검색</button>
+            </div>
         </div>
     </div>
 

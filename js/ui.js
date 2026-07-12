@@ -1212,6 +1212,7 @@ export function switchScreen(isLoggedIn) {
             window.dismissMealogBootSplash();
         }
         document.documentElement.classList.remove('mealog-landing-active');
+        document.documentElement.classList.remove('mealog-landing-login');
         // 랜딩만 페이드 아웃, 메인은 즉시 표시 (스피너 끝난 뒤 추가 페이드 없음)
         landing.classList.add('screen-transition-exit');
         main.style.display = 'block';
@@ -1227,6 +1228,9 @@ export function switchScreen(isLoggedIn) {
         }, LANDING_EXIT_MS);
     } else {
         document.documentElement.classList.add('mealog-landing-active');
+        const hasLoginChrome = landing.classList.contains('landing-show-login')
+            || landing.classList.contains('landing-buttons-visible');
+        document.documentElement.classList.toggle('mealog-landing-login', hasLoginChrome);
         landing.style.display = 'flex';
         landing.classList.remove('screen-transition-exit');
         if (landingBottom) landingBottom.style.display = '';

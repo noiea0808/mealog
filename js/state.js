@@ -48,7 +48,15 @@ export const appState = {
     /** 모먼트 사용자 프로필에서 게시글 상세를 연 경우: 뒤로가기 시 갤러리 목록으로 복귀 */
     boardDetailOpenedFromGallery: false,
     galleryTraceFilter: null, // 앨범 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    /** 모먼트 검색 팝업 적용 중 */
+    gallerySearchActive: false,
+    gallerySearchKeyword: '',
+    gallerySearchDateRange: null, // { start, end } YYYY-MM-DD
     boardTraceFilter: null,   // 밀톡 흔적 필터: null | 'like' | 'comment' | 'bookmark'
+    /** 라운지 게시판·공지 검색 팝업 적용 중 */
+    boardSearchActive: false,
+    boardSearchKeyword: '',
+    boardSearchDateRange: null, // { start, end } YYYY-MM-DD
     /** 라운지 상단 서브탭: 'feed' 밀톡 | 'board' 사용자 게시판 | 'notice' 관리자 공지 */
     boardListSubTab: 'feed',
     /** 피드 탭 타임라인 (세션 내 메모리, 게시 시 앞에 추가) */

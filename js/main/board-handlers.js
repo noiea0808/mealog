@@ -177,6 +177,7 @@ import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js'
 import { logUsageMetric } from '../usage-metrics.js';
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
+import { updateFeedCharRemainingUi } from '../feed-char-count.js';
 
 export function registerMainBoardHandlers() {
 
@@ -195,6 +196,11 @@ window.switchBoardListSubTab = (sub) => {
         return;
     }
     appState.boardListSubTab = next;
+    appState.boardSearchActive = false;
+    appState.boardSearchKeyword = '';
+    appState.boardSearchDateRange = null;
+    appState.boardTraceFilter = null;
+    if (typeof window.closeBoardSearchModal === 'function') window.closeBoardSearchModal();
     if (next === 'feed') logUsageMetric('lounge_mealtalk').catch(() => {});
     else if (next === 'board') logUsageMetric('lounge_board').catch(() => {});
     else logUsageMetric('lounge_notice').catch(() => {});
@@ -1799,7 +1805,7 @@ function syncBoardInlineComposerUi() {
     const len = raw.length;
     const hasPhoto = !!window.feedComposerPhotoFile;
     const hasSendableText = raw.trim().length > 0;
-    if (boardInlineCount) boardInlineCount.textContent = `${len}/280`;
+    updateFeedCharRemainingUi(boardInlineCount, len);
     if (boardInlineSubmit) boardInlineSubmit.disabled = !hasSendableText && !hasPhoto;
     if (boardInlineInput) {
         boardInlineInput.style.height = 'auto';
