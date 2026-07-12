@@ -21,6 +21,7 @@ import { closeCharacterSelectModal, closeShareInsightModal } from '../analytics/
 import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/best-share.js';
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
+import { closePwaInstallGuideModal, closeDesktopShortcutGuideModal } from '../pwa-install.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
 import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 
@@ -32,6 +33,8 @@ const ESCAPE_OVERLAY_IDS = [
     'domainErrorModal',
     'profileSetupModal',
     'demoIntroModal',
+    'pwaInstallGuideModal',
+    'desktopShortcutGuideModal',
     'trackerMonthCalendarModal',
     'timelineSearchModal',
     'momentSearchModal',
@@ -95,6 +98,12 @@ function closeOverlayById(id) {
             break;
         case 'demoIntroModal':
             dismissDemoIntroModal();
+            break;
+        case 'pwaInstallGuideModal':
+            closePwaInstallGuideModal();
+            break;
+        case 'desktopShortcutGuideModal':
+            closeDesktopShortcutGuideModal();
             break;
         case 'trackerMonthCalendarModal':
             document.getElementById('trackerMonthCalendarModal')?.classList.add('hidden');

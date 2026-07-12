@@ -37,8 +37,9 @@
     /* 갤러리 화면2: #galleryPostsInsertPoint `gap` = 이전 글 하단 ↔ 다음 글 상단(투명 래퍼 기준) 유일 간격 */
     --moment-v2-gallery-post-gap: 20px;
 }
-/* Web: 핸폰 네비 없음 → safe-bottom 0, 하단 공백 제거 (App 네비 바로 위까지) */
+/* Web: 핸폰 네비 없음 → safe-bottom 0, 상단은 브라우저 env만(28px 최소값은 네이티브용) */
 html.platform-web {
+    --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: 0px;
 }
 html.platform-web #navigationBarOverlay {
@@ -6259,6 +6260,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     /* 세이프탑은 padding-top에만 포함 → 내부 플렉·스크롤 영역 높이 ≈ 100dvh − padding-top − (아래 index 규칙의 padding-bottom) */
     min-height: 100vh;
     min-height: 100dvh;
+    min-height: 100svh;
     box-sizing: border-box;
     padding-top: var(--safe-top);
     z-index: 200;

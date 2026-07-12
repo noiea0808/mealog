@@ -35,6 +35,10 @@ import {
     confirmLogoutAction
 } from '../auth.js';
 import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import {
+    configureLandingAppPromo,
+    registerPwaInstallGuideHandlers,
+} from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import { triggerQuickEntryFromFab } from '../modals/entry-quick-open.js';
@@ -137,11 +141,8 @@ function initMainAppKeyboardHandling() {
 export function initEventListeners() {
     registerDemoIntroModalHandlers();
     registerDemoNavGuideHandlers();
-
-    const apkDownloadSection = document.getElementById('apkDownloadSection');
-    if (apkDownloadSection && window.Capacitor?.isNativePlatform?.()) {
-        apkDownloadSection.style.display = 'none';
-    }
+    configureLandingAppPromo();
+    registerPwaInstallGuideHandlers();
 
     const googleLoginBtn = document.getElementById('googleLoginBtn');
     if (googleLoginBtn) {

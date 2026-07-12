@@ -55,6 +55,7 @@ import { clearMealsWindowStatsReconcileMeta, clearStreakEmptyDayTrustAll } from 
 import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
+import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
@@ -1564,8 +1565,8 @@ initAuth(async (user) => {
             }
             const landingPage = document.getElementById('landingPage');
             const landingLoginOptions = document.getElementById('landingLoginOptions');
-            const apkSection = document.getElementById('apkDownloadSection');
             if (landingPage) landingPage.classList.add('landing-show-login');
+            document.documentElement.classList.add('mealog-landing-login');
 
             const LANDING_ICON_FADE_MS = 400;
             const LANDING_PAUSE_BEFORE_RISE_MS = 280;
@@ -1578,7 +1579,7 @@ initAuth(async (user) => {
                         landingLoginOptions.classList.add('landing-options-visible');
                     });
                 }
-                if (apkSection) apkSection.classList.remove('hidden');
+                showLandingAppPromo();
                 loadAndShowLoginBanner();
             };
 
