@@ -1350,10 +1350,12 @@ initAuth(async (user) => {
                                                 const totalOffset = headerHeight + trackerHeight;
                                                 const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                                                 const offsetPosition = elementTop - totalOffset - 16;
+                                                window.__suppressChromeScrollHideUntil = Date.now() + 500;
                                                 window.scrollTo({
                                                     top: Math.max(0, offsetPosition),
                                                     behavior: 'instant'
                                                 });
+                                                window.__revealAppChromeAfterProgrammaticScroll?.();
                                                 return;
                                             }
                                         }
@@ -1804,6 +1806,27 @@ let _headerScrollRaf = null;
 // 헤더 숨김/표시 토글 직후 쿨다운: 토글로 문서 높이가 바뀌며 발생하는 합성 scroll 이벤트가
 // 곧바로 반대 토글을 일으켜 헤더가 덜덜 떨리는 현상(oscillation)을 방지한다.
 let _chromeToggleLockUntil = 0;
+
+function syncAppChromeScrollBaseline() {
+    _lastScrollY = window.scrollY;
+}
+
+function revealAppChromeAfterProgrammaticScroll() {
+    document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+    document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+    document.body.classList.remove('bottom-nav-scroll-hidden');
+    syncAppChromeScrollBaseline();
+    _chromeToggleLockUntil = Date.now() + 320;
+}
+
+window.__syncAppChromeScrollLast = syncAppChromeScrollBaseline;
+window.__revealAppChromeAfterProgrammaticScroll = revealAppChromeAfterProgrammaticScroll;
+window.__suppressChromeScrollHideUntil = 0;
+
+window.addEventListener('mealog:mainScreenShown', () => {
+    revealAppChromeAfterProgrammaticScroll();
+});
+
 window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
@@ -1816,6 +1839,11 @@ window.addEventListener('scroll', () => {
         _headerScrollRaf = null;
         // 쿨다운 중에는 기준값만 따라가고 토글하지 않음 (떨림 차단)
         if (Date.now() < _chromeToggleLockUntil) {
+            _lastScrollY = y;
+            return;
+        }
+        const suppressUntil = Number(window.__suppressChromeScrollHideUntil || 0) || 0;
+        if (suppressUntil && Date.now() < suppressUntil) {
             _lastScrollY = y;
             return;
         }

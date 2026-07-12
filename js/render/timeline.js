@@ -1934,6 +1934,7 @@ export function renderTimeline(options = {}) {
     ) {
         const todaySection = document.getElementById(`date-${todayStr}`);
         if (todaySection) {
+            window.__suppressChromeScrollHideUntil = Date.now() + 1600;
             timelineScrollToTodayTimer = setTimeout(() => {
                 timelineScrollToTodayTimer = null;
                 if (window.hasScrolledToToday || window.scrollY >= 80) return;
@@ -1945,6 +1946,9 @@ export function renderTimeline(options = {}) {
                 const offsetPosition = elementTop - totalOffset - 16;
                 window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
                 window.hasScrolledToToday = true;
+                if (typeof window.__revealAppChromeAfterProgrammaticScroll === 'function') {
+                    setTimeout(() => window.__revealAppChromeAfterProgrammaticScroll(), 480);
+                }
             }, 300);
         }
     }
