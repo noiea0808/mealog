@@ -3,7 +3,7 @@ import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { showToast } from '../ui.js';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot, getCountFromServer, limit } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
 // 좋아요, 댓글, 북마크 관련 함수들
 export const postInteractions = {
@@ -76,6 +76,53 @@ export const postInteractions = {
             return !snapshot.empty;
         } catch (e) {
             console.error("Is Liked Error:", e);
+            return false;
+        }
+    },
+
+    /** 좋아요 개수 (목록 전체 로드 없이 count aggregation) */
+    async getLikeCount(postId) {
+        if (!postId) return 0;
+        try {
+            const likesColl = collection(db, 'artifacts', appId, 'postLikes');
+            const q = query(likesColl, where('postId', '==', postId));
+            const snap = await getCountFromServer(q);
+            return Number(snap.data()?.count) || 0;
+        } catch (e) {
+            console.error('Get Like Count Error:', e);
+            return 0;
+        }
+    },
+
+    /** 본인이 해당 포스트에 댓글을 남겼는지 (v2 아이콘 fill용, 목록 전체 로드 없음) */
+    async hasUserCommented(postId, userId, alternatePostIds = []) {
+        if (!postId || !userId) return false;
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const ids = [postId, ...(Array.isArray(alternatePostIds) ? alternatePostIds : [])]
+                .map((id) => String(id || '').trim())
+                .filter(Boolean);
+            const uniqueIds = [...new Set(ids)].slice(0, 10);
+            for (const pid of uniqueIds) {
+                try {
+                    const q = query(
+                        commentsColl,
+                        where('postId', '==', pid),
+                        where('userId', '==', userId),
+                        limit(1)
+                    );
+                    const snapshot = await getDocs(q);
+                    if (!snapshot.empty) return true;
+                } catch (compoundErr) {
+                    // 복합 인덱스 미배포 시 postId만으로 조회 후 클라이언트 필터
+                    const q = query(commentsColl, where('postId', '==', pid));
+                    const snapshot = await getDocs(q);
+                    if (snapshot.docs.some((d) => d.data().userId === userId)) return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            console.error('Has User Commented Error:', e);
             return false;
         }
     },

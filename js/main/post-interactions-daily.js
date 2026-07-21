@@ -48,6 +48,10 @@ import {
 } from '../utils.js';
 import { applyStackCommentBtnVisual } from '../render/moment-post-interactions.js';
 import {
+    patchMomentFeedSocialCounts,
+    syncMomentPostSeedCounts
+} from '../utils/moment-feed-cache.js';
+import {
     initAuth,
     handleGoogleLogin,
     startGuest,
@@ -840,12 +844,20 @@ window.toggleLike = async (postId) => {
             }
         });
 
-        const likes = await postInteractions.getLikes(postId);
-        const likeCount = likes.length || 0;
+        let likeCount = 0;
+        if (postInteractions.getLikeCount) {
+            likeCount = await postInteractions.getLikeCount(postId);
+        } else {
+            const likes = await postInteractions.getLikes(postId);
+            likeCount = likes.length || 0;
+        }
         const likeText = likeCount > 0 ? String(likeCount) : '';
         document.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
             el.textContent = likeText;
         });
+        // 탭 재진입 시 시드/캐시가 비지 않도록 동기화 (likeCount 문서는 트리거로 보정)
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { likeCount });
+        syncMomentPostSeedCounts(postId, { likeCount });
     } catch (e) {
         console.error("좋아요 토글 실패:", e);
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
@@ -1074,7 +1086,13 @@ window.deleteCommentFromPost = async (commentId, postId) => {
     // 댓글 개수 즉시 감소
     if (commentCountEl) {
         const currentCount = parseInt(commentCountEl.textContent) || 0;
-        commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+        const next = currentCount > 0 ? currentCount - 1 : 0;
+        commentCountEl.textContent = next > 0 ? String(next) : '';
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: next });
+        syncMomentPostSeedCounts(postId, { commentCount: next });
+        document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+            if (el !== commentCountEl) el.textContent = next > 0 ? String(next) : '';
+        });
     }
     
     // 댓글 목록이 비어있으면 스타일 제거
@@ -1121,6 +1139,13 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                     if (commentCountEl) {
                         commentCountEl.textContent = comments.length > 0 ? comments.length : '';
                     }
+                    window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, {
+                        commentCount: comments.length
+                    });
+                    syncMomentPostSeedCounts(postId, { commentCount: comments.length });
+                    document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+                        el.textContent = comments.length > 0 ? String(comments.length) : '';
+                    });
                     
                     if (commentsListEl && isMealPhotoOverlayList && typeof window.loadPostCommentsForMealPhotoOverlayList === 'function') {
                         await window.loadPostCommentsForMealPhotoOverlayList(postId, commentsListEl);
@@ -1729,6 +1754,11 @@ window.submitComment = async (postId) => {
     if (commentCountEl) {
         const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
         commentCountEl.textContent = n;
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: n });
+        syncMomentPostSeedCounts(postId, { commentCount: n });
+        document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+            if (el !== commentCountEl) el.textContent = String(n);
+        });
     }
     
     try {
@@ -1804,6 +1834,11 @@ window.submitComment = async (postId) => {
         if (commentCountEl) {
             const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
             commentCountEl.textContent = n || '';
+            window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: n });
+            syncMomentPostSeedCounts(postId, { commentCount: n });
+            document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+                if (el !== commentCountEl) el.textContent = n || '';
+            });
             if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
             else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
         }

@@ -5,7 +5,7 @@ const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
-const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
@@ -1761,6 +1761,53 @@ async function bumpMomentPostV2CommentCount(postId, delta) {
   if (delta < 0 && current <= 0) return;
   await ref.update({ commentCount: FieldValue.increment(delta) });
 }
+
+async function bumpMomentPostV2LikeCount(postId, delta) {
+  if (!postId || !delta) return;
+  const docId = momentPostV2.sanitizeMomentPostDocId(String(postId));
+  const ref = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().schemaVersion !== 2) return;
+  const current = Number(snap.data().likeCount) || 0;
+  if (delta < 0 && current <= 0) return;
+  await ref.update({ likeCount: FieldValue.increment(delta) });
+}
+
+/** postLikes 생성 → 모먼트 v2 likeCount +1 */
+exports.onPostLikeCreated = onDocumentCreated(
+  {
+    document: `artifacts/${APP_ID}/postLikes/{likeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const data = event.data?.data();
+    const postId = data?.postId ? String(data.postId) : '';
+    if (!postId) return;
+    try {
+      await bumpMomentPostV2LikeCount(postId, 1);
+    } catch (e) {
+      logger.warn('onPostLikeCreated: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
+  }
+);
+
+/** postLikes 삭제 → 모먼트 v2 likeCount -1 */
+exports.onPostLikeDeleted = onDocumentDeleted(
+  {
+    document: `artifacts/${APP_ID}/postLikes/{likeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const data = event.data?.data();
+    const postId = data?.postId ? String(data.postId) : '';
+    if (!postId) return;
+    try {
+      await bumpMomentPostV2LikeCount(postId, -1);
+    } catch (e) {
+      logger.warn('onPostLikeDeleted: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
+  }
+);
 
 /**
  * 공유 사진 추가 (Callable)

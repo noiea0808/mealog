@@ -62,3 +62,52 @@ export function removeMomentPostFromFeed(feedDocs, postIdOrEntryId, userId) {
 export function resolveMealSharePostId(record, userId) {
   return mealSharePostId(record, userId);
 }
+
+/**
+ * 피드 캐시의 likeCount/commentCount 패치 — 탭 재진입 시 시드값이 유지되도록
+ * @param {object[]} feedDocs
+ * @param {string} postId
+ * @param {{ likeCount?: number, commentCount?: number, likeDelta?: number, commentDelta?: number }} patch
+ */
+export function patchMomentFeedSocialCounts(feedDocs, postId, patch = {}) {
+  const pid = String(postId || '').trim();
+  if (!pid || !patch) return [...(feedDocs || [])];
+  const matchKeys = new Set([pid, sanitizeMomentPostDocId(pid)]);
+  return (feedDocs || []).map((d) => {
+    if (!docMatchesPostKeys(d, matchKeys)) return d;
+    const next = { ...d };
+    if (typeof patch.likeCount === 'number') {
+      next.likeCount = Math.max(0, patch.likeCount);
+    } else if (typeof patch.likeDelta === 'number') {
+      next.likeCount = Math.max(0, (Number(d.likeCount) || 0) + patch.likeDelta);
+    }
+    if (typeof patch.commentCount === 'number') {
+      next.commentCount = Math.max(0, patch.commentCount);
+    } else if (typeof patch.commentDelta === 'number') {
+      next.commentCount = Math.max(0, (Number(d.commentCount) || 0) + patch.commentDelta);
+    }
+    return next;
+  });
+}
+
+/** DOM 카드의 data-seed-*-count 동기화 (재로드·재진입 시 시드 적용용) */
+export function syncMomentPostSeedCounts(postId, { likeCount, commentCount } = {}) {
+  const pid = String(postId || '').trim();
+  if (!pid) return;
+  document.querySelectorAll(`[data-post-id="${pid}"][data-moment-card-layout]`).forEach((el) => {
+    if (typeof likeCount === 'number') {
+      el.setAttribute('data-seed-like-count', String(Math.max(0, likeCount)));
+    }
+    if (typeof commentCount === 'number') {
+      el.setAttribute('data-seed-comment-count', String(Math.max(0, commentCount)));
+    }
+  });
+  document.querySelectorAll(`.instagram-post[data-post-id="${pid}"]`).forEach((el) => {
+    if (typeof likeCount === 'number' && el.hasAttribute('data-seed-like-count')) {
+      el.setAttribute('data-seed-like-count', String(Math.max(0, likeCount)));
+    }
+    if (typeof commentCount === 'number' && el.hasAttribute('data-seed-comment-count')) {
+      el.setAttribute('data-seed-comment-count', String(Math.max(0, commentCount)));
+    }
+  });
+}

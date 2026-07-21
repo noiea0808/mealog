@@ -97,16 +97,20 @@ export async function loadPostInteractions(postEl, postId) {
     
     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
 
-    // 화면2(v2): 좋아요/댓글 "개수"는 문서 시드값(likeCount/commentCount)으로 이미 표시되고,
-    // 댓글 본문은 패널이 숨겨져 있어 사용자가 시트를 열 때 viewAllComments가 로드한다.
-    // → 스크롤 중에는 전체 목록 조회(getLikes/getComments)를 생략해 Firestore 읽기·DOM 갱신을 줄인다.
-    //    (v1은 하단에 댓글 미리보기가 노출되므로 기존대로 전체 조회 유지)
+    // 화면2(v2): 댓글 본문은 시트를 열 때 로드. 좋아요/댓글 "개수"와 본인 댓글 fill은
+    // 시드값이 오래되거나(likeCount 미유지) 비어 있을 수 있어 가벼운 count/존재 조회로 보정한다.
     const isV2Card = postEl.getAttribute('data-moment-card-layout') === '2';
-
-    // 로그인한 사용자는 좋아요/북마크 상태도 확인, 비로그인 사용자는 좋아요 수와 댓글만 가져오기
     const alternatePostIds = (postEl.getAttribute('data-post-id-alternates') || '').split(',').filter(Boolean);
+
     const promiseArray = isV2Card
-        ? []
+        ? [
+              window.postInteractions.getLikeCount
+                  ? window.postInteractions.getLikeCount(postId).catch((e) => {
+                        console.error(`좋아요 수 가져오기 실패 (postId: ${postId}):`, e);
+                        return null;
+                    })
+                  : Promise.resolve(null)
+          ]
         : [
               window.postInteractions.getLikes(postId).catch(e => {
                   console.error(`좋아요 목록 가져오기 실패 (postId: ${postId}):`, e);
@@ -130,6 +134,14 @@ export async function loadPostInteractions(postEl, postId) {
                 return false;
             })
         );
+        if (isV2Card && window.postInteractions.hasUserCommented) {
+            promiseArray.push(
+                window.postInteractions.hasUserCommented(postId, window.currentUser.uid, alternatePostIds).catch((e) => {
+                    console.error(`댓글 작성 여부 확인 실패 (postId: ${postId}):`, e);
+                    return false;
+                })
+            );
+        }
     }
     
     try {
@@ -151,16 +163,20 @@ export async function loadPostInteractions(postEl, postId) {
         const results = await Promise.all(promiseArray);
         let isLiked = false;
         let isBookmarked = false;
-        // v2는 목록을 조회하지 않으므로 null → 이후 카운트/댓글 갱신을 건너뛰고 시드값을 유지
+        let hasCommented = false;
+        // v2: likes=null → 목록 미조회, likeCountFromServer로 카운트 보정 / comments=null → 시트에서 로드
         let likes = null;
         let comments = null;
+        let likeCountFromServer = null;
         
         if (isLoggedIn && !isV2Card) {
             [isLiked, isBookmarked, likes, comments] = results;
         } else if (isLoggedIn && isV2Card) {
-            [isLiked, isBookmarked] = results;
+            [isLiked, isBookmarked, likeCountFromServer, hasCommented] = results;
         } else if (!isLoggedIn && !isV2Card) {
             [likes, comments] = results;
+        } else if (!isLoggedIn && isV2Card) {
+            [likeCountFromServer] = results;
         }
         
         // DOM이 여전히 존재하는지 확인
@@ -225,12 +241,30 @@ export async function loadPostInteractions(postEl, postId) {
             });
         }
 
-        // 좋아요 수 업데이트 (v2는 likes 미조회 → 시드값 유지)
+        // 좋아요 수 업데이트 (v2: count aggregation / v1: likes.length)
         if (Array.isArray(likes)) {
             const likeCount = likes.length;
             postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((likeCountEl) => {
                 likeCountEl.textContent = likeCount > 0 ? likeCount : '';
             });
+            if (postEl.hasAttribute('data-seed-like-count')) {
+                postEl.setAttribute('data-seed-like-count', String(likeCount));
+            }
+        } else if (typeof likeCountFromServer === 'number') {
+            postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((likeCountEl) => {
+                likeCountEl.textContent = likeCountFromServer > 0 ? String(likeCountFromServer) : '';
+            });
+            if (postEl.hasAttribute('data-seed-like-count')) {
+                postEl.setAttribute('data-seed-like-count', String(likeCountFromServer));
+            }
+            try {
+                const { patchMomentFeedSocialCounts } = await import('../utils/moment-feed-cache.js');
+                if (window.sharedPhotosFeed) {
+                    window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, {
+                        likeCount: likeCountFromServer
+                    });
+                }
+            } catch (_) {}
         }
 
         // 댓글 수 업데이트 (v2는 comments 미조회 → 시드값 유지)
@@ -241,35 +275,39 @@ export async function loadPostInteractions(postEl, postId) {
             });
         }
 
-        // 댓글 아이콘: 사용자가 댓글 단 경우 채우기 (fa-solid)
-        if (isLoggedIn && comments && Array.isArray(comments)) {
-            const hasCommented = comments.some((c) => (c.userId || c.authorId) === window.currentUser?.uid);
-            postEl.querySelectorAll(`.post-comment-btn[data-post-id="${postId}"]`).forEach((btn) => {
-                const icon = btn.querySelector('.post-comment-icon');
-                if (!icon) return;
-                const stackFill = btn.querySelector('.post-comment-fill');
-                if (stackFill) {
-                    if (hasCommented) btn.setAttribute('data-post-user-commented', '1');
-                    else btn.removeAttribute('data-post-user-commented');
-                    return;
-                }
-                if (icon.classList.contains('timeline-meal-photo-moment-social-icon')) {
-                    if (hasCommented) {
-                        icon.classList.remove('fa-regular');
-                        icon.classList.add('fa-solid', 'text-white/95');
-                    } else {
-                        icon.classList.remove('fa-solid');
-                        icon.classList.add('fa-regular', 'text-white/95');
+        // 댓글 아이콘: 사용자가 댓글 단 경우 채우기
+        if (isLoggedIn) {
+            if (Array.isArray(comments)) {
+                hasCommented = comments.some((c) => (c.userId || c.authorId) === window.currentUser?.uid);
+            }
+            if (isV2Card || Array.isArray(comments)) {
+                postEl.querySelectorAll(`.post-comment-btn[data-post-id="${postId}"]`).forEach((btn) => {
+                    const icon = btn.querySelector('.post-comment-icon');
+                    if (!icon) return;
+                    const stackFill = btn.querySelector('.post-comment-fill');
+                    if (stackFill) {
+                        if (hasCommented) btn.setAttribute('data-post-user-commented', '1');
+                        else btn.removeAttribute('data-post-user-commented');
+                        return;
                     }
-                } else if (hasCommented) {
-                    icon.classList.remove('fa-regular', 'text-slate-800');
-                    icon.classList.add('fa-solid', 'text-slate-800');
-                } else {
-                    icon.classList.remove('fa-solid', 'text-slate-800');
-                    icon.classList.add('fa-regular', 'text-slate-800');
-                }
-            });
-            applyStackCommentBtnVisual(postId);
+                    if (icon.classList.contains('timeline-meal-photo-moment-social-icon')) {
+                        if (hasCommented) {
+                            icon.classList.remove('fa-regular');
+                            icon.classList.add('fa-solid', 'text-white/95');
+                        } else {
+                            icon.classList.remove('fa-solid');
+                            icon.classList.add('fa-regular', 'text-white/95');
+                        }
+                    } else if (hasCommented) {
+                        icon.classList.remove('fa-regular', 'text-slate-800');
+                        icon.classList.add('fa-solid', 'text-slate-800');
+                    } else {
+                        icon.classList.remove('fa-solid', 'text-slate-800');
+                        icon.classList.add('fa-regular', 'text-slate-800');
+                    }
+                });
+                applyStackCommentBtnVisual(postId);
+            }
         }
         
         // 댓글 표시 (최대 2개) — 등록 시간 포함 (v2는 comments 미조회 → 시트 열 때 로드하므로 건너뜀)

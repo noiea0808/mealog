@@ -41,6 +41,14 @@
       ]
     },
     {
+      "collectionGroup": "postComments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "postId", "order": "ASCENDING" },
+        { "fieldPath": "userId", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "postLikes",
       "queryScope": "COLLECTION",
       "fields": [
