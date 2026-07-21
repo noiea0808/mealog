@@ -686,7 +686,7 @@ function buildMealPhotoSocialBarCornerHtml(row) {
     const postId = row.overlayPostId;
     const a = row.overlayAuthor;
     if (!postId || !a) return '';
-    return `<div class="pointer-events-auto absolute z-[11] flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex shrink-0 items-center">${buildMealPhotoOverlaySocialButtonsHtml(postId)}</div></div>`;
+    return `<div class="timeline-meal-photo-social-below pointer-events-auto flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex w-full items-center">${buildMealPhotoOverlaySocialButtonsHtml(postId)}</div></div>`;
 }
 
 /** 휠: 사진 좌하단「comment」— 하단 기록 코멘트 박스 표시 토글(기본 off·반전) */
@@ -723,12 +723,12 @@ function buildCarouselZoneHtml(row, opts = {}) {
                         ${cellsHtml}
                     </div>
                     ${momentChrome}
-                    ${socialBarHtml}
                     ${commentToggleHtml}
                     <div class="timeline-meal-photos-carousel-badge pointer-events-none absolute z-10 flex items-baseline gap-0 rounded-md border-0 bg-black/35 px-2 py-1 tabular-nums leading-none text-white/95 shadow-sm backdrop-blur-sm${badgeHidden}" data-carousel-badge>${badgeInner}</div>
                 </div>
                 ${expandMini}
             </div>
+            ${socialBarHtml}
             ${expand}
         </div>`;
 }

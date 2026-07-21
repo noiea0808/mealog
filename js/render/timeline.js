@@ -830,6 +830,22 @@ export function syncSnackViewDropdown(container) {
     });
 }
 
+function timelineRatingHtml(value) {
+    const parsed = Number(value);
+    const count = Number.isFinite(parsed) ? Math.min(5, Math.max(0, Math.round(parsed))) : 0;
+    const stars = count > 0 ? '★'.repeat(count) : '☆';
+    const label = count > 0 ? `만족도 ${count}점` : '만족도 미입력';
+    return `<span class="timeline-entry-rating" aria-label="${label}" title="${label}">${stars}</span>`;
+}
+
+function timelineTagsHtml(tags) {
+    const clean = tags.map((tag) => String(tag || '').trim()).filter(Boolean);
+    if (!clean.length) return '';
+    return `<div class="timeline-entry-tags scrollbar-hide">${clean
+        .map((tag) => `<span class="timeline-entry-tag">#${escapeHtml(tag)}</span>`)
+        .join('')}</div>`;
+}
+
 function buildSnackTimelineCardHtml(
     dateStr,
     slot,
@@ -869,12 +885,11 @@ function buildSnackTimelineCardHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`)
-            .join('')}</div>`;
+        tagsHtml = timelineTagsHtml(tags);
     }
     let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    const hasPhoto = snackPhotoUrls.length > 0;
     if (snackPhotoUrls.length > 0) {
         iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id }, getMealThumbUrlsForTimeline(r));
     } else if (r.mealType === 'Skip') {
@@ -882,24 +897,20 @@ function buildSnackTimelineCardHtml(
     } else {
         iconHtml = `<i class="fa-solid fa-mug-saucer text-2xl text-slate-400" aria-hidden="true"></i>`;
     }
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const blockOpen = isMealEntryRowBlocked(r);
     const openClick = blockOpen
         ? ''
         : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
+    return `<div ${openClick} class="card timeline-entry-card ${hasPhoto ? 'timeline-entry-card--photo' : 'timeline-entry-card--compact'} ${cardMbClass} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+        <div class="timeline-entry-card__layout flex">
+            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
                 ${iconHtml}
             </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
                         <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
                     ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
@@ -949,29 +960,24 @@ function buildMainMealTimelineCardHtml(
             if (sData) tags.push(sData.label);
         }
         if (tags.length > 0) {
-            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-                .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-                .join('')}</div>`;
+            tagsHtml = timelineTagsHtml(tags);
         }
     }
     const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
     const iconHtml = buildMainMealPhotoAreaHtml(slot, r, dateStr, specificStyle.iconText);
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const hasPhoto = getMealPhotoUrlsForTimeline(r).length > 0;
     const blockOpen = isMealEntryRowBlocked(r);
     const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+    return `<div ${openClick} class="card timeline-entry-card ${hasPhoto ? 'timeline-entry-card--photo' : 'timeline-entry-card--compact'} ${cardMbClass} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+        <div class="timeline-entry-card__layout flex">
+            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden ${iconBoxClass} flex items-center justify-center">
                 ${iconHtml}
             </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
                         <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
                     ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
@@ -986,12 +992,12 @@ function buildMainMealTimelineCardHtml(
 function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeSlotLabel = escapeHtml(slot.label);
     const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-card timeline-entry-card--compact timeline-entry-card--empty mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="timeline-entry-card__layout flex">
+            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden ${iconBoxClass} flex items-center justify-center">
                 ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'lg')}
             </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
                 <h4 class="mb-0 leading-tight"><span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span></h4>
                 <p class="mt-1.5 mb-0"><span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span></p>
             </div>
@@ -1003,12 +1009,12 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex ${hThird}">
-            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 border-slate-200 ${specificStyle.iconText} flex items-center justify-center overflow-hidden border-r">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-card timeline-entry-card--compact timeline-entry-card--empty mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="timeline-entry-card__layout flex ${hThird}">
+            <div class="timeline-entry-card__media w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center overflow-hidden">
                 <span class="text-3xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
             </div>
-            <div class="flex-1 min-w-0 flex items-center px-4 py-0.5">
+            <div class="timeline-entry-card__body flex-1 min-w-0 flex items-center px-4 py-0.5">
                 <p class="mb-0 truncate text-xs leading-tight">
                     <span class="font-bold ${specificStyle.iconText}">${safeLabel}</span>
                     <span class="text-slate-400 font-normal"> <span class="font-bold">+</span> 기록하기</span>
@@ -1023,7 +1029,7 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-row mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -1040,7 +1046,7 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
 function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-row mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 ${mainMealSlotListTitleHtml(slot, specificStyle)}
@@ -1085,18 +1091,15 @@ function buildMainMealListFilledRowHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-            .join('')}</div>`;
+        tagsHtml = timelineTagsHtml(tags);
     }
 
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const blockMainList = isMealEntryRowBlocked(r);
     const openClickMainList = blockMainList
         ? ''
         : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickMainList} class="card timeline-entry-row ${cardMbClass} ${listLeft} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 ${mainMealSlotListTitleHtml(slot, specificStyle, slotTitle)}
@@ -1106,10 +1109,7 @@ function buildMainMealListFilledRowHtml(
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
                         <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
                     ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
@@ -1154,12 +1154,9 @@ function buildSnackListFilledRowHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-            .join('')}</div>`;
+        tagsHtml = timelineTagsHtml(tags);
     }
 
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const safeMenu = escapeHtml(menuLine || '간식');
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const pendingSnackList = isMealEntryRowBlocked(r);
@@ -1167,7 +1164,7 @@ function buildSnackListFilledRowHtml(
         ? ''
         : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
 
-    return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickSnackList} class="card timeline-entry-row ${cardMbClass} ${listLeft} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -1177,10 +1174,7 @@ function buildSnackListFilledRowHtml(
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
                         <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
                     ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
@@ -1286,7 +1280,7 @@ function buildDailyJournalListEmptyHtml(dateStr) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = style.listLeft || '';
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -1318,7 +1312,7 @@ function buildDailyJournalListFilledHtml(dateStr, journal) {
         (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
     const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
 
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words inline-flex items-center justify-center gap-1">${safeLabel}${dailyJournalShareArrowHtml(dateStr, journal)}</span>
@@ -1366,12 +1360,12 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     const containerClass = hasContent ? 'border-slate-200' : 'border-slate-200 opacity-80';
     const iconBoxClass = `bg-slate-100 border-slate-200 ${style.iconText}`;
 
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-card ${photos.length ? 'timeline-entry-card--photo' : 'timeline-entry-card--compact'} daily-journal-slot mb-1.5 ${containerClass} cursor-pointer active:scale-[0.98] transition-all">
+        <div class="timeline-entry-card__layout flex">
+            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden ${iconBoxClass} flex items-center justify-center">
                 ${iconHtml}
             </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
+            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
                 <div class="min-w-0">
                     ${dailyJournalHasPhotos(journal) ? titleLine1 : `<h4 class="mb-0 leading-tight">${titleLine1}</h4>`}
                     ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}

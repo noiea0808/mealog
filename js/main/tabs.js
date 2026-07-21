@@ -61,6 +61,7 @@ export function registerMainTabSwitch() {
             console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
             const prevTab = appState.currentTab;
             appState.currentTab = tab;
+            document.body.dataset.mainTab = tab;
             if (prevTab !== tab) {
                 window._contentPopupDismissedVisit = new Set();
             }

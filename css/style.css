@@ -2260,6 +2260,170 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calend
     color: #ffffff !important;
     font-weight: 800;
 }
+
+/* 밀로그·모먼트 리디자인: 공통 녹색 크롬은 다른 탭에 남기고 두 탭만 밝은 일기장 톤 */
+body[data-main-tab='timeline'] #statusBarOverlay,
+body[data-main-tab='gallery'] #statusBarOverlay,
+body[data-main-tab='timeline'] #mainAppHeader,
+body[data-main-tab='gallery'] #mainAppHeader {
+    background: #ffffff !important;
+    background-image: none !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.55) !important;
+    box-shadow: none !important;
+}
+body[data-main-tab='timeline'] #appTopChrome,
+body[data-main-tab='gallery'] #appTopChrome {
+    background: #ffffff !important;
+    background-image: none !important;
+}
+body[data-main-tab='timeline'] #headerAppTitle,
+body[data-main-tab='gallery'] #headerAppTitle {
+    color: #5ca857 !important;
+}
+body[data-main-tab='timeline'] .header-right .notification-trigger,
+body[data-main-tab='timeline'] .header-right .timeline-search-toggle,
+body[data-main-tab='gallery'] .header-right .notification-trigger,
+body[data-main-tab='gallery'] .header-right .timeline-search-toggle,
+body[data-main-tab='gallery'] .header-right .gallery-trace-btn {
+    color: #334155 !important;
+    background: transparent !important;
+}
+body[data-main-tab='timeline'] .header-right .notification-trigger:hover,
+body[data-main-tab='timeline'] .header-right .timeline-search-toggle:hover,
+body[data-main-tab='gallery'] .header-right .notification-trigger:hover,
+body[data-main-tab='gallery'] .header-right .timeline-search-toggle:hover,
+body[data-main-tab='gallery'] .header-right .gallery-trace-btn:hover,
+body[data-main-tab='gallery'] #mainAppHeader .gallery-trace-btn.gallery-trace-btn--active {
+    color: #047857 !important;
+    background: #f0fdf4 !important;
+}
+body[data-main-tab='gallery'] #mainAppHeader .gallery-trace-btn[data-trace='collapse'] .fa-magnifying-glass,
+body[data-main-tab='gallery'] #mainAppHeader .gallery-trace-btn[data-trace='collapse']:hover .fa-magnifying-glass {
+    -webkit-text-stroke: 0 !important;
+}
+body[data-main-tab='timeline'] .timeline-search-wrapper.expanded .timeline-search-panel {
+    background: #f8fafc !important;
+    border-color: #e2e8f0 !important;
+}
+body[data-main-tab='timeline'] #searchInput {
+    color: #1e293b;
+}
+body[data-main-tab='timeline'] #searchInput::placeholder {
+    color: #94a3b8;
+}
+
+body[data-main-tab='timeline'] #appTopChrome #trackerSection {
+    background: #ffffff !important;
+    background-image: none !important;
+    border-bottom: 1px solid #f1f5f9 !important;
+    box-shadow: none !important;
+}
+body[data-main-tab='timeline'] #trackerTitle {
+    color: #334155 !important;
+    font-weight: 500;
+}
+body[data-main-tab='timeline'] .tracker-calendar-icon-btn {
+    color: #64748b !important;
+}
+body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
+    color: #059669 !important;
+    background: #f0fdf4 !important;
+}
+body[data-main-tab='timeline'] .tracker-streak-pill {
+    border-color: transparent;
+    background: #f7faf3;
+    color: #b88935;
+    font-weight: 600;
+    padding-right: 9px;
+}
+body[data-main-tab='timeline'] .tracker-streak-pill__emoji {
+    width: 20px;
+    height: 20px;
+    background: transparent;
+}
+body[data-main-tab='timeline'] #trackerTabs {
+    background: #f1f5f9 !important;
+}
+body[data-main-tab='timeline'] #trackerTabs .view-tab.active {
+    background: #ffffff !important;
+    border-color: transparent !important;
+    color: #047857 !important;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+}
+body[data-main-tab='timeline'] #trackerTabs .view-tab.inactive {
+    color: #94a3b8 !important;
+}
+body[data-main-tab='timeline'] #miniCalendar .calendar-item > span,
+body[data-main-tab='timeline'] #miniCalendar .calendar-item > span.text-rose-400 {
+    color: #64748b !important;
+}
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot,
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-full,
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-partial {
+    background: transparent !important;
+    border: 0 !important;
+    color: #475569 !important;
+    border-radius: 9999px;
+}
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-selected {
+    transform: none;
+    background: #5ca857 !important;
+    border: 0 !important;
+    color: #ffffff !important;
+    font-weight: 700;
+    box-shadow: 0 3px 10px rgba(92, 168, 87, 0.22);
+}
+body[data-main-tab='timeline'] #nav-timeline,
+body[data-main-tab='gallery'] #nav-gallery {
+    color: #5ca857 !important;
+}
+/* 기존 :has()+ID 녹색 크롬 규칙보다 높은 우선순위로 밝은 탭 스킨을 확정 */
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay,
+body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #statusBarOverlay,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome,
+body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #appTopChrome,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
+body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #appTopChrome #mainAppHeader,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
+    background: #ffffff !important;
+    background-image: none !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #headerAppTitle,
+body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #headerAppTitle {
+    color: #5ca857 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
+    color: #334155 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
+    color: #64748b !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
+    background: #f1f5f9 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.active {
+    background: #ffffff !important;
+    color: #047857 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
+    color: #94a3b8 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
+    color: #64748b !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
+    background: transparent !important;
+    border: 0 !important;
+    color: #475569 !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
+    background: #5ca857 !important;
+    border: 0 !important;
+    color: #ffffff !important;
+}
 /* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
 #trackerMonthCalendarModal .calendar-dot.dot-none {
     background: #ecfdf5;
@@ -4277,6 +4441,249 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     font-family: inherit;
     font-weight: 400;
 }
+
+/* 모먼트 C안: 사진은 깨끗하게, 기록·소셜은 흰 카드 아래에 배치 */
+body[data-main-tab='gallery'] {
+    --app-page-bg: #fbfcfa;
+}
+#galleryContainer.moment-feed-layout-v2 {
+    background: #fbfcfa !important;
+}
+#galleryContainer.moment-feed-layout-v2 #galleryPostsInsertPoint {
+    gap: 20px;
+    padding: 12px;
+}
+#galleryContainer.moment-feed-layout-v2
+    .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
+    .moment-feed-v2-scope[data-moment-v2-root],
+#feedContent[data-moment-feed-layout='2']
+    .instagram-post[data-moment-card-layout='2']
+    .moment-feed-v2-scope[data-moment-v2-root] {
+    overflow: hidden;
+    border: 0;
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 4px 22px rgba(15, 23, 42, 0.07);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-wrap,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-bg-wrap {
+    display: none !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-ambient,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-ambient {
+    border-radius: 20px;
+    background: #ffffff;
+}
+#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2
+    .instagram-post[data-moment-card-layout='2'] .moment-v2-wheel-center-stack,
+#feedContent[data-moment-feed-layout='2']
+    .instagram-post[data-moment-card-layout='2'] .moment-v2-wheel-center-stack {
+    padding-top: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-surface,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-surface {
+    border-radius: 18px 18px 0 0 !important;
+    box-shadow: none;
+    --tw-ring-color: transparent !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-stack {
+    border-radius: 18px !important;
+    background: #ffffff;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar {
+    min-height: 0;
+    gap: 3px;
+    padding: 12px 16px 4px;
+    border: 0 !important;
+    background: #ffffff !important;
+    color: #334155 !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
+    width: 100%;
+    margin-left: 0;
+    align-self: stretch;
+    align-items: flex-start;
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937;
+    text-align: left;
+    font-size: 22px;
+    letter-spacing: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption]
+    .moment-v2-wheel-anim-strip--menu,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption]
+    .moment-v2-wheel-anim-strip--menu {
+    width: 100%;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption]
+    .moment-v2-wheel-menu-anim-line,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption]
+    .moment-v2-wheel-menu-anim-line {
+    text-align: left;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner {
+    color: #94a3b8;
+    font-family: 'Pretendard', sans-serif;
+    font-size: 11px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon {
+    color: #cbd5e1;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-band,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-band {
+    margin: 0;
+    padding: 4px 16px 10px;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #64748b !important;
+    box-shadow: none;
+    backdrop-filter: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-body,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-body {
+    color: #64748b !important;
+    font-family: 'Pretendard', sans-serif;
+    font-size: 13px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo {
+    position: static !important;
+    width: 100%;
+    padding: 5px 10px 10px;
+    border-top: 1px solid #f1f5f9;
+    background: #ffffff;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-row .post-bookmark-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-row .post-bookmark-btn {
+    margin-right: 0;
+    margin-left: auto;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon {
+    color: #64748b !important;
+    filter: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-count,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-count {
+    color: #64748b;
+    text-shadow: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope
+    .post-bookmark-btn.post-social-state-on .post-bookmark-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope
+    .post-bookmark-btn.post-social-state-on .post-bookmark-fill {
+    color: #5ca857;
+}
+#galleryContainer.moment-feed-layout-v2 .timeline-meal-photo-moment-chrome-chip,
+#feedContent[data-moment-feed-layout='2'] .timeline-meal-photo-moment-chrome-chip {
+    border-color: rgba(255, 255, 255, 0.72);
+    background: rgba(255, 255, 255, 0.84);
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.12);
+}
+#galleryContainer.moment-feed-layout-v2 .timeline-meal-photos-carousel-badge,
+#feedContent[data-moment-feed-layout='2'] .timeline-meal-photos-carousel-badge {
+    background: rgba(255, 255, 255, 0.82) !important;
+    color: #475569 !important;
+    text-shadow: none;
+}
+
+/* 모먼트 전체화면 휠: 동일한 밝은 사진 일기 톤 */
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-overlay-backdrop {
+    background: rgba(247, 248, 246, 0.96) !important;
+    backdrop-filter: blur(18px);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-vslide {
+    border-color: transparent !important;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-aspect-slot {
+    border-radius: 18px !important;
+    background: #eef1ed !important;
+    box-shadow: 0 8px 30px rgba(15, 23, 42, 0.1);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-moment-chrome-chip {
+    border-color: rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.12);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-caption-footer {
+    overflow: hidden;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 4px 20px rgba(15, 23, 42, 0.07);
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-slide-caption-inner {
+    border-color: transparent !important;
+    background: #ffffff !important;
+    color: #64748b !important;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    [data-wheel-menu-caption] {
+    color: #1f2937 !important;
+    -webkit-text-fill-color: #1f2937;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .meal-photo-wheel-sep {
+    color: #cbd5e1 !important;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-overlay-comment-band {
+    border-color: #f1f5f9 !important;
+    background: #ffffff !important;
+    color: #64748b !important;
+    backdrop-filter: none;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-social-below {
+    position: static !important;
+    width: 100%;
+    padding: 6px 12px;
+    border-top: 1px solid #f1f5f9;
+    background: #ffffff;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-social-below .timeline-meal-photo-moment-social-row {
+    width: 100%;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-social-below .post-bookmark-btn {
+    margin-left: auto;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-social-below .timeline-meal-photo-moment-social-icon {
+    color: #64748b !important;
+    filter: none;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photo-social-below .timeline-meal-photo-moment-social-count {
+    color: #64748b;
+    text-shadow: none;
+}
+#timelineMealPhotosOverlay.timeline-meal-photos-overlay--moment-feed:not(.hidden)
+    .timeline-meal-photos-carousel-badge {
+    background: rgba(255, 255, 255, 0.84) !important;
+    color: #475569 !important;
+    text-shadow: none;
+}
 /* 기록 등록 모달: 포커스 — entry-sheet 디자인 토큰과 통일 */
 #entryModal #modalScrollArea input[type="text"]:focus,
 #entryModal #modalScrollArea input[type="text"]:focus-visible,
@@ -4349,6 +4756,33 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+body[data-main-tab='timeline'] {
+    --app-page-bg: #fbfcfa;
+}
+body[data-main-tab='timeline'] .date-section-header {
+    padding: 14px 12px 14px 16px;
+    background: #ffffff;
+}
+body[data-main-tab='timeline'] .date-section-header h3 {
+    color: #111827;
+    font-weight: 700;
+}
+body[data-main-tab='timeline'] .date-section-header__actions {
+    gap: 6px;
+}
+body[data-main-tab='timeline'] .timeline-view-picker,
+body[data-main-tab='timeline'] .date-section-header__share-btn {
+    border-color: #e7ece5;
+    border-radius: 10px;
+    box-shadow: none;
+}
+body[data-main-tab='timeline'] .timeline-view-picker {
+    --tvp-scale: 1;
+    min-width: 58px;
+}
+body[data-main-tab='timeline'] .date-section-header__share-btn {
+    color: #5b9e57;
 }
 .date-section-header__actions {
     display: inline-flex;
@@ -4495,18 +4929,21 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 }
 /* 타임라인 — 날짜별 카드 묶음 (헤더 ~ 하루기록 슬롯) */
 #timelineContainer > .timeline-date-card {
-    margin: 0 10px 10px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    margin: 0 12px 18px;
+    background: transparent;
+    border: 0;
+    border-radius: 20px;
+    overflow: visible;
+    box-shadow: none;
 }
 #timelineContainer > .timeline-date-card:first-child {
-    margin-top: 8px;
+    margin-top: 12px;
 }
 #timelineContainer > .timeline-date-card .date-section-header {
-    border-bottom: 1px solid #eef2f6;
+    margin-bottom: 10px;
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 2px 14px rgba(15, 23, 42, 0.035);
 }
 #timelineContainer > .timeline-date-card > *:last-child {
     margin-bottom: 0 !important;
@@ -4515,7 +4952,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    background-color: var(--app-page-bg); /* 스와이프 전환 시 흰 공간 대신 배경색 표시 */
+    background-color: #fbfcfa; /* 스와이프 전환 시 새 일기장 배경 유지 */
 }
 /* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
 #timelineView.timeline-view-mode-page,
@@ -4524,7 +4961,111 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     touch-action: pan-y;
 }
 #timelineContainer .card {
-    border-radius: 0 !important;
+    border-radius: 18px !important;
+}
+
+#timelineContainer .timeline-entry-card,
+#timelineContainer .timeline-entry-row {
+    overflow: hidden;
+    border: 0 !important;
+    background: #ffffff;
+    box-shadow: 0 3px 18px rgba(15, 23, 42, 0.055);
+}
+#timelineContainer .timeline-entry-card__media {
+    border: 0 !important;
+}
+#timelineContainer .timeline-entry-card--photo .timeline-entry-card__layout {
+    flex-direction: column;
+}
+#timelineContainer .timeline-entry-card--photo .timeline-entry-card__media {
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    aspect-ratio: 16 / 9;
+    border-radius: 16px 16px 0 0;
+}
+#timelineContainer .timeline-entry-card--photo .timeline-entry-card__body {
+    min-height: 116px;
+    padding: 14px 16px 18px;
+}
+#timelineContainer .timeline-entry-card--compact .timeline-entry-card__layout {
+    min-height: 112px;
+    align-items: stretch;
+}
+#timelineContainer .timeline-entry-card--compact .timeline-entry-card__media {
+    width: 112px !important;
+    min-width: 112px !important;
+    height: auto !important;
+    min-height: 112px !important;
+    margin: 14px 0 14px 14px;
+    border-radius: 9999px;
+    background: #f4f8ef !important;
+}
+#timelineContainer .timeline-entry-card--compact .timeline-entry-card__body {
+    padding: 16px;
+}
+#timelineContainer .timeline-entry-card--empty .timeline-entry-card__media {
+    width: 76px !important;
+    min-width: 76px !important;
+    min-height: 76px !important;
+    margin: 12px 0 12px 14px;
+}
+#timelineContainer .timeline-entry-card--empty .timeline-entry-card__layout {
+    min-height: 100px;
+}
+#timelineContainer .timeline-entry-row {
+    border-left-width: 3px !important;
+    border-left-style: solid !important;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+#timelineContainer .timeline-entry-row > .flex > :first-child {
+    border-right: 0 !important;
+    background: #fafcf8 !important;
+}
+.timeline-entry-rating {
+    display: inline-flex;
+    color: #f4c542;
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 1px;
+    white-space: nowrap;
+}
+.timeline-entry-tags {
+    clear: both;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-top: 8px;
+    overflow-x: auto;
+}
+.timeline-entry-tag {
+    flex-shrink: 0;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 400;
+    white-space: nowrap;
+}
+#timelineContainer [data-mealog-open-date][aria-label$=' 추가'],
+#timelineContainer .snack-row [data-mealog-open-date] {
+    border-color: #e7ece5 !important;
+    border-radius: 9999px !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    color: #64748b !important;
+    font-weight: 600 !important;
+    box-shadow: 0 1px 5px rgba(15, 23, 42, 0.04);
+}
+#timelineContainer .snack-row {
+    min-height: 52px;
+    padding: 8px 12px;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+#timelineContainer .snack-tag {
+    border-color: transparent;
+    background: #f7f9f6;
+    color: #64748b;
 }
 #galleryContainer {
     margin-left: 0 !important;

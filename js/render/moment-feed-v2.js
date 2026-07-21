@@ -160,7 +160,7 @@ function buildV2MeatballBtnHtml(overlayRow) {
 function buildV2InlineSocialBarHtml(postId) {
     const p = String(postId || '');
     const pidJson = JSON.stringify(p);
-    return `<div class="pointer-events-auto absolute z-[11] flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex shrink-0 items-center">
+    return `<div class="moment-v2-social-below-photo pointer-events-auto flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex w-full items-center">
 <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
     )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-heart post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-heart post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
@@ -256,14 +256,15 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags, en
     let menuCol = '';
     if (!isBestShare && !isDailyShare && !isDailyJournalShare && !isDietReportShare) {
         const menu = (menuCaptionPlain || '').trim() || '—';
-        menuCol = `<div class="pointer-events-none min-w-0 flex-1 basis-0 text-right text-white/95 moment-v2-wheel-menu flex items-start justify-end" data-wheel-menu-caption>
+        menuCol = `<div class="pointer-events-none w-full min-w-0 text-left moment-v2-wheel-menu flex items-start justify-start" data-wheel-menu-caption>
             <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip moment-v2-wheel-anim-strip--menu max-w-full" data-moment-v2-f="menu" data-moment-v2-stripe="menu" data-moment-v2-wheel-strip="1">
                 <span class="meal-photo-wheel-label-line moment-v2-wheel-menu-anim-line">${buildMomentV2MenuLabelLineInnerHtml(menu)}</span>
             </div>
         </div>`;
     }
     return `<div class="moment-v2-wheel-strip w-full max-w-full min-w-0 overflow-x-hidden scrollbar-hide">
-    <div class="timeline-meal-photos-slide-caption-inner flex w-full max-w-full min-w-0 min-h-[30px] items-center rounded-none border border-white/10 bg-black/50 text-white timeline-meal-photo-menu-bar moment-v2-wheel-caption-row moment-v2-wheel-caption-row--unit">
+    <div class="timeline-meal-photos-slide-caption-inner flex w-full max-w-full min-w-0 flex-col items-start rounded-none timeline-meal-photo-menu-bar moment-v2-wheel-caption-row moment-v2-wheel-caption-row--unit">
+        ${menuCol}
         <div class="timeline-meal-photos-wheelbar-inner flex min-w-0 shrink-0 items-center gap-0 flex-nowrap">
             ${buildWheelNumericCol(y, true, 'y')}
             <span class="meal-photo-wheel-sep meal-photo-wheel-sep--colon shrink-0 select-none text-white/45">:</span>
@@ -275,7 +276,6 @@ export function buildMomentV2WheelCaptionHtml(photo, menuCaptionPlain, flags, en
             <span class="meal-photo-wheel-sep meal-photo-wheel-sep--colon shrink-0 select-none text-white/45">:</span>
             ${buildWheelLabelCol('meal-photo-wheel-col--slot', slotT, 'slot')}
         </div>
-        ${menuCol}
     </div>
 </div>`;
 }
@@ -322,12 +322,10 @@ function buildVScrollPhotoCell(p, idx, groupAspect, hasChrome, postIdForUi, over
     const ar = normalizePhotoAspectForDisplay(p, groupAspect);
     const photoBlock = buildV2RawPhotoBlock(p, idx, ar);
     const momentChrome = hasChrome && overlayRow ? buildV2InlineChromeHtml(overlayRow) : '';
-    const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
     return `<div class="relative z-[2] flex w-full min-w-0 flex-col">
   <div class="moment-v2-v-photo-clip relative w-full min-w-0 overflow-hidden">
     ${photoBlock}
     ${momentChrome}
-    ${socialBar}
   </div>
 </div>`;
 }
@@ -405,7 +403,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
                 ${hSlides}
                 </div>
                 ${momentChrome}
-                ${socialBar}
                 <div class="moment-v2-photo-page-indicator timeline-meal-photos-carousel-badge pointer-events-none absolute z-[12] flex items-baseline gap-0 rounded-md border-0 bg-black/35 px-2.5 py-1 tabular-nums leading-none text-white/95 shadow-sm backdrop-blur-sm" data-carousel-badge role="status" aria-live="polite" aria-atomic="true" aria-label="사진 장 수">
                     <span data-carousel-badge-cur class="carousel-badge-num leading-none">1</span><span class="carousel-badge-sep leading-none text-white/80" aria-hidden="true">/</span><span data-carousel-badge-tot class="carousel-badge-num leading-none">${n}</span>
                 </div>
@@ -424,6 +421,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
                 <span class="moment-v2-author-comment-more-hint-label moment-v2-author-comment-more-hint-label--expanded">접기</span>
             </span>
         </div>
+        ${socialBar}
         ${socialPanelBelow}
         </div>
         </div>
@@ -466,6 +464,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 </div>`;
         })
         .join('');
+    const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
 
     return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0.5" data-moment-v2-wheel-stage>
@@ -483,6 +482,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         </div>
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
         <div class="moment-v2-caption-footer moment-v2-caption-footer--social-only relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
+        ${socialBar}
         ${socialPanelBelow}
         </div>
         </div>
