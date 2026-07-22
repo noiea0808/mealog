@@ -10,7 +10,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
-import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
+import { getThumbImageUrl, getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
@@ -586,11 +586,22 @@ export function getMealPhotoUrlsForTimeline(r) {
  * 타임라인 썸네일 표시용 URL(원본과 index 정렬).
  * 신규 업로드는 200px thumb → 없으면 800px display → 없으면 원본.
  * 반환 배열은 getMealPhotoUrlsForTimeline과 같은 길이/순서를 유지한다(팝업 원본과 매칭).
+ * 작은 셀·태그용. 홈피드 와이드 카드는 getMealDisplayUrlsForTimeline 사용.
  */
 export function getMealThumbUrlsForTimeline(r) {
     const originals = getMealPhotoUrlsForTimeline(r);
     if (originals.length === 0) return [];
     return originals.map((orig, i) => getThumbImageUrl(r, i, 'timeline.cell') || orig);
+}
+
+/**
+ * 홈피드 와이드 카드용(800px display → 원본).
+ * 200px thumb을 카드 전폭에 쓰면 화질이 크게 떨어진다.
+ */
+export function getMealDisplayUrlsForTimeline(r) {
+    const originals = getMealPhotoUrlsForTimeline(r);
+    if (originals.length === 0) return [];
+    return originals.map((orig, i) => getDisplayImageUrl(r, i, 'timeline.home-feed') || orig);
 }
 
 /**
@@ -955,7 +966,7 @@ function buildSnackTimelineCardHtml(
             snackPhotoUrls,
             'object-cover',
             { dateStr, slotId: slot.id, recordId: r.id },
-            getMealThumbUrlsForTimeline(r),
+            getMealDisplayUrlsForTimeline(r),
             { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
@@ -1023,7 +1034,7 @@ function buildMainMealTimelineCardHtml(
             mainPhotoUrls,
             'object-cover',
             { dateStr, slotId: slot.id, recordId: r.id },
-            getMealThumbUrlsForTimeline(r),
+            getMealDisplayUrlsForTimeline(r),
             { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
