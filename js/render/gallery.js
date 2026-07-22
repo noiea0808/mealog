@@ -869,7 +869,7 @@ export async function renderGallery(options = {}) {
     let mealHistoryMap = new Map();
     if (window.mealHistory && Array.isArray(window.mealHistory)) {
         window.mealHistory.forEach(meal => {
-            if (meal.id) mealHistoryMap.set(meal.id, meal);
+            if (meal.id) mealHistoryMap.set(String(meal.id), meal);
         });
     }
     const renderPostGroup = (photoGroup, groupIdx) =>
