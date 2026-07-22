@@ -787,7 +787,7 @@ header .mealog-title {
     color: var(--ink, #0f172a);
 }
 .calendar-dow {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--muted, #94a3b8);
     line-height: 1;
@@ -2239,22 +2239,25 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     font-weight: 700;
     letter-spacing: -0.01em;
 }
+/* 연속 기록 pill — 이전 크기 유지 */
+.tracker-streak-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 4px 10px;
+    padding: 2px 8px 2px 3px;
     border-radius: 9999px;
-    border: 0;
-    background: #fff7ed;
-    font-size: 13px;
-    font-weight: 600;
-    color: #ea580c;
+    border: 1px solid #fbbf24;
+    background: #fffbeb;
+    font-size: 11px;
+    font-weight: 700;
+    color: #b45309;
     line-height: 1;
 }
 .tracker-streak-pill__icon {
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1;
-    color: #ea580c;
+    color: #b45309;
+    margin-left: 2px;
 }
 .tracker-streak-pill__emoji {
     display: inline-flex;
@@ -2269,7 +2272,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     flex-shrink: 0;
 }
 .tracker-streak-pill__text {
-    padding-right: 0;
+    padding-right: 1px;
 }
 /* 실행 환경 배지 — 화이트 헤더 */
 .mealog-env-badge--dev {
@@ -2404,19 +2407,21 @@ body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
     background: var(--green-soft) !important;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill {
-    border: 0;
-    background: #fff7ed;
-    color: #ea580c;
-    font-weight: 600;
-    padding: 4px 10px;
+    border: 1px solid #fbbf24;
+    background: #fffbeb;
+    color: #b45309;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px 2px 3px;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__icon {
-    color: #ea580c;
+    color: #b45309;
+    font-size: 11px;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__emoji {
-    width: auto;
-    height: auto;
-    background: transparent;
+    width: 22px;
+    height: 22px;
+    background: #fef3c7;
 }
 body[data-main-tab='timeline'] #trackerTabs {
     background: #f1f5f9 !important;
@@ -4949,7 +4954,7 @@ body[data-main-tab='timeline'] .date-section-header {
 }
 body[data-main-tab='timeline'] .date-section-header h3 {
     color: var(--muted, #94a3b8);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: -0.01em;
 }
@@ -5011,7 +5016,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 /* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤(실기기에서 약간 키움) */
 .date-section-header h3 {
     color: var(--muted, #94a3b8);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
     letter-spacing: -0.01em;
 }
