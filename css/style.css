@@ -27,8 +27,8 @@
     --app-bottom-nav-h: 72px;
     /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
     --app-bottom-bar-width: min(28rem, 100vw);
-    /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
-    --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
+    /* 밀톡 피드 인라인 컴포저 컨테이너 — 시안 흰 바 */
+    --board-feed-composer-surface: #ffffff;
     /*
      * 피드 스크롤 하단 패딩: APP 네비가 아니라 fixed 컴포저(#boardInlineComposer) 기준.
      * = 컴포저 bottom 오프셋(뷰포트 하단~컴포저 밑변) + 컴포저 박스 높이(패딩 0.4rem×2 + 한 줄 행 2.25rem + 테두리) + 새로고침 등 여유.
@@ -8401,31 +8401,35 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     color: #31966b;
 }
 
-/* 게시판 상단 카테고리 필터: 태그형 (#전체 #먹는 …) — 18px 검정 */
+/* 게시판 상단 카테고리 필터: 시안 green pill */
+#boardCategoryRow {
+    gap: 6px;
+    padding: 12px 14px 4px;
+    background: var(--page, #f8fafc);
+}
 #boardCategoryRow .board-category-btn {
-    padding: 0.2rem 0.35rem !important;
-    font-family: 'Yeon Sung', serif !important;
-    font-size: 18px !important;
-    font-weight: 400 !important;
+    padding: 6px 12px !important;
+    font-family: inherit !important;
+    font-size: 12.5px !important;
+    font-weight: 600 !important;
     line-height: 1.3;
-    background-color: transparent !important;
-    color: #000000 !important;
-    border: none !important;
-    border-radius: 0 !important;
+    background-color: #fff !important;
+    color: var(--ink-2, #334155) !important;
+    border: 1px solid var(--line, #e2e8f0) !important;
+    border-radius: 999px !important;
     white-space: nowrap;
+    flex-shrink: 0;
 }
 #boardCategoryRow .board-category-btn:hover:not(.active) {
-    background-color: transparent !important;
-    color: #475569 !important;
+    background-color: #fff !important;
+    color: var(--ink, #0f172a) !important;
 }
 #boardCategoryRow .board-category-btn.active {
-    background-color: transparent !important;
-    color: #000000 !important;
-    border: none !important;
+    background-color: var(--green, #059669) !important;
+    color: #ffffff !important;
+    border-color: var(--green, #059669) !important;
     font-weight: 600 !important;
-    text-decoration: underline;
-    text-underline-offset: 0.2rem;
-    text-decoration-thickness: 1px;
+    text-decoration: none;
 }
 
 /* 글쓰기 화면 카테고리 — 목록·본문 해시태그와 동일 색 (#31966b) */
@@ -8609,7 +8613,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     background: var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-track {
-    background: rgb(241 245 249);
+    background: var(--page, #f8fafc);
 }
 /* 피드/게시판 탭 높이·여백: 사용자 설정(settings-tab)과 동일 px-3 py-2.5 + 바 px-4 pt-2 pb-0 */
 
@@ -8630,14 +8634,15 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     width: var(--app-bottom-bar-width);
     box-sizing: border-box;
     z-index: 45;
-    border: 1px solid rgba(148, 163, 184, 0.38);
-    border-radius: 1.5rem;
+    border: none;
+    border-top: 1px solid var(--line, #e2e8f0);
+    border-radius: 0;
     background: var(--board-feed-composer-surface);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    padding: 0.4rem 0.65rem;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    padding: 10px 14px 12px;
     margin: 0;
-    box-shadow: 0 -2px 16px rgba(15, 23, 42, 0.08);
+    box-shadow: none;
 }
 /* 키보드 포커스 시 네비가 숨겨지므로 입력창은 하단 안전영역에 붙임 */
 body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
@@ -8645,7 +8650,7 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     z-index: 120;
 }
 #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
-    box-shadow: 0 -2px 16px rgba(15, 23, 42, 0.1);
+    box-shadow: none;
 }
 /* 피드 입력 한 줄: 아바타·텍스트·버튼 수직 가운데 */
 .board-feed-composer-row {
@@ -8655,15 +8660,15 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     align-self: center;
 }
 #boardInlineComposer .board-feed-chat-input {
-    border: none;
+    border: 1px solid var(--line, #e2e8f0);
     outline: none;
     resize: none;
-    background: transparent;
-    border-radius: 0;
+    background: var(--page, #f8fafc);
+    border-radius: 18px;
     margin: 0;
-    padding: 0.28rem 0.25rem;
+    padding: 10px 14px;
     line-height: 1.45;
-    min-height: 2.25rem;
+    min-height: 2.5rem;
     max-height: none;
     overflow-y: hidden;
     overflow-x: hidden;
@@ -8678,15 +8683,15 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     color: #94a3b8;
 }
 .board-feed-composer-send {
-    background-color: #0a0a0a !important;
+    background-color: var(--green, #059669) !important;
     color: #fff !important;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    box-shadow: none;
 }
 .board-feed-composer-send:hover:not(:disabled) {
-    background-color: #171717 !important;
+    background-color: var(--green-deep, #047857) !important;
 }
 .board-feed-composer-send:active:not(:disabled) {
-    background-color: #262626 !important;
+    background-color: var(--green-deep, #047857) !important;
 }
 .board-feed-composer-send:disabled {
     opacity: 0.35;
@@ -8914,16 +8919,15 @@ body.feed-bubble-sheet-open {
     min-height: 0;
     overflow-x: hidden;
     overflow-y: visible;
-    background: rgb(241 245 249);
+    background: var(--page, #f8fafc);
     margin-left: 0;
     margin-right: 0;
     width: 100%;
     max-width: none;
     box-sizing: border-box;
-    padding-left: max(0px, env(safe-area-inset-left, 0px));
-    padding-right: max(0px, env(safe-area-inset-right, 0px));
-    /* 마지막 카드가 플로팅 네비·홈 인디케이터 위로 스크롤되도록 (기존에는 뷰 높이에서 네비 높이를 빼 목록이 네비 ‘위’에서만 끊김) */
-    padding-bottom: calc(5.25rem + var(--safe-bottom));
+    padding: 10px 14px calc(5.25rem + var(--safe-bottom));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
 }
 #boardListView #boardFeedPanelContent {
     flex: 0 1 auto;
@@ -8931,8 +8935,8 @@ body.feed-bubble-sheet-open {
     overflow-x: hidden;
     overflow-y: visible;
     scroll-behavior: auto;
-    padding-left: 0.25rem;
-    padding-right: 0.25rem;
+    padding-left: 14px;
+    padding-right: 14px;
     /* 컴포저와 동일: bottom: calc(66px + var(--safe-bottom)) */
     --board-feed-scroll-inset-bottom: calc(
         66px + var(--safe-bottom) + var(--board-feed-composer-face) + var(--board-feed-above-composer)
@@ -8949,7 +8953,7 @@ body.feed-bubble-sheet-open {
     background: rgba(148, 163, 184, 0.45);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden)) {
-    scrollbar-color: rgba(148, 163, 184, 0.5) rgb(241 245 249);
+    scrollbar-color: rgba(148, 163, 184, 0.5) var(--page, #f8fafc);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.45);
@@ -8957,13 +8961,27 @@ body.feed-bubble-sheet-open {
 
 /* 밀톡 피드 메시지 영역 테마 (흰 배경 + 말풍선) */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
-    background: #fff0a8;
-    color: #1a1a1a;
+    background: var(--green-soft, #ecfdf5);
+    color: var(--ink, #0f172a);
+    border: 1px solid var(--green-mute, #a7f3d0);
 }
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;
     color: #1e293b;
     border-color: rgba(226, 232, 240, 0.95);
+}
+#boardListView #boardFeedPanelContent .lounge-day-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--muted, #94a3b8);
+    background: #fff;
+    border: 1px solid var(--line, #e2e8f0);
+    padding: 4px 10px;
+    border-radius: 999px;
+    text-align: center;
+    box-shadow: none;
 }
 #boardListView #boardFeedPanelContent .feed-bubble-meta-time {
     color: rgba(100, 116, 139, 0.85);
@@ -9047,6 +9065,181 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-left: 1px solid #e2e8f0;
     border-right: 1px solid #e2e8f0;
 }
+
+/* 라운지 시안 v2 — 게시판/공지 리스트 카드 */
+.lounge-feed-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.lounge-post {
+    background: var(--card, #fff);
+    border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+    margin-bottom: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(226, 232, 240, 0.7);
+    padding: 14px 14px 12px;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+}
+.lounge-post:last-child {
+    margin-bottom: 0;
+}
+.lounge-post.notice,
+.lounge-post.lounge-post--notice {
+    background: linear-gradient(180deg, #fff 0%, #fffbeb 100%);
+    border-color: #fde68a;
+}
+.lounge-post.lounge-post--pending {
+    border-color: #fde68a;
+    background: linear-gradient(180deg, #fff 0%, #fffbeb 90%);
+}
+.lounge-notice-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 3px 8px;
+    border-radius: 999px;
+    margin-bottom: 10px;
+}
+.lounge-author-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.lounge-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--green-soft, #ecfdf5);
+    background-size: cover;
+    background-position: center;
+    flex-shrink: 0;
+}
+.lounge-avatar--fallback {
+    display: grid;
+    place-items: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--green-deep, #047857);
+}
+.lounge-author-name {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink, #0f172a);
+}
+.lounge-author-sub {
+    font-size: 12px;
+    color: var(--muted, #94a3b8);
+    font-weight: 500;
+    margin-top: 1px;
+}
+.lounge-pending-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 2px 7px;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+.lounge-post-main {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: start;
+}
+.lounge-post-body,
+.lounge-post-body.board-list-body-preview {
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--ink-2, #334155);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-bottom: 10px;
+    word-break: break-word;
+}
+.lounge-post-body strong,
+.lounge-post-body b {
+    color: var(--ink, #0f172a);
+    font-weight: 700;
+}
+.lounge-post-body u { text-decoration: underline; }
+.lounge-post-body s,
+.lounge-post-body strike { text-decoration: line-through; }
+.lounge-thumb {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #e2e8f0;
+    flex-shrink: 0;
+}
+.lounge-post-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-top: 2px;
+}
+.lounge-tag,
+.lounge-post .board-category-hashtag {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--green-deep, #047857);
+}
+.lounge-tag--muted {
+    color: var(--muted, #94a3b8);
+}
+.lounge-social {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.lounge-social-btn {
+    border: 0;
+    background: transparent;
+    color: var(--ink-2, #334155);
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: pointer;
+    line-height: 1;
+}
+.lounge-social-btn i {
+    font-size: 14px;
+    color: #64748b;
+}
+.lounge-social-btn.liked i,
+.lounge-social-btn .fa-heart.fa-solid {
+    color: #e11d48;
+}
+.lounge-social-btn.bookmarked i,
+.lounge-social-btn .fa-bookmark.fa-solid {
+    color: var(--green, #059669);
+}
+.lounge-social-btn.liked i.fa-heart { color: #e11d48; }
+.lounge-social-btn.bookmarked i.fa-bookmark { color: var(--green, #059669); }
+
 .board-list-card {
     background: #fff !important;
     border-top: 1px solid #e2e8f0;

@@ -15,10 +15,6 @@ import {
     formatBoardSearchSummary
 } from '../board-search-filter.js';
 
-/** 목록 카드 본문 미리보기: 서식·줄바꿈 유지, 최대 3줄 */
-const BOARD_LIST_PREVIEW_CLASS =
-    'board-list-body-preview text-sm text-slate-600 line-clamp-3 leading-relaxed break-words [&_b]:font-bold [&_strong]:font-bold [&_u]:underline [&_s]:line-through [&_strike]:line-through';
-
 /** 상세 본문: 목록과 동일 서식·줄바꿈, 전체 표시 */
 const BOARD_DETAIL_BODY_CLASS =
     'board-detail-body text-sm text-slate-700 whitespace-pre-wrap leading-relaxed break-words [&_b]:font-bold [&_strong]:font-bold [&_u]:underline [&_s]:line-through [&_strike]:line-through';
@@ -31,16 +27,26 @@ const BOARD_CATEGORY_TAG_LABELS = {
     admin: '치프에게'
 };
 
-/** 목록·상세: `#무거운` 등 + 선택 `#사진있음` (스타일은 `.board-category-hashtag`) */
+/** 목록·상세: `#무거운` 등 (스타일은 `.lounge-tag` / `.board-category-hashtag`) */
 function buildBoardCategoryTagsRow(category, opts = {}) {
     const { withPhotoTag = false } = opts;
     const key = category != null && category in BOARD_CATEGORY_TAG_LABELS ? category : 'serious';
     const label = BOARD_CATEGORY_TAG_LABELS[key];
-    const parts = [`<span class="board-category-hashtag">${escapeHtml(`#${label}`)}</span>`];
+    const parts = [`<span class="lounge-tag board-category-hashtag">${escapeHtml(`#${label}`)}</span>`];
     if (withPhotoTag) {
-        parts.push('<span class="board-category-hashtag">#사진있음</span>');
+        parts.push('<span class="lounge-tag lounge-tag--muted board-category-hashtag">#사진있음</span>');
     }
-    return `<div class="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 min-w-0 self-center">${parts.join('')}</div>`;
+    return `<div class="lounge-post-tags flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">${parts.join('')}</div>`;
+}
+
+function buildLoungeAuthorAvatarHtml(authorAvatar, profileOpen) {
+    const hit = profileOpen
+        ? ` class="lounge-avatar-hit shrink-0 cursor-pointer hover:opacity-90 active:opacity-80" onclick="${profileOpen}" role="button" tabindex="0"`
+        : ' class="lounge-avatar-hit shrink-0" role="presentation" tabindex="-1"';
+    if (authorAvatar.type === 'photo') {
+        return `<div${hit}><div class="lounge-avatar" style="background-image:url('${escapeHtml(String(authorAvatar.value || ''))}')" role="img"></div></div>`;
+    }
+    return `<div${hit}><div class="lounge-avatar lounge-avatar--fallback">${escapeHtml(authorAvatar.value || '?')}</div></div>`;
 }
 // showToast는 onclick 문자열(인라인)에서 window.showToast를 사용 (main.js에서 전역 바인딩됨)
 
@@ -53,15 +59,14 @@ function getLegacyBoardTitle(post) {
 
 function buildBoardListBodySection(post, shouldHideContent) {
     if (shouldHideContent) {
-        return '<h3 class="text-base font-bold text-slate-400 line-clamp-2 leading-snug">비공개 게시물</h3><p class="text-sm text-slate-400 line-clamp-3 mt-1.5 leading-relaxed">이 게시물은 작성자만 볼 수 있습니다.</p>';
+        return '<div class="lounge-post-body"><strong>비공개 게시물</strong><br>이 게시물은 작성자만 볼 수 있습니다.</div>';
     }
     const legacy = getLegacyBoardTitle(post);
     const formatted = renderFormattedContent(post.content || '');
     const legacyLead = legacy
-        ? `<span class="font-bold text-slate-800">${escapeHtml(legacy)}</span>${formatted.trim() ? '<br>' : ''}`
+        ? `<strong>${escapeHtml(legacy)}</strong>${formatted.trim() ? '<br>' : ''}`
         : '';
-    const inner = `${legacyLead}${formatted}`;
-    return `<div class="${BOARD_LIST_PREVIEW_CLASS}">${inner}</div>`;
+    return `<div class="lounge-post-body board-list-body-preview">${legacyLead}${formatted}</div>`;
 }
 
 /** 피드 인라인 입력창: 밀톡·피드 목록일 때만 표시 (글쓰기/상세/다른 탭에서는 숨김) */
@@ -289,39 +294,38 @@ async function renderNotices() {
             const userCommentedNotice = commentedNoticeIds.has(notice.id);
 
             return `
-                <div onclick="window.openNoticeDetail('${notice.id}')" class="board-list-card pt-4 px-5 pb-1.5 cursor-pointer active:scale-[0.98] transition-all mb-2 ${typeAccent}">
-                    <div class="flex items-start gap-2 mb-1.5">
-                        <div class="flex-1 min-w-0">
-                            <div class="text-xs text-slate-400 mb-1.5">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
-                            <div class="flex items-start gap-2 mb-2">
-                                <h3 class="text-base font-bold text-slate-800 line-clamp-2 flex-1 min-w-0 leading-tight">${escapeHtml(notice.title || '제목 없음')}</h3>
-                                ${Array.isArray(notice.imageUrls) && notice.imageUrls.length > 0 ? '<span class="text-slate-400 shrink-0 pt-0.5" title="사진 포함"><i class="fa-solid fa-image text-sm"></i></span>' : ''}
-                            </div>
-                            <p class="text-sm text-slate-600 line-clamp-2 mb-1.5 leading-relaxed">${formattedPreview}</p>
+                <article onclick="window.openNoticeDetail('${notice.id}')" class="lounge-post lounge-post--notice notice cursor-pointer active:scale-[0.99] transition-transform ${typeAccent}">
+                    <div class="lounge-notice-chip"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> ${escapeHtml(typeLabel)}${notice.isPinned === true ? ' · 고정' : ''}</div>
+                    <div class="lounge-author-row">
+                        <div class="lounge-avatar lounge-avatar--fallback" aria-hidden="true">공</div>
+                        <div class="lounge-author-meta min-w-0 flex-1">
+                            <div class="lounge-author-name">밀로그</div>
+                            <div class="lounge-author-sub">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between pt-3 border-t border-slate-200">
-                        <div class="flex items-center gap-2 min-w-0">
-                            ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-slate-600 text-xs shrink-0" title="고정"></i>` : ''}
-                            <span class="board-category-hashtag">${escapeHtml(`#${typeLabel}`)}</span>
+                    <div class="lounge-post-main">
+                        <div class="min-w-0">
+                            <div class="lounge-post-body"><strong>${escapeHtml(notice.title || '제목 없음')}</strong>${formattedPreview ? `<br>${formattedPreview}` : ''}</div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <div class="flex items-center gap-1.5 text-slate-800 mr-1">
-                                <i class="fa-${userCommentedNotice ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
-                                <span class="text-xs font-bold tabular-nums">${commentCount}</span>
-                            </div>
+                        ${Array.isArray(notice.imageUrls) && notice.imageUrls[0]
+                            ? `<img class="lounge-thumb" src="${escapeHtml(String(notice.imageUrls[0]))}" alt="" loading="lazy" />`
+                            : ''}
+                    </div>
+                    <div class="lounge-post-foot">
+                        <span class="lounge-tag">#${escapeHtml(typeLabel)}</span>
+                        <div class="lounge-social">
+                            <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i class="fa-${userCommentedNotice ? 'solid' : 'regular'} fa-comment"></i> ${commentCount}</button>
                             ${demo ? '' : `
-                            <button onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
-                                <span class="text-xs font-bold text-slate-800">${likeCount}</span>
+                            <button type="button" onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn lounge-social-btn ${isLiked ? 'liked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${likeCount}
                             </button>
-                            <button onclick="event.stopPropagation(); window.toggleNoticeBookmark('${notice.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
+                            <button type="button" onclick="event.stopPropagation(); window.toggleNoticeBookmark('${notice.id}')" class="board-post-bookmark-btn lounge-social-btn ${isBookmarked ? 'bookmarked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark"></i>
                             </button>
                             `}
                         </div>
                     </div>
-                </div>
+                </article>
             `;
         }).join('');
         
@@ -597,6 +601,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         const authorAvatar = getProfileAvatarDisplay(authorDisplay);
 
         const hasImages = Array.isArray(post.imageUrls) && post.imageUrls.length > 0;
+        const thumbUrl = hasImages ? String(post.imageUrls[0] || '').trim() : '';
         const isPendingPost = post.id && String(post.id).startsWith('pending-');
         const onClick =
             isPendingPost
@@ -608,48 +613,39 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         const profileOpen = shouldHideContent || isPendingPost
             ? ''
             : `event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${safeAuthorId}')`;
+        const pendingCls = isPendingPost ? ' lounge-post--pending' : '';
         chunks.push(`
-                    <div onclick="${onClick}" class="board-list-card pt-4 px-5 pb-3 ${isPendingPost || shouldHideContent ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.98] transition-all mb-2 ${isPendingPost ? 'ring-2 ring-amber-200 bg-amber-50/50' : ''}">
-                        <div class="flex items-start gap-2.5 mb-2.5">
-                            <div class="flex-shrink-0 rounded-full ${shouldHideContent || isPendingPost ? '' : 'cursor-pointer hover:opacity-90 active:opacity-80'}" ${profileOpen ? `onclick="${profileOpen}"` : ''} role="${profileOpen ? 'button' : 'presentation'}" tabindex="${profileOpen ? '0' : '-1'}">
-                            ${authorAvatar.type === 'photo' ? `
-                                <div class="w-9 h-9 rounded-full flex-shrink-0 overflow-hidden border-2 border-slate-300" style="background-image: url(${authorAvatar.value}); background-size: cover; background-position: center;"></div>
-                            ` : `
-                                <div class="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border-2 border-slate-300 bg-slate-200 ${authorAvatar.type === 'emoji' ? '' : 'text-slate-700'}">
-                                    ${escapeHtml(authorAvatar.value)}
-                                </div>
-                            `}
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <div class="flex items-center gap-2 flex-wrap min-w-0">
-                                    <span class="text-sm font-bold text-slate-800 ${shouldHideContent || isPendingPost ? '' : 'cursor-pointer hover:opacity-90 rounded px-0.5 -mx-0.5'}" ${profileOpen ? `onclick="${profileOpen}"` : ''} role="${profileOpen ? 'button' : 'presentation'}" tabindex="${profileOpen ? '0' : '-1'}">${escapeHtml(authorDisplay.nickname)}</span>
-                                    ${isPendingPost ? '<span class="text-xs font-bold px-2 py-0.5 rounded-lg bg-amber-200 text-amber-800 whitespace-nowrap shrink-0"><i class="fa-solid fa-spinner fa-spin mr-1"></i>등록 중...</span>' : ''}
-                                </div>
-                                <div class="text-xs text-slate-400 mt-0.5">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
+                    <article onclick="${onClick}" class="lounge-post${pendingCls} ${isPendingPost || shouldHideContent ? 'cursor-default' : 'cursor-pointer'} active:scale-[0.99] transition-transform">
+                        <div class="lounge-author-row">
+                            ${buildLoungeAuthorAvatarHtml(authorAvatar, profileOpen)}
+                            <div class="lounge-author-meta min-w-0 flex-1">
+                                <div class="lounge-author-name ${profileOpen ? 'cursor-pointer hover:opacity-90' : ''}" ${profileOpen ? `onclick="${profileOpen}" role="button" tabindex="0"` : ''}>${escapeHtml(authorDisplay.nickname)}${isPendingPost ? ' <span class="lounge-pending-badge">등록 중</span>' : ''}</div>
+                                <div class="lounge-author-sub">${dateStr} ${timeStr} · 조회 ${post.views || 0}</div>
                             </div>
                         </div>
-                        <div class="mb-1 min-w-0">
-                            ${buildBoardListBodySection(post, shouldHideContent)}
+                        <div class="lounge-post-main">
+                            <div class="min-w-0">
+                                ${buildBoardListBodySection(post, shouldHideContent)}
+                            </div>
+                            ${thumbUrl && !shouldHideContent
+                                ? `<img class="lounge-thumb" src="${escapeHtml(thumbUrl)}" alt="" loading="lazy" />`
+                                : ''}
                         </div>
-                        <div class="flex items-center justify-between gap-3 pt-2.5 mt-1 border-t border-slate-200">
-                                ${buildBoardCategoryTagsRow(post.category, { withPhotoTag: hasImages })}
-                                <div class="flex items-center gap-3 shrink-0">
-                                <div class="flex items-center gap-1.5 text-slate-800">
-                                    <i class="fa-${postIdsCommentedByUser.has(post.id) ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
-                                    <span class="text-xs font-bold">${post.comments ?? 0}</span>
-                                </div>
+                        <div class="lounge-post-foot">
+                                ${buildBoardCategoryTagsRow(post.category, { withPhotoTag: false })}
+                                <div class="lounge-social">
+                                <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i class="fa-${postIdsCommentedByUser.has(post.id) ? 'solid' : 'regular'} fa-comment"></i> ${post.comments ?? 0}</button>
                                 ${demo ? '' : `
-                                <button onclick="event.stopPropagation(); window.toggleBoardLike('${post.id}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                    <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
-                                    <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
+                                <button type="button" onclick="event.stopPropagation(); window.toggleBoardLike('${post.id}', true)" class="board-post-like-btn lounge-social-btn ${isLiked ? 'liked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                    <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${post.likes || 0}
                                 </button>
-                                <button onclick="event.stopPropagation(); window.toggleBoardBookmark('${post.id}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                    <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
+                                <button type="button" onclick="event.stopPropagation(); window.toggleBoardBookmark('${post.id}')" class="board-post-bookmark-btn lounge-social-btn ${isBookmarked ? 'bookmarked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
+                                    <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark"></i>
                                 </button>
                                 `}
                                 </div>
                         </div>
-                </div>
+                </article>
             `);
     }
     container.innerHTML = chunks.join('');

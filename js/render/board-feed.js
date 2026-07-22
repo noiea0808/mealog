@@ -522,8 +522,8 @@ function feedDateSeparatorHtml(date) {
         ...SEOUL_LOCALE_OPTIONS
     });
     return `
-        <div class="feed-date-separator flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
-            <span class="max-w-[min(92vw,20rem)] truncate rounded-full bg-black/20 px-3 py-1 text-center text-[11px] font-medium text-white/95 shadow-sm backdrop-blur-[1px]">${escapeHtml(label)}</span>
+        <div class="feed-date-separator lounge-day-pill-wrap flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
+            <span class="lounge-day-pill max-w-[min(92vw,20rem)] truncate">${escapeHtml(label)}</span>
         </div>`;
 }
 
