@@ -35,6 +35,7 @@ import {
     replaceMomentSkeletonWithBatch,
     removeRemainingMomentSkeletons
 } from './moment-feed-skeleton.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 ensureMomentFeedPinchDelegate();
 
@@ -105,10 +106,10 @@ function buildUserProfileMomentGridHtml(sortedGroups) {
         const thumbFallback = imgFallbackAttrs(originalUrl, thumbUrl, escapeHtml, 'gallery.profile-grid');
         const imgOrPlaceholder = originalUrl
             ? `<img src="${safeSrc}"${thumbFallback} alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" draggable="false">`
-            : `<div class="absolute inset-0 flex items-center justify-center text-slate-400"><i class="fa-solid fa-image text-2xl" aria-hidden="true"></i></div>`;
+            : `<div class="absolute inset-0 flex items-center justify-center text-slate-400"><i data-lucide="image" class="text-2xl" aria-hidden="true"></i></div>`;
         const badge = multi
             ? `<span class="pointer-events-none absolute top-1 right-1 flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] font-black leading-none text-white shadow-sm" title="사진 ${n}장" aria-hidden="true">
-                    <i class="fa-solid fa-images text-[9px] opacity-95" aria-hidden="true"></i>
+                    <i data-lucide="images" class="text-[9px] opacity-95" aria-hidden="true"></i>
                     <span>${n}</span>
                 </span>`
             : '';
@@ -143,17 +144,17 @@ function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
     if (networkError) {
         return `
             <div class="flex flex-col items-center justify-center py-20 text-center px-4">
-                <i class="fa-regular fa-wifi text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <i data-lucide="wifi" class="text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
                 <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
                 <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
                 <button type="button" id="galleryMomentRetryLoadBtn" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
+                    <i data-lucide="rotate-cw" aria-hidden="true"></i>다시 불러오기
                 </button>
             </div>`;
     }
     return `
             <div class="flex flex-col items-center justify-center py-20 text-center">
-                <i class="fa-solid fa-images text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
+                <i data-lucide="images" class="text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
                 <p class="text-sm font-bold text-slate-400">${filterUserId ? '이 사용자의 공유된 사진이 없습니다' : '공유된 사진이 없습니다'}</p>
                 ${!filterUserId ? '<p class="text-xs text-slate-300 mt-2">타임라인에서 사진을 공유해보세요!</p>' : ''}
             </div>`;
@@ -757,7 +758,7 @@ export async function renderGallery(options = {}) {
                 <div class="gallery-user-profile-scrollable">
                     <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-200">
                         <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
-                            <i class="fa-solid fa-arrow-left text-lg"></i>
+                            <i data-lucide="arrow-left" class="text-lg"></i>
                         </button>
                         ${initialAvatar.type === 'photo' ? `
                             <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
@@ -787,7 +788,7 @@ export async function renderGallery(options = {}) {
             <div class="gallery-post-filter-header bg-white border-b border-slate-200 sticky top-0 z-30">
                 <div class="px-4 py-3 flex items-center gap-2">
                     <button type="button" onclick="window.clearGalleryFilterPostId && window.clearGalleryFilterPostId()" class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-700 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
-                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                        <i data-lucide="arrow-left" class="text-lg"></i>
                     </button>
                     <span class="text-sm font-bold text-slate-800">댓글 달린 게시물</span>
                 </div>
@@ -799,7 +800,7 @@ export async function renderGallery(options = {}) {
     if (filterUserId && galleryFilterTab === 'board') {
         container.innerHTML = userProfileHeader + `
             <div id="galleryFilterBoardList" class="pt-1 pb-4">
-                <div class="flex justify-center py-8"><i class="fa-solid fa-spinner fa-spin text-2xl text-slate-300"></i></div>
+                <div class="flex justify-center py-8"><i data-lucide="loader-circle" class="text-2xl text-slate-300 lucide-spin"></i></div>
             </div>
         `;
         (async () => {
@@ -819,7 +820,7 @@ export async function renderGallery(options = {}) {
                 if (posts.length === 0) {
                     listEl.innerHTML = `
                         <div class="flex flex-col items-center justify-center py-12 text-center">
-                            <i class="fa-regular fa-comments text-4xl text-slate-200 mb-3"></i>
+                            <i data-lucide="message-circle" class="text-4xl text-slate-200 mb-3"></i>
                             <p class="text-sm font-bold text-slate-400">작성한 글이 없습니다</p>
                             <p class="text-xs text-slate-300 mt-2">첫 번째 게시글을 작성해보세요!</p>
                         </div>
@@ -834,7 +835,7 @@ export async function renderGallery(options = {}) {
                     listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-center">
                         <p class="text-slate-400 text-sm mb-3">글 목록을 불러오지 못했습니다.</p>
                         <button type="button" onclick="window.renderGallery && window.renderGallery()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-lg inline-flex items-center gap-1.5">
-                            <i class="fa-solid fa-rotate-right"></i>다시 불러오기
+                            <i data-lucide="rotate-cw"></i>다시 불러오기
                         </button>
                     </div>`;
                 }
@@ -1015,7 +1016,7 @@ export async function renderGallery(options = {}) {
                 gridBody += `
             <div class="flex justify-center py-5 px-4 bg-white border-t border-slate-100">
                 <button type="button" id="galleryUserMomentGridLoadMoreBtn" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors disabled:opacity-60">
-                    <i class="fa-solid fa-chevron-down mr-1.5" aria-hidden="true"></i>더보기
+                    <i data-lucide="chevron-down" class="mr-1.5" aria-hidden="true"></i>더보기
                 </button>
             </div>`;
             }
@@ -1043,7 +1044,7 @@ export async function renderGallery(options = {}) {
                     }
                     lm.disabled = true;
                     const prev = lm.innerHTML;
-                    lm.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5" aria-hidden="true"></i><span class="text-slate-500">불러오는 중…</span>';
+                    lm.innerHTML = '<i data-lucide="loader-circle" class="mr-1.5 lucide-spin" aria-hidden="true"></i><span class="text-slate-500">불러오는 중…</span>';
                     try {
                         const acc = appState.galleryUserProfileSharedDocs || [];
                         const currentGridGroups = countMomentPostsFromDocs(acc);
@@ -1138,7 +1139,7 @@ export async function renderGallery(options = {}) {
     const loadMoreHtml = canLoadMore ? `
         <div id="galleryLoadMoreWrap" class="flex justify-center py-6">
             <button id="galleryLoadMoreBtn" type="button" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-xl transition-colors">
-                <i class="fa-solid fa-chevron-down mr-1.5"></i>더보기
+                <i data-lucide="chevron-down" class="mr-1.5"></i>더보기
             </button>
         </div>
     ` : '';
@@ -1229,27 +1230,27 @@ export async function renderGallery(options = {}) {
             const hasMore = appState.sharedPhotosFeedHasMore || appState.sharedPhotosFeedLastDoc;
             if (!hasMore) return;
             loadMoreBtn.disabled = true;
-            loadMoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>로딩 중...';
+            loadMoreBtn.innerHTML = '<i data-lucide="loader-circle" class="mr-1.5 lucide-spin"></i>로딩 중...';
             try {
                 const res = await appendMomentFeedNextPage();
                 loadMoreBtn.disabled = false;
                 if (res?.ok) {
-                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                    loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>더보기';
                     if (!appState.sharedPhotosFeedHasMore) {
                         document.getElementById('galleryLoadMoreWrap')?.remove();
                     }
                 } else if (res?.reason === 'error') {
                     if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
-                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
+                    loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
                 } else {
-                    loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>더보기';
+                    loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>더보기';
                 }
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
                 appState.galleryFeedNetworkError = true;
                 if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                 loadMoreBtn.disabled = false;
-                loadMoreBtn.innerHTML = '<i class="fa-solid fa-chevron-down mr-1.5"></i>다시 시도';
+                loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
             }
         };
         if (loadMoreBtn) {
@@ -1589,6 +1590,7 @@ export async function renderGallery(options = {}) {
     }
     
     console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
+    scheduleLucideIcons(container);
     } catch (error) {
         console.error('[renderGallery] 오류 발생:', error);
         console.error('[renderGallery] 스택:', error.stack);

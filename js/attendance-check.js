@@ -99,7 +99,7 @@ export function updateTrackerStreakLabel() {
         el.className = 'tracker-streak-pill tabular-nums whitespace-nowrap shrink-0';
         el.setAttribute('role', 'status');
         el.innerHTML =
-            '<i class="fa-solid fa-fire tracker-streak-pill__icon" aria-hidden="true"></i>' +
+            '<i data-lucide="flame" class="tracker-streak-pill__icon" aria-hidden="true"></i>' +
             `<span class="tracker-streak-pill__text">${n}일 연속</span>`;
         return;
     }

@@ -63,7 +63,7 @@ export const SLOT_STYLES = {
     'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400', listLeft: 'border-l-[4px] border-l-slate-400/60' }
 };
 
-export const VIBRANT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
+export const VIBRANT_COLORS = ['#3cb889', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 /** 분석 탭 누적 막대(식사방식/메뉴/함께한 즐거움) 좌→우 빈도순 그라데이션: 빨강→주황(1개)→호박→녹색→청록→남색 */
 export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC65', '#66BB6A', '#26C6DA', '#5C6BC0'];
 /** 만족도·포만감 5단계용: 1→5 순서로 남색→청록→녹색→호박→핑크 (한입만/1점=남색, 과식/5점=핑크) */

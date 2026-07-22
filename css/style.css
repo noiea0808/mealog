@@ -1,27 +1,86 @@
 @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700;800;900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
 @import url('https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css');
+
+/* Lucide SVG icons (FA 대체) */
+[data-lucide],
+.lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.25;
+    flex-shrink: 0;
+    display: inline-block;
+    vertical-align: -0.125em;
+}
+.bottom-nav .nav-item [data-lucide],
+.bottom-nav .nav-item .lucide {
+    width: 1.375rem;
+    height: 1.375rem;
+}
+.bottom-nav .nav-item i.lucide,
+html.platform-native-app .bottom-nav button i.lucide {
+    font-size: inherit;
+}
+#boardWriteBtn.board-write-fab [data-lucide],
+#boardWriteBtn.board-write-fab .lucide,
+#entryQuickInputFab.entry-quick-input-fab [data-lucide],
+#entryQuickInputFab.entry-quick-input-fab .lucide {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+.lucide-spin {
+    animation: lucide-spin 0.8s linear infinite;
+}
+@keyframes lucide-spin {
+    to { transform: rotate(360deg); }
+}
+/* 좋아요·북마크 활성: 라인 아이콘 채움 */
+.liked [data-lucide],
+.liked .lucide,
+.bookmarked [data-lucide],
+.bookmarked .lucide,
+.social-btn.liked .lucide,
+.lounge-social-btn.liked .lucide,
+.lounge-social-btn.bookmarked .lucide {
+    fill: currentColor;
+}
+.star-btn .lucide,
+.star-btn [data-lucide] {
+    width: 1.35em;
+    height: 1.35em;
+}
+
 :root { 
     /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
-    /* 시안 v2 토큰 */
-    --green: #059669;
-    --green-deep: #047857;
-    --green-soft: #ecfdf5;
-    --green-mute: #a7f3d0;
-    --ink: #0f172a;
-    --ink-2: #334155;
-    --muted: #94a3b8;
-    --line: #e2e8f0;
-    --page: #f8fafc;
+    /* 시안 v2 토큰 — Light Mint mid (#3CB889) */
+    --green: #3cb889;
+    --green-deep: #2d9f74;
+    --green-soft: #eaf8f2;
+    --green-mute: #b4e2cd;
+    --ink: #241f1c;
+    --ink-2: #4f4841;
+    --muted: #7a7268;
+    --line: #d0c6ba;
+    --page: #fffcfa;
     --card: #ffffff;
     --star: #fbbf24;
     --color-primary: var(--green); /* 그린: CTA·선택·활성만 사용 */
-    /* 아바타: 회색 그림자 · 이니셜 폴백 */
-    --avatar-shadow: 0 1px 2px rgba(100, 116, 139, 0.3), 0 3px 8px rgba(100, 116, 139, 0.18);
-    --avatar-fallback-bg: #e2e8f0;
-    --avatar-fallback-fg: #334155;
+    /* 팝업 셸 v2 (Soft Mint Air) */
+    --shell-dim: rgba(36, 31, 28, 0.42);
+    --shell-r-dialog: 18px;
+    --shell-r-sheet: 24px;
+    --shell-r-btn: 14px;
+    --shell-ink: #1c1917;
+    --shell-danger: #c45c6a;
+    --coral: #f2a8b4;
+    --coral-soft: #fff0f3;
+    /* 아바타 그림자: blur ≈ 2px (좁은 적용 범위) */
+    --avatar-shadow: 0 1px 2px rgba(36, 31, 28, 0.22);
+    --avatar-shadow-profile: 0 1px 2px rgba(100, 116, 139, 0.38);
+    --avatar-fallback-bg: var(--green-soft);
+    --avatar-fallback-fg: var(--green-deep);
     --avatar-fallback-font: 'GmarketSans', 'Pretendard', sans-serif;
     /* 메인 앱·밀톡 공통 페이지 배경 */
     --app-page-bg: var(--page);
@@ -286,12 +345,12 @@ body.keyboard-closed #boardWriteView {
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .sticker-badge #snackStats,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .sticker-badge #insightStats span,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .sticker-badge #snackStats span {
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .sticker-badge #insightStats .opacity-60,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .sticker-badge #snackStats .opacity-60 {
     opacity: 0.6;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
 }
 .ui-card-pad-lg { padding: 0.75rem 1rem; }     /* py-3 px-4 */
 .ui-card-pad { padding: 0.625rem 1rem; }       /* py-2.5 px-4 */
@@ -617,11 +676,11 @@ body.keyboard-closed #boardWriteView {
     .moment-feed-v2-scope[data-moment-v2-root] {
     /* 시안 v2: 화이트 카드 — 라운드는 카드 외곽만, 사진은 overflow로 클립 */
     background-color: #ffffff;
-    border: 1px solid rgba(226, 232, 240, 0.85);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 18px;
     box-shadow:
-        0 1px 2px rgba(15, 23, 42, 0.06),
-        0 10px 28px rgba(15, 23, 42, 0.1) !important;
+        0 1px 0 rgba(43, 40, 37, 0.06),
+        0 6px 18px rgba(43, 40, 37, 0.07) !important;
     overflow: hidden;
     box-sizing: border-box;
     width: 100%;
@@ -638,14 +697,15 @@ body.keyboard-closed #boardWriteView {
 /* 시안 v2 본문: 작성자 → 슬롯·장소 → 메뉴 → 코멘트 → 소셜 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special),
 #feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special) {
-    padding: 14px 16px 14px !important;
+    /* 하단 여백 = 소셜 상단(4px)과 맞춤 */
+    padding: 14px 16px 4px !important;
     margin: 0 !important;
     gap: 0;
     background: #ffffff;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-body.moment-v2-body--special[data-moment-v2-caption],
 #feedContent[data-moment-feed-layout='2'] .moment-v2-body.moment-v2-body--special[data-moment-v2-caption] {
-    padding: 14px 16px 14px !important;
+    padding: 14px 16px 4px !important;
     margin: 0 !important;
     gap: 0;
 }
@@ -711,7 +771,7 @@ body.keyboard-closed #boardWriteView {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-body .timeline-meal-photo-moment-social-icon {
     color: #64748b !important;
     filter: none !important;
-    font-size: 17px !important;
+    font-size: calc(17px * 1.25) !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-meal-meta,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-meal-meta {
@@ -758,9 +818,10 @@ body.keyboard-closed #boardWriteView {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-body .moment-v2-social-below-photo,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-body .moment-v2-social-below-photo {
-    padding: 10px 0 0 !important;
-    margin-top: 2px;
-    border-top: 1px solid #f1f5f9;
+    /* 소셜 영역 높이 ≈ 이전(확대 시)의 80%: 상단 패딩 축소 */
+    padding: 4px 0 0 !important;
+    margin-top: 0;
+    border-top: 1px solid var(--line, #d0c6ba);
     background: transparent;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -844,8 +905,8 @@ header .mealog-title {
 .card { 
     background: white; 
     border-radius: 1.5rem; 
-    box-shadow: 0 2px 10px rgba(0,0,0,0.02); 
-    border: 1px solid #f1f5f9; 
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07); 
+    border: 1px solid var(--line, #d0c6ba); 
 }
 
 /* 주간베스트 코멘트 입력창: 포커스 시 보더 진한 회색 1px */
@@ -931,7 +992,7 @@ header .mealog-title {
     z-index: 2;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 }
-/* [복구: 녹색 라벨] render.js에서 gallery-caption-wrap 구조 제거, 단일 div에 gallery-caption-menu-place + style="background-color: #047857;" */
+/* [복구: 녹색 라벨] render.js에서 gallery-caption-wrap 구조 제거, 단일 div에 gallery-caption-menu-place + style="background-color: var(--green-deep);" */
 .calendar-scroll { 
     display: flex; 
     overflow-x: auto; 
@@ -962,12 +1023,12 @@ header .mealog-title {
     min-width: 40px;
     gap: 6px;
     padding: 4px 0 2px;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 .calendar-dow {
     font-size: 12px;
     font-weight: 500;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     line-height: 1;
 }
 .calendar-item.cal-day.weekend .calendar-dow,
@@ -986,28 +1047,28 @@ header .mealog-title {
     cursor: pointer; 
     transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; 
     background: transparent; 
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     border: 0;
 }
 .calendar-density {
     position: absolute;
-    bottom: 3px;
+    top: 3px;
     left: 50%;
     transform: translateX(-50%);
     width: 4px;
     height: 4px;
     border-radius: 50%;
-    background: var(--green-mute, #a7f3d0);
+    background: var(--green-mute, #b4e2cd);
     pointer-events: none;
 }
 .dot-none .calendar-density {
     background: transparent;
 }
 .dot-partial .calendar-density {
-    background: var(--green-mute, #a7f3d0);
+    background: var(--green-mute, #b4e2cd);
 }
 .dot-full .calendar-density {
-    background: var(--green, #059669);
+    background: var(--green, #3cb889);
 }
 .dot-selected .calendar-density {
     display: none;
@@ -1016,19 +1077,19 @@ header .mealog-title {
 .dot-partial,
 .dot-none { 
     background: transparent; 
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     border: 0;
 }
 .dot-selected { 
     transform: none; 
     border: 0; 
-    background: var(--green, #059669) !important; 
+    background: var(--green, #3cb889) !important; 
     color: #ffffff !important;
     font-weight: 700;
-    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+    box-shadow: 0 6px 14px rgba(45, 159, 116, 0.35);
 }
 .calendar-item.cal-day.selected .calendar-dow {
-    color: var(--green-deep, #047857) !important;
+    color: var(--green-deep, #2d9f74) !important;
     font-weight: 700;
 }
 /* 하단 메뉴 라벨 배경 50% 불투명 — 휠 전역 캡션 줄은 아래 짙은 회색·흰 글자 규칙 */
@@ -1247,46 +1308,46 @@ header .mealog-title {
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-hit {
     box-sizing: border-box;
-    min-width: calc(2rem * 1.15);
-    width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.25);
+    width: calc(2rem * 1.25);
     max-width: min(100%, 12rem);
     padding: 0;
     overflow: visible;
     transition: width 0.18s ease, min-width 0.18s ease, padding 0.18s ease;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 calc(2rem * 1.15);
-    width: calc(2rem * 1.15);
-    min-width: calc(2rem * 1.15);
-    height: calc(2rem * 1.15);
+    flex: 0 0 calc(2rem * 1.25);
+    width: calc(2rem * 1.25);
+    min-width: calc(2rem * 1.25);
+    height: calc(2rem * 1.25);
     box-sizing: border-box;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-like-btn,
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
-    min-height: calc(2rem * 1.15);
+    min-height: calc(2rem * 1.25);
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-comment-btn,
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-row .post-bookmark-btn {
-    width: calc(2rem * 1.15);
-    height: calc(2rem * 1.15);
-    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.25);
+    height: calc(2rem * 1.25);
+    min-width: calc(2rem * 1.25);
     flex-shrink: 0;
 }
 #timelineMealPhotosOverlay:not(.hidden) .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
     width: auto;
-    min-width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.25);
     padding-left: 0;
-    padding-right: calc(0.125rem * 1.15);
-    gap: calc(0.125rem * 1.15);
+    padding-right: calc(0.125rem * 1.25);
+    gap: calc(0.125rem * 1.25);
     justify-content: flex-start;
 }
 #timelineMealPhotosOverlay:not(.hidden)
     .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
     .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 calc(1.5rem * 1.15);
-    width: calc(1.5rem * 1.15);
-    min-width: calc(1.5rem * 1.15);
+    flex: 0 0 calc(1.5rem * 1.25);
+    width: calc(1.5rem * 1.25);
+    min-width: calc(1.5rem * 1.25);
     justify-content: flex-end;
     padding-right: 0;
 }
@@ -1296,7 +1357,7 @@ header .mealog-title {
     -webkit-text-stroke: 0;
     paint-order: normal;
     filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
-    font-size: calc(17px * 1.15);
+    font-size: calc(17px * 1.25);
     line-height: 1;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-meatball-icon {
@@ -1364,10 +1425,11 @@ header .mealog-title {
     height: 100%;
     min-width: 0;
     min-height: 0;
-    font-size: calc(17px * 1.15);
+    font-size: calc(17px * 1.25);
     line-height: 1;
 }
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i {
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > svg {
     grid-area: 1 / 1;
     margin: 0;
     padding: 0;
@@ -1389,11 +1451,14 @@ header .mealog-title {
     pointer-events: none;
     filter: none;
     transition: opacity 0.15s ease;
+    fill: currentColor;
 }
-#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon {
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon,
+#timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > svg.timeline-meal-photo-moment-social-icon {
     position: relative;
     z-index: 1;
     font-size: inherit;
+    fill: none;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-icon-stack > i::before {
     display: block;
@@ -1412,7 +1477,7 @@ header .mealog-title {
     color: #ffffff;
 }
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photo-moment-social-count {
-    font-size: calc(0.75rem * 1.15);
+    font-size: calc(0.75rem * 1.25);
     font-weight: 700;
     line-height: 1;
     min-width: 0.65rem;
@@ -1922,25 +1987,25 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     display: none;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-none {
-    background: #ecfdf5;
+    background: var(--green-soft);
     color: #64748b;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-partial {
     background: #e5f2db;
-    color: #047857;
-    border: 1.5px solid #a7f3d0;
+    color: var(--green-deep);
+    border: 1.5px solid var(--green-mute);
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-full {
-    background: #047857;
+    background: var(--green-deep);
     color: #ffffff;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-selected {
-    background: var(--green, #059669) !important;
+    background: var(--green, #3cb889) !important;
     color: #ffffff !important;
-    box-shadow: 0 3px 10px rgba(5, 150, 105, 0.28);
+    box-shadow: 0 3px 10px rgba(45, 159, 116, 0.28);
 }
 .tracker-calendar-icon-btn:focus-visible {
-    outline: 2px solid #10b981;
+    outline: 2px solid var(--green);
     outline-offset: 1px;
 }
 /* 전체/일간: 연회색 통 하나, active=흰색 팩+#1e293b 테두리/글자, inactive=배경 없이 회색 글자만 */
@@ -2247,10 +2312,11 @@ html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
 body:has(#mainApp:not(.hidden)) #mainAppHeader {
     background: #ffffff !important;
     background-image: none !important;
-    backdrop-filter: blur(12px) !important;
-    -webkit-backdrop-filter: blur(12px) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
     box-shadow: none !important;
-    border-bottom: 1px solid var(--line);
+    /* 시안: 로고 헤더 직하 보더 없음 — 트래커·서브탭·기간 행 하단에만 */
+    border-bottom: none;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #mainAppHeader {
     border-bottom: none;
@@ -2417,25 +2483,36 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     font-weight: 700;
     letter-spacing: -0.01em;
 }
-/* 연속 기록 pill — 크기는 기존 유지, 색만 시안 */
+/* 연속 기록 pill */
 .tracker-streak-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 2px 8px 2px 3px;
+    padding: 3px 9px 3px 5px;
     border-radius: 9999px;
-    border: 0;
+    border: 1px solid #fdba74;
     background: #fff7ed;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     color: #ea580c;
     line-height: 1;
 }
 .tracker-streak-pill__icon {
-    font-size: 11px;
+    font-size: 13px;
     line-height: 1;
     color: #ea580c;
-    margin-left: 2px;
+    margin-left: 1px;
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+}
+.tracker-streak-pill__icon.lucide,
+.tracker-streak-pill__icon svg,
+.tracker-streak-pill [data-lucide="flame"],
+.tracker-streak-pill .lucide-flame {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
+    stroke-width: 2;
 }
 .tracker-streak-pill__emoji {
     display: inline-flex;
@@ -2484,7 +2561,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-ta
     color: var(--muted) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow {
-    color: var(--muted, #94a3b8) !important;
+    color: var(--muted, #7a7268) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow.text-rose-400,
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.weekend .calendar-dow {
@@ -2508,7 +2585,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calend
     background: var(--green) !important;
     color: #ffffff !important;
     font-weight: 700;
-    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+    box-shadow: 0 6px 14px rgba(45, 159, 116, 0.35);
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.selected .calendar-dow {
     color: var(--green-deep) !important;
@@ -2517,12 +2594,23 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calend
 
 /* 밀로그·모먼트 리디자인: 공통 녹색 크롬은 다른 탭에 남기고 두 탭만 밝은 일기장 톤 */
 body[data-main-tab='timeline'] #statusBarOverlay,
-body[data-main-tab='gallery'] #statusBarOverlay,
-body[data-main-tab='timeline'] #mainAppHeader,
+body[data-main-tab='gallery'] #statusBarOverlay {
+    background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+/* 모먼트만 헤더 하단 hairline (시안 moment-feed) */
 body[data-main-tab='gallery'] #mainAppHeader {
     background: #ffffff !important;
     background-image: none !important;
-    border-bottom: 1px solid rgba(226, 232, 240, 0.55) !important;
+    border-bottom: 1px solid var(--line, #d0c6ba) !important;
+    box-shadow: none !important;
+}
+/* 밀로그: 헤더 개별 보더 제거 — #appTopChrome(헤더+트래커) 하단 한 줄만 */
+body[data-main-tab='timeline'] #mainAppHeader {
+    background: #ffffff !important;
+    background-image: none !important;
+    border-bottom: none !important;
     box-shadow: none !important;
 }
 body[data-main-tab='timeline'] #appTopChrome,
@@ -2548,7 +2636,7 @@ body[data-main-tab='gallery'] .header-right .notification-trigger:hover,
 body[data-main-tab='gallery'] .header-right .timeline-search-toggle:hover,
 body[data-main-tab='gallery'] .header-right .gallery-trace-btn:hover,
 body[data-main-tab='gallery'] #mainAppHeader .gallery-trace-btn.gallery-trace-btn--active {
-    color: #047857 !important;
+    color: var(--green-deep) !important;
     background: #f0fdf4 !important;
 }
 body[data-main-tab='gallery'] #mainAppHeader .gallery-trace-btn[data-trace='collapse'] .fa-magnifying-glass,
@@ -2569,32 +2657,34 @@ body[data-main-tab='timeline'] #searchInput::placeholder {
 body[data-main-tab='timeline'] #appTopChrome #trackerSection {
     background: #ffffff !important;
     background-image: none !important;
-    border-bottom: 1px solid var(--line, #e2e8f0) !important;
+    border-bottom: none !important;
     box-shadow: none !important;
 }
 body[data-main-tab='timeline'] #trackerTitle,
 body[data-main-tab='timeline'] .tracker-v2-month-label {
-    color: var(--ink, #0f172a) !important;
+    color: var(--ink, #241f1c) !important;
     font-weight: 700;
 }
 body[data-main-tab='timeline'] .tracker-calendar-icon-btn {
-    color: var(--muted, #94a3b8) !important;
+    color: var(--muted, #7a7268) !important;
 }
 body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
     color: var(--green) !important;
     background: var(--green-soft) !important;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill {
-    border: 0;
+    border: 1px solid #fdba74;
     background: #fff7ed;
     color: #ea580c;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    padding: 2px 8px 2px 3px;
+    padding: 3px 9px 3px 5px;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__icon {
     color: #ea580c;
-    font-size: 11px;
+    font-size: 13px;
+    width: 0.875rem;
+    height: 0.875rem;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__emoji {
     width: auto;
@@ -2607,14 +2697,14 @@ body[data-main-tab='timeline'] #trackerTabs {
 body[data-main-tab='timeline'] #trackerTabs .view-tab.active {
     background: #ffffff !important;
     border-color: transparent !important;
-    color: #047857 !important;
+    color: var(--green-deep) !important;
     box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
 }
 body[data-main-tab='timeline'] #trackerTabs .view-tab.inactive {
     color: #94a3b8 !important;
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dow {
-    color: var(--muted, #94a3b8) !important;
+    color: var(--muted, #7a7268) !important;
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dow.text-rose-400,
 body[data-main-tab='timeline'] #miniCalendar .calendar-item.weekend .calendar-dow {
@@ -2626,7 +2716,7 @@ body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-partial,
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
     border: 0 !important;
-    color: var(--ink, #0f172a) !important;
+    color: var(--ink, #241f1c) !important;
     border-radius: 9999px;
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-selected {
@@ -2635,7 +2725,7 @@ body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-selected {
     border: 0 !important;
     color: #ffffff !important;
     font-weight: 700;
-    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+    box-shadow: 0 6px 14px rgba(45, 159, 116, 0.35);
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-item.selected .calendar-dow {
     color: var(--green-deep) !important;
@@ -2643,7 +2733,7 @@ body[data-main-tab='timeline'] #miniCalendar .calendar-item.selected .calendar-d
 }
 body[data-main-tab='timeline'] #nav-timeline,
 body[data-main-tab='gallery'] #nav-gallery {
-    color: var(--ink, #0f172a) !important;
+    color: var(--ink, #241f1c) !important;
 }
 /* 기존 :has()+ID 녹색 크롬 규칙보다 높은 우선순위로 밝은 탭 스킨을 확정 */
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay,
@@ -2662,24 +2752,24 @@ body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-v2-month-label {
-    color: var(--ink, #0f172a) !important;
+    color: var(--ink, #241f1c) !important;
     font-weight: 700;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
-    color: var(--muted, #94a3b8) !important;
+    color: var(--muted, #7a7268) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
     background: #f1f5f9 !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.active {
     background: #ffffff !important;
-    color: #047857 !important;
+    color: var(--green-deep) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
     color: #94a3b8 !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow {
-    color: var(--muted, #94a3b8) !important;
+    color: var(--muted, #7a7268) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow.text-rose-400,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.weekend .calendar-dow {
@@ -2691,13 +2781,13 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
     border: 0 !important;
-    color: var(--ink, #0f172a) !important;
+    color: var(--ink, #241f1c) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
     background: var(--green) !important;
     border: 0 !important;
     color: #ffffff !important;
-    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+    box-shadow: 0 6px 14px rgba(45, 159, 116, 0.35);
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.selected .calendar-dow {
     color: var(--green-deep) !important;
@@ -2705,7 +2795,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 }
 /* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
 #trackerMonthCalendarModal .calendar-dot.dot-none {
-    background: #ecfdf5;
+    background: var(--green-soft);
     color: #64748b;
 }
 
@@ -2778,7 +2868,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     max-width: 100%;
 }
 .bottom-nav .nav-item.active {
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 /* 아이콘 슬롯 높이 고정 — 전 탭 동일 세로 리듬 */
 .bottom-nav .nav-item .nav-item__icon-wrap {
@@ -2789,24 +2879,30 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     width: 100%;
     height: 36px;
     flex-shrink: 0;
+    overflow: visible;
 }
 .bottom-nav .nav-item .nav-item__avatar {
     width: 1.75rem;
     height: 1.75rem;
     border-radius: 9999px;
-    overflow: hidden;
+    /* overflow:hidden 이면 box-shadow가 잘림 — 배경은 border-radius로 원형 유지 */
+    overflow: visible;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--avatar-fallback-bg, #e2e8f0);
-    border: 1px solid #cbd5e1;
+    background: var(--avatar-fallback-bg, var(--green-soft));
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: 1px solid var(--green-mute, #b4e2cd);
     font-family: var(--avatar-fallback-font);
     font-size: 0.9375rem;
     font-weight: 700;
-    color: var(--avatar-fallback-fg, #334155);
+    color: var(--avatar-fallback-fg, var(--green-deep));
     flex-shrink: 0;
     box-shadow: var(--avatar-shadow);
     line-height: 1;
+    isolation: isolate;
 }
 .bottom-nav .nav-item .nav-item__avatar--initial {
     font-family: var(--avatar-fallback-font);
@@ -2814,7 +2910,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     font-weight: 700;
 }
 .bottom-nav .nav-item.active .nav-item__avatar {
-    border-color: var(--ink, #0f172a);
+    border-color: var(--ink, #241f1c);
 }
 /* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 */
 #navigationBarOverlay {
@@ -4417,7 +4513,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     cursor: default;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:hover:not(:disabled) {
-    background: rgba(5, 150, 105, 0.95);
+    background: rgba(60, 184, 137, 0.95);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:active:not(:disabled) {
     transform: scale(0.96);
@@ -4625,8 +4721,8 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-hit,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-hit {
     box-sizing: border-box;
-    min-width: calc(2rem * 1.15);
-    width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.25);
+    width: calc(2rem * 1.25);
     max-width: min(100%, 12rem);
     padding: 0;
     overflow: visible;
@@ -4634,10 +4730,10 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-slot,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 calc(2rem * 1.15);
-    width: calc(2rem * 1.15);
-    min-width: calc(2rem * 1.15);
-    height: calc(2rem * 1.15);
+    flex: 0 0 calc(2rem * 1.25);
+    width: calc(2rem * 1.25);
+    min-width: calc(2rem * 1.25);
+    height: calc(2rem * 1.25);
     box-sizing: border-box;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -4655,16 +4751,16 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-like-btn,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-comment-btn,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn {
-    min-height: calc(2rem * 1.15);
+    min-height: calc(2rem * 1.25);
 }
 #galleryContainer.moment-feed-layout-v2
     .moment-feed-v2-scope
     .timeline-meal-photo-moment-social-row
     .post-bookmark-btn,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-bookmark-btn {
-    width: calc(2rem * 1.15);
-    height: calc(2rem * 1.15);
-    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.25);
+    height: calc(2rem * 1.25);
+    min-width: calc(2rem * 1.25);
     flex-shrink: 0;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -4672,9 +4768,9 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     .timeline-meal-photo-moment-social-row
     .post-comment-btn:not(.timeline-meal-photo-moment-social-hit),
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-row .post-comment-btn:not(.timeline-meal-photo-moment-social-hit) {
-    width: calc(2rem * 1.15);
-    height: calc(2rem * 1.15);
-    min-width: calc(2rem * 1.15);
+    width: calc(2rem * 1.25);
+    height: calc(2rem * 1.25);
+    min-width: calc(2rem * 1.25);
     flex-shrink: 0;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -4684,10 +4780,10 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     .moment-feed-v2-scope
     .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty)) {
     width: auto;
-    min-width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.25);
     padding-left: 0;
-    padding-right: calc(0.125rem * 1.15);
-    gap: calc(0.125rem * 1.15);
+    padding-right: calc(0.125rem * 1.25);
+    gap: calc(0.125rem * 1.25);
     justify-content: flex-start;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -4698,9 +4794,9 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     .moment-feed-v2-scope
     .post-like-btn.timeline-meal-photo-moment-social-hit:has(.post-like-count:not(:empty))
     .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 calc(1.5rem * 1.15);
-    width: calc(1.5rem * 1.15);
-    min-width: calc(1.5rem * 1.15);
+    flex: 0 0 calc(1.5rem * 1.25);
+    width: calc(1.5rem * 1.25);
+    min-width: calc(1.5rem * 1.25);
     justify-content: flex-end;
     padding-right: 0;
 }
@@ -4711,10 +4807,10 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     .moment-feed-v2-scope
     .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty)) {
     width: auto;
-    min-width: calc(2rem * 1.15);
+    min-width: calc(2rem * 1.25);
     padding-left: 0;
-    padding-right: calc(0.125rem * 1.15);
-    gap: calc(0.125rem * 1.15);
+    padding-right: calc(0.125rem * 1.25);
+    gap: calc(0.125rem * 1.25);
     justify-content: flex-start;
 }
 #galleryContainer.moment-feed-layout-v2
@@ -4725,9 +4821,9 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     .moment-feed-v2-scope
     .post-comment-btn.timeline-meal-photo-moment-social-hit:has(.post-comment-count:not(:empty))
     .timeline-meal-photo-moment-social-icon-slot {
-    flex: 0 0 calc(1.5rem * 1.15);
-    width: calc(1.5rem * 1.15);
-    min-width: calc(1.5rem * 1.15);
+    flex: 0 0 calc(1.5rem * 1.25);
+    width: calc(1.5rem * 1.25);
+    min-width: calc(1.5rem * 1.25);
     justify-content: flex-end;
     padding-right: 0;
 }
@@ -4741,11 +4837,13 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     height: 100%;
     min-width: 0;
     min-height: 0;
-    font-size: calc(17px * 1.15);
+    font-size: calc(17px * 1.25);
     line-height: 1;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i,
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i {
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > svg,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > svg {
     grid-area: 1 / 1;
     margin: 0;
     padding: 0;
@@ -4768,12 +4866,17 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     pointer-events: none;
     filter: none;
     transition: opacity 0.15s ease;
+    /* Lucide: 채움 레이어는 fill로 표시 */
+    fill: currentColor;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon,
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon {
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > svg.timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i.timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > svg.timeline-meal-photo-moment-social-icon {
     position: relative;
     z-index: 1;
     font-size: inherit;
+    fill: none;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i::before,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-icon-stack > i::before {
@@ -4801,7 +4904,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     -webkit-text-stroke: 0;
     paint-order: normal;
     filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.62)) drop-shadow(0 0 1px rgba(15, 23, 42, 0.48));
-    font-size: calc(17px * 1.15);
+    font-size: calc(17px * 1.25);
     line-height: 1;
     color: rgba(255, 255, 255, 0.95);
 }
@@ -4817,7 +4920,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-social-count,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-social-count {
-    font-size: calc(0.75rem * 1.15);
+    font-size: calc(0.75rem * 1.25);
     font-weight: 700;
     line-height: 1;
     min-width: 0.65rem;
@@ -4847,18 +4950,17 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     font-weight: 400;
 }
 
-/* 모먼트 시안: 피드 배경을 카드보다 짙게 해 대비 확보 (#eef2f6) */
+/* 모먼트 시안 v2: 페이지 배경은 따뜻한 --page (#fffcfa), 카드만 화이트 */
 body[data-main-tab='gallery'] {
-    --app-page-bg: #eef2f6;
-    --page: #eef2f6;
-    background-color: #eef2f6 !important;
+    --app-page-bg: var(--page, #fffcfa);
+    background-color: var(--page, #fffcfa) !important;
 }
 body[data-main-tab='gallery'] #mainApp,
 body[data-main-tab='gallery'] #galleryView {
-    background-color: #eef2f6 !important;
+    background-color: var(--page, #fffcfa) !important;
 }
 #galleryContainer.moment-feed-layout-v2 {
-    background: #eef2f6 !important;
+    background: var(--page, #fffcfa) !important;
 }
 #galleryContainer.moment-feed-layout-v2 #galleryPostsInsertPoint {
     gap: 14px;
@@ -4871,12 +4973,12 @@ body[data-main-tab='gallery'] #galleryView {
     .instagram-post[data-moment-card-layout='2']
     .moment-feed-v2-scope[data-moment-v2-root] {
     overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.85);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 18px;
     background: var(--card, #ffffff);
     box-shadow:
-        0 1px 2px rgba(15, 23, 42, 0.06),
-        0 10px 28px rgba(15, 23, 42, 0.1) !important;
+        0 1px 0 rgba(43, 40, 37, 0.06),
+        0 6px 18px rgba(43, 40, 37, 0.07) !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-wrap,
 #galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-wrap,
@@ -4909,6 +5011,36 @@ body[data-main-tab='gallery'] #galleryView {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-photo-shell {
     background: #e2e8f0;
 }
+/* 시안 v2: 휠 날짜 라벨(YYYY:MM:DD)·사진 위 레거시 오버레이 숨김 — 본문 메타/소셜만 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-caption-row,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-strip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-strip,
+#moment-v2-fixed-caption-layer .moment-v2-wheel-strip,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .meal-photo-wheel-col,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .meal-photo-wheel-col,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .meal-photo-wheel-col,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer [data-moment-v2-wheel-strip],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer [data-moment-v2-wheel-strip],
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-wheelbar-inner,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope [data-moment-v2-chrome-top-wrap],
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope [data-moment-v2-chrome-top-wrap],
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-chrome,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photo-moment-chrome,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit [data-moment-v2-author-comment-band],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit [data-moment-v2-author-comment-band],
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit [data-moment-v2-author-unit],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit [data-moment-v2-author-unit] {
+    display: none !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-shell [data-meal-photo-social-bubble],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-shell [data-meal-photo-social-bubble],
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-photo-clip [data-meal-photo-social-bubble],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-photo-clip [data-meal-photo-social-bubble] {
+    display: none !important;
+}
 #galleryContainer.moment-feed-layout-v2 .moment-v2-special-chip,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-special-chip {
     display: inline-flex;
@@ -4916,8 +5048,8 @@ body[data-main-tab='gallery'] #galleryView {
     gap: 5px;
     font-size: 11px;
     font-weight: 700;
-    color: var(--green-deep, #047857);
-    background: var(--green-soft, #ecfdf5);
+    color: var(--green-deep, #2d9f74);
+    background: var(--green-soft, #eaf8f2);
     padding: 3px 8px;
     border-radius: 9999px;
     margin-bottom: 8px;
@@ -4940,7 +5072,7 @@ body[data-main-tab='gallery'] #galleryView {
     padding: 14px 16px 4px;
     border: 0 !important;
     background: #ffffff !important;
-    color: var(--ink-2, #334155) !important;
+    color: var(--ink-2, #4f4841) !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
@@ -4948,8 +5080,8 @@ body[data-main-tab='gallery'] #galleryView {
     margin-left: 0;
     align-self: stretch;
     align-items: flex-start;
-    color: var(--ink, #0f172a) !important;
-    -webkit-text-fill-color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c) !important;
+    -webkit-text-fill-color: var(--ink, #241f1c);
     text-align: left;
     font-size: 17px;
     font-weight: 700;
@@ -4970,7 +5102,7 @@ body[data-main-tab='gallery'] #galleryView {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner {
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-family: 'Pretendard', sans-serif;
     font-size: 13px;
     font-weight: 500;
@@ -5001,9 +5133,38 @@ body[data-main-tab='gallery'] #galleryView {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo {
     position: static !important;
     width: 100%;
-    padding: 10px 0 0 !important;
-    border-top: 1px solid #f1f5f9;
+    /* 영역 높이 ≈ 이전(1.38·패딩10)의 ~80%: 패딩 축소 + 버튼 1.25 */
+    padding: 4px 0 0 !important;
+    border-top: 1px solid var(--line, #d0c6ba);
     background: transparent !important;
+    min-height: 0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-row {
+    min-height: calc(2rem * 1.25);
+    align-items: center;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon-stack,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon-stack {
+    color: #64748b !important;
+    filter: none;
+    font-size: calc(17px * 1.25);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-count,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-count {
+    color: #64748b;
+    text-shadow: none;
+    font-size: calc(0.75rem * 1.25);
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
     .timeline-meal-photo-moment-social-row .post-bookmark-btn,
@@ -5013,25 +5174,21 @@ body[data-main-tab='gallery'] #galleryView {
     margin-left: auto;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
-    .timeline-meal-photo-moment-social-icon,
-#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
-    .timeline-meal-photo-moment-social-icon {
-    color: #64748b !important;
-    filter: none;
-    font-size: 17px;
-}
+    .timeline-meal-photo-moment-social-icon.lucide,
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
-    .timeline-meal-photo-moment-social-count,
+    .timeline-meal-photo-moment-social-icon svg,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
-    .timeline-meal-photo-moment-social-count {
-    color: #64748b;
-    text-shadow: none;
+    .timeline-meal-photo-moment-social-icon.lucide,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo
+    .timeline-meal-photo-moment-social-icon svg {
+    width: 1em;
+    height: 1em;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope
     .post-bookmark-btn.post-social-state-on .post-bookmark-fill,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope
     .post-bookmark-btn.post-social-state-on .post-bookmark-fill {
-    color: var(--green, #059669);
+    color: var(--green, #3cb889);
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope
     .post-like-btn.post-social-state-on .post-like-fill,
@@ -5054,15 +5211,12 @@ body[data-main-tab='gallery'] #galleryView {
     font-weight: 600;
 }
 
-/* 모먼트 헤더: 흔적 필터를 시안 trace pill 톤으로 */
+/* 모먼트 탭: 헤더는 검색+알림만 — 인라인 흔적 필터 패널 숨김 (검색은 모달) */
+body[data-main-tab='gallery'] #galleryTraceFilterPanel {
+    display: none !important;
+}
 body[data-main-tab='gallery'] #galleryTraceFilterPanel.gallery-trace-panel:not(.hidden) {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 9999px;
-    background: var(--page, #f8fafc);
-    border: 1px solid var(--line, #e2e8f0);
+    display: none !important;
 }
 body[data-main-tab='gallery'] #galleryTraceFilterPanel .gallery-trace-btn {
     width: 32px;
@@ -5162,7 +5316,7 @@ body[data-main-tab='gallery'] #headerAppTitle {
 #entryModal #modalScrollArea textarea:focus,
 #entryModal #modalScrollArea textarea:focus-visible {
     background-color: var(--entry-input-bg-focus, #fff);
-    border-color: var(--entry-accent, #10b981);
+    border-color: var(--entry-accent, #3cb889);
     box-shadow: 0 0 0 3px var(--entry-accent-ring, rgb(16 185 129 / 0.18));
 }
 #entryModal #modalScrollArea #deliveryVendorInput:focus,
@@ -5214,7 +5368,7 @@ body[data-main-tab='gallery'] #headerAppTitle {
 }
 /* 인사이트 박스 내 식사/간식 기록: 외부 초록 박스와 동일 배경, 기간 영역과 동일 보더 */
 #dashboardView .sticker-badge {
-    background: #059669;
+    background: var(--green);
     backdrop-filter: none;
     border: 1px solid rgba(255, 255, 255, 0.7);
     border-radius: 6px;
@@ -5240,7 +5394,7 @@ body[data-main-tab='timeline'] .date-section-header {
     box-shadow: none;
 }
 body[data-main-tab='timeline'] .date-section-header h3 {
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-size: 14px;
     font-weight: 600;
     letter-spacing: -0.01em;
@@ -5258,12 +5412,9 @@ body[data-main-tab='timeline'] .timeline-view-picker {
     --tvp-scale: 1;
     min-width: 58px;
 }
-body[data-main-tab='timeline'] .date-section-header__share-btn {
-    color: var(--green-deep, #047857);
-}
 .date-section-header__actions {
     display: inline-flex;
-    align-items: stretch;
+    align-items: center;
     gap: calc(0.375rem * 1.3);
     margin-left: auto;
     flex-shrink: 0;
@@ -5272,12 +5423,21 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     height: 2.5rem;
     box-sizing: border-box;
 }
-.date-section-header__share-btn {
+.date-section-header__share-btn,
+.date-section-header__share-btn.date-section-header__action-btn,
+body[data-main-tab='timeline'] .date-section-header__share-btn,
+body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-header__action-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.1875rem;
-    padding: 0 0.375rem;
+    align-self: center;
+    gap: 0.25rem;
+    /* 뷰 피커보다 낮고 넓게 */
+    height: 2.125rem !important;
+    min-height: 2.125rem !important;
+    max-height: 2.125rem;
+    padding: 0 0.8rem;
+    min-width: 5rem;
     border-radius: 0.625rem;
     border-width: 1px;
     border-style: solid;
@@ -5286,6 +5446,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     line-height: 1;
     white-space: nowrap;
     transition: opacity 0.15s;
+    box-sizing: border-box;
+    color: var(--green-deep, #2d9f74);
 }
 .date-section-header__share-btn:active {
     opacity: 0.7;
@@ -5293,16 +5455,16 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 .date-section-header__share-btn--default {
     background: #ffffff;
     border-color: #e2e8f0;
-    color: #047857;
+    color: var(--green-deep);
 }
 .date-section-header__share-btn--shared {
-    background: #ecfdf5;
-    border-color: #a7f3d0;
-    color: #047857;
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+    color: var(--green-deep);
 }
 /* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤(실기기에서 약간 키움) */
 .date-section-header h3 {
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-size: 14px;
     font-weight: 600;
     letter-spacing: -0.01em;
@@ -5434,7 +5596,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    background-color: var(--page, #f8fafc) !important;
+    background-color: var(--page, #fffcfa) !important;
 }
 #timelineContainer {
     /* 트래커 하단 여백이 늘어난 만큼 피드 상단은 시안보다 살짝 타이트하게 */
@@ -5455,9 +5617,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 /* 목록형(옵션) — 홈피드 카드와 별개. 일기장 톤카드(.timeline-entry-card)는 폐기 */
 #timelineContainer .timeline-entry-row {
     overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     background: #ffffff;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
 }
 #timelineContainer .timeline-entry-row > .flex > :first-child {
     border-right: 0 !important;
@@ -5512,8 +5674,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 #timelineContainer .card.home-feed-card {
     background: var(--card, #fff);
     border-radius: 18px !important;
-    border: 1px solid rgba(226, 232, 240, 0.7);
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+    border: 1px solid var(--line, #d0c6ba);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
     margin-bottom: 12px;
     overflow: hidden;
     transition: transform 0.12s ease;
@@ -5530,54 +5692,80 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 .home-feed-card__body {
     padding: 16px 16px 14px;
     display: grid;
-    grid-template-columns: 52px 1fr auto;
+    grid-template-columns: 52px minmax(0, 1fr);
     gap: 12px;
     align-items: start;
 }
 .home-feed-card--photo .home-feed-card__body {
-    grid-template-columns: 1fr auto;
     padding-top: 14px;
 }
 .home-feed-card__icon {
     width: 52px;
     height: 52px;
     border-radius: 50%;
-    background: linear-gradient(145deg, #ecfdf5, #d1fae5);
+    background: linear-gradient(145deg, var(--green-soft), #d1fae5);
     display: grid;
     place-items: center;
-    color: var(--green-deep, #047857);
+    color: var(--green-deep, #2d9f74);
     font-size: 22px;
     flex-shrink: 0;
 }
-.home-feed-card__icon i {
+/* 식사(본식): 민트 · 간식: 앰버 — 사진 없을 때 구분 */
+.home-feed-card__icon--meal {
+    background: linear-gradient(145deg, var(--green-soft), #d1fae5);
+    color: var(--green-deep, #2d9f74);
+}
+.home-feed-card__icon--snack {
+    background: linear-gradient(145deg, #fff7ed, #fed7aa);
+    color: #c2410c;
+}
+.home-feed-card__icon--journal {
+    background: linear-gradient(145deg, #eef2ff, #c7d2fe);
+    color: #4338ca;
+}
+.home-feed-card__icon i,
+.home-feed-card__icon .lucide,
+.home-feed-card__icon [data-lucide],
+.home-feed-card__icon svg {
+    width: 1.35rem;
+    height: 1.35rem;
     font-size: 1.25rem;
     line-height: 1;
     color: inherit;
+    stroke: currentColor;
 }
 .home-feed-card__main {
     min-width: 0;
     padding-top: 2px;
+}
+.home-feed-card__meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    min-width: 0;
 }
 .home-feed-card__meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
     font-size: 13px;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-weight: 500;
-    margin-bottom: 4px;
     line-height: 1.3;
 }
 .home-feed-card__share {
     margin-left: 2px;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-size: 12px;
 }
 .home-feed-card__title {
     font-size: 17px;
     font-weight: 700;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     letter-spacing: -0.02em;
     line-height: 1.3;
     margin-bottom: 4px;
@@ -5600,16 +5788,27 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 }
 .home-feed-card__tag {
     font-size: 13px;
-    color: var(--green-deep, #047857);
+    color: var(--green-deep, #2d9f74);
     font-weight: 500;
 }
 .home-feed-card__stars {
-    display: flex;
+    display: inline-flex;
+    align-items: center;
     gap: 2px;
     color: var(--star, #fbbf24);
     font-size: 13px;
-    padding-top: 3px;
     letter-spacing: -1px;
+    flex: 0 0 auto;
+    align-self: center;
+    max-width: 40%;
+    overflow: hidden;
+}
+.home-feed-card__stars .lucide,
+.home-feed-card__stars [data-lucide],
+.home-feed-card__stars svg,
+.home-feed-card__stars i {
+    width: 0.85rem;
+    height: 0.85rem;
     flex-shrink: 0;
 }
 .home-feed-card__star--empty {
@@ -5619,10 +5818,10 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 /* 홈피드 빈 날 CTA */
 #timelineContainer .timeline-day-empty {
     background: var(--card, #fff);
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 18px;
     margin: 4px 0 8px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
 }
 #galleryContainer {
     margin-left: 0 !important;
@@ -5696,13 +5895,24 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     width: auto !important; /* JS width 대신 flex 사용 */
     margin-left: 20px; /* sub-title과 20px 간격 */
 }
-/* 헤더 우측 아이콘: 기존 대비 20% 확대 (text-sm 14px→16.8px, text-lg 18px→21.6px) */
+/* 헤더 우측 아이콘: 기존 대비 +10% (돋보기·종) */
 .header-right .timeline-search-toggle i,
-.header-right .gallery-trace-btn i {
-    font-size: 1.05rem !important;
+.header-right .timeline-search-toggle .lucide,
+.header-right .timeline-search-toggle svg,
+.header-right .gallery-trace-btn i,
+.header-right .gallery-trace-btn .lucide,
+.header-right .gallery-trace-btn svg {
+    font-size: 1.155rem !important;
+    width: 1.155rem !important;
+    height: 1.155rem !important;
 }
+.header-right .notification-trigger i,
+.header-right .notification-trigger .lucide,
+.header-right .notification-trigger svg,
 .header-right .notification-trigger .fa-bell {
-    font-size: 1.35rem !important;
+    font-size: 1.485rem !important;
+    width: 1.485rem !important;
+    height: 1.485rem !important;
 }
 
 /* 갤러리 트레이스: 접힌 상태=돋보기만, 펼침=하트/댓글/북마크/돋보기 */
@@ -5830,15 +6040,15 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     transition: all 0.2s; 
 }
 .icon-option.selected {
-    border-color: #10b981;
-    background: #ecfdf5;
+    border-color: var(--green);
+    background: var(--green-soft);
     transform: scale(1.1);
 }
 .icon-option-setup {
     background: #e2e8f0;
 }
 .icon-option-setup.selected {
-    background: #ecfdf5;
+    background: var(--green-soft);
 }
 .settings-tab {
     transition: background 0.2s ease, color 0.2s ease;
@@ -5898,9 +6108,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-style: solid;
 }
 #favoriteTagsSection .settings-tag-section-meal {
-    background: #ecfdf5;
-    border-top-color: #a7f3d0;
-    border-bottom-color: #a7f3d0;
+    background: var(--green-soft);
+    border-top-color: var(--green-mute);
+    border-bottom-color: var(--green-mute);
 }
 #favoriteTagsSection .settings-tag-section-snack {
     background: #fffbeb;
@@ -6223,6 +6433,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     background: transparent;
     cursor: pointer;
     border-radius: 50%;
+    /* 그림자는 버튼에 — 아바타 overflow:hidden에 잘리지 않음 */
+    box-shadow: var(--avatar-shadow-profile, 0 1px 2px rgba(100, 116, 139, 0.38));
 }
 .profile-v2-avatar {
     width: 80px;
@@ -6230,7 +6442,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-radius: 50%;
     display: grid;
     place-items: center;
-    box-shadow: var(--avatar-shadow);
+    box-shadow: none;
     line-height: 1;
     overflow: hidden;
 }
@@ -6304,7 +6516,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     padding: 10px 16px;
     border-radius: 999px;
     cursor: pointer;
-    box-shadow: 0 6px 16px rgba(5, 150, 105, 0.28);
+    box-shadow: 0 6px 16px rgba(45, 159, 116, 0.28);
 }
 .profile-v2-identity-cta:hover {
     background: var(--green-deep);
@@ -6341,9 +6553,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 }
 .profile-v2-row-card {
     background: var(--card);
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
     overflow: hidden;
 }
 .profile-v2-row {
@@ -6386,15 +6598,23 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     font-weight: 500;
 }
 .profile-v2-row__chev {
-    color: #cbd5e1;
-    font-size: 11px;
+    color: var(--muted, #7a7268);
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+.profile-v2-row__chev.lucide,
+.profile-v2-row [data-lucide="chevron-right"] {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.5;
 }
 .profile-v2-row:disabled .profile-v2-row__chev {
     display: none;
 }
 .profile-v2-life {
     background: var(--card);
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 16px;
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05);
     padding: 14px;
@@ -6465,9 +6685,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     text-align: center;
     padding: 28px 16px 24px;
     background: var(--card);
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
 }
 .profile-v2-guest__icon {
     width: 56px;
@@ -6505,14 +6725,14 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     padding: 12px 18px;
     border-radius: 999px;
     cursor: pointer;
-    box-shadow: 0 6px 16px rgba(5, 150, 105, 0.28);
+    box-shadow: 0 6px 16px rgba(45, 159, 116, 0.28);
 }
 .profile-v2-panel-card {
     background: var(--card);
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 16px;
     padding: 14px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
 }
 .profile-v2-panel-title {
     font-size: 14px;
@@ -6538,7 +6758,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 .profile-v2-memo-input:focus {
     outline: none;
     border-color: var(--green-mute);
-    box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+    box-shadow: 0 0 0 3px rgba(60, 184, 137, 0.14);
 }
 .profile-v2-memo-save {
     width: 100%;
@@ -6794,7 +7014,7 @@ label.entry-gauge-switch .entry-gauge-switch__track {
     transition: background-color 0.2s ease;
 }
 label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__track {
-    background: #059669;
+    background: var(--green);
 }
 label.entry-gauge-switch .entry-gauge-switch__thumb {
     pointer-events: none;
@@ -7120,7 +7340,7 @@ html.mealog-scroll-locked #landingPage {
     stroke-linejoin: round;
 }
 .attendance-popup-anim .success-check__circle {
-    stroke: #10b981;
+    stroke: var(--green);
     stroke-width: 6;
     stroke-linecap: round;
     stroke-dasharray: 151;
@@ -7128,7 +7348,7 @@ html.mealog-scroll-locked #landingPage {
     animation: successCheckCircle 260ms ease-out forwards;
 }
 .attendance-popup-anim .success-check__mark {
-    stroke: #10b981;
+    stroke: var(--green);
     stroke-width: 8;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -7220,7 +7440,7 @@ html.mealog-scroll-locked #landingPage {
     stroke-linejoin: round;
 }
 .success-popup-anim .success-check__circle {
-    stroke: #10b981; /* emerald-500 */
+    stroke: var(--green); /* emerald-500 */
     stroke-width: 6;
     stroke-linecap: round;
     stroke-dasharray: 151;
@@ -7228,7 +7448,7 @@ html.mealog-scroll-locked #landingPage {
     animation: successCheckCircle 260ms ease-out forwards;
 }
 .success-popup-anim .success-check__mark {
-    stroke: #10b981; /* emerald-500 */
+    stroke: var(--green); /* emerald-500 */
     stroke-width: 8;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -7271,7 +7491,7 @@ html.mealog-scroll-locked #landingPage {
     color: #fff;
     text-align: center;
     cursor: pointer;
-    background: #047857;
+    background: var(--green-deep);
     border: 3px solid #ffffff;
     box-shadow: none;
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
@@ -7755,7 +7975,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #landingPage.landing-show-login,
 #landingPage.landing-buttons-visible {
-    background: #059669;
+    background: var(--green);
 }
 .star-btn { 
     padding: 4px; 
@@ -7922,6 +8142,76 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     margin: 0.15rem 0;
 }
 /* 분석창 카드 — 시안 v2: 인셋·라운드 (풀폭 제거) */
+
+/* 밀당 헤더: 분석 | 참견 pill 탭 (시안 v2) */
+.mealdang-header-tabs {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    margin-left: 8px;
+    background: var(--page, #fffcfa);
+    border: 1px solid var(--line, #d0c6ba);
+    border-radius: 999px;
+    flex-shrink: 0;
+}
+.mealdang-header-tabs.hidden {
+    display: none !important;
+}
+.mealdang-header-tab {
+    border: 0;
+    background: transparent;
+    color: var(--muted, #7a7268);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+.mealdang-header-tab.active,
+.mealdang-header-tab[aria-selected="true"] {
+    background: var(--green-soft, #eaf8f2);
+    color: var(--green-deep, #2d9f74);
+}
+#dashboardView.dashboard-view-v2 .mealdang-view.hidden,
+#dashboardView.dashboard-view-v2 .mealdang-view[hidden] {
+    display: none !important;
+}
+#dashboardView.dashboard-view-v2.dashboard-view--comment .dashboard-comment-zone {
+    border-bottom: none;
+    min-height: calc(100vh - 11rem);
+}
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared {
+    background: #fff;
+    border-bottom: none;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
+}
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared .dashboard-insight-period-wrap {
+    width: 100%;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+#mainAppHeader {
+    background: #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    border-bottom: none;
+}
+header .mealog-title {
+    color: var(--green, #3cb889) !important;
+}
+
 #dashboardView.dashboard-view-v2 .card {
     border-radius: 16px;
 }
@@ -7951,63 +8241,77 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     min-width: 0;
     min-height: 2rem;
     height: 100%;
-    padding: 6px 4px;
+    padding: 6px 6px;
     border-radius: 10px;
-    font-size: 12.5px;
+    font-size: 13.5px;
     font-weight: 600;
     letter-spacing: -0.01em;
     line-height: 1.2;
     background: transparent;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     box-sizing: border-box;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chrome-subtabs .app-chrome-subtab.active,
 #dashboardView.dashboard-view-v2 .dashboard-chrome-subtabs .app-chrome-subtab[aria-selected="true"] {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
     font-weight: 600;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chrome-subtabs .app-chrome-subtab:hover {
     background: transparent;
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
 }
 #dashboardView.dashboard-view-v2 .dashboard-chrome-subtabs .app-chrome-subtab.active:hover,
 #dashboardView.dashboard-view-v2 .dashboard-chrome-subtabs .app-chrome-subtab[aria-selected="true"]:hover {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
 }
 
-/* 참견 구역 — soft-green 밴드 */
+/* 참견 구역 — 시안: 다른 탭과 같은 page 배경 */
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone {
-    background: var(--green-soft, #ecfdf5);
-    border-bottom: 1px solid var(--green-mute, #a7f3d0);
-    padding: 12px 14px 14px;
+    background: var(--page, #fffcfa);
+    border-bottom: none;
+    padding: 16px 14px 100px;
+}
+#dashboardView.dashboard-view-v2.dashboard-view--comment {
+    background: var(--page, #fffcfa);
+}
+#dashboardView.dashboard-view-v2.dashboard-view--comment .mealdang-view--comment {
+    background: var(--page, #fffcfa);
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone__label {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--green-deep, #047857);
+    color: var(--green-deep, #2d9f74);
     margin-bottom: 10px;
 }
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared .dashboard-insight-period-wrap,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .dashboard-insight-period-wrap {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0;
 }
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared .dashboard-period-nav,
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared #periodNavigator,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .dashboard-period-nav,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #periodNavigator {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin-bottom: 4px;
+    margin: 0;
     background: transparent;
     border: none;
     padding: 0;
-    min-height: 0;
+    min-height: 2rem;
+    width: 100%;
 }
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared #periodNavigator.hidden,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #periodNavigator.hidden {
     display: none;
 }
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared .dashboard-period-nav button,
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared #periodNavigator #periodPrevBtn,
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared #periodNavigator #periodNextBtn,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .dashboard-period-nav button,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #periodNavigator #periodPrevBtn,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #periodNavigator #periodNextBtn {
@@ -8015,21 +8319,23 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     height: 28px;
     border: 0;
     background: rgba(255, 255, 255, 0.7);
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     border-radius: 8px;
     cursor: pointer;
     display: grid;
     place-items: center;
     font-size: 12px;
 }
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared #periodDisplay,
+#dashboardView.dashboard-view-v2 .dashboard-insight-period-shared .dashboard-period-nav__label,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #periodDisplay,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .dashboard-period-nav__label {
     flex: 1;
     text-align: center;
-    font-size: 12.5px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--ink-2, #334155);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink, #241f1c);
     min-height: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-main {
@@ -8037,9 +8343,24 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     gap: 12px;
     align-items: flex-start;
 }
+#dashboardView.dashboard-view-v2 .dashboard-comment-aside {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    flex-shrink: 0;
+    width: 72px;
+}
+/* 참견 캐릭터 버튼: 56×72 카드. MEALOG만 내부 아이콘 박스, 선택 캐릭터는 풀블리드 */
+#dashboardView.dashboard-view-v2 .dashboard-comment-char.insight-character-btn,
 #dashboardView.dashboard-view-v2 .dashboard-comment-char {
     width: 56px;
     height: 72px;
+    min-width: 56px;
+    min-height: 72px;
+    max-width: 56px;
+    max-height: 72px;
     border-radius: 16px;
     background: #fff;
     display: grid;
@@ -8049,6 +8370,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     border: 1px solid rgba(167, 243, 208, 0.8);
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
     padding: 0;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-char__icon {
     width: 100%;
@@ -8058,8 +8381,12 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     justify-content: center;
     font-size: 28px;
     line-height: 1;
+    overflow: hidden;
+    border-radius: inherit;
 }
-#dashboardView.dashboard-view-v2 .dashboard-comment-char .insight-character-icon-box {
+/* 기본 MEALOG만 내부 아이콘 박스 표시 */
+#dashboardView.dashboard-view-v2 .dashboard-comment-char--mealog .insight-character-icon-box,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char #insightCharacterIcon.mealog-character-m .insight-character-icon-box {
     width: 44px;
     height: 44px;
     display: flex;
@@ -8069,11 +8396,34 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     border-radius: 12px;
     flex-shrink: 0;
     background: #fff;
+    border: 0;
+    box-sizing: border-box;
 }
-#dashboardView.dashboard-view-v2 .dashboard-comment-char__icon img {
+#dashboardView.dashboard-view-v2 .dashboard-comment-char--mealog #insightCharacterIcon img,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char #insightCharacterIcon.mealog-character-m img {
+    object-fit: contain;
+    border-radius: 0;
+    filter: none;
+}
+/* 캐릭터 선택 후: 아이콘 박스 숨김 · 이미지/이모지가 카드 전체 */
+#dashboardView.dashboard-view-v2 .dashboard-comment-char--picked .insight-character-icon-box,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char #insightCharacterIcon:not(.mealog-character-m) .insight-character-icon-box {
+    display: none !important;
+}
+#dashboardView.dashboard-view-v2 .dashboard-comment-char--picked #insightCharacterIcon,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char #insightCharacterIcon:not(.mealog-character-m) {
+    width: 100%;
+    height: 100%;
+}
+#dashboardView.dashboard-view-v2 .dashboard-comment-char--picked img,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char #insightCharacterIcon:not(.mealog-character-m) img,
+#dashboardView.dashboard-view-v2 .dashboard-comment-char__icon:not(.mealog-character-m) img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 0;
+    filter: none;
+    display: block;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-bubble-wrap {
     display: flex;
@@ -8096,38 +8446,53 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     padding: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #insightCharacterName.insight-character-name {
-    color: var(--green-deep, #047857);
+    color: var(--green-deep, #2d9f74);
     font-size: 12px;
     font-weight: 700;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone #insightTextContent.insight-text-content,
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone .insight-text-content {
-    color: var(--ink-2, #334155) !important;
+    color: var(--ink-2, #4f4841) !important;
     font-size: 13.5px;
     line-height: 1.5;
 }
 #dashboardView.dashboard-view-v2 .dashboard-comment-actions {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 6px;
-    margin-top: 10px;
-    padding-left: 68px;
+    margin-top: 0;
+    padding-left: 0;
+    width: 100%;
 }
 #dashboardView.dashboard-view-v2 .dashboard-mini-btn {
     border: 1px solid rgba(167, 243, 208, 0.9);
     background: #fff;
-    color: var(--ink-2, #334155);
-    font-size: 12px;
+    color: var(--ink-2, #4f4841);
+    font-size: 11px;
     font-weight: 600;
-    padding: 6px 10px;
+    padding: 6px 8px;
     border-radius: 999px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    gap: 3px;
+    width: auto;
+    min-width: 64px;
+    max-width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    white-space: nowrap;
+}
+#dashboardView.dashboard-view-v2 .dashboard-mini-btn [data-lucide],
+#dashboardView.dashboard-view-v2 .dashboard-mini-btn .lucide {
+    width: 0.85rem;
+    height: 0.85rem;
 }
 #dashboardView.dashboard-view-v2 .dashboard-mini-btn--primary {
-    background: var(--green, #059669);
-    border-color: var(--green, #059669);
+    background: var(--green, #3cb889);
+    border-color: var(--green, #3cb889);
     color: #fff;
 }
 #dashboardView.dashboard-view-v2 .dashboard-mini-btn.hidden,
@@ -8149,20 +8514,20 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView.dashboard-view-v2 .dashboard-kpi__label {
     font-size: 11px;
     font-weight: 600;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     margin-bottom: 4px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-kpi__value {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     line-height: 1.2;
 }
 #dashboardView.dashboard-view-v2 .dashboard-kpi__value span:not(#mealRecordCount):not(#snackRecordCount) {
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
 }
 #dashboardView.dashboard-view-v2 .dashboard-kpi__bar {
     height: 4px;
@@ -8175,7 +8540,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     display: block;
     height: 100%;
     width: 0%;
-    background: var(--green, #059669);
+    background: var(--green, #3cb889);
     border-radius: 999px;
     transition: width 0.25s ease;
 }
@@ -8189,13 +8554,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     margin: 0 2px 8px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tab-card {
     background: #fff !important;
-    border: 1px solid rgba(226, 232, 240, 0.9) !important;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+    border: 1px solid var(--line, #d0c6ba) !important;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06) !important;
     border-radius: 14px !important;
     padding: 4px !important;
     margin-top: 0;
@@ -8220,23 +8585,23 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     letter-spacing: -0.02em;
     line-height: 1.2;
     min-height: 2rem;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     background: transparent;
     cursor: pointer;
     transition: background 0.2s ease, color 0.2s ease;
     -webkit-tap-highlight-color: transparent;
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tab:hover {
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tab--active,
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tab.dashboard-analysis-tab--active {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
     font-weight: 600;
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tab--active:hover {
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 #dashboardView.dashboard-view-v2 #bestAnalysisSection,
 #dashboardView.dashboard-view-v2 #mainAnalysisSection,
@@ -8248,9 +8613,9 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView.dashboard-view-v2 #snackAnalysisSection .card,
 #dashboardView.dashboard-view-v2 #healthAnalysisSection .card,
 #dashboardView.dashboard-view-v2 #bestAnalysisSection .card {
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 18px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
     margin-top: 0;
     margin-bottom: 10px;
     background: #fff;
@@ -8262,28 +8627,28 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #dashboardView.dashboard-view-v2 .dashboard-card-hint {
     font-weight: 500;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-size: 12px;
     margin-left: 6px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-detail-link {
     border: 0;
     background: transparent;
-    color: var(--green, #059669);
+    color: var(--green, #3cb889);
     font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
     padding: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-more-charts {
-    border: 1px dashed var(--line, #e2e8f0);
+    border: 1px dashed var(--line, #d0c6ba);
     background: #fff;
     border-radius: 14px;
     padding: 12px;
     text-align: center;
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     cursor: pointer;
     width: 100%;
     margin-bottom: 8px;
@@ -8306,30 +8671,37 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #dashboardView.dashboard-view-v2 .dashboard-chart-legend {
     display: grid;
-    gap: 8px;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 14px;
+    align-items: start;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chart-legend-row {
     display: flex;
     align-items: center;
     gap: 8px;
     font-size: 13px;
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
+    min-width: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chart-swatch {
     width: 10px;
     height: 10px;
-    border-radius: 3px;
+    border-radius: 50%;
     flex-shrink: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chart-legend-row .name {
     flex: 1;
     font-weight: 500;
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 #dashboardView.dashboard-view-v2 .dashboard-chart-legend-row .pct {
     font-weight: 700;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-vital-head {
     display: flex;
@@ -8342,13 +8714,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.03em;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     line-height: 1.2;
 }
 #dashboardView.dashboard-view-v2 .dashboard-vital-val span:not([id]) {
     font-size: 13px;
     font-weight: 600;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     margin-left: 4px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-vital-actions {
@@ -8360,7 +8732,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView.dashboard-view-v2 .dashboard-vital-delta {
     font-size: 12.5px;
     font-weight: 600;
-    color: var(--green, #059669);
+    color: var(--green, #3cb889);
 }
 #dashboardView.dashboard-view-v2 .dashboard-vital-delta.is-up {
     color: #e11d48;
@@ -8407,12 +8779,12 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 #dashboardView.dashboard-view-v2 .dashboard-best-thumb--empty {
     display: grid;
     place-items: center;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-size: 18px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-meta .slot {
     font-size: 12px;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-weight: 500;
     margin-bottom: 2px;
 }
@@ -8420,7 +8792,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.01em;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-stars {
     color: #fbbf24;
@@ -8539,7 +8911,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #dashboardView .dashboard-analysis-tab--active,
 #dashboardView .dashboard-analysis-tab.dashboard-analysis-tab--active {
-    background: #059669;
+    background: var(--green);
     color: #ffffff;
     font-weight: 700;
 }
@@ -8590,7 +8962,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     box-sizing: border-box;
     min-height: fit-content;
     padding: 0.5rem 1.25rem;
-    background: #047857;
+    background: var(--green-deep);
     border: none;
     border-radius: 1rem;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -8628,21 +9000,21 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 .insight-share-btn.insight-share-btn--shared {
     background: #ffffff;
-    color: #059669;
+    color: var(--green);
     border: 1px solid #e2e8f0;
     border-radius: 8px;
 }
 .insight-share-btn.insight-share-btn--shared:hover {
     background: #f8fafc;
-    color: #047857;
+    color: var(--green-deep);
 }
 /* insight-share-btn 기본값 (다른 곳에서 클래스만 사용할 때) */
 .insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared) {
     color: #fff;
-    background: #059669;
+    background: var(--green);
 }
 .insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared):hover {
-    background: #047857;
+    background: var(--green-deep);
 }
 .insight-share-btn:not(.insight-share-btn--default):not(.insight-share-btn--shared):active {
     background: #065f46;
@@ -8669,8 +9041,9 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     box-shadow: none;
     overflow: visible;
 }
-/* 밀로그(MEALOG) 선택 시: 캐릭터 창 크기를 아이콘 박스에 맞춤 */
-.insight-character-btn:has(#insightCharacterIcon.mealog-character-m) {
+/* 밀로그(MEALOG) 선택 시: 캐릭터 창 크기를 아이콘 박스에 맞춤
+   (참견 v2 `.dashboard-comment-char` 는 아래 규칙에서 제외) */
+.insight-character-btn:has(#insightCharacterIcon.mealog-character-m):not(.dashboard-comment-char) {
     width: 70px;
     height: 70px;
     min-width: 70px;
@@ -8679,7 +9052,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     box-sizing: border-box;
 }
 .insight-character-btn #insightCharacterIcon {
-    color: #047857;
+    color: var(--green-deep);
     overflow: visible;
 }
 /* MEALOG M: Fredoka 폰트, 흰색 텍스트 */
@@ -8687,20 +9060,20 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-family: 'Fredoka', sans-serif;
     color: #ffffff;
 }
-/* 캐릭터 아이콘: 밀로그 정사각형 70x70px 박스 */
-.insight-character-icon-box {
+/* 캐릭터 아이콘: 밀로그 정사각형 70x70px 박스 (참견 v2는 별도 오버라이드) */
+.insight-character-btn:not(.dashboard-comment-char) .insight-character-icon-box {
     width: 70px;
     height: 70px;
 }
-/* 밀로그 선택 시: 보더는 아이콘 박스 주변에만 1px 흰색 적용 (아이콘이 보더를 가리지 않음) */
-.insight-character-btn:has(#insightCharacterIcon.mealog-character-m) .insight-character-icon-box {
+/* 밀로그 선택 시: 보더는 아이콘 박스 주변에만 1px 흰색 적용 (참견 v2 제외) */
+.insight-character-btn:has(#insightCharacterIcon.mealog-character-m):not(.dashboard-comment-char) .insight-character-icon-box {
     border: 1px solid #ffffff;
     border-radius: 1rem;
     box-sizing: border-box;
     width: 70px;
     height: 70px;
 }
-.insight-character-btn #insightCharacterIcon img {
+.insight-character-btn:not(.dashboard-comment-char) #insightCharacterIcon img {
     width: 100%;
     height: 100%;
     object-fit: contain;
@@ -8745,11 +9118,11 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 
 /* 캐릭터 선택 팝업 */
 .character-popup-item.active {
-    background: #ecfdf5 !important;
-    border: 1px solid #10b981;
+    background: var(--green-soft) !important;
+    border: 1px solid var(--green);
 }
 .character-popup-item.active .text-slate-800 {
-    color: #10b981;
+    color: var(--green);
     font-weight: 800;
 }
 
@@ -8948,17 +9321,17 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #059669 !important;
+    background-color: var(--green) !important;
     color: white !important;
-    box-shadow: 0 2px 12px rgba(5, 150, 105, 0.4);
+    box-shadow: 0 2px 12px rgba(45, 159, 116, 0.4);
     border: none;
     transition: box-shadow 0.2s, background-color 0.2s;
 }
 #boardWriteBtn.board-write-fab:hover {
-    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.45);
+    box-shadow: 0 4px 16px rgba(45, 159, 116, 0.45);
 }
 #boardWriteBtn.board-write-fab:active {
-    background-color: #047857 !important;
+    background-color: var(--green-deep) !important;
 }
 #boardWriteBtn.board-write-fab.hidden {
     display: none !important;
@@ -8968,13 +9341,16 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 /* 타임라인 기록 추가 — 슬롯 피커 바텀시트 */
 .entry-slot-picker {
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    background: var(--page);
+    border-radius: var(--shell-r-sheet) var(--shell-r-sheet) 0 0;
+    border-top: 1px solid var(--line);
 }
 .entry-slot-picker__grabber {
-    width: 2.25rem;
+    width: 2.5rem;
     height: 0.25rem;
-    margin: 0.5rem auto 0.35rem;
+    margin: 0.625rem auto 0.35rem;
     border-radius: 999px;
-    background: #e2e8f0;
+    background: var(--line);
 }
 .entry-slot-picker__group {
     margin-bottom: 0.75rem;
@@ -9008,8 +9384,8 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: #f1f5f9;
 }
 .entry-slot-picker__item--preferred {
-    border-color: #a7f3d0;
-    background: #ecfdf5;
+    border-color: var(--green-mute);
+    background: var(--green-soft);
 }
 .entry-slot-picker__icon {
     display: inline-flex;
@@ -9037,7 +9413,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 .entry-slot-picker__count {
     font-size: 0.75rem;
     font-weight: 600;
-    color: #059669;
+    color: var(--green);
 }
 .entry-slot-picker__count--empty {
     color: #94a3b8;
@@ -9062,15 +9438,15 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #059669 !important;
+    background-color: var(--green) !important;
     color: white !important;
-    box-shadow: 0 2px 12px rgba(5, 150, 105, 0.4);
+    box-shadow: 0 2px 12px rgba(45, 159, 116, 0.4);
     border: none;
     transition: box-shadow 0.2s;
     transform: rotate(0deg);
 }
 #entryQuickInputFab.entry-quick-input-fab:hover {
-    box-shadow: 0 4px 16px rgba(5, 150, 105, 0.45);
+    box-shadow: 0 4px 16px rgba(45, 159, 116, 0.45);
 }
 #entryQuickInputFab.entry-quick-input-fab.entry-quick-input-fab--spin {
     animation: entry-quick-input-fab-spin 0.38s ease-in-out forwards;
@@ -9314,7 +9690,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 #boardCategoryRow {
     gap: 6px;
     padding: 10px 14px 6px;
-    background: var(--page, #f8fafc);
+    background: var(--page, #fffcfa);
 }
 #boardCategoryRow .board-category-btn {
     padding: 5px 10px !important;
@@ -9323,20 +9699,20 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     font-weight: 500 !important;
     line-height: 1.3;
     background-color: #fff !important;
-    color: var(--muted, #94a3b8) !important;
-    border: 1px solid var(--line, #e2e8f0) !important;
+    color: var(--muted, #7a7268) !important;
+    border: 1px solid var(--line, #d0c6ba) !important;
     border-radius: 999px !important;
     white-space: nowrap;
     flex-shrink: 0;
 }
 #boardCategoryRow .board-category-btn:hover:not(.active) {
     background-color: #fff !important;
-    color: var(--ink-2, #334155) !important;
+    color: var(--ink-2, #4f4841) !important;
 }
 #boardCategoryRow .board-category-btn.active {
-    background-color: var(--green, #059669) !important;
+    background-color: var(--green, #3cb889) !important;
     color: #ffffff !important;
-    border-color: var(--green, #059669) !important;
+    border-color: var(--green, #3cb889) !important;
     font-weight: 600 !important;
     text-decoration: none;
 }
@@ -9448,28 +9824,28 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     letter-spacing: -0.01em;
     line-height: 1.2;
     background: transparent;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     box-sizing: border-box;
 }
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab.active,
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab[aria-selected="true"],
 #settingsView .settings-subtab-row .app-chrome-subtab.active,
 #settingsView .settings-subtab-row .app-chrome-subtab[aria-selected="true"] {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
     font-weight: 600;
 }
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab:hover,
 #settingsView .settings-subtab-row .app-chrome-subtab:hover {
     background: transparent;
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
 }
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab.active:hover,
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab[aria-selected="true"]:hover,
 #settingsView .settings-subtab-row .app-chrome-subtab.active:hover,
 #settingsView .settings-subtab-row .app-chrome-subtab[aria-selected="true"]:hover {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
 }
 html.platform-native-app #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab,
 html.platform-native-app #settingsView .settings-subtab-row .app-chrome-subtab {
@@ -9572,7 +9948,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     background: var(--board-feed-bg);
 }
 #boardListView #boardLoungeScrollArea:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-track {
-    background: var(--page, #f8fafc);
+    background: var(--page, #fffcfa);
 }
 /* 피드/게시판 탭 높이·여백: 사용자 설정(settings-tab)과 동일 px-3 py-2.5 + 바 px-4 pt-2 pb-0 */
 
@@ -9594,7 +9970,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     box-sizing: border-box;
     z-index: 45;
     border: none;
-    border-top: 1px solid var(--line, #e2e8f0);
+    border-top: 1px solid var(--line, #d0c6ba);
     border-radius: 0;
     background: var(--board-feed-composer-surface);
     backdrop-filter: none;
@@ -9619,10 +9995,10 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     align-self: center;
 }
 #boardInlineComposer .board-feed-chat-input {
-    border: 1px solid var(--line, #e2e8f0);
+    border: 1px solid var(--line, #d0c6ba);
     outline: none;
     resize: none;
-    background: var(--page, #f8fafc);
+    background: var(--page, #fffcfa);
     border-radius: 18px;
     margin: 0;
     padding: 10px 14px;
@@ -9642,15 +10018,15 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     color: #94a3b8;
 }
 .board-feed-composer-send {
-    background-color: var(--green, #059669) !important;
+    background-color: var(--green, #3cb889) !important;
     color: #fff !important;
     box-shadow: none;
 }
 .board-feed-composer-send:hover:not(:disabled) {
-    background-color: var(--green-deep, #047857) !important;
+    background-color: var(--green-deep, #2d9f74) !important;
 }
 .board-feed-composer-send:active:not(:disabled) {
-    background-color: var(--green-deep, #047857) !important;
+    background-color: var(--green-deep, #2d9f74) !important;
 }
 .board-feed-composer-send:disabled {
     opacity: 0.35;
@@ -9687,14 +10063,14 @@ body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-c
     cursor: default;
 }
 .board-detail-comment-send:hover:not(:disabled) {
-    background: rgba(5, 150, 105, 0.95);
+    background: rgba(60, 184, 137, 0.95);
 }
 .board-detail-comment-send:active:not(:disabled) {
     transform: translateY(-50%) scale(0.96);
 }
 .board-detail-comment-send.is-pressed:not(:disabled) {
     transform: translateY(-50%) scale(0.95);
-    background: rgba(5, 150, 105, 0.98);
+    background: rgba(45, 159, 116, 0.98);
 }
 
 .board-detail-comment-attach {
@@ -9878,7 +10254,7 @@ body.feed-bubble-sheet-open {
     min-height: 0;
     overflow-x: hidden;
     overflow-y: visible;
-    background: var(--page, #f8fafc);
+    background: var(--page, #fffcfa);
     margin-left: 0;
     margin-right: 0;
     width: 100%;
@@ -9912,7 +10288,7 @@ body.feed-bubble-sheet-open {
     background: rgba(148, 163, 184, 0.45);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden)) {
-    scrollbar-color: rgba(148, 163, 184, 0.5) var(--page, #f8fafc);
+    scrollbar-color: rgba(148, 163, 184, 0.5) var(--page, #fffcfa);
 }
 #boardListView #boardLoungeScrollArea.board-panel-scrollbar-active:has(#boardListPanel:not(.hidden))::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.45);
@@ -9920,9 +10296,9 @@ body.feed-bubble-sheet-open {
 
 /* 밀톡 피드 메시지 영역 테마 (흰 배경 + 말풍선) */
 #boardListView #boardFeedPanelContent .feed-chat-bubble-mine {
-    background: var(--green-soft, #ecfdf5);
-    color: var(--ink, #0f172a);
-    border: 1px solid var(--green-mute, #a7f3d0);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
+    border: 1px solid var(--green-mute, #b4e2cd);
 }
 #boardListView #boardFeedPanelContent .feed-chat-bubble-other {
     background: #fff;
@@ -9934,9 +10310,9 @@ body.feed-bubble-sheet-open {
     font-size: 11px;
     font-weight: 600;
     line-height: 1.3;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     background: #fff;
-    border: 1px solid var(--line, #e2e8f0);
+    border: 1px solid var(--line, #d0c6ba);
     padding: 4px 10px;
     border-radius: 999px;
     text-align: center;
@@ -10038,10 +10414,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .lounge-post {
     background: var(--card, #fff);
     border-radius: 18px;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
     margin-bottom: 12px;
     overflow: hidden;
-    border: 1px solid rgba(226, 232, 240, 0.7);
+    border: 1px solid var(--line, #d0c6ba);
     padding: 14px 14px 12px;
     width: 100%;
     max-width: none;
@@ -10102,11 +10478,11 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-size: 14px;
     font-weight: 700;
     letter-spacing: -0.01em;
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
 }
 .lounge-author-sub {
     font-size: 12px;
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
     font-weight: 500;
     margin-top: 1px;
 }
@@ -10130,7 +10506,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .lounge-post-body.board-list-body-preview {
     font-size: 14.5px;
     line-height: 1.55;
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -10140,7 +10516,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 .lounge-post-body strong,
 .lounge-post-body b {
-    color: var(--ink, #0f172a);
+    color: var(--ink, #241f1c);
     font-weight: 700;
 }
 .lounge-post-body u { text-decoration: underline; }
@@ -10167,10 +10543,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-size: 12px;
     font-weight: 600;
     line-height: 1.35;
-    color: var(--green-deep, #047857);
+    color: var(--green-deep, #2d9f74);
 }
 .lounge-tag--muted {
-    color: var(--muted, #94a3b8);
+    color: var(--muted, #7a7268);
 }
 .lounge-social {
     margin-left: auto;
@@ -10181,7 +10557,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .lounge-social-btn {
     border: 0;
     background: transparent;
-    color: var(--ink-2, #334155);
+    color: var(--ink-2, #4f4841);
     font-size: 12.5px;
     font-weight: 600;
     display: inline-flex;
@@ -10202,15 +10578,15 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 .lounge-social-btn.bookmarked i,
 .lounge-social-btn .fa-bookmark.fa-solid {
-    color: var(--green, #059669);
+    color: var(--green, #3cb889);
 }
 .lounge-social-btn.liked i.fa-heart { color: #e11d48; }
-.lounge-social-btn.bookmarked i.fa-bookmark { color: var(--green, #059669); }
+.lounge-social-btn.bookmarked i.fa-bookmark { color: var(--green, #3cb889); }
 
 .board-list-card {
     background: #fff !important;
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
+    border-top: 1px solid var(--line, #d0c6ba);
+    border-bottom: 1px solid var(--line, #d0c6ba);
     /* 일반 게시글 전용: 회색 4px · 30% (공지는 .notice-accent-* 가 덮음) */
     border-left: 4px solid rgb(100 116 139 / 0.3);
     border-right: none;
@@ -10220,11 +10596,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     width: 100%;
     max-width: none;
     box-sizing: border-box;
-    /* 연회색(rgb(241 245 249)) 목록 배경 위에서 카드 분리감 */
     box-shadow:
-        0 1px 2px rgba(15, 23, 42, 0.06),
-        0 3px 10px rgba(15, 23, 42, 0.07),
-        0 0 0 1px rgba(15, 23, 42, 0.03);
+        0 1px 0 rgba(43, 40, 37, 0.06),
+        0 6px 18px rgba(43, 40, 37, 0.07);
 }
 .board-list-card:active {
     box-shadow:
@@ -10296,8 +10670,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     padding: 1.25rem 1rem;
     border-radius: 1rem;
     background: #ffffff;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid var(--line, #d0c6ba);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
 }
 
 /* MEAL TALK 게시글 상세 하단 버튼: 참여(추천/비추천) 왼쪽, 관리(수정/삭제) 오른쪽 */
@@ -10349,9 +10723,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: #64748b;
 }
 .board-btn-participate--like.is-active {
-    background: #ecfdf5;
-    border-color: #a7f3d0;
-    color: #059669;
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+    color: var(--green);
 }
 .board-btn-participate--dislike {
     background: #f8fafc;
@@ -10380,7 +10754,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: #475569;
 }
 .board-btn-manage--edit:hover {
-    color: #059669;
+    color: var(--green);
 }
 .board-btn-manage--edit:active {
     opacity: 0.8;
@@ -10679,17 +11053,18 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     vertical-align: top;
 }
 
-/* 콘텐츠 팝업 하단: 위(이전·다음) / 아래(오늘 그만·닫기) 영역식 */
+/* 콘텐츠 팝업 하단 — Soft Mint (밝은 면 + 초록 CTA) */
 .content-popup-footer {
     display: flex;
     flex-direction: column;
-    background: #0f172a;
+    background: var(--card);
+    border-top: 1px solid var(--line);
 }
 .content-popup-footer-nav {
     display: flex;
     flex-direction: row;
     width: 100%;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid var(--line);
 }
 .content-popup-footer-actions {
     display: flex;
@@ -10706,10 +11081,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     padding: 0.85rem 0.5rem;
     min-height: 3.35rem;
     text-align: center;
-    color: #fff;
-    background: #0f172a;
+    color: var(--ink);
+    background: var(--card);
     border: none;
-    border-right: 1px solid rgba(255, 255, 255, 0.15);
+    border-right: 1px solid var(--line);
     cursor: pointer;
     transition: background 0.15s, color 0.15s, opacity 0.15s;
 }
@@ -10725,22 +11100,20 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-size: 14px;
     font-weight: 800;
     line-height: 1.2;
-    color: #fff;
+    color: var(--ink);
 }
 .content-popup-footer-hint {
     font-size: 11px;
     font-weight: 600;
     line-height: 1.25;
-    color: rgba(255, 255, 255, 0.72);
+    color: var(--muted);
     max-width: 11rem;
 }
 .content-popup-footer-seg:hover:not(:disabled) {
-    background: #1e293b;
-    color: #fff;
+    background: var(--page);
 }
 .content-popup-footer-seg:active:not(:disabled) {
-    background: #334155;
-    color: #fff;
+    background: var(--green-soft);
 }
 .content-popup-footer-seg:disabled {
     opacity: 0.38;
@@ -10748,35 +11121,45 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     pointer-events: none;
 }
 .content-popup-footer-close {
+    background: var(--green);
     color: #fff;
+}
+.content-popup-footer-close .content-popup-footer-label {
+    color: #fff;
+}
+.content-popup-footer-close .content-popup-footer-hint {
+    color: rgba(255, 255, 255, 0.82);
+}
+.content-popup-footer-close:hover:not(:disabled) {
+    background: var(--green-deep);
+}
+.content-popup-footer-close:active:not(:disabled) {
+    background: var(--green-deep);
 }
 
 .content-popup-inner { position: relative; }
 /* 단일 팝업일 때 숫자만 숨기고 바는 공간 유지 (Tailwind .hidden 사용 금지) */
 .content-popup-counter-bar.popup-counter-empty .content-popup-counter-text { visibility: hidden; }
-.content-popup-footer-close:hover {
-    color: #fff;
-}
 
 /* ═══════════════════════════════════════════════════════════
    기록 시트 — 디자인 시스템 (위계: 핵심 입력 › 부가 › 메모)
    ═══════════════════════════════════════════════════════════ */
 #entryModal {
-    --entry-accent: #10b981;
-    --entry-accent-dark: #059669;
-    --entry-accent-soft: #ecfdf5;
-    --entry-accent-ring: rgb(16 185 129 / 0.18);
+    --entry-accent: var(--green);
+    --entry-accent-dark: var(--green-deep);
+    --entry-accent-soft: var(--green-soft);
+    --entry-accent-ring: rgb(60 184 137 / 0.22);
     --entry-surface: #ffffff;
-    --entry-surface-body: #f1f5f9;
-    --entry-surface-muted: #f1f5f9;
-    --entry-surface-subtle: #f1f5f9;
-    --entry-text-primary: #1e293b;
-    --entry-text-secondary: #64748b;
-    --entry-text-muted: #94a3b8;
-    --entry-border: #e2e8f0;
-    --entry-border-soft: #e2e8f0;
-    --entry-border-row: #cbd5e1;
-    --entry-input-bg: #f1f5f9;
+    --entry-surface-body: var(--page);
+    --entry-surface-muted: var(--page);
+    --entry-surface-subtle: var(--green-soft);
+    --entry-text-primary: var(--ink);
+    --entry-text-secondary: var(--ink-2);
+    --entry-text-muted: var(--muted);
+    --entry-border: var(--line);
+    --entry-border-soft: var(--line);
+    --entry-border-row: var(--line);
+    --entry-input-bg: #fff;
     --entry-input-bg-focus: #ffffff;
     --entry-radius: 0.75rem;
     --entry-radius-lg: 1rem;
@@ -10793,14 +11176,17 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 
 /* ── 헤더: 메타(날짜·슬롯) — 조용하게 ── */
 #entryModal .entry-modal-panel {
-    box-shadow: 0 -8px 32px rgb(15 23 42 / 0.12);
+    background: var(--page);
+    border-radius: var(--shell-r-sheet) var(--shell-r-sheet) 0 0;
+    border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 32px rgba(36, 31, 28, 0.12);
 }
 #entryModal .entry-modal-grabber {
-    width: 2.25rem;
+    width: 2.5rem;
     height: 0.25rem;
-    margin: 0.5rem auto 0;
+    margin: 0.625rem auto 0;
     border-radius: 9999px;
-    background: #cbd5e1;
+    background: var(--line);
 }
 #entryModal .entry-modal-header {
     background: var(--entry-surface);
@@ -10832,7 +11218,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-date,
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-slot,
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-form-mode-switch {
-    background: #ecfdf5;
+    background: var(--green-soft);
 }
 #entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-date,
 #entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-slot,
@@ -10849,7 +11235,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-date:focus,
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] .entry-header-slot:focus,
 #entryModal .entry-header-controls[data-entry-slot-theme="lunch"] button.entry-header-date:focus {
-    background: #ecfdf5;
+    background: var(--green-soft);
     border-color: var(--entry-border-soft);
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
 }
@@ -11000,7 +11386,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-field-quick-toggle--open,
 #entryModal .entry-field-quick-toggle[aria-expanded="true"] {
     color: var(--entry-accent-dark);
-    border-color: #a7f3d0;
+    border-color: var(--green-mute);
     background: var(--entry-accent-soft);
 }
 #entryModal .entry-field-quick-toggle__icon {
@@ -11091,7 +11477,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: #8b5cf6;
 }
 #entryModal #entryWhereSection .entry-axis-icon {
-    color: #10b981;
+    color: var(--green);
 }
 #entryModal #entryWhatSection .entry-axis-icon {
     color: #f97316;
@@ -11255,6 +11641,136 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #entryModal .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
+}
+
+/* ── 사진 히어로 (시안 entry-sheet-v2: full-bleed 미리보기 + 오버레이 도구) ── */
+#entryModal .entry-photo-section--has-photos {
+    position: relative;
+    padding: 0;
+    border-bottom: none;
+    background: var(--line, #e2e8f0);
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    margin: 0;
+    min-height: 0;
+    padding: 0;
+    display: block;
+    grid-template-columns: unset;
+    background: transparent;
+    pointer-events: none;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    min-width: 0;
+    margin: 0;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.5);
+    font-size: 11px;
+    font-weight: 600;
+    color: #ffffff;
+    pointer-events: none;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon,
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
+    display: none;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-count {
+    margin: 0;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    pointer-events: none;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-add-btns {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    z-index: 2;
+    pointer-events: auto;
+    gap: 6px;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    z-index: 2;
+    pointer-events: auto;
+    opacity: 1;
+}
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn {
+    width: auto;
+    height: auto;
+    min-height: 0;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 0;
+    background: rgba(15, 23, 42, 0.55);
+    color: #ffffff;
+    box-shadow: none;
+}
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn i {
+    color: #ffffff;
+    font-size: 0.8125rem;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+    background: rgba(15, 23, 42, 0.45);
+    border-color: rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.92);
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+    background: rgba(255, 255, 255, 0.92);
+    border-color: transparent;
+    color: var(--entry-accent-dark);
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+}
+#entryModal .entry-photo-section--has-photos #photoPreviewContainer,
+#entryModal .entry-photo-section--has-photos #snackPhotoPreviewContainer {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 8px;
+    padding: 0 12px 12px;
+    box-sizing: border-box;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item:first-child {
+    flex: 0 0 100%;
+    width: calc(100% + 24px) !important;
+    max-width: none;
+    aspect-ratio: 16 / 10 !important;
+    max-height: min(52vw, 300px);
+    margin: 0 -12px;
+    border: 0;
+    border-radius: 0;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item:first-child .photo-preview-order-badge {
+    top: 10px;
+    left: 10px;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item:not(:first-child) {
+    width: 4.25rem !important;
+    aspect-ratio: 1 !important;
+    max-height: none;
+    border-radius: 12px;
+    border-width: 1px;
 }
 
 /* ── 만족도·포만감·시간 ── */
@@ -11633,8 +12149,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: #f1f5f9;
 }
 .entry-header-date-picker__day.is-today:not(.is-selected):not(.is-disabled) {
-    color: #059669;
-    background: #ecfdf5;
+    color: var(--green);
+    background: var(--green-soft);
 }
 .entry-header-date-picker__day.is-disabled,
 .entry-header-date-picker__day:disabled {
@@ -11643,7 +12159,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     pointer-events: none;
 }
 .entry-header-date-picker__day.is-selected {
-    background: #10b981;
+    background: var(--green);
     color: #ffffff;
 }
 
@@ -11715,7 +12231,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #entryModal .entry-action-btn--save:active:not(:disabled),
 #entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
-    background: #059669;
+    background: var(--green);
     box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.22);
 }
 #entryModal .entry-action-btn--save:disabled {
@@ -11753,7 +12269,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
 #entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
     background: #6ee7b7;
-    color: #047857;
+    color: var(--green-deep);
     box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.2);
 }
 #entryModal .entry-action-btn--share.entry-action-btn--share-on {
@@ -11785,10 +12301,365 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #photoEditModal .photo-edit-save-btn:active,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed {
-    background: #059669;
+    background: var(--green);
     box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.25);
 }
 #photoEditModal .photo-edit-save-btn:active .entry-action-btn__inner,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed .entry-action-btn__inner {
     transform: scale(0.94);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   팝업 셸 v2 — Soft Mint Air (시안 popup-shells-v2)
+   Dialog · Sheet · Action · Search · Media · Banner/Toast
+   ═══════════════════════════════════════════════════════════ */
+
+/* —— 공통 딤 (ink 42%) —— */
+#contentPopupModal,
+#entryModal,
+#dailyJournalModal,
+#dietReportModal,
+#logoutConfirmModal,
+#deleteAccountConfirmModal,
+#emailAuthModal,
+#termsModal,
+#passwordResetConfirmModal,
+#passwordResetSuccessModal,
+#demoIntroModal,
+#characterSelectPopup,
+#bestSharePeriodNoticeModal,
+#bestShareModal,
+#insightShareModal,
+#photoEditModal,
+#accountAvatarModal,
+#profileFieldEditModal,
+#notificationModal,
+#timelineSearchModal,
+#momentSearchModal,
+#boardSearchModal,
+#trackerMonthCalendarModal,
+#domainErrorModal,
+#pwaInstallGuideModal,
+#desktopShortcutGuideModal {
+    background-color: var(--shell-dim) !important;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+#entrySlotPickerBackdrop,
+#reportModal > .absolute.inset-0,
+#feedOptionsMenu > .absolute,
+#feedOptionsMenu > .fixed.inset-0,
+#boardPostOptionsMenu > .fixed.inset-0,
+#feedBubbleActionSheet > .absolute {
+    background-color: var(--shell-dim) !important;
+}
+
+/* —— Center Dialog 패널 —— */
+#contentPopupModalInner,
+#logoutConfirmModal > div,
+#deleteAccountConfirmModal > div,
+#emailAuthModal > div,
+#termsModal > div,
+#passwordResetConfirmModal > div,
+#passwordResetSuccessModal > div,
+#demoIntroModal > div,
+#characterSelectPopup > div,
+#bestSharePeriodNoticeModal > div,
+#dietReportModal > div,
+#domainErrorModal > div,
+#pwaInstallGuideModal > div,
+#desktopShortcutGuideModal > div {
+    border-radius: var(--shell-r-dialog) !important;
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
+    background: var(--card);
+}
+#contentPopupModalInner {
+    overflow: hidden;
+}
+#contentPopupLandingBtn {
+    color: var(--green-deep) !important;
+    border-color: var(--green-mute) !important;
+    background: var(--green-soft);
+    border-radius: var(--shell-r-btn);
+    font-weight: 700;
+}
+#contentPopupLandingBtn:hover {
+    background: var(--green-mute) !important;
+}
+
+/* Confirm 액션 색 — 초록 CTA / 보조는 page·muted */
+#logoutConfirmModal #logoutConfirmCancelBtn,
+#deleteAccountConfirmModal #deleteAccountConfirmCancelBtn {
+    background: var(--page) !important;
+    color: var(--ink-2) !important;
+}
+#logoutConfirmModal #logoutConfirmCancelBtn span:first-child,
+#deleteAccountConfirmModal #deleteAccountConfirmCancelBtn {
+    color: var(--ink) !important;
+}
+
+/* —— Bottom Sheet 공통 —— */
+#dailyJournalModal > div,
+#profileFieldEditModal > div,
+#accountAvatarModal > div,
+#photoEditModal > div {
+    border-radius: var(--shell-r-sheet) var(--shell-r-sheet) 0 0 !important;
+    border-top: 1px solid var(--line);
+    background: var(--page);
+}
+@media (min-width: 640px) {
+    #profileFieldEditModal > div,
+    #accountAvatarModal > div,
+    #photoEditModal > div,
+    #reportModal > .relative {
+        border-radius: var(--shell-r-dialog) !important;
+        border: 1px solid var(--line);
+    }
+}
+#entryModal {
+    background-color: var(--shell-dim) !important;
+}
+
+/* —— Action Sheet (JS 생성) —— */
+.mealog-action-dim {
+    background: var(--shell-dim) !important;
+}
+[data-time-source-dismiss].mealog-action-dim,
+.feed-bubble-popup-backdrop.mealog-action-dim {
+    background: var(--shell-dim) !important;
+}
+.mealog-action-wrap {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    z-index: 451;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+    max-width: 28rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+.mealog-action-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--shell-r-dialog);
+    overflow: hidden;
+}
+.mealog-action-card button,
+.mealog-action-btn {
+    width: 100%;
+    min-height: 52px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0.85rem 1rem;
+    transition: background 0.12s;
+}
+.mealog-action-card button:last-child,
+.mealog-action-btn:last-child {
+    border-bottom: 0;
+}
+.mealog-action-card button:active,
+.mealog-action-btn:active {
+    background: var(--page);
+}
+.mealog-action-card button .lucide,
+.mealog-action-btn .lucide,
+.mealog-action-card button [data-lucide],
+.mealog-action-btn [data-lucide] {
+    width: 1rem;
+    height: 1rem;
+    color: var(--muted);
+}
+.mealog-action-btn--danger,
+.mealog-action-card button.mealog-action-btn--danger {
+    color: var(--shell-danger);
+}
+.mealog-action-btn--danger .lucide,
+.mealog-action-btn--danger [data-lucide],
+.mealog-action-btn--danger i {
+    color: var(--shell-danger) !important;
+}
+.mealog-action-cancel {
+    min-height: 52px;
+    border-radius: var(--shell-r-dialog);
+    border: 1px solid var(--line);
+    background: var(--card);
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink-2);
+    cursor: pointer;
+}
+.mealog-action-cancel:active {
+    background: var(--page);
+}
+.mealog-action-center-panel {
+    border-radius: var(--shell-r-dialog) !important;
+    border: 1px solid var(--line) !important;
+    background: var(--card) !important;
+    box-shadow: 0 12px 32px rgba(36, 31, 28, 0.14);
+}
+
+/* 레거시 액션시트(미마이그레이션) 보정 */
+#feedOptionsMenu .fixed.bottom-0,
+#boardPostOptionsMenu .fixed.bottom-0 {
+    border-radius: var(--shell-r-sheet) var(--shell-r-sheet) 0 0;
+    border-top: 1px solid var(--line);
+    background: var(--page);
+}
+#feedOptionsMenu .w-12.h-1,
+#boardPostOptionsMenu .w-12.h-1 {
+    background: var(--line) !important;
+}
+
+/* —— Search / List —— */
+#timelineSearchModal > div,
+#momentSearchModal > div,
+#boardSearchModal > div,
+#notificationModal > div,
+#trackerMonthCalendarModal > div {
+    border-radius: var(--shell-r-dialog) !important;
+    border: 1px solid var(--line) !important;
+    background: var(--card) !important;
+    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.12);
+}
+#timelineSearchModal input[type="search"],
+#timelineSearchModal input[type="text"],
+#momentSearchModal input[type="search"],
+#momentSearchModal input[type="text"],
+#boardSearchModal input[type="search"],
+#boardSearchModal input[type="text"] {
+    background: var(--green-soft) !important;
+    border-color: var(--green-mute) !important;
+    color: var(--ink);
+    border-radius: 12px;
+}
+
+/* —— Fullscreen Media —— */
+#momentImageLightbox,
+#feedImageLightbox {
+    background: var(--shell-ink) !important;
+    backdrop-filter: none !important;
+}
+#momentImageLightbox [data-moment-lb-close],
+#feedImageLightbox button[aria-label="닫기"] {
+    background: rgba(255, 255, 255, 0.14) !important;
+    border-radius: 9999px;
+}
+#momentImageLightbox .moment-lb-main-img,
+#feedImageLightbox img {
+    border-radius: 12px !important;
+}
+
+/* —— Banner / Toast —— */
+#toastContainer {
+    bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-width: min(26rem, calc(100% - 2rem));
+    padding: 0;
+}
+#toastContainer .mealog-toast {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.75rem 1.15rem;
+    border-radius: 9999px;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--shell-ink);
+    box-shadow: 0 4px 16px rgba(36, 31, 28, 0.18);
+    max-width: 100%;
+}
+#toastContainer .mealog-toast--success {
+    background: var(--shell-ink);
+}
+#toastContainer .mealog-toast--error {
+    background: #9f1239;
+}
+#toastContainer .mealog-toast--info {
+    background: var(--ink-2);
+}
+
+#appUpdateRestartBanner.mealog-update-banner {
+    left: 12px !important;
+    right: 12px !important;
+    top: calc(env(safe-area-inset-top, 0px) + 56px) !important;
+    bottom: auto !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 12px 12px 14px !important;
+    border-radius: 14px !important;
+    background: #fff !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--line);
+    box-shadow: 0 2px 8px rgba(36, 31, 28, 0.06) !important;
+    font-size: 13px !important;
+}
+#appUpdateRestartBanner.mealog-update-banner::before {
+    content: "";
+    width: 3px;
+    align-self: stretch;
+    border-radius: 3px;
+    background: var(--green);
+    flex-shrink: 0;
+}
+#appUpdateRestartBanner.mealog-update-banner button {
+    background: var(--green-soft) !important;
+    color: var(--green-deep) !important;
+    border-radius: 9999px !important;
+    font-weight: 700 !important;
+    padding: 8px 12px !important;
+}
+
+#loadingOverlay {
+    background: rgba(255, 252, 249, 0.72) !important;
+}
+#loadingOverlay > div {
+    border-radius: var(--shell-r-dialog) !important;
+    border: 1px solid var(--line) !important;
+    background: var(--card) !important;
+    box-shadow: 0 8px 28px rgba(36, 31, 28, 0.1);
+}
+
+/* emerald-600 Tailwind → 브랜드 초록 (주요 CTA) */
+#accountAvatarModal .bg-emerald-600,
+#profileFieldEditModal .bg-emerald-600,
+#emailAuthModal .bg-emerald-600,
+#bestShareModal .bg-emerald-600,
+#insightShareModal .bg-emerald-600,
+#dietReportModal .bg-emerald-600 {
+    background-color: var(--green) !important;
+}
+#accountAvatarModal .hover\:bg-emerald-700:hover,
+#emailAuthModal .hover\:bg-emerald-700:hover {
+    background-color: var(--green-deep) !important;
+}
+
+@keyframes mealogFadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up {
+    animation: mealogFadeUp 0.22s ease-out both;
+}
+

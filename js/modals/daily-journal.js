@@ -147,7 +147,7 @@ function buildMetricRowHtml(type, idx, row) {
                 class="daily-journal-metric-time min-w-0 flex-1 py-1 px-0.5 bg-slate-100 border-0 text-sm font-bold text-slate-800 outline-none focus:ring-0 tabular-nums text-center"
                 aria-label="${type === 'weight' ? '체중' : '혈당'} 기록 시간 (선택)">
         </div>
-        <button type="button" class="daily-journal-metric-remove shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+        <button type="button" class="daily-journal-metric-remove shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i data-lucide="x" class="text-[10px]"></i></button>
     </div>`;
 }
 
@@ -327,17 +327,17 @@ export function renderDailyJournalPhotoPreviews() {
                 return `<div class="photo-preview-item relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-300 select-none" style="width: 7rem; aspect-ratio: ${aspectCss};-webkit-touch-callout:none;" data-index="${idx}">
                 <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
                 <button type="button" onclick="window.removeDailyJournalPhoto(${idx})" class="photo-remove-btn" aria-label="사진 삭제">
-                    <i class="fa-solid fa-xmark"></i>
+                    <i data-lucide="x"></i>
                 </button>
                 <div class="photo-preview-bottom-bar absolute bottom-0 left-0 right-0 z-10 flex gap-0.5 px-0.5 pb-0.5 pt-2 bg-gradient-to-t from-black/65 via-black/30 to-transparent pointer-events-none">
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, -1)" class="photo-order-btn pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로">
-                        <i class="fa-solid fa-chevron-left text-[9px]"></i>
+                        <i data-lucide="chevron-left" class="text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.editDailyJournalPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
-                        <i class="fa-solid fa-pen-to-square text-[9px]"></i>
+                        <i data-lucide="square-pen" class="text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
-                        <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                        <i data-lucide="chevron-right" class="text-[9px]"></i>
                     </button>
                 </div>
                 <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>

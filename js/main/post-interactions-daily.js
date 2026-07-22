@@ -252,7 +252,7 @@ window.openDailySharePreviewModal = (dateStr) => {
             <div class="flex justify-between items-center px-4 py-3 sm:py-3.5 border-b border-slate-200 flex-shrink-0">
                 <h3 class="text-base font-black text-slate-800">일간 식단 공유 미리보기</h3>
                 <button type="button" onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full shrink-0">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-[min(280px,55vh)] max-h-[calc(92vh-9.5rem)]" style="padding: 3px;">
@@ -325,7 +325,7 @@ window.confirmDailyShare = async (dateStr, ev) => {
         if (shareSub) shareSub.classList.add('hidden');
         if (shareLabel) {
             shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-            shareLabel.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+            shareLabel.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin"></i><span>공유 중...</span>';
         } else {
             shareBtn.textContent = '공유 중...';
         }
@@ -661,7 +661,7 @@ window.openDailyCommentModal = (dateStr) => {
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-base font-black text-slate-800">하루 기록 수정</h3>
                 <button type="button" onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <textarea id="dailyCommentModalInput" 

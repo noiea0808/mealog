@@ -712,6 +712,13 @@ export function initEventListeners() {
         }
     });
 
+    ['analysis', 'comment'].forEach(view => {
+        const btn = document.getElementById(`btn-mealdang-${view}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setMealdangView?.(view));
+        }
+    });
+
     const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
     if (logoutConfirmCancelBtn) {
         logoutConfirmCancelBtn.addEventListener('click', () => {

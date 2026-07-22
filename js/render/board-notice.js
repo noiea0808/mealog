@@ -14,6 +14,7 @@ import {
     noticeMatchesKeyword,
     formatBoardSearchSummary
 } from '../board-search-filter.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 /** 상세 본문: 목록과 동일 서식·줄바꿈, 전체 표시 */
 const BOARD_DETAIL_BODY_CLASS =
@@ -180,7 +181,7 @@ async function renderNotices() {
         if (activeNotices.length === 0) {
             updateBoardSearchBanner(0);
             noticesContainer.innerHTML = appState.boardSearchActive
-                ? `<div class="flex flex-col items-center justify-center py-12 text-center"><i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i><p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p></div>`
+                ? `<div class="flex flex-col items-center justify-center py-12 text-center"><i data-lucide="search" class="text-4xl text-slate-200 mb-3"></i><p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p></div>`
                 : '';
             noticesContainer.classList.toggle('hidden', !appState.boardSearchActive);
             return;
@@ -250,7 +251,7 @@ async function renderNotices() {
         if (displayNotices.length === 0 && appState.boardSearchActive) {
             noticesContainer.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i>
+                    <i data-lucide="search" class="text-4xl text-slate-200 mb-3"></i>
                     <p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p>
                 </div>`;
             noticesContainer.classList.remove('hidden');
@@ -295,7 +296,7 @@ async function renderNotices() {
 
             return `
                 <article onclick="window.openNoticeDetail('${notice.id}')" class="lounge-post lounge-post--notice notice cursor-pointer active:scale-[0.99] transition-transform ${typeAccent}">
-                    <div class="lounge-notice-chip"><i class="fa-solid fa-bullhorn" aria-hidden="true"></i> ${escapeHtml(typeLabel)}${notice.isPinned === true ? ' · 고정' : ''}</div>
+                    <div class="lounge-notice-chip"><i data-lucide="megaphone" aria-hidden="true"></i> ${escapeHtml(typeLabel)}${notice.isPinned === true ? ' · 고정' : ''}</div>
                     <div class="lounge-author-row">
                         <div class="lounge-avatar lounge-avatar--fallback" aria-hidden="true">공</div>
                         <div class="lounge-author-meta min-w-0 flex-1">
@@ -314,13 +315,13 @@ async function renderNotices() {
                     <div class="lounge-post-foot">
                         <span class="lounge-tag">#${escapeHtml(typeLabel)}</span>
                         <div class="lounge-social">
-                            <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i class="fa-${userCommentedNotice ? 'solid' : 'regular'} fa-comment"></i> ${commentCount}</button>
+                            <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i data-lucide="message-circle"></i> ${commentCount}</button>
                             ${demo ? '' : `
                             <button type="button" onclick="event.stopPropagation(); window.toggleNoticeLike('${notice.id}', true)" class="board-post-like-btn lounge-social-btn ${isLiked ? 'liked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${likeCount}
+                                <i data-lucide="heart"></i> ${likeCount}
                             </button>
                             <button type="button" onclick="event.stopPropagation(); window.toggleNoticeBookmark('${notice.id}')" class="board-post-bookmark-btn lounge-social-btn ${isBookmarked ? 'bookmarked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-notice-id="${notice.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark"></i>
+                                <i data-lucide="bookmark"></i>
                             </button>
                             `}
                         </div>
@@ -483,7 +484,7 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
             <div class="text-center">
-                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <i data-lucide="loader-circle" class="text-4xl text-slate-300 mb-3 lucide-spin"></i>
                 <p class="text-sm text-slate-400">게시글을 불러오는 중...</p>
             </div>
         </div>
@@ -525,11 +526,12 @@ export async function renderBoard(category = 'all', optimisticPost = null, optio
         console.error("게시판 로드 오류:", error);
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <i data-lucide="triangle-alert" class="text-4xl text-red-300 mb-3"></i>
                 <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
                 <p class="text-xs text-slate-300 mt-2">잠시 후 다시 시도해주세요</p>
             </div>
         `;
+        scheduleLucideIcons(container);
     }
 }
 
@@ -544,7 +546,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
         if (appState.boardSearchActive) {
             container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-regular fa-magnifying-glass text-4xl text-slate-200 mb-3"></i>
+                <i data-lucide="search" class="text-4xl text-slate-200 mb-3"></i>
                 <p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p>
             </div>`;
             return;
@@ -554,10 +556,10 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
             ? (traceEmptyLabels[appState.boardTraceFilter] || '') + ' 게시글이 없습니다'
             : '게시글이 없습니다';
         const traceEmptySub = tracePostIds ? '다른 게시글에 좋아요, 댓글, 북마크를 남겨보세요!' : '첫 번째 게시글을 작성해보세요!';
-        const traceEmptyIcon = appState.boardTraceFilter === 'like' ? 'fa-heart' : (appState.boardTraceFilter === 'comment' ? 'fa-comment' : 'fa-bookmark');
+        const traceEmptyIcon = appState.boardTraceFilter === 'like' ? 'heart' : (appState.boardTraceFilter === 'comment' ? 'message-circle' : 'bookmark');
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-regular ${tracePostIds ? traceEmptyIcon : 'fa-comments'} text-4xl text-slate-200 mb-3"></i>
+                <i data-lucide="${tracePostIds ? traceEmptyIcon : 'message-circle'}" class="text-4xl text-slate-200 mb-3"></i>
                 <p class="text-sm font-bold text-slate-400">${traceEmptyMsg}</p>
                 <p class="text-xs text-slate-300 mt-2">${traceEmptySub}</p>
             </div>
@@ -634,13 +636,13 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
                         <div class="lounge-post-foot">
                                 ${buildBoardCategoryTagsRow(post.category, { withPhotoTag: false })}
                                 <div class="lounge-social">
-                                <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i class="fa-${postIdsCommentedByUser.has(post.id) ? 'solid' : 'regular'} fa-comment"></i> ${post.comments ?? 0}</button>
+                                <button type="button" class="lounge-social-btn" tabindex="-1" aria-hidden="true"><i data-lucide="message-circle"></i> ${post.comments ?? 0}</button>
                                 ${demo ? '' : `
                                 <button type="button" onclick="event.stopPropagation(); window.toggleBoardLike('${post.id}', true)" class="board-post-like-btn lounge-social-btn ${isLiked ? 'liked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                    <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart"></i> ${post.likes || 0}
+                                    <i data-lucide="heart"></i> ${post.likes || 0}
                                 </button>
                                 <button type="button" onclick="event.stopPropagation(); window.toggleBoardBookmark('${post.id}')" class="board-post-bookmark-btn lounge-social-btn ${isBookmarked ? 'bookmarked' : ''} ${!window.currentUser ? 'opacity-60 cursor-default' : ''}" data-post-id="${post.id}" ${!window.currentUser ? 'disabled' : ''}>
-                                    <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark"></i>
+                                    <i data-lucide="bookmark"></i>
                                 </button>
                                 `}
                                 </div>
@@ -649,6 +651,7 @@ export async function renderBoardPostList(container, filteredPosts, likedPostIds
             `);
     }
     container.innerHTML = chunks.join('');
+    scheduleLucideIcons(container);
 }
 
 // 게시판 상세 렌더링
@@ -659,7 +662,7 @@ export async function renderBoardDetail(postId) {
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
             <div class="text-center">
-                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <i data-lucide="loader-circle" class="text-4xl text-slate-300 mb-3 lucide-spin"></i>
                 <p class="text-sm text-slate-400">게시글을 불러오는 중...</p>
             </div>
         </div>
@@ -669,7 +672,7 @@ export async function renderBoardDetail(postId) {
         if (!post) {
             container.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                    <i data-lucide="triangle-alert" class="text-4xl text-red-300 mb-3"></i>
                     <p class="text-sm font-bold text-red-400">게시글을 찾을 수 없습니다</p>
                 </div>
             `;
@@ -707,7 +710,7 @@ export async function renderBoardDetail(postId) {
         if (isAdminCategory && !isAuthor) {
             container.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-solid fa-lock text-4xl text-slate-300 mb-3"></i>
+                    <i data-lucide="lock" class="text-4xl text-slate-300 mb-3"></i>
                     <p class="text-sm font-bold text-slate-400">이 게시물은 작성자만 볼 수 있습니다</p>
                 </div>
             `;
@@ -742,7 +745,7 @@ export async function renderBoardDetail(postId) {
                     return `
                 <div class="flex items-center gap-2 mb-2.5">
                     <button type="button" onclick="window.backToBoardList()" class="w-9 h-9 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors flex-shrink-0" aria-label="목록으로">
-                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                        <i data-lucide="arrow-left" class="text-lg"></i>
                     </button>
                     <div class="flex items-start gap-2.5 flex-1 min-w-0">
                         <div class="flex-shrink-0 cursor-pointer rounded-full hover:opacity-90 active:opacity-80" onclick="event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${safeAuthorId}')" role="button" tabindex="0" aria-label="작성자 프로필">
@@ -763,7 +766,7 @@ export async function renderBoardDetail(postId) {
                     </div>
                     ${isAuthor ? '<span class="shrink-0 text-xs text-emerald-600 font-bold self-start pt-1">내글</span>' : ''}
                     <button type="button" onclick="window.showBoardPostOptions && window.showBoardPostOptions('${postId}', ${isAuthor})" class="w-9 h-9 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0 self-start" aria-label="더보기">
-                        <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                        <i data-lucide="ellipsis-vertical" class="text-lg"></i>
                     </button>
                 </div>
                 `;
@@ -785,16 +788,16 @@ export async function renderBoardDetail(postId) {
                     ${buildBoardCategoryTagsRow(post.category, { withPhotoTag: hasPostImages })}
                     <div class="flex items-center gap-3 shrink-0">
                         <div class="flex items-center gap-1.5 text-slate-800">
-                            <i class="fa-${userCommentedDetail ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
+                            <i data-lucide="message-circle" class="text-xl social-action-icon-stroke"></i>
                             <span class="text-xs font-bold">${post.comments ?? comments.length}</span>
                         </div>
                         ${demo ? '' : `
                         <button onclick="window.toggleBoardLike('${postId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-${userReaction === 'like' ? 'solid' : 'regular'} fa-heart text-xl ${userReaction === 'like' ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
+                            <i data-lucide="heart" class="text-xl ${userReaction === 'like' ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                             <span class="text-xs font-bold text-slate-800">${post.likes || 0}</span>
                         </button>
                         <button onclick="window.toggleBoardBookmark('${postId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-post-id="${postId}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
+                            <i data-lucide="bookmark" class="text-xl text-slate-800 social-action-icon-stroke"></i>
                         </button>
                         `}
                     </div>
@@ -885,8 +888,8 @@ export async function renderBoardDetail(postId) {
                                    class="board-detail-comment-input w-full pl-3.5 pr-[6.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
                                    ${(!window.currentUser || demo) ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addBoardComment('${postId}'); }">
-                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-board-comment-attach="1" aria-label="사진 첨부"><i class="fa-regular fa-image" aria-hidden="true"></i></button>`}
-                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-board-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')"><i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i></button>`}
+                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-board-comment-attach="1" aria-label="사진 첨부"><i data-lucide="image" aria-hidden="true"></i></button>`}
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-board-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addBoardComment('${postId}')" onclick="if(window.currentUser) window.addBoardComment('${postId}')"><i data-lucide="arrow-up" class="text-sm" aria-hidden="true"></i></button>`}
                         </div>
                         <div id="boardCommentPhotoPreview" class="board-detail-comment-photo-preview hidden mt-2"></div>
                     </div>
@@ -901,7 +904,7 @@ export async function renderBoardDetail(postId) {
         console.error("게시글 상세 로드 오류:", error);
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <i data-lucide="triangle-alert" class="text-4xl text-red-300 mb-3"></i>
                 <p class="text-sm font-bold text-red-400">게시글을 불러올 수 없습니다</p>
             </div>
         `;
@@ -916,7 +919,7 @@ export async function renderNoticeDetail(noticeId) {
     container.innerHTML = `
         <div class="flex justify-center items-center py-12">
             <div class="text-center">
-                <i class="fa-solid fa-spinner fa-spin text-4xl text-slate-300 mb-3"></i>
+                <i data-lucide="loader-circle" class="text-4xl text-slate-300 mb-3 lucide-spin"></i>
                 <p class="text-sm text-slate-400">공지를 불러오는 중...</p>
             </div>
         </div>
@@ -934,7 +937,7 @@ export async function renderNoticeDetail(noticeId) {
         if (!notice) {
             container.innerHTML = `
                 <div class="flex flex-col items-center justify-center py-12 text-center">
-                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                    <i data-lucide="triangle-alert" class="text-4xl text-red-300 mb-3"></i>
                     <p class="text-sm font-bold text-red-400">공지를 찾을 수 없습니다</p>
                 </div>
             `;
@@ -1048,7 +1051,7 @@ export async function renderNoticeDetail(noticeId) {
             <div class="board-post-card space-y-4">
                 <div class="flex items-start gap-2 pb-3 border-b border-slate-200">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors flex-shrink-0 mt-0.5">
-                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                        <i data-lucide="arrow-left" class="text-lg"></i>
                     </button>
                     <div class="flex-1 min-w-0">
                         <div class="text-xs text-slate-400 mb-1.5">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
@@ -1066,21 +1069,21 @@ export async function renderNoticeDetail(noticeId) {
 
                 <div class="flex items-center justify-between pt-3 border-t border-slate-200">
                     <div class="flex items-center gap-2 min-w-0">
-                        ${notice.isPinned === true ? `<i class="fa-solid fa-thumbtack text-slate-600 text-xs shrink-0" title="고정"></i>` : ''}
+                        ${notice.isPinned === true ? `<i data-lucide="pin" class="text-slate-600 text-xs shrink-0" title="고정"></i>` : ''}
                         <span class="board-category-hashtag">${escapeHtml(`#${typeLabel}`)}</span>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
                         <div class="flex items-center gap-1.5 text-slate-800">
-                            <i class="fa-${userCommentedDetail ? 'solid' : 'regular'} fa-comment text-xl social-action-icon-stroke"></i>
+                            <i data-lucide="message-circle" class="text-xl social-action-icon-stroke"></i>
                             <span class="text-xs font-bold">${commentCountShown}</span>
                         </div>
                         ${demo ? '' : `
                         <button onclick="window.toggleNoticeLike('${safeNoticeId}', true)" class="board-post-like-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${safeNoticeId}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-${isLiked ? 'solid' : 'regular'} fa-heart text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
+                            <i data-lucide="heart" class="text-xl ${isLiked ? 'text-red-500' : 'text-slate-800'} social-action-icon-stroke"></i>
                             <span class="text-xs font-bold text-slate-800">${likes}</span>
                         </button>
                         <button onclick="window.toggleNoticeBookmark('${safeNoticeId}')" class="board-post-bookmark-btn flex items-center gap-1.5 active:scale-95 transition-transform" data-notice-id="${safeNoticeId}" ${!window.currentUser ? 'disabled' : ''}>
-                            <i class="fa-${isBookmarked ? 'solid' : 'regular'} fa-bookmark text-xl text-slate-800 social-action-icon-stroke"></i>
+                            <i data-lucide="bookmark" class="text-xl text-slate-800 social-action-icon-stroke"></i>
                         </button>
                         `}
                     </div>
@@ -1103,8 +1106,8 @@ export async function renderNoticeDetail(noticeId) {
                                    class="board-detail-comment-input w-full pl-3.5 pr-[6.25rem] py-2.5 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-400 bg-slate-50/80 focus:outline-none focus:bg-white focus:border-slate-300 focus:ring-2 focus:ring-emerald-500/15 transition-shadow"
                                    ${(!window.currentUser || demo) ? 'disabled' : ''}
                                    onkeypress="if(event.key === 'Enter' && window.currentUser && !event.shiftKey && !(${demo})) { event.preventDefault(); window.addNoticeComment('${safeNoticeId}'); }">
-                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-notice-comment-attach="1" aria-label="사진 첨부"><i class="fa-regular fa-image" aria-hidden="true"></i></button>`}
-                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-notice-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addNoticeComment('${safeNoticeId}')" onclick="if(window.currentUser) window.addNoticeComment('${safeNoticeId}')"><i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i></button>`}
+                            ${demo ? '' : `<button type="button" class="board-detail-comment-attach" data-notice-comment-attach="1" aria-label="사진 첨부"><i data-lucide="image" aria-hidden="true"></i></button>`}
+                            ${demo ? `<span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">읽기</span>` : `<button type="button" class="board-detail-comment-send" data-notice-comment-send="1" aria-label="입력" ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.currentUser) window.addNoticeComment('${safeNoticeId}')" onclick="if(window.currentUser) window.addNoticeComment('${safeNoticeId}')"><i data-lucide="arrow-up" class="text-sm" aria-hidden="true"></i></button>`}
                         </div>
                         <div id="noticeCommentPhotoPreview" class="board-detail-comment-photo-preview hidden mt-2"></div>
                     </div>
@@ -1119,7 +1122,7 @@ export async function renderNoticeDetail(noticeId) {
         console.error("공지 상세 로드 오류:", e);
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-solid fa-exclamation-triangle text-4xl text-red-300 mb-3"></i>
+                <i data-lucide="triangle-alert" class="text-4xl text-red-300 mb-3"></i>
                 <p class="text-sm font-bold text-red-400">공지를 불러올 수 없습니다</p>
             </div>
         `;

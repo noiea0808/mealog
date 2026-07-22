@@ -36,13 +36,13 @@ function createKakaoSearchModal() {
             <div class="p-4 border-b flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">음식점 검색</h2>
                 <button type="button" onclick="document.getElementById('kakaoPlaceSearchModal').remove()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <div class="p-4 flex-1 min-h-0 flex flex-col">
                 <div class="relative mb-4 shrink-0">
                     <button type="button" onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="검색">
-                        <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
+                        <i data-lucide="search" class="text-[11px] text-white"></i>
                     </button>
                     <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 2글자 이상 입력하세요" 
                         class="w-full py-[0.6rem] pl-[46px] pr-[3.25rem] bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">

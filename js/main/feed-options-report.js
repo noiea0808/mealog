@@ -190,21 +190,19 @@ window.showFeedOptions = (
     
     const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
     const deleteButtonText = '공유 취소';
-    const deleteButtonIcon = 'fa-share';
     
     const bg = document.createElement('div');
-    bg.className = isCenterPopup ? 'absolute inset-0 bg-black/45' : 'fixed inset-0 bg-black/40';
+    bg.className = isCenterPopup ? 'absolute inset-0 mealog-action-dim' : 'fixed inset-0 mealog-action-dim';
     
     const menuContainer = document.createElement('div');
     menuContainer.className = isCenterPopup
-        ? 'feed-options-center-panel relative z-[1] w-full max-w-[12rem] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl'
-        : 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+        ? 'mealog-action-center-panel relative z-[1] w-full max-w-[14rem] p-1'
+        : 'mealog-action-wrap animate-fade-up';
     
-    const handlebar = document.createElement('div');
-    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
+    const actionCard = document.createElement('div');
+    actionCard.className = 'mealog-action-card';
     
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'space-y-2';
+    const buttonContainer = isCenterPopup ? menuContainer : actionCard;
 
     function closeMenu() {
         document.removeEventListener('keydown', onKey);
@@ -218,7 +216,7 @@ window.showFeedOptions = (
     if (isMyPost) {
         // 1. 수정하기
         const editBtn = document.createElement('button');
-        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.className = 'mealog-action-btn';
         editBtn.type = 'button';
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -252,12 +250,12 @@ window.showFeedOptions = (
                 }
             }, 100);
         });
-        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-slate-800 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
+        editBtn.innerHTML = '<i data-lucide="pen"></i><span>수정하기</span>';
         buttonContainer.appendChild(editBtn);
         
         // 2. SNS 공유
         const externalShareBtn = document.createElement('button');
-        externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        externalShareBtn.className = 'mealog-action-btn';
         externalShareBtn.type = 'button';
         externalShareBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -276,24 +274,24 @@ window.showFeedOptions = (
                 showToast('공유할 사진이 없습니다.', 'error');
             }
         });
-        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
+        externalShareBtn.innerHTML = '<i data-lucide="share-2"></i><span>SNS 공유</span>';
         buttonContainer.appendChild(externalShareBtn);
         
         // 3. 공유 취소
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         deleteBtn.type = 'button';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             closeMenu();
             window.deleteFeedPost(entryId || '', photoUrls || '', isBestShare, isDailyShare, isInsightShare);
         });
-        deleteBtn.innerHTML = `<div class="flex items-center gap-3"><i class="fa-solid ${deleteButtonIcon} text-red-500 text-lg"></i><span class="font-bold text-red-500">${deleteButtonText}</span></div>`;
+        deleteBtn.innerHTML = `<i data-lucide="share-2"></i><span>${deleteButtonText}</span>`;
         buttonContainer.appendChild(deleteBtn);
     } else {
         // 다른 사람 게시물: 공유하기 > 신고하기
         const externalShareBtn = document.createElement('button');
-        externalShareBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        externalShareBtn.className = 'mealog-action-btn';
         externalShareBtn.type = 'button';
         externalShareBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
@@ -312,11 +310,11 @@ window.showFeedOptions = (
                 showToast('공유할 사진이 없습니다.', 'error');
             }
         });
-        externalShareBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-share-nodes text-slate-800 text-lg"></i><span class="font-bold text-slate-800">SNS 공유</span></div>';
+        externalShareBtn.innerHTML = '<i data-lucide="share-2"></i><span>SNS 공유</span>';
         buttonContainer.appendChild(externalShareBtn);
         
         const reportBtn = document.createElement('button');
-        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         reportBtn.type = 'button';
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -324,20 +322,29 @@ window.showFeedOptions = (
             const targetGroupKey = isBestShare ? `best_${postId || 'unknown'}` : isDailyShare ? `daily_${photoDate || 'nodate'}_${authorUserId || 'unknown'}` : isInsightShare ? `insight_${dateRangeText || 'no-range'}_${authorUserId || 'unknown'}` : `entry_${entryId || 'none'}_${authorUserId || 'unknown'}`;
             setTimeout(() => window.showReportModal(targetGroupKey), 100);
         });
-        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
+        reportBtn.innerHTML = '<i data-lucide="flag"></i><span>신고하기</span>';
         buttonContainer.appendChild(reportBtn);
     }
     
-    // 취소 버튼 없음: 바깥 영역(배경) 탭으로 닫기
     menuContainer.addEventListener('click', (e) => e.stopPropagation());
     if (!isCenterPopup) {
-        menuContainer.appendChild(handlebar);
+        menuContainer.appendChild(actionCard);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.className = 'mealog-action-cancel';
+        cancelBtn.textContent = '닫기';
+        cancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeMenu();
+        });
+        menuContainer.appendChild(cancelBtn);
     }
-    menuContainer.appendChild(buttonContainer);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
     document.addEventListener('keydown', onKey);
+    if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(menu);
+    else if (typeof window.lucide?.createIcons === 'function') window.lucide.createIcons({ root: menu });
 };
 
 // 신고 사유 라벨 (reason id, reasonOther -> 표시 문자열)
@@ -356,11 +363,11 @@ window.showReportModal = async (targetGroupKey) => {
     overlay.className = 'fixed inset-0 z-[500] flex items-end sm:items-center justify-center';
     
     const bg = document.createElement('div');
-    bg.className = 'absolute inset-0 bg-black/50';
+    bg.className = 'absolute inset-0 mealog-action-dim';
     bg.onclick = () => overlay.remove();
     
     const panel = document.createElement('div');
-    panel.className = 'relative w-full max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto';
+    panel.className = 'relative w-full max-w-md bg-white rounded-t-[1.5rem] sm:rounded-[1.125rem] border border-[var(--line)] p-6 pb-8 max-h-[85vh] overflow-y-auto';
     panel.innerHTML = '<div id="reportModalBody" class="py-6 text-center text-slate-500">확인 중...</div>';
     
     overlay.appendChild(bg);

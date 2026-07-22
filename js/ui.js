@@ -268,13 +268,9 @@ export function showToast(message, type = 'info') {
     if (!container) return;
     const toast = document.createElement('div');
     toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    const bg =
-        type === 'error'
-            ? 'bg-red-500'
-            : type === 'success'
-              ? 'bg-emerald-600'
-              : 'bg-slate-600';
-    toast.className = `animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full ${bg}`;
+    const tone =
+        type === 'error' ? 'mealog-toast--error' : type === 'success' ? 'mealog-toast--success' : 'mealog-toast--info';
+    toast.className = `mealog-toast animate-toast ${tone}`;
     toast.textContent = message;
     container.appendChild(toast);
     const remove = () => {
@@ -781,7 +777,7 @@ function bindWelcomeReportDateNavOnce() {
 
         let data = welcomeReportDataCache.get(dateStr);
         if (!data) {
-            content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+            content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
             const result = await fetchReadyDietReportByDate(uid, dateStr);
             if (welcomeChartKind !== 'report' || welcomeReportDates[welcomeReportIndex] !== dateStr) return;
             if (!result?.data) return;
@@ -848,7 +844,7 @@ async function renderWelcomeReportPanel() {
         return;
     }
 
-    content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+    content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
     updateWelcomeKindSwitchUi();
 
     let dates = [];
@@ -1272,7 +1268,7 @@ export function updateHeaderUI() {
                     iconEl.style.height = '';
                     iconEl.style.objectFit = '';
                     iconEl.style.position = '';
-                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-sm"></i>';
+                    iconEl.innerHTML = '<i data-lucide="user" class="text-slate-500 text-sm"></i>';
                     
                     const currentProfileKey = `게스트||${isGuest}`;
                     if (lastHeaderUpdate !== currentProfileKey) {

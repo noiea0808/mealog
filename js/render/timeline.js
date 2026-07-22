@@ -46,20 +46,21 @@ import {
     isAiDietReportDateVisible,
     refreshAiDietReportFlagsForDates
 } from '../modals/diet-report.js';
+import { scheduleLucideIcons } from '../icons.js';
 
-const MAIN_MEAL_SLOT_FA_ICONS = {
-    morning: 'fa-cloud-sun',
-    lunch: 'fa-burger',
-    dinner: 'fa-moon'
+const MAIN_MEAL_SLOT_LUCIDE = {
+    morning: 'cloud-sun',
+    lunch: 'sandwich',
+    dinner: 'moon'
 };
 
-function mainMealSlotFaIcon(slotId) {
-    return MAIN_MEAL_SLOT_FA_ICONS[slotId] || 'fa-utensils';
+function mainMealSlotLucideIcon(slotId) {
+    return MAIN_MEAL_SLOT_LUCIDE[slotId] || 'utensils';
 }
 
 function mainMealSlotIconHtml(slotId, iconTextClass = 'text-slate-400', size = 'lg') {
     const sizeClass = size === 'sm' ? 'text-lg' : 'text-2xl';
-    return `<i class="fa-solid ${mainMealSlotFaIcon(slotId)} ${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
+    return `<i data-lucide="${mainMealSlotLucideIcon(slotId)}" class="${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
 }
 
 function mainMealSlotListTitleHtml(slot, specificStyle, displayLabel = null) {
@@ -88,7 +89,7 @@ function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
         }, getMealThumbUrlsForTimeline(r));
     }
     if (r.mealType === 'Skip') {
-        return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
+        return `<i data-lucide="ban" class="text-2xl text-slate-600" aria-hidden="true"></i>`;
     }
     return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
 }
@@ -325,7 +326,7 @@ function buildSnackTagRowInnerHtml(r) {
             <span class="text-[11px] font-black">${r.rating}</span>
         </span>`
         : '';
-    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>${ratingHtml}`;
+    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp}"><i data-lucide="share" class="text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>${ratingHtml}`;
 }
 
 function applySnackTagPendingUi(tagEl, record) {
@@ -741,12 +742,12 @@ function buildMealTimelineViewSelectHtml(current) {
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
             <span class="timeline-view-picker__visual" aria-hidden="true">
-                <span class="timeline-view-picker__icon"><i class="fa-solid fa-utensils"></i></span>
+                <span class="timeline-view-picker__icon"><i data-lucide="utensils"></i></span>
                 <span class="timeline-view-picker__body">
                     <span class="timeline-view-picker__category">식사</span>
                     <span class="timeline-view-picker__value-row">
                         <span class="timeline-view-picker__value">${current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동'}</span>
-                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                        <span class="timeline-view-picker__chevron"><i data-lucide="chevron-down"></i></span>
                     </span>
                 </span>
             </span>
@@ -768,12 +769,12 @@ function buildSnackTimelineViewSelectHtml(current) {
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
             <span class="timeline-view-picker__visual" aria-hidden="true">
-                <span class="timeline-view-picker__icon"><i class="fa-solid fa-cookie"></i></span>
+                <span class="timeline-view-picker__icon"><i data-lucide="cookie"></i></span>
                 <span class="timeline-view-picker__body">
                     <span class="timeline-view-picker__category">간식</span>
                     <span class="timeline-view-picker__value-row">
                         <span class="timeline-view-picker__value">${valueLabel}</span>
-                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                        <span class="timeline-view-picker__chevron"><i data-lucide="chevron-down"></i></span>
                     </span>
                 </span>
             </span>
@@ -794,7 +795,7 @@ function getDailyShareButtonHtmlForDate(dateStr) {
         ? 'date-section-header__share-btn--shared'
         : 'date-section-header__share-btn--default';
     return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
-        <i class="fa-solid fa-share text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
+        <i data-lucide="share" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }
 
@@ -857,7 +858,7 @@ function buildHomeFeedStarsHtml(rating) {
     const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
     let stars = '';
     for (let i = 1; i <= 5; i++) {
-        stars += `<i class="fa-solid fa-star${i > filled ? ' home-feed-card__star--empty' : ''}" aria-hidden="true"></i>`;
+        stars += `<i data-lucide="star" class="${i > filled ? 'home-feed-card__star--empty' : ''}" aria-hidden="true"></i>`;
     }
     return `<div class="home-feed-card__stars" aria-label="${filled}점">${stars}</div>`;
 }
@@ -871,7 +872,8 @@ function buildHomeFeedTagsHtml(tags) {
 }
 
 /**
- * 시안 v2 세로 피드 카드 — 사진 있으면 상단 와이드, 없으면 원형 아이콘
+ * 시안 v2 세로 피드 카드 — 상단 사진(선택) + 본문(아이콘·텍스트·별점)
+ * 사진이 있어도 본문 왼쪽 아이콘은 유지. 별점은 메타(슬롯·장소) 행 오른쪽에만.
  */
 function buildHomeFeedCardShellHtml({
     openClick,
@@ -880,6 +882,7 @@ function buildHomeFeedCardShellHtml({
     hasPhoto,
     photoHtml,
     iconHtml,
+    iconKind = 'meal',
     metaHtml,
     titleHtml,
     noteHtml,
@@ -889,23 +892,28 @@ function buildHomeFeedCardShellHtml({
     const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
     const shareDisp = isEntryShared(record?.id, record) ? 'inline' : 'none';
     const stars = buildHomeFeedStarsHtml(ratingVal);
-    const bodyIcon = hasPhoto
-        ? ''
-        : `<div class="home-feed-card__icon" aria-hidden="true">${iconHtml}</div>`;
+    const iconMod =
+        iconKind === 'snack'
+            ? ' home-feed-card__icon--snack'
+            : iconKind === 'journal'
+              ? ' home-feed-card__icon--journal'
+              : ' home-feed-card__icon--meal';
     const photoBlock = hasPhoto
         ? `<div class="home-feed-card__photo relative">${photoHtml}</div>`
         : '';
     return `<div ${openClick} class="card home-feed-card${photoClass} ${cardMbClass} ${mealEntryRowPointerClass(record)} ${mealCardRelativeClass(record)}" data-entry-id="${escapeHtml(String(record.id))}">
         ${photoBlock}
         <div class="home-feed-card__body">
-            ${bodyIcon}
+            <div class="home-feed-card__icon${iconMod}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
-                <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp}"><i class="fa-solid fa-share"></i></span></div>
+                <div class="home-feed-card__meta-row">
+                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp}"><i data-lucide="share"></i></span></div>
+                    ${stars}
+                </div>
                 <div class="home-feed-card__title">${titleHtml}</div>
                 ${noteHtml || ''}
                 ${tagsHtml || ''}
             </div>
-            ${stars}
         </div>
     </div>`;
 }
@@ -946,7 +954,7 @@ function buildSnackTimelineCardHtml(
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = snackPhotoUrls.length > 0;
     let photoHtml = '';
-    let iconHtml = `<i class="fa-solid fa-mug-saucer"></i>`;
+    let iconHtml = `<i data-lucide="coffee"></i>`;
     if (hasPhoto) {
         photoHtml = buildTimelinePhotoCellInnerHtml(
             snackPhotoUrls,
@@ -956,7 +964,7 @@ function buildSnackTimelineCardHtml(
             { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
-        iconHtml = `<i class="fa-solid fa-ban"></i>`;
+        iconHtml = `<i data-lucide="ban"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
@@ -968,6 +976,7 @@ function buildSnackTimelineCardHtml(
         hasPhoto,
         photoHtml,
         iconHtml,
+        iconKind: 'snack',
         metaHtml,
         titleHtml,
         noteHtml,
@@ -1024,7 +1033,7 @@ function buildMainMealTimelineCardHtml(
             { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
-        iconHtml = `<i class="fa-solid fa-ban"></i>`;
+        iconHtml = `<i data-lucide="ban"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
@@ -1036,6 +1045,7 @@ function buildMainMealTimelineCardHtml(
         hasPhoto,
         photoHtml,
         iconHtml,
+        iconKind: 'meal',
         metaHtml,
         titleHtml,
         noteHtml,
@@ -1048,7 +1058,7 @@ function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeSlotLabel = escapeHtml(slot.label);
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
+            <div class="home-feed-card__icon home-feed-card__icon--meal" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta">${safeSlotLabel}</div>
                 <div class="home-feed-card__title">기록하기</div>
@@ -1061,7 +1071,7 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon" aria-hidden="true"><i class="fa-solid fa-mug-saucer"></i></div>
+            <div class="home-feed-card__icon home-feed-card__icon--snack" aria-hidden="true"><i data-lucide="coffee"></i></div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta">${safeLabel}</div>
                 <div class="home-feed-card__title">기록하기</div>
@@ -1154,7 +1164,7 @@ function buildMainMealListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i data-lucide="share"></i></span>
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
@@ -1219,7 +1229,7 @@ function buildSnackListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
+                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i data-lucide="share"></i></span>
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
@@ -1247,7 +1257,7 @@ function dailyJournalCardDataAttrs(dateStr, journal) {
 function dailyJournalShareArrowHtml(dateStr, journal) {
     if (!dailyJournalHasPhotos(journal)) return '';
     const disp = isDailyJournalShared(dateStr, journal) ? 'inline' : 'none';
-    return `<span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${disp}"><i class="fa-solid fa-share"></i></span>`;
+    return `<span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${disp}"><i data-lucide="share"></i></span>`;
 }
 
 function getDailyJournalForTimeline(dateStr) {
@@ -1370,13 +1380,13 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     const hasPhoto = photos.length > 0;
 
     let photoHtml = '';
-    let iconHtml = `<i class="fa-solid fa-book-open"></i>`;
+    let iconHtml = `<i data-lucide="book-open"></i>`;
     if (hasPhoto) {
         photoHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
             interactive: false
         });
     } else if (!hasContent) {
-        iconHtml = `<i class="fa-solid fa-plus"></i>`;
+        iconHtml = `<i data-lucide="plus"></i>`;
     }
 
     const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
@@ -1403,9 +1413,11 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card home-feed-card${photoClass} daily-journal-slot mb-1.5${opacity} cursor-pointer active:scale-[0.98] transition-all">
         ${hasPhoto ? `<div class="home-feed-card__photo relative">${photoHtml}</div>` : ''}
         <div class="home-feed-card__body">
-            ${hasPhoto ? '' : `<div class="home-feed-card__icon" aria-hidden="true">${iconHtml}</div>`}
+            <div class="home-feed-card__icon home-feed-card__icon--journal" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
-                <div class="home-feed-card__meta">${metaHtml}</div>
+                <div class="home-feed-card__meta-row">
+                    <div class="home-feed-card__meta">${metaHtml}</div>
+                </div>
                 <div class="home-feed-card__title">${titleHtml}</div>
                 ${noteHtml}
             </div>
@@ -1756,48 +1768,31 @@ export function renderTimeline(options = {}) {
             if (records.length === 0) return;
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             if (slot.type === 'main') {
-                const mainAddBtn = (label) =>
-                    `<button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(label)} 추가">+ 추가</button>`;
                 html += `<div class="main-slot-card-group">`;
                 records.forEach((r, idx) => {
-                    const isLast = idx === records.length - 1;
-                    const cardHtml = buildMainMealTimelineCardHtml(
+                    html += buildMainMealTimelineCardHtml(
                         dateStr,
                         slot,
                         r,
                         specificStyle,
-                        isLast ? 'mb-0' : 'mb-1.5',
+                        'mb-1.5',
                         idx + 1,
                         records.length
                     );
-                    if (isLast) {
-                        html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
-                    } else {
-                        html += cardHtml;
-                    }
                 });
                 html += `</div>`;
             } else {
                 html += `<div class="snack-slot-card-group">`;
                 records.forEach((r, idx) => {
-                    const isLast = idx === records.length - 1;
-                    const cardHtml = buildSnackTimelineCardHtml(
+                    html += buildSnackTimelineCardHtml(
                         dateStr,
                         slot,
                         r,
                         specificStyle,
-                        isLast ? 'mb-0' : 'mb-1.5',
+                        'mb-1.5',
                         idx + 1,
                         records.length
                     );
-                    if (isLast) {
-                        html += `<div class="relative mb-1.5">
-                                ${cardHtml}
-                                <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                            </div>`;
-                    } else {
-                        html += cardHtml;
-                    }
                 });
                 html += `</div>`;
             }
@@ -1812,7 +1807,7 @@ export function renderTimeline(options = {}) {
             html += `<div class="timeline-day-empty px-4 py-10 text-center">
                 <p class="text-sm text-slate-400 font-medium mb-3">이 날의 기록이 없어요</p>
                 <button type="button" class="timeline-day-empty-add inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold active:scale-[0.98] transition-transform" data-mealog-slot-picker-date="${escapeHtml(dateStr)}">
-                    <i class="fa-solid fa-plus text-xs" aria-hidden="true"></i>
+                    <i data-lucide="plus" class="text-xs" aria-hidden="true"></i>
                     기록 추가
                 </button>
             </div>`;
@@ -1873,7 +1868,7 @@ export function renderTimeline(options = {}) {
                 <button onclick="window.loadMoreMealsTimeline()" 
                         class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold 
                                active:bg-slate-300 transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-chevron-down"></i>
+                    <i data-lucide="chevron-down"></i>
                     <span>더보기</span>
                 </button>
             `;
@@ -1888,6 +1883,7 @@ export function renderTimeline(options = {}) {
     ensureTimelineOpenModalDelegation();
     ensureTimelineViewSelectDelegation();
     syncSnackViewDropdown(container);
+    scheduleLucideIcons(container);
 
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {
         window.bindMealogDailyTimelineDelegation();

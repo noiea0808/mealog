@@ -657,7 +657,7 @@ function setEntryModalSavingState(saving) {
         if (saving) {
             if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
             btnSave.innerHTML =
-                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i class="fa-solid fa-spinner fa-spin text-sm shrink-0" aria-hidden="true"></i><span>저장 중…</span></span>';
+                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i data-lucide="loader-circle" class="text-sm shrink-0 lucide-spin" aria-hidden="true"></i><span>저장 중…</span></span>';
         } else if (btnSave.dataset.defaultHtml) {
             btnSave.innerHTML = btnSave.dataset.defaultHtml;
         }

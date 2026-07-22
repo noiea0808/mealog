@@ -164,7 +164,7 @@ export function renderEntryChips() {
             if (!text) return '';
             const active = currentValues.includes(text);
             const star = isFavorite
-                ? ' <i class="fa-solid fa-star sub-chip-favorite-star" aria-hidden="true"></i>'
+                ? ' <i data-lucide="star" class="sub-chip-favorite-star" aria-hidden="true"></i>'
                 : '';
             const sourceFull = item._sourceFull ? String(item._sourceFull) : '';
             const sourceAttr = sourceFull

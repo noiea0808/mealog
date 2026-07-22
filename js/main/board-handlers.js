@@ -356,7 +356,7 @@ window.renderBoardWritePreviews = () => {
         wrap.innerHTML = `
             <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -373,7 +373,7 @@ window.renderBoardWritePreviews = () => {
         wrap.innerHTML = `
             <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -633,19 +633,29 @@ window.toggleBoardLike = async (postId, isLike) => {
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-post-id="${postId}"]`);
     const firstBtn = likeBtns[0];
-    const likeIcon = firstBtn?.querySelector('.fa-heart');
     const likeCountEl = firstBtn?.querySelector('span.text-xs');
-    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    const wasLiked = firstBtn?.classList.contains('liked') || !!firstBtn?.querySelector('.fa-solid.fa-heart, svg[fill="currentColor"]');
     
     try {
         await boardOperations.toggleLike(postId, isLike);
         likeBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-heart');
-            const countEl = btn.querySelector('span.text-xs');
+            const nextLiked = !wasLiked;
+            btn.classList.toggle('liked', nextLiked);
+            const icon = btn.querySelector('[data-lucide="heart"], .lucide, .fa-heart, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
-                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+                icon.classList?.remove?.('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                if (icon.tagName === 'I' && icon.hasAttribute('data-lucide')) {
+                    icon.classList.toggle('text-red-500', nextLiked);
+                    icon.classList.toggle('text-slate-800', !nextLiked);
+                } else if (icon.tagName === 'svg') {
+                    icon.style.fill = nextLiked ? 'currentColor' : 'none';
+                    icon.classList.toggle('text-red-500', nextLiked);
+                    icon.classList.toggle('text-slate-800', !nextLiked);
+                } else {
+                    icon.classList.add(nextLiked ? 'fa-solid' : 'fa-regular', 'fa-heart', nextLiked ? 'text-red-500' : 'text-slate-800');
+                }
             }
+            const countEl = btn.querySelector('span.text-xs');
             if (countEl) {
                 const current = parseInt(countEl.textContent || '0', 10);
                 countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
@@ -673,10 +683,18 @@ window.toggleBoardBookmark = async (postId) => {
     try {
         const result = await boardOperations.toggleBookmark(postId);
         bookmarkBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-bookmark');
+            const on = !!result?.bookmarked;
+            btn.classList.toggle('bookmarked', on);
+            const icon = btn.querySelector('[data-lucide="bookmark"], .lucide, .fa-bookmark, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid');
-                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                icon.classList?.remove?.('fa-regular', 'fa-solid');
+                if (icon.tagName === 'svg') {
+                    icon.style.fill = on ? 'currentColor' : 'none';
+                } else if (icon.tagName === 'I' && icon.hasAttribute('data-lucide')) {
+                    /* fill via .bookmarked CSS */
+                } else {
+                    icon.classList.add(on ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                }
             }
         });
     } catch (e) {
@@ -695,59 +713,66 @@ window.showBoardPostOptions = (postId, isAuthor) => {
     menu.className = 'fixed inset-0 z-[450]';
     
     const bg = document.createElement('div');
-    bg.className = 'fixed inset-0 bg-black/40';
+    bg.className = 'fixed inset-0 mealog-action-dim';
     bg.onclick = () => menu.remove();
     
     const menuContainer = document.createElement('div');
-    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    menuContainer.className = 'mealog-action-wrap animate-fade-up';
     
-    const handlebar = document.createElement('div');
-    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
-    
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'space-y-2';
+    const actionCard = document.createElement('div');
+    actionCard.className = 'mealog-action-card';
     
     if (isAuthor) {
         const editBtn = document.createElement('button');
-        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.className = 'mealog-action-btn';
         editBtn.type = 'button';
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.editBoardPost(postId), 100);
         });
-        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
-        buttonContainer.appendChild(editBtn);
+        editBtn.innerHTML = '<i data-lucide="pen"></i><span>수정하기</span>';
+        actionCard.appendChild(editBtn);
         
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         deleteBtn.type = 'button';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.deleteBoardPost(postId), 100);
         });
-        deleteBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-trash text-red-500 text-lg"></i><span class="font-bold text-red-500">삭제하기</span></div>';
-        buttonContainer.appendChild(deleteBtn);
+        deleteBtn.innerHTML = '<i data-lucide="trash-2"></i><span>삭제하기</span>';
+        actionCard.appendChild(deleteBtn);
     } else {
         const reportBtn = document.createElement('button');
-        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         reportBtn.type = 'button';
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.showReportModal && window.showReportModal(`board_${postId}`), 100);
         });
-        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
-        buttonContainer.appendChild(reportBtn);
+        reportBtn.innerHTML = '<i data-lucide="flag"></i><span>신고하기</span>';
+        actionCard.appendChild(reportBtn);
     }
     
     menuContainer.addEventListener('click', (e) => e.stopPropagation());
-    menuContainer.appendChild(handlebar);
-    menuContainer.appendChild(buttonContainer);
+    menuContainer.appendChild(actionCard);
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'mealog-action-cancel';
+    cancelBtn.textContent = '닫기';
+    cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+    });
+    menuContainer.appendChild(cancelBtn);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
+    if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(menu);
+    else if (typeof window.lucide?.createIcons === 'function') window.lucide.createIcons({ root: menu });
 };
 
 window.toggleNoticeLike = async (noticeId, isLike = true) => {
@@ -763,18 +788,20 @@ window.toggleNoticeLike = async (noticeId, isLike = true) => {
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-notice-id="${noticeId}"]`);
     const firstBtn = likeBtns[0];
-    const likeIcon = firstBtn?.querySelector('.fa-heart');
-    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    const wasLiked = firstBtn?.classList.contains('liked');
     
     try {
         await noticeOperations.toggleNoticeLike(noticeId, isLike);
         likeBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-heart');
-            const countEl = btn.querySelector('span.text-xs');
+            const nextLiked = !wasLiked;
+            btn.classList.toggle('liked', nextLiked);
+            const icon = btn.querySelector('[data-lucide="heart"], .lucide, .fa-heart, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
-                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+                if (typeof window.setLucideIconFilled === 'function') window.setLucideIconFilled(icon, nextLiked);
+                icon.classList?.remove?.('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList?.add?.(nextLiked ? 'text-red-500' : 'text-slate-800');
             }
+            const countEl = btn.querySelector('span.text-xs');
             if (countEl) {
                 const current = parseInt(countEl.textContent || '0', 10);
                 countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
@@ -802,10 +829,12 @@ window.toggleNoticeBookmark = async (noticeId) => {
     try {
         const result = await noticeOperations.toggleNoticeBookmark(noticeId);
         bookmarkBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-bookmark');
+            const on = !!result?.bookmarked;
+            btn.classList.toggle('bookmarked', on);
+            const icon = btn.querySelector('[data-lucide="bookmark"], .lucide, .fa-bookmark, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid');
-                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                if (typeof window.setLucideIconFilled === 'function') window.setLucideIconFilled(icon, on);
+                icon.classList?.remove?.('fa-regular', 'fa-solid');
             }
         });
     } catch (e) {
@@ -1325,7 +1354,7 @@ function openDetailCommentLightbox(src) {
             <div class="detail-comment-lightbox__scrim" data-dclb-close="1" aria-label="닫기"></div>
             <div class="detail-comment-lightbox__stage" role="dialog" aria-modal="true" aria-label="이미지 확대">
                 <button type="button" class="detail-comment-lightbox__close" data-dclb-close="1" aria-label="닫기">
-                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
                 <img class="detail-comment-lightbox__img" alt="" />
             </div>
@@ -1735,7 +1764,7 @@ window.syncBoardInlineComposerAvatar = () => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         el.className =
             'board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200';
-        el.innerHTML = '<i class="fa-solid fa-user text-xs"></i>';
+        el.innerHTML = '<i data-lucide="user" class="text-xs"></i>';
         return;
     }
     const display = getDisplayProfile(window.currentUser.uid, window.userSettings?.profile);
@@ -1787,7 +1816,7 @@ function renderFeedComposerPhotoPreview() {
     prev.innerHTML = `
         <div class="relative w-12 h-12 rounded-md overflow-hidden border border-slate-200 shrink-0">
             <img src="${window.feedComposerPhotoObjectUrl}" alt="" class="w-full h-full object-cover">
-            <button type="button" class="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-black/55 text-white text-[10px] rounded-bl" aria-label="사진 제거"><i class="fa-solid fa-times"></i></button>
+            <button type="button" class="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-black/55 text-white text-[10px] rounded-bl" aria-label="사진 제거"><i data-lucide="x"></i></button>
         </div>`;
     prev.querySelector('button')?.addEventListener('click', () => {
         clearFeedComposerPhoto();
@@ -1874,10 +1903,10 @@ async function runBoardInlineFeedSubmit() {
     syncBoardInlineComposerUi();
 
     const submitBtn = boardInlineSubmit;
-    const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
+    const sendIconHtml = '<i data-lucide="arrow-up" class="text-sm"></i>';
     const prevHtml = submitBtn.innerHTML;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
+    submitBtn.innerHTML = '<i data-lucide="loader-circle" class="text-sm lucide-spin"></i>';
 
     let imageUrls = [];
     if (hasPhoto) {

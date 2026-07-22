@@ -9,34 +9,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/leetaewook/gmarket-sans-dynamic-subset/GmarketSans.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
   <style>
     :root {
-      --green: #059669;
-      --green-deep: #047857;
-      --green-soft: #ecfdf5;
-      --green-mute: #a7f3d0;
-      --ink: #0f172a;
-      --ink-2: #334155;
-      --muted: #94a3b8;
-      --line: #e2e8f0;
-      --page: #f8fafc;
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcf9;
       --card: #ffffff;
       --safe-bottom: env(safe-area-inset-bottom, 0px);
-      --avatar-shadow: 0 1px 2px rgba(100, 116, 139, 0.3), 0 3px 8px rgba(100, 116, 139, 0.18);
-      --avatar-fallback-bg: #e2e8f0;
-      --avatar-fallback-fg: #334155;
-      --avatar-fallback-font: "GmarketSans", "Pretendard", sans-serif;
     }
+
+
+    /* Lucide — stroke 1.25 */
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.25;
+      flex-shrink: 0;
+    }
+    .icon-btn [data-lucide], .more-btn [data-lucide],
+    .icon-btn .lucide, .more-btn .lucide { width: 1.25rem; height: 1.25rem; }
+    .bottom-nav .nav-item [data-lucide],
+    .bottom-nav .nav-item .lucide { width: 1.375rem; height: 1.375rem; }
+    .fab [data-lucide], .send [data-lucide],
+    .fab .lucide, .send .lucide { width: 1.25rem; height: 1.25rem; }
+    .social-btn.liked, .liked, .bookmarked { color: var(--coral); }
+    .star-row .empty, i.empty { color: var(--muted); opacity: 0.4; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     body {
       font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        radial-gradient(1200px 600px at 10% -10%, #d1fae5 0%, transparent 55%),
+        radial-gradient(1200px 600px at 10% -10%, var(--line) 0%, transparent 55%),
         radial-gradient(900px 500px at 100% 20%, #fef3c7 0%, transparent 45%),
-        #eef2f6;
+        var(--page);
       color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
@@ -88,13 +104,13 @@
     }
     .changes li {
       background: rgba(255,255,255,0.72);
-      border: 1px solid rgba(226,232,240,0.9);
+      border: 1px solid var(--line);
       border-radius: 14px;
       padding: 12px 14px;
       font-size: 13.5px;
       line-height: 1.45;
       color: var(--ink-2);
-      backdrop-filter: blur(8px);
+      /* crisp edges */
     }
     .changes strong {
       display: block;
@@ -132,9 +148,9 @@
       height: 844px;
       background: var(--page);
       border-radius: 36px;
-      border: 1px solid rgba(15,23,42,0.08);
+      border: 1px solid var(--line);
       box-shadow:
-        0 1px 2px rgba(15,23,42,0.04),
+        0 1px 0 rgba(43,40,37,0.06),
         0 24px 48px rgba(15,23,42,0.12);
       overflow: hidden;
       display: flex;
@@ -148,7 +164,7 @@
       transform: translateX(-50%);
       width: 118px;
       height: 28px;
-      background: #0f172a;
+      background: var(--ink);
       border-radius: 20px;
       z-index: 20;
     }
@@ -163,6 +179,10 @@
       background: #fff;
     }
     .status .right { display: flex; gap: 6px; align-items: center; }
+
+    .status .right [data-lucide], .status .right .lucide {
+      width: 14px; height: 14px; stroke-width: 1.5;
+    }
 
     .app-header {
       display: flex;
@@ -220,7 +240,7 @@
     }
     .subtab.active {
       background: var(--green-soft);
-      color: var(--ink);
+      color: var(--green-deep);
     }
 
     .scroll {
@@ -340,7 +360,7 @@
       align-items: center;
       gap: 12px;
       width: 100%;
-      border: 1px solid rgba(226,232,240,0.9);
+      border: 1px solid var(--line);
       background: linear-gradient(135deg, #fff 0%, var(--green-soft) 140%);
       border-radius: 16px;
       padding: 12px 14px;
@@ -384,9 +404,9 @@
     }
     .row-card {
       background: var(--card);
-      border: 1px solid rgba(226,232,240,0.7);
+      border: 1px solid var(--line);
       border-radius: 16px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.05);
+      box-shadow: 0 1px 0 rgba(43,40,37,0.06), 0 6px 16px rgba(43,40,37,0.07);
       overflow: hidden;
       margin-bottom: 12px;
     }
@@ -425,9 +445,9 @@
 
     .life-block {
       background: var(--card);
-      border: 1px solid rgba(226,232,240,0.7);
+      border: 1px solid var(--line);
       border-radius: 16px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.05);
+      box-shadow: 0 1px 0 rgba(43,40,37,0.06), 0 6px 16px rgba(43,40,37,0.07);
       padding: 14px;
       margin-bottom: 12px;
     }
@@ -539,10 +559,10 @@
     /* Push panel */
     .push-card {
       background: var(--card);
-      border: 1px solid rgba(226,232,240,0.7);
+      border: 1px solid var(--line);
       border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.05);
+      box-shadow: 0 1px 0 rgba(43,40,37,0.06), 0 6px 16px rgba(43,40,37,0.07);
     }
     .push-row {
       display: flex;
@@ -568,7 +588,7 @@
       width: 44px;
       height: 26px;
       border-radius: 999px;
-      background: #e2e8f0;
+      background: var(--line);
       position: relative;
       flex-shrink: 0;
       border: 0;
@@ -592,10 +612,10 @@
     /* Memo panel */
     .memo-card {
       background: var(--card);
-      border: 1px solid rgba(226,232,240,0.7);
+      border: 1px solid var(--line);
       border-radius: 16px;
       padding: 14px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 6px 18px rgba(15,23,42,0.05);
+      box-shadow: 0 1px 0 rgba(43,40,37,0.06), 0 6px 16px rgba(43,40,37,0.07);
     }
     .memo-card p {
       font-size: 12.5px;
@@ -635,8 +655,8 @@
       bottom: 0;
       height: calc(72px + var(--safe-bottom));
       padding: 8px 8px calc(10px + var(--safe-bottom));
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(16px);
+      background: #fff;
+      /* solid nav edge */
       border-top: 1px solid var(--line);
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -674,7 +694,7 @@
       }
     }
 
-    body.phone-only { background: #0f172a; }
+    body.phone-only { background: var(--ink); }
     body.phone-only .stage {
       grid-template-columns: 1fr;
       padding: 24px;
@@ -750,16 +770,16 @@
         <div class="status">
           <span>9:41</span>
           <span class="right">
-            <i class="fa-solid fa-signal"></i>
-            <i class="fa-solid fa-wifi"></i>
-            <i class="fa-solid fa-battery-full"></i>
+            <i data-lucide="signal"></i>
+            <i data-lucide="wifi"></i>
+            <i data-lucide="battery-full"></i>
           </span>
         </div>
 
         <header class="app-header">
           <div class="logo">profile</div>
           <div class="header-actions">
-            <button class="icon-btn" type="button" aria-label="알림"><i class="fa-regular fa-bell"></i></button>
+            <button class="icon-btn" type="button" aria-label="알림"><i data-lucide="bell"></i></button>
           </div>
         </header>
 
@@ -776,12 +796,12 @@
             <section class="identity">
               <div class="avatar-hit" title="사진 변경">
                 <div class="avatar" aria-hidden="true">새</div>
-                <span class="avatar-edit"><i class="fa-solid fa-camera"></i></span>
+                <span class="avatar-edit"><i data-lucide="camera"></i></span>
               </div>
               <div class="identity-name">새로운 밀로거</div>
               <p class="identity-bio">맛있는 한 끼를 천천히 기록하는 중. 주말엔 빵집 순례.</p>
               <button type="button" class="identity-cta">
-                <i class="fa-regular fa-images"></i> 내 게시물
+                <i data-lucide="image"></i> 내 게시물
               </button>
               <div class="stats" aria-label="활동 요약">
                 <div class="stat"><strong>126</strong><span>식사</span></div>
@@ -791,12 +811,12 @@
             </section>
 
             <button type="button" class="mealdang-tile" aria-label="밀당 열기">
-              <span class="ico"><i class="fa-solid fa-chart-pie"></i></span>
+              <span class="ico"><i data-lucide="pie-chart"></i></span>
               <span class="meta">
                 <strong>밀당</strong>
                 <span>이번 주 한 줄 인사이트 · 식단 분석</span>
               </span>
-              <i class="fa-solid fa-chevron-right chev"></i>
+              <i data-lucide="chevron-right" class="chev"></i>
             </button>
 
             <div class="section-label">프로필 정보</div>
@@ -804,29 +824,29 @@
               <button type="button" class="row">
                 <span class="label">닉네임</span>
                 <span class="value">새로운 밀로거</span>
-                <i class="fa-solid fa-chevron-right chev"></i>
+                <i data-lucide="chevron-right" class="chev"></i>
               </button>
               <button type="button" class="row">
                 <span class="label">생일·성별</span>
                 <span class="value">1992. 4. 12 · 여</span>
-                <i class="fa-solid fa-chevron-right chev"></i>
+                <i data-lucide="chevron-right" class="chev"></i>
               </button>
               <button type="button" class="row">
                 <span class="label">소개</span>
                 <span class="value">맛있는 한 끼를 천천히 기록하는 중…</span>
-                <i class="fa-solid fa-chevron-right chev"></i>
+                <i data-lucide="chevron-right" class="chev"></i>
               </button>
               <button type="button" class="row">
                 <span class="label">계정</span>
                 <span class="value muted">dummy@mealog.net</span>
-                <i class="fa-solid fa-chevron-right chev"></i>
+                <i data-lucide="chevron-right" class="chev"></i>
               </button>
             </div>
 
             <div class="life-block">
               <div class="head">
                 <strong>라이프 스타일</strong>
-                <button type="button" aria-label="수정"><i class="fa-solid fa-pen"></i></button>
+                <button type="button" aria-label="수정"><i data-lucide="pen"></i></button>
               </div>
               <div class="chips" id="lifeChips">
                 <button type="button" class="chip">학생</button>
@@ -865,7 +885,7 @@
                 <span class="tag-pill">여행</span>
               </div>
             </div>
-            <button type="button" class="add-tag"><i class="fa-solid fa-plus"></i> 태그 추가</button>
+            <button type="button" class="add-tag"><i data-lucide="plus"></i> 태그 추가</button>
           </div>
 
           <!-- MEMO -->
@@ -920,11 +940,11 @@
         </div>
 
         <nav class="bottom-nav" aria-label="하단 메뉴">
-          <a class="nav-item" href="./mealdang-v2.html?phone=1"><i class="fa-solid fa-chart-pie"></i>밀당</a>
-          <a class="nav-item" href="./moment-feed-v2.html?phone=1"><i class="fa-solid fa-images"></i>모먼트</a>
-          <a class="nav-item" href="./home-feed-v2.html?phone=1"><i class="fa-solid fa-book-open"></i>밀로그</a>
-          <a class="nav-item" href="./lounge-v2.html?phone=1"><i class="fa-solid fa-comments"></i>라운지</a>
-          <a class="nav-item active" href="./profile-v2.html?phone=1"><i class="fa-regular fa-user"></i>마이</a>
+          <a class="nav-item" href="./mealdang-v2.html?phone=1"><i data-lucide="pie-chart"></i>밀당</a>
+          <a class="nav-item" href="./moment-feed-v2.html?phone=1"><i data-lucide="image"></i>모먼트</a>
+          <a class="nav-item" href="./home-feed-v2.html?phone=1"><i data-lucide="book-open"></i>밀로그</a>
+          <a class="nav-item" href="./lounge-v2.html?phone=1"><i data-lucide="message-circle"></i>라운지</a>
+          <a class="nav-item active" href="./profile-v2.html?phone=1"><i data-lucide="user"></i>마이</a>
         </nav>
       </div>
     </div>
@@ -956,5 +976,7 @@
       sw.addEventListener("click", () => sw.classList.toggle("on"));
     });
   </script>
+
+  <script>lucide.createIcons();</script>
 </body>
 </html>

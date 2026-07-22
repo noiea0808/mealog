@@ -1701,13 +1701,13 @@ export async function renderSharedPhotos() {
     const container = document.getElementById('sharedPhotosContainer');
     if (!container) return;
     
-    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
     
     try {
         const photos = await getSharedPhotos(100);
         
         if (photos.length === 0) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>공유된 게시물이 없습니다.</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="images" class="text-2xl mb-2"></i><p>공유된 게시물이 없습니다.</p></div>';
             return;
         }
         
@@ -1757,7 +1757,7 @@ export async function renderSharedPhotos() {
                                     <span class="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs font-bold rounded">관리번호: ${photo.id}</span>
                                 </div>
                                 <button onclick="window.openDeleteModal('${photo.id}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
-                                    <i class="fa-solid fa-trash mr-1"></i>삭제
+                                    <i data-lucide="trash-2" class="mr-1"></i>삭제
                                 </button>
                             </div>
                             <div class="text-sm text-slate-600 mb-1">
@@ -1772,6 +1772,6 @@ export async function renderSharedPhotos() {
         }).join('');
     } catch (e) {
         console.error("공유 게시물 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }

@@ -7,6 +7,7 @@ import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 /** 프로필 아바타 모달: 파일 선택 후 저장 전까지 취소/저장 푸터 표시 */
 let profileAvatarPickPending = false;
@@ -18,7 +19,7 @@ let profileAvatarPickPending = false;
  */
 function getSettingsAccountLoginDisplay(user) {
     const googleIcon = '<i class="fa-brands fa-google text-xl" aria-hidden="true"></i>';
-    const emailIcon = '<i class="fa-solid fa-envelope text-xl" aria-hidden="true"></i>';
+    const emailIcon = '<i data-lucide="mail" class="text-xl" aria-hidden="true"></i>';
     const kakaoBadge = kakaoTalkLogoSvgHtml({
         className: 'w-8 h-8 text-emerald-700',
         title: '카카오 로그인'
@@ -355,11 +356,11 @@ export function openSettings() {
         let accountHtml = '';
         if (window.currentUser.isAnonymous) {
             accountHtml = `<div class="profile-v2-guest mb-3">
-                <div class="profile-v2-guest__icon" aria-hidden="true"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="profile-v2-guest__icon" aria-hidden="true"><i data-lucide="user-round"></i></div>
                 <div class="profile-v2-guest__title">게스트 모드</div>
                 <p class="profile-v2-guest__desc">로그인하면 프로필과 기록을 동기화할 수 있어요.</p>
                 <button type="button" id="switchToLoginBtn" class="profile-v2-guest__login">
-                    <i class="fa-solid fa-right-to-bracket"></i> 로그인하기
+                    <i data-lucide="log-in"></i> 로그인하기
                 </button>
             </div>`;
             document.getElementById('logoutBtnArea')?.classList.add('hidden');
@@ -376,13 +377,13 @@ export function openSettings() {
                     <button type="button" id="accountProfileAvatarBtn" class="profile-v2-avatar-btn" aria-label="프로필 사진 변경">
                         <span id="accountProfileAvatar" class="profile-v2-avatar profile-v2-avatar--initial"></span>
                     </button>
-                    <span class="profile-v2-avatar-edit" aria-hidden="true"><i class="fa-solid fa-camera"></i></span>
+                    <span class="profile-v2-avatar-edit" aria-hidden="true"><i data-lucide="camera"></i></span>
                     <button type="button" id="photoDeleteBtn" class="hidden profile-v2-photo-delete">삭제</button>
                 </div>
                 <div id="accountHeaderNickname" class="profile-v2-identity-name">-</div>
                 <p id="profileIdentityBio" class="profile-v2-identity-bio"></p>
                 <button type="button" id="openMyPostsFromSettingsBtn" class="${myPostsHidden ? 'hidden' : ''} profile-v2-identity-cta" title="모먼트에서 내 공유·게시글 보기">
-                    <i class="fa-regular fa-images" aria-hidden="true"></i> 내 게시물
+                    <i data-lucide="images" aria-hidden="true"></i> 내 게시물
                 </button>
                 <div id="profileActivityStatsBox" class="profile-v2-stats" aria-label="활동 요약">
                     <div class="profile-v2-stat"><strong id="profileStatMeal">0</strong><span>식사</span></div>
@@ -411,6 +412,7 @@ export function openSettings() {
             document.querySelector('.profile-v2-section-label')?.classList.remove('hidden');
         }
         accountSection.innerHTML = accountHtml;
+        scheduleLucideIcons(accountSection);
         if (window.currentUser && !window.currentUser.isAnonymous) {
             fillProfileActivityStats();
         }
@@ -570,6 +572,7 @@ export function openSettings() {
     if (typeof window.switchMainTab === 'function') {
         window.switchMainTab('settings');
     }
+    scheduleLucideIcons(document.getElementById('settingsView') || document);
 }
 
 // 버전 정보 로드 함수
@@ -684,6 +687,7 @@ export function switchSettingsTab(tab) {
         }
         if (profileContent) profileContent.classList.remove('hidden');
         logUsageMetric('settings_profile').catch(() => {});
+        scheduleLucideIcons(profileContent || document.getElementById('settingsView'));
     } else if (tab === 'tags') {
         // 태그 관리 탭 활성화
         if (tagsTab) {
@@ -1418,12 +1422,12 @@ export function renderSettingsProfileAvatarPreview() {
                 photoDeleteBtn.classList.toggle('hidden', !appState.isProfileEditing || appState.profileEditScope !== 'full');
             }
         } else {
-            photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+            photoPreview.innerHTML = '<i data-lucide="camera" class="text-slate-400 text-xl"></i>';
             photoPreview.style.backgroundImage = '';
             if (photoDeleteBtn) photoDeleteBtn.classList.add('hidden');
         }
     } else if (photoPreview && type === 'text') {
-        photoPreview.innerHTML = '<i class="fa-solid fa-camera text-slate-400 text-xl"></i>';
+        photoPreview.innerHTML = '<i data-lucide="camera" class="text-slate-400 text-xl"></i>';
         photoPreview.style.backgroundImage = '';
         if (photoDeleteBtn) photoDeleteBtn.classList.add('hidden');
     }
@@ -1972,7 +1976,7 @@ function renderFavoriteTagsEditor() {
                             <div class="flex items-center gap-0.5 px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-bold">
                                 <span>${text}</span>
                                 <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
-                                    <i class="fa-solid fa-xmark text-[8px]"></i>
+                                    <i data-lucide="x" class="text-[8px]"></i>
                                 </button>
                             </div>
                         `).join('')}

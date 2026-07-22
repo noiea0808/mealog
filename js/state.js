@@ -122,6 +122,7 @@ export const appState = {
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
     analysisType: 'main', // 'best', 'main', 'snack', 'health'
+    mealdangView: 'analysis', // 'analysis' | 'comment' — 밀당 헤더 탭
     
     // UI 상호작용
     currentDetailChart: null,

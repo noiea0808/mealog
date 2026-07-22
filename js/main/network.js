@@ -177,7 +177,7 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
 }
 
 let momentFeedReloadInFlight = false;
-const FIRESTORE_STALE_ACTIVITY_MS = 45000;
+const FIRESTORE_STALE_ACTIVITY_MS = 180000;
 /** waitForPendingWrites 등 쓰기 큐 flush 상한 */
 const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
 /** 복구 1회 전체 상한 — 내부 await가 무한 대기해도 in-flight 플래그가 반드시 풀리도록 보장 */
@@ -250,6 +250,10 @@ export function runMealogConnectivityRecovery(options = {}) {
         );
 
         const needTransportKick = forceTransportKick || stale || wasForcedOffline;
+        // 리스너 전체 재구독은 화면 전체 리렌더(깜박임)를 유발한다.
+        // 실제 오프라인이었거나 강제 복구일 때만 재구독하고, 단순 유휴(idle) stale에서는
+        // transport kick만 수행한다 — enableNetwork 후 기존 onSnapshot 리스너는 자동 재개된다.
+        const needListenerRebind = forceTransportKick || wasForcedOffline;
         if (needTransportKick) {
             const kicked = await withMealogRecoveryTimeout(
                 kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
@@ -261,7 +265,17 @@ export function runMealogConnectivityRecovery(options = {}) {
             if (kicked) {
                 markMealogFirestoreActivity();
             }
-            rebindFirestoreListenersIfRegistered();
+            if (needListenerRebind) {
+                rebindFirestoreListenersIfRegistered();
+            } else {
+                void import('../utils/meals-listener-degraded.js').then((dg) => {
+                    try {
+                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                });
+            }
         } else {
             void import('../utils/meals-listener-degraded.js').then((dg) => {
                 try {
@@ -415,7 +429,7 @@ export function registerMainNetworkListeners() {
  * online 이벤트가 오지 않는 WebView 대비: 로컬 오프라인 또는 Firestore 활동 정체 시
  * 원격 프로브 → transport kick → 리스너·모먼트 자동 복구.
  */
-const REACHABILITY_HEARTBEAT_MS = 6000;
+const REACHABILITY_HEARTBEAT_MS = 30000;
 let reachabilityHeartbeatTimer = null;
 let reachabilityProbeInFlight = false;
 

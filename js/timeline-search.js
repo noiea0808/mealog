@@ -143,7 +143,7 @@ function renderSearchResults(results, keyword, range) {
     const ratingStarsHtml = (rating) => {
         const n = rating ? parseInt(rating, 10) : 0;
         if (n < 1 || n > 5) return '';
-        return `<span class="inline-flex items-center gap-0.5 text-yellow-500" title="만족도 ${n}점">${'<i class="fa-solid fa-star text-sm"></i>'.repeat(n)}</span>`;
+        return `<span class="inline-flex items-center gap-0.5 text-yellow-500" title="만족도 ${n}점">${'<i data-lucide="star" class="text-sm"></i>'.repeat(n)}</span>`;
     };
     const satietyIconHtml = (v) => {
         const s = satietyData(v);

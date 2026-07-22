@@ -22,16 +22,9 @@ function getTop10RankingsFromMeals(mealRecords, options = {}) {
     const placeCounts = {};
     const menuCounts = {};
     const peopleCounts = {};
-    // main 끼니: 동일 (date, slotId)당 1회만 카운트 (중복 기록 방지)
-    const mainPlaceSeen = new Set();
     mealRecords.forEach(m => {
         const place = (m.place || '').trim();
         if (place) {
-            if (MEAL_SLOTS.includes(m.slotId)) {
-                const key = `${m.date}|${m.slotId}`;
-                if (mainPlaceSeen.has(key)) return;
-                mainPlaceSeen.add(key);
-            }
             placeCounts[place] = (placeCounts[place] || 0) + 1;
         }
         const peopleRaw = (m.withWhomDetail || m.withWhom || '').trim();

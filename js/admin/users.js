@@ -695,7 +695,7 @@ export async function renderUsers(options = {}) {
     const mayFetch = options.forceNetwork === true || adminUsersDataLoaded || options.loadFullListForSort === true;
     if (!mayFetch) {
         container.innerHTML =
-            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i><p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p></td></tr>';
+            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i data-lucide="rotate-cw" class="text-2xl mb-2 opacity-40" aria-hidden="true"></i><p class="text-sm">상단 <strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p></td></tr>';
         const navEl = document.getElementById('adminUsersListPagination');
         updateAdminUsersTotalCountDisplay(null);
         updateAdminUsersSearchHint('');
@@ -708,7 +708,7 @@ export async function renderUsers(options = {}) {
 
     if (!lightRender) {
         container.innerHTML =
-            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></td></tr>';
+            '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></td></tr>';
     }
 
     try {
@@ -720,14 +720,14 @@ export async function renderUsers(options = {}) {
         const loadFullListForSort = options?.loadFullListForSort === true;
         const needsFullList = loadFullListForSort || needle.length > 0;
         if (needsFullList && !usersFullListRaw) {
-            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>전체 사용자 목록을 불러오는 중…</p></td></tr>';
+            container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>전체 사용자 목록을 불러오는 중…</p></td></tr>';
             try {
                 usersFullListRaw = await fetchAllUsersEnriched();
             } catch (e) {
                 console.error('전체 사용자 로드 실패:', e);
                 invalidateUsersTableCache();
                 const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>전체 목록을 불러오지 못했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>전체 목록을 불러오지 못했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
                 return;
             }
         }
@@ -755,9 +755,9 @@ export async function renderUsers(options = {}) {
         if (filtered.length === 0) {
             if (needle.length > 0 && hadAnyBeforeFilter) {
                 container.innerHTML =
-                    '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-magnifying-glass text-2xl mb-2 opacity-50" aria-hidden="true"></i><p>검색 조건에 맞는 사용자가 없습니다.</p><p class="text-xs mt-2 text-slate-500">닉네임·이메일·UID 일부만 입력해도 찾을 수 있습니다.</p></td></tr>';
+                    '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i data-lucide="search" class="text-2xl mb-2 opacity-50" aria-hidden="true"></i><p>검색 조건에 맞는 사용자가 없습니다.</p><p class="text-xs mt-2 text-slate-500">닉네임·이메일·UID 일부만 입력해도 찾을 수 있습니다.</p></td></tr>';
             } else {
-                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i class="fa-solid fa-users text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
+                container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-slate-400"><i data-lucide="users" class="text-2xl mb-2"></i><p>사용자가 없습니다.</p></td></tr>';
             }
             const emptyPagingTotal = needle.length > 0 ? 0 : adminUsersTotalCount;
             updateAdminUsersListPagination(emptyPagingTotal, Math.max(1, Math.ceil(emptyPagingTotal / USERS_PER_PAGE)));
@@ -884,7 +884,7 @@ export async function renderUsers(options = {}) {
                                     : `<div class="flex flex-row items-center justify-center gap-1.5 w-full min-w-0">
                                 <span class="font-bold text-slate-800 break-words text-sm leading-tight text-center min-w-0">${escapeHtml(user.nickname || '익명')}</span>
                                 <button type="button" class="admin-user-edit-nick-btn shrink-0 p-1 rounded-md text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 self-center" data-uid="${escapeHtml(user.userId)}" data-nick-enc="${encodeURIComponent(String(user.nickname || ''))}" title="닉네임 수정">
-                                    <i class="fa-solid fa-pen text-[11px]" aria-hidden="true"></i>
+                                    <i data-lucide="pen" class="text-[11px]" aria-hidden="true"></i>
                                 </button>
                             </div>`
                             }
@@ -944,7 +944,7 @@ export async function renderUsers(options = {}) {
         adminUsersDataLoaded = false;
         console.error("사용자 목록 렌더링 실패:", e);
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
-        container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
+        container.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>사용자 목록을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + escapeHtml(errMsg) + '</p></td></tr>';
     }
 }
 

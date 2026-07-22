@@ -8,30 +8,50 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
   <style>
     :root {
-      --green: #059669;
-      --green-deep: #047857;
-      --green-soft: #ecfdf5;
-      --green-mute: #a7f3d0;
-      --ink: #0f172a;
-      --ink-2: #334155;
-      --muted: #94a3b8;
-      --line: #e2e8f0;
-      --page: #f8fafc;
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcf9;
       --card: #ffffff;
       --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
+
+
+    /* Lucide — stroke 1.25 */
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.25;
+      flex-shrink: 0;
+    }
+    .icon-btn [data-lucide], .more-btn [data-lucide],
+    .icon-btn .lucide, .more-btn .lucide { width: 1.25rem; height: 1.25rem; }
+    .bottom-nav .nav-item [data-lucide],
+    .bottom-nav .nav-item .lucide { width: 1.375rem; height: 1.375rem; }
+    .fab [data-lucide], .send [data-lucide],
+    .fab .lucide, .send .lucide { width: 1.25rem; height: 1.25rem; }
+    .social-btn.liked, .liked, .bookmarked { color: var(--coral); }
+    .star-row .empty, i.empty { color: var(--muted); opacity: 0.4; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     body {
       font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        radial-gradient(1200px 600px at 20% -10%, #d1fae5 0%, transparent 55%),
+        radial-gradient(1200px 600px at 20% -10%, var(--line) 0%, transparent 55%),
         radial-gradient(900px 500px at 100% 0%, #fce7f3 0%, transparent 45%),
-        #eef2f6;
+        var(--page);
       color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
@@ -83,13 +103,13 @@
     }
     .changes li {
       background: rgba(255,255,255,0.72);
-      border: 1px solid rgba(226,232,240,0.9);
+      border: 1px solid var(--line);
       border-radius: 14px;
       padding: 12px 14px;
       font-size: 13.5px;
       line-height: 1.45;
       color: var(--ink-2);
-      backdrop-filter: blur(8px);
+      /* crisp edges */
     }
     .changes strong {
       display: block;
@@ -150,7 +170,7 @@
       transform: translateX(-50%);
       width: 120px;
       height: 28px;
-      background: #0f172a;
+      background: var(--ink);
       border-radius: 20px;
       z-index: 20;
     }
@@ -166,6 +186,10 @@
       background: #fff;
     }
     .status .right { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+
+    .status .right [data-lucide], .status .right .lucide {
+      width: 14px; height: 14px; stroke-width: 1.5;
+    }
 
     .app-header {
       display: flex;
@@ -192,33 +216,6 @@
       margin-left: auto;
     }
 
-    /* Trace filter — refined chips */
-    .trace {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      background: var(--page);
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 3px;
-    }
-    .trace button {
-      width: 32px;
-      height: 32px;
-      border: 0;
-      border-radius: 999px;
-      background: transparent;
-      color: var(--muted);
-      font-size: 13px;
-      cursor: pointer;
-      display: grid;
-      place-items: center;
-    }
-    .trace button.active {
-      background: #fff;
-      color: var(--green);
-      box-shadow: 0 1px 3px rgba(15,23,42,0.08);
-    }
     .icon-btn {
       width: 40px;
       height: 40px;
@@ -236,7 +233,7 @@
       right: 10px;
       width: 7px;
       height: 7px;
-      background: #ef4444;
+      background: var(--coral);
       border-radius: 50%;
       border: 1.5px solid #fff;
     }
@@ -252,14 +249,14 @@
     .moment {
       background: var(--card);
       border-radius: 18px;
-      box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(15,23,42,0.06);
+      box-shadow: 0 1px 0 rgba(43,40,37,0.06), 0 6px 18px rgba(43,40,37,0.07);
       margin-bottom: 14px;
       overflow: hidden;
-      border: 1px solid rgba(226,232,240,0.7);
+      border: 1px solid var(--line);
     }
     .moment-photo-wrap {
       position: relative;
-      background: #e2e8f0;
+      background: var(--line);
     }
     .moment-photo {
       width: 100%;
@@ -278,7 +275,7 @@
       font-weight: 600;
       padding: 4px 8px;
       border-radius: 999px;
-      backdrop-filter: blur(6px);
+      /* crisp edges */
     }
     .dots {
       position: absolute;
@@ -419,6 +416,24 @@
       cursor: pointer;
     }
 
+    .fab {
+      position: absolute;
+      right: 20px;
+      bottom: 88px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 0;
+      background: var(--green);
+      color: #fff;
+      font-size: 20px;
+      box-shadow: 0 10px 28px rgba(45, 159, 116, 0.38);
+      cursor: pointer;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+    }
+
     .bottom-nav {
       position: absolute;
       left: 0;
@@ -426,8 +441,8 @@
       bottom: 0;
       height: calc(72px + var(--safe-bottom));
       padding: 8px 8px calc(10px + var(--safe-bottom));
-      background: rgba(255,255,255,0.92);
-      backdrop-filter: blur(16px);
+      background: #fff;
+      /* solid nav edge */
       border-top: 1px solid var(--line);
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -447,22 +462,12 @@
       text-decoration: none;
     }
     .nav-item i { font-size: 20px; }
-    .nav-item.active { color: var(--green); }
-    .nav-item.record i {
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      border: 1.5px solid currentColor;
-      display: grid;
-      place-items: center;
-      font-size: 14px;
-      margin-bottom: -2px;
-    }
+    .nav-item.active { color: var(--ink); }
     .nav-item .update {
       position: absolute;
       width: 6px;
       height: 6px;
-      background: #ef4444;
+      background: var(--coral);
       border-radius: 50%;
       margin-left: 18px;
       margin-top: -2px;
@@ -484,7 +489,7 @@
       }
     }
 
-    body.phone-only { background: #0f172a; }
+    body.phone-only { background: var(--ink); }
     body.phone-only .stage {
       grid-template-columns: 1fr;
       padding: 24px;
@@ -524,7 +529,7 @@
         </li>
         <li>
           <strong>화이트 헤더 + moment 워드마크</strong>
-          녹색 크롬 제거. 우측은 흔적 필터 칩 + 알림.
+          녹색 크롬 제거. 우측은 검색(돋보기) + 알림 — 현행 앱과 동일.
         </li>
         <li>
           <strong>카드형 피드 (오버레이 ↓)</strong>
@@ -537,8 +542,8 @@
           기존 휠 라벨(YYYY:MM:DD:…)은 시안에서 제외.
         </li>
         <li>
-          <strong>흔적 필터 정제</strong>
-          ♥ / 댓글 / 북마크를 pill 칩으로. 접기·펼치기 대신 상시 노출.
+          <strong>찾기 = 검색 모달</strong>
+          헤더 돋보기로 기간·내 활동·검색어 팝업을 연다 (인라인 흔적 칩 제거).
         </li>
       </ul>
 
@@ -555,23 +560,18 @@
         <div class="status">
           <span>9:41</span>
           <span class="right">
-            <i class="fa-solid fa-signal"></i>
-            <i class="fa-solid fa-wifi"></i>
-            <i class="fa-solid fa-battery-full"></i>
+            <i data-lucide="signal"></i>
+            <i data-lucide="wifi"></i>
+            <i data-lucide="battery-full"></i>
           </span>
         </div>
 
         <header class="app-header">
           <div class="logo">moment</div>
           <div class="header-actions">
-            <div class="trace" role="group" aria-label="내 흔적 필터">
-              <button class="active" title="전체" aria-label="전체"><i class="fa-solid fa-border-all"></i></button>
-              <button title="좋아요" aria-label="좋아요한 글"><i class="fa-solid fa-heart"></i></button>
-              <button title="댓글" aria-label="댓글 남긴 글"><i class="fa-solid fa-comment"></i></button>
-              <button title="북마크" aria-label="북마크"><i class="fa-solid fa-bookmark"></i></button>
-            </div>
-            <button class="icon-btn" aria-label="알림">
-              <i class="fa-regular fa-bell"></i>
+            <button class="icon-btn" type="button" aria-label="모먼트 검색"><i data-lucide="search"></i></button>
+            <button class="icon-btn" type="button" aria-label="알림">
+              <i data-lucide="bell"></i>
               <span class="dot"></span>
             </button>
           </div>
@@ -596,15 +596,15 @@
                   <div class="author-name">수진</div>
                   <div class="author-sub">7월 21일 · 2시간 전</div>
                 </div>
-                <button class="more-btn" aria-label="더보기"><i class="fa-solid fa-ellipsis"></i></button>
+                <button class="more-btn" aria-label="더보기"><i data-lucide="more-horizontal"></i></button>
               </div>
               <div class="meal-meta">점심 · 한남동 브런치</div>
               <div class="meal-title">아보카도 토스트, 스크램블</div>
               <div class="meal-note">날씨 좋아서 창가 자리. 커피는 아메리카노로.</div>
               <div class="social-row">
-                <button class="social-btn liked"><i class="fa-solid fa-heart"></i> 24</button>
-                <button class="social-btn"><i class="fa-regular fa-comment"></i> 5</button>
-                <button class="social-btn bookmarked spacer"><i class="fa-solid fa-bookmark"></i></button>
+                <button class="social-btn liked"><i data-lucide="heart"></i> 24</button>
+                <button class="social-btn"><i data-lucide="message-circle"></i> 5</button>
+                <button class="social-btn bookmarked spacer"><i data-lucide="bookmark"></i></button>
               </div>
             </div>
           </article>
@@ -625,15 +625,15 @@
                   <div class="author-name">민호</div>
                   <div class="author-sub">7월 21일 · 4시간 전</div>
                 </div>
-                <button class="more-btn" aria-label="더보기"><i class="fa-solid fa-ellipsis"></i></button>
+                <button class="more-btn" aria-label="더보기"><i data-lucide="more-horizontal"></i></button>
               </div>
               <div class="meal-meta">오전 간식 · 사무실</div>
               <div class="meal-title">아이스 라떼</div>
               <div class="meal-note">회의 전에 한 잔. 오늘은 당 당기는 날.</div>
               <div class="social-row">
-                <button class="social-btn"><i class="fa-regular fa-heart"></i> 8</button>
-                <button class="social-btn"><i class="fa-regular fa-comment"></i> 1</button>
-                <button class="social-btn spacer"><i class="fa-regular fa-bookmark"></i></button>
+                <button class="social-btn"><i data-lucide="heart"></i> 8</button>
+                <button class="social-btn"><i data-lucide="message-circle"></i> 1</button>
+                <button class="social-btn spacer"><i data-lucide="bookmark"></i></button>
               </div>
             </div>
           </article>
@@ -648,22 +648,22 @@
               />
             </div>
             <div class="moment-body">
-              <div class="special-chip"><i class="fa-solid fa-crown"></i> 이번 주 베스트</div>
+              <div class="special-chip"><i data-lucide="star"></i> 이번 주 베스트</div>
               <div class="author-row">
                 <img class="avatar" alt="" src="https://i.pravatar.cc/72?img=12" />
                 <div class="author-meta">
                   <div class="author-name">예린</div>
                   <div class="author-sub">7월 20일</div>
                 </div>
-                <button class="more-btn" aria-label="더보기"><i class="fa-solid fa-ellipsis"></i></button>
+                <button class="more-btn" aria-label="더보기"><i data-lucide="more-horizontal"></i></button>
               </div>
               <div class="meal-meta">저녁 · 집</div>
               <div class="meal-title">된장찌개, 계란말이, 현미밥</div>
               <div class="meal-note">엄마표 집밥 감성. 이번 주 최고였음.</div>
               <div class="social-row">
-                <button class="social-btn liked"><i class="fa-solid fa-heart"></i> 56</button>
-                <button class="social-btn"><i class="fa-regular fa-comment"></i> 12</button>
-                <button class="social-btn spacer"><i class="fa-regular fa-bookmark"></i></button>
+                <button class="social-btn liked"><i data-lucide="heart"></i> 56</button>
+                <button class="social-btn"><i data-lucide="message-circle"></i> 12</button>
+                <button class="social-btn spacer"><i data-lucide="bookmark"></i></button>
               </div>
             </div>
           </article>
@@ -671,15 +671,17 @@
           <button class="load-more" type="button">더 보기</button>
         </main>
 
+        <button class="fab" aria-label="글쓰기"><i data-lucide="pen"></i></button>
+
         <nav class="bottom-nav" aria-label="하단 메뉴">
-          <a class="nav-item" href="./mealdang-v2.html?phone=1"><i class="fa-solid fa-chart-pie"></i>밀당</a>
+          <a class="nav-item" href="./mealdang-v2.html?phone=1"><i data-lucide="pie-chart"></i>밀당</a>
           <a class="nav-item active" href="./moment-feed-v2.html?phone=1">
             <span class="update" aria-hidden="true"></span>
-            <i class="fa-solid fa-images"></i>모먼트
+            <i data-lucide="image"></i>모먼트
           </a>
-          <a class="nav-item record" href="./home-feed-v2.html?phone=1"><i class="fa-solid fa-book-open"></i>밀로그</a>
-          <a class="nav-item" href="./lounge-v2.html?phone=1"><i class="fa-solid fa-comments"></i>라운지</a>
-          <a class="nav-item" href="./profile-v2.html?phone=1"><i class="fa-regular fa-user"></i>마이</a>
+          <a class="nav-item record" href="./home-feed-v2.html?phone=1"><i data-lucide="book-open"></i>밀로그</a>
+          <a class="nav-item" href="./lounge-v2.html?phone=1"><i data-lucide="message-circle"></i>라운지</a>
+          <a class="nav-item" href="./profile-v2.html?phone=1"><i data-lucide="user"></i>마이</a>
         </nav>
       </div>
     </div>
@@ -689,5 +691,7 @@
       document.body.classList.add("phone-only");
     }
   </script>
+
+  <script>lucide.createIcons();</script>
 </body>
 </html>

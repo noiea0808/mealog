@@ -726,7 +726,7 @@ export async function loadAdminLogTab() {
     const { list, entriesContainer, entriesWrap } = getEls();
     if (!list || !entriesContainer) return;
     list.innerHTML =
-        '<p class="text-xs text-slate-500 px-2 py-4 text-center"><i class="fa-solid fa-spinner fa-spin mr-2"></i>불러오는 중…</p>';
+        '<p class="text-xs text-slate-500 px-2 py-4 text-center"><i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>불러오는 중…</p>';
     if (entriesWrap) entriesWrap.classList.add('hidden');
     try {
         await refreshDateKeysFromServer();

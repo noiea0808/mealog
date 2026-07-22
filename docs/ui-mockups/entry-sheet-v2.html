@@ -8,26 +8,47 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
   <style>
     :root {
-      --green: #059669;
-      --green-deep: #047857;
-      --green-soft: #ecfdf5;
-      --green-mute: #a7f3d0;
-      --ink: #0f172a;
-      --ink-2: #334155;
-      --muted: #94a3b8;
-      --line: #e2e8f0;
-      --page: #f8fafc;
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcf9;
+      --card: #ffffff;
       --star: #fbbf24;
       --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
+
+
+    /* Lucide — stroke 1.25 */
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.25;
+      flex-shrink: 0;
+    }
+    .icon-btn [data-lucide], .more-btn [data-lucide],
+    .icon-btn .lucide, .more-btn .lucide { width: 1.25rem; height: 1.25rem; }
+    .bottom-nav .nav-item [data-lucide],
+    .bottom-nav .nav-item .lucide { width: 1.375rem; height: 1.375rem; }
+    .fab [data-lucide], .send [data-lucide],
+    .fab .lucide, .send .lucide { width: 1.25rem; height: 1.25rem; }
+    .social-btn.liked, .liked, .bookmarked { color: var(--coral); }
+    .star-row .empty, i.empty { color: var(--muted); opacity: 0.4; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
     body {
       font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #0f172a;
+      background: var(--ink);
       color: var(--ink);
       -webkit-font-smoothing: antialiased;
     }
@@ -50,7 +71,7 @@
     .topbar a, .topbar button {
       font-size: 12.5px;
       font-weight: 600;
-      color: #a7f3d0;
+      color: var(--green-mute);
       text-decoration: none;
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.12);
@@ -140,7 +161,7 @@
       color: var(--ink);
     }
     .ctx-chip.slot {
-      background: #ecfdf5;
+      background: var(--green-soft);
       border-color: var(--green-mute);
       color: var(--green-deep);
     }
@@ -198,7 +219,7 @@
       position: relative;
       border-radius: 18px;
       overflow: hidden;
-      background: #e2e8f0;
+      background: var(--line);
       aspect-ratio: 16 / 10;
       margin-bottom: 16px;
     }
@@ -292,7 +313,7 @@
 
     .mood, .memo {
       background: #fff;
-      border: 1px solid rgba(226,232,240,0.9);
+      border: 1px solid var(--line);
       border-radius: 18px;
       padding: 12px 14px;
       margin-bottom: 12px;
@@ -306,7 +327,7 @@
     }
     .mood-head span { color: var(--muted); font-weight: 600; font-size: 11.5px; }
     .stars { display: flex; gap: 6px; margin-bottom: 10px; color: var(--star); font-size: 22px; }
-    .stars .off { color: #e2e8f0; }
+    .stars .off { color: var(--line); }
     .satiety { display: flex; gap: 6px; }
     .satiety span {
       flex: 1;
@@ -397,7 +418,7 @@
     }
     .vital-card {
       background: #fff;
-      border: 1px solid rgba(226,232,240,0.9);
+      border: 1px solid var(--line);
       border-radius: 16px;
       padding: 12px;
     }
@@ -433,7 +454,7 @@
             <button type="button" class="active" data-mode="meal">식사</button>
             <button type="button" data-mode="snack">간식</button>
           </div>
-          <a class="close-btn" href="./home-feed-v2.html?phone=1" aria-label="닫기"><i class="fa-solid fa-xmark"></i></a>
+          <a class="close-btn" href="./home-feed-v2.html?phone=1" aria-label="닫기"><i data-lucide="x"></i></a>
         </header>
 
         <div class="sheet-body">
@@ -441,14 +462,14 @@
             <img id="photoImg" alt="" src="https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=900&q=80&auto=format&fit=crop" />
             <span class="photo-count">1 / 5</span>
             <div class="photo-tools">
-              <span><i class="fa-solid fa-camera"></i> 카메라</span>
-              <span><i class="fa-regular fa-image"></i> 앨범</span>
+              <span><i data-lucide="camera"></i> 카메라</span>
+              <span><i data-lucide="image"></i> 앨범</span>
             </div>
           </div>
 
           <div class="meal-block">
             <div class="title-input" id="menuTitle">아보카도 토스트, 스크램블</div>
-            <div class="place-row"><i class="fa-solid fa-location-dot"></i> <span id="placeText">한남동 브런치</span></div>
+            <div class="place-row"><i data-lucide="map-pin"></i> <span id="placeText">한남동 브런치</span></div>
 
             <div class="tag-label" id="tagLabel">어떻게</div>
             <div class="pills" id="pills">
@@ -486,9 +507,9 @@
         </div>
 
         <div class="sheet-actions">
-          <div class="act-ghost"><i class="fa-regular fa-trash-can"></i></div>
+          <div class="act-ghost"><i data-lucide="trash-2"></i></div>
           <div class="act-primary">기록 완료</div>
-          <div class="act-share"><i class="fa-solid fa-share-nodes"></i></div>
+          <div class="act-share"><i data-lucide="share"></i></div>
         </div>
       </div>
     </div>
@@ -537,5 +558,7 @@
       btn.addEventListener("click", () => setMode(btn.dataset.mode));
     });
   </script>
+
+  <script>lucide.createIcons();</script>
 </body>
 </html>

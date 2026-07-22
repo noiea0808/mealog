@@ -81,7 +81,7 @@ function setBestShareSubmitLoading(isLoading) {
     if (isLoading) {
         sub.classList.add('hidden');
         label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-        label.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+        label.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin"></i><span>공유 중...</span>';
     }
 }
 
@@ -509,17 +509,17 @@ export function renderBestMeals() {
         if (photoUrl) {
             thumbHtml = `<img class="dashboard-best-thumb" alt="" src="${escapeHtml(photoUrl)}" />`;
         } else {
-            thumbHtml = `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i class="fa-solid fa-utensils"></i></div>`;
+            thumbHtml = `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i data-lucide="utensils"></i></div>`;
         }
 
         const showOrderControls = displayMeals.length > 1;
         const orderControlsHtml = showOrderControls ? `
                     <div class="dashboard-best-order flex flex-col gap-0.5 ml-1">
                         <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-up text-[10px]"></i>
+                            <i data-lucide="chevron-up" class="text-[10px]"></i>
                         </button>
                         <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-down text-[10px]"></i>
+                            <i data-lucide="chevron-down" class="text-[10px]"></i>
                         </button>
                     </div>` : '';
 
@@ -807,10 +807,10 @@ export async function openShareBestModal() {
                 
                 const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
                 const slotColor = specificStyle.iconText === 'text-amber-600' ? '#d97706' : 
-                                 specificStyle.iconText === 'text-emerald-600' ? '#059669' : 
+                                 specificStyle.iconText === 'text-emerald-600' ? '#3cb889' : 
                                  specificStyle.iconText === 'text-sky-600' ? '#0284c7' : '#64748b';
                 
-                let rankBg = '#10b981';
+                let rankBg = '#3cb889';
                 let rankText = '#ffffff';
                 if (index === 0) {
                     rankBg = '#eab308';
@@ -828,7 +828,7 @@ export async function openShareBestModal() {
                 return `
                     <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
                         <div style="width: 130px; min-height: 130px; ${photoBoxBg} ${photoBoxBorder} display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 12px 0 0 12px; overflow: hidden;">
-                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<i class="fa-solid fa-utensils" style="font-size: 24px; color: #94a3b8;"></i>`}
+                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<i data-lucide="utensils" style="font-size: 24px; color: #94a3b8;"></i>`}
                             <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
                                 <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
                             </div>

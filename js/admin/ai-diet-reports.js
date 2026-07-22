@@ -247,7 +247,7 @@ function renderListInitial() {
     if (!el) return;
     el.innerHTML = `
         <div class="text-center py-5 text-slate-400">
-            <i class="fa-solid fa-rotate-right text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
+            <i data-lucide="rotate-cw" class="text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
             <p class="text-xs"><strong class="text-slate-600">새로고침</strong>으로 목록을 불러옵니다.</p>
         </div>`;
 }
@@ -257,7 +257,7 @@ function renderDetailEmpty() {
     if (!el) return;
     el.innerHTML = `
         <div class="h-full min-h-[12rem] flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-lg bg-slate-50/50 p-3">
-            <i class="fa-solid fa-clipboard-check text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+            <i data-lucide="clipboard-check" class="text-2xl mb-2 opacity-40" aria-hidden="true"></i>
             <p class="text-xs font-bold text-slate-500">목록에서 리포트를 선택하세요</p>
             <p class="text-[11px] mt-0.5 text-center">날짜별 AI 응답·분석 입력·상세가 표시됩니다.</p>
         </div>`;
@@ -324,7 +324,7 @@ function paintListTable(rows) {
     if (!rows.length) {
         container.innerHTML = `
             <div class="text-center py-6 text-slate-400 border border-dashed border-slate-200 rounded-lg">
-                <i class="fa-solid fa-inbox text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
+                <i data-lucide="inbox" class="text-xl mb-1.5 opacity-40" aria-hidden="true"></i>
                 <p class="text-xs font-bold">리포트가 없습니다</p>
                 <p class="text-[11px] mt-0.5">분석 요청마다 생성 시각 기준으로 쌓입니다. 같은 날짜 재분석도 이력으로 남습니다.</p>
             </div>`;
@@ -400,10 +400,10 @@ export async function renderAiDietReports({ append = false } = {}) {
     if (!listEl) return;
 
     if (!append) {
-        listEl.innerHTML = '<div class="text-center py-5 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-lg mb-1.5"></i><p class="text-xs">불러오는 중…</p></div>';
+        listEl.innerHTML = '<div class="text-center py-5 text-slate-400"><i data-lucide="loader-circle" class="text-lg mb-1.5 lucide-spin"></i><p class="text-xs">불러오는 중…</p></div>';
         const statsEl = document.getElementById('aiDietReportsUsageStats');
         if (statsEl) {
-            statsEl.innerHTML = '<p class="text-[11px] text-slate-400 leading-snug"><i class="fa-solid fa-spinner fa-spin mr-1"></i>최근 7일 사용량 집계 중…</p>';
+            statsEl.innerHTML = '<p class="text-[11px] text-slate-400 leading-snug"><i data-lucide="loader-circle" class="mr-1 lucide-spin"></i>최근 7일 사용량 집계 중…</p>';
             statsEl.classList.remove('hidden');
         }
     }

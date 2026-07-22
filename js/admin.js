@@ -219,7 +219,7 @@ window.confirmDeletePhoto = async function() {
     
     const btn = document.getElementById('confirmDeleteBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>삭제 중...';
+    btn.innerHTML = '<i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>삭제 중...';
     
     try {
         await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', currentDeletePhotoId));
@@ -230,7 +230,7 @@ window.confirmDeletePhoto = async function() {
         // 성공 메시지
         const successDiv = document.createElement('div');
         successDiv.className = 'fixed top-4 right-4 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg z-[600] flex items-center gap-2';
-        successDiv.innerHTML = '<i class="fa-solid fa-check"></i> <span>게시물이 삭제되었습니다.</span>';
+        successDiv.innerHTML = '<i data-lucide="check"></i> <span>게시물이 삭제되었습니다.</span>';
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 3000);
         
@@ -717,7 +717,7 @@ function createAdminLoadingSpinnerMessageRow(text = '') {
         'admin-loading-spinner-msg-remove shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:border-red-200 hover:text-red-600';
     rm.title = '삭제';
     rm.setAttribute('aria-label', '문구 삭제');
-    rm.innerHTML = '<i class="fa-solid fa-trash text-sm"></i>';
+    rm.innerHTML = '<i data-lucide="trash-2" class="text-sm"></i>';
     rm.addEventListener('click', () => {
         wrap.remove();
         const list = document.getElementById('adminLoadingSpinnerMessageList');
@@ -804,7 +804,7 @@ async function loadApkContent() {
                 <p class="text-sm text-slate-600">용량: ${sizeMb} MB</p>
                 <p class="text-sm text-slate-500">등록일: ${updatedAt ? updatedAt.toLocaleString('ko-KR') : '-'}</p>
                 <a href="${d.downloadUrl}" target="_blank" class="inline-flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-200 transition-colors">
-                    <i class="fa-solid fa-download"></i> 다운로드 링크
+                    <i data-lucide="download"></i> 다운로드 링크
                 </a>
             `;
         } else {
@@ -1018,7 +1018,7 @@ function renderTermsContent(type, content, updatedAt) {
     // 편집 버튼 상태 초기화
     const editBtn = document.getElementById(`${type}EditBtn`);
     if (editBtn) {
-        editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+        editBtn.innerHTML = '<i data-lucide="pen" class="mr-1"></i>수정';
         editBtn.onclick = () => window.editTerms(type);
         editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
     }
@@ -1039,7 +1039,7 @@ window.editTerms = function(type) {
     textarea.focus();
     
     // 버튼 텍스트 변경
-    editBtn.innerHTML = '<i class="fa-solid fa-times mr-1"></i>취소';
+    editBtn.innerHTML = '<i data-lucide="x" class="mr-1"></i>취소';
     editBtn.onclick = () => window.cancelEditTerms(type);
     editBtn.className = 'px-3 py-1.5 bg-slate-600 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors';
 };
@@ -1061,7 +1061,7 @@ window.cancelEditTerms = function(type) {
     textarea.value = display.textContent;
     
     // 버튼 텍스트 변경
-    editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+    editBtn.innerHTML = '<i data-lucide="pen" class="mr-1"></i>수정';
     editBtn.onclick = () => window.editTerms(type);
     editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
 };
@@ -1101,7 +1101,7 @@ async function loadTermsHistory() {
     if (!historyList) return;
     
     try {
-        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
+        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
         
         // 배포된 약관 버전 목록 가져오기 (terms 문서의 하위 컬렉션으로 저장)
         const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
@@ -1155,7 +1155,7 @@ async function loadTermsHistory() {
                                 확인
                             </button>
                             ${!isCurrent ? `<button onclick="window.deleteTermsVersion('${v.id}')" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
-                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                                <i data-lucide="trash-2" class="mr-1"></i>삭제
                             </button>` : ''}
                         </div>
                     </div>
@@ -1206,7 +1206,7 @@ window.showTermsVersion = async function(versionId) {
             <!-- 이용약관 -->
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                 <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                    <i data-lucide="file-text" class="text-emerald-600"></i>
                     이용약관
                 </h5>
                 <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
@@ -1221,7 +1221,7 @@ window.showTermsVersion = async function(versionId) {
             <!-- 개인정보 처리방침 -->
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                 <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                    <i data-lucide="shield" class="text-blue-600"></i>
                     개인정보 처리방침
                 </h5>
                 <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">

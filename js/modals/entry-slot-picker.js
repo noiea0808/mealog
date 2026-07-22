@@ -92,7 +92,7 @@ function buildSlotRowHtml(slot, count, preferred) {
             <span class="entry-slot-picker__label">${escapeHtml(slot.label)}</span>
             ${countBadge}
         </span>
-        <i class="fa-solid fa-chevron-right entry-slot-picker__chevron" aria-hidden="true"></i>
+        <i data-lucide="chevron-right" class="entry-slot-picker__chevron" aria-hidden="true"></i>
     </button>`;
 }
 

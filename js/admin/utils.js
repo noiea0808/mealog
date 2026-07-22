@@ -210,7 +210,7 @@ export async function runAdminRefreshAction(button, work, options = {}) {
     el.dataset.arPrevStyle = el.getAttribute('style') || '';
     el.disabled = true;
     el.setAttribute('aria-busy', 'true');
-    el.innerHTML = `<i class="fa-solid fa-spinner fa-spin ${spinClass}" aria-hidden="true"></i><span>${loadingText}</span>`;
+    el.innerHTML = `<i data-lucide="loader-circle" class="${spinClass} lucide-spin" aria-hidden="true"></i><span>${loadingText}</span>`;
     el.style.backgroundColor = '#475569';
     el.style.color = '#fff';
     el.style.borderColor = 'transparent';

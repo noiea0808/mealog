@@ -201,7 +201,7 @@ function openFeedImageLightbox(imageUrl) {
         _feedImageLightboxOverlay.id = 'feedImageLightbox';
         /* 본문과 동일 max-w-md 폭 안에서만 표시(데스크톡 웹에서 뷰포트 전체로 퍼지지 않게) */
         _feedImageLightboxOverlay.className =
-            'hidden fixed inset-0 z-[10001] flex justify-center bg-slate-950/90 backdrop-blur-sm';
+            'hidden fixed inset-0 z-[10001] flex justify-center';
         _feedImageLightboxOverlay.setAttribute('role', 'dialog');
         _feedImageLightboxOverlay.setAttribute('aria-modal', 'true');
         _feedImageLightboxOverlay.setAttribute('aria-labelledby', 'feedImageLightboxTitle');
@@ -212,11 +212,11 @@ function openFeedImageLightbox(imageUrl) {
                 <span class="text-xs font-medium text-white/80">사진</span>
                 <div class="flex items-center gap-2">
                     <button type="button" data-feed-lb-download class="inline-flex h-10 min-w-[2.5rem] items-center justify-center gap-1.5 rounded-full bg-white/15 px-3 text-sm font-medium text-white hover:bg-white/25 active:bg-white/20" aria-label="다운로드">
-                        <i class="fa-solid fa-download" aria-hidden="true"></i>
+                        <i data-lucide="download" aria-hidden="true"></i>
                         <span class="hidden sm:inline">다운로드</span>
                     </button>
                     <button type="button" data-feed-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25 active:bg-white/20" aria-label="닫기">
-                        <i class="fa-solid fa-times text-lg leading-none" aria-hidden="true"></i>
+                        <i data-lucide="x" class="text-lg leading-none" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
@@ -311,17 +311,17 @@ function feedReactionRowHtml(post, alignEnd) {
         'inline-flex items-center gap-0.5 rounded-full border border-white/50 bg-white/80 px-1.5 py-[3.25px] shadow-sm';
     if (like > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-heart text-[13px] leading-none text-rose-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${like}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="heart" class="text-[13px] leading-none text-rose-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${like}</span></span>`
         );
     }
     if (thumbs > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-thumbs-up text-[13px] leading-none text-amber-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${thumbs}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="thumbs-up" class="text-[13px] leading-none text-amber-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${thumbs}</span></span>`
         );
     }
     if (check > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-check text-[13px] leading-none text-emerald-600" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${check}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="check" class="text-[13px] leading-none text-emerald-600" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${check}</span></span>`
         );
     }
     if (!chips.length) return '';
@@ -385,7 +385,7 @@ function feedBubbleHtml(post, opts = {}) {
 
     const imgOnlyPendingSpinner =
         isMine && isPendingSend && hasImg && !hasBody
-            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
+            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i data-lucide="loader-circle" class="text-[11px] leading-none lucide-spin" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
     const imgWrapClass = hasImg
         ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
@@ -410,7 +410,7 @@ function feedBubbleHtml(post, opts = {}) {
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
         const reactRow = feedReactionRowHtml(post, true);
-        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
+        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i data-lucide="loader-circle" class="text-[11px] leading-none lucide-spin" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
         const bodyMine = hasBody
             ? isPendingSend
                 ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
@@ -473,7 +473,7 @@ function feedRefreshButtonHtml() {
     return `
     <div class="feed-timeline-footer mt-5 flex w-full shrink-0 justify-center px-2 pb-1 pt-0.5">
       <button type="button" class="feed-refresh-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur-sm outline-none transition-colors hover:bg-white/25 active:bg-white/20 disabled:pointer-events-none disabled:opacity-50" data-feed-refresh aria-label="대화 새로고침">
-        <i class="fa-solid fa-arrows-rotate text-base" aria-hidden="true"></i>
+        <i data-lucide="refresh-cw" class="text-base" aria-hidden="true"></i>
         <span>새로고침</span>
       </button>
     </div>`;
@@ -533,7 +533,7 @@ function paintFeedTimeline(root, posts) {
         root.innerHTML = `
             <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
                 <div class="feed-timeline-empty flex flex-1 flex-col items-center justify-center py-10 px-4 text-center">
-                    <i class="fa-regular fa-comments feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
+                    <i data-lucide="message-circle" class="feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
                     <p class="feed-timeline-empty-title text-xs">아직 메시지가 없어요</p>
                     <p class="feed-timeline-empty-sub text-[11px] mt-1">아래에서 첫 메시지를 보내 보세요</p>
                 </div>
@@ -743,7 +743,7 @@ export async function renderBoardFeedTab(options = {}) {
         appState.feedTimelineHasMore = false;
         root.innerHTML = `
         <div class="feed-panel-loading flex flex-col items-center justify-center py-10">
-            <i class="fa-solid fa-spinner fa-spin feed-panel-loading-icon text-2xl mb-2" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="feed-panel-loading-icon text-2xl mb-2 lucide-spin" aria-hidden="true"></i>
             <span class="feed-panel-loading-text text-xs">불러오는 중…</span>
         </div>`;
     }

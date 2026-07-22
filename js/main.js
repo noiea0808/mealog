@@ -4,6 +4,7 @@ console.log('📦 main.js 모듈 로드 시작');
 // 모듈 로드 시작 플래그 설정 (index.html의 체크가 감지할 수 있도록)
 window.moduleLoading = true;
 
+import { initLucideIcons } from './icons.js';
 import { appState, getState } from './state.js';
 import {
     auth,
@@ -59,7 +60,7 @@ import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
@@ -98,6 +99,7 @@ import { registerMainBoardHandlers } from './main/board-handlers.js';
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
+initLucideIcons();
 registerContentPopup();
 registerEventListenerManager();
 registerMomentSyncDevTools();
@@ -435,6 +437,8 @@ window.closeDetailModal = closeDetailModal;
 window.Mealog.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
 window.Mealog.setAnalysisType = setAnalysisType;
+window.setMealdangView = setMealdangView;
+window.Mealog.setMealdangView = setMealdangView;
 initDashboardAnalysisUi();
 window.openShareBestModal = openShareBestModal;
 window.Mealog.openShareBestModal = openShareBestModal;

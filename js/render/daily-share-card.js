@@ -23,7 +23,7 @@ const SHARE_CAPTURE_MEAL_VIEW = 'mixed';
 function shareSlotAccentColor(specificStyle) {
     const t = specificStyle.iconText || '';
     if (t.includes('amber')) return '#d97706';
-    if (t.includes('emerald')) return '#059669';
+    if (t.includes('emerald')) return '#3cb889';
     if (t.includes('sky')) return '#0284c7';
     return '#64748b';
 }
@@ -207,7 +207,7 @@ function shareMealLikeCardHtml(dateStr, slot, r, specificStyle, photoAreaEmptyBg
             if (r.mealType === 'Skip') {
                 titleLine2 = 'Skip';
                 iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
-                iconHtml = '<i class="fa-solid fa-ban" style="font-size: 24px; color: #94a3b8;"></i>';
+                iconHtml = '<i data-lucide="ban" style="font-size: 24px; color: #94a3b8;"></i>';
             } else {
                 const m = formatMealMenuDisplayLine(r);
                 titleLine2 = escapeHtml((m || '').trim() || (r.category && String(r.category).trim()) || '');
@@ -218,7 +218,7 @@ function shareMealLikeCardHtml(dateStr, slot, r, specificStyle, photoAreaEmptyBg
                     iconHtml = `<div style="width: 100%; height: 100%; min-height: 130px; background-image: url('${photoUrl}'); background-size: cover; background-position: center;" data-photo-url="${escapeHtml(urls[0])}"></div>`;
                 } else {
                     iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
-                    iconHtml = `<i class="fa-solid fa-utensils" style="font-size: 24px; color: #94a3b8;"></i>`;
+                    iconHtml = `<i data-lucide="utensils" style="font-size: 24px; color: #94a3b8;"></i>`;
                 }
             }
         } else {
@@ -243,10 +243,10 @@ function shareMealLikeCardHtml(dateStr, slot, r, specificStyle, photoAreaEmptyBg
             iconHtml = `<div style="width: 100%; height: 100%; min-height: 130px; background-image: url('${photoUrl}'); background-size: cover; background-position: center;" data-photo-url="${escapeHtml(urls[0])}"></div>`;
         } else if (r.mealType === 'Skip') {
             iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
-            iconHtml = '<i class="fa-solid fa-ban" style="font-size: 24px; color: #94a3b8;"></i>';
+            iconHtml = '<i data-lucide="ban" style="font-size: 24px; color: #94a3b8;"></i>';
         } else {
             iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
-            iconHtml = `<i class="fa-solid fa-mug-saucer" style="font-size: 24px; color: #94a3b8;"></i>`;
+            iconHtml = `<i data-lucide="coffee" style="font-size: 24px; color: #94a3b8;"></i>`;
         }
     }
 

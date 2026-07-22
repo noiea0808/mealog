@@ -8,26 +8,46 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
   <style>
     :root {
-      --green: #059669;
-      --green-soft: #ecfdf5;
-      --green-deep: #047857;
-      --ink: #0f172a;
-      --ink-2: #334155;
-      --muted: #94a3b8;
-      --line: #e2e8f0;
-      --page: #f8fafc;
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcf9;
+      --card: #ffffff;
     }
+
+
+    /* Lucide — stroke 1.25 */
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.25;
+      flex-shrink: 0;
+    }
+    .icon-btn [data-lucide], .more-btn [data-lucide],
+    .icon-btn .lucide, .more-btn .lucide { width: 1.25rem; height: 1.25rem; }
+    .bottom-nav .nav-item [data-lucide],
+    .bottom-nav .nav-item .lucide { width: 1.375rem; height: 1.375rem; }
+    .fab [data-lucide], .send [data-lucide],
+    .fab .lucide, .send .lucide { width: 1.25rem; height: 1.25rem; }
+    .social-btn.liked, .liked, .bookmarked { color: var(--coral); }
+    .star-row .empty, i.empty { color: var(--muted); opacity: 0.4; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(900px 480px at 10% -10%, #d1fae5 0%, transparent 55%),
-        radial-gradient(700px 400px at 100% 0%, #e0f2fe 0%, transparent 50%),
         var(--page);
       min-height: 100dvh;
     }
@@ -104,13 +124,13 @@
       align-items: center;
       padding: 12px 14px;
       background: #fff;
-      border: 1px solid rgba(226, 232, 240, 0.9);
+      border: 1px solid var(--line);
       border-radius: 14px;
       text-decoration: none;
       color: inherit;
       box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
-    .screens a:hover { border-color: var(--green-mute, #a7f3d0); }
+    .screens a:hover { border-color: var(--green-mute, var(--green-mute)); }
     .screens .ico {
       width: 40px;
       height: 40px;
@@ -151,7 +171,7 @@
       height: min(844px, calc(100dvh - 48px));
       border: 0;
       border-radius: 36px;
-      background: #0f172a;
+      background: var(--ink);
       box-shadow:
         0 0 0 10px #111827,
         0 0 0 12px #1e293b,
@@ -179,57 +199,74 @@
         하단 네비로 화면을 넘나드는 연결된 프로토타입입니다.
         순서는 앱과 같습니다:
         <strong>밀당 · 모먼트 · 밀로그 · 라운지 · 마이</strong>
+        · 적용톤 <strong>Light Mint Air + Lucide</strong>
       </p>
 
       <div class="cta-row">
         <a class="cta cta--primary" href="./mealdang-v2.html?phone=1">
-          <i class="fa-solid fa-play" aria-hidden="true"></i> 폰 프로토타입 시작
+          <i data-lucide="play" aria-hidden="true"></i> 폰 프로토타입 시작
+        </a>
+        <a class="cta cta--ghost" href="./visual-samples.html">
+          컬러·아이콘 실물 샘플
+        </a>
+        <a class="cta cta--ghost" href="./palette-compare.html">
+          색상톤 A / B / C
         </a>
         <a class="cta cta--ghost" href="./entry-sheet-v2.html">
           입력 시트
+        </a>
+        <a class="cta cta--ghost" href="./popup-shells-v2.html">
+          팝업 셸 6종
         </a>
       </div>
 
       <ul class="screens">
         <li>
           <a href="./mealdang-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-solid fa-chart-pie"></i></span>
-            <span><strong>밀당</strong><span>참견 · 분석 · KPI</span></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="pie-chart"></i></span>
+            <span><strong>밀당</strong><span>분석 · 참견</span></span>
             <span class="go">열기</span>
           </a>
         </li>
         <li>
           <a href="./moment-feed-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-solid fa-images"></i></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="image"></i></span>
             <span><strong>모먼트</strong><span>공유 피드</span></span>
             <span class="go">열기</span>
           </a>
         </li>
         <li>
           <a href="./home-feed-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-solid fa-book-open"></i></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="book-open"></i></span>
             <span><strong>밀로그</strong><span>홈 피드 · 기록</span></span>
             <span class="go">열기</span>
           </a>
         </li>
         <li>
           <a href="./lounge-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-solid fa-comments"></i></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="message-circle"></i></span>
             <span><strong>라운지</strong><span>밀톡 · 게시판</span></span>
             <span class="go">열기</span>
           </a>
         </li>
         <li>
           <a href="./profile-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-regular fa-user"></i></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="user"></i></span>
             <span><strong>마이</strong><span>프로필 · 설정</span></span>
             <span class="go">열기</span>
           </a>
         </li>
         <li>
           <a href="./entry-sheet-v2.html">
-            <span class="ico" aria-hidden="true"><i class="fa-solid fa-pen"></i></span>
+            <span class="ico" aria-hidden="true"><i data-lucide="pen"></i></span>
             <span><strong>기록 입력</strong><span>바텀시트 (밀로그 FAB)</span></span>
+            <span class="go">열기</span>
+          </a>
+        </li>
+        <li>
+          <a href="./popup-shells-v2.html">
+            <span class="ico" aria-hidden="true"><i data-lucide="layers"></i></span>
+            <span><strong>팝업 셸</strong><span>Dialog · Sheet · Action 등 6종</span></span>
             <span class="go">열기</span>
           </a>
         </li>
@@ -250,5 +287,7 @@
       <div class="preview-cap">미리보기 · 안에서 하단 탭으로 이동</div>
     </div>
   </div>
+
+  <script>lucide.createIcons();</script>
 </body>
 </html>

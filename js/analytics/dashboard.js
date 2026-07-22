@@ -8,6 +8,10 @@ import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay
 import { renderBestMeals } from './best-share.js';
 import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-charts.js';
 import { toLocalDateString } from '../utils.js';
+import {
+    computeMainMealKpiFromRecords,
+    computeMainMealKpiDenominator,
+} from './meal-kpi-count.js';
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -300,7 +304,7 @@ export async function updateDashboard() {
     }
 
     
-    const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount, startStr, endStr } = getDashboardData();
+    const { filteredData, dateRangeText, days, statsMainCount, statsSnackCount, startStr, endStr, mealRecordsForTable } = getDashboardData();
 
     // 식사/간식 데이터 분리
     const mainMealsOnly = filteredData.filter(m => {
@@ -377,22 +381,23 @@ export async function updateDashboard() {
         }
     }
     
-    // 식사 기록 통계 계산 (간식 제외, 식사만 계산)
-    // mealHistory 기반 filteredData(날짜 있음)는 직접 카운트. stats 기반(날짜 없음)은 mainCount/snackCount 사용
-    const totalRec = Math.max(0, targetDays * 3);
-    const hasMealHistoryData = filteredData.some(m => m.date);
-    // 동일 날짜+슬롯에 여러 meal 문서가 있을 수 있으므로, (date, slotId) 기준 유니크 카운트 (총 끼니수 초과 방지)
-    const recCount = (hasMealHistoryData ? null : statsMainCount) ?? (() => {
-        const seen = new Set();
-        return filteredData.filter(m => {
-            const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
-            if (!slot || m.mealType === 'Skip') return false;
-            const key = `${m.date}|${m.slotId}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-        }).length;
-    })();
+    // 식사 기록: 분자 = Skip 제외 본식 전체 건수, 분모 = 일수×3 + 추가본식(동일 슬롯 2건째부터)
+    const hasMealHistoryData = filteredData.some((m) => m.date);
+    const kpiRecords =
+        Array.isArray(mealRecordsForTable) && mealRecordsForTable.length > 0
+            ? mealRecordsForTable
+            : (filteredData.some((m) => m.date) ? filteredData : []);
+    let recCount = 0;
+    let extraMain = 0;
+    if (kpiRecords.length > 0) {
+        const kpi = computeMainMealKpiFromRecords(kpiRecords);
+        recCount = kpi.recCount;
+        extraMain = kpi.extraMain;
+    } else if (statsMainCount != null) {
+        recCount = statsMainCount;
+        extraMain = 0;
+    }
+    const totalRec = computeMainMealKpiDenominator(targetDays, extraMain);
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
     const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {
@@ -439,6 +444,7 @@ export async function updateDashboard() {
     
     // 초기 캐릭터 아이콘 설정
     const characterIconEl = document.getElementById('insightCharacterIcon');
+    const characterBtnEl = document.getElementById('insightCharacterBtn');
     if (characterIconEl) {
         const currentCharacter = getCurrentCharacter();
         (async () => {
@@ -446,16 +452,18 @@ export async function updateDashboard() {
             const character = characters.find(c => c.id === currentCharacter);
             if (character) {
                 if (character.image) {
-                    // 이미지가 있으면 이미지 표시
                     characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
                     characterIconEl.className = 'dashboard-comment-char__icon';
                 } else if (character.id === 'mealog') {
                     characterIconEl.innerHTML = `<div class="insight-character-icon-box"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
                     characterIconEl.className = 'dashboard-comment-char__icon mealog-character-m';
                 } else {
-                    // 기본 이모지 아이콘
                     characterIconEl.textContent = character.icon;
                     characterIconEl.className = 'dashboard-comment-char__icon';
+                }
+                if (characterBtnEl) {
+                    characterBtnEl.classList.toggle('dashboard-comment-char--mealog', character.id === 'mealog');
+                    characterBtnEl.classList.toggle('dashboard-comment-char--picked', character.id !== 'mealog');
                 }
             }
         })();
@@ -596,6 +604,48 @@ export function setAnalysisType(type) {
     updateDashboard();
 }
 
+/** 밀당 헤더 탭: 분석 | 참견 */
+export function setMealdangView(view) {
+    const next = view === 'comment' ? 'comment' : 'analysis';
+    appState.mealdangView = next;
+
+    const analysisView = document.getElementById('mealdangViewAnalysis');
+    const commentView = document.getElementById('mealdangViewComment');
+    const analysisTab = document.getElementById('btn-mealdang-analysis');
+    const commentTab = document.getElementById('btn-mealdang-comment');
+    const dash = document.getElementById('dashboardView');
+
+    if (analysisView) {
+        const on = next === 'analysis';
+        analysisView.classList.toggle('hidden', !on);
+        analysisView.toggleAttribute('hidden', !on);
+    }
+    if (commentView) {
+        const on = next === 'comment';
+        commentView.classList.toggle('hidden', !on);
+        commentView.toggleAttribute('hidden', !on);
+    }
+    if (analysisTab) {
+        const on = next === 'analysis';
+        analysisTab.classList.toggle('active', on);
+        analysisTab.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    if (commentTab) {
+        const on = next === 'comment';
+        commentTab.classList.toggle('active', on);
+        commentTab.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    if (dash) {
+        dash.dataset.mealdangView = next;
+        dash.classList.toggle('dashboard-view--comment', next === 'comment');
+        dash.classList.toggle('dashboard-view--analysis', next === 'analysis');
+    }
+
+    if (next === 'comment' && typeof window.scheduleDashboardInsightGradientSync === 'function') {
+        window.scheduleDashboardInsightGradientSync();
+    }
+}
+
 export function syncCustomDatePlaceholder() {
     const startInput = document.getElementById('customStart');
     const endInput = document.getElementById('customEnd');
@@ -719,42 +769,8 @@ export function navigatePeriod(direction) {
     }
 }
 
-function bindDashboardToggle(btnId, panelId, openLabel, closeLabel) {
-    const btn = document.getElementById(btnId);
-    const panel = document.getElementById(panelId);
-    if (!btn || !panel || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', () => {
-        const open = panel.hasAttribute('hidden');
-        if (open) {
-            panel.removeAttribute('hidden');
-            btn.classList.add('is-open');
-            btn.setAttribute('aria-expanded', 'true');
-            if (closeLabel) btn.textContent = closeLabel;
-        } else {
-            panel.setAttribute('hidden', '');
-            btn.classList.remove('is-open');
-            btn.setAttribute('aria-expanded', 'false');
-            if (openLabel) btn.textContent = openLabel;
-        }
-    });
-}
-
-/** 식사/간식 「더 보기」·건강 상세 차트 토글 */
+/** 건강 상세 차트 토글 (식사/간식은 기본 전체 노출) */
 export function initDashboardAnalysisUi() {
-    bindDashboardToggle(
-        'moreMainChartsBtn',
-        'extraMainCharts',
-        '함께 · 만족도 · 포만감 더 보기',
-        '함께 · 만족도 · 포만감 접기'
-    );
-    bindDashboardToggle(
-        'moreSnackChartsBtn',
-        'extraSnackCharts',
-        '어디서 · 누구와 · 만족도 · 포만감 더 보기',
-        '어디서 · 누구와 · 만족도 · 포만감 접기'
-    );
-
     document.querySelectorAll('.dashboard-vital-detail-btn').forEach((btn) => {
         if (btn.dataset.bound === '1') return;
         btn.dataset.bound = '1';

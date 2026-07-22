@@ -1157,7 +1157,7 @@ export function addCalendarDaysSeoulYmd(ymd, deltaDays) {
  * 폴백 글꼴을 섞지 않음(Noto 등) — 한 줄 안에서 티 나는 이질감 방지.
  */
 async function drawShareLogoTagline(ctx, cx, centerY, maxW, splitLines) {
-    ctx.fillStyle = '#059669';
+    ctx.fillStyle = '#3cb889';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     if ('fontKerning' in ctx) ctx.fontKerning = 'normal';
@@ -1277,7 +1277,7 @@ async function createMealogLogoImage() {
             ctx.clip();
             ctx.drawImage(imgEl, iconX, iconY, iconSize, iconSize);
             ctx.restore();
-            ctx.fillStyle = '#059669';
+            ctx.fillStyle = '#3cb889';
             ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
             ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
             await drawShareLogoTagline(ctx, cw / 2, iconY + iconSize + 200, maxTextW, TAGLINE_SPLIT);
@@ -1286,7 +1286,7 @@ async function createMealogLogoImage() {
         }
     }
     if (!imgEl) {
-        ctx.fillStyle = '#059669';
+        ctx.fillStyle = '#3cb889';
         ctx.font = 'bold 72px "Fredoka", sans-serif';
         ctx.fillText('mealog', cw / 2, ch / 2 - 60);
         await drawShareLogoTagline(ctx, cw / 2, ch / 2 + 72, maxTextW, TAGLINE_SPLIT);
@@ -1317,7 +1317,7 @@ async function addCaptionToImage(imageBlob, caption) {
                 canvas.height = ch + barH;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
-                ctx.fillStyle = '#047857';
+                ctx.fillStyle = '#2d9f74';
                 ctx.fillRect(0, ch, cw, barH);
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'left';

@@ -3138,8 +3138,7 @@ exports.adminBackfillUserRootCreatedAtFromAuthRunAll = onCall(
 );
 
 /**
- * main 끼니(아침/점심/저녁) 중복 문서 정리 - 동일 (date, slotId)당 1개만 유지
- * 삭제 시 onMealWritten 트리거로 stats 자동 보정
+ * @deprecated 본식 슬롯 다건 허용 — 중복 삭제하지 않음 (하위 호환용 no-op)
  */
 exports.removeDuplicateMeals = onCall(
   { region: REGION },
@@ -3148,44 +3147,7 @@ exports.removeDuplicateMeals = onCall(
     if (!auth || !auth.uid) {
       throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
     }
-    const userId = auth.uid;
-    const mealsRef = db.collection('artifacts').doc(APP_ID)
-      .collection('users').doc(userId)
-      .collection('meals');
-
-    const snapshot = await mealsRef.get();
-    const byKey = {};
-    snapshot.docs.forEach((doc) => {
-      const d = doc.data();
-      if (!d?.date || !d?.slotId || !isMainSlot(d.slotId)) return;
-      const key = `${d.date}|${d.slotId}`;
-      if (!byKey[key]) byKey[key] = [];
-      byKey[key].push({ ref: doc.ref, id: doc.id });
-    });
-
-    const toDelete = [];
-    Object.values(byKey).forEach((arr) => {
-      if (arr.length <= 1) return;
-      arr.sort((a, b) => a.id.localeCompare(b.id));
-      for (let i = 1; i < arr.length; i++) toDelete.push(arr[i].ref);
-    });
-
-    const BATCH_SIZE = 500;
-    let deletedCount = 0;
-    for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
-      const chunk = toDelete.slice(i, i + BATCH_SIZE);
-      const batch = db.batch();
-      chunk.forEach((ref) => batch.delete(ref));
-      if (chunk.length > 0) {
-        await batch.commit();
-        deletedCount += chunk.length;
-      }
-    }
-
-    if (deletedCount > 0) {
-      logger.info('removeDuplicateMeals: completed', { userId, deletedCount });
-    }
-    return { success: true, deletedCount };
+    return { success: true, deletedCount: 0 };
   })
 );
 

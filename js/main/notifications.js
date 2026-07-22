@@ -292,7 +292,7 @@ function appendNotificationRow(listEl, item, { dimmed }) {
         type === 'moment' && thumbnailUrl
             ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
             : type === 'feed'
-              ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i></div>`
+              ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600"><i data-lucide="message-circle-more" aria-hidden="true"></i></div>`
               : '';
     const titleCls = dimmed ? 'text-slate-500 text-sm font-medium block truncate' : 'text-slate-700 text-sm font-medium block truncate';
     const subCls = dimmed ? 'text-slate-400 text-xs' : 'text-slate-500 text-xs';

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="description" content="우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인">
-    <meta name="theme-color" content="#056c5b">
+    <meta name="theme-color" content="#3cb889">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -38,7 +38,32 @@
     <link rel="manifest" href="./manifest.json">
     
     <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
+    <script>
+      /* 시안 mid-mint 브랜드 → emerald 스케일 매핑 (앱 전역 emerald-* 일괄 반영) */
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              emerald: {
+                50: '#eaf8f2',
+                100: '#eaf8f2',
+                200: '#b4e2cd',
+                300: '#8fd4b5',
+                400: '#5fc49a',
+                500: '#3cb889',
+                600: '#3cb889',
+                700: '#2d9f74',
+                800: '#247a59',
+                900: '#1c5f45',
+                950: '#164a36'
+              }
+            }
+          }
+        }
+      };
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
@@ -281,11 +306,11 @@
         /* 로그인 레이아웃: flexMain 구간·gap까지 paint 일치 */
         #landingPage.landing-show-login,
         #landingPage.landing-buttons-visible {
-            background: #059669;
+            background: #3cb889;
         }
         #landingPage.landing-show-login #landingFlexMain,
         #landingPage.landing-buttons-visible #landingFlexMain {
-            background: #059669;
+            background: #3cb889;
         }
         /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 초록 — 열 바깥(뷰포트 좌우)은 html 흰색 유지 */
         html.mealog-landing-login.platform-web::before {
@@ -298,7 +323,7 @@
             max-width: 28rem;
             top: 0;
             bottom: 0;
-            background: #059669;
+            background: #3cb889;
             z-index: 199;
             pointer-events: none;
         }
@@ -319,7 +344,7 @@
             background-color: #ffffff;
         }
         html.mealog-landing-login #landingBottomFixed {
-            background-color: #059669;
+            background-color: #3cb889;
         }
         #landingBottomFixed #loginBannerSection,
         #landingBottomFixed .landing-app-promo-bar {
@@ -345,7 +370,7 @@
           · 모바일 웹: env(safe-area-inset-bottom) 반영 → 홈 인디케이터/네비 위에 붙음, 0이면 화면 맨 아래 + 최소 0.375rem
         */
         .landing-app-promo-bar {
-            background-color: #064e3b;
+            background-color: #1f6b4f;
             padding-top: 0.5rem;
             padding-bottom: max(0.375rem, env(safe-area-inset-bottom, 0px));
         }
@@ -855,7 +880,7 @@
     <!-- IME 워밍업용 숨김 input: 앱 첫 기동 시 한글 입력 미표시 현상 완화 -->
     <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
-    <div id="toastContainer" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[92%] max-w-[26rem] z-[600] flex flex-col items-center gap-2 pointer-events-none px-4 box-border"></div>
+    <div id="toastContainer" class="fixed left-1/2 -translate-x-1/2 z-[600] flex flex-col items-center gap-2 pointer-events-none box-border"></div>
 
     <!-- 기록 완료: 중앙 팝업 (0.8초) -->
     <div id="successPopup" class="hidden fixed inset-0 z-[9500] flex items-center justify-center">
@@ -948,11 +973,11 @@
                         <p id="attendanceWelcomeRecordCount" class="m-0 w-full text-center text-[11px] font-bold leading-tight text-slate-700 tabular-nums" aria-live="polite">기록 0회</p>
                         <div id="attendanceWelcomeReportDateNav" class="hidden attendance-welcome-report-date-nav flex w-full items-center justify-center gap-1" role="group" aria-label="리포트 날짜">
                             <button type="button" id="attendanceWelcomeReportPrev" class="attendance-welcome-report-nav-btn" aria-label="이전 리포트">
-                                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                                <i data-lucide="chevron-left" aria-hidden="true"></i>
                             </button>
                             <span id="attendanceWelcomeReportDateLabel" class="attendance-welcome-report-date-label tabular-nums" aria-live="polite"></span>
                             <button type="button" id="attendanceWelcomeReportNext" class="attendance-welcome-report-nav-btn" aria-label="다음 리포트">
-                                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                                <i data-lucide="chevron-right" aria-hidden="true"></i>
                             </button>
                         </div>
                     </div>
@@ -1053,7 +1078,7 @@
                 <span class="font-bold text-sm">카카오로 계속하기</span>
             </button>
             <button id="emailLoginBtn" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
-                <i class="fa-solid fa-envelope text-lg"></i>
+                <i data-lucide="mail" class="text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
             <button id="guestLoginBtn" class="w-full py-3.5 bg-slate-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
@@ -1087,7 +1112,7 @@
         </div>
         <div id="desktopShortcutSection" class="landing-app-promo-bar hidden w-full px-4 sm:px-6 border-t border-emerald-200/40">
             <button type="button" id="desktopShortcutOpenGuideBtn" class="landing-app-promo-link flex items-center justify-center gap-2 w-full py-2 text-emerald-100 text-sm font-bold hover:text-white transition-colors">
-                <i class="fa-regular fa-star text-base shrink-0" aria-hidden="true"></i>
+                <i data-lucide="star" class="text-base shrink-0" aria-hidden="true"></i>
                 <span>즐겨찾기에 추가하기</span>
             </button>
         </div>
@@ -1111,7 +1136,7 @@
             <ol class="px-5 py-4 space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
-                    <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><i class="fa-solid fa-arrow-up-from-bracket text-emerald-600 mx-0.5" aria-hidden="true"></i>을 눌러주세요.</span>
+                    <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><i data-lucide="upload" class="text-emerald-600 mx-0.5" aria-hidden="true"></i>을 눌러주세요.</span>
                 </li>
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
@@ -1146,15 +1171,15 @@
             <ol class="px-5 py-4 space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
-                    <span><i class="fa-solid fa-keyboard text-emerald-500/80 mr-1" aria-hidden="true"></i>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
+                    <span><i data-lucide="keyboard" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
                 </li>
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
-                    <span><i class="fa-regular fa-star text-emerald-500/80 mr-1" aria-hidden="true"></i>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
+                    <span><i data-lucide="star" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
                 </li>
                 <li class="flex gap-3">
                     <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
-                    <span><i class="fa-solid fa-folder text-emerald-500/80 mr-1" aria-hidden="true"></i>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
+                    <span><i data-lucide="folder" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
                 </li>
             </ol>
             <div id="desktopPwaInstallOptional" class="hidden px-5 pb-2">
@@ -1173,7 +1198,7 @@
             <div class="p-6 pb-5">
                 <div class="flex justify-between items-center mb-6">
                     <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
-                    <button type="button" id="emailAuthCloseBtn" class="p-1 -m-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    <button type="button" id="emailAuthCloseBtn" class="p-1 -m-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="닫기"><i data-lucide="x" class="text-xl"></i></button>
                 </div>
                 <div class="space-y-3 mb-6">
                     <div>
@@ -1226,14 +1251,14 @@
     <!-- Domain Error Modal -->
     <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border-2 border-red-100 animate-fade">
-            <div class="flex justify-center mb-4 text-red-500 text-3xl"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div class="flex justify-center mb-4 text-red-500 text-3xl"><i data-lucide="triangle-alert"></i></div>
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">도메인 등록 필요</h3>
             <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
                 파이어베이스 보안 설정에<br>아래 주소를 추가해야 합니다.
             </p>
             <div id="domainCopyBtn" class="bg-slate-100 p-3 rounded-xl mb-4 relative group cursor-pointer active:bg-slate-200 transition-colors">
                 <div id="domainText" class="text-[11px] font-mono text-slate-600 break-all pr-6 select-all">주소 확인 중...</div>
-                <div class="absolute right-3 top-3 text-slate-400"><i class="fa-regular fa-copy"></i></div>
+                <div class="absolute right-3 top-3 text-slate-400"><i data-lucide="copy"></i></div>
             </div>
             <p class="text-[10px] text-slate-400 text-center mb-4">
                 1. Firebase 콘솔 > Authentication > Settings<br>
@@ -1467,12 +1492,13 @@
         <div id="appTopChrome" class="sticky z-50">
         <header id="mainAppHeader" class="relative z-50 bg-white/95 backdrop-blur-md shadow-sm max-h-[60px] transition-transform duration-300 ease-out">
             <div class="py-2.5 flex justify-between items-center px-6">
-                <div class="flex items-center gap-2 min-w-0 flex-shrink-0">
+                <div class="flex items-center gap-2 min-w-0 flex-1">
                     <div class="relative inline-block shrink-0">
                         <h1 id="headerAppTitle" class="mealog-title text-[28px] leading-none tracking-tight text-emerald-600">mealog</h1>
-                        <div class="absolute -top-1 left-full ml-1.5 z-10 pointer-events-none whitespace-nowrap leading-none">
-                            <span id="headerEnvBadge" class="hidden shrink-0" role="status"></span>
-                        </div>
+                    </div>
+                    <div id="mealdangHeaderTabs" class="mealdang-header-tabs hidden" role="tablist" aria-label="밀당 메뉴">
+                        <button type="button" id="btn-mealdang-analysis" class="mealdang-header-tab active" role="tab" aria-selected="true" data-mealdang-view="analysis">분석</button>
+                        <button type="button" id="btn-mealdang-comment" class="mealdang-header-tab" role="tab" aria-selected="false" data-mealdang-view="comment">참견</button>
                     </div>
                 </div>
                 <!-- 우측: 돋보기 → 알림 (밀로그 검색 확장 시 flex로 sub-title까지 확장) -->
@@ -1480,37 +1506,37 @@
                     <!-- 돋보기: 밀로그(타임라인) = 검색 팝업, 모먼트/라운지 = 하트·댓글·북마크·돋보기 -->
                     <div id="timelineSearchPanel" class="hidden">
                         <button type="button" id="searchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="기록 검색">
-                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            <i data-lucide="search" class="text-sm"></i>
                         </button>
                     </div>
                     <div id="gallerySearchPanel" class="hidden">
                         <button type="button" id="gallerySearchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="모먼트 검색">
-                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            <i data-lucide="search" class="text-sm"></i>
                         </button>
                     </div>
                     <div id="boardSearchPanel" class="hidden">
                         <button type="button" id="boardSearchTriggerBtn" class="timeline-search-toggle w-8 h-8 flex items-center justify-center flex-shrink-0 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="게시판 검색">
-                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            <i data-lucide="search" class="text-sm"></i>
                         </button>
                     </div>
                     <div id="galleryTraceFilterPanel" class="gallery-trace-panel hidden flex items-center gap-0.5 overflow-hidden transition-all duration-300 ease-out">
                         <button type="button" data-trace="like" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-red-500 active:opacity-80 transition-colors flex-shrink-0">
-                            <i class="fa-regular fa-heart text-sm"></i>
+                            <i data-lucide="heart" class="text-sm"></i>
                         </button>
                         <button type="button" data-trace="comment" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
-                            <i class="fa-regular fa-comment text-sm"></i>
+                            <i data-lucide="message-circle" class="text-sm"></i>
                         </button>
                         <button type="button" data-trace="bookmark" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
-                            <i class="fa-regular fa-bookmark text-sm"></i>
+                            <i data-lucide="bookmark" class="text-sm"></i>
                         </button>
                         <button type="button" data-trace="collapse" class="gallery-trace-btn flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors flex-shrink-0">
-                            <i class="fa-solid fa-magnifying-glass text-sm"></i>
+                            <i data-lucide="search" class="text-sm"></i>
                         </button>
                     </div>
                     <!-- 알림: 최우측, 모든 메뉴 -->
                     <div id="notificationWrap" class="relative hidden">
                         <button type="button" id="notificationTriggerBtn" class="notification-trigger w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-800 active:opacity-80 transition-colors" aria-label="알림">
-                            <i class="fa-regular fa-bell text-lg"></i>
+                            <i data-lucide="bell" class="text-lg"></i>
                             <span id="notificationDot" class="notification-dot absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full hidden" aria-hidden="true"></span>
                         </button>
                     </div>
@@ -1526,12 +1552,12 @@
             <div id="trackerHeader" class="tracker-v2-row flex justify-between items-center gap-2">
                 <div class="tracker-v2-month flex items-center gap-1.5 min-w-0">
                     <button type="button" id="trackerMonthCalendarBtn" class="tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="월 캘린더 열기" title="월 캘린더">
-                        <i class="fa-regular fa-calendar text-[13px] leading-none" aria-hidden="true"></i>
+                        <i data-lucide="calendar" class="text-[13px] leading-none" aria-hidden="true"></i>
                     </button>
                     <span id="trackerTitle" class="tracker-v2-month-label text-[15px] font-bold text-slate-900 tracking-tight truncate">날짜 선택</span>
                 </div>
                 <span id="trackerStreakLabel" class="tracker-streak-pill tabular-nums whitespace-nowrap shrink-0" role="status">
-                    <i class="fa-solid fa-fire tracker-streak-pill__icon" aria-hidden="true"></i>
+                    <i data-lucide="flame" class="tracker-streak-pill__icon" aria-hidden="true"></i>
                     <span class="tracker-streak-pill__text">0일 연속</span>
                 </span>
             </div>
@@ -1544,7 +1570,7 @@
             <div id="galleryView" class="hidden ui-tab-view">
                 <div id="galleryPullWrap">
                     <div id="galleryPullIndicator" class="gallery-pull-indicator" aria-hidden="true">
-                        <i class="fa-solid fa-arrows-rotate text-emerald-500"></i>
+                        <i data-lucide="refresh-cw" class="text-emerald-500"></i>
                         <span>당겨서 새로고침</span>
                     </div>
                     <div id="galleryContainer" class="ui-surface-soft ui-stack-sm"></div>
@@ -1553,7 +1579,7 @@
             <!-- 게시판 목록 뷰 -->
             <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative board-list-view-mealtalk">
                 <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
-                    <i class="fa-solid fa-pen text-lg"></i>
+                    <i data-lucide="plus" class="text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
                 <div class="app-chrome-subtabs board-mealtalk-subtabs w-full min-w-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
@@ -1592,7 +1618,7 @@
                     <div id="boardFeedComposerPhotoPreview" class="board-feed-composer-photo-preview flex flex-wrap gap-1.5 mb-1 min-h-0"></div>
                     <div id="boardInlineComposerReplyBar" class="hidden board-feed-reply-bar mb-1.5 min-w-0" aria-live="polite">
                         <div class="flex min-w-0 items-center gap-1.5 rounded-xl border border-slate-300/50 bg-slate-500/10 px-2 py-1.5">
-                            <i class="fa-solid fa-reply flex-shrink-0 text-xs text-emerald-700" aria-hidden="true"></i>
+                            <i data-lucide="reply" class="flex-shrink-0 text-xs text-emerald-700" aria-hidden="true"></i>
                             <span id="boardInlineComposerReplyNick" class="max-w-[36%] flex-shrink-0 truncate text-xs font-bold text-emerald-800"></span>
                             <span class="flex-shrink-0 text-[11px] text-slate-400" aria-hidden="true">·</span>
                             <span id="boardInlineComposerReplySnippet" class="min-w-0 flex-1 truncate text-xs text-slate-600"></span>
@@ -1601,17 +1627,17 @@
                     </div>
                     <div class="board-feed-composer-row flex items-center gap-1.5">
                         <div id="boardInlineComposerAvatar" class="board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200" aria-hidden="true">
-                            <i class="fa-solid fa-user text-xs"></i>
+                            <i data-lucide="user" class="text-xs"></i>
                         </div>
                         <div class="flex-1 min-w-0">
                             <label class="sr-only" for="boardInlineComposerInput">밀톡 메시지</label>
                             <textarea id="boardInlineComposerInput" rows="1" maxlength="280" class="board-inline-composer-input board-feed-chat-input w-full text-base text-slate-800 placeholder:text-slate-400" placeholder="메시지를 입력하세요…"></textarea>
                         </div>
                         <button type="button" id="boardInlineComposerPhotoBtn" class="board-feed-composer-attach flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-white/80 hover:text-emerald-600 active:bg-white transition-colors" title="사진 첨부" aria-label="사진 첨부">
-                            <i class="fa-regular fa-image text-lg"></i>
+                            <i data-lucide="image" class="text-lg"></i>
                         </button>
                         <button type="button" id="boardInlineComposerSubmit" class="board-feed-composer-send touch-manipulation flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white disabled:pointer-events-none transition-colors" disabled aria-label="보내기">
-                            <i class="fa-solid fa-arrow-up text-sm"></i>
+                            <i data-lucide="arrow-up" class="text-sm"></i>
                         </button>
                     </div>
                     <div class="board-feed-composer-count-row flex justify-end pr-[4.75rem] pl-10 pt-0.5">
@@ -1650,7 +1676,7 @@
             <div id="boardWriteView" class="hidden ui-tab-view ui-stack-md">
                 <div class="flex items-center gap-3 mb-4">
                     <button onclick="window.backToBoardList()" class="w-8 h-8 flex items-center justify-center text-slate-400 active:bg-slate-100 rounded-full transition-colors">
-                        <i class="fa-solid fa-arrow-left text-lg"></i>
+                        <i data-lucide="arrow-left" class="text-lg"></i>
                     </button>
                     <h2 class="sub-title text-lg text-slate-800 tracking-tight">글쓰기</h2>
                 </div>
@@ -1658,13 +1684,13 @@
                     <div>
                         <div class="flex items-center gap-2 mb-2">
                             <div class="flex gap-1 flex-1 min-w-0 p-1.5 bg-slate-100 rounded-lg">
-                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="굵게" data-format="bold"><i class="fa-solid fa-bold"></i></button>
-                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="취소선" data-format="strikeThrough"><i class="fa-solid fa-strikethrough"></i></button>
-                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="밑줄" data-format="underline"><i class="fa-solid fa-underline"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="굵게" data-format="bold"><i data-lucide="bold"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="취소선" data-format="strikeThrough"><i data-lucide="strikethrough"></i></button>
+                                <button type="button" class="format-toolbar-btn w-8 h-8 flex items-center justify-center rounded-lg text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors shrink-0" aria-label="밑줄" data-format="underline"><i data-lucide="underline"></i></button>
                             </div>
                             <input type="file" id="boardWriteImages" accept="image/*" multiple class="hidden">
                             <button type="button" id="boardWriteAddPhotosBtn" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors" aria-label="사진 추가" title="사진 추가">
-                                <i class="fa-solid fa-image text-lg"></i>
+                                <i data-lucide="image" class="text-lg"></i>
                             </button>
                         </div>
                         <div class="-mx-4 w-[calc(100%+2rem)] max-w-none box-border">
@@ -1698,17 +1724,15 @@
                     </div>
                 </div>
 
-                <!-- 참견 구역 (soft-green) -->
-                <section class="dashboard-comment-zone" aria-label="밀당의 참견">
-                    <div class="dashboard-comment-zone__label">밀당의 참견</div>
-                    <div class="dashboard-insight-period-wrap flex flex-col relative z-10">
+                <div class="dashboard-insight-period-shared">
+<div class="dashboard-insight-period-wrap flex flex-col relative z-10">
                         <div id="periodNavigator" class="hidden dashboard-period-nav flex items-center justify-center gap-2">
                             <button id="periodPrevBtn" type="button" onclick="window.navigatePeriod(-1)" aria-label="이전">
-                                <i class="fa-solid fa-chevron-left"></i>
+                                <i data-lucide="chevron-left"></i>
                             </button>
                             <div id="periodDisplay" class="dashboard-period-nav__label"></div>
                             <button id="periodNextBtn" type="button" onclick="window.navigatePeriod(1)" aria-label="다음">
-                                <i class="fa-solid fa-chevron-right"></i>
+                                <i data-lucide="chevron-right"></i>
                             </button>
                         </div>
                         <div id="customDatePicker" class="hidden mt-1.5 custom-date-range">
@@ -1740,57 +1764,11 @@
                              <input type="month" id="monthInput" onchange="window.safeCall('updateSelectedMonth')" class="w-full bg-white text-slate-700 text-sm rounded p-2 border border-emerald-100 outline-none">
                         </div>
                     </div>
-                    <div class="dashboard-comment-main insight-area">
-                        <button id="insightCharacterBtn" type="button" onclick="window.openCharacterSelectModal()" class="insight-character-btn dashboard-comment-char" aria-label="캐릭터 변경">
-                            <div id="insightCharacterIcon" class="dashboard-comment-char__icon mealog-character-m">
-                                <div class="insight-character-icon-box">
-                                    <img src="assets/icon-only.png" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden');">
-                                    <span class="hidden text-2xl font-black mealog-character-m text-white">M</span>
-                                </div>
-                            </div>
-                        </button>
-                        <div class="dashboard-comment-bubble-wrap flex-1 relative min-w-0">
-                            <div id="insightBubble" class="insight-bubble relative">
-                                <div class="insight-bubble-header">
-                                    <span id="insightCharacterName" class="insight-character-name"></span>
-                                </div>
-                                <div id="insightTextContent" class="insight-text-content">
-                                    <!-- 안내 메시지가 여기에 표시됩니다 -->
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dashboard-comment-actions">
-                        <button id="generateCommentBtn" type="button" onclick="window.generateInsightComment()" class="dashboard-mini-btn dashboard-mini-btn--primary">
-                            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> 코멘트
-                        </button>
-                        <button id="shareInsightBtn" type="button" onclick="window.openShareInsightModal()" class="dashboard-mini-btn insight-share-btn insight-share-btn--default hidden">
-                            <i class="fa-solid fa-share" aria-hidden="true"></i> 공유
-                        </button>
-                    </div>
-                    <div class="dashboard-kpi-row">
-                        <div class="dashboard-kpi">
-                            <div class="dashboard-kpi__label">식사 기록</div>
-                            <div id="insightStats" class="dashboard-kpi__value">
-                                <span id="mealRecordCount">0</span><span id="mealRecordTotal"> / 0</span>
-                            </div>
-                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="mealKpiBar"></i></div>
-                            <span id="mealRecordPercent" class="sr-only">0%</span>
-                        </div>
-                        <div class="dashboard-kpi">
-                            <div class="dashboard-kpi__label">간식</div>
-                            <div id="snackStats" class="dashboard-kpi__value">
-                                <span id="snackRecordCount">0</span><span> 회</span>
-                            </div>
-                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="snackKpiBar" style="background:#60a5fa"></i></div>
-                        </div>
-                    </div>
-                </section>
+                </div>
 
-                <!-- 분석 구역 (page + 흰 카드) -->
-                <div class="dashboard-analysis-zone">
-                <div class="dashboard-analysis-zone__label">분석</div>
-                <div class="card ui-card-pad-chip dashboard-analysis-tab-card">
+                <div id="mealdangViewAnalysis" class="mealdang-view mealdang-view--analysis" role="tabpanel" aria-label="분석">
+<div class="dashboard-analysis-zone">
+                                <div class="card ui-card-pad-chip dashboard-analysis-tab-card">
                     <div class="dashboard-analysis-tabs flex gap-1">
                         <button id="btn-analysis-main" type="button" class="dashboard-analysis-tab dashboard-analysis-tab--active">식사</button>
                         <button id="btn-analysis-snack" type="button" class="dashboard-analysis-tab">간식</button>
@@ -1834,31 +1812,26 @@
                             </div>
                             <div id="categoryChartContainer"></div>
                         </div>
-                        <button type="button" id="moreMainChartsBtn" class="dashboard-more-charts" aria-expanded="false" aria-controls="extraMainCharts">
-                            함께 · 만족도 · 포만감 더 보기
-                        </button>
-                        <div id="extraMainCharts" class="dashboard-extra-charts" hidden>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">함께</h3>
-                                    <button type="button" onclick="window.openDetailModal('withWhom', '누구와 / 시간대')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="mateChartContainer"></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">함께</h3>
+                                <button type="button" onclick="window.openDetailModal('withWhom', '누구와 / 시간대')" class="dashboard-detail-link">상세</button>
                             </div>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">만족도</h3>
-                                    <button type="button" onclick="window.openDetailModal('rating', '만족도 통계')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="ratingChartContainer"></div>
+                            <div id="mateChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">만족도</h3>
+                                <button type="button" onclick="window.openDetailModal('rating', '만족도 통계')" class="dashboard-detail-link">상세</button>
                             </div>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">포만감</h3>
-                                    <button type="button" onclick="window.openDetailModal('satiety', '포만감 통계')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="satietyChartContainer"></div>
+                            <div id="ratingChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">포만감</h3>
+                                <button type="button" onclick="window.openDetailModal('satiety', '포만감 통계')" class="dashboard-detail-link">상세</button>
                             </div>
+                            <div id="satietyChartContainer"></div>
                         </div>
                     </div>
                 </div>
@@ -1933,42 +1906,90 @@
                             </div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
-                        <button type="button" id="moreSnackChartsBtn" class="dashboard-more-charts" aria-expanded="false" aria-controls="extraSnackCharts">
-                            어디서 · 누구와 · 만족도 · 포만감 더 보기
-                        </button>
-                        <div id="extraSnackCharts" class="dashboard-extra-charts" hidden>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">어디서</h3>
-                                    <button type="button" onclick="window.openDetailModal('snackPlace', '어디서 / 시간대')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="snackPlaceChartContainer"></div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">어디서</h3>
+                                <button type="button" onclick="window.openDetailModal('snackPlace', '어디서 / 시간대')" class="dashboard-detail-link">상세</button>
                             </div>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">누구와</h3>
-                                    <button type="button" onclick="window.openDetailModal('snackWithWhom', '누구와 (간식)')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="snackMateChartContainer"></div>
+                            <div id="snackPlaceChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">누구와</h3>
+                                <button type="button" onclick="window.openDetailModal('snackWithWhom', '누구와 (간식)')" class="dashboard-detail-link">상세</button>
                             </div>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">만족도</h3>
-                                    <button type="button" onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="snackRatingChartContainer"></div>
+                            <div id="snackMateChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">만족도</h3>
+                                <button type="button" onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="dashboard-detail-link">상세</button>
                             </div>
-                            <div class="card ui-card-pad">
-                                <div class="ui-card-head analytics-card-head">
-                                    <h3 class="ui-section-label">포만감</h3>
-                                    <button type="button" onclick="window.openDetailModal('snackSatiety', '포만감 (간식)')" class="dashboard-detail-link">상세</button>
-                                </div>
-                                <div id="snackSatietyChartContainer"></div>
+                            <div id="snackRatingChartContainer"></div>
+                        </div>
+                        <div class="card ui-card-pad">
+                            <div class="ui-card-head analytics-card-head">
+                                <h3 class="ui-section-label">포만감</h3>
+                                <button type="button" onclick="window.openDetailModal('snackSatiety', '포만감 (간식)')" class="dashboard-detail-link">상세</button>
                             </div>
+                            <div id="snackSatietyChartContainer"></div>
                         </div>
                     </div>
                 </div>
                 </div><!-- /.dashboard-analysis-zone -->
+                </div>
+
+                <div id="mealdangViewComment" class="mealdang-view mealdang-view--comment hidden" role="tabpanel" aria-label="참견" hidden>
+                <section class="dashboard-comment-zone" aria-label="밀당의 참견">
+                    <div class="dashboard-comment-main insight-area">
+                        <div class="dashboard-comment-aside">
+                        <button id="insightCharacterBtn" type="button" onclick="window.openCharacterSelectModal()" class="insight-character-btn dashboard-comment-char dashboard-comment-char--mealog" aria-label="캐릭터 변경">
+                            <div id="insightCharacterIcon" class="dashboard-comment-char__icon mealog-character-m">
+                                <div class="insight-character-icon-box">
+                                    <img src="assets/icon-only.png" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling&&this.nextElementSibling.classList.remove('hidden');">
+                                    <span class="hidden text-2xl font-black mealog-character-m text-white">M</span>
+                                </div>
+                            </div>
+                        </button>
+                        <div class="dashboard-comment-actions">
+                            <button id="generateCommentBtn" type="button" onclick="window.generateInsightComment()" class="dashboard-mini-btn dashboard-mini-btn--primary">
+                                <i data-lucide="sparkles" aria-hidden="true"></i> 코멘트
+                            </button>
+                            <button id="shareInsightBtn" type="button" onclick="window.openShareInsightModal()" class="dashboard-mini-btn insight-share-btn insight-share-btn--default hidden">
+                                <i data-lucide="share" aria-hidden="true"></i> 공유
+                            </button>
+                        </div>
+                        </div>
+                        <div class="dashboard-comment-bubble-wrap flex-1 relative min-w-0">
+                            <div id="insightBubble" class="insight-bubble relative">
+                                <div class="insight-bubble-header">
+                                    <span id="insightCharacterName" class="insight-character-name"></span>
+                                </div>
+                                <div id="insightTextContent" class="insight-text-content">
+                                    <!-- 안내 메시지가 여기에 표시됩니다 -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dashboard-kpi-row">
+                        <div class="dashboard-kpi">
+                            <div class="dashboard-kpi__label">식사 기록</div>
+                            <div id="insightStats" class="dashboard-kpi__value">
+                                <span id="mealRecordCount">0</span><span id="mealRecordTotal"> / 0</span>
+                            </div>
+                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="mealKpiBar"></i></div>
+                            <span id="mealRecordPercent" class="sr-only">0%</span>
+                        </div>
+                        <div class="dashboard-kpi">
+                            <div class="dashboard-kpi__label">간식</div>
+                            <div id="snackStats" class="dashboard-kpi__value">
+                                <span id="snackRecordCount">0</span><span> 회</span>
+                            </div>
+                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="snackKpiBar" style="background:#60a5fa"></i></div>
+                        </div>
+                    </div>
+                </section>
+                </div>
             </div>
 
             <!-- 사용자 설정 뷰 (프로필 시안 v2) -->
@@ -2014,22 +2035,21 @@
                         </div>
                         <input type="file" id="photoInput" class="hidden" accept="image/*" onchange="window.safeCall('handlePhotoUpload', event)">
 
-                        <div class="profile-v2-section-label">프로필 정보</div>
                         <div class="profile-v2-row-card mb-3">
                             <button type="button" class="profile-v2-row" id="profileV2EditNicknameRow" data-profile-field="nickname">
                                 <span class="profile-v2-row__label">닉네임</span>
                                 <span class="profile-v2-row__value" id="profileV2NicknameValue">-</span>
-                                <i class="fa-solid fa-chevron-right profile-v2-row__chev" aria-hidden="true"></i>
+                                <i data-lucide="chevron-right" class="profile-v2-row__chev" aria-hidden="true"></i>
                             </button>
                             <button type="button" class="profile-v2-row" id="profileV2EditBirthdateRow" data-profile-field="birthdate">
                                 <span class="profile-v2-row__label">생일·성별</span>
                                 <span class="profile-v2-row__value" id="profileV2BirthdateValue">-</span>
-                                <i class="fa-solid fa-chevron-right profile-v2-row__chev" aria-hidden="true"></i>
+                                <i data-lucide="chevron-right" class="profile-v2-row__chev" aria-hidden="true"></i>
                             </button>
                             <button type="button" class="profile-v2-row" id="accountEditBioBtn" data-action="edit" data-profile-field="bio">
                                 <span class="profile-v2-row__label">소개</span>
                                 <span class="profile-v2-row__value" id="profileV2BioValue">자신을 소개해주세요</span>
-                                <i class="fa-solid fa-chevron-right profile-v2-row__chev" aria-hidden="true"></i>
+                                <i data-lucide="chevron-right" class="profile-v2-row__chev" aria-hidden="true"></i>
                             </button>
                             <button type="button" class="profile-v2-row" id="profileV2AccountRow" disabled>
                                 <span class="profile-v2-row__label">계정</span>
@@ -2040,7 +2060,7 @@
                         <div class="profile-v2-life mb-3">
                             <div class="profile-v2-life__head">
                                 <strong>라이프 스타일</strong>
-                                <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="profile-v2-life__edit" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i class="fa-solid fa-pen"></i></button>
+                                <button type="button" id="accountEditLifestyleBtn" data-action="edit" class="profile-v2-life__edit" title="라이프 스타일 수정" aria-label="라이프 스타일 수정"><i data-lucide="pen"></i></button>
                             </div>
                             <input type="hidden" id="settingLifestyle" value="">
                             <div class="profile-lifestyle-chips profile-v2-chips flex flex-wrap gap-1.5">
@@ -2153,7 +2173,7 @@
             <button id="nav-dashboard" type="button" class="nav-item" aria-label="밀당">
                 <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-chart-pie" aria-hidden="true"></i>
+                    <i data-lucide="pie-chart" aria-hidden="true"></i>
                 </span>
                 <span class="nav-item__label">밀당</span>
             </button>
@@ -2161,14 +2181,14 @@
                 <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                     <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-images" aria-hidden="true"></i>
+                    <i data-lucide="images" aria-hidden="true"></i>
                 </span>
                 <span class="nav-item__label">모먼트</span>
             </button>
             <button id="nav-timeline" type="button" class="nav-item record active" aria-label="밀로그">
                 <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                    <i data-lucide="book-open" aria-hidden="true"></i>
                 </span>
                 <span class="nav-item__label">밀로그</span>
             </button>
@@ -2176,7 +2196,7 @@
                 <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                     <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-comments" aria-hidden="true"></i>
+                    <i data-lucide="message-circle" aria-hidden="true"></i>
                 </span>
                 <span class="nav-item__label">라운지</span>
             </button>
@@ -2209,19 +2229,19 @@
         </button>
         <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
         <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
-            <i class="fa-solid fa-cloud-arrow-up meal-sync-resend-fab__icon meal-sync-resend-fab__icon--sync text-lg" aria-hidden="true"></i>
-            <i class="fa-solid fa-link-slash meal-sync-resend-fab__icon meal-sync-resend-fab__icon--off text-lg" aria-hidden="true"></i>
-            <i class="fa-solid fa-link meal-sync-resend-fab__icon meal-sync-resend-fab__icon--on text-lg" aria-hidden="true"></i>
-            <i class="fa-solid fa-spinner meal-sync-resend-fab__spinner text-lg fa-spin" aria-hidden="true"></i>
+            <i data-lucide="cloud-upload" class="meal-sync-resend-fab__icon meal-sync-resend-fab__icon--sync text-lg" aria-hidden="true"></i>
+            <i data-lucide="unlink" class="meal-sync-resend-fab__icon meal-sync-resend-fab__icon--off text-lg" aria-hidden="true"></i>
+            <i data-lucide="link" class="meal-sync-resend-fab__icon meal-sync-resend-fab__icon--on text-lg" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="meal-sync-resend-fab__spinner text-lg lucide-spin" aria-hidden="true"></i>
             <span id="mealSyncResendBadge" class="meal-sync-resend-fab__badge hidden" aria-hidden="true">0</span>
         </button>
         <button type="button" id="entryQuickInputFab" class="entry-quick-input-fab hidden" title="빠른 기록" aria-label="빠른 기록">
-            <i class="fa-solid fa-plus text-lg" aria-hidden="true"></i>
+            <i data-lucide="plus" class="text-lg" aria-hidden="true"></i>
         </button>
 
         <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
         <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
-            <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i class="fa-solid fa-xmark text-sm"></i></button>
+            <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i data-lucide="x" class="text-sm"></i></button>
             <h3 id="demoNavGuideTitle" class="text-sm font-black text-slate-900 tracking-tight"></h3>
             <p id="demoNavGuideDesc" class="text-sm text-slate-700 mt-1 leading-relaxed"></p>
         </div>
@@ -2234,7 +2254,7 @@
             <div class="p-5 pb-4 max-h-[min(80vh,32rem)] overflow-y-auto">
                 <div class="mb-4 flex items-center justify-between gap-2">
                     <h2 id="momentSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">모먼트 검색</h2>
-                    <button type="button" id="momentSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button type="button" id="momentSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 </div>
                 <div class="space-y-4">
                     <div>
@@ -2259,10 +2279,10 @@
                     <div>
                         <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
                         <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
-                            <button type="button" data-moment-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i class="fa-regular fa-heart text-sm"></i> 좋아요</button>
-                            <button type="button" data-moment-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-comment text-sm"></i> 댓글</button>
-                            <button type="button" data-moment-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-bookmark text-sm"></i> 북마크</button>
-                            <button type="button" data-moment-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-solid fa-magnifying-glass text-sm"></i> 검색어</button>
+                            <button type="button" data-moment-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i data-lucide="heart" class="text-sm"></i> 좋아요</button>
+                            <button type="button" data-moment-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="message-circle" class="text-sm"></i> 댓글</button>
+                            <button type="button" data-moment-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="bookmark" class="text-sm"></i> 북마크</button>
+                            <button type="button" data-moment-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="search" class="text-sm"></i> 검색어</button>
                         </div>
                         <div id="momentSearchKeywordWrap" class="mt-3 hidden">
                             <label for="momentSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
@@ -2286,7 +2306,7 @@
             <div class="max-h-[min(80vh,32rem)] overflow-y-auto p-5 pb-4">
                 <div class="mb-4 flex items-center justify-between gap-2">
                     <h2 id="boardSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">게시판 검색</h2>
-                    <button type="button" id="boardSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button type="button" id="boardSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 </div>
                 <div class="space-y-4">
                     <div>
@@ -2311,10 +2331,10 @@
                     <div>
                         <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
                         <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
-                            <button type="button" data-board-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i class="fa-regular fa-heart text-sm"></i> 좋아요</button>
-                            <button type="button" data-board-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-comment text-sm"></i> 댓글</button>
-                            <button type="button" data-board-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-regular fa-bookmark text-sm"></i> 북마크</button>
-                            <button type="button" data-board-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i class="fa-solid fa-magnifying-glass text-sm"></i> 검색어</button>
+                            <button type="button" data-board-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i data-lucide="heart" class="text-sm"></i> 좋아요</button>
+                            <button type="button" data-board-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="message-circle" class="text-sm"></i> 댓글</button>
+                            <button type="button" data-board-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="bookmark" class="text-sm"></i> 북마크</button>
+                            <button type="button" data-board-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="search" class="text-sm"></i> 검색어</button>
                         </div>
                         <div id="boardSearchKeywordWrap" class="mt-3 hidden">
                             <label for="boardSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
@@ -2339,7 +2359,7 @@
                 <h2 id="notificationModalTitle" class="text-lg font-bold tracking-tight text-slate-800">알림</h2>
                 <div class="flex items-center gap-1">
                     <button type="button" id="notificationMarkAllReadBtn" class="rounded-lg px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 active:opacity-80">모두 읽음</button>
-                    <button type="button" id="notificationCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button type="button" id="notificationCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 </div>
             </div>
             <div class="flex shrink-0 gap-1 px-3 pt-3 pb-1" role="tablist" aria-label="알림 구분">
@@ -2362,7 +2382,7 @@
             <div class="p-5 pb-4">
                 <div class="mb-4 flex items-center justify-between gap-2">
                     <h2 id="timelineSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">기록 검색</h2>
-                    <button type="button" id="timelineSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button type="button" id="timelineSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 </div>
                 <div class="space-y-4">
                     <div>
@@ -2406,7 +2426,7 @@
                 <h2 id="trackerMonthCalendarHeading" class="min-w-0 flex-1 text-center text-base font-black tracking-tight text-slate-800">2026년 3월</h2>
                 <div class="flex flex-shrink-0 items-center gap-0.5">
                     <button type="button" id="trackerMonthNextMonth" class="flex h-9 w-9 items-center justify-center rounded-xl text-lg font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="다음 달">›</button>
-                    <button type="button" id="trackerMonthCalendarClose" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    <button type="button" id="trackerMonthCalendarClose" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 </div>
             </div>
             <div class="mb-1.5 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -2417,8 +2437,8 @@
     </div>
 
     <!-- 콘텐츠 팝업 모달: 밀로그 내용 폭 - 10px 고정, 이미지 좌우 꽉 참, 제목 미노출, 하단 영역 분할 -->
-    <div id="contentPopupModal" class="hidden fixed inset-0 z-[450] bg-slate-900/50 flex items-center justify-center p-4">
-        <div id="contentPopupModalInner" class="content-popup-inner relative bg-white rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden" style="width: 0;">
+    <div id="contentPopupModal" class="hidden fixed inset-0 z-[450] flex items-center justify-center p-4">
+        <div id="contentPopupModalInner" class="content-popup-inner relative bg-white flex flex-col max-h-[85vh] overflow-hidden" style="width: 0;">
             <div id="contentPopupCounterBar" class="content-popup-counter-bar flex-shrink-0 flex justify-end items-center pr-4 pt-1 min-h-[2rem]" style="padding-bottom: 3.33px;">
                 <span id="contentPopupCounter" class="content-popup-counter-text text-sm text-slate-500 font-semibold">1/1</span>
             </div>
@@ -2426,10 +2446,10 @@
                 <div id="contentPopupImages" class="content-popup-images flex flex-col gap-2 mb-3 -mx-5"></div>
                 <div id="contentPopupContent" class="text-sm text-slate-700 leading-relaxed"></div>
                 <div id="contentPopupLandingWrap" class="mt-4 hidden">
-                    <button type="button" id="contentPopupLandingBtn" class="w-full py-3 text-emerald-600 font-bold text-sm border border-emerald-500 rounded-xl hover:bg-emerald-50 transition-colors"></button>
+                    <button type="button" id="contentPopupLandingBtn" class="w-full py-3 font-bold text-sm border rounded-xl transition-colors"></button>
                 </div>
             </div>
-            <div id="contentPopupFooter" class="content-popup-footer flex flex-col flex-shrink-0 border-t border-slate-600">
+            <div id="contentPopupFooter" class="content-popup-footer flex flex-col flex-shrink-0">
                 <div id="contentPopupNavRow" class="content-popup-footer-nav hidden flex w-full">
                     <button type="button" id="contentPopupPrevBtn" class="content-popup-footer-seg content-popup-footer-seg--nav">
                         <span class="content-popup-footer-label">이전</span>
@@ -2458,11 +2478,11 @@
     <div id="accountAvatarModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-label="프로필 사진">
         <div class="relative w-full max-w-none sm:max-w-xs rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,32rem)]">
             <div class="relative px-3 pt-2 pb-0 sm:px-4 sm:pt-3">
-                <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
                 <div id="accountAvatarModalStaticView">
                     <div class="mx-auto mt-0.5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
                         <img id="accountAvatarModalImg" class="hidden h-full w-full object-cover" alt="" />
-                        <i id="accountAvatarModalIcon" class="fa-solid fa-user text-6xl text-slate-300"></i>
+                        <i data-lucide="user" class="text-6xl text-slate-300" id="accountAvatarModalIcon"></i>
                     </div>
                 </div>
                 <div id="accountAvatarModalEditView" class="hidden w-full">
@@ -2472,9 +2492,9 @@
                         </div>
                     </div>
                     <div class="mt-2 flex gap-1.5">
-                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-minus text-[10px]"></i> 축소</button>
-                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-magnifying-glass-plus text-[10px]"></i> 확대</button>
-                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i class="fa-solid fa-rotate-right text-[10px]"></i> 회전</button>
+                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-out" class="text-[10px]"></i> 축소</button>
+                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-in" class="text-[10px]"></i> 확대</button>
+                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="rotate-cw" class="text-[10px]"></i> 회전</button>
                     </div>
                     <div class="mt-2 -mx-3 sm:-mx-4 grid grid-cols-3 border-t border-slate-200">
                         <button type="button" onclick="window.resetPhotoEdit()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
@@ -2502,7 +2522,7 @@
         <div class="relative w-full max-w-none sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,36rem)]">
             <div class="relative flex items-center justify-between gap-2 px-4 pt-3.5 pb-2 border-b border-slate-100">
                 <h3 id="profileFieldEditTitle" class="text-base font-bold text-slate-800">수정</h3>
-                <button type="button" id="profileFieldEditCloseBtn" class="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button type="button" id="profileFieldEditCloseBtn" class="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
             <div class="px-4 py-4 overflow-y-auto min-h-0 flex-1">
                 <div id="profileFieldEditPanelNickname" class="hidden space-y-2">
@@ -2590,22 +2610,22 @@
 
     <!-- Entry Modal -->
     <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-end justify-center" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
-        <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/50 p-0" aria-label="닫기"></button>
-        <div class="entry-slot-picker relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-t-[1.25rem] bg-white shadow-xl">
+        <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="entry-slot-picker relative z-10 flex w-full max-w-md flex-col overflow-hidden shadow-xl">
             <div class="entry-slot-picker__grabber" aria-hidden="true"></div>
             <div class="flex items-start justify-between gap-3 px-5 pb-2 pt-1">
                 <div class="min-w-0">
                     <h2 id="entrySlotPickerTitle" class="text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
                     <p id="entrySlotPickerDateLabel" class="mt-0.5 text-sm font-medium text-slate-500"></p>
                 </div>
-                <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+                <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
             <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto px-3 pb-5 pt-1"></div>
         </div>
     </div>
 
-    <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
-        <div class="entry-modal-panel w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
+    <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-end overflow-hidden">
+        <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
             <div class="entry-modal-header shrink-0">
                 <div class="entry-modal-grabber" aria-hidden="true"></div>
                 <div class="flex items-center gap-2 min-w-0 px-4 py-2.5">
@@ -2618,24 +2638,24 @@
                             <button type="button" id="entryFormModeBtnSnack" data-mode="snack" class="entry-form-mode-btn" aria-pressed="false">간식</button>
                         </div>
                     </div>
-                    <button type="button" onclick="window.closeModal()" class="entry-header-close shrink-0 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기"><i class="fa-solid fa-xmark text-base"></i></button>
+                    <button type="button" onclick="window.closeModal()" class="entry-header-close shrink-0 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기"><i data-lucide="x" class="text-base"></i></button>
                 </div>
             </div>
             <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
                 <div id="entryMealPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media">
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                            <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
+                            <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
                             <span>음식 사진</span>
                             <span id="photoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
                             <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
                                 <button type="button" id="imageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                    <i class="fa-solid fa-camera" aria-hidden="true"></i>
+                                    <i data-lucide="camera" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" id="imageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                    <i class="fa-solid fa-image" aria-hidden="true"></i>
+                                    <i data-lucide="image" aria-hidden="true"></i>
                                 </button>
                             </div>
                             <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
@@ -2653,17 +2673,17 @@
                 <div id="entrySnackPhoto" class="entry-photo-section entry-sheet-zone entry-sheet-zone--media hidden">
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                            <i class="fa-regular fa-image entry-axis-icon" aria-hidden="true"></i>
+                            <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
                             <span>간식 사진</span>
                             <span id="snackPhotoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
                             <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
                                 <button type="button" id="snackImageCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                    <i class="fa-solid fa-camera" aria-hidden="true"></i>
+                                    <i data-lucide="camera" aria-hidden="true"></i>
                                 </button>
                                 <button type="button" id="snackImageAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                    <i class="fa-solid fa-image" aria-hidden="true"></i>
+                                    <i data-lucide="image" aria-hidden="true"></i>
                                 </button>
                             </div>
                             <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
@@ -2684,17 +2704,17 @@
                         <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                             <div class="entry-axis-label-group shrink-0">
                                 <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                    <i class="fa-solid fa-location-dot entry-axis-icon" aria-hidden="true"></i>
+                                    <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
                                 <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
-                                    <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                    <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                 </button>
                             </div>
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                 <div class="relative min-w-0">
                                     <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
-                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                        <i data-lucide="search" aria-hidden="true"></i>
                                     </button>
                                     <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                                 </div>
@@ -2708,11 +2728,11 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-solid fa-utensils entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="utensils" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>무엇을</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="what" aria-expanded="false" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
-                                        <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2720,7 +2740,7 @@
                                         <div id="deliveryVendorSection" class="hidden">
                                             <div class="relative w-full">
                                                 <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
-                                                    <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
+                                                    <i data-lucide="search" class="text-[11px] text-white"></i>
                                                 </button>
                                                 <input id="deliveryVendorInput" type="text" placeholder="어느 식당 음식인가요?" class="w-full py-[0.6rem] pl-[46px] pr-3 rounded-2xl outline-none text-sm font-bold border-0 bg-transparent focus:ring-1 focus:ring-slate-200 focus:ring-offset-0 transition-all">
                                             </div>
@@ -2738,11 +2758,11 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-solid fa-user-group entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="users" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>누구와</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
-                                        <i class="fa-solid fa-chevron-right entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2761,21 +2781,21 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="star" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>만족도</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
-                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="rotate-ccw" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="ratingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="starContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="만족도 선택">
-                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i data-lucide="star"></i></button>
                                         </div>
                                     </div>
                                 </div>
@@ -2786,11 +2806,11 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="smile" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>포만감</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
-                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="rotate-ccw" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2805,7 +2825,7 @@
                     <div id="entryMealTimeSectionMain" class="entry-form-field-section hidden">
                         <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                             <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                <i class="fa-regular fa-clock entry-axis-icon" aria-hidden="true"></i>
+                                <i data-lucide="clock" class="entry-axis-icon" aria-hidden="true"></i>
                                 <span>시간</span>
                             </span>
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2814,7 +2834,7 @@
                                         class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
                                         aria-label="시간 선택 방식" aria-haspopup="dialog">
                                         <span id="entryMealTimeSourceLabelMain" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
-                                        <i class="fa-solid fa-chevron-down shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                        <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
                                     </button>
                                     <label for="entryMealAmpmMain" class="sr-only">오전 또는 오후</label>
                                     <select id="entryMealAmpmMain"
@@ -2848,21 +2868,21 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-regular fa-star entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="star" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>만족도</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetRating()" aria-label="만족도 초기화" title="만족도 초기화">
-                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="rotate-ccw" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="snackRatingGaugeDialWrap" class="entry-gauge-band relative min-w-0 rounded-xl">
                                         <div id="snackStarContainer" class="entry-gauge-stars flex w-full py-1" role="group" aria-label="간식 만족도 선택">
-                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i class="fa-solid fa-star"></i></button>
-                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i class="fa-solid fa-star"></i></button>
+                                            <button type="button" onclick="window.setRating(1)" class="star-btn text-2xl text-slate-200" aria-label="1점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(2)" class="star-btn text-2xl text-slate-200" aria-label="2점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(3)" class="star-btn text-2xl text-slate-200" aria-label="3점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(4)" class="star-btn text-2xl text-slate-200" aria-label="4점"><i data-lucide="star"></i></button>
+                                            <button type="button" onclick="window.setRating(5)" class="star-btn text-2xl text-slate-200" aria-label="5점"><i data-lucide="star"></i></button>
                                         </div>
                                     </div>
                                 </div>
@@ -2872,11 +2892,11 @@
                             <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                        <i class="fa-solid fa-face-smile entry-axis-icon" aria-hidden="true"></i>
+                                        <i data-lucide="smile" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>포만감</span>
                                     </span>
                                     <button type="button" class="entry-field-quick-toggle entry-gauge-reset-toggle shrink-0" onclick="window.resetSatiety()" aria-label="포만감 초기화" title="포만감 초기화">
-                                        <i class="fa-solid fa-rotate-left entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                        <i data-lucide="rotate-ccw" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                     </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2890,7 +2910,7 @@
                     <div id="entryMealTimeSectionSnack" class="entry-form-field-section hidden">
                         <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
                             <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
-                                <i class="fa-regular fa-clock entry-axis-icon" aria-hidden="true"></i>
+                                <i data-lucide="clock" class="entry-axis-icon" aria-hidden="true"></i>
                                 <span>시간</span>
                             </span>
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
@@ -2899,7 +2919,7 @@
                                         class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
                                         aria-label="시간 선택 방식" aria-haspopup="dialog">
                                         <span id="entryMealTimeSourceLabelSnack" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
-                                        <i class="fa-solid fa-chevron-down shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                        <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
                                     </button>
                                     <label for="entryMealAmpmSnack" class="sr-only">오전 또는 오후</label>
                                     <select id="entryMealAmpmSnack"
@@ -2930,14 +2950,14 @@
                 <div id="entryCommentDetailFooter" class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo -mx-0">
                     <div id="entryCommentSectionMeal" class="entry-comment-section">
                         <span class="entry-comment-heading entry-comment-heading-with-icon">
-                            <i class="fa-regular fa-comment-dots entry-comment-icon" aria-hidden="true"></i>
+                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
                             <span>메모</span>
                         </span>
                         <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
                     </div>
                     <div id="entryCommentSectionSnack" class="entry-comment-section hidden">
                         <span class="entry-comment-heading entry-comment-heading-with-icon">
-                            <i class="fa-regular fa-comment-dots entry-comment-icon" aria-hidden="true"></i>
+                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
                             <span>메모</span>
                         </span>
                         <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="4" aria-label="Comment" class="entry-comment-textarea w-full min-h-[5.5rem] resize-none border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-colors appearance-none"></textarea>
@@ -2947,19 +2967,19 @@
                             <span class="entry-detail-record-title">상세 보기</span>
                             <div id="entryDetailRecordChips" class="entry-detail-record-chips" role="group" aria-label="상세기록 항목">
                             <button type="button" data-field="with" class="entry-detail-record-chip" aria-pressed="false">
-                                <i class="fa-solid fa-user-group" aria-hidden="true"></i>
+                                <i data-lucide="users" aria-hidden="true"></i>
                                 <span>누구와</span>
                             </button>
                             <button type="button" data-field="rating" class="entry-detail-record-chip" aria-pressed="false">
-                                <i class="fa-regular fa-star" aria-hidden="true"></i>
+                                <i data-lucide="star" aria-hidden="true"></i>
                                 <span>만족도</span>
                             </button>
                             <button type="button" data-field="satiety" class="entry-detail-record-chip" aria-pressed="false">
-                                <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+                                <i data-lucide="smile" aria-hidden="true"></i>
                                 <span>포만감</span>
                             </button>
                             <button type="button" data-field="time" class="entry-detail-record-chip" aria-pressed="false">
-                                <i class="fa-regular fa-clock" aria-hidden="true"></i>
+                                <i data-lucide="clock" aria-hidden="true"></i>
                                 <span>시간</span>
                             </button>
                         </div>
@@ -2971,7 +2991,7 @@
                 <div class="flex items-stretch">
                     <button id="btnDelete" onclick="window.deleteEntry()" class="entry-action-btn entry-action-btn--delete hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5">
                         <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5">
-                            <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                            <i data-lucide="trash-2" class="text-sm" aria-hidden="true"></i>
                             <span class="text-xs font-bold leading-tight">삭제</span>
                         </span>
                     </button>
@@ -2980,7 +3000,7 @@
                     </button>
                     <button type="button" id="sharePhotoIndicator" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
                         <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5 min-w-0">
-                            <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
+                            <i data-lucide="share" class="text-sm shrink-0" aria-hidden="true"></i>
                             <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                         </span>
                     </button>
@@ -2991,11 +3011,11 @@
                 <div class="entry-header-date-picker__panel">
                     <div class="entry-header-date-picker__nav">
                         <button type="button" id="entryHeaderDatePickerPrev" class="entry-header-date-picker__nav-btn" aria-label="이전 달">
-                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            <i data-lucide="chevron-left" aria-hidden="true"></i>
                         </button>
                         <span id="entryHeaderDatePickerMonthLabel" class="entry-header-date-picker__month"></span>
                         <button type="button" id="entryHeaderDatePickerNext" class="entry-header-date-picker__nav-btn" aria-label="다음 달">
-                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            <i data-lucide="chevron-right" aria-hidden="true"></i>
                         </button>
                     </div>
                     <div class="entry-header-date-picker__weekdays" aria-hidden="true">
@@ -3008,11 +3028,11 @@
     </div>
 
     <!-- Daily Journal Modal (하루 기록) -->
-    <div id="dailyJournalModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)]">
-            <div class="relative shrink-0 py-3 px-4 border-b min-h-[3.25rem] flex items-center justify-center">
+    <div id="dailyJournalModal" class="hidden fixed inset-0 z-[300] flex items-end overflow-hidden">
+        <div class="w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(92vh,100%)] bg-[var(--page)] rounded-t-[1.5rem] border-t border-[var(--line)]">
+            <div class="relative shrink-0 py-3 px-4 border-b border-[var(--line)] min-h-[3.25rem] flex items-center justify-center bg-white">
                 <h2 id="dailyJournalModalTitle" class="text-base font-bold text-slate-800 tracking-tight">하루 기록</h2>
-                <button type="button" onclick="window.closeDailyJournalModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i class="fa-solid fa-xmark text-base"></i></button>
+                <button type="button" onclick="window.closeDailyJournalModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i data-lucide="x" class="text-base"></i></button>
             </div>
             <div id="dailyJournalModalScrollArea" class="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto overflow-x-hidden pb-8">
                 <div class="mb-2">
@@ -3029,10 +3049,10 @@
                     <div class="flex gap-2 overflow-x-auto pb-1">
                         <div class="flex gap-1.5 shrink-0 self-start">
                             <button type="button" id="dailyJournalCameraBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                <i class="fa-solid fa-camera text-lg" aria-hidden="true"></i>
+                                <i data-lucide="camera" class="text-lg" aria-hidden="true"></i>
                             </button>
                             <button type="button" id="dailyJournalAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                <i class="fa-regular fa-image text-lg" aria-hidden="true"></i>
+                                <i data-lucide="image" class="text-lg" aria-hidden="true"></i>
                             </button>
                         </div>
                         <div id="dailyJournalPhotoPreviewContainer" class="flex gap-2"></div>
@@ -3089,14 +3109,14 @@
             <div id="dailyJournalModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
                 <div class="flex items-stretch divide-x divide-slate-200">
                     <button type="button" id="btnDailyJournalDelete" onclick="window.deleteDailyJournal()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
-                        <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                        <i data-lucide="trash-2" class="text-sm" aria-hidden="true"></i>
                         <span class="text-xs font-bold leading-tight">삭제</span>
                     </button>
                     <button type="button" id="btnDailyJournalSave" onclick="window.saveDailyJournal()" class="flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors">
                         <span>기록 완료</span>
                     </button>
                     <button type="button" id="dailyJournalShareIndicator" onclick="window.toggleDailyJournalSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
-                        <i class="fa-solid fa-share text-sm shrink-0" aria-hidden="true"></i>
+                        <i data-lucide="share" class="text-sm shrink-0" aria-hidden="true"></i>
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>
@@ -3112,10 +3132,10 @@
                 <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-[4.5rem] leading-snug"></p>
                 <div class="absolute top-4 right-3 flex items-center gap-0.5">
                     <button type="button" id="dietReportSnsShareBtn" class="hidden flex items-center justify-center w-9 h-9 rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-emerald-700 hover:border-slate-300 transition-colors disabled:opacity-50 shadow-sm" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
-                        <i class="fa-solid fa-share-nodes text-[1.05rem]" aria-hidden="true"></i>
+                        <i data-lucide="share-2" class="text-[1.05rem]" aria-hidden="true"></i>
                     </button>
                     <button type="button" onclick="window.closeDietReportModal()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
-                        <i class="fa-solid fa-xmark text-base"></i>
+                        <i data-lucide="x" class="text-base"></i>
                     </button>
                 </div>
             </div>
@@ -3155,7 +3175,7 @@
         <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
-                <button onclick="window.closeCharacterSelectModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+                <button onclick="window.closeCharacterSelectModal()"><i data-lucide="x" class="text-xl text-slate-400"></i></button>
             </div>
             <div class="p-6 overflow-y-auto">
                 <div id="characterList" class="grid grid-cols-3 gap-4">
@@ -3171,7 +3191,7 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
                 <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <div class="flex flex-col gap-3">
@@ -3204,7 +3224,7 @@
             </div>
             <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0">
                 <h2 class="text-base font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
-                <button type="button" onclick="window.closeShareBestModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+                <button type="button" onclick="window.closeShareBestModal()"><i data-lucide="x" class="text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="bestSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
@@ -3235,7 +3255,7 @@
             </div>
             <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0 min-w-0">
                 <h2 class="text-base font-bold text-slate-800 tracking-tight min-w-0">밀당(MEAL-DANG)들의 참견 공유하기</h2>
-                <button type="button" class="shrink-0" onclick="window.closeShareInsightModal()"><i class="fa-solid fa-xmark text-xl text-slate-400"></i></button>
+                <button type="button" class="shrink-0" onclick="window.closeShareInsightModal()"><i data-lucide="x" class="text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="insightSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
@@ -3272,18 +3292,18 @@
             <div class="p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
                 <h2 class="text-lg font-bold text-slate-800">사진 편집</h2>
                 <button onclick="window.closePhotoEditModal()" class="text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <div id="photoEditNavRow" class="hidden flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-white shrink-0">
                 <button type="button" id="photoEditPrevBtn" onclick="window.goToPrevPhotoEdit()" class="flex items-center gap-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none">
-                    <i class="fa-solid fa-chevron-left text-xs shrink-0"></i>
+                    <i data-lucide="chevron-left" class="text-xs shrink-0"></i>
                     <span>이전</span>
                 </button>
                 <span id="photoEditNavLabel" class="text-sm text-slate-600 tabular-nums font-medium shrink-0">1 / 1</span>
                 <button type="button" id="photoEditNextBtn" onclick="window.goToNextPhotoEdit()" class="flex items-center gap-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none">
                     <span>다음</span>
-                    <i class="fa-solid fa-chevron-right text-xs shrink-0"></i>
+                    <i data-lucide="chevron-right" class="text-xs shrink-0"></i>
                 </button>
             </div>
             <div id="photoEditAspectWrapper" class="w-full bg-slate-100 shrink-0 overflow-hidden" style="aspect-ratio: 1;">
@@ -3295,16 +3315,16 @@
             <div class="px-4 pt-3 pb-2 shrink-0">
                 <div class="flex gap-2">
                     <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
-                        <i class="fa-solid fa-magnifying-glass-minus"></i> 축소
+                        <i data-lucide="zoom-out"></i> 축소
                     </button>
                     <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
-                        <i class="fa-solid fa-magnifying-glass-plus"></i> 확대
+                        <i data-lucide="zoom-in"></i> 확대
                     </button>
                     <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
-                        <i class="fa-solid fa-rotate-right"></i> 회전
+                        <i data-lucide="rotate-cw"></i> 회전
                     </button>
                     <button type="button" id="photoEditTimestampBtn" onclick="window.addPhotoEditTimestamp()" class="hidden flex-1 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-sm">
-                        <i class="fa-regular fa-clock"></i> 시간
+                        <i data-lucide="clock"></i> 시간
                     </button>
                 </div>
             </div>

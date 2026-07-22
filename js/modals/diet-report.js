@@ -157,7 +157,7 @@ export function getAiDietReportButtonHtml(dateStr) {
     if (!isAiDietReportDateVisible(dateStr)) return '';
     const styleCls = aiDietReportButtonStyleClasses(isAiDietReportReady(dateStr));
     return `<button type="button" data-mealog-diet-report="1" data-mealog-date="${dateStr}" class="${AI_DIET_REPORT_BTN_BASE} ${styleCls}">
-        <i class="fa-solid fa-wand-magic-sparkles text-[10px]" aria-hidden="true"></i>AI 리포트
+        <i data-lucide="sparkles" class="text-[10px]" aria-hidden="true"></i>AI 리포트
     </button>`;
 }
 
@@ -346,7 +346,7 @@ function renderLoading(mode = 'fetch') {
     const label = mode === 'writing' ? '리포트 작성중' : '리포트 불러오는 중…';
     body.innerHTML = `
         <div class="flex flex-col items-center justify-center py-10 text-slate-400">
-            <i class="fa-solid fa-spinner fa-spin text-2xl mb-3" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="text-2xl mb-3 lucide-spin" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-500">${label}</p>
         </div>`;
     _currentReport = null;
@@ -377,7 +377,7 @@ function renderEmpty(dateStr, mealCount) {
     }
     body.innerHTML = `
         <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center">
-            <i class="fa-solid fa-wand-magic-sparkles text-2xl text-emerald-500 mb-3" aria-hidden="true"></i>
+            <i data-lucide="sparkles" class="text-2xl text-emerald-500 mb-3" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-700">아직 AI 리포트가 없어요</p>
             <p class="text-xs text-slate-500 mt-2 leading-relaxed">아래 버튼으로 지금 바로 분석할 수 있어요.</p>
             <button type="button" id="dietReportAnalyzeNowBtn" class="mt-4 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors">
@@ -626,7 +626,7 @@ function applyDietReportCaptureAlignFix(root) {
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
 function buildDietReportShareCaptureBadgeHtml() {
     const colors =
-        'font-size:11px;font-weight:700;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;';
+        'font-size:11px;font-weight:700;color:#2d9f74;background:#ecfdf5;border:1px solid #bbf7d0;';
     return `<span data-diet-report-capture-badge="1" style="${buildDietReportCapturePillStyle('4px 12px', colors)}">✨AI식단분석</span>`;
 }
 
@@ -648,7 +648,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         ? `<span data-diet-report-capture-mood="1" style="${dietReportCaptureYOffsetStyle(DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX)}margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
         : '';
     const scoreSpan = hasScore
-        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
         : '';
     // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
@@ -663,7 +663,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         ? `<div><div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">오늘의 식사 흐름</div><div style="font-size:13.5px;color:#334155;line-height:1.5;">${e(summary)}</div></div>`
         : '';
     const highlightHtml = highlight
-        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
+        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
         : '';
     const nudgeHtml = nudge
         ? `<div style="border-radius:12px;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:3px;">내일의 힌트</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
@@ -688,7 +688,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         <div style="background:#ffffff;padding:12px 16px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;overflow:visible;">
             <div style="min-width:0;white-space:nowrap;line-height:1;overflow:visible;">
                 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-spacing:0;width:auto;display:inline-table;"><tr>
-                    <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
+                    <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#3cb889;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
                     <td style="vertical-align:middle;padding:${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px;line-height:1;">${buildDietReportShareCaptureBadgeHtml()}</td>
                 </tr></table>
             </div>

@@ -21,7 +21,7 @@ export async function renderPopups() {
         const popupsColl = collection(db, 'artifacts', appId, 'popups');
         const popupsSnapshot = await getDocs(query(popupsColl, orderBy('timestamp', 'desc')));
         if (popupsSnapshot.empty) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i class="fa-solid fa-window-maximize text-2xl mb-2"></i><p>등록된 팝업이 없습니다.</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i data-lucide="maximize" class="text-2xl mb-2"></i><p>등록된 팝업이 없습니다.</p></div>';
             return;
         }
         container.innerHTML = popupsSnapshot.docs.map(d => {
@@ -44,7 +44,7 @@ export async function renderPopups() {
         }).join('');
     } catch (e) {
         console.error("팝업 목록 로드 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>팝업 목록을 불러오는 중 오류가 발생했습니다.</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>팝업 목록을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
@@ -152,7 +152,7 @@ export function renderPopupImagePreviews() {
         wrap.innerHTML = `
             <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -169,7 +169,7 @@ export function renderPopupImagePreviews() {
         wrap.innerHTML = `
             <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -282,7 +282,7 @@ window.openPopupLandingNoticeSelect = async function() {
     const modal = document.getElementById('popupLandingNoticeModal');
     const listEl = document.getElementById('popupLandingNoticeList');
     if (!modal || !listEl) return;
-    listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">로딩 중...</p></div>';
+    listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-xl mb-2 lucide-spin"></i><p class="text-sm">로딩 중...</p></div>';
     modal.classList.remove('hidden');
     try {
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
@@ -382,7 +382,7 @@ window.submitPopup = async function() {
     if (new Date(startDate) > new Date(endDate)) { alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>처리 중...';
+        submitBtn.innerHTML = '<i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>처리 중...';
     }
     try {
         const existingUrls = window.popupExistingUrls || [];

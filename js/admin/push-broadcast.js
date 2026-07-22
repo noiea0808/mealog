@@ -544,7 +544,7 @@ function buildAdminPushBulkBarHtml(rows) {
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="adminPushNewBtn" onclick="window.createAdminPushNewNotification()" class="px-3 py-1.5 text-xs font-bold rounded-lg border text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-200 transition-colors">
-                    <i class="fa-solid fa-plus mr-1" aria-hidden="true"></i>새알림
+                    <i data-lucide="plus" class="mr-1" aria-hidden="true"></i>새알림
                 </button>
                 <button type="button" id="adminPushBulkCancelBtn" onclick="window.bulkCancelAdminScheduledPushes()" ${
                     selectedCount === 0 ? 'disabled' : ''
@@ -553,7 +553,7 @@ function buildAdminPushBulkBarHtml(rows) {
                         ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
                         : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100'
                 }">
-                    <i class="fa-solid fa-ban mr-1" aria-hidden="true"></i>선택 발송취소
+                    <i data-lucide="ban" class="mr-1" aria-hidden="true"></i>선택 발송취소
                 </button>
             </div>
         </div>`;
@@ -588,7 +588,7 @@ async function refreshAdminScheduledPushesCore() {
     if (!container) return;
     ensureAdminPushHistoryTabHandlers();
     container.innerHTML =
-        '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>불러오는 중…</p>';
+        '<p class="text-center py-8 text-slate-400 text-sm"><i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>불러오는 중…</p>';
     try {
         const coll = collection(db, 'artifacts', appId, 'adminScheduledPushes');
         const [snapMain, snapPending] = await Promise.all([
@@ -706,7 +706,7 @@ window.bulkCancelAdminScheduledPushes = async function() {
     const btn = document.getElementById('adminPushBulkCancelBtn');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1" aria-hidden="true"></i>취소 중…';
+        btn.innerHTML = '<i data-lucide="loader-circle" class="mr-1 lucide-spin" aria-hidden="true"></i>취소 중…';
     }
     let ok = 0;
     const failed = [];

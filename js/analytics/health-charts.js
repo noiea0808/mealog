@@ -825,7 +825,7 @@ export function renderHealthVitalsCharts(startStr, endStr) {
         series: weightSeries,
         unit: 'kg',
         decimals: 1,
-        stroke: '#059669',
+        stroke: '#3cb889',
         fillId: 'wgSpark'
     });
     renderVitalSparkCard({

@@ -1436,7 +1436,7 @@ async function renderFeedManagement() {
 
     ensureFeedAuthorSearchHandlers();
     
-    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
     
     try {
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
@@ -1486,7 +1486,7 @@ async function renderFeedManagement() {
                 ? '선택한 작성자의 게시물이 없습니다.'
                 : '게시물이 없습니다.';
             container.innerHTML =
-                `<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-images text-2xl mb-2"></i><p>${escapeHtml(emptyMsg)}</p></div>`;
+                `<div class="text-center py-8 text-slate-400"><i data-lucide="images" class="text-2xl mb-2"></i><p>${escapeHtml(emptyMsg)}</p></div>`;
             updateFeedAuthorFilterBar();
             adminFeedMonitoringLoaded = true;
             renderFeedPagination(computeFeedAdminTotalPages());
@@ -1847,14 +1847,14 @@ async function renderFeedManagement() {
         if (isIndexError) {
             container.innerHTML = `
                 <div class="text-center py-8 px-4 max-w-lg mx-auto">
-                    <i class="fa-solid fa-database text-4xl text-amber-500 mb-4"></i>
+                    <i data-lucide="database" class="text-4xl text-amber-500 mb-4"></i>
                     <p class="font-bold text-slate-800 mb-2">피드 조회용 인덱스가 필요합니다</p>
                     <p class="text-sm text-slate-600 mb-4">아래 버튼을 눌러 Firebase Console에서 <strong>meals</strong> 컬렉션 그룹의 <strong>date</strong> 필드(내림차순) 인덱스를 한 번만 생성해 주세요.</p>
                     <a href="${createLink}" target="_blank" rel="noopener" class="inline-block px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-colors">인덱스 만들기 (콘솔 열기)</a>
                     <p class="text-xs text-slate-500 mt-4">인덱스가 활성화되기까지 1~2분 걸릴 수 있습니다. 생성 후 피드를 새로고침하세요.</p>
                 </div>`;
         } else {
-            container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + (msg ? escapeHtml(msg) : '') + '</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p><p class="text-xs mt-2 text-slate-500">' + (msg ? escapeHtml(msg) : '') + '</p></div>';
         }
     }
 }
@@ -2980,7 +2980,7 @@ function openMomentExportRangePopup() {
         const panel = document.createElement('div');
         panel.className = 'relative w-full max-w-md bg-white rounded-2xl p-6 shadow-xl';
         panel.innerHTML = `
-            <h3 class="text-lg font-bold text-slate-800 mb-1"><i class="fa-solid fa-file-excel text-emerald-600 mr-2"></i>모먼트 엑셀 내보내기</h3>
+            <h3 class="text-lg font-bold text-slate-800 mb-1"><i data-lucide="sheet" class="text-emerald-600 mr-2"></i>모먼트 엑셀 내보내기</h3>
             <p class="text-sm text-slate-500 mb-4">내보낼 기간을 선택하세요. (현재 필터 조건이 함께 적용됩니다)</p>
             <div class="space-y-2 mb-4">
                 <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50">
@@ -3068,7 +3068,7 @@ window.exportMomentsToExcel = async function () {
     const orig = btn ? btn.innerHTML : '';
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1" aria-hidden="true"></i>수집 중...';
+        btn.innerHTML = '<i data-lucide="loader-circle" class="mr-1 lucide-spin" aria-hidden="true"></i>수집 중...';
     }
     try {
         const rows = await collectMomentRowsForExport({ startMs: choice.startMs, endMs: choice.endMs });
@@ -3119,12 +3119,12 @@ function ensureAdminFeedPhotoViewerModal() {
                     <button type="button" id="adminFeedPhotoViewerClose" class="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white">닫기</button>
                 </div>
                 <div class="relative flex items-center justify-center max-h-[85vh] max-w-[96vw]">
-                    <button type="button" id="adminFeedPhotoViewerPrev" class="absolute left-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="이전 사진"><i class="fa-solid fa-chevron-left"></i></button>
+                    <button type="button" id="adminFeedPhotoViewerPrev" class="absolute left-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="이전 사진"><i data-lucide="chevron-left"></i></button>
                     <div class="relative inline-block max-w-[96vw] max-h-[85vh]">
                         <img id="adminFeedPhotoViewerImg" src="" alt="" class="max-w-[96vw] max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl bg-black/20 block">
                         <span id="adminFeedPhotoViewerCounter" class="absolute top-2 right-2 z-20 px-2 py-1 rounded-md bg-black/70 text-white text-xs font-bold leading-none pointer-events-none shadow-sm"></span>
                     </div>
-                    <button type="button" id="adminFeedPhotoViewerNext" class="absolute right-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="다음 사진"><i class="fa-solid fa-chevron-right"></i></button>
+                    <button type="button" id="adminFeedPhotoViewerNext" class="absolute right-0 z-10 p-3 rounded-full bg-black/50 text-white hover:bg-black/70 hidden" aria-label="다음 사진"><i data-lucide="chevron-right"></i></button>
                 </div>
             </div>
         </div>`;

@@ -297,7 +297,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
         _overlay = document.createElement('div');
         _overlay.id = 'momentImageLightbox';
         _overlay.className =
-            'hidden fixed inset-0 z-[10002] flex justify-center bg-slate-950/90 backdrop-blur-sm';
+            'hidden fixed inset-0 z-[10002] flex justify-center';
         _overlay.setAttribute('role', 'dialog');
         _overlay.setAttribute('aria-modal', 'true');
         _overlay.setAttribute('aria-labelledby', 'momentImageLightboxTitle');
@@ -309,7 +309,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
                     <span data-moment-lb-counter class="hidden min-w-[3rem] flex-1 text-center text-xs font-bold text-white/90 tabular-nums sm:flex-none"></span>
                     <div class="ml-auto flex flex-shrink-0 items-center">
                         <button type="button" data-moment-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25 active:bg-white/20" aria-label="닫기">
-                            <i class="fa-solid fa-times text-lg leading-none" aria-hidden="true"></i>
+                            <i data-lucide="x" class="text-lg leading-none" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>

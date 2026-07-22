@@ -82,31 +82,6 @@ export function getMomentV2SlotWheelLabel(photo, isBest, isDaily, isInsight, ent
     return String(raw).replace(/\s+/g, '').trim() || '—';
 }
 
-function buildWheelNumericCol(val, isYear, fieldKey) {
-    const v = escapeHtml(val);
-    const yearCls = isYear ? ' meal-photo-wheel-col--year' : '';
-    const fk = escapeHtml(fieldKey);
-    return `<div class="meal-photo-wheel-col${yearCls} flex shrink-0 flex-col items-center justify-center">
-    <div class="meal-photo-wheel-viewport meal-photo-wheel-viewport--static max-h-[30px] min-h-[30px] h-[30px] overflow-hidden flex items-start justify-center">
-        <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip" data-moment-v2-f="${fk}" data-moment-v2-stripe="num" data-moment-v2-wheel-strip="1" aria-hidden="true">
-            <span class="meal-photo-wheel-label-line">${v}</span>
-        </div>
-    </div>
-</div>`;
-}
-
-function buildWheelLabelCol(modifier, val, fieldKey) {
-    const v = escapeHtml(val);
-    const fk = escapeHtml(fieldKey);
-    return `<div class="meal-photo-wheel-col ${modifier} flex min-w-0 shrink-0 flex-col items-center justify-center">
-    <div class="meal-photo-wheel-viewport meal-photo-wheel-viewport--label meal-photo-wheel-viewport--static max-h-[30px] min-h-[30px] h-[30px] overflow-hidden">
-        <div class="meal-photo-wheel-label-strip moment-v2-wheel-anim-strip" data-moment-v2-f="${fk}" data-moment-v2-stripe="label" data-moment-v2-wheel-strip="1">
-            <span class="meal-photo-wheel-label-line">${v}</span>
-        </div>
-    </div>
-</div>`;
-}
-
 /** 기록 코멘트(소셜 댓글 아님) */
 function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
@@ -172,7 +147,7 @@ function buildV2MeatballBtnHtml(overlayRow) {
     const fo = overlayRow?.overlayFeedOptions;
     if (!fo) return '';
     const attr = ` data-meal-feed-options="${encodeURIComponent(JSON.stringify(fo))}"`;
-    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i class="fa-solid fa-ellipsis timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i data-lucide="ellipsis" class="timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
 }
 
 function buildV2InlineSocialBarHtml(postId) {
@@ -181,17 +156,17 @@ function buildV2InlineSocialBarHtml(postId) {
     return `<div class="moment-v2-social-below-photo pointer-events-auto flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex w-full items-center">
 <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-heart post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-heart post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="heart" class="post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="heart" class="post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
     )}" aria-hidden="true"></span></button>
 <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i class="fa-solid fa-comment post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-comment post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="message-circle" class="post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="message-circle" class="post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
     )}" aria-hidden="true"></span></button>
 <button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-visible" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleBookmark(${pidJson})' aria-label="북마크"><span class="timeline-meal-photo-moment-social-icon-stack absolute inset-0" aria-hidden="true"><i class="fa-solid fa-bookmark post-bookmark-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i class="fa-regular fa-bookmark post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></button>
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleBookmark(${pidJson})' aria-label="북마크"><span class="timeline-meal-photo-moment-social-icon-stack absolute inset-0" aria-hidden="true"><i data-lucide="bookmark" class="post-bookmark-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="bookmark" class="post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></button>
 </div></div>`;
 }
 
@@ -220,7 +195,7 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                         <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
                         <textarea id="comment-text-${p}" rows="1" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent py-1 text-[14px] leading-snug text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeydown='if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();window.submitComment(${postIdJs});}'></textarea>
                         <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="입력">
-                            <i class="fa-solid fa-arrow-up text-sm" aria-hidden="true"></i>
+                            <i data-lucide="arrow-up" class="text-sm" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -261,22 +236,26 @@ function resolveMomentV2MenuTitle(photo, mealHistoryMap, groupEntryId, flags) {
     return String(photo?.mealType || '').trim();
 }
 
-function formatMomentV2AuthorSub(photo) {
+function formatMomentV2AuthorSub(photo, flags = {}, entryId) {
     const { mo, day, wd } = getMomentV2DateParts(photo);
     if (mo === '—' || day === '—') return '';
     const monthNum = Number(mo);
     const dayNum = Number(day);
     if (!Number.isFinite(monthNum) || !Number.isFinite(dayNum)) return '';
-    return `${monthNum}월 ${dayNum}일${wd && wd !== '—' ? ` ${wd}요일` : ''}`;
+    const datePart = `${monthNum}월 ${dayNum}일${wd && wd !== '—' ? ` ${wd}요일` : ''}`;
+    const { isBestShare = false, isDailyShare = false, isInsightShare = false } = flags;
+    const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, entryId);
+    if (slotT && slotT !== '—') return `${datePart} · ${slotT}`;
+    return datePart;
 }
 
 /** 시안 v2: 작성자 행은 사진 위가 아니라 본문 */
-function buildV2AuthorRowHtml(overlayRow, photo) {
+function buildV2AuthorRowHtml(overlayRow, photo, flags = {}, entryId) {
     const postId = overlayRow?.overlayPostId;
     const a = overlayRow?.overlayAuthor;
     if (!postId || !a) return '';
     const nick = escapeHtml(String(a.nickname || ''));
-    const sub = escapeHtml(formatMomentV2AuthorSub(photo));
+    const sub = escapeHtml(formatMomentV2AuthorSub(photo, flags, entryId));
     const meatball = buildV2MeatballBtnHtml(overlayRow).replace(
         'timeline-meal-photo-meatball-icon text-white/95',
         'timeline-meal-photo-meatball-icon moment-v2-more-icon'
@@ -307,22 +286,18 @@ function buildV2AuthorRowHtml(overlayRow, photo) {
 }
 
 /**
- * 시안 v2 본문 캡션: 슬롯 · 장소 / 메뉴 제목 / 코멘트
- * 비어 있는 항목은 DOM에 넣지 않음
+ * 시안 v2 본문 캡션: 장소 / 메뉴 제목 / 코멘트
+ * (슬롯명은 작성자 행 날짜 옆 · 비어 있는 항목은 DOM에 넣지 않음)
  */
 function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, mealHistoryMap, groupEntryId) {
-    const { isBestShare, isDailyShare, isInsightShare } = flags;
-    const eid = entryId != null && entryId !== '' ? entryId : photo?.entryId;
+    const { isBestShare } = flags;
     const specialChip = isBestShare
-        ? `<div class="moment-v2-special-chip"><i class="fa-solid fa-crown" aria-hidden="true"></i> 이번 주 베스트</div>`
+        ? `<div class="moment-v2-special-chip"><i data-lucide="crown" aria-hidden="true"></i> 이번 주 베스트</div>`
         : '';
-    const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, eid);
+    /* 슬롯명은 작성자 행 날짜 오른쪽에 표시 — 본문 메타는 장소만 */
     const place = resolveMomentV2Place(photo, mealHistoryMap, groupEntryId);
-    const metaParts = [];
-    if (slotT && slotT !== '—') metaParts.push(slotT);
-    if (place) metaParts.push(place);
-    const metaHtml = metaParts.length
-        ? `<div class="moment-v2-meal-meta">${escapeHtml(metaParts.join(' · '))}</div>`
+    const metaHtml = place
+        ? `<div class="moment-v2-meal-meta">${escapeHtml(place)}</div>`
         : '';
 
     const menuFromFields = resolveMomentV2MenuTitle(photo, mealHistoryMap, groupEntryId, flags);
@@ -378,7 +353,7 @@ function buildV2RawPhotoBlock(p, idx, ar) {
     const photoBanned = p.banned === true && !isBest && !isDaily && !isInsight;
     const bannedOverlay = photoBanned
         ? `<div class="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center bg-orange-500/20">
-            <div class="rounded-lg bg-orange-600 px-3 py-1.5 text-sm text-white shadow-sm"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>
+            <div class="rounded-lg bg-orange-600 px-3 py-1.5 text-sm text-white shadow-sm"><i data-lucide="ban" class="mr-1"></i>공유 금지</div>
         </div>`
         : '';
     const maxH = ar === '3:4' ? '420px' : 'none';
@@ -447,7 +422,9 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     });
     const labelsEncoded = encodeURIComponent(JSON.stringify(labelsPayload));
     const socialPanelBelow = postIdForUi && postIdJs ? buildV2SocialCommentPanelHtml(postIdForUi, postIdJs) : '';
-    const authorRow = overlayRow ? buildV2AuthorRowHtml(overlayRow, leadPhoto) : '';
+    const authorRow = overlayRow
+        ? buildV2AuthorRowHtml(overlayRow, leadPhoto, flags, groupEntryId)
+        : '';
     const bodyCaption = buildMomentV2BodyCaptionHtml(
         leadPhoto,
         captionTextPlain,
@@ -488,8 +465,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr}${rootSpecialAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
-        <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch overflow-hidden" data-moment-v2-hpost-ambient>
-        <div class="relative z-[1] flex w-full min-w-0 min-h-0 flex-col items-stretch">
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     ${photoBlockHtml}
         </div>
@@ -499,8 +474,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         ${bodyCaption}
         ${socialBar}
         ${socialPanelBelow}
-        </div>
-        </div>
         </div>
         </div>
     </div>

@@ -136,7 +136,7 @@ window.applyMealogEnvironmentBadge = function applyMealogEnvironmentBadge(el, op
 window.refreshMealogAppEnvironmentBadges = function refreshMealogAppEnvironmentBadges() {
     if (typeof window.applyMealogEnvironmentBadge !== 'function') return;
     window.applyMealogEnvironmentBadge(document.getElementById('landingEnvBadge'), { hideProduction: true });
-    window.applyMealogEnvironmentBadge(document.getElementById('headerEnvBadge'), { hideProduction: true });
+    /* 메인 헤더 환경 배지(개발/스테이징)는 표시하지 않음 */
 };
 
 if (typeof window !== 'undefined' && window.addEventListener) {

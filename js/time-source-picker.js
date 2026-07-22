@@ -96,7 +96,7 @@ export function openTimeManualPanel(options = {}) {
         'flex w-full items-center justify-center border-0 bg-transparent px-4 py-3 text-center text-base outline-none active:bg-slate-100';
 
     root.innerHTML = `
-        <div class="absolute inset-0 bg-black/45 pointer-events-auto" data-time-source-dismiss></div>
+        <div class="absolute inset-0 mealog-action-dim pointer-events-auto" data-time-source-dismiss></div>
         <div class="relative z-[1] w-full max-w-sm pointer-events-auto overflow-hidden rounded-2xl bg-white shadow-xl">
             <div class="px-4 pt-4 pb-2 border-b border-slate-100">
                 <h3 class="text-base font-bold text-slate-800 text-center">${title}</h3>
@@ -168,31 +168,31 @@ export function openTimeSourceSheet(options = {}) {
 
     const emptyRow = showEmpty
         ? `<button type="button" data-time-source-option="empty" class="${rowBase} text-slate-900">
-                <i class="fa-regular fa-circle-xmark shrink-0 text-sm text-slate-500" aria-hidden="true"></i>미입력
+                <i data-lucide="circle-x" class="shrink-0 text-sm text-slate-500" aria-hidden="true"></i>미입력
            </button>`
         : '';
 
     const removeRow = showRemove
         ? `<button type="button" data-time-source-option="remove" class="${rowBase} text-red-700 active:bg-red-50">
-                <i class="fa-solid fa-eye-slash shrink-0 text-sm" aria-hidden="true"></i>표시 제거
+                <i data-lucide="eye-off" class="shrink-0 text-sm" aria-hidden="true"></i>표시 제거
            </button>`
         : '';
 
     root.innerHTML = `
-        <div class="absolute inset-0 bg-black/45 pointer-events-auto" data-time-source-dismiss></div>
+        <div class="absolute inset-0 mealog-action-dim pointer-events-auto" data-time-source-dismiss></div>
         <div class="relative z-[1] w-full max-w-sm pointer-events-auto overflow-hidden rounded-2xl bg-white shadow-xl">
             <div class="px-4 pt-4 pb-2 border-b border-slate-100">
                 <h3 class="text-base font-bold text-slate-800 text-center">${title}</h3>
             </div>
             <div class="flex flex-col divide-y divide-slate-200/90">
                 <button type="button" data-time-source-option="now" class="${rowBase} text-slate-900">
-                    <i class="fa-regular fa-clock shrink-0 text-sm text-slate-500" aria-hidden="true"></i>현재 시각
+                    <i data-lucide="clock" class="shrink-0 text-sm text-slate-500" aria-hidden="true"></i>현재 시각
                 </button>
                 <button type="button" data-time-source-option="photo" class="${rowBase} text-slate-900">
-                    <i class="fa-solid fa-camera shrink-0 text-sm text-slate-500" aria-hidden="true"></i>사진 시각
+                    <i data-lucide="camera" class="shrink-0 text-sm text-slate-500" aria-hidden="true"></i>사진 시각
                 </button>
                 <button type="button" data-time-source-option="manual" class="${rowBase} text-slate-900">
-                    <i class="fa-solid fa-pen shrink-0 text-sm text-slate-500" aria-hidden="true"></i>직접 입력
+                    <i data-lucide="pen" class="shrink-0 text-sm text-slate-500" aria-hidden="true"></i>직접 입력
                 </button>
                 ${emptyRow}
                 ${removeRow}
