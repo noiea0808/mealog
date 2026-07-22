@@ -110,29 +110,38 @@ function buildWheelLabelCol(modifier, val, fieldKey) {
 /** 기록 코멘트(소셜 댓글 아님) */
 function buildAuthorMealCommentForPhoto(p, flags, mealHistoryMap, groupEntryId) {
     const { isBestShare, isDailyShare, isInsightShare } = flags;
-    const eid = p?.entryId || groupEntryId;
-    if (isDailyJournalSharePhoto(p, eid)) {
-        return (p?.comment || '').replace(/<[^>]*>/g, '').trim();
+    const rawEid = p?.entryId || groupEntryId;
+    const eid =
+        rawEid != null && rawEid !== '' && String(rawEid) !== 'null' ? String(rawEid) : '';
+    const strip = (v) =>
+        String(v || '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .trim();
+
+    if (isDailyJournalSharePhoto(p, eid)) return strip(p?.comment);
+    if (isBestShare || isDailyShare || isInsightShare) return strip(p?.comment);
+
+    let authorMealComment = strip(p?.comment);
+    if (!authorMealComment && eid && mealHistoryMap) {
+        const mealRecord = mealHistoryMap.get(eid) || mealHistoryMap.get(String(eid));
+        if (mealRecord?.comment) authorMealComment = strip(mealRecord.comment);
     }
-    const isSnack = p?.slotId && SLOTS.find((s) => s.id === p.slotId)?.type === 'snack';
-    if (isBestShare || isDailyShare || isInsightShare) {
-        return (p?.comment || '').replace(/<[^>]*>/g, '').trim();
-    }
-    if (isSnack) {
-        return (p?.comment || '').toString().trim();
-    }
-    let authorMealComment = '';
-    if (p?.comment) authorMealComment = String(p.comment).trim();
-    if (!authorMealComment && eid && mealHistoryMap && mealHistoryMap.has(eid)) {
-        const mealRecord = mealHistoryMap.get(eid);
-        if (mealRecord?.comment) authorMealComment = String(mealRecord.comment).trim();
-    }
-    if (!authorMealComment && !eid && typeof window !== 'undefined' && window.mealHistory && p?.date && p?.slotId) {
+    if (
+        !authorMealComment &&
+        typeof window !== 'undefined' &&
+        Array.isArray(window.mealHistory) &&
+        p?.date &&
+        p?.slotId
+    ) {
         const matchingRecord = window.mealHistory.find(
             (m) =>
-                m.date === p.date && m.slotId === p.slotId && (p.comment ? m.comment === p.comment : true)
+                m.date === p.date &&
+                m.slotId === p.slotId &&
+                (!eid || String(m.id) === eid) &&
+                (p.comment ? m.comment === p.comment : true)
         );
-        if (matchingRecord?.comment) authorMealComment = String(matchingRecord.comment).trim();
+        if (matchingRecord?.comment) authorMealComment = strip(matchingRecord.comment);
     }
     return authorMealComment;
 }
@@ -275,13 +284,13 @@ function buildV2AuthorRowHtml(overlayRow, photo) {
     let avatarBlock;
     if (a.avatarType === 'photo' && a.avatarValue) {
         const url = escapeHtml(String(a.avatarValue));
-        const inner = `<div class="moment-v2-avatar h-9 w-9 rounded-full bg-cover bg-center" style="background-image:url('${url}')" role="img" aria-label="${nick}"></div>`;
+        const inner = `<div class="moment-v2-avatar" style="background-image:url('${url}')" role="img" aria-label="${nick}"></div>`;
         avatarBlock = a.isGuestPost
             ? `<div class="relative shrink-0">${inner}<span class="absolute bottom-0 right-0 flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-slate-700 text-[7px] font-bold text-white">게</span></div>`
             : inner;
     } else {
         const ch = escapeHtml(String(a.avatarValue || '?'));
-        avatarBlock = `<div class="moment-v2-avatar moment-v2-avatar--fallback flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold">${ch}</div>`;
+        avatarBlock = `<div class="moment-v2-avatar moment-v2-avatar--fallback" aria-hidden="true">${ch}</div>`;
     }
     return `<div class="moment-v2-author-row">
         <button type="button" class="moment-v2-author-hit flex min-w-0 flex-1 items-center gap-2.5 text-left" onclick='event.stopPropagation();window.filterGalleryByUser && window.filterGalleryByUser(${JSON.stringify(
@@ -334,7 +343,7 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
 
     const note = buildAuthorMealCommentForPhoto(photo, flags, mealHistoryMap, groupEntryId);
     const noteHtml = note
-        ? `<div class="moment-v2-meal-note" data-moment-v2-author-comment-body>
+        ? `<div class="moment-v2-meal-note">
             <div class="whitespace-pre-wrap break-words">${escapeHtml(note)}</div>
           </div>`
         : '';

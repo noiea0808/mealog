@@ -508,7 +508,7 @@ async function appendGalleryPosts(docs, loadMoreWrap) {
     await fetchUserProfiles([...new Set(docs.map(p => p.userId).filter(Boolean))]);
     let mealHistoryMap = new Map();
     if (window.mealHistory && Array.isArray(window.mealHistory)) {
-        window.mealHistory.forEach(meal => { if (meal.id) mealHistoryMap.set(meal.id, meal); });
+        window.mealHistory.forEach(meal => { if (meal.id) mealHistoryMap.set(String(meal.id), meal); });
     }
     const existingCount = container.querySelectorAll('.instagram-post').length;
     const newPostsHtml = newGroups

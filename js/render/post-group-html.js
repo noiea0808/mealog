@@ -331,7 +331,13 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                   caption && isInsightShare
                       ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
                       : '',
-                  !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
+                  /* 작성자 코멘트 없는 식단 공유 → meals에서 lazy fetch (본인/타인 공통) */
+                  !isBestShare &&
+                  !isDailyShare &&
+                  !isInsightShare &&
+                  entryId &&
+                  photo.userId &&
+                  !comment
                       ? `<div class="shared-comment-fetch-placeholder hidden h-0 overflow-hidden p-0" aria-hidden="true" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>`
                       : ''
               ]
