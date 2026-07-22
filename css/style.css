@@ -45,7 +45,7 @@
     /* 기록(최대 3줄 접힘)·휠 한 줄·소셜 — 게시물 min-height·사진 영역 여유 */
     --moment-v2-dock-inset-approx: min(50vh, 12.5rem);
     /* 갤러리 화면2: #galleryPostsInsertPoint `gap` = 이전 글 하단 ↔ 다음 글 상단(투명 래퍼 기준) 유일 간격 */
-    --moment-v2-gallery-post-gap: 20px;
+    --moment-v2-gallery-post-gap: 14px;
 }
 /* Web: 핸폰 네비 없음 → safe-bottom 0, 상단은 브라우저 env만(28px 최소값은 네이티브용) */
 html.platform-web {
@@ -595,12 +595,18 @@ body.keyboard-closed #boardWriteView {
     display: none !important;
 }
 /* 시안 v2 본문: 작성자 → 슬롯·장소 → 메뉴 → 코멘트 → 소셜 */
-#galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption],
-#feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption] {
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special),
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special) {
     padding: 14px 16px 14px !important;
     margin: 0 !important;
     gap: 0;
     background: #ffffff;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body.moment-v2-body--special[data-moment-v2-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body.moment-v2-body--special[data-moment-v2-caption] {
+    padding: 14px 16px 14px !important;
+    margin: 0 !important;
+    gap: 0;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-author-row,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-author-row {
@@ -3220,21 +3226,66 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
     scroll-snap-align: start;
     scroll-snap-stop: normal;
 }
-/* 다장: 뷰포트 앞 사진 슬롯은 기존 매트(전역 블러는 .moment-v2-hpost-ambient) */
+/* 다장: 사진 슬롯 — 시안 wrap #e2e8f0 (회색 반투명 매트 제거) */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot,
 #moment-v2-fixed-caption-layer .moment-v2-hstrip .moment-v2-photo-surface.timeline-meal-photo-aspect-slot {
     width: 100%;
-    background-color: rgba(241, 245, 249, 0.22) !important;
-    --tw-ring-color: rgba(226, 232, 240, 0.35) !important;
+    background-color: #e2e8f0 !important;
+    box-shadow: none !important;
+    --tw-ring-color: transparent !important;
 }
+/* 시안 multi-badge: 우상단 pill · Pretendard 11px */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
-#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
-    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-weight: 400;
-    font-size: 20px;
-    line-height: 1.2;
+#moment-v2-fixed-caption-layer .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .moment-v2-multi-badge,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .moment-v2-multi-badge {
+    top: 12px !important;
+    right: 12px !important;
+    left: auto !important;
+    bottom: auto !important;
+    transform: none !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    font-family: 'Pretendard', sans-serif !important;
+    font-weight: 600 !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    padding: 4px 8px !important;
+    border-radius: 9999px !important;
+    border: 0 !important;
+    background: rgba(15, 23, 42, 0.55) !important;
+    color: #ffffff !important;
+    text-shadow: none !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: none !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-dots,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-dots {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 12;
+    display: flex;
+    gap: 5px;
+    pointer-events: none;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-dots span,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.45);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-dots span.on,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-dots span.on {
+    background: #fff;
+    width: 16px;
+    border-radius: 4px;
 }
 /* 타임라인 휠 팝업 `.timeline-meal-photos-overlay--wheel .timeline-meal-photos-slide-caption-inner` 와 동일 톤 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
@@ -4452,8 +4503,8 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 /* 화면2 인라인: 사진 위 닉/미트볼/소셜(팝업 #timelineMealPhotosOverlay와 동일 대비) */
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photos-carousel-badge,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope .timeline-meal-photos-carousel-badge {
-    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-weight: 400;
+    font-family: 'Pretendard', sans-serif !important;
+    font-weight: 600 !important;
     border: none !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope .timeline-meal-photo-moment-chrome,
@@ -4733,6 +4784,11 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
 /* 모먼트 시안 v2: page #f8fafc · 카드 18px · brand green */
 body[data-main-tab='gallery'] {
     --app-page-bg: var(--page, #f8fafc);
+    background-color: var(--page, #f8fafc) !important;
+}
+body[data-main-tab='gallery'] #mainApp,
+body[data-main-tab='gallery'] #galleryView {
+    background-color: var(--page, #f8fafc) !important;
 }
 #galleryContainer.moment-feed-layout-v2 {
     background: var(--page, #f8fafc) !important;
@@ -4772,9 +4828,35 @@ body[data-main-tab='gallery'] {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-photo-surface,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-photo-surface {
-    border-radius: 18px 18px 0 0 !important;
-    box-shadow: none;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background-color: #e2e8f0 !important;
     --tw-ring-color: transparent !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-wrap,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-shell {
+    background: #e2e8f0;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-special-chip,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-special-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--green-deep, #047857);
+    background: var(--green-soft, #ecfdf5);
+    padding: 3px 8px;
+    border-radius: 9999px;
+    margin-bottom: 8px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body--special,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body--special,
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-special='1'] .moment-v2-body,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-special='1'] .moment-v2-body {
+    background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-stack,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-stack {
@@ -4849,9 +4931,9 @@ body[data-main-tab='gallery'] {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo {
     position: static !important;
     width: 100%;
-    padding: 10px 12px 12px;
+    padding: 10px 0 0 !important;
     border-top: 1px solid #f1f5f9;
-    background: #ffffff;
+    background: transparent !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
     .timeline-meal-photo-moment-social-row .post-bookmark-btn,

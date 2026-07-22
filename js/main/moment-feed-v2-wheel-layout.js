@@ -896,6 +896,12 @@ function bindOneMomentV2WheelStage(stageEl) {
             idx = getMomentV2CarouselActiveIndex(strip);
             const pageCur = stageEl.querySelector('[data-carousel-badge-cur]');
             if (pageCur) pageCur.textContent = String(idx + 1);
+            const dots = stageEl.querySelector('[data-moment-v2-dots]');
+            if (dots) {
+                dots.querySelectorAll('span').forEach((el, i) => {
+                    el.classList.toggle('on', i === idx);
+                });
+            }
             syncMomentV2HstripBgToIndex(strip, idx);
             preloadMomentV2HstripAdjacent(strip, idx);
         }

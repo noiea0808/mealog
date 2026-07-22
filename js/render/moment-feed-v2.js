@@ -5,7 +5,7 @@
  * 용어: 글쓴이의 기록 = **코멘트** / 달린 소셜 = **댓글**
  */
 import { escapeHtml } from './utils.js';
-import { getDisplayImageUrl, getBlurImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
+import { getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { SLOTS } from '../constants.js';
 import {
     DAILY_JOURNAL_MOMENT_SLOT_LABEL,
@@ -17,16 +17,25 @@ import { isDietReportInsightShare, DIET_REPORT_MOMENT_SLOT_LABEL } from '../util
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 function aspectToCss(ar) {
-    if (ar === '3:4' || ar === '4:3') return ar === '3:4' ? '3/4' : '4/3';
-    return '1/1';
+    if (ar === '3:4') return '3/4';
+    return '4/3';
 }
 
-/** 공유 문서·기록의 `photoAspectRatio` 우선 — 타임라인/휠 팝업과 동일 1:1·3:4·4:3 */
+/** 시안 v2: 기본 4:3, 세로만 3:4 (1:1 정사각 피드 매트 제거) */
 function normalizePhotoAspectForDisplay(photo, groupFallback) {
     const raw = photo?.photoAspectRatio;
     if (raw === '3:4' || raw === '4:3') return raw;
     if (groupFallback === '3:4' || groupFallback === '4:3') return groupFallback;
-    return '1:1';
+    return '4:3';
+}
+
+function buildMomentV2PhotoDotsHtml(n) {
+    const count = Math.max(0, Number(n) || 0);
+    if (count < 2) return '';
+    const spans = Array.from({ length: count }, (_, i) =>
+        `<span${i === 0 ? ' class="on"' : ''}></span>`
+    ).join('');
+    return `<div class="moment-v2-photo-dots" data-moment-v2-dots aria-hidden="true">${spans}</div>`;
 }
 
 /** @returns {{ y: string, mo: string, day: string, wd: string }} */
@@ -154,7 +163,7 @@ function buildV2MeatballBtnHtml(overlayRow) {
     const fo = overlayRow?.overlayFeedOptions;
     if (!fo) return '';
     const attr = ` data-meal-feed-options="${encodeURIComponent(JSON.stringify(fo))}"`;
-    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i class="fa-solid fa-ellipsis-vertical timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
+    return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i class="fa-solid fa-ellipsis timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
 }
 
 function buildV2InlineSocialBarHtml(postId) {
@@ -277,6 +286,9 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
     const eid = entryId != null && entryId !== '' ? entryId : photo?.entryId;
     const isDailyJournalShare = isDailyJournalSharePhoto(photo, eid);
     const isDietReportShare = isInsightShare && isDietReportInsightShare(photo);
+    const specialChip = isBestShare
+        ? `<div class="moment-v2-special-chip"><i class="fa-solid fa-crown" aria-hidden="true"></i> 이번 주 베스트</div>`
+        : '';
     const slotT = getMomentV2SlotWheelLabel(photo, isBestShare, isDailyShare, isInsightShare, eid);
     const place = resolveMomentV2Place(photo, mealHistoryMap, groupEntryId);
     const metaParts = [];
@@ -302,6 +314,7 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
         : '';
 
     return `<div class="moment-v2-body-caption">
+        ${specialChip}
         ${metaHtml}
         ${titleHtml}
         ${noteHtml}
@@ -313,7 +326,7 @@ function buildV2InlineChromeHtml(_overlayRow) {
     return '';
 }
 
-/** 사진 영역만 (크롬/소셜 제외) — vscroll 셀·hstrip 슬라이드 공통 (`ar`은 해당 장 비율) */
+/** 사진 영역만 — 시안: wrap #e2e8f0, cover, 기본 4:3 / 세로 3:4 max 420px */
 function buildV2RawPhotoBlock(p, idx, ar) {
     const isBest = p.type === 'best';
     const isDaily = p.type === 'daily';
@@ -331,21 +344,21 @@ function buildV2RawPhotoBlock(p, idx, ar) {
             <div class="rounded-lg bg-orange-600 px-3 py-1.5 text-sm text-white shadow-sm"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>
         </div>`
         : '';
-    const maxH = 'min(88vh, calc(100dvh - 7rem))';
+    const maxH = ar === '3:4' ? '420px' : 'none';
     /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
     if (isDaily || isBest || isDietReportInsightShare(p)) {
-        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-white shadow-sm ring-1 ring-slate-200/40">
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
     if (isInsight) {
-        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
-    return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-slate-100/40 shadow-sm ring-1 ring-slate-200/40" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
+    return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
         <img src="${displayUrl}"${displayFallback} alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
         ${bannedOverlay}
     </div>`;
@@ -380,10 +393,11 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         mealHistoryMap,
         groupEntryId
     } = params;
-    const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
+    const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '4:3';
     const flags = { isBestShare, isDailyShare, isInsightShare };
     const rootDailyAttr = isDailyShare ? ' data-moment-v2-daily-share="1"' : '';
     const rootBestAttr = isBestShare ? ' data-moment-v2-best-share="1"' : '';
+    const rootSpecialAttr = isBestShare ? ' data-moment-v2-special="1"' : '';
     const postIdForUi = String(overlayRow?.overlayPostId || String(postIdParam || ''));
     const postIdJs = postIdJsParam != null ? postIdJsParam : JSON.stringify(String(postIdForUi || ''));
     const n = photoGroup.length;
@@ -396,15 +410,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const socialPanelBelow = postIdForUi && postIdJs ? buildV2SocialCommentPanelHtml(postIdForUi, postIdJs) : '';
 
     if (n > 1) {
-        const bgsJson = encodeURIComponent(JSON.stringify(photoGroup.map((p) => getBlurImageUrl(p, 0, 'moment-v2.hstrip-bg') || p?.photoUrl || '')));
-        const bg0 = String(getBlurImageUrl(photoGroup[0], 0, 'moment-v2.hstrip-bg') || photoGroup[0]?.photoUrl || '').trim();
-        const hpostBgBlock =
-            !isDailyShare && bg0.length > 0
-                ? `<div class="pointer-events-none absolute inset-0 z-0 overflow-hidden rounded-lg moment-v2-hpost-bg-wrap" data-moment-v2-hpost-backdrop="1" aria-hidden="true">
-  <img src="${escapeHtml(bg0)}" alt="" draggable="false" class="moment-v2-hpost-bg-img" loading="eager" />
-  <div class="pointer-events-none absolute inset-0 moment-v2-hpost-bg-dim" aria-hidden="true"></div>
-</div>`
-                : '';
         const hSlides = photoGroup
             .map(
                 (p, idx) =>
@@ -421,30 +426,32 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             groupEntryId
         );
         const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        const dotsHtml = buildMomentV2PhotoDotsHtml(n);
+        const bodySpecialCls = isBestShare ? ' moment-v2-body--special' : '';
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr}${rootSpecialAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
-        <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch overflow-hidden" data-moment-v2-hpost-ambient data-moment-v2-hstrip-bgs="${bgsJson}">
-        ${hpostBgBlock}
+        <div class="moment-v2-hpost-ambient relative flex w-full min-w-0 flex-col items-stretch overflow-hidden" data-moment-v2-hpost-ambient>
         <div class="relative z-[1] flex w-full min-w-0 min-h-0 flex-col items-stretch">
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
-    <div class="moment-v2-photo-shell w-full min-w-0 bg-transparent py-0">
+    <div class="moment-v2-photo-shell moment-v2-photo-wrap w-full min-w-0 py-0">
     <div class="moment-v2-photo-swipe-zone timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">
         <div class="moment-v2-photo-strip-frame timeline-meal-photos-carousel-frame relative flex min-h-0 w-full min-w-0 flex-col items-stretch justify-start py-0 px-0" data-photo-index="0" tabindex="-1" data-moment-v2-legacy-strip="0" role="region" aria-label="게시물 사진">
             <div class="moment-v2-photo-strip-viewport timeline-meal-photos-carousel-viewport moment-v2-carousel-viewport--natural relative w-full min-w-0 min-h-0 shrink-0 overflow-hidden">
                 <div class="moment-v2-hstrip scrollbar-hide relative z-[1] flex min-h-0 w-full min-w-0 select-none flex-row overflow-x-auto overflow-y-hidden overscroll-x-contain" style="-webkit-overflow-scrolling:touch" tabindex="-1">
                 ${hSlides}
                 </div>
-                <div class="moment-v2-photo-page-indicator timeline-meal-photos-carousel-badge pointer-events-none absolute z-[12] flex items-baseline gap-0 rounded-md border-0 bg-black/35 px-2.5 py-1 tabular-nums leading-none text-white/95 shadow-sm backdrop-blur-sm" data-carousel-badge role="status" aria-live="polite" aria-atomic="true" aria-label="사진 장 수">
-                    <span data-carousel-badge-cur class="carousel-badge-num leading-none">1</span><span class="carousel-badge-sep leading-none text-white/80" aria-hidden="true">/</span><span data-carousel-badge-tot class="carousel-badge-num leading-none">${n}</span>
+                <div class="moment-v2-multi-badge timeline-meal-photos-carousel-badge pointer-events-none absolute z-[12]" data-carousel-badge role="status" aria-live="polite" aria-atomic="true" aria-label="사진 장 수">
+                    <span data-carousel-badge-cur>1</span><span aria-hidden="true"> / </span><span data-carousel-badge-tot>${n}</span>
                 </div>
+                ${dotsHtml}
             </div>
         </div>
     </div>
 </div>
         </div>
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
-        <div class="moment-v2-caption-footer moment-v2-body relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
+        <div class="moment-v2-caption-footer moment-v2-body${bodySpecialCls} relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
         ${authorRow}
         ${bodyCaption}
         ${socialBar}
@@ -469,12 +476,13 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         groupEntryId
     );
     const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
+    const bodySpecialCls = isBestShare ? ' moment-v2-body--special' : '';
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr}${rootSpecialAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
-    <div class="moment-v2-photo-shell w-full min-w-0 bg-transparent py-0">
+    <div class="moment-v2-photo-shell moment-v2-photo-wrap w-full min-w-0 py-0">
     <div class="timeline-meal-photos-carousel-zone flex w-full min-w-0 shrink-0 flex-col items-stretch">
         <div class="timeline-meal-photos-carousel-frame moment-v2-vscroll-frame relative flex min-h-0 w-full min-w-0 flex-col items-stretch justify-start py-0 px-0" data-photo-index="0" tabindex="-1" data-moment-v2-legacy-strip="0">
             <div class="moment-v2-photo-vscroll flex w-full min-w-0 flex-col" data-moment-v2-vscroll-list>
@@ -489,7 +497,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 </div>
         </div>
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
-        <div class="moment-v2-caption-footer moment-v2-body relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
+        <div class="moment-v2-caption-footer moment-v2-body${bodySpecialCls} relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
         ${authorRow}
         ${bodyCaption}
         ${socialBar}

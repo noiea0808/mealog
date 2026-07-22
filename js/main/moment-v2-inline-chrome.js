@@ -217,33 +217,18 @@ function syncBottomRowCenters(frame) {
     if (!ctx) return;
     const { ir, vr } = ctx;
     const social = frame?.querySelector?.('[data-meal-photo-social-bubble]');
-    const badge = frame?.querySelector?.('[data-carousel-badge]');
+    /* 뱃지는 시안 우상단 — bottom-row 동기화 대상에서 제외 */
+    if (!social || social.classList?.contains('hidden')) return;
 
     let cY;
-    if (social) {
-        const r = social.getBoundingClientRect();
-        if (r.width > 0 && r.height > 0) cY = r.top + r.height / 2;
-    }
-    if (cY == null) {
-        const laneInset = 1;
-        const pickH = (el) =>
-            el && !el.classList?.contains('hidden') && el.getBoundingClientRect().height > 0.4
-                ? el.getBoundingClientRect().height
-                : 0;
-        const hRow = Math.max(pickH(badge), 28);
-        cY = ir.bottom - laneInset - hRow * 0.5;
-    }
+    const r = social.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) cY = r.top + r.height / 2;
+    if (cY == null) return;
 
-    const applyBottom = (el) => {
-        if (!el) return;
-        if (el.classList?.contains('hidden')) return;
-        const h = el.getBoundingClientRect().height;
-        if (h < 0.5) return;
-        const b = Math.max(0, Math.round(vr.bottom - cY - h * 0.5));
-        el.style.bottom = `${b}px`;
-    };
-    applyBottom(social);
-    applyBottom(badge);
+    const h = social.getBoundingClientRect().height;
+    if (h < 0.5) return;
+    const b = Math.max(0, Math.round(vr.bottom - cY - h * 0.5));
+    social.style.bottom = `${b}px`;
 }
 
 function anchorBadgeToPhoto(frame) {
@@ -258,30 +243,13 @@ function anchorBadgeToPhoto(frame) {
         }
         return;
     }
-    if (frameUsesMv2Hstrip(frame)) {
-        const vp = getMv2CarouselViewportEl(frame);
-        const vr = vp?.getBoundingClientRect?.();
-        if (!vr || vr.width < 4 || vr.height < 4) return;
-        badge.style.position = 'absolute';
-        badge.style.top = 'auto';
-        badge.style.right = 'auto';
-        badge.style.left = '50%';
-        badge.style.bottom = '8px';
-        badge.style.transform = 'translateX(-50%)';
-        return;
-    }
-    const ctx = getV2FrameRects(frame);
-    if (!ctx) return;
-    const { ir, vr } = ctx;
-    const inset = 4;
-    const bottom = vr.bottom - ir.bottom + inset;
-    const cx = (ir.left + ir.right) / 2 - vr.left;
+    /* 시안: multi-badge 우상단 고정 — JS로 하단 중앙 재배치하지 않음 */
     badge.style.position = 'absolute';
-    badge.style.top = 'auto';
-    badge.style.right = 'auto';
-    badge.style.bottom = `${Math.max(0, Math.round(bottom))}px`;
-    badge.style.left = `${Math.round(cx)}px`;
-    badge.style.transform = 'translateX(-50%)';
+    badge.style.top = '12px';
+    badge.style.right = '12px';
+    badge.style.left = 'auto';
+    badge.style.bottom = 'auto';
+    badge.style.transform = 'none';
 }
 
 /**
