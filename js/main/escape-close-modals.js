@@ -14,6 +14,7 @@ import {
     cancelDeleteAccount
 } from '../auth.js';
 import { closeModal } from '../modals/entry-and-core.js';
+import { closeEntrySlotPicker } from '../modals/entry-slot-picker.js';
 import { closeDailyJournalModal } from '../modals/daily-journal.js';
 import { closeSettings } from '../modals/settings.js';
 import { closeDetailModal } from '../analytics/charts.js';
@@ -56,6 +57,7 @@ const ESCAPE_OVERLAY_IDS = [
     'deleteAccountConfirmModal',
     'detailModal',
     'entryModal',
+    'entrySlotPickerModal',
     'dailyJournalModal'
 ];
 
@@ -169,6 +171,9 @@ function closeOverlayById(id) {
             break;
         case 'entryModal':
             closeModal();
+            break;
+        case 'entrySlotPickerModal':
+            closeEntrySlotPicker();
             break;
         case 'dailyJournalModal':
             closeDailyJournalModal();

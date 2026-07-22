@@ -89,9 +89,9 @@ import {
     refreshEntryModalHeader,
     inferEntryFormModeFromRecord,
     applyEntryFormModeToModalUI,
-    closeEntrySlotPicker,
     closeEntryHeaderDatePicker,
 } from './entry-modal-header.js';
+import { closeEntrySlotPicker } from './entry-slot-picker.js';
 import {
     bindEntryQuickInputOnce,
     applyEntryQuickInputUi,

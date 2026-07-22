@@ -830,6 +830,64 @@ export function syncSnackViewDropdown(container) {
     });
 }
 
+function buildHomeFeedStarsHtml(rating) {
+    const n = Number.parseInt(rating, 10);
+    const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
+    let stars = '';
+    for (let i = 1; i <= 5; i++) {
+        stars += `<i class="fa-solid fa-star${i > filled ? ' home-feed-card__star--empty' : ''}" aria-hidden="true"></i>`;
+    }
+    return `<div class="home-feed-card__stars" aria-label="${filled}점">${stars}</div>`;
+}
+
+function buildHomeFeedTagsHtml(tags) {
+    if (!Array.isArray(tags) || tags.length === 0) return '';
+    const shown = tags.slice(0, 2);
+    return `<div class="home-feed-card__tags">${shown
+        .map((t) => `<span class="home-feed-card__tag">#${escapeHtml(t)}</span>`)
+        .join('')}</div>`;
+}
+
+/**
+ * 시안 v2 세로 피드 카드 — 사진 있으면 상단 와이드, 없으면 원형 아이콘
+ */
+function buildHomeFeedCardShellHtml({
+    openClick,
+    cardMbClass,
+    record,
+    hasPhoto,
+    photoHtml,
+    iconHtml,
+    metaHtml,
+    titleHtml,
+    noteHtml,
+    tagsHtml,
+    ratingVal
+}) {
+    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
+    const shareDisp = isEntryShared(record?.id, record) ? 'inline' : 'none';
+    const stars = buildHomeFeedStarsHtml(ratingVal);
+    const bodyIcon = hasPhoto
+        ? ''
+        : `<div class="home-feed-card__icon" aria-hidden="true">${iconHtml}</div>`;
+    const photoBlock = hasPhoto
+        ? `<div class="home-feed-card__photo relative">${photoHtml}</div>`
+        : '';
+    return `<div ${openClick} class="card home-feed-card${photoClass} ${cardMbClass} ${mealEntryRowPointerClass(record)} ${mealCardRelativeClass(record)}" data-entry-id="${escapeHtml(String(record.id))}">
+        ${photoBlock}
+        <div class="home-feed-card__body">
+            ${bodyIcon}
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp}"><i class="fa-solid fa-share"></i></span></div>
+                <div class="home-feed-card__title">${titleHtml}</div>
+                ${noteHtml || ''}
+                ${tagsHtml || ''}
+            </div>
+            ${stars}
+        </div>
+    </div>`;
+}
+
 function buildSnackTimelineCardHtml(
     dateStr,
     slot,
@@ -847,68 +905,52 @@ function buildSnackTimelineCardHtml(
         (r.category && String(r.category).trim()) ||
         '';
     const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
-    const safeSlotLabel = escapeHtml(slotTitleForCard);
-    const safePlace = escapeHtml(p);
-    let titleLine1 = '';
-    if (p) {
-        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
-    } else {
-        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-    }
-    const titleLine2 = escapeHtml(menuLine);
+    const metaParts = [slotTitleForCard];
+    if (p) metaParts.push(p);
+    const metaHtml = escapeHtml(metaParts.join(' · '));
+    const titleHtml = escapeHtml(menuLine || slotTitleForCard);
+    const noteHtml = r.comment
+        ? `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`
+        : '';
     const tags = [];
     const clockTag = mealClockTagLabelFromRecord(r);
     if (clockTag) tags.push(clockTag);
     if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
     if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
-    if (r.withWhomDetail) tags.push(r.withWhomDetail);
-    else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
     if (r.satiety) {
         const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
         if (sData) tags.push(sData.label);
     }
-    let tagsHtml = '';
-    if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`)
-            .join('')}</div>`;
-    }
-    let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
-    if (snackPhotoUrls.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id }, getMealThumbUrlsForTimeline(r));
+    const hasPhoto = snackPhotoUrls.length > 0;
+    let photoHtml = '';
+    let iconHtml = `<i class="fa-solid fa-mug-saucer"></i>`;
+    if (hasPhoto) {
+        photoHtml = buildTimelinePhotoCellInnerHtml(
+            snackPhotoUrls,
+            'object-cover',
+            { dateStr, slotId: slot.id, recordId: r.id },
+            getMealThumbUrlsForTimeline(r)
+        );
     } else if (r.mealType === 'Skip') {
-        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
-    } else {
-        iconHtml = `<i class="fa-solid fa-mug-saucer text-2xl text-slate-400" aria-hidden="true"></i>`;
+        iconHtml = `<i class="fa-solid fa-ban"></i>`;
     }
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
-    const openClick = blockOpen
-        ? ''
-        : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0 overflow-hidden">
-                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
-                    </div>
-                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
-                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
-                </div>
-                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
-                ${tagsHtml}
-            </div>
-        </div>
-    </div>`;
+    const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    return buildHomeFeedCardShellHtml({
+        openClick,
+        cardMbClass,
+        record: r,
+        hasPhoto,
+        photoHtml,
+        iconHtml,
+        metaHtml,
+        titleHtml,
+        noteHtml,
+        tagsHtml: buildHomeFeedTagsHtml(tags),
+        ratingVal
+    });
 }
 
 function buildMainMealTimelineCardHtml(
@@ -921,24 +963,21 @@ function buildMainMealTimelineCardHtml(
     totalInSlot = 1
 ) {
     const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
-    const safeSlotLabel = escapeHtml(slotTitleForCard);
-    let titleLine1 = '';
-    let titleLine2 = '';
-    let tagsHtml = '';
+    let metaHtml = escapeHtml(slotTitleForCard);
+    let titleHtml = escapeHtml(slotTitleForCard);
+    let noteHtml = '';
+    let tags = [];
     if (r.mealType === 'Skip') {
-        titleLine1 = 'Skip';
+        titleHtml = 'Skip';
     } else {
         const p = r.place || '';
         const m = formatMealMenuDisplayLine(r);
-        const safePlace = escapeHtml(p);
-        if (p) {
-            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
-        } else {
-            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-        }
         const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
-        titleLine2 = escapeHtml(menuLine);
-        const tags = [];
+        if (p) metaHtml = escapeHtml(`${slotTitleForCard} · ${p}`);
+        titleHtml = escapeHtml(menuLine || slotTitleForCard);
+        if (r.comment) {
+            noteHtml = `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`;
+        }
         const clockTagMain = mealClockTagLabelFromRecord(r);
         if (clockTagMain) tags.push(clockTagMain);
         if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
@@ -948,39 +987,37 @@ function buildMainMealTimelineCardHtml(
             const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
             if (sData) tags.push(sData.label);
         }
-        if (tags.length > 0) {
-            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-                .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-                .join('')}</div>`;
-        }
     }
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-    const iconHtml = buildMainMealPhotoAreaHtml(slot, r, dateStr, specificStyle.iconText);
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    const hasPhoto = mainPhotoUrls.length > 0;
+    let photoHtml = '';
+    let iconHtml = mainMealSlotIconHtml(slot.id, '', 'lg');
+    if (hasPhoto) {
+        photoHtml = buildTimelinePhotoCellInnerHtml(
+            mainPhotoUrls,
+            'object-cover',
+            { dateStr, slotId: slot.id, recordId: r.id },
+            getMealThumbUrlsForTimeline(r)
+        );
+    } else if (r.mealType === 'Skip') {
+        iconHtml = `<i class="fa-solid fa-ban"></i>`;
+    }
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
     const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0 overflow-hidden">
-                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
-                    </div>
-                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
-                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
-                </div>
-                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
-                ${tagsHtml}
-            </div>
-        </div>
-    </div>`;
+    return buildHomeFeedCardShellHtml({
+        openClick,
+        cardMbClass,
+        record: r,
+        hasPhoto,
+        photoHtml,
+        iconHtml,
+        metaHtml,
+        titleHtml,
+        noteHtml,
+        tagsHtml: buildHomeFeedTagsHtml(tags),
+        ratingVal
+    });
 }
 
 function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
@@ -1405,6 +1442,16 @@ function ensureTimelineOpenModalDelegation() {
             const root = document.getElementById('timelineContainer');
             if (!root) return;
             if (e.target?.closest?.('.timeline-meal-photo-tap, .meal-sync-retry-btn')) return;
+            const slotPickerBtn = e.target.closest('[data-mealog-slot-picker-date]');
+            if (slotPickerBtn && root.contains(slotPickerBtn)) {
+                const pickerDate = slotPickerBtn.getAttribute('data-mealog-slot-picker-date');
+                if (pickerDate && typeof window.openEntrySlotPicker === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void window.openEntrySlotPicker(pickerDate);
+                    return;
+                }
+            }
             const dailyTarget = e.target.closest('.daily-journal-slot[data-mealog-open-daily]');
             if (dailyTarget && root.contains(dailyTarget)) {
                 const dailyDate = dailyTarget.getAttribute('data-mealog-open-daily');
@@ -1713,183 +1760,161 @@ export function renderTimeline(options = {}) {
         SLOTS.forEach(slot => {
             const recordsRaw = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
             const records = sortSnackSlotRecordsChronological(recordsRaw);
+            // 빈 슬롯은 타임라인에 표시하지 않음 — 추가는 슬롯 피커로
+            if (records.length === 0) return;
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             if (slot.type === 'main') {
                 const mealView = getMealTimelineView();
                 const mainAddBtn = (label) =>
                     `<button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(label)} 추가">+ 추가</button>`;
                 if (mealView === 'list') {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-list-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const rowHtml = buildMainMealListFilledRowHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${rowHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += rowHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
+                    html += `<div class="main-slot-list-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const rowHtml = buildMainMealListFilledRowHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            isLast ? 'mb-0' : 'mb-1.5',
+                            idx + 1,
+                            records.length
+                        );
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">${rowHtml}${mainAddBtn(slot.label)}</div>`;
+                        } else {
+                            html += rowHtml;
+                        }
+                    });
+                    html += `</div>`;
                 } else if (mealView === 'mixed') {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-mixed-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
-                            const mb = isLast ? 'mb-0' : 'mb-1.5';
-                            const blockHtml = hasPhotos
-                                ? buildMainMealTimelineCardHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length)
-                                : buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length);
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += blockHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
+                    html += `<div class="main-slot-mixed-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
+                        const mb = isLast ? 'mb-0' : 'mb-1.5';
+                        const blockHtml = hasPhotos
+                            ? buildMainMealTimelineCardHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length)
+                            : buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length);
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
+                        } else {
+                            html += blockHtml;
+                        }
+                    });
+                    html += `</div>`;
                 } else {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-card-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const cardHtml = buildMainMealTimelineCardHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += cardHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle);
-                    }
+                    html += `<div class="main-slot-card-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const cardHtml = buildMainMealTimelineCardHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            isLast ? 'mb-0' : 'mb-1.5',
+                            idx + 1,
+                            records.length
+                        );
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
+                        } else {
+                            html += cardHtml;
+                        }
+                    });
+                    html += `</div>`;
                 }
             } else {
                 const snackView = getSnackTimelineView();
                 if (snackView === 'cards') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-card-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const cardHtml = buildSnackTimelineCardHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
+                    html += `<div class="snack-slot-card-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const cardHtml = buildSnackTimelineCardHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            isLast ? 'mb-0' : 'mb-1.5',
+                            idx + 1,
+                            records.length
+                        );
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">
                                 ${cardHtml}
                                 <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                             </div>`;
-                            } else {
-                                html += cardHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle);
-                    }
+                        } else {
+                            html += cardHtml;
+                        }
+                    });
+                    html += `</div>`;
                 } else if (snackView === 'list') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-list-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const rowHtml = buildSnackListFilledRowHtml(
+                    html += `<div class="snack-slot-list-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const rowHtml = buildSnackListFilledRowHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            isLast ? 'mb-0' : 'mb-1.5',
+                            idx + 1,
+                            records.length
+                        );
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">
+                                    ${rowHtml}
+                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
+                                </div>`;
+                        } else {
+                            html += rowHtml;
+                        }
+                    });
+                    html += `</div>`;
+                } else if (snackView === 'mixed') {
+                    html += `<div class="snack-slot-mixed-group">`;
+                    records.forEach((r, idx) => {
+                        const isLast = idx === records.length - 1;
+                        const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
+                        const mb = isLast ? 'mb-0' : 'mb-1.5';
+                        let blockHtml;
+                        if (hasPhotos) {
+                            blockHtml = buildSnackTimelineCardHtml(
                                 dateStr,
                                 slot,
                                 r,
                                 specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
+                                mb,
                                 idx + 1,
                                 records.length
                             );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
-                                    ${rowHtml}
-                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                                </div>`;
-                            } else {
-                                html += rowHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
-                } else if (snackView === 'mixed') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-mixed-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
-                            const mb = isLast ? 'mb-0' : 'mb-1.5';
-                            let blockHtml;
-                            if (hasPhotos) {
-                                blockHtml = buildSnackTimelineCardHtml(
-                                    dateStr,
-                                    slot,
-                                    r,
-                                    specificStyle,
-                                    mb,
-                                    idx + 1,
-                                    records.length
-                                );
-                            } else {
-                                blockHtml = buildSnackListFilledRowHtml(
-                                    dateStr,
-                                    slot,
-                                    r,
-                                    specificStyle,
-                                    mb,
-                                    idx + 1,
-                                    records.length
-                                );
-                            }
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
+                        } else {
+                            blockHtml = buildSnackListFilledRowHtml(
+                                dateStr,
+                                slot,
+                                r,
+                                specificStyle,
+                                mb,
+                                idx + 1,
+                                records.length
+                            );
+                        }
+                        if (isLast) {
+                            html += `<div class="relative mb-1.5">
                                     ${blockHtml}
                                     <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                                 </div>`;
-                            } else {
-                                html += blockHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
+                        } else {
+                            html += blockHtml;
+                        }
+                    });
+                    html += `</div>`;
                 } else {
                     html += `<div class="snack-row mb-1.5 flex items-center">
                     <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
                     <div class="flex-1 flex flex-wrap gap-2 items-center">
-                        ${records.length > 0 ? records.map((r) => {
+                        ${records.map((r) => {
                             const tagDeleting = isMealEntryDeleting(r);
                             const tagDeleteFailed = isMealEntryDeleteFailed(r);
                             const tagPending = isMealEntryPendingSync(r);
@@ -1910,14 +1935,29 @@ export function renderTimeline(options = {}) {
                             return `<div ${tagClick} class="${tagCls}" data-entry-id="${escapeHtml(String(r.id))}">
                                 ${buildSnackTagRowInnerHtml(r)}
                             </div>`;
-                        }).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
+                        }).join('')}
                         <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
                     </div>
                 </div>`;
                 }
             }
         });
-        html += buildDailyJournalSlotHtml(dateStr);
+        const dailyJournal = getDailyJournalForTimeline(dateStr);
+        if (dailyJournalHasContent(dailyJournal)) {
+            html += buildDailyJournalSlotHtml(dateStr);
+        }
+
+        const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
+        if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
+            html += `<div class="timeline-day-empty px-4 py-10 text-center">
+                <p class="text-sm text-slate-400 font-medium mb-3">이 날의 기록이 없어요</p>
+                <button type="button" class="timeline-day-empty-add inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold active:scale-[0.98] transition-transform" data-mealog-slot-picker-date="${escapeHtml(dateStr)}">
+                    <i class="fa-solid fa-plus text-xs" aria-hidden="true"></i>
+                    기록 추가
+                </button>
+            </div>`;
+        }
+
         section.innerHTML = html;
         insertTimelineDateSectionInChronologicalOrder(container, section, dateStr);
         pendingTimelineSectionRebuildDates.delete(dateStr);

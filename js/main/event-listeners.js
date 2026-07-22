@@ -388,15 +388,7 @@ export function initEventListeners() {
         });
     }
 
-    const btnViewList = document.getElementById('btn-view-list');
-    if (btnViewList) {
-        btnViewList.addEventListener('click', () => window.setViewMode('list'));
-    }
-
-    const btnViewPage = document.getElementById('btn-view-page');
-    if (btnViewPage) {
-        btnViewPage.addEventListener('click', () => window.setViewMode('page'));
-    }
+    // 전체/일간 토글 제거됨 — 일간(page)만 사용
 
     initMainAppKeyboardHandling();
 
@@ -469,11 +461,11 @@ export function initEventListeners() {
         addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
-    const navDashboard = document.getElementById('nav-dashboard');
-    if (navDashboard) {
-        navDashboard.addEventListener('click', () => {
-            handleDemoAwareNavClick('dashboard');
-            window.switchMainTab('dashboard');
+    const navHome = document.getElementById('nav-home');
+    if (navHome) {
+        navHome.addEventListener('click', () => {
+            handleDemoAwareNavClick('timeline');
+            window.switchMainTab('timeline');
             showPendingDemoGuide();
         });
     }
@@ -514,6 +506,13 @@ export function initEventListeners() {
             if (typeof openSettings === 'function') openSettings();
             else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
             showPendingDemoGuide();
+        });
+    }
+
+    const settingsOpenMealdangBtn = document.getElementById('settingsOpenMealdangBtn');
+    if (settingsOpenMealdangBtn) {
+        settingsOpenMealdangBtn.addEventListener('click', () => {
+            if (typeof window.switchMainTab === 'function') window.switchMainTab('dashboard');
         });
     }
 

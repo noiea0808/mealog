@@ -6,3 +6,8 @@ export * from './modals/daily-journal.js';
 export { editDailyJournalPhoto } from './render/photo-edit.js';
 export * from './modals/settings.js';
 export * from './modals/kakao-place.js';
+export {
+    openEntrySlotPicker,
+    closeEntrySlotPicker,
+    initEntrySlotPicker
+} from './modals/entry-slot-picker.js';

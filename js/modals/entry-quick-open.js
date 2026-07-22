@@ -1,11 +1,9 @@
 /**
- * 타임라인 퀵입력 — 오늘 날짜·시간대별 기본 슬롯으로 입력 시트 열기
+ * 타임라인 퀵입력 — 슬롯 피커를 연 뒤 본식·간식·하루 기록 선택
  */
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
-import { openModal } from './entry-and-core.js';
-
-const QUICK_MAIN_SLOT_IDS = ['morning', 'lunch', 'dinner'];
+import { openEntrySlotPicker } from './entry-slot-picker.js';
 
 export function localTodayIso() {
     const t = new Date();
@@ -23,13 +21,15 @@ export function getTimeBasedMainSlotId(refDate = new Date()) {
     return 'dinner';
 }
 
+const QUICK_MAIN_SLOT_IDS = ['morning', 'lunch', 'dinner'];
+
 function isSlotOccupiedOnDate(dateIso, slotId, history) {
     return history.some((m) => m?.date === dateIso && m?.slotId === slotId);
 }
 
 /**
  * 시간대 기본 슬롯부터 순서대로 비어 있는 첫 본식 슬롯.
- * 모두 차 있으면 시간대 기본 슬롯(동일 슬롯 추가 기록).
+ * (슬롯 피커 하이라이트용 — 피커가 최종 선택)
  * @param {string} dateIso
  * @param {Date} [refDate]
  */
@@ -48,12 +48,9 @@ export function resolveQuickEntrySlotId(dateIso, refDate = new Date()) {
 export function syncEntryQuickInputFabVisibility() {
     const fab = document.getElementById('entryQuickInputFab');
     if (!fab) return;
-    const show =
-        appState.currentTab === 'timeline' &&
-        window.currentUser &&
-        !window.currentUser.isAnonymous;
-    fab.classList.toggle('hidden', !show);
-    fab.setAttribute('aria-hidden', show ? 'false' : 'true');
+    // 시안 v2: 하단「기록」이 주 진입 — 플로팅 + FAB는 숨김
+    fab.classList.add('hidden');
+    fab.setAttribute('aria-hidden', 'true');
 }
 
 const FAB_SPIN_CLASS = 'entry-quick-input-fab--spin';
@@ -81,7 +78,15 @@ function playEntryQuickInputFabSpin(fab) {
     });
 }
 
-/** FAB 탭 — 180° 회전 피드백 후 기록 시트 */
+function resolvePickerDateIso() {
+    const d = appState.pageDate instanceof Date ? appState.pageDate : new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** FAB 탭 — 회전 피드백 후 슬롯 피커 */
 export async function triggerQuickEntryFromFab(fab) {
     if (quickFabOpening || !fab || fab.classList.contains('hidden')) return;
     if (!window.currentUser || window.currentUser.isAnonymous) {
@@ -91,9 +96,7 @@ export async function triggerQuickEntryFromFab(fab) {
     quickFabOpening = true;
     try {
         await playEntryQuickInputFabSpin(fab);
-        const date = localTodayIso();
-        const slotId = resolveQuickEntrySlotId(date);
-        await openModal(date, slotId, null);
+        await openEntrySlotPicker(resolvePickerDateIso());
     } finally {
         fab.classList.remove(FAB_SPIN_CLASS);
         quickFabOpening = false;
@@ -105,7 +108,5 @@ export async function openQuickEntryModal() {
         showToast('로그인이 필요합니다.', 'error');
         return;
     }
-    const date = localTodayIso();
-    const slotId = resolveQuickEntrySlotId(date);
-    await openModal(date, slotId, null);
+    await openEntrySlotPicker(resolvePickerDateIso());
 }
