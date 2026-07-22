@@ -11,7 +11,6 @@ import {
     DAILY_JOURNAL_MOMENT_SLOT_LABEL,
     isDailyJournalSharePhoto
 } from '../utils/daily-journal-data.js';
-import { buildMomentV2MenuLabelLineInnerHtml } from '../main/moment-feed-v2-wheel-layout.js';
 import { isDietReportInsightShare, DIET_REPORT_MOMENT_SLOT_LABEL } from '../utils/diet-report-share.js';
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
