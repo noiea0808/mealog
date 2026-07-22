@@ -29,7 +29,8 @@ export const appState = {
     tempSettings: null,
     
     // UI 상태
-    viewMode: 'list',
+    /** 타임라인은 일간(page)만 사용 — 전체(list) 스크롤 모드는 제거됨 */
+    viewMode: 'page',
     currentTab: 'timeline',
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID

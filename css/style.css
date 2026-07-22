@@ -4,21 +4,31 @@
 :root { 
     /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
-    --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px); 
-    --color-primary: #059669; /* 그린: CTA·선택·활성만 사용 */
-    /* 메인 앱·밀톡 공통 페이지 배경 (slate-100) */
-    --app-page-bg: #f1f5f9;
+    --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
+    /* 시안 v2 토큰 */
+    --green: #059669;
+    --green-deep: #047857;
+    --green-soft: #ecfdf5;
+    --green-mute: #a7f3d0;
+    --ink: #0f172a;
+    --ink-2: #334155;
+    --muted: #94a3b8;
+    --line: #e2e8f0;
+    --page: #f8fafc;
+    --card: #ffffff;
+    --star: #fbbf24;
+    --color-primary: var(--green); /* 그린: CTA·선택·활성만 사용 */
+    /* 메인 앱·밀톡 공통 페이지 배경 */
+    --app-page-bg: var(--page);
     /* 밀톡 피드 대화 영역 배경 */
     --board-feed-bg: var(--app-page-bg);
-    /* 하단 플로팅: 메시지 컴포저·APP 네비 — 화면 좌우에서 띄우는 인셋 (각 변에 동일 값) */
-    --app-bottom-floating-inset: 12px;
+    /* 하단 네비: 시안 edge bar (풀폭). FAB 폭 계산용 인셋은 좌우 여백만 유지 */
+    --app-bottom-floating-inset: 0px;
+    --app-bottom-nav-h: 72px;
     /* body max-w-md(28rem) 컬럼·뷰포트 둘 다에서 양끝 여백 유지 (448 고정 폭이 컬럼에 꽉 차 보이는 문제 방지) */
-    --app-bottom-bar-width: min(
-        calc(28rem - 2 * var(--app-bottom-floating-inset)),
-        calc(100vw - 2 * var(--app-bottom-floating-inset))
-    );
+    --app-bottom-bar-width: min(28rem, 100vw);
     /* 밀톡 피드 인라인 컴포저 컨테이너(아이콘·입력·버튼 전체) 면 — 알파↑ = 더 비침 */
-    --board-feed-composer-surface: rgba(241, 245, 249, 0.7);
+    --board-feed-composer-surface: rgba(248, 250, 252, 0.7);
     /*
      * 피드 스크롤 하단 패딩: APP 네비가 아니라 fixed 컴포저(#boardInlineComposer) 기준.
      * = 컴포저 bottom 오프셋(뷰포트 하단~컴포저 밑변) + 컴포저 박스 높이(패딩 0.4rem×2 + 한 줄 행 2.25rem + 테두리) + 새로고침 등 여유.
@@ -28,9 +38,9 @@
     --board-feed-above-composer: 0.75rem;
     /* 모먼트 화면2: 사진 vs 타이틀 헤더 `--moment-v2-photo-below-header-gap`. 도크 vs 네비 상단 `--moment-v2-dock-above-nav-gap` */
     --moment-v2-photo-below-header-gap: 20px;
-    --moment-v2-app-nav-pill-h: 52px;
+    --moment-v2-app-nav-pill-h: var(--app-bottom-nav-h);
     --moment-v2-dock-above-nav-gap: 5px;
-    --moment-v2-app-nav-top-from-bottom: calc(8px + var(--safe-bottom) + var(--moment-v2-app-nav-pill-h));
+    --moment-v2-app-nav-top-from-bottom: calc(var(--safe-bottom) + var(--moment-v2-app-nav-pill-h));
     --moment-v2-wheel-footer-bottom: calc(var(--moment-v2-app-nav-top-from-bottom) + var(--moment-v2-dock-above-nav-gap));
     /* 기록(최대 3줄 접힘)·휠 한 줄·소셜 — 게시물 min-height·사진 영역 여유 */
     --moment-v2-dock-inset-approx: min(50vh, 12.5rem);
@@ -155,7 +165,8 @@ body:has(#timelineSearchPanel.expanded) #statusBarOverlay {
 }
 body:has(#searchInput:focus) .bottom-nav,
 body:has(#timelineSearchPanel.expanded) .bottom-nav {
-    display: flex !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 }
 body:has(#searchInput:focus) #navigationBarOverlay,
 body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
@@ -185,7 +196,8 @@ input, textarea, [contenteditable="true"] {
 }
 /* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
 body.keyboard-closed .bottom-nav {
-    display: flex !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 }
 body.keyboard-closed #navigationBarOverlay,
 body.keyboard-closed #mainAppHeader,
@@ -1878,10 +1890,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
 }
-/* 라운지·밀당·설정: 헤더(녹색)와 아래 영역(녹색) 사이 서브픽셀 seam을 채우는 컬럼폭 녹색 fill.
-   - position:fixed → 뷰포트 상단 고정(스크롤해도 잔상 띠 없음)
-   - z-index:-1 → 콘텐츠 뒤(페이지 배경 위)에만 깔려 UI를 가리지 않음
-   - width:min(100vw,28rem) 가운데 → 앱 컬럼 밖으로 녹색이 번지지 않음 */
+/* 라운지·밀당·설정: 헤더와 아래 영역 사이 seam fill (시안 v2: 흰색) */
 #appTopChromeFill {
     display: none;
     position: fixed;
@@ -1894,23 +1903,21 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     background-repeat: no-repeat;
     background-color: transparent;
 }
-/* 라운지·설정: 서브탭이 스크롤되지 않고 헤더 아래 고정 → fill을 헤더+서브탭 전체로 덮어
-   빠른 스크롤·오버스크롤로 서브탭 밴드에 틈이 생겨도 녹색 유지 (콘텐츠가 그 밴드로 지나가지 않으므로 녹색 누출 없음) */
 body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #appTopChromeFill,
 body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) #appTopChromeFill {
     display: block;
     height: var(--app-chrome-gradient-subtabs-span);
-    background-image: var(--app-chrome-gradient);
-    background-size: 100% var(--app-chrome-gradient-subtabs-span);
+    background-image: none;
+    background-color: #ffffff;
+    background-size: auto;
     background-position: 0 0;
 }
-/* 밀당: 기간탭이 콘텐츠와 함께 스크롤되므로 fill은 헤더 밴드까지만 (그 아래는 콘텐츠가 지나감 → 녹색 선 방지).
-   빠른 스크롤 흰색은 overscroll-behavior로 차단 */
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #appTopChromeFill {
     display: block;
     height: calc(var(--safe-top) + var(--app-chrome-header-h));
-    background-image: var(--app-chrome-gradient-dashboard-fill);
-    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span));
+    background-image: none;
+    background-color: #ffffff;
+    background-size: auto;
     background-position: 0 0;
 }
 /* 헤더 숨김 시: 서브탭이 상단으로 올라오므로 fill 높이도 그만큼만 (라운지·설정) */
@@ -1947,50 +1954,35 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection.track
 }
 
 /* =========================
-   메인 앱 헤더: 녹색 그라데이션 + 흰색 텍스트 (모든 하단 탭)
+   메인 앱 헤더: 화이트 크롬 + 초록 워드마크 (시안 v2)
    ========================= */
 body:has(#mainApp:not(.hidden)) {
-    --timeline-chrome-green-deep: #064e3b;
-    --timeline-chrome-green-mid: #065f46;
-    --timeline-chrome-green-base: #047857;
-    --timeline-chrome-green-light: #10b981;
+    --timeline-chrome-green-deep: #ffffff;
+    --timeline-chrome-green-mid: #ffffff;
+    --timeline-chrome-green-base: #ffffff;
+    --timeline-chrome-green-light: #ffffff;
     --app-chrome-header-h: 3.5rem;
     --app-chrome-subtabs-h: 2.75rem;
     --app-chrome-gradient-subtabs-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h));
     --app-chrome-gradient-timeline-span: calc(var(--safe-top) + var(--app-chrome-header-h) + 7.5rem);
     --app-chrome-gradient-dashboard-span: calc(var(--safe-top) + var(--app-chrome-header-h) + var(--app-chrome-subtabs-h) + 24rem);
-    /* 밀당 인사이트: 시작·끝 색은 공통 gradient와 동일, 중간 전환만 완만하게(높이 가변 대응) */
-    --app-chrome-gradient-dashboard-fill: linear-gradient(
-        135deg,
-        var(--timeline-chrome-green-deep) 0%,
-        var(--timeline-chrome-green-mid) 38%,
-        var(--timeline-chrome-green-base) 72%,
-        var(--timeline-chrome-green-light) 100%
-    );
-    --app-chrome-gradient: linear-gradient(
-        135deg,
-        var(--timeline-chrome-green-deep) 0%,
-        var(--timeline-chrome-green-mid) 28%,
-        var(--timeline-chrome-green-base) 58%,
-        var(--timeline-chrome-green-light) 100%
-    );
+    --app-chrome-gradient-dashboard-fill: #ffffff;
+    --app-chrome-gradient: #ffffff;
 }
 body:has(#mainApp:not(.hidden)) #statusBarOverlay {
-    background: var(--app-chrome-gradient) !important;
-    background-color: transparent !important;
-    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 0 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    background-size: auto !important;
+    background-image: none !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay {
-    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
+    background-size: auto !important;
 }
-/* 밀로그: 헤더+트래커 단일 sticky wrapper에 gradient — seam 없음 */
+/* 밀로그: 헤더+트래커 단일 sticky wrapper — 흰 면 */
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome {
-    background: var(--app-chrome-gradient) !important;
-    background-size: 100% var(--app-chrome-gradient-timeline-span) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 calc(-1 * var(--safe-top)) !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    border-bottom: 1px solid var(--line);
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #mainAppHeader,
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #trackerSection {
@@ -1998,7 +1990,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #tracke
     box-shadow: none !important;
     border-bottom: none !important;
 }
-/* 웹: 상태바 오버레이를 max-w-md 본문 폭에만 맞춤 (뷰포트 전체로 녹색이 퍼지지 않게) */
+/* 웹: 상태바 오버레이를 max-w-md 본문 폭에만 맞춤 */
 html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
     left: 50%;
     right: auto;
@@ -2006,51 +1998,47 @@ html.platform-web body:has(#mainApp:not(.hidden)) #statusBarOverlay {
     transform: translateX(-50%);
 }
 body:has(#mainApp:not(.hidden)) #mainAppHeader {
-    background: var(--app-chrome-gradient) !important;
-    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 calc(-1 * var(--safe-top)) !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
     box-shadow: none !important;
+    border-bottom: 1px solid var(--line);
 }
-/* 밀당: 상태바 gradient — backdrop·인사이트 chrome과 동기화 */
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #mainAppHeader {
+    border-bottom: none;
+}
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #statusBarOverlay {
-    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
-    background-color: transparent !important;
-    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 0 !important;
+    background: #ffffff !important;
+    background-image: none !important;
 }
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader {
-    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
-    background-color: transparent !important;
-    background-size: 100% var(--app-chrome-gradient-dashboard-sync-h, var(--app-chrome-gradient-dashboard-span)) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 calc(-1 * var(--safe-top)) !important;
+    background: #ffffff !important;
+    background-image: none !important;
 }
 body:has(#mainApp:not(.hidden)) #headerAppTitle {
-    color: #ffffff !important;
+    color: var(--green) !important;
 }
 body:has(#mainApp:not(.hidden)) .header-right .notification-trigger,
 body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle,
 body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn {
-    color: rgba(255, 255, 255, 0.95) !important;
+    color: var(--ink-2) !important;
 }
 body:has(#mainApp:not(.hidden)) .header-right .notification-trigger {
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.14);
+    background: transparent;
 }
 body:has(#mainApp:not(.hidden)) .header-right .notification-trigger:hover,
 body:has(#mainApp:not(.hidden)) .header-right .timeline-search-toggle:hover,
 body:has(#mainApp:not(.hidden)) .header-right .gallery-trace-btn:hover {
-    color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.2);
+    color: var(--ink) !important;
+    background: var(--page);
     border-radius: 9999px;
 }
-/* 헤더 흔적 필터 활성: 반투명 원형 (bg-slate-100 사각형 방지) */
+/* 헤더 흔적 필터 활성 */
 body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn.gallery-trace-btn--active {
-    background: rgba(255, 255, 255, 0.2) !important;
+    background: var(--green-soft) !important;
+    color: var(--green) !important;
     border-radius: 9999px;
 }
 /* 헤더 우측 FA 아이콘: 종(bell)과 동일하게 text-stroke 없이 글리프 두께 통일 */
@@ -2060,30 +2048,30 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .header-right .notification-trigg
     -webkit-text-stroke: 0;
     paint-order: normal;
 }
-/* 모먼트·밀당·라운지 헤더 돋보기(fa-solid): 선 1px 얇게 — 헤더 배경색 stroke로 글리프 외곽 깎기 */
+/* 모먼트·밀당·라운지 헤더 돋보기: 화이트 헤더에서는 stroke 제거 */
 body:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass,
 body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="collapse"] .fa-magnifying-glass {
-    -webkit-text-stroke: 1px #047857 !important;
-    paint-order: stroke fill;
+    -webkit-text-stroke: 0 !important;
+    paint-order: normal;
 }
 body:has(#mainApp:not(.hidden)) #galleryView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
 body:has(#mainApp:not(.hidden)) #dashboardView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass,
 body:has(#mainApp:not(.hidden)) #boardListView:not(.hidden) #mainAppHeader .gallery-trace-btn[data-trace="collapse"]:hover .fa-magnifying-glass {
-    -webkit-text-stroke: 1px rgba(255, 255, 255, 0.2) !important;
+    -webkit-text-stroke: 0 !important;
 }
 body:has(#mainApp:not(.hidden)) .timeline-search-wrapper.expanded .timeline-search-panel {
-    background: rgba(255, 255, 255, 0.16) !important;
-    border-color: rgba(255, 255, 255, 0.32) !important;
+    background: var(--page) !important;
+    border-color: var(--line) !important;
 }
 body:has(#mainApp:not(.hidden)) #searchInput {
-    color: #ffffff;
+    color: var(--ink);
 }
 body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: var(--muted);
 }
 
-/* 라운지·사용자: 헤더 그라데이션 확장 + pill 서브탭 */
+/* 라운지·사용자: 화이트 헤더 + soft green pill 서브탭 */
 .app-chrome-subtabs {
     flex-shrink: 0;
     min-width: 0;
@@ -2108,48 +2096,45 @@ body:has(#mainApp:not(.hidden)) #searchInput::placeholder {
     line-height: 1rem;
     white-space: nowrap;
     cursor: pointer;
-    background: rgba(0, 0, 0, 0.14);
-    color: rgba(255, 255, 255, 0.82);
+    background: var(--page);
+    color: var(--muted);
     transition: background 0.2s ease, color 0.2s ease;
     -webkit-tap-highlight-color: transparent;
 }
 .app-chrome-subtab.active,
 .app-chrome-subtab[aria-selected="true"] {
-    background: rgba(255, 255, 255, 0.24);
-    color: #ffffff;
+    background: var(--green-soft);
+    color: var(--green-deep);
     font-weight: 600;
 }
 .app-chrome-subtab:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.18);
+    color: var(--ink-2);
+    background: #f1f5f9;
 }
 .app-chrome-subtab.active:hover,
 .app-chrome-subtab[aria-selected="true"]:hover {
-    background: rgba(255, 255, 255, 0.28);
+    background: var(--green-mute);
+    color: var(--green-deep);
 }
 body:has(#mainApp:not(.hidden) #boardListView:not(.hidden)) #boardLoungeFrame .board-mealtalk-subtabs,
 body:has(#mainApp:not(.hidden) #settingsView:not(.hidden)) .settings-subtab-row {
-    background: var(--app-chrome-gradient) !important;
-    background-size: 100% var(--app-chrome-gradient-subtabs-span) !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 calc(-1 * (var(--safe-top) + var(--app-chrome-header-h))) !important;
-    border-bottom: none !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    border-bottom: 1px solid var(--line) !important;
 }
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome {
-    background-color: transparent !important;
-    background-image: var(--app-chrome-gradient-dashboard-fill) !important;
-    background-size: 100% 100% !important;
-    background-repeat: no-repeat !important;
-    background-position: 0 0 !important;
+    background-color: #ffffff !important;
+    background-image: none !important;
     box-sizing: border-box;
     padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--line);
 }
 body:has(#mainApp:not(.hidden) #dashboardView:not(.hidden)) .dashboard-insight-chrome .dashboard-chrome-subtabs {
     background: transparent !important;
 }
 body:has(#mainAppHeader.header-scroll-hidden) #boardListView:not(.hidden) .board-mealtalk-subtabs,
 body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) .settings-subtab-row {
-    background-position: 0 calc(-1 * var(--safe-top)) !important;
+    background-position: 0 0 !important;
 }
 body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #statusBarOverlay,
 body:has(#mainAppHeader.header-scroll-hidden) #dashboardView:not(.hidden) #mainAppHeader {
@@ -2165,26 +2150,26 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #appTopChrome #tracke
     background-image: none !important;
 }
 
-/* 밀로그 전용: 트래커·미니 캘린더 */
+/* 밀로그 전용: 트래커·미니 캘린더 (화이트 크롬) */
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
     border-bottom: none !important;
     box-shadow: none !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
-    color: #ffffff !important;
+    color: var(--ink) !important;
 }
-/* 연속 기록 pill: 라운드 사각형(🔥) + N일 연속 */
+/* 연속 기록 pill */
 .tracker-streak-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     padding: 2px 8px 2px 3px;
     border-radius: 9999px;
-    border: 1px solid rgba(251, 191, 36, 0.55);
-    background: transparent;
+    border: 1px solid #fbbf24;
+    background: #fffbeb;
     font-size: 11px;
     font-weight: 700;
-    color: #fde68a;
+    color: #b45309;
     line-height: 1;
 }
 .tracker-streak-pill__emoji {
@@ -2194,7 +2179,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     width: 22px;
     height: 22px;
     border-radius: 7px;
-    background: rgba(255, 255, 255, 0.1);
+    background: #fef3c7;
     font-size: 12px;
     line-height: 1;
     flex-shrink: 0;
@@ -2202,61 +2187,61 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
 .tracker-streak-pill__text {
     padding-right: 1px;
 }
-/* 실행 환경 배지 — 헤더(녹색) 위에서도 잘 보이게 */
+/* 실행 환경 배지 — 화이트 헤더 */
 .mealog-env-badge--dev {
-    color: #fef08a;
-    background: rgba(15, 23, 42, 0.55);
+    color: #854d0e;
+    background: #fef9c3;
     padding: 1px 5px;
     border-radius: 4px;
-    border: 1px solid rgba(254, 240, 138, 0.65);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+    border: 1px solid #fde047;
+    text-shadow: none;
+    box-shadow: none;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
-    color: rgba(255, 255, 255, 0.85) !important;
+    color: var(--ink-2) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:hover {
-    color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.12) !important;
+    color: var(--ink) !important;
+    background: var(--page) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:focus-visible {
-    outline-color: rgba(255, 255, 255, 0.85);
+    outline-color: var(--green);
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
-    background: rgba(255, 255, 255, 0.14) !important;
+    background: var(--page) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.active {
-    background: rgba(255, 255, 255, 0.96) !important;
+    background: #ffffff !important;
     border-color: transparent !important;
-    color: var(--timeline-chrome-green-mid) !important;
+    color: var(--green-deep) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
-    color: rgba(255, 255, 255, 0.68) !important;
+    color: var(--muted) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span {
-    color: rgba(255, 255, 255, 0.88) !important;
+    color: var(--ink-2) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
-    color: rgba(255, 210, 210, 0.92) !important;
+    color: #f43f5e !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot {
     background: transparent !important;
-    color: rgba(255, 255, 255, 0.92) !important;
+    color: var(--ink) !important;
     border: 1px solid transparent;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full {
-    background: rgba(255, 255, 255, 0.22) !important;
-    color: #ffffff !important;
+    background: var(--green-soft) !important;
+    color: var(--green-deep) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
-    background: rgba(255, 255, 255, 0.1) !important;
-    border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    border: 1.5px solid var(--green-mute) !important;
+    color: var(--green-deep) !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
     transform: scale(1.08);
-    border: 2px solid #ffffff !important;
-    background: rgba(255, 255, 255, 0.12) !important;
+    border: 2px solid var(--green) !important;
+    background: var(--green) !important;
     color: #ffffff !important;
     font-weight: 800;
 }
@@ -2432,7 +2417,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
 .demo-nav-guide-panel {
-    bottom: calc(66px + var(--safe-bottom));
+    bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + 8px);
     left: 50%;
     transform: translateX(-50%);
     width: var(--app-bottom-bar-width);
@@ -2443,38 +2428,118 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 
 .bottom-nav {
     position: fixed;
-    bottom: calc(8px + var(--safe-bottom));
-    left: 50%; 
-    transform: translateX(-50%); 
+    left: 50%;
+    right: auto;
+    bottom: 0;
+    transform: translateX(-50%);
     width: var(--app-bottom-bar-width);
+    max-width: var(--app-bottom-bar-width);
+    height: calc(var(--app-bottom-nav-h) + var(--safe-bottom));
     box-sizing: border-box;
-    background: #ffffff; 
-    border: 1px solid #f1f5f9; 
-    border-radius: 1.5rem; 
-    display: flex; 
-    justify-content: space-around; 
-    align-items: center;
-    padding: 6px 2px; 
-    z-index: 50; 
-    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    padding: 6px 4px calc(8px + var(--safe-bottom));
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: none;
+    border-top: 1px solid var(--line);
+    border-radius: 0;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 0;
+    z-index: 50;
+    box-shadow: none;
     transition: transform 0.25s ease-out;
 }
-/* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 (트위터 스타일) */
+.bottom-nav .nav-item {
+    border: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 0 0;
+    margin: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.bottom-nav .nav-item i {
+    font-size: 20px;
+    line-height: 1;
+}
+.bottom-nav .nav-item .nav-item__label {
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+.bottom-nav .nav-item.active {
+    color: var(--green);
+}
+/* 아이콘 슬롯 높이 고정 — 기록(원형)도 다른 탭과 같은 세로 리듬 */
+.bottom-nav .nav-item .nav-item__icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 36px;
+    flex-shrink: 0;
+}
+.bottom-nav .nav-item.record i {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    display: grid;
+    place-items: center;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+.bottom-nav .nav-item .nav-item__avatar {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    flex-shrink: 0;
+}
+.bottom-nav .nav-item.active .nav-item__avatar {
+    border-color: var(--green-mute);
+}
+/* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 */
 #navigationBarOverlay {
     transition: transform 0.25s ease-out;
 }
 body.bottom-nav-scroll-hidden .bottom-nav {
-    transform: translateX(-50%) translateY(calc(100% + 8px + var(--safe-bottom)));
+    transform: translateX(-50%) translateY(100%);
 }
 body.bottom-nav-scroll-hidden #navigationBarOverlay {
     transform: translateY(100%);
 }
-/* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 (오버레이가 그 사이를 덮음) */
+/* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 */
 body.meal-photo-moment-chrome-hidden #mainAppHeader {
     transform: translateY(-100%);
 }
 body.meal-photo-moment-chrome-hidden .bottom-nav {
-    transform: translateX(-50%) translateY(calc(100% + 8px + var(--safe-bottom)));
+    transform: translateX(-50%) translateY(100%);
 }
 body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
     transform: translateY(100%);
@@ -2532,7 +2597,11 @@ body.entry-modal-open #navigationBarOverlay,
 body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
 body.entry-modal-open #entryQuickInputFab.entry-quick-input-fab,
 body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab,
-body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
+body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab,
+body:has(#entrySlotPickerModal:not(.hidden)) .bottom-nav,
+body:has(#entrySlotPickerModal:not(.hidden)) #navigationBarOverlay,
+body:has(#entrySlotPickerModal:not(.hidden)) #mealSyncResendBtn.meal-sync-resend-fab,
+body:has(#entrySlotPickerModal:not(.hidden)) #entryQuickInputFab.entry-quick-input-fab {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -4927,7 +4996,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     line-height: 1;
     margin-inline-start: calc(0.0625rem * (var(--tvp-scale) - 1));
 }
-/* 타임라인 — 날짜별 카드 묶음 (헤더 ~ 하루기록 슬롯) */
+/* 타임라인 — 날짜별 카드 묶음 (홈피드 v2: 여백·라운드) */
 #timelineContainer > .timeline-date-card {
     margin: 0 12px 18px;
     background: transparent;
@@ -4944,6 +5013,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border: 0;
     border-radius: 16px;
     box-shadow: 0 2px 14px rgba(15, 23, 42, 0.035);
+    padding-left: 4px;
+    padding-right: 4px;
 }
 #timelineContainer > .timeline-date-card > *:last-child {
     margin-bottom: 0 !important;
@@ -5066,6 +5137,123 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-color: transparent;
     background: #f7f9f6;
     color: #64748b;
+}
+
+/* 홈피드 v2 — 세로형 기록 카드 */
+#timelineContainer .card.home-feed-card {
+    background: var(--card, #fff);
+    border-radius: 18px !important;
+    border: 1px solid rgba(226, 232, 240, 0.7);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: transform 0.12s ease;
+}
+#timelineContainer .card.home-feed-card:active {
+    transform: scale(0.985);
+}
+.home-feed-card__photo {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: #e2e8f0;
+    overflow: hidden;
+}
+.home-feed-card__body {
+    padding: 16px 16px 14px;
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    gap: 12px;
+    align-items: start;
+}
+.home-feed-card--photo .home-feed-card__body {
+    grid-template-columns: 1fr auto;
+    padding-top: 14px;
+}
+.home-feed-card__icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #ecfdf5, #d1fae5);
+    display: grid;
+    place-items: center;
+    color: var(--green-deep, #047857);
+    font-size: 22px;
+    flex-shrink: 0;
+}
+.home-feed-card__icon i {
+    font-size: 1.25rem;
+    line-height: 1;
+    color: inherit;
+}
+.home-feed-card__main {
+    min-width: 0;
+    padding-top: 2px;
+}
+.home-feed-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--muted, #94a3b8);
+    font-weight: 500;
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+.home-feed-card__share {
+    margin-left: 2px;
+    color: var(--muted, #94a3b8);
+    font-size: 11px;
+}
+.home-feed-card__title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--ink, #0f172a);
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+.home-feed-card__note {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.45;
+    margin: 0 0 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.home-feed-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.home-feed-card__tag {
+    font-size: 12px;
+    color: var(--green-deep, #047857);
+    font-weight: 500;
+}
+.home-feed-card__stars {
+    display: flex;
+    gap: 2px;
+    color: var(--star, #fbbf24);
+    font-size: 12px;
+    padding-top: 3px;
+    letter-spacing: -1px;
+    flex-shrink: 0;
+}
+.home-feed-card__star--empty {
+    color: #e2e8f0;
+}
+
+/* 홈피드 빈 날 CTA */
+#timelineContainer .timeline-day-empty {
+    background: var(--card, #fff);
+    border: 1px solid rgba(226, 232, 240, 0.7);
+    border-radius: 18px;
+    margin: 4px 0 8px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 #galleryContainer {
     margin-left: 0 !important;
@@ -6898,10 +7086,10 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 .custom-date-range-inner {
     display: flex;
     align-items: stretch;
-    background: #047857;
+    background: var(--page);
     border-radius: 10px;
     padding: 0.375rem 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid var(--line);
     min-height: 30px;
     height: 30px;
 }
@@ -6922,7 +7110,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 .custom-date-label {
     font-size: 0.8125rem;
     font-weight: 400;
-    color: #fff;
+    color: var(--ink-2);
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -6939,7 +7127,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     transform: translateY(-50%);
     font-size: 0.8125rem;
     font-weight: 500;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--muted);
     pointer-events: none;
     display: none;
 }
@@ -6959,18 +7147,18 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     padding: 0 0.25rem 0 0;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #fff;
+    color: var(--ink);
     background: transparent;
     border: none;
     outline: none;
     box-sizing: content-box;
 }
 .custom-date-input::-webkit-datetime-edit {
-    color: #fff;
+    color: var(--ink);
 }
 .custom-date-input::-webkit-calendar-picker-indicator {
-    filter: invert(1);
-    opacity: 0.9;
+    filter: none;
+    opacity: 0.7;
     cursor: pointer;
     margin-left: 0;
     width: 1.2em;
@@ -6978,7 +7166,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 .custom-date-divider {
     width: 1px;
-    background: rgba(255, 255, 255, 0.35);
+    background: var(--line);
     flex-shrink: 0;
     margin: 0.15rem 0;
 }
@@ -7024,7 +7212,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-size: 0.875rem;
     font-weight: 600;
     letter-spacing: -0.02em;
-    color: rgba(255, 255, 255, 0.92);
+    color: var(--ink-2);
     min-height: 0.875rem;
 }
 #dashboardView .dashboard-insight-chrome .insight-area {
@@ -7037,8 +7225,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #dashboardView .dashboard-insight-chrome #insightBubble.insight-bubble,
 #dashboardView .dashboard-insight-chrome .insight-bubble {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: var(--green-soft);
+    border: 1px solid var(--green-mute);
     box-shadow: none;
     flex: 1 1 auto;
     align-self: stretch;
@@ -7046,20 +7234,20 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     min-height: 0;
 }
 #dashboardView .dashboard-insight-chrome .insight-character-btn:has(#insightCharacterIcon.mealog-character-m) .insight-character-icon-box {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--page);
 }
 #dashboardView .dashboard-insight-chrome .sticker-badge {
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: var(--page);
+    border: 1px solid var(--line);
     border-radius: 1rem;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     box-shadow: none;
     margin-top: 0.875rem;
     margin-bottom: 0;
 }
 #dashboardView .dashboard-insight-chrome #mealRecordPercent {
-    color: #fde047;
+    color: var(--green-deep);
     opacity: 1;
 }
 #dashboardView .dashboard-analysis-tab-card {
@@ -7515,6 +7703,90 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 #boardWriteBtn.board-write-fab.hidden {
     display: none !important;
     pointer-events: none;
+}
+
+/* 타임라인 기록 추가 — 슬롯 피커 바텀시트 */
+.entry-slot-picker {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+.entry-slot-picker__grabber {
+    width: 2.25rem;
+    height: 0.25rem;
+    margin: 0.5rem auto 0.35rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+.entry-slot-picker__group {
+    margin-bottom: 0.75rem;
+}
+.entry-slot-picker__group:last-child {
+    margin-bottom: 0.25rem;
+}
+.entry-slot-picker__group-title {
+    margin: 0.35rem 0.5rem 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+.entry-slot-picker__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.7rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid transparent;
+    border-radius: 0.875rem;
+    background: #f8fafc;
+    text-align: left;
+    transition: background-color 0.15s, border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.entry-slot-picker__item:active {
+    background: #f1f5f9;
+}
+.entry-slot-picker__item--preferred {
+    border-color: #a7f3d0;
+    background: #ecfdf5;
+}
+.entry-slot-picker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.75rem;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+}
+.entry-slot-picker__meta {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+.entry-slot-picker__label {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.25;
+}
+.entry-slot-picker__count {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #059669;
+}
+.entry-slot-picker__count--empty {
+    color: #94a3b8;
+    font-weight: 500;
+}
+.entry-slot-picker__chevron {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: #cbd5e1;
 }
 
 /* 밀로그 퀵입력 FAB — 게시판 글쓰기와 동일 스타일·위치 */

@@ -1263,7 +1263,7 @@ export function updateHeaderUI() {
                 const iconEl = document.getElementById('navProfileIcon');
                 if (iconEl) {
                     // 모든 스타일 및 클래스 초기화
-                    iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-slate-500';
+                    iconEl.className = 'nav-item__avatar';
                     iconEl.style.backgroundImage = '';
                     iconEl.style.backgroundSize = '';
                     iconEl.style.backgroundPosition = '';
@@ -1272,7 +1272,7 @@ export function updateHeaderUI() {
                     iconEl.style.height = '';
                     iconEl.style.objectFit = '';
                     iconEl.style.position = '';
-                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
+                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-sm"></i>';
                     
                     const currentProfileKey = `게스트||${isGuest}`;
                     if (lastHeaderUpdate !== currentProfileKey) {
@@ -1314,7 +1314,7 @@ export function updateHeaderUI() {
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
                 iconEl.style.position = 'relative';
-                iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300';
+                iconEl.className = 'nav-item__avatar';
                 
                 // 게스트 모드이면 '게' 오버레이 추가
                 if (isGuest) {
@@ -1322,7 +1322,7 @@ export function updateHeaderUI() {
                 }
             } else {
                 const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: p.photoUrl });
-                iconEl.className = `w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300 ${av.type === 'emoji' ? 'text-base' : 'text-sm font-bold text-slate-600'}`;
+                iconEl.className = `nav-item__avatar ${av.type === 'emoji' ? '' : 'font-bold'}`.trim();
                 iconEl.textContent = isGuest ? '게' : av.value;
             }
         }

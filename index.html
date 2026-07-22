@@ -1536,17 +1536,14 @@
                         </span>
                     </div>
                 </div>
-                <div id="trackerTabs" class="flex p-1 bg-slate-100 rounded-lg gap-1 flex-shrink-0">
-                    <button id="btn-view-list" class="view-tab active">전체</button>
-                    <button id="btn-view-page" class="view-tab inactive">일간</button>
-                </div>
+                <!-- 전체/일간 토글 제거: 타임라인은 일간(스와이프)만 -->
             </div>
             <div id="miniCalendar" class="calendar-scroll pb-2"></div>
         </div>
         </div>
 
         <main>
-            <div id="timelineView" class="ui-tab-view overflow-x-hidden"><div id="timelineContainer" class="ui-stack-lg"></div></div>
+            <div id="timelineView" class="ui-tab-view overflow-x-hidden timeline-view-mode-page"><div id="timelineContainer" class="ui-stack-lg"></div></div>
             <div id="galleryView" class="hidden ui-tab-view">
                 <div id="galleryPullWrap">
                     <div id="galleryPullIndicator" class="gallery-pull-indicator" aria-hidden="true">
@@ -1702,14 +1699,14 @@
                     <button id="btn-dash-year" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">연간</button>
                     <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">직접 설정</button>
                 </div>
-                <div class="card ui-card-pad-lg dashboard-insight-card text-white relative overflow-hidden">
+                <div class="card ui-card-pad-lg dashboard-insight-card text-slate-800 relative overflow-hidden">
                     <div class="dashboard-insight-period-wrap flex flex-col mb-2 relative z-10">
                         <div id="periodNavigator" class="hidden mt-1.5 flex items-center justify-center gap-3">
-                            <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
+                            <button id="periodPrevBtn" onclick="window.navigatePeriod(-1)" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center active:bg-slate-200 transition-colors">
                                 <i class="fa-solid fa-chevron-left text-sm"></i>
                             </button>
-                            <div id="periodDisplay" class="flex-1 text-center text-sm font-bold text-white"></div>
-                            <button id="periodNextBtn" onclick="window.navigatePeriod(1)" class="w-7 h-7 rounded-full bg-white/20 text-white flex items-center justify-center active:bg-white/30 transition-colors">
+                            <div id="periodDisplay" class="flex-1 text-center text-sm font-bold text-slate-700"></div>
+                            <button id="periodNextBtn" onclick="window.navigatePeriod(1)" class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center active:bg-slate-200 transition-colors">
                                 <i class="fa-solid fa-chevron-right text-sm"></i>
                             </button>
                         </div>
@@ -1919,6 +1916,16 @@
                 <div class="flex-1 overflow-y-auto min-h-0 px-4 pb-28 settings-view-content">
                     <!-- 프로필 탭 -->
                     <div id="settingsTabContentProfile" class="settings-tab-content settings-tab-content-fullwidth profile-settings-list pt-2 pb-8">
+                        <button type="button" id="settingsOpenMealdangBtn" class="settings-mealdang-entry mb-3 flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3.5 text-left shadow-sm active:bg-slate-50">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600" aria-hidden="true">
+                                <i class="fa-solid fa-chart-pie"></i>
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-sm font-bold text-slate-800">밀당</span>
+                                <span class="mt-0.5 block text-xs font-medium text-slate-400">식단·영양 분석과 주간·월간 요약</span>
+                            </span>
+                            <i class="fa-solid fa-chevron-right text-xs text-slate-300" aria-hidden="true"></i>
+                        </button>
                         <div class="settings-section-container">
                             <div id="accountSection" class="profile-account-section"></div>
                             <div class="profile-settings-header flex items-center justify-end gap-2 border-b border-slate-100">
@@ -2087,38 +2094,43 @@
             </div>
         </main>
 
-        <nav class="bottom-nav">
-            <button id="nav-dashboard" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
-                <span class="relative inline-flex items-center justify-center">
+        <nav class="bottom-nav" aria-label="하단 메뉴">
+            <button id="nav-home" type="button" class="nav-item" aria-label="홈">
+                <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-chart-pie text-xl"></i>
+                    <i class="fa-solid fa-house" aria-hidden="true"></i>
                 </span>
+                <span class="nav-item__label">홈</span>
             </button>
-            <button id="nav-gallery" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
-                <span class="relative inline-flex items-center justify-center">
-                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-images text-xl"></i>
-                </span>
-            </button>
-            <button id="nav-timeline" type="button" class="text-slate-600 flex justify-center items-center py-1 flex-1">
-                <span class="relative inline-flex items-center justify-center">
-                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-list-ul text-xl"></i>
-                </span>
-            </button>
-            <button id="nav-board" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1">
-                <span class="relative inline-flex items-center justify-center">
+            <button id="nav-gallery" type="button" class="nav-item" aria-label="모먼트">
+                <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                     <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <i class="fa-solid fa-comments text-xl"></i>
+                    <i class="fa-solid fa-images" aria-hidden="true"></i>
                 </span>
+                <span class="nav-item__label">모먼트</span>
             </button>
-            <button id="nav-settings" type="button" class="text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden">
-                <span class="relative inline-flex items-center justify-center">
+            <button id="nav-timeline" type="button" class="nav-item record active" aria-label="밀로그">
+                <span class="nav-item__icon-wrap">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                </span>
+                <span class="nav-item__label">밀로그</span>
+            </button>
+            <button id="nav-board" type="button" class="nav-item" aria-label="라운지">
+                <span class="nav-item__icon-wrap">
+                    <span class="demo-nav-guide-dot hidden absolute -top-px -right-0.5 z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <span class="nav-feed-update-dot hidden absolute -top-px -right-0.5 z-[11] h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
+                    <i class="fa-solid fa-comments" aria-hidden="true"></i>
+                </span>
+                <span class="nav-item__label">라운지</span>
+            </button>
+            <button id="nav-settings" type="button" class="nav-item" aria-label="마이">
+                <span class="nav-item__icon-wrap">
                     <span class="demo-nav-guide-dot hidden absolute top-0 -right-px z-10 h-1.5 w-1.5 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
-                    <span id="navProfileIcon" class="w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-base font-bold text-slate-600"></span>
+                    <span id="navProfileIcon" class="nav-item__avatar"></span>
                 </span>
+                <span class="nav-item__label">마이</span>
             </button>
         </nav>
         <!-- 초기 로그인 후 기록(meals) 로딩: 동기화 FAB와 동일 위치·크기, 음식 아이콘 순환만 표시 -->
@@ -2522,6 +2534,21 @@
     </div>
 
     <!-- Entry Modal -->
+    <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-end justify-center" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
+        <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/50 p-0" aria-label="닫기"></button>
+        <div class="entry-slot-picker relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-t-[1.25rem] bg-white shadow-xl">
+            <div class="entry-slot-picker__grabber" aria-hidden="true"></div>
+            <div class="flex items-start justify-between gap-3 px-5 pb-2 pt-1">
+                <div class="min-w-0">
+                    <h2 id="entrySlotPickerTitle" class="text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
+                    <p id="entrySlotPickerDateLabel" class="mt-0.5 text-sm font-medium text-slate-500"></p>
+                </div>
+                <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto px-3 pb-5 pt-1"></div>
+        </div>
+    </div>
+
     <div id="entryModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-end overflow-hidden">
         <div class="entry-modal-panel w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
             <div class="entry-modal-header shrink-0">

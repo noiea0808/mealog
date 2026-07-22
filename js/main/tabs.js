@@ -144,28 +144,21 @@ export function registerMainTabSwitch() {
             }
 
             document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');
-            document.getElementById('nav-timeline').className = tab === 'timeline'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-gallery').className = tab === 'gallery'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-dashboard').className = tab === 'dashboard'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-board').className = tab === 'board'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            const navSettings = document.getElementById('nav-settings');
-            if (navSettings) navSettings.className = tab === 'settings'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden';
+            const setNavActive = (id, active) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.toggle('active', !!active);
+            };
+            // 밀로그(중앙)가 홈피드 — timeline 활성. 좌측 홈도 동일 탭으로 이동하지만 강조는 밀로그
+            setNavActive('nav-timeline', tab === 'timeline');
+            setNavActive('nav-home', false);
+            setNavActive('nav-gallery', tab === 'gallery');
+            setNavActive('nav-board', tab === 'board');
+            setNavActive('nav-settings', tab === 'settings' || tab === 'dashboard');
 
             if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-                const navGallery = document.getElementById('nav-gallery');
-                const navBoard = document.getElementById('nav-board');
-                if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-                if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+                setNavActive('nav-gallery', false);
+                setNavActive('nav-board', true);
             }
 
             const searchBtn = document.getElementById('searchTriggerBtn');
@@ -302,10 +295,8 @@ export function registerMainTabSwitch() {
                 }
                 setTimeout(() => {
                     if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-                        const navGallery = document.getElementById('nav-gallery');
-                        const navBoard = document.getElementById('nav-board');
-                        if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-                        if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+                        document.getElementById('nav-gallery')?.classList.remove('active');
+                        document.getElementById('nav-board')?.classList.add('active');
                     }
                     setTimeout(() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });

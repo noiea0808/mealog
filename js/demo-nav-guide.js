@@ -4,14 +4,13 @@
 import { isDemoUser } from './demo-account.js';
 
 const SEEN_PREFIX = 'mealog_demo_nav_seen_';
-const TABS = ['dashboard', 'gallery', 'timeline', 'board', 'settings'];
+const TABS = ['gallery', 'timeline', 'board', 'settings'];
 
 const DEFAULT_GUIDE_TEXT = {
-    dashboard: { label: '밀당', desc: '식단·영양 분석과 주간·월간 요약을 볼 수 있어요.' },
     gallery:   { label: '모먼트', desc: '공유된 사진 피드와 반응을 모아 볼 수 있어요.' },
-    timeline:  { label: '밀로그', desc: '날짜별 끼니 기록을 타임라인으로 확인해요.' },
+    timeline:  { label: '밀로그', desc: '날짜별 끼니·하루 기록을 홈 피드로 확인해요.' },
     board:     { label: '라운지', desc: '밀톡으로 대화하고, 게시판에 글을 남길 수 있어요.' },
-    settings:  { label: '설정', desc: '프로필·알림 등 내 계정을 관리해요.' },
+    settings:  { label: '마이', desc: '프로필·알림을 관리하고 밀당 분석으로 이동할 수 있어요.' },
 };
 
 let GUIDE_TEXT = { ...DEFAULT_GUIDE_TEXT };

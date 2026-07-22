@@ -74,7 +74,8 @@ import {
     handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
     editDailyJournalPhoto,
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
-    openDailyCommentModal, closeDailyCommentModal
+    openDailyCommentModal, closeDailyCommentModal,
+    openEntrySlotPicker, closeEntrySlotPicker
 } from './modals.js';
 import { openQuickEntryModal } from './modals/entry-quick-open.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
@@ -243,11 +244,11 @@ window.syncBottomNavForGalleryFilter = () => {
     const navBoard = document.getElementById('nav-board');
     if (!navGallery || !navBoard) return;
     if (appState.currentTab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-        navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-        navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+        navGallery.classList.remove('active');
+        navBoard.classList.add('active');
     } else if (appState.currentTab === 'gallery') {
-        navGallery.className = 'text-slate-600 flex justify-center items-center py-1';
-        navBoard.className = 'text-slate-300 flex justify-center items-center py-1';
+        navGallery.classList.add('active');
+        navBoard.classList.remove('active');
     }
 };
 window.Mealog.syncBottomNavForGalleryFilter = window.syncBottomNavForGalleryFilter;
@@ -307,6 +308,10 @@ window.openModal = openModal;
 window.Mealog.openModal = openModal;
 window.openQuickEntryModal = openQuickEntryModal;
 window.Mealog.openQuickEntryModal = openQuickEntryModal;
+window.openEntrySlotPicker = openEntrySlotPicker;
+window.Mealog.openEntrySlotPicker = openEntrySlotPicker;
+window.closeEntrySlotPicker = closeEntrySlotPicker;
+window.Mealog.closeEntrySlotPicker = closeEntrySlotPicker;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
 window.openDailyJournalModal = openDailyJournalModal;
@@ -474,20 +479,18 @@ window.Mealog.renderNoticeDetail = renderNoticeDetail;
 // 콘텐츠 팝업: main/content-popup.js → registerContentPopup()
 
 window.setViewMode = (m) => {
-    appState.viewMode = m;
-    document.getElementById('btn-view-list').className = `view-tab ${m === 'list' ? 'active' : 'inactive'}`;
-    document.getElementById('btn-view-page').className = `view-tab ${m === 'page' ? 'active' : 'inactive'}`;
-    document.getElementById('timelineView')?.classList.toggle('timeline-view-mode-page', m === 'page');
+    // 일간(page)만 지원 — list 요청도 page로 고정
+    appState.viewMode = 'page';
+    document.getElementById('timelineView')?.classList.add('timeline-view-mode-page');
     if (m === 'list') {
-        // 오늘 날짜로 설정
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         appState.pageDate = today;
     }
     window.loadedDates = [];
-    window.hasScrolledToToday = false; // 스크롤 플래그 리셋
+    window.hasScrolledToToday = false;
     const c = document.getElementById('timelineContainer');
-    if (c) c.innerHTML = "";
+    if (c) c.innerHTML = '';
     renderTimeline();
     renderMiniCalendar();
 };
