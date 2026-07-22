@@ -5035,64 +5035,16 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-radius: 18px !important;
 }
 
-#timelineContainer .timeline-entry-card,
+/* 목록형(옵션) — 홈피드 카드와 별개. 일기장 톤카드(.timeline-entry-card)는 폐기 */
 #timelineContainer .timeline-entry-row {
     overflow: hidden;
-    border: 0 !important;
+    border: 1px solid rgba(226, 232, 240, 0.7);
     background: #ffffff;
-    box-shadow: 0 3px 18px rgba(15, 23, 42, 0.055);
-}
-#timelineContainer .timeline-entry-card__media {
-    border: 0 !important;
-}
-#timelineContainer .timeline-entry-card--photo .timeline-entry-card__layout {
-    flex-direction: column;
-}
-#timelineContainer .timeline-entry-card--photo .timeline-entry-card__media {
-    width: 100% !important;
-    min-width: 100% !important;
-    height: auto !important;
-    min-height: 0 !important;
-    aspect-ratio: 16 / 9;
-    border-radius: 16px 16px 0 0;
-}
-#timelineContainer .timeline-entry-card--photo .timeline-entry-card__body {
-    min-height: 116px;
-    padding: 14px 16px 18px;
-}
-#timelineContainer .timeline-entry-card--compact .timeline-entry-card__layout {
-    min-height: 112px;
-    align-items: stretch;
-}
-#timelineContainer .timeline-entry-card--compact .timeline-entry-card__media {
-    width: 112px !important;
-    min-width: 112px !important;
-    height: auto !important;
-    min-height: 112px !important;
-    margin: 14px 0 14px 14px;
-    border-radius: 9999px;
-    background: #f4f8ef !important;
-}
-#timelineContainer .timeline-entry-card--compact .timeline-entry-card__body {
-    padding: 16px;
-}
-#timelineContainer .timeline-entry-card--empty .timeline-entry-card__media {
-    width: 76px !important;
-    min-width: 76px !important;
-    min-height: 76px !important;
-    margin: 12px 0 12px 14px;
-}
-#timelineContainer .timeline-entry-card--empty .timeline-entry-card__layout {
-    min-height: 100px;
-}
-#timelineContainer .timeline-entry-row {
-    border-left-width: 3px !important;
-    border-left-style: solid !important;
-    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 #timelineContainer .timeline-entry-row > .flex > :first-child {
     border-right: 0 !important;
-    background: #fafcf8 !important;
+    background: #f8fafc !important;
 }
 .timeline-entry-rating {
     display: inline-flex;

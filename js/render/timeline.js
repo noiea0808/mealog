@@ -1038,15 +1038,12 @@ function buildMainMealTimelineCardHtml(
 
 function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeSlotLabel = escapeHtml(slot.label);
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-card timeline-entry-card--compact timeline-entry-card--empty mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
-        <div class="timeline-entry-card__layout flex">
-            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden ${iconBoxClass} flex items-center justify-center">
-                ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'lg')}
-            </div>
-            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
-                <h4 class="mb-0 leading-tight"><span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span></h4>
-                <p class="mt-1.5 mb-0"><span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span></p>
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${safeSlotLabel}</div>
+                <div class="home-feed-card__title">기록하기</div>
             </div>
         </div>
     </div>`;
@@ -1054,18 +1051,12 @@ function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
 
 function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
-    /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
-    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-card timeline-entry-card--compact timeline-entry-card--empty mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
-        <div class="timeline-entry-card__layout flex ${hThird}">
-            <div class="timeline-entry-card__media w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center overflow-hidden">
-                <span class="text-3xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
-            </div>
-            <div class="timeline-entry-card__body flex-1 min-w-0 flex items-center px-4 py-0.5">
-                <p class="mb-0 truncate text-xs leading-tight">
-                    <span class="font-bold ${specificStyle.iconText}">${safeLabel}</span>
-                    <span class="text-slate-400 font-normal"> <span class="font-bold">+</span> 기록하기</span>
-                </p>
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon" aria-hidden="true"><i class="fa-solid fa-mug-saucer"></i></div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${safeLabel}</div>
+                <div class="home-feed-card__title">기록하기</div>
             </div>
         </div>
     </div>`;
@@ -1286,7 +1277,7 @@ function dailyJournalCommentPreviewHtml(comment) {
 function dailyJournalMetricHashtagSpan(label, chain) {
     if (!chain) return '';
     const tagText = `${label} ${chain}`;
-    return `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(tagText)}</span>`;
+    return `<span class="home-feed-card__tag">#${escapeHtml(tagText)}</span>`;
 }
 
 function dailyJournalMetricsSlotPreviewHtml(journal) {
@@ -1303,21 +1294,11 @@ function dailyJournalMetricsSlotPreviewHtml(journal) {
         if (span) tags.push(span);
     }
     if (!tags.length) return '';
-    return `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.join('')}</div>`;
+    return `<div class="home-feed-card__tags">${tags.join('')}</div>`;
 }
 
 function buildDailyJournalSlotHtml(dateStr) {
     const journal = getDailyJournalForTimeline(dateStr);
-    const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
-    const mealView = getMealTimelineView();
-    const useListLayout =
-        mealView === 'list' || (mealView === 'mixed' && photos.length === 0);
-
-    if (useListLayout) {
-        return dailyJournalHasContent(journal)
-            ? buildDailyJournalListFilledHtml(dateStr, journal)
-            : buildDailyJournalListEmptyHtml(dateStr);
-    }
     return buildDailyJournalCardHtml(dateStr, journal);
 }
 
@@ -1378,48 +1359,45 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     const comment = String(journal.comment || '').trim();
     const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
     const safeLabel = escapeHtml(slot.label);
+    const hasPhoto = photos.length > 0;
 
-    let iconHtml = '';
-    if (photos.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null);
-    } else if (hasContent) {
-        iconHtml = `<i class="fa-solid fa-book-open text-2xl ${style.iconText}"></i>`;
-    } else {
-        iconHtml = `<div class="flex flex-col items-center justify-center text-center px-2">
-            <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
-            <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
-        </div>`;
+    let photoHtml = '';
+    let iconHtml = `<i class="fa-solid fa-book-open"></i>`;
+    if (hasPhoto) {
+        photoHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null);
+    } else if (!hasContent) {
+        iconHtml = `<i class="fa-solid fa-plus"></i>`;
     }
 
-    const titleLine1 = dailyJournalHasPhotos(journal)
-        ? `<h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${dailyJournalPhotoSyncLeadHtml(journal)}<span class="text-sm font-bold ${style.text} min-w-0">${safeLabel}</span>${dailyJournalShareArrowHtml(dateStr, journal)}</h4>`
-        : `<span class="text-sm font-bold ${style.text}">${safeLabel}</span>`;
-    const titleLine2 = hasContent
-        ? ''
-        : '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
+    const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
+    const metaHtml = `${dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : ''}${safeLabel}${shareArrow}`;
+    const titleHtml = hasContent
+        ? escapeHtml(
+              comment
+                  ? comment.replace(/\n/g, ' ').slice(0, 80)
+                  : dailyJournalSlotFallbackLine(journal) || '하루 기록'
+          )
+        : '기록하기';
     const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);
-    const commentPreview = dailyJournalCommentPreviewHtml(comment);
-    const fallbackPreview =
-        !comment && !metricsPreview && hasContent
-            ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(dailyJournalSlotFallbackLine(journal))}</p>`
-            : '';
+    const noteParts = [];
+    if (comment && hasContent) {
+        noteParts.push(
+            `<p class="home-feed-card__note">"${escapeHtml(comment).replace(/\n/g, ' ')}"</p>`
+        );
+    }
+    if (metricsPreview) noteParts.push(metricsPreview);
+    const noteHtml = noteParts.join('');
+    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
+    const opacity = hasContent ? '' : ' opacity-80';
 
-    const containerClass = hasContent ? 'border-slate-200' : 'border-slate-200 opacity-80';
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${style.iconText}`;
-
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-card ${photos.length ? 'timeline-entry-card--photo' : 'timeline-entry-card--compact'} daily-journal-slot mb-1.5 ${containerClass} cursor-pointer active:scale-[0.98] transition-all">
-        <div class="timeline-entry-card__layout flex">
-            <div class="timeline-entry-card__media relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden ${iconBoxClass} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="timeline-entry-card__body flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0">
-                    ${dailyJournalHasPhotos(journal) ? titleLine1 : `<h4 class="mb-0 leading-tight">${titleLine1}</h4>`}
-                    ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}
-                    ${commentPreview}
-                    ${metricsPreview || ''}
-                    ${fallbackPreview}
-                </div>
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card home-feed-card${photoClass} daily-journal-slot mb-1.5${opacity} cursor-pointer active:scale-[0.98] transition-all">
+        ${hasPhoto ? `<div class="home-feed-card__photo relative">${photoHtml}</div>` : ''}
+        <div class="home-feed-card__body">
+            ${hasPhoto ? '' : `<div class="home-feed-card__icon" aria-hidden="true">${iconHtml}</div>`}
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${metaHtml}</div>
+                <div class="home-feed-card__title">${titleHtml}</div>
+                ${noteHtml}
             </div>
         </div>
     </div>`;
@@ -1792,14 +1770,20 @@ export function renderTimeline(options = {}) {
                     });
                     html += `</div>`;
                 } else if (mealView === 'mixed') {
+                    /* mixed도 home-feed 카드 통일 (사진 없으면 아이콘 카드) */
                     html += `<div class="main-slot-mixed-group">`;
                     records.forEach((r, idx) => {
                         const isLast = idx === records.length - 1;
-                        const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
                         const mb = isLast ? 'mb-0' : 'mb-1.5';
-                        const blockHtml = hasPhotos
-                            ? buildMainMealTimelineCardHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length)
-                            : buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length);
+                        const blockHtml = buildMainMealTimelineCardHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            mb,
+                            idx + 1,
+                            records.length
+                        );
                         if (isLast) {
                             html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
                         } else {
@@ -1877,33 +1861,20 @@ export function renderTimeline(options = {}) {
                     });
                     html += `</div>`;
                 } else if (snackView === 'mixed') {
+                    /* mixed도 home-feed 카드 통일 */
                     html += `<div class="snack-slot-mixed-group">`;
                     records.forEach((r, idx) => {
                         const isLast = idx === records.length - 1;
-                        const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
                         const mb = isLast ? 'mb-0' : 'mb-1.5';
-                        let blockHtml;
-                        if (hasPhotos) {
-                            blockHtml = buildSnackTimelineCardHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                mb,
-                                idx + 1,
-                                records.length
-                            );
-                        } else {
-                            blockHtml = buildSnackListFilledRowHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                mb,
-                                idx + 1,
-                                records.length
-                            );
-                        }
+                        const blockHtml = buildSnackTimelineCardHtml(
+                            dateStr,
+                            slot,
+                            r,
+                            specificStyle,
+                            mb,
+                            idx + 1,
+                            records.length
+                        );
                         if (isLast) {
                             html += `<div class="relative mb-1.5">
                                     ${blockHtml}
