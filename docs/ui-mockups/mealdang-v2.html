@@ -22,7 +22,8 @@
       --ink-2: #4f4841;
       --muted: #7a7268;
       --line: #d0c6ba;
-      --page: #fffcf9;
+      --page: #fffcfa;
+      --page-deep: #faf6f2;
       --card: #ffffff;
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --c1: #3cb889;
@@ -154,7 +155,7 @@
     .phone {
       width: 390px;
       height: 844px;
-      background: var(--page);
+      background: var(--page-deep);
       border-radius: 40px;
       box-shadow:
         0 0 0 1px rgba(15, 23, 42, 0.06),
@@ -281,7 +282,7 @@
     .scroll {
       flex: 1;
       overflow-y: auto;
-      background: var(--page);
+      background: var(--page-deep);
     }
     .scroll::-webkit-scrollbar { width: 0; }
 
@@ -290,12 +291,12 @@
     .view--comment.active {
       display: flex;
       flex-direction: column;
-      background: var(--page);
+      background: var(--page-deep);
     }
 
     /* —— 참견 뷰: soft-green 전체 —— */
     .comment-zone {
-      background: var(--page);
+      background: var(--page-deep);
       padding: 16px 14px 100px;
       flex: 1;
     }
@@ -427,10 +428,10 @@
       border-radius: 999px;
     }
 
-    /* —— 분석 뷰: page + white cards —— */
+    /* —— 분석 뷰: page-deep + white cards —— */
     .analysis-zone {
       padding: 12px 12px 100px;
-      background: var(--page);
+      background: var(--page-deep);
     }
 
     .segments {
@@ -652,7 +653,7 @@
       }
     }
 
-    body.phone-only { background: var(--page); }
+    body.phone-only { background: var(--page-deep); }
     body.phone-only .stage {
       grid-template-columns: 1fr;
       padding: 0;

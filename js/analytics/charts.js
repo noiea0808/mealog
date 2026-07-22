@@ -423,9 +423,13 @@ export function renderProportionChart(containerId, data, key) {
     
     html += '</div>';
     html += '<div class="dashboard-chart-legend">';
-    legendRows.forEach(({ name, pct, bg }) => {
-        html += `<div class="dashboard-chart-legend-row"><span class="dashboard-chart-swatch" style="background:${bg}"></span><span class="name">${name}</span><span class="pct">${pct}%</span></div>`;
-    });
+    const leftCount = Math.ceil(legendRows.length / 2);
+    const leftRows = legendRows.slice(0, leftCount);
+    const rightRows = legendRows.slice(leftCount);
+    const renderLegendRow = ({ name, pct, bg }) =>
+        `<div class="dashboard-chart-legend-row"><span class="dashboard-chart-swatch" style="background:${bg}"></span><span class="name">${name}</span><span class="pct">${pct}%</span></div>`;
+    html += `<div class="dashboard-chart-legend-col">${leftRows.map(renderLegendRow).join('')}</div>`;
+    html += `<div class="dashboard-chart-legend-col">${rightRows.map(renderLegendRow).join('')}</div>`;
     html += '</div>';
     html += '</div>';
     

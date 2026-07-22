@@ -172,6 +172,19 @@ window.switchAdminTab = function(tab) {
         switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
     } else if (tab === 'adminLog') {
         loadAdminLogTab();
+    } else if (tab === 'uiGuide') {
+        // 헤더 실측 높이로 iframe/임베드 영역 맞춤 (이중 스크롤 방지)
+        const header = document.getElementById('adminHeader');
+        if (header) {
+            document.documentElement.style.setProperty(
+                '--admin-header-offset',
+                `${Math.ceil(header.getBoundingClientRect().height + 8)}px`
+            );
+        }
+        const popupPanel = document.getElementById('uiGuide-panel-popup');
+        if (popupPanel && !popupPanel.classList.contains('hidden')) {
+            void ensureUiGuidePopupInventory();
+        }
     }
 }
 
@@ -181,6 +194,58 @@ window.switchAdminTab = function(tab) {
 window.refreshDashboardStats = refreshDashboardStats;
 window.switchDashboardSubtab = switchDashboardSubtab;
 window.addDashboardExcludedUid = addExcludedUidFromAdminInput;
+
+window.switchUiGuideSubtab = function(which) {
+    const hubPanel = document.getElementById('uiGuide-panel-hub');
+    const palettePanel = document.getElementById('uiGuide-panel-palette');
+    const popupPanel = document.getElementById('uiGuide-panel-popup');
+    const btnHub = document.getElementById('uiGuide-subtab-hub');
+    const btnPalette = document.getElementById('uiGuide-subtab-palette');
+    const btnPopup = document.getElementById('uiGuide-subtab-popup');
+    const active =
+        'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
+    const idle =
+        'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
+    const w = which === 'palette' ? 'palette' : which === 'popup' ? 'popup' : 'hub';
+    if (hubPanel) hubPanel.classList.toggle('hidden', w !== 'hub');
+    if (palettePanel) palettePanel.classList.toggle('hidden', w !== 'palette');
+    if (popupPanel) popupPanel.classList.toggle('hidden', w !== 'popup');
+    if (btnHub) btnHub.className = w === 'hub' ? active : idle;
+    if (btnPalette) btnPalette.className = w === 'palette' ? active : idle;
+    if (btnPopup) btnPopup.className = w === 'popup' ? active : idle;
+    if (w === 'popup') {
+        void ensureUiGuidePopupInventory();
+    }
+};
+
+let uiGuidePopupInventoryPromise = null;
+function ensureUiGuidePopupInventory() {
+    const mount = document.getElementById('uiGuidePopupMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountPopupInventory === 'function') {
+        return Promise.resolve(window.mountPopupInventory(mount, { standalone: false }));
+    }
+    if (uiGuidePopupInventoryPromise) return uiGuidePopupInventoryPromise;
+    uiGuidePopupInventoryPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'docs/ui-mockups/popup-inventory.js';
+        s.async = true;
+        s.onload = () => {
+            try {
+                resolve(window.mountPopupInventory(mount, { standalone: false }));
+            } catch (err) {
+                reject(err);
+            }
+        };
+        s.onerror = () => reject(new Error('popup-inventory.js load failed'));
+        document.head.appendChild(s);
+    }).catch((err) => {
+        uiGuidePopupInventoryPromise = null;
+        console.error(err);
+        return null;
+    });
+    return uiGuidePopupInventoryPromise;
+}
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {

@@ -2609,25 +2609,23 @@
     </div>
 
     <!-- Entry Modal -->
-    <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-end justify-center" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
+    <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
         <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
-        <div class="entry-slot-picker relative z-10 flex w-full max-w-md flex-col overflow-hidden shadow-xl">
-            <div class="entry-slot-picker__grabber" aria-hidden="true"></div>
-            <div class="flex items-start justify-between gap-3 px-5 pb-2 pt-1">
+        <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
                 <div class="min-w-0">
                     <h2 id="entrySlotPickerTitle" class="text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
                     <p id="entrySlotPickerDateLabel" class="mt-0.5 text-sm font-medium text-slate-500"></p>
                 </div>
                 <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
-            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto px-3 pb-5 pt-1"></div>
+            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto px-3 pb-4 pt-1"></div>
         </div>
     </div>
 
-    <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-end overflow-hidden">
-        <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(92vh,100%)] overflow-hidden">
+    <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden">
+        <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden">
             <div class="entry-modal-header shrink-0">
-                <div class="entry-modal-grabber" aria-hidden="true"></div>
                 <div class="flex items-center gap-2 min-w-0 px-4 py-2.5">
                     <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
                         <input type="hidden" id="entryHeaderDate" value="">

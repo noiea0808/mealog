@@ -1,5 +1,5 @@
 /**
- * 타임라인 기록 추가 — 슬롯 선택 바텀시트
+ * 타임라인 기록 추가 — 슬롯 선택 센터 팝업
  * 본식·간식·하루 기록을 모두 포함. 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
 import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';

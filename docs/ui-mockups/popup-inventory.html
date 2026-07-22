@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mealog · 팝업 인벤토리</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="./popup-inventory.css" />
+  <script src="./themes.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { background: #faf6f2; }
+  </style>
+</head>
+<body>
+  <div id="popupInventoryApp"></div>
+  <script src="./popup-inventory.js"></script>
+  <script>
+    window.mountPopupInventory(document.getElementById('popupInventoryApp'), { standalone: true });
+  </script>
+</body>
+</html>

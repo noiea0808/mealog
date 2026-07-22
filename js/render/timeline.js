@@ -1805,11 +1805,7 @@ export function renderTimeline(options = {}) {
         const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
         if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
             html += `<div class="timeline-day-empty px-4 py-10 text-center">
-                <p class="text-sm text-slate-400 font-medium mb-3">이 날의 기록이 없어요</p>
-                <button type="button" class="timeline-day-empty-add inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold active:scale-[0.98] transition-transform" data-mealog-slot-picker-date="${escapeHtml(dateStr)}">
-                    <i data-lucide="plus" class="text-xs" aria-hidden="true"></i>
-                    기록 추가
-                </button>
+                <p class="text-sm text-slate-400 font-medium">이 날은 기록이 없어요,<br>지금 시작해 보세요.</p>
             </div>`;
         }
 

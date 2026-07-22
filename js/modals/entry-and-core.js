@@ -688,7 +688,7 @@ function nudgeEntryModalInputRepaint(entryModal) {
     });
 }
 
-/** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
+/** 끼니 등록 모달: 키보드 열림 시 팝업 높이를 viewport에 맞추고, 닫힘 시 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
