@@ -643,9 +643,12 @@ body.keyboard-closed #boardWriteView {
     font-family: 'Fredoka', sans-serif; 
     font-weight: 600; 
 }
-/* 헤더 타이틀: text-2xl(1.5rem) 대비 20% 확대 = 1.8rem */
+/* 헤더 타이틀: 시안 v2 — Fredoka 600 · 28px · brand green */
 header .mealog-title { 
-    font-size: 1.8rem; 
+    font-size: 28px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--green);
 }
 /* 서브 타이틀 (INSIGHT, MEAL TALK, 게시글, 글쓰기) – Pretendard, 700, 대문자 */
 .sub-title { 
@@ -755,10 +758,9 @@ header .mealog-title {
     display: flex; 
     overflow-x: auto; 
     cursor: grab;
-    /* scale(1.15) 선택 도트가 스크롤 영역 가장자리에서 잘리지 않도록 여유 */
-    padding: 4px 10px; 
-    gap: 10px; 
-    scroll-padding-inline: 10px; 
+    padding: 2px 16px 8px; 
+    gap: 4px; 
+    scroll-padding-inline: 16px; 
 }
 .calendar-scroll.calendar-scroll-dragging {
     cursor: grabbing;
@@ -775,36 +777,80 @@ header .mealog-title {
 .calendar-scroll::-webkit-scrollbar { 
     display: none; 
 }
+/* 시안 v2 트래커: 숫자 원형(상) + 요일(하) */
+.calendar-item.cal-day {
+    flex: 0 0 auto;
+    min-width: 40px;
+    gap: 6px;
+    padding: 4px 0 2px;
+    color: var(--ink, #0f172a);
+}
+.calendar-dow {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted, #94a3b8);
+    line-height: 1;
+}
+.calendar-item.cal-day.weekend .calendar-dow,
+.calendar-dow.text-rose-400 {
+    color: #fb7185 !important;
+}
 .calendar-dot { 
-    width: 34px; 
-    height: 34px; 
-    border-radius: 12px; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    font-size: 11px; 
-    font-weight: 700; 
+    position: relative;
+    width: 36px; 
+    height: 36px; 
+    border-radius: 50%; 
+    display: grid; 
+    place-items: center; 
+    font-size: 15px; 
+    font-weight: 600; 
     cursor: pointer; 
-    transition: all 0.2s; 
-    background: #ecfdf5; 
-    color: #64748b; 
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease; 
+    background: transparent; 
+    color: var(--ink, #0f172a);
+    border: 0;
 }
-/* 기록 완료(3건 이상): 진한 녹색(emerald-700)·흰 글자 */
-.dot-full { 
-    background: #047857; 
-    color: #ffffff; 
+.calendar-density {
+    position: absolute;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--green-mute, #a7f3d0);
+    pointer-events: none;
 }
-/* 미완(1~2건): 연한 초록 배경·에메랄드 글자·테두리 */
-.dot-partial { 
-    background: #e5f2db; 
-    color: #059669; 
-    border: 2px solid #10b981; 
+.dot-none .calendar-density {
+    background: transparent;
+}
+.dot-partial .calendar-density {
+    background: var(--green-mute, #a7f3d0);
+}
+.dot-full .calendar-density {
+    background: var(--green, #059669);
+}
+.dot-selected .calendar-density {
+    display: none;
+}
+.dot-full,
+.dot-partial,
+.dot-none { 
+    background: transparent; 
+    color: var(--ink, #0f172a);
+    border: 0;
 }
 .dot-selected { 
-    transform: scale(1.15); 
-    border: 2px solid #047857; 
-    background: #ffffff; 
-    color: #047857; 
+    transform: none; 
+    border: 0; 
+    background: var(--green, #059669) !important; 
+    color: #ffffff !important;
+    font-weight: 700;
+    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+}
+.calendar-item.cal-day.selected .calendar-dow {
+    color: var(--green-deep, #047857) !important;
+    font-weight: 700;
 }
 /* 하단 메뉴 라벨 배경 50% 불투명 — 휠 전역 캡션 줄은 아래 짙은 회색·흰 글자 규칙 */
 #timelineMealPhotosOverlay .timeline-meal-photo-menu-bar:not(.timeline-meal-photos-slide-caption-inner) {
@@ -1691,6 +1737,28 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     border-radius: 10px;
     font-size: 10px;
     margin: 0;
+    box-shadow: none;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot .calendar-density {
+    display: none;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-none {
+    background: #ecfdf5;
+    color: #64748b;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-partial {
+    background: #e5f2db;
+    color: #047857;
+    border: 1.5px solid #a7f3d0;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-full {
+    background: #047857;
+    color: #ffffff;
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-selected {
+    background: var(--green, #059669) !important;
+    color: #ffffff !important;
+    box-shadow: 0 3px 10px rgba(5, 150, 105, 0.28);
 }
 .tracker-calendar-icon-btn:focus-visible {
     outline: 2px solid #10b981;
@@ -2158,19 +2226,24 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     color: var(--ink) !important;
 }
-/* 연속 기록 pill */
+/* 연속 기록 pill — 시안 v2 */
 .tracker-streak-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 2px 8px 2px 3px;
+    padding: 4px 10px;
     border-radius: 9999px;
-    border: 1px solid #fbbf24;
-    background: #fffbeb;
-    font-size: 11px;
-    font-weight: 700;
-    color: #b45309;
+    border: 0;
+    background: #fff7ed;
+    font-size: 13px;
+    font-weight: 600;
+    color: #ea580c;
     line-height: 1;
+}
+.tracker-streak-pill__icon {
+    font-size: 12px;
+    line-height: 1;
+    color: #ea580c;
 }
 .tracker-streak-pill__emoji {
     display: inline-flex;
@@ -2185,7 +2258,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     flex-shrink: 0;
 }
 .tracker-streak-pill__text {
-    padding-right: 1px;
+    padding-right: 0;
 }
 /* 실행 환경 배지 — 화이트 헤더 */
 .mealog-env-badge--dev {
@@ -2218,32 +2291,36 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-ta
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
     color: var(--muted) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span {
-    color: var(--ink-2) !important;
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow {
+    color: var(--muted, #94a3b8) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
-    color: #f43f5e !important;
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow.text-rose-400,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.weekend .calendar-dow {
+    color: #fb7185 !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot {
     background: transparent !important;
     color: var(--ink) !important;
-    border: 1px solid transparent;
+    border: 0 !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full {
-    background: var(--green-soft) !important;
-    color: var(--green-deep) !important;
-}
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
-    background: #ffffff !important;
-    border: 1.5px solid var(--green-mute) !important;
-    color: var(--green-deep) !important;
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-none {
+    background: transparent !important;
+    color: var(--ink) !important;
+    border: 0 !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
-    transform: scale(1.08);
-    border: 2px solid var(--green) !important;
+    transform: none;
+    border: 0 !important;
     background: var(--green) !important;
     color: #ffffff !important;
-    font-weight: 800;
+    font-weight: 700;
+    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+}
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.selected .calendar-dow {
+    color: var(--green-deep) !important;
+    font-weight: 700;
 }
 
 /* 밀로그·모먼트 리디자인: 공통 녹색 크롬은 다른 탭에 남기고 두 탭만 밝은 일기장 톤 */
@@ -2263,7 +2340,7 @@ body[data-main-tab='gallery'] #appTopChrome {
 }
 body[data-main-tab='timeline'] #headerAppTitle,
 body[data-main-tab='gallery'] #headerAppTitle {
-    color: #5ca857 !important;
+    color: var(--green) !important;
 }
 body[data-main-tab='timeline'] .header-right .notification-trigger,
 body[data-main-tab='timeline'] .header-right .timeline-search-toggle,
@@ -2300,30 +2377,34 @@ body[data-main-tab='timeline'] #searchInput::placeholder {
 body[data-main-tab='timeline'] #appTopChrome #trackerSection {
     background: #ffffff !important;
     background-image: none !important;
-    border-bottom: 1px solid #f1f5f9 !important;
+    border-bottom: 1px solid var(--line, #e2e8f0) !important;
     box-shadow: none !important;
 }
-body[data-main-tab='timeline'] #trackerTitle {
-    color: #334155 !important;
-    font-weight: 500;
+body[data-main-tab='timeline'] #trackerTitle,
+body[data-main-tab='timeline'] .tracker-v2-month-label {
+    color: var(--ink, #0f172a) !important;
+    font-weight: 700;
 }
 body[data-main-tab='timeline'] .tracker-calendar-icon-btn {
-    color: #64748b !important;
+    color: var(--muted, #94a3b8) !important;
 }
 body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
-    color: #059669 !important;
-    background: #f0fdf4 !important;
+    color: var(--green) !important;
+    background: var(--green-soft) !important;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill {
-    border-color: transparent;
-    background: #f7faf3;
-    color: #b88935;
+    border: 0;
+    background: #fff7ed;
+    color: #ea580c;
     font-weight: 600;
-    padding-right: 9px;
+    padding: 4px 10px;
+}
+body[data-main-tab='timeline'] .tracker-streak-pill__icon {
+    color: #ea580c;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__emoji {
-    width: 20px;
-    height: 20px;
+    width: auto;
+    height: auto;
     background: transparent;
 }
 body[data-main-tab='timeline'] #trackerTabs {
@@ -2338,29 +2419,37 @@ body[data-main-tab='timeline'] #trackerTabs .view-tab.active {
 body[data-main-tab='timeline'] #trackerTabs .view-tab.inactive {
     color: #94a3b8 !important;
 }
-body[data-main-tab='timeline'] #miniCalendar .calendar-item > span,
-body[data-main-tab='timeline'] #miniCalendar .calendar-item > span.text-rose-400 {
-    color: #64748b !important;
+body[data-main-tab='timeline'] #miniCalendar .calendar-dow {
+    color: var(--muted, #94a3b8) !important;
+}
+body[data-main-tab='timeline'] #miniCalendar .calendar-dow.text-rose-400,
+body[data-main-tab='timeline'] #miniCalendar .calendar-item.weekend .calendar-dow {
+    color: #fb7185 !important;
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot,
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-full,
-body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-partial {
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-partial,
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
     border: 0 !important;
-    color: #475569 !important;
+    color: var(--ink, #0f172a) !important;
     border-radius: 9999px;
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-selected {
     transform: none;
-    background: #5ca857 !important;
+    background: var(--green) !important;
     border: 0 !important;
     color: #ffffff !important;
     font-weight: 700;
-    box-shadow: 0 3px 10px rgba(92, 168, 87, 0.22);
+    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+}
+body[data-main-tab='timeline'] #miniCalendar .calendar-item.selected .calendar-dow {
+    color: var(--green-deep) !important;
+    font-weight: 700;
 }
 body[data-main-tab='timeline'] #nav-timeline,
 body[data-main-tab='gallery'] #nav-gallery {
-    color: #5ca857 !important;
+    color: var(--green) !important;
 }
 /* 기존 :has()+ID 녹색 크롬 규칙보다 높은 우선순위로 밝은 탭 스킨을 확정 */
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #statusBarOverlay,
@@ -2375,13 +2464,15 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #headerAppTitle,
 body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #headerAppTitle {
-    color: #5ca857 !important;
+    color: var(--green) !important;
 }
-body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
-    color: #334155 !important;
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-v2-month-label {
+    color: var(--ink, #0f172a) !important;
+    font-weight: 700;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
-    color: #64748b !important;
+    color: var(--muted, #94a3b8) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
     background: #f1f5f9 !important;
@@ -2393,21 +2484,30 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs .view-tab.inactive {
     color: #94a3b8 !important;
 }
-body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span,
-body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item > span.text-rose-400 {
-    color: #64748b !important;
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow {
+    color: var(--muted, #94a3b8) !important;
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dow.text-rose-400,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.weekend .calendar-dow {
+    color: #fb7185 !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full,
-body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial {
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
     border: 0 !important;
-    color: #475569 !important;
+    color: var(--ink, #0f172a) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-selected {
-    background: #5ca857 !important;
+    background: var(--green) !important;
     border: 0 !important;
     color: #ffffff !important;
+    box-shadow: 0 6px 14px rgba(5, 150, 105, 0.35);
+}
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-item.selected .calendar-dow {
+    color: var(--green-deep) !important;
+    font-weight: 700;
 }
 /* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
 #trackerMonthCalendarModal .calendar-dot.dot-none {

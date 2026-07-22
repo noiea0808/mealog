@@ -454,10 +454,10 @@ function ensureMealSyncRetryClickDelegation() {
     );
 }
 
-/** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 */
-const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
+/** false면 타임라인 날짜 헤더의 식사/간식 보기 전환 UI를 숨김 */
+const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = false;
 
-/** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시) */
+/** @deprecated 간식은 홈피드 카드만 사용 */
 const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 
 // entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
@@ -470,19 +470,10 @@ function isEntryShared(entryId, record) {
 }
 
 function getSnackTimelineView() {
-    if (SNACK_TIMELINE_FORCE_TAGS_MODE) return 'tags';
-    try {
-        const v = localStorage.getItem(SNACK_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'tags' || v === 'list' || v === 'mixed') return v;
-    } catch (_) {}
-    return 'tags';
+    return 'cards';
 }
 
 function getMealTimelineView() {
-    try {
-        const v = localStorage.getItem(MEAL_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'list' || v === 'mixed') return v;
-    } catch (_) {}
     return 'cards';
 }
 
@@ -807,12 +798,8 @@ function getDailyShareButtonHtmlForDate(dateStr) {
     </button>`;
 }
 
-function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false } = {}) {
+function buildDateHeaderRightActionsHtml(dateStr) {
     const parts = [];
-    if (includeViewPickers) {
-        parts.push(buildMealTimelineViewSelectHtml(getMealTimelineView()));
-        parts.push(buildSnackTimelineViewSelectHtml(getSnackTimelineView()));
-    }
     const share = getDailyShareButtonHtmlForDate(dateStr);
     if (share) parts.push(share);
     if (!parts.length) return '';
@@ -831,19 +818,18 @@ function buildDateHeaderLeftHtml(dateStr) {
 }
 
 /**
- * 트래커 바로 아래 첫 날짜 헤더: 날짜 오른쪽에 간식 표시 방식 드롭다운 (일간 보기 시 공유 버튼 유지)
+ * 트래커 바로 아래 날짜 헤더: 공유 버튼 등 우측 액션 동기화
  */
 export function syncSnackViewDropdown(container) {
     const timeline = container || document.getElementById('timelineContainer');
     if (!timeline) return;
     const sections = Array.from(timeline.querySelectorAll(':scope > [id^="date-"]'));
-    sections.forEach((section, index) => {
+    sections.forEach((section) => {
         const header = section.querySelector('.date-section-header');
         if (!header) return;
         const dateStr = section.id.replace(/^date-/, '');
         const leftHtml = buildDateHeaderLeftHtml(dateStr);
-        const includeViewPickers = index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE;
-        const rightHtml = buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers });
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr);
 
         header.className = 'date-section-header flex items-center gap-2';
         header.innerHTML = rightHtml ? `${leftHtml}${rightHtml}` : leftHtml;
@@ -1770,175 +1756,50 @@ export function renderTimeline(options = {}) {
             if (records.length === 0) return;
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             if (slot.type === 'main') {
-                const mealView = getMealTimelineView();
                 const mainAddBtn = (label) =>
                     `<button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(label)} 추가">+ 추가</button>`;
-                if (mealView === 'list') {
-                    html += `<div class="main-slot-list-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const rowHtml = buildMainMealListFilledRowHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            isLast ? 'mb-0' : 'mb-1.5',
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">${rowHtml}${mainAddBtn(slot.label)}</div>`;
-                        } else {
-                            html += rowHtml;
-                        }
-                    });
-                    html += `</div>`;
-                } else if (mealView === 'mixed') {
-                    /* mixed도 home-feed 카드 통일 (사진 없으면 아이콘 카드) */
-                    html += `<div class="main-slot-mixed-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const mb = isLast ? 'mb-0' : 'mb-1.5';
-                        const blockHtml = buildMainMealTimelineCardHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            mb,
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
-                        } else {
-                            html += blockHtml;
-                        }
-                    });
-                    html += `</div>`;
-                } else {
-                    html += `<div class="main-slot-card-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const cardHtml = buildMainMealTimelineCardHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            isLast ? 'mb-0' : 'mb-1.5',
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
-                        } else {
-                            html += cardHtml;
-                        }
-                    });
-                    html += `</div>`;
-                }
+                html += `<div class="main-slot-card-group">`;
+                records.forEach((r, idx) => {
+                    const isLast = idx === records.length - 1;
+                    const cardHtml = buildMainMealTimelineCardHtml(
+                        dateStr,
+                        slot,
+                        r,
+                        specificStyle,
+                        isLast ? 'mb-0' : 'mb-1.5',
+                        idx + 1,
+                        records.length
+                    );
+                    if (isLast) {
+                        html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
+                    } else {
+                        html += cardHtml;
+                    }
+                });
+                html += `</div>`;
             } else {
-                const snackView = getSnackTimelineView();
-                if (snackView === 'cards') {
-                    html += `<div class="snack-slot-card-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const cardHtml = buildSnackTimelineCardHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            isLast ? 'mb-0' : 'mb-1.5',
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">
+                html += `<div class="snack-slot-card-group">`;
+                records.forEach((r, idx) => {
+                    const isLast = idx === records.length - 1;
+                    const cardHtml = buildSnackTimelineCardHtml(
+                        dateStr,
+                        slot,
+                        r,
+                        specificStyle,
+                        isLast ? 'mb-0' : 'mb-1.5',
+                        idx + 1,
+                        records.length
+                    );
+                    if (isLast) {
+                        html += `<div class="relative mb-1.5">
                                 ${cardHtml}
                                 <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
                             </div>`;
-                        } else {
-                            html += cardHtml;
-                        }
-                    });
-                    html += `</div>`;
-                } else if (snackView === 'list') {
-                    html += `<div class="snack-slot-list-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const rowHtml = buildSnackListFilledRowHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            isLast ? 'mb-0' : 'mb-1.5',
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">
-                                    ${rowHtml}
-                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                                </div>`;
-                        } else {
-                            html += rowHtml;
-                        }
-                    });
-                    html += `</div>`;
-                } else if (snackView === 'mixed') {
-                    /* mixed도 home-feed 카드 통일 */
-                    html += `<div class="snack-slot-mixed-group">`;
-                    records.forEach((r, idx) => {
-                        const isLast = idx === records.length - 1;
-                        const mb = isLast ? 'mb-0' : 'mb-1.5';
-                        const blockHtml = buildSnackTimelineCardHtml(
-                            dateStr,
-                            slot,
-                            r,
-                            specificStyle,
-                            mb,
-                            idx + 1,
-                            records.length
-                        );
-                        if (isLast) {
-                            html += `<div class="relative mb-1.5">
-                                    ${blockHtml}
-                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                                </div>`;
-                        } else {
-                            html += blockHtml;
-                        }
-                    });
-                    html += `</div>`;
-                } else {
-                    html += `<div class="snack-row mb-1.5 flex items-center">
-                    <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
-                    <div class="flex-1 flex flex-wrap gap-2 items-center">
-                        ${records.map((r) => {
-                            const tagDeleting = isMealEntryDeleting(r);
-                            const tagDeleteFailed = isMealEntryDeleteFailed(r);
-                            const tagPending = isMealEntryPendingSync(r);
-                            const tagRedoable = isMealEntrySyncRedoable(r);
-                            const tagBusy = tagDeleting || tagPending;
-                            const tagClick = tagBusy
-                                ? ''
-                                : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-                            const tagCls = tagDeleting
-                                ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
-                                : tagDeleteFailed
-                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-amber-200/90'
-                                : tagPending
-                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
-                                  : tagRedoable
-                                    ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90'
-                                    : 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50';
-                            return `<div ${tagClick} class="${tagCls}" data-entry-id="${escapeHtml(String(r.id))}">
-                                ${buildSnackTagRowInnerHtml(r)}
-                            </div>`;
-                        }).join('')}
-                        <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
-                    </div>
-                </div>`;
-                }
+                    } else {
+                        html += cardHtml;
+                    }
+                });
+                html += `</div>`;
             }
         });
         const dailyJournal = getDailyJournalForTimeline(dateStr);
@@ -2365,6 +2226,9 @@ function buildMiniCalendarDaySpecs(activeStr) {
 function canPatchMiniCalendarDom(container, days) {
     const items = container.querySelectorAll('.calendar-item');
     if (items.length !== days.length) return false;
+    if (!items[0]?.querySelector('.calendar-dow') || !items[0]?.querySelector('.calendar-density')) {
+        return false;
+    }
     for (let i = 0; i < days.length; i++) {
         if (items[i].getAttribute('data-tracker-date') !== days[i].iso) return false;
     }
@@ -2373,19 +2237,11 @@ function canPatchMiniCalendarDom(container, days) {
 
 function patchMiniCalendarItem(item, day, count) {
     item.setAttribute('data-tracker-date', day.iso);
-    const label = item.querySelector('span');
-    if (label) {
-        label.className = `text-[11px] font-bold ${day.dayColorClass}`;
-        label.textContent = day.weekdayLabel;
-    }
-    let dot = item.querySelector('.calendar-dot');
-    if (!dot) {
-        dot = document.createElement('div');
-        item.appendChild(dot);
-    }
-    dot.id = `dot-${day.iso}`;
-    dot.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
-    dot.textContent = String(day.dayNum);
+    const status = dotStatusFromCount(count);
+    const weekend = day.dayColorClass.includes('rose');
+    item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
+    item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
+        <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
     item.onclick = () => window.jumpToDate(day.iso);
 }
 
@@ -2435,7 +2291,15 @@ export function refreshMiniCalendarDots() {
         const dotEl = document.getElementById(`dot-${day.iso}`);
         if (!dotEl) return;
         const count = getRecordCountForIso(day.iso, historyByDate);
-        dotEl.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+        const status = dotStatusFromCount(count);
+        dotEl.className = `calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}`;
+        if (!dotEl.querySelector('.calendar-density')) {
+            dotEl.insertAdjacentHTML('beforeend', '<span class="calendar-density" aria-hidden="true"></span>');
+        }
+        const item = dotEl.closest('.calendar-item');
+        if (item) {
+            item.classList.toggle('selected', day.isActive);
+        }
     });
     refreshTrackerMonthCalendarPopupIfOpen();
     updateTrackerStreakLabel();
@@ -2464,11 +2328,13 @@ export function renderMiniCalendar() {
     container.innerHTML = '';
     days.forEach((day) => {
         const count = getRecordCountForIso(day.iso, historyByDate);
+        const status = dotStatusFromCount(count);
+        const weekend = day.dayColorClass.includes('rose');
         const item = document.createElement('div');
-        item.className = 'calendar-item flex flex-col items-center gap-1 flex-shrink-0';
+        item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
         item.setAttribute('data-tracker-date', day.iso);
-        item.innerHTML = `<span class="text-[11px] font-bold ${day.dayColorClass}">${day.weekdayLabel}</span>
-            <div id="dot-${day.iso}" class="calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}">${day.dayNum}</div>`;
+        item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
+            <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
         item.onclick = () => window.jumpToDate(day.iso);
         container.appendChild(item);
     });
