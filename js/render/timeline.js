@@ -694,10 +694,16 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
  * @param {object|null} viewCtx
  * @param {string[]|null} thumbUrls 표시용 썸네일 URL(원본과 index 정렬). 미제공 시 원본 사용.
  */
-function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null) {
+/**
+ * @param {object|null} viewCtx
+ * @param {string[]|null} thumbUrls
+ * @param {{ interactive?: boolean }} [opts] interactive=false 면 사진 확대 버튼 없이 장식만(홈피드 카드 탭=수정)
+ */
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null, opts = null) {
     const first = urls[0];
     if (!first) return '';
     const n = urls.length;
+    const interactive = opts?.interactive !== false;
     const enc = encodeURIComponent(JSON.stringify(urls));
     // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
     const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
@@ -710,10 +716,13 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
         viewCtx && viewCtx.dateStr && viewCtx.slotId
             ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
             : '';
+    const tapBtn = interactive
+        ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>`
+        : '';
     return `<div class="absolute inset-0 overflow-hidden">
         <img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
-        <button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>
+        ${tapBtn}
     </div>`;
 }
 
@@ -946,7 +955,8 @@ function buildSnackTimelineCardHtml(
             snackPhotoUrls,
             'object-cover',
             { dateStr, slotId: slot.id, recordId: r.id },
-            getMealThumbUrlsForTimeline(r)
+            getMealThumbUrlsForTimeline(r),
+            { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban"></i>`;
@@ -1013,7 +1023,8 @@ function buildMainMealTimelineCardHtml(
             mainPhotoUrls,
             'object-cover',
             { dateStr, slotId: slot.id, recordId: r.id },
-            getMealThumbUrlsForTimeline(r)
+            getMealThumbUrlsForTimeline(r),
+            { interactive: false }
         );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i class="fa-solid fa-ban"></i>`;
@@ -1364,7 +1375,9 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     let photoHtml = '';
     let iconHtml = `<i class="fa-solid fa-book-open"></i>`;
     if (hasPhoto) {
-        photoHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null);
+        photoHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
+            interactive: false
+        });
     } else if (!hasContent) {
         iconHtml = `<i class="fa-solid fa-plus"></i>`;
     }

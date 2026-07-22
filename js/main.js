@@ -2209,27 +2209,57 @@ function initDailySwipeGesture() {
     }, { passive: true });
 
     // 웹(데스크톱) 테스트용: 마우스 드래그로 스와이프 제스처 시뮬레이션
+    // pointerdown 직후 setPointerCapture 하면 카드 클릭이 막히므로, 가로 축 확정 후에만 캡처
+    let mouseSwipeCaptureActive = false;
+    let mouseSwipePointerId = null;
+
     tv.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
         if (isInteractiveSwipeTarget(e.target)) return;
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
         if (!beginSwipe(e.clientX, e.clientY)) return;
-        tv.setPointerCapture?.(e.pointerId);
+        mouseSwipePointerId = e.pointerId;
     });
 
     tv.addEventListener('pointermove', (e) => {
         if (e.pointerType !== 'mouse') return;
+        if (mouseSwipePointerId != null && e.pointerId !== mouseSwipePointerId) return;
         moveSwipe(e.clientX, e.clientY, true, e);
+        if (
+            tracking &&
+            horizontalLocked === true &&
+            !mouseSwipeCaptureActive &&
+            mouseSwipePointerId != null
+        ) {
+            mouseSwipeCaptureActive = true;
+            try {
+                tv.setPointerCapture?.(mouseSwipePointerId);
+            } catch (_) {}
+        }
     });
 
     tv.addEventListener('pointerup', (e) => {
         if (e.pointerType !== 'mouse') return;
-        tv.releasePointerCapture?.(e.pointerId);
+        if (mouseSwipeCaptureActive) {
+            try {
+                tv.releasePointerCapture?.(e.pointerId);
+            } catch (_) {}
+        }
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
         endSwipe();
     });
 
     tv.addEventListener('pointercancel', (e) => {
         if (e.pointerType !== 'mouse') return;
-        tv.releasePointerCapture?.(e.pointerId);
+        if (mouseSwipeCaptureActive) {
+            try {
+                tv.releasePointerCapture?.(e.pointerId);
+            } catch (_) {}
+        }
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
         cancelSwipe();
     });
 
