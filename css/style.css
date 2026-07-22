@@ -758,7 +758,8 @@ header .mealog-title {
     display: flex; 
     overflow-x: auto; 
     cursor: grab;
-    padding: 2px 16px 8px; 
+    /* 하단 여백은 #trackerSection padding-bottom에서 통일 */
+    padding: 2px 16px 0; 
     gap: 4px; 
     scroll-padding-inline: 16px; 
 }
@@ -2226,8 +2227,18 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerSection {
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     color: var(--ink) !important;
 }
-/* 연속 기록 pill — 시안 v2 */
-.tracker-streak-pill {
+/* 시안 tracker: 하단 14px, 월 행·캘린더 리듬 */
+#trackerSection {
+    padding: 0 0 14px;
+}
+.tracker-v2-row {
+    padding: 2px 16px 12px;
+}
+.tracker-v2-month-label {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -4997,10 +5008,10 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-color: #a7f3d0;
     color: #047857;
 }
-/* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤 */
+/* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤(실기기에서 약간 키움) */
 .date-section-header h3 {
     color: var(--muted, #94a3b8);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: -0.01em;
 }
@@ -5134,7 +5145,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     background-color: var(--page, #f8fafc) !important;
 }
 #timelineContainer {
-    padding: 14px 14px calc(100px + var(--safe-bottom, 0px));
+    /* 트래커 하단 여백이 늘어난 만큼 피드 상단은 시안보다 살짝 타이트하게 */
+    padding: 8px 14px calc(100px + var(--safe-bottom, 0px));
     background: transparent;
     box-sizing: border-box;
 }
@@ -5259,7 +5271,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--muted, #94a3b8);
     font-weight: 500;
     margin-bottom: 4px;
@@ -5268,10 +5280,10 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
 .home-feed-card__share {
     margin-left: 2px;
     color: var(--muted, #94a3b8);
-    font-size: 11px;
+    font-size: 12px;
 }
 .home-feed-card__title {
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 700;
     color: var(--ink, #0f172a);
     letter-spacing: -0.02em;
@@ -5280,7 +5292,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     word-break: break-word;
 }
 .home-feed-card__note {
-    font-size: 13px;
+    font-size: 14px;
     color: #64748b;
     line-height: 1.45;
     margin: 0 0 6px;
@@ -5295,7 +5307,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     gap: 6px;
 }
 .home-feed-card__tag {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--green-deep, #047857);
     font-weight: 500;
 }
@@ -5303,7 +5315,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     display: flex;
     gap: 2px;
     color: var(--star, #fbbf24);
-    font-size: 12px;
+    font-size: 13px;
     padding-top: 3px;
     letter-spacing: -1px;
     flex-shrink: 0;
