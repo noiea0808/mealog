@@ -48,9 +48,13 @@ export function resolveQuickEntrySlotId(dateIso, refDate = new Date()) {
 export function syncEntryQuickInputFabVisibility() {
     const fab = document.getElementById('entryQuickInputFab');
     if (!fab) return;
-    // 시안 v2: 하단「기록」이 주 진입 — 플로팅 + FAB는 숨김
-    fab.classList.add('hidden');
-    fab.setAttribute('aria-hidden', 'true');
+    // 하단 중앙은 밀로그 탭 — 기록 추가는 플로팅 + FAB(슬롯 피커)
+    const show =
+        appState.currentTab === 'timeline' &&
+        window.currentUser &&
+        !window.currentUser.isAnonymous;
+    fab.classList.toggle('hidden', !show);
+    fab.setAttribute('aria-hidden', show ? 'false' : 'true');
 }
 
 const FAB_SPIN_CLASS = 'entry-quick-input-fab--spin';
