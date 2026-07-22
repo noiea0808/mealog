@@ -2239,24 +2239,24 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     font-weight: 700;
     letter-spacing: -0.01em;
 }
-/* 연속 기록 pill — 이전 크기 유지 */
+/* 연속 기록 pill — 크기는 기존 유지, 색만 시안 */
 .tracker-streak-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
     padding: 2px 8px 2px 3px;
     border-radius: 9999px;
-    border: 1px solid #fbbf24;
-    background: #fffbeb;
+    border: 0;
+    background: #fff7ed;
     font-size: 11px;
     font-weight: 700;
-    color: #b45309;
+    color: #ea580c;
     line-height: 1;
 }
 .tracker-streak-pill__icon {
     font-size: 11px;
     line-height: 1;
-    color: #b45309;
+    color: #ea580c;
     margin-left: 2px;
 }
 .tracker-streak-pill__emoji {
@@ -2266,7 +2266,7 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     width: 22px;
     height: 22px;
     border-radius: 7px;
-    background: #fef3c7;
+    background: transparent;
     font-size: 12px;
     line-height: 1;
     flex-shrink: 0;
@@ -2407,21 +2407,21 @@ body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
     background: var(--green-soft) !important;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill {
-    border: 1px solid #fbbf24;
-    background: #fffbeb;
-    color: #b45309;
+    border: 0;
+    background: #fff7ed;
+    color: #ea580c;
     font-size: 11px;
     font-weight: 700;
     padding: 2px 8px 2px 3px;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__icon {
-    color: #b45309;
+    color: #ea580c;
     font-size: 11px;
 }
 body[data-main-tab='timeline'] .tracker-streak-pill__emoji {
-    width: 22px;
-    height: 22px;
-    background: #fef3c7;
+    width: auto;
+    height: auto;
+    background: transparent;
 }
 body[data-main-tab='timeline'] #trackerTabs {
     background: #f1f5f9 !important;
@@ -4627,16 +4627,16 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     font-weight: 400;
 }
 
-/* 모먼트 C안: 사진은 깨끗하게, 기록·소셜은 흰 카드 아래에 배치 */
+/* 모먼트 시안 v2: page #f8fafc · 카드 18px · brand green */
 body[data-main-tab='gallery'] {
-    --app-page-bg: #fbfcfa;
+    --app-page-bg: var(--page, #f8fafc);
 }
 #galleryContainer.moment-feed-layout-v2 {
-    background: #fbfcfa !important;
+    background: var(--page, #f8fafc) !important;
 }
 #galleryContainer.moment-feed-layout-v2 #galleryPostsInsertPoint {
-    gap: 20px;
-    padding: 12px;
+    gap: 14px;
+    padding: 14px 14px calc(100px + var(--safe-bottom, 0px));
 }
 #galleryContainer.moment-feed-layout-v2
     .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
@@ -4645,10 +4645,10 @@ body[data-main-tab='gallery'] {
     .instagram-post[data-moment-card-layout='2']
     .moment-feed-v2-scope[data-moment-v2-root] {
     overflow: hidden;
-    border: 0;
-    border-radius: 20px;
-    background: #ffffff;
-    box-shadow: 0 4px 22px rgba(15, 23, 42, 0.07);
+    border: 1px solid rgba(226, 232, 240, 0.7);
+    border-radius: 18px;
+    background: var(--card, #ffffff);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-wrap,
 #galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-wrap,
@@ -4658,8 +4658,8 @@ body[data-main-tab='gallery'] {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-ambient,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-ambient {
-    border-radius: 20px;
-    background: #ffffff;
+    border-radius: 18px;
+    background: var(--card, #ffffff);
 }
 #galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2
     .instagram-post[data-moment-card-layout='2'] .moment-v2-wheel-center-stack,
@@ -4676,16 +4676,16 @@ body[data-main-tab='gallery'] {
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-stack,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-stack {
     border-radius: 18px !important;
-    background: #ffffff;
+    background: var(--card, #ffffff);
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row.timeline-meal-photo-menu-bar {
     min-height: 0;
-    gap: 3px;
-    padding: 12px 16px 4px;
+    gap: 4px;
+    padding: 14px 16px 4px;
     border: 0 !important;
     background: #ffffff !important;
-    color: #334155 !important;
+    color: var(--ink-2, #334155) !important;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption],
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row [data-wheel-menu-caption] {
@@ -4693,11 +4693,13 @@ body[data-main-tab='gallery'] {
     margin-left: 0;
     align-self: stretch;
     align-items: flex-start;
-    color: #1f2937 !important;
-    -webkit-text-fill-color: #1f2937;
+    color: var(--ink, #0f172a) !important;
+    -webkit-text-fill-color: var(--ink, #0f172a);
     text-align: left;
-    font-size: 22px;
-    letter-spacing: 0;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row [data-wheel-menu-caption]
     .moment-v2-wheel-anim-strip--menu,
@@ -4713,9 +4715,10 @@ body[data-main-tab='gallery'] {
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .timeline-meal-photos-wheelbar-inner {
-    color: #94a3b8;
+    color: var(--muted, #94a3b8);
     font-family: 'Pretendard', sans-serif;
-    font-size: 11px;
+    font-size: 13px;
+    font-weight: 500;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-wheel-caption-row .meal-photo-wheel-sep--colon {
@@ -4724,7 +4727,7 @@ body[data-main-tab='gallery'] {
 #galleryContainer.moment-feed-layout-v2 .moment-v2-author-comment-band,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-band {
     margin: 0;
-    padding: 4px 16px 10px;
+    padding: 4px 16px 12px;
     border: 0 !important;
     border-radius: 0 !important;
     background: #ffffff !important;
@@ -4736,13 +4739,14 @@ body[data-main-tab='gallery'] {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-author-comment-body {
     color: #64748b !important;
     font-family: 'Pretendard', sans-serif;
-    font-size: 13px;
+    font-size: 14px;
+    line-height: 1.5;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-social-below-photo {
     position: static !important;
     width: 100%;
-    padding: 5px 10px 10px;
+    padding: 10px 12px 12px;
     border-top: 1px solid #f1f5f9;
     background: #ffffff;
 }
@@ -4759,6 +4763,7 @@ body[data-main-tab='gallery'] {
     .timeline-meal-photo-moment-social-icon {
     color: #64748b !important;
     filter: none;
+    font-size: 17px;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-social-below-photo
     .timeline-meal-photo-moment-social-count,
@@ -4771,7 +4776,13 @@ body[data-main-tab='gallery'] {
     .post-bookmark-btn.post-social-state-on .post-bookmark-fill,
 #feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope
     .post-bookmark-btn.post-social-state-on .post-bookmark-fill {
-    color: #5ca857;
+    color: var(--green, #059669);
+}
+#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope
+    .post-like-btn.post-social-state-on .post-like-fill,
+#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope
+    .post-like-btn.post-social-state-on .post-like-fill {
+    color: #e11d48;
 }
 #galleryContainer.moment-feed-layout-v2 .timeline-meal-photo-moment-chrome-chip,
 #feedContent[data-moment-feed-layout='2'] .timeline-meal-photo-moment-chrome-chip {
@@ -4781,9 +4792,30 @@ body[data-main-tab='gallery'] {
 }
 #galleryContainer.moment-feed-layout-v2 .timeline-meal-photos-carousel-badge,
 #feedContent[data-moment-feed-layout='2'] .timeline-meal-photos-carousel-badge {
-    background: rgba(255, 255, 255, 0.82) !important;
-    color: #475569 !important;
+    background: rgba(15, 23, 42, 0.55) !important;
+    color: #ffffff !important;
     text-shadow: none;
+    border-radius: 9999px;
+    font-weight: 600;
+}
+
+/* 모먼트 헤더: 흔적 필터를 시안 trace pill 톤으로 */
+body[data-main-tab='gallery'] #galleryTraceFilterPanel.gallery-trace-panel:not(.hidden) {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 9999px;
+    background: var(--page, #f8fafc);
+    border: 1px solid var(--line, #e2e8f0);
+}
+body[data-main-tab='gallery'] #galleryTraceFilterPanel .gallery-trace-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+}
+body[data-main-tab='gallery'] #headerAppTitle {
+    font-size: 26px;
 }
 
 /* 모먼트 전체화면 휠: 동일한 밝은 사진 일기 톤 */
@@ -5352,12 +5384,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     width: 100% !important;
     max-width: 100% !important;
 }
-/* 앨범(모먼트) 탭: 상하 패딩 없이 앱 타이틀 헤더 바로 아래부터, 좌우는 팝업과 동일 inset */
+/* 앨범(모먼트) 탭: 시안처럼 피드 패딩은 insertPoint에서만 */
 #galleryView {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
-    padding-left: max(10px, env(safe-area-inset-left, 0px)) !important;
-    padding-right: max(10px, env(safe-area-inset-right, 0px)) !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
     /* .ui-tab-view min-height(60vh) — 숨는 탭에도 먹지 않게, 본문은 콘텐츠 높이 */
     min-height: 0 !important;
     margin: 0 !important;
