@@ -4931,7 +4931,7 @@ body[data-main-tab='gallery'] {
 .date-section-header { 
     position: relative; 
     background: transparent; 
-    padding: 4px 6px 10px; 
+    padding: 2px 2px 8px; 
     margin-bottom: 0;
     display: flex;
     align-items: center;
@@ -4941,7 +4941,7 @@ body[data-main-tab='timeline'] {
     --app-page-bg: var(--page);
 }
 body[data-main-tab='timeline'] .date-section-header {
-    padding: 4px 6px 10px;
+    padding: 2px 2px 8px;
     background: transparent;
     border: 0;
     border-radius: 0;
@@ -4949,7 +4949,7 @@ body[data-main-tab='timeline'] .date-section-header {
 }
 body[data-main-tab='timeline'] .date-section-header h3 {
     color: var(--muted, #94a3b8);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: -0.01em;
 }
