@@ -461,11 +461,11 @@ export function initEventListeners() {
         addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
-    const navHome = document.getElementById('nav-home');
-    if (navHome) {
-        navHome.addEventListener('click', () => {
-            handleDemoAwareNavClick('timeline');
-            window.switchMainTab('timeline');
+    const navDashboard = document.getElementById('nav-dashboard');
+    if (navDashboard) {
+        navDashboard.addEventListener('click', () => {
+            handleDemoAwareNavClick('dashboard');
+            window.switchMainTab('dashboard');
             showPendingDemoGuide();
         });
     }
@@ -509,13 +509,6 @@ export function initEventListeners() {
         });
     }
 
-    const settingsOpenMealdangBtn = document.getElementById('settingsOpenMealdangBtn');
-    if (settingsOpenMealdangBtn) {
-        settingsOpenMealdangBtn.addEventListener('click', () => {
-            if (typeof window.switchMainTab === 'function') window.switchMainTab('dashboard');
-        });
-    }
-
     const settingsTabProfile = document.getElementById('settingsTabProfile');
     if (settingsTabProfile) {
         settingsTabProfile.addEventListener('click', () => window.switchSettingsTab('profile'));
@@ -548,6 +541,20 @@ export function initEventListeners() {
         accountEditBioBtn.addEventListener('click', (e) => {
             e.preventDefault();
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('bio');
+        });
+    }
+    const profileV2EditNicknameRow = document.getElementById('profileV2EditNicknameRow');
+    if (profileV2EditNicknameRow) {
+        profileV2EditNicknameRow.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('nickname');
+        });
+    }
+    const profileV2EditBirthdateRow = document.getElementById('profileV2EditBirthdateRow');
+    if (profileV2EditBirthdateRow) {
+        profileV2EditBirthdateRow.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('birthdate');
         });
     }
     const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
@@ -598,15 +605,15 @@ export function initEventListeners() {
             const v = btn.getAttribute('data-value') || '';
             const hidden = document.getElementById('settingLifestyle');
             if (hidden) hidden.value = v;
-            document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
-                const active = b === btn;
-                b.classList.toggle('bg-emerald-600', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('border-emerald-600', active);
-                b.classList.toggle('bg-white', !active);
-                b.classList.toggle('text-slate-600', !active);
-                b.classList.toggle('border-slate-200', !active);
-            });
+            if (typeof window.syncLifestyleChipsUIFromHidden === 'function') {
+                window.syncLifestyleChipsUIFromHidden();
+            } else {
+                document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
+                    const active = b === btn;
+                    b.classList.toggle('selected', active);
+                    b.classList.toggle('active', active);
+                });
+            }
         });
     });
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {

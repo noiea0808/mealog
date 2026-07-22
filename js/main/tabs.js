@@ -149,12 +149,12 @@ export function registerMainTabSwitch() {
                 if (!el) return;
                 el.classList.toggle('active', !!active);
             };
-            // 밀로그(중앙)가 홈피드 — timeline 활성. 좌측 홈도 동일 탭으로 이동하지만 강조는 밀로그
+            // 밀로그(중앙)가 홈피드 — timeline 활성
             setNavActive('nav-timeline', tab === 'timeline');
-            setNavActive('nav-home', false);
+            setNavActive('nav-dashboard', tab === 'dashboard');
             setNavActive('nav-gallery', tab === 'gallery');
             setNavActive('nav-board', tab === 'board');
-            setNavActive('nav-settings', tab === 'settings' || tab === 'dashboard');
+            setNavActive('nav-settings', tab === 'settings');
 
             if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
                 setNavActive('nav-gallery', false);

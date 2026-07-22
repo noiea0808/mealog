@@ -405,13 +405,13 @@ export function renderBestMeals() {
             
             const isShared = !!bestShare;
             
-            // 버튼 텍스트 및 스타일 업데이트 (베스트는 초록색 배경)
+            // 시안: 상세급 링크 톤
             if (isShared) {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-slate-800 text-white rounded-lg border-2 border-slate-600';
+                shareBtn.textContent = '공유됨';
+                shareBtn.className = 'dashboard-detail-link';
             } else {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-slate-700 rounded-lg';
+                shareBtn.textContent = '공유';
+                shareBtn.className = 'dashboard-detail-link';
             }
         } else {
             shareBtn.classList.add('hidden');
@@ -493,124 +493,49 @@ export function renderBestMeals() {
         const isSnack = slot && slot.type === 'snack';
         const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
         const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
-        const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-        const dateStr = `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
         const rating = meal.rating ? parseInt(meal.rating) : 0;
-        const rank = index + 1;
-        
-        // 1~3위는 금은동 색상, 4위 이상은 기본 색상
-        let rankDisplay = rank.toString();
-        let rankBgClass = 'bg-emerald-100';
-        let rankTextClass = 'text-emerald-700';
-        if (rank === 1) {
-            // 1위: 금색
-            rankBgClass = 'bg-yellow-500';
-            rankTextClass = 'text-white';
-        } else if (rank === 2) {
-            // 2위: 은색
-            rankBgClass = 'bg-gray-400';
-            rankTextClass = 'text-white';
-        } else if (rank === 3) {
-            // 3위: 동색
-            rankBgClass = 'bg-amber-600';
-            rankTextClass = 'text-white';
-        } else {
-            // 4위 이상: 기본 색상
-            rankBgClass = 'bg-emerald-100';
-            rankTextClass = 'text-emerald-700';
-        }
-        
-        // 타임라인과 동일한 정보 구성
         const place = meal.place || '';
         const menuDetail = meal.menuDetail || '';
         const safePlace = escapeHtml(place);
         const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
         
-        // 태그 정보 수집
-        const tags = [];
-        if (meal.mealType && meal.mealType !== 'Skip') tags.push(meal.mealType);
-        if (meal.withWhomDetail) tags.push(meal.withWhomDetail);
-        else if (meal.withWhom && meal.withWhom !== '혼자') tags.push(meal.withWhom);
-        if (meal.satiety) {
-            const sData = SATIETY_DATA.find(d => d.val === meal.satiety);
-            if (sData) tags.push(sData.label);
-        }
-        
-        // 날짜 포맷 (타임라인과 동일하게)
-        const dateObj = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-        const formattedDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
-        
-        // 슬롯 스타일 가져오기
-        const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
-        const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-        const safeSlotLabel = escapeHtml(slotLabel);
-        
-        // 아이콘 HTML 생성
-        let iconHtml = '';
-        if (photoUrl) {
-            iconHtml = `<img src="${photoUrl}" class="w-full h-full object-cover">`;
-        } else if (meal.mealType === 'Skip') {
-            iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
-        } else {
-            iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
-        }
-        
-        // 태그 HTML 생성
-        let tagsHtml = '';
-        if (tags.length > 0) {
-            tagsHtml = `<div class="mt-1 flex flex-nowrap gap-1 pr-2 overflow-x-auto scrollbar-hide">${tags.map(t => 
-                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
-            ).join('')}</div>`;
-        }
-        
-        // 안전한 문자열 이스케이프
         const safeDate = (meal.date || '').replace(/'/g, "\\'");
         const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
+        const slotLine = place ? `${escapeHtml(slotLabel)} · ${safePlace}` : escapeHtml(slotLabel);
+        const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
         
+        let thumbHtml = '';
+        if (photoUrl) {
+            thumbHtml = `<img class="dashboard-best-thumb" alt="" src="${escapeHtml(photoUrl)}" />`;
+        } else {
+            thumbHtml = `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i class="fa-solid fa-utensils"></i></div>`;
+        }
+
         const showOrderControls = displayMeals.length > 1;
         const orderControlsHtml = showOrderControls ? `
-                    <div class="absolute top-1/2 right-2 -translate-y-1/2 flex flex-col gap-0.5 z-10">
-                        <button type="button" class="best-order-btn best-order-up-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-up text-xs"></i>
+                    <div class="dashboard-best-order flex flex-col gap-0.5 ml-1">
+                        <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
+                            <i class="fa-solid fa-chevron-up text-[10px]"></i>
                         </button>
-                        <button type="button" class="best-order-btn best-order-down-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-down text-xs"></i>
+                        <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
+                            <i class="fa-solid fa-chevron-down text-[10px]"></i>
                         </button>
                     </div>` : '';
 
         return `
-            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-pointer active:scale-[0.98] transition-all bg-white min-h-[140px]" 
-                 data-meal-id="${safeMealId}" 
+            <div class="dashboard-best-item best-meal-item cursor-pointer"
+                 data-meal-id="${safeMealId}"
                  data-rating="${rating}"
                  data-date="${safeDate}"
                  data-slot-id="${safeSlotId}">
-                <div class="flex relative">
-                    <div class="w-[140px] min-h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
-                        <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
-                            ${rankDisplay}
-                        </div>
-                        ${iconHtml}
-                    </div>
-                        <div class="flex-1 min-w-0 flex flex-col p-4 pr-12 relative">
-                        <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
-                            ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                            <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <span class="text-[13px]">⭐</span>
-                                <span class="text-[12px] font-black">${rating || '-'}</span>
-                            </span>
-                        </div>
-                        <div class="mb-1 pr-16">
-                            <span class="text-xs text-slate-400">${formattedDate}</span>
-                        </div>
-                        <div class="flex items-center gap-2 mb-1.5 pr-16">
-                            <span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>
-                            ${place ? `<span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>` : ''}
-                        </div>
-                        <h4 class="text-sm font-bold truncate text-slate-800 mb-1 pr-2">${safeMenuDetail}</h4>
-                        ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${escapeHtml(meal.comment)}"</p>` : ''}
-                        ${tagsHtml}
-                    </div>
+                ${thumbHtml}
+                <div class="dashboard-best-meta min-w-0">
+                    <div class="slot">${slotLine}</div>
+                    <div class="name truncate">${safeMenuDetail}</div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="dashboard-best-stars" aria-label="${rating}점">${stars}</div>
                     ${orderControlsHtml}
                 </div>
             </div>

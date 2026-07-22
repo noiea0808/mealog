@@ -436,6 +436,7 @@
       cursor: pointer;
       font-size: 10.5px;
       font-weight: 600;
+      text-decoration: none;
     }
     .nav-item i { font-size: 20px; }
     .nav-item.active { color: var(--green); }
@@ -513,17 +514,20 @@
         </li>
         <li>
           <strong>하단 탭 + 라벨</strong>
-          홈 / 모먼트 / 기록 / 라운지 / 마이.
-          (통계·밀당은 마이 하위 후보)
+          홈 / 모먼트 / 밀로그 / 라운지 / 마이.
+          (하단 탭으로 시안 간 이동)
         </li>
       </ul>
 
       <p class="note">
         파일: <code>docs/ui-mockups/home-feed-v2.html</code><br />
-        모먼트: <a href="./moment-feed-v2.html" style="color:#047857;font-weight:600">moment-feed-v2.html</a>
-        · 라운지: <a href="./lounge-v2.html" style="color:#047857;font-weight:600">lounge-v2.html</a>
+        허브: <a href="./index.html" style="color:#047857;font-weight:600">index.html</a>
         · 밀당: <a href="./mealdang-v2.html" style="color:#047857;font-weight:600">mealdang-v2.html</a>
-        · <a href="./entry-sheet-v2.html" style="color:#047857;font-weight:700;background:#ecfdf5;padding:4px 10px;border-radius:999px">입력 시트 열기 →</a><br />
+        · 모먼트: <a href="./moment-feed-v2.html" style="color:#047857;font-weight:600">moment-feed-v2.html</a>
+        · 라운지: <a href="./lounge-v2.html" style="color:#047857;font-weight:600">lounge-v2.html</a>
+        · 마이: <a href="./profile-v2.html" style="color:#047857;font-weight:600">profile-v2.html</a>
+        · <a href="./home-feed-v2.html?phone=1" style="color:#047857;font-weight:700;background:#ecfdf5;padding:4px 10px;border-radius:999px">폰 프로토타입 →</a>
+        · <a href="./entry-sheet-v2.html" style="color:#047857;font-weight:700;background:#ecfdf5;padding:4px 10px;border-radius:999px">입력 시트 →</a><br />
         앱 코드는 아직 건드리지 않았습니다.
       </p>
     </aside>
@@ -682,14 +686,14 @@
           </article>
         </main>
 
-        <a class="fab" href="./entry-sheet-v2.html" aria-label="기록 추가" title="입력 시트 시안" style="text-decoration:none;display:grid;place-items:center"><i class="fa-solid fa-plus"></i></a>
+        <a class="fab" href="./entry-sheet-v2.html?from=home" aria-label="기록 추가" title="입력 시트 시안" style="text-decoration:none;display:grid;place-items:center"><i class="fa-solid fa-plus"></i></a>
 
         <nav class="bottom-nav" aria-label="하단 메뉴">
-          <button class="nav-item active"><i class="fa-solid fa-house"></i>홈</button>
-          <button class="nav-item"><i class="fa-solid fa-images"></i>모먼트</button>
-          <button class="nav-item record"><i class="fa-solid fa-pen"></i>기록</button>
-          <button class="nav-item"><i class="fa-solid fa-comments"></i>라운지</button>
-          <button class="nav-item"><i class="fa-regular fa-user"></i>마이</button>
+          <a class="nav-item" href="./mealdang-v2.html?phone=1"><i class="fa-solid fa-chart-pie"></i>밀당</a>
+          <a class="nav-item" href="./moment-feed-v2.html?phone=1"><i class="fa-solid fa-images"></i>모먼트</a>
+          <a class="nav-item record active" href="./home-feed-v2.html?phone=1"><i class="fa-solid fa-book-open"></i>밀로그</a>
+          <a class="nav-item" href="./lounge-v2.html?phone=1"><i class="fa-solid fa-comments"></i>라운지</a>
+          <a class="nav-item" href="./profile-v2.html?phone=1"><i class="fa-regular fa-user"></i>마이</a>
         </nav>
       </div>
     </div>

@@ -445,17 +445,14 @@ export function selectInsightCharacter(characterId) {
     const iconEl = document.getElementById('insightCharacterIcon');
     if (iconEl) {
         if (character.image) {
-            // 이미지가 있으면 이미지 표시
             iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
-            iconEl.className = 'w-full h-full flex items-center justify-center';
+            iconEl.className = 'dashboard-comment-char__icon';
         } else if (character.id === 'mealog') {
-            // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
-            iconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
-            iconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
+            iconEl.innerHTML = `<div class="insight-character-icon-box"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+            iconEl.className = 'dashboard-comment-char__icon mealog-character-m';
         } else {
-            // 기본 이모지 아이콘
             iconEl.textContent = character.icon;
-            iconEl.className = 'text-3xl';
+            iconEl.className = 'dashboard-comment-char__icon';
         }
     }
     
@@ -733,7 +730,7 @@ export async function generateInsightComment() {
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
-            btn.textContent = '코멘트';
+            btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> 코멘트';
         }
         
         // 분석 중 메시지도 제거 (에러 발생 시에도)
@@ -1553,13 +1550,11 @@ export async function updateShareButtonStatus() {
         const isShared = !!existingShare;
         
         if (isShared) {
-            // 공유됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨';
-            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+            shareBtn.innerHTML = '<i class="fa-solid fa-share" aria-hidden="true"></i> 공유됨';
+            shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--shared';
         } else {
-            // 공유 안 됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기';
-            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+            shareBtn.innerHTML = '<i class="fa-solid fa-share" aria-hidden="true"></i> 공유';
+            shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--default';
         }
     }
 }

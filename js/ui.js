@@ -1322,7 +1322,12 @@ export function updateHeaderUI() {
                 }
             } else {
                 const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: p.photoUrl });
-                iconEl.className = `nav-item__avatar ${av.type === 'emoji' ? '' : 'font-bold'}`.trim();
+                const isInitial = av.type === 'initial' || (isGuest && av.type !== 'emoji' && av.type !== 'photo');
+                iconEl.className = [
+                    'nav-item__avatar',
+                    av.type === 'emoji' ? '' : 'font-bold',
+                    isInitial || isGuest ? 'nav-item__avatar--initial' : ''
+                ].filter(Boolean).join(' ');
                 iconEl.textContent = isGuest ? '게' : av.value;
             }
         }

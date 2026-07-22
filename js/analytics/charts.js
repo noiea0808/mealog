@@ -375,25 +375,19 @@ export function renderProportionChart(containerId, data, key) {
 
     const { total, sorted, colorMap } = agg;
     
-    // 차트와 라벨을 감싸는 컨테이너 (헤더와 같은 수평 범위로 정렬)
     let html = '<div class="relative analytics-chart-wrap">';
-    html += '<div class="flex items-stretch h-8 rounded-full overflow-hidden border border-slate-200">';
+    html += '<div class="dashboard-stack-bar flex items-stretch overflow-hidden">';
     
-    let cumulativePercent = 0;
-    const segments = [];
-    let cumulativeColorIndex = 0; // 식사방식/메뉴/함께한 즐거움: 좌→우 빈도순 그라데이션용
+    let cumulativeColorIndex = 0;
+    const legendRows = [];
     
     sorted.forEach(([name, count]) => {
         const pct = Math.round((count / total) * 100);
         let bg = colorMap[name] || '#94a3b8';
-        let textColor = '#ffffff';
         
-        // 미입력 항목은 연회색으로 표시
         if (name === '미입력') {
-            bg = '#e2e8f0'; // 연회색
-            textColor = '#64748b'; // 진한 회색 텍스트
+            bg = '#e2e8f0';
         } else if (CUMULATIVE_KEYS.includes(key)) {
-            // 식사방식/메뉴/함께한 즐거움: 좌(많은 순)부터 그라데이션 색상 적용
             bg = CUMULATIVE_BAR_GRADIENT[cumulativeColorIndex % CUMULATIVE_BAR_GRADIENT.length];
             cumulativeColorIndex += 1;
         } else if (key === 'rating' || key === 'snackRating') {
@@ -411,31 +405,16 @@ export function renderProportionChart(containerId, data, key) {
             }
         }
         
-        if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
         if (pct > 0) {
-            html += `<div class="prop-segment flex items-center justify-center" style="width: ${pct}%; background: ${bg}; color: ${textColor}">${pct >= 5 ? `<span style="font-size: 1.2em">${pct}%</span>` : ''}</div>`;
-            segments.push({
-                name,
-                count,
-                startPercent: cumulativePercent,
-                widthPercent: pct
-            });
-            cumulativePercent += pct;
+            html += `<div style="width: ${pct}%; background: ${bg};"></div>`;
         }
-    });
-    
-    html += '</div>';
-    
-    // 차트 아래 라벨 추가 (각 세그먼트 중간에 배치, 겹침 처리)
-    html += '<div class="relative h-5 mt-1 mb-0">';
-    let lastLabelEnd = -1;
-    segments.forEach(({ name, count, startPercent, widthPercent }) => {
-        // 라벨 표시 텍스트 생성
+
         let displayName = name === '미입력' ? '미입력' : name;
         if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
-                displayName = `${ratingNum}점`;
+                displayName = '★'.repeat(ratingNum) + (ratingNum < 5 ? '' : '');
+                if (ratingNum <= 2) displayName = `${ratingNum}점`;
             }
         } else if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(name);
@@ -446,19 +425,13 @@ export function renderProportionChart(containerId, data, key) {
                 }
             }
         }
-        
-        // 세그먼트 중간 위치 계산
-        const centerPercent = startPercent + widthPercent / 2;
-        
-        // 겹침 체크: 최소 8% 간격 유지
-        if (centerPercent - lastLabelEnd >= 8 || lastLabelEnd < 0) {
-            html += `<div class="absolute text-xs whitespace-nowrap" style="left: ${centerPercent}%; transform: translateX(-50%);">
-                <span class="text-slate-600">${displayName}</span>
-                <span class="text-slate-400">(${count})</span>
-            </div>`;
-            // 라벨의 예상 너비를 고려하여 lastLabelEnd 업데이트 (대략 10%로 간주)
-            lastLabelEnd = centerPercent + 5;
-        }
+        legendRows.push({ name: displayName, pct, bg, count });
+    });
+    
+    html += '</div>';
+    html += '<div class="dashboard-chart-legend">';
+    legendRows.forEach(({ name, pct, bg }) => {
+        html += `<div class="dashboard-chart-legend-row"><span class="dashboard-chart-swatch" style="background:${bg}"></span><span class="name">${name}</span><span class="pct">${pct}%</span></div>`;
     });
     html += '</div>';
     html += '</div>';

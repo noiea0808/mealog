@@ -405,12 +405,21 @@ export async function updateDashboard() {
     const mealRecordPercentEl = document.getElementById('mealRecordPercent');
     const mealRecordTotalEl = document.getElementById('mealRecordTotal');
     if (mealRecordCountEl) mealRecordCountEl.textContent = String(recCount ?? 0);
-    if (mealRecordPercentEl) mealRecordPercentEl.textContent = `(${mealPercent}%)`;
-    if (mealRecordTotalEl) mealRecordTotalEl.textContent = `/${totalRec}`;
+    if (mealRecordPercentEl) mealRecordPercentEl.textContent = `${mealPercent}%`;
+    if (mealRecordTotalEl) mealRecordTotalEl.textContent = ` / ${totalRec}`;
+
+    const mealKpiBar = document.getElementById('mealKpiBar');
+    if (mealKpiBar) mealKpiBar.style.width = `${Math.max(0, Math.min(100, mealPercent))}%`;
     
     // 간식 기록 표시
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = String(snackCount ?? 0);
+    const snackKpiBar = document.getElementById('snackKpiBar');
+    if (snackKpiBar) {
+        const periodDays = Math.max(1, Number(window.getDashboardData?.()?.days) || 7);
+        const snackPct = Math.max(0, Math.min(100, Math.round(((snackCount ?? 0) / periodDays) * 100)));
+        snackKpiBar.style.width = `${snackPct}%`;
+    }
     
     // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
     // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음). 표시 내용은 관리자 화면에서 수기 설정.
@@ -439,15 +448,14 @@ export async function updateDashboard() {
                 if (character.image) {
                     // 이미지가 있으면 이미지 표시
                     characterIconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
-                    characterIconEl.className = 'w-full h-full flex items-center justify-center';
+                    characterIconEl.className = 'dashboard-comment-char__icon';
                 } else if (character.id === 'mealog') {
-                    // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
-                    characterIconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
-                    characterIconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
+                    characterIconEl.innerHTML = `<div class="insight-character-icon-box"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+                    characterIconEl.className = 'dashboard-comment-char__icon mealog-character-m';
                 } else {
                     // 기본 이모지 아이콘
                     characterIconEl.textContent = character.icon;
-                    characterIconEl.className = 'text-3xl';
+                    characterIconEl.className = 'dashboard-comment-char__icon';
                 }
             }
         })();
@@ -709,5 +717,72 @@ export function navigatePeriod(direction) {
     } else if (state.dashboardMode === '7d') {
         changeRecentWeek(direction);
     }
+}
+
+function bindDashboardToggle(btnId, panelId, openLabel, closeLabel) {
+    const btn = document.getElementById(btnId);
+    const panel = document.getElementById(panelId);
+    if (!btn || !panel || btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => {
+        const open = panel.hasAttribute('hidden');
+        if (open) {
+            panel.removeAttribute('hidden');
+            btn.classList.add('is-open');
+            btn.setAttribute('aria-expanded', 'true');
+            if (closeLabel) btn.textContent = closeLabel;
+        } else {
+            panel.setAttribute('hidden', '');
+            btn.classList.remove('is-open');
+            btn.setAttribute('aria-expanded', 'false');
+            if (openLabel) btn.textContent = openLabel;
+        }
+    });
+}
+
+/** 식사/간식 「더 보기」·건강 상세 차트 토글 */
+export function initDashboardAnalysisUi() {
+    bindDashboardToggle(
+        'moreMainChartsBtn',
+        'extraMainCharts',
+        '함께 · 만족도 · 포만감 더 보기',
+        '함께 · 만족도 · 포만감 접기'
+    );
+    bindDashboardToggle(
+        'moreSnackChartsBtn',
+        'extraSnackCharts',
+        '어디서 · 누구와 · 만족도 · 포만감 더 보기',
+        '어디서 · 누구와 · 만족도 · 포만감 접기'
+    );
+
+    document.querySelectorAll('.dashboard-vital-detail-btn').forEach((btn) => {
+        if (btn.dataset.bound === '1') return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', () => {
+            const wrapId = btn.getAttribute('aria-controls');
+            const wrap = wrapId ? document.getElementById(wrapId) : null;
+            if (!wrap) return;
+            const open = wrap.hasAttribute('hidden') || wrap.classList.contains('hidden');
+            if (open) {
+                wrap.removeAttribute('hidden');
+                wrap.classList.remove('hidden');
+                btn.setAttribute('aria-expanded', 'true');
+                btn.textContent = '접기';
+                // Chart.js는 wrap이 보일 때 리사이즈 필요
+                requestAnimationFrame(() => {
+                    try {
+                        const canvas = wrap.querySelector('canvas');
+                        const chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
+                        chart?.resize();
+                    } catch (_) { /* ignore */ }
+                });
+            } else {
+                wrap.setAttribute('hidden', '');
+                wrap.classList.add('hidden');
+                btn.setAttribute('aria-expanded', 'false');
+                btn.textContent = '상세';
+            }
+        });
+    });
 }
 

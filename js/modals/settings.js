@@ -120,19 +120,25 @@ export function fillProfileActivityStats() {
         main = fb.main;
         snack = fb.snack;
     }
-    mealEl.textContent = `${main}회`;
-    snackEl.textContent = `${snack}회`;
+    mealEl.textContent = String(main);
+    snackEl.textContent = String(snack);
+
+    const setTogetherLabel = (dateObj) => {
+        if (!dateObj || Number.isNaN(dateObj.getTime())) {
+            joinEl.textContent = '—';
+            return;
+        }
+        const months = Math.max(
+            0,
+            (Date.now() - dateObj.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+        );
+        const m = Math.floor(months);
+        joinEl.textContent = m < 1 ? '새출발' : `${m}개월`;
+    };
 
     const authCreated = window.currentUser.metadata?.creationTime;
-    if (authCreated) {
-        joinEl.textContent = new Date(authCreated).toLocaleDateString('ko-KR', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit'
-        });
-    } else {
-        joinEl.textContent = '—';
-    }
+    if (authCreated) setTogetherLabel(new Date(authCreated));
+    else joinEl.textContent = '—';
 
     void (async () => {
         try {
@@ -145,13 +151,7 @@ export function fillProfileActivityStats() {
             const ca = data.createdAt;
             if (ca && joinEl.isConnected) {
                 const d = typeof ca.toDate === 'function' ? ca.toDate() : new Date(ca);
-                if (!Number.isNaN(d.getTime())) {
-                    joinEl.textContent = d.toLocaleDateString('ko-KR', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit'
-                    });
-                }
+                setTogetherLabel(d);
             }
         } catch (_) {
             /* ignore */
@@ -159,20 +159,21 @@ export function fillProfileActivityStats() {
     })();
 }
 
-/** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' + 초록 스타일 */
+/** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' */
 function syncProfileLogoutFooterButton() {
-    const btn = document.querySelector('.profile-logout-btn');
+    const btn =
+        document.querySelector('#logoutBtnArea button') ||
+        document.querySelector('.profile-v2-ghost-btn') ||
+        document.querySelector('.profile-logout-btn');
     if (!btn) return;
-    const base =
-        'profile-settings-footer-btn profile-logout-btn w-full py-3 text-sm font-bold transition-colors';
     const u = window.currentUser;
     const demo = u && !u.isAnonymous && isDemoUser(u);
     if (demo) {
         btn.textContent = '홈으로';
-        btn.className = `${base} text-white bg-emerald-600 border border-emerald-700 hover:bg-emerald-700 active:bg-emerald-800 shadow-sm`;
+        btn.className = 'profile-v2-ghost-btn profile-v2-ghost-btn--home';
     } else {
         btn.textContent = '로그아웃';
-        btn.className = `${base} text-slate-700 bg-slate-100 border border-slate-200 hover:bg-slate-200`;
+        btn.className = 'profile-v2-ghost-btn';
     }
 }
 
@@ -232,18 +233,7 @@ export function openSettings() {
     if (lifestyleInput) {
         lifestyleInput.value = state.tempSettings?.profile?.lifestyle || '';
     }
-    // 라이프스타일 버튼 선택 상태 복원
-    const selectedLifestyle = (state.tempSettings?.profile?.lifestyle || '').trim();
-    document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
-        const v = btn.getAttribute('data-value') || '';
-        const active = v === selectedLifestyle;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-600', !active);
-        btn.classList.toggle('border-slate-200', !active);
-    });
+    syncLifestyleChipsUIFromHidden();
     // 성별 선택 상태 복원
     const selectedGender = (state.tempSettings?.profile?.gender || '').trim();
     const settingGenderEl = document.getElementById('settingGender');
@@ -364,70 +354,61 @@ export function openSettings() {
     if (accountSection) {
         let accountHtml = '';
         if (window.currentUser.isAnonymous) {
-            accountHtml = `<div class="bg-indigo-50 p-3 rounded-2xl border border-indigo-100 mb-3">
-                <div class="flex items-center gap-3 mb-3">
-                    <div class="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
-                        <i class="fa-solid fa-user-secret"></i>
-                    </div>
-                    <div>
-                        <div class="text-xs font-bold text-indigo-600">게스트 모드</div>
-                    </div>
-                </div>
-                <button id="switchToLoginBtn" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold active:bg-indigo-700 transition-colors">
-                    <i class="fa-solid fa-right-to-bracket mr-1"></i>로그인하기
+            accountHtml = `<div class="profile-v2-guest mb-3">
+                <div class="profile-v2-guest__icon" aria-hidden="true"><i class="fa-solid fa-user-secret"></i></div>
+                <div class="profile-v2-guest__title">게스트 모드</div>
+                <p class="profile-v2-guest__desc">로그인하면 프로필과 기록을 동기화할 수 있어요.</p>
+                <button type="button" id="switchToLoginBtn" class="profile-v2-guest__login">
+                    <i class="fa-solid fa-right-to-bracket"></i> 로그인하기
                 </button>
             </div>`;
-            document.getElementById('logoutBtnArea').classList.add('hidden');
+            document.getElementById('logoutBtnArea')?.classList.add('hidden');
             syncProfileLogoutFooterButton();
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.add('hidden');
+            document.querySelector('.profile-v2-row-card')?.classList.add('hidden');
+            document.querySelector('.profile-v2-life')?.classList.add('hidden');
+            document.querySelector('.profile-v2-section-label')?.classList.add('hidden');
         } else {
-            const { icon: providerIcon, line: loginLine } = getSettingsAccountLoginDisplay(window.currentUser);
             const myPostsHidden = !window.currentUser || window.currentUser.isAnonymous;
-            accountHtml = `<div class="bg-emerald-50 p-3 rounded-2xl border border-emerald-100 mb-1">
-                <div class="flex items-center gap-3">
-                    <div class="flex flex-col items-center justify-center gap-1.5 shrink-0 self-center">
-                        <button type="button" id="accountProfileAvatarBtn" class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-white border border-slate-400 overflow-hidden transition active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="프로필 사진 변경">
-                            <span id="accountProfileAvatar" class="flex h-full w-full items-center justify-center rounded-full bg-slate-100 text-lg font-bold text-slate-600"></span>
-                        </button>
-                        <button type="button" id="photoDeleteBtn" class="hidden text-[11px] font-bold text-red-500 hover:text-red-600 whitespace-nowrap px-1">삭제</button>
-                        <button type="button" id="openMyPostsFromSettingsBtn" class="${myPostsHidden ? 'hidden' : ''} mt-0.5 px-2 py-1.5 text-[11px] font-bold text-white bg-emerald-600 border border-emerald-600 rounded-lg hover:bg-emerald-700 active:bg-emerald-800 transition-colors whitespace-nowrap max-w-[5.5rem] leading-tight shadow-sm" title="모먼트에서 내 공유·게시글 보기">내 게시물</button>
-                    </div>
-                    <div class="flex-1 min-w-0 flex flex-col items-end text-right gap-1">
-                        <div class="flex flex-wrap items-center justify-end gap-2 text-emerald-700 font-bold text-sm w-full" id="settingsLoginInfoRow">${providerIcon}<span class="break-all">${loginLine}</span></div>
-                        <div class="flex items-center justify-end gap-1.5 w-full min-w-0">
-                            <span id="accountHeaderNickname" class="text-base font-bold text-slate-800 truncate min-w-0 flex-1 max-w-[min(100%,14rem)]">-</span>
-                            <div id="accountNicknameInputHost" class="hidden min-w-0 flex-1 max-w-[min(100%,14rem)] flex justify-end items-center"></div>
-                            <div id="accountNicknameActions" class="flex shrink-0 items-center gap-1">
-                                <button type="button" id="accountEditNicknameBtn" data-action="edit" class="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-100/80 transition inline-flex items-center justify-center" title="닉네임 수정" aria-label="닉네임 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
-                            </div>
-                        </div>
-                        <div class="flex flex-col items-stretch gap-1 w-full text-sm font-medium text-slate-700">
-                            <div id="accountBirthdateViewRow" class="flex items-center justify-end gap-1.5 w-full min-w-0">
-                                <span id="accountHeaderBirthdate" class="truncate min-w-0 flex-1 max-w-[min(100%,14rem)] text-right">생년월일</span>
-                                <div id="accountBirthdateActionsView" class="flex shrink-0 items-center gap-0.5">
-                                    <button type="button" id="accountEditBirthdateBtn" data-action="edit" class="p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-100/80 transition inline-flex items-center justify-center" title="생년월일 수정" aria-label="생년월일 수정"><i class="fa-solid fa-pencil settings-pencil-icon"></i></button>
-                                </div>
-                            </div>
-                            <div id="accountBirthdateEditorRow" class="hidden w-full flex flex-row flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
-                                <div id="accountBirthdateEditHost" class="min-w-0 flex max-w-full flex-wrap items-center justify-end gap-2"></div>
-                            </div>
-                        </div>
-                    </div>
+            accountHtml = `<section class="profile-v2-identity">
+                <div class="profile-v2-avatar-hit">
+                    <button type="button" id="accountProfileAvatarBtn" class="profile-v2-avatar-btn" aria-label="프로필 사진 변경">
+                        <span id="accountProfileAvatar" class="profile-v2-avatar profile-v2-avatar--initial"></span>
+                    </button>
+                    <span class="profile-v2-avatar-edit" aria-hidden="true"><i class="fa-solid fa-camera"></i></span>
+                    <button type="button" id="photoDeleteBtn" class="hidden profile-v2-photo-delete">삭제</button>
                 </div>
-            </div>
-            <div id="profileActivityStatsBox" class="mt-2 px-3 py-2.5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div class="flex flex-wrap justify-center items-center gap-x-1.5 gap-y-1 text-[11px] font-bold text-slate-500">
-                    <span>서비스 가입일</span><span class="text-slate-300" aria-hidden="true">|</span><span>총 식사기록</span><span class="text-slate-300" aria-hidden="true">|</span><span>총 간식 기록</span>
+                <div id="accountHeaderNickname" class="profile-v2-identity-name">-</div>
+                <p id="profileIdentityBio" class="profile-v2-identity-bio"></p>
+                <button type="button" id="openMyPostsFromSettingsBtn" class="${myPostsHidden ? 'hidden' : ''} profile-v2-identity-cta" title="모먼트에서 내 공유·게시글 보기">
+                    <i class="fa-regular fa-images" aria-hidden="true"></i> 내 게시물
+                </button>
+                <div id="profileActivityStatsBox" class="profile-v2-stats" aria-label="활동 요약">
+                    <div class="profile-v2-stat"><strong id="profileStatMeal">0</strong><span>식사</span></div>
+                    <div class="profile-v2-stat"><strong id="profileStatSnack">0</strong><span>간식</span></div>
+                    <div class="profile-v2-stat"><strong id="profileStatJoin">—</strong><span>함께</span></div>
                 </div>
-                <div class="flex flex-wrap justify-center items-center gap-x-1.5 gap-y-0.5 mt-1.5 text-sm font-bold text-slate-800 tabular-nums">
-                    <span id="profileStatJoin">—</span><span class="text-slate-300" aria-hidden="true">|</span><span id="profileStatMeal">0회</span><span class="text-slate-300" aria-hidden="true">|</span><span id="profileStatSnack">0회</span>
+                <span id="accountHeaderBirthdate" class="sr-only"></span>
+                <div id="accountNicknameInputHost" class="hidden"></div>
+                <div id="accountNicknameActions" class="hidden">
+                    <button type="button" id="accountEditNicknameBtn" data-action="edit"></button>
                 </div>
-            </div>`;
-            document.getElementById('logoutBtnArea').classList.remove('hidden');
+                <div id="accountBirthdateViewRow" class="hidden"></div>
+                <div id="accountBirthdateActionsView" class="hidden">
+                    <button type="button" id="accountEditBirthdateBtn" data-action="edit"></button>
+                </div>
+                <div id="accountBirthdateEditorRow" class="hidden">
+                    <div id="accountBirthdateEditHost"></div>
+                </div>
+            </section>`;
+            document.getElementById('logoutBtnArea')?.classList.remove('hidden');
             syncProfileLogoutFooterButton();
             const deleteArea = document.getElementById('deleteAccountBtnArea');
             if (deleteArea) deleteArea.classList.toggle('hidden', isDemoUser(window.currentUser));
+            document.querySelector('.profile-v2-row-card')?.classList.remove('hidden');
+            document.querySelector('.profile-v2-life')?.classList.remove('hidden');
+            document.querySelector('.profile-v2-section-label')?.classList.remove('hidden');
         }
         accountSection.innerHTML = accountHtml;
         if (window.currentUser && !window.currentUser.isAnonymous) {
@@ -458,8 +439,8 @@ export function openSettings() {
                             if (!window.userSettings.email) window.userSettings.email = rootEmail;
                             const row = document.getElementById('settingsLoginInfoRow');
                             if (row && window.currentUser) {
-                                const { icon: pi, line: ll } = getSettingsAccountLoginDisplay(window.currentUser);
-                                row.innerHTML = `${pi}<span class="break-all">${ll}</span>`;
+                                const { line: ll } = getSettingsAccountLoginDisplay(window.currentUser);
+                                row.textContent = ll || '-';
                             }
                         }
                     } catch (_) {
@@ -684,7 +665,9 @@ export function switchSettingsTab(tab) {
     const settingsTabs = [profileTab, tagsTab, shortcutsTab, notificationsTab];
 
     settingsTabs.forEach((t) => {
-        if (t) t.classList.remove('active');
+        if (!t) return;
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
     });
     
     // 모든 콘텐츠 숨기기
@@ -696,6 +679,7 @@ export function switchSettingsTab(tab) {
         // 프로필 탭 활성화
         if (profileTab) {
             profileTab.classList.add('active');
+            profileTab.setAttribute('aria-selected', 'true');
             profileTab.textContent = '프로필';
         }
         if (profileContent) profileContent.classList.remove('hidden');
@@ -704,7 +688,8 @@ export function switchSettingsTab(tab) {
         // 태그 관리 탭 활성화
         if (tagsTab) {
             tagsTab.classList.add('active');
-            tagsTab.textContent = '태그 관리';
+            tagsTab.setAttribute('aria-selected', 'true');
+            tagsTab.textContent = '태그';
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
         logUsageMetric('settings_tags').catch(() => {});
@@ -712,14 +697,16 @@ export function switchSettingsTab(tab) {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
             shortcutsTab.classList.add('active');
-            shortcutsTab.textContent = '밀당 메모';
+            shortcutsTab.setAttribute('aria-selected', 'true');
+            shortcutsTab.textContent = '메모';
         }
         if (shortcutsContent) shortcutsContent.classList.remove('hidden');
         logUsageMetric('settings_mealdang_memo').catch(() => {});
     } else if (tab === 'notifications') {
         if (notificationsTab) {
             notificationsTab.classList.add('active');
-            notificationsTab.textContent = '푸시 알림';
+            notificationsTab.setAttribute('aria-selected', 'true');
+            notificationsTab.textContent = '알림';
         }
         if (notificationsContent) notificationsContent.classList.remove('hidden');
         syncPushPreferencesFormFromUserSettings();
@@ -763,6 +750,55 @@ function updateAccountHeaderBirthdate() {
 function syncAccountCardDisplayFields() {
     updateAccountHeaderNickname();
     updateAccountHeaderBirthdate();
+    syncProfileV2RowDisplays();
+}
+
+function syncProfileV2RowDisplays() {
+    const nick =
+        getSettingsNicknamePreviewText() ||
+        '-';
+    const nickRow = document.getElementById('profileV2NicknameValue');
+    if (nickRow) nickRow.textContent = nick;
+
+    const birthdateInput = document.getElementById('settingBirthdate');
+    const raw = (birthdateInput?.value ?? appState?.tempSettings?.profile?.birthdate ?? '').trim();
+    const gender = (document.getElementById('settingGender')?.value || appState?.tempSettings?.profile?.gender || '').trim();
+    const genderText = gender === 'male' ? '남' : gender === 'female' ? '여' : '';
+    const bdRow = document.getElementById('profileV2BirthdateValue');
+    if (bdRow) {
+        if (!raw) {
+            bdRow.textContent = '미입력';
+            bdRow.classList.add('profile-v2-row__value--muted');
+        } else {
+            bdRow.textContent =
+                formatBirthdateForDisplay(raw) + (genderText ? ` · ${genderText}` : '');
+            bdRow.classList.remove('profile-v2-row__value--muted');
+        }
+    }
+
+    const bio =
+        (document.getElementById('settingBio')?.value ||
+            appState?.tempSettings?.profile?.bio ||
+            window.userSettings?.profile?.bio ||
+            '').trim();
+    const bioHero = document.getElementById('profileIdentityBio');
+    const bioRow = document.getElementById('profileV2BioValue');
+    if (bioHero) {
+        bioHero.textContent = bio || '소개를 추가해 보세요.';
+        bioHero.classList.toggle('profile-v2-identity-bio--empty', !bio);
+    }
+    if (bioRow) {
+        bioRow.textContent = bio || '자신을 소개해주세요';
+        bioRow.classList.toggle('profile-v2-row__value--muted', !bio);
+    }
+
+    if (window.currentUser && !window.currentUser.isAnonymous) {
+        const loginRow = document.getElementById('settingsLoginInfoRow');
+        if (loginRow && !loginRow.dataset.locked) {
+            const { line } = getSettingsAccountLoginDisplay(window.currentUser);
+            loginRow.textContent = line || '-';
+        }
+    }
 }
 
 let _saveProfileSingleFieldBusy = false;
@@ -789,12 +825,15 @@ function syncLifestyleChipsUIFromHidden() {
     document.querySelectorAll('.settings-lifestyle-btn').forEach(btn => {
         const v = btn.getAttribute('data-value') || '';
         const active = v === selectedLifestyle;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
+        btn.classList.toggle('selected', active);
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('bg-emerald-600', false);
+        btn.classList.toggle('text-white', false);
+        btn.classList.toggle('border-emerald-600', false);
         btn.classList.toggle('bg-white', !active);
         btn.classList.toggle('text-slate-600', !active);
         btn.classList.toggle('border-slate-200', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 }
 
@@ -891,12 +930,15 @@ function syncProfileFieldEditLifestyleUI() {
     const selected = (document.getElementById('profileFieldEditLifestyle')?.value || '').trim();
     document.querySelectorAll('.profile-field-edit-lifestyle-btn').forEach((btn) => {
         const active = (btn.getAttribute('data-value') || '') === selected;
+        btn.classList.toggle('selected', active);
+        btn.classList.toggle('active', active);
         btn.classList.toggle('bg-emerald-600', active);
         btn.classList.toggle('text-white', active);
         btn.classList.toggle('border-emerald-600', active);
         btn.classList.toggle('bg-white', !active);
         btn.classList.toggle('text-slate-600', !active);
         btn.classList.toggle('border-slate-200', !active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 }
 
@@ -1356,12 +1398,12 @@ export function renderSettingsProfileAvatarPreview() {
         if (type === 'text') {
             textPreview.innerHTML = '';
             textPreview.className =
-                'profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0';
+                'profile-avatar profile-avatar--initial w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-xl font-bold text-slate-700 flex-shrink-0';
             textPreview.textContent = firstChar;
         } else {
             textPreview.innerHTML = '';
             textPreview.className =
-                'profile-avatar w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-base font-bold text-slate-600 flex-shrink-0';
+                'profile-avatar profile-avatar--initial w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center text-xl font-bold text-slate-700 flex-shrink-0';
             textPreview.textContent = firstChar;
         }
     }
@@ -1393,12 +1435,10 @@ export function renderSettingsProfileAvatarPreview() {
             accountAv.style.backgroundSize = 'cover';
             accountAv.style.backgroundPosition = 'center';
             accountAv.innerHTML = '';
-            accountAv.className =
-                'flex h-full w-full items-center justify-center rounded-full bg-slate-100 bg-cover bg-center';
+            accountAv.className = 'profile-v2-avatar profile-v2-avatar--photo';
         } else {
             accountAv.innerHTML = '';
-            accountAv.className =
-                'flex h-full w-full items-center justify-center rounded-full bg-slate-100 text-2xl font-bold text-slate-500';
+            accountAv.className = 'profile-v2-avatar profile-v2-avatar--initial';
             accountAv.textContent = firstChar;
         }
         if (photoDeleteBtn && type === 'photo' && photoUrl) {
@@ -1407,6 +1447,8 @@ export function renderSettingsProfileAvatarPreview() {
             photoDeleteBtn.classList.add('hidden');
         }
     }
+
+    syncProfileV2RowDisplays();
 
     const avatarModal = document.getElementById('accountAvatarModal');
     if (avatarModal && !avatarModal.classList.contains('hidden')) {
@@ -1608,6 +1650,7 @@ window.activateAccountFieldEdit = activateAccountFieldEdit;
 window.handleProfileFieldPencilOrSave = handleProfileFieldPencilOrSave;
 window.closeProfileFieldEditModal = closeProfileFieldEditModal;
 window.syncSettingsGenderButtonsUI = syncGenderButtonsUIFromHidden;
+window.syncLifestyleChipsUIFromHidden = syncLifestyleChipsUIFromHidden;
 window.openAccountAvatarModal = openAccountAvatarModal;
 window.closeAccountAvatarModal = closeAccountAvatarModal;
 window.tryCloseAccountAvatarModalOrCancelInlineEdit = tryCloseAccountAvatarModalOrCancelInlineEdit;

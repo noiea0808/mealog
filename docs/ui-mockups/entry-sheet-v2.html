@@ -180,6 +180,10 @@
       background: transparent;
       color: var(--muted);
       font-size: 18px;
+      display: grid;
+      place-items: center;
+      text-decoration: none;
+      border-radius: 10px;
     }
 
     .sheet-body {
@@ -406,10 +410,11 @@
   <div class="wrap">
     <div class="topbar">
       <div class="title">기록 입력 시트 시안 v2</div>
-      <a href="./home-feed-v2.html">← 홈</a>
-      <a href="./moment-feed-v2.html">모먼트</a>
-      <a href="./lounge-v2.html">라운지</a>
-      <a href="./mealdang-v2.html">밀당</a>
+      <a href="./index.html">허브</a>
+      <a href="./home-feed-v2.html?phone=1">← 밀로그</a>
+      <a href="./mealdang-v2.html?phone=1">밀당</a>
+      <a href="./moment-feed-v2.html?phone=1">모먼트</a>
+      <a href="./lounge-v2.html?phone=1">라운지</a>
       <button type="button" data-mode="meal">식사</button>
       <button type="button" data-mode="snack">간식</button>
       <button type="button" data-mode="daily">하루 기록</button>
@@ -428,7 +433,7 @@
             <button type="button" class="active" data-mode="meal">식사</button>
             <button type="button" data-mode="snack">간식</button>
           </div>
-          <span class="close-btn" aria-hidden="true"><i class="fa-solid fa-xmark"></i></span>
+          <a class="close-btn" href="./home-feed-v2.html?phone=1" aria-label="닫기"><i class="fa-solid fa-xmark"></i></a>
         </header>
 
         <div class="sheet-body">
