@@ -4919,30 +4919,35 @@ body[data-main-tab='gallery'] {
 }
 .date-section-header { 
     position: relative; 
-    background: #ffffff; 
-    padding: 12px 8px 12px 16px; 
+    background: transparent; 
+    padding: 4px 6px 10px; 
     margin-bottom: 0;
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 body[data-main-tab='timeline'] {
-    --app-page-bg: #fbfcfa;
+    --app-page-bg: var(--page);
 }
 body[data-main-tab='timeline'] .date-section-header {
-    padding: 14px 12px 14px 16px;
-    background: #ffffff;
+    padding: 4px 6px 10px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
 }
 body[data-main-tab='timeline'] .date-section-header h3 {
-    color: #111827;
-    font-weight: 700;
+    color: var(--muted, #94a3b8);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 body[data-main-tab='timeline'] .date-section-header__actions {
     gap: 6px;
 }
 body[data-main-tab='timeline'] .timeline-view-picker,
 body[data-main-tab='timeline'] .date-section-header__share-btn {
-    border-color: #e7ece5;
+    border-color: rgba(226, 232, 240, 0.9);
     border-radius: 10px;
     box-shadow: none;
 }
@@ -4951,7 +4956,7 @@ body[data-main-tab='timeline'] .timeline-view-picker {
     min-width: 58px;
 }
 body[data-main-tab='timeline'] .date-section-header__share-btn {
-    color: #5b9e57;
+    color: var(--green-deep, #047857);
 }
 .date-section-header__actions {
     display: inline-flex;
@@ -4992,15 +4997,15 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     border-color: #a7f3d0;
     color: #047857;
 }
-/* 트래커 #trackerTitle 과 동일 크기·자간, 색상 블랙·볼드 */
+/* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤 */
 .date-section-header h3 {
-    color: #000000;
-    font-size: 0.875rem;
-    font-weight: 700;
-    letter-spacing: -0.025em;
+    color: var(--muted, #94a3b8);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 .date-section-header h3.date-section-header__date--weekend {
-    color: #f43f5e;
+    color: #fb7185;
 }
 /* 타임라인 헤더 — 식사/간식 보기 피커 (첨부 디자인) */
 .timeline-view-picker {
@@ -5096,34 +5101,42 @@ body[data-main-tab='timeline'] .date-section-header__share-btn {
     line-height: 1;
     margin-inline-start: calc(0.0625rem * (var(--tvp-scale) - 1));
 }
-/* 타임라인 — 날짜별 카드 묶음 (홈피드 v2: 여백·라운드) */
+/* 타임라인 — 날짜 묶음은 DOM 용도만(시안처럼 별도 컨테이너 면 없음) */
+#timelineContainer.ui-stack-lg > * + * {
+    margin-top: 0;
+}
 #timelineContainer > .timeline-date-card {
-    margin: 0 12px 18px;
+    margin: 0;
+    padding: 0;
     background: transparent;
     border: 0;
-    border-radius: 20px;
+    border-radius: 0;
     overflow: visible;
     box-shadow: none;
 }
 #timelineContainer > .timeline-date-card:first-child {
-    margin-top: 12px;
+    margin-top: 0;
 }
 #timelineContainer > .timeline-date-card .date-section-header {
-    margin-bottom: 10px;
+    margin-bottom: 0;
     border: 0;
-    border-radius: 16px;
-    box-shadow: 0 2px 14px rgba(15, 23, 42, 0.035);
-    padding-left: 4px;
-    padding-right: 4px;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
 }
 #timelineContainer > .timeline-date-card > *:last-child {
     margin-bottom: 0 !important;
 }
-/* 타임라인: 식사 카드가 화면 양옆에 꽉 차도록 좌우 패딩 제거 */
+/* 시안 feed: page 배경 + 좌우 패딩 위에 카드가 바로 올림 */
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
-    background-color: #fbfcfa; /* 스와이프 전환 시 새 일기장 배경 유지 */
+    background-color: var(--page, #f8fafc) !important;
+}
+#timelineContainer {
+    padding: 14px 14px calc(100px + var(--safe-bottom, 0px));
+    background: transparent;
+    box-sizing: border-box;
 }
 /* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
 #timelineView.timeline-view-mode-page,

@@ -808,7 +808,7 @@ function buildDateHeaderRightActionsHtml(dateStr) {
 
 function buildDateHeaderDateHtml(dateStr) {
     const weekendCls = isWeekendIsoDate(dateStr) ? ' date-section-header__date--weekend' : '';
-    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
+    return `<h3 class="date-section-header__date min-w-0${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
 }
 
 function buildDateHeaderLeftHtml(dateStr) {
