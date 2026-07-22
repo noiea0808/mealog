@@ -576,14 +576,117 @@ body.keyboard-closed #boardWriteView {
 #galleryContainer.moment-feed-layout-v2
     .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
     .moment-feed-v2-scope[data-moment-v2-root] {
-    background-color: #f1f5f9;
-    border: 1px solid #e2e8f0;
-    border-radius: 1rem;
+    /* 시안 v2: 화이트 카드 */
+    background-color: #ffffff;
+    border: 1px solid rgba(226, 232, 240, 0.7);
+    border-radius: 18px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
     overflow: hidden;
     box-sizing: border-box;
     width: 100%;
     max-width: 100%;
     margin: 0;
+}
+/* 시안: 사진 뒤 블러 앰비언트 제거 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-hpost-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-hpost-bg-wrap,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-bg-wrap,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-bg-wrap {
+    display: none !important;
+}
+/* 시안 v2 본문: 작성자 → 슬롯·장소 → 메뉴 → 코멘트 → 소셜 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption] {
+    padding: 14px 16px 14px !important;
+    margin: 0 !important;
+    gap: 0;
+    background: #ffffff;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-avatar,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-avatar {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background-color: #ecfdf5;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-avatar--fallback,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-avatar--fallback {
+    color: #047857;
+    font-size: 13px;
+    font-weight: 700;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-name,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-name {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: #0f172a;
+    line-height: 1.25;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-sub,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-sub {
+    font-size: 12px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-top: 1px;
+    line-height: 1.3;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-row .timeline-meal-photo-meatball-btn,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-row .timeline-meal-photo-meatball-btn {
+    width: 32px;
+    height: 32px;
+    color: #94a3b8;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-author-row .moment-v2-more-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-author-row .moment-v2-more-icon {
+    color: #94a3b8 !important;
+    font-size: 16px;
+    filter: none !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body .timeline-meal-photo-moment-social-icon,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body .timeline-meal-photo-moment-social-icon {
+    color: #64748b !important;
+    filter: none !important;
+    font-size: 17px !important;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-meal-meta,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-meal-meta {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-bottom: 3px;
+    line-height: 1.35;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-meal-title,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-meal-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+    color: #0f172a;
+    margin-bottom: 6px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-meal-note,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-meal-note {
+    font-size: 13.5px;
+    color: #64748b;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body .moment-v2-social-below-photo,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body .moment-v2-social-below-photo {
+    padding: 10px 0 0 !important;
+    margin-top: 2px;
+    border-top: 1px solid #f1f5f9;
+    background: transparent;
 }
 #galleryContainer.moment-feed-layout-v2
     .instagram-post.moment-v2-gallery-post-shell[data-moment-card-layout='2']
@@ -621,10 +724,10 @@ body.keyboard-closed #boardWriteView {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-/* 푸터·댓글 패널: 카드 밑으로 새는 margin/padding 제거(게시물 간 = 열 gap) */
+/* 푸터·댓글 패널: 카드 밑으로 새는 margin 제거(게시물 간 = 열 gap). 본문 패딩은 .moment-v2-body 규칙 */
 #galleryContainer.moment-feed-layout-v2
     .instagram-post.moment-v2-gallery-post-shell
-    .moment-v2-caption-footer[data-moment-v2-caption] {
+    .moment-v2-caption-footer[data-moment-v2-caption]:not(.moment-v2-body) {
     margin: 0 !important;
     padding: 0 !important;
 }
