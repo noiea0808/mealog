@@ -323,11 +323,14 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
           </div>`
         : '';
 
-    if (!specialChip && !metaHtml && !titleHtml && !noteHtml) return '';
+    const headingHtml = (metaHtml || titleHtml)
+        ? `<div class="moment-v2-meal-heading">${metaHtml}${titleHtml}</div>`
+        : '';
+
+    if (!specialChip && !headingHtml && !noteHtml) return '';
     return `<div class="moment-v2-body-caption">
         ${specialChip}
-        ${metaHtml}
-        ${titleHtml}
+        ${headingHtml}
         ${noteHtml}
     </div>`;
 }
