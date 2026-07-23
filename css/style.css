@@ -27,7 +27,6 @@ html.platform-native-app .bottom-nav button i.lucide {
 #entryQuickInputFab.entry-quick-input-fab .lucide {
     width: 1.25rem;
     height: 1.25rem;
-    stroke-width: 2.75;
 }
 .lucide-spin {
     animation: lucide-spin 0.8s linear infinite;
@@ -242,22 +241,15 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-/* 메인 앱: 하단 네비 숨김 시 fixed 레이어 뒤에 html 흰색이 비치지 않도록 본문 배경 이어줌 */
-html:has(#mainApp:not(.hidden)) {
-    background-color: var(--app-page-bg);
-}
 /* 밀톡·피드: 입력창 아래·네비 뒤 연회색을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
     background-image: none;
 }
-html:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
-    background-color: var(--board-feed-bg);
-}
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
 }
-/* 메인 앱(타임라인·밀당·모먼트·설정 등): 하단 safe-area를 본문 배경색으로 통일 */
+/* 메인 앱(타임라인·밀당·모먼트·설정 등): 하단 safe-area 연회색 통일 */
 body:has(#mainApp:not(.hidden)) #navigationBarOverlay {
     background-color: var(--app-page-bg) !important;
 }
@@ -2949,34 +2941,15 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 .bottom-nav .nav-item.active .nav-item__avatar {
     border-color: var(--ink, #241f1c);
 }
-/* 스크롤 아래로: 하단 네비만 숨김.
- * 빈 슬롯 채움은 #appBottomNavSlotFill (네비와 별도 — 네비 자체 배경은 흰색 유지).
- * 레이어: 본문 → slotFill(z-49) → .bottom-nav(z-50) → #navigationBarOverlay(z-100, safe-bottom만) */
+/* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 */
 #navigationBarOverlay {
-    transition: transform 0.25s ease-out, height 0.25s ease-out, background-color 0.2s ease;
-}
-#appBottomNavSlotFill {
-    display: none;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    height: calc(var(--app-bottom-nav-h) + var(--safe-bottom));
-    box-sizing: border-box;
-    background-color: var(--app-page-bg);
-    z-index: 49;
-    pointer-events: none;
-}
-body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #appBottomNavSlotFill {
-    background-color: var(--board-feed-bg);
-}
-body.bottom-nav-scroll-hidden #appBottomNavSlotFill,
-body.meal-photo-moment-chrome-hidden #appBottomNavSlotFill {
-    display: block;
+    transition: transform 0.25s ease-out;
 }
 body.bottom-nav-scroll-hidden .bottom-nav {
     transform: translateX(-50%) translateY(100%);
+}
+body.bottom-nav-scroll-hidden #navigationBarOverlay {
+    transform: translateY(100%);
 }
 /* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 */
 body.meal-photo-moment-chrome-hidden #mainAppHeader {
@@ -2984,6 +2957,9 @@ body.meal-photo-moment-chrome-hidden #mainAppHeader {
 }
 body.meal-photo-moment-chrome-hidden .bottom-nav {
     transform: translateX(-50%) translateY(100%);
+}
+body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
+    transform: translateY(100%);
 }
 .prop-bar-container { 
     height: 28px; 
