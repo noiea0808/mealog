@@ -30,8 +30,13 @@
       --safe-bottom: env(safe-area-inset-bottom, 0px);
       --r-sheet: 24px;
       --r-card: 18px;
-      --r-btn: 14px;
+      --r-btn: 16px;
       --dim: rgba(36, 31, 28, 0.42);
+      --cta-mint-grad: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+      --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36);
+      --cta-danger-grad: linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%);
+      --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36);
+      --cta-btn-h: 52px;
     }
 
     [data-lucide], .lucide {
@@ -404,26 +409,25 @@
     }
     .dialog-actions--border { border-top: 1px solid var(--line); }
     .btn {
-      height: 48px;
+      height: var(--cta-btn-h);
       border-radius: var(--r-btn);
       border: 0;
       font-family: inherit;
-      font-size: 14.5px;
+      font-size: 15px;
       font-weight: 700;
       cursor: pointer;
       display: grid;
       place-items: center;
-      transition: transform 0.12s ease, background 0.14s ease, box-shadow 0.14s ease;
+      transition: transform 0.12s ease, background 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
     }
     .btn-primary {
-      background: var(--green);
+      background: var(--cta-mint-grad);
       color: #fff;
-      box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+      box-shadow: var(--cta-mint-shadow);
     }
     .btn-primary:active {
-      background: var(--green-deep);
+      filter: brightness(0.96);
       transform: scale(0.98);
-      box-shadow: 0 2px 8px rgba(45, 159, 116, 0.22);
     }
     .btn-ghost {
       background: transparent;
@@ -435,7 +439,9 @@
     .dialog-actions--stack > .btn-ghost,
     .dialog-actions--pair > .btn-ghost,
     .dialog-actions--air > .btn-ghost,
-    .dialog-actions:has(> :nth-child(2)) > .btn-ghost { height: 48px; }
+    .dialog-actions--ghost-pair > .btn-ghost,
+    .dialog-actions--asym > .btn-ghost,
+    .dialog-actions:has(> :nth-child(2)) > .btn-ghost { height: var(--cta-btn-h); }
     .btn-secondary {
       background: #fff;
       color: var(--ink);
@@ -444,13 +450,33 @@
     }
     .btn-secondary:active { background: var(--line); transform: scale(0.98); }
     .btn-danger {
-      background: var(--danger);
+      background: var(--cta-danger-grad);
       color: #fff;
-      box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+      box-shadow: var(--cta-danger-shadow);
     }
     .btn-danger:active {
-      background: var(--danger-deep);
+      filter: brightness(0.96);
       transform: scale(0.98);
+    }
+
+    /* 비교용 · Soft Lift / Bigger (채택은 Mint Glow가 기본) */
+    .cta-lift .btn-primary {
+      background: linear-gradient(180deg, #46c795 0%, #3cb889 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 8px 18px rgba(60, 184, 137, 0.30);
+    }
+    .cta-big .btn-ghost { height: 52px; flex: 1 !important; }
+    .cta-big .btn-primary {
+      height: 56px;
+      flex: 1.4 !important;
+      font-size: 15.5px;
+      font-weight: 800;
+    }
+    .cta-glow .btn-primary {
+      /* 기본과 동일 — 채택안 */
+      background: var(--cta-mint-grad);
+      box-shadow: var(--cta-mint-shadow);
     }
 
     /* Confirm variant (no hero) */
@@ -967,41 +993,41 @@
         초록은 CTA·선택에만, 면은 warm paper·흰 카드·헤어라인으로 위계를 잡습니다.
       </p>
 
-      <div class="footer-spec compare-grid" aria-label="푸터·여백 시안 비교">
-        <h2>왜 지루해 보였나 · 버튼 패딩</h2>
-        <p class="lead-sm">본문 패딩은 그대로 두고, <strong>하단 버튼 존</strong>만 여유(16/20/20)와 CTA soft shadow로 호흡을 줍니다.</p>
-
-        <div class="footer-sample">
-          <div class="tag">이전 · 빽빽한 여백 <span>body 8px · actions 12/16</span></div>
-          <div class="dialog-actions dialog-actions--pair" style="padding:12px 16px 16px;background:#fff;gap:8px">
-            <button type="button" class="btn btn-secondary" style="box-shadow:none;height:46px">오늘 하루 보지 않기</button>
-            <button type="button" class="btn btn-primary" style="box-shadow:none;height:46px">자세히 보기</button>
-          </div>
-          <p class="note">버튼이 카드 모서리에 가깝고, 본문과의 호흡이 없어 “사무용 바”처럼 읽힘.</p>
-        </div>
+      <div class="footer-spec compare-grid" aria-label="CTA 시안 비교">
+        <h2>CTA · Mint Glow 채택</h2>
+        <p class="lead-sm">시안·앱 공통 primary는 <strong>C Mint Glow</strong>(135° 그라데이션 · h52 · radius 16)입니다. 아래는 비교용 잔여 시안입니다.</p>
 
         <div class="footer-sample is-compare">
-          <div class="tag">권장 · Ghost + 여백 <span>body 20 · CTA 그림자</span></div>
+          <div class="tag">채택 · C Mint Glow <span>앱 기본</span></div>
           <div class="dialog-actions dialog-actions--ghost-pair">
             <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
             <button type="button" class="btn btn-primary">자세히 보기</button>
           </div>
-          <p class="note">보조는 텍스트, 주 CTA만 Soft Mint 면 + soft shadow. 패딩 20/20/20으로 숨 쉼.</p>
+          <p class="note">#5FD4A8 → #3CB889 → #2D9F74 · inset highlight · soft mint shadow</p>
         </div>
 
-        <div class="footer-sample is-compare">
-          <div class="tag">③ 푸터 웰 <span>page 배경 존</span></div>
-          <div class="dialog-actions dialog-actions--asym dialog-actions--air">
-            <button type="button" class="btn btn-secondary">취소</button>
-            <button type="button" class="btn btn-danger">탈퇴하기</button>
+        <div class="footer-sample cta-lift">
+          <div class="tag">참고 · A Soft Lift <span>미채택</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
           </div>
-          <p class="note">본문(흰)과 푸터(paper)를 층으로 나눔. 확정·탈퇴 pair에 특히 효과적.</p>
+          <p class="note">세로 그라데이션만 — 비교용.</p>
+        </div>
+
+        <div class="footer-sample cta-big">
+          <div class="tag">참고 · B Bigger <span>미채택</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+          <p class="note">h56 비대칭 — 비교용.</p>
         </div>
       </div>
 
       <div class="footer-spec" aria-label="센터 Dialog 푸터 스펙">
         <h2>Dialog Footer · A / B / C (현행 스펙)</h2>
-        <p>센터 팝업 하단: Soft Mint primary(<code>#3cb889</code>). 버튼 1개=A, 2개 이상은 항상 가로.</p>
+        <p>센터 팝업 하단: <strong>Mint Glow</strong> primary. 버튼 1개=A, 2개 이상은 항상 가로.</p>
         <div class="footer-sample">
           <div class="tag">A · Single <span>확인 · 적용 · 동의</span></div>
           <div class="dialog-actions dialog-actions--single">
@@ -1085,28 +1111,13 @@
           </div>
         </div>
 
-        <!-- 01 Dialog · 여백·푸터 비교 -->
+        <!-- 01 Dialog · CTA 시안 A/B/C -->
         <div class="overlay active" data-panel="dialog">
           <div class="dim"></div>
 
-          <div class="dialog dialog-footer-variant active" data-footer="tight">
+          <div class="dialog dialog-footer-variant cta-lift" data-footer="lift">
             <div class="dialog-hero">
-              <span class="badge">이전 · 빽빽</span>
-              <div class="illus"><i data-lucide="gift"></i></div>
-            </div>
-            <div class="dialog-body">
-              <h3>7일 연속 기록 챌린지</h3>
-              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
-            </div>
-            <div class="dialog-actions dialog-actions--pair" style="padding:12px 16px 16px;background:#fff;gap:8px">
-              <button type="button" class="btn btn-secondary" style="box-shadow:none;height:46px">오늘 하루 보지 않기</button>
-              <button type="button" class="btn btn-primary" style="box-shadow:none;height:46px">자세히 보기</button>
-            </div>
-          </div>
-
-          <div class="dialog dialog-footer-variant" data-footer="ghost">
-            <div class="dialog-hero">
-              <span class="badge">권장 · Ghost+여백</span>
+              <span class="badge">A · Soft Lift (참고)</span>
               <div class="illus"><i data-lucide="gift"></i></div>
             </div>
             <div class="dialog-body">
@@ -1119,22 +1130,40 @@
             </div>
           </div>
 
-          <div class="dialog dialog-footer-variant confirm" data-footer="air">
-            <div class="dialog-body">
-              <div class="dialog-icon"><i data-lucide="log-out"></i></div>
-              <h3>푸터 웰 · 확인형</h3>
-              <p>본문은 흰 카드, 하단만 paper 존으로 나눠 버튼이 떠 보이게 합니다.</p>
+          <div class="dialog dialog-footer-variant cta-big" data-footer="big">
+            <div class="dialog-hero">
+              <span class="badge">B · Bigger (참고)</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
             </div>
-            <div class="dialog-actions dialog-actions--asym dialog-actions--air">
-              <button type="button" class="btn btn-secondary">취소</button>
-              <button type="button" class="btn btn-danger">로그아웃</button>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
             </div>
           </div>
 
-          <div class="footer-tabs" id="footerTabs" aria-label="여백·푸터 비교">
-            <button type="button" class="active" data-footer-tab="tight">이전</button>
-            <button type="button" data-footer-tab="ghost">권장</button>
-            <button type="button" data-footer-tab="air">③ 웰</button>
+          <div class="dialog dialog-footer-variant active cta-glow" data-footer="glow">
+            <div class="dialog-hero">
+              <span class="badge">채택 · Mint Glow</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
+            </div>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
+            </div>
+          </div>
+
+          <div class="footer-tabs" id="footerTabs" aria-label="CTA 시안 비교">
+            <button type="button" data-footer-tab="lift">A Lift</button>
+            <button type="button" data-footer-tab="big">B Bigger</button>
+            <button type="button" class="active" data-footer-tab="glow">C Glow 채택</button>
           </div>
         </div>
 

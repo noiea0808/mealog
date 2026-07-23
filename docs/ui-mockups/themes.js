@@ -23,7 +23,13 @@
       "--c2": "#f2a8b4",
       "--c3": "#f0c89a",
       "--c4": "#9ec4e0",
-      "--c5": "#d4aee0"
+      "--c5": "#d4aee0",
+      "--cta-mint-grad": "linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%)",
+      "--cta-mint-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36)",
+      "--cta-danger-grad": "linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%)",
+      "--cta-danger-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36)",
+      "--cta-btn-h": "52px",
+      "--cta-btn-r": "16px"
     },
     /* B · Blush Air — 크림·블러시 */
     b: {

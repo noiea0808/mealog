@@ -93,6 +93,13 @@ html.platform-native-app .bottom-nav button i.lucide {
     --shell-danger: var(--danger);
     --coral: #f2a8b4;
     --coral-soft: #fff0f3;
+    /* CTA · Mint Glow (팝업·시트 primary 기본) */
+    --cta-mint-grad: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+    --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36);
+    --cta-danger-grad: linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%);
+    --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36);
+    --cta-btn-h: 52px;
+    --cta-btn-r: 16px;
     /* 아바타 그림자: blur ≈ 2px (좁은 적용 범위) */
     --avatar-shadow: 0 1px 2px rgba(36, 31, 28, 0.22);
     --avatar-shadow-profile: 0 1px 2px rgba(100, 116, 139, 0.38);
@@ -9362,17 +9369,18 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--green) !important;
+    background: var(--cta-mint-grad) !important;
     color: white !important;
-    box-shadow: 0 2px 12px rgba(45, 159, 116, 0.4);
+    box-shadow: var(--cta-mint-shadow);
     border: none;
-    transition: box-shadow 0.2s, background-color 0.2s;
+    transition: box-shadow 0.2s, filter 0.2s;
 }
 #boardWriteBtn.board-write-fab:hover {
-    box-shadow: 0 4px 16px rgba(45, 159, 116, 0.45);
+    filter: brightness(1.02);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 10px 24px rgba(60, 184, 137, 0.42);
 }
 #boardWriteBtn.board-write-fab:active {
-    background-color: var(--green-deep) !important;
+    filter: brightness(0.96);
 }
 #boardWriteBtn.board-write-fab.hidden {
     display: none !important;
@@ -9475,15 +9483,16 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--green) !important;
+    background: var(--cta-mint-grad) !important;
     color: white !important;
-    box-shadow: 0 2px 12px rgba(45, 159, 116, 0.4);
+    box-shadow: var(--cta-mint-shadow);
     border: none;
-    transition: box-shadow 0.2s;
+    transition: box-shadow 0.2s, filter 0.2s;
     transform: rotate(0deg);
 }
 #entryQuickInputFab.entry-quick-input-fab:hover {
-    box-shadow: 0 4px 16px rgba(45, 159, 116, 0.45);
+    filter: brightness(1.02);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 10px 24px rgba(60, 184, 137, 0.42);
 }
 #entryQuickInputFab.entry-quick-input-fab.entry-quick-input-fab--spin {
     animation: entry-quick-input-fab-spin 0.38s ease-in-out forwards;
@@ -11228,8 +11237,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     pointer-events: none;
 }
 .content-popup-footer-close {
-    background: var(--green);
+    background: var(--cta-mint-grad);
     color: #fff;
+    box-shadow: var(--cta-mint-shadow);
 }
 .content-popup-footer-close .content-popup-footer-label {
     color: #fff;
@@ -11238,10 +11248,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: rgba(255, 255, 255, 0.82);
 }
 .content-popup-footer-close:hover:not(:disabled) {
-    background: var(--green-deep);
+    filter: brightness(1.02);
 }
 .content-popup-footer-close:active:not(:disabled) {
-    background: var(--green-deep);
+    filter: brightness(0.96);
 }
 
 .content-popup-inner { position: relative; }
@@ -12334,24 +12344,28 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     transform: scale(0.92);
 }
 #entryModal .entry-action-btn--save {
-    background: var(--green);
+    background: var(--cta-mint-grad);
     color: #fff;
-    font-size: 14.5px;
+    font-size: 15px;
     font-weight: 700;
     letter-spacing: -0.01em;
+    border-radius: var(--cta-btn-r);
+    min-height: var(--cta-btn-h);
+    box-shadow: var(--cta-mint-shadow);
 }
 #entryModal .entry-action-btn--save:hover:not(:disabled) {
-    background: var(--green-deep);
+    filter: brightness(1.02);
 }
 #entryModal .entry-action-btn--save:active:not(:disabled),
 #entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
-    background: var(--green-deep);
-    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.16);
+    filter: brightness(0.96);
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.12), 0 4px 12px rgba(45, 159, 116, 0.28);
 }
 #entryModal .entry-action-btn--save:disabled {
     cursor: not-allowed;
     box-shadow: none;
     opacity: 0.55;
+    filter: none;
 }
 #entryModal .entry-action-btn--delete {
     background: #fff1f2;
@@ -12415,8 +12429,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #photoEditModal .photo-edit-save-btn:active,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed {
-    background: var(--green-deep);
-    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.16);
+    filter: brightness(0.96);
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.12), 0 4px 12px rgba(45, 159, 116, 0.28);
 }
 #photoEditModal .photo-edit-save-btn:active .entry-action-btn__inner,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed .entry-action-btn__inner {
@@ -12542,33 +12556,34 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 .mealog-btn {
     border: 0;
-    border-radius: var(--shell-r-btn);
-    height: 48px;
+    border-radius: var(--cta-btn-r);
+    height: var(--cta-btn-h);
     padding: 0 14px;
     font: inherit;
-    font-size: 14.5px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     display: grid;
     place-items: center;
     box-sizing: border-box;
-    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease, filter 0.14s ease;
 }
 .mealog-btn:disabled {
     cursor: not-allowed;
     opacity: 0.55;
     box-shadow: none;
+    filter: none;
 }
 .mealog-btn-primary {
-    background: var(--green);
+    background: var(--cta-mint-grad);
     color: #fff;
-    box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+    box-shadow: var(--cta-mint-shadow);
 }
-.mealog-btn-primary:hover:not(:disabled),
-.mealog-btn-primary:active:not(:disabled) {
-    background: var(--green-deep);
+.mealog-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.02);
 }
 .mealog-btn-primary:active:not(:disabled) {
+    filter: brightness(0.96);
     transform: scale(0.98);
 }
 .mealog-btn-secondary {
@@ -12590,7 +12605,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .mealog-dialog-actions--pair > .mealog-btn-ghost,
 .mealog-dialog-actions--stack > .mealog-btn-ghost,
 .mealog-dialog-actions:has(> :nth-child(2)) > .mealog-btn-ghost {
-    height: 48px;
+    height: var(--cta-btn-h);
 }
 .mealog-btn-ghost:hover:not(:disabled),
 .mealog-btn-ghost:active:not(:disabled) {
@@ -12598,15 +12613,15 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: rgba(255, 255, 255, 0.7);
 }
 .mealog-btn-danger {
-    background: var(--danger);
+    background: var(--cta-danger-grad);
     color: #fff;
-    box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+    box-shadow: var(--cta-danger-shadow);
 }
-.mealog-btn-danger:hover:not(:disabled),
-.mealog-btn-danger:active:not(:disabled) {
-    background: var(--danger-deep);
+.mealog-btn-danger:hover:not(:disabled) {
+    filter: brightness(1.02);
 }
 .mealog-btn-danger:active:not(:disabled) {
+    filter: brightness(0.96);
     transform: scale(0.98);
 }
 
@@ -12852,18 +12867,22 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     box-shadow: 0 8px 28px rgba(36, 31, 28, 0.1);
 }
 
-/* emerald-600 Tailwind → 브랜드 초록 (주요 CTA) */
+/* emerald-600 Tailwind → Mint Glow (주요 CTA) */
 #accountAvatarModal .bg-emerald-600,
 #profileFieldEditModal .bg-emerald-600,
 #emailAuthModal .bg-emerald-600,
 #bestShareModal .bg-emerald-600,
 #insightShareModal .bg-emerald-600,
 #dietReportModal .bg-emerald-600 {
-    background-color: var(--green) !important;
+    background-image: var(--cta-mint-grad) !important;
+    background-color: transparent !important;
+    box-shadow: var(--cta-mint-shadow);
 }
 #accountAvatarModal .hover\:bg-emerald-700:hover,
 #emailAuthModal .hover\:bg-emerald-700:hover {
-    background-color: var(--green-deep) !important;
+    filter: brightness(0.96);
+    background-image: var(--cta-mint-grad) !important;
+    background-color: transparent !important;
 }
 
 @keyframes mealogFadeUp {

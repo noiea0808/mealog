@@ -45,6 +45,12 @@
       --shell-r-sheet: 24px;
       --shell-danger: var(--danger);
       --shell-r-btn: 14px;
+      --cta-mint-grad: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+      --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36);
+      --cta-danger-grad: linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%);
+      --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36);
+      --cta-btn-h: 52px;
+      --cta-btn-r: 16px;
     }
 .popup-inventory .wrap {
       max-width: 1080px;
@@ -191,25 +197,25 @@
 }
 .popup-inventory .pv-btn {
   border: 0;
-  border-radius: var(--shell-r-btn);
-  height: 48px;
+  border-radius: var(--cta-btn-r);
+  height: var(--cta-btn-h);
   padding: 0 14px;
   font: inherit;
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease, filter 0.14s ease;
 }
 .popup-inventory .pv-btn-primary {
-  background: var(--green);
+  background: var(--cta-mint-grad);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+  box-shadow: var(--cta-mint-shadow);
 }
 .popup-inventory .pv-btn-primary:active {
-  background: var(--green-deep);
+  filter: brightness(0.96);
   transform: scale(0.98);
 }
 .popup-inventory .pv-btn-secondary {
@@ -228,23 +234,22 @@
   height: 40px;
   border: 0;
 }
-/* 가로 푸터 안 ghost는 primary와 높이 맞춤 */
 .popup-inventory .pv-actions--stack > .pv-btn-ghost,
 .popup-inventory .pv-actions--pair > .pv-btn-ghost,
 .popup-inventory .pv-actions:has(> :nth-child(2)) > .pv-btn-ghost {
-  height: 48px;
+  height: var(--cta-btn-h);
 }
 .popup-inventory .pv-btn-ghost:active {
   color: var(--ink-2);
   background: rgba(255,255,255,0.7);
 }
 .popup-inventory .pv-btn-danger {
-  background: var(--danger);
+  background: var(--cta-danger-grad);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+  box-shadow: var(--cta-danger-shadow);
 }
 .popup-inventory .pv-btn-danger:active {
-  background: var(--danger-deep);
+  filter: brightness(0.96);
   transform: scale(0.98);
 }
 .popup-inventory .pv-field {

@@ -16,7 +16,7 @@
     return 'docs/ui-mockups/';
   }
   const BASE = resolveBase();
-  const HUB_VER = '20260723p';
+  const HUB_VER = '20260723r';
 
   const SCREENS = [
     { href: 'mealdang-v2.html', title: '밀당', desc: '분석 · 참견', phone: true },

@@ -220,7 +220,7 @@ window.switchUiGuideSubtab = function(which) {
     void ensureUiGuidePanel(w);
 };
 
-const UI_GUIDE_ASSET_VER = '20260723p';
+const UI_GUIDE_ASSET_VER = '20260723r';
 
 function loadUiGuideScript(src, globalName) {
     if (!loadUiGuideScript._map) loadUiGuideScript._map = new Map();

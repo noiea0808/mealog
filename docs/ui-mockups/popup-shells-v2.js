@@ -5,14 +5,14 @@
 (function (global) {
   var SPECS = {
     dialog: {
-      title: 'Center Dialog · 여백',
-      cap: '빽빽한 패딩이 지루함의 큰 원인',
+      title: 'Center Dialog · Mint Glow 채택',
+      cap: 'C Mint Glow — 시안·앱 공통 CTA',
       items: [
-        '이전: actions 12/16 → 버튼이 카드 모서리에 붙어 답답함',
-        '권장: 본문 패딩 유지 · 버튼 존만 16/20/20 + ghost pair + CTA soft shadow',
-        '③ 푸터 웰: 버튼 영역만 --page 배경 (본문 흰 면은 그대로)',
-        '버튼 높이 48 · gap 10 · 버튼 주변만 여백을 키움',
-        '본문(상단) 패딩은 건드리지 않음 — 답답함은 버튼 존 문제'
+        '채택: 135° mint 그라데이션 (#5FD4A8→#3CB889→#2D9F74)',
+        'h52 · radius 16 · inset highlight · soft mint shadow',
+        'danger도 동일 언어의 코랄 그라데이션',
+        '앱: .mealog-btn-primary / entry 저장 / 공지 닫기 CTA',
+        'A Soft Lift · B Bigger는 비교용 잔여'
       ]
     },
     sheet: {
@@ -148,7 +148,7 @@
     }
 
     setShell('dialog');
-    setDialogFooter('ghost');
+    setDialogFooter('glow');
     return { setShell: setShell, setDialogFooter: setDialogFooter };
   }
 
