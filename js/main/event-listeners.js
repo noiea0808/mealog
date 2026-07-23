@@ -41,7 +41,11 @@ import {
 } from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
-import { triggerQuickEntryFromFab } from '../modals/entry-quick-open.js';
+import {
+    CTA_FAB_SPIN_CLASS,
+    playFabIconSpin,
+    triggerQuickEntryFromFab,
+} from '../modals/entry-quick-open.js';
 import { openRecordCameraPicker, openRecordGalleryPicker } from '../modals/entry-and-core.js';
 import { openDailyJournalCameraPicker, openDailyJournalGalleryPicker } from '../modals/daily-journal.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
@@ -635,8 +639,19 @@ export function initEventListeners() {
     });
 
     const boardWriteBtn = document.getElementById('boardWriteBtn');
+    let boardWriteFabOpening = false;
     if (boardWriteBtn) {
-        boardWriteBtn.addEventListener('click', window.openBoardWrite);
+        boardWriteBtn.addEventListener('click', async () => {
+            if (boardWriteFabOpening || boardWriteBtn.classList.contains('hidden')) return;
+            boardWriteFabOpening = true;
+            try {
+                await playFabIconSpin(boardWriteBtn);
+                window.openBoardWrite();
+            } finally {
+                boardWriteBtn.classList.remove(CTA_FAB_SPIN_CLASS);
+                boardWriteFabOpening = false;
+            }
+        });
     }
     document.querySelectorAll('#boardWriteView .format-toolbar-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {

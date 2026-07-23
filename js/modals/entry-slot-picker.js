@@ -1,6 +1,7 @@
 /**
  * 타임라인 기록 추가 — 슬롯 선택 센터 팝업
- * 본식·간식·하루 기록을 모두 포함. 이미 입력된 슬롯도 표시하며 추가 입력 가능.
+ * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 기록은 하단에 둔다.
+ * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
 import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';
 import { appState } from '../state.js';
@@ -100,16 +101,9 @@ function renderPickerList(dateIso) {
 
     if (dateEl) dateEl.textContent = formatPickerDateLabel(dateIso);
 
-    const mains = SLOTS.filter((s) => s.type === 'main');
-    const snacks = SLOTS.filter((s) => s.type === 'snack');
-
+    // 식사·간식 통합 — SLOTS 정의 순서(시간순)
     let html = `<div class="entry-slot-picker__group">
-        <p class="entry-slot-picker__group-title">식사</p>
-        ${mains.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
-    </div>`;
-    html += `<div class="entry-slot-picker__group">
-        <p class="entry-slot-picker__group-title">간식</p>
-        ${snacks.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
+        ${SLOTS.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
     </div>`;
     html += `<div class="entry-slot-picker__group">
         <p class="entry-slot-picker__group-title">하루</p>

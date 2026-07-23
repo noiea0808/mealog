@@ -57,13 +57,17 @@ export function syncEntryQuickInputFabVisibility() {
     fab.setAttribute('aria-hidden', show ? 'false' : 'true');
 }
 
-const FAB_SPIN_CLASS = 'entry-quick-input-fab--spin';
-const FAB_SPIN_MS = 380;
+/** 밀로그·라운지 CTA FAB 공통 — 배경 고정, + 아이콘만 360° */
+export const CTA_FAB_SPIN_CLASS = 'cta-fab--spin';
+export const CTA_FAB_SPIN_MS = 280;
 
-let quickFabOpening = false;
-
-/** @param {HTMLElement} fab */
-function playEntryQuickInputFabSpin(fab) {
+/**
+ * @param {HTMLElement} fab
+ * @param {{ spinClass?: string, durationMs?: number }} [opts]
+ */
+export function playFabIconSpin(fab, opts = {}) {
+    const spinClass = opts.spinClass || CTA_FAB_SPIN_CLASS;
+    const durationMs = opts.durationMs ?? CTA_FAB_SPIN_MS;
     return new Promise((resolve) => {
         let settled = false;
         const done = () => {
@@ -73,14 +77,17 @@ function playEntryQuickInputFabSpin(fab) {
             resolve();
         };
         const onEnd = (e) => {
-            if (e.target !== fab || e.animationName !== 'entry-quick-input-fab-spin') return;
+            if (e.animationName !== 'cta-fab-icon-spin') return;
+            if (!fab.contains(e.target)) return;
             done();
         };
-        fab.classList.add(FAB_SPIN_CLASS);
+        fab.classList.add(spinClass);
         fab.addEventListener('animationend', onEnd);
-        window.setTimeout(done, FAB_SPIN_MS + 80);
+        window.setTimeout(done, durationMs + 80);
     });
 }
+
+let quickFabOpening = false;
 
 function resolvePickerDateIso() {
     const d = appState.pageDate instanceof Date ? appState.pageDate : new Date();
@@ -99,10 +106,10 @@ export async function triggerQuickEntryFromFab(fab) {
     }
     quickFabOpening = true;
     try {
-        await playEntryQuickInputFabSpin(fab);
+        await playFabIconSpin(fab);
         await openEntrySlotPicker(resolvePickerDateIso());
     } finally {
-        fab.classList.remove(FAB_SPIN_CLASS);
+        fab.classList.remove(CTA_FAB_SPIN_CLASS);
         quickFabOpening = false;
     }
 }

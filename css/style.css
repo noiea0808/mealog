@@ -828,7 +828,8 @@ body.keyboard-closed #boardWriteView {
 #galleryContainer.moment-feed-layout-v2 .moment-v2-meal-heading,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-meal-heading {
     border-top: 1px solid var(--line, #d0c6ba);
-    padding-top: 10px;
+    /* 코멘트 박스(.moment-v2-meal-note) 내부 좌측(12px)과 텍스트 열 정렬 */
+    padding: 10px 12px 0;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-meal-meta,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-meal-meta {
@@ -862,11 +863,13 @@ body.keyboard-closed #boardWriteView {
     line-height: 1.5 !important;
     letter-spacing: normal !important;
     margin-bottom: 12px;
-    padding: 0 !important;
+    padding: 10px 12px !important;
     max-height: none !important;
     overflow: visible !important;
     text-indent: 0 !important;
     -webkit-text-fill-color: #64748b;
+    background: var(--page);
+    border-radius: 12px;
 }
 /* 빈 캡션 블록은 JS에서 미렌더 — 남아도 높이 0 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-body-caption:empty,
@@ -9906,19 +9909,25 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     box-shadow: var(--cta-mint-shadow);
     border: none;
     transition: box-shadow 0.2s, filter 0.2s;
-    transform: rotate(0deg);
 }
 #entryQuickInputFab.entry-quick-input-fab:hover {
     filter: brightness(1.02);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 10px 24px rgba(60, 184, 137, 0.42);
 }
-#entryQuickInputFab.entry-quick-input-fab.entry-quick-input-fab--spin {
-    animation: entry-quick-input-fab-spin 0.38s ease-in-out forwards;
+/* 배경(원형 버튼)은 고정, + 아이콘만 360° 회전 (밀로그·라운지 공통) */
+#entryQuickInputFab.entry-quick-input-fab.cta-fab--spin,
+#boardWriteBtn.board-write-fab.cta-fab--spin {
     pointer-events: none;
 }
-@keyframes entry-quick-input-fab-spin {
+#entryQuickInputFab.entry-quick-input-fab.cta-fab--spin [data-lucide],
+#entryQuickInputFab.entry-quick-input-fab.cta-fab--spin .lucide,
+#boardWriteBtn.board-write-fab.cta-fab--spin [data-lucide],
+#boardWriteBtn.board-write-fab.cta-fab--spin .lucide {
+    animation: cta-fab-icon-spin 0.28s ease-out forwards;
+}
+@keyframes cta-fab-icon-spin {
     from { transform: rotate(0deg); }
-    to { transform: rotate(180deg); }
+    to { transform: rotate(360deg); }
 }
 #entryQuickInputFab.entry-quick-input-fab.hidden {
     display: none !important;
