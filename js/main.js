@@ -2036,7 +2036,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// 터치 제스처 초기화 (일간 스와이프: 현재·다음 날짜가 한 트랙에서 함께 이동)
+// 터치 제스처 초기화 (일간 스와이프: 현재·다음 날짜가 함께 이동)
 function initDailySwipeGesture() {
     if (window.__dailySwipeGestureInitialized) return;
     const tv = document.getElementById('timelineView');
@@ -2085,7 +2085,11 @@ function initDailySwipeGesture() {
     let swipeHintTimer = null;
     let swipeHintToken = 0;
     let swipeHintFallbackTimer = null;
-    /** @type {null | { viewport: HTMLElement, track: HTMLElement, currentPanel: HTMLElement, otherPanel: HTMLElement, dir: number, vw: number }} */
+    /**
+     * fingerLeft: 손가락이 왼쪽으로 움직임(다음날, 새 화면은 오른쪽에서)
+     * fingerLeft === false: 손가락이 오른쪽으로 움직임(전날, 새 화면은 왼쪽에서)
+     * @type {null | { viewport: HTMLElement, currentPanel: HTMLElement, incomingPanel: HTMLElement, fingerLeft: boolean, vw: number }}
+     */
     let scaffold = null;
 
     const prefersReducedMotion = () => {
@@ -2230,8 +2234,6 @@ function initDailySwipeGesture() {
         const pr = parseFloat(style.paddingRight) || 0;
         return Math.max(1, (tv.clientWidth || window.innerWidth || 360) - pl - pr);
     };
-    const homeTrackX = (dir, vw) => (dir > 0 ? 0 : -vw);
-    const finalTrackX = (dir, vw) => (dir > 0 ? -vw : 0);
 
     const waitForTransformEnd = (el, fallbackMs) => new Promise((resolve) => {
         let done = false;
@@ -2270,24 +2272,42 @@ function initDailySwipeGesture() {
         scaffold = null;
     };
 
-    const applyTrackX = (dragX, withTransition = false) => {
+    /**
+     * 손가락 deltaX에 맞춰 두 패널을 동시에 이동.
+     * - 손가락→왼쪽: 현재는 왼쪽으로, 새 화면은 오른쪽(+vw)에서 따라옴
+     * - 손가락→오른쪽: 현재는 오른쪽으로, 새 화면은 왼쪽(-vw)에서 따라옴
+     */
+    const applyPanelDrag = (dragX, withTransition = false) => {
         if (!scaffold) return;
-        const { track, dir, vw } = scaffold;
-        track.style.transition = withTransition
+        const { currentPanel, incomingPanel, fingerLeft, vw } = scaffold;
+        const transition = withTransition
             ? 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)'
             : 'none';
-        track.style.willChange = 'transform';
-        const x = dir > 0 ? dragX : -vw + dragX;
-        track.style.transform = `translate3d(${x}px, 0, 0)`;
+        const incomingBase = fingerLeft ? vw : -vw;
+        currentPanel.style.transition = transition;
+        incomingPanel.style.transition = transition;
+        currentPanel.style.willChange = 'transform';
+        incomingPanel.style.willChange = 'transform';
+        currentPanel.style.transform = `translate3d(${dragX}px, 0, 0)`;
+        incomingPanel.style.transform = `translate3d(${dragX + incomingBase}px, 0, 0)`;
     };
 
-    const ensureScaffold = (dir, dragX) => {
+    const syncViewportHeight = () => {
+        if (!scaffold) return;
+        const h = Math.max(
+            scaffold.currentPanel.scrollHeight || 0,
+            scaffold.incomingPanel.scrollHeight || 0,
+            240
+        );
+        scaffold.viewport.style.minHeight = `${h}px`;
+    };
+
+    const ensureScaffold = (fingerLeft, dragX) => {
         const tc = getTimelineContainer();
-        if (!tc || !dir) return null;
-        if (scaffold && scaffold.dir === dir) {
+        if (!tc) return null;
+        if (scaffold && scaffold.fingerLeft === fingerLeft) {
             scaffold.vw = getVw();
-            scaffold.viewport.style.setProperty('--timeline-swipe-vw', `${scaffold.vw}px`);
-            applyTrackX(dragX);
+            applyPanelDrag(dragX);
             return scaffold;
         }
         if (scaffold) {
@@ -2298,41 +2318,37 @@ function initDailySwipeGesture() {
             if (keep?.id === 'timelineContainerOutgoing') keep.id = 'timelineContainer';
             teardownScaffold(keep);
         }
+
+        clearSwipeInlineStyles(tc);
         const vw = getVw();
         const viewport = document.createElement('div');
         viewport.className = 'timeline-daily-swipe-viewport';
-        viewport.style.setProperty('--timeline-swipe-vw', `${vw}px`);
-        const track = document.createElement('div');
-        track.className = 'timeline-daily-swipe-track';
         const currentPanel = document.createElement('div');
-        currentPanel.className = 'timeline-daily-swipe-panel';
-        const otherPanel = document.createElement('div');
-        otherPanel.className = 'timeline-daily-swipe-panel timeline-daily-swipe-panel--incoming';
+        currentPanel.className = 'timeline-daily-swipe-panel timeline-daily-swipe-panel--current';
+        const incomingPanel = document.createElement('div');
+        incomingPanel.className = 'timeline-daily-swipe-panel timeline-daily-swipe-panel--incoming';
 
         tv.insertBefore(viewport, tc);
         currentPanel.appendChild(tc);
-        if (dir > 0) track.append(currentPanel, otherPanel);
-        else track.append(otherPanel, currentPanel);
-        viewport.appendChild(track);
+        viewport.append(currentPanel, incomingPanel);
         const measured = Math.max(1, viewport.clientWidth || vw);
-        viewport.style.setProperty('--timeline-swipe-vw', `${measured}px`);
 
-        scaffold = { viewport, track, currentPanel, otherPanel, dir, vw: measured };
-        applyTrackX(dragX);
+        scaffold = { viewport, currentPanel, incomingPanel, fingerLeft, vw: measured };
+        applyPanelDrag(dragX);
+        syncViewportHeight();
         return scaffold;
     };
 
     const resetTransform = () => {
         if (scaffold) {
-            const { track, dir, vw, currentPanel } = scaffold;
+            const { currentPanel } = scaffold;
             const keep =
                 currentPanel.querySelector('#timelineContainer') ||
                 currentPanel.querySelector('#timelineContainerOutgoing') ||
                 getTimelineContainer();
             if (keep?.id === 'timelineContainerOutgoing') keep.id = 'timelineContainer';
-            track.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-            track.style.transform = `translate3d(${homeTrackX(dir, vw)}px, 0, 0)`;
-            waitForTransformEnd(track, 280).then(() => {
+            applyPanelDrag(0, true);
+            waitForTransformEnd(currentPanel, 280).then(() => {
                 teardownScaffold(keep);
             });
             return;
@@ -2357,16 +2373,16 @@ function initDailySwipeGesture() {
         if (isAnimating) return;
         cancelDailySwipeHint();
         isAnimating = true;
+        // 손가락 왼쪽(releaseX<0) → 다음날, 오른쪽 → 전날. 패널 위치는 손가락 방향만 따름.
+        const fingerLeft = releaseX < 0;
         try {
-            const sc = ensureScaffold(dayDelta, releaseX);
+            const sc = ensureScaffold(fingerLeft, releaseX);
             if (!sc) {
                 isAnimating = false;
                 return;
             }
-            const vw = getVw();
-            sc.vw = vw;
-            sc.viewport.style.setProperty('--timeline-swipe-vw', `${vw}px`);
-            applyTrackX(releaseX);
+            sc.vw = getVw();
+            applyPanelDrag(releaseX);
 
             const targetDate = new Date(appState.pageDate);
             targetDate.setDate(targetDate.getDate() + dayDelta);
@@ -2384,8 +2400,8 @@ function initDailySwipeGesture() {
             const newTc = document.createElement('div');
             newTc.id = 'timelineContainer';
             newTc.className = oldTc?.className || 'ui-stack-lg';
-            sc.otherPanel.innerHTML = '';
-            sc.otherPanel.appendChild(newTc);
+            sc.incomingPanel.innerHTML = '';
+            sc.incomingPanel.appendChild(newTc);
 
             try {
                 await window.jumpToDate(targetIso, { scroll: false });
@@ -2393,18 +2409,21 @@ function initDailySwipeGesture() {
                 console.warn('스와이프 날짜 이동 실패:', error);
                 if (oldTc) oldTc.id = 'timelineContainer';
                 newTc.remove();
-                applyTrackX(0);
-                sc.track.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-                sc.track.style.transform = `translate3d(${homeTrackX(dayDelta, vw)}px, 0, 0)`;
-                await waitForTransformEnd(sc.track, 280);
+                applyPanelDrag(0, true);
+                await waitForTransformEnd(sc.currentPanel, 280);
                 teardownScaffold(oldTc || getTimelineContainer());
                 return;
             }
 
-            // 현재·다음 패널이 같은 트랙에서 함께 자리를 맞춤
-            sc.track.style.transition = 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-            sc.track.style.transform = `translate3d(${finalTrackX(dayDelta, vw)}px, 0, 0)`;
-            await waitForTransformEnd(sc.track, 300);
+            syncViewportHeight();
+            const vw = getVw();
+            sc.vw = vw;
+            // 손가락이 왼쪽으로 갔으면 최종 -vw(오른쪽 패널이 화면 중앙), 오른쪽이면 +vw
+            const settledX = fingerLeft ? -vw : vw;
+            applyPanelDrag(settledX, true);
+            sc.currentPanel.style.transition = 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            sc.incomingPanel.style.transition = 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            await waitForTransformEnd(sc.incomingPanel, 300);
 
             const live = document.getElementById('timelineContainer') || newTc;
             teardownScaffold(live);
@@ -2446,17 +2465,15 @@ function initDailySwipeGesture() {
 
         currentDragX = deltaX;
         if (shouldPreventDefault && rawEvent) rawEvent.preventDefault();
+        if (deltaX === 0 && !scaffold) return;
 
-        // 손가락 왼쪽(음수) → 다음날(+1)이 오른쪽에서 함께 들어옴
-        const dir = deltaX < 0 ? 1 : deltaX > 0 ? -1 : scaffold?.dir || 0;
-        if (!dir) return;
-        if (dir > 0) {
+        const fingerLeft = deltaX < 0;
+        if (fingerLeft) {
             const pageDate = new Date(appState.pageDate);
             pageDate.setHours(0, 0, 0, 0);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             if (pageDate >= today) {
-                // 오늘 이후로는 못 넘김 — 단일 패널 rubber-band만
                 const tc = getTimelineContainer();
                 if (tc && !scaffold) {
                     tc.style.transition = 'none';
@@ -2465,7 +2482,7 @@ function initDailySwipeGesture() {
                 return;
             }
         }
-        ensureScaffold(dir, deltaX);
+        ensureScaffold(fingerLeft, deltaX);
     };
 
     const endSwipe = () => {
@@ -2480,6 +2497,7 @@ function initDailySwipeGesture() {
             return;
         }
 
+        // 손가락 왼쪽 → 다음날(+1), 오른쪽 → 전날(-1)
         const dayDelta = deltaX < 0 ? 1 : -1;
         if (dayDelta > 0) {
             const pageDate = new Date(appState.pageDate);

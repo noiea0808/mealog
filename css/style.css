@@ -604,27 +604,29 @@ body.keyboard-closed #boardWriteView {
     padding-left: max(0.75rem, 1em);
     padding-right: max(0.75rem, 1em);
 }
-/* 일간 좌우 스와이프: 현재·다음 날짜 패널이 한 트랙에서 함께 이동 */
+/* 일간 좌우 스와이프: 현재·다음 날짜 패널이 함께 이동 */
 .timeline-daily-swipe-viewport {
+    position: relative;
     overflow: hidden;
     width: 100%;
     max-width: 100%;
     touch-action: pan-y;
-}
-.timeline-daily-swipe-track {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
-    will-change: transform;
-}
-.timeline-daily-swipe-panel {
-    flex: 0 0 var(--timeline-swipe-vw, 100%);
-    width: var(--timeline-swipe-vw, 100%);
-    max-width: var(--timeline-swipe-vw, 100%);
-    box-sizing: border-box;
     min-height: 30vh;
 }
+.timeline-daily-swipe-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 30vh;
+    will-change: transform;
+}
+.timeline-daily-swipe-panel--current {
+    z-index: 1;
+}
 .timeline-daily-swipe-panel--incoming {
+    z-index: 0;
     background: var(--page-deep, #faf6f2);
 }
 .timeline-daily-swipe-panel > #timelineContainer,
