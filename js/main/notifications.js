@@ -14,6 +14,7 @@ import {
 } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml, renderGallery } from '../render/index.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
 const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
@@ -178,7 +179,6 @@ window.closeNotificationPopup = () => {
 
 export function initNotificationModal() {
     document.getElementById('notificationBackdrop')?.addEventListener('click', window.closeNotificationPopup);
-    document.getElementById('notificationCloseBtn')?.addEventListener('click', window.closeNotificationPopup);
     document.getElementById('notificationDismissBtn')?.addEventListener('click', window.closeNotificationPopup);
 }
 
@@ -232,15 +232,11 @@ function syncNotificationTabUi(unreadCount = 0) {
     const isUnread = notificationListActiveTab === 'unread';
     if (unreadBtn) {
         unreadBtn.setAttribute('aria-selected', isUnread ? 'true' : 'false');
-        unreadBtn.className = isUnread
-            ? 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80'
-            : 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70';
+        unreadBtn.classList.toggle('active', isUnread);
     }
     if (readBtn) {
         readBtn.setAttribute('aria-selected', !isUnread ? 'true' : 'false');
-        readBtn.className = !isUnread
-            ? 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80'
-            : 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70';
+        readBtn.classList.toggle('active', !isUnread);
     }
     if (markAll) {
         markAll.classList.toggle('invisible', !isUnread || unreadCount === 0);
@@ -269,9 +265,7 @@ function appendNotificationRow(listEl, item, { dimmed }) {
         d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = `w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors border-b border-slate-50 last:border-0 flex items-center gap-3 ${
-        dimmed ? 'opacity-90' : ''
-    }`;
+    row.className = `notification-row${dimmed ? ' notification-row--dimmed' : ''}`;
     const label =
         type === 'feed'
             ? escapeHtml(item.title || '밀톡')
@@ -290,13 +284,13 @@ function appendNotificationRow(listEl, item, { dimmed }) {
               : `댓글 ${commentCount}개 · ${timeStr}`;
     const thumbHtml =
         type === 'moment' && thumbnailUrl
-            ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
+            ? `<div class="notification-row-thumb"><img src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy"></div>`
             : type === 'feed'
-              ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600"><i data-lucide="message-circle-more" aria-hidden="true"></i></div>`
-              : '';
-    const titleCls = dimmed ? 'text-slate-500 text-sm font-medium block truncate' : 'text-slate-700 text-sm font-medium block truncate';
-    const subCls = dimmed ? 'text-slate-400 text-xs' : 'text-slate-500 text-xs';
-    row.innerHTML = `${thumbHtml}<div class="flex-1 min-w-0"><span class="${titleCls}">${label}</span><span class="${subCls}">${subText}</span></div>`;
+              ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="message-circle-more" aria-hidden="true"></i></div>`
+              : type === 'board'
+                ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="layout-list" aria-hidden="true"></i></div>`
+                : `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="images" aria-hidden="true"></i></div>`;
+    row.innerHTML = `${thumbHtml}<div class="notification-row-body"><span class="notification-row-title">${label}</span><span class="notification-row-sub">${subText}</span></div>`;
     row.addEventListener('click', async () => {
         markNotificationAsRead(notificationKey, lastCommentAt, commentCount);
         window.closeNotificationPopup();
@@ -366,34 +360,43 @@ function renderNotificationPanelFromCache() {
     listEl.innerHTML = '';
     if (notificationListActiveTab === 'unread') {
         if (unread.length === 0) {
+            listEl.classList.add('hidden');
             emptyEl.classList.remove('hidden');
             emptyEl.textContent = '새 알림이 없습니다.';
             return;
         }
+        listEl.classList.remove('hidden');
         emptyEl.classList.add('hidden');
         unread.forEach((item) => appendNotificationRow(listEl, item, { dimmed: false }));
+        scheduleLucideIcons(listEl);
         return;
     }
     if (readItems.length === 0) {
+        listEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
         emptyEl.textContent = '읽은 알림이 없습니다.';
         return;
     }
+    listEl.classList.remove('hidden');
     emptyEl.classList.add('hidden');
     readItems.forEach((item) => appendNotificationRow(listEl, item, { dimmed: true }));
+    scheduleLucideIcons(listEl);
 }
 
 window.loadNotificationList = async () => {
     const listEl = document.getElementById('notificationList');
     const emptyEl = document.getElementById('notificationEmpty');
     if (!listEl || !emptyEl) return;
-    listEl.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">불러오는 중...</div>';
+    listEl.classList.remove('hidden');
+    listEl.innerHTML = '<div class="notification-list-loading">불러오는 중…</div>';
     emptyEl.classList.add('hidden');
     bindNotificationTabsOnce();
     if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
         listEl.innerHTML = '';
+        listEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
         emptyEl.textContent = '로그인이 필요합니다.';
+        syncNotificationTabUi(0);
         return;
     }
     try {
@@ -423,8 +426,10 @@ window.loadNotificationList = async () => {
         console.error('알림 목록 로드 실패:', e);
         _notificationMergedCache = null;
         listEl.innerHTML = '';
+        listEl.classList.add('hidden');
         emptyEl.textContent = '목록을 불러올 수 없습니다.';
         emptyEl.classList.remove('hidden');
+        syncNotificationTabUi(0);
     }
 };
 

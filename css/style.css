@@ -154,6 +154,8 @@ html.platform-native-app .bottom-nav button i.lucide {
 html.platform-web {
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: 0px;
+    /* max-w-md 폰 컬럼 바깥(뷰포트 좌우) — line 톤의 은은한 프레임 */
+    background-color: var(--line);
 }
 html.platform-web #navigationBarOverlay {
     display: none !important;
@@ -194,11 +196,14 @@ html {
     padding: 0;
     overflow-x: clip;
     overflow-y: auto;
-    /* 랜딩 중에도 max-w-md 바깥(뷰포트 좌우)은 흰색 */
+    /* 네이티브·기본: 바깥도 흰색. 웹(platform-web)은 아래에서 line으로 덮음 */
     background-color: #ffffff;
 }
-html.mealog-landing-active {
+html.mealog-landing-active:not(.platform-web) {
     background-color: #ffffff;
+}
+html.mealog-landing-active.platform-web {
+    background-color: var(--line);
 }
 /*
  * 랜딩 세로 영역: body 패딩은 쓰지 않음(메인용 --safe-top / 하단 네비 여유와 분리).
@@ -256,9 +261,12 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
-/* 메인 앱: 루트·body 캔버스를 본문색으로 (index 인라인/랜딩 흰색보다 우선) */
-html:has(#mainApp:not(.hidden)) {
+/* 메인 앱: body·#mainApp 캔버스는 본문색. 웹 html 바깥은 ink 프레임 유지 */
+html:has(#mainApp:not(.hidden)):not(.platform-web) {
     background-color: var(--app-page-bg);
+}
+html.platform-web:has(#mainApp:not(.hidden)) {
+    background-color: var(--line);
 }
 body:has(#mainApp:not(.hidden)) {
     background-color: var(--app-page-bg) !important;
@@ -271,8 +279,11 @@ body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
     background-image: none;
 }
-html:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
+html:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)):not(.platform-web) {
     background-color: var(--board-feed-bg);
+}
+html.platform-web:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
+    background-color: var(--line);
 }
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
@@ -2685,14 +2696,17 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTitle {
     text-shadow: none;
     box-shadow: none;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-go-today-btn {
     color: var(--ink-2) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:hover {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:hover,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-go-today-btn:hover {
     color: var(--ink) !important;
     background: var(--page) !important;
 }
-body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:focus-visible {
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn:focus-visible,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-go-today-btn:focus-visible {
     outline-color: var(--green);
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
@@ -2813,10 +2827,12 @@ body[data-main-tab='timeline'] .tracker-v2-month-label {
     color: var(--ink, #241f1c) !important;
     font-weight: 700;
 }
-body[data-main-tab='timeline'] .tracker-calendar-icon-btn {
+body[data-main-tab='timeline'] .tracker-calendar-icon-btn,
+body[data-main-tab='timeline'] .tracker-go-today-btn {
     color: var(--muted, #7a7268) !important;
 }
-body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover {
+body[data-main-tab='timeline'] .tracker-calendar-icon-btn:hover,
+body[data-main-tab='timeline'] .tracker-go-today-btn:hover {
     color: var(--green) !important;
     background: var(--green-soft) !important;
 }
@@ -2930,7 +2946,8 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     color: var(--ink, #241f1c) !important;
     font-weight: 700;
 }
-body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn {
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-calendar-icon-btn,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) .tracker-go-today-btn {
     color: var(--muted, #7a7268) !important;
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #trackerTabs {
@@ -13376,6 +13393,226 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-color: var(--green-mute) !important;
     color: var(--ink);
     border-radius: 12px;
+}
+
+/* 알림 팝업 — Soft Mint Search/List */
+#notificationModal .notification-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-shrink: 0;
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid var(--line);
+}
+#notificationModal .notification-modal-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.25;
+}
+#notificationModal .notification-modal-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+#notificationModal .notification-mark-all-btn {
+    border: 0;
+    background: transparent;
+    color: var(--green);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+}
+#notificationModal .notification-mark-all-btn:hover {
+    background: var(--green-soft);
+    color: var(--green-deep);
+}
+#notificationModal .notification-mark-all-btn:active {
+    opacity: 0.85;
+}
+#notificationModal .notification-mark-all-btn.invisible {
+    visibility: hidden;
+    pointer-events: none;
+}
+#notificationModal .notification-modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 12px 14px 0;
+    background: var(--page);
+}
+#notificationModal .notification-tab-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-shrink: 0;
+    margin-bottom: 10px;
+}
+#notificationModal .notification-tab-btn {
+    border: 1px solid var(--line);
+    background: var(--card);
+    border-radius: 999px;
+    padding: 7px 12px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#notificationModal .notification-tab-btn:hover {
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+    color: var(--ink);
+}
+#notificationModal .notification-tab-btn.active,
+#notificationModal .notification-tab-btn[aria-selected="true"] {
+    background: var(--green);
+    border-color: var(--green);
+    color: #fff;
+}
+#notificationModal .notification-tab-btn.active:hover,
+#notificationModal .notification-tab-btn[aria-selected="true"]:hover {
+    background: var(--green-deep);
+    border-color: var(--green-deep);
+    color: #fff;
+}
+#notificationModal .notification-list {
+    flex: 1 1 auto;
+    min-height: 120px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 0 0 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#notificationModal .notification-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: var(--card);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    box-shadow: 0 1px 0 rgba(36, 31, 28, 0.03);
+    transition: background 0.14s ease, border-color 0.14s ease, transform 0.12s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#notificationModal .notification-row:hover {
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+}
+#notificationModal .notification-row:active {
+    transform: scale(0.99);
+}
+#notificationModal .notification-row--dimmed {
+    opacity: 0.88;
+}
+#notificationModal .notification-row--dimmed .notification-row-title {
+    color: var(--ink-2);
+    font-weight: 600;
+}
+#notificationModal .notification-row-thumb {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--green-soft);
+    border: 1px solid var(--green-mute);
+}
+#notificationModal .notification-row-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+#notificationModal .notification-row-ico {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--green-soft);
+    border: 1px solid var(--green-mute);
+    color: var(--green-deep);
+}
+#notificationModal .notification-row-ico i,
+#notificationModal .notification-row-ico svg {
+    width: 1.05rem;
+    height: 1.05rem;
+}
+#notificationModal .notification-row-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#notificationModal .notification-row-title {
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#notificationModal .notification-row-sub {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.35;
+}
+#notificationModal .notification-empty {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 16px 12px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--muted);
+    line-height: 1.45;
+}
+#notificationModal .notification-list-loading {
+    padding: 28px 12px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--muted);
+}
+#notificationModal .notification-read-hint {
+    flex-shrink: 0;
+    margin: 4px 0 0;
+    padding: 8px 4px 12px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: var(--muted);
+}
+#notificationModal .mealog-dialog-actions--border {
+    flex-shrink: 0;
 }
 
 /* —— Fullscreen Media —— */

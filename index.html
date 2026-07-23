@@ -316,7 +316,7 @@
         #landingPage.landing-buttons-visible #landingFlexMain {
             background: #3cb889;
         }
-        /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 초록 — 열 바깥(뷰포트 좌우)은 html 흰색 유지 */
+        /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 초록 — 열 바깥(뷰포트 좌우)은 html line */
         html.mealog-landing-login.platform-web::before {
             content: '';
             position: fixed;
@@ -1568,6 +1568,9 @@
                         <i data-lucide="calendar" class="text-[13px] leading-none" aria-hidden="true"></i>
                     </button>
                     <span id="trackerTitle" class="tracker-v2-month-label text-[15px] font-bold text-slate-900 tracking-tight truncate">날짜 선택</span>
+                    <button type="button" id="trackerGoTodayBtn" class="tracker-go-today-btn tracker-calendar-icon-btn flex-shrink-0 p-1 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50/80 active:opacity-80 transition-colors" aria-label="오늘로 가기" title="오늘로 가기">
+                        <i data-lucide="undo-2" class="text-[13px] leading-none" aria-hidden="true"></i>
+                    </button>
                 </div>
                 <span id="trackerStreakLabel" class="tracker-streak-pill tabular-nums whitespace-nowrap shrink-0" role="status">
                     <i data-lucide="flame" class="tracker-streak-pill__icon" aria-hidden="true"></i>
@@ -1591,18 +1594,18 @@
             </div>
             <!-- 게시판 목록 뷰 -->
             <div id="boardListView" class="hidden ui-tab-view ui-stack-md relative board-list-view-mealtalk">
-                <button id="boardWriteBtn" class="board-write-fab" type="button" title="글쓰기" aria-label="글쓰기">
+                <button id="boardWriteBtn" class="board-write-fab hidden" type="button" title="글쓰기" aria-label="글쓰기">
                     <i data-lucide="plus" class="text-lg"></i>
                 </button>
                 <div id="boardLoungeFrame" class="board-lounge-frame flex min-h-0 flex-1 flex-col">
                 <div class="app-chrome-subtabs board-mealtalk-subtabs w-full min-w-0" role="tablist" aria-label="라운지 — 밀톡·게시판·공지">
-                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative">
+                    <button type="button" id="boardSubtabFeed" role="tab" aria-selected="true" class="app-chrome-subtab board-list-subtab active relative">
                         <span class="relative inline-block">
                             밀톡
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
                         </span>
                     </button>
-                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="true" class="app-chrome-subtab board-list-subtab active relative">
+                    <button type="button" id="boardSubtabBoard" role="tab" aria-selected="false" class="app-chrome-subtab board-list-subtab relative">
                         <span class="relative inline-block">
                             게시판
                             <span class="board-subtab-update-dot hidden absolute right-0 top-0 h-1.5 w-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 pointer-events-none" aria-hidden="true"></span>
@@ -1615,7 +1618,7 @@
                         </span>
                     </button>
                 </div>
-                <div id="boardCategoryRow" class="flex gap-1.5 items-center overflow-x-auto scrollbar-hide py-1">
+                <div id="boardCategoryRow" class="hidden flex gap-1.5 items-center overflow-x-auto scrollbar-hide py-1">
                     <button type="button" id="board-category-all" class="board-category-btn active whitespace-nowrap">#전체</button>
                     <button type="button" id="board-category-food" class="board-category-btn whitespace-nowrap">#먹는</button>
                     <button type="button" id="board-category-chat" class="board-category-btn whitespace-nowrap">#가벼운</button>
@@ -1623,7 +1626,7 @@
                     <button type="button" id="board-category-admin" class="board-category-btn whitespace-nowrap">#치프에게</button>
                 </div>
                 <div id="boardLoungeScrollArea" class="board-lounge-scroll-area flex min-h-0 flex-1 flex-col overflow-y-auto">
-                <div id="boardFeedPanel" class="board-feed-panel hidden">
+                <div id="boardFeedPanel" class="board-feed-panel">
                     <div id="boardFeedPanelContent" class="board-feed-panel-content min-h-[12rem]"></div>
                 </div>
                 <div id="boardInlineComposer" class="board-inline-composer board-feed-chat-composer" aria-label="밀톡 메시지 입력">
@@ -1657,7 +1660,7 @@
                         <span id="boardInlineComposerCount" class="hidden text-[11px] leading-none" aria-live="polite" aria-hidden="true"></span>
                     </div>
                 </div>
-                <div id="boardListPanel" class="board-list-panel">
+                <div id="boardListPanel" class="board-list-panel hidden">
                     <div id="boardSearchBanner" class="hidden mb-3 rounded-xl border border-slate-100 bg-white px-4 py-2.5">
                         <div class="flex items-start justify-between gap-2">
                             <div class="min-w-0">
@@ -2267,129 +2270,126 @@
     </div>
 
     <!-- 모먼트 검색 (기간 + 흔적 + 키워드) -->
-    <div id="momentSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
-        <button type="button" id="momentSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
-            <div class="p-5 pb-4 max-h-[min(80vh,32rem)] overflow-y-auto">
-                <div class="mb-4 flex items-center justify-between gap-2">
-                    <h2 id="momentSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">모먼트 검색</h2>
-                    <button type="button" id="momentSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
-                </div>
-                <div class="space-y-4">
-                    <div>
-                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
-                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
-                            <button type="button" data-moment-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
-                            <button type="button" data-moment-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
-                            <button type="button" data-moment-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
-                            <button type="button" data-moment-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
-                        </div>
-                        <div class="mt-3 grid grid-cols-2 gap-2">
-                            <div>
-                                <label for="momentSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
-                                <input type="date" id="momentSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                            <div>
-                                <label for="momentSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
-                                <input type="date" id="momentSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
-                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
-                            <button type="button" data-moment-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i data-lucide="heart" class="text-sm"></i> 좋아요</button>
-                            <button type="button" data-moment-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="message-circle" class="text-sm"></i> 댓글</button>
-                            <button type="button" data-moment-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="bookmark" class="text-sm"></i> 북마크</button>
-                            <button type="button" data-moment-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="search" class="text-sm"></i> 검색어</button>
-                        </div>
-                        <div id="momentSearchKeywordWrap" class="mt-3 hidden">
-                            <label for="momentSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
-                            <input type="search" id="momentSearchKeyword" placeholder="닉네임, 메뉴, 장소, 코멘트…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
-                        </div>
-                        <p class="mt-1.5 text-[11px] text-slate-400">선택하지 않으면 해당 기간의 전체 게시물을 보여줍니다.</p>
-                    </div>
-                </div>
+    <div id="momentSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
+        <button type="button" id="momentSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+            <div class="search-filter-modal__head">
+                <h2 id="momentSearchModalTitle" class="search-filter-modal__title">모먼트 검색</h2>
+                <button type="button" id="momentSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
             </div>
-            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
-                <button type="button" id="momentSearchCancelBtn" class="py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 border-r border-slate-200 active:bg-slate-200 rounded-bl-2xl">취소</button>
-                <button type="button" id="momentSearchSubmitBtn" class="py-3.5 bg-black text-sm font-semibold text-white active:bg-slate-900 rounded-br-2xl">검색</button>
+            <div class="search-filter-modal__body">
+                <section class="search-filter-modal__section">
+                    <p class="search-filter-modal__label">검색 기간</p>
+                    <div class="search-chip-grid" role="group" aria-label="검색 기간">
+                        <button type="button" data-moment-search-period="7d" class="search-chip is-active" aria-pressed="true">최근 1주</button>
+                        <button type="button" data-moment-search-period="14d" class="search-chip" aria-pressed="false">2주</button>
+                        <button type="button" data-moment-search-period="30d" class="search-chip" aria-pressed="false">한 달</button>
+                        <button type="button" data-moment-search-period="custom" class="search-chip" aria-pressed="false">직접 입력</button>
+                    </div>
+                    <div class="search-filter-modal__dates">
+                        <div>
+                            <label for="momentSearchStartDate" class="search-filter-modal__sublabel">시작일</label>
+                            <input type="date" id="momentSearchStartDate" class="search-filter-modal__input">
+                        </div>
+                        <div>
+                            <label for="momentSearchEndDate" class="search-filter-modal__sublabel">종료일</label>
+                            <input type="date" id="momentSearchEndDate" class="search-filter-modal__input">
+                        </div>
+                    </div>
+                </section>
+                <section class="search-filter-modal__section">
+                    <p class="search-filter-modal__label">내 활동 (선택)</p>
+                    <div class="search-chip-grid" role="group" aria-label="내 활동 필터">
+                        <button type="button" data-moment-search-trace="like" class="search-chip search-chip--like" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i> 좋아요</button>
+                        <button type="button" data-moment-search-trace="comment" class="search-chip" aria-pressed="false"><i data-lucide="message-circle" aria-hidden="true"></i> 댓글</button>
+                        <button type="button" data-moment-search-trace="bookmark" class="search-chip" aria-pressed="false"><i data-lucide="bookmark" aria-hidden="true"></i> 북마크</button>
+                        <button type="button" data-moment-search-trace="keyword" class="search-chip" aria-pressed="false"><i data-lucide="search" aria-hidden="true"></i> 검색어</button>
+                    </div>
+                    <div id="momentSearchKeywordWrap" class="search-filter-modal__keyword hidden">
+                        <label for="momentSearchKeyword" class="search-filter-modal__label">검색어</label>
+                        <input type="search" id="momentSearchKeyword" placeholder="닉네임, 메뉴, 장소, 코멘트…" autocomplete="off" class="search-filter-modal__input search-filter-modal__input--search">
+                    </div>
+                    <p class="search-filter-modal__hint">선택하지 않으면 해당 기간의 전체 게시물을 보여줍니다.</p>
+                </section>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" id="momentSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                <button type="button" id="momentSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
             </div>
         </div>
     </div>
 
     <!-- 라운지 게시판·공지 검색 (기간 + 흔적 + 키워드) -->
-    <div id="boardSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
-        <button type="button" id="boardSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
-            <div class="max-h-[min(80vh,32rem)] overflow-y-auto p-5 pb-4">
-                <div class="mb-4 flex items-center justify-between gap-2">
-                    <h2 id="boardSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">게시판 검색</h2>
-                    <button type="button" id="boardSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
-                </div>
-                <div class="space-y-4">
-                    <div>
-                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
-                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
-                            <button type="button" data-board-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
-                            <button type="button" data-board-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
-                            <button type="button" data-board-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
-                            <button type="button" data-board-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
-                        </div>
-                        <div class="mt-3 grid grid-cols-2 gap-2">
-                            <div>
-                                <label for="boardSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
-                                <input type="date" id="boardSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                            <div>
-                                <label for="boardSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
-                                <input type="date" id="boardSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <p class="mb-2 text-xs font-semibold text-slate-500">내 활동 (선택)</p>
-                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="내 활동 필터">
-                            <button type="button" data-board-search-trace="like" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold text-red-500 transition-colors" aria-pressed="false"><i data-lucide="heart" class="text-sm"></i> 좋아요</button>
-                            <button type="button" data-board-search-trace="comment" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="message-circle" class="text-sm"></i> 댓글</button>
-                            <button type="button" data-board-search-trace="bookmark" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="bookmark" class="text-sm"></i> 북마크</button>
-                            <button type="button" data-board-search-trace="keyword" class="flex items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-sm font-semibold transition-colors" aria-pressed="false"><i data-lucide="search" class="text-sm"></i> 검색어</button>
-                        </div>
-                        <div id="boardSearchKeywordWrap" class="mt-3 hidden">
-                            <label for="boardSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
-                            <input type="search" id="boardSearchKeyword" placeholder="제목, 본문, 닉네임…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
-                        </div>
-                        <p class="mt-1.5 text-[11px] text-slate-400">선택하지 않으면 해당 기간의 전체 글을 보여줍니다.</p>
-                    </div>
-                </div>
+    <div id="boardSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
+        <button type="button" id="boardSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+            <div class="search-filter-modal__head">
+                <h2 id="boardSearchModalTitle" class="search-filter-modal__title">게시판 검색</h2>
+                <button type="button" id="boardSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
             </div>
-            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
-                <button type="button" id="boardSearchCancelBtn" class="rounded-bl-2xl border-r border-slate-200 bg-slate-100 py-3.5 text-sm font-semibold text-slate-800 active:bg-slate-200">취소</button>
-                <button type="button" id="boardSearchSubmitBtn" class="rounded-br-2xl bg-black py-3.5 text-sm font-semibold text-white active:bg-slate-900">검색</button>
+            <div class="search-filter-modal__body">
+                <section class="search-filter-modal__section">
+                    <p class="search-filter-modal__label">검색 기간</p>
+                    <div class="search-chip-grid" role="group" aria-label="검색 기간">
+                        <button type="button" data-board-search-period="7d" class="search-chip is-active" aria-pressed="true">최근 1주</button>
+                        <button type="button" data-board-search-period="14d" class="search-chip" aria-pressed="false">2주</button>
+                        <button type="button" data-board-search-period="30d" class="search-chip" aria-pressed="false">한 달</button>
+                        <button type="button" data-board-search-period="custom" class="search-chip" aria-pressed="false">직접 입력</button>
+                    </div>
+                    <div class="search-filter-modal__dates">
+                        <div>
+                            <label for="boardSearchStartDate" class="search-filter-modal__sublabel">시작일</label>
+                            <input type="date" id="boardSearchStartDate" class="search-filter-modal__input">
+                        </div>
+                        <div>
+                            <label for="boardSearchEndDate" class="search-filter-modal__sublabel">종료일</label>
+                            <input type="date" id="boardSearchEndDate" class="search-filter-modal__input">
+                        </div>
+                    </div>
+                </section>
+                <section class="search-filter-modal__section">
+                    <p class="search-filter-modal__label">내 활동 (선택)</p>
+                    <div class="search-chip-grid" role="group" aria-label="내 활동 필터">
+                        <button type="button" data-board-search-trace="like" class="search-chip search-chip--like" aria-pressed="false"><i data-lucide="heart" aria-hidden="true"></i> 좋아요</button>
+                        <button type="button" data-board-search-trace="comment" class="search-chip" aria-pressed="false"><i data-lucide="message-circle" aria-hidden="true"></i> 댓글</button>
+                        <button type="button" data-board-search-trace="bookmark" class="search-chip" aria-pressed="false"><i data-lucide="bookmark" aria-hidden="true"></i> 북마크</button>
+                        <button type="button" data-board-search-trace="keyword" class="search-chip" aria-pressed="false"><i data-lucide="search" aria-hidden="true"></i> 검색어</button>
+                    </div>
+                    <div id="boardSearchKeywordWrap" class="search-filter-modal__keyword hidden">
+                        <label for="boardSearchKeyword" class="search-filter-modal__label">검색어</label>
+                        <input type="search" id="boardSearchKeyword" placeholder="제목, 본문, 닉네임…" autocomplete="off" class="search-filter-modal__input search-filter-modal__input--search">
+                    </div>
+                    <p class="search-filter-modal__hint">선택하지 않으면 해당 기간의 전체 글을 보여줍니다.</p>
+                </section>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" id="boardSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                <button type="button" id="boardSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
             </div>
         </div>
     </div>
 
-    <!-- 알림 (중앙 팝업) -->
+    <!-- 알림 (중앙 팝업 · Soft Mint Search/List) -->
     <div id="notificationModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
         <button type="button" id="notificationBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl max-h-[min(85vh,36rem)]">
-            <div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">
-                <h2 id="notificationModalTitle" class="text-lg font-bold tracking-tight text-slate-800">알림</h2>
-                <div class="flex items-center gap-1">
-                    <button type="button" id="notificationMarkAllReadBtn" class="rounded-lg px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 active:opacity-80">모두 읽음</button>
-                    <button type="button" id="notificationCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
+        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden min-h-[min(70vh,32rem)] max-h-[min(85vh,36rem)]">
+            <div class="notification-modal-head">
+                <h2 id="notificationModalTitle" class="notification-modal-title">알림</h2>
+                <div class="notification-modal-head-actions">
+                    <button type="button" id="notificationMarkAllReadBtn" class="notification-mark-all-btn">모두 읽음</button>
                 </div>
             </div>
-            <div class="flex shrink-0 gap-1 px-3 pt-3 pb-1" role="tablist" aria-label="알림 구분">
-                <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80">새 알림</button>
-                <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70">읽은 알림</button>
+            <div class="notification-modal-body">
+                <div class="notification-tab-row" role="tablist" aria-label="알림 구분">
+                    <button type="button" id="notificationTabUnread" role="tab" aria-selected="true" class="notification-tab-btn active">새 알림</button>
+                    <button type="button" id="notificationTabRead" role="tab" aria-selected="false" class="notification-tab-btn">읽은 알림</button>
+                </div>
+                <div id="notificationList" class="notification-list"></div>
+                <div id="notificationEmpty" class="notification-empty hidden"></div>
+                <p id="notificationReadHint" class="notification-read-hint hidden">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
             </div>
-            <div id="notificationList" class="min-h-[120px] flex-1 overflow-y-auto p-2"></div>
-            <div id="notificationEmpty" class="hidden p-4 text-center text-sm text-slate-400"></div>
-            <p id="notificationReadHint" class="hidden shrink-0 border-t border-slate-50 px-3 pb-3 pt-2 text-center text-[10px] leading-snug text-slate-400">읽은 알림은 최근 90일 이내·최대 50개까지 표시합니다.</p>
-            <div class="shrink-0 border-t border-slate-200">
-                <button type="button" id="notificationDismissBtn" class="w-full py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 active:bg-slate-200 rounded-b-2xl">닫기</button>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <button type="button" id="notificationDismissBtn" class="mealog-btn mealog-btn-secondary">닫기</button>
             </div>
         </div>
     </div>

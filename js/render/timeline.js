@@ -1996,6 +1996,7 @@ function setupTrackerMonthCalendarModal() {
     const prevBtn = document.getElementById('trackerMonthPrevMonth');
     const nextBtn = document.getElementById('trackerMonthNextMonth');
     const openBtn = document.getElementById('trackerMonthCalendarBtn');
+    const goTodayBtn = document.getElementById('trackerGoTodayBtn');
 
     const goPrev = () => {
         if (trackerMonthPopupYear == null || trackerMonthPopupMonth == null) return;
@@ -2034,6 +2035,17 @@ function setupTrackerMonthCalendarModal() {
             e.preventDefault();
             e.stopPropagation();
             openTrackerMonthCalendar();
+        });
+    }
+    if (goTodayBtn && !goTodayBtn.dataset.trackerGoTodayBound) {
+        goTodayBtn.dataset.trackerGoTodayBound = '1';
+        goTodayBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const todayIso = localTodayYmd();
+            if (typeof window.jumpToDate === 'function') {
+                window.jumpToDate(todayIso, { scroll: true, behavior: 'smooth' });
+            }
         });
     }
 }

@@ -387,18 +387,20 @@ function feedBubbleHtml(post, opts = {}) {
         isMine && isPendingSend && hasImg && !hasBody
             ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i data-lucide="loader-circle" class="text-[11px] leading-none lucide-spin" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
+    // 사진만: 말풍선 모서리와 동일 / 사진+글: 상단만 라운드(하단은 텍스트 영역)
+    const imgOnlyRound = isMine ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md';
     const imgWrapClass = hasImg
-        ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
-              combinedImgText ? 'rounded-t-2xl rounded-b-none' : 'rounded-lg'
+        ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex w-full flex-col gap-0.5 overflow-hidden ${
+              combinedImgText ? 'rounded-t-2xl rounded-b-none' : imgOnlyRound
           }`
         : '';
-    const imgChildRound = combinedImgText ? 'rounded-none' : 'rounded-lg';
+    const imgChildRound = combinedImgText ? 'rounded-none' : imgOnlyRound;
     const imgBlock = hasImg
         ? `<div class="${imgWrapClass}">${imgOnlyPendingSpinner}${imageUrlsToShow
               .map((urlRaw) => {
                   const src = escapeHtml(String(urlRaw));
-                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-w-[min(92vw,280px)] cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 ${imgChildRound}" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
-            <img src="${src}" alt="" class="pointer-events-none max-h-[min(42vh,280px)] w-full max-w-[min(92vw,280px)] ${imgChildRound} bg-slate-100 object-contain" loading="lazy" decoding="async">
+                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-h-[min(42vh,280px)] overflow-hidden cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 ${imgChildRound}" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
+            <img src="${src}" alt="" class="pointer-events-none block h-auto w-full ${imgChildRound} bg-slate-100 object-cover object-center" loading="lazy" decoding="async">
         </button>`;
               })
               .join('')}</div>`
@@ -416,11 +418,15 @@ function feedBubbleHtml(post, opts = {}) {
                 ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
                 : `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>`
             : '';
+        const mineColW = hasImg
+            ? 'w-full max-w-[min(88%,22rem)] sm:max-w-[18rem]'
+            : 'w-fit max-w-[min(88%,22rem)] sm:max-w-[18rem]';
+        const mineBubbleW = hasImg ? 'block w-full max-w-full overflow-hidden' : 'inline-block w-fit max-w-full';
         return `
             <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}"${isPendingSend ? ' aria-busy="true"' : ''}>
                 ${timeMine}
-                <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
-                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
+                <div class="flex ${mineColW} flex-col items-end">
+                    <div class="feed-chat-bubble feed-chat-bubble-mine ${mineBubbleW} text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
                         ${replyQ}
                         ${imgBlock}
                         ${bodyMine}
@@ -447,6 +453,7 @@ function feedBubbleHtml(post, opts = {}) {
     const reactRowOther = feedReactionRowHtml(post, false);
     const replyQOther = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'other') : '';
 
+    const otherBubbleW = hasImg ? 'block w-full max-w-[min(72vw,20rem)] sm:max-w-[18rem] overflow-hidden' : 'inline-block w-fit max-w-full';
     return `
         <div class="feed-timeline-row flex justify-start gap-2 pl-2 pr-2 sm:pr-10" data-post-id="${pid}">
             <div class="flex min-w-0 max-w-full items-start gap-2">
@@ -455,7 +462,7 @@ function feedBubbleHtml(post, opts = {}) {
                     ${nickRow}
                     <div class="flex min-w-0 max-w-full flex-col items-start">
                         <div class="flex max-w-full items-end gap-1">
-                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
+                            <div class="feed-chat-bubble feed-chat-bubble-other ${otherBubbleW} rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
                                 ${replyQOther}
                                 ${imgBlock}
                                 ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
