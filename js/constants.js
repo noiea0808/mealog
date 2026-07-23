@@ -63,6 +63,22 @@ export const SLOT_STYLES = {
     'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400', listLeft: 'border-l-[4px] border-l-slate-400/60' }
 };
 
+/** Lucide — 홈피드·슬롯 피커·공유카드 공통 (간식: 과일·커피·쿠키·치킨) */
+export const SLOT_LUCIDE_ICONS = {
+    morning: 'cloud-sun',
+    lunch: 'soup',
+    dinner: 'moon',
+    pre_morning: 'apple',
+    snack1: 'coffee',
+    snack2: 'cookie',
+    night: 'drumstick',
+    daily_journal: 'book-open'
+};
+
+export function getSlotLucideIcon(slotId) {
+    return SLOT_LUCIDE_ICONS[slotId] || 'utensils';
+}
+
 export const VIBRANT_COLORS = ['#3cb889', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 /** 분석 탭 누적 막대(식사방식/메뉴/함께한 즐거움) 좌→우 빈도순 그라데이션: 빨강→주황(1개)→호박→녹색→청록→남색 */
 export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC65', '#66BB6A', '#26C6DA', '#5C6BC0'];

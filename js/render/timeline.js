@@ -6,7 +6,8 @@ import {
     DAILY_JOURNAL_SLOT_STYLE,
     SATIETY_DATA,
     SNACK_TIMELINE_VIEW_STORAGE_KEY,
-    MEAL_TIMELINE_VIEW_STORAGE_KEY
+    MEAL_TIMELINE_VIEW_STORAGE_KEY,
+    getSlotLucideIcon
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
@@ -48,14 +49,8 @@ import {
 } from '../modals/diet-report.js';
 import { scheduleLucideIcons } from '../icons.js';
 
-const MAIN_MEAL_SLOT_LUCIDE = {
-    morning: 'cloud-sun',
-    lunch: 'soup', /* 밥공기(그릇) — sandwich보다 끼니 구분이 명확 */
-    dinner: 'moon'
-};
-
 function mainMealSlotLucideIcon(slotId) {
-    return MAIN_MEAL_SLOT_LUCIDE[slotId] || 'utensils';
+    return getSlotLucideIcon(slotId);
 }
 
 function mainMealSlotIconHtml(slotId, iconTextClass = 'text-slate-400', size = 'lg') {
@@ -954,7 +949,7 @@ function buildSnackTimelineCardHtml(
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = snackPhotoUrls.length > 0;
     let photoHtml = '';
-    let iconHtml = `<i data-lucide="coffee"></i>`;
+    let iconHtml = `<i data-lucide="${getSlotLucideIcon(slot.id)}"></i>`;
     if (hasPhoto) {
         photoHtml = buildTimelinePhotoCellInnerHtml(
             snackPhotoUrls,
@@ -1071,7 +1066,7 @@ function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon home-feed-card__icon--snack" aria-hidden="true"><i data-lucide="coffee"></i></div>
+            <div class="home-feed-card__icon home-feed-card__icon--snack" aria-hidden="true"><i data-lucide="${getSlotLucideIcon(slot.id)}"></i></div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta">${safeLabel}</div>
                 <div class="home-feed-card__title">기록하기</div>
@@ -1958,11 +1953,13 @@ function renderTrackerMonthCalendarPopup() {
     for (let d = 1; d <= dim; d++) {
         const iso = `${y}-${pad2(m)}-${pad2(d)}`;
         const c = getRecordCountForIso(iso, historyByDate);
-        const st = c >= 3 ? 'dot-full' : c > 0 ? 'dot-partial' : 'dot-none';
+        const st = dotStatusFromCount(c);
         const sel = iso === activeIso ? 'dot-selected' : '';
+        const dow = new Date(y, m - 1, d).getDay();
+        const weekend = dow === 0 || dow === 6 ? 'tracker-month-dot--weekend' : '';
         parts.push(
             `<button type="button" class="tracker-month-cell" data-tracker-popup-iso="${iso}" aria-label="${y}년 ${m}월 ${d}일">` +
-                `<div class="calendar-dot tracker-month-dot ${st} ${sel}">${d}</div>` +
+                `<div class="calendar-dot tracker-month-dot ${st} ${sel} ${weekend}">${d}</div>` +
                 `</button>`
         );
     }
@@ -1985,6 +1982,7 @@ export function openTrackerMonthCalendar() {
     if (!modal) return;
     modal.classList.remove('hidden');
     renderTrackerMonthCalendarPopup();
+    scheduleLucideIcons(modal);
 }
 
 export function refreshTrackerMonthCalendarPopupIfOpen() {
@@ -1995,7 +1993,6 @@ export function refreshTrackerMonthCalendarPopupIfOpen() {
 
 function setupTrackerMonthCalendarModal() {
     const backdrop = document.getElementById('trackerMonthCalendarBackdrop');
-    const closeBtn = document.getElementById('trackerMonthCalendarClose');
     const prevBtn = document.getElementById('trackerMonthPrevMonth');
     const nextBtn = document.getElementById('trackerMonthNextMonth');
     const openBtn = document.getElementById('trackerMonthCalendarBtn');
@@ -2028,7 +2025,6 @@ function setupTrackerMonthCalendarModal() {
     if (!trackerMonthCalendarModalBound) {
         trackerMonthCalendarModalBound = true;
         if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
-        if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
         if (prevBtn) prevBtn.addEventListener('click', goPrev);
         if (nextBtn) nextBtn.addEventListener('click', goNext);
     }
@@ -2211,7 +2207,10 @@ function setupMiniCalendarPointerDrag(container) {
 }
 
 function dotStatusFromCount(count) {
-    return count >= 3 ? 'dot-full' : count > 0 ? 'dot-partial' : 'dot-none';
+    if (count <= 0) return 'dot-none';
+    if (count === 1) return 'dot-low';
+    if (count === 2) return 'dot-mid';
+    return 'dot-full';
 }
 
 function activePageDateIso() {

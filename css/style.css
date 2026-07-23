@@ -1124,6 +1124,14 @@ header .mealog-title {
 .dot-none .calendar-density {
     background: transparent;
 }
+.dot-low .calendar-density {
+    background: var(--green-mute, #b4e2cd);
+    opacity: 0.55;
+}
+.dot-mid .calendar-density {
+    background: var(--green-mute, #b4e2cd);
+    opacity: 1;
+}
 .dot-partial .calendar-density {
     background: var(--green-mute, #b4e2cd);
 }
@@ -1134,6 +1142,8 @@ header .mealog-title {
     display: none;
 }
 .dot-full,
+.dot-mid,
+.dot-low,
 .dot-partial,
 .dot-none { 
     background: transparent; 
@@ -2015,54 +2025,125 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
 #timelineMealPhotosOverlay .meal-photo-wheel-inner::-webkit-scrollbar {
     display: none;
 }
-/* 트래커 월 팝업: 셀은 트래커와 동일 dot-* 클래스, 크기만 축소 */
+/* 트래커 월 팝업: Soft Mint — 원형 채움(1·2·3+건) · X 없음 */
+.tracker-month-calendar-nav {
+    display: grid;
+    grid-template-columns: 40px 1fr 40px;
+    align-items: center;
+    gap: 8px;
+}
+.tracker-month-calendar-heading {
+    margin: 0;
+    min-width: 0;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+}
+.tracker-month-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    background: var(--page-deep);
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.tracker-month-nav-btn:hover {
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+    color: var(--green-deep);
+}
+.tracker-month-nav-btn:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 1px;
+}
+.tracker-month-nav-btn [data-lucide],
+.tracker-month-nav-btn .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.25;
+}
+.tracker-month-weekday {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+.tracker-month-weekday--sun {
+    color: var(--coral, #f2a8b4);
+}
 .tracker-month-cell {
     display: flex;
-    min-height: 2.5rem;
+    min-height: 2.75rem;
     align-items: center;
     justify-content: center;
     padding: 0;
     border: none;
     background: transparent;
     cursor: pointer;
-    border-radius: 10px;
+    border-radius: 9999px;
     transition: background 0.15s ease;
 }
 .tracker-month-cell:not(.tracker-month-cell--empty):hover {
-    background: #f8fafc;
+    background: color-mix(in srgb, var(--green-soft) 70%, transparent);
 }
 .tracker-month-cell--empty {
-    min-height: 2.5rem;
+    min-height: 2.75rem;
     pointer-events: none;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot {
-    width: 30px;
-    height: 30px;
-    border-radius: 10px;
-    font-size: 10px;
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 600;
     margin: 0;
     box-shadow: none;
+    border: 0;
+    font-variant-numeric: tabular-nums;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot .calendar-density {
     display: none;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-none {
+    background: transparent;
+    color: var(--ink);
+}
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-none.tracker-month-dot--weekend {
+    color: var(--coral, #f2a8b4);
+}
+/* 1건 */
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-low {
     background: var(--green-soft);
-    color: #64748b;
-}
-.tracker-month-cell .calendar-dot.tracker-month-dot.dot-partial {
-    background: #e5f2db;
     color: var(--green-deep);
-    border: 1.5px solid var(--green-mute);
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1.5px var(--green-mute);
 }
+/* 2건 */
+.tracker-month-cell .calendar-dot.tracker-month-dot.dot-mid {
+    background: var(--green-mute);
+    color: var(--green-deep);
+    font-weight: 700;
+}
+/* 3건+ */
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-full {
-    background: var(--green-deep);
+    background: var(--green);
     color: #ffffff;
+    font-weight: 700;
 }
 .tracker-month-cell .calendar-dot.tracker-month-dot.dot-selected {
     background: var(--green, #3cb889) !important;
     color: #ffffff !important;
-    box-shadow: 0 3px 10px rgba(45, 159, 116, 0.28);
+    font-weight: 700;
+    box-shadow: 0 6px 14px rgba(60, 184, 137, 0.32);
 }
 .tracker-calendar-icon-btn:focus-visible {
     outline: 2px solid var(--green);
@@ -2638,6 +2719,8 @@ body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calend
     border: 0 !important;
 }
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-mid,
+body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-low,
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial,
 body:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
@@ -2777,6 +2860,8 @@ body[data-main-tab='timeline'] #miniCalendar .calendar-item.weekend .calendar-do
 }
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot,
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-full,
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-mid,
+body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-low,
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-partial,
 body[data-main-tab='timeline'] #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
@@ -2867,6 +2952,8 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 }
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-full,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-mid,
+body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-low,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-partial,
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #miniCalendar .calendar-dot.dot-none {
     background: transparent !important;
@@ -2883,10 +2970,13 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     color: var(--green-deep) !important;
     font-weight: 700;
 }
-/* 월 캘린더 팝업: 트래커 가로 스크롤과 동일 dot 스타일(흰색 크롬 규칙 제외) */
-#trackerMonthCalendarModal .calendar-dot.dot-none {
-    background: var(--green-soft);
-    color: #64748b;
+/* 월 캘린더 팝업: 기록 없는 날은 원 없이 숫자만 (가로 스크롤 미니캘 density와 별도) */
+#trackerMonthCalendarModal .tracker-month-dot.dot-none {
+    background: transparent;
+    color: var(--ink);
+}
+#trackerMonthCalendarModal .tracker-month-dot.dot-none.tracker-month-dot--weekend {
+    color: var(--coral, #f2a8b4);
 }
 
 /* 체험 모드: 하단 네비 바로 위 메뉴 안내 박스 (콘텐츠 영역 폭 기준) */
@@ -12050,6 +12140,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     display: grid;
     grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
 }
+#entryModal .entry-axis-input-row:has(> .entry-field-quick-toggle) {
+    grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr) auto;
+}
 #entryModal .entry-axis-input-row > .entry-axis-label.entry-axis-label-with-icon {
     grid-column: 1;
 }
@@ -12058,6 +12151,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     min-width: 0;
     padding-left: var(--entry-form-input-pl);
     width: 100%;
+}
+#entryModal .entry-axis-input-row > .entry-field-quick-toggle {
+    grid-column: 3;
+    justify-self: end;
 }
 
 /* ── 입력 필드 (핵심 강조) ── */
@@ -13263,7 +13360,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #momentSearchModal > div,
 #boardSearchModal > div,
 #notificationModal > div,
-#trackerMonthCalendarModal > div {
+#trackerMonthCalendarModal .tracker-month-calendar-panel {
     border-radius: var(--shell-r-dialog) !important;
     border: 1px solid var(--line) !important;
     background: var(--card) !important;

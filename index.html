@@ -2439,19 +2439,26 @@
     <!-- 트래커 월 캘린더 (기록 여부 = 타임라인 트래커와 동일 로직) -->
     <div id="trackerMonthCalendarModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="trackerMonthCalendarHeading">
         <button type="button" id="trackerMonthCalendarBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="relative z-10 w-full max-w-[19rem] rounded-2xl border border-slate-100 bg-white p-4 shadow-xl">
-            <div class="mb-3 flex items-center justify-between gap-2">
-                <button type="button" id="trackerMonthPrevMonth" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-lg font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="이전 달">‹</button>
-                <h2 id="trackerMonthCalendarHeading" class="min-w-0 flex-1 text-center text-base font-black tracking-tight text-slate-800">2026년 3월</h2>
-                <div class="flex flex-shrink-0 items-center gap-0.5">
-                    <button type="button" id="trackerMonthNextMonth" class="flex h-9 w-9 items-center justify-center rounded-xl text-lg font-bold text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800" aria-label="다음 달">›</button>
-                    <button type="button" id="trackerMonthCalendarClose" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
-                </div>
+        <div class="tracker-month-calendar-panel relative z-10 w-full max-w-[19.5rem] p-4">
+            <div class="tracker-month-calendar-nav mb-3.5">
+                <button type="button" id="trackerMonthPrevMonth" class="tracker-month-nav-btn" aria-label="이전 달">
+                    <i data-lucide="chevron-left" aria-hidden="true"></i>
+                </button>
+                <h2 id="trackerMonthCalendarHeading" class="tracker-month-calendar-heading">2026년 3월</h2>
+                <button type="button" id="trackerMonthNextMonth" class="tracker-month-nav-btn" aria-label="다음 달">
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
+                </button>
             </div>
-            <div class="mb-1.5 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+            <div class="tracker-month-weekdays mb-1.5 grid grid-cols-7 text-center">
+                <span class="tracker-month-weekday tracker-month-weekday--sun">일</span>
+                <span class="tracker-month-weekday">월</span>
+                <span class="tracker-month-weekday">화</span>
+                <span class="tracker-month-weekday">수</span>
+                <span class="tracker-month-weekday">목</span>
+                <span class="tracker-month-weekday">금</span>
+                <span class="tracker-month-weekday">토</span>
             </div>
-            <div id="trackerMonthCalendarGrid" class="grid grid-cols-7 gap-1"></div>
+            <div id="trackerMonthCalendarGrid" class="grid grid-cols-7 gap-y-0.5"></div>
         </div>
     </div>
 
@@ -2712,9 +2719,6 @@
                                     <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
-                                <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
-                                    <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
-                                </button>
                             </div>
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                 <div class="relative min-w-0">
@@ -2724,6 +2728,9 @@
                                     <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                                 </div>
                             </div>
+                            <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
+                                <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                            </button>
                         </div>
                         <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                         <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWhereInput"></div>
@@ -2736,9 +2743,6 @@
                                         <i data-lucide="utensils" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>무엇을</span>
                                     </span>
-                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="what" aria-expanded="false" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
-                                        <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
-                                    </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <div id="mealWhatInputArea" class="w-full min-w-0">
@@ -2755,6 +2759,9 @@
                                         </div>
                                     </div>
                                 </div>
+                                <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="what" aria-expanded="false" aria-label="무엇을 빠른 입력" title="무엇을 빠른 입력">
+                                    <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                </button>
                             </div>
                             <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                             <div id="entryWhatSuggestions" class="entry-form-field-subtags entry-subtag-suggestions"></div>
@@ -2766,13 +2773,13 @@
                                         <i data-lucide="users" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>누구와</span>
                                     </span>
-                                    <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
-                                        <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
-                                    </button>
                                 </div>
                                 <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                     <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                                 </div>
+                                <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
+                                    <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
+                                </button>
                             </div>
                             <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                             <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWithInput"></div>

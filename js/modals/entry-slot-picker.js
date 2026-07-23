@@ -3,7 +3,7 @@
  * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 기록은 하단에 둔다.
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
-import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, DAILY_JOURNAL_SLOT_STYLE } from '../constants.js';
+import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, DAILY_JOURNAL_SLOT_STYLE, getSlotLucideIcon } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
@@ -14,15 +14,6 @@ import {
 } from '../utils/daily-journal-data.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
-
-/** 홈피드·타임라인과 동일 Lucide 슬롯 아이콘 */
-const SLOT_PICKER_LUCIDE = {
-    morning: 'cloud-sun',
-    lunch: 'soup',
-    dinner: 'moon',
-    snack: 'coffee',
-    daily: 'book-open'
-};
 
 let pickerBound = false;
 let pendingDateIso = '';
@@ -68,9 +59,7 @@ function formatPickerDateLabel(dateIso) {
 }
 
 function slotLucideIcon(slot) {
-    if (slot.type === 'daily') return SLOT_PICKER_LUCIDE.daily;
-    if (slot.type === 'snack') return SLOT_PICKER_LUCIDE.snack;
-    return SLOT_PICKER_LUCIDE[slot.id] || 'utensils';
+    return getSlotLucideIcon(slot.id);
 }
 
 function slotTint(slot) {

@@ -605,13 +605,28 @@
         shell: 'search', name: '월 캘린더', dom: 'trackerMonthCalendarModal',
         html: () => `<div class="pv-overlay pv-overlay--center">
           <div class="pv-dialog">
-            <div class="pv-head"><div><h3>2026년 3월</h3></div>${xBtn()}</div>
+            <div class="pv-head" style="justify-content:center;gap:12px">
+              <button type="button" class="pv-icon" aria-label="이전 달" style="border:1px solid var(--line);border-radius:999px;background:var(--page-deep)">‹</button>
+              <div style="flex:1;text-align:center"><h3 style="margin:0">2026년 7월</h3></div>
+              <button type="button" class="pv-icon" aria-label="다음 달" style="border:1px solid var(--line);border-radius:999px;background:var(--page-deep)">›</button>
+            </div>
             <div class="pv-body">
               <div class="pv-cal">
                 <div class="dow">일</div><div class="dow">월</div><div class="dow">화</div><div class="dow">수</div><div class="dow">목</div><div class="dow">금</div><div class="dow">토</div>
-                <div class="d"></div><div class="d"></div><div class="d"></div><div class="d"></div><div class="d"></div><div class="d"></div><div class="d">1</div>
-                <div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div>
-                <div class="d">9</div><div class="d">10</div><div class="d">11</div><div class="d on">12</div><div class="d">13</div><div class="d">14</div><div class="d">15</div>
+                <div class="d"></div><div class="d"></div><div class="d">1</div><div class="d">2</div>
+                <div class="d" style="background:var(--green-soft);color:var(--green-deep);border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--green-mute)">3</div>
+                <div class="d" style="background:var(--green);color:#fff;border-radius:999px">4</div><div class="d">5</div>
+                <div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div>
+                <div class="d" style="background:var(--green);color:#fff;border-radius:999px">10</div><div class="d">11</div><div class="d">12</div>
+                <div class="d">13</div>
+                <div class="d" style="background:var(--green-soft);color:var(--green-deep);border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--green-mute)">14</div>
+                <div class="d">15</div><div class="d">16</div>
+                <div class="d" style="background:var(--green);color:#fff;border-radius:999px">17</div>
+                <div class="d">18</div><div class="d">19</div><div class="d">20</div><div class="d">21</div>
+                <div class="d on" style="border-radius:999px;box-shadow:0 6px 14px rgba(60,184,137,.32)">22</div>
+                <div class="d">23</div><div class="d">24</div>
+                <div class="d" style="background:var(--green-soft);color:var(--green-deep);border-radius:999px;box-shadow:inset 0 0 0 1.5px var(--green-mute)">25</div>
+                <div class="d">26</div><div class="d">27</div><div class="d">28</div><div class="d">29</div><div class="d">30</div><div class="d">31</div>
               </div>
             </div>
           </div>

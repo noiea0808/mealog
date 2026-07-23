@@ -10,7 +10,8 @@ import {
     MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE,
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
     MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT
+    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
+    getSlotLucideIcon
 } from '../constants.js';
 import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
@@ -246,7 +247,7 @@ function shareMealLikeCardHtml(dateStr, slot, r, specificStyle, photoAreaEmptyBg
             iconHtml = '<i data-lucide="ban" style="font-size: 24px; color: #94a3b8;"></i>';
         } else {
             iconBoxStyle = `background: ${photoAreaEmptyBg}; border-right: 1px solid #e2e8f0;`;
-            iconHtml = `<i data-lucide="coffee" style="font-size: 24px; color: #94a3b8;"></i>`;
+            iconHtml = `<i data-lucide="${getSlotLucideIcon(slot.id)}" style="font-size: 24px; color: #94a3b8;"></i>`;
         }
     }
 
