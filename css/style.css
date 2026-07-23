@@ -4534,6 +4534,15 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
     pointer-events: auto;
     overflow-x: hidden;
 }
+/* 캡션 푸터는 pointer-events:none — 작성자(프로필 진입)·코멘트 밴드는 다시 수신 */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-author-row,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-author-row,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-author-row,
+#galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-author-hit,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-author-hit,
+#moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-author-hit {
+    pointer-events: auto;
+}
 #galleryContainer.moment-feed-layout-v2 .moment-v2-caption-footer .moment-v2-author-comment-band,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-caption-footer .moment-v2-author-comment-band,
 #moment-v2-fixed-caption-layer .moment-v2-caption-footer .moment-v2-author-comment-band {

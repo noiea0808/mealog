@@ -275,7 +275,7 @@ function buildV2AuthorRowHtml(overlayRow, photo, flags = {}, entryId) {
         avatarBlock = `<div class="moment-v2-avatar moment-v2-avatar--fallback" aria-hidden="true">${ch}</div>`;
     }
     return `<div class="moment-v2-author-row">
-        <button type="button" class="moment-v2-author-hit flex min-w-0 flex-1 items-center gap-2.5 text-left" onclick='event.stopPropagation();window.filterGalleryByUser && window.filterGalleryByUser(${JSON.stringify(
+        <button type="button" class="moment-v2-author-hit pointer-events-auto flex min-w-0 flex-1 items-center gap-2.5 text-left" onclick='event.stopPropagation();window.filterGalleryByUser && window.filterGalleryByUser(${JSON.stringify(
             String(a.userId || '')
         )}, ${JSON.stringify(String(a.nickname || ''))})'>
             ${avatarBlock}
