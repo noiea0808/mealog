@@ -2,7 +2,7 @@
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
-import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
+import { renderEntryChips, renderPhotoPreviews, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
 import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
@@ -1051,6 +1051,7 @@ function applyEntryModalSaveButtonState(entryId, savedRecord) {
 
 function populateSavedRecordIntoForm(r, isS, state) {
     state.currentPhotos = Array.isArray(r.photos) ? r.photos : r.photos ? [r.photos] : [];
+    state.recordPhotoHeroIndex = 0;
     state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
     const isShareBanned = r.shareBanned === true;
     const sharedUrls = r.id ? getSharedPhotoUrlsForEntry(r.id) : [];
@@ -1307,6 +1308,7 @@ export async function openModal(date, slotId, entryId = null) {
         state.currentEditingSlotId = slotId;
         resetEntryMealClockSessionFlagsForOpen(!entryId);
         state.currentPhotos = [];
+        state.recordPhotoHeroIndex = 0;
         state.currentPhotoMeta = [];
         state.entryMealClockSourceMain = null;
         state.entryMealClockSourceSnack = null;
@@ -1437,6 +1439,7 @@ export function closeModal() {
     if (state) {
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.recordPhotoHeroIndex = 0;
         state.currentPhotoMeta = [];
         state.entryMealClockSourceMain = null;
         state.entryMealClockSourceSnack = null;
@@ -3634,13 +3637,18 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
             const exifMetaEntries = await Promise.all(filesToProcess.map((file) => createPhotoMetaFromFile(file)));
 
+            let added = 0;
             sortedResults.slice(0, availableSlots).forEach(({ index, dataUrl }) => {
                 if (state.currentPhotos.length < RECORD_MAX_PHOTOS) {
                     state.currentPhotos.push(dataUrl);
                     if (!Array.isArray(state.currentPhotoMeta)) state.currentPhotoMeta = [];
                     state.currentPhotoMeta.push(exifMetaEntries[index] || { takenAt: null });
+                    added += 1;
                 }
             });
+            if (added > 0) {
+                state.recordPhotoHeroIndex = state.currentPhotos.length - 1;
+            }
 
             renderPhotoPreviews();
             updateShareIndicator();
@@ -3682,12 +3690,42 @@ export function openRecordGalleryPicker(isSnack = false) {
 
 export function removePhoto(idx) {
     const state = appState;
-    state.currentPhotos.splice(idx, 1);
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0 || i >= state.currentPhotos.length) return;
+    state.currentPhotos.splice(i, 1);
     if (Array.isArray(state.currentPhotoMeta)) {
-        state.currentPhotoMeta.splice(idx, 1);
+        state.currentPhotoMeta.splice(i, 1);
     }
+    if (state.recordPhotoHeroIndex > i) {
+        state.recordPhotoHeroIndex -= 1;
+    }
+    clampRecordPhotoHeroIndex();
     renderPhotoPreviews();
     updateShareIndicator();
+}
+
+/** 히어로에 표시할 사진 선택 (썸네일 탭) */
+export function selectRecordPhotoPreview(idx) {
+    const photos = appState.currentPhotos;
+    if (!Array.isArray(photos) || photos.length === 0) return;
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0 || i >= photos.length) return;
+    if (appState.recordPhotoHeroIndex === i) return;
+    appState.recordPhotoHeroIndex = i;
+    renderPhotoPreviews();
+}
+
+/** 히어로 사진 좌우 이동 */
+export function navigateRecordPhotoPreview(delta) {
+    const photos = appState.currentPhotos;
+    if (!Array.isArray(photos) || photos.length < 2) return;
+    const d = Number(delta);
+    if (!Number.isInteger(d) || d === 0) return;
+    const cur = clampRecordPhotoHeroIndex();
+    const next = cur + d;
+    if (next < 0 || next >= photos.length) return;
+    appState.recordPhotoHeroIndex = next;
+    renderPhotoPreviews();
 }
 
 /** 사진 순서: 인접 항목과 교환 (delta -1 = 앞쪽, +1 = 뒤쪽) */
@@ -3709,6 +3747,8 @@ export function movePhotoOrder(idx, delta) {
         meta[i] = meta[j];
         meta[j] = tmpMeta;
     }
+    if (state.recordPhotoHeroIndex === i) state.recordPhotoHeroIndex = j;
+    else if (state.recordPhotoHeroIndex === j) state.recordPhotoHeroIndex = i;
     renderPhotoPreviews();
 }
 

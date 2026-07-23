@@ -48,6 +48,7 @@ export {
     renderGallery,
     invalidateGalleryRenderSession,
     filterGalleryByUser,
+    resetGalleryUserFilterState,
     clearGalleryFilter,
     switchGalleryFilterTab
 } from './gallery.js';
@@ -58,6 +59,7 @@ export { renderFeed, toggleFeedComment } from './feed.js';
 // 나머지 함수들은 render.js에서 re-export
 export {
     renderPhotoPreviews,
+    clampRecordPhotoHeroIndex,
     toggleComment,
     renderTagManager
 } from '../render.js';

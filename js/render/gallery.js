@@ -727,12 +727,11 @@ export async function renderGallery(options = {}) {
                         if (avatar.type === 'photo') {
                             iconEl.textContent = '';
                             iconEl.style.backgroundImage = `url(${avatar.value})`;
-                            iconEl.classList.add('bg-cover', 'bg-center');
-                            iconEl.classList.remove('bg-slate-200', 'bg-indigo-100');
+                            iconEl.className = 'gallery-filter-icon gallery-user-profile-avatar';
                         } else {
                             iconEl.textContent = avatar.value;
                             iconEl.style.backgroundImage = '';
-                            iconEl.className = `gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 bg-slate-200 ${avatar.type === 'emoji' ? '' : 'text-slate-700'}`;
+                            iconEl.className = `gallery-filter-icon gallery-user-profile-avatar gallery-user-profile-avatar--fallback${avatar.type === 'emoji' ? ' gallery-user-profile-avatar--emoji' : ''}`;
                         }
                     }
                     if (photoEl && disp.photoUrl) {
@@ -754,29 +753,34 @@ export async function renderGallery(options = {}) {
         
         const isFilteredUserGuest = window.currentUser && window.currentUser.isAnonymous && filterUserId === window.currentUser.uid;
         userProfileHeader = `
-            <div class="gallery-user-profile-header bg-white">
+            <div class="gallery-user-profile-header">
                 <div class="gallery-user-profile-scrollable">
-                    <div class="px-4 py-3 flex items-center gap-2 border-b border-slate-200">
-                        <button onclick="window.clearGalleryFilter()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
-                            <i data-lucide="arrow-left" class="text-lg"></i>
+                    <div class="gallery-user-profile-top">
+                        <button type="button" onclick="window.clearGalleryFilter()" class="gallery-user-profile-back" aria-label="뒤로가기">
+                            <svg class="gallery-user-profile-back__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M19 12H5"></path>
+                                <path d="m12 19-7-7 7-7"></path>
+                            </svg>
                         </button>
-                        ${initialAvatar.type === 'photo' ? `
-                            <div class="gallery-filter-photo w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border border-slate-300 bg-slate-100" style="background-image: url(${initialAvatar.value}); background-size: cover; background-position: center;"></div>
-                        ` : `
-                            <div class="gallery-filter-icon w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 border border-slate-300 bg-slate-200 ${initialAvatar.type === 'emoji' ? '' : 'text-slate-700'}">${escapeHtml(initialAvatar.value)}</div>
-                        `}
-                        <div class="flex-1 min-w-0">
-                            <div class="gallery-filter-nickname text-sm font-bold text-slate-800">${initialDisplay.nickname || '익명'}</div>
-                            <div class="gallery-filter-joined text-xs text-slate-400"></div>
+                        <div class="gallery-user-profile-identity">
+                            ${initialAvatar.type === 'photo' ? `
+                                <div class="gallery-filter-photo gallery-user-profile-avatar" style="background-image: url(${initialAvatar.value});"></div>
+                            ` : `
+                                <div class="gallery-filter-icon gallery-user-profile-avatar gallery-user-profile-avatar--fallback ${initialAvatar.type === 'emoji' ? 'gallery-user-profile-avatar--emoji' : ''}">${escapeHtml(initialAvatar.value)}</div>
+                            `}
+                            <div class="gallery-user-profile-meta min-w-0">
+                                <div class="gallery-filter-nickname">${initialDisplay.nickname || '익명'}</div>
+                                <div class="gallery-filter-joined"></div>
+                            </div>
                         </div>
                     </div>
-                    <div class="px-4 py-3 border-b-2 border-slate-200 bg-slate-50/50">
-                        <div class="gallery-filter-bio text-sm whitespace-pre-wrap min-h-[1.25rem] text-slate-400 italic">불러오는 중…</div>
+                    <div class="gallery-user-profile-bio-wrap">
+                        <div class="gallery-filter-bio text-slate-400 italic">불러오는 중…</div>
                     </div>
                 </div>
-                <div class="gallery-filter-tabs sticky top-0 z-30 flex w-full min-w-0 bg-white border-t-2 border-slate-200">
-                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'moment' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">모먼트</button>
-                    <button type="button" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn flex-1 min-w-0 py-3 text-sm font-bold transition-colors border-b-2 ${galleryFilterTab === 'board' ? 'text-emerald-600 border-emerald-600' : 'text-slate-600 border-transparent'}">게시판</button>
+                <div class="gallery-filter-tabs sticky top-0 z-30" role="tablist" aria-label="내 게시물 유형">
+                    <button type="button" role="tab" aria-selected="${galleryFilterTab === 'moment' ? 'true' : 'false'}" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn ${galleryFilterTab === 'moment' ? 'is-active' : ''}">모먼트</button>
+                    <button type="button" role="tab" aria-selected="${galleryFilterTab === 'board' ? 'true' : 'false'}" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn ${galleryFilterTab === 'board' ? 'is-active' : ''}">게시판</button>
                 </div>
             </div>
         `;
@@ -843,6 +847,8 @@ export async function renderGallery(options = {}) {
                 isRenderingGallery = false;
             }
         })();
+        scheduleLucideIcons(container);
+        if (window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
         return;
     }
     
@@ -850,6 +856,8 @@ export async function renderGallery(options = {}) {
         container.innerHTML = userProfileHeader + buildGalleryEmptyMomentBlock(!!appState.galleryFeedNetworkError, filterUserId);
         // 이전 포스트 ID 목록 초기화
         previousGalleryPostIds.clear();
+        scheduleLucideIcons(container);
+        if (window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
         // 빈 갤러리일 때도 맨 위로 스크롤
         setTimeout(() => {
             if (!abortSignal || !abortSignal.aborted) {
@@ -1591,6 +1599,7 @@ export async function renderGallery(options = {}) {
     
     console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
     scheduleLucideIcons(container);
+    if (filterUserId && window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
     } catch (error) {
         console.error('[renderGallery] 오류 발생:', error);
         console.error('[renderGallery] 스택:', error.stack);
@@ -1624,9 +1633,8 @@ export function filterGalleryByUser(userId, userNickname) {
     renderGallery();
 }
 
-// 갤러리 필터링 해제 함수 (뒤로가기 시 진입했던 탭으로 복귀)
-export async function clearGalleryFilter() {
-    const returnTab = appState.galleryFilterEntryTab;
+/** 사용자 프로필(내 게시물) 필터 상태만 해제 — 하단 네비로 이탈할 때 사용 (복귀 탭 이동 없음) */
+export function resetGalleryUserFilterState() {
     appState.galleryFilterUserId = null;
     appState.galleryFilterTab = 'moment';
     appState.galleryFilterEntryTab = null;
@@ -1639,6 +1647,13 @@ export async function clearGalleryFilter() {
     appState.galleryUserProfileSharedDocSnaps = null;
     const mainHeader = document.querySelector('#mainApp > header');
     if (mainHeader) mainHeader.classList.remove('hidden');
+    document.body.removeAttribute('data-gallery-filter-nav');
+}
+
+// 갤러리 필터링 해제 함수 (뒤로가기 시 진입했던 탭으로 복귀)
+export async function clearGalleryFilter() {
+    const returnTab = appState.galleryFilterEntryTab;
+    resetGalleryUserFilterState();
     if (returnTab === 'board') {
         if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
         return;

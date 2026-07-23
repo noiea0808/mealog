@@ -59,13 +59,13 @@ import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './a
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
-    handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
+    handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
@@ -137,6 +137,8 @@ window.filterGalleryByUser = filterGalleryByUser;
 window.Mealog.filterGalleryByUser = filterGalleryByUser;
 window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
+window.resetGalleryUserFilterState = resetGalleryUserFilterState;
+window.Mealog.resetGalleryUserFilterState = resetGalleryUserFilterState;
 window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 let reloadMomentFeedInFlight = false;
@@ -241,17 +243,25 @@ window.openMyPostsFromSettings = () => {
 };
 window.Mealog.openMyPostsFromSettings = window.openMyPostsFromSettings;
 
-// 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
+// 사용자 프로필 뷰 내 모먼트/게시판 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
 window.syncBottomNavForGalleryFilter = () => {
     const navGallery = document.getElementById('nav-gallery');
     const navBoard = document.getElementById('nav-board');
     if (!navGallery || !navBoard) return;
-    if (appState.currentTab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-        navGallery.classList.remove('active');
-        navBoard.classList.add('active');
-    } else if (appState.currentTab === 'gallery') {
-        navGallery.classList.add('active');
-        navBoard.classList.remove('active');
+    if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        document.body.dataset.galleryFilterNav = 'board';
+        if (appState.currentTab === 'gallery') {
+            navGallery.classList.remove('active');
+            navBoard.classList.add('active');
+        }
+    } else if (appState.galleryFilterUserId) {
+        document.body.dataset.galleryFilterNav = 'moment';
+        if (appState.currentTab === 'gallery') {
+            navGallery.classList.add('active');
+            navBoard.classList.remove('active');
+        }
+    } else {
+        document.body.removeAttribute('data-gallery-filter-nav');
     }
 };
 window.Mealog.syncBottomNavForGalleryFilter = window.syncBottomNavForGalleryFilter;
@@ -371,6 +381,10 @@ window.removePhoto = removePhoto;
 window.Mealog.removePhoto = removePhoto;
 window.movePhotoOrder = movePhotoOrder;
 window.Mealog.movePhotoOrder = movePhotoOrder;
+window.selectRecordPhotoPreview = selectRecordPhotoPreview;
+window.Mealog.selectRecordPhotoPreview = selectRecordPhotoPreview;
+window.navigateRecordPhotoPreview = navigateRecordPhotoPreview;
+window.Mealog.navigateRecordPhotoPreview = navigateRecordPhotoPreview;
 window.updateShareIndicator = updateShareIndicator;
 window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;

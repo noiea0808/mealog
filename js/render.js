@@ -3,6 +3,7 @@ import { SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, RECORD_MAX_PHOTOS } from
 import { appState } from './state.js';
 import { escapeHtml, renderFormattedContent, getPlainTextPreview } from './render/utils.js';
 import { setPhotoAddButtonsEnabled } from './utils/image-source-picker.js';
+import { scheduleLucideIcons } from './icons.js';
 
 // renderTimeline과 renderMiniCalendar는 render/timeline.js로 이동됨
 
@@ -12,6 +13,49 @@ function getRecordPhotoAspectRatioCss() {
     if (ratio === '3:4') return '3/4';
     if (ratio === '4:3') return '4/3';
     return '1';
+}
+
+export function clampRecordPhotoHeroIndex() {
+    const n = Array.isArray(appState.currentPhotos) ? appState.currentPhotos.length : 0;
+    if (n <= 0) {
+        appState.recordPhotoHeroIndex = 0;
+        return 0;
+    }
+    let i = Number(appState.recordPhotoHeroIndex);
+    if (!Number.isInteger(i) || i < 0) i = 0;
+    if (i >= n) i = n - 1;
+    appState.recordPhotoHeroIndex = i;
+    return i;
+}
+
+function buildHeroPhotoHtml(src, idx, total, aspectCss) {
+    const showNav = total > 1;
+    const disPrev = idx <= 0 ? ' disabled' : '';
+    const disNext = idx >= total - 1 ? ' disabled' : '';
+    const navHtml = showNav
+        ? `
+            <button type="button" class="photo-preview-hero-nav photo-preview-hero-nav--prev" onclick="window.navigateRecordPhotoPreview(-1)"${disPrev} aria-label="이전 사진">
+                <i data-lucide="chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="photo-preview-hero-nav photo-preview-hero-nav--next" onclick="window.navigateRecordPhotoPreview(1)"${disNext} aria-label="다음 사진">
+                <i data-lucide="chevron-right" aria-hidden="true"></i>
+            </button>`
+        : '';
+    return `<div class="photo-preview-item photo-preview-item--hero relative overflow-hidden bg-slate-100 select-none" style="aspect-ratio: ${aspectCss}; -webkit-touch-callout:none;" data-index="${idx}">
+                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
+                ${navHtml}
+                <button type="button" onclick="window.removePhoto(${idx})" class="photo-preview-delete-text" title="사진 삭제" aria-label="사진 삭제">삭제</button>
+                <button type="button" onclick="window.editPhoto(${idx})" class="photo-preview-edit-text" title="사진 편집" aria-label="사진 편집">편집</button>
+                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
+            </div>`;
+}
+
+function buildThumbPhotoHtml(src, idx, selected, aspectCss) {
+    const selectedClass = selected ? ' is-selected' : '';
+    return `<button type="button" class="photo-preview-item photo-preview-item--thumb relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-300 select-none${selectedClass}" style="aspect-ratio: ${aspectCss}; -webkit-touch-callout:none;" data-index="${idx}" onclick="window.selectRecordPhotoPreview(${idx})" aria-label="사진 ${idx + 1} 선택" aria-pressed="${selected ? 'true' : 'false'}">
+                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
+                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
+            </button>`;
 }
 
 export function renderPhotoPreviews() {
@@ -24,43 +68,37 @@ export function renderPhotoPreviews() {
     const countEl = document.getElementById(countId);
     const cameraBtn = document.getElementById(cameraBtnId);
     const albumBtn = document.getElementById(albumBtnId);
-    
-    // currentPhotos가 배열인지 확인하고, 배열이 아니면 배열로 변환
+
     if (!Array.isArray(appState.currentPhotos)) {
         appState.currentPhotos = appState.currentPhotos ? [appState.currentPhotos] : [];
     }
-    
+
     const maxPhotos = RECORD_MAX_PHOTOS;
     const currentCount = appState.currentPhotos.length;
-    
+    const photos = appState.currentPhotos;
+    const heroIdx = clampRecordPhotoHeroIndex();
+
     if (container) {
         const aspectCss = getRecordPhotoAspectRatioCss();
-        container.innerHTML = appState.currentPhotos.map((src, idx) => {
-            const total = appState.currentPhotos.length;
-            const disPrev = idx === 0 ? ' disabled' : '';
-            const disNext = idx === total - 1 ? ' disabled' : '';
-            return `<div class="photo-preview-item relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-300 select-none" style="width: 7rem; aspect-ratio: ${aspectCss};-webkit-touch-callout:none;" data-index="${idx}" data-original-index="${idx}">
-                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
-                <button type="button" onclick="window.removePhoto(${idx})" class="photo-remove-btn" aria-label="사진 삭제">
-                    <i data-lucide="x"></i>
-                </button>
-                <div class="photo-preview-bottom-bar absolute bottom-0 left-0 right-0 z-10 flex gap-0.5 px-0.5 pb-0.5 pt-2 bg-gradient-to-t from-black/65 via-black/30 to-transparent pointer-events-none">
-                    <button type="button" onclick="window.movePhotoOrder(${idx}, -1)" class="photo-order-btn pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로">
-                        <i data-lucide="chevron-left" class="text-[9px]"></i>
-                    </button>
-                    <button type="button" onclick="window.editPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
-                        <i data-lucide="square-pen" class="text-[9px]"></i>
-                    </button>
-                    <button type="button" onclick="window.movePhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
-                        <i data-lucide="chevron-right" class="text-[9px]"></i>
-                    </button>
-                </div>
-                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
-            </div>`;
-        }).join('');
+        if (currentCount === 0) {
+            container.innerHTML = '';
+        } else {
+            const heroHtml = buildHeroPhotoHtml(photos[heroIdx], heroIdx, currentCount, aspectCss);
+            const thumbsHtml = photos
+                .map((src, i) => buildThumbPhotoHtml(src, i, i === heroIdx, aspectCss))
+                .join('');
+            container.innerHTML = `
+                <div class="entry-photo-hero">${heroHtml}</div>
+                <div class="entry-photo-thumb-strip" aria-label="등록된 사진">${thumbsHtml}</div>
+            `;
+            scheduleLucideIcons(container);
+            const selectedThumb = container.querySelector('.photo-preview-item--thumb.is-selected');
+            if (selectedThumb && typeof selectedThumb.scrollIntoView === 'function') {
+                selectedThumb.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+            }
+        }
     }
-    
-    // 사진 개수 표시
+
     if (countEl) {
         countEl.innerText = `${currentCount}/${maxPhotos}`;
         if (currentCount >= maxPhotos) {
@@ -71,7 +109,7 @@ export function renderPhotoPreviews() {
             countEl.classList.add('text-slate-400');
         }
     }
-    
+
     setPhotoAddButtonsEnabled([cameraBtn, albumBtn], currentCount < maxPhotos, {
         disabledTitle: `사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다`
     });
@@ -181,7 +219,4 @@ export function renderTagManager(key, isSub = false, tempSettings) {
     
     container.innerHTML = html;
 }
-
-
-
 

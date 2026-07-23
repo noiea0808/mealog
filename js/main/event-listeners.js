@@ -465,10 +465,18 @@ export function initEventListeners() {
         addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
+    /** 내 게시물(사용자 필터) 중 하단 네비로 이동하면 필터를 해제해 전체 피드로 복귀 */
+    const exitGalleryUserFilterOnNav = () => {
+        if (appState.galleryFilterUserId && typeof window.resetGalleryUserFilterState === 'function') {
+            window.resetGalleryUserFilterState();
+        }
+    };
+
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {
         navDashboard.addEventListener('click', () => {
             handleDemoAwareNavClick('dashboard');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('dashboard');
             showPendingDemoGuide();
         });
@@ -478,6 +486,7 @@ export function initEventListeners() {
     if (navTimeline) {
         navTimeline.addEventListener('click', () => {
             handleDemoAwareNavClick('timeline');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('timeline');
             showPendingDemoGuide();
         });
@@ -487,6 +496,7 @@ export function initEventListeners() {
     if (navGallery) {
         navGallery.addEventListener('click', () => {
             handleDemoAwareNavClick('gallery');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('gallery');
             showPendingDemoGuide();
         });
@@ -498,6 +508,7 @@ export function initEventListeners() {
     if (navBoard) {
         navBoard.addEventListener('click', () => {
             handleDemoAwareNavClick('board');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('board');
             showPendingDemoGuide();
         });
@@ -507,6 +518,7 @@ export function initEventListeners() {
     if (navSettings) {
         navSettings.addEventListener('click', () => {
             handleDemoAwareNavClick('settings');
+            exitGalleryUserFilterOnNav();
             if (typeof openSettings === 'function') openSettings();
             else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
             showPendingDemoGuide();

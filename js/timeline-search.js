@@ -8,6 +8,7 @@ import { renderTimeline, localTodayYmd } from './render/timeline.js';
 import { escapeHtml } from './render/utils.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
+import { scheduleLucideIcons } from './icons.js';
 
 const PERIOD_PRESETS = {
     '7d': { label: '최근 1주', days: 7 },
@@ -100,12 +101,7 @@ function syncDateInputsFromPeriod() {
 function updatePeriodButtonUI() {
     document.querySelectorAll('[data-timeline-search-period]').forEach((btn) => {
         const active = btn.getAttribute('data-timeline-search-period') === searchPeriod;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active);
-        btn.classList.toggle('border-slate-200', !active);
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     syncDateInputsFromPeriod();
@@ -211,6 +207,7 @@ export function openTimelineSearchModal() {
     if (!modal) return;
     modal.classList.remove('hidden');
     updatePeriodButtonUI();
+    scheduleLucideIcons(modal);
     requestAnimationFrame(() => {
         document.getElementById('timelineSearchKeyword')?.focus();
     });

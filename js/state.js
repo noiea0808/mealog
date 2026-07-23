@@ -71,6 +71,8 @@ export const appState = {
     currentEditingDate: "",
     currentEditingSlotId: "",
     currentPhotos: [], // 미리보기용 원본 data URL(선택 직후) 또는 Storage URL; 업로드 시에만 압축
+    /** 기록 시트 히어로에 표시 중인 사진 인덱스 */
+    recordPhotoHeroIndex: 0,
     /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
     currentPhotoMeta: [],
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)

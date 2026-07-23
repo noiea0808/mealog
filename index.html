@@ -2397,43 +2397,41 @@
     </div>
 
     <!-- 밀로그 기록 검색 (기간 + 키워드) -->
-    <div id="timelineSearchModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
-        <button type="button" id="timelineSearchBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="relative z-10 flex w-full max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-xl">
-            <div class="p-5 pb-4">
-                <div class="mb-4 flex items-center justify-between gap-2">
-                    <h2 id="timelineSearchModalTitle" class="text-lg font-bold tracking-tight text-slate-800">기록 검색</h2>
-                    <button type="button" id="timelineSearchCloseBtn" class="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
-                </div>
-                <div class="space-y-4">
-                    <div>
-                        <p class="mb-2 text-xs font-semibold text-slate-500">검색 기간</p>
-                        <div class="grid grid-cols-2 gap-2" role="group" aria-label="검색 기간">
-                            <button type="button" data-timeline-search-period="7d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors bg-emerald-600 text-white border-emerald-600" aria-pressed="true">최근 1주</button>
-                            <button type="button" data-timeline-search-period="14d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">2주</button>
-                            <button type="button" data-timeline-search-period="30d" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">한 달</button>
-                            <button type="button" data-timeline-search-period="custom" class="rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors">직접 입력</button>
-                        </div>
-                        <div class="mt-3 grid grid-cols-2 gap-2">
-                            <div>
-                                <label for="timelineSearchStartDate" class="mb-1 block text-[11px] font-semibold text-slate-500">시작일</label>
-                                <input type="date" id="timelineSearchStartDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                            <div>
-                                <label for="timelineSearchEndDate" class="mb-1 block text-[11px] font-semibold text-slate-500">종료일</label>
-                                <input type="date" id="timelineSearchEndDate" class="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500 disabled:bg-slate-50 disabled:text-slate-600">
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <label for="timelineSearchKeyword" class="mb-2 block text-xs font-semibold text-slate-500">검색어</label>
-                        <input type="search" id="timelineSearchKeyword" placeholder="메뉴, 장소, 함께한 사람…" autocomplete="off" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-500">
-                    </div>
-                </div>
+    <div id="timelineSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
+        <button type="button" id="timelineSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+            <div class="search-filter-modal__head">
+                <h2 id="timelineSearchModalTitle" class="search-filter-modal__title">기록 검색</h2>
+                <button type="button" id="timelineSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
             </div>
-            <div class="grid shrink-0 grid-cols-2 border-t border-slate-200">
-                <button type="button" id="timelineSearchCancelBtn" class="py-3.5 bg-slate-100 text-sm font-semibold text-slate-800 border-r border-slate-200 active:bg-slate-200 rounded-bl-2xl">취소</button>
-                <button type="button" id="timelineSearchSubmitBtn" class="py-3.5 bg-black text-sm font-semibold text-white active:bg-slate-900 rounded-br-2xl">검색</button>
+            <div class="search-filter-modal__body">
+                <section class="search-filter-modal__section">
+                    <p class="search-filter-modal__label">검색 기간</p>
+                    <div class="search-chip-grid" role="group" aria-label="검색 기간">
+                        <button type="button" data-timeline-search-period="7d" class="search-chip is-active" aria-pressed="true">최근 1주</button>
+                        <button type="button" data-timeline-search-period="14d" class="search-chip" aria-pressed="false">2주</button>
+                        <button type="button" data-timeline-search-period="30d" class="search-chip" aria-pressed="false">한 달</button>
+                        <button type="button" data-timeline-search-period="custom" class="search-chip" aria-pressed="false">직접 입력</button>
+                    </div>
+                    <div class="search-filter-modal__dates">
+                        <div>
+                            <label for="timelineSearchStartDate" class="search-filter-modal__sublabel">시작일</label>
+                            <input type="date" id="timelineSearchStartDate" class="search-filter-modal__input">
+                        </div>
+                        <div>
+                            <label for="timelineSearchEndDate" class="search-filter-modal__sublabel">종료일</label>
+                            <input type="date" id="timelineSearchEndDate" class="search-filter-modal__input">
+                        </div>
+                    </div>
+                </section>
+                <section class="search-filter-modal__section">
+                    <label for="timelineSearchKeyword" class="search-filter-modal__label">검색어</label>
+                    <input type="search" id="timelineSearchKeyword" placeholder="메뉴, 장소, 함께한 사람…" autocomplete="off" class="search-filter-modal__input search-filter-modal__input--search">
+                </section>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" id="timelineSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                <button type="button" id="timelineSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
             </div>
         </div>
     </div>
