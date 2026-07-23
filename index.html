@@ -2109,10 +2109,11 @@
                             </div>
                         </div>
                     </div>
-                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 space-y-2 pb-8">
-                        <div class="profile-v2-panel-card">
+                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
+                        <div class="profile-v2-panel-card profile-v2-tags-card">
                             <h3 class="profile-v2-panel-title">나만의 태그</h3>
-                            <div id="favoriteTagsSection"></div>
+                            <p class="profile-v2-panel-desc">메인 태그를 고른 뒤, 자주 쓰는 서브 태그를 최대 5개까지 등록해 두세요.</p>
+                            <div id="favoriteTagsSection" class="profile-v2-tags-section"></div>
                         </div>
                     </div>
                     <div id="settingsTabContentNotifications" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
@@ -2181,10 +2182,11 @@
                         </div>
                     </div>
                     <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
-                        <div class="profile-v2-panel-card">
-                            <p class="text-[12.5px] text-slate-400 leading-relaxed mb-2.5">밀당 캐릭터가 식단을 분석할 때 참고합니다. 메뉴 약어, 상태, 식습관을 적어 두세요.</p>
+                        <div class="profile-v2-panel-card profile-v2-memo-card">
+                            <h3 class="profile-v2-panel-title">밀당 메모</h3>
+                            <p class="profile-v2-panel-desc">밀당 캐릭터가 식단을 분석할 때 참고합니다. 메뉴 약어, 상태, 식습관을 적어 두세요.</p>
                             <textarea id="shortcutsInput" placeholder="예: 회사 구내식당 = 구내 / 주중 저녁은 가볍게" rows="8" class="profile-v2-memo-input"></textarea>
-                            <button type="button" id="saveShortcutsBtn" class="profile-v2-memo-save mt-2.5">저장</button>
+                            <button type="button" id="saveShortcutsBtn" class="profile-v2-memo-save">저장</button>
                         </div>
                     </div>
                 </div>

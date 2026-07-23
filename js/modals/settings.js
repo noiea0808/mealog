@@ -697,6 +697,8 @@ export function switchSettingsTab(tab) {
         }
         if (tagsContent) tagsContent.classList.remove('hidden');
         logUsageMetric('settings_tags').catch(() => {});
+        renderFavoriteTagsEditor();
+        scheduleLucideIcons(tagsContent || document.getElementById('settingsView'));
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
@@ -1922,71 +1924,112 @@ export function removeTag(k, idx, isSub) {
     renderTagManager(k, isSub, state.tempSettings);
 }
 
+function escapeSettingsTagText(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function renderFavoriteTagsEditor() {
     const state = appState;
     const container = document.getElementById('favoriteTagsSection');
     if (!container) return;
-    
-    // 현재 선택된 메인 태그 추적
+
     if (!state.selectedFavoriteMainTag) {
         state.selectedFavoriteMainTag = {};
     }
-    
+    window.selectedFavoriteMainTag = state.selectedFavoriteMainTag;
+
     const tagConfigs = {
-        mealType: { prefix: '본식: ', label: '어떻게', subTagKey: 'place', mainTags: state.tempSettings.tags?.mealType || [] },
-        category: { prefix: '본식: ', label: '무엇을', subTagKey: 'menu', mainTags: state.tempSettings.tags?.category || [] },
-        withWhom: { prefix: '본식: ', label: '누구와', subTagKey: 'people', mainTags: state.tempSettings.tags?.withWhom || [] },
-        snackType: { prefix: '간식: ', label: '무엇을', subTagKey: 'snack', mainTags: state.tempSettings.tags?.snackType || [] },
-        snackPlace: { prefix: '간식: ', label: '어디서', subTagKey: 'place', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
+        mealType: { prefix: '본식', label: '어떻게', mainTags: state.tempSettings.tags?.mealType || [] },
+        category: { prefix: '본식', label: '무엇을', mainTags: state.tempSettings.tags?.category || [] },
+        withWhom: { prefix: '본식', label: '누구와', mainTags: state.tempSettings.tags?.withWhom || [] },
+        snackType: { prefix: '간식', label: '무엇을', mainTags: state.tempSettings.tags?.snackType || [] },
+        snackPlace: { prefix: '간식', label: '어디서', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
     };
-    
+
     let html = '';
     Object.entries(tagConfigs).forEach(([sectionId, config]) => {
-        const sectionKey = config.sectionKey || sectionId;
-        const storageKey = config.storageKey || sectionId;
-        const favoritesByMainTag = state.tempSettings.favoriteSubTags[storageKey] || {};
+        const sectionKey = sectionId;
+        const storageKey = sectionId;
+        const favoritesByMainTag = state.tempSettings.favoriteSubTags?.[storageKey] || {};
         const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
         const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
-        const sectionTitle = (config.prefix || '') + config.label;
         const isSnack = sectionId === 'snackType' || sectionId === 'snackPlace';
-        const bandClass = isSnack ? 'settings-tag-section-snack' : 'settings-tag-section-meal';
+        const bandClass = isSnack ? 'profile-v2-tag-group--snack' : 'profile-v2-tag-group--meal';
+        const inputId = `newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}`;
+        const selectedMainJs = selectedMainTag ? selectedMainTag.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
 
-        html += `<div class="settings-tag-section ${bandClass} py-2 mb-3 px-4">
-            <div class="text-xs font-bold text-slate-600 mb-1.5 uppercase">${sectionTitle}</div>
-            <div id="favoriteMainTags-${sectionKey}" class="flex flex-wrap gap-1 mb-1.5">
-                ${config.mainTags.map(mainTag => {
-                    const isSelected = selectedMainTag === mainTag;
-                    const favorites = favoritesByMainTag[mainTag] || [];
-                    return `<button onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainTag.replace(/'/g, "\\'")}')" 
-                        class="chip ${isSelected ? 'active' : ''}">
-                        <span class="font-bold">${mainTag}</span> <span class="text-[10px] opacity-70">(${favorites.length}/5)</span>
+        html += `<section class="profile-v2-tag-group ${bandClass}">
+            <div class="profile-v2-tag-group__head">
+                <span class="profile-v2-tag-group__kind">${escapeSettingsTagText(config.prefix)}</span>
+                <h4 class="profile-v2-tag-group__title">${escapeSettingsTagText(config.label)}</h4>
+            </div>
+            <div id="favoriteMainTags-${sectionKey}" class="profile-v2-tag-pills" role="group" aria-label="${escapeSettingsTagText(config.prefix)} ${escapeSettingsTagText(config.label)}">
+                ${config.mainTags
+                    .map((mainTag) => {
+                        const isSelected = selectedMainTag === mainTag;
+                        const favorites = favoritesByMainTag[mainTag] || [];
+                        const mainJs = String(mainTag).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                        return `<button type="button" onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainJs}')"
+                        class="profile-v2-tag-pill${isSelected ? ' is-on' : ''}" aria-pressed="${isSelected ? 'true' : 'false'}">
+                        <span class="profile-v2-tag-pill__label">${escapeSettingsTagText(mainTag)}</span>
+                        <span class="profile-v2-tag-pill__count">${favorites.length}/5</span>
                     </button>`;
-                }).join('')}
+                    })
+                    .join('')}
             </div>
-            <div class="flex gap-1 mb-1.5">
-                <input type="text" id="newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none focus:border-slate-400" placeholder="태그 입력" onkeypress="if(event.key==='Enter' && window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])">
-                <button ontouchstart="event.preventDefault()" ontouchend="event.preventDefault(); if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" onclick="if(window.selectedFavoriteMainTag && window.selectedFavoriteMainTag['${sectionKey}']) window.addFavoriteTag('${storageKey}', window.selectedFavoriteMainTag['${sectionKey}'])" class="bg-slate-800 text-white px-4 py-1.5 rounded-lg text-xs font-bold ${selectedMainTag ? '' : 'opacity-50 cursor-not-allowed'}" ${selectedMainTag ? '' : 'disabled'}>추가</button>
+            <div class="profile-v2-tag-compose">
+                <input type="text" id="${inputId}" class="profile-v2-tag-input" placeholder="${selectedMainTag ? '서브 태그 입력' : '메인 태그를 먼저 선택'}" ${selectedMainTag ? '' : 'disabled'}
+                    onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}']);}">
+                <button type="button"
+                    ontouchstart="event.preventDefault()"
+                    ontouchend="event.preventDefault();if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}'])"
+                    onclick="if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}'])"
+                    class="profile-v2-tag-add-btn"
+                    ${selectedMainTag ? '' : 'disabled'}>추가</button>
             </div>
-            ${selectedMainTag ? `
-                ${selectedFavorites.length >= 5 ? '<div class="text-[10px] text-slate-500 mb-1.5">최대 5개까지 입력 가능합니다</div>' : ''}
-                <div class="mt-1.5">
-                    <div class="text-[10px] text-slate-400 mb-1">나만의 태그 (최대 5개)</div>
-                    <div class="flex flex-wrap gap-1" id="favoriteTags-${sectionKey}-${selectedMainTag}">
-                        ${selectedFavorites.map((text, idx) => `
-                            <div class="flex items-center gap-0.5 px-2.5 py-1 bg-emerald-600 text-white rounded text-xs font-bold">
-                                <span>${text}</span>
-                                <button onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainTag.replace(/'/g, "\\'")}', ${idx})" class="ml-1 hover:bg-emerald-700 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
-                                    <i data-lucide="x" class="text-[8px]"></i>
-                                </button>
-                            </div>
-                        `).join('')}
+            ${
+                selectedMainTag
+                    ? `<div class="profile-v2-tag-favs">
+                    <div class="profile-v2-tag-favs__label">
+                        <span>${escapeSettingsTagText(selectedMainTag)} · 나만의 태그</span>
+                        <span class="profile-v2-tag-favs__meta">${selectedFavorites.length}/5</span>
                     </div>
-                </div>
-            ` : '<div class="text-[10px] text-slate-400 mt-1.5">메인 태그를 선택하세요</div>'}
-        </div>`;
+                    ${
+                        selectedFavorites.length >= 5
+                            ? '<p class="profile-v2-tag-hint">최대 5개까지 등록할 수 있어요.</p>'
+                            : ''
+                    }
+                    <div class="profile-v2-tag-favs__list" id="favoriteTags-${sectionKey}">
+                        ${
+                            selectedFavorites.length
+                                ? selectedFavorites
+                                      .map(
+                                          (text, idx) => `
+                            <span class="profile-v2-tag-fav">
+                                <span class="profile-v2-tag-fav__text">${escapeSettingsTagText(text)}</span>
+                                <button type="button" class="profile-v2-tag-fav__remove" aria-label="${escapeSettingsTagText(text)} 삭제"
+                                    onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainJs}', ${idx})">
+                                    <i data-lucide="x" aria-hidden="true"></i>
+                                </button>
+                            </span>`
+                                      )
+                                      .join('')
+                                : '<p class="profile-v2-tag-hint">아직 등록된 태그가 없어요.</p>'
+                        }
+                    </div>
+                </div>`
+                    : '<p class="profile-v2-tag-hint">메인 태그를 선택하면 서브 태그를 추가할 수 있어요.</p>'
+            }
+        </section>`;
     });
-    
+
     container.innerHTML = html;
+    scheduleLucideIcons(container);
 }
 
 export function selectFavoriteMainTag(mainTagKey, mainTag) {

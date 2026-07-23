@@ -835,8 +835,11 @@ export function syncSnackViewDropdown(container) {
 function timelineRatingHtml(value) {
     const parsed = Number(value);
     const count = Number.isFinite(parsed) ? Math.min(5, Math.max(0, Math.round(parsed))) : 0;
-    const stars = count > 0 ? '★'.repeat(count) : '☆';
     const label = count > 0 ? `만족도 ${count}점` : '만족도 미입력';
+    const stars =
+        count > 0
+            ? `<i data-lucide="star" aria-hidden="true"></i><span class="timeline-entry-rating__count" aria-hidden="true">× ${count}</span>`
+            : `<i data-lucide="star" class="timeline-entry-rating__empty" aria-hidden="true"></i>`;
     return `<span class="timeline-entry-rating" aria-label="${label}" title="${label}">${stars}</span>`;
 }
 
@@ -851,11 +854,10 @@ function timelineTagsHtml(tags) {
 function buildHomeFeedStarsHtml(rating) {
     const n = Number.parseInt(rating, 10);
     const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
-    let stars = '';
-    for (let i = 1; i <= 5; i++) {
-        stars += `<i data-lucide="star" class="${i > filled ? 'home-feed-card__star--empty' : ''}" aria-hidden="true"></i>`;
+    if (filled <= 0) {
+        return `<div class="home-feed-card__stars home-feed-card__stars--empty" aria-label="만족도 미입력"><i data-lucide="star" class="home-feed-card__star--empty" aria-hidden="true"></i></div>`;
     }
-    return `<div class="home-feed-card__stars" aria-label="${filled}점">${stars}</div>`;
+    return `<div class="home-feed-card__stars" aria-label="만족도 ${filled}점"><i data-lucide="star" aria-hidden="true"></i><span class="home-feed-card__star-count" aria-hidden="true">${filled}</span></div>`;
 }
 
 function buildHomeFeedTagsHtml(tags) {
@@ -902,7 +904,8 @@ function buildHomeFeedCardShellHtml({
             <div class="home-feed-card__icon${iconMod}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta-row">
-                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span></div>
+                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}</div>
+                    <span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>
                     ${stars}
                 </div>
                 <div class="home-feed-card__title">${titleHtml}</div>
