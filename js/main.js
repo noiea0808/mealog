@@ -15,7 +15,7 @@ import {
     recoverFirestoreAfterWatchAssertion
 } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, ensureMealsLoadedAroundDate, needsMealsLoadedAroundDate, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
@@ -532,18 +532,16 @@ window.jumpToDate = async (iso, opts = {}) => {
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
     
-    // 선택한 날짜가 로드된 범위 밖이면 먼저 데이터 로드
-    const range = window.loadedMealsDateRange;
-    if (range && iso < range.start) {
+    // 트래커/날짜 이동: 해당일 ±3일을 미리 로드 (좌우 넘김 대비)
+    if (needsMealsLoadedAroundDate(iso, 3)) {
+        const loadingOverlay = document.getElementById('loadingOverlay');
         try {
-            const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-            await loadMealsForDateRange(iso, range.start);
+            await ensureMealsLoadedAroundDate(iso, 3);
         } catch (e) {
             console.warn('날짜 이동 시 데이터 로드 실패:', e);
             showToast('기록을 불러오는 중 오류가 발생했습니다.', 'error');
         } finally {
-            const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }
@@ -2074,10 +2072,9 @@ function initDailySwipeGesture() {
     });
 
     const preloadDateRangeIfNeeded = async (targetIso) => {
-        const range = window.loadedMealsDateRange;
-        if (!range || targetIso >= range.start) return;
+        if (!needsMealsLoadedAroundDate(targetIso, 3)) return;
         try {
-            await loadMealsForDateRange(targetIso, range.start);
+            await ensureMealsLoadedAroundDate(targetIso, 3);
         } catch (error) {
             console.warn('스와이프 날짜 프리로드 실패:', error);
         }

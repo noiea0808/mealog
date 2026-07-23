@@ -1804,7 +1804,7 @@ export function renderTimeline(options = {}) {
 
         const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
         if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
-            html += `<div class="timeline-day-empty px-4 py-10 text-center">
+            html += `<div class="timeline-day-empty px-4 py-6 text-center">
                 <p class="text-sm text-slate-400 font-medium">이 날은 기록이 없어요,<br>지금 시작해 보세요.</p>
             </div>`;
         }

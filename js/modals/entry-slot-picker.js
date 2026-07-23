@@ -12,6 +12,16 @@ import {
     getDailyJournalFromSettings
 } from '../utils/daily-journal-data.js';
 import { escapeHtml } from '../render/utils.js';
+import { scheduleLucideIcons } from '../icons.js';
+
+/** 홈피드·타임라인과 동일 Lucide 슬롯 아이콘 */
+const SLOT_PICKER_LUCIDE = {
+    morning: 'cloud-sun',
+    lunch: 'soup',
+    dinner: 'moon',
+    snack: 'coffee',
+    daily: 'book-open'
+};
 
 let pickerBound = false;
 let pendingDateIso = '';
@@ -22,13 +32,6 @@ function localTodayIso() {
     const m = String(t.getMonth() + 1).padStart(2, '0');
     const d = String(t.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
-}
-
-function getTimeBasedMainSlotId(refDate = new Date()) {
-    const hour = refDate.getHours();
-    if (hour < 11) return 'morning';
-    if (hour < 17) return 'lunch';
-    return 'dinner';
 }
 
 function pageDateIso() {
@@ -63,13 +66,10 @@ function formatPickerDateLabel(dateIso) {
     return `${mo}월 ${d}일 (${week})`;
 }
 
-function slotIconClass(slot) {
-    if (slot.type === 'daily') return 'fa-book-open';
-    if (slot.type === 'snack') return 'fa-mug-saucer';
-    if (slot.id === 'morning') return 'fa-sun';
-    if (slot.id === 'lunch') return 'fa-bowl-rice';
-    if (slot.id === 'dinner') return 'fa-moon';
-    return 'fa-plate-wheat';
+function slotLucideIcon(slot) {
+    if (slot.type === 'daily') return SLOT_PICKER_LUCIDE.daily;
+    if (slot.type === 'snack') return SLOT_PICKER_LUCIDE.snack;
+    return SLOT_PICKER_LUCIDE[slot.id] || 'utensils';
 }
 
 function slotTint(slot) {
@@ -77,21 +77,18 @@ function slotTint(slot) {
     return SLOT_STYLES[slot.id] || SLOT_STYLES.default;
 }
 
-function buildSlotRowHtml(slot, count, preferred) {
+function buildSlotRowHtml(slot, count) {
     const style = slotTint(slot);
     const countBadge =
         count > 0
             ? `<span class="entry-slot-picker__count">${count}건 · 추가 가능</span>`
             : `<span class="entry-slot-picker__count entry-slot-picker__count--empty">아직 없음</span>`;
-    const preferredCls = preferred ? ' entry-slot-picker__item--preferred' : '';
-    return `<button type="button" class="entry-slot-picker__item${preferredCls}" data-slot-id="${escapeHtml(slot.id)}" data-slot-type="${escapeHtml(slot.type)}">
+    return `<button type="button" class="entry-slot-picker__item" data-slot-id="${escapeHtml(slot.id)}" data-slot-type="${escapeHtml(slot.type)}">
         <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
-            <i class="fa-solid ${slotIconClass(slot)}"></i>
+            <i data-lucide="${slotLucideIcon(slot)}" aria-hidden="true"></i>
         </span>
-        <span class="entry-slot-picker__meta">
-            <span class="entry-slot-picker__label">${escapeHtml(slot.label)}</span>
-            ${countBadge}
-        </span>
+        <span class="entry-slot-picker__label">${escapeHtml(slot.label)}</span>
+        ${countBadge}
         <i data-lucide="chevron-right" class="entry-slot-picker__chevron" aria-hidden="true"></i>
     </button>`;
 }
@@ -103,24 +100,24 @@ function renderPickerList(dateIso) {
 
     if (dateEl) dateEl.textContent = formatPickerDateLabel(dateIso);
 
-    const preferredMain = getTimeBasedMainSlotId(new Date());
     const mains = SLOTS.filter((s) => s.type === 'main');
     const snacks = SLOTS.filter((s) => s.type === 'snack');
 
     let html = `<div class="entry-slot-picker__group">
         <p class="entry-slot-picker__group-title">식사</p>
-        ${mains.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id), s.id === preferredMain)).join('')}
+        ${mains.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
     </div>`;
     html += `<div class="entry-slot-picker__group">
         <p class="entry-slot-picker__group-title">간식</p>
-        ${snacks.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id), false)).join('')}
+        ${snacks.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
     </div>`;
     html += `<div class="entry-slot-picker__group">
         <p class="entry-slot-picker__group-title">하루</p>
-        ${buildSlotRowHtml(DAILY_JOURNAL_SLOT, dailyJournalCount(dateIso), false)}
+        ${buildSlotRowHtml(DAILY_JOURNAL_SLOT, dailyJournalCount(dateIso))}
     </div>`;
 
     list.innerHTML = html;
+    scheduleLucideIcons(list);
 }
 
 export function closeEntrySlotPicker() {

@@ -114,6 +114,9 @@ function schedulePersistDetailRecordPrefs() {
 }
 
 function writePrefsToSettings(prefs) {
+    if (!window.userSettings) {
+        window.userSettings = {};
+    }
     ensureEntryModalDetailRecordOnUserSettings();
     const mode = getModeKey();
     if (mode === 'snack') {
@@ -200,8 +203,16 @@ export function bindEntryDetailRecordOnce() {
     detailBound = true;
 
     document.getElementById('entryDetailRecordChips')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.entry-detail-record-chip');
-        if (!btn) return;
+        const pathBtn = e.composedPath?.().find?.(
+            (n) => n instanceof Element && n.classList?.contains('entry-detail-record-chip')
+        );
+        const btn =
+            (pathBtn instanceof Element ? pathBtn : null) ||
+            e.target.closest?.('.entry-detail-record-chip') ||
+            (e.target instanceof Element
+                ? document.elementFromPoint(e.clientX, e.clientY)?.closest?.('.entry-detail-record-chip')
+                : null);
+        if (!btn || !document.getElementById('entryDetailRecordChips')?.contains(btn)) return;
         const field = btn.getAttribute('data-field');
         if (!field) return;
         toggleEntryDetailRecordField(/** @type {DetailRecordField} */ (field));

@@ -670,11 +670,11 @@ export function setupListeners(userId, callbacks) {
     );
     const statsUnsubscribe = () => statsUnsubscribes.forEach(fn => fn());
     
-    // 최근 N일 초기 로드 (스크롤·loadMoreMeals로 추가). 트래커 점은 dailyStats(별도 리스너)로 표시
-    // 기간이 짧으면 오래된 기록이 메모리에 없어 수정 모달이 비는 경우가 있어 21일로 완화
+    // 최근 N일 초기 로드 (일간 좌우 넘김 기준). 트래커 점은 dailyStats(별도 리스너)로 표시
+    // 더 과거는 트래커/스와이프 이동 시 ensureMealsLoadedAroundDate(±3일)로 보강
     void refreshAppCheckTokenBeforeFirestore();
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 21);
+    cutoffDate.setDate(cutoffDate.getDate() - 7);
     const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
     

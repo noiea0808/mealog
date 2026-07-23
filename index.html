@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="description" content="우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인">
-    <meta name="theme-color" content="#3cb889">
+    <meta name="theme-color" content="#ffffff">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- 헤더·상태바 오버레이가 밝은 면 → 시스템 시계/아이콘은 어두운 톤 (default) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="mealog">
     
     <!-- Open Graph / Facebook / 카카오톡 공유 메타 태그 (공유 URL과 동일 도메인 사용 시 미리보기 이미지 정상 표시) -->
@@ -115,6 +116,9 @@
             max-width: 28rem;
             margin: 0 auto;
             position: relative;
+        }
+        /* FOUC: 랜딩만 흰색. 메인 앱 캔버스는 style.css --app-page-bg */
+        html.mealog-landing-active body {
             background: #ffffff;
         }
         /* style.css와 동일 — 첫 페인트부터 dvh·safe-top 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
@@ -647,6 +651,13 @@
 
                 try {
                     document.documentElement.classList.add('platform-native-app');
+                    /* 밝은 헤더·상태바 오버레이에 맞춰 시스템 시계/아이콘을 진하게 */
+                    try {
+                        var SystemBars = window.Capacitor?.Plugins?.SystemBars;
+                        if (SystemBars && typeof SystemBars.setStyle === 'function') {
+                            SystemBars.setStyle({ style: 'LIGHT' }).catch(function () {});
+                        }
+                    } catch (styleErr) {}
                     var SAFE_TOP_MIN = 28;
                     var SAFE_BOTTOM_MIN = 48;
                     function readEnvSafeInset(edge) {
@@ -1487,8 +1498,8 @@
     <div id="mainApp" class="hidden">
         <!-- 상태바 영역 흰색 오버레이 (스크롤 시 콘텐츠 투과 방지) -->
         <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
-        <!-- 네비게이션 바 영역 흰색 오버레이 (Android 15+ edge-to-edge 투명 방지) -->
-        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <!-- 네비게이션 바 영역 오버레이 (Android 15+ edge-to-edge 시스템 제스처 영역만) -->
+        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] z-[100] pointer-events-none" style="background-color:var(--app-page-bg)" aria-hidden="true"></div>
         <!-- 상단 chrome seam 채움: 헤더와 아래 영역(서브탭/기간탭) 사이 서브픽셀 틈을 녹색으로 메움 (콘텐츠 뒤, 컬럼폭) -->
         <div id="appTopChromeFill" aria-hidden="true"></div>
         <div id="appTopChrome" class="sticky z-50">
@@ -2602,10 +2613,10 @@
     <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
         <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
         <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
-            <div class="flex items-start justify-between gap-3 px-5 pb-2 pt-4">
-                <div class="min-w-0">
-                    <h2 id="entrySlotPickerTitle" class="text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
-                    <p id="entrySlotPickerDateLabel" class="mt-0.5 text-sm font-medium text-slate-500"></p>
+            <div class="flex items-center justify-between gap-3 px-5 pb-2 pt-4">
+                <div class="flex min-w-0 flex-1 items-baseline gap-2">
+                    <h2 id="entrySlotPickerTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
+                    <p id="entrySlotPickerDateLabel" class="min-w-0 truncate text-sm font-medium text-slate-500"></p>
                 </div>
                 <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
@@ -2634,7 +2645,7 @@
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
-                            <span>음식 사진</span>
+                            <span>사진</span>
                             <span id="photoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
@@ -2662,7 +2673,7 @@
                     <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
                         <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
                             <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
-                            <span>간식 사진</span>
+                            <span>사진</span>
                             <span id="snackPhotoCount" class="entry-photo-count">0/5</span>
                         </span>
                         <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">

@@ -110,6 +110,32 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
     }
 }
 
+/**
+ * 중심일 기준 전후 radiusDays를 meals 메모리에 보장 (트래커 점프·스와이프용).
+ * @param {string} centerIso YYYY-MM-DD
+ * @param {number} [radiusDays=3]
+ */
+export async function ensureMealsLoadedAroundDate(centerIso, radiusDays = 3) {
+    if (typeof centerIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(centerIso)) return 0;
+    const radius = Number.isFinite(radiusDays) ? Math.max(0, Math.round(radiusDays)) : 3;
+    const startStr = addDaysToYmd(centerIso, -radius);
+    const endStr = addDaysToYmd(centerIso, radius);
+    if (!startStr || !endStr) return 0;
+    return loadMealsForDateRange(startStr, endStr);
+}
+
+/** @param {string} centerIso @param {number} [radiusDays=3] */
+export function needsMealsLoadedAroundDate(centerIso, radiusDays = 3) {
+    if (typeof centerIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(centerIso)) return false;
+    const range = window.loadedMealsDateRange;
+    if (!range?.start || !range?.end) return true;
+    const radius = Number.isFinite(radiusDays) ? Math.max(0, Math.round(radiusDays)) : 3;
+    const startStr = addDaysToYmd(centerIso, -radius);
+    const endStr = addDaysToYmd(centerIso, radius);
+    if (!startStr || !endStr) return false;
+    return startStr < range.start || endStr > range.end;
+}
+
 // 특정 날짜 범위의 데이터 로드 (대시보드용)
 export async function loadMealsForDateRange(startDate, endDate) {
     if (!window.currentUser) {
@@ -163,19 +189,21 @@ export async function loadMealsForDateRange(startDate, endDate) {
         if (newMeals.length > 0) {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-            
-            // 로드된 범위 업데이트
-            if (!window.loadedMealsDateRange) {
-                window.loadedMealsDateRange = { start: startStr, end: endStr };
-            } else {
-                const currentStart = new Date(window.loadedMealsDateRange.start);
-                const currentEnd = new Date(window.loadedMealsDateRange.end);
-                const newStart = new Date(startStr);
-                const newEnd = new Date(endStr);
-                
-                window.loadedMealsDateRange.start = newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
-                window.loadedMealsDateRange.end = newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
-            }
+        }
+
+        // 기록이 0건이어도 범위는 확장 — 빈 구간을 매번 재fetch하지 않음
+        if (!window.loadedMealsDateRange) {
+            window.loadedMealsDateRange = { start: startStr, end: endStr };
+        } else {
+            const currentStart = new Date(window.loadedMealsDateRange.start);
+            const currentEnd = new Date(window.loadedMealsDateRange.end);
+            const newStart = new Date(startStr);
+            const newEnd = new Date(endStr);
+
+            window.loadedMealsDateRange.start =
+                newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
+            window.loadedMealsDateRange.end =
+                newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
         }
         
         return newMeals.length;

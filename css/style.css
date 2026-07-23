@@ -27,6 +27,7 @@ html.platform-native-app .bottom-nav button i.lucide {
 #entryQuickInputFab.entry-quick-input-fab .lucide {
     width: 1.25rem;
     height: 1.25rem;
+    stroke-width: 2.75;
 }
 .lucide-spin {
     animation: lucide-spin 0.8s linear infinite;
@@ -95,9 +96,10 @@ html.platform-native-app .bottom-nav button i.lucide {
     --coral-soft: #fff0f3;
     /* CTA · Mint Glow (팝업·시트 primary 기본) */
     --cta-mint-grad: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
-    --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36);
+    /* 팝업 CTA 공통 — 넓은 글로우 대신 컴팩트 그림자 */
+    --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 6px rgba(45, 159, 116, 0.28);
     --cta-danger-grad: linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%);
-    --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36);
+    --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(217, 72, 90, 0.28);
     --cta-btn-h: 52px;
     --cta-btn-r: 16px;
     /* 아바타 그림자: blur ≈ 2px (좁은 적용 범위) */
@@ -241,15 +243,28 @@ body {
     padding-top: var(--safe-top); 
     padding-bottom: calc(80px + var(--safe-bottom)); 
 }
+/* 메인 앱: 루트·body 캔버스를 본문색으로 (index 인라인/랜딩 흰색보다 우선) */
+html:has(#mainApp:not(.hidden)) {
+    background-color: var(--app-page-bg);
+}
+body:has(#mainApp:not(.hidden)) {
+    background-color: var(--app-page-bg) !important;
+}
+body:has(#mainApp:not(.hidden)) #mainApp {
+    background-color: var(--app-page-bg);
+}
 /* 밀톡·피드: 입력창 아래·네비 뒤 연회색을 대화 영역색과 동일하게 — 상단/타이틀은 그라데이션으로 유지 */
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
     background-color: var(--board-feed-bg);
     background-image: none;
 }
+html:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) {
+    background-color: var(--board-feed-bg);
+}
 body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBarOverlay {
     background-color: var(--board-feed-bg) !important;
 }
-/* 메인 앱(타임라인·밀당·모먼트·설정 등): 하단 safe-area 연회색 통일 */
+/* 메인 앱: 시스템 제스처(safe-bottom) 오버레이만 본문색 — 앱 네비 슬롯은 채우지 않음 */
 body:has(#mainApp:not(.hidden)) #navigationBarOverlay {
     background-color: var(--app-page-bg) !important;
 }
@@ -2775,6 +2790,31 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     background: #ffffff !important;
     background-image: none !important;
 }
+/* 모먼트 헤더 숨김: 위 흰 sticky 크롬 규칙을 덮어 레이아웃·배경을 접음 (순서·특이도 중요) */
+body[data-main-tab='gallery']:has(#mainAppHeader.header-scroll-hidden):has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #appTopChrome {
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+body[data-main-tab='gallery']:has(#mainAppHeader.header-scroll-hidden):has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #appTopChrome #mainAppHeader {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    width: 100%;
+    margin: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    border-bottom-color: transparent !important;
+}
+html:has(#galleryView:not(.hidden) #galleryContainer.moment-feed-layout-v2):has(#mainAppHeader.header-scroll-hidden) {
+    scroll-padding-top: var(--safe-top);
+}
 body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidden)) #headerAppTitle,
 body[data-main-tab='gallery']:has(#mainApp:not(.hidden) #galleryView:not(.hidden)) #headerAppTitle {
     color: var(--green) !important;
@@ -2941,15 +2981,30 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 .bottom-nav .nav-item.active .nav-item__avatar {
     border-color: var(--ink, #241f1c);
 }
-/* 스크롤 아래로: 하단 네비·하단 오버레이 화면 밖으로 숨김 */
+/* 스크롤 아래로: 하단 네비 숨김 → 뷰포트 하단을 콘텐츠에 양보 (배경 채움 금지).
+ * 밀톡 패널은 아래 board-* 규칙이 inset/padding을 줄임. 윈도우 스크롤 탭은 body padding·FAB·모먼트 도크를 함께 내림. */
 #navigationBarOverlay {
-    transition: transform 0.25s ease-out;
+    transition: background-color 0.2s ease;
 }
 body.bottom-nav-scroll-hidden .bottom-nav {
     transform: translateX(-50%) translateY(100%);
 }
-body.bottom-nav-scroll-hidden #navigationBarOverlay {
-    transform: translateY(100%);
+/* 네비 슬롯(~72px)만큼 하단 여백 축소 — 콘텐츠가 아래까지 이어짐. safe-bottom(제스처)만 유지 */
+body.bottom-nav-scroll-hidden {
+    padding-bottom: calc(12px + var(--safe-bottom));
+    --moment-v2-app-nav-top-from-bottom: var(--safe-bottom);
+}
+body.bottom-nav-scroll-hidden #entryQuickInputFab.entry-quick-input-fab,
+body.bottom-nav-scroll-hidden #boardWriteBtn.board-write-fab,
+body.bottom-nav-scroll-hidden #mealSyncResendBtn.meal-sync-resend-fab,
+body.bottom-nav-scroll-hidden #initialRecordsLoadFab.initial-records-load-fab,
+body.bottom-nav-scroll-hidden #galleryMomentsRefreshFab.initial-records-load-fab {
+    bottom: calc(12px + var(--safe-bottom));
+}
+/* 글쓰기 FAB 위에 얹힌 동기화/로딩 FAB — 네비 숨김 시에도 한 단만 위로 */
+body.bottom-nav-scroll-hidden #initialRecordsLoadFab.initial-records-load-fab.initial-records-load-fab--stacked,
+body.bottom-nav-scroll-hidden #mealSyncResendBtn.meal-sync-resend-fab.meal-sync-resend-fab--stacked {
+    bottom: calc(68px + var(--safe-bottom));
 }
 /* 모먼트 사진 휠 오버레이: 타이틀 헤더 위로·하단 앱 네비 아래로 */
 body.meal-photo-moment-chrome-hidden #mainAppHeader {
@@ -2957,9 +3012,6 @@ body.meal-photo-moment-chrome-hidden #mainAppHeader {
 }
 body.meal-photo-moment-chrome-hidden .bottom-nav {
     transform: translateX(-50%) translateY(100%);
-}
-body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
-    transform: translateY(100%);
 }
 .prop-bar-container { 
     height: 28px; 
@@ -3011,6 +3063,85 @@ body.meal-photo-moment-chrome-hidden #navigationBarOverlay {
     scroll-padding-top: max(50px, env(safe-area-inset-top, 0px));
     scroll-padding-bottom: 1rem;
 }
+/* 팝업·시트 스크롤바: 최대한 눈에 덜 띄는 얇은 트랙 */
+#modalScrollArea,
+#entrySlotPickerList,
+#dailyJournalModalScrollArea,
+#dietReportModalBody,
+#detailContent,
+#contentPopupModalBody,
+#notificationList,
+#boardWriteContent,
+.profile-v2-scroll,
+.entry-sheet-body,
+[id$='Modal'] .overflow-y-auto,
+[id$='Popup'] .overflow-y-auto,
+[class*='Modal'] .overflow-y-auto {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(36, 31, 28, 0.16) transparent;
+}
+#modalScrollArea::-webkit-scrollbar,
+#entrySlotPickerList::-webkit-scrollbar,
+#dailyJournalModalScrollArea::-webkit-scrollbar,
+#dietReportModalBody::-webkit-scrollbar,
+#detailContent::-webkit-scrollbar,
+#contentPopupModalBody::-webkit-scrollbar,
+#notificationList::-webkit-scrollbar,
+#boardWriteContent::-webkit-scrollbar,
+.profile-v2-scroll::-webkit-scrollbar,
+.entry-sheet-body::-webkit-scrollbar,
+[id$='Modal'] .overflow-y-auto::-webkit-scrollbar,
+[id$='Popup'] .overflow-y-auto::-webkit-scrollbar,
+[class*='Modal'] .overflow-y-auto::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+#modalScrollArea::-webkit-scrollbar-track,
+#entrySlotPickerList::-webkit-scrollbar-track,
+#dailyJournalModalScrollArea::-webkit-scrollbar-track,
+#dietReportModalBody::-webkit-scrollbar-track,
+#detailContent::-webkit-scrollbar-track,
+#contentPopupModalBody::-webkit-scrollbar-track,
+#notificationList::-webkit-scrollbar-track,
+#boardWriteContent::-webkit-scrollbar-track,
+.profile-v2-scroll::-webkit-scrollbar-track,
+.entry-sheet-body::-webkit-scrollbar-track,
+[id$='Modal'] .overflow-y-auto::-webkit-scrollbar-track,
+[id$='Popup'] .overflow-y-auto::-webkit-scrollbar-track,
+[class*='Modal'] .overflow-y-auto::-webkit-scrollbar-track {
+    background: transparent;
+}
+#modalScrollArea::-webkit-scrollbar-thumb,
+#entrySlotPickerList::-webkit-scrollbar-thumb,
+#dailyJournalModalScrollArea::-webkit-scrollbar-thumb,
+#dietReportModalBody::-webkit-scrollbar-thumb,
+#detailContent::-webkit-scrollbar-thumb,
+#contentPopupModalBody::-webkit-scrollbar-thumb,
+#notificationList::-webkit-scrollbar-thumb,
+#boardWriteContent::-webkit-scrollbar-thumb,
+.profile-v2-scroll::-webkit-scrollbar-thumb,
+.entry-sheet-body::-webkit-scrollbar-thumb,
+[id$='Modal'] .overflow-y-auto::-webkit-scrollbar-thumb,
+[id$='Popup'] .overflow-y-auto::-webkit-scrollbar-thumb,
+[class*='Modal'] .overflow-y-auto::-webkit-scrollbar-thumb {
+    background: rgba(36, 31, 28, 0.16);
+    border-radius: 999px;
+}
+#modalScrollArea::-webkit-scrollbar-thumb:hover,
+#entrySlotPickerList::-webkit-scrollbar-thumb:hover,
+#dailyJournalModalScrollArea::-webkit-scrollbar-thumb:hover,
+#dietReportModalBody::-webkit-scrollbar-thumb:hover,
+#detailContent::-webkit-scrollbar-thumb:hover,
+#contentPopupModalBody::-webkit-scrollbar-thumb:hover,
+#notificationList::-webkit-scrollbar-thumb:hover,
+#boardWriteContent::-webkit-scrollbar-thumb:hover,
+.profile-v2-scroll::-webkit-scrollbar-thumb:hover,
+.entry-sheet-body::-webkit-scrollbar-thumb:hover,
+[id$='Modal'] .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+[id$='Popup'] .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+[class*='Modal'] .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: rgba(36, 31, 28, 0.28);
+}
 #entryModal #modalScrollArea input[type="text"],
 #entryModal #modalScrollArea input[type="search"],
 #entryModal #modalScrollArea textarea {
@@ -3031,15 +3162,16 @@ body:has(#entrySlotPickerModal:not(.hidden)) #entryQuickInputFab.entry-quick-inp
     visibility: hidden !important;
     pointer-events: none !important;
 }
+/* 하단 버튼 영역: 상·하 여백 대칭 */
 #entryModalActions {
-    padding-top: 2px !important;
+    padding-top: 16px !important;
 }
 /* 센터 팝업: 하단 세이프는 소량만 (시트처럼 홈 인디케이터에 붙지 않음) */
 html:not(.platform-web) #entryModal:not(.keyboard-open) #entryModalActions {
-    padding-bottom: 10px !important;
+    padding-bottom: 16px !important;
 }
 html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
-    padding-bottom: 10px !important;
+    padding-bottom: 16px !important;
 }
 #entryModal.keyboard-open #entryModalActions {
     padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
@@ -5418,8 +5550,13 @@ body[data-main-tab='gallery'] #headerAppTitle {
     align-items: center;
     gap: 0.5rem;
 }
+/* 밀로그: 모먼트와 동일 — body/#mainApp까지 page-deep (네비 숨김 시 하단이 흰색으로 비치지 않음) */
 body[data-main-tab='timeline'] {
     --app-page-bg: var(--page-deep, #faf6f2);
+    background-color: var(--page-deep, #faf6f2) !important;
+}
+body[data-main-tab='timeline'] #mainApp {
+    background-color: var(--page-deep, #faf6f2) !important;
 }
 body[data-main-tab='timeline'] .date-section-header {
     padding: 2px 2px 8px;
@@ -5631,11 +5768,13 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 #timelineView {
     padding-left: 0 !important;
     padding-right: 0 !important;
+    /* 기록 적을 때 .ui-tab-view 60vh로 하단이 과도하게 비지 않게 */
+    min-height: 0 !important;
     background-color: var(--page-deep, #faf6f2) !important;
 }
 #timelineContainer {
-    /* 트래커 하단 여백이 늘어난 만큼 피드 상단은 시안보다 살짝 타이트하게 */
-    padding: 8px 14px calc(100px + var(--safe-bottom, 0px));
+    /* 네비 클리어런스는 body padding-bottom이 담당 — 컨테이너는 콘텐츠 간격만 */
+    padding: 8px 14px 12px;
     background: transparent;
     box-sizing: border-box;
 }
@@ -8241,7 +8380,8 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 #dashboardView.dashboard-view-v2.dashboard-view--comment .dashboard-comment-zone {
     border-bottom: none;
-    min-height: calc(100vh - 11rem);
+    /* 짧은 콘텐츠일 때 뷰포트 높이로 하단을 억지로 채우지 않음 */
+    min-height: 0;
 }
 #dashboardView.dashboard-view-v2 .dashboard-insight-period-shared {
     background: #fff;
@@ -8274,6 +8414,15 @@ header .mealog-title {
 
 #dashboardView.dashboard-view-v2 .card {
     border-radius: 16px;
+}
+/* 밀당: 모먼트·밀로그와 동일하게 캔버스 전 층 page-deep */
+body[data-main-tab='dashboard'] {
+    --app-page-bg: var(--page-deep, #faf6f2);
+    background-color: var(--page-deep, #faf6f2) !important;
+}
+body[data-main-tab='dashboard'] #mainApp,
+body[data-main-tab='dashboard'] #dashboardView {
+    background-color: var(--page-deep, #faf6f2) !important;
 }
 #dashboardView:not(.hidden) {
     padding-top: 0;
@@ -8331,7 +8480,8 @@ header .mealog-title {
 #dashboardView.dashboard-view-v2 .dashboard-comment-zone {
     background: var(--page-deep, #faf6f2);
     border-bottom: none;
-    padding: 16px 14px 100px;
+    /* 네비 여백은 body padding — 존 하단 100px 이중 여백 제거 */
+    padding: 16px 14px 12px;
 }
 #dashboardView.dashboard-view-v2.dashboard-view--comment {
     background: var(--page-deep, #faf6f2);
@@ -8607,7 +8757,8 @@ header .mealog-title {
 
 /* 분석 구역 — page-deep 메뉴 캔버스 + 흰 카드 */
 #dashboardView.dashboard-view-v2 .dashboard-analysis-zone {
-    padding: 14px 14px calc(5.5rem + var(--safe-bottom, 0px));
+    /* 네비 여백은 body padding — 존 하단 5.5rem 이중 여백 제거 */
+    padding: 14px 14px 12px;
     background: var(--page-deep, #faf6f2);
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-zone__label {
@@ -9434,9 +9585,9 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 .entry-slot-picker__item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.625rem;
     width: 100%;
-    padding: 0.7rem 0.75rem;
+    padding: 0.65rem 0.75rem;
     margin-bottom: 0.25rem;
     border: 1px solid transparent;
     border-radius: 0.875rem;
@@ -9448,10 +9599,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 .entry-slot-picker__item:active {
     background: #f1f5f9;
 }
-.entry-slot-picker__item--preferred {
-    border-color: var(--green-mute);
-    background: var(--green-soft);
-}
 .entry-slot-picker__icon {
     display: inline-flex;
     align-items: center;
@@ -9462,23 +9609,29 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     flex-shrink: 0;
     font-size: 0.875rem;
 }
-.entry-slot-picker__meta {
-    min-width: 0;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
+.entry-slot-picker__icon [data-lucide],
+.entry-slot-picker__icon .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.75;
 }
 .entry-slot-picker__label {
+    min-width: 0;
+    flex: 0 1 auto;
     font-size: 0.9375rem;
     font-weight: 700;
     color: #1e293b;
     line-height: 1.25;
+    white-space: nowrap;
 }
 .entry-slot-picker__count {
+    margin-left: auto;
+    flex-shrink: 0;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--green);
+    text-align: right;
+    white-space: nowrap;
 }
 .entry-slot-picker__count--empty {
     color: #94a3b8;
@@ -11287,8 +11440,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     --entry-accent-soft: var(--green-soft);
     --entry-accent-ring: rgb(60 184 137 / 0.22);
     --entry-surface: #ffffff;
-    --entry-surface-body: var(--page);
-    --entry-surface-muted: var(--page);
+    /* 본문 캔버스(page-deep) ↔ 필드 흰면 ↔ 보조 밴드 — 대비는 분명하되 슬레이트 톤은 쓰지 않음 */
+    --entry-surface-body: var(--page-deep, #faf6f2);
+    --entry-surface-muted: #f5f1eb;
+    --entry-surface-band: #f3efe8;
     --entry-surface-subtle: var(--green-soft);
     --entry-text-primary: var(--ink);
     --entry-text-secondary: var(--ink-2);
@@ -11479,9 +11634,11 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-sheet-zone--metrics {
     background: var(--entry-surface-muted);
     padding: 0;
+    border-top: 1px solid var(--entry-border-soft);
 }
 #entryModal .entry-sheet-zone--memo {
-    background: #e2e8f0;
+    background: var(--entry-surface-band);
+    border-top: 1px solid var(--entry-border-soft);
 }
 
 /* ── 항목별 빠른 입력 — 화살표 토글 ── */
@@ -11719,16 +11876,13 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-photo-header {
     margin-bottom: 0;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header {
-    margin-bottom: 0.375rem;
-}
 #entryModal .entry-photo-preview-row {
     padding: 0;
     margin: 0;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
-    margin-top: 0.375rem;
-    padding-bottom: 0.5rem;
+    margin: 0;
+    padding: 0;
 }
 #entryModal .record-photo-add-btn {
     border: 1px solid var(--entry-border, #e2e8f0);
@@ -11777,127 +11931,187 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: var(--entry-accent-dark);
 }
 
-/* ── 사진 히어로 (시안 entry-sheet-v2: full-bleed 미리보기 + 오버레이 도구) ── */
-#entryModal .entry-photo-section--has-photos {
+/* ── 사진 등록 후: 히어로 → 아래 고정 툴바(가독) → 추가 썸네일 ── */
+/* :not(.hidden) — has-photos의 display:flex가 Tailwind .hidden을 덮지 않도록 */
+#entryModal .entry-photo-section--has-photos:not(.hidden) {
     position: relative;
+    display: flex;
+    flex-direction: column;
     padding: 0;
-    border-bottom: none;
-    background: var(--line, #e2e8f0);
+    border-bottom: 1px solid var(--entry-border-row);
+    background: var(--entry-surface);
+}
+#entryModal .entry-photo-section.hidden {
+    display: none !important;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    order: 1;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-header {
-    position: absolute;
-    inset: 0;
-    z-index: 4;
+    order: 2;
+    position: static;
+    inset: auto;
+    z-index: auto;
     margin: 0;
     min-height: 0;
-    padding: 0;
-    display: block;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
     grid-template-columns: unset;
-    background: transparent;
-    pointer-events: none;
+    background: var(--entry-surface-band, #f3efe8);
+    border-top: none; /* 사진과 바로 붙도록 구분선·간격 제거 */
+    pointer-events: auto;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    z-index: 2;
+    position: static;
+    top: auto;
+    right: auto;
+    z-index: auto;
     min-width: 0;
     margin: 0;
-    padding: 4px 8px;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.5);
-    font-size: 11px;
-    font-weight: 600;
-    color: #ffffff;
-    pointer-events: none;
+    margin-right: auto;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--entry-text-secondary);
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon,
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
+    display: inline-block;
+    font-size: 0.95rem;
+    color: var(--entry-action-icon);
+}
 #entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
-    display: none;
+    display: inline;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-count {
     margin: 0;
-    color: #ffffff;
-    font-size: 11px;
-    font-weight: 600;
+    margin-left: 0.25rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--entry-border-soft);
+    color: var(--entry-text-secondary);
+    font-size: 0.6875rem;
+    font-weight: 700;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
+    color: var(--entry-accent-dark);
+    border-color: var(--green-mute);
+    background: var(--green-soft);
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
-    position: absolute;
-    inset: 0;
+    position: static;
+    inset: auto;
     padding: 0;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     justify-content: flex-end;
-    align-items: stretch;
-    pointer-events: none;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    pointer-events: auto;
+}
+#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
+    padding-left: 0;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-add-btns {
-    position: absolute;
-    left: 10px;
-    bottom: 10px;
-    z-index: 2;
+    position: static;
+    left: auto;
+    bottom: auto;
+    z-index: auto;
     pointer-events: auto;
     gap: 6px;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools {
-    position: absolute;
-    right: 10px;
-    bottom: 10px;
-    z-index: 2;
+    position: static;
+    right: auto;
+    bottom: auto;
+    z-index: auto;
     pointer-events: auto;
     opacity: 1;
+    gap: 4px;
 }
 #entryModal .entry-photo-section--has-photos .record-photo-add-btn {
-    width: auto;
-    height: auto;
-    min-height: 0;
-    padding: 8px 12px;
-    border-radius: 999px;
-    border: 0;
-    background: rgba(15, 23, 42, 0.55);
-    color: #ffffff;
-    box-shadow: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0;
+    border-radius: 0.65rem;
+    border: 1px solid var(--entry-border);
+    background: #ffffff;
+    color: var(--entry-action-icon);
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
 }
 #entryModal .entry-photo-section--has-photos .record-photo-add-btn i {
-    color: #ffffff;
-    font-size: 0.8125rem;
+    color: var(--entry-action-icon);
+    font-size: 1rem;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
-    background: rgba(15, 23, 42, 0.45);
-    border-color: rgba(255, 255, 255, 0.22);
-    color: rgba(255, 255, 255, 0.92);
+    background: #ffffff;
+    border: 1px solid var(--entry-border);
+    color: var(--entry-text-secondary);
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.05);
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
-    background: rgba(255, 255, 255, 0.92);
-    border-color: transparent;
+    background: var(--entry-accent-soft);
+    border-color: var(--green-mute);
     color: var(--entry-accent-dark);
-}
-#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
-    margin: 0;
-    padding: 0;
-    overflow: visible;
 }
 #entryModal .entry-photo-section--has-photos #photoPreviewContainer,
 #entryModal .entry-photo-section--has-photos #snackPhotoPreviewContainer {
     flex-wrap: wrap;
     width: 100%;
     gap: 8px;
-    padding: 0 12px 12px;
+    padding: 0;
     box-sizing: border-box;
+}
+/* 추가 썸네일이 있을 때만 하단 여백 — 히어로↔툴바 사이 흰 간격 방지 */
+#entryModal .entry-photo-section--has-photos #photoPreviewContainer:has(.photo-preview-item:nth-child(2)),
+#entryModal .entry-photo-section--has-photos #snackPhotoPreviewContainer:has(.photo-preview-item:nth-child(2)) {
+    padding-bottom: 10px;
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-item:first-child {
     flex: 0 0 100%;
-    width: calc(100% + 24px) !important;
+    width: 100% !important;
     max-width: none;
     aspect-ratio: 16 / 10 !important;
     max-height: min(52vw, 300px);
-    margin: 0 -12px;
+    margin: 0;
     border: 0;
     border-radius: 0;
+    display: block;
+    line-height: 0;
+    font-size: 0;
 }
+/* 히어로: 순번 좌상단 · 삭제 우상단 (개수는 아래 툴바로 분리) */
 #entryModal .entry-photo-section--has-photos .photo-preview-item:first-child .photo-preview-order-badge {
     top: 10px;
     left: 10px;
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item:first-child .photo-remove-btn {
+    top: 10px;
+    right: 10px;
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+    background: rgba(15, 23, 42, 0.62);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-item:not(:first-child) {
     width: 4.25rem !important;
@@ -11905,6 +12119,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     max-height: none;
     border-radius: 12px;
     border-width: 1px;
+    margin-left: 12px;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item:not(:first-child):last-child {
+    margin-right: 12px;
 }
 
 /* ── 만족도·포만감·시간 ── */
@@ -12037,7 +12255,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     padding: 0.625rem 1rem;
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
-    background: #e2e8f0;
+    background: transparent;
 }
 #entryModal .entry-comment-heading {
     display: block;
@@ -12070,7 +12288,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border: 0;
     border-bottom: 1px solid var(--entry-border-row);
     border-radius: 0;
-    background: #e2e8f0;
+    background: transparent;
     box-sizing: border-box;
 }
 #entryModal .entry-detail-record-header-static {
@@ -12330,7 +12548,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
-    padding: 12px 16px 16px;
+    padding: 16px 16px 16px;
 }
 #entryModal.keyboard-open .entry-modal-actions {
     border-radius: 0;
@@ -12379,7 +12597,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-action-btn--save:active:not(:disabled),
 #entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
     filter: brightness(0.96);
-    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.12), 0 4px 12px rgba(45, 159, 116, 0.28);
+    box-shadow: inset 0 1px 6px rgb(0 0 0 / 0.1), 0 1px 4px rgba(45, 159, 116, 0.22);
 }
 #entryModal .entry-action-btn--save:disabled {
     cursor: not-allowed;

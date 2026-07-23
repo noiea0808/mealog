@@ -18,15 +18,18 @@ const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
 function aspectToCss(ar) {
     if (ar === '3:4') return '3/4';
-    return '4/3';
+    if (ar === '4:3') return '4/3';
+    return '1';
 }
 
-/** 시안 v2: 기본 4:3, 세로만 3:4 (1:1 정사각 피드 매트 제거) */
+/** 기록 시트 비율(1:1·3:4·4:3)을 모먼트 프레임에 그대로 반영. 기본 1:1 */
 function normalizePhotoAspectForDisplay(photo, groupFallback) {
     const raw = photo?.photoAspectRatio;
-    if (raw === '3:4' || raw === '4:3') return raw;
-    if (groupFallback === '3:4' || groupFallback === '4:3') return groupFallback;
-    return '4:3';
+    if (raw === '1:1' || raw === '3:4' || raw === '4:3') return raw;
+    if (groupFallback === '1:1' || groupFallback === '3:4' || groupFallback === '4:3') {
+        return groupFallback;
+    }
+    return '1:1';
 }
 
 function buildMomentV2PhotoDotsHtml(n) {
@@ -340,7 +343,7 @@ function buildV2InlineChromeHtml(_overlayRow) {
     return '';
 }
 
-/** 사진 영역만 — 시안: wrap #e2e8f0, cover, 기본 4:3 / 세로 3:4 max 420px */
+/** 사진 영역만 — 시안: wrap #e2e8f0, cover, 비율 1:1·3:4·4:3 (세로 3:4 max 420px) */
 function buildV2RawPhotoBlock(p, idx, ar) {
     const isBest = p.type === 'best';
     const isDaily = p.type === 'daily';
@@ -408,7 +411,8 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         mealHistoryMap,
         groupEntryId
     } = params;
-    const ar = aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '4:3';
+    const ar =
+        aspectRatio === '1:1' || aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
     const flags = { isBestShare, isDailyShare, isInsightShare };
     const rootDailyAttr = isDailyShare ? ' data-moment-v2-daily-share="1"' : '';
     const rootBestAttr = isBestShare ? ' data-moment-v2-best-share="1"' : '';

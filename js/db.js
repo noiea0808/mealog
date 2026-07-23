@@ -37,4 +37,11 @@ export {
     isFeedNotificationTargetAvailable,
     isMomentNotificationTargetAvailable
 } from './db/notification-targets.js';
-export { loadMoreMeals, loadMealsForDateRange, loadStatsForYears, migrateBase64ImagesToStorage } from './db/loading.js';
+export {
+    loadMoreMeals,
+    loadMealsForDateRange,
+    ensureMealsLoadedAroundDate,
+    needsMealsLoadedAroundDate,
+    loadStatsForYears,
+    migrateBase64ImagesToStorage
+} from './db/loading.js';

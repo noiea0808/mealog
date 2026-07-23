@@ -76,6 +76,8 @@ export const appState = {
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
+    /** 모달 열 때의 사진 비율 — 비율만 바뀌어도 모먼트 재동기화에 사용 */
+    originalPhotoAspectRatio: '1:1',
     wantsToShare: false, // 공유를 원하는지 여부
     currentRating: null,
     currentSatiety: null,

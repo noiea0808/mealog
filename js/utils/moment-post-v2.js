@@ -31,7 +31,13 @@ export function momentPostV2ToPhotoGroup(doc) {
   if (!doc) return [];
   const photos = Array.isArray(doc.photos) ? doc.photos : [];
   const aspectDefault =
-    doc.photoAspectRatio === '3:4' || doc.photoAspectRatio === '4:3' ? doc.photoAspectRatio : '1:1';
+    doc.photoAspectRatio === '1:1' ||
+    doc.photoAspectRatio === '3:4' ||
+    doc.photoAspectRatio === '4:3'
+      ? doc.photoAspectRatio
+      : '1:1';
+  const resolveAspect = (ar) =>
+    ar === '1:1' || ar === '3:4' || ar === '4:3' ? ar : aspectDefault;
   const ts = doc.sharedAt || doc.timestamp;
   if (photos.length === 0 && doc.photoUrl) {
     return [{
@@ -72,8 +78,7 @@ export function momentPostV2ToPhotoGroup(doc) {
     photoDisplayUrl: p.displayUrl || p.photoDisplayUrl || '',
     photoThumbUrl: p.thumbUrl || p.photoThumbUrl || '',
     photoIndex: typeof p.index === 'number' ? p.index : idx,
-    photoAspectRatio:
-      p.aspectRatio === '3:4' || p.aspectRatio === '4:3' ? p.aspectRatio : aspectDefault,
+    photoAspectRatio: resolveAspect(p.aspectRatio),
     userId: doc.userId,
     userNickname: doc.userNickname,
     userIcon: doc.userIcon,
@@ -173,7 +178,11 @@ export function buildOptimisticMomentPostV2(record, photosToShare, profile, user
   const postId = mealSharePostId(record, uid);
   const now = new Date().toISOString();
   const aspectRatio =
-    record?.photoAspectRatio === '3:4' || record?.photoAspectRatio === '4:3' ? record.photoAspectRatio : '1:1';
+    record?.photoAspectRatio === '1:1' ||
+    record?.photoAspectRatio === '3:4' ||
+    record?.photoAspectRatio === '4:3'
+      ? record.photoAspectRatio
+      : '1:1';
   // record.photos ↔ photoDisplayUrls/photoThumbUrls(index 정렬)에서 공유 URL별 파생본 매칭
   const recPhotos = Array.isArray(record?.photos) ? record.photos : [];
   const recDisplay = Array.isArray(record?.photoDisplayUrls) ? record.photoDisplayUrls : [];

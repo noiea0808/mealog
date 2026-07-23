@@ -1058,6 +1058,7 @@ function populateSavedRecordIntoForm(r, isS, state) {
     state.originalSharedPhotos = [...sharedUrls];
     state.recordPhotoAspectRatio =
         r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio) ? r.photoAspectRatio : '1:1';
+    state.originalPhotoAspectRatio = state.recordPhotoAspectRatio;
 
     state.wantsToShare = isShareBanned ? false : sharedUrls.length > 0;
 
@@ -1314,6 +1315,7 @@ export async function openModal(date, slotId, entryId = null) {
         state.wantsToShare = false; // 공유를 원하는지 여부
         // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
         state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
+        state.originalPhotoAspectRatio = state.recordPhotoAspectRatio;
         
         const slot = SLOTS.find((s) => s.id === slotId);
         if (!slot) {
@@ -1440,6 +1442,7 @@ export function closeModal() {
         state.entryMealClockSourceSnack = null;
         state.sharedPhotos = [];
         state.originalSharedPhotos = [];
+        state.originalPhotoAspectRatio = '1:1';
         state.wantsToShare = false;
     }
 }
@@ -1890,6 +1893,15 @@ export async function saveEntry() {
         // closeModal()이 originalSharedPhotos를 비우므로, 공유 비교용 목록은 여기서 스냅샷으로 고정한다.
         const originalShareList = Array.isArray(state.originalSharedPhotos) ? [...state.originalSharedPhotos] : [];
         const hadSharedPhotos = originalShareList.length > 0;
+        const originalPhotoAspect =
+            state.originalPhotoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(state.originalPhotoAspectRatio)
+                ? state.originalPhotoAspectRatio
+                : '1:1';
+        const nextPhotoAspect =
+            record.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(record.photoAspectRatio)
+                ? record.photoAspectRatio
+                : '1:1';
+        const photoAspectChanged = originalPhotoAspect !== nextPhotoAspect;
         
         console.log('저장 시작:', record);
 
@@ -2396,15 +2408,17 @@ export async function saveEntry() {
                 // 현재 공유할 사진이 있는지 확인
                 const hasPhotosToShare = photosToShare && photosToShare.length > 0;
 
-                // 공유 목록이 실제로 바뀐 경우에만 서버 재공유(sharePhotos)를 호출한다.
+                // 공유 목록이 바뀌거나, 이미 공유 중인데 사진 비율만 바뀐 경우 모먼트 재동기화.
                 // (originalShareList는 closeModal 전에 캡처한 스냅샷 — state.originalSharedPhotos는 닫힌 뒤 비어 있음)
                 // 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
-                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제 시에만 최신으로 이동)
+                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제·비율 변경 시 동기화; 비율만 변경이면 서버가 sharedAt 유지)
                 const shareListChanged =
                     photosToShare.length !== originalShareList.length ||
                     photosToShare.some((url, i) => url !== originalShareList[i]);
+                const shouldResyncMomentShare =
+                    shareListChanged || (hasPhotosToShare && hadSharedPhotos && photoAspectChanged);
 
-                if (shareListChanged) {
+                if (shouldResyncMomentShare) {
                     sharedPhotosUpdated = true;
                     // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
                     if (record.id) {
@@ -3417,9 +3431,8 @@ function initEntryModalSubtagDragScroll() {
             startScrollLeft: el.scrollLeft,
             dragging: false
         };
-        try {
-            el.setPointerCapture(e.pointerId);
-        } catch (_) {}
+        /* pointer capture는 드래그 확정 후에만 — 조기 capture 시 click 타깃이
+           스트립으로 바뀌어 상세보기 칩 토글이 동작하지 않음 */
     }, true);
 
     root.addEventListener('pointermove', (e) => {
@@ -3434,6 +3447,9 @@ function initEntryModalSubtagDragScroll() {
             if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
             state.dragging = true;
             markDragging(state.el, true);
+            try {
+                state.el.setPointerCapture(state.pointerId);
+            } catch (_) {}
         }
         state.el.scrollLeft = state.startScrollLeft - dx;
         e.preventDefault();
