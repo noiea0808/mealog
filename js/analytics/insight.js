@@ -1560,10 +1560,10 @@ export async function updateShareButtonStatus() {
         const isShared = !!existingShare;
         
         if (isShared) {
-            shareBtn.innerHTML = '<i data-lucide="share" aria-hidden="true"></i> 공유됨';
+            shareBtn.innerHTML = '<i data-lucide="send" aria-hidden="true"></i> 공유됨';
             shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--shared';
         } else {
-            shareBtn.innerHTML = '<i data-lucide="share" aria-hidden="true"></i> 공유';
+            shareBtn.innerHTML = '<i data-lucide="send" aria-hidden="true"></i> 공유';
             shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--default';
         }
     }

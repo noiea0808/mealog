@@ -19,6 +19,8 @@ import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-writ
 import { getWeekRange, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
+import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -26,6 +28,37 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function bestThumbEmptyHtml() {
+    return `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i data-lucide="utensils"></i></div>`;
+}
+
+/** 썸네일/원본 로드 실패 시 utensils 플레이스홀더로 교체 */
+function ensureBestThumbErrorHandler() {
+    if (typeof window === 'undefined' || window.__bestThumbOnError) return;
+    window.__bestThumbOnError = function (img) {
+        try {
+            if (!img) return;
+            if (img.dataset.imgFellBack !== '1') {
+                const orig = (img.getAttribute('data-original-src') || '').trim();
+                if (orig && img.src !== orig) {
+                    img.dataset.imgFellBack = '1';
+                    img.src = orig;
+                    return;
+                }
+            }
+            const wrap = document.createElement('div');
+            wrap.innerHTML = bestThumbEmptyHtml();
+            const empty = wrap.firstElementChild;
+            if (empty) {
+                img.replaceWith(empty);
+                scheduleLucideIcons(empty);
+            }
+        } catch {
+            /* no-op */
+        }
+    };
 }
 
 const BEST_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
@@ -314,48 +347,34 @@ export function renderBestMeals() {
     
     const state = appState;
     let meals = [];
-    let periodLabel = '';
     let periodKey = '';
-    
-    // periodLabel 업데이트
-    const periodLabelEl = document.getElementById('bestPeriodLabel');
     
     if (state.dashboardMode === '7d') {
         const { start, end } = getRecentWeekRangeForBest();
         meals = getRangeBestMeals(start, end, 4);
         periodKey = getBestPeriodKey();
-        periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (최근1주)`;
     } else if (state.dashboardMode === 'week') {
         // 주간 모드: 해당 기간의 만족도 4~5개 리스트
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek, 4);
         const { year, month, week } = getWeekInfoFromDate(start);
         periodKey = `week_${year}_${month}_${week}`;
-        periodLabel = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'month') {
         // 월간 모드: 각 주간에서 1~5위
         const [y, m] = state.selectedMonth.split('-').map(Number);
         meals = getMonthBestMeals(y, m);
         periodKey = `month_${state.selectedMonth}`;
-        periodLabel = `${y}년 ${m}월`;
     } else if (state.dashboardMode === 'year') {
         // 연간 모드: 각 월별 1~5위
         const year = state.selectedYearForYear || new Date().getFullYear();
         meals = getYearBestMeals(year);
         periodKey = `year_${year}`;
-        periodLabel = `${year}년`;
     } else if (state.dashboardMode === 'custom') {
         // 직접설정 → 연간 베스트 표시 (연간과 동일한 형식: 해당 연도만 표시)
         const startDate = state.customStartDate || new Date();
         const year = startDate.getFullYear();
         meals = getYearBestMeals(year);
         periodKey = `year_${year}_custom`;
-        periodLabel = `${year}년 (연간 BEST를 표시합니다)`;
-    }
-    
-    // periodLabel 표시 (BEST 기간 옆 기간 텍스트)
-    if (periodLabelEl) {
-        periodLabelEl.textContent = periodLabel;
     }
     
     // 공유 버튼 표시: 주간/월간에서 베스트 메뉴가 1개 이상이면 항상 표시 (기간 충족 여부는 클릭 시 안내)
@@ -492,7 +511,8 @@ export function renderBestMeals() {
         const slotLabel = slot ? slot.label : '알 수 없음';
         const isSnack = slot && slot.type === 'snack';
         const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
-        const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
+        const originalUrl = getOriginalImageUrl(meal, 0, 'best.list') || '';
+        const thumbUrl = getThumbImageUrl(meal, 0, 'best.list') || originalUrl;
         const rating = meal.rating ? parseInt(meal.rating) : 0;
         const place = meal.place || '';
         const menuDetail = meal.menuDetail || '';
@@ -506,10 +526,14 @@ export function renderBestMeals() {
         const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
         
         let thumbHtml = '';
-        if (photoUrl) {
-            thumbHtml = `<img class="dashboard-best-thumb" alt="" src="${escapeHtml(photoUrl)}" />`;
+        if (thumbUrl) {
+            ensureBestThumbErrorHandler();
+            const dataOrig = (originalUrl && originalUrl !== thumbUrl)
+                ? ` data-original-src="${escapeHtml(originalUrl)}"`
+                : '';
+            thumbHtml = `<img class="dashboard-best-thumb" alt="" src="${escapeHtml(thumbUrl)}"${dataOrig} loading="lazy" onerror="window.__bestThumbOnError&&window.__bestThumbOnError(this)" />`;
         } else {
-            thumbHtml = `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i data-lucide="utensils"></i></div>`;
+            thumbHtml = bestThumbEmptyHtml();
         }
 
         const showOrderControls = displayMeals.length > 1;
@@ -543,6 +567,7 @@ export function renderBestMeals() {
     }).join('');
     
     setupBestOrderControls();
+    scheduleLucideIcons(container);
 }
 
 async function updateBestOrder() {

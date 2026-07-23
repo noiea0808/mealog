@@ -1733,7 +1733,7 @@
                         <button id="btn-dash-week" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">주간</button>
                         <button id="btn-dash-month" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">월간</button>
                         <button id="btn-dash-year" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">연간</button>
-                        <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">더</button>
+                        <button id="btn-dash-custom" type="button" role="tab" aria-selected="false" class="app-chrome-subtab insight-period-tab shrink-0">더보기</button>
                     </div>
                 </div>
 
@@ -1789,16 +1789,39 @@
                         <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab">Best</button>
                     </div>
                 </div>
+                <!-- 식사 탭: 기간 내 항목별 최다 선택 아이콘 행 (탭과 분리) -->
+                <div id="mainAnalysisTopIconsCard" class="card ui-card-pad-chip dashboard-analysis-top-icons-card">
+                    <h3 id="mainAnalysisTopIconsTitle" class="dashboard-analysis-top-icons-title">최근 1주 대표 패턴</h3>
+                    <div id="mainAnalysisTopIcons" class="dashboard-analysis-top-icons" role="list" aria-label="기간 내 가장 많이 선택한 항목"></div>
+                </div>
+                <!-- 식사·간식 기록 (분석 영역) -->
+                <div id="analysisRecordKpiRow" class="dashboard-analysis-kpi-row" aria-label="기간 내 식사·간식 기록">
+                    <div class="dashboard-analysis-kpi">
+                        <div class="dashboard-analysis-kpi__line">
+                            <span class="dashboard-analysis-kpi__label">식사 기록</span>
+                            <span id="insightStats" class="dashboard-analysis-kpi__value">
+                                <span id="mealRecordCount">0</span><span id="mealRecordTotal"> / 0</span>
+                            </span>
+                        </div>
+                        <div class="dashboard-analysis-kpi__bar" aria-hidden="true"><i id="mealKpiBar"></i></div>
+                        <span id="mealRecordPercent" class="sr-only">0%</span>
+                    </div>
+                    <div class="dashboard-analysis-kpi dashboard-analysis-kpi--count-only">
+                        <div class="dashboard-analysis-kpi__line">
+                            <span class="dashboard-analysis-kpi__label">간식 기록</span>
+                            <span id="snackStats" class="dashboard-analysis-kpi__value">
+                                <span id="snackRecordCount">0</span><span> 회</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Best 분석 섹션 -->
                 <div id="bestAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
                         <div class="card ui-card-pad dashboard-best-card">
                             <div class="ui-card-head analytics-card-head">
-                                <div class="flex items-center gap-2 min-w-0">
-                                    <h3 class="ui-section-label">Best</h3>
-                                    <span id="bestPeriodLabel" class="text-xs text-slate-400 truncate"></span>
-                                </div>
+                                <h3 class="ui-section-label">Best</h3>
                                 <button id="shareBestBtn" type="button" onclick="window.openShareBestModal()" class="hidden dashboard-detail-link">
                                     공유
                                 </button>
@@ -1813,14 +1836,14 @@
                     <div class="space-y-0">
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">어떻게 <span class="dashboard-card-hint">식사 방식</span></h3>
+                                <h3 class="ui-section-label">어떻게</h3>
                                 <button type="button" onclick="window.openDetailModal('mealType', '어디서 / 시간대')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="propChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">무엇을 <span class="dashboard-card-hint">카테고리</span></h3>
+                                <h3 class="ui-section-label">무엇을</h3>
                                 <button type="button" onclick="window.openDetailModal('category', '자주 먹은 메뉴 / 시간대')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="categoryChartContainer"></div>
@@ -1908,13 +1931,13 @@
                     <div class="space-y-0">
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">언제 <span class="dashboard-card-hint">시간대</span></h3>
+                                <h3 class="ui-section-label">언제</h3>
                             </div>
                             <div id="snackWhenChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">무엇을 <span class="dashboard-card-hint">간식 종류</span></h3>
+                                <h3 class="ui-section-label">무엇을</h3>
                                 <button type="button" onclick="window.openDetailModal('snackType', '자주 먹은 메뉴 / 시간대')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackTypeChartContainer"></div>
@@ -1969,7 +1992,7 @@
                                 <i data-lucide="sparkles" aria-hidden="true"></i> 코멘트
                             </button>
                             <button id="shareInsightBtn" type="button" onclick="window.openShareInsightModal()" class="dashboard-mini-btn insight-share-btn insight-share-btn--default hidden">
-                                <i data-lucide="share" aria-hidden="true"></i> 공유
+                                <i data-lucide="send" aria-hidden="true"></i> 공유
                             </button>
                         </div>
                         </div>
@@ -1982,23 +2005,6 @@
                                     <!-- 안내 메시지가 여기에 표시됩니다 -->
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="dashboard-kpi-row">
-                        <div class="dashboard-kpi">
-                            <div class="dashboard-kpi__label">식사 기록</div>
-                            <div id="insightStats" class="dashboard-kpi__value">
-                                <span id="mealRecordCount">0</span><span id="mealRecordTotal"> / 0</span>
-                            </div>
-                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="mealKpiBar"></i></div>
-                            <span id="mealRecordPercent" class="sr-only">0%</span>
-                        </div>
-                        <div class="dashboard-kpi">
-                            <div class="dashboard-kpi__label">간식</div>
-                            <div id="snackStats" class="dashboard-kpi__value">
-                                <span id="snackRecordCount">0</span><span> 회</span>
-                            </div>
-                            <div class="dashboard-kpi__bar" aria-hidden="true"><i id="snackKpiBar" style="background:#60a5fa"></i></div>
                         </div>
                     </div>
                 </section>
@@ -2117,7 +2123,7 @@
                                     </span>
                                     <span class="relative inline-flex h-[26px] w-[44px] shrink-0">
                                         <input type="checkbox" id="pushPrefMaster" class="peer sr-only push-pref-toggle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/50 focus-visible:ring-offset-2 rounded" role="switch" aria-label="푸시 알림 전체">
-                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-600"></span>
                                         <span class="pointer-events-none absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[18px]"></span>
                                     </span>
                                 </label>
@@ -2128,7 +2134,7 @@
                                     </span>
                                     <span class="relative inline-flex h-[26px] w-[44px] shrink-0">
                                         <input type="checkbox" id="pushPrefMomentComment" class="peer sr-only push-pref-toggle" role="switch" aria-label="모먼트 댓글 푸시">
-                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-600"></span>
                                         <span class="pointer-events-none absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[18px]"></span>
                                     </span>
                                 </label>
@@ -2139,7 +2145,7 @@
                                     </span>
                                     <span class="relative inline-flex h-[26px] w-[44px] shrink-0">
                                         <input type="checkbox" id="pushPrefBoardComment" class="peer sr-only push-pref-toggle" role="switch" aria-label="게시판 댓글 푸시">
-                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-600"></span>
                                         <span class="pointer-events-none absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[18px]"></span>
                                     </span>
                                 </label>
@@ -2150,7 +2156,7 @@
                                     </span>
                                     <span class="relative inline-flex h-[26px] w-[44px] shrink-0">
                                         <input type="checkbox" id="pushPrefMealTalk" class="peer sr-only push-pref-toggle" role="switch" aria-label="밀톡 푸시">
-                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-600"></span>
                                         <span class="pointer-events-none absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[18px]"></span>
                                     </span>
                                 </label>
@@ -2161,7 +2167,7 @@
                                     </span>
                                     <span class="relative inline-flex h-[26px] w-[44px] shrink-0">
                                         <input type="checkbox" id="pushPrefAdminDefault" class="peer sr-only push-pref-toggle" role="switch" aria-label="공지 및 관리자 푸시">
-                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-emerald-600"></span>
+                                        <span class="pointer-events-none absolute inset-0 rounded-full bg-slate-200 transition-colors peer-checked:bg-slate-600"></span>
                                         <span class="pointer-events-none absolute left-[3px] top-[3px] h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 peer-checked:translate-x-[18px]"></span>
                                     </span>
                                 </label>
@@ -2999,7 +3005,7 @@
                     </button>
                     <button type="button" id="sharePhotoIndicator" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
                         <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5 min-w-0">
-                            <i data-lucide="share" class="text-sm shrink-0" aria-hidden="true"></i>
+                            <i data-lucide="send" class="text-sm shrink-0" aria-hidden="true"></i>
                             <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                         </span>
                     </button>
@@ -3115,7 +3121,7 @@
                         <span>기록 완료</span>
                     </button>
                     <button type="button" id="dailyJournalShareIndicator" onclick="window.toggleDailyJournalSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
-                        <i data-lucide="share" class="text-sm shrink-0" aria-hidden="true"></i>
+                        <i data-lucide="send" class="text-sm shrink-0" aria-hidden="true"></i>
                         <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
                     </button>
                 </div>

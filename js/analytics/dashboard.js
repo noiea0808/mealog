@@ -7,6 +7,7 @@ import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, get
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay, getWeekDisplayLabel } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
 import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-charts.js';
+import { renderMainAnalysisTopIcons, renderSnackAnalysisTopIcons, setAnalysisTopIconsVisible } from './analysis-top-icons.js';
 import { toLocalDateString } from '../utils.js';
 import {
     computeMainMealKpiFromRecords,
@@ -323,6 +324,13 @@ export async function updateDashboard() {
     renderProportionChart('mateChartContainer', mainMealsOnly.filter(m => m.withWhom), 'withWhom');
     renderProportionChart('ratingChartContainer', mainMealsOnly.filter(m => m.rating), 'rating');
     renderProportionChart('satietyChartContainer', filteredData.filter(m => m.satiety), 'satiety');
+    // 대표 패턴 아이콘 행 (식사/간식)
+    if (state.analysisType === 'snack') {
+        renderSnackAnalysisTopIcons(snacksOnly);
+    } else {
+        renderMainAnalysisTopIcons(mainMealsOnly);
+    }
+    setAnalysisTopIconsVisible(state.analysisType === 'main' || state.analysisType === 'snack');
     
     // 간식 분석 차트 (어디서 → 무엇을 순) - place/snackType 없는 건도 미입력으로 포함
     const snackSlotLabelMap = {
@@ -416,15 +424,9 @@ export async function updateDashboard() {
     const mealKpiBar = document.getElementById('mealKpiBar');
     if (mealKpiBar) mealKpiBar.style.width = `${Math.max(0, Math.min(100, mealPercent))}%`;
     
-    // 간식 기록 표시
+    // 간식 기록 표시 (모수 없음 → 횟수만)
     const snackRecordCountEl = document.getElementById('snackRecordCount');
     if (snackRecordCountEl) snackRecordCountEl.textContent = String(snackCount ?? 0);
-    const snackKpiBar = document.getElementById('snackKpiBar');
-    if (snackKpiBar) {
-        const periodDays = Math.max(1, Number(window.getDashboardData?.()?.days) || 7);
-        const snackPct = Math.max(0, Math.min(100, Math.round(((snackCount ?? 0) / periodDays) * 100)));
-        snackKpiBar.style.width = `${snackPct}%`;
-    }
     
     // 인사이트 코멘트는 처음 로드 시 기본 코멘트를 표시하고, 이후에는 COMMENT 버튼을 눌렀을 때만 업데이트됨
     // 처음 로드 시에만 기본 코멘트 표시 (이미 코멘트가 있으면 표시하지 않음). 표시 내용은 관리자 화면에서 수기 설정.
@@ -438,6 +440,11 @@ export async function updateDashboard() {
     
     // 공유 버튼 상태 업데이트 (공유 상태가 변경되었을 수 있으므로 항상 업데이트)
     updateShareButtonStatus();
+
+    // Best 탭: 기간 데이터 로드 후 목록·썸네일 재렌더 (초기는 mealHistory 미완일 수 있음)
+    if (state.analysisType === 'best' && state.dashboardMode !== 'custom') {
+        renderBestMeals();
+    }
     
     // 말풍선 클릭 이벤트 설정
     setupInsightBubbleClick();
@@ -566,6 +573,8 @@ function updateAnalysisTypeUI() {
     if (healthSection) {
         healthSection.classList.toggle('hidden', state.analysisType !== 'health');
     }
+
+    setAnalysisTopIconsVisible(state.analysisType === 'main' || state.analysisType === 'snack');
     
     if (state.analysisType === 'best' && !shouldHideBest) {
         renderBestMeals();

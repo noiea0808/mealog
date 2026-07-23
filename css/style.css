@@ -5948,8 +5948,31 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .home-feed-card__share {
     margin-left: 2px;
-    color: var(--muted, #7a7268);
-    font-size: 12px;
+}
+/* 밀로그 공유됨 표시(상태 아이콘) — 버튼의 공유 아이콘과 별개 */
+.timeline-share-arrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    margin-left: 4px;
+    flex-shrink: 0;
+    vertical-align: middle;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #e8eef4;
+    color: #64748b;
+    box-sizing: border-box;
+    line-height: 0;
+}
+.timeline-share-arrow svg,
+.timeline-share-arrow i {
+    width: 12px !important;
+    height: 12px !important;
+    margin: 0 !important;
+    display: block;
+    flex-shrink: 0;
 }
 .home-feed-card__title {
     font-size: 17px;
@@ -7213,7 +7236,7 @@ label.entry-gauge-switch .entry-gauge-switch__track {
     transition: background-color 0.2s ease;
 }
 label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__track {
-    background: var(--green);
+    background: #475569; /* slate-600 — 스위치 ON (CTA 초록과 구분) */
 }
 label.entry-gauge-switch .entry-gauge-switch__thumb {
     pointer-events: none;
@@ -8362,17 +8385,23 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     background: transparent;
     color: var(--muted, #7a7268);
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     padding: 6px 12px;
     border-radius: 999px;
     cursor: pointer;
     line-height: 1.2;
     letter-spacing: -0.01em;
+    opacity: 0.55;
 }
 .mealdang-header-tab.active,
 .mealdang-header-tab[aria-selected="true"] {
     background: var(--green-soft, #eaf8f2);
-    color: var(--green-deep, #2d9f74);
+    color: var(--ink, #241f1c);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    opacity: 1;
 }
 #dashboardView.dashboard-view-v2 .mealdang-view.hidden,
 #dashboardView.dashboard-view-v2 .mealdang-view[hidden] {
@@ -8775,7 +8804,197 @@ body[data-main-tab='dashboard'] #dashboardView {
     border-radius: 14px !important;
     padding: 4px !important;
     margin-top: 0;
+    margin-bottom: 8px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons-card {
+    background: #fff !important;
+    border: 1px solid var(--line, #d0c6ba) !important;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06) !important;
+    border-radius: 14px !important;
+    /* 아래 분석 카드(ui-card-pad)와 동일 좌우 여백 */
+    padding: 0.625rem 1rem 0.625rem !important;
+    margin-top: 0;
     margin-bottom: 12px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons-title {
+    margin: 0 0 10px;
+    /* analytics-card-head 와 동일 좌측 인셋 → "어떻게/무엇을" 라벨과 정렬 */
+    padding-left: 12px;
+    padding-right: 22px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+    color: var(--ink, #241f1c);
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons-card.hidden,
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons-card[hidden] {
+    display: none !important;
+}
+/* 분석: 식사·간식 기록 KPI (패턴 박스 아래) */
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi {
+    background: #fff;
+    border: 1px solid var(--line, #d0c6ba);
+    border-radius: 14px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__line {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted, #7a7268);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding-left: 6px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi--count-only {
+    display: flex;
+    align-items: center;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi--count-only .dashboard-analysis-kpi__line {
+    width: 100%;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi--count-only .dashboard-analysis-kpi__value {
+    margin-left: auto;
+    text-align: right;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__value {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink, #241f1c);
+    line-height: 1.2;
+    white-space: nowrap;
+    text-align: right;
+    min-width: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__value span:not(#mealRecordCount):not(#snackRecordCount) {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted, #7a7268);
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__bar {
+    height: 4px;
+    background: #e8f5ef;
+    border-radius: 999px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-kpi__bar i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--green, #3cb889);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons.hidden,
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icons[hidden] {
+    display: none !important;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__badge {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: transparent;
+    flex-shrink: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__badge > img {
+    width: 42px;
+    height: 42px;
+    display: block;
+    object-fit: contain;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__badge > svg {
+    width: 42px;
+    height: 42px;
+    display: block;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__badge--fa {
+    background: #f1f5f9;
+    font-size: 16px;
+    line-height: 1;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__cat {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted, #7a7268);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__val {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink, #241f1c);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    max-width: 100%;
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    max-width: 100%;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__sep {
+    color: var(--muted, #7a7268);
+    font-weight: 600;
+    flex-shrink: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon__count {
+    color: var(--muted, #7a7268);
+    font-weight: 600;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon--empty .dashboard-analysis-top-icon__badge {
+    background: #f1f5f9;
+    border: 1px dashed #e2e8f0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-analysis-top-icon--empty .dashboard-analysis-top-icon__val {
+    color: var(--muted, #7a7268);
+    font-weight: 600;
 }
 #dashboardView.dashboard-view-v2 .dashboard-analysis-tabs {
     display: flex;

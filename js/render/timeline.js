@@ -326,7 +326,7 @@ function buildSnackTagRowInnerHtml(r) {
             <span class="text-[11px] font-black">${r.rating}</span>
         </span>`
         : '';
-    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp}"><i data-lucide="share" class="text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>${ratingHtml}`;
+    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}" title="게시됨"><i data-lucide="send" aria-hidden="true"></i></span>${ratingHtml}`;
 }
 
 function applySnackTagPendingUi(tagEl, record) {
@@ -795,7 +795,7 @@ function getDailyShareButtonHtmlForDate(dateStr) {
         ? 'date-section-header__share-btn--shared'
         : 'date-section-header__share-btn--default';
     return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
-        <i data-lucide="share" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
+        <i data-lucide="send" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }
 
@@ -907,7 +907,7 @@ function buildHomeFeedCardShellHtml({
             <div class="home-feed-card__icon${iconMod}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta-row">
-                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp}"><i data-lucide="share"></i></span></div>
+                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span></div>
                     ${stars}
                 </div>
                 <div class="home-feed-card__title">${titleHtml}</div>
@@ -1164,7 +1164,7 @@ function buildMainMealListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i data-lucide="share"></i></span>
+                        <span class="timeline-share-arrow" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline-flex' : 'none'}"><i data-lucide="send" aria-hidden="true"></i></span>
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
@@ -1229,7 +1229,7 @@ function buildSnackListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i data-lucide="share"></i></span>
+                        <span class="timeline-share-arrow" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline-flex' : 'none'}"><i data-lucide="send" aria-hidden="true"></i></span>
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
@@ -1257,7 +1257,7 @@ function dailyJournalCardDataAttrs(dateStr, journal) {
 function dailyJournalShareArrowHtml(dateStr, journal) {
     if (!dailyJournalHasPhotos(journal)) return '';
     const disp = isDailyJournalShared(dateStr, journal) ? 'inline' : 'none';
-    return `<span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${disp}"><i data-lucide="share"></i></span>`;
+    return `<span class="timeline-share-arrow" title="게시됨" style="display:${disp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>`;
 }
 
 function getDailyJournalForTimeline(dateStr) {
@@ -1567,7 +1567,7 @@ export function updateTimelineShareIndicators() {
             const shared = entryId?.startsWith('dailyJournal_')
                 ? isDailyJournalShared(entryId.slice('dailyJournal_'.length), record)
                 : isEntryShared(entryId, record);
-            arrow.style.display = shared ? 'inline' : 'none';
+            arrow.style.display = shared ? 'inline-flex' : 'none';
         }
     });
 }
