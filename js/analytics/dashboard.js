@@ -317,18 +317,29 @@ export async function updateDashboard() {
         const slot = SLOTS.find(s => s.id === m.slotId);
         return slot && slot.type === 'snack';
     });
+
+    // 식사/간식 탭의 슬롯 필터 적용 (차트·대표 패턴만)
+    const slotFilter = state.analysisSlotFilter || 'all';
+    const mealSlot =
+        state.analysisType === 'main' && MEAL_SLOTS.includes(slotFilter) ? slotFilter : 'all';
+    const snackSlot =
+        state.analysisType === 'snack' && SNACK_SLOTS.includes(slotFilter) ? slotFilter : 'all';
+    const mainForCharts =
+        mealSlot === 'all' ? mainMealsOnly : mainMealsOnly.filter((m) => m.slotId === mealSlot);
+    const snacksForCharts =
+        snackSlot === 'all' ? snacksOnly : snacksOnly.filter((m) => m.slotId === snackSlot);
     
     // 식사 분석 차트 (메인태그만 사용 - 상세입력항목 아님)
-    renderProportionChart('propChartContainer', mainMealsOnly.filter(m => m.mealType), 'mealType');
-    renderProportionChart('categoryChartContainer', mainMealsOnly.filter(m => m.category), 'category');
-    renderProportionChart('mateChartContainer', mainMealsOnly.filter(m => m.withWhom), 'withWhom');
-    renderProportionChart('ratingChartContainer', mainMealsOnly.filter(m => m.rating), 'rating');
-    renderProportionChart('satietyChartContainer', filteredData.filter(m => m.satiety), 'satiety');
+    renderProportionChart('propChartContainer', mainForCharts.filter(m => m.mealType), 'mealType');
+    renderProportionChart('categoryChartContainer', mainForCharts.filter(m => m.category), 'category');
+    renderProportionChart('mateChartContainer', mainForCharts.filter(m => m.withWhom), 'withWhom');
+    renderProportionChart('ratingChartContainer', mainForCharts.filter(m => m.rating), 'rating');
+    renderProportionChart('satietyChartContainer', mainForCharts.filter(m => m.satiety), 'satiety');
     // 대표 패턴 아이콘 행 (식사/간식)
     if (state.analysisType === 'snack') {
-        renderSnackAnalysisTopIcons(snacksOnly);
+        renderSnackAnalysisTopIcons(snacksForCharts, { includeWhen: snackSlot === 'all' });
     } else {
-        renderMainAnalysisTopIcons(mainMealsOnly);
+        renderMainAnalysisTopIcons(mainForCharts);
     }
     setAnalysisTopIconsVisible(state.analysisType === 'main' || state.analysisType === 'snack');
     
@@ -339,16 +350,24 @@ export async function updateDashboard() {
         snack2: '오후',
         night: '야식'
     };
-    const snacksForWhen = snacksOnly.map(m => ({
-        ...m,
-        snackWhen: snackSlotLabelMap[m.slotId] || '미입력'
-    }));
-    renderProportionChart('snackWhenChartContainer', snacksForWhen, 'snackWhen');
-    renderProportionChart('snackPlaceChartContainer', snacksOnly, 'snackPlace');
-    renderProportionChart('snackTypeChartContainer', snacksOnly, 'snackType');
-    renderProportionChart('snackMateChartContainer', snacksOnly.filter(m => m.withWhom), 'withWhom');
-    renderProportionChart('snackRatingChartContainer', snacksOnly.filter(m => m.rating), 'rating');
-    renderProportionChart('snackSatietyChartContainer', snacksOnly.filter(m => m.satiety), 'satiety');
+    const showSnackWhen = snackSlot === 'all';
+    const snackWhenCard = document.getElementById('snackWhenChartCard');
+    if (snackWhenCard) {
+        snackWhenCard.classList.toggle('hidden', !showSnackWhen);
+        snackWhenCard.toggleAttribute('hidden', !showSnackWhen);
+    }
+    if (showSnackWhen) {
+        const snacksForWhen = snacksForCharts.map(m => ({
+            ...m,
+            snackWhen: snackSlotLabelMap[m.slotId] || '미입력'
+        }));
+        renderProportionChart('snackWhenChartContainer', snacksForWhen, 'snackWhen');
+    }
+    renderProportionChart('snackPlaceChartContainer', snacksForCharts, 'snackPlace');
+    renderProportionChart('snackTypeChartContainer', snacksForCharts, 'snackType');
+    renderProportionChart('snackMateChartContainer', snacksForCharts.filter(m => m.withWhom), 'withWhom');
+    renderProportionChart('snackRatingChartContainer', snacksForCharts.filter(m => m.rating), 'rating');
+    renderProportionChart('snackSatietyChartContainer', snacksForCharts.filter(m => m.satiety), 'satiety');
 
     if (state.analysisType === 'health' && startStr && endStr) {
         renderHealthVitalsCharts(startStr, endStr);
@@ -575,10 +594,62 @@ function updateAnalysisTypeUI() {
     }
 
     setAnalysisTopIconsVisible(state.analysisType === 'main' || state.analysisType === 'snack');
+    updateAnalysisSlotFilterUI();
     
     if (state.analysisType === 'best' && !shouldHideBest) {
         renderBestMeals();
     }
+}
+
+function normalizeAnalysisSlotFilter(type, slot) {
+    const next = slot || 'all';
+    if (next === 'all') return 'all';
+    if (type === 'main' && MEAL_SLOTS.includes(next)) return next;
+    if (type === 'snack' && SNACK_SLOTS.includes(next)) return next;
+    return 'all';
+}
+
+function updateAnalysisSlotFilterUI() {
+    const state = appState;
+    const showMeal = state.analysisType === 'main';
+    const showSnack = state.analysisType === 'snack';
+    const wrap = document.getElementById('analysisSlotFilterWrap');
+    const mealTabs = document.getElementById('analysisMealSlotTabs');
+    const snackTabs = document.getElementById('analysisSnackSlotTabs');
+    if (wrap) {
+        wrap.classList.toggle('hidden', !showMeal && !showSnack);
+        wrap.toggleAttribute('hidden', !showMeal && !showSnack);
+    }
+    if (mealTabs) {
+        mealTabs.classList.toggle('hidden', !showMeal);
+        mealTabs.toggleAttribute('hidden', !showMeal);
+    }
+    if (snackTabs) {
+        snackTabs.classList.toggle('hidden', !showSnack);
+        snackTabs.toggleAttribute('hidden', !showSnack);
+    }
+
+    const activeSlot = normalizeAnalysisSlotFilter(state.analysisType, state.analysisSlotFilter);
+    if (state.analysisSlotFilter !== activeSlot) state.analysisSlotFilter = activeSlot;
+
+    const paint = (root) => {
+        if (!root) return;
+        root.querySelectorAll('[data-analysis-slot]').forEach((btn) => {
+            const on = btn.getAttribute('data-analysis-slot') === activeSlot;
+            btn.classList.toggle('active', on);
+            btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+    };
+    if (showMeal) paint(mealTabs);
+    if (showSnack) paint(snackTabs);
+}
+
+export function setAnalysisSlotFilter(slot) {
+    const type = appState.analysisType;
+    if (type !== 'main' && type !== 'snack') return;
+    appState.analysisSlotFilter = normalizeAnalysisSlotFilter(type, slot);
+    updateAnalysisSlotFilterUI();
+    updateDashboard();
 }
 
 export function setDashboardMode(m) {
@@ -609,6 +680,7 @@ export function setDashboardMode(m) {
 
 export function setAnalysisType(type) {
     appState.analysisType = type;
+    appState.analysisSlotFilter = 'all';
     updateAnalysisTypeUI();
     updateDashboard();
 }

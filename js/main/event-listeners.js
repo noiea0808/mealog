@@ -744,6 +744,13 @@ export function initEventListeners() {
         }
     });
 
+    document.querySelectorAll('#analysisMealSlotTabs [data-analysis-slot], #analysisSnackSlotTabs [data-analysis-slot]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const slot = btn.getAttribute('data-analysis-slot') || 'all';
+            window.setAnalysisSlotFilter?.(slot);
+        });
+    });
+
     ['analysis', 'comment'].forEach(view => {
         const btn = document.getElementById(`btn-mealdang-${view}`);
         if (btn) {

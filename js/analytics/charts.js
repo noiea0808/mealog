@@ -99,7 +99,66 @@ function buildDetailRankTabHtml(mealRecords, key) {
         const { menu } = getTop10RankingsFromMeals(mealRecords, { menuSlotsOnly: 'snack' });
         return renderTable(menu, '입력된 메뉴가 없습니다.', '메뉴');
     }
+    if (key === 'snackWithWhom') {
+        const snackOnly = mealRecords.filter((m) => SNACK_SLOTS.includes(m.slotId));
+        const { people } = getTop10RankingsFromMeals(snackOnly);
+        return renderTable(people, '입력된 사람이 없습니다.', '누구와');
+    }
     return '';
+}
+
+/** 만족도·포만감 상세: 전체 집계 순위표 (시간대 없음) */
+function buildDetailGaugeRankHtml(filteredData, key) {
+    const isSnack = key === 'snackRating' || key === 'snackSatiety';
+    const slots = isSnack ? SNACK_SLOTS : MEAL_SLOTS;
+    const rows = (filteredData || []).filter((m) => slots.includes(m.slotId));
+    const counts = {};
+    rows.forEach((m) => {
+        let label = '미입력';
+        if (key === 'rating' || key === 'snackRating') {
+            const n = parseInt(m.rating, 10);
+            label = !isNaN(n) ? `${n}점` : '미입력';
+        } else {
+            const n = parseInt(m.satiety, 10);
+            label = !isNaN(n)
+                ? SATIETY_DATA.find((d) => d.val === n)?.label || '미입력'
+                : '미입력';
+        }
+        counts[label] = (counts[label] || 0) + 1;
+    });
+    let sorted = Object.entries(counts).map(([name, count]) => ({ name, count }));
+    if (key === 'rating' || key === 'snackRating') {
+        sorted.sort((a, b) => {
+            if (a.name === '미입력') return 1;
+            if (b.name === '미입력') return -1;
+            return parseInt(b.name, 10) - parseInt(a.name, 10);
+        });
+    } else {
+        sorted.sort((a, b) => {
+            if (a.name === '미입력') return 1;
+            if (b.name === '미입력') return -1;
+            const av = SATIETY_DATA.find((d) => d.label === a.name)?.val ?? 0;
+            const bv = SATIETY_DATA.find((d) => d.label === b.name)?.val ?? 0;
+            return bv - av;
+        });
+    }
+    if (!sorted.length) {
+        return '<p class="text-slate-400 text-xs py-2">데이터가 없습니다.</p>';
+    }
+    const colLabel = key === 'rating' || key === 'snackRating' ? '만족도' : '포만감';
+    return `<table class="w-full text-sm border-collapse">
+        <thead><tr class="border-b border-slate-200 text-slate-500 font-bold">
+            <th class="text-left py-2 pr-3 w-12">순위</th>
+            <th class="text-left py-2 pr-3">${colLabel}</th>
+            <th class="text-right py-2 w-16">횟수</th>
+        </tr></thead>
+        <tbody>${sorted
+            .map(
+                (item, i) =>
+                    `<tr class="border-b border-slate-100"><td class="py-2 pr-3 text-slate-500">${i + 1}</td><td class="py-2 pr-3 font-medium text-slate-800">${escapeHtml(item.name)}</td><td class="py-2 text-right text-slate-600">${item.count}회</td></tr>`
+            )
+            .join('')}</tbody>
+    </table>`;
 }
 
 function escapeHtml(str) {
@@ -438,299 +497,35 @@ export function renderProportionChart(containerId, data, key) {
 
 export function openDetailModal(key, title) {
     logUsageMetric('mealdang_analysis_detail_click').catch(() => {});
-    document.getElementById('detailModalTitle').innerText = title;
+    const titleEl = document.getElementById('detailModalTitle');
     const container = document.getElementById('detailContent');
-    
+    const headerEl = document.getElementById('detailModalHeader');
+    if (titleEl) titleEl.innerText = title;
+    if (headerEl) headerEl.classList.remove('hidden');
+
     if (!window.getDashboardData) {
         console.error('getDashboardData 함수를 찾을 수 없습니다.');
         return;
     }
-    
+
     const { filteredData, mealRecordsForTable } = window.getDashboardData();
-    
-    // 사용자 설정 태그 목록 가져오기
-    const userTags = window.userSettings?.tags || {};
-    let allowedTags = null;
-    
-    // 태그 필터링이 필요한 키인지 확인
-    if (key === 'mealType' && Array.isArray(userTags.mealType) && userTags.mealType.length > 0) {
-        allowedTags = new Set(userTags.mealType);
-    } else if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
-        allowedTags = new Set(userTags.category);
-    } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
-        allowedTags = new Set(userTags.withWhom);
-    } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
-        allowedTags = new Set(userTags.snackType);
-    } else if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
-        allowedTags = new Set(userTags.snackPlaceMain);
-    }
-    // rating, snackRating, satiety는 숫자 값이므로 태그 필터링 불필요
-    
-    let slots, slotLabels;
-    if (key === 'snackType' || key === 'snackRating' || key === 'snackPlace' || key === 'snackWithWhom' || key === 'snackSatiety') {
-        slots = ['pre_morning', 'snack1', 'snack2', 'night'];
-        slotLabels = ['아침 전', '오전', '오후', '야식'];
+    const gaugeKeys = ['rating', 'snackRating', 'satiety', 'snackSatiety'];
+    let bodyHtml = '';
+    if (DETAIL_MODAL_TAB_KEYS.includes(key)) {
+        bodyHtml = buildDetailRankTabHtml(mealRecordsForTable || [], key);
+    } else if (gaugeKeys.includes(key)) {
+        bodyHtml = buildDetailGaugeRankHtml(filteredData || [], key);
     } else {
-        slots = ['morning', 'lunch', 'dinner'];
-        slotLabels = ['아침', '점심', '저녁'];
+        bodyHtml = '<p class="text-slate-400 text-xs py-2">표시할 상세가 없습니다.</p>';
     }
-    
-    const getValue = (m) => {
-        if (key === 'snackPlace') {
-            return effectiveChartTag(m, 'snackPlace') || '미입력';
-        }
-        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
-            return effectiveChartTag(m, key) || '미입력';
-        }
-        if (key === 'satiety' || key === 'snackSatiety') {
-            const satietyNum = parseInt(m.satiety);
-            if (!isNaN(satietyNum)) {
-                return SATIETY_DATA.find(d => d.val === satietyNum)?.label || '미입력';
-            }
-            return '미입력';
-        }
-        if (key === 'rating' || key === 'snackRating') {
-            const ratingNum = parseInt(m.rating);
-            if (!isNaN(ratingNum)) {
-                return `${ratingNum}점`;
-            }
-            return '미입력';
-        }
-        if (key === 'snackWithWhom') {
-            return effectiveChartTag(m, 'withWhom') || '미입력';
-        }
-        return m[key] || '미입력';
-    };
-    
-    const dataForSlots = filteredData.filter(m => slots.includes(m.slotId));
-    const colorMap = generateColorMap(dataForSlots, key, VIBRANT_COLORS);
-    
-    // 본 차트와 동일한 항목별 색상: CUMULATIVE_KEYS는 전체 데이터 기준 빈도순 그라데이션으로 고정
-    let globalColorMap = {};
-    if (CUMULATIVE_KEYS.includes(key)) {
-        const globalCounts = {};
-        dataForSlots.forEach(m => {
-            let val = getValue(m);
-            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
-            globalCounts[val] = (globalCounts[val] || 0) + 1;
-        });
-        let globalSorted;
-        if (allowedTags) {
-            const tagOrder = Array.from(allowedTags);
-            const tagEntries = tagOrder
-                .filter(tag => globalCounts[tag] > 0)
-                .map(tag => [tag, globalCounts[tag]])
-                .sort((a, b) => b[1] - a[1]);
-            if (globalCounts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', globalCounts['기타']]);
-            if (globalCounts['미입력'] > 0) tagEntries.push(['미입력', globalCounts['미입력']]);
-            tagEntries.sort((a, b) => b[1] - a[1]);
-            globalSorted = tagEntries;
-        } else {
-            const entries = Object.entries(globalCounts);
-            const nonEmpty = entries.filter(([name]) => name !== '미입력').sort((a, b) => b[1] - a[1]);
-            const emptyEntry = entries.find(([name]) => name === '미입력');
-            globalSorted = emptyEntry ? [...nonEmpty, emptyEntry] : nonEmpty;
-        }
-        globalSorted.forEach(([name], idx) => {
-            if (name !== '미입력') {
-                globalColorMap[name] = CUMULATIVE_BAR_GRADIENT[idx % CUMULATIVE_BAR_GRADIENT.length];
-            }
-        });
-    }
-    
-    let chartHtml = '<div class="space-y-4">';
-    
-    // 각 슬롯별로 별도 차트 생성
-    slots.forEach((slotId, slotIndex) => {
-        const slotLabel = slotLabels[slotIndex];
-        const slotData = filteredData.filter(m => m.slotId === slotId);
-        
-        if (slotData.length === 0) {
-            chartHtml += `<div class="mb-4">
-                <h3 class="text-sm font-bold text-slate-700 mb-2">${slotLabel}</h3>
-                <div class="text-center py-4 text-slate-400 text-xs">데이터가 없습니다.</div>
-            </div>`;
-            return;
-        }
-        
-        // 해당 슬롯의 값별 카운트 (메인태그만)
-        const counts = {};
-        slotData.forEach(m => {
-            let val = getValue(m);
-            if (allowedTags && val !== '미입력' && val !== '기타' && !allowedTags.has(val)) val = '미입력';
-            counts[val] = (counts[val] || 0) + 1;
-        });
-        
-        const total = slotData.length;
-        
-        // 사용자가 설정한 태그 순서대로 정렬 (데이터가 있는 것만, 미입력은 항상 마지막)
-        let sorted;
-        if (allowedTags) {
-            const tagOrder = Array.from(allowedTags);
-            const tagEntries = tagOrder
-                .filter(tag => counts[tag] > 0)
-                .map(tag => [tag, counts[tag]])
-                .sort((a, b) => b[1] - a[1]);
-            if (counts['기타'] > 0 && !allowedTags.has('기타')) tagEntries.push(['기타', counts['기타']]);
-            if (counts['미입력'] > 0) tagEntries.push(['미입력', counts['미입력']]);
-            tagEntries.sort((a, b) => b[1] - a[1]);
-            sorted = tagEntries;
-        } else {
-            const entries = Object.entries(counts);
-            const nonEmptyEntries = entries.filter(([name]) => name !== '미입력').sort((a, b) => b[1] - a[1]);
-            const emptyEntry = entries.find(([name]) => name === '미입력');
-            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
-        }
-        
-        // 만족도나 포만감의 경우 정렬 (미입력은 항상 마지막)
-        if (key === 'rating' || key === 'snackRating') {
-            const emptyEntry = sorted.find(([name]) => name === '미입력');
-            const nonEmptyEntries = sorted.filter(([name]) => name !== '미입력').sort((a, b) => {
-                const aNum = parseInt(a[0].replace('점', ''));
-                const bNum = parseInt(b[0].replace('점', ''));
-                if (!isNaN(aNum) && !isNaN(bNum)) {
-                    return aNum - bNum;
-                }
-                return 0;
-            });
-            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
-        } else if (key === 'satiety') {
-            const emptyEntry = sorted.find(([name]) => name === '미입력');
-            const nonEmptyEntries = sorted.filter(([name]) => name !== '미입력').sort((a, b) => {
-                const aData = SATIETY_DATA.find(d => d.label === a[0]);
-                const bData = SATIETY_DATA.find(d => d.label === b[0]);
-                if (aData && bData) {
-                    return aData.val - bData.val;
-                }
-                return 0;
-            });
-            sorted = emptyEntry ? [...nonEmptyEntries, emptyEntry] : nonEmptyEntries;
-        }
-        
-        chartHtml += `<div class="mb-4">
-            <h3 class="text-sm font-bold text-slate-700 mb-2">${slotLabel}</h3>
-            <div class="relative">
-                <div class="flex items-stretch h-10 rounded-full overflow-hidden border border-slate-200">`;
-        
-        let cumulativePercent = 0;
-        const segments = [];
-        
-        sorted.forEach(([name, count]) => {
-            const pct = Math.round((count / total) * 100);
-            let bg = colorMap[name] || '#94a3b8';
-            let textColor = '#ffffff';
-            
-            // 미입력 항목은 연회색으로 표시
-            if (name === '미입력') {
-                bg = '#e2e8f0'; // 연회색
-                textColor = '#64748b'; // 진한 회색 텍스트
-            } else if (CUMULATIVE_KEYS.includes(key) && globalColorMap[name]) {
-                bg = globalColorMap[name]; // 본 차트와 동일한 항목별 색상
-            } else if (key === 'rating' || key === 'snackRating') {
-                const ratingNum = parseInt(name.replace('점', ''));
-                if (!isNaN(ratingNum)) {
-                    bg = RATING_GRADIENT[ratingNum - 1] || RATING_GRADIENT[0];
-                }
-            } else if (key === 'satiety') {
-                const satietyData = SATIETY_DATA.find(d => d.label === name);
-                if (satietyData) {
-                    bg = satietyData.chartColor;
-                }
-            }
-            
-            if (pct < 5 || ((key === 'rating' || key === 'snackRating') && parseInt(name) <= 2)) textColor = '#475569';
-            if (pct > 0) {
-                chartHtml += `<div class="prop-segment relative flex items-center justify-center" style="width: ${pct}%; background: ${bg}; color: ${textColor}">
-                    ${pct >= 8 ? `<span class="text-[12px]">${pct}%</span>` : ''}
-                </div>`;
-                segments.push({
-                    name,
-                    count,
-                    pct,
-                    startPercent: cumulativePercent,
-                    widthPercent: pct
-                });
-                cumulativePercent += pct;
-            }
-        });
-        
-        chartHtml += `</div>
-                <div class="relative h-5 mt-1">`;
-        
-        let lastLabelEnd = -1;
-        segments.forEach(({ name, count, startPercent, widthPercent }) => {
-            // 세그먼트 중간 위치 계산
-            const centerPercent = startPercent + widthPercent / 2;
-            
-            // 라벨 표시 텍스트 생성 (미입력은 그대로 표시)
-            const displayName = name === '미입력' ? '미입력' : name;
-            
-            // 겹침 체크: 최소 8% 간격 유지
-            if (centerPercent - lastLabelEnd >= 8 || lastLabelEnd < 0) {
-                chartHtml += `<div class="absolute text-xs whitespace-nowrap" style="left: ${centerPercent}%; transform: translateX(-50%);">
-                    <span class="text-slate-600">${displayName}</span>
-                    <span class="text-slate-400">(${count})</span>
-                </div>`;
-                // 라벨의 예상 너비를 고려하여 lastLabelEnd 업데이트 (대략 10%로 간주)
-                lastLabelEnd = centerPercent + 5;
-            }
-        });
-        
-        chartHtml += `</div>
-            </div>
-        </div>`;
-    });
-    
-    chartHtml += '</div>';
-    
-    // 식사방식/메뉴/함께한 즐거움: 탭만 상단, 제목 숨김 / 왼쪽=랭크, 오른쪽=시간대 차트
-    const useTabs = DETAIL_MODAL_TAB_KEYS.includes(key);
-    const headerEl = document.getElementById('detailModalHeader');
-    const RANK_TAB_LABELS = { mealType: '어디서', category: '자주 먹은 메뉴', withWhom: '누구와', snackPlace: '어디서', snackType: '자주 먹은 메뉴' };
-    const rankTabLabel = RANK_TAB_LABELS[key] || title;
-    if (useTabs) {
-        if (headerEl) headerEl.classList.add('hidden');
-        const rankHtml = buildDetailRankTabHtml(mealRecordsForTable || [], key);
-        container.innerHTML = `
-            <div class="flex items-center border-b border-slate-200 mb-4 -mx-1 flex-shrink-0">
-                <button type="button" id="detailTabRankBtn" class="detail-modal-tab active flex-1 py-2.5 px-3 text-sm font-bold text-slate-900 border-b-2 border-slate-900 transition-colors">${rankTabLabel}</button>
-                <button type="button" id="detailTabChartBtn" class="detail-modal-tab flex-1 py-2.5 px-3 text-sm font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-600 transition-colors">시간대</button>
-            </div>
-            <div id="detailTabRankPanel" class="detail-modal-panel">${rankHtml}</div>
-            <div id="detailTabChartPanel" class="detail-modal-panel hidden">${chartHtml}</div>
-        `;
-        const chartBtn = document.getElementById('detailTabChartBtn');
-        const rankBtn = document.getElementById('detailTabRankBtn');
-        const chartPanel = document.getElementById('detailTabChartPanel');
-        const rankPanel = document.getElementById('detailTabRankPanel');
-        chartBtn.addEventListener('click', () => {
-            chartBtn.classList.add('active', 'text-slate-900', 'border-slate-900');
-            chartBtn.classList.remove('text-slate-400');
-            rankBtn.classList.remove('active', 'text-slate-900', 'border-slate-900');
-            rankBtn.classList.add('text-slate-400', 'border-transparent');
-            chartPanel.classList.remove('hidden');
-            rankPanel.classList.add('hidden');
-        });
-        rankBtn.addEventListener('click', () => {
-            rankBtn.classList.add('active', 'text-slate-900', 'border-slate-900');
-            rankBtn.classList.remove('text-slate-400', 'border-transparent');
-            chartBtn.classList.remove('active', 'text-slate-900', 'border-slate-900');
-            chartBtn.classList.add('text-slate-400', 'border-transparent');
-            rankPanel.classList.remove('hidden');
-            chartPanel.classList.add('hidden');
-        });
-    } else {
-        if (headerEl) headerEl.classList.remove('hidden');
-        document.getElementById('detailModalTitle').innerText = title;
-        container.innerHTML = chartHtml;
-    }
-    
+    if (container) container.innerHTML = bodyHtml || '<p class="text-slate-400 text-xs py-2">데이터가 없습니다.</p>';
+
     if (window.currentDetailChart) {
         window.currentDetailChart.destroy();
         window.currentDetailChart = null;
     }
-    
-    document.getElementById('detailModal').classList.remove('hidden');
+
+    document.getElementById('detailModal')?.classList.remove('hidden');
     lockBodyScroll();
 }
 

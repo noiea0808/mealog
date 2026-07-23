@@ -61,7 +61,7 @@ import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
+import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setAnalysisSlotFilter, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
@@ -452,6 +452,8 @@ window.closeDetailModal = closeDetailModal;
 window.Mealog.closeDetailModal = closeDetailModal;
 window.setAnalysisType = setAnalysisType;
 window.Mealog.setAnalysisType = setAnalysisType;
+window.setAnalysisSlotFilter = setAnalysisSlotFilter;
+window.Mealog.setAnalysisSlotFilter = setAnalysisSlotFilter;
 window.setMealdangView = setMealdangView;
 window.Mealog.setMealdangView = setMealdangView;
 initDashboardAnalysisUi();
@@ -2070,6 +2072,8 @@ function initDailySwipeGesture() {
     if (window.__dailySwipeGestureInitialized) return;
     const tv = document.getElementById('timelineView');
     if (!tv) return;
+    /** 카드 아래 page-deep 빈 영역은 #timelineView 밖(body/main)일 수 있어 문서 단위로 수신 */
+    const swipeListenRoot = document;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
     /** 일간 스와이프: 버튼·입력 등 실제 조작 요소만 제외(카드 본문은 스와이프 허용) */
@@ -2078,6 +2082,26 @@ function initDailySwipeGesture() {
         return !!node.closest(
             'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap'
         );
+    };
+    /** 밀로그 일간 + 빈 배경(카드 사이·아래)까지 스와이프 허용. 상단 크롬·다른 탭·모달은 제외 */
+    const canStartDailySwipe = (node) => {
+        if (!node || node.nodeType !== 1) return false;
+        if (document.body?.dataset?.mainTab !== 'timeline') return false;
+        if (tv.classList.contains('hidden')) return false;
+        if (isInteractiveSwipeTarget(node)) return false;
+        if (
+            node.closest(
+                '#appTopChrome, #mainAppHeader, #trackerSection, .bottom-nav, #entryQuickInputFab, #mealSyncResendBtn, #initialRecordsLoadFab, #galleryMomentsRefreshFab, #boardWriteBtn, #statusBarOverlay, #navigationBarOverlay'
+            )
+        ) {
+            return false;
+        }
+        const otherView = node.closest('#galleryView, #boardListView, #dashboardView, #settingsView');
+        if (otherView && !otherView.classList.contains('hidden')) return false;
+        if (node.closest('#entryModal, [role="dialog"], .mealog-center-popup, .mealog-update-banner')) {
+            return false;
+        }
+        return true;
     };
     const SWIPE_TRIGGER_PX = 28;
     const AXIS_LOCK_PX = 10;
@@ -2257,22 +2281,22 @@ function initDailySwipeGesture() {
         resetTransform();
     };
 
-    tv.addEventListener('touchstart', (e) => {
+    swipeListenRoot.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
-        if (isInteractiveSwipeTarget(e.target)) return;
+        if (!canStartDailySwipe(e.target)) return;
         beginSwipe(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
 
-    tv.addEventListener('touchmove', (e) => {
+    swipeListenRoot.addEventListener('touchmove', (e) => {
         if (e.touches.length !== 1) return;
         moveSwipe(e.touches[0].clientX, e.touches[0].clientY, true, e);
     }, { passive: false });
 
-    tv.addEventListener('touchend', () => {
+    swipeListenRoot.addEventListener('touchend', () => {
         endSwipe();
     }, { passive: true });
 
-    tv.addEventListener('touchcancel', () => {
+    swipeListenRoot.addEventListener('touchcancel', () => {
         cancelSwipe();
     }, { passive: true });
 
@@ -2280,17 +2304,19 @@ function initDailySwipeGesture() {
     // pointerdown 직후 setPointerCapture 하면 카드 클릭이 막히므로, 가로 축 확정 후에만 캡처
     let mouseSwipeCaptureActive = false;
     let mouseSwipePointerId = null;
+    let mouseSwipeCaptureEl = null;
 
-    tv.addEventListener('pointerdown', (e) => {
+    swipeListenRoot.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        if (isInteractiveSwipeTarget(e.target)) return;
+        if (!canStartDailySwipe(e.target)) return;
         mouseSwipeCaptureActive = false;
         mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         if (!beginSwipe(e.clientX, e.clientY)) return;
         mouseSwipePointerId = e.pointerId;
     });
 
-    tv.addEventListener('pointermove', (e) => {
+    swipeListenRoot.addEventListener('pointermove', (e) => {
         if (e.pointerType !== 'mouse') return;
         if (mouseSwipePointerId != null && e.pointerId !== mouseSwipePointerId) return;
         moveSwipe(e.clientX, e.clientY, true, e);
@@ -2301,33 +2327,36 @@ function initDailySwipeGesture() {
             mouseSwipePointerId != null
         ) {
             mouseSwipeCaptureActive = true;
+            mouseSwipeCaptureEl = tv;
             try {
                 tv.setPointerCapture?.(mouseSwipePointerId);
             } catch (_) {}
         }
     });
 
-    tv.addEventListener('pointerup', (e) => {
+    swipeListenRoot.addEventListener('pointerup', (e) => {
         if (e.pointerType !== 'mouse') return;
-        if (mouseSwipeCaptureActive) {
+        if (mouseSwipeCaptureActive && mouseSwipeCaptureEl) {
             try {
-                tv.releasePointerCapture?.(e.pointerId);
+                mouseSwipeCaptureEl.releasePointerCapture?.(e.pointerId);
             } catch (_) {}
         }
         mouseSwipeCaptureActive = false;
         mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         endSwipe();
     });
 
-    tv.addEventListener('pointercancel', (e) => {
+    swipeListenRoot.addEventListener('pointercancel', (e) => {
         if (e.pointerType !== 'mouse') return;
-        if (mouseSwipeCaptureActive) {
+        if (mouseSwipeCaptureActive && mouseSwipeCaptureEl) {
             try {
-                tv.releasePointerCapture?.(e.pointerId);
+                mouseSwipeCaptureEl.releasePointerCapture?.(e.pointerId);
             } catch (_) {}
         }
         mouseSwipeCaptureActive = false;
         mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         cancelSwipe();
     });
 

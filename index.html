@@ -307,16 +307,16 @@
         }
         #landingLoginOptions.landing-options-visible { opacity: 1; }
         #landingLoginOptions { transition: opacity 0.4s ease; }
-        /* 로그인 레이아웃: flexMain 구간·gap까지 paint 일치 */
+        /* 로그인 레이아웃: 딥민트 배경 + 흰 텍스트 */
         #landingPage.landing-show-login,
         #landingPage.landing-buttons-visible {
-            background: #3cb889;
+            background: var(--green-deep, #2d9f74);
         }
         #landingPage.landing-show-login #landingFlexMain,
         #landingPage.landing-buttons-visible #landingFlexMain {
-            background: #3cb889;
+            background: var(--green-deep, #2d9f74);
         }
-        /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 초록 — 열 바깥(뷰포트 좌우)은 html line */
+        /* 로그인: 콘텐츠 열(28rem) 안 세로 여백만 딥민트 — 열 바깥(뷰포트 좌우)은 html line */
         html.mealog-landing-login.platform-web::before {
             content: '';
             position: fixed;
@@ -327,7 +327,7 @@
             max-width: 28rem;
             top: 0;
             bottom: 0;
-            background: #3cb889;
+            background: var(--green-deep, #2d9f74);
             z-index: 199;
             pointer-events: none;
         }
@@ -348,7 +348,7 @@
             background-color: #ffffff;
         }
         html.mealog-landing-login #landingBottomFixed {
-            background-color: #3cb889;
+            background-color: var(--green-deep, #2d9f74);
         }
         #landingBottomFixed #loginBannerSection,
         #landingBottomFixed .landing-app-promo-bar {
@@ -1072,19 +1072,19 @@
                 </div>
                 <div id="landingSplashTitleAndTagline" class="absolute inset-0 flex flex-col items-center justify-center text-center px-4 mb-0 opacity-0 pointer-events-none">
                     <h1 class="mealog-title text-5xl text-white tracking-tighter mb-2">mealog</h1>
-                    <p class="text-emerald-100 text-sm font-bold opacity-90 tracking-wide text-center px-2">우리가 함께한, 맛있었던 이야기</p>
+                    <p class="text-white/90 text-sm font-bold tracking-wide text-center px-2">우리가 함께한, 맛있었던 이야기</p>
                 </div>
             </div>
             <!-- 로그인 옵션: 로그인 정보 입력이 필요할 때만 표시 -->
             <div id="landingLoginOptions" class="hidden opacity-0 w-[85vw] min-w-[280px] max-w-[360px] sm:max-w-[320px] mx-auto px-6 sm:px-8 space-y-3 mt-0">
-            <button id="googleLoginBtn" class="w-full py-3.5 bg-white text-slate-800 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+            <button id="googleLoginBtn" class="w-full py-3.5 bg-slate-100 text-slate-800 border border-slate-200/80 rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
                 <i class="fa-brands fa-google text-lg"></i>
                 <span class="font-bold text-sm">구글로 계속하기</span>
             </button>
             <button type="button" id="kakaoLoginBtn" class="w-full py-3.5 rounded-2xl flex items-center justify-center px-5 shadow-lg active:scale-[0.98] transition-transform bg-[#FEE500] text-[#191919] border border-[#F0D000] gap-2">
                 <span class="font-bold text-sm">카카오로 계속하기</span>
             </button>
-            <button id="emailLoginBtn" class="w-full py-3.5 bg-emerald-700 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2">
+            <button id="emailLoginBtn" class="w-full py-3.5 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-[0.98] transition-transform gap-2" style="background:var(--green,#3cb889)">
                 <i data-lucide="mail" class="text-lg"></i>
                 <span class="font-bold text-sm">이메일로 계속하기</span>
             </button>
@@ -1792,6 +1792,21 @@
                         <button id="btn-analysis-best" type="button" class="dashboard-analysis-tab">Best</button>
                     </div>
                 </div>
+                <div id="analysisSlotFilterWrap" class="dashboard-analysis-slot-filter-wrap">
+                    <div id="analysisMealSlotTabs" class="dashboard-analysis-slot-tabs" role="tablist" aria-label="식사 슬롯 필터">
+                        <button type="button" class="dashboard-analysis-slot-tab active" data-analysis-slot="all" role="tab" aria-selected="true">전체</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="morning" role="tab" aria-selected="false">아침</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="lunch" role="tab" aria-selected="false">점심</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="dinner" role="tab" aria-selected="false">저녁</button>
+                    </div>
+                    <div id="analysisSnackSlotTabs" class="dashboard-analysis-slot-tabs hidden" role="tablist" aria-label="간식 슬롯 필터" hidden>
+                        <button type="button" class="dashboard-analysis-slot-tab active" data-analysis-slot="all" role="tab" aria-selected="true">전체</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="pre_morning" role="tab" aria-selected="false">아침전</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="snack1" role="tab" aria-selected="false">오전</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="snack2" role="tab" aria-selected="false">오후</button>
+                        <button type="button" class="dashboard-analysis-slot-tab" data-analysis-slot="night" role="tab" aria-selected="false">야식</button>
+                    </div>
+                </div>
                 <!-- 식사 탭: 기간 내 항목별 최다 선택 아이콘 행 (탭과 분리) -->
                 <div id="mainAnalysisTopIconsCard" class="card ui-card-pad-chip dashboard-analysis-top-icons-card">
                     <h3 id="mainAnalysisTopIconsTitle" class="dashboard-analysis-top-icons-title">최근 1주 대표 패턴</h3>
@@ -1840,35 +1855,33 @@
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">어떻게</h3>
-                                <button type="button" onclick="window.openDetailModal('mealType', '어디서 / 시간대')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('mealType', '어디서')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="propChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">무엇을</h3>
-                                <button type="button" onclick="window.openDetailModal('category', '자주 먹은 메뉴 / 시간대')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('category', '자주 먹은 메뉴')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="categoryChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">함께</h3>
-                                <button type="button" onclick="window.openDetailModal('withWhom', '누구와 / 시간대')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('withWhom', '누구와')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="mateChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">만족도</h3>
-                                <button type="button" onclick="window.openDetailModal('rating', '만족도 통계')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="ratingChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">포만감</h3>
-                                <button type="button" onclick="window.openDetailModal('satiety', '포만감 통계')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="satietyChartContainer"></div>
                         </div>
@@ -1932,7 +1945,7 @@
                 <!-- 간식 분석 섹션 -->
                 <div id="snackAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
-                        <div class="card ui-card-pad">
+                        <div id="snackWhenChartCard" class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">언제</h3>
                             </div>
@@ -1941,14 +1954,14 @@
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">무엇을</h3>
-                                <button type="button" onclick="window.openDetailModal('snackType', '자주 먹은 메뉴 / 시간대')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('snackType', '자주 먹은 메뉴')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">어디서</h3>
-                                <button type="button" onclick="window.openDetailModal('snackPlace', '어디서 / 시간대')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('snackPlace', '어디서')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackPlaceChartContainer"></div>
                         </div>
@@ -1962,14 +1975,12 @@
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">만족도</h3>
-                                <button type="button" onclick="window.openDetailModal('snackRating', '간식 만족도 통계')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackRatingChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">포만감</h3>
-                                <button type="button" onclick="window.openDetailModal('snackSatiety', '포만감 (간식)')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackSatietyChartContainer"></div>
                         </div>
@@ -2374,7 +2385,7 @@
     <!-- 알림 (중앙 팝업 · Soft Mint Search/List) -->
     <div id="notificationModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
         <button type="button" id="notificationBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden min-h-[min(70vh,32rem)] max-h-[min(85vh,36rem)]">
+        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
             <div class="notification-modal-head">
                 <h2 id="notificationModalTitle" class="notification-modal-title">알림</h2>
                 <div class="notification-modal-head-actions">
@@ -3170,8 +3181,8 @@
     </div>
 
     <!-- Detail Analysis Modal (팝업) -->
-    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4">
-        <div class="w-full max-w-md mx-[10px] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
+    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4 px-4">
+        <div class="w-full max-w-[20rem] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
             <div id="detailModalHeader" class="flex justify-between items-center p-4 pb-0 flex-shrink-0">
                 <h2 id="detailModalTitle" class="font-bold text-slate-800">상세 통계</h2>
             </div>

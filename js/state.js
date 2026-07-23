@@ -127,6 +127,8 @@ export const appState = {
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
     analysisType: 'main', // 'best', 'main', 'snack', 'health'
+    /** 식사/간식 분석 슬롯 필터: 'all' | morning|lunch|dinner | pre_morning|snack1|snack2|night */
+    analysisSlotFilter: 'all',
     mealdangView: 'analysis', // 'analysis' | 'comment' — 밀당 헤더 탭
     
     // UI 상호작용

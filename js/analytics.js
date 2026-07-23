@@ -10,6 +10,7 @@ export {
     updateDashboard, 
     setDashboardMode, 
     setAnalysisType,
+    setAnalysisSlotFilter,
     setMealdangView,
     updateCustomDates,
     syncCustomDatePlaceholder,

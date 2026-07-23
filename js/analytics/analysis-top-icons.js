@@ -316,15 +316,20 @@ export function renderMainAnalysisTopIcons(mainMealsOnly) {
 
 /**
  * @param {object[]} snacksOnly
+ * @param {{ includeWhen?: boolean }} [opts] — 슬롯 필터가 '전체'일 때만 언제 표시
  */
-export function renderSnackAnalysisTopIcons(snacksOnly) {
+export function renderSnackAnalysisTopIcons(snacksOnly, opts = {}) {
+    const includeWhen = opts.includeWhen !== false;
     const snacks = Array.isArray(snacksOnly)
         ? snacksOnly.map((m) => ({
               ...m,
               snackWhen: SNACK_WHEN_LABEL[m.slotId] || m.snackWhen || ''
           }))
         : [];
-    renderPatternRow(SNACK_ROW_DEFS, snacks);
+    const defs = includeWhen
+        ? SNACK_ROW_DEFS
+        : SNACK_ROW_DEFS.filter((d) => d.id !== 'snackWhen');
+    renderPatternRow(defs, snacks);
 }
 
 /** 식사·간식 탭에서 대표 패턴 카드 표시 */
