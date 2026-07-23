@@ -656,6 +656,7 @@ window.closeSearch = () => {
 
 window.clearGalleryFilterPostId = () => {
     appState.galleryFilterPostId = null;
+    appState.galleryNotificationFilterPhotos = null;
     renderGallery();
 };
 

@@ -35,7 +35,8 @@ export {
     isNotificationTargetAvailable,
     isBoardNotificationTargetAvailable,
     isFeedNotificationTargetAvailable,
-    isMomentNotificationTargetAvailable
+    isMomentNotificationTargetAvailable,
+    loadSharedPhotosForMomentNotification
 } from './db/notification-targets.js';
 export {
     loadMoreMeals,

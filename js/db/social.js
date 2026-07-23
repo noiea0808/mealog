@@ -94,6 +94,28 @@ export const postInteractions = {
         }
     },
 
+    /** 댓글 개수 (목록 전체 로드 없이 count aggregation, alternate postId 포함) */
+    async getCommentCount(postId, alternatePostIds = []) {
+        if (!postId) return 0;
+        try {
+            const commentsColl = collection(db, 'artifacts', appId, 'postComments');
+            const ids = [postId, ...(Array.isArray(alternatePostIds) ? alternatePostIds : [])]
+                .map((id) => String(id || '').trim())
+                .filter(Boolean);
+            const uniqueIds = [...new Set(ids)].slice(0, 10);
+            if (uniqueIds.length === 0) return 0;
+            if (uniqueIds.length === 1) {
+                const snap = await getCountFromServer(query(commentsColl, where('postId', '==', uniqueIds[0])));
+                return Number(snap.data()?.count) || 0;
+            }
+            const snap = await getCountFromServer(query(commentsColl, where('postId', 'in', uniqueIds)));
+            return Number(snap.data()?.count) || 0;
+        } catch (e) {
+            console.error('Get Comment Count Error:', e);
+            return 0;
+        }
+    },
+
     /** 본인이 해당 포스트에 댓글을 남겼는지 (v2 아이콘 fill용, 목록 전체 로드 없음) */
     async hasUserCommented(postId, userId, alternatePostIds = []) {
         if (!postId || !userId) return false;
@@ -342,14 +364,13 @@ export const postInteractions = {
             } catch (_) {
                 sharedSnap = await getDocs(sharedQ);
             }
-            const mySharedDocIds = new Set(sharedSnap.docs.map(d => d.id));
-            const myEntryIds = new Set(sharedSnap.docs.map(d => String(d.data().entryId || '').trim()).filter(Boolean));
             const byEntryUserId = {};
             const byDocId = {};
             const byEntryId = {};
-            const byGroupKey = {}; // 캡처 3종세트: postId가 groupKey 형식일 때 (daily_*, best_*, insight_*)
+            const byGroupKey = {};
+            /** raw postId → 갤러리 canonical postId */
+            const rawToCanonical = {};
             const momentLabel = (data) => {
-                // 캡처 3종세트: 공유 게시물 내 제목(기간포함)으로 표시
                 const shareType = (data.type || '').trim();
                 if (shareType === 'daily' && data.date) {
                     const d = new Date(data.date + 'T00:00:00');
@@ -365,7 +386,6 @@ export const postInteractions = {
                 if (shareType === 'insight' && data.dateRangeText) {
                     return `${data.dateRangeText} 밀당 참견`;
                 }
-                // 일반 식사 게시물
                 const place = (data.place || '').trim();
                 const menuDetail = (data.menuDetail || '').trim();
                 const deliveryVendor = (data.deliveryVendor || '').trim();
@@ -382,6 +402,11 @@ export const postInteractions = {
                 if (mealType) return mealType;
                 return '해당 게시물';
             };
+            const registerAlias = (alias, canonical, meta) => {
+                if (!alias || !canonical) return;
+                rawToCanonical[alias] = canonical;
+                if (!byGroupKey[alias]) byGroupKey[alias] = meta;
+            };
             for (const d of sharedSnap.docs) {
                 const data = d.data();
                 const docId = d.id;
@@ -390,32 +415,58 @@ export const postInteractions = {
                 const photoUrl = data.photoUrl || null;
                 const photoIndex = typeof data.photoIndex === 'number' ? data.photoIndex : 999;
                 const label = momentLabel(data);
-                byDocId[docId] = { photoUrl, label };
+                const meta = { photoUrl, photoIndex, label };
+                const shareType = (data.type || '').trim();
+                let canonical = docId;
+                if (shareType === 'daily' && data.date) {
+                    canonical = `daily_${data.date}_${docUserId}`;
+                } else if (shareType === 'best') {
+                    if (data.periodType && data.periodText) {
+                        canonical = `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`;
+                    } else {
+                        canonical = `best_${docId}_${docUserId}`;
+                    }
+                } else if (shareType === 'insight' && data.dateRangeText) {
+                    canonical = `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`;
+                } else if (entryId) {
+                    canonical = `${String(entryId).trim()}_${docUserId}`;
+                }
+                byDocId[docId] = meta;
+                registerAlias(docId, canonical, meta);
+                registerAlias(canonical, canonical, meta);
                 if (entryId) {
                     const eid = String(entryId).trim();
                     if (!byEntryId[eid] || (typeof byEntryId[eid].photoIndex === 'number' && photoIndex < byEntryId[eid].photoIndex))
-                        byEntryId[eid] = { photoUrl, photoIndex, label };
+                        byEntryId[eid] = meta;
+                    registerAlias(eid, canonical, meta);
+                    if (docUserId) {
+                        const key = `${eid}_${docUserId}`;
+                        if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
+                            byEntryUserId[key] = meta;
+                        registerAlias(key, canonical, meta);
+                    }
                 }
-                if (entryId && docUserId) {
-                    const key = `${entryId}_${docUserId}`;
-                    if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
-                        byEntryUserId[key] = { photoUrl, photoIndex, label };
-                }
-                // 캡처 3종세트: groupKey 형식으로도 저장 (알림 postId와 매칭)
-                const shareType = (data.type || '').trim();
                 if (shareType === 'daily' && data.date) {
-                    const gk = `daily_${data.date}_${docUserId}`;
-                    byGroupKey[gk] = { photoUrl, label };
+                    registerAlias(`daily_${data.date}_${docUserId}`, canonical, meta);
                 } else if (shareType === 'best') {
-                    const gk = `best_${docId}_${docUserId}`;
-                    byGroupKey[gk] = { photoUrl, label };
+                    registerAlias(`best_${docId}_${docUserId}`, canonical, meta);
+                    if (data.periodType && data.periodText) {
+                        registerAlias(
+                            `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`,
+                            canonical,
+                            meta
+                        );
+                    }
                 } else if (shareType === 'insight' && data.dateRangeText) {
-                    const gk = `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`;
-                    byGroupKey[gk] = { photoUrl, label };
+                    registerAlias(
+                        `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`,
+                        canonical,
+                        meta
+                    );
                 }
+                byGroupKey[canonical] = meta;
             }
 
-            // 알림용: 서버에 저장된 postOwnerId로 "내 글에 달린 댓글"만 쿼리 (구조 변경으로 확실히 동작)
             const commentsColl = collection(db, 'artifacts', appId, 'postComments');
             const commentsQ = query(commentsColl, where('postOwnerId', '==', uid));
             let snapshot;
@@ -431,26 +482,57 @@ export const postInteractions = {
             const byPost = {};
             for (const d of snapshot.docs) {
                 const data = d.data();
-                const postId = String(data.postId ?? '').trim();
-                if (!postId) continue;
+                const commenterId = String(data.userId || '').trim();
+                // 푸시와 동일: 본인 댓글은 앱 알림에서 제외
+                if (commenterId && commenterId === uid) continue;
+                const rawPostId = String(data.postId ?? '').trim();
+                if (!rawPostId) continue;
+                const postId = rawToCanonical[rawPostId] || rawPostId;
                 let ts = 0;
                 try {
                     const t = data.timestamp;
                     ts = t && (t.toDate ? t.toDate() : new Date(t)).getTime();
                     if (Number.isNaN(ts)) ts = 0;
                 } catch (_) { ts = 0; }
-                if (!byPost[postId]) byPost[postId] = { postId, lastCommentAt: 0, commentCount: 0, type: 'moment' };
+                if (!byPost[postId]) {
+                    byPost[postId] = {
+                        postId,
+                        lastCommentAt: 0,
+                        commentCount: 0,
+                        type: 'moment',
+                        aliasPostIds: new Set()
+                    };
+                }
+                byPost[postId].aliasPostIds.add(rawPostId);
+                if (rawPostId !== postId) byPost[postId].aliasPostIds.add(postId);
                 byPost[postId].commentCount += 1;
                 if (ts > byPost[postId].lastCommentAt) byPost[postId].lastCommentAt = ts;
             }
-            const list = Object.values(byPost);
-            list.forEach(item => {
+            const list = Object.values(byPost).map((item) => {
+                const aliases = [...(item.aliasPostIds || [])].filter(Boolean);
                 const entry = byEntryUserId[item.postId];
                 const docEntry = byDocId[item.postId];
                 const entryOnly = byEntryId[item.postId];
                 const groupEntry = byGroupKey[item.postId];
-                item.thumbnailUrl = (entry && entry.photoUrl) || (docEntry && docEntry.photoUrl) || (groupEntry && groupEntry.photoUrl) || (entryOnly && entryOnly.photoUrl) || null;
-                item.momentLabel = (entry && entry.label) || (docEntry && docEntry.label) || (groupEntry && groupEntry.label) || (entryOnly && entryOnly.label) || '해당 게시물';
+                return {
+                    postId: item.postId,
+                    lastCommentAt: item.lastCommentAt,
+                    commentCount: item.commentCount,
+                    type: 'moment',
+                    aliasPostIds: aliases,
+                    thumbnailUrl:
+                        (entry && entry.photoUrl) ||
+                        (docEntry && docEntry.photoUrl) ||
+                        (groupEntry && groupEntry.photoUrl) ||
+                        (entryOnly && entryOnly.photoUrl) ||
+                        null,
+                    momentLabel:
+                        (entry && entry.label) ||
+                        (docEntry && docEntry.label) ||
+                        (groupEntry && groupEntry.label) ||
+                        (entryOnly && entryOnly.label) ||
+                        '해당 게시물'
+                };
             });
             return list.sort((a, b) => b.lastCommentAt - a.lastCommentAt);
         } catch (e) {

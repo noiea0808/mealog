@@ -153,20 +153,24 @@ function buildV2MeatballBtnHtml(overlayRow) {
     return `<button type="button" class="timeline-meal-photo-meatball-btn timeline-meal-photo-moment-social-btn pointer-events-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-0"${attr} data-meal-photo-meatball="1" onclick="event.stopPropagation();window._openMealOverlayFeedOptions&&window._openMealOverlayFeedOptions(this)" aria-label="더보기" aria-haspopup="true"><i data-lucide="ellipsis" class="timeline-meal-photo-meatball-icon text-white/95" aria-hidden="true"></i></button>`;
 }
 
-function buildV2InlineSocialBarHtml(postId) {
+function buildV2InlineSocialBarHtml(postId, seedLikeCount = null, seedCommentCount = null) {
     const p = String(postId || '');
     const pidJson = JSON.stringify(p);
+    const likeTxt =
+        typeof seedLikeCount === 'number' && seedLikeCount > 0 ? String(seedLikeCount) : '';
+    const commentTxt =
+        typeof seedCommentCount === 'number' && seedCommentCount > 0 ? String(seedCommentCount) : '';
     return `<div class="moment-v2-social-below-photo pointer-events-auto flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex w-full items-center">
 <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
     )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="heart" class="post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="heart" class="post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
-    )}" aria-hidden="true"></span></button>
+    )}" aria-hidden="true">${likeTxt}</span></button>
 <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
     )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="message-circle" class="post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="message-circle" class="post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
         p
-    )}" aria-hidden="true"></span></button>
+    )}" aria-hidden="true">${commentTxt}</span></button>
 <button type="button" class="post-bookmark-btn timeline-meal-photo-moment-social-btn relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-visible" data-post-id="${escapeHtml(
         p
     )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleBookmark(${pidJson})' aria-label="북마크"><span class="timeline-meal-photo-moment-social-icon-stack absolute inset-0" aria-hidden="true"><i data-lucide="bookmark" class="post-bookmark-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="bookmark" class="post-bookmark-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></button>
@@ -409,7 +413,9 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         postId: postIdParam,
         postIdJs: postIdJsParam,
         mealHistoryMap,
-        groupEntryId
+        groupEntryId,
+        seedLikeCount = null,
+        seedCommentCount = null
     } = params;
     const ar =
         aspectRatio === '1:1' || aspectRatio === '3:4' || aspectRatio === '4:3' ? aspectRatio : '1:1';
@@ -440,7 +446,10 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         mealHistoryMap,
         groupEntryId
     );
-    const socialBar = postIdForUi && overlayRow ? buildV2InlineSocialBarHtml(postIdForUi) : '';
+    const socialBar =
+        postIdForUi && overlayRow
+            ? buildV2InlineSocialBarHtml(postIdForUi, seedLikeCount, seedCommentCount)
+            : '';
     const bodySpecialCls = isBestShare ? ' moment-v2-body--special' : '';
 
     let photoBlockHtml = '';

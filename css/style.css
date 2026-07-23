@@ -11320,15 +11320,17 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border: none;
     background: transparent;
 }
-/* 프로필 모먼트 → 밀톡 탭 목록 */
+/* 내 게시물 → 게시판 탭 목록: 라운지 게시판과 동일한 좌우 여백 */
 #galleryFilterBoardList {
     overflow-x: hidden;
-    margin-left: -1rem;
-    margin-right: -1rem;
-    width: calc(100% + 2rem);
     box-sizing: border-box;
-    border-left: 1px solid #e2e8f0;
-    border-right: 1px solid #e2e8f0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 10px 14px calc(5.25rem + var(--safe-bottom, 0px));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    background: var(--page-deep, #faf6f2);
 }
 
 /* 라운지 시안 v2 — 게시판/공지 리스트 카드 */
@@ -11542,51 +11544,416 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-left: 4px solid rgb(234 179 8 / 0.3);
 }
 
-/* 밀톡 게시글 상세: 목록과 동일 풀폭·배경 */
+/* 게시판/공지 상세: Soft Mint — 목록과 같은 여백·페이지 톤 */
 #boardDetailView.board-detail-view {
-    padding-top: 0.25rem !important;
-    padding-bottom: 0.25rem !important;
+    padding: 0 !important;
+    background: var(--page-deep, #faf6f2);
 }
 
-/* 밀톡 본문보기: 게시판 목록 패널과 동일 연회색 바탕, 카드만 풀폭 */
 #boardDetailContent {
-    background: rgb(241 245 249) !important;
-    margin-left: -1rem;
-    margin-right: -1rem;
+    background: transparent !important;
+    margin-left: 0;
+    margin-right: 0;
     margin-top: 0 !important;
-    padding: 0;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding: 10px 14px calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
     border-radius: 0;
-    width: calc(100% + 2rem);
+    width: 100%;
     max-width: none;
     box-sizing: border-box;
 }
 
-.board-detail-page-root {
+.board-detail-page-root,
+.board-detail-page {
     width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
 }
 
-/* 상세 상단 글 카드: 목록 카드(.board-list-card)와 동일 스킨 — 클릭 시 눌림 효과만 약화 */
-.board-detail-post-card.board-list-card:active {
-    box-shadow:
-        0 1px 2px rgba(15, 23, 42, 0.06),
-        0 3px 10px rgba(15, 23, 42, 0.07),
-        0 0 0 1px rgba(15, 23, 42, 0.03);
+.board-detail-card.lounge-post,
+.board-detail-comments-card.lounge-post {
+    margin-bottom: 12px;
 }
 
-/* 본문 보기 카드: 오른쪽 경계선(목록 카드는 border-right 없음 → 상세만 얇게 표시) */
-#boardDetailContent .board-detail-post-card.board-list-card {
-    border-right: 1px solid rgb(226 232 240);
+.board-detail-card.lounge-post:last-child,
+.board-detail-comments-card.lounge-post:last-child {
+    margin-bottom: 0;
 }
 
-/* 댓글 영역: 본문 카드와 동일 스킨 */
-#boardDetailContent .board-detail-comments-card.board-list-card {
-    border-right: 1px solid rgb(226 232 240);
+.board-detail-card--notice.lounge-post {
+    background: linear-gradient(180deg, #fff 0%, #fffbeb 100%);
+    border-color: #fde68a;
 }
 
-#boardDetailContent .board-detail-comment-input:disabled {
+.board-detail-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.board-detail-icon-btn {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-2, #4f4841);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+}
+.board-detail-icon-btn:hover {
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
+}
+.board-detail-icon-btn:active {
+    background: var(--green-mute, #b4e2cd);
+}
+.board-detail-icon-btn i,
+.board-detail-icon-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.board-detail-author {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+}
+.board-detail-author__avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    overflow: hidden;
+}
+.board-detail-author__avatar img,
+.board-detail-author__avatar .lounge-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+}
+.board-detail-author__text {
+    min-width: 0;
+}
+.board-detail-author__name {
+    display: block;
+    max-width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink, #241f1c);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.board-detail-author__sub {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted, #7a7268);
+    margin-top: 1px;
+}
+
+.board-detail-notice-head {
+    min-width: 0;
+    flex: 1;
+}
+.board-detail-mine-badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--green-deep, #2d9f74);
+    background: var(--green-soft, #eaf8f2);
+    border: 1px solid var(--green-mute, #b4e2cd);
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+
+.board-detail-content-block {
+    margin-bottom: 12px;
+}
+.board-detail-title {
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--ink, #241f1c);
+    line-height: 1.35;
+    margin: 0 0 10px;
+}
+.board-detail-title--notice {
+    margin: 4px 0 0;
+    font-size: 18px;
+}
+.board-detail-body {
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--ink-2, #4f4841);
+    word-break: break-word;
+}
+.board-detail-body p {
+    margin: 0 0 0.65em;
+}
+.board-detail-body p:last-child {
+    margin-bottom: 0;
+}
+.board-detail-images {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+.board-detail-images img {
+    display: block;
+    width: 100%;
+    max-height: min(70vh, 420px);
+    object-fit: cover;
+    border-radius: 14px;
+    background: var(--line, #d0c6ba);
+    cursor: pointer;
+}
+
+.board-detail-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+    border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 70%, transparent);
+    margin-top: 2px;
+}
+.board-detail-notice-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.board-detail-notice-tags .lounge-notice-chip {
+    margin-bottom: 0;
+}
+.board-detail-actions-row {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+.board-detail-stat {
+    border: 0;
+    background: transparent;
+    color: var(--ink-2, #4f4841);
+    font-size: 12.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: default;
+    line-height: 1;
+}
+button.board-detail-stat {
+    cursor: pointer;
+}
+button.board-detail-stat:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.board-detail-stat i,
+.board-detail-stat svg {
+    width: 15px;
+    height: 15px;
+    color: #64748b;
+}
+.board-detail-stat .is-liked,
+.board-detail-stat i.is-liked,
+.board-post-like-btn.liked .social-action-icon-stroke,
+.board-post-like-btn .social-action-icon-stroke.is-liked {
+    color: #e11d48;
+}
+.board-post-bookmark-btn.bookmarked .social-action-icon-stroke {
+    color: var(--green, #3cb889);
+}
+
+.board-detail-comments-head {
+    margin-bottom: 10px;
+}
+.board-detail-comments-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--ink, #241f1c);
+    letter-spacing: -0.01em;
+}
+.board-detail-comments-count {
+    font-weight: 700;
+    color: var(--muted, #7a7268);
+}
+.board-detail-comments-list {
+    display: flex;
+    flex-direction: column;
+}
+.board-detail-comments-list.has-items > .board-detail-comment + .board-detail-comment {
+    border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
+}
+.board-detail-comments-empty {
+    margin: 0;
+    padding: 1.5rem 0.5rem;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted, #7a7268);
+}
+.board-detail-comment {
+    padding: 12px 0;
+}
+.board-detail-comment:first-child {
+    padding-top: 2px;
+}
+.board-detail-comment:last-child {
+    padding-bottom: 4px;
+}
+.board-detail-comment__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+.board-detail-comment__meta {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.board-detail-comment__nick {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink, #241f1c);
+}
+.board-detail-comment__time {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted, #7a7268);
+    font-variant-numeric: tabular-nums;
+}
+.board-detail-comment__delete {
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted, #7a7268);
+    cursor: pointer;
+}
+.board-detail-comment__delete:hover {
+    color: #dc2626;
+}
+.board-detail-comment__body {
+    margin: 6px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink-2, #4f4841);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.board-detail-comment-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.board-detail-composer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
+}
+.board-detail-composer__row {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.board-detail-comment-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--line, #d0c6ba);
+    border-radius: 18px;
+    background: var(--page, #fffcfa);
+    color: var(--ink, #241f1c);
+    font-size: 14px;
+    line-height: 1.45;
+    padding: 10px 5.6rem 10px 14px;
+    outline: none;
+    box-shadow: none;
+}
+.board-detail-comment-input:focus {
+    border-color: var(--green-mute, #b4e2cd);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-soft, #eaf8f2) 80%, transparent);
+}
+.board-detail-comment-input:disabled {
     opacity: 0.65;
     cursor: not-allowed;
+}
+.board-detail-comment-input::placeholder {
+    color: #94a3b8;
+}
+.board-detail-composer__readonly {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted, #7a7268);
+}
+.board-detail-comment-photo-preview {
+    margin-top: 8px;
+}
+
+.board-detail-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 3.5rem 1rem;
+    text-align: center;
+}
+.board-detail-state__icon,
+.board-detail-state__icon svg {
+    width: 28px;
+    height: 28px;
+    color: var(--muted, #7a7268);
+}
+.board-detail-state__icon--warn,
+.board-detail-state__icon--warn svg {
+    color: #d97706;
+}
+.board-detail-state__text {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-2, #4f4841);
 }
 
 /* 글쓰기 등 다른 화면용 (밀톡 상세에서는 .board-list-card 사용) */

@@ -35,6 +35,7 @@ export const appState = {
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
+    galleryNotificationFilterPhotos: null, // 알림→모먼트: 피드에 없어도 열 수 있게 미리 로드한 사진들
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
     /** 사용자 프로필 모먼트 그리드: 처음 3×5셀(15게시물), 더보기마다 +15 (클라이언트 슬라이스) */
     galleryUserProfileMomentVisiblePostCount: 15,

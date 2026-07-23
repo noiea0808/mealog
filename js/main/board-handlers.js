@@ -1054,22 +1054,22 @@ function buildBoardDetailCommentRowHtml({
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="board-detail-comment__time">${commentDateStr} ${commentTimeStr}</time>`
             : '';
     const actionsPart = showDelete
-        ? `<button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        ? `<button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="board-detail-comment__delete">삭제</button>`
         : '';
     const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'board');
     const bodyPart = body
-        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-board-comment-body="1">${escapeHtml(body)}</p>`
+        ? `<p class="board-detail-comment__body" data-board-comment-body="1">${escapeHtml(body)}</p>`
         : '';
-    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${commentId}">
-    <div class="flex items-start justify-between gap-2">
-      <div class="min-w-0 flex items-baseline gap-2">
-        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+    return `<div class="board-detail-comment" data-comment-id="${commentId}">
+    <div class="board-detail-comment__head">
+      <div class="board-detail-comment__meta">
+        <span class="board-detail-comment__nick">${escapeHtml(nickname)}</span>
         ${timePart}
       </div>
-      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
+      ${actionsPart || ''}
     </div>
     ${bodyPart}
     ${imagesPart}
@@ -1120,7 +1120,7 @@ window.addBoardComment = async (postId) => {
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
-        commentsListEl.classList.add('divide-y', 'divide-slate-100');
+        commentsListEl.classList.add('has-items');
         commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
         const last = commentsListEl.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1164,9 +1164,9 @@ window.addBoardComment = async (postId) => {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
             if (commentsListEl.children.length === 0) {
-                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.classList.remove('has-items');
                 commentsListEl.innerHTML =
-                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                    '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
             }
         }
         if (commentsCountEl) {
@@ -1196,24 +1196,24 @@ function buildNoticeDetailCommentRowHtml({
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="board-detail-comment__time">${commentDateStr} ${commentTimeStr}</time>`
             : '';
     const safeNid = String(noticeId || '').replace(/'/g, "\\'");
     const safeCid = String(commentId || '').replace(/'/g, "\\'");
     const actionsPart = showDelete
-        ? `<button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        ? `<button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="board-detail-comment__delete">삭제</button>`
         : '';
     const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'notice');
     const bodyPart = body
-        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-notice-comment-body="1">${escapeHtml(body)}</p>`
+        ? `<p class="board-detail-comment__body" data-notice-comment-body="1">${escapeHtml(body)}</p>`
         : '';
-    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(commentId)}">
-    <div class="flex items-start justify-between gap-2">
-      <div class="min-w-0 flex items-baseline gap-2">
-        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+    return `<div class="board-detail-comment" data-comment-id="${String(commentId)}">
+    <div class="board-detail-comment__head">
+      <div class="board-detail-comment__meta">
+        <span class="board-detail-comment__nick">${escapeHtml(nickname)}</span>
         ${timePart}
       </div>
-      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
+      ${actionsPart || ''}
     </div>
     ${bodyPart}
     ${imagesPart}
@@ -1264,7 +1264,7 @@ window.addNoticeComment = async (noticeId) => {
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
-        commentsListEl.classList.add('divide-y', 'divide-slate-100');
+        commentsListEl.classList.add('has-items');
         commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
         const last = commentsListEl.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1310,9 +1310,9 @@ window.addNoticeComment = async (noticeId) => {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
             if (commentsListEl.children.length === 0) {
-                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.classList.remove('has-items');
                 commentsListEl.innerHTML =
-                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                    '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
             }
         }
         if (commentsCountEl) {
@@ -1505,9 +1505,9 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
         row.remove();
         if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
         if (commentsListEl && commentsListEl.children.length === 0) {
-            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.classList.remove('has-items');
             commentsListEl.innerHTML =
-                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
         }
     }
 
@@ -1522,7 +1522,7 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
             if (commentsListEl && commentsCountEl) {
                 commentsCountEl.textContent = String(comments.length);
                 if (comments.length > 0) {
-                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.add('has-items');
                     commentsListEl.innerHTML = comments
                         .map((comment) => {
                             let commentDate;
@@ -1559,9 +1559,9 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
                         })
                         .join('');
                 } else {
-                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.remove('has-items');
                     commentsListEl.innerHTML =
-                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                        '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
                 }
             }
         } catch (err) {
@@ -1637,9 +1637,9 @@ window.deleteBoardComment = async (commentId, postId) => {
         row.remove();
         if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
         if (commentsListEl && commentsListEl.children.length === 0) {
-            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.classList.remove('has-items');
             commentsListEl.innerHTML =
-                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
         }
     }
     
@@ -1654,7 +1654,7 @@ window.deleteBoardComment = async (commentId, postId) => {
             if (commentsListEl && commentsCountEl) {
                 commentsCountEl.textContent = comments.length;
                 if (comments.length > 0) {
-                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.add('has-items');
                     commentsListEl.innerHTML = comments.map(comment => {
                         let commentDate;
                         if (!comment.timestamp) commentDate = new Date();
@@ -1688,9 +1688,9 @@ window.deleteBoardComment = async (commentId, postId) => {
                         });
                     }).join('');
                 } else {
-                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.remove('has-items');
                     commentsListEl.innerHTML =
-                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                        '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
                 }
             }
         } catch (err) {

@@ -267,6 +267,17 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
               }
           })
         : null;
+    const v2MetaEarly = photo._v2Parent || (photo.schemaVersion === 2 ? photo : null);
+    const seedLikeCountRaw = v2MetaEarly?.likeCount ?? photo.likeCount;
+    const seedCommentCountRaw = v2MetaEarly?.commentCount ?? photo.commentCount;
+    const seedLikeCountEarly =
+        typeof seedLikeCountRaw === 'number' && !Number.isNaN(seedLikeCountRaw)
+            ? seedLikeCountRaw
+            : null;
+    const seedCommentCountEarly =
+        typeof seedCommentCountRaw === 'number' && !Number.isNaN(seedCommentCountRaw)
+            ? seedCommentCountRaw
+            : null;
     const v2PhotoLabelBlock = layoutV2
         ? buildMomentFeedV2PhotoAndLabelHtml({
               photoGroup,
@@ -281,7 +292,9 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
               postId,
               postIdJs,
               mealHistoryMap,
-              groupEntryId: entryId
+              groupEntryId: entryId,
+              seedLikeCount: seedLikeCountEarly,
+              seedCommentCount: seedCommentCountEarly
           })
         : '';
     const photosHtml = layoutV2
@@ -357,13 +370,15 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
-    const v2Meta = photo._v2Parent || (photo.schemaVersion === 2 ? photo : null);
-    const seedLikeCount = v2Meta && typeof v2Meta.likeCount === 'number' ? v2Meta.likeCount : null;
-    const seedCommentCount = v2Meta && typeof v2Meta.commentCount === 'number' ? v2Meta.commentCount : null;
+    const seedLikeCount = seedLikeCountEarly;
+    const seedCommentCount = seedCommentCountEarly;
     const seedCountAttrs =
         seedLikeCount != null || seedCommentCount != null
             ? ` data-seed-like-count="${seedLikeCount != null ? seedLikeCount : ''}" data-seed-comment-count="${seedCommentCount != null ? seedCommentCount : ''}"`
             : '';
+    const likeCountTxt = seedLikeCount != null && seedLikeCount > 0 ? String(seedLikeCount) : '';
+    const commentCountTxt =
+        seedCommentCount != null && seedCommentCount > 0 ? String(seedCommentCount) : '';
     return `
             <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}${seedCountAttrs}>
                 ${
@@ -431,11 +446,11 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                         <div class="flex items-center gap-4">
                             <button onclick='window.toggleLike(${postIdJs})' class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i data-lucide="heart" class="text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
-                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">${likeCountTxt}</span>
                             </button>
                             <button onclick='window.toggleCommentInput(${postIdJs})' class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i data-lucide="message-circle" class="text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>
-                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}">${commentCountTxt}</span>
                             </button>
                         </div>
                         <button onclick='window.toggleBookmark(${postIdJs})' class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">

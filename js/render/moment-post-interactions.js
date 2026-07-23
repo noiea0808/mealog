@@ -31,11 +31,30 @@ export function applyStackCommentBtnVisual(postId) {
     });
 }
 
-export const MAX_CONCURRENT_LOADS = 2;
-export const BATCH_DELAY = 200;
+export const MAX_CONCURRENT_LOADS = 4;
+export const BATCH_DELAY = 80;
 export const loadedPostIds = new Set();
 export let postLoadQueue = [];
 export let postLoadBatchTimer = null;
+
+/** 카드 data-seed-*-count를 카운트 span에 즉시 반영 (비동기 로드 전 빈 숫자 방지) */
+export function applySeedSocialCounts(postEl, postId) {
+    if (!postEl || !postId) return;
+    const seedLikeRaw = postEl.getAttribute('data-seed-like-count');
+    const seedCommentRaw = postEl.getAttribute('data-seed-comment-count');
+    if (seedLikeRaw !== null && seedLikeRaw !== '') {
+        const n = Number(seedLikeRaw);
+        postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = n > 0 ? String(n) : '';
+        });
+    }
+    if (seedCommentRaw !== null && seedCommentRaw !== '') {
+        const n = Number(seedCommentRaw);
+        postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+            el.textContent = n > 0 ? String(n) : '';
+        });
+    }
+}
 
 export function clearMomentPostInteractionQueue() {
     postLoadQueue = [];
@@ -50,6 +69,7 @@ export function clearMomentPostInteractionQueue() {
 export function enqueuePostInteractionLoad(postEl, postId, abortSignal) {
     if (!postId || loadedPostIds.has(postId)) return;
     loadedPostIds.add(postId);
+    applySeedSocialCounts(postEl, postId);
     postLoadQueue.push({ postEl, postId });
     if (!postLoadBatchTimer && (!abortSignal || !abortSignal.aborted)) {
         postLoadBatchTimer = setTimeout(() => {
@@ -109,6 +129,12 @@ export async function loadPostInteractions(postEl, postId) {
                         console.error(`좋아요 수 가져오기 실패 (postId: ${postId}):`, e);
                         return null;
                     })
+                  : Promise.resolve(null),
+              window.postInteractions.getCommentCount
+                  ? window.postInteractions.getCommentCount(postId, alternatePostIds).catch((e) => {
+                        console.error(`댓글 수 가져오기 실패 (postId: ${postId}):`, e);
+                        return null;
+                    })
                   : Promise.resolve(null)
           ]
         : [
@@ -145,20 +171,7 @@ export async function loadPostInteractions(postEl, postId) {
     }
     
     try {
-        const seedLikeRaw = postEl.getAttribute('data-seed-like-count');
-        const seedCommentRaw = postEl.getAttribute('data-seed-comment-count');
-        if (seedLikeRaw !== null && seedLikeRaw !== '') {
-            postEl.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
-                const n = Number(seedLikeRaw);
-                el.textContent = n > 0 ? String(n) : '';
-            });
-        }
-        if (seedCommentRaw !== null && seedCommentRaw !== '') {
-            postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
-                const n = Number(seedCommentRaw);
-                el.textContent = n > 0 ? String(n) : '';
-            });
-        }
+        applySeedSocialCounts(postEl, postId);
 
         const results = await Promise.all(promiseArray);
         let isLiked = false;
@@ -168,15 +181,16 @@ export async function loadPostInteractions(postEl, postId) {
         let likes = null;
         let comments = null;
         let likeCountFromServer = null;
+        let commentCountFromServer = null;
         
         if (isLoggedIn && !isV2Card) {
             [isLiked, isBookmarked, likes, comments] = results;
         } else if (isLoggedIn && isV2Card) {
-            [isLiked, isBookmarked, likeCountFromServer, hasCommented] = results;
+            [isLiked, isBookmarked, likeCountFromServer, commentCountFromServer, hasCommented] = results;
         } else if (!isLoggedIn && !isV2Card) {
             [likes, comments] = results;
         } else if (!isLoggedIn && isV2Card) {
-            [likeCountFromServer] = results;
+            [likeCountFromServer, commentCountFromServer] = results;
         }
         
         // DOM이 여전히 존재하는지 확인
@@ -267,12 +281,38 @@ export async function loadPostInteractions(postEl, postId) {
             } catch (_) {}
         }
 
-        // 댓글 수 업데이트 (v2는 comments 미조회 → 시드값 유지)
+        // 댓글 수 업데이트 (v2: count aggregation / v1: comments.length)
         if (Array.isArray(comments)) {
             const commentCount = comments.length;
             postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((commentCountEl) => {
                 commentCountEl.textContent = commentCount > 0 ? commentCount : '';
             });
+            if (postEl.hasAttribute('data-seed-comment-count')) {
+                postEl.setAttribute('data-seed-comment-count', String(commentCount));
+            }
+            try {
+                const { patchMomentFeedSocialCounts } = await import('../utils/moment-feed-cache.js');
+                if (window.sharedPhotosFeed) {
+                    window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, {
+                        commentCount
+                    });
+                }
+            } catch (_) {}
+        } else if (typeof commentCountFromServer === 'number') {
+            postEl.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((commentCountEl) => {
+                commentCountEl.textContent = commentCountFromServer > 0 ? String(commentCountFromServer) : '';
+            });
+            if (postEl.hasAttribute('data-seed-comment-count')) {
+                postEl.setAttribute('data-seed-comment-count', String(commentCountFromServer));
+            }
+            try {
+                const { patchMomentFeedSocialCounts } = await import('../utils/moment-feed-cache.js');
+                if (window.sharedPhotosFeed) {
+                    window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, {
+                        commentCount: commentCountFromServer
+                    });
+                }
+            } catch (_) {}
         }
 
         // 댓글 아이콘: 사용자가 댓글 단 경우 채우기

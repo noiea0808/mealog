@@ -5,7 +5,11 @@ import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
-import { loadSharedPhotosByUserUpToPostCount, getMomentsFeedView } from '../db.js';
+import {
+    loadSharedPhotosByUserUpToPostCount,
+    getMomentsFeedView,
+    loadSharedPhotosForMomentNotification
+} from '../db.js';
 import {
     getPostIdFromPhotoGroup,
     photoGroupMatchesTracePostIds,
@@ -651,6 +655,28 @@ export async function renderGallery(options = {}) {
             appState.galleryFeedNetworkError = true;
             photosToRender = [];
         }
+    } else if (appState.galleryFilterPostId && !filterUserId) {
+        // 알림 「댓글 달린 게시물」: 전역 피드 첫 페이지에 없어도 내 공유에서 직접 로드
+        const filterPid = String(appState.galleryFilterPostId || '').trim();
+        let notifPhotos = Array.isArray(appState.galleryNotificationFilterPhotos)
+            ? appState.galleryNotificationFilterPhotos
+            : null;
+        if (!notifPhotos?.length && window.currentUser?.uid) {
+            try {
+                notifPhotos = await loadSharedPhotosForMomentNotification(filterPid, window.currentUser.uid);
+            } catch (_) {
+                notifPhotos = [];
+            }
+        }
+        if (isGallerySessionStale(mySession)) return;
+        if (notifPhotos?.length) {
+            appState.galleryNotificationFilterPhotos = notifPhotos;
+            photosToRender = sortSharedPhotosByTimestampDesc(notifPhotos);
+            appState.galleryFeedNetworkError = false;
+        } else {
+            photosToRender = sortSharedPhotosByTimestampDesc(window.sharedPhotosFeed || []);
+            appState.galleryFeedNetworkError = false;
+        }
     } else if (appState.gallerySearchActive && !filterUserId) {
         const expanded = await expandFeedForGallerySearch(mySession);
         if (isGallerySessionStale(mySession)) return;
@@ -781,20 +807,6 @@ export async function renderGallery(options = {}) {
                 <div class="gallery-filter-tabs sticky top-0 z-30" role="tablist" aria-label="내 게시물 유형">
                     <button type="button" role="tab" aria-selected="${galleryFilterTab === 'moment' ? 'true' : 'false'}" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('moment')" class="gallery-filter-tab-btn ${galleryFilterTab === 'moment' ? 'is-active' : ''}">모먼트</button>
                     <button type="button" role="tab" aria-selected="${galleryFilterTab === 'board' ? 'true' : 'false'}" onclick="window.switchGalleryFilterTab && window.switchGalleryFilterTab('board')" class="gallery-filter-tab-btn ${galleryFilterTab === 'board' ? 'is-active' : ''}">게시판</button>
-                </div>
-            </div>
-        `;
-    }
-    
-    // 알림에서 클릭 시 해당 게시물만 보기: 상단에 전체보기 버튼
-    if (appState.galleryFilterPostId && !filterUserId) {
-        userProfileHeader = `
-            <div class="gallery-post-filter-header bg-white border-b border-slate-200 sticky top-0 z-30">
-                <div class="px-4 py-3 flex items-center gap-2">
-                    <button type="button" onclick="window.clearGalleryFilterPostId && window.clearGalleryFilterPostId()" class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-slate-700 active:bg-slate-50 rounded-full transition-colors flex-shrink-0">
-                        <i data-lucide="arrow-left" class="text-lg"></i>
-                    </button>
-                    <span class="text-sm font-bold text-slate-800">댓글 달린 게시물</span>
                 </div>
             </div>
         `;
@@ -935,13 +947,11 @@ export async function renderGallery(options = {}) {
         sortedGroups = sortedGroups.filter((g) => photoGroupMatchesKeyword(g, searchKeyword, mealHistoryMap));
     }
     
-    // 알림에서 클릭 시 해당 게시물만 필터
+    // 알림에서 클릭 시 해당 게시물만 필터 (legacy·entryId_uid·그룹키 후보 매칭)
     const filterPostId = appState.galleryFilterPostId;
     if (filterPostId) {
-        sortedGroups = sortedGroups.filter(g =>
-            getPostIdFromPhotoGroup(g) === filterPostId
-            || (Array.isArray(g) && (g.some(p => p.id === filterPostId) || g.some(p => p.entryId === filterPostId)))
-        );
+        const filterSet = new Set([String(filterPostId)]);
+        sortedGroups = sortedGroups.filter((g) => photoGroupMatchesTracePostIds(g, filterSet));
     }
     
     // 코멘트가 비어 있을 수 있는 글은 렌더와 동시에 미리 요청 (체감 지연 감소)
@@ -1592,6 +1602,11 @@ export async function renderGallery(options = {}) {
                 }
                 if (document.contains(post)) {
                     intersectionObserver.observe(post);
+                    // 알림 단일 게시물·화면 내 카드는 IO 대기 없이 바로 소셜 카운트 로드
+                    if (appState.galleryFilterPostId || posts.length <= 3) {
+                        const pid = post.getAttribute('data-post-id');
+                        if (pid) enqueuePostInteractionLoad(post, pid, abortSignal);
+                    }
                 }
             });
         }, 300); // 100ms에서 300ms로 증가 (초기 렌더링 완료 후 연결)
@@ -1639,6 +1654,7 @@ export function resetGalleryUserFilterState() {
     appState.galleryFilterTab = 'moment';
     appState.galleryFilterEntryTab = null;
     appState.galleryFilterPostId = null;
+    appState.galleryNotificationFilterPhotos = null;
     appState.galleryUserProfileMomentVisiblePostCount = USER_PROFILE_MOMENT_GRID_PAGE_SIZE;
     appState.galleryUserProfileSharedDocs = null;
     appState.galleryUserProfileSharedLastSnap = null;
