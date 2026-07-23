@@ -9,6 +9,9 @@
       "--green-mute": "#b4e2cd",
       "--coral": "#f2a8b4",
       "--coral-soft": "#fff0f3",
+      "--danger": "#ee5f70",
+      "--danger-deep": "#d9485a",
+      "--shell-danger": "#ee5f70",
       "--ink": "#241f1c",
       "--ink-2": "#4f4841",
       "--muted": "#7a7268",
@@ -95,9 +98,13 @@
   }
 
   window.applyMealogTheme = applyMealogTheme;
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", applyMealogTheme);
-  } else {
-    applyMealogTheme();
+  // admin.html 등 앱 문서에 로드될 때는 <html>을 오염시키지 않음
+  var isAdminDoc = !!document.getElementById('adminPage') || /\/admin\.html$/i.test(location.pathname);
+  if (!isAdminDoc) {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", applyMealogTheme);
+    } else {
+      applyMealogTheme();
+    }
   }
 })();

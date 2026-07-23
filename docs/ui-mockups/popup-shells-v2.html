@@ -18,6 +18,8 @@
       --green-mute: #b4e2cd;
       --coral: #f2a8b4;
       --coral-soft: #fff0f3;
+      --danger: #ee5f70;
+      --danger-deep: #d9485a;
       --ink: #241f1c;
       --ink-2: #4f4841;
       --muted: #7a7268;
@@ -344,7 +346,7 @@
       color: var(--green);
     }
     .dialog-hero .illus [data-lucide] { width: 1.75rem; height: 1.75rem; }
-    .dialog-body { padding: 18px 18px 8px; }
+    .dialog-body { padding: 18px 18px 14px; }
     .dialog-body h3 {
       font-family: Fredoka, Pretendard, sans-serif;
       font-size: 18px;
@@ -357,14 +359,52 @@
       line-height: 1.55;
       color: var(--ink-2);
     }
+    /* 버튼 영역만 여백·호흡 — 본문 패딩과 분리 */
     .dialog-actions {
-      padding: 12px 18px 16px;
+      padding: 16px 20px 20px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
+      background: transparent;
     }
+    .dialog-actions--single { /* A · Single */ }
+    /* B·C · 다중 버튼은 가로 */
+    .dialog-actions--stack,
+    .dialog-actions--pair,
+    .dialog-actions:has(> :nth-child(2)) {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--stack > .btn,
+    .dialog-actions--pair > .btn,
+    .dialog-actions:has(> :nth-child(2)) > .btn { flex: 1; min-width: 0; }
+    /* ① 비대칭 pair — CTA를 더 넓게 */
+    .dialog-actions--asym {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--asym > .btn:first-child { flex: 1; min-width: 0; }
+    .dialog-actions--asym > .btn:last-child { flex: 1.35; min-width: 0; }
+    /* ② ghost + primary — 보조는 면 없이 텍스트 */
+    .dialog-actions--ghost-pair {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--ghost-pair > .btn { flex: 1; min-width: 0; }
+    .dialog-actions--ghost-pair > .btn-ghost { height: 48px; }
+    /* ③ 여백 강조 — 본문과 CTA 사이 숨 쉬게 + 푸터 웰 */
+    .dialog-actions--air {
+      padding: 14px 20px 22px;
+      gap: 10px;
+      background: var(--page);
+      border-top: 1px solid var(--line);
+    }
+    .dialog.confirm .dialog-actions--air {
+      background: var(--page);
+    }
+    .dialog-actions--border { border-top: 1px solid var(--line); }
     .btn {
-      height: 46px;
+      height: 48px;
       border-radius: var(--r-btn);
       border: 0;
       font-family: inherit;
@@ -373,19 +413,44 @@
       cursor: pointer;
       display: grid;
       place-items: center;
+      transition: transform 0.12s ease, background 0.14s ease, box-shadow 0.14s ease;
     }
-    .btn-primary { background: var(--green); color: #fff; }
-    .btn-primary:active { background: var(--green-deep); }
+    .btn-primary {
+      background: var(--green);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+    }
+    .btn-primary:active {
+      background: var(--green-deep);
+      transform: scale(0.98);
+      box-shadow: 0 2px 8px rgba(45, 159, 116, 0.22);
+    }
     .btn-ghost {
       background: transparent;
       color: var(--muted);
       font-weight: 600;
-      height: 36px;
+      height: 40px;
     }
+    .btn-ghost:active { color: var(--ink-2); background: rgba(255,255,255,0.7); }
+    .dialog-actions--stack > .btn-ghost,
+    .dialog-actions--pair > .btn-ghost,
+    .dialog-actions--air > .btn-ghost,
+    .dialog-actions:has(> :nth-child(2)) > .btn-ghost { height: 48px; }
     .btn-secondary {
-      background: var(--page);
+      background: #fff;
       color: var(--ink);
       border: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(36, 31, 28, 0.04);
+    }
+    .btn-secondary:active { background: var(--line); transform: scale(0.98); }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+      box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+    }
+    .btn-danger:active {
+      background: var(--danger-deep);
+      transform: scale(0.98);
     }
 
     /* Confirm variant (no hero) */
@@ -399,11 +464,105 @@
       display: grid;
       place-items: center;
     }
-    .dialog.confirm .dialog-actions {
-      flex-direction: row;
-      gap: 8px;
+
+    /* Footer A/B/C 샘플 카드 (aside) */
+    .footer-spec {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
     }
-    .dialog.confirm .dialog-actions .btn { flex: 1; }
+    .footer-spec h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .footer-spec > p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+    .footer-sample {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--page);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .footer-sample:last-child { margin-bottom: 0; }
+    .footer-sample .tag {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: var(--green-deep);
+    }
+    .footer-sample .tag span { font-weight: 600; color: var(--muted); letter-spacing: 0; }
+    .footer-sample .dialog-actions { padding: 8px 10px 10px; }
+    .footer-sample .btn { height: 40px; font-size: 13px; }
+    .footer-sample .btn-ghost { height: 40px; }
+    .footer-sample.is-compare {
+      background: #fff;
+      border-color: var(--green-mute);
+    }
+    .footer-sample .note {
+      padding: 0 10px 10px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+    }
+    .compare-grid {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .compare-grid h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 0 0 2px;
+    }
+    .compare-grid > p.lead-sm {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0 0 4px;
+    }
+
+    .footer-tabs {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      position: absolute;
+      left: 16px; right: 16px;
+      bottom: calc(18px + var(--safe-bottom));
+      z-index: 6;
+    }
+    .footer-tabs button {
+      flex: 1;
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 250, 0.92);
+      color: var(--ink-2);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      height: 32px;
+      border-radius: 999px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+    .footer-tabs button.active {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+    .dialog-footer-variant { display: none; }
+    .dialog-footer-variant.active { display: flex; flex-direction: column; }
 
     /* ----- 2. Bottom Sheet ----- */
     .sheet {
@@ -532,9 +691,9 @@
       gap: 8px;
     }
     .action-card button:last-child { border-bottom: 0; }
-    .action-card button.danger { color: #c45c6a; }
+    .action-card button.danger { color: var(--danger); }
     .action-card button [data-lucide] { width: 1rem; height: 1rem; color: var(--muted); }
-    .action-card button.danger [data-lucide] { color: #c45c6a; }
+    .action-card button.danger [data-lucide] { color: var(--danger); }
     .action-cancel {
       height: 52px;
       border-radius: 18px;
@@ -808,6 +967,63 @@
         초록은 CTA·선택에만, 면은 warm paper·흰 카드·헤어라인으로 위계를 잡습니다.
       </p>
 
+      <div class="footer-spec compare-grid" aria-label="푸터·여백 시안 비교">
+        <h2>왜 지루해 보였나 · 버튼 패딩</h2>
+        <p class="lead-sm">본문 패딩은 그대로 두고, <strong>하단 버튼 존</strong>만 여유(16/20/20)와 CTA soft shadow로 호흡을 줍니다.</p>
+
+        <div class="footer-sample">
+          <div class="tag">이전 · 빽빽한 여백 <span>body 8px · actions 12/16</span></div>
+          <div class="dialog-actions dialog-actions--pair" style="padding:12px 16px 16px;background:#fff;gap:8px">
+            <button type="button" class="btn btn-secondary" style="box-shadow:none;height:46px">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary" style="box-shadow:none;height:46px">자세히 보기</button>
+          </div>
+          <p class="note">버튼이 카드 모서리에 가깝고, 본문과의 호흡이 없어 “사무용 바”처럼 읽힘.</p>
+        </div>
+
+        <div class="footer-sample is-compare">
+          <div class="tag">권장 · Ghost + 여백 <span>body 20 · CTA 그림자</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+          <p class="note">보조는 텍스트, 주 CTA만 Soft Mint 면 + soft shadow. 패딩 20/20/20으로 숨 쉼.</p>
+        </div>
+
+        <div class="footer-sample is-compare">
+          <div class="tag">③ 푸터 웰 <span>page 배경 존</span></div>
+          <div class="dialog-actions dialog-actions--asym dialog-actions--air">
+            <button type="button" class="btn btn-secondary">취소</button>
+            <button type="button" class="btn btn-danger">탈퇴하기</button>
+          </div>
+          <p class="note">본문(흰)과 푸터(paper)를 층으로 나눔. 확정·탈퇴 pair에 특히 효과적.</p>
+        </div>
+      </div>
+
+      <div class="footer-spec" aria-label="센터 Dialog 푸터 스펙">
+        <h2>Dialog Footer · A / B / C (현행 스펙)</h2>
+        <p>센터 팝업 하단: Soft Mint primary(<code>#3cb889</code>). 버튼 1개=A, 2개 이상은 항상 가로.</p>
+        <div class="footer-sample">
+          <div class="tag">A · Single <span>확인 · 적용 · 동의</span></div>
+          <div class="dialog-actions dialog-actions--single">
+            <button type="button" class="btn btn-primary">확인</button>
+          </div>
+        </div>
+        <div class="footer-sample">
+          <div class="tag">B · Row <span>보조 + 주 CTA (가로)</span></div>
+          <div class="dialog-actions dialog-actions--pair">
+            <button type="button" class="btn btn-secondary">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+        </div>
+        <div class="footer-sample">
+          <div class="tag">C · Pair <span>취소 + 확정 / 탈퇴</span></div>
+          <div class="dialog-actions dialog-actions--pair">
+            <button type="button" class="btn btn-secondary">취소</button>
+            <button type="button" class="btn btn-danger">탈퇴하기</button>
+          </div>
+        </div>
+      </div>
+
       <nav class="shell-nav" id="shellNav" aria-label="셸 선택">
         <button type="button" class="active" data-shell="dialog">
           <span class="ico"><i data-lucide="square"></i></span>
@@ -869,22 +1085,56 @@
           </div>
         </div>
 
-        <!-- 01 Dialog -->
+        <!-- 01 Dialog · 여백·푸터 비교 -->
         <div class="overlay active" data-panel="dialog">
           <div class="dim"></div>
-          <div class="dialog">
+
+          <div class="dialog dialog-footer-variant active" data-footer="tight">
             <div class="dialog-hero">
-              <span class="badge">이벤트</span>
+              <span class="badge">이전 · 빽빽</span>
               <div class="illus"><i data-lucide="gift"></i></div>
             </div>
             <div class="dialog-body">
               <h3>7일 연속 기록 챌린지</h3>
               <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
             </div>
-            <div class="dialog-actions">
-              <button type="button" class="btn btn-primary">자세히 보기</button>
-              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <div class="dialog-actions dialog-actions--pair" style="padding:12px 16px 16px;background:#fff;gap:8px">
+              <button type="button" class="btn btn-secondary" style="box-shadow:none;height:46px">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary" style="box-shadow:none;height:46px">자세히 보기</button>
             </div>
+          </div>
+
+          <div class="dialog dialog-footer-variant" data-footer="ghost">
+            <div class="dialog-hero">
+              <span class="badge">권장 · Ghost+여백</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
+            </div>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
+            </div>
+          </div>
+
+          <div class="dialog dialog-footer-variant confirm" data-footer="air">
+            <div class="dialog-body">
+              <div class="dialog-icon"><i data-lucide="log-out"></i></div>
+              <h3>푸터 웰 · 확인형</h3>
+              <p>본문은 흰 카드, 하단만 paper 존으로 나눠 버튼이 떠 보이게 합니다.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--asym dialog-actions--air">
+              <button type="button" class="btn btn-secondary">취소</button>
+              <button type="button" class="btn btn-danger">로그아웃</button>
+            </div>
+          </div>
+
+          <div class="footer-tabs" id="footerTabs" aria-label="여백·푸터 비교">
+            <button type="button" class="active" data-footer-tab="tight">이전</button>
+            <button type="button" data-footer-tab="ghost">권장</button>
+            <button type="button" data-footer-tab="air">③ 웰</button>
           </div>
         </div>
 
@@ -1029,103 +1279,6 @@
     </div>
   </div>
 
-  <script>
-    var SPECS = {
-      dialog: {
-        title: "Center Dialog",
-        cap: "Center Dialog · 프로모션 / 확인",
-        items: [
-          "딤: ink 42% + 약한 blur (순수 검정 금지)",
-          "카드: 흰 면 · radius 18 · line 보더",
-          "타이틀 Fredoka 600 / 본문 Pretendard",
-          "CTA는 초록 1개만 · 보조는 ghost 텍스트",
-          "프로모션은 soft 그라데이션 히어로 · 확인형은 아이콘 + 가로 버튼"
-        ]
-      },
-      sheet: {
-        title: "Bottom Sheet",
-        cap: "Bottom Sheet · 입력 / 피커",
-        items: [
-          "상단 radius 24 · grabber 40×4 (line 색)",
-          "헤더는 흰 면 + 헤어라인 · 본문은 page(#fffcf9)",
-          "칩(끼니)만 green-soft · 필드 박스는 흰 카드",
-          "하단 sticky CTA 1개 · safe-area 패딩",
-          "entry-sheet-v2와 동일 골격으로 모든 입력 시트 맞춤"
-        ]
-      },
-      action: {
-        title: "Action Sheet",
-        cap: "Action Sheet · 옵션 메뉴",
-        items: [
-          "좌우·하단 12~16 inset · 카드 radius 18",
-          "액션은 아이콘(muted) + ink 라벨",
-          "위험 액션만 coral 계열 (#c45c6a)",
-          "취소는 별도 카드로 분리 (iOS 회색 뭉치 지양)",
-          "점3개·롱프레스·신고 진입 모두 이 셸"
-        ]
-      },
-      search: {
-        title: "Search / List",
-        cap: "Search / List · 검색 / 알림",
-        items: [
-          "풀스크린 page 배경 (모달 카드 중첩 금지)",
-          "검색창: green-soft 면 + green-mute 보더",
-          "리스트는 카드 없이 헤어라인 row",
-          "썸네일 12 radius · 메타는 ink / muted",
-          "알림·캘린더도 동일 헤더·리스트 리듬"
-        ]
-      },
-      media: {
-        title: "Fullscreen Media",
-        cap: "Fullscreen Media · 라이트박스",
-        items: [
-          "배경 ink(#1c1917) · UI는 흰/반투명만",
-          "닫기: 원형 glass 버튼 (우상단)",
-          "사진은 살짝 radius 12 (화면 가장자리와 숨 쉬게)",
-          "도트 활성만 초록 · 캡션은 하단 ink 위 흰 텍스트",
-          "모먼트/피드/식사 휠 뷰어 동일 셸"
-        ]
-      },
-      system: {
-        title: "Banner / Toast",
-        cap: "Banner / Toast · 시스템 피드백",
-        items: [
-          "배너: 흰 카드 + 좌측 초록 3px 악센트",
-          "보조 CTA는 green-soft pill (면적 초록 금지)",
-          "토스트: ink 필 + 짧은 문구 · 하단 nav 위",
-          "전면 로딩은 별도(기존 loading) · 토스트로 대체 가능한 건 대체",
-          "체류 짧게 · 스크롤/입력 방해 최소화"
-        ]
-      }
-    };
-
-    function setShell(id) {
-      document.querySelectorAll(".shell-nav button").forEach(function (b) {
-        b.classList.toggle("active", b.getAttribute("data-shell") === id);
-      });
-      document.querySelectorAll(".overlay").forEach(function (o) {
-        o.classList.toggle("active", o.getAttribute("data-panel") === id);
-      });
-      var spec = SPECS[id];
-      document.getElementById("specTitle").textContent = spec.title;
-      document.getElementById("capText").textContent = spec.cap;
-      var ul = document.getElementById("specList");
-      ul.innerHTML = "";
-      spec.items.forEach(function (t) {
-        var li = document.createElement("li");
-        li.textContent = t;
-        ul.appendChild(li);
-      });
-      if (window.lucide) lucide.createIcons();
-    }
-
-    document.getElementById("shellNav").addEventListener("click", function (e) {
-      var btn = e.target.closest("button[data-shell]");
-      if (!btn) return;
-      setShell(btn.getAttribute("data-shell"));
-    });
-
-    setShell("dialog");
-  </script>
+  <script src="./popup-shells-v2.js"></script>
 </body>
 </html>

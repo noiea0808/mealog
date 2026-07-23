@@ -62,9 +62,9 @@
               <h3 style="font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">7일 연속 기록 챌린지</h3>
               <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
             </div>
-            <div class="pv-actions">
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>오늘 하루 보지 않기</button>
               <button type="button" class="pv-btn pv-btn-primary">자세히 보기</button>
-              <button type="button" class="pv-btn pv-btn-ghost" data-close>오늘 하루 보지 않기</button>
             </div>
           </div>
         </div>`
@@ -104,8 +104,8 @@
               <div class="pv-field">★★★★☆ 만족도</div>
               <div class="pv-field">메모</div>
             </div>
-            <div class="pv-actions" style="padding:0">
-              <button type="button" class="pv-btn pv-btn-ink" style="border-radius:0">기록 완료</button>
+            <div class="pv-actions pv-actions--single pv-actions--border">
+              <button type="button" class="pv-btn pv-btn-primary">기록 완료</button>
             </div>
           </div>
         </div>`
@@ -114,10 +114,13 @@
         shell: 'dialog', name: '로그아웃 확인', dom: 'logoutConfirmModal',
         html: () => `<div class="pv-overlay pv-overlay--center">
           <div class="pv-dialog pv-dialog--sm">
-            <div class="pv-head" style="border:0;padding-bottom:0"><div><h3>로그아웃 하시겠어요?</h3><p>기록은 안전하게 저장됩니다.</p></div></div>
-            <div class="pv-split">
-              <button type="button" data-close><span class="lab">취소</span><span class="sub">이전 화면으로</span></button>
-              <button type="button" class="rose" data-close><span class="lab">로그아웃</span><span class="sub">로그인 화면으로</span></button>
+            <div class="pv-body" style="padding-top:22px;text-align:center">
+              <h3 style="font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">로그아웃 하시겠어요?</h3>
+              <p>기록은 안전하게 저장됩니다.</p>
+            </div>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>취소</button>
+              <button type="button" class="pv-btn pv-btn-danger" data-close>로그아웃</button>
             </div>
           </div>
         </div>`
@@ -130,9 +133,9 @@
               <h3 style="font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">계정을 탈퇴하시겠어요?</h3>
               <p>탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
             </div>
-            <div class="pv-actions row">
-              <button type="button" class="pv-btn pv-btn-ghost" data-close style="flex:1">취소</button>
-              <button type="button" class="pv-btn pv-btn-danger" data-close style="flex:1">탈퇴하기</button>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>취소</button>
+              <button type="button" class="pv-btn pv-btn-danger" data-close>탈퇴하기</button>
             </div>
           </div>
         </div>`
@@ -146,7 +149,7 @@
               <div class="pv-field">email@example.com</div>
               <div class="pv-field">인증 코드 6자리</div>
             </div>
-            <div class="pv-actions">
+            <div class="pv-actions pv-actions--single">
               <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
             </div>
           </div>
@@ -160,9 +163,9 @@
               <h3 style="font-size:17px;font-weight:800;margin-bottom:6px">비밀번호 재설정</h3>
               <p>입력한 이메일로 재설정 링크를 보낼까요?</p>
             </div>
-            <div class="pv-actions row">
-              <button type="button" class="pv-btn pv-btn-ghost" data-close style="flex:1">취소</button>
-              <button type="button" class="pv-btn pv-btn-primary" data-close style="flex:1">보내기</button>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>취소</button>
+              <button type="button" class="pv-btn pv-btn-primary" data-close>보내기</button>
             </div>
           </div>
         </div>`
@@ -175,7 +178,9 @@
               <h3 style="font-size:17px;font-weight:800;margin-bottom:6px">메일을 보냈어요</h3>
               <p>받은편지함에서 재설정 링크를 확인해 주세요.</p>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>확인</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            </div>
           </div>
         </div>`
       },
@@ -189,7 +194,9 @@
               <p style="margin-bottom:10px">제2조 (정의) “회원”이란 본 약관에 동의하고 서비스를 이용하는 자를 말합니다.</p>
               <p>제3조 (약관의 효력) …</p>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>동의하고 계속</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>동의하고 계속</button>
+            </div>
           </div>
         </div>`
       },
@@ -202,7 +209,9 @@
               <div class="pv-field">닉네임</div>
               <div class="pv-field">한 줄 소개 (선택)</div>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>시작하기</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>시작하기</button>
+            </div>
           </div>
         </div>`
       },
@@ -214,7 +223,9 @@
               <h3 style="font-size:17px;font-weight:800;margin-bottom:6px">접속할 수 없어요</h3>
               <p>허용되지 않은 도메인입니다. 공식 주소로 다시 접속해 주세요.</p>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>확인</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            </div>
           </div>
         </div>`
       },
@@ -226,9 +237,9 @@
               <h3 style="font-size:17px;font-weight:800;margin-bottom:6px">데모 모드로 둘러보기</h3>
               <p>샘플 기록으로 mealog 화면을 미리 체험할 수 있어요.</p>
             </div>
-            <div class="pv-actions">
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>로그인하기</button>
               <button type="button" class="pv-btn pv-btn-primary" data-close>데모 시작</button>
-              <button type="button" class="pv-btn pv-btn-ghost" data-close>로그인하기</button>
             </div>
           </div>
         </div>`
@@ -242,7 +253,9 @@
               <div class="pv-field">1. 공유 버튼 탭</div>
               <div class="pv-field">2. “홈 화면에 추가” 선택</div>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>알겠어요</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>알겠어요</button>
+            </div>
           </div>
         </div>`
       },
@@ -252,7 +265,9 @@
           <div class="pv-dialog">
             <div class="pv-head"><div><h3>바탕화면 바로가기</h3></div>${xBtn()}</div>
             <div class="pv-body"><p>브라우저 메뉴에서 “앱 설치” 또는 바로가기를 만들어 주세요.</p></div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>확인</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            </div>
           </div>
         </div>`
       },
@@ -267,7 +282,9 @@
               <div class="pv-field" style="text-align:center;margin:0;padding:16px 8px">🔥 열정</div>
               <div class="pv-field" style="text-align:center;margin:0;padding:16px 8px">🧊 쿨</div>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>적용</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>적용</button>
+            </div>
           </div>
         </div>`
       },
@@ -284,7 +301,9 @@
               </div>
               <p style="margin-top:12px;font-size:13px">점심 기록이 가장 많고, 저녁 만족도가 높았어요.</p>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>닫기</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            </div>
           </div>
         </div>`
       },
@@ -312,9 +331,9 @@
                 <div style="font-size:12px;color:var(--muted)">이번 달 최고 만족 식사</div>
               </div>
             </div>
-            <div class="pv-actions">
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>닫기</button>
               <button type="button" class="pv-btn pv-btn-primary">이미지 저장</button>
-              <button type="button" class="pv-btn pv-btn-ghost" data-close>닫기</button>
             </div>
           </div>
         </div>`
@@ -330,9 +349,9 @@
                 <p style="margin-top:8px;font-size:13px;color:var(--ink-2)">이번 주는 점심 기록이 안정적이에요.</p>
               </div>
             </div>
-            <div class="pv-actions">
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>닫기</button>
               <button type="button" class="pv-btn pv-btn-primary">공유하기</button>
-              <button type="button" class="pv-btn pv-btn-ghost" data-close>닫기</button>
             </div>
           </div>
         </div>`
@@ -345,7 +364,9 @@
               <h3 style="font-size:17px;font-weight:800;margin-bottom:6px">기간을 확인해 주세요</h3>
               <p>베스트 공유는 선택한 기간의 기록만 포함됩니다.</p>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>확인</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            </div>
           </div>
         </div>`
       },
@@ -355,7 +376,7 @@
           <div class="pv-celebrate">
             <div class="circle">✓</div>
             <div class="msg">기록 완료!</div>
-            <button type="button" class="pv-btn pv-btn-ghost" data-close style="margin-top:8px">닫기</button>
+            <button type="button" class="pv-btn pv-btn-ghost" data-close style="margin-top:8px;color:#fff">닫기</button>
           </div>
         </div>`
       },
@@ -363,19 +384,18 @@
         shell: 'dialog', name: '출석/연속 기록', dom: 'attendancePopup',
         html: () => `<div class="pv-overlay pv-overlay--center" style="background:rgba(15,23,42,0.25)">
           <div class="pv-celebrate">
-            <div class="circle" style="color:#dc2626;font-size:36px">♥</div>
+            <div class="circle" style="color:var(--danger);font-size:36px">♥</div>
             <div class="msg">3일 연속!</div>
             <p style="font-size:13px;opacity:.9">오늘도 잘 기록했어요</p>
-            <button type="button" class="pv-btn pv-btn-ghost" data-close style="margin-top:8px">닫기</button>
+            <button type="button" class="pv-btn pv-btn-ghost" data-close style="margin-top:8px;color:#fff">닫기</button>
           </div>
         </div>`
       },
 
       dailyJournalModal: {
-        shell: 'sheet', name: '하루 기록', dom: 'dailyJournalModal',
-        html: () => `<div class="pv-overlay pv-overlay--end">
-          <div class="pv-sheet">
-            <div class="pv-grab"></div>
+        shell: 'dialog', name: '하루 기록', dom: 'dailyJournalModal',
+        html: () => `<div class="pv-overlay pv-overlay--center">
+          <div class="pv-dialog">
             <div class="pv-head"><div><h3>하루 기록</h3></div>${xBtn()}</div>
             <div class="pv-body">
               <div class="pv-field">📷 사진 · 0/5</div>
@@ -385,39 +405,43 @@
               </div>
               <div class="pv-field" style="margin-top:8px">메모</div>
             </div>
-            <div class="pv-actions" style="padding:0"><button type="button" class="pv-btn pv-btn-ink" style="border-radius:0" data-close>저장</button></div>
+            <div class="pv-actions pv-actions--single pv-actions--border">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>저장</button>
+            </div>
           </div>
         </div>`
       },
       profileFieldEditModal: {
-        shell: 'sheet', name: '프로필 필드 편집', dom: 'profileFieldEditModal',
-        html: () => `<div class="pv-overlay pv-overlay--end">
-          <div class="pv-sheet">
+        shell: 'dialog', name: '프로필 필드 편집', dom: 'profileFieldEditModal',
+        html: () => `<div class="pv-overlay pv-overlay--center">
+          <div class="pv-dialog">
             <div class="pv-head"><div><h3>닉네임 수정</h3></div>${xBtn()}</div>
             <div class="pv-body"><div class="pv-field" style="color:var(--ink)">밀로그러</div></div>
-            <div class="pv-actions row" style="padding:0;border-top:1px solid var(--line)">
-              <button type="button" class="pv-btn pv-btn-ghost" data-close style="flex:1;border-radius:0">취소</button>
-              <button type="button" class="pv-btn pv-btn-primary" data-close style="flex:1;border-radius:0">저장</button>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>취소</button>
+              <button type="button" class="pv-btn pv-btn-primary" data-close>저장</button>
             </div>
           </div>
         </div>`
       },
       accountAvatarModal: {
-        shell: 'sheet', name: '프로필 사진', dom: 'accountAvatarModal',
-        html: () => `<div class="pv-overlay pv-overlay--end">
-          <div class="pv-sheet">
-            <div class="pv-head" style="border:0;justify-content:flex-end;padding-bottom:0">${xBtn()}</div>
-            <div class="pv-body" style="padding-top:0">
+        shell: 'dialog', name: '프로필 사진', dom: 'accountAvatarModal',
+        html: () => `<div class="pv-overlay pv-overlay--center">
+          <div class="pv-dialog">
+            <div class="pv-head"><div><h3>프로필 사진</h3></div>${xBtn()}</div>
+            <div class="pv-body">
               <div class="pv-avatar">👤</div>
             </div>
-            <div class="pv-actions" style="padding:0"><button type="button" class="pv-btn pv-btn-primary" style="border-radius:0">사진 변경</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary">사진 변경</button>
+            </div>
           </div>
         </div>`
       },
       photoEditModal: {
-        shell: 'sheet', name: '사진 편집', dom: 'photoEditModal',
-        html: () => `<div class="pv-overlay pv-overlay--end">
-          <div class="pv-sheet">
+        shell: 'dialog', name: '사진 편집', dom: 'photoEditModal',
+        html: () => `<div class="pv-overlay pv-overlay--center">
+          <div class="pv-dialog">
             <div class="pv-head"><div><h3>사진 편집</h3></div>${xBtn()}</div>
             <div class="pv-body">
               <div style="aspect-ratio:1;border-radius:16px;background:linear-gradient(135deg,#cbd5e1,#94a3b8);margin-bottom:10px"></div>
@@ -425,18 +449,17 @@
                 <span class="pv-chip">축소</span><span class="pv-chip">확대</span><span class="pv-chip">회전</span>
               </div>
             </div>
-            <div class="pv-actions row" style="padding:0;border-top:1px solid var(--line)">
-              <button type="button" class="pv-btn pv-btn-ghost" data-close style="flex:1;border-radius:0">취소</button>
-              <button type="button" class="pv-btn pv-btn-primary" data-close style="flex:1;border-radius:0">편집적용</button>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>취소</button>
+              <button type="button" class="pv-btn pv-btn-primary" data-close>편집적용</button>
             </div>
           </div>
         </div>`
       },
       characterSelectModal: {
-        shell: 'sheet', name: '캐릭터 선택(시트)', dom: 'characterSelectModal',
-        html: () => `<div class="pv-overlay pv-overlay--end">
-          <div class="pv-sheet">
-            <div class="pv-grab"></div>
+        shell: 'dialog', name: '캐릭터 선택', dom: 'characterSelectModal',
+        html: () => `<div class="pv-overlay pv-overlay--center">
+          <div class="pv-dialog">
             <div class="pv-head"><div><h3>캐릭터</h3></div>${xBtn()}</div>
             <div class="pv-body">
               <div class="pv-list-row pref"><div class="pv-ico">🌿</div><div><strong>기본</strong><span>선택됨</span></div></div>
@@ -484,7 +507,9 @@
               <div class="pv-list-row"><div><strong>욕설/혐오</strong></div></div>
               <div class="pv-list-row"><div><strong>기타</strong></div></div>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-danger" data-close>제출</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-danger" data-close>제출</button>
+            </div>
           </div>
         </div>`
       },
@@ -526,7 +551,9 @@
               </div>
               <div class="pv-field">키워드 · 메뉴/장소/메모</div>
             </div>
-            <div class="pv-actions"><button type="button" class="pv-btn pv-btn-primary" data-close>검색</button></div>
+            <div class="pv-actions pv-actions--single">
+              <button type="button" class="pv-btn pv-btn-primary" data-close>검색</button>
+            </div>
           </div>
         </div>`
       },
@@ -571,7 +598,6 @@
               <div class="pv-list-row"><div><strong>좋아요</strong><span>회원님이 회원님의 기록을 좋아합니다</span></div></div>
               <div class="pv-list-row"><div><strong>댓글</strong><span>새 댓글이 달렸습니다</span></div></div>
             </div>
-            <div class="pv-actions" style="padding:0"><button type="button" class="pv-btn pv-btn-ghost" style="border-radius:0" data-close>닫기</button></div>
           </div>
         </div>`
       },
@@ -631,7 +657,7 @@
     };
 
     const ORDER = [
-      'dialog', 'sheet', 'action', 'search', 'media', 'toast'
+      'dialog', 'action', 'search', 'media', 'toast'
     ];
 
     function buildCatalog() {

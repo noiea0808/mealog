@@ -67,7 +67,7 @@ function slotIconClass(slot) {
     if (slot.type === 'daily') return 'fa-book-open';
     if (slot.type === 'snack') return 'fa-mug-saucer';
     if (slot.id === 'morning') return 'fa-sun';
-    if (slot.id === 'lunch') return 'fa-utensils';
+    if (slot.id === 'lunch') return 'fa-bowl-rice';
     if (slot.id === 'dinner') return 'fa-moon';
     return 'fa-plate-wheat';
 }

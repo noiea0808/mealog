@@ -8,6 +8,7 @@ import {
     checkAdminStatus,
     escapeHtml
 } from './admin/utils.js';
+import { initLucideIcons, scheduleLucideIcons } from './icons.js';
 import {
     getUserStatistics,
     getSharedPhotos,
@@ -106,6 +107,8 @@ function showAdminPage(user) {
     
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
+
+    initLucideIcons();
     
     // 데이터 로드 (통계 제외 UID 문서가 없으면 기본값으로 시드 — rules·클라이언트와 맞춤)
     void (async () => {
@@ -152,6 +155,12 @@ window.switchAdminTab = function(tab) {
         activeTabContent.classList.remove('hidden');
     }
     resetAdminScrollTop();
+    scheduleLucideIcons(activeTabContent || document);
+
+    // UI가이드 mockup CSS/테마가 <html>에 남으면 다른 탭까지 깨지므로 항상 정리
+    if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+        window.clearUiGuideDocumentThemeLeak();
+    }
     
     // 탭별 데이터 새로고침
     if (tab === 'dashboard') {
@@ -173,18 +182,13 @@ window.switchAdminTab = function(tab) {
     } else if (tab === 'adminLog') {
         loadAdminLogTab();
     } else if (tab === 'uiGuide') {
-        // 헤더 실측 높이로 iframe/임베드 영역 맞춤 (이중 스크롤 방지)
-        const header = document.getElementById('adminHeader');
-        if (header) {
-            document.documentElement.style.setProperty(
-                '--admin-header-offset',
-                `${Math.ceil(header.getBoundingClientRect().height + 8)}px`
-            );
-        }
-        const popupPanel = document.getElementById('uiGuide-panel-popup');
-        if (popupPanel && !popupPanel.classList.contains('hidden')) {
-            void ensureUiGuidePopupInventory();
-        }
+        const active =
+            !document.getElementById('uiGuide-panel-popup')?.classList.contains('hidden')
+                ? 'popup'
+                : !document.getElementById('uiGuide-panel-palette')?.classList.contains('hidden')
+                  ? 'palette'
+                  : 'hub';
+        void ensureUiGuidePanel(active);
     }
 }
 
@@ -213,38 +217,152 @@ window.switchUiGuideSubtab = function(which) {
     if (btnHub) btnHub.className = w === 'hub' ? active : idle;
     if (btnPalette) btnPalette.className = w === 'palette' ? active : idle;
     if (btnPopup) btnPopup.className = w === 'popup' ? active : idle;
-    if (w === 'popup') {
-        void ensureUiGuidePopupInventory();
-    }
+    void ensureUiGuidePanel(w);
 };
 
+const UI_GUIDE_ASSET_VER = '20260723p';
+
+function loadUiGuideScript(src, globalName) {
+    if (!loadUiGuideScript._map) loadUiGuideScript._map = new Map();
+    if (!loadUiGuideScript._ver) loadUiGuideScript._ver = new Map();
+    const key = src + '@' + UI_GUIDE_ASSET_VER;
+    if (
+        globalName &&
+        typeof window[globalName] === 'function' &&
+        loadUiGuideScript._ver.get(globalName) === UI_GUIDE_ASSET_VER
+    ) {
+        return Promise.resolve();
+    }
+    if (loadUiGuideScript._map.has(key)) return loadUiGuideScript._map.get(key);
+    const p = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src + (src.includes('?') ? '&' : '?') + 'v=' + UI_GUIDE_ASSET_VER;
+        s.async = true;
+        s.onload = () => {
+            if (globalName) loadUiGuideScript._ver.set(globalName, UI_GUIDE_ASSET_VER);
+            resolve();
+        };
+        s.onerror = () => reject(new Error(src + ' load failed'));
+        document.head.appendChild(s);
+    }).catch((err) => {
+        loadUiGuideScript._map.delete(key);
+        throw err;
+    });
+    loadUiGuideScript._map.set(key, p);
+    return p;
+}
+
+function showUiGuideMountError(mount, err) {
+    if (!mount) return;
+    mount.innerHTML =
+        '<div style="padding:24px;color:#ee5f70;font-size:13px;line-height:1.5">' +
+        'UI 가이드를 불러오지 못했습니다.<br><small>' +
+        String(err && err.message ? err.message : err) +
+        '</small></div>';
+}
+
+function resetUiGuideMountIfStale(mount, kind) {
+    if (!mount) return;
+    if (mount.dataset.uiGuideAssetVer === UI_GUIDE_ASSET_VER) return;
+    mount.dataset.uiGuideAssetVer = UI_GUIDE_ASSET_VER;
+    mount.dataset.uiGuideEmbedded = '';
+    mount.dataset.uiGuideEmbedMode = '';
+    mount.dataset.ughMounted = '';
+    mount.dataset.piMounted = '';
+    mount.innerHTML = '';
+    if (mount.shadowRoot) mount.shadowRoot.innerHTML = '';
+    if (kind) mount.dataset.uiGuideKind = kind;
+}
+
+let uiGuideHubPromise = null;
 let uiGuidePopupInventoryPromise = null;
+let uiGuideRuntimeVer = null;
+
+function bustUiGuideRuntimeIfNeeded() {
+    if (uiGuideRuntimeVer === UI_GUIDE_ASSET_VER) return;
+    uiGuideRuntimeVer = UI_GUIDE_ASSET_VER;
+    uiGuideHubPromise = null;
+    uiGuidePopupInventoryPromise = null;
+    ['uiGuideHubMount', 'uiGuidePaletteMount', 'uiGuidePopupMount'].forEach((id) => {
+        const mount = document.getElementById(id);
+        if (mount) resetUiGuideMountIfStale(mount, mount.getAttribute('data-ui-guide-kind') || '');
+    });
+}
+
+function ensureUiGuideHub() {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById('uiGuideHubMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountUiGuideHub === 'function' && mount.dataset.ughMounted === '1') {
+        return Promise.resolve(window.mountUiGuideHub(mount));
+    }
+    if (uiGuideHubPromise) return uiGuideHubPromise;
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">시안 허브 불러오는 중…</div>';
+    uiGuideHubPromise = loadUiGuideScript('docs/ui-mockups/ui-guide-hub.js', 'mountUiGuideHub')
+        .then(() => window.mountUiGuideHub(mount))
+        .catch((err) => {
+            uiGuideHubPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
+    return uiGuideHubPromise;
+}
+
 function ensureUiGuidePopupInventory() {
+    bustUiGuideRuntimeIfNeeded();
     const mount = document.getElementById('uiGuidePopupMount');
     if (!mount) return Promise.resolve(null);
-    if (typeof window.mountPopupInventory === 'function') {
+    if (typeof window.mountPopupInventory === 'function' && mount.dataset.piMounted === '1') {
         return Promise.resolve(window.mountPopupInventory(mount, { standalone: false }));
     }
     if (uiGuidePopupInventoryPromise) return uiGuidePopupInventoryPromise;
-    uiGuidePopupInventoryPromise = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'docs/ui-mockups/popup-inventory.js';
-        s.async = true;
-        s.onload = () => {
-            try {
-                resolve(window.mountPopupInventory(mount, { standalone: false }));
-            } catch (err) {
-                reject(err);
-            }
-        };
-        s.onerror = () => reject(new Error('popup-inventory.js load failed'));
-        document.head.appendChild(s);
-    }).catch((err) => {
-        uiGuidePopupInventoryPromise = null;
-        console.error(err);
-        return null;
-    });
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">팝업 목록 불러오는 중…</div>';
+    uiGuidePopupInventoryPromise = loadUiGuideScript('docs/ui-mockups/popup-inventory.js', 'mountPopupInventory')
+        .then(() => window.mountPopupInventory(mount, { standalone: false }))
+        .catch((err) => {
+            uiGuidePopupInventoryPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
     return uiGuidePopupInventoryPromise;
+}
+
+async function ensureUiGuideHtmlEmbed(mountId) {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById(mountId);
+    if (!mount) return null;
+    const src = mount.getAttribute('data-ui-guide-src');
+    if (!src) return null;
+    if (mount.dataset.uiGuideEmbedded && mount.dataset.uiGuideEmbedMode === 'shadow') {
+        return mount;
+    }
+    const shadow = mount.shadowRoot || mount.attachShadow({ mode: 'open' });
+    shadow.innerHTML =
+        '<style>:host{display:block;height:100%;font:13px Pretendard,sans-serif;color:#7a7268}</style>' +
+        '<div style="display:grid;place-items:center;height:100%;padding:24px">페이지 불러오는 중…</div>';
+    try {
+        await loadUiGuideScript('docs/ui-mockups/embed-html-page.js', 'embedHtmlPage');
+        if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+            window.clearUiGuideDocumentThemeLeak();
+        }
+        return await window.embedHtmlPage(mount, src);
+    } catch (err) {
+        console.error(err);
+        showUiGuideMountError(mount, err);
+        return null;
+    }
+}
+
+function ensureUiGuidePanel(which) {
+    bustUiGuideRuntimeIfNeeded();
+    if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+        window.clearUiGuideDocumentThemeLeak();
+    }
+    if (which === 'popup') return ensureUiGuidePopupInventory();
+    if (which === 'palette') return ensureUiGuideHtmlEmbed('uiGuidePaletteMount');
+    return ensureUiGuideHub();
 }
 
 // 공유 게시물 새로고침
@@ -722,6 +840,7 @@ window.switchContentSidebar = function (section, opts) {
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
     }
+    scheduleLucideIcons(activeMainSection || document.getElementById('admin-tab-content-content') || document);
 };
 
 const ATT_DEFAULT_NO_L1 = '우리 오늘부터';

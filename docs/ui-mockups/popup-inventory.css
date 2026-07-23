@@ -1,18 +1,24 @@
 /* Popup inventory — scoped for admin embed (no iframe) */
 .popup-inventory {
-  height: 100%;
+  height: auto;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
   font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background: var(--page-deep, #faf6f2);
   color: var(--ink, #241f1c);
   box-sizing: border-box;
 }
+/* 단독 HTML로 열 때만 페이지 자체 스크롤 */
+.popup-inventory.popup-inventory--standalone {
+  height: 100%;
+  min-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .popup-inventory *,
 .popup-inventory *::before,
 .popup-inventory *::after { box-sizing: border-box; }
-.popup-inventory.popup-inventory--standalone { min-height: 100%; }
 .popup-inventory .preview-root {
   position: fixed;
   z-index: 4000;
@@ -25,6 +31,8 @@
       --green-soft: #eaf8f2;
       --green-mute: #b4e2cd;
       --coral: #f2a8b4;
+      --danger: #ee5f70;
+      --danger-deep: #d9485a;
       --ink: #241f1c;
       --ink-2: #4f4841;
       --muted: #7a7268;
@@ -35,7 +43,7 @@
       --shell-dim: rgba(36, 31, 28, 0.42);
       --shell-r-dialog: 18px;
       --shell-r-sheet: 24px;
-      --shell-danger: #c45c6a;
+      --shell-danger: var(--danger);
       --shell-r-btn: 14px;
     }
 .popup-inventory .wrap {
@@ -153,17 +161,92 @@
     }
 .popup-inventory .pv-x:hover { background: var(--page); color: var(--ink); }
 .popup-inventory .pv-body { padding: 14px 16px; overflow: auto; flex: 1; min-height: 0; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
-.popup-inventory .pv-actions { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 16px; }
-.popup-inventory .pv-actions.row { flex-direction: row; }
+
+/* Center Dialog footer — 버튼 영역 여백만 (본문 패딩과 분리) */
+.popup-inventory .pv-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 20px;
+  background: transparent;
+}
+.popup-inventory .pv-actions--single { /* A · 버튼 1개 full */ }
+/* B·C 및 버튼 2개 이상: 항상 가로 */
+.popup-inventory .pv-actions--stack,
+.popup-inventory .pv-actions--pair,
+.popup-inventory .pv-actions.row,
+.popup-inventory .pv-actions:has(> :nth-child(2)) {
+  flex-direction: row;
+  align-items: stretch;
+}
+.popup-inventory .pv-actions--stack > .pv-btn,
+.popup-inventory .pv-actions--pair > .pv-btn,
+.popup-inventory .pv-actions.row > .pv-btn,
+.popup-inventory .pv-actions:has(> :nth-child(2)) > .pv-btn {
+  flex: 1;
+  min-width: 0;
+}
+.popup-inventory .pv-actions--border {
+  border-top: 1px solid var(--line);
+}
 .popup-inventory .pv-btn {
-      border: 0; border-radius: var(--shell-r-btn); padding: 12px 14px;
-      font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
-    }
-.popup-inventory .pv-btn-primary { background: var(--green); color: #fff; }
-.popup-inventory .pv-btn-ink { background: #0f172a; color: #fff; }
-.popup-inventory .pv-btn-ghost { background: var(--page); color: var(--ink-2); border: 1px solid var(--line); }
-.popup-inventory .pv-btn-danger { background: #dc2626; color: #fff; }
-.popup-inventory .pv-btn-danger-soft { background: #fff1f2; color: #be123c; }
+  border: 0;
+  border-radius: var(--shell-r-btn);
+  height: 48px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease;
+}
+.popup-inventory .pv-btn-primary {
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+}
+.popup-inventory .pv-btn-primary:active {
+  background: var(--green-deep);
+  transform: scale(0.98);
+}
+.popup-inventory .pv-btn-secondary {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 rgba(36, 31, 28, 0.04);
+}
+.popup-inventory .pv-btn-secondary:active {
+  background: var(--line);
+}
+.popup-inventory .pv-btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  height: 40px;
+  border: 0;
+}
+/* 가로 푸터 안 ghost는 primary와 높이 맞춤 */
+.popup-inventory .pv-actions--stack > .pv-btn-ghost,
+.popup-inventory .pv-actions--pair > .pv-btn-ghost,
+.popup-inventory .pv-actions:has(> :nth-child(2)) > .pv-btn-ghost {
+  height: 48px;
+}
+.popup-inventory .pv-btn-ghost:active {
+  color: var(--ink-2);
+  background: rgba(255,255,255,0.7);
+}
+.popup-inventory .pv-btn-danger {
+  background: var(--danger);
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+}
+.popup-inventory .pv-btn-danger:active {
+  background: var(--danger-deep);
+  transform: scale(0.98);
+}
 .popup-inventory .pv-field {
       border: 1px solid var(--line); background: var(--page); border-radius: 12px;
       padding: 10px 12px; font-size: 13px; color: var(--muted); margin-bottom: 8px;

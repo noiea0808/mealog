@@ -4,6 +4,7 @@
 import { app, db, appId, callableFunctions, auth } from '../firebase.js';
 import { uploadPersonaImageToStorage } from '../utils.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { scheduleLucideIcons } from '../icons.js';
 import { GEMINI_MEALDANG_MODEL } from '../constants.js';
 import {
     collection,
@@ -35,6 +36,7 @@ async function loadMealogComments() {
     if (!container) return;
     
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
+    scheduleLucideIcons(container);
     
     try {
         const mealogDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
@@ -79,6 +81,7 @@ Best, 식사, 간식 탭을 눌러서
     } catch (e) {
         console.error('MEALOG 코멘트 로드 실패:', e);
         container.innerHTML = '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>MEALOG 코멘트를 불러오는 중 오류가 발생했습니다: ' + e.message + '</p></div>';
+        scheduleLucideIcons(container);
     }
 }
 
@@ -116,6 +119,7 @@ function renderMealogComments(comments) {
         
         container.appendChild(commentDiv);
     });
+    scheduleLucideIcons(container);
 }
 
 // MEALOG 코멘트 추가
@@ -391,9 +395,11 @@ async function renderPersonaCharacters() {
             `;
         }).join('');
         await refreshPersonaGeminiModelInfo();
+        scheduleLucideIcons(listContainer);
     } catch (e) {
         console.error("페르소나 캐릭터 렌더링 실패:", e);
         listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i data-lucide="triangle-alert" class="text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
+        scheduleLucideIcons(listContainer);
     }
 }
 
@@ -649,6 +655,7 @@ function renderCharacterEditorForm(characterData) {
         </div>
     `;
     attachPersonaAutoResize();
+    scheduleLucideIcons(editorContent);
 }
 
 // 페르소나 입력창: 입력 텍스트만큼 자동 확장 (스크롤 없음)
@@ -681,6 +688,7 @@ window.addCharacterDefaultComment = function() {
         </button>
     `;
     container.appendChild(newCommentDiv);
+    scheduleLucideIcons(newCommentDiv);
 };
 
 // 기본 멘트 제거

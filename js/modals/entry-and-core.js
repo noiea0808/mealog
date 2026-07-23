@@ -3301,7 +3301,7 @@ export function setRating(s) {
         const sts = el.children;
         const active = rating || 0;
         for (let i = 0; i < 5; i++) {
-            sts[i].className = i < active ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+            sts[i].className = i < active ? 'star-btn text-2xl text-amber-500' : 'star-btn text-2xl text-slate-200';
         }
     };
     paintStarRow('starContainer');

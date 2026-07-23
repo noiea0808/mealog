@@ -50,7 +50,7 @@ import { scheduleLucideIcons } from '../icons.js';
 
 const MAIN_MEAL_SLOT_LUCIDE = {
     morning: 'cloud-sun',
-    lunch: 'sandwich',
+    lunch: 'soup', /* 밥공기(그릇) — sandwich보다 끼니 구분이 명확 */
     dinner: 'moon'
 };
 

@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="docs/ui-mockups/popup-inventory.css">
+    <link rel="stylesheet" href="docs/ui-mockups/ui-guide-hub.css?v=20260723m">
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
     <!-- Favicon 추가 -->
     <link rel="icon" href="assets/icon_192.png" type="image/png" sizes="192x192">
     <link rel="shortcut icon" href="assets/icon_32.png" type="image/png" sizes="32x32">
@@ -2115,23 +2117,13 @@
                     </div>
                 </div>
                 <div id="uiGuide-panel-hub" class="admin-ui-guide-panel bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <iframe
-                        id="uiGuide-iframe-hub"
-                        title="시안 허브"
-                        src="docs/ui-mockups/index.html"
-                        class="admin-ui-guide-iframe"
-                    ></iframe>
+                    <div id="uiGuideHubMount" class="admin-ui-guide-embed" data-ui-guide-kind="hub"></div>
                 </div>
                 <div id="uiGuide-panel-palette" class="admin-ui-guide-panel hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <iframe
-                        id="uiGuide-iframe-palette"
-                        title="팔레트 가이드"
-                        src="docs/ui-mockups/palette-guide.html"
-                        class="admin-ui-guide-iframe"
-                    ></iframe>
+                    <div id="uiGuidePaletteMount" class="admin-ui-guide-embed" data-ui-guide-src="docs/ui-mockups/palette-guide.html" data-ui-guide-kind="palette"></div>
                 </div>
                 <div id="uiGuide-panel-popup" class="admin-ui-guide-panel hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                    <div id="uiGuidePopupMount" class="admin-ui-guide-embed"></div>
+                    <div id="uiGuidePopupMount" class="admin-ui-guide-embed" data-ui-guide-kind="popup"></div>
                 </div>
             </div>
         </main>

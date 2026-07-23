@@ -49,6 +49,18 @@ html.platform-native-app .bottom-nav button i.lucide {
     width: 1.35em;
     height: 1.35em;
 }
+/* 선택(노란) 별: 윤곽만 두지 않고 채움 */
+.star-btn.text-amber-500 .lucide,
+.star-btn.text-amber-500 [data-lucide],
+.star-btn.text-amber-500 svg,
+.star-btn.text-yellow-400 .lucide,
+.star-btn.text-yellow-400 [data-lucide],
+.star-btn.text-yellow-400 svg,
+.star-btn.text-yellow-500 .lucide,
+.star-btn.text-yellow-500 [data-lucide],
+.star-btn.text-yellow-500 svg {
+    fill: currentColor;
+}
 
 :root { 
     /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
@@ -67,7 +79,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     /* Paper보다 한 단계 진한 메뉴 캔버스 — 기기/밝기에 따라 Paper가 씻겨 보일 때 대비 */
     --page-deep: #faf6f2;
     --card: #ffffff;
-    --star: #fbbf24;
+    --star: #eab308;
     --color-primary: var(--green); /* 그린: CTA·선택·활성만 사용 */
     /* 팝업 셸 v2 (Soft Mint Air) */
     --shell-dim: rgba(36, 31, 28, 0.42);
@@ -75,7 +87,10 @@ html.platform-native-app .bottom-nav button i.lucide {
     --shell-r-sheet: 24px;
     --shell-r-btn: 14px;
     --shell-ink: #1c1917;
-    --shell-danger: #c45c6a;
+    /* Danger CTA — Soft Mint와 짝이 되는 선명한 코랄 레드 (탁한 rose 폐기) */
+    --danger: #ee5f70;
+    --danger-deep: #d9485a;
+    --shell-danger: var(--danger);
     --coral: #f2a8b4;
     --coral-soft: #fff0f3;
     /* 아바타 그림자: blur ≈ 2px (좁은 적용 범위) */
@@ -5635,7 +5650,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .timeline-entry-rating {
     display: inline-flex;
-    color: #f4c542;
+    color: #eab308;
     font-size: 14px;
     line-height: 1;
     letter-spacing: 1px;
@@ -5803,7 +5818,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    color: var(--star, #fbbf24);
+    color: var(--star, #eab308);
     font-size: 13px;
     letter-spacing: -1px;
     flex: 0 0 auto;
@@ -5818,9 +5833,19 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     width: 0.85rem;
     height: 0.85rem;
     flex-shrink: 0;
+    fill: currentColor;
 }
 .home-feed-card__star--empty {
-    color: #e2e8f0;
+    color: #cbd5e1;
+    fill: none !important;
+}
+.timeline-search-rating {
+    color: #eab308;
+}
+.timeline-search-rating .lucide,
+.timeline-search-rating [data-lucide],
+.timeline-search-rating svg {
+    fill: currentColor;
 }
 
 /* 홈피드 빈 날 CTA */
@@ -10866,53 +10891,75 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #adminPage .admin-tab-content {
     margin-top: 0.2rem;
 }
-/* UI가이드: 헤더 아래 남은 높이만 사용 → 바깥/iframe 이중 스크롤 방지 */
-#adminPage:has(#admin-tab-content-uiGuide:not(.hidden)) {
-    height: 100dvh;
-    overflow: hidden;
+/* UI가이드: 다른 관리자 탭과 동일하게 문서(페이지) 스크롤 하나만 사용.
+   내부 overflow/고정 높이로 이중 스크롤·잘림을 만들지 않는다.
+   display:flex 가 .hidden 보다 특이성이 높지 않도록 :not(.hidden) / .hidden 분리. */
+#adminPage #admin-tab-content-uiGuide.admin-ui-guide.hidden {
+    display: none !important;
 }
-#adminPage:has(#admin-tab-content-uiGuide:not(.hidden)) > main.admin-main-padding {
-    height: calc(100dvh - var(--admin-header-offset, 6.75rem));
-    max-height: calc(100dvh - var(--admin-header-offset, 6.75rem));
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-}
-#adminPage #admin-tab-content-uiGuide.admin-ui-guide {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+#adminPage #admin-tab-content-uiGuide.admin-ui-guide:not(.hidden) {
+    display: block;
     margin-top: 0;
-    overflow: hidden;
+    padding-bottom: 2rem;
 }
 #adminPage #admin-tab-content-uiGuide .admin-ui-guide-subtabs {
-    flex: 0 0 auto;
+    margin-bottom: 0.5rem;
 }
 #adminPage #admin-tab-content-uiGuide .admin-ui-guide-panel {
-    flex: 1 1 auto;
+    display: block;
+    overflow: visible;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
 }
 #adminPage #admin-tab-content-uiGuide .admin-ui-guide-panel.hidden {
     display: none !important;
 }
-#adminPage #admin-tab-content-uiGuide .admin-ui-guide-iframe {
-    flex: 1 1 auto;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    border: 0;
-    display: block;
-}
 #adminPage #admin-tab-content-uiGuide .admin-ui-guide-embed {
-    flex: 1 1 auto;
+    display: block;
+    width: 100%;
+    height: auto !important;
+    max-height: none !important;
     min-height: 0;
-    height: 100%;
-    overflow: hidden;
+    overflow: visible !important;
+    position: relative;
+}
+/* 시안 허브 · 팝업 · 팔레트: 콘텐츠 자연 높이 → 페이지 스크롤 */
+#adminPage #admin-tab-content-uiGuide #uiGuideHubMount.ui-guide-hub,
+#adminPage #admin-tab-content-uiGuide #uiGuidePopupMount,
+#adminPage #admin-tab-content-uiGuide #uiGuidePopupMount.popup-inventory,
+#adminPage #admin-tab-content-uiGuide #uiGuidePaletteMount.ui-guide-shadow-host {
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+}
+/* 허브 폰 미리보기: 시안 폰 비율에 맞춘 고정 프레임 (내부 화면만 스크롤) */
+#adminPage #admin-tab-content-uiGuide .ugh-phone.ui-guide-shadow-host {
+    width: min(100%, 390px) !important;
+    height: min(844px, calc(100dvh - 9.5rem)) !important;
+    min-height: 640px !important;
+    max-height: min(844px, calc(100dvh - 9.5rem)) !important;
+    overflow: hidden !important;
+    overscroll-behavior: contain;
+}
+/* 와이드 시안 패널 */
+#adminPage #admin-tab-content-uiGuide .ui-guide-hub.is-wide-preview .ugh-phone.ui-guide-shadow-host {
+    width: 100% !important;
+    max-width: 1100px !important;
+    height: min(900px, calc(100dvh - 10rem)) !important;
+    min-height: 560px !important;
+    max-height: min(900px, calc(100dvh - 10rem)) !important;
+    overflow: auto !important;
+    border-radius: 16px !important;
+}
+/* 모달 미리보기 */
+#adminPage #admin-tab-content-uiGuide .ugh-modal-preview.ui-guide-shadow-host {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: auto !important;
+    border-radius: 0 !important;
 }
 #adminPage #admin-tab-content-monitoring > .space-y-4,
 #adminPage #admin-tab-content-alerts > .flex.flex-col.gap-4,
@@ -12253,12 +12300,18 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
+    padding: 12px 16px 16px;
 }
 #entryModal.keyboard-open .entry-modal-actions {
     border-radius: 0;
 }
+#entryModal .entry-modal-actions > .flex {
+    gap: 8px;
+}
 #entryModal .entry-action-btn {
     transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+    border-radius: var(--shell-r-btn);
+    min-height: 46px;
 }
 /* 버튼 배경은 영역 전체 유지, 내부 콘텐츠만 축소 → 주변 하얀 여백 방지 */
 #entryModal .entry-action-btn__inner {
@@ -12281,28 +12334,29 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     transform: scale(0.92);
 }
 #entryModal .entry-action-btn--save {
-    background: #0f172a;
+    background: var(--green);
     color: #fff;
-    font-size: 1rem;
+    font-size: 14.5px;
     font-weight: 700;
     letter-spacing: -0.01em;
 }
 #entryModal .entry-action-btn--save:hover:not(:disabled) {
-    background: #1e293b;
+    background: var(--green-deep);
 }
 #entryModal .entry-action-btn--save:active:not(:disabled),
 #entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
-    background: var(--green);
-    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.22);
+    background: var(--green-deep);
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.16);
 }
 #entryModal .entry-action-btn--save:disabled {
     cursor: not-allowed;
     box-shadow: none;
+    opacity: 0.55;
 }
 #entryModal .entry-action-btn--delete {
     background: #fff1f2;
     color: #e11d48;
-    border-right: 1px solid var(--entry-border-soft);
+    border-right: 0;
 }
 #entryModal .entry-action-btn--delete:hover:not(:disabled) {
     background: #ffe4e6;
@@ -12316,7 +12370,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-action-btn--share {
     background: var(--entry-surface-muted);
     color: var(--entry-text-muted);
-    border-left: 1px solid var(--entry-border-soft);
+    border-left: 0;
 }
 #entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
     background: var(--entry-border-soft);
@@ -12336,7 +12390,6 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-action-btn--share.entry-action-btn--share-on {
     background: var(--entry-accent-soft);
     color: var(--entry-accent-dark);
-    border-left-color: #6ee7b7;
 }
 #entryModal .entry-action-btn--share.entry-action-btn--share-on i {
     color: var(--entry-accent-dark);
@@ -12362,8 +12415,8 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 }
 #photoEditModal .photo-edit-save-btn:active,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed {
-    background: var(--green);
-    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.25);
+    background: var(--green-deep);
+    box-shadow: inset 0 2px 10px rgb(0 0 0 / 0.16);
 }
 #photoEditModal .photo-edit-save-btn:active .entry-action-btn__inner,
 #photoEditModal .photo-edit-save-btn.btn-is-pressed .entry-action-btn__inner {
@@ -12451,15 +12504,110 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     background: var(--green-mute) !important;
 }
 
-/* Confirm 액션 색 — 초록 CTA / 보조는 page·muted */
-#logoutConfirmModal #logoutConfirmCancelBtn,
-#deleteAccountConfirmModal #deleteAccountConfirmCancelBtn {
-    background: var(--page) !important;
-    color: var(--ink-2) !important;
+#dailyJournalModalActions {
+    padding: 12px 16px 16px;
 }
-#logoutConfirmModal #logoutConfirmCancelBtn span:first-child,
-#deleteAccountConfirmModal #deleteAccountConfirmCancelBtn {
-    color: var(--ink) !important;
+#dailyJournalModalActions > .flex {
+    gap: 8px;
+}
+#dailyJournalModalActions #btnDailyJournalDelete,
+#dailyJournalModalActions #dailyJournalShareIndicator {
+    border-radius: var(--shell-r-btn);
+    min-height: 46px;
+}
+/* Soft Mint Dialog Footer — 버튼 영역 여백만 (본문과 분리) */
+.mealog-dialog-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 20px 20px;
+    background: transparent;
+}
+.mealog-dialog-actions--pair,
+.mealog-dialog-actions--stack,
+.mealog-dialog-actions:has(> :nth-child(2)) {
+    flex-direction: row;
+    align-items: stretch;
+}
+.mealog-dialog-actions--pair > .mealog-btn,
+.mealog-dialog-actions--stack > .mealog-btn,
+.mealog-dialog-actions:has(> :nth-child(2)) > .mealog-btn {
+    flex: 1;
+    min-width: 0;
+}
+.mealog-dialog-actions--border {
+    border-top: 1px solid var(--line);
+    background: var(--page);
+    padding-top: 16px;
+}
+.mealog-btn {
+    border: 0;
+    border-radius: var(--shell-r-btn);
+    height: 48px;
+    padding: 0 14px;
+    font: inherit;
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.12s ease;
+}
+.mealog-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    box-shadow: none;
+}
+.mealog-btn-primary {
+    background: var(--green);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(60, 184, 137, 0.28);
+}
+.mealog-btn-primary:hover:not(:disabled),
+.mealog-btn-primary:active:not(:disabled) {
+    background: var(--green-deep);
+}
+.mealog-btn-primary:active:not(:disabled) {
+    transform: scale(0.98);
+}
+.mealog-btn-secondary {
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 0 rgba(36, 31, 28, 0.04);
+}
+.mealog-btn-secondary:hover:not(:disabled),
+.mealog-btn-secondary:active:not(:disabled) {
+    background: var(--line);
+}
+.mealog-btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600;
+    height: 40px;
+}
+.mealog-dialog-actions--pair > .mealog-btn-ghost,
+.mealog-dialog-actions--stack > .mealog-btn-ghost,
+.mealog-dialog-actions:has(> :nth-child(2)) > .mealog-btn-ghost {
+    height: 48px;
+}
+.mealog-btn-ghost:hover:not(:disabled),
+.mealog-btn-ghost:active:not(:disabled) {
+    color: var(--ink-2);
+    background: rgba(255, 255, 255, 0.7);
+}
+.mealog-btn-danger {
+    background: var(--danger);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(238, 95, 112, 0.28);
+}
+.mealog-btn-danger:hover:not(:disabled),
+.mealog-btn-danger:active:not(:disabled) {
+    background: var(--danger-deep);
+}
+.mealog-btn-danger:active:not(:disabled) {
+    transform: scale(0.98);
 }
 
 /* —— Bottom Sheet 공통 —— */

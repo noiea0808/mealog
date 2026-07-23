@@ -17,6 +17,8 @@
       --green-mute: #b4e2cd;
       --coral: #f2a8b4;
       --coral-soft: #fff0f3;
+      --danger: #ee5f70;
+      --danger-deep: #d9485a;
       --ink: #241f1c;
       --ink-2: #4f4841;
       --muted: #7a7268;
@@ -25,7 +27,7 @@
       --page-deep: #faf6f2;
       --card: #ffffff;
       --star: #fbbf24;
-      --shell-danger: #c45c6a;
+      --shell-danger: var(--danger);
       --c1: #3cb889;
       --c2: #f2a8b4;
       --c3: #f0c89a;
@@ -277,7 +279,7 @@
       <span style="background:#241f1c"></span>
     </div>
     <p class="hero-cap">
-      Paper → Page Deep → Soft → Mute → Mint → Deep → Coral → Ink ·
+      Paper → Page Deep → Soft → Mute → Mint → Deep → Coral → Danger → Ink ·
       소스: <code>css/style.css</code>, <code>docs/ui-mockups/themes.js</code> (theme A)
     </p>
 
@@ -286,6 +288,7 @@
       <ul>
         <li><strong>그린(--green)</strong>은 CTA·선택·활성 상태에만 씁니다. 장식용으로 남발하지 않습니다.</li>
         <li><strong>코랄(--coral)</strong>은 좋아요·하트·감정 포인트용입니다. 브랜드 CTA와 역할을 나눕니다.</li>
+        <li><strong>데인저(--danger)</strong>는 탈퇴·삭제·신고 확정 CTA만. Soft Mint와 짝이 되는 선명한 코랄 레드입니다.</li>
         <li>본문·제목은 <strong>Ink</strong> 계열, 보조 설명은 <strong>Muted</strong>, 구분선은 <strong>Line</strong>만 사용합니다.</li>
         <li>페이지·메뉴 캔버스는 <strong>Page Deep</strong>(<code>--page-deep</code> / <code>--app-page-bg</code>), 카드·시트 표면은 White(<code>--card</code>), 시트·입력 등 연한 면은 Paper(<code>--page</code>)로 계층을 만듭니다.</li>
       </ul>
@@ -347,11 +350,11 @@
       </div>
     </section>
 
-    <!-- Accent coral -->
+    <!-- Accent coral + danger -->
     <section class="section">
       <div class="section-head">
-        <h2>액센트 코랄</h2>
-        <p>그린과 대비되는 따뜻한 포인트. 감정·소셜 인터랙션에만 씁니다.</p>
+        <h2>액센트 코랄 · 데인저</h2>
+        <p>감정 포인트(코랄)와 파괴적 CTA(데인저)를 나눕니다. 데인저는 Soft Mint와 대비되는 선명한 코랄 레드입니다.</p>
       </div>
       <div class="swatches">
         <article class="swatch">
@@ -373,12 +376,21 @@
           </div>
         </article>
         <article class="swatch">
-          <div class="chip" style="background:#c45c6a"></div>
+          <div class="chip" style="background:#ee5f70"></div>
           <div class="meta">
             <div class="name">Danger</div>
-            <code>#C45C6A</code>
-            <div class="token">--shell-danger</div>
-            <p class="desc">삭제·신고·위험 액션. 코랄보다 채도·명도가 낮아 경고감이 큼.</p>
+            <code>#EE5F70</code>
+            <div class="token">--danger / --shell-danger</div>
+            <p class="desc">탈퇴·삭제·로그아웃 확정 등 파괴적 CTA 채움. 탁한 rose(#C45C6A) 대신 선명한 코랄 레드.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#d9485a"></div>
+          <div class="meta">
+            <div class="name">Danger Deep</div>
+            <code>#D9485A</code>
+            <div class="token">--danger-deep</div>
+            <p class="desc">데인저 버튼 호버·눌림. Danger보다 한 단계 진한 상태색.</p>
           </div>
         </article>
       </div>

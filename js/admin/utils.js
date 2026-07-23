@@ -215,6 +215,7 @@ export async function runAdminRefreshAction(button, work, options = {}) {
     el.style.color = '#fff';
     el.style.borderColor = 'transparent';
     el.style.cursor = 'wait';
+    if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(el);
     try {
         await work();
     } finally {
@@ -228,5 +229,6 @@ export async function runAdminRefreshAction(button, work, options = {}) {
         delete el.dataset.arPrevStyle;
         el.removeAttribute('aria-busy');
         el.disabled = false;
+        if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(el);
     }
 }

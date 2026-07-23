@@ -2,6 +2,7 @@
 import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 // 태그 콘텐츠 로드
 export async function loadTagsContent() {
@@ -81,6 +82,7 @@ function renderTags(type, tags) {
     
     // 드래그 앤 드롭 이벤트 설정
     setupTagDragAndDrop(type, container);
+    scheduleLucideIcons(container);
 }
 
 // 태그 드래그 앤 드롭 설정
