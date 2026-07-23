@@ -13497,6 +13497,10 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     flex-direction: column;
     gap: 6px;
 }
+/* display:flex 가 Tailwind .hidden 보다 특이도가 높아 숨김이 무시되던 문제 보정 */
+#notificationModal .notification-list.hidden {
+    display: none;
+}
 #notificationModal .notification-row {
     display: flex;
     align-items: center;
@@ -13594,6 +13598,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     color: var(--muted);
     line-height: 1.45;
 }
+#notificationModal .notification-empty.hidden {
+    display: none;
+}
 #notificationModal .notification-list-loading {
     padding: 28px 12px;
     text-align: center;
@@ -13610,6 +13617,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-weight: 500;
     line-height: 1.4;
     color: var(--muted);
+}
+#notificationModal .notification-read-hint.hidden {
+    display: none;
 }
 #notificationModal .mealog-dialog-actions--border {
     flex-shrink: 0;
