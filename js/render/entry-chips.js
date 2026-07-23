@@ -11,6 +11,7 @@ import {
     getAxis2TagList,
 } from '../modals/entry-form-config.js';
 import { isEntryFieldQuickInputOn } from '../modals/entry-quick-input.js';
+import { refreshLucideIcons } from '../icons.js';
 
 /** 기록 모달 서브태그 중 '최근 사용'으로 보여 줄 최대 개수 (식사·간식 공통) */
 const RECENT_SUBTAG_CHIP_LIMIT = 5;
@@ -182,6 +183,7 @@ export function renderEntryChips() {
             html += recentList.map((item) => renderChip(item, false)).join('');
         }
         el.innerHTML = html;
+        if (html) refreshLucideIcons(el);
     };
 
     const axis1List = getAxis1TagList(mode, tags);

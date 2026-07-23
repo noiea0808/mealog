@@ -47,8 +47,20 @@ html.platform-native-app .bottom-nav button i.lucide {
 }
 .star-btn .lucide,
 .star-btn [data-lucide] {
-    width: 1.35em;
-    height: 1.35em;
+    width: 1.25rem;
+    height: 1.25rem;
+}
+/* 미선택 별: 윤곽이 보이도록 (다른 아이콘과 동일 선 굵기) */
+.star-btn.text-slate-400 .lucide,
+.star-btn.text-slate-400 [data-lucide],
+.star-btn.text-slate-400 svg,
+.star-btn.text-slate-200 .lucide,
+.star-btn.text-slate-200 [data-lucide],
+.star-btn.text-slate-200 svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    color: #94a3b8;
 }
 /* 선택(노란) 별: 윤곽만 두지 않고 채움 */
 .star-btn.text-amber-500 .lucide,
@@ -61,6 +73,7 @@ html.platform-native-app .bottom-nav button i.lucide {
 .star-btn.text-yellow-500 [data-lucide],
 .star-btn.text-yellow-500 svg {
     fill: currentColor;
+    stroke-width: 1.25;
 }
 
 :root { 
@@ -2173,6 +2186,11 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-left: 3px;
     font-size: 9px;
     line-height: 1;
+    width: 0.7rem;
+    height: 0.7rem;
+    flex-shrink: 0;
+    fill: currentColor;
+    stroke: currentColor;
 }
 /* 기록 모달 서브태그: 선택 시 슬레이트 600 (이전 대비 배경 살짝 연함) */
 #entryModal .entry-subtag-suggestions .sub-chip.active {
@@ -2949,6 +2967,14 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     height: 36px;
     flex-shrink: 0;
     overflow: visible;
+}
+/* 업데이트·가이드 레드닷: wrap이 전폭이라 -right가 칸 끝에 붙음 → 중앙 아이콘 우상단으로 고정 */
+.bottom-nav .nav-item .nav-item__icon-wrap > .nav-feed-update-dot,
+.bottom-nav .nav-item .nav-item__icon-wrap > .demo-nav-guide-dot {
+    top: 4px;
+    right: auto;
+    left: calc(50% + 0.45rem);
+    transform: none;
 }
 .bottom-nav .nav-item .nav-item__avatar {
     width: 1.75rem;
@@ -5879,7 +5905,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     padding: 12px 14px 10px;
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr);
-    gap: 10px;
+    gap: calc(10px + 0.5em);
     align-items: start;
 }
 .home-feed-card--photo .home-feed-card__body {
@@ -11973,7 +11999,7 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-axis-label-with-icon {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
+    gap: calc(0.375rem + 0.5em);
     min-width: auto;
 }
 #entryModal .entry-axis-icon {
@@ -12035,6 +12061,12 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
     font-weight: 600;
     font-size: 0.875rem;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* 어디서·무엇을·누구와: 초기 빈 입력란도 윤곽이 보이도록 */
+#entryModal #entryWhereSection input[type="text"],
+#entryModal #entryWhatSection input[type="text"],
+#entryModal #entryWithSection input[type="text"] {
+    border-color: var(--entry-border, #d0c6ba);
 }
 #entryModal .entry-sheet-zone--core #entryWhereSection input[type="text"],
 #entryModal .entry-sheet-zone--core #entryWhatSection input[type="text"],
@@ -12362,6 +12394,14 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 #entryModal .entry-gauge-stars .star-btn {
     padding: 2px;
     flex-shrink: 0;
+    font-size: 1rem;
+    line-height: 1;
+}
+#entryModal .entry-gauge-stars .star-btn .lucide,
+#entryModal .entry-gauge-stars .star-btn svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    stroke-width: 1.25;
 }
 #entryModal .entry-gauge-satiety {
     width: 100%;
