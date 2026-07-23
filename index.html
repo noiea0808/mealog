@@ -2640,7 +2640,8 @@
     <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden">
         <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden">
             <div class="entry-modal-header shrink-0">
-                <div class="flex items-center gap-2 min-w-0 px-4 py-2.5">
+                <div id="entryModalGrabber" class="entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+                <div class="flex items-center gap-2 min-w-0 px-4 pt-1 pb-2.5">
                     <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
                         <input type="hidden" id="entryHeaderDate" value="">
                         <button type="button" id="entryHeaderDateBtn" aria-label="날짜" aria-haspopup="dialog" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800 outline-none transition-colors">날짜</button>
@@ -2650,7 +2651,6 @@
                             <button type="button" id="entryFormModeBtnSnack" data-mode="snack" class="entry-form-mode-btn" aria-pressed="false">간식</button>
                         </div>
                     </div>
-                    <button type="button" onclick="window.closeModal()" class="entry-header-close shrink-0 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기"><i data-lucide="x" class="text-base"></i></button>
                 </div>
             </div>
             <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">

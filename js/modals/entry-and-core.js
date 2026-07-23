@@ -651,7 +651,7 @@ function setEntryModalSavingState(saving) {
     entryModal.setAttribute('aria-busy', saving ? 'true' : 'false');
     const btnSave = document.getElementById('btnSave');
     const btnDelete = document.getElementById('btnDelete');
-    const closeBtn = entryModal.querySelector('button[onclick*="closeModal"]');
+    const grabber = entryModal.querySelector('.entry-modal-grabber');
     if (btnSave) {
         btnSave.disabled = saving;
         if (saving) {
@@ -663,7 +663,86 @@ function setEntryModalSavingState(saving) {
         }
     }
     if (btnDelete) btnDelete.disabled = saving;
-    if (closeBtn) closeBtn.disabled = saving;
+    if (grabber) {
+        grabber.setAttribute('aria-disabled', saving ? 'true' : 'false');
+        grabber.tabIndex = saving ? -1 : 0;
+    }
+}
+
+/** 기록 모달: 상단 핸들 아래로 스와이프(드래그)해 닫기 */
+function initEntryModalGrabberPullClose(entryModal) {
+    if (!entryModal || entryModal._grabberPullCloseInit) return;
+    const panel = entryModal.querySelector('.entry-modal-panel');
+    const grabber = entryModal.querySelector('.entry-modal-grabber');
+    if (!panel || !grabber) return;
+    entryModal._grabberPullCloseInit = true;
+
+    const threshold = 80;
+    let startY = 0;
+    let dragY = 0;
+    let tracking = false;
+    let pointerId = null;
+
+    const resetPanelTransform = () => {
+        panel.style.transform = '';
+        panel.style.transition = '';
+    };
+
+    const onPointerDown = (e) => {
+        if (entryModal.classList.contains('hidden') || entryModal.classList.contains('entry-modal-saving')) return;
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        tracking = true;
+        pointerId = e.pointerId;
+        startY = e.clientY;
+        dragY = 0;
+        try {
+            grabber.setPointerCapture(e.pointerId);
+        } catch (_) {
+            /* ignore */
+        }
+    };
+
+    const onPointerMove = (e) => {
+        if (!tracking || e.pointerId !== pointerId) return;
+        dragY = Math.max(0, e.clientY - startY);
+        panel.style.transition = 'none';
+        panel.style.transform = `translate3d(0, ${dragY}px, 0)`;
+        if (dragY > 0) e.preventDefault();
+    };
+
+    const onPointerEnd = (e) => {
+        if (!tracking || (e && e.pointerId !== pointerId)) return;
+        tracking = false;
+        pointerId = null;
+        if (dragY >= threshold) {
+            resetPanelTransform();
+            if (typeof window.closeModal === 'function') window.closeModal();
+            else closeModal();
+            return;
+        }
+        panel.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)';
+        panel.style.transform = 'translate3d(0, 0, 0)';
+        const clear = () => {
+            panel.removeEventListener('transitionend', clear);
+            resetPanelTransform();
+        };
+        panel.addEventListener('transitionend', clear, { once: true });
+        setTimeout(clear, 280);
+    };
+
+    grabber.addEventListener('pointerdown', onPointerDown);
+    grabber.addEventListener('pointermove', onPointerMove, { passive: false });
+    grabber.addEventListener('pointerup', onPointerEnd);
+    grabber.addEventListener('pointercancel', onPointerEnd);
+    grabber.addEventListener('keydown', (e) => {
+        if (entryModal.classList.contains('entry-modal-saving')) return;
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        if (typeof window.closeModal === 'function') window.closeModal();
+        else closeModal();
+    });
+
+    entryModal.resetGrabberPullTransform = resetPanelTransform;
 }
 
 /** 저장 성공 후 모달 닫기 (저장 중 사용자가 새 모달을 연 경우 stale 완료는 무시) */
@@ -1256,6 +1335,10 @@ function revealEntryModalShell() {
     requestAnimationFrame(resetEntryModalScrollTop);
     setTimeout(resetEntryModalScrollTop, 60);
     initEntryModalKeyboardHandling(entryModal);
+    initEntryModalGrabberPullClose(entryModal);
+    if (typeof entryModal.resetGrabberPullTransform === 'function') {
+        entryModal.resetGrabberPullTransform();
+    }
     if (typeof entryModal.setKeyboardBaseline === 'function') {
         entryModal.setKeyboardBaseline();
     }
@@ -1425,6 +1508,9 @@ export function closeModal() {
         entryModal.classList.remove('keyboard-open');
         entryModal.style.height = '';
         entryModal.style.top = '';
+        if (typeof entryModal.resetGrabberPullTransform === 'function') {
+            entryModal.resetGrabberPullTransform();
+        }
         entryModal.classList.add('hidden');
         unlockBodyScroll();
     }
