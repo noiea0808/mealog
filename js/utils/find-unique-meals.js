@@ -51,16 +51,49 @@ function dedupeStaleSlotTemps(mealsArr) {
     });
 }
 
+function mealDateYmd(m) {
+    const d = m?.date;
+    if (typeof d !== 'string') return '';
+    const ymd = d.trim().slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd : '';
+}
+
 /**
  * @param {Array<object>} serverRows — 리스너 스냅샷에서 온 행(서버 우선)
  * @param {Array<object>|null|undefined} prevHist — 병합 전 mealHistory
+ * @param {{ preserveBeforeDate?: string|null }} [opts]
+ *   preserveBeforeDate: 이 날짜(미포함)보다 과거인 기존 기록은 부분 윈도우 스냅샷이 지우지 않도록 유지
  * @returns {Array<object>}
  */
-export function findUniqueMeals(serverRows, prevHist) {
+export function findUniqueMeals(serverRows, prevHist, opts = {}) {
     const serverIds = new Set((serverRows || []).map((m) => String(m?.id)));
     const prev = Array.isArray(prevHist) ? prevHist : [];
-    const orphans = prev.filter((m) => isOrphanCandidate(m, serverIds));
-    const merged = [...(serverRows || []), ...orphans].sort(sortMealsDesc);
+    const preserveBefore =
+        typeof opts?.preserveBeforeDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(opts.preserveBeforeDate)
+            ? opts.preserveBeforeDate
+            : null;
+
+    const keep = [];
+    const keepIds = new Set();
+    for (const m of prev) {
+        if (!m?.id) continue;
+        const id = String(m.id);
+        if (serverIds.has(id) || keepIds.has(id)) continue;
+        if (isOrphanCandidate(m, serverIds)) {
+            keep.push(m);
+            keepIds.add(id);
+            continue;
+        }
+        // 실시간 구독 범위 밖(과거 on-demand 캐시) — initial 스냅샷이 통째로 대체하지 않음
+        if (preserveBefore) {
+            const ymd = mealDateYmd(m);
+            if (ymd && ymd < preserveBefore) {
+                keep.push(m);
+                keepIds.add(id);
+            }
+        }
+    }
+    const merged = [...(serverRows || []), ...keep].sort(sortMealsDesc);
     return dedupeStaleSlotTemps(merged);
 }
 

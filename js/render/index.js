@@ -10,6 +10,7 @@ export {
     getOldestPendingPastTimelineDate,
     renderMiniCalendar,
     refreshMiniCalendarDots,
+    resetTrackerMiniCalendarRange,
     updateTimelineShareIndicators,
     updateTimelineMealEntryPendingIndicators,
     invalidateTimelineDateSection,

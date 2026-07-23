@@ -5,8 +5,12 @@ import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { addDaysToYmd, applyDemoDateShiftToDailyStats, applyDemoDateShiftToMeals } from '../demo-date-shift.js';
-import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { onMealDocFirestoreServerAcknowledged } from '../utils/meal-entry-pending.js';
+import {
+    isMealsRangeFullyLoaded,
+    markMealsRangeLoaded
+} from '../utils/loaded-meals-range.js';
 
 /** getDocs로 서버에서 읽은 meal 문서 — 타임라인 동기화 도트를 반영 완료로 표시 */
 function acknowledgeServerMealDocsFromGetDocs(docs) {
@@ -93,11 +97,18 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         if (newMeals.length > 0) {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            invalidateMealHistoryCountCache();
         }
 
         // 기록이 0건인 주도 범위를 전진해야 빈 구간에서 fetch가 멈춘다
         const displayNewStart = shift ? addDaysToYmd(newStartStrRaw, shift) : newStartStrRaw;
-        window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
+        const rangeEndExclusive = currentStart;
+        const rangeEndInclusive = addDaysToYmd(rangeEndExclusive, -1);
+        if (displayNewStart && rangeEndInclusive && displayNewStart <= rangeEndInclusive) {
+            markMealsRangeLoaded(displayNewStart, rangeEndInclusive);
+        } else if (displayNewStart) {
+            markMealsRangeLoaded(displayNewStart, displayNewStart);
+        }
         
         return { count: newMeals.length, newMeals };
     } catch (e) {
@@ -127,13 +138,11 @@ export async function ensureMealsLoadedAroundDate(centerIso, radiusDays = 3) {
 /** @param {string} centerIso @param {number} [radiusDays=3] */
 export function needsMealsLoadedAroundDate(centerIso, radiusDays = 3) {
     if (typeof centerIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(centerIso)) return false;
-    const range = window.loadedMealsDateRange;
-    if (!range?.start || !range?.end) return true;
     const radius = Number.isFinite(radiusDays) ? Math.max(0, Math.round(radiusDays)) : 3;
     const startStr = addDaysToYmd(centerIso, -radius);
     const endStr = addDaysToYmd(centerIso, radius);
     if (!startStr || !endStr) return false;
-    return startStr < range.start || endStr > range.end;
+    return !isMealsRangeFullyLoaded(startStr, endStr);
 }
 
 // 특정 날짜 범위의 데이터 로드 (대시보드용)
@@ -147,17 +156,9 @@ export async function loadMealsForDateRange(startDate, endDate) {
         const startStr = typeof startDate === 'string' ? startDate : toLocalDateString(startDate);
         const endStr = typeof endDate === 'string' ? endDate : toLocalDateString(endDate);
         
-        // 이미 로드된 범위 확인
-        if (window.loadedMealsDateRange) {
-            const loadedStart = new Date(window.loadedMealsDateRange.start);
-            const loadedEnd = new Date(window.loadedMealsDateRange.end);
-            const requestedStart = new Date(startStr);
-            const requestedEnd = new Date(endStr);
-            
-            // 요청한 범위가 이미 로드된 범위에 포함되는지 확인
-            if (requestedStart >= loadedStart && requestedEnd <= loadedEnd) {
-                return 0;
-            }
+        // 이미 로드된 구간(합집합)으로 완전 커버되면 skip — 멀리 점프한 구멍은 커버로 보지 않음
+        if (isMealsRangeFullyLoaded(startStr, endStr)) {
+            return 0;
         }
         
         const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
@@ -183,28 +184,18 @@ export async function loadMealsForDateRange(startDate, endDate) {
         }
         
         // 기존 데이터와 병합 (중복 제거)
+        if (!Array.isArray(window.mealHistory)) window.mealHistory = [];
         const existingIds = new Set(window.mealHistory.map(m => m.id));
         const newMeals = additionalMeals.filter(m => !existingIds.has(m.id));
         
         if (newMeals.length > 0) {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            invalidateMealHistoryCountCache();
         }
 
-        // 기록이 0건이어도 범위는 확장 — 빈 구간을 매번 재fetch하지 않음
-        if (!window.loadedMealsDateRange) {
-            window.loadedMealsDateRange = { start: startStr, end: endStr };
-        } else {
-            const currentStart = new Date(window.loadedMealsDateRange.start);
-            const currentEnd = new Date(window.loadedMealsDateRange.end);
-            const newStart = new Date(startStr);
-            const newEnd = new Date(endStr);
-
-            window.loadedMealsDateRange.start =
-                newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
-            window.loadedMealsDateRange.end =
-                newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
-        }
+        // 기록이 0건이어도 해당 구간만 mark — 중간 구멍을 가짜로 메우지 않음
+        markMealsRangeLoaded(startStr, endStr);
         
         return newMeals.length;
     } catch (e) {

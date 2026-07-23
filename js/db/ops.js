@@ -27,6 +27,7 @@ import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { tryMarkAppOfflineFromNetworkFailure } from '../utils/network-reachability.js';
+import { clearLoadedMealsRanges } from '../utils/loaded-meals-range.js';
 
 /**
  * 식사 저장 결과 — Callable(Admin) 폴백 시 Firestore 로컬 큐가 비지 않아 waitForPendingWrites·리스너 ack와 무관함.
@@ -979,6 +980,7 @@ export const dbOps = {
             if (typeof window !== 'undefined') {
                 window.dailyStats = {};
                 window.mealHistory = [];
+                clearLoadedMealsRanges();
             }
         } catch (e) {
             console.error("Delete All User Data Error:", e);

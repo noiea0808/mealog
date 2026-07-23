@@ -1899,6 +1899,24 @@ let miniCalendarScrollTitleBound = false;
 let trackerMonthTitleRaf = null;
 let trackerMonthCalendarModalBound = false;
 
+/** 가로 트래커: 오늘 포함 초기 61일(과거 60+오늘). 왼쪽 끝에서 +30일 prepend, 최대 약 1년 */
+const TRACKER_INITIAL_PAST_DAYS = 60;
+const TRACKER_EXTEND_DAYS = 30;
+const TRACKER_MAX_PAST_DAYS = 364;
+const TRACKER_EXTEND_EDGE_PX = 48;
+const TRACKER_EXTEND_COOLDOWN_MS = 400;
+
+let trackerPastDays = TRACKER_INITIAL_PAST_DAYS;
+let trackerExtendInFlight = false;
+let trackerLastExtendAt = 0;
+
+/** 로그아웃·계정 전환 시 트래커 과거 창 초기화 */
+export function resetTrackerMiniCalendarRange() {
+    trackerPastDays = TRACKER_INITIAL_PAST_DAYS;
+    trackerExtendInFlight = false;
+    trackerLastExtendAt = 0;
+}
+
 function pad2(n) {
     return String(n).padStart(2, '0');
 }
@@ -2095,7 +2113,9 @@ function setupMiniCalendarScrollTitle(container) {
 
     const onScrollOrResize = () => {
         const c = document.getElementById('miniCalendar');
-        if (c) scheduleTrackerMonthTitleUpdate(c);
+        if (!c) return;
+        scheduleTrackerMonthTitleUpdate(c);
+        maybeExtendTrackerPastOnScroll(c);
     };
 
     container.addEventListener('scroll', onScrollOrResize, { passive: true });
@@ -2194,25 +2214,113 @@ function dotStatusFromCount(count) {
     return count >= 3 ? 'dot-full' : count > 0 ? 'dot-partial' : 'dot-none';
 }
 
-/** 오늘 포함 과거 61일 스펙 (로컬 날짜) */
+function activePageDateIso() {
+    const d = appState.pageDate;
+    if (!(d instanceof Date) || isNaN(+d)) return localTodayYmd();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** todayStr − iso 일수 (iso가 더 과거면 양수) */
+function daysBeforeToday(iso, todayStr = localTodayYmd()) {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return 0;
+    const a = new Date(`${iso}T00:00:00`);
+    const b = new Date(`${todayStr}T00:00:00`);
+    if (isNaN(+a) || isNaN(+b)) return 0;
+    return Math.round((b - a) / 86400000);
+}
+
+/** 달력/스와이프로 선택일이 창 밖이면 트래커 span을 그 날짜까지 확장 */
+function ensureTrackerSpanCoversIso(iso) {
+    const today = localTodayYmd();
+    if (!iso || iso > today) return;
+    const diff = daysBeforeToday(iso, today);
+    if (diff > trackerPastDays) {
+        trackerPastDays = Math.min(TRACKER_MAX_PAST_DAYS, diff);
+    }
+}
+
+function daySpecFromOffset(offsetFromToday, activeStr) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - offsetFromToday);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const iso = `${year}-${month}-${day}`;
+    return {
+        iso,
+        dayNum: d.getDate(),
+        dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
+        weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
+        isActive: iso === activeStr
+    };
+}
+
+/** 오늘 포함 과거 trackerPastDays+1일 (오른쪽=오늘, 왼쪽=더 과거) */
 function buildMiniCalendarDaySpecs(activeStr) {
+    ensureTrackerSpanCoversIso(activeStr);
     const days = [];
-    for (let i = 60; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const iso = `${year}-${month}-${day}`;
-        days.push({
-            iso,
-            dayNum: d.getDate(),
-            dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
-            weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
-            isActive: iso === activeStr
-        });
+    for (let i = trackerPastDays; i >= 0; i--) {
+        days.push(daySpecFromOffset(i, activeStr));
     }
     return days;
+}
+
+function createMiniCalendarItemEl(day, count) {
+    const status = dotStatusFromCount(count);
+    const weekend = day.dayColorClass.includes('rose');
+    const item = document.createElement('div');
+    item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
+    item.setAttribute('data-tracker-date', day.iso);
+    item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
+        <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
+    item.onclick = () => window.jumpToDate(day.iso);
+    return item;
+}
+
+/**
+ * 왼쪽 끝에 가까우면 과거 +30일을 prepend (스크롤 위치 유지).
+ * @returns {boolean} 확장했는지
+ */
+function tryExtendTrackerPast(container) {
+    if (!container || trackerExtendInFlight) return false;
+    if (trackerPastDays >= TRACKER_MAX_PAST_DAYS) return false;
+
+    const prevSpan = trackerPastDays;
+    const nextSpan = Math.min(TRACKER_MAX_PAST_DAYS, trackerPastDays + TRACKER_EXTEND_DAYS);
+    if (nextSpan <= prevSpan) return false;
+
+    trackerExtendInFlight = true;
+    try {
+        const activeStr = activePageDateIso();
+        const historyByDate = buildMealHistoryCountByDate();
+        const oldScrollLeft = container.scrollLeft;
+        const oldScrollWidth = container.scrollWidth;
+
+        const frag = document.createDocumentFragment();
+        for (let i = nextSpan; i > prevSpan; i--) {
+            const day = daySpecFromOffset(i, activeStr);
+            const count = getRecordCountForIso(day.iso, historyByDate);
+            frag.appendChild(createMiniCalendarItemEl(day, count));
+        }
+        container.insertBefore(frag, container.firstChild);
+        trackerPastDays = nextSpan;
+
+        const delta = container.scrollWidth - oldScrollWidth;
+        container.scrollLeft = oldScrollLeft + delta;
+        scheduleTrackerMonthTitleUpdate(container);
+        return true;
+    } finally {
+        trackerExtendInFlight = false;
+        trackerLastExtendAt = Date.now();
+    }
+}
+
+function maybeExtendTrackerPastOnScroll(container) {
+    if (!container || !window.currentUser) return;
+    if (container.scrollLeft > TRACKER_EXTEND_EDGE_PX) return;
+    if (Date.now() - trackerLastExtendAt < TRACKER_EXTEND_COOLDOWN_MS) return;
+    tryExtendTrackerPast(container);
 }
 
 function canPatchMiniCalendarDom(container, days) {
@@ -2276,8 +2384,15 @@ export function refreshMiniCalendarDots() {
     const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
     const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
     const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    ensureTrackerSpanCoversIso(activeStr);
     const historyByDate = buildMealHistoryCountByDate();
     const days = buildMiniCalendarDaySpecs(activeStr);
+
+    // span이 DOM보다 길면(달력 점프 등) 전체 재구성
+    if (container.querySelectorAll('.calendar-item').length !== days.length) {
+        renderMiniCalendar();
+        return;
+    }
 
     days.forEach((day) => {
         const dotEl = document.getElementById(`dot-${day.iso}`);
@@ -2305,6 +2420,7 @@ export function renderMiniCalendar() {
     const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
     const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
     const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    ensureTrackerSpanCoversIso(activeStr);
     const days = buildMiniCalendarDaySpecs(activeStr);
     const historyByDate = buildMealHistoryCountByDate();
 
@@ -2320,15 +2436,7 @@ export function renderMiniCalendar() {
     container.innerHTML = '';
     days.forEach((day) => {
         const count = getRecordCountForIso(day.iso, historyByDate);
-        const status = dotStatusFromCount(count);
-        const weekend = day.dayColorClass.includes('rose');
-        const item = document.createElement('div');
-        item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
-        item.setAttribute('data-tracker-date', day.iso);
-        item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
-            <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
-        item.onclick = () => window.jumpToDate(day.iso);
-        container.appendChild(item);
+        container.appendChild(createMiniCalendarItemEl(day, count));
     });
 
     finishMiniCalendarAfterRender(container, activeStr);

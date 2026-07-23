@@ -28,17 +28,17 @@ import {
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
+import { markMealsRangeLoaded, replaceLoadedMealsRanges } from './loaded-meals-range.js';
 import { appState } from '../state.js';
-
-/** mealHistory에서 YYYY-MM-DD 최소일 (없으면 null). limit(50)으로 초기 스냅샷에 구멍이 생길 때 loaded 범위와 일치시키기 위함 */
-function minMealDateYmd(meals) {
+/** 스냅샷에 실제로 포함된 날짜만으로 실시간 윈도우 start를 잡을 때 사용 */
+function minMealDateYmdInWindow(meals, cutoffDateStr) {
     if (!Array.isArray(meals) || !meals.length) return null;
     let min = null;
     for (const m of meals) {
         const d = m?.date;
-        if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
-            if (min == null || d < min) min = d;
-        }
+        if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+        if (cutoffDateStr && d < cutoffDateStr) continue;
+        if (min == null || d < min) min = d;
     }
     return min;
 }
@@ -133,17 +133,14 @@ function applyDemoMealsBranch(snap, { mergeStatsIntoDaily, onDataUpdate, slice50
         .filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
     if (rawDates.length && shift) {
         const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
-        window.loadedMealsDateRange = {
-            start: addDaysToYmd(minRaw, shift),
-            end: todayLocalYmd()
-        };
+        replaceLoadedMealsRanges(addDaysToYmd(minRaw, shift), todayLocalYmd());
     } else if (rawDates.length) {
         const minRaw = rawDates.reduce((a, b) => (a < b ? a : b));
         const maxRaw = rawDates.reduce((a, b) => (a > b ? a : b));
-        window.loadedMealsDateRange = { start: minRaw, end: maxRaw };
+        replaceLoadedMealsRanges(minRaw, maxRaw);
     } else {
         const tl = todayLocalYmd();
-        window.loadedMealsDateRange = { start: tl, end: tl };
+        replaceLoadedMealsRanges(tl, tl);
     }
     if (window.userSettings && window.__demoRawDailyComments) {
         window.userSettings.dailyComments = applyDemoDateShiftToDailyComments(
@@ -202,11 +199,15 @@ export function applyMealsSnapshotPrimary(p) {
                 return row;
             })
             .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-        window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
-        // cutoff~오늘 "윈도우"와 limit(50) 때문에 실제 최소 일자는 cutoff보다 훨씬 늦을 수 있음.
-        // start를 cutoff로 두면 loadMore가 <cutoff만 당겨와 그 사이(예: 3/28~4/8)가 영구 구멍이 됨 → 실제 최소 일자 사용.
-        const minActual = minMealDateYmd(window.mealHistory);
-        window.loadedMealsDateRange = { start: minActual ?? cutoffDateStr, end: todayStr };
+        // 최근 N일 부분 윈도우: cutoff 이전 on-demand 캐시는 유지 (트래커 과거 이동 후 사라짐 방지)
+        window.mealHistory = findUniqueMeals(serverMapped, prevForMerge, {
+            preserveBeforeDate: cutoffDateStr
+        });
+        // limit(50) 때문에 윈도우 안 실제 최소일이 cutoff보다 늦을 수 있음 → 스냅샷 내 최소일 사용.
+        // 과거 캐시 구간은 지우지 않고 실시간 윈도우만 mark (구멍 오인 방지).
+        const minInWindow =
+            minMealDateYmdInWindow(serverMapped, cutoffDateStr) ?? cutoffDateStr;
+        markMealsRangeLoaded(minInWindow, todayStr);
         loadState.isInitialLoad = false;
         invalidateMealHistoryCountCache();
         snap.docs.forEach((d) => {
@@ -403,17 +404,14 @@ export function applyMealsSnapshotPrimary(p) {
             window.mealHistory.sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
             window.mealHistory = dedupeMealListOnly(window.mealHistory);
             invalidateMealHistoryCountCache();
-            const minD = minMealDateYmd(window.mealHistory);
-            if (window.loadedMealsDateRange && minD) {
-                window.loadedMealsDateRange = { ...window.loadedMealsDateRange, start: minD };
-            }
+            // 과거 on-demand 캐시가 있어도 실시간 윈도우 봉투를 과거로 늘리지 않음
         }
     }
 
     if (!demo) {
-        const wr = window.loadedMealsDateRange;
-        window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
-        window.__mealogMealsQueryEnd = wr?.end || todayStr;
+        // ghost stats 정합은 "리스너 쿼리 윈도우" 기준 (전체 loaded 봉투가 아님)
+        window.__mealogMealsQueryCutoff = cutoffDateStr;
+        window.__mealogMealsQueryEnd = todayStr;
         window.__mealogMealsWindowFullyLoaded = snap.docs.length < 50;
         if (window.dailyStats && typeof window.dailyStats === 'object') {
             window.dailyStats = applyStreakTrustPatchesToDailyStats(
@@ -480,21 +478,19 @@ export function applyMealsOneTimeFetchResult(p) {
             return row;
         })
         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
-    window.mealHistory = findUniqueMeals(serverMapped, prevForMerge);
+    window.mealHistory = findUniqueMeals(serverMapped, prevForMerge, {
+        preserveBeforeDate: cutoffDateStr
+    });
     invalidateMealHistoryCountCache();
-    const minF = minMealDateYmd(window.mealHistory);
-    window.loadedMealsDateRange = {
-        start: minF ?? cutoffDateStr,
-        end: todayStr
-    };
+    const minInWindow = minMealDateYmdInWindow(serverMapped, cutoffDateStr) ?? cutoffDateStr;
+    markMealsRangeLoaded(minInWindow, todayStr);
     snap.docs.forEach((d) => {
         if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
             onMealDocFirestoreServerAcknowledged(d.id, null);
         }
     });
-    const wr = window.loadedMealsDateRange;
-    window.__mealogMealsQueryCutoff = wr?.start || cutoffDateStr;
-    window.__mealogMealsQueryEnd = wr?.end || todayStr;
+    window.__mealogMealsQueryCutoff = cutoffDateStr;
+    window.__mealogMealsQueryEnd = todayStr;
     window.__mealogMealsWindowFullyLoaded = snap.docs.length < fetchLimit;
     mergeStatsIntoDaily();
     if (onDataUpdate) notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });

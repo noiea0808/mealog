@@ -12,7 +12,9 @@ import {
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
     applyDemoDateShiftToSharedPhoto,
-    computeDemoDateShiftDaysFromKeyedObject
+    computeDemoDateShiftDaysFromKeyedObject,
+    todayLocalYmd,
+    addDaysToYmd
 } from '../demo-date-shift.js';
 import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
@@ -673,10 +675,8 @@ export function setupListeners(userId, callbacks) {
     // 최근 N일 초기 로드 (일간 좌우 넘김 기준). 트래커 점은 dailyStats(별도 리스너)로 표시
     // 더 과거는 트래커/스와이프 이동 시 ensureMealsLoadedAroundDate(±3일)로 보강
     void refreshAppCheckTokenBeforeFirestore();
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 7);
-    const cutoffDateStr = cutoffDate.toISOString().split('T')[0];
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = todayLocalYmd();
+    const cutoffDateStr = addDaysToYmd(todayStr, -7) || todayStr;
     
     const mealsColl = collection(db, 'artifacts', appId, 'users', userId, 'meals');
     const buildMealsPrimaryQuery = () =>

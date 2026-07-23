@@ -53,12 +53,13 @@ import { scheduleAttendanceCheckIfNeeded, updateTrackerStreakLabel } from './att
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { clearMealsWindowStatsReconcileMeta, clearStreakEmptyDayTrustAll } from './meal-record-count.js';
+import { clearLoadedMealsRanges } from './utils/loaded-meals-range.js';
 import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
 import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
 import { openEditBestShareModal } from './analytics/best-share.js';
@@ -528,6 +529,10 @@ window.jumpToDate = async (iso, opts = {}) => {
         }
     }
 
+    // 빠른 연속 이동 시 이전 ensure 완료가 최신 화면을 덮지 않도록 세대 토큰
+    window._jumpToDateGen = (window._jumpToDateGen || 0) + 1;
+    const jumpGen = window._jumpToDateGen;
+
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
@@ -545,6 +550,9 @@ window.jumpToDate = async (iso, opts = {}) => {
             if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }
+
+    // 더 최근 jumpToDate가 있으면 렌더/스크롤 생략
+    if (jumpGen !== window._jumpToDateGen) return;
     
     if (appState.viewMode === 'list') {
         const today = new Date();
@@ -581,6 +589,7 @@ window.jumpToDate = async (iso, opts = {}) => {
             // 리스너 재렌더가 직후에 들어와도 "해당 날짜 섹션 앵커"를 잠깐만 허용
             window._timelineAnchorScrollUntil = Date.now() + Math.max(0, Number(anchorAfterRenderMs) || 0);
             setTimeout(() => {
+                if (jumpGen !== window._jumpToDateGen) return;
                 const el = document.getElementById(`date-${targetStr}`);
                 if (el) {
                     const trackerSection = document.getElementById('trackerSection');
@@ -1128,6 +1137,8 @@ initAuth(async (user) => {
             window.mealHistory = null;
             clearStreakEmptyDayTrustAll();
             clearMealsWindowStatsReconcileMeta();
+            clearLoadedMealsRanges();
+            resetTrackerMiniCalendarRange();
             window.dailyStats = null;
             window.sharedPhotos = null;
             window.sharedPhotosFeed = [];
@@ -1335,6 +1346,23 @@ initAuth(async (user) => {
                         if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
+                        // 리스너 initial 재렌더 직후: 선택일이 로드 구간 밖이면 on-demand로 보강
+                        if (appState.viewMode === 'page' && appState.pageDate instanceof Date && !isNaN(+appState.pageDate)) {
+                            const py = appState.pageDate.getFullYear();
+                            const pm = String(appState.pageDate.getMonth() + 1).padStart(2, '0');
+                            const pd = String(appState.pageDate.getDate()).padStart(2, '0');
+                            const pageIso = `${py}-${pm}-${pd}`;
+                            if (needsMealsLoadedAroundDate(pageIso, 3)) {
+                                void ensureMealsLoadedAroundDate(pageIso, 3)
+                                    .then(() => {
+                                        if (appState.currentTab !== 'timeline') return;
+                                        invalidateTimelineDateSection(pageIso);
+                                        renderTimelineDateSections([pageIso]);
+                                        refreshMiniCalendarDots();
+                                    })
+                                    .catch(() => {});
+                            }
+                        }
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
