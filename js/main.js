@@ -2056,6 +2056,33 @@ function initDailySwipeGesture() {
         tc.style.willChange = '';
     };
 
+    const waitForTransformEnd = (el, fallbackMs) => new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            el.removeEventListener('transitionend', onEnd);
+            clearTimeout(timer);
+            resolve();
+        };
+        const onEnd = (ev) => {
+            if (ev.target !== el || (ev.propertyName && ev.propertyName !== 'transform')) return;
+            finish();
+        };
+        const timer = setTimeout(finish, fallbackMs);
+        el.addEventListener('transitionend', onEnd);
+    });
+
+    const preloadDateRangeIfNeeded = async (targetIso) => {
+        const range = window.loadedMealsDateRange;
+        if (!range || targetIso >= range.start) return;
+        try {
+            await loadMealsForDateRange(targetIso, range.start);
+        } catch (error) {
+            console.warn('스와이프 날짜 프리로드 실패:', error);
+        }
+    };
+
     const animateToDate = async (dayDelta, releaseX = 0) => {
         if (isAnimating) return;
         const tc = getTimelineContainer();
@@ -2063,13 +2090,14 @@ function initDailySwipeGesture() {
 
         isAnimating = true;
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
-        // 카드 사이 공백을 줄이기 위해 기본 전환 거리를 더 짧게 유지한다.
-        const slideDistance = Math.max(72, Math.round(viewportWidth * 0.24));
-        // 손을 뗀 위치에서 같은 방향으로 자연스럽게 이어서 밀려나가도록 거리 계산
+        // 화면 밖으로 충분히 밀어내 콘텐츠 교체 대기 구간이 보이지 않게 한다.
+        const slideDistance = Math.round(viewportWidth * 1.02);
         const releaseDistance = Math.abs(releaseX);
-        const minCarry = Math.max(12, Math.round(viewportWidth * 0.04));
-        const maxOutgoingDistance = Math.max(slideDistance, Math.round(viewportWidth * 0.5));
-        const outgoingDistance = Math.min(maxOutgoingDistance, Math.max(slideDistance, releaseDistance + minCarry));
+        const minCarry = Math.max(24, Math.round(viewportWidth * 0.08));
+        const outgoingDistance = Math.min(
+            slideDistance,
+            Math.max(Math.round(viewportWidth * 0.72), releaseDistance + minCarry)
+        );
         const outgoingX = dayDelta > 0 ? -outgoingDistance : outgoingDistance;
         const incomingStartX = dayDelta > 0 ? slideDistance : -slideDistance;
 
@@ -2080,46 +2108,41 @@ function initDailySwipeGesture() {
         const day = String(targetDate.getDate()).padStart(2, '0');
         const targetIso = `${year}-${month}-${day}`;
 
+        // 슬라이드아웃과 데이터 프리로드를 병렬로 진행해 멈춤 구간을 줄인다.
+        const preloadPromise = preloadDateRangeIfNeeded(targetIso);
+
         tc.style.willChange = 'transform';
-        tc.style.transition = 'transform 150ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transition = 'transform 160ms cubic-bezier(0.25, 0.1, 0.25, 1)';
         tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
 
-        const onSlideOutEnd = async (ev) => {
-            if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
-            tc.removeEventListener('transitionend', onSlideOutEnd);
+        try {
+            await Promise.all([waitForTransformEnd(tc, 220), preloadPromise]);
 
             try {
-                await window.jumpToDate(targetIso);
+                await window.jumpToDate(targetIso, { scroll: false });
             } catch (error) {
                 console.warn('스와이프 날짜 이동 실패:', error);
             }
 
-            requestAnimationFrame(() => {
-                const newTc = getTimelineContainer();
-                if (!newTc) {
-                    isAnimating = false;
-                    return;
-                }
-                // 새 날짜 콘텐츠를 먼저 반대편에 배치한 뒤 중앙으로 슬라이드 인시켜
-                // 좌/우 스와이프별 진입 방향이 확실히 보이도록 한다.
-                newTc.style.transition = 'none';
-                newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
-                newTc.style.willChange = 'transform';
-                requestAnimationFrame(() => {
-                    newTc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-                    newTc.style.transform = 'translate3d(0, 0, 0)';
-                });
+            const newTc = getTimelineContainer();
+            if (!newTc) {
+                isAnimating = false;
+                return;
+            }
 
-                const onSlideInEnd = (slideInEv) => {
-                    if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
-                    newTc.removeEventListener('transitionend', onSlideInEnd);
-                    newTc.style.willChange = '';
-                    isAnimating = false;
-                };
-                newTc.addEventListener('transitionend', onSlideInEnd);
-            });
-        };
-        tc.addEventListener('transitionend', onSlideOutEnd);
+            // 새 날짜를 반대편에 고정한 뒤 한 프레임에 슬라이드 인 (이중 rAF 제거)
+            newTc.style.transition = 'none';
+            newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
+            newTc.style.willChange = 'transform';
+            void newTc.offsetWidth;
+            newTc.style.transition = 'transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            newTc.style.transform = 'translate3d(0, 0, 0)';
+
+            await waitForTransformEnd(newTc, 260);
+            newTc.style.willChange = '';
+        } finally {
+            isAnimating = false;
+        }
     };
 
     const beginSwipe = (clientX, clientY) => {

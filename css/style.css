@@ -5635,6 +5635,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     box-sizing: border-box;
 }
 /* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
+#timelineView.timeline-view-mode-page {
+    overflow-x: hidden;
+}
 #timelineView.timeline-view-mode-page,
 #timelineView.timeline-view-mode-page .card,
 #timelineView.timeline-view-mode-page .date-section-header {
@@ -5706,9 +5709,18 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     border-radius: 18px !important;
     border: 1px solid var(--line, #d0c6ba);
     box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
     overflow: hidden;
     transition: transform 0.12s ease;
+}
+#timelineContainer .main-slot-card-group,
+#timelineContainer .snack-slot-card-group {
+    margin-bottom: 10px;
+}
+#timelineContainer .main-slot-card-group > .card.home-feed-card:last-child,
+#timelineContainer .snack-slot-card-group > .card.home-feed-card:last-child,
+#timelineContainer > .timeline-date-card > .card.home-feed-card:last-child {
+    margin-bottom: 0;
 }
 #timelineContainer .card.home-feed-card:active {
     transform: scale(0.985);
@@ -5720,24 +5732,24 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     overflow: hidden;
 }
 .home-feed-card__body {
-    padding: 16px 16px 14px;
+    padding: 12px 14px 10px;
     display: grid;
-    grid-template-columns: 52px minmax(0, 1fr);
-    gap: 12px;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
     align-items: start;
 }
 .home-feed-card--photo .home-feed-card__body {
-    padding-top: 14px;
+    padding-top: 12px;
 }
 .home-feed-card__icon {
-    width: 52px;
-    height: 52px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     background: linear-gradient(145deg, var(--green-soft), #d1fae5);
     display: grid;
     place-items: center;
     color: var(--green-deep, #2d9f74);
-    font-size: 22px;
+    font-size: 20px;
     flex-shrink: 0;
 }
 /* 식사(본식): 민트 · 간식: 앰버 — 사진 없을 때 구분 */
@@ -5757,22 +5769,25 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .home-feed-card__icon .lucide,
 .home-feed-card__icon [data-lucide],
 .home-feed-card__icon svg {
-    width: 1.35rem;
-    height: 1.35rem;
-    font-size: 1.25rem;
+    width: 1.2rem;
+    height: 1.2rem;
+    font-size: 1.1rem;
     line-height: 1;
     color: inherit;
     stroke: currentColor;
 }
 .home-feed-card__main {
     min-width: 0;
-    padding-top: 2px;
+    padding-top: 0;
+}
+.home-feed-card__main > :last-child {
+    margin-bottom: 0;
 }
 .home-feed-card__meta-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     min-width: 0;
 }
 .home-feed-card__meta {
@@ -5798,14 +5813,14 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     color: var(--ink, #241f1c);
     letter-spacing: -0.02em;
     line-height: 1.3;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     word-break: break-word;
 }
 .home-feed-card__note {
     font-size: 14px;
     color: #64748b;
     line-height: 1.45;
-    margin: 0 0 6px;
+    margin: 0 0 4px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
