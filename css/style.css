@@ -6583,13 +6583,176 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     fill: currentColor;
 }
 
-/* 홈피드 빈 날 CTA */
+/* 홈피드 빈 날 — 첫 사용자 / 오늘 / 과거 */
 #timelineContainer .timeline-day-empty {
-    background: var(--card, #fff);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.4rem;
+    margin: 8px 0 12px;
+    padding: 2rem 1.25rem 1.75rem;
+    border-radius: 20px;
     border: 1px solid var(--line, #d0c6ba);
-    border-radius: 18px;
-    margin: 4px 0 8px;
+    background: var(--card, #fff);
     box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+}
+#timelineContainer .timeline-day-empty::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.9;
+}
+#timelineContainer .timeline-day-empty__visual {
+    position: relative;
+    width: 4.25rem;
+    height: 4.25rem;
+    margin-bottom: 0.55rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#timelineContainer .timeline-day-empty__ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--green-soft, #eaf8f2);
+    box-shadow: inset 0 0 0 1px var(--green-mute, #b4e2cd);
+}
+#timelineContainer .timeline-day-empty__icon {
+    position: relative;
+    z-index: 1;
+    width: 1.65rem;
+    height: 1.65rem;
+    color: var(--green-deep, #2d9f74);
+    stroke-width: 1.75;
+}
+#timelineContainer .timeline-day-empty__title {
+    position: relative;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    color: var(--ink, #241f1c);
+}
+#timelineContainer .timeline-day-empty__desc {
+    position: relative;
+    margin: 0;
+    max-width: 16.5rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    line-height: 1.55;
+    color: var(--muted, #7a7268);
+}
+
+/* 1) 첫 사용자 — 따뜻한 민트 환영 + FAB 힌트 */
+#timelineContainer .timeline-day-empty--first {
+    border-color: color-mix(in srgb, var(--green-mute) 70%, var(--line));
+    background:
+        radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--green-soft) 85%, #fff) 0%, transparent 62%),
+        linear-gradient(180deg, #fbfffc 0%, var(--card, #fff) 70%);
+    padding-bottom: 2.1rem;
+}
+#timelineContainer .timeline-day-empty--first::before {
+    background:
+        radial-gradient(circle at 18% 22%, rgba(95, 212, 168, 0.16) 0%, transparent 42%),
+        radial-gradient(circle at 86% 78%, rgba(60, 184, 137, 0.1) 0%, transparent 46%);
+}
+#timelineContainer .timeline-day-empty--first .timeline-day-empty__ring {
+    background: linear-gradient(145deg, #f3fcf7 0%, var(--green-soft) 100%);
+    box-shadow:
+        inset 0 0 0 1px var(--green-mute),
+        0 6px 16px rgba(60, 184, 137, 0.14);
+    animation: timelineEmptyRingPulse 2.4s ease-in-out infinite;
+}
+#timelineContainer .timeline-day-empty--first .timeline-day-empty__title {
+    color: var(--green-deep, #2d9f74);
+}
+#timelineContainer .timeline-day-empty__fab-hint {
+    position: relative;
+    margin-top: 0.95rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.45rem 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--green-soft) 70%, #fff);
+    border: 1px solid color-mix(in srgb, var(--green-mute) 65%, transparent);
+    pointer-events: none;
+}
+#timelineContainer .timeline-day-empty__fab-hint-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--green-deep, #2d9f74);
+}
+#timelineContainer .timeline-day-empty__fab-hint-chevron {
+    width: 1rem;
+    height: 1rem;
+    color: var(--green, #3cb889);
+    stroke-width: 2.2;
+    animation: timelineEmptyArrowNudge 1.8s ease-in-out infinite;
+}
+#timelineContainer .timeline-day-empty__fab-hint-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 50%;
+    background: var(--cta-mint-grad);
+    color: #fff;
+    box-shadow: var(--cta-mint-shadow);
+    animation: timelineEmptyFabBob 1.8s ease-in-out infinite;
+}
+#timelineContainer .timeline-day-empty__fab-hint-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    stroke-width: 2.4;
+}
+
+/* 2) 오늘 무기록 — 부드러운 민트 넛지 */
+#timelineContainer .timeline-day-empty--today {
+    border-color: color-mix(in srgb, var(--green-mute) 45%, var(--line));
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--green-soft) 55%, #fff) 0%, var(--card, #fff) 72%);
+}
+#timelineContainer .timeline-day-empty--today .timeline-day-empty__ring {
+    background: color-mix(in srgb, var(--green-soft) 80%, #fff);
+}
+
+/* 3) 과거 날짜 무기록 — 차분한 페이퍼 톤 */
+#timelineContainer .timeline-day-empty--past {
+    border-color: color-mix(in srgb, var(--line) 85%, var(--muted));
+    background:
+        linear-gradient(180deg, #faf7f3 0%, var(--card, #fff) 68%);
+}
+#timelineContainer .timeline-day-empty--past .timeline-day-empty__ring {
+    background: #f3eee7;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 80%, transparent);
+}
+#timelineContainer .timeline-day-empty--past .timeline-day-empty__icon {
+    color: var(--muted, #7a7268);
+}
+#timelineContainer .timeline-day-empty--past .timeline-day-empty__title {
+    color: var(--ink-2, #4f4841);
+}
+
+@keyframes timelineEmptyRingPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.04); opacity: 0.92; }
+}
+@keyframes timelineEmptyFabBob {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+}
+@keyframes timelineEmptyArrowNudge {
+    0%, 100% { transform: translate(0, 0); opacity: 0.7; }
+    50% { transform: translate(2px, 2px); opacity: 1; }
 }
 #galleryContainer {
     margin-left: 0 !important;

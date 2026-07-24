@@ -1364,8 +1364,12 @@ initAuth(async (user) => {
                         if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
-                        // 밀로그 진입 직후 첫 로드로 화면이 다시 그려지면 스와이프 힌트 재예약
-                        if (window.__pendingDailySwipeHint && typeof window.scheduleDailySwipeHint === 'function') {
+                        // 밀로그 진입 직후 첫 로드로 화면이 다시 그려지면 스와이프 힌트 재예약(미재생분만)
+                        if (
+                            window.__pendingDailySwipeHint &&
+                            !window.__dailySwipeHintPlayed &&
+                            typeof window.scheduleDailySwipeHint === 'function'
+                        ) {
                             window.scheduleDailySwipeHint(0);
                         }
                         // 리스너 initial 재렌더 직후: 선택일이 로드 구간 밖이면 on-demand로 보강
@@ -2160,6 +2164,11 @@ function initDailySwipeGesture() {
             window.__pendingDailySwipeHint = false;
             return;
         }
+        // 탭 진입당 1회만 — initial 재렌더/중복 schedule로 두 번 흔들리지 않게
+        if (window.__dailySwipeHintPlayed) {
+            window.__pendingDailySwipeHint = false;
+            return;
+        }
         if (document.body?.dataset?.mainTab !== 'timeline') return;
         if (tv.classList.contains('hidden')) return;
         if (appState.viewMode !== 'page') return;
@@ -2167,7 +2176,9 @@ function initDailySwipeGesture() {
         const tc = getTimelineContainer();
         if (!tc || tc.childElementCount === 0) return;
 
-        // pending은 재생 완료 시에만 해제 — 중도 취소 후 initial 재렌더에서 바로 재시도 가능
+        // 실제 재생 시작 시점에 소진 — 이후 cancel+initial 재예약이 와도 재재생하지 않음
+        window.__dailySwipeHintPlayed = true;
+        window.__pendingDailySwipeHint = false;
         isSwipeHintPlaying = true;
         tc.style.transition = 'none';
         tc.style.transform = '';
@@ -2201,6 +2212,10 @@ function initDailySwipeGesture() {
     /** 밀로그 진입 직후 좌우 스와이프 힌트 재생 */
     const scheduleDailySwipeHint = (delayMs = 0) => {
         if (prefersReducedMotion()) {
+            window.__pendingDailySwipeHint = false;
+            return;
+        }
+        if (window.__dailySwipeHintPlayed) {
             window.__pendingDailySwipeHint = false;
             return;
         }

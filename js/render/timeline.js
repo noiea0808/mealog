@@ -27,7 +27,7 @@ import {
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
-import { updateTrackerStreakLabel } from '../attendance-check.js';
+import { updateTrackerStreakLabel, collectRecordedDateSet } from '../attendance-check.js';
 import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
 import {
     getDailyJournalFromSettings,
@@ -1749,6 +1749,50 @@ export function updateTimelineShareIndicators() {
     });
 }
 
+/**
+ * 홈 타임라인 — 하루 기록이 비었을 때 empty UI.
+ * 1) 첫 사용자(평생 무기록) 2) 오늘 무기록 3) 과거 날짜 무기록
+ */
+function buildTimelineDayEmptyHtml(dateStr, todayStr) {
+    const isFirstTime = collectRecordedDateSet().size === 0;
+    const isToday = dateStr === todayStr;
+
+    let variant = 'past';
+    let icon = 'calendar-x';
+    let title = '이 날 남겨진 기록이 없어요';
+    let desc = '기억나는 식사를 추가해보세요.';
+    let fabHint = '';
+
+    if (isFirstTime) {
+        variant = 'first';
+        icon = 'sparkles';
+        title = '밀로그에 처음 오신걸 환영해요.';
+        desc = '우하단의 초록색 기록 버튼을 눌러서<br>우리의 첫 기록을 시작해 보세요';
+        fabHint = `<div class="timeline-day-empty__fab-hint" aria-hidden="true">
+            <span class="timeline-day-empty__fab-hint-label">기록 버튼</span>
+            <i data-lucide="corner-down-right" class="timeline-day-empty__fab-hint-chevron"></i>
+            <span class="timeline-day-empty__fab-hint-dot">
+                <i data-lucide="plus" class="timeline-day-empty__fab-hint-icon"></i>
+            </span>
+        </div>`;
+    } else if (isToday) {
+        variant = 'today';
+        icon = 'utensils';
+        title = '아직 오늘의 기록이 없어요';
+        desc = '첫 식사를 기록해보세요.';
+    }
+
+    return `<div class="timeline-day-empty timeline-day-empty--${variant}" role="status">
+        <div class="timeline-day-empty__visual" aria-hidden="true">
+            <span class="timeline-day-empty__ring"></span>
+            <i data-lucide="${icon}" class="timeline-day-empty__icon"></i>
+        </div>
+        <p class="timeline-day-empty__title">${title}</p>
+        <p class="timeline-day-empty__desc">${desc}</p>
+        ${fabHint}
+    </div>`;
+}
+
 export function renderTimelineDateSections(dateStrs) {
     if (!Array.isArray(dateStrs) || !dateStrs.length) return;
     const valid = dateStrs.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d));
@@ -1981,9 +2025,7 @@ export function renderTimeline(options = {}) {
 
         const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
         if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
-            html += `<div class="timeline-day-empty px-4 py-6 text-center">
-                <p class="text-sm text-slate-400 font-medium">이 날은 기록이 없어요,<br>지금 시작해 보세요.</p>
-            </div>`;
+            html += buildTimelineDayEmptyHtml(dateStr, todayStr);
         }
 
         section.innerHTML = html;
