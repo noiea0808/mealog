@@ -9,10 +9,14 @@ import { renderBestMeals } from './best-share.js';
 import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-charts.js';
 import { renderMainAnalysisTopIcons, renderSnackAnalysisTopIcons, setAnalysisTopIconsVisible } from './analysis-top-icons.js';
 import { toLocalDateString } from '../utils.js';
+import { showToast } from '../ui.js';
 import {
     computeMainMealKpiFromRecords,
     computeMainMealKpiDenominator,
 } from './meal-kpi-count.js';
+
+/** 참견 탭 일시 비활성 — 선택 시 공사중 플로팅만 표시 */
+const MEALDANG_COMMENT_TAB_CLOSED = true;
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -687,6 +691,10 @@ export function setAnalysisType(type) {
 
 /** 밀당 헤더 탭: 분석 | 참견 */
 export function setMealdangView(view) {
+    if (view === 'comment' && MEALDANG_COMMENT_TAB_CLOSED) {
+        showToast('공사중입니다.', 'info');
+        return;
+    }
     const next = view === 'comment' ? 'comment' : 'analysis';
     appState.mealdangView = next;
 
