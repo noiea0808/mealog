@@ -2,13 +2,7 @@
 import {
     SLOTS,
     SLOT_STYLES,
-    SATIETY_DATA,
-    MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY,
-    MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
-    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS
+    SATIETY_DATA
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
@@ -18,6 +12,7 @@ import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { getWeekRange, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
+import { buildBestShareCaptureHtml } from '../render/best-share-card.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 import { scheduleLucideIcons } from '../icons.js';
@@ -61,8 +56,6 @@ function ensureBestThumbErrorHandler() {
     };
 }
 
-const BEST_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
-
 function getRecentWeekRangeForBest() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -79,56 +72,34 @@ function getRecentWeekRangeForBest() {
 /** @param {'default' | 'unshare' | 'edit'} variant */
 function applyBestShareSubmitVariant(variant) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    label.innerHTML = '';
-    label.classList.remove('hidden');
-    sub.classList.remove('hidden');
-    if (variant === 'unshare') {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-rose-50 hover:bg-rose-100/90 active:bg-rose-100`;
-        label.textContent = '공유 취소';
-        label.className = 'text-sm sm:text-[15px] font-bold text-rose-700';
-        sub.textContent = '피드에서 내리기';
-        sub.className = 'text-[11px] sm:text-xs text-rose-600/90 font-medium';
-    } else if (variant === 'edit') {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
-        label.textContent = '수정 완료';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-        sub.textContent = '코멘트 반영';
-        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-    } else {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
-        label.textContent = '공유하기';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-        sub.textContent = '피드에 공유';
-        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-    }
+    if (!btn) return;
+    const labelText =
+        variant === 'unshare' ? '공유 취소' : variant === 'edit' ? '수정 완료' : '공유하기';
+    btn.className = variant === 'unshare' ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary';
+    btn.disabled = false;
+    btn.innerHTML =
+        `<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="bestShareSubmitLabel">${labelText}</span></span>`;
+    scheduleLucideIcons(btn);
 }
 
 function setBestShareSubmitLoading(isLoading) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    if (isLoading) {
-        sub.classList.add('hidden');
-        label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-        label.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin"></i><span>공유 중...</span>';
-    }
+    if (!btn || !isLoading) return;
+    btn.disabled = true;
+    btn.className = 'mealog-btn mealog-btn-primary';
+    btn.innerHTML =
+        '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>공유 중...</span></span>';
+    scheduleLucideIcons(btn);
 }
 
 function setBestShareSubmitEditing(isEditing) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    if (isEditing) {
-        sub.classList.add('hidden');
-        label.innerHTML = '';
-        label.textContent = '수정 중...';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-    }
+    if (!btn || !isEditing) return;
+    btn.disabled = true;
+    btn.className = 'mealog-btn mealog-btn-primary';
+    btn.innerHTML =
+        '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>수정 중...</span></span>';
+    scheduleLucideIcons(btn);
 }
 
 function getRangeBestMeals(start, end, minRating = 4) {
@@ -424,14 +395,19 @@ export function renderBestMeals() {
             
             const isShared = !!bestShare;
             
-            // 시안: 상세급 링크 톤
+            // 밀로그 타임라인과 동일 — 공유됨은 check + 솔리드 green
             if (isShared) {
-                shareBtn.textContent = '공유됨';
-                shareBtn.className = 'dashboard-detail-link';
+                shareBtn.innerHTML = '<i data-lucide="check" class="text-[10px]" aria-hidden="true"></i>공유됨';
+                shareBtn.className = 'date-section-header__share-btn date-section-header__share-btn--shared';
+                shareBtn.title = '공유됨 — 탭하면 공유 모달';
+                shareBtn.setAttribute('aria-pressed', 'true');
             } else {
-                shareBtn.textContent = '공유';
-                shareBtn.className = 'dashboard-detail-link';
+                shareBtn.innerHTML = '<i data-lucide="send" class="text-[10px]" aria-hidden="true"></i>공유하기';
+                shareBtn.className = 'date-section-header__share-btn date-section-header__share-btn--default';
+                shareBtn.title = '모먼트에 공유하기';
+                shareBtn.setAttribute('aria-pressed', 'false');
             }
+            scheduleLucideIcons(shareBtn);
         } else {
             shareBtn.classList.add('hidden');
         }
@@ -536,14 +512,15 @@ export function renderBestMeals() {
             thumbHtml = bestThumbEmptyHtml();
         }
 
+        const rank = index + 1;
         const showOrderControls = displayMeals.length > 1;
         const orderControlsHtml = showOrderControls ? `
                     <div class="dashboard-best-order flex flex-col gap-0.5 ml-1">
-                        <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
-                            <i data-lucide="chevron-up" class="text-[10px]"></i>
+                        <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
+                            <i data-lucide="chevron-up" class="text-xs"></i>
                         </button>
-                        <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
-                            <i data-lucide="chevron-down" class="text-[10px]"></i>
+                        <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
+                            <i data-lucide="chevron-down" class="text-xs"></i>
                         </button>
                     </div>` : '';
 
@@ -553,6 +530,7 @@ export function renderBestMeals() {
                  data-rating="${rating}"
                  data-date="${safeDate}"
                  data-slot-id="${safeSlotId}">
+                <span class="dashboard-best-rank" aria-label="${rank}위">${rank}</span>
                 ${thumbHtml}
                 <div class="dashboard-best-meta min-w-0">
                     <div class="slot">${slotLine}</div>
@@ -589,32 +567,13 @@ async function updateBestOrder() {
     }
     window.userSettings.bestMeals[periodKey] = order;
     
-    // 순위 번호 업데이트 (동그라미 내부)
+    // 순위 번호 갱신 (순서 변경 직후)
     items.forEach((item, index) => {
-        const newRank = index + 1;
-        // 순위 동그라미 찾기 (absolute top-1 left-1을 가진 요소)
-        const rankCircle = Array.from(item.querySelectorAll('*')).find(el => 
-            el.classList.contains('absolute') && 
-            el.classList.contains('top-1') && 
-            el.classList.contains('left-1') &&
-            el.classList.contains('rounded-full')
-        );
-        if (rankCircle) {
-            // 1~3위는 금은동 색상, 4위 이상은 기본 색상
-            rankCircle.textContent = newRank;
-            if (newRank === 1) {
-                // 1위: 금색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-yellow-500 text-white';
-            } else if (newRank === 2) {
-                // 2위: 은색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-gray-400 text-white';
-            } else if (newRank === 3) {
-                // 3위: 동색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-amber-600 text-white';
-            } else {
-                // 4위 이상: 기본 색상
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-emerald-100 text-emerald-700';
-            }
+        const rankEl = item.querySelector('.dashboard-best-rank');
+        if (rankEl) {
+            const newRank = index + 1;
+            rankEl.textContent = String(newRank);
+            rankEl.setAttribute('aria-label', `${newRank}위`);
         }
     });
     
@@ -794,101 +753,23 @@ export async function openShareBestModal() {
         return;
     }
     
-    // 사용자 닉네임 및 아이콘 가져오기
     const userNickname = window.userSettings?.profile?.nickname || '익명';
-    const userIcon = window.userSettings?.profile?.icon || '🐻';
-    
-    // 스크린샷용 HTML 생성 (하루 기록과 동일 레이아웃, mealog만 노란색)
-    const borderLightGray = '#e2e8f0';
-    const borderOuterGray = '#cbd5e1';
-    const mealogYellow = '#fcd34d';
-    const photoAreaEmptyBg = '#e2e8f0';
-    const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, sans-serif; background: #f1f5f9;">
-            <!-- 헤더 (패딩 6/16/16으로 텍스트 10px 상향) -->
-            <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
-                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #eab308; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE}; font-weight: normal; color: #64748b; flex-shrink: 0; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${periodText}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">🏆</span>
-                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
-                </div>
-            </div>
-            <div style="padding: 0 0 12px 0; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
-            ${top3Meals.map((meal, index) => {
-                const slot = SLOTS.find(s => s.id === meal.slotId);
-                const slotLabel = slot ? slot.label : '알 수 없음';
-                const isSnack = slot && slot.type === 'snack';
-                const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
-                const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
-                const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-                const formattedDate = date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
-                const rating = meal.rating ? parseInt(meal.rating) : 0;
-                const place = meal.place || '';
-                const menuDetail = meal.menuDetail || '';
-                const comment = meal.comment || '';
-                
-                const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
-                const slotColor = specificStyle.iconText === 'text-amber-600' ? '#d97706' : 
-                                 specificStyle.iconText === 'text-emerald-600' ? '#3cb889' : 
-                                 specificStyle.iconText === 'text-sky-600' ? '#0284c7' : '#64748b';
-                
-                let rankBg = '#3cb889';
-                let rankText = '#ffffff';
-                if (index === 0) {
-                    rankBg = '#eab308';
-                } else if (index === 1) {
-                    rankBg = '#9ca3af';
-                } else if (index === 2) {
-                    rankBg = '#d97706';
-                }
-                const safePlace = escapeHtml(place);
-                const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
-                const safeComment = escapeHtml(comment);
-                const safeSlotLabel = escapeHtml(slotLabel);
-                const photoBoxBg = photoUrl ? '' : `background: ${photoAreaEmptyBg};`;
-                const photoBoxBorder = 'border-right: 1px solid #e2e8f0;';
-                return `
-                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
-                        <div style="width: 130px; min-height: 130px; ${photoBoxBg} ${photoBoxBorder} display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 12px 0 0 12px; overflow: hidden;">
-                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<i data-lucide="utensils" style="font-size: 24px; color: #94a3b8;"></i>`}
-                            <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
-                                <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
-                            </div>
-                        </div>
-                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
-                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">
-                                <span style="font-weight: 700; color: ${slotColor};">${safeSlotLabel}</span>
-                                ${place ? ` <span style="color: #94a3b8; font-weight: 700;">@ ${safePlace}</span>` : ''}
-                                <span style="color: #cbd5e1; margin: 0 4px;">·</span>
-                                <span style="color: #94a3b8;">${formattedDate}</span>
-                            </div>
-                            <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
-                                ${safeMenuDetail}
-                            </div>
-                            ${comment ? `<div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; padding-bottom: 2px;">
-                                "${safeComment}"
-                            </div>` : ''}
-                            <div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
-                                <span style="font-size: 10px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 3px 8px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 20px; white-space: nowrap; box-sizing: border-box;">
-                                    <span style="font-size: 11px; line-height: 1;">⭐</span>
-                                    <span style="font-size: 11px; font-weight: 900; line-height: 1;">${rating}</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-            </div>
-        </div>
-    `;
-    
-    // 미리보기 영역에 HTML 표시
-    preview.innerHTML = screenshotHtml;
-    
-    // 모달 열기
+
+    // 일간 공유와 동일 Soft Mint 캡처 (좌측 썸네일·헤더 A·코멘트 제외)
+    if (document.fonts?.check && !document.fonts.check('1em Fredoka')) {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+    }
+
+    preview.innerHTML = buildBestShareCaptureHtml(top3Meals, {
+        userNickname,
+        periodType,
+        periodText
+    });
+    scheduleLucideIcons(preview);
+
     lockBodyScroll();
     modal.classList.remove('hidden');
     
@@ -1163,13 +1044,16 @@ export async function shareBestToFeed() {
 
     try {
         const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
-        const targetElement = screenshotContainer || preview;
+        const targetElement =
+            screenshotContainer?.querySelector('.best-share-capture__sheet') ||
+            screenshotContainer ||
+            preview;
 
         await document.fonts.ready;
         let fontCSS = '';
         try {
             const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
-            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+            fontCSS = await fredokaRes.text();
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
 
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처

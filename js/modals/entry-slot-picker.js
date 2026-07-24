@@ -154,8 +154,6 @@ function bindPickerOnce() {
     if (!modal) return;
 
     modal.querySelector('#entrySlotPickerBackdrop')?.addEventListener('click', closeEntrySlotPicker);
-    modal.querySelector('#entrySlotPickerCloseBtn')?.addEventListener('click', closeEntrySlotPicker);
-
     modal.querySelector('#entrySlotPickerList')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-slot-id]');
         if (!btn || !modal.contains(btn)) return;

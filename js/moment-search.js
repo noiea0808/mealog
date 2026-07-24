@@ -205,7 +205,6 @@ export async function executeMomentSearch() {
 
 export function initMomentSearchModal() {
     document.getElementById('momentSearchBackdrop')?.addEventListener('click', closeMomentSearchModal);
-    document.getElementById('momentSearchCloseBtn')?.addEventListener('click', closeMomentSearchModal);
     document.getElementById('momentSearchCancelBtn')?.addEventListener('click', closeMomentSearchModal);
     document.getElementById('momentSearchSubmitBtn')?.addEventListener('click', () => {
         executeMomentSearch();

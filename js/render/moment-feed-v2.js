@@ -297,10 +297,6 @@ function buildV2AuthorRowHtml(overlayRow, photo, flags = {}, entryId) {
  * (슬롯명은 작성자 행 날짜 옆 · 비어 있는 항목은 DOM에 넣지 않음)
  */
 function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, mealHistoryMap, groupEntryId) {
-    const { isBestShare } = flags;
-    const specialChip = isBestShare
-        ? `<div class="moment-v2-special-chip"><i data-lucide="crown" aria-hidden="true"></i> 이번 주 베스트</div>`
-        : '';
     /* 슬롯명은 작성자 행 날짜 오른쪽에 표시 — 본문 메타는 장소만 */
     const place = resolveMomentV2Place(photo, mealHistoryMap, groupEntryId);
     const metaHtml = place
@@ -334,9 +330,8 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
         ? `<div class="moment-v2-meal-heading">${metaHtml}${titleHtml}</div>`
         : '';
 
-    if (!specialChip && !headingHtml && !noteHtml) return '';
+    if (!headingHtml && !noteHtml) return '';
     return `<div class="moment-v2-body-caption">
-        ${specialChip}
         ${headingHtml}
         ${noteHtml}
     </div>`;
@@ -422,7 +417,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const flags = { isBestShare, isDailyShare, isInsightShare };
     const rootDailyAttr = isDailyShare ? ' data-moment-v2-daily-share="1"' : '';
     const rootBestAttr = isBestShare ? ' data-moment-v2-best-share="1"' : '';
-    const rootSpecialAttr = isBestShare ? ' data-moment-v2-special="1"' : '';
     const postIdForUi = String(overlayRow?.overlayPostId || String(postIdParam || ''));
     const postIdJs = postIdJsParam != null ? postIdJsParam : JSON.stringify(String(postIdForUi || ''));
     const photosWithUrl = (photoGroup || []).filter((p) => String(p?.photoUrl || '').trim());
@@ -450,7 +444,6 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         postIdForUi && overlayRow
             ? buildV2InlineSocialBarHtml(postIdForUi, seedLikeCount, seedCommentCount)
             : '';
-    const bodySpecialCls = isBestShare ? ' moment-v2-body--special' : '';
 
     let photoBlockHtml = '';
     if (n > 1) {
@@ -478,14 +471,14 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         </div>
     </div>
 </div>`;
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr}${rootSpecialAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     ${photoBlockHtml}
         </div>
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
-        <div class="moment-v2-caption-footer moment-v2-body${bodySpecialCls} relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
+        <div class="moment-v2-caption-footer moment-v2-body relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
         ${authorRow}
         ${bodyCaption}
         ${socialBar}
@@ -514,14 +507,14 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 </div>`;
     }
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr}${rootSpecialAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
     ${photoBlockHtml}
         </div>
         <div class="moment-v2-dock-slab w-full min-h-0 shrink-0 hidden" data-moment-v2-dock-slab aria-hidden="true"></div>
-        <div class="moment-v2-caption-footer moment-v2-body${bodySpecialCls} relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
+        <div class="moment-v2-caption-footer moment-v2-body relative flex w-full min-w-0 max-w-full shrink-0 flex-col justify-center gap-0 px-0" data-moment-v2-caption>
         ${authorRow}
         ${bodyCaption}
         ${socialBar}

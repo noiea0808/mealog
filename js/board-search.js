@@ -212,7 +212,6 @@ export async function executeBoardSearch() {
 
 export function initBoardSearchModal() {
     document.getElementById('boardSearchBackdrop')?.addEventListener('click', closeBoardSearchModal);
-    document.getElementById('boardSearchCloseBtn')?.addEventListener('click', closeBoardSearchModal);
     document.getElementById('boardSearchCancelBtn')?.addEventListener('click', closeBoardSearchModal);
     document.getElementById('boardSearchSubmitBtn')?.addEventListener('click', () => {
         executeBoardSearch();

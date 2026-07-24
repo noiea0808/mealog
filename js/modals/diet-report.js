@@ -22,6 +22,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -222,19 +223,18 @@ function getShareCaptureFontCss() {
 function setSnsShareButtonPreparing(preparing) {
     const btn = document.getElementById('dietReportSnsShareBtn');
     if (!btn || btn.classList.contains('hidden')) return;
-    const icon = btn.querySelector('i');
-    if (!icon) return;
     if (preparing) {
         btn.disabled = true;
-        icon.className = 'fa-solid fa-spinner fa-spin text-[1.05rem]';
+        btn.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i>';
         btn.setAttribute('aria-label', '공유 이미지 준비 중');
         btn.title = '공유 이미지 준비 중…';
     } else {
         btn.disabled = false;
-        icon.className = 'fa-solid fa-share-nodes text-[1.05rem]';
+        btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
         btn.setAttribute('aria-label', '다른 SNS에 공유');
         btn.title = '다른 SNS에 공유';
     }
+    scheduleLucideIcons(btn);
 }
 
 /** 백그라운드 캐시용 — 공유 아이콘은 유지하고 살짝 흐리게만 */
@@ -298,45 +298,53 @@ function setSnsShareButton(visible) {
     if (!visible) {
         setSnsShareButtonPreparing(false);
         setSnsShareButtonCacheBusy(false);
-    } else if (!_snsShareCachePromise) {
-        btn.disabled = false;
-        btn.classList.remove('opacity-60');
+    } else {
+        if (!_snsShareCachePromise) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-60');
+        }
+        if (!btn.querySelector('[data-lucide], svg')) {
+            btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
+        }
+        scheduleLucideIcons(btn);
     }
 }
 
-const DIET_REPORT_SHARE_BTN_BASE =
-    'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 transition-colors disabled:opacity-60 min-w-0';
-
-/** 하단 3종세트형 버튼(다시 분석·모먼트 공유) 표시/상태 제어 */
+/** 헤더(다시 분석) + 하단(모먼트 공유) 표시/상태 제어 */
 function setFooterButtons({ regen = false, share = false, regenLabel = '다시 분석', shareMode = 'share' } = {}) {
     const regenBtn = document.getElementById('dietReportRegenerateBtn');
     if (regenBtn) {
         regenBtn.classList.toggle('hidden', !regen);
         regenBtn.disabled = false;
-        const main = regenBtn.querySelector('.diet-report-btn-main');
-        if (main) main.textContent = regenLabel;
+        regenBtn.setAttribute('aria-label', regenLabel);
+        regenBtn.title = regenLabel;
+        if (regen) {
+            if (!regenBtn.querySelector('[data-lucide], svg')) {
+                regenBtn.innerHTML = '<i data-lucide="refresh-cw" aria-hidden="true"></i>';
+            }
+            scheduleLucideIcons(regenBtn);
+        }
     }
     const shareBtn = document.getElementById('dietReportShareBtn');
     if (shareBtn) {
         shareBtn.classList.toggle('hidden', !share);
         shareBtn.disabled = false;
-        const main = shareBtn.querySelector('.diet-report-btn-main');
-        const sub = shareBtn.querySelector('.diet-report-btn-sub');
         if (shareMode === 'unshare') {
-            shareBtn.className = `${DIET_REPORT_SHARE_BTN_BASE} bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100`;
-            if (main) main.textContent = '공유 취소';
-            if (sub) {
-                sub.textContent = '피드에서 내리기';
-                sub.className = 'diet-report-btn-sub text-[11px] text-rose-600/90 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-danger';
+            shareBtn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>공유 취소</span></span>';
         } else {
-            shareBtn.className = `${DIET_REPORT_SHARE_BTN_BASE} bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800`;
-            if (main) main.textContent = '모먼트 공유';
-            if (sub) {
-                sub.textContent = '피드에 공유';
-                sub.className = 'diet-report-btn-sub text-[11px] text-white/80 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-primary';
+            shareBtn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span>';
         }
+        if (!share) shareBtn.classList.add('hidden');
+        else scheduleLucideIcons(shareBtn);
+    }
+    const actions = document.getElementById('dietReportModalActions');
+    if (actions) {
+        actions.classList.toggle('mealog-dialog-actions--pair', !!share);
+        actions.classList.toggle('mealog-dialog-actions--single', !share);
     }
 }
 
@@ -380,7 +388,7 @@ function renderEmpty(dateStr, mealCount) {
             <i data-lucide="sparkles" class="text-2xl text-emerald-500 mb-3" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-700">아직 AI 리포트가 없어요</p>
             <p class="text-xs text-slate-500 mt-2 leading-relaxed">아래 버튼으로 지금 바로 분석할 수 있어요.</p>
-            <button type="button" id="dietReportAnalyzeNowBtn" class="mt-4 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors">
+            <button type="button" id="dietReportAnalyzeNowBtn" class="mealog-btn mealog-btn-primary mt-4 mx-auto min-w-[10rem]">
                 지금 분석하기
             </button>
         </div>`;
@@ -884,14 +892,18 @@ async function shareDietReportToMoment() {
 window.openDietReportModal = openDietReportModal;
 window.closeDietReportModal = closeDietReportModal;
 
+document.getElementById('dietReportBackdrop')?.addEventListener('click', () => {
+    closeDietReportModal();
+});
+document.getElementById('dietReportCloseBtn')?.addEventListener('click', () => {
+    closeDietReportModal();
+});
 document.getElementById('dietReportRegenerateBtn')?.addEventListener('click', () => {
     if (_currentDate) void runRegenerate(_currentDate);
 });
-
 document.getElementById('dietReportShareBtn')?.addEventListener('click', () => {
     void shareDietReportToMoment();
 });
-
 document.getElementById('dietReportSnsShareBtn')?.addEventListener('click', () => {
     void shareDietReportToSns();
 });

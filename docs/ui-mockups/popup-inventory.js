@@ -292,7 +292,13 @@
         shell: 'dialog', name: '식단 리포트', dom: 'dietReportModal',
         html: () => `<div class="pv-overlay pv-overlay--center">
           <div class="pv-dialog pv-dialog--md">
-            <div class="pv-head"><div><h3>식단 리포트</h3><p>이번 주 요약</p></div>${xBtn()}</div>
+            <div class="pv-head">
+              <div><h3>AI 식단분석</h3><p>생성 7월 24일 08:30</p></div>
+              <div style="display:flex;gap:4px;align-items:center">
+                <button type="button" class="pv-x" aria-label="다시 분석" title="다시 분석"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i></button>
+                <button type="button" class="pv-x" aria-label="SNS 공유" title="SNS 공유"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i></button>
+              </div>
+            </div>
             <div class="pv-body">
               <div class="pv-share-card">
                 <div class="big">mealog</div>
@@ -301,8 +307,9 @@
               </div>
               <p style="margin-top:12px;font-size:13px">점심 기록이 가장 많고, 저녁 만족도가 높았어요.</p>
             </div>
-            <div class="pv-actions pv-actions--single">
-              <button type="button" class="pv-btn pv-btn-primary" data-close>확인</button>
+            <div class="pv-actions pv-actions--pair">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>닫기</button>
+              <button type="button" class="pv-btn pv-btn-primary" data-close>모먼트 공유</button>
             </div>
           </div>
         </div>`

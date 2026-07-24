@@ -115,6 +115,8 @@ html.platform-native-app .bottom-nav button i.lucide {
     --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(217, 72, 90, 0.28);
     --cta-btn-h: 52px;
     --cta-btn-r: 16px;
+    /* 센터 다이얼로그 가로 여백 — 헤더 텍스트·콘텐츠 박스·액션 버튼 좌측 정렬 기준 */
+    --mealog-dialog-pad-x: 20px;
     /* 아바타 그림자: blur ≈ 2px (좁은 적용 범위) */
     --avatar-shadow: 0 1px 2px rgba(36, 31, 28, 0.22);
     --avatar-shadow-profile: 0 1px 2px rgba(100, 116, 139, 0.38);
@@ -760,19 +762,13 @@ body.keyboard-closed #boardWriteView {
     display: none !important;
 }
 /* 시안 v2 본문: 작성자 → 슬롯·장소 → 메뉴 → 코멘트 → 소셜 */
-#galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special),
-#feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption]:not(.moment-v2-body--special) {
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body[data-moment-v2-caption],
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body[data-moment-v2-caption] {
     /* 하단 여백 = 소셜 상단(4px)과 맞춤 */
     padding: 14px 16px 4px !important;
     margin: 0 !important;
     gap: 0;
     background: #ffffff;
-}
-#galleryContainer.moment-feed-layout-v2 .moment-v2-body.moment-v2-body--special[data-moment-v2-caption],
-#feedContent[data-moment-feed-layout='2'] .moment-v2-body.moment-v2-body--special[data-moment-v2-caption] {
-    padding: 14px 16px 4px !important;
-    margin: 0 !important;
-    gap: 0;
 }
 #galleryContainer.moment-feed-layout-v2 .moment-v2-author-row,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-author-row {
@@ -5350,25 +5346,7 @@ body[data-main-tab='gallery'] #galleryView {
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-photo-clip [data-meal-photo-social-bubble] {
     display: none !important;
 }
-#galleryContainer.moment-feed-layout-v2 .moment-v2-special-chip,
-#feedContent[data-moment-feed-layout='2'] .moment-v2-special-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--green-deep, #2d9f74);
-    background: var(--green-soft, #eaf8f2);
-    padding: 3px 8px;
-    border-radius: 9999px;
-    margin-bottom: 8px;
-}
-#galleryContainer.moment-feed-layout-v2 .moment-v2-body--special,
-#feedContent[data-moment-feed-layout='2'] .moment-v2-body--special,
-#galleryContainer.moment-feed-layout-v2 .moment-feed-v2-scope[data-moment-v2-special='1'] .moment-v2-body,
-#feedContent[data-moment-feed-layout='2'] .moment-feed-v2-scope[data-moment-v2-special='1'] .moment-v2-body {
-    background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
-}
+/* 베스트 공유: '이번 주 베스트' 칩·하단 초록 그라데이션 미사용 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-v-unit-stack,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-v-unit-stack {
     border-radius: 0 !important;
@@ -5771,10 +5749,18 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     border-color: #e2e8f0;
     color: var(--green-deep);
 }
+/* 공유됨: 흰 배경 유지 + check + 진한 보더 (솔리드 초록 지양) */
 .date-section-header__share-btn--shared {
-    background: var(--green-soft);
-    border-color: var(--green-mute);
-    color: var(--green-deep);
+    background: #ffffff;
+    border-color: var(--green-deep, #2d9f74);
+    border-width: 1.5px;
+    color: var(--green-deep, #2d9f74);
+    box-shadow: none;
+}
+.date-section-header__share-btn--shared i,
+.date-section-header__share-btn--shared svg {
+    color: var(--green-deep, #2d9f74);
+    stroke: currentColor;
 }
 /* 트래커 월 라벨과 구분 — 피드 날짜는 시안 date-label 톤(실기기에서 약간 키움) */
 .date-section-header h3 {
@@ -5924,6 +5910,22 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     /* 카드 사이·패딩 빈 공간에서도 가로 제스처가 브라우저 pan-x로 소모되지 않게 */
     touch-action: pan-y;
 }
+/* 밀로그 진입: 좌우 스와이프 가능함을 알려주는 작은 너지 (진입과 동시에 움직임 시작) */
+@keyframes mealog-timeline-swipe-hint {
+    0%   { transform: translate3d(0, 0, 0); }
+    8%   { transform: translate3d(-14px, 0, 0); }
+    36%  { transform: translate3d(16px, 0, 0); }
+    62%  { transform: translate3d(-10px, 0, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+}
+#timelineContainer.timeline-container--swipe-hint {
+    animation: mealog-timeline-swipe-hint 720ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+    #timelineContainer.timeline-container--swipe-hint {
+        animation: none;
+    }
+}
 /* 일간 보기: 가로 스와이프는 JS가 처리, 세로 스크롤만 브라우저에 위임 */
 #timelineView.timeline-view-mode-page {
     overflow-x: hidden;
@@ -6014,8 +6016,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     color: #64748b;
 }
 
-/* 홈피드 v2 — 세로형 기록 카드 */
-#timelineContainer .card.home-feed-card {
+/* 홈피드 v2 — 세로형 기록 카드
+ * 일간 공유: 캡처 대상이 .daily-share-capture__sheet 이므로 #dailyShareCardContainer만 쓰면
+ * 고스트 캡처에서 썸네일/카드 스타일이 빠짐 → sheet 스코프 필수 */
+#timelineContainer .card.home-feed-card,
+#dailyShareCardContainer .card.home-feed-card,
+.daily-share-capture__sheet .card.home-feed-card {
     background: var(--card, #fff);
     border-radius: 18px !important;
     border: 1px solid var(--line, #d0c6ba);
@@ -6025,17 +6031,382 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     transition: transform 0.12s ease;
 }
 #timelineContainer .main-slot-card-group,
-#timelineContainer .snack-slot-card-group {
+#timelineContainer .snack-slot-card-group,
+#dailyShareCardContainer .main-slot-card-group,
+#dailyShareCardContainer .snack-slot-card-group,
+.daily-share-capture__sheet .main-slot-card-group,
+.daily-share-capture__sheet .snack-slot-card-group {
     margin-bottom: 10px;
 }
 #timelineContainer .main-slot-card-group > .card.home-feed-card:last-child,
 #timelineContainer .snack-slot-card-group > .card.home-feed-card:last-child,
-#timelineContainer > .timeline-date-card > .card.home-feed-card:last-child {
+#timelineContainer > .timeline-date-card > .card.home-feed-card:last-child,
+#dailyShareCardContainer .main-slot-card-group > .card.home-feed-card:last-child,
+#dailyShareCardContainer .snack-slot-card-group > .card.home-feed-card:last-child,
+#dailyShareCardContainer .daily-share-capture__body > .card.home-feed-card:last-child,
+.daily-share-capture__sheet .main-slot-card-group > .card.home-feed-card:last-child,
+.daily-share-capture__sheet .snack-slot-card-group > .card.home-feed-card:last-child,
+.daily-share-capture__sheet .daily-share-capture__body > .card.home-feed-card:last-child {
     margin-bottom: 0;
 }
 #timelineContainer .card.home-feed-card:active {
     transform: scale(0.985);
 }
+
+/* ── 공유 캡처 공통 (하루기록·베스트) ──
+ * html2canvas: flex/grid·aspect-ratio·lucide SVG 대신
+ * table-cell + 고정 px + 텍스트 ★ 로 정렬 오차 최소화
+ */
+#dailyShareCardContainer.daily-share-capture,
+.daily-share-capture,
+#bestSharePreview .best-share-capture {
+    box-sizing: border-box;
+    background: transparent;
+    margin: 0 auto;
+}
+.daily-share-capture__sheet,
+.best-share-capture__sheet {
+    width: 420px;
+    max-width: 420px;
+    margin: 0 auto;
+    border: 1px solid #e4ddd4;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fff;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+.daily-share-capture__head,
+.best-share-capture__head {
+    background: #fff;
+    padding: 12px 18px;
+    border-bottom: 1px solid #efe9e1;
+}
+.daily-share-capture__brand-row,
+.best-share-capture__brand-row {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+.daily-share-capture__brand-group,
+.best-share-capture__brand-group {
+    display: table-cell;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+.daily-share-capture__brand,
+.daily-share-capture__brand.mealog-title,
+.best-share-capture__brand,
+.best-share-capture__brand.mealog-title {
+    display: inline;
+    font-family: 'Fredoka', sans-serif;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 28px;
+    letter-spacing: -0.03em;
+    color: #3cb889;
+    text-transform: lowercase;
+}
+/* mealog 옆 보조 타이틀 — 보완 크기·색 (하루기록 / Best 공통) */
+.daily-share-capture__brand-sep,
+.daily-share-capture__brand-sub,
+.best-share-capture__brand-sep,
+.best-share-capture__brand-sub {
+    font-family: 'Pretendard', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 28px;
+    letter-spacing: -0.02em;
+    color: #9a9187;
+    vertical-align: baseline;
+}
+.daily-share-capture__brand-sep,
+.best-share-capture__brand-sep {
+    margin: 0 5px 0 4px;
+    font-weight: 500;
+    color: #b5ada3;
+}
+.daily-share-capture__date,
+.best-share-capture__date {
+    display: table-cell;
+    vertical-align: bottom;
+    text-align: right;
+    font-family: 'Pretendard', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: #8b8278;
+    letter-spacing: -0.01em;
+    line-height: 28px;
+    white-space: nowrap;
+}
+.daily-share-capture__body {
+    padding: 10px 10px 12px;
+    background: #f7f3ee;
+    box-sizing: border-box;
+}
+.best-share-capture__body {
+    padding: 6px 14px 12px;
+    background: #fff;
+    box-sizing: border-box;
+}
+.daily-share-capture__body > .main-slot-card-group,
+.daily-share-capture__body > .snack-slot-card-group {
+    margin-bottom: 0;
+}
+.daily-share-capture__empty {
+    padding: 28px 12px;
+    text-align: center;
+}
+.daily-share-capture__empty p {
+    margin: 0;
+    font-family: 'Pretendard', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: #a8a29e;
+    line-height: 1.5;
+}
+
+/* 캡처 행: table + 고정 높이 */
+.daily-share-capture__sheet .share-cap-row,
+.best-share-capture__sheet .share-cap-row {
+    margin: 0 0 8px;
+    background: #fff;
+    border: 1px solid #ebe4db;
+    border-radius: 14px;
+    /* 행 overflow:hidden이면 캡처 시 하단 글리프가 잘림 → visible */
+    overflow: visible;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+.best-share-capture__sheet .share-cap-row {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid #efe9e1;
+    background: transparent;
+}
+.best-share-capture__sheet .share-cap-row:last-child {
+    border-bottom: 0;
+}
+.daily-share-capture__sheet .share-cap-row__inner,
+.best-share-capture__sheet .share-cap-row__inner {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    height: 92px;
+    border-collapse: separate;
+    border-spacing: 0;
+    box-sizing: border-box;
+}
+/* 베스트: 썸네일 67px(+20%) + 상하 여유 → 행 96px (하루기록과 동일 클립 방지 패턴) */
+.best-share-capture__sheet .share-cap-row__inner--best {
+    height: 96px;
+}
+/* 세로 정렬: vertical-align:top + 고정 padding-top
+ * (middle은 html2canvas가 브라우저와 다르게 계산 → 텍스트가 아래로 잠김) */
+.daily-share-capture__sheet .share-cap-cell,
+.best-share-capture__sheet .share-cap-cell {
+    display: table-cell;
+    vertical-align: top;
+    height: 92px;
+    box-sizing: border-box;
+    font-family: 'Pretendard', sans-serif;
+}
+.best-share-capture__sheet .share-cap-cell {
+    height: 96px;
+}
+/* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움 */
+.daily-share-capture__sheet .share-cap-cell--thumb {
+    width: 92px;
+    padding: 0;
+    height: 92px;
+    vertical-align: top;
+}
+.best-share-capture__sheet .share-cap-cell--thumb {
+    width: 79px;
+    padding: 14px 0 0 0;
+}
+.daily-share-capture__sheet .share-cap-cell--rank,
+.best-share-capture__sheet .share-cap-cell--rank {
+    width: 28px;
+    padding: 32px 4px 0 2px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 20px;
+    letter-spacing: -0.03em;
+    color: #1c1917;
+    font-variant-numeric: tabular-nums;
+}
+.best-share-capture__sheet .share-cap-cell--rank {
+    padding-top: 38px;
+}
+.daily-share-capture__sheet .share-cap-cell--icon {
+    width: 58px;
+    padding: 28px 0 0 14px; /* 사진과의 간격 +10px */
+}
+.daily-share-capture__sheet .share-cap-row__inner:not(.share-cap-row__inner--photo) .share-cap-cell--icon {
+    width: 56px;
+    padding-left: 12px;
+}
+.daily-share-capture__sheet .share-cap-cell--text,
+.best-share-capture__sheet .share-cap-cell--text {
+    /* 위쪽을 조금 올리고, 아래에 클립 여유를 크게 둠 */
+    padding: 18px 8px 10px;
+    overflow: visible;
+}
+.best-share-capture__sheet .share-cap-cell--text {
+    padding: 24px 8px 12px;
+    overflow: visible;
+}
+.daily-share-capture__sheet .share-cap-cell--stars,
+.best-share-capture__sheet .share-cap-cell--stars {
+    width: 56px;
+    padding: 36px 12px 0 0;
+    text-align: right;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
+    letter-spacing: 0.5px;
+    color: #d4a017;
+}
+.best-share-capture__sheet .share-cap-cell--stars {
+    padding-top: 40px;
+}
+
+.daily-share-capture__sheet .share-cap-thumb {
+    position: relative;
+    display: block;
+    width: 92px;
+    height: 92px;
+    /* 카드 좌측 모서리와 맞춤 (border-radius 14px − 1px border) */
+    border-radius: 13px 0 0 13px;
+    overflow: hidden;
+    background: #ece7e1;
+    box-sizing: border-box;
+}
+.best-share-capture__sheet .share-cap-thumb {
+    position: relative;
+    display: block;
+    width: 67px;
+    height: 67px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ece7e1;
+    box-sizing: border-box;
+}
+.daily-share-capture__sheet .share-cap-thumb__img {
+    display: block;
+    width: 92px;
+    height: 92px;
+    object-fit: cover;
+    border: 0;
+}
+.best-share-capture__sheet .share-cap-thumb__img {
+    display: block;
+    width: 67px;
+    height: 67px;
+    object-fit: cover;
+    border: 0;
+}
+.daily-share-capture__sheet .share-cap-thumb--empty,
+.best-share-capture__sheet .share-cap-thumb--empty {
+    text-align: center;
+    line-height: 67px;
+    color: #a8a29e;
+    background: #f1ebe4;
+}
+.daily-share-capture__sheet .share-cap-thumb--empty {
+    line-height: 92px;
+}
+.best-share-capture__sheet .share-cap-thumb--empty i,
+.best-share-capture__sheet .share-cap-thumb--empty svg,
+.best-share-capture__sheet .share-cap-thumb--empty .lucide {
+    display: inline-block;
+    width: 28px !important;
+    height: 28px !important;
+    vertical-align: middle;
+    stroke: currentColor;
+    color: #a8a29e;
+}
+.daily-share-capture__sheet .share-cap-thumb__badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(28, 25, 23, 0.72);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 12px;
+    font-family: 'Pretendard', sans-serif;
+}
+
+.daily-share-capture__sheet .share-cap-icon {
+    display: block;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 36px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.daily-share-capture__sheet .share-cap-icon--meal {
+    background: #e8f7f0;
+    color: #2d9f74;
+}
+.daily-share-capture__sheet .share-cap-icon--snack {
+    background: #fff1e6;
+    color: #c2410c;
+}
+.daily-share-capture__sheet .share-cap-icon--journal {
+    background: #eef0ff;
+    color: #4338ca;
+}
+.daily-share-capture__sheet .share-cap-icon i,
+.daily-share-capture__sheet .share-cap-icon svg,
+.daily-share-capture__sheet .share-cap-icon .lucide {
+    display: inline-block;
+    width: 18px !important;
+    height: 18px !important;
+    vertical-align: middle;
+    stroke: currentColor;
+    color: inherit;
+}
+
+/* 캡처 시 글리프가 아래로 밀려도 잘리지 않게 line-height·하단 패딩 여유 */
+.daily-share-capture__sheet .share-cap-meta,
+.best-share-capture__sheet .share-cap-meta {
+    margin: 0 0 3px;
+    padding: 0 0 3px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 18px;
+    letter-spacing: -0.01em;
+    color: #8b8278;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.daily-share-capture__sheet .share-cap-title,
+.best-share-capture__sheet .share-cap-title {
+    margin: 0;
+    padding: 0 0 5px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 22px;
+    letter-spacing: -0.025em;
+    color: #1c1917;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .home-feed-card__photo {
     width: 100%;
     aspect-ratio: 16 / 10;
@@ -6047,7 +6418,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     display: grid;
     grid-template-columns: 44px minmax(0, 1fr);
     gap: calc(10px + 0.5em);
-    align-items: start;
+    align-items: center;
 }
 .home-feed-card--photo .home-feed-card__body {
     padding-top: 12px;
@@ -6098,7 +6469,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 2px;
+    margin-bottom: 5px;
     min-width: 0;
 }
 .home-feed-card__meta {
@@ -6149,14 +6520,14 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     color: var(--ink, #241f1c);
     letter-spacing: -0.02em;
     line-height: 1.3;
-    margin-bottom: 2px;
+    margin-bottom: 5px;
     word-break: break-word;
 }
 .home-feed-card__note {
     font-size: 14px;
     color: #64748b;
     line-height: 1.45;
-    margin: 0 0 4px;
+    margin: 1px 0 4px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -9742,13 +10113,19 @@ body[data-main-tab='dashboard'] #dashboardView {
 #dashboardView.dashboard-view-v2 .dashboard-vital-detail-chart.hidden {
     display: none !important;
 }
+#dashboardView.dashboard-view-v2 .dashboard-best-card .dashboard-best-card-head {
+    justify-content: flex-end;
+    margin-bottom: 0.375rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--line, #d0c6ba);
+}
 #dashboardView.dashboard-view-v2 .dashboard-best-list .dashboard-best-item {
     display: grid;
-    grid-template-columns: 56px 1fr auto;
-    gap: 12px;
+    grid-template-columns: 22px 56px 1fr auto;
+    gap: 10px;
     align-items: center;
     padding: 10px 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--line, #d0c6ba);
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-list .dashboard-best-item:last-child {
     border-bottom: 0;
@@ -9756,6 +10133,16 @@ body[data-main-tab='dashboard'] #dashboardView {
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-list .dashboard-best-item:first-child {
     padding-top: 0;
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-rank {
+    display: block;
+    width: 22px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: var(--ink, #241f1c);
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-thumb {
     width: 56px;
@@ -9787,6 +10174,18 @@ body[data-main-tab='dashboard'] #dashboardView {
     font-size: 11px;
     letter-spacing: -1px;
     white-space: nowrap;
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn {
+    color: #475569; /* slate-600 */
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn:hover:not(:disabled) {
+    color: #1e293b; /* slate-800 */
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn [data-lucide],
+#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke-width: 2.5;
 }
 
 /* 레거시 선택자 유지 (비-v2 또는 공유 블록) */
@@ -10334,8 +10733,15 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     border: 1px solid var(--line);
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
 }
-.entry-slot-picker__grabber {
-    display: none;
+/* entry-slot-picker grabber → .mealog-dialog-grabber 공통 스타일 사용 */
+#entrySlotPickerModal .entry-slot-picker__head {
+    border-bottom: none;
+    background: transparent;
+}
+#entrySlotPickerModal .entry-slot-picker__list {
+    padding-left: var(--mealog-dialog-pad-x);
+    padding-right: var(--mealog-dialog-pad-x);
+    box-sizing: border-box;
 }
 .entry-slot-picker__group {
     margin-bottom: 0.75rem;
@@ -12620,39 +13026,6 @@ button.board-detail-stat:disabled {
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
     will-change: transform;
 }
-#entryModal .entry-modal-grabber {
-    flex: 0 0 auto;
-    align-self: center;
-    width: 100%;
-    max-width: 100%;
-    height: 1.35rem;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background:
-        linear-gradient(rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0.22))
-        center 0.55rem / 2.5rem 0.28rem no-repeat;
-    touch-action: none;
-    cursor: grab;
-    outline: none;
-    -webkit-tap-highlight-color: transparent;
-}
-#entryModal .entry-modal-grabber:active {
-    cursor: grabbing;
-    background:
-        linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
-        center 0.55rem / 2.5rem 0.28rem no-repeat;
-}
-#entryModal .entry-modal-grabber:focus-visible {
-    background:
-        linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
-        center 0.55rem / 2.5rem 0.28rem no-repeat;
-    box-shadow: inset 0 0 0 2px var(--entry-accent-ring);
-}
-#entryModal.entry-modal-saving .entry-modal-grabber {
-    pointer-events: none;
-    opacity: 0.4;
-}
 #entryModal .entry-modal-header {
     background: var(--entry-surface);
     border-bottom: 1px solid var(--entry-border-soft);
@@ -14048,7 +14421,6 @@ button.board-detail-stat:disabled {
 #demoIntroModal > div,
 #characterSelectPopup > div,
 #bestSharePeriodNoticeModal > div,
-#dietReportModal > div,
 #domainErrorModal > div,
 #pwaInstallGuideModal > div,
 #desktopShortcutGuideModal > div,
@@ -14084,13 +14456,235 @@ button.board-detail-stat:disabled {
     border-radius: var(--shell-r-btn);
     min-height: 46px;
 }
-/* Soft Mint Dialog Footer — 버튼 영역 여백만 (본문과 분리) */
+/* AI 식단분석 — Soft Mint Center Dialog */
+#dietReportModal .diet-report-modal {
+    /* 고정 높이가 없으면 flex body(flex-basis:0)가 0px로 줄어 콘텐츠가 안 보임 */
+    height: min(85vh, 40rem);
+    max-height: min(85vh, 40rem);
+    min-height: 0;
+    border-radius: var(--shell-r-dialog) !important;
+    border: 1px solid var(--line) !important;
+    background: var(--card) !important;
+    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
+}
+#dietReportModal .diet-report-modal__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    flex-shrink: 0;
+    /* mealog-dialog-head와 동일 pad-x → 본문 카드 좌측과 정렬 */
+    padding: 14px var(--mealog-dialog-pad-x) 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    text-align: left;
+}
+#dietReportModal .diet-report-modal__head.mealog-dialog-head {
+    /* 공통 head 패딩과 충돌 없이 pad-x만 공유 */
+    padding-left: var(--mealog-dialog-pad-x);
+    padding-right: var(--mealog-dialog-pad-x);
+}
+#dietReportModal .diet-report-modal__titles {
+    min-width: 0;
+    flex: 1 1 auto;
+    text-align: left;
+}
+#dietReportModal .diet-report-modal__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.25;
+    text-align: left;
+}
+#dietReportModal .diet-report-modal__subtitle {
+    margin: 4px 0 0;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--muted);
+    line-height: 1.35;
+}
+#dietReportModal .diet-report-modal__subtitle.hidden {
+    display: none;
+}
+#dietReportModal .diet-report-modal__head-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+#dietReportModal .diet-report-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 9999px;
+    background: #fff;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, opacity 0.14s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#dietReportModal .diet-report-icon-btn:hover:not(:disabled) {
+    background: var(--green-soft);
+    border-color: var(--green-mute);
+    color: var(--green-deep);
+}
+#dietReportModal .diet-report-icon-btn:active:not(:disabled) {
+    transform: scale(0.96);
+}
+#dietReportModal .diet-report-icon-btn:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+#dietReportModal .diet-report-icon-btn.hidden {
+    display: none;
+}
+#dietReportModal .diet-report-icon-btn i,
+#dietReportModal .diet-report-icon-btn svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    stroke: currentColor;
+}
+#dietReportModal .diet-report-modal__body {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    /* 헤더 타이틀과 콘텐츠 박스 좌측 정렬 (동일 pad-x) */
+    padding: 14px var(--mealog-dialog-pad-x) 8px;
+    background: var(--page-deep, #faf6f2);
+    display: block;
+}
+#dietReportModal #dietReportModalActions {
+    flex-shrink: 0;
+}
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--single {
+    flex-direction: column;
+}
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportShareBtn.hidden {
+    display: none !important;
+}
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportCloseBtn {
+    width: 100%;
+    flex: none;
+}
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--pair {
+    flex-direction: row;
+}
+/* mealog-btn의 display:grid가 아이콘·라벨을 세로로 쌓아 비행기가 안 보임 → 가로 정렬 */
+#dietReportModal #dietReportShareBtn,
+#bestShareModal #bestShareSubmitBtn,
+#dailySharePreviewModal #dailyShareConfirmBtn {
+    display: inline-flex !important;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    color: #fff;
+}
+#dietReportModal #dietReportShareBtn.mealog-btn-danger,
+#bestShareModal #bestShareSubmitBtn.mealog-btn-danger {
+    color: #fff;
+}
+#dietReportModal #dietReportShareBtn .diet-report-share-btn__inner,
+#bestShareModal #bestShareSubmitBtn .mealog-share-btn__inner,
+#dailySharePreviewModal #dailyShareConfirmBtn .mealog-share-btn__inner {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+#dietReportModal #dietReportShareBtn i,
+#dietReportModal #dietReportShareBtn svg,
+#bestShareModal #bestShareSubmitBtn i,
+#bestShareModal #bestShareSubmitBtn svg,
+#dailySharePreviewModal #dailyShareConfirmBtn i,
+#dailySharePreviewModal #dailyShareConfirmBtn svg {
+    width: 1.1rem !important;
+    height: 1.1rem !important;
+    flex-shrink: 0;
+    stroke: currentColor;
+    color: inherit;
+}
+
+/* Soft Mint Center Dialog — 상단 스와이프 핸들 */
+.mealog-dialog-grabber,
+#entryModal .entry-modal-grabber {
+    flex: 0 0 auto;
+    align-self: center;
+    width: 100%;
+    max-width: 100%;
+    height: 1.35rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background:
+        linear-gradient(rgba(15, 23, 42, 0.22), rgba(15, 23, 42, 0.22))
+        center 0.55rem / 2.5rem 0.28rem no-repeat;
+    touch-action: none;
+    cursor: grab;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.mealog-dialog-grabber:active,
+#entryModal .entry-modal-grabber:active {
+    cursor: grabbing;
+    background:
+        linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
+        center 0.55rem / 2.5rem 0.28rem no-repeat;
+}
+.mealog-dialog-grabber:focus-visible,
+#entryModal .entry-modal-grabber:focus-visible {
+    background:
+        linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
+        center 0.55rem / 2.5rem 0.28rem no-repeat;
+    box-shadow: inset 0 0 0 2px rgba(60, 184, 137, 0.45);
+}
+#entryModal.entry-modal-saving .entry-modal-grabber,
+#entryModal.entry-modal-saving .mealog-dialog-grabber {
+    pointer-events: none;
+    opacity: 0.4;
+}
+
+/* Soft Mint Dialog Footer — 버튼 영역 높이 통일 (패딩 16/20 + CTA 52) */
+/* 센터 팝업 헤더: 타이틀이 있을 때 좌측 들여쓰기·좌정렬 */
+.mealog-dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-shrink: 0;
+    padding: 14px var(--mealog-dialog-pad-x) 12px;
+    text-align: left;
+    box-sizing: border-box;
+}
+.mealog-dialog-head__title,
+.mealog-dialog-head h2,
+.mealog-dialog-head h3 {
+    margin: 0;
+    text-align: left;
+}
+
 .mealog-dialog-actions {
+    --mealog-dialog-actions-pad-y: 36px; /* 16 + 20 */
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 16px 20px 20px;
+    padding: 16px var(--mealog-dialog-pad-x) 20px;
+    min-height: calc(var(--mealog-dialog-actions-pad-y) + var(--cta-btn-h));
+    box-sizing: border-box;
     background: transparent;
+    flex-shrink: 0;
+    align-items: stretch;
+    justify-content: center;
 }
 .mealog-dialog-actions--pair,
 .mealog-dialog-actions--stack,
@@ -14119,6 +14713,27 @@ button.board-detail-stat:disabled {
     border-top: 1px solid var(--line);
     background: var(--page);
     padding-top: 16px;
+}
+.mealog-dialog-actions--column,
+.mealog-dialog-actions--column:has(> :nth-child(2)) {
+    flex-direction: column;
+}
+.mealog-dialog-actions--column > .mealog-btn {
+    flex: none;
+    width: 100%;
+}
+/* 공유 모달 등 세그먼트형 액션바: 패딩/갭 없이 높이 토큰만 공유 */
+.mealog-dialog-actions--flush {
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+}
+.mealog-dialog-actions--flush > button {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 0;
+    height: auto;
+    min-height: var(--cta-btn-h);
 }
 .mealog-btn {
     border: 0;
@@ -14350,9 +14965,10 @@ button.board-detail-stat:disabled {
     justify-content: space-between;
     gap: 10px;
     flex-shrink: 0;
-    padding: 14px 16px 12px;
+    padding: 14px var(--mealog-dialog-pad-x) 12px;
     border-bottom: 1px solid var(--line);
     background: var(--card);
+    text-align: left;
 }
 .search-filter-modal__title {
     margin: 0;
@@ -14361,6 +14977,7 @@ button.board-detail-stat:disabled {
     letter-spacing: -0.02em;
     color: var(--ink);
     line-height: 1.25;
+    text-align: left;
 }
 .search-filter-modal__close {
     display: inline-flex;
@@ -14390,7 +15007,7 @@ button.board-detail-stat:disabled {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
-    padding: 14px 16px 8px;
+    padding: 14px var(--mealog-dialog-pad-x) 8px;
     background: var(--page-deep, #faf6f2);
     display: flex;
     flex-direction: column;
@@ -14529,9 +15146,10 @@ button.board-detail-stat:disabled {
     justify-content: space-between;
     gap: 10px;
     flex-shrink: 0;
-    padding: 14px 16px 12px;
+    padding: 14px var(--mealog-dialog-pad-x) 12px;
     border-bottom: 1px solid var(--line);
     background: var(--page-deep, #faf6f2);
+    text-align: left;
 }
 #notificationModal .notification-modal-title {
     margin: 0;
@@ -14540,6 +15158,7 @@ button.board-detail-stat:disabled {
     letter-spacing: -0.02em;
     color: var(--ink);
     line-height: 1.25;
+    text-align: left;
 }
 #notificationModal .notification-modal-head-actions {
     display: flex;
@@ -14576,7 +15195,7 @@ button.board-detail-stat:disabled {
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
-    padding: 12px 14px 0;
+    padding: 12px var(--mealog-dialog-pad-x) 0;
     background: var(--page-deep, #faf6f2);
 }
 #notificationModal .notification-tab-row {
@@ -14794,18 +15413,16 @@ button.board-detail-stat:disabled {
     font-size: 13.5px;
     font-weight: 600;
     color: #fff;
-    background: var(--shell-ink);
+    background: var(--ink-2);
     box-shadow: 0 4px 16px rgba(36, 31, 28, 0.18);
     max-width: 100%;
 }
-#toastContainer .mealog-toast--success {
-    background: var(--shell-ink);
+#toastContainer .mealog-toast--success,
+#toastContainer .mealog-toast--info {
+    background: var(--ink-2);
 }
 #toastContainer .mealog-toast--error {
     background: #9f1239;
-}
-#toastContainer .mealog-toast--info {
-    background: var(--ink-2);
 }
 
 #appUpdateRestartBanner.mealog-update-banner {
@@ -14858,8 +15475,7 @@ button.board-detail-stat:disabled {
 #profileFieldEditModal .bg-emerald-600,
 #emailAuthModal .bg-emerald-600,
 #bestShareModal .bg-emerald-600,
-#insightShareModal .bg-emerald-600,
-#dietReportModal .bg-emerald-600 {
+#insightShareModal .bg-emerald-600 {
     background-image: var(--cta-mint-grad) !important;
     background-color: transparent !important;
     box-shadow: var(--cta-mint-shadow);

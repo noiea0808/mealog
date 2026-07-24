@@ -454,6 +454,122 @@ export function base64ToBlob(base64DataUrl) {
 }
 
 /**
+ * 공유 캡처 clone 보정 — 이미지·아이콘·table 셀에 고정 px를 강제해
+ * 미리보기와 캡처 PNG의 정렬 오차를 줄인다.
+ * @param {Document|HTMLElement} root
+ */
+export function normalizeShareCaptureClone(root) {
+    const doc = root?.querySelector ? root : root?.documentElement ? root : null;
+    const scope = doc || root;
+    if (!scope?.querySelectorAll) return;
+
+    scope.querySelectorAll('.share-cap-thumb__img').forEach((img) => {
+        const isBest = !!img.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const w = Number.parseInt(img.getAttribute('width'), 10) || (isBest ? 67 : 92);
+        const h = Number.parseInt(img.getAttribute('height'), 10) || w;
+        img.setAttribute('width', String(w));
+        img.setAttribute('height', String(h));
+        img.style.width = `${w}px`;
+        img.style.height = `${h}px`;
+        img.style.maxWidth = `${w}px`;
+        img.style.maxHeight = `${h}px`;
+        img.style.objectFit = 'cover';
+        img.style.display = 'block';
+        img.style.border = '0';
+        img.style.verticalAlign = 'top';
+    });
+
+    scope.querySelectorAll('.share-cap-thumb').forEach((el) => {
+        const isBest = !!el.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const s = isBest ? 67 : 92;
+        el.style.width = `${s}px`;
+        el.style.height = `${s}px`;
+        el.style.overflow = 'hidden';
+        el.style.display = 'block';
+        el.style.position = 'relative';
+        if (!isBest) {
+            el.style.borderRadius = '13px 0 0 13px';
+            el.style.margin = '0';
+        } else {
+            el.style.borderRadius = '12px';
+        }
+    });
+    scope.querySelectorAll('.daily-share-capture__sheet .share-cap-cell--thumb').forEach((el) => {
+        el.style.padding = '0';
+        el.style.width = '92px';
+        el.style.height = '92px';
+        el.style.verticalAlign = 'top';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--thumb').forEach((el) => {
+        el.style.padding = '14px 0 0 0';
+        el.style.width = '79px';
+        el.style.verticalAlign = 'top';
+    });
+
+    scope.querySelectorAll('.share-cap-row__inner').forEach((el) => {
+        el.style.display = 'table';
+        el.style.width = '100%';
+        el.style.tableLayout = 'fixed';
+        el.style.borderCollapse = 'separate';
+        el.style.borderSpacing = '0';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-row__inner--best').forEach((el) => {
+        el.style.height = '96px';
+    });
+
+    // vertical-align: middle은 html2canvas가 다르게 계산해 텍스트가 아래로 잠김 → top + CSS padding-top 고정
+    scope.querySelectorAll('.share-cap-cell').forEach((el) => {
+        el.style.display = 'table-cell';
+        el.style.verticalAlign = 'top';
+    });
+    scope.querySelectorAll('.share-cap-cell--text').forEach((el) => {
+        el.style.overflow = 'visible';
+        el.style.paddingBottom = '12px';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--text').forEach((el) => {
+        el.style.paddingTop = '24px';
+        el.style.paddingBottom = '12px';
+    });
+    scope.querySelectorAll('.share-cap-meta').forEach((el) => {
+        el.style.lineHeight = '18px';
+        el.style.paddingBottom = '3px';
+    });
+    scope.querySelectorAll('.share-cap-title').forEach((el) => {
+        el.style.lineHeight = '22px';
+        el.style.paddingBottom = '5px';
+    });
+    scope.querySelectorAll('.share-cap-row').forEach((el) => {
+        el.style.overflow = 'visible';
+    });
+
+    // 헤더 타이틀(mealog 행)만 10px 위로 — 헤더 높이·다른 요소는 그대로
+    scope.querySelectorAll('.daily-share-capture__brand-row, .best-share-capture__brand-row').forEach((el) => {
+        el.style.position = 'relative';
+        el.style.top = '-10px';
+    });
+
+    scope.querySelectorAll('.share-cap-icon svg, .share-cap-icon i, .share-cap-icon .lucide').forEach((el) => {
+        el.style.width = '18px';
+        el.style.height = '18px';
+        el.setAttribute('width', '18');
+        el.setAttribute('height', '18');
+        if (el.tagName === 'svg' || el.tagName === 'SVG') {
+            el.style.display = 'inline-block';
+            el.style.verticalAlign = 'middle';
+        }
+    });
+    scope.querySelectorAll('.share-cap-thumb--empty svg, .share-cap-thumb--empty i, .share-cap-thumb--empty .lucide').forEach((el) => {
+        el.style.width = '28px';
+        el.style.height = '28px';
+        el.setAttribute('width', '28');
+        el.setAttribute('height', '28');
+        el.style.display = 'inline-block';
+        el.style.verticalAlign = 'middle';
+        el.style.color = '#a8a29e';
+    });
+}
+
+/**
  * 유령 캡처(Ghost Capture): 화면 밖에 복제본을 만들어 부모 간섭(모달, transform, Flex/Grid) 없이 캡처
  * @param {HTMLElement} originalElement - 캡처할 원본 요소
  * @param {Object} options - html2canvas 옵션 + captureWidth
@@ -461,7 +577,7 @@ export function base64ToBlob(base64DataUrl) {
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function captureWithGhostStrategy(originalElement, options = {}) {
-    const { captureWidth = 420, ...html2canvasOptions } = options;
+    const { captureWidth = 420, onclone: userOnClone, ...html2canvasOptions } = options;
     const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
     if (!html2canvasFunc) throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
 
@@ -476,6 +592,7 @@ export async function captureWithGhostStrategy(originalElement, options = {}) {
     ghostNode.style.margin = '0';
 
     document.body.appendChild(ghostNode);
+    normalizeShareCaptureClone(ghostNode);
 
     try {
         await document.fonts.ready;
@@ -488,6 +605,10 @@ export async function captureWithGhostStrategy(originalElement, options = {}) {
             allowTaint: true,
             fontEmbedCSS: true,
             ...html2canvasOptions,
+            onclone: (clonedDoc, element) => {
+                normalizeShareCaptureClone(clonedDoc);
+                if (typeof userOnClone === 'function') userOnClone(clonedDoc, element);
+            },
         });
         return canvas;
     } finally {

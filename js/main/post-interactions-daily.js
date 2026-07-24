@@ -36,6 +36,8 @@ import {
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
+import { scheduleLucideIcons } from '../icons.js';
+import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
 import {
     getDisplayProfile,
     getProfileAvatarDisplay,
@@ -241,37 +243,49 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-labelledby', 'dailySharePreviewTitle');
 
     modal.innerHTML = `
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden border border-slate-200/80">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
-            <div class="flex justify-between items-center px-4 py-3 sm:py-3.5 border-b border-slate-200 flex-shrink-0">
-                <h3 class="text-base font-black text-slate-800">일간 식단 공유 미리보기</h3>
-                <button type="button" onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full shrink-0">
-                    <i data-lucide="x" class="text-xl"></i>
-                </button>
+            <div class="mealog-dialog-head border-b border-slate-200">
+                <h2 id="dailySharePreviewTitle" class="text-base font-bold text-slate-800 tracking-tight">일간 식단 공유 미리보기</h2>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-[min(280px,55vh)] max-h-[calc(92vh-9.5rem)]" style="padding: 3px;">
-                <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+            <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <div id="dailySharePreviewScroll" class="bg-slate-50 py-0" style="padding: 3px;">
+                    <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+                </div>
+                <div class="px-4 sm:px-5 pt-3 pb-2">
+                    <label for="dailyShareComment" class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
+                    <textarea id="dailyShareComment" placeholder="모먼트에 함께 올릴 코멘트를 입력하세요..." class="w-full p-3 bg-slate-100 rounded-xl text-sm border border-slate-200/80 focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
+                </div>
             </div>
-            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
-                <button type="button" onclick="window.closeDailySharePreviewModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
-                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
-                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
-                </button>
-                <button type="button" id="dailyShareConfirmBtn" onclick="window.confirmDailyShare('${dateStr}', event)" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
-                    <span id="dailyShareConfirmLabel" class="text-sm sm:text-[15px] font-bold">공유</span>
-                    <span id="dailyShareConfirmSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 올리기</span>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" onclick="window.closeDailySharePreviewModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="dailyShareConfirmBtn" onclick="window.confirmDailyShare('${dateStr}', event)" class="mealog-btn mealog-btn-primary">
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유하기</span></span>
                 </button>
             </div>
         </div>
     `;
 
     document.body.appendChild(modal);
+    const panel = modal.firstElementChild;
+    if (panel) {
+        bindDialogGrabberPullClose({
+            root: modal,
+            panel,
+            onClose: () => window.closeDailySharePreviewModal()
+        });
+    }
+    scheduleLucideIcons(modal);
     const scrollEl = document.getElementById('dailySharePreviewScroll');
     if (scrollEl && previewCard) {
         scrollEl.appendChild(previewCard);
@@ -317,18 +331,13 @@ window.confirmDailyShare = async (dateStr, ev) => {
         ? ev.target.closest('#dailyShareConfirmBtn')
         : null;
     const shareBtn = document.getElementById('dailyShareConfirmBtn') || fromEv || (ev && ev.target) || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-    const shareLabel = document.getElementById('dailyShareConfirmLabel');
-    const shareSub = document.getElementById('dailyShareConfirmSub');
     if (shareBtn) {
         shareBtn.disabled = true;
         shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        if (shareSub) shareSub.classList.add('hidden');
-        if (shareLabel) {
-            shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-            shareLabel.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin"></i><span>공유 중...</span>';
-        } else {
-            shareBtn.textContent = '공유 중...';
-        }
+        shareBtn.className = 'mealog-btn mealog-btn-primary opacity-50 cursor-not-allowed';
+        shareBtn.innerHTML =
+            '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유 중...</span></span>';
+        scheduleLucideIcons(shareBtn);
     }
     // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
     await new Promise(r => requestAnimationFrame(r));
@@ -394,7 +403,10 @@ window.confirmDailyShare = async (dateStr, ev) => {
         });
         await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
 
-        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
+        const innerContent =
+            previewCard.querySelector('.daily-share-capture__sheet') ||
+            previewCard.querySelector('div[style*="width: 420px"]') ||
+            previewCard;
 
         // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(innerContent, {
@@ -431,13 +443,6 @@ window.confirmDailyShare = async (dateStr, ev) => {
                         el.style.fontWeight = '700';
                     }
                 });
-                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
-                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
-                badges.forEach(el => {
-                    el.style.marginTop = '-5px';
-                    el.style.display = 'flex';
-                    el.style.alignItems = 'center';
-                });
             }
         });
 
@@ -446,20 +451,9 @@ window.confirmDailyShare = async (dateStr, ev) => {
         const photoUrl = await uploadBase64ToStorage(base64Image, uid, `daily_${dateStr}`, 1024);
 
         const userProfile = window.userSettings?.profile || {};
-
-        let dailyComment = '';
-        try {
-            if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
-                dailyComment = window.dbOps.getDailyJournal(dateStr).comment || '';
-            } else if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
-            } else if (window.userSettings && window.userSettings.dailyComments) {
-                const raw = window.userSettings.dailyComments[dateStr];
-                dailyComment = typeof raw === 'string' ? raw : (raw?.comment || '');
-            }
-        } catch (e) {
-            console.warn('getDailyJournal 호출 실패:', e);
-        }
+        // 팝업 코멘트 → 모먼트 캡션(코멘트란). 캡처 이미지와 별개.
+        const dailyComment =
+            (document.getElementById('dailyShareComment')?.value || '').trim();
 
         // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
         const dailyShareData = {
@@ -526,23 +520,12 @@ window.confirmDailyShare = async (dateStr, ev) => {
         if (spinner) spinner.classList.add('hidden');
         // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
         const shareBtn = document.getElementById('dailyShareConfirmBtn') || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-        const shareLabel = document.getElementById('dailyShareConfirmLabel');
-        const shareSub = document.getElementById('dailyShareConfirmSub');
         if (shareBtn) {
             shareBtn.disabled = false;
-            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            if (shareLabel) {
-                shareLabel.innerHTML = '';
-                shareLabel.textContent = '공유';
-                shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white';
-            } else {
-                shareBtn.textContent = '공유';
-            }
-            if (shareSub) {
-                shareSub.classList.remove('hidden');
-                shareSub.textContent = '피드에 올리기';
-                shareSub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-primary';
+            shareBtn.innerHTML =
+                '<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유하기</span></span>';
+            scheduleLucideIcons(shareBtn);
         }
     }
 };

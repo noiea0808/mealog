@@ -293,7 +293,6 @@ export function handleSearch(k) {
 
 export function initTimelineSearchModal() {
     document.getElementById('timelineSearchBackdrop')?.addEventListener('click', closeTimelineSearchModal);
-    document.getElementById('timelineSearchCloseBtn')?.addEventListener('click', closeTimelineSearchModal);
     document.getElementById('timelineSearchCancelBtn')?.addEventListener('click', closeTimelineSearchModal);
     document.getElementById('timelineSearchSubmitBtn')?.addEventListener('click', () => {
         executeTimelineSearch();

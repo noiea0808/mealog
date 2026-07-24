@@ -13,7 +13,6 @@ import {
     handleKakaoLogin,
     startGuest,
     openEmailModal,
-    closeEmailModal,
     handleEmailAuth,
     requestPasswordReset,
     sendPasswordResetAfterConfirm,
@@ -32,14 +31,16 @@ import {
     continueAsGuestFromProfileSetup,
     cancelDeleteAccount,
     confirmDeleteAccountAction,
-    confirmLogoutAction
+    confirmLogoutAction,
+    closeProfileSetupModal
 } from '../auth.js';
-import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import { registerDemoIntroModalHandlers, dismissDemoIntroModal } from '../demo-account.js';
 import {
     configureLandingAppPromo,
     registerPwaInstallGuideHandlers,
 } from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { initCenterDialogGrabbers } from './init-center-dialog-grabbers.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import {
     CTA_FAB_SPIN_CLASS,
@@ -177,11 +178,6 @@ export function initEventListeners() {
     if (guestLoginBtn) {
         guestLoginBtn.addEventListener('click', startGuest);
     }
-    const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
-    if (emailAuthCloseBtn) {
-        emailAuthCloseBtn.addEventListener('click', closeEmailModal);
-    }
-
     const emailAuthBtn = document.getElementById('emailAuthBtn');
     if (emailAuthBtn) {
         const runEmailAuth = (e) => {
@@ -810,6 +806,12 @@ export function initEventListeners() {
     }
 
     registerEscapeCloseModals();
+    // grabber onClose용 — escape-close와 동일 API를 window에 노출
+    window.closePasswordResetConfirmModal = closePasswordResetConfirmModal;
+    window.closePasswordResetSuccessModal = closePasswordResetSuccessModal;
+    window.closeProfileSetupModal = closeProfileSetupModal;
+    window.dismissDemoIntroModal = dismissDemoIntroModal;
+    initCenterDialogGrabbers();
 }
 
 function bindRecordPhotoSourcePickersOnce() {

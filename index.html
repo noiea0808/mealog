@@ -1039,6 +1039,7 @@
     <!-- 샘플(더미) 계정 안내: 첫 진입·둘러보기 후 표시 -->
     <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-center p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
         <div class="bg-white rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="shrink-0 px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-3.5">
                 <div class="flex flex-col items-center text-center">
                     <div class="flex-shrink-0 w-11 h-11 rounded-xl overflow-hidden mb-2.5" style="background:var(--green)">
@@ -1202,11 +1203,11 @@
     <!-- Email Auth Modal -->
     <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-[80%] max-w-[20rem] shadow-2xl overflow-hidden flex flex-col">
-            <div class="p-6 pb-5">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
-                    <button type="button" id="emailAuthCloseBtn" class="p-1 -m-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors" aria-label="닫기"><i data-lucide="x" class="text-xl"></i></button>
-                </div>
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head !pb-0">
+                <h3 id="emailAuthTitle" class="text-lg font-bold text-slate-800">이메일 로그인</h3>
+            </div>
+            <div class="px-5 pb-5 pt-4">
                 <div class="space-y-3 mb-6">
                     <div>
                         <label class="text-[10px] font-bold text-slate-400 block mb-1 ml-1 uppercase">이메일</label>
@@ -1227,17 +1228,20 @@
                     <button type="button" id="emailAuthToggleBtn" class="shrink-0 text-emerald-600 font-bold underline underline-offset-2 hover:text-emerald-800">회원가입</button>
                 </div>
             </div>
-            <div id="emailAuthBtn" role="button" tabindex="0" aria-label="로그인" class="w-full min-h-[52px] py-4 px-6 bg-emerald-600 text-white text-base font-bold flex items-center justify-center border-t border-emerald-500/30 active:bg-emerald-700 transition-colors cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/40 rounded-b-2xl">로그인</div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <div id="emailAuthBtn" role="button" tabindex="0" aria-label="로그인" class="mealog-btn mealog-btn-primary w-full cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/40">로그인</div>
+            </div>
         </div>
     </div>
 
     <!-- 비밀번호 재설정: 발송 확인 (이메일 로그인 모달 위에 표시) -->
     <div id="passwordResetConfirmModal" class="hidden fixed inset-0 z-[410] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-            <div class="px-6 pt-6 pb-2">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head flex-col items-stretch !pt-5 !pb-2">
                 <h3 class="text-lg font-bold text-slate-800 mb-2">비밀번호 재설정</h3>
-                <p class="text-sm text-slate-600 mb-2 leading-relaxed">아래 주소로 재설정 메일을 보내시겠습니까?</p>
-                <p id="passwordResetConfirmEmail" class="text-sm font-bold text-slate-800 break-all"></p>
+                <p class="text-sm text-slate-600 mb-2 leading-relaxed text-left">아래 주소로 재설정 메일을 보내시겠습니까?</p>
+                <p id="passwordResetConfirmEmail" class="text-sm font-bold text-slate-800 break-all text-left"></p>
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair">
                 <button type="button" id="passwordResetConfirmCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
@@ -1249,9 +1253,10 @@
     <!-- 비밀번호 재설정: 발송 완료 안내 -->
     <div id="passwordResetSuccessModal" class="hidden fixed inset-0 z-[420] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
-            <div class="px-6 pt-6 pb-2">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head flex-col items-stretch !pt-5 !pb-2">
                 <h3 class="text-lg font-bold text-slate-800 mb-2">메일을 보냈어요</h3>
-                <p class="text-sm text-slate-600 leading-relaxed">
+                <p class="text-sm text-slate-600 leading-relaxed text-left">
                     입력하신 이메일로 비밀번호 재설정 링크를 보냈습니다. 수신함을 확인해 주세요. 메일이 보이지 않으면 스팸함도 함께 확인해 주세요.
                 </p>
             </div>
@@ -1264,6 +1269,7 @@
     <!-- Domain Error Modal -->
     <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border-2 border-red-100 animate-fade">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="flex justify-center mb-4 text-red-500 text-3xl"><i data-lucide="triangle-alert"></i></div>
             <h3 class="text-lg font-bold text-slate-800 text-center mb-2">도메인 등록 필요</h3>
             <p class="text-xs text-slate-500 text-center mb-4 leading-relaxed">
@@ -1278,9 +1284,9 @@
                 2. '승인된 도메인' > '도메인 추가'<br>
                 3. 위 주소 붙여넣기
             </p>
-            <div class="flex gap-2">
-                <button id="domainModalGuestBtn" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm">게스트로 진행</button>
-                <button id="domainModalCloseBtn" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold text-sm">확인</button>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" id="domainModalGuestBtn" class="mealog-btn mealog-btn-primary">게스트로 진행</button>
+                <button type="button" id="domainModalCloseBtn" class="mealog-btn mealog-btn-secondary">확인</button>
             </div>
         </div>
     </div>
@@ -1433,6 +1439,7 @@
     <!-- Profile Setup Modal (First Login / Email Signup) -->
     <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <h3 id="profileSetupModalTitle" class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
             <p id="profileSetupModalDescription" class="text-xs text-slate-500 text-center mb-6">서비스를 이용하기 위해 닉네임을 입력해주세요.</p>
             
@@ -1489,8 +1496,10 @@
                 </div>
             </div>
             
-            <button id="profileSetupBtn" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-md active:bg-emerald-700 transition-colors">시작하기</button>
-            <button type="button" id="profileSetupGuestBtn" class="w-full mt-3 py-2.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm active:bg-slate-200 transition-colors">게스트로 둘러보기</button>
+            <div class="mealog-dialog-actions mealog-dialog-actions--column mealog-dialog-actions--border">
+                <button type="button" id="profileSetupBtn" class="mealog-btn mealog-btn-primary">시작하기</button>
+                <button type="button" id="profileSetupGuestBtn" class="mealog-btn mealog-btn-secondary">게스트로 둘러보기</button>
+            </div>
         </div>
     </div>
 
@@ -1838,10 +1847,9 @@
                 <div id="bestAnalysisSection" class="mt-2 hidden">
                     <div class="space-y-0">
                         <div class="card ui-card-pad dashboard-best-card">
-                            <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">Best</h3>
-                                <button id="shareBestBtn" type="button" onclick="window.openShareBestModal()" class="hidden dashboard-detail-link">
-                                    공유
+                            <div class="ui-card-head analytics-card-head dashboard-best-card-head">
+                                <button id="shareBestBtn" type="button" onclick="window.openShareBestModal()" class="hidden date-section-header__share-btn date-section-header__share-btn--default">
+                                    <i data-lucide="send" class="text-[10px]" aria-hidden="true"></i>공유하기
                                 </button>
                             </div>
                             <div id="bestMealsContainer" class="dashboard-best-list"></div>
@@ -2286,9 +2294,9 @@
     <div id="momentSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
         <button type="button" id="momentSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
         <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
-            <div class="search-filter-modal__head">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="momentSearchModalTitle" class="search-filter-modal__title">모먼트 검색</h2>
-                <button type="button" id="momentSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
             </div>
             <div class="search-filter-modal__body">
                 <section class="search-filter-modal__section">
@@ -2336,9 +2344,10 @@
     <div id="boardSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
         <button type="button" id="boardSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
         <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
-            <div class="search-filter-modal__head">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="boardSearchModalTitle" class="search-filter-modal__title">게시판 검색</h2>
-                <button type="button" id="boardSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
+
             </div>
             <div class="search-filter-modal__body">
                 <section class="search-filter-modal__section">
@@ -2386,7 +2395,8 @@
     <div id="notificationModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
         <button type="button" id="notificationBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
         <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
-            <div class="notification-modal-head">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="notification-modal-head mealog-dialog-head">
                 <h2 id="notificationModalTitle" class="notification-modal-title">알림</h2>
                 <div class="notification-modal-head-actions">
                     <button type="button" id="notificationMarkAllReadBtn" class="notification-mark-all-btn">모두 읽음</button>
@@ -2411,9 +2421,10 @@
     <div id="timelineSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
         <button type="button" id="timelineSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
         <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
-            <div class="search-filter-modal__head">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="timelineSearchModalTitle" class="search-filter-modal__title">기록 검색</h2>
-                <button type="button" id="timelineSearchCloseBtn" class="search-filter-modal__close" aria-label="닫기"><i data-lucide="x" aria-hidden="true"></i></button>
+
             </div>
             <div class="search-filter-modal__body">
                 <section class="search-filter-modal__section">
@@ -2451,6 +2462,7 @@
     <div id="trackerMonthCalendarModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="trackerMonthCalendarHeading">
         <button type="button" id="trackerMonthCalendarBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
         <div class="tracker-month-calendar-panel relative z-10 w-full max-w-[19.5rem] p-4">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="tracker-month-calendar-nav mb-3.5">
                 <button type="button" id="trackerMonthPrevMonth" class="tracker-month-nav-btn" aria-label="이전 달">
                     <i data-lucide="chevron-left" aria-hidden="true"></i>
@@ -2476,6 +2488,7 @@
     <!-- 콘텐츠 팝업 모달: 밀로그 내용 폭 - 10px 고정, 이미지 좌우 꽉 참, 제목 미노출, 하단 영역 분할 -->
     <div id="contentPopupModal" class="hidden fixed inset-0 z-[450] flex items-center justify-center p-4">
         <div id="contentPopupModalInner" class="content-popup-inner relative bg-white flex flex-col max-h-[85vh] overflow-hidden" style="width: 0;">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="contentPopupCounterBar" class="content-popup-counter-bar flex-shrink-0 flex justify-end items-center pr-4 pt-1 min-h-[2rem]" style="padding-bottom: 3.33px;">
                 <span id="contentPopupCounter" class="content-popup-counter-text text-sm text-slate-500 font-semibold">1/1</span>
             </div>
@@ -2608,9 +2621,10 @@
     <!-- Logout Confirm Modal -->
     <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] flex flex-col justify-center px-4 p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
         <div class="bg-white rounded-2xl w-full max-w-[18.5rem] sm:max-w-xs mx-auto shadow-2xl overflow-hidden border border-slate-200/80">
-            <div class="px-4 pt-5 pb-2 text-center sm:px-5">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head flex-col items-stretch !pb-2 !pt-5">
                 <h3 id="logoutConfirmTitle" class="text-lg font-bold text-slate-800">로그아웃 하시겠어요?</h3>
-                <p class="text-sm text-slate-500 mt-1.5 leading-relaxed">기록은 안전하게 저장됩니다.</p>
+                <p class="text-sm text-slate-500 mt-1.5 leading-relaxed text-left">기록은 안전하게 저장됩니다.</p>
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair">
                 <button type="button" id="logoutConfirmCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
@@ -2622,9 +2636,10 @@
     <!-- Delete Account Confirm Modal -->
     <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all scale-100">
-            <div class="px-5 pt-5 pb-2">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head flex-col items-stretch !pb-2 !pt-5">
                 <h3 class="text-lg font-bold text-slate-800 mb-2">계정을 탈퇴하시겠어요?</h3>
-                <p class="text-sm text-slate-500 leading-relaxed">탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
+                <p class="text-sm text-slate-500 leading-relaxed text-left">탈퇴 시 모든 기록과 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</p>
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair">
                 <button type="button" id="deleteAccountConfirmCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
@@ -2637,21 +2652,21 @@
     <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
         <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
         <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
-            <div class="flex items-center justify-between gap-3 px-5 pb-2 pt-4">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
                 <div class="flex min-w-0 flex-1 items-baseline gap-2">
                     <h2 id="entrySlotPickerTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
                     <p id="entrySlotPickerDateLabel" class="min-w-0 truncate text-sm font-medium text-slate-500"></p>
                 </div>
-                <button type="button" id="entrySlotPickerCloseBtn" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
-            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto px-3 pb-4 pt-1"></div>
+            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto pb-4 pt-1"></div>
         </div>
     </div>
 
     <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden">
         <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden">
             <div class="entry-modal-header shrink-0">
-                <div id="entryModalGrabber" class="entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+                <div id="entryModalGrabber" class="mealog-dialog-grabber entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
                 <div class="flex items-center gap-2 min-w-0 px-4 pt-1 pb-2.5">
                     <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
                         <input type="hidden" id="entryHeaderDate" value="">
@@ -3147,35 +3162,29 @@
         </div>
     </div>
 
-    <!-- AI 식단분석 리포트 (밀로그 날짜별) -->
-    <div id="dietReportModal" class="hidden fixed inset-0 bg-slate-900/60 z-[300] flex items-center justify-center py-4 px-[10px]" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
-        <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
-            <div class="relative shrink-0 px-4 pt-4 pb-2.5 border-b border-slate-100">
-                <h2 id="dietReportModalTitle" class="text-base font-black text-slate-800 tracking-tight pr-[4.5rem]">AI 식단분석</h2>
-                <p id="dietReportModalSubtitle" class="hidden text-[11px] font-medium text-slate-400 mt-0.5 pr-[4.5rem] leading-snug"></p>
-                <div class="absolute top-4 right-3 flex items-center gap-0.5">
-                    <button type="button" id="dietReportSnsShareBtn" class="hidden flex items-center justify-center w-9 h-9 rounded-full border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-emerald-700 hover:border-slate-300 transition-colors disabled:opacity-50 shadow-sm" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
-                        <i data-lucide="share-2" class="text-[1.05rem]" aria-hidden="true"></i>
+    <!-- AI 식단분석 리포트 (밀로그 날짜별) — Soft Mint Center Dialog -->
+    <div id="dietReportModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
+        <button type="button" id="dietReportBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="diet-report-modal relative z-10 flex w-full max-w-md flex-col overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="diet-report-modal__head mealog-dialog-head">
+                <div class="diet-report-modal__titles min-w-0">
+                    <h2 id="dietReportModalTitle" class="diet-report-modal__title">AI 식단분석</h2>
+                    <p id="dietReportModalSubtitle" class="diet-report-modal__subtitle hidden"></p>
+                </div>
+                <div class="diet-report-modal__head-actions">
+                    <button type="button" id="dietReportRegenerateBtn" class="diet-report-icon-btn hidden" aria-label="다시 분석" title="다시 분석">
+                        <i data-lucide="refresh-cw" aria-hidden="true"></i>
                     </button>
-                    <button type="button" onclick="window.closeDietReportModal()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400" aria-label="닫기">
-                        <i data-lucide="x" class="text-base"></i>
+                    <button type="button" id="dietReportSnsShareBtn" class="diet-report-icon-btn hidden" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
+                        <i data-lucide="share-2" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
-            <div id="dietReportModalBody" class="flex-1 min-h-0 overflow-y-auto px-4 py-3"></div>
-            <div class="shrink-0 border-t border-slate-200 bg-white flex overflow-hidden rounded-b-2xl min-h-[3.25rem]">
-                <button type="button" onclick="window.closeDietReportModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 transition-colors">
-                    <span class="text-sm font-bold text-slate-700">닫기</span>
-                    <span class="text-[11px] text-slate-500 font-medium">이전 화면으로</span>
-                </button>
-                <button type="button" id="dietReportRegenerateBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors disabled:opacity-60 min-w-0">
-                    <span class="diet-report-btn-main text-sm font-bold">다시 분석</span>
-                    <span class="text-[11px] text-slate-500 font-medium">새로 생성</span>
-                </button>
-                <button type="button" id="dietReportShareBtn" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-60 min-w-0">
-                    <span class="diet-report-btn-main text-sm font-bold">모먼트 공유</span>
-                    <span class="diet-report-btn-sub text-[11px] text-white/80 font-medium">피드에 공유</span>
-                </button>
+            <div id="dietReportModalBody" class="diet-report-modal__body"></div>
+            <div id="dietReportModalActions" class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <button type="button" id="dietReportCloseBtn" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="dietReportShareBtn" class="mealog-btn mealog-btn-primary hidden"><span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span></button>
             </div>
         </div>
     </div>
@@ -3183,12 +3192,13 @@
     <!-- Detail Analysis Modal (팝업) -->
     <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4 px-4">
         <div class="w-full max-w-[20rem] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
-            <div id="detailModalHeader" class="flex justify-between items-center p-4 pb-0 flex-shrink-0">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div id="detailModalHeader" class="mealog-dialog-head !pb-0 border-0">
                 <h2 id="detailModalTitle" class="font-bold text-slate-800">상세 통계</h2>
             </div>
-            <div id="detailContent" class="flex-1 overflow-y-auto p-4 pt-3 min-h-0"></div>
-            <div class="p-4 pt-0 border-t border-slate-200 flex-shrink-0">
-                <button type="button" onclick="window.closeDetailModal()" class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 active:bg-slate-300 transition-colors">닫기</button>
+            <div id="detailContent" class="flex-1 overflow-y-auto px-5 pt-3 pb-4 min-h-0"></div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <button type="button" onclick="window.closeDetailModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
             </div>
         </div>
     </div>
@@ -3211,11 +3221,9 @@
     <!-- Character Select Popup (Center Modal) -->
     <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md">
-            <div class="flex justify-between items-center mb-4">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head !px-0 !pt-0 !pb-4">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
-                <button onclick="window.closeCharacterSelectModal()" class="text-slate-400 hover:text-slate-600 transition-colors">
-                    <i data-lucide="x" class="text-xl"></i>
-                </button>
             </div>
             <div class="flex flex-col gap-3">
                 <div class="character-popup-item active flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-colors hover:bg-slate-50" data-character-id="mealog" onclick="window.selectInsightCharacter('mealog')">
@@ -3239,31 +3247,27 @@
     </div>
 
     <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
+    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal" aria-modal="true" role="dialog" aria-labelledby="bestShareModalTitle">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden border border-slate-200/80">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
-            <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0">
-                <h2 class="text-base font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
-                <button type="button" onclick="window.closeShareBestModal()"><i data-lucide="x" class="text-xl text-slate-400"></i></button>
+            <div class="mealog-dialog-head border-b border-slate-200">
+                <h2 id="bestShareModalTitle" class="text-base font-bold text-slate-800 tracking-tight">베스트 공유하기</h2>
             </div>
             <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="bestSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
                 <div class="px-4 sm:px-5">
-                    <label class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
-                    <textarea id="bestShareComment" placeholder="이번 주/월의 베스트에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
+                    <label for="bestShareComment" class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
+                    <textarea id="bestShareComment" placeholder="모먼트에 함께 올릴 코멘트를 입력하세요..." class="w-full p-3 bg-slate-100 rounded-xl text-sm border border-slate-200/80 focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
-            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
-                <button type="button" onclick="window.closeShareBestModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
-                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
-                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
-                </button>
-                <button type="button" id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
-                    <span id="bestShareSubmitLabel" class="text-sm sm:text-[15px] font-bold">공유하기</span>
-                    <span id="bestShareSubmitSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 공유</span>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" onclick="window.closeShareBestModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="mealog-btn mealog-btn-primary">
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="bestShareSubmitLabel">공유하기</span></span>
                 </button>
             </div>
         </div>
@@ -3272,13 +3276,13 @@
     <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
     <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
                 <p class="text-slate-600 font-bold">공유 중...</p>
             </div>
-            <div class="px-4 py-3 sm:px-5 sm:py-3.5 border-b border-slate-200 flex justify-between items-center gap-2 flex-shrink-0 min-w-0">
+            <div class="mealog-dialog-head border-b border-slate-200 min-w-0">
                 <h2 class="text-base font-bold text-slate-800 tracking-tight min-w-0">밀당(MEAL-DANG)들의 참견 공유하기</h2>
-                <button type="button" class="shrink-0" onclick="window.closeShareInsightModal()"><i data-lucide="x" class="text-xl text-slate-400"></i></button>
             </div>
             <div class="space-y-4 overflow-y-auto pb-6 min-h-0">
                 <div id="insightSharePreview" class="bg-slate-50 rounded-2xl" style="padding: 3px;"></div>
@@ -3287,7 +3291,7 @@
                     <textarea id="insightShareComment" placeholder="밀당(MEAL-DANG)들의 참견에 대한 코멘트를 입력하세요..." class="w-full p-3 bg-slate-50 rounded-xl text-sm border border-transparent focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
                 </div>
             </div>
-            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border mealog-dialog-actions--flush">
                 <button type="button" onclick="window.closeShareInsightModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
                     <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
                     <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
@@ -3303,20 +3307,21 @@
     <!-- 베스트 공유 기간 안내 팝업 (토스트 대신 확인 버튼으로 닫기) -->
     <div id="bestSharePeriodNoticeModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4" onclick="if(event.target === this) window.closeBestSharePeriodNotice()">
         <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 flex flex-col items-stretch gap-4">
-            <h3 class="text-lg font-bold text-slate-800 text-center">베스트 공유 안내</h3>
-            <p id="bestSharePeriodNoticeMessage" class="text-sm text-slate-600 text-center leading-relaxed"></p>
-            <button type="button" onclick="window.closeBestSharePeriodNotice()" class="w-full py-3 bg-slate-800 text-white rounded-xl font-bold active:bg-slate-900">확인</button>
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <h3 class="text-lg font-bold text-slate-800 text-left w-full">베스트 공유 안내</h3>
+            <p id="bestSharePeriodNoticeMessage" class="text-sm text-slate-600 text-left leading-relaxed w-full"></p>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single" style="padding-left:0;padding-right:0;padding-bottom:0;">
+                <button type="button" onclick="window.closeBestSharePeriodNotice()" class="mealog-btn mealog-btn-primary">확인</button>
+            </div>
         </div>
     </div>
 
     <!-- Photo Edit Modal -->
     <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4">
         <div class="w-full max-w-md bg-white rounded-2xl flex flex-col max-h-[90vh] overflow-hidden">
-            <div class="p-4 border-b border-slate-200 flex justify-between items-center shrink-0">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head border-b border-slate-200 shrink-0">
                 <h2 class="text-lg font-bold text-slate-800">사진 편집</h2>
-                <button onclick="window.closePhotoEditModal()" class="text-slate-400 hover:text-slate-600">
-                    <i data-lucide="x" class="text-xl"></i>
-                </button>
             </div>
             <div id="photoEditNavRow" class="hidden flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-200 bg-white shrink-0">
                 <button type="button" id="photoEditPrevBtn" onclick="window.goToPrevPhotoEdit()" class="flex items-center gap-1 min-w-0 px-2 py-1.5 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none">

@@ -789,8 +789,9 @@ function getDailyShareButtonHtmlForDate(dateStr) {
     const styleCls = isShared
         ? 'date-section-header__share-btn--shared'
         : 'date-section-header__share-btn--default';
-    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
-        <i data-lucide="send" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
+    const icon = isShared ? 'check' : 'send';
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}" title="${isShared ? '공유됨 — 탭하면 공유 해제' : '모먼트에 공유하기'}" aria-pressed="${isShared ? 'true' : 'false'}">
+        <i data-lucide="${icon}" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }
 
@@ -868,9 +869,71 @@ function buildHomeFeedTagsHtml(tags) {
         .join('')}</div>`;
 }
 
+/** 공유 캡처용 — 텍스트 ★ (lucide SVG는 html2canvas 정렬이 흔들림) */
+function buildShareCaptureStarsText(rating) {
+    const n = Number.parseInt(rating, 10);
+    const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
+    if (filled <= 0) return '—';
+    return '★'.repeat(filled);
+}
+
+/** 일간 공유 캡처용 — 좌측 1:1 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */
+function buildShareCaptureThumbHtml(urls) {
+    const first = urls?.[0];
+    if (!first) return '';
+    const n = urls.length;
+    const badge =
+        n > 1
+            ? `<span class="share-cap-thumb__badge" aria-hidden="true">1/${n}</span>`
+            : '';
+    const src = escapeHtml(first);
+    return `<div class="share-cap-thumb">
+        <img src="${src}" alt="" class="share-cap-thumb__img" width="92" height="92" data-photo-url="${src}" draggable="false" loading="eager">
+        ${badge}
+    </div>`;
+}
+
+/**
+ * 공유 캡처 전용 행 — table-cell + 고정 px (flex/grid보다 html2canvas 정렬이 안정적)
+ */
+function buildShareCaptureRowHtml({
+    hasPhoto,
+    photoHtml,
+    iconHtml,
+    iconKind = 'meal',
+    metaHtml,
+    titleHtml,
+    starsText = '—',
+    cardMbClass = ''
+}) {
+    const iconMod =
+        iconKind === 'snack'
+            ? ' share-cap-icon--snack'
+            : iconKind === 'journal'
+              ? ' share-cap-icon--journal'
+              : ' share-cap-icon--meal';
+    const thumbCell = hasPhoto && photoHtml
+        ? `<div class="share-cap-cell share-cap-cell--thumb">${photoHtml}</div>`
+        : '';
+    return `<div class="share-cap-row ${cardMbClass}">
+        <div class="share-cap-row__inner${hasPhoto ? ' share-cap-row__inner--photo' : ''}">
+            ${thumbCell}
+            <div class="share-cap-cell share-cap-cell--icon">
+                <div class="share-cap-icon${iconMod}" aria-hidden="true">${iconHtml}</div>
+            </div>
+            <div class="share-cap-cell share-cap-cell--text">
+                <div class="share-cap-meta">${metaHtml}</div>
+                <div class="share-cap-title">${titleHtml}</div>
+            </div>
+            <div class="share-cap-cell share-cap-cell--stars" aria-label="만족도">${escapeHtml(starsText)}</div>
+        </div>
+    </div>`;
+}
+
 /**
  * 시안 v2 세로 피드 카드 — 상단 사진(선택) + 본문(아이콘·텍스트·별점)
- * 사진이 있어도 본문 왼쪽 아이콘은 유지. 별점은 메타(슬롯·장소) 행 오른쪽에만.
+ * 공유 캡처(forShareCapture): table 행 + 텍스트 별점
+ * @param {{ forShareCapture?: boolean }} [extra]
  */
 function buildHomeFeedCardShellHtml({
     openClick,
@@ -884,28 +947,51 @@ function buildHomeFeedCardShellHtml({
     titleHtml,
     noteHtml,
     tagsHtml,
-    ratingVal
+    ratingVal,
+    forShareCapture = false
 }) {
-    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
-    const shareDisp = isEntryShared(record?.id, record) ? 'inline' : 'none';
-    const stars = buildHomeFeedStarsHtml(ratingVal);
     const iconMod =
         iconKind === 'snack'
             ? ' home-feed-card__icon--snack'
             : iconKind === 'journal'
               ? ' home-feed-card__icon--journal'
               : ' home-feed-card__icon--meal';
+
+    if (forShareCapture) {
+        return buildShareCaptureRowHtml({
+            hasPhoto,
+            photoHtml,
+            iconHtml,
+            iconKind,
+            metaHtml,
+            titleHtml,
+            starsText: buildShareCaptureStarsText(ratingVal),
+            cardMbClass
+        });
+    }
+
+    const stars = buildHomeFeedStarsHtml(ratingVal);
+    const openAttrs = openClick || '';
+    const pointerCls = mealEntryRowPointerClass(record);
+    const relativeCls = mealCardRelativeClass(record);
+    const syncLead = mealEntrySyncLeadHtml(record);
+    const entryAttr =
+        record?.id != null ? ` data-entry-id="${escapeHtml(String(record.id))}"` : '';
+    const shareDisp = isEntryShared(record?.id, record) ? 'inline' : 'none';
+    const shareArrowHtml = `<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>`;
+
+    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
     const photoBlock = hasPhoto
         ? `<div class="home-feed-card__photo relative">${photoHtml}</div>`
         : '';
-    return `<div ${openClick} class="card home-feed-card${photoClass} ${cardMbClass} ${mealEntryRowPointerClass(record)} ${mealCardRelativeClass(record)}" data-entry-id="${escapeHtml(String(record.id))}">
+    return `<div ${openAttrs} class="card home-feed-card${photoClass} ${cardMbClass} ${pointerCls} ${relativeCls}"${entryAttr}>
         ${photoBlock}
         <div class="home-feed-card__body">
             <div class="home-feed-card__icon${iconMod}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta-row">
-                    <div class="home-feed-card__meta">${mealEntrySyncLeadHtml(record)}${metaHtml}</div>
-                    <span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>
+                    <div class="home-feed-card__meta">${syncLead}${metaHtml}</div>
+                    ${shareArrowHtml}
                     ${stars}
                 </div>
                 <div class="home-feed-card__title">${titleHtml}</div>
@@ -923,8 +1009,10 @@ function buildSnackTimelineCardHtml(
     specificStyle,
     cardMbClass = 'mb-1.5',
     ordinal1Based = 1,
-    totalInSlot = 1
+    totalInSlot = 1,
+    opts = {}
 ) {
+    const forShareCapture = !!opts.forShareCapture;
     const p = r.snackPlace || r.place || '';
     const m = formatMealMenuDisplayLine(r);
     const menuLine =
@@ -937,36 +1025,41 @@ function buildSnackTimelineCardHtml(
     if (p) metaParts.push(p);
     const metaHtml = escapeHtml(metaParts.join(' · '));
     const titleHtml = escapeHtml(menuLine || slotTitleForCard);
-    const noteHtml = r.comment
-        ? `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`
-        : '';
+    const noteHtml =
+        !forShareCapture && r.comment
+            ? `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`
+            : '';
     const tags = [];
-    const clockTag = mealClockTagLabelFromRecord(r);
-    if (clockTag) tags.push(clockTag);
-    if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
-    if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
-    if (r.satiety) {
-        const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
-        if (sData) tags.push(sData.label);
+    if (!forShareCapture) {
+        const clockTag = mealClockTagLabelFromRecord(r);
+        if (clockTag) tags.push(clockTag);
+        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+        if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
+        if (r.satiety) {
+            const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+            if (sData) tags.push(sData.label);
+        }
     }
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = snackPhotoUrls.length > 0;
     let photoHtml = '';
     let iconHtml = `<i data-lucide="${getSlotLucideIcon(slot.id)}"></i>`;
     if (hasPhoto) {
-        photoHtml = buildTimelinePhotoCellInnerHtml(
-            snackPhotoUrls,
-            'object-cover',
-            { dateStr, slotId: slot.id, recordId: r.id },
-            getMealDisplayUrlsForTimeline(r),
-            { interactive: false }
-        );
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(snackPhotoUrls)
+            : buildTimelinePhotoCellInnerHtml(
+                  snackPhotoUrls,
+                  'object-cover',
+                  { dateStr, slotId: slot.id, recordId: r.id },
+                  getMealDisplayUrlsForTimeline(r),
+                  { interactive: false }
+              );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i data-lucide="ban"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
-    const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    const openClick = forShareCapture || blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
     return buildHomeFeedCardShellHtml({
         openClick,
         cardMbClass,
@@ -978,8 +1071,9 @@ function buildSnackTimelineCardHtml(
         metaHtml,
         titleHtml,
         noteHtml,
-        tagsHtml: buildHomeFeedTagsHtml(tags),
-        ratingVal
+        tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
+        ratingVal,
+        forShareCapture
     });
 }
 
@@ -990,8 +1084,10 @@ function buildMainMealTimelineCardHtml(
     specificStyle,
     cardMbClass = 'mb-1.5',
     ordinal1Based = 1,
-    totalInSlot = 1
+    totalInSlot = 1,
+    opts = {}
 ) {
+    const forShareCapture = !!opts.forShareCapture;
     const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
     let metaHtml = escapeHtml(slotTitleForCard);
     let titleHtml = escapeHtml(slotTitleForCard);
@@ -1005,17 +1101,19 @@ function buildMainMealTimelineCardHtml(
         const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
         if (p) metaHtml = escapeHtml(`${slotTitleForCard} · ${p}`);
         titleHtml = escapeHtml(menuLine || slotTitleForCard);
-        if (r.comment) {
+        if (!forShareCapture && r.comment) {
             noteHtml = `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`;
         }
-        const clockTagMain = mealClockTagLabelFromRecord(r);
-        if (clockTagMain) tags.push(clockTagMain);
-        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
-        if (r.withWhomDetail) tags.push(r.withWhomDetail);
-        else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
-        if (r.satiety) {
-            const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
-            if (sData) tags.push(sData.label);
+        if (!forShareCapture) {
+            const clockTagMain = mealClockTagLabelFromRecord(r);
+            if (clockTagMain) tags.push(clockTagMain);
+            if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+            if (r.withWhomDetail) tags.push(r.withWhomDetail);
+            else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+            if (r.satiety) {
+                const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+                if (sData) tags.push(sData.label);
+            }
         }
     }
     const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
@@ -1023,19 +1121,21 @@ function buildMainMealTimelineCardHtml(
     let photoHtml = '';
     let iconHtml = mainMealSlotIconHtml(slot.id, '', 'lg');
     if (hasPhoto) {
-        photoHtml = buildTimelinePhotoCellInnerHtml(
-            mainPhotoUrls,
-            'object-cover',
-            { dateStr, slotId: slot.id, recordId: r.id },
-            getMealDisplayUrlsForTimeline(r),
-            { interactive: false }
-        );
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(mainPhotoUrls)
+            : buildTimelinePhotoCellInnerHtml(
+                  mainPhotoUrls,
+                  'object-cover',
+                  { dateStr, slotId: slot.id, recordId: r.id },
+                  getMealDisplayUrlsForTimeline(r),
+                  { interactive: false }
+              );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i data-lucide="ban"></i>`;
     }
     const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
-    const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    const openClick = forShareCapture || blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
     return buildHomeFeedCardShellHtml({
         openClick,
         cardMbClass,
@@ -1047,8 +1147,9 @@ function buildMainMealTimelineCardHtml(
         metaHtml,
         titleHtml,
         noteHtml,
-        tagsHtml: buildHomeFeedTagsHtml(tags),
-        ratingVal
+        tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
+        ratingVal,
+        forShareCapture
     });
 }
 
@@ -1368,8 +1469,8 @@ function buildDailyJournalListFilledHtml(dateStr, journal) {
     </div>`;
 }
 
-function buildDailyJournalCardHtml(dateStr, journal) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
+function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
+    const forShareCapture = !!opts.forShareCapture;
     const slot = DAILY_JOURNAL_SLOT;
     const hasContent = dailyJournalHasContent(journal);
     const comment = String(journal.comment || '').trim();
@@ -1380,15 +1481,41 @@ function buildDailyJournalCardHtml(dateStr, journal) {
     let photoHtml = '';
     let iconHtml = `<i data-lucide="book-open"></i>`;
     if (hasPhoto) {
-        photoHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
-            interactive: false
-        });
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(photos)
+            : buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
+                  interactive: false
+              });
     } else if (!hasContent) {
         iconHtml = `<i data-lucide="plus"></i>`;
     }
 
+    // 공유 캡처: 코멘트·태그 제외, 사진은 좌측 썸네일
+    if (forShareCapture) {
+        const photoCount = photos.length;
+        const titleHtml = escapeHtml(
+            photoCount > 0 ? (photoCount === 1 ? '사진 1장' : `사진 ${photoCount}장`) : '하루 기록'
+        );
+        return buildHomeFeedCardShellHtml({
+            openClick: '',
+            cardMbClass: 'mb-0 daily-journal-slot',
+            record: null,
+            hasPhoto,
+            photoHtml,
+            iconHtml,
+            iconKind: 'journal',
+            metaHtml: safeLabel,
+            titleHtml,
+            noteHtml: '',
+            tagsHtml: '',
+            ratingVal: '',
+            forShareCapture: true
+        });
+    }
+
     const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
-    const metaHtml = `${dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : ''}${safeLabel}${shareArrow}`;
+    const syncLead = dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : '';
+    const metaHtml = `${syncLead}${safeLabel}${shareArrow}`;
     const titleHtml = hasContent
         ? escapeHtml(
               comment
@@ -1421,6 +1548,58 @@ function buildDailyJournalCardHtml(dateStr, journal) {
             </div>
         </div>
     </div>`;
+}
+
+/**
+ * 일간 공유 캡처용 본문
+ * — 기록 있는 슬롯만 / 하루 기록 포함 / 코멘트·태그 제외
+ * — table 행 + 1:1 썸네일 + 아이콘 (캡처 정렬 안정화)
+ */
+export function buildDailyShareHomeFeedBodyHtml(dateStr) {
+    let html = '';
+    const shareOpts = { forShareCapture: true };
+    SLOTS.forEach((slot) => {
+        const recordsRaw = (window.mealHistory || []).filter((m) => m.date === dateStr && m.slotId === slot.id);
+        const records = sortSnackSlotRecordsChronological(recordsRaw);
+        if (records.length === 0) return;
+        const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES.default;
+        const groupClass = slot.type === 'main' ? 'main-slot-card-group' : 'snack-slot-card-group';
+        html += `<div class="${groupClass}">`;
+        records.forEach((r, idx) => {
+            if (slot.type === 'main') {
+                html += buildMainMealTimelineCardHtml(
+                    dateStr,
+                    slot,
+                    r,
+                    specificStyle,
+                    'mb-0',
+                    idx + 1,
+                    records.length,
+                    shareOpts
+                );
+            } else {
+                html += buildSnackTimelineCardHtml(
+                    dateStr,
+                    slot,
+                    r,
+                    specificStyle,
+                    'mb-0',
+                    idx + 1,
+                    records.length,
+                    shareOpts
+                );
+            }
+        });
+        html += `</div>`;
+    });
+    const dailyJournal = getDailyJournalForTimeline(dateStr);
+    if (dailyJournalHasContent(dailyJournal)) {
+        html += buildDailyJournalCardHtml(dateStr, dailyJournal, shareOpts);
+    }
+    if (!html) {
+        html = `<div class="daily-share-capture__empty"><p>이 날은 기록이 없어요.</p></div>`;
+    }
+    return html;
 }
 
 function refreshTimelineAfterSnackViewChange() {
@@ -1930,6 +2109,7 @@ function closeTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (modal) modal.classList.add('hidden');
 }
+window.closeTrackerMonthCalendar = closeTrackerMonthCalendar;
 
 function renderTrackerMonthCalendarPopup() {
     const grid = document.getElementById('trackerMonthCalendarGrid');
