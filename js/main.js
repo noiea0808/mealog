@@ -1360,9 +1360,14 @@ initAuth(async (user) => {
                             window.hasScrolledToToday = false;
                         }
                         const container = document.getElementById('timelineContainer');
+                        if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
                         if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
+                        // 밀로그 진입 직후 첫 로드로 화면이 다시 그려지면 스와이프 힌트 재예약
+                        if (window.__pendingDailySwipeHint && typeof window.scheduleDailySwipeHint === 'function') {
+                            window.scheduleDailySwipeHint(0);
+                        }
                         // 리스너 initial 재렌더 직후: 선택일이 로드 구간 밖이면 on-demand로 보강
                         if (appState.viewMode === 'page' && appState.pageDate instanceof Date && !isNaN(+appState.pageDate)) {
                             const py = appState.pageDate.getFullYear();
@@ -2112,6 +2117,116 @@ function initDailySwipeGesture() {
     let currentDragX = 0;
     let horizontalLocked = null; // null: 미결정, true: 가로, false: 세로
     let isAnimating = false;
+    let isSwipeHintPlaying = false;
+    let swipeHintTimer = null;
+    let swipeHintToken = 0;
+    let swipeHintFallbackTimer = null;
+
+    const prefersReducedMotion = () => {
+        try {
+            return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const clearSwipeHintAnimation = () => {
+        const tc = getTimelineContainer();
+        if (!tc) return;
+        tc.classList.remove('timeline-container--swipe-hint');
+        tc.style.transition = '';
+        tc.style.transform = 'translate3d(0, 0, 0)';
+        tc.style.willChange = '';
+    };
+
+    const cancelDailySwipeHint = () => {
+        swipeHintToken += 1;
+        if (swipeHintTimer) {
+            clearTimeout(swipeHintTimer);
+            swipeHintTimer = null;
+        }
+        if (swipeHintFallbackTimer) {
+            clearTimeout(swipeHintFallbackTimer);
+            swipeHintFallbackTimer = null;
+        }
+        if (isSwipeHintPlaying) {
+            isSwipeHintPlaying = false;
+            clearSwipeHintAnimation();
+        }
+    };
+
+    const playDailySwipeHintNow = () => {
+        if (prefersReducedMotion()) {
+            window.__pendingDailySwipeHint = false;
+            return;
+        }
+        if (document.body?.dataset?.mainTab !== 'timeline') return;
+        if (tv.classList.contains('hidden')) return;
+        if (appState.viewMode !== 'page') return;
+        if (isAnimating || tracking) return;
+        const tc = getTimelineContainer();
+        if (!tc || tc.childElementCount === 0) return;
+
+        // pending은 재생 완료 시에만 해제 — 중도 취소 후 initial 재렌더에서 바로 재시도 가능
+        isSwipeHintPlaying = true;
+        tc.style.transition = 'none';
+        tc.style.transform = '';
+        tc.style.willChange = 'transform';
+        // 재시작을 위해 클래스 토글
+        tc.classList.remove('timeline-container--swipe-hint');
+        void tc.offsetWidth;
+        tc.classList.add('timeline-container--swipe-hint');
+
+        const finish = () => {
+            if (!isSwipeHintPlaying) return;
+            isSwipeHintPlaying = false;
+            window.__pendingDailySwipeHint = false;
+            if (swipeHintFallbackTimer) {
+                clearTimeout(swipeHintFallbackTimer);
+                swipeHintFallbackTimer = null;
+            }
+            clearSwipeHintAnimation();
+        };
+        const onEnd = (ev) => {
+            if (ev.target !== tc) return;
+            if (ev.animationName && ev.animationName !== 'mealog-timeline-swipe-hint') return;
+            tc.removeEventListener('animationend', onEnd);
+            finish();
+        };
+        tc.addEventListener('animationend', onEnd);
+        if (swipeHintFallbackTimer) clearTimeout(swipeHintFallbackTimer);
+        swipeHintFallbackTimer = setTimeout(finish, 900);
+    };
+
+    /** 밀로그 진입 직후 좌우 스와이프 힌트 재생 */
+    const scheduleDailySwipeHint = (delayMs = 0) => {
+        if (prefersReducedMotion()) {
+            window.__pendingDailySwipeHint = false;
+            return;
+        }
+        const token = ++swipeHintToken;
+        if (swipeHintTimer) clearTimeout(swipeHintTimer);
+        if (isSwipeHintPlaying) {
+            isSwipeHintPlaying = false;
+            clearSwipeHintAnimation();
+        }
+        const start = () => {
+            if (token !== swipeHintToken) return;
+            playDailySwipeHintNow();
+        };
+        if (delayMs > 0) {
+            swipeHintTimer = setTimeout(() => {
+                swipeHintTimer = null;
+                start();
+            }, delayMs);
+        } else {
+            swipeHintTimer = null;
+            start();
+        }
+    };
+
+    window.scheduleDailySwipeHint = scheduleDailySwipeHint;
+    window.cancelDailySwipeHint = cancelDailySwipeHint;
 
     const resetTransform = () => {
         const tc = getTimelineContainer();
@@ -2152,6 +2267,7 @@ function initDailySwipeGesture() {
         const tc = getTimelineContainer();
         if (!tc) return;
 
+        cancelDailySwipeHint();
         isAnimating = true;
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
         // 화면 밖으로 충분히 밀어내 콘텐츠 교체 대기 구간이 보이지 않게 한다.
@@ -2211,6 +2327,7 @@ function initDailySwipeGesture() {
 
     const beginSwipe = (clientX, clientY) => {
         if (appState.viewMode !== 'page' || isAnimating) return false;
+        if (isSwipeHintPlaying) cancelDailySwipeHint();
         startX = clientX;
         startY = clientY;
         lastX = clientX;

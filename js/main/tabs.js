@@ -269,6 +269,10 @@ export function registerMainTabSwitch() {
                     }, PREFETCH_DELAY_MS);
                 }
             }
+            if (prevTab === 'timeline' && tab !== 'timeline') {
+                window.__pendingDailySwipeHint = false;
+                if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
+            }
             if (tab === 'dashboard') {
                 runAfterNavPaint(() => updateDashboard());
             } else if (tab === 'settings') {
@@ -333,32 +337,41 @@ export function registerMainTabSwitch() {
                     }, 200);
                 });
             } else if (tab === 'timeline') {
-                runAfterNavPaint(() => {
+                const shouldPlaySwipeHint = prevTab !== 'timeline' || opts.logTabVisit === true;
+                // 진입 직후 힌트가 한 박자 늦지 않도록 pending은 동기 설정·즉시 렌더
+                window.__pendingDailySwipeHint = !!shouldPlaySwipeHint;
+                if (appState.viewMode === 'list') {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    appState.pageDate = today;
+                }
+                window.loadedDates = [];
+                window.hasScrolledToToday = false;
+                const c = document.getElementById('timelineContainer');
+                if (c) c.innerHTML = '';
+                if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
+                renderTimeline();
+                renderMiniCalendar();
+                // 기록 데이터가 이미 있으면 즉시 재생. 아직이면 initial 재렌더 경로에서 재생.
+                if (
+                    shouldPlaySwipeHint &&
+                    window.loadedMealsDateRange &&
+                    typeof window.scheduleDailySwipeHint === 'function'
+                ) {
+                    window.scheduleDailySwipeHint(0);
+                }
+                loadMyShares().then((myShares) => {
+                    window.sharedPhotos = myShares;
                     if (appState.currentTab !== 'timeline') return;
-                    if (appState.viewMode === 'list') {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        appState.pageDate = today;
-                    }
-                    window.loadedDates = [];
-                    window.hasScrolledToToday = false;
-                    const c = document.getElementById('timelineContainer');
-                    if (c) c.innerHTML = "";
-                    renderTimeline();
-                    renderMiniCalendar();
-                    loadMyShares().then((myShares) => {
-                        window.sharedPhotos = myShares;
+                    updateTimelineShareIndicators();
+                    syncOrphanedSharesToMoment().then(() => {
                         if (appState.currentTab !== 'timeline') return;
                         updateTimelineShareIndicators();
-                        syncOrphanedSharesToMoment().then(() => {
-                            if (appState.currentTab !== 'timeline') return;
-                            updateTimelineShareIndicators();
-                        }).catch(() => {});
-                    }).catch(e => {
-                        console.error('본인 공유 로드 실패:', e);
-                        window.sharedPhotos = [];
-                        if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
-                    });
+                    }).catch(() => {});
+                }).catch(e => {
+                    console.error('본인 공유 로드 실패:', e);
+                    window.sharedPhotos = [];
+                    if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
                 });
             }
             if (typeof window.checkAndShowContentPopup === 'function') {
