@@ -8,8 +8,8 @@ import { escapeHtml } from './utils.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 
-/** 베스트 캡처 썸네일 — 기존 56px 대비 +20% */
-const BEST_SHARE_THUMB_SIZE = 67;
+/** 베스트 캡처 썸네일 — 67px 대비 +30% */
+const BEST_SHARE_THUMB_SIZE = 87;
 
 function buildBestListItemHtml(meal, index) {
     const slot = SLOTS.find((s) => s.id === meal.slotId);

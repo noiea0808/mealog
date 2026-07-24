@@ -6080,7 +6080,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .best-share-capture__head {
     background: #fff;
     padding: 12px 18px;
-    border-bottom: 1px solid #efe9e1;
+    border-bottom: 1px solid #c8bfb4;
 }
 .daily-share-capture__brand-row,
 .best-share-capture__brand-row {
@@ -6183,7 +6183,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     margin: 0;
     border: 0;
     border-radius: 0;
-    border-bottom: 1px solid #efe9e1;
+    border-bottom: 1px solid #c8bfb4;
     background: transparent;
 }
 .best-share-capture__sheet .share-cap-row:last-child {
@@ -6199,9 +6199,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     border-spacing: 0;
     box-sizing: border-box;
 }
-/* 베스트: 썸네일 67px(+20%) + 상하 여유 → 행 96px (하루기록과 동일 클립 방지 패턴) */
+/* 베스트: 썸네일 87px(+30%) + 상하 여백 7px(기존 대비 50%) → 행 101px */
 .best-share-capture__sheet .share-cap-row__inner--best {
-    height: 96px;
+    height: 101px;
 }
 /* 세로 정렬: vertical-align:top + 고정 padding-top
  * (middle은 html2canvas가 브라우저와 다르게 계산 → 텍스트가 아래로 잠김) */
@@ -6214,7 +6214,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     font-family: 'Pretendard', sans-serif;
 }
 .best-share-capture__sheet .share-cap-cell {
-    height: 96px;
+    height: 101px;
 }
 /* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움 */
 .daily-share-capture__sheet .share-cap-cell--thumb {
@@ -6224,8 +6224,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     vertical-align: top;
 }
 .best-share-capture__sheet .share-cap-cell--thumb {
-    width: 79px;
-    padding: 14px 0 0 0;
+    width: 99px;
+    padding: 7px 0;
 }
 .daily-share-capture__sheet .share-cap-cell--rank,
 .best-share-capture__sheet .share-cap-cell--rank {
@@ -6240,7 +6240,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     font-variant-numeric: tabular-nums;
 }
 .best-share-capture__sheet .share-cap-cell--rank {
-    padding-top: 38px;
+    padding-top: 40px;
 }
 .daily-share-capture__sheet .share-cap-cell--icon {
     width: 58px;
@@ -6257,7 +6257,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     overflow: visible;
 }
 .best-share-capture__sheet .share-cap-cell--text {
-    padding: 24px 8px 12px;
+    padding: 28px 8px 12px;
     overflow: visible;
 }
 .daily-share-capture__sheet .share-cap-cell--stars,
@@ -6273,7 +6273,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     color: #d4a017;
 }
 .best-share-capture__sheet .share-cap-cell--stars {
-    padding-top: 40px;
+    padding-top: 42px;
 }
 
 .daily-share-capture__sheet .share-cap-thumb {
@@ -6290,8 +6290,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .best-share-capture__sheet .share-cap-thumb {
     position: relative;
     display: block;
-    width: 67px;
-    height: 67px;
+    width: 87px;
+    height: 87px;
     border-radius: 12px;
     overflow: hidden;
     background: #ece7e1;
@@ -6306,15 +6306,15 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .best-share-capture__sheet .share-cap-thumb__img {
     display: block;
-    width: 67px;
-    height: 67px;
+    width: 87px;
+    height: 87px;
     object-fit: cover;
     border: 0;
 }
 .daily-share-capture__sheet .share-cap-thumb--empty,
 .best-share-capture__sheet .share-cap-thumb--empty {
     text-align: center;
-    line-height: 67px;
+    line-height: 87px;
     color: #a8a29e;
     background: #f1ebe4;
 }
@@ -6325,8 +6325,8 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .best-share-capture__sheet .share-cap-thumb--empty svg,
 .best-share-capture__sheet .share-cap-thumb--empty .lucide {
     display: inline-block;
-    width: 28px !important;
-    height: 28px !important;
+    width: 32px !important;
+    height: 32px !important;
     vertical-align: middle;
     stroke: currentColor;
     color: #a8a29e;

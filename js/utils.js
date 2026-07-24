@@ -465,7 +465,7 @@ export function normalizeShareCaptureClone(root) {
 
     scope.querySelectorAll('.share-cap-thumb__img').forEach((img) => {
         const isBest = !!img.closest('.best-share-capture__sheet, .share-cap-row--best');
-        const w = Number.parseInt(img.getAttribute('width'), 10) || (isBest ? 67 : 92);
+        const w = Number.parseInt(img.getAttribute('width'), 10) || (isBest ? 87 : 92);
         const h = Number.parseInt(img.getAttribute('height'), 10) || w;
         img.setAttribute('width', String(w));
         img.setAttribute('height', String(h));
@@ -481,7 +481,7 @@ export function normalizeShareCaptureClone(root) {
 
     scope.querySelectorAll('.share-cap-thumb').forEach((el) => {
         const isBest = !!el.closest('.best-share-capture__sheet, .share-cap-row--best');
-        const s = isBest ? 67 : 92;
+        const s = isBest ? 87 : 92;
         el.style.width = `${s}px`;
         el.style.height = `${s}px`;
         el.style.overflow = 'hidden';
@@ -501,8 +501,8 @@ export function normalizeShareCaptureClone(root) {
         el.style.verticalAlign = 'top';
     });
     scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--thumb').forEach((el) => {
-        el.style.padding = '14px 0 0 0';
-        el.style.width = '79px';
+        el.style.padding = '7px 0';
+        el.style.width = '99px';
         el.style.verticalAlign = 'top';
     });
 
@@ -514,7 +514,7 @@ export function normalizeShareCaptureClone(root) {
         el.style.borderSpacing = '0';
     });
     scope.querySelectorAll('.best-share-capture__sheet .share-cap-row__inner--best').forEach((el) => {
-        el.style.height = '96px';
+        el.style.height = '101px';
     });
 
     // vertical-align: middle은 html2canvas가 다르게 계산해 텍스트가 아래로 잠김 → top + CSS padding-top 고정
@@ -527,7 +527,7 @@ export function normalizeShareCaptureClone(root) {
         el.style.paddingBottom = '12px';
     });
     scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--text').forEach((el) => {
-        el.style.paddingTop = '24px';
+        el.style.paddingTop = '28px';
         el.style.paddingBottom = '12px';
     });
     scope.querySelectorAll('.share-cap-meta').forEach((el) => {
@@ -559,10 +559,12 @@ export function normalizeShareCaptureClone(root) {
         }
     });
     scope.querySelectorAll('.share-cap-thumb--empty svg, .share-cap-thumb--empty i, .share-cap-thumb--empty .lucide').forEach((el) => {
-        el.style.width = '28px';
-        el.style.height = '28px';
-        el.setAttribute('width', '28');
-        el.setAttribute('height', '28');
+        const isBest = !!el.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const s = isBest ? 32 : 28;
+        el.style.width = `${s}px`;
+        el.style.height = `${s}px`;
+        el.setAttribute('width', String(s));
+        el.setAttribute('height', String(s));
         el.style.display = 'inline-block';
         el.style.verticalAlign = 'middle';
         el.style.color = '#a8a29e';
