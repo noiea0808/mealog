@@ -790,7 +790,7 @@ function getDailyShareButtonHtmlForDate(dateStr) {
         ? 'date-section-header__share-btn--shared'
         : 'date-section-header__share-btn--default';
     const icon = isShared ? 'check' : 'send';
-    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}" title="${isShared ? '공유됨 — 탭하면 공유 해제' : '모먼트에 공유하기'}" aria-pressed="${isShared ? 'true' : 'false'}">
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}" title="${isShared ? '공유됨 — 탭하면 미리보기·공유 취소' : '모먼트에 공유하기'}" aria-pressed="${isShared ? 'true' : 'false'}">
         <i data-lucide="${icon}" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }

@@ -6094,38 +6094,37 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     display: table-cell;
     vertical-align: bottom;
     white-space: nowrap;
+    /* Fredoka(mealog) ↔ Pretendard(보조) 하단 맞춤 */
+    font-size: 0;
 }
 .daily-share-capture__brand,
 .daily-share-capture__brand.mealog-title,
 .best-share-capture__brand,
 .best-share-capture__brand.mealog-title {
-    display: inline;
+    display: inline-block;
+    vertical-align: bottom;
     font-family: 'Fredoka', sans-serif;
     font-size: 26px;
     font-weight: 600;
-    line-height: 28px;
+    line-height: 1;
     letter-spacing: -0.03em;
     color: #3cb889;
     text-transform: lowercase;
 }
-/* mealog 옆 보조 타이틀 — 보완 크기·색 (하루기록 / Best 공통) */
-.daily-share-capture__brand-sep,
+/* mealog 옆 보조 타이틀 — 보완 크기·색, 볼드 없음 */
 .daily-share-capture__brand-sub,
-.best-share-capture__brand-sep,
 .best-share-capture__brand-sub {
+    display: inline-block;
+    vertical-align: bottom;
+    margin-left: 7px;
     font-family: 'Pretendard', sans-serif;
     font-size: 14px;
-    font-weight: 600;
-    line-height: 28px;
+    font-weight: 400;
+    line-height: 1;
     letter-spacing: -0.02em;
     color: #9a9187;
-    vertical-align: baseline;
-}
-.daily-share-capture__brand-sep,
-.best-share-capture__brand-sep {
-    margin: 0 5px 0 4px;
-    font-weight: 500;
-    color: #b5ada3;
+    /* Fredoka 시각적 베이스라인에 맞춘 미세 보정 */
+    padding-bottom: 2px;
 }
 .daily-share-capture__date,
 .best-share-capture__date {
@@ -6134,11 +6133,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     text-align: right;
     font-family: 'Pretendard', sans-serif;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 400;
     color: #8b8278;
     letter-spacing: -0.01em;
-    line-height: 28px;
+    line-height: 1;
     white-space: nowrap;
+    padding-bottom: 2px;
 }
 .daily-share-capture__body {
     padding: 10px 10px 12px;

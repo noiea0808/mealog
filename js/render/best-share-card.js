@@ -73,7 +73,8 @@ export function buildBestShareCaptureHtml(top3Meals, opts) {
                 <div class="best-share-capture__head">
                     <div class="best-share-capture__brand-row">
                         <span class="best-share-capture__brand-group">
-                            <span class="best-share-capture__brand mealog-title">mealog</span><span class="best-share-capture__brand-sep">:</span><span class="best-share-capture__brand-sub">Best</span>
+                            <span class="best-share-capture__brand mealog-title">mealog</span>
+                            <span class="best-share-capture__brand-sub">Best</span>
                         </span>
                         <span class="best-share-capture__date">${escapeHtml(periodText)}</span>
                     </div>

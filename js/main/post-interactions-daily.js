@@ -178,7 +178,16 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 // escapeHtml은 render/index.js에서 import됨
 
-// 일간보기 공유: 이미 공유된 경우 해제, 아니면 미리보기 모달 열기
+function findExistingDailyShare(dateStr, uid) {
+    if (!dateStr || !uid || !Array.isArray(window.sharedPhotos)) return null;
+    return (
+        window.sharedPhotos.find(
+            (photo) => photo.type === 'daily' && photo.date === dateStr && photo.userId === uid
+        ) || null
+    );
+}
+
+// 일간보기 공유: 미리보기 모달 열기 (이미 공유됨 → 하단 '공유 취소')
 window.shareDailySummary = async (dateStr) => {
     try {
         if (!dateStr) {
@@ -191,31 +200,6 @@ window.shareDailySummary = async (dateStr) => {
             if (typeof window.requestLogin === 'function') window.requestLogin();
             return;
         }
-
-        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
-            ? window.sharedPhotos.find(photo =>
-                photo.type === 'daily' && photo.date === dateStr && photo.userId === uid)
-            : null;
-
-        if (existingShare) {
-            const photoUrlToRemove = existingShare.photoUrl;
-            const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
-                    !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-                );
-            }
-            if (appState.currentTab === 'timeline') renderTimeline();
-            if (appState.currentTab === 'gallery') renderGallery();
-            showToast('공유가 해제되었습니다.', 'success');
-            dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
-                if (window.sharedPhotos) window.sharedPhotos = prevShared;
-                if (appState.currentTab === 'timeline') renderTimeline();
-                if (appState.currentTab === 'gallery') renderGallery();
-            });
-            return;
-        }
-
         window.openDailySharePreviewModal(dateStr);
     } catch (err) {
         console.error('[shareDailySummary]', err);
@@ -241,19 +225,26 @@ window.openDailySharePreviewModal = (dateStr) => {
         return;
     }
 
+    const uid = window.currentUser?.uid;
+    const existingShare = findExistingDailyShare(dateStr, uid);
+    const isShared = !!existingShare;
+    const safeDate = String(dateStr).replace(/'/g, '');
+    const existingComment = existingShare?.comment ? String(existingShare.comment) : '';
+
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
     modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-labelledby', 'dailySharePreviewTitle');
+    if (isShared) modal.setAttribute('data-daily-share-mode', 'unshare');
 
     modal.innerHTML = `
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden border border-slate-200/80">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
-                <p class="text-slate-600 font-bold">공유 중...</p>
+                <p class="text-slate-600 font-bold" id="dailyShareLoadingLabel">공유 중...</p>
             </div>
             <div class="mealog-dialog-head border-b border-slate-200">
                 <h2 id="dailySharePreviewTitle" class="text-base font-bold text-slate-800 tracking-tight">일간 식단 공유 미리보기</h2>
@@ -269,8 +260,8 @@ window.openDailySharePreviewModal = (dateStr) => {
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
                 <button type="button" onclick="window.closeDailySharePreviewModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
-                <button type="button" id="dailyShareConfirmBtn" onclick="window.confirmDailyShare('${dateStr}', event)" class="mealog-btn mealog-btn-primary">
-                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유하기</span></span>
+                <button type="button" id="dailyShareConfirmBtn" data-date="${safeDate}" data-mode="${isShared ? 'unshare' : 'share'}" class="${isShared ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary'}">
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">${isShared ? '공유 취소' : '공유하기'}</span></span>
                 </button>
             </div>
         </div>
@@ -285,11 +276,22 @@ window.openDailySharePreviewModal = (dateStr) => {
             onClose: () => window.closeDailySharePreviewModal()
         });
     }
+    const confirmBtn = document.getElementById('dailyShareConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.onclick = (ev) => {
+            if (confirmBtn.getAttribute('data-mode') === 'unshare') {
+                void window.cancelDailyShare(safeDate, ev);
+            } else {
+                void window.confirmDailyShare(safeDate, ev);
+            }
+        };
+    }
+    const commentEl = document.getElementById('dailyShareComment');
+    if (commentEl && existingComment) commentEl.value = existingComment;
     scheduleLucideIcons(modal);
     const scrollEl = document.getElementById('dailySharePreviewScroll');
     if (scrollEl && previewCard) {
         scrollEl.appendChild(previewCard);
-        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
         setTimeout(() => {
             scrollEl.scrollTop = 0;
         }, 0);
@@ -298,6 +300,58 @@ window.openDailySharePreviewModal = (dateStr) => {
     modal.addEventListener('click', (e) => {
         if (e.target === modal) window.closeDailySharePreviewModal();
     });
+};
+
+/** 미리보기에서 일간 공유 취소 */
+window.cancelDailyShare = async (dateStr) => {
+    const uid = window.currentUser?.uid;
+    if (!uid) {
+        showToast('로그인이 필요합니다.', 'error');
+        if (typeof window.requestLogin === 'function') window.requestLogin();
+        return;
+    }
+    const existingShare = findExistingDailyShare(dateStr, uid);
+    if (!existingShare?.photoUrl) {
+        showToast('공유된 하루 기록을 찾을 수 없습니다.', 'error');
+        window.closeDailySharePreviewModal();
+        return;
+    }
+
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
+    const loadingLabel = previewModal?.querySelector('#dailyShareLoadingLabel');
+    if (loadingLabel) loadingLabel.textContent = '공유 취소 중...';
+    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
+
+    const shareBtn = document.getElementById('dailyShareConfirmBtn');
+    if (shareBtn) {
+        shareBtn.disabled = true;
+        shareBtn.className = 'mealog-btn mealog-btn-danger opacity-50 cursor-not-allowed';
+        shareBtn.innerHTML =
+            '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유 취소 중...</span></span>';
+        scheduleLucideIcons(shareBtn);
+    }
+
+    const photoUrlToRemove = existingShare.photoUrl;
+    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+    try {
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(
+                (p) => !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+            );
+        }
+        window.closeDailySharePreviewModal();
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast('공유가 취소되었습니다.', 'success');
+        await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
+    } catch (e) {
+        console.error('[cancelDailyShare]', e);
+        if (window.sharedPhotos) window.sharedPhotos = prevShared;
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast(getUserFacingErrorMessage(e, 'share') || '공유 취소에 실패했습니다.', 'error');
+    }
 };
 
 // 일간 공유 미리보기 모달 닫기
