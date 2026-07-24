@@ -2157,28 +2157,26 @@ function initDailySwipeGesture() {
             isSwipeHintPlaying = false;
             clearSwipeHintAnimation();
         }
+        // 아직 재생 전이면 schedule 예약만 풀어 initial 재시도 가능하게
+        if (!window.__dailySwipeHintPlayed && window.__dailySwipeHintScheduled) {
+            window.__dailySwipeHintScheduled = false;
+            window.__pendingDailySwipeHint = true;
+        }
     };
 
     const playDailySwipeHintNow = () => {
         if (prefersReducedMotion()) {
             window.__pendingDailySwipeHint = false;
+            window.__dailySwipeHintPlayed = true;
             return;
         }
-        // 탭 진입당 1회만 — initial 재렌더/중복 schedule로 두 번 흔들리지 않게
-        if (window.__dailySwipeHintPlayed) {
-            window.__pendingDailySwipeHint = false;
-            return;
-        }
-        if (document.body?.dataset?.mainTab !== 'timeline') return;
-        if (tv.classList.contains('hidden')) return;
-        if (appState.viewMode !== 'page') return;
-        if (isAnimating || tracking) return;
+        if (document.body?.dataset?.mainTab !== 'timeline') return false;
+        if (tv.classList.contains('hidden')) return false;
+        if (appState.viewMode !== 'page') return false;
+        if (isAnimating || tracking) return false;
         const tc = getTimelineContainer();
-        if (!tc || tc.childElementCount === 0) return;
+        if (!tc || tc.childElementCount === 0) return false;
 
-        // 실제 재생 시작 시점에 소진 — 이후 cancel+initial 재예약이 와도 재재생하지 않음
-        window.__dailySwipeHintPlayed = true;
-        window.__pendingDailySwipeHint = false;
         isSwipeHintPlaying = true;
         tc.style.transition = 'none';
         tc.style.transform = '';
@@ -2207,18 +2205,24 @@ function initDailySwipeGesture() {
         tc.addEventListener('animationend', onEnd);
         if (swipeHintFallbackTimer) clearTimeout(swipeHintFallbackTimer);
         swipeHintFallbackTimer = setTimeout(finish, 900);
+        return true;
     };
 
-    /** 밀로그 진입 직후 좌우 스와이프 힌트 재생 */
+    /** 밀로그 진입 직후 좌우 스와이프 힌트 재생 (방문당 1회) */
     const scheduleDailySwipeHint = (delayMs = 0) => {
         if (prefersReducedMotion()) {
             window.__pendingDailySwipeHint = false;
+            window.__dailySwipeHintPlayed = true;
             return;
         }
-        if (window.__dailySwipeHintPlayed) {
+        // schedule 예약 시점에 소진 — 탭/initial 중복 호출이 동시에 와도 1회만
+        if (window.__dailySwipeHintPlayed || window.__dailySwipeHintScheduled) {
             window.__pendingDailySwipeHint = false;
             return;
         }
+        window.__dailySwipeHintScheduled = true;
+        window.__pendingDailySwipeHint = false;
+
         const token = ++swipeHintToken;
         if (swipeHintTimer) clearTimeout(swipeHintTimer);
         if (isSwipeHintPlaying) {
@@ -2226,8 +2230,22 @@ function initDailySwipeGesture() {
             clearSwipeHintAnimation();
         }
         const start = () => {
-            if (token !== swipeHintToken) return;
-            playDailySwipeHintNow();
+            if (token !== swipeHintToken) {
+                if (!window.__dailySwipeHintPlayed) {
+                    window.__dailySwipeHintScheduled = false;
+                    window.__pendingDailySwipeHint = true;
+                }
+                return;
+            }
+            const started = playDailySwipeHintNow();
+            if (started) {
+                window.__dailySwipeHintPlayed = true;
+                window.__dailySwipeHintScheduled = false;
+                return;
+            }
+            // 컨테이너 비어 있으면 initial 재시도 허용
+            window.__dailySwipeHintScheduled = false;
+            window.__pendingDailySwipeHint = true;
         };
         if (delayMs > 0) {
             swipeHintTimer = setTimeout(() => {

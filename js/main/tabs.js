@@ -272,6 +272,7 @@ export function registerMainTabSwitch() {
             if (prevTab === 'timeline' && tab !== 'timeline') {
                 window.__pendingDailySwipeHint = false;
                 window.__dailySwipeHintPlayed = false;
+                window.__dailySwipeHintScheduled = false;
                 if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
             }
             if (tab === 'dashboard') {
@@ -338,10 +339,17 @@ export function registerMainTabSwitch() {
                     }, 200);
                 });
             } else if (tab === 'timeline') {
-                const shouldPlaySwipeHint = prevTab !== 'timeline' || opts.logTabVisit === true;
-                // 진입 직후 힌트가 한 박자 늦지 않도록 pending은 동기 설정·즉시 렌더
+                // 다른 탭→밀로그 진입 시에만 힌트 리셋. logTabVisit(로그인 직후 중복 호출)로
+                // played를 다시 false로 풀면 스와이프 힌트가 두 번 재생된다.
+                const enteringFromOtherTab = prevTab !== 'timeline';
+                const shouldPlaySwipeHint =
+                    enteringFromOtherTab ||
+                    (opts.logTabVisit === true && !window.__dailySwipeHintPlayed);
+                if (enteringFromOtherTab) {
+                    window.__dailySwipeHintPlayed = false;
+                    window.__dailySwipeHintScheduled = false;
+                }
                 window.__pendingDailySwipeHint = !!shouldPlaySwipeHint;
-                window.__dailySwipeHintPlayed = false;
                 if (appState.viewMode === 'list') {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
@@ -355,7 +363,6 @@ export function registerMainTabSwitch() {
                 renderTimeline();
                 renderMiniCalendar();
                 // 기록 데이터가 이미 있으면 즉시 재생. 아직이면 initial 재렌더 경로에서 재생.
-                // (이미 재생됐으면 스킵 — 탭 진입 + meals initial 재렌더 이중 재생 방지)
                 if (
                     shouldPlaySwipeHint &&
                     !window.__dailySwipeHintPlayed &&
