@@ -17,6 +17,7 @@ import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 import { getProfileAvatarDisplay } from './utils.js';
+import { scheduleLucideIcons } from './icons.js';
 
 /** 출석 환영 차트만 charts 모듈을 지연 로드 (밀당 전체 그래프와 분리) */
 let _welcomeChartsModPromise = null;
@@ -672,6 +673,31 @@ function prefetchWelcomeLatestDietReport() {
     void fetchReadyDietReportDates(uid);
 }
 
+function updateAttendanceWelcomeChartNavUi() {
+    const prevBtn = document.getElementById('attendanceWelcomeChartPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeChartNext');
+    const track = document.getElementById('attendanceWelcomeChartTrack');
+    const n = Number(track?.dataset.slideCount || 0);
+    const show = welcomeChartKind !== 'report' && n > 1;
+    [prevBtn, nextBtn].forEach((btn) => {
+        if (!btn) return;
+        btn.classList.toggle('hidden', !show);
+    });
+    if (!show) return;
+    const atStart = attendanceWelcomeSlideIdx <= 0;
+    const atEnd = attendanceWelcomeSlideIdx >= n - 1;
+    if (prevBtn) {
+        prevBtn.disabled = atStart;
+        prevBtn.classList.toggle('attendance-welcome-chart-nav--disabled', atStart);
+        prevBtn.setAttribute('aria-disabled', atStart ? 'true' : 'false');
+    }
+    if (nextBtn) {
+        nextBtn.disabled = atEnd;
+        nextBtn.classList.toggle('attendance-welcome-chart-nav--disabled', atEnd);
+        nextBtn.setAttribute('aria-disabled', atEnd ? 'true' : 'false');
+    }
+}
+
 function applyAttendanceWelcomeSlideTransform() {
     const track = document.getElementById('attendanceWelcomeChartTrack');
     const dots = document.getElementById('attendanceWelcomeChartDots');
@@ -684,6 +710,36 @@ function applyAttendanceWelcomeSlideTransform() {
             d.classList.toggle('attendance-welcome-dot--active', i === attendanceWelcomeSlideIdx);
         });
     }
+    updateAttendanceWelcomeChartNavUi();
+}
+
+function bindAttendanceWelcomeChartNavOnce() {
+    const prevBtn = document.getElementById('attendanceWelcomeChartPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeChartNext');
+    if (!prevBtn || !nextBtn || prevBtn.dataset.bound === '1') return;
+    prevBtn.dataset.bound = '1';
+    nextBtn.dataset.bound = '1';
+
+    const go = (delta) => {
+        const track = document.getElementById('attendanceWelcomeChartTrack');
+        const n = Number(track?.dataset.slideCount || 0);
+        if (n < 2) return;
+        const next = Math.max(0, Math.min(n - 1, attendanceWelcomeSlideIdx + delta));
+        if (next === attendanceWelcomeSlideIdx) return;
+        attendanceWelcomeSlideIdx = next;
+        applyAttendanceWelcomeSlideTransform();
+    };
+
+    prevBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        go(-1);
+    });
+    nextBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        go(1);
+    });
 }
 
 function updateWelcomeKindSwitchUi() {
@@ -825,13 +881,14 @@ async function loadWelcomeReportAtIndex(uid, index) {
 async function renderWelcomeReportPanel() {
     const panel = document.getElementById('attendanceWelcomeReportPanel');
     const content = document.getElementById('attendanceWelcomeReportContent');
-    const vp = document.getElementById('attendanceWelcomeChartViewport');
+    const carousel = document.getElementById('attendanceWelcomeChartCarousel');
     const dots = document.getElementById('attendanceWelcomeChartDots');
     if (!panel || !content) return;
 
     panel.classList.remove('hidden');
-    if (vp) vp.classList.add('hidden');
+    if (carousel) carousel.classList.add('hidden');
     if (dots) dots.classList.add('hidden');
+    updateAttendanceWelcomeChartNavUi();
 
     const uid = window.currentUser?.uid;
     if (!uid) {
@@ -994,6 +1051,8 @@ function renderAttendanceWelcomeChartsArea() {
     }
 
     if (reportPanel) reportPanel.classList.add('hidden');
+    const carousel = document.getElementById('attendanceWelcomeChartCarousel');
+    if (carousel) carousel.classList.remove('hidden');
     vp.classList.remove('hidden');
     dots.classList.remove('hidden');
     wrap.classList.remove('hidden');
@@ -1027,11 +1086,16 @@ function renderAttendanceWelcomeChartsArea() {
             track.style.transform = 'translateX(0)';
             updateWelcomeKindSwitchUi();
             bindAttendanceWelcomeChartsOnce();
+            bindAttendanceWelcomeChartNavOnce();
+            updateAttendanceWelcomeChartNavUi();
+            const carouselEl = document.getElementById('attendanceWelcomeChartCarousel');
+            if (carouselEl) scheduleLucideIcons(carouselEl);
         })
         .catch((e) => {
             console.warn('환영 차트 로드 실패:', e);
             track.innerHTML = '';
             dots.innerHTML = '';
+            updateAttendanceWelcomeChartNavUi();
         });
 }
 
@@ -1056,10 +1120,13 @@ export function closeAttendancePopup() {
     const reportContent = document.getElementById('attendanceWelcomeReportContent');
     if (reportPanel) reportPanel.classList.add('hidden');
     if (reportContent) reportContent.innerHTML = '';
+    const chartCarousel = document.getElementById('attendanceWelcomeChartCarousel');
     const chartVp = document.getElementById('attendanceWelcomeChartViewport');
     const chartDots = document.getElementById('attendanceWelcomeChartDots');
+    if (chartCarousel) chartCarousel.classList.remove('hidden');
     if (chartVp) chartVp.classList.remove('hidden');
     if (chartDots) chartDots.classList.remove('hidden');
+    updateAttendanceWelcomeChartNavUi();
     updateWelcomeKindSwitchUi();
     document.body.classList.remove('attendance-popup-anim');
     unlockAttendancePopupScroll();

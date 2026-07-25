@@ -8970,9 +8970,10 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 .attendance-welcome-analysis-more {
     border: 0;
     background: transparent;
-    padding: 0;
-    font-size: 11px;
+    padding: 0.2rem 0.35rem;
+    font-size: 13px;
     font-weight: 700;
+    line-height: 1.3;
     color: var(--green-deep, #2d9f74);
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -9001,7 +9002,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     max-width: 8.5rem;
 }
 .attendance-welcome-report-content {
-    max-height: min(17.5rem, 52vh);
+    max-height: min(28rem, 64vh);
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -9092,15 +9093,62 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-weight: 700;
 }
 /* 터치는 시작 요소의 touch-action이 적용됨 — 자식(SVG 등)이 auto면 가로 팬이 브라우저 스크롤로 소모되어 스와이프가 취소됨. pan-y만 허용해 가로 드래그는 JS(Pointer)로 처리 */
+.attendance-welcome-chart-carousel {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
 .attendance-welcome-chart-viewport,
 .attendance-welcome-chart-viewport * {
     touch-action: pan-y;
 }
 .attendance-welcome-chart-viewport {
+    flex: 1 1 auto;
+    min-width: 0;
     cursor: grab;
 }
 .attendance-welcome-chart-viewport:active {
     cursor: grabbing;
+}
+/* 식사·간식 도넛 좌우 스와이프 힌트 */
+.attendance-welcome-chart-nav {
+    flex: 0 0 auto;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin: 0 0.1rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--page, #fffcfa) 88%, transparent);
+    color: var(--muted, #7a7268);
+    cursor: pointer;
+    box-shadow: 0 0 0 1px var(--line, #d0c6ba);
+    transition: color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+.attendance-welcome-chart-nav [data-lucide],
+.attendance-welcome-chart-nav .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 2;
+}
+.attendance-welcome-chart-nav:hover:not(:disabled):not(.attendance-welcome-chart-nav--disabled) {
+    color: var(--green-deep, #2d9f74);
+    background: var(--green-soft, #eaf8f2);
+}
+.attendance-welcome-chart-nav:disabled,
+.attendance-welcome-chart-nav.attendance-welcome-chart-nav--disabled {
+    opacity: 0.28;
+    cursor: default;
+    pointer-events: none;
+}
+.attendance-welcome-chart-nav.hidden {
+    display: none !important;
 }
 .attendance-welcome-legend-swatch {
     width: 0.45rem;

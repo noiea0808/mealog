@@ -995,8 +995,26 @@
                     <div id="attendanceWelcomeReportPanel" class="hidden w-full px-2.5 py-1 box-border">
                         <div id="attendanceWelcomeReportContent" class="attendance-welcome-report-content w-full" role="region" aria-label="AI 식단분석 리포트"></div>
                     </div>
-                    <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
-                        <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>
+                    <div id="attendanceWelcomeChartCarousel" class="attendance-welcome-chart-carousel relative w-full">
+                        <button
+                            type="button"
+                            id="attendanceWelcomeChartPrev"
+                            class="attendance-welcome-chart-nav attendance-welcome-chart-nav--prev hidden"
+                            aria-label="이전 차트"
+                        >
+                            <i data-lucide="chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
+                            <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>
+                        </div>
+                        <button
+                            type="button"
+                            id="attendanceWelcomeChartNext"
+                            class="attendance-welcome-chart-nav attendance-welcome-chart-nav--next hidden"
+                            aria-label="다음 차트"
+                        >
+                            <i data-lucide="chevron-right" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <div class="flex w-full flex-col items-center gap-1.5 px-2.5 pt-1">
                         <button
