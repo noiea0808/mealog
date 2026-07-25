@@ -106,8 +106,61 @@ export function bindDialogGrabberPullClose(opts) {
 }
 
 /**
- * 여러 센터 팝업에 grabber를 한 번에 연결
- * @param {Array<{ rootId: string, panelSelector?: string, onClose: () => void, isDisabled?: () => boolean }>} specs
+ * 팝업 바깥(딤/루트) 클릭 시 닫기 — Soft Mint 센터 다이얼로그 공통
+ * @param {{
+ *   root?: HTMLElement|null,
+ *   panel?: HTMLElement|null,
+ *   backdrop?: HTMLElement|null,
+ *   onClose: () => void,
+ *   isDisabled?: () => boolean
+ * }} opts
+ */
+export function bindDialogBackdropDismiss(opts) {
+    const root = opts?.root;
+    const onClose = opts?.onClose;
+    if (!root || typeof onClose !== 'function') return;
+    if (root.dataset.mealogBackdropDismissBound === '1') return;
+    root.dataset.mealogBackdropDismissBound = '1';
+
+    const panel =
+        opts.panel ||
+        root.querySelector(
+            '.mealog-dialog-panel, .search-filter-modal__panel, .notification-modal, .diet-report-modal, .entry-modal-panel, .entry-slot-picker, .tracker-month-calendar-panel, [data-mealog-dialog-panel]'
+        ) ||
+        root.querySelector(':scope > div:not(.absolute):not([data-mealog-dialog-backdrop])');
+    const backdrop =
+        opts.backdrop ||
+        root.querySelector('[data-mealog-dialog-backdrop], .mealog-dialog-backdrop');
+    const isDisabled = typeof opts.isDisabled === 'function' ? opts.isDisabled : () => false;
+
+    const tryClose = (e) => {
+        if (root.classList.contains('hidden') || isDisabled()) return;
+        const t = e.target;
+        if (!(t instanceof Node)) return;
+        if (backdrop && (t === backdrop || backdrop.contains(t))) {
+            e.preventDefault();
+            onClose();
+            return;
+        }
+        if (t === root) {
+            e.preventDefault();
+            onClose();
+            return;
+        }
+        if (panel && panel.contains(t)) return;
+        /* 루트 직계 딤 영역(패널 밖) */
+        if (root.contains(t) && panel && !panel.contains(t)) {
+            e.preventDefault();
+            onClose();
+        }
+    };
+
+    root.addEventListener('click', tryClose);
+}
+
+/**
+ * 여러 센터 팝업에 grabber + 바깥 클릭 닫기를 한 번에 연결
+ * @param {Array<{ rootId: string, panelSelector?: string, backdropSelector?: string, onClose: () => void, isDisabled?: () => boolean, backdropDismiss?: boolean }>} specs
  */
 export function bindCenterDialogGrabbers(specs) {
     if (!Array.isArray(specs)) return;
@@ -119,10 +172,21 @@ export function bindCenterDialogGrabbers(specs) {
             root.querySelector(
                 '.mealog-dialog-panel, .search-filter-modal__panel, .notification-modal, .diet-report-modal, .entry-modal-panel, .entry-slot-picker, .tracker-month-calendar-panel, [data-mealog-dialog-panel]'
             ) ||
-            root.querySelector(':scope > div:not(.absolute)');
+            root.querySelector(':scope > div:not(.absolute):not([data-mealog-dialog-backdrop])');
         bindDialogGrabberPullClose({
             root,
             panel,
+            onClose: spec.onClose,
+            isDisabled: spec.isDisabled
+        });
+        if (spec.backdropDismiss === false) return;
+        const backdrop = spec.backdropSelector
+            ? root.querySelector(spec.backdropSelector)
+            : root.querySelector('[data-mealog-dialog-backdrop], .mealog-dialog-backdrop');
+        bindDialogBackdropDismiss({
+            root,
+            panel,
+            backdrop,
             onClose: spec.onClose,
             isDisabled: spec.isDisabled
         });

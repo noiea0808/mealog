@@ -11,6 +11,22 @@ const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
+/** 식사 상세 공통 팝업 탭 */
+const MEAL_DETAIL_TABS = [
+    { key: 'mealType', label: '어떻게' },
+    { key: 'category', label: '무엇을' },
+    { key: 'withWhom', label: '함께' }
+];
+/** 간식 상세 공통 팝업 탭 */
+const SNACK_DETAIL_TABS = [
+    { key: 'snackType', label: '무엇을' },
+    { key: 'snackPlace', label: '어디서' },
+    { key: 'snackWithWhom', label: '누구와' }
+];
+
+/** @type {{ group: 'meal'|'snack'|null, key: string|null, records: any[] }} */
+let detailModalState = { group: null, key: null, records: [] };
+
 /** meal 기록에서 사용자 설정 태그(상세) 분석 - 테이블용. options.menuSlotsOnly: 'meal' | 'snack' */
 function getTop10RankingsFromMeals(mealRecords, options = {}) {
     const { menuSlotsOnly } = options;
@@ -495,12 +511,68 @@ export function renderProportionChart(containerId, data, key) {
     container.innerHTML = html;
 }
 
+function getDetailTabGroup(key) {
+    if (MEAL_DETAIL_TABS.some((t) => t.key === key)) return 'meal';
+    if (SNACK_DETAIL_TABS.some((t) => t.key === key)) return 'snack';
+    return null;
+}
+
+function renderDetailModalTabs(group, activeKey) {
+    const tabsEl = document.getElementById('detailModalTabs');
+    if (!tabsEl) return;
+    const tabs = group === 'meal' ? MEAL_DETAIL_TABS : group === 'snack' ? SNACK_DETAIL_TABS : null;
+    if (!tabs) {
+        tabsEl.classList.add('hidden');
+        tabsEl.innerHTML = '';
+        return;
+    }
+    tabsEl.classList.remove('hidden');
+    tabsEl.innerHTML = tabs
+        .map(
+            (t) =>
+                `<button type="button" class="detail-modal-tab${t.key === activeKey ? ' detail-modal-tab--active' : ''}" role="tab" aria-selected="${t.key === activeKey ? 'true' : 'false'}" data-detail-tab="${t.key}">${t.label}</button>`
+        )
+        .join('');
+}
+
+function renderDetailModalBody(key, records, filteredData) {
+    const container = document.getElementById('detailContent');
+    if (!container) return;
+    const gaugeKeys = ['rating', 'snackRating', 'satiety', 'snackSatiety'];
+    let bodyHtml = '';
+    if (DETAIL_MODAL_TAB_KEYS.includes(key)) {
+        bodyHtml = buildDetailRankTabHtml(records || [], key);
+    } else if (gaugeKeys.includes(key)) {
+        bodyHtml = buildDetailGaugeRankHtml(filteredData || [], key);
+    } else {
+        bodyHtml = '<p class="text-slate-400 text-xs py-2">표시할 상세가 없습니다.</p>';
+    }
+    container.innerHTML = bodyHtml || '<p class="text-slate-400 text-xs py-2">데이터가 없습니다.</p>';
+}
+
+function bindDetailModalTabsOnce() {
+    const tabsEl = document.getElementById('detailModalTabs');
+    if (!tabsEl || tabsEl.dataset.bound === '1') return;
+    tabsEl.dataset.bound = '1';
+    tabsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-detail-tab]');
+        if (!btn) return;
+        const next = btn.getAttribute('data-detail-tab');
+        if (!next || next === detailModalState.key) return;
+        detailModalState.key = next;
+        renderDetailModalTabs(detailModalState.group, next);
+        renderDetailModalBody(next, detailModalState.records, null);
+    });
+}
+
+/**
+ * @param {string} key mealType|category|withWhom|snackType|…|rating…
+ * @param {string} [title] 게이지 등 단일 상세용 제목 (탭 모드는 그룹 제목 사용)
+ */
 export function openDetailModal(key, title) {
     logUsageMetric('mealdang_analysis_detail_click').catch(() => {});
     const titleEl = document.getElementById('detailModalTitle');
-    const container = document.getElementById('detailContent');
     const headerEl = document.getElementById('detailModalHeader');
-    if (titleEl) titleEl.innerText = title;
     if (headerEl) headerEl.classList.remove('hidden');
 
     if (!window.getDashboardData) {
@@ -509,16 +581,21 @@ export function openDetailModal(key, title) {
     }
 
     const { filteredData, mealRecordsForTable } = window.getDashboardData();
-    const gaugeKeys = ['rating', 'snackRating', 'satiety', 'snackSatiety'];
-    let bodyHtml = '';
-    if (DETAIL_MODAL_TAB_KEYS.includes(key)) {
-        bodyHtml = buildDetailRankTabHtml(mealRecordsForTable || [], key);
-    } else if (gaugeKeys.includes(key)) {
-        bodyHtml = buildDetailGaugeRankHtml(filteredData || [], key);
+    const group = getDetailTabGroup(key);
+    const records = mealRecordsForTable || [];
+
+    if (group) {
+        detailModalState = { group, key, records };
+        if (titleEl) titleEl.textContent = group === 'meal' ? '식사 상세' : '간식 상세';
+        renderDetailModalTabs(group, key);
+        bindDetailModalTabsOnce();
+        renderDetailModalBody(key, records, null);
     } else {
-        bodyHtml = '<p class="text-slate-400 text-xs py-2">표시할 상세가 없습니다.</p>';
+        detailModalState = { group: null, key, records: [] };
+        if (titleEl) titleEl.textContent = title || '상세 통계';
+        renderDetailModalTabs(null, key);
+        renderDetailModalBody(key, records, filteredData || []);
     }
-    if (container) container.innerHTML = bodyHtml || '<p class="text-slate-400 text-xs py-2">데이터가 없습니다.</p>';
 
     if (window.currentDetailChart) {
         window.currentDetailChart.destroy();
@@ -526,12 +603,13 @@ export function openDetailModal(key, title) {
     }
 
     document.getElementById('detailModal')?.classList.remove('hidden');
-    lockBodyScroll();
+    lockBodyScroll('detailModal');
 }
 
 export function closeDetailModal() {
-    document.getElementById('detailModal').classList.add('hidden');
-    unlockBodyScroll();
+    document.getElementById('detailModal')?.classList.add('hidden');
+    unlockBodyScroll('detailModal');
+    detailModalState = { group: null, key: null, records: [] };
     if (window.currentDetailChart) {
         window.currentDetailChart.destroy();
         window.currentDetailChart = null;

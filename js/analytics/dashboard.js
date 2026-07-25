@@ -412,23 +412,29 @@ export async function updateDashboard() {
         }
     }
     
-    // 식사 기록: 분자 = Skip 제외 본식 전체 건수, 분모 = 일수×3 + 추가본식(동일 슬롯 2건째부터)
+    // 식사 기록: 분자 = Skip 제외 본식 건수, 분모 = 일수×슬롯수 + 추가본식
+    // 슬롯 필터(아침/점심/저녁) 시 해당 슬롯만 집계 (예: 7일 점심 → 분모 7)
     const hasMealHistoryData = filteredData.some((m) => m.date);
     const kpiRecords =
         Array.isArray(mealRecordsForTable) && mealRecordsForTable.length > 0
             ? mealRecordsForTable
             : (filteredData.some((m) => m.date) ? filteredData : []);
+    const recordsForKpi =
+        mealSlot === 'all'
+            ? kpiRecords
+            : (kpiRecords || []).filter((m) => m.slotId === mealSlot);
+    const slotsPerDay = mealSlot === 'all' ? 3 : 1;
     let recCount = 0;
     let extraMain = 0;
-    if (kpiRecords.length > 0) {
-        const kpi = computeMainMealKpiFromRecords(kpiRecords);
+    if (mealSlot !== 'all' || recordsForKpi.length > 0) {
+        const kpi = computeMainMealKpiFromRecords(recordsForKpi);
         recCount = kpi.recCount;
         extraMain = kpi.extraMain;
     } else if (statsMainCount != null) {
         recCount = statsMainCount;
         extraMain = 0;
     }
-    const totalRec = computeMainMealKpiDenominator(targetDays, extraMain);
+    const totalRec = computeMainMealKpiDenominator(targetDays, extraMain, slotsPerDay);
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
     const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {

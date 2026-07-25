@@ -183,11 +183,13 @@ window.switchAdminTab = function(tab) {
         loadAdminLogTab();
     } else if (tab === 'uiGuide') {
         const active =
-            !document.getElementById('uiGuide-panel-popup')?.classList.contains('hidden')
-                ? 'popup'
-                : !document.getElementById('uiGuide-panel-palette')?.classList.contains('hidden')
-                  ? 'palette'
-                  : 'hub';
+            !document.getElementById('uiGuide-panel-flow')?.classList.contains('hidden')
+                ? 'flow'
+                : !document.getElementById('uiGuide-panel-popup')?.classList.contains('hidden')
+                  ? 'popup'
+                  : !document.getElementById('uiGuide-panel-palette')?.classList.contains('hidden')
+                    ? 'palette'
+                    : 'hub';
         void ensureUiGuidePanel(active);
     }
 }
@@ -203,24 +205,35 @@ window.switchUiGuideSubtab = function(which) {
     const hubPanel = document.getElementById('uiGuide-panel-hub');
     const palettePanel = document.getElementById('uiGuide-panel-palette');
     const popupPanel = document.getElementById('uiGuide-panel-popup');
+    const flowPanel = document.getElementById('uiGuide-panel-flow');
     const btnHub = document.getElementById('uiGuide-subtab-hub');
     const btnPalette = document.getElementById('uiGuide-subtab-palette');
     const btnPopup = document.getElementById('uiGuide-subtab-popup');
+    const btnFlow = document.getElementById('uiGuide-subtab-flow');
     const active =
         'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
     const idle =
         'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
-    const w = which === 'palette' ? 'palette' : which === 'popup' ? 'popup' : 'hub';
+    const w =
+        which === 'palette'
+            ? 'palette'
+            : which === 'popup'
+              ? 'popup'
+              : which === 'flow'
+                ? 'flow'
+                : 'hub';
     if (hubPanel) hubPanel.classList.toggle('hidden', w !== 'hub');
     if (palettePanel) palettePanel.classList.toggle('hidden', w !== 'palette');
     if (popupPanel) popupPanel.classList.toggle('hidden', w !== 'popup');
+    if (flowPanel) flowPanel.classList.toggle('hidden', w !== 'flow');
     if (btnHub) btnHub.className = w === 'hub' ? active : idle;
     if (btnPalette) btnPalette.className = w === 'palette' ? active : idle;
     if (btnPopup) btnPopup.className = w === 'popup' ? active : idle;
+    if (btnFlow) btnFlow.className = w === 'flow' ? active : idle;
     void ensureUiGuidePanel(w);
 };
 
-const UI_GUIDE_ASSET_VER = '20260723r';
+const UI_GUIDE_ASSET_VER = '20260725a';
 
 function loadUiGuideScript(src, globalName) {
     if (!loadUiGuideScript._map) loadUiGuideScript._map = new Map();
@@ -269,6 +282,7 @@ function resetUiGuideMountIfStale(mount, kind) {
     mount.dataset.uiGuideEmbedMode = '';
     mount.dataset.ughMounted = '';
     mount.dataset.piMounted = '';
+    mount.dataset.sfMounted = '';
     mount.innerHTML = '';
     if (mount.shadowRoot) mount.shadowRoot.innerHTML = '';
     if (kind) mount.dataset.uiGuideKind = kind;
@@ -276,6 +290,7 @@ function resetUiGuideMountIfStale(mount, kind) {
 
 let uiGuideHubPromise = null;
 let uiGuidePopupInventoryPromise = null;
+let uiGuideScreenFlowPromise = null;
 let uiGuideRuntimeVer = null;
 
 function bustUiGuideRuntimeIfNeeded() {
@@ -283,7 +298,8 @@ function bustUiGuideRuntimeIfNeeded() {
     uiGuideRuntimeVer = UI_GUIDE_ASSET_VER;
     uiGuideHubPromise = null;
     uiGuidePopupInventoryPromise = null;
-    ['uiGuideHubMount', 'uiGuidePaletteMount', 'uiGuidePopupMount'].forEach((id) => {
+    uiGuideScreenFlowPromise = null;
+    ['uiGuideHubMount', 'uiGuidePaletteMount', 'uiGuidePopupMount', 'uiGuideFlowMount'].forEach((id) => {
         const mount = document.getElementById(id);
         if (mount) resetUiGuideMountIfStale(mount, mount.getAttribute('data-ui-guide-kind') || '');
     });
@@ -329,6 +345,36 @@ function ensureUiGuidePopupInventory() {
     return uiGuidePopupInventoryPromise;
 }
 
+function ensureUiGuideScreenFlow() {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById('uiGuideFlowMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountScreenFlow === 'function' && mount.dataset.sfMounted === '1') {
+        return Promise.resolve(
+            window.mountScreenFlow(mount, {
+                standalone: false,
+                onOpenPopupTab: () => window.switchUiGuideSubtab('popup')
+            })
+        );
+    }
+    if (uiGuideScreenFlowPromise) return uiGuideScreenFlowPromise;
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">화면 플로우 불러오는 중…</div>';
+    uiGuideScreenFlowPromise = loadUiGuideScript('docs/ui-mockups/screen-flow.js', 'mountScreenFlow')
+        .then(() =>
+            window.mountScreenFlow(mount, {
+                standalone: false,
+                onOpenPopupTab: () => window.switchUiGuideSubtab('popup')
+            })
+        )
+        .catch((err) => {
+            uiGuideScreenFlowPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
+    return uiGuideScreenFlowPromise;
+}
+
 async function ensureUiGuideHtmlEmbed(mountId) {
     bustUiGuideRuntimeIfNeeded();
     const mount = document.getElementById(mountId);
@@ -361,6 +407,7 @@ function ensureUiGuidePanel(which) {
         window.clearUiGuideDocumentThemeLeak();
     }
     if (which === 'popup') return ensureUiGuidePopupInventory();
+    if (which === 'flow') return ensureUiGuideScreenFlow();
     if (which === 'palette') return ensureUiGuideHtmlEmbed('uiGuidePaletteMount');
     return ensureUiGuideHub();
 }

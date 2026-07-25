@@ -28,34 +28,24 @@ export function clampRecordPhotoHeroIndex() {
     return i;
 }
 
-function buildHeroPhotoHtml(src, idx, total, aspectCss) {
-    const showNav = total > 1;
+/** 기록 시트: 사진 + 아래 독립 컨트롤(‹ 편집 ›) */
+function buildThumbPhotoHtml(src, idx, total, aspectCss) {
     const disPrev = idx <= 0 ? ' disabled' : '';
     const disNext = idx >= total - 1 ? ' disabled' : '';
-    const navHtml = showNav
-        ? `
-            <button type="button" class="photo-preview-hero-nav photo-preview-hero-nav--prev" onclick="window.navigateRecordPhotoPreview(-1)"${disPrev} aria-label="이전 사진">
-                <i data-lucide="chevron-left" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="photo-preview-hero-nav photo-preview-hero-nav--next" onclick="window.navigateRecordPhotoPreview(1)"${disNext} aria-label="다음 사진">
-                <i data-lucide="chevron-right" aria-hidden="true"></i>
-            </button>`
-        : '';
-    return `<div class="photo-preview-item photo-preview-item--hero relative overflow-hidden bg-slate-100 select-none" style="aspect-ratio: ${aspectCss}; -webkit-touch-callout:none;" data-index="${idx}">
-                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
-                ${navHtml}
-                <button type="button" onclick="window.removePhoto(${idx})" class="photo-preview-delete-text" title="사진 삭제" aria-label="사진 삭제">삭제</button>
-                <button type="button" onclick="window.editPhoto(${idx})" class="photo-preview-edit-text" title="사진 편집" aria-label="사진 편집">편집</button>
-                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
+    return `<div class="photo-preview-thumb-card" data-index="${idx}">
+                <div class="photo-preview-item photo-preview-item--thumb relative rounded-xl overflow-hidden bg-slate-100 border border-slate-300 select-none" style="aspect-ratio: ${aspectCss}; -webkit-touch-callout:none;">
+                    <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
+                    <button type="button" onclick="window.removePhoto(${idx})" class="photo-remove-btn" aria-label="사진 삭제">
+                        <i data-lucide="x" aria-hidden="true"></i>
+                    </button>
+                    <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
+                </div>
+                <div class="photo-preview-thumb-controls" role="group" aria-label="사진 ${idx + 1} 순서·편집">
+                    <button type="button" onclick="window.movePhotoOrder(${idx}, -1)" class="photo-order-btn photo-order-btn--arrow"${disPrev} title="순서 앞으로" aria-label="순서 앞으로"><span aria-hidden="true">‹</span></button>
+                    <button type="button" onclick="window.editPhoto(${idx})" class="photo-edit-btn photo-edit-btn--text" title="편집" aria-label="사진 편집">편집</button>
+                    <button type="button" onclick="window.movePhotoOrder(${idx}, 1)" class="photo-order-btn photo-order-btn--arrow"${disNext} title="순서 뒤로" aria-label="순서 뒤로"><span aria-hidden="true">›</span></button>
+                </div>
             </div>`;
-}
-
-function buildThumbPhotoHtml(src, idx, selected, aspectCss) {
-    const selectedClass = selected ? ' is-selected' : '';
-    return `<button type="button" class="photo-preview-item photo-preview-item--thumb relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-300 select-none${selectedClass}" style="aspect-ratio: ${aspectCss}; -webkit-touch-callout:none;" data-index="${idx}" onclick="window.selectRecordPhotoPreview(${idx})" aria-label="사진 ${idx + 1} 선택" aria-pressed="${selected ? 'true' : 'false'}">
-                <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
-                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
-            </button>`;
 }
 
 export function renderPhotoPreviews() {
@@ -76,26 +66,20 @@ export function renderPhotoPreviews() {
     const maxPhotos = RECORD_MAX_PHOTOS;
     const currentCount = appState.currentPhotos.length;
     const photos = appState.currentPhotos;
-    const heroIdx = clampRecordPhotoHeroIndex();
+    clampRecordPhotoHeroIndex();
 
     if (container) {
         const aspectCss = getRecordPhotoAspectRatioCss();
         if (currentCount === 0) {
             container.innerHTML = '';
         } else {
-            const heroHtml = buildHeroPhotoHtml(photos[heroIdx], heroIdx, currentCount, aspectCss);
             const thumbsHtml = photos
-                .map((src, i) => buildThumbPhotoHtml(src, i, i === heroIdx, aspectCss))
+                .map((src, i) => buildThumbPhotoHtml(src, i, currentCount, aspectCss))
                 .join('');
             container.innerHTML = `
-                <div class="entry-photo-hero">${heroHtml}</div>
                 <div class="entry-photo-thumb-strip" aria-label="등록된 사진">${thumbsHtml}</div>
             `;
             scheduleLucideIcons(container);
-            const selectedThumb = container.querySelector('.photo-preview-item--thumb.is-selected');
-            if (selectedThumb && typeof selectedThumb.scrollIntoView === 'function') {
-                selectedThumb.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
-            }
         }
     }
 

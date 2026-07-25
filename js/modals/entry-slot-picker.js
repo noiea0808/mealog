@@ -106,6 +106,10 @@ function renderPickerList(dateIso) {
 export function closeEntrySlotPicker() {
     const modal = document.getElementById('entrySlotPickerModal');
     if (!modal) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && modal.contains(active)) {
+        active.blur();
+    }
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
     pendingDateIso = '';

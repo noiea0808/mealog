@@ -184,6 +184,7 @@ async function renderNotices() {
                 ? `<div class="flex flex-col items-center justify-center py-12 text-center"><i data-lucide="search" class="text-4xl text-slate-200 mb-3"></i><p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p></div>`
                 : '';
             noticesContainer.classList.toggle('hidden', !appState.boardSearchActive);
+            if (appState.boardSearchActive) scheduleLucideIcons(noticesContainer);
             return;
         }
         
@@ -255,6 +256,7 @@ async function renderNotices() {
                     <p class="text-sm font-bold text-slate-400">검색 결과가 없습니다</p>
                 </div>`;
             noticesContainer.classList.remove('hidden');
+            scheduleLucideIcons(noticesContainer);
             return;
         }
         
@@ -296,13 +298,13 @@ async function renderNotices() {
 
             return `
                 <article onclick="window.openNoticeDetail('${notice.id}')" class="lounge-post lounge-post--notice notice cursor-pointer active:scale-[0.99] transition-transform ${typeAccent}">
-                    <div class="lounge-notice-chip"><i data-lucide="megaphone" aria-hidden="true"></i> ${escapeHtml(typeLabel)}${notice.isPinned === true ? ' · 고정' : ''}</div>
                     <div class="lounge-author-row">
                         <div class="lounge-avatar lounge-avatar--fallback" aria-hidden="true">공</div>
                         <div class="lounge-author-meta min-w-0 flex-1">
                             <div class="lounge-author-name">밀로그</div>
                             <div class="lounge-author-sub">${dateStr} ${timeStr} · 조회 ${viewCount}</div>
                         </div>
+                        <div class="lounge-notice-chip"><i data-lucide="megaphone" aria-hidden="true"></i><span>${escapeHtml(typeLabel)}${notice.isPinned === true ? ' · 고정' : ''}</span></div>
                     </div>
                     <div class="lounge-post-main">
                         <div class="min-w-0">
@@ -331,6 +333,7 @@ async function renderNotices() {
         }).join('');
         
         noticesContainer.classList.remove('hidden');
+        scheduleLucideIcons(noticesContainer);
     } catch (e) {
         console.error("공지 렌더링 오류:", e);
         noticesContainer.innerHTML = '';

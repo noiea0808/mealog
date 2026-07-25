@@ -22,7 +22,8 @@ import { getMomentsFeedView } from '../db.js';
 import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
 import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
-import { markMomentFeedPhotosLoadedIn } from './gallery.js';
+import { markMomentFeedPhotosLoadedIn, buildMomentNetworkReconnectHtml } from './gallery.js';
+import { scheduleLucideIcons } from '../icons.js';
 import { getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 
 export async function renderFeed() {
@@ -40,21 +41,8 @@ export async function renderFeed() {
     
     if (photosToUse.length === 0) {
         if (appState.galleryFeedNetworkError) {
-            container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-12 text-center px-3">
-                <i data-lucide="wifi" class="text-4xl text-slate-200 mb-3" aria-hidden="true"></i>
-                <p class="text-xs font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
-                <p class="text-[10px] text-slate-400 mt-1 leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 안내가 나올 수 있습니다.</p>
-                <button type="button" class="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5" id="feedRetryLoadBtn">
-                    <i data-lucide="rotate-cw" aria-hidden="true"></i>다시 불러오기
-                </button>
-            </div>`;
-            const retry = container.querySelector('#feedRetryLoadBtn');
-            if (retry && typeof window.reloadMomentFeed === 'function') {
-                retry.addEventListener('click', () => {
-                    window.reloadMomentFeed();
-                });
-            }
+            container.innerHTML = buildMomentNetworkReconnectHtml({ buttonId: 'feedRetryLoadBtn' });
+            scheduleLucideIcons(container);
             return;
         }
         container.innerHTML = `
@@ -235,8 +223,13 @@ export async function renderFeed() {
         
         const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         
-        // 사진 비율: shared doc 또는 meal 기록에서 가져오기
-        let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
+        // 사진 비율: 모먼트(shared) 문서 우선, 없으면 meal 기록
+        const mealRec =
+            entryId && window.mealHistory
+                ? window.mealHistory.find((m) => m && (m.id === entryId || String(m.id) === String(entryId)))
+                : null;
+        let aspectRatio =
+            photo.photoAspectRatio || photo.aspectRatio || mealRec?.photoAspectRatio || '1:1';
         if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
         const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
         const momentUrlsEncoded = encodeURIComponent(

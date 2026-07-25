@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 알림 아이콘 틴트 (상태바는 시스템 흑백, 확장 알림에서 accent) -->
+    <color name="mealog_notification">#3CB889</color>
+</resources>

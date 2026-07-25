@@ -43,11 +43,11 @@ import { scheduleLucideIcons } from '../icons.js';
 
 ensureMomentFeedPinchDelegate();
 
-// 모먼트 네트워크 오류 화면「다시 불러오기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
+// 모먼트 네트워크 오류 화면「다시 연결하기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
 if (typeof document !== 'undefined' && !window._galleryMomentRetryDelegateBound) {
     window._galleryMomentRetryDelegateBound = true;
     document.addEventListener('click', (e) => {
-        const btn = e.target.closest('#galleryMomentRetryLoadBtn');
+        const btn = e.target.closest('[data-moment-network-retry], #galleryMomentRetryLoadBtn, #feedRetryLoadBtn');
         if (!btn) return;
         if (typeof window.reloadMomentFeed !== 'function') return;
         e.preventDefault();
@@ -143,18 +143,30 @@ function bindUserProfileMomentGridClicks(container) {
     });
 }
 
+/**
+ * 모먼트 네트워크 단절 안내 — 밀로그 빈 날 empty와 같은 친근한 톤 + 재연결 CTA
+ * @param {{ buttonId?: string }} [opts]
+ */
+export function buildMomentNetworkReconnectHtml(opts = {}) {
+    const buttonId = opts.buttonId || 'galleryMomentRetryLoadBtn';
+    return `<div class="moment-network-empty" role="status">
+        <div class="moment-network-empty__visual" aria-hidden="true">
+            <span class="moment-network-empty__ring"></span>
+            <i data-lucide="wifi-off" class="moment-network-empty__icon"></i>
+        </div>
+        <p class="moment-network-empty__title">잠깐, 연결이 끊겼어요</p>
+        <p class="moment-network-empty__desc">네트워크를 확인한 뒤 다시 연결해 주세요.<br>곧 모먼트를 다시 보여드릴게요.</p>
+        <button type="button" id="${buttonId}" data-moment-network-retry class="moment-network-empty__btn">
+            <i data-lucide="refresh-cw" aria-hidden="true"></i>
+            <span>다시 연결하기</span>
+        </button>
+    </div>`;
+}
+
 /** 모먼트 피드가 비었을 때: 진짜 없음 vs 네트워크·로드 실패 구분 */
 function buildGalleryEmptyMomentBlock(networkError, filterUserId) {
     if (networkError) {
-        return `
-            <div class="flex flex-col items-center justify-center py-20 text-center px-4">
-                <i data-lucide="wifi" class="text-6xl text-slate-200 mb-4" aria-hidden="true"></i>
-                <p class="text-sm font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
-                <p class="text-xs text-slate-400 mt-2 max-w-xs leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 화면이 나올 수 있습니다. 연결을 확인한 뒤 다시 시도해 주세요.</p>
-                <button type="button" id="galleryMomentRetryLoadBtn" class="mt-5 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl transition-colors inline-flex items-center gap-1.5">
-                    <i data-lucide="rotate-cw" aria-hidden="true"></i>다시 불러오기
-                </button>
-            </div>`;
+        return buildMomentNetworkReconnectHtml({ buttonId: 'galleryMomentRetryLoadBtn' });
     }
     return `
             <div class="flex flex-col items-center justify-center py-20 text-center">

@@ -12,6 +12,15 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="fcm_fallback_notification_channel"
         />
+        <!-- 상태바/알림 트레이: 흰 실루엣(알파) 아이콘 — 컬러 런처 아이콘 사용 금지 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_mealog"
+        />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/mealog_notification"
+        />
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

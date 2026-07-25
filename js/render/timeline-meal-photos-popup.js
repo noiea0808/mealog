@@ -2268,7 +2268,7 @@ function getOverlay() {
         el.classList.remove('timeline-meal-photos-overlay--moment-feed');
         document.body.classList.remove('meal-photo-moment-chrome-hidden');
         el._mealPhotoMomentNavState = null;
-        unlockBodyScroll();
+        unlockBodyScroll('mealPhotos');
         const hdClose = el._mealCarouselHStripDrag;
         if (hdClose?.hstrip) {
             try {
@@ -2479,7 +2479,7 @@ export function openTimelineMealPhotosPopup(btn) {
         capShow?.classList.add('flex');
         rebuildMealPhotoWheelPickers(el);
         el.classList.remove('hidden');
-        lockBodyScroll();
+        lockBodyScroll('mealPhotos');
         el._mealPhotosLayout?.();
         syncMealPhotoWheelCaptionPhotoMinWidth(el);
         requestAnimationFrame(() => {
@@ -2517,7 +2517,7 @@ export function openTimelineMealPhotosPopup(btn) {
         vtrack.innerHTML = slide;
         el._mealPhotosBindRowTracks?.();
         el.classList.remove('hidden');
-        lockBodyScroll();
+        lockBodyScroll('mealPhotos');
         el._mealPhotosLayout?.();
         vtrack.scrollTop = 0;
         requestAnimationFrame(() => {
@@ -2717,7 +2717,7 @@ export function openMealPhotosWheelOverlayFromBtn(btn) {
     capShow?.classList.add('flex');
     rebuildMealPhotoWheelPickers(el);
     el.classList.remove('hidden');
-    lockBodyScroll();
+    lockBodyScroll('mealPhotos');
     el._mealPhotosLayout?.();
     syncMealPhotoWheelCaptionPhotoMinWidth(el);
 

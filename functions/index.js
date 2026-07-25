@@ -421,7 +421,10 @@ async function sendPushToUser(userId, payload, options = {}) {
       title: payload.title,
       body: payload.body || '',
       channelId: 'fcm_fallback_notification_channel',
-      sound: 'default'
+      sound: 'default',
+      // 상태바용 흰 실루엣 drawable (런처 컬러 아이콘 대신)
+      icon: 'ic_stat_mealog',
+      color: '#3CB889'
     };
     const androidNotification = {
       ...androidNotificationBase,

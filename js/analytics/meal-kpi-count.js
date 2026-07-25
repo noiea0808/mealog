@@ -29,8 +29,14 @@ export function computeMainMealKpiFromRecords(records) {
     return { recCount, extraMain, uniqueSlotCount };
 }
 
-/** 분모 = 일수×3 + 추가본식 건수 */
-export function computeMainMealKpiDenominator(targetDays, extraMain) {
-    const base = Math.max(0, targetDays * 3);
+/**
+ * 분모 = 일수×슬롯수 + 추가본식 건수
+ * @param {number} targetDays
+ * @param {number} extraMain
+ * @param {number} [slotsPerDay=3] 전체=3, 아침/점심/저녁 단일 슬롯=1
+ */
+export function computeMainMealKpiDenominator(targetDays, extraMain, slotsPerDay = 3) {
+    const perDay = Math.max(1, slotsPerDay || 3);
+    const base = Math.max(0, targetDays * perDay);
     return base + Math.max(0, extraMain || 0);
 }

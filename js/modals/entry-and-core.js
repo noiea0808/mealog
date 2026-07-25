@@ -1268,7 +1268,7 @@ function revealEntryModalShell() {
     setEntryModalSavingState(false);
     bindEntryModalHeaderOnce();
     refreshEntryModalHeader();
-    lockBodyScroll();
+    lockBodyScroll('entryModal');
     const openGen = (window.__entryModalOpenGeneration || 0) + 1;
     window.__entryModalOpenGeneration = openGen;
     entryModal.classList.remove('hidden');
@@ -1456,7 +1456,7 @@ export function closeModal() {
             entryModal.resetGrabberPullTransform();
         }
         entryModal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('entryModal');
     }
     syncEntryModalBodyClass();
     // 모달을 닫을 때 로딩 오버레이도 숨김
@@ -2448,8 +2448,9 @@ export async function saveEntry() {
                 const shareListChanged =
                     photosToShare.length !== originalShareList.length ||
                     photosToShare.some((url, i) => url !== originalShareList[i]);
+                // 비율만 바꿔도 모먼트 프레임이 갱신되도록 — 공유 중(또는 공유할) 사진이 있으면 재동기화
                 const shouldResyncMomentShare =
-                    shareListChanged || (hasPhotosToShare && hadSharedPhotos && photoAspectChanged);
+                    shareListChanged || (hasPhotosToShare && photoAspectChanged);
 
                 if (shouldResyncMomentShare) {
                     sharedPhotosUpdated = true;

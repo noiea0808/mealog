@@ -24,10 +24,13 @@ function aspectToCss(ar) {
 
 /** 기록 시트 비율(1:1·3:4·4:3)을 모먼트 프레임에 그대로 반영. 기본 1:1 */
 function normalizePhotoAspectForDisplay(photo, groupFallback) {
-    const raw = photo?.photoAspectRatio;
-    if (raw === '1:1' || raw === '3:4' || raw === '4:3') return raw;
-    if (groupFallback === '1:1' || groupFallback === '3:4' || groupFallback === '4:3') {
-        return groupFallback;
+    const candidates = [
+        photo?.photoAspectRatio,
+        photo?.aspectRatio,
+        groupFallback
+    ];
+    for (const raw of candidates) {
+        if (raw === '1:1' || raw === '3:4' || raw === '4:3') return raw;
     }
     return '1:1';
 }
@@ -361,8 +364,12 @@ function buildV2RawPhotoBlock(p, idx, ar) {
             <div class="rounded-lg bg-orange-600 px-3 py-1.5 text-sm text-white shadow-sm"><i data-lucide="ban" class="mr-1"></i>공유 금지</div>
         </div>`
         : '';
-    const maxH = ar === '3:4' ? '420px' : 'none';
-    /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤). max-height로 세로만 자르면 가로가 줄어 좌우 공백 발생 */
+    /**
+     * 비율은 aspect-ratio만 사용.
+     * 예전에 3:4에만 max-height:420px를 걸어 width:100%와 충돌 → 프레임이 거의 1:1로 찌그러짐.
+     * 높이 상한은 CSS 뷰포트(max-height: min(88vh, …))에 맡긴다.
+     */
+    /** 캡처 PNG 공유 카드: 가로 100%·비율 유지 전체 높이(피드 스크롤) */
     if (isDaily || isBest || isDietReportInsightShare(p)) {
         return `<div class="moment-v2-photo-surface moment-v2-photo-surface--capture-share relative w-full max-w-full overflow-hidden">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="moment-v2-capture-share-img timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo relative z-0 block h-auto w-full max-w-full select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
@@ -370,12 +377,12 @@ function buildV2RawPhotoBlock(p, idx, ar) {
         </div>`;
     }
     if (isInsight) {
-        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
+        return `<div class="moment-v2-photo-surface moment-v2-photo-surface--share-card timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss};">
             <img src="${url}" alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-contain object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
             ${bannedOverlay}
         </div>`;
     }
-    return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss}; max-height: ${maxH};">
+    return `<div class="moment-v2-photo-surface timeline-meal-photo-aspect-slot relative w-full max-w-full overflow-hidden" style="aspect-ratio: ${arCss};">
         <img src="${displayUrl}"${displayFallback} alt="공유된 사진 ${idx + 1}" draggable="false" class="timeline-meal-photo-img moment-v2-carousel-photo moment-feed-photo absolute inset-0 z-0 h-full w-full object-cover object-center select-none" loading="${idx <= 1 ? 'eager' : 'lazy'}" />
         ${bannedOverlay}
     </div>`;

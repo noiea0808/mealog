@@ -98,7 +98,12 @@ html.platform-native-app .bottom-nav button i.lucide {
     --star: #eab308;
     --color-primary: var(--green); /* 그린: CTA·선택·활성만 사용 */
     /* 팝업 셸 v2 (Soft Mint Air) */
-    --shell-dim: rgba(36, 31, 28, 0.42);
+    /* 플로팅 팝업 딤 — ink-2 (#4f4841) */
+    --shell-dim: rgba(79, 72, 65, 0.45);
+    --shell-dim: color-mix(in srgb, var(--ink-2) 45%, transparent);
+    /* 플로팅 패널: 좌우 여백 남기되 화면 폭을 충분히 사용 (꽉 채우지 않음) */
+    --shell-float-gutter: 1.25rem;
+    --shell-float-width: min(28rem, calc(100vw - (var(--shell-float-gutter) * 2)));
     --shell-r-dialog: 18px;
     --shell-r-sheet: 24px;
     --shell-r-btn: 14px;
@@ -3140,7 +3145,8 @@ body.bottom-nav-scroll-hidden #entryQuickInputFab.entry-quick-input-fab,
 body.bottom-nav-scroll-hidden #boardWriteBtn.board-write-fab,
 body.bottom-nav-scroll-hidden #mealSyncResendBtn.meal-sync-resend-fab,
 body.bottom-nav-scroll-hidden #initialRecordsLoadFab.initial-records-load-fab,
-body.bottom-nav-scroll-hidden #galleryMomentsRefreshFab.initial-records-load-fab {
+body.bottom-nav-scroll-hidden #galleryMomentsRefreshFab.initial-records-load-fab,
+body.bottom-nav-scroll-hidden #timelineRefreshFab.initial-records-load-fab {
     bottom: calc(12px + var(--safe-bottom));
 }
 /* 글쓰기 FAB 위에 얹힌 동기화/로딩 FAB — 네비 숨김 시에도 한 단만 위로 */
@@ -3181,15 +3187,13 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     align-items: stretch !important;
     justify-content: center !important;
 }
-#entryModal > .entry-modal-panel,
-#entryModal > div {
+#entryModal > .entry-modal-panel {
     background: var(--card);
     /* vh만 쓰면 키보드 올라온 뒤에도 레이아웃 뷰포트 기준으로 커져 액션바가 키패드에 가려짐 → 부모 높이(visualViewport 반영) 안으로 제한 */
     max-height: min(88vh, 100%);
     min-height: 0;
 }
-#entryModal.keyboard-open > .entry-modal-panel,
-#entryModal.keyboard-open > div {
+#entryModal.keyboard-open > .entry-modal-panel {
     max-height: 100%;
     height: 100%;
     border-radius: 0 !important;
@@ -3297,6 +3301,7 @@ body.entry-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
 body.entry-modal-open #entryQuickInputFab.entry-quick-input-fab,
 body.entry-modal-open #initialRecordsLoadFab.initial-records-load-fab,
 body.entry-modal-open #galleryMomentsRefreshFab.initial-records-load-fab,
+body.entry-modal-open #timelineRefreshFab.initial-records-load-fab,
 body:has(#entrySlotPickerModal:not(.hidden)) .bottom-nav,
 body:has(#entrySlotPickerModal:not(.hidden)) #navigationBarOverlay,
 body:has(#entrySlotPickerModal:not(.hidden)) #mealSyncResendBtn.meal-sync-resend-fab,
@@ -3355,7 +3360,8 @@ body.daily-journal-modal-open #navigationBarOverlay,
 body.daily-journal-modal-open #mealSyncResendBtn.meal-sync-resend-fab,
 body.daily-journal-modal-open #entryQuickInputFab.entry-quick-input-fab,
 body.daily-journal-modal-open #initialRecordsLoadFab.initial-records-load-fab,
-body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab {
+body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab,
+body.daily-journal-modal-open #timelineRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
     pointer-events: none !important;
 }
@@ -6060,8 +6066,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .daily-share-capture__sheet .daily-share-capture__body > .card.home-feed-card:last-child {
     margin-bottom: 0;
 }
-#timelineContainer .card.home-feed-card:active {
+#timelineContainer .card.home-feed-card:active:not(:has(.timeline-meal-photo-nav:active)) {
     transform: scale(0.985);
+}
+/* 다장 사진 화살표 조작 시 카드 전체 눌림(스케일) 효과 제거 */
+#timelineContainer .card:has(.timeline-meal-photo-nav:active) {
+    transform: none !important;
 }
 
 /* ── 공유 캡처 공통 (하루기록·베스트) ──
@@ -6424,6 +6434,42 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     background: #e2e8f0;
     overflow: hidden;
 }
+/* 밀로그 다장: 좌우 화살표로만 사진 전환 (스와이프는 날짜 이동용) */
+.timeline-meal-photo-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 35;
+    width: 2rem;
+    height: 2rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.48);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease, opacity 0.15s ease;
+}
+.timeline-meal-photo-nav--prev { left: 8px; }
+.timeline-meal-photo-nav--next { right: 8px; }
+.timeline-meal-photo-nav:hover:not(:disabled) {
+    background: rgba(15, 23, 42, 0.68);
+}
+.timeline-meal-photo-nav:disabled {
+    opacity: 0.28;
+    cursor: default;
+}
+.timeline-meal-photo-nav [data-lucide],
+.timeline-meal-photo-nav .lucide {
+    width: 1.1rem;
+    height: 1.1rem;
+    stroke-width: 2.5;
+}
 .home-feed-card__body {
     padding: 12px 14px 10px;
     display: grid;
@@ -6660,13 +6706,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     color: var(--muted, #7a7268);
 }
 
-/* 1) 첫 사용자 — 따뜻한 민트 환영 + FAB 힌트 */
+/* 1) 첫 사용자 — 따뜻한 민트 환영 */
 #timelineContainer .timeline-day-empty--first {
     border-color: color-mix(in srgb, var(--green-mute) 70%, var(--line));
     background:
         radial-gradient(120% 80% at 50% 0%, color-mix(in srgb, var(--green-soft) 85%, #fff) 0%, transparent 62%),
         linear-gradient(180deg, #fbfffc 0%, var(--card, #fff) 70%);
-    padding-bottom: 2.1rem;
 }
 #timelineContainer .timeline-day-empty--first::before {
     background:
@@ -6682,48 +6727,6 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 #timelineContainer .timeline-day-empty--first .timeline-day-empty__title {
     color: var(--green-deep, #2d9f74);
-}
-#timelineContainer .timeline-day-empty__fab-hint {
-    position: relative;
-    margin-top: 0.95rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.35rem 0.45rem 0.35rem 0.7rem;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--green-soft) 70%, #fff);
-    border: 1px solid color-mix(in srgb, var(--green-mute) 65%, transparent);
-    pointer-events: none;
-}
-#timelineContainer .timeline-day-empty__fab-hint-label {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--green-deep, #2d9f74);
-}
-#timelineContainer .timeline-day-empty__fab-hint-chevron {
-    width: 1rem;
-    height: 1rem;
-    color: var(--green, #3cb889);
-    stroke-width: 2.2;
-    animation: timelineEmptyArrowNudge 1.8s ease-in-out infinite;
-}
-#timelineContainer .timeline-day-empty__fab-hint-dot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.85rem;
-    height: 1.85rem;
-    border-radius: 50%;
-    background: var(--cta-mint-grad);
-    color: #fff;
-    box-shadow: var(--cta-mint-shadow);
-    animation: timelineEmptyFabBob 1.8s ease-in-out infinite;
-}
-#timelineContainer .timeline-day-empty__fab-hint-icon {
-    width: 0.95rem;
-    height: 0.95rem;
-    stroke-width: 2.4;
 }
 
 /* 2) 오늘 무기록 — 부드러운 민트 넛지 */
@@ -6757,15 +6760,112 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.04); opacity: 0.92; }
 }
-@keyframes timelineEmptyFabBob {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(3px); }
+
+/* 모먼트 네트워크 단절 — 밀로그 빈 날 empty와 같은 친근한 안내 + 재연결 CTA */
+.moment-network-empty {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.4rem;
+    margin: 16px 14px 20px;
+    padding: 2.1rem 1.35rem 1.85rem;
+    border-radius: 20px;
+    border: 1px solid color-mix(in srgb, var(--line) 85%, var(--muted));
+    background:
+        linear-gradient(180deg, #faf7f3 0%, var(--card, #fff) 68%);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
 }
-@keyframes timelineEmptyArrowNudge {
-    0%, 100% { transform: translate(0, 0); opacity: 0.7; }
-    50% { transform: translate(2px, 2px); opacity: 1; }
+.moment-network-empty::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 18% 22%, rgba(122, 114, 104, 0.08) 0%, transparent 42%),
+        radial-gradient(circle at 86% 78%, rgba(60, 184, 137, 0.08) 0%, transparent 46%);
+}
+.moment-network-empty__visual {
+    position: relative;
+    width: 4.25rem;
+    height: 4.25rem;
+    margin-bottom: 0.55rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.moment-network-empty__ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #f3eee7;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 80%, transparent);
+}
+.moment-network-empty__icon {
+    position: relative;
+    z-index: 1;
+    width: 1.65rem;
+    height: 1.65rem;
+    color: var(--muted, #7a7268);
+    stroke-width: 1.75;
+}
+.moment-network-empty__title {
+    position: relative;
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.45;
+    letter-spacing: -0.01em;
+    color: var(--ink-2, #4f4841);
+}
+.moment-network-empty__desc {
+    position: relative;
+    margin: 0;
+    max-width: 16.5rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    line-height: 1.55;
+    color: var(--muted, #7a7268);
+}
+.moment-network-empty__btn {
+    position: relative;
+    margin-top: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    padding: 0.65rem 1.2rem;
+    border: none;
+    border-radius: 14px;
+    background: var(--cta-mint-grad, linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%));
+    box-shadow: var(--cta-mint-shadow, inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 6px rgba(45, 159, 116, 0.28));
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.12s ease, filter 0.12s ease;
+}
+.moment-network-empty__btn i,
+.moment-network-empty__btn svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+.moment-network-empty__btn:active {
+    transform: scale(0.98);
+    filter: brightness(0.97);
+}
+#feedContent .moment-network-empty {
+    margin: 12px 10px 16px;
+    padding: 1.75rem 1.1rem 1.55rem;
 }
 #galleryContainer {
+
     margin-left: 0 !important;
     margin-right: 0 !important;
     padding-left: 0 !important;
@@ -6799,8 +6899,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     scroll-snap-type: none;
     scroll-behavior: auto;
 }
-/* 갤러리 당겨서 새로고침 (부모 높이 미정이어도 본문 높이를 따르도록 % 고정 없음) */
-#galleryPullWrap {
+/* 갤러리·밀로그 당겨서 새로고침 (부모 높이 미정이어도 본문 높이를 따르도록 % 고정 없음) */
+#galleryPullWrap,
+#timelinePullWrap {
     position: relative;
     min-height: 0;
 }
@@ -8783,22 +8884,21 @@ html.mealog-scroll-locked #landingPage {
     margin-top: calc(-0.3rem + 10px);
 }
 
-/* 부가 박스 ↔ 닫기: flex gap(0.15625rem) 한 칸 기준으로 세로 간격 약 300%(= gap의 3배) */
-#attendancePopupContent.attendance-popup-has-aux #attendancePopupCloseBtn {
+/* 부가 박스 ↔ 닫기(무기록 등 차트 없을 때): flex gap 기준 세로 여유 */
+#attendancePopupContent.attendance-popup-has-aux > #attendancePopupCloseBtnBare {
     margin-top: calc(0.15625rem * 2);
 }
 
-/* 웰컴(기록 있음): 최근 1주 도넛 — 차트 ↔ 닫기 간격 */
-#attendancePopupContent.attendance-popup-welcome-charts #attendancePopupCloseBtn {
-    margin-top: calc(0.15625rem * 2);
+/* 기록 있음(차트 박스): 박스 안 닫기 사용 · 바깥 닫기 숨김 */
+#attendancePopupContent.attendance-popup-welcome-charts > #attendancePopupCloseBtnBare {
+    display: none;
 }
 /* 연속 기록 문구 ↔ 차트 박스 세로 간격 약 1/2로 */
 #attendancePopupContent.attendance-popup-welcome-charts .attendance-popup-welcome-charts-wrap {
     margin-top: -0.55rem;
 }
-/* AI리포트 탭: 웰컴 차트 박스만 폭 +30% (19rem → 24.7rem). 상단 아이콘·문구는 기존 크기 유지 */
+/* AI리포트 탭: 웰컴 콘텐츠는 플로팅 폭 토큰을 따름 */
 #attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) {
-    max-width: min(92vw, 28.6rem);
     overflow: visible;
 }
 #attendancePopupContent:has(#attendanceWelcomeReportPanel:not(.hidden)) > .popup-celebrate-ring--check,
@@ -8807,27 +8907,98 @@ html.mealog-scroll-locked #landingPage {
     max-width: 22rem;
     align-self: center;
 }
-#attendancePopupWelcomeCharts:has(#attendanceWelcomeReportPanel:not(.hidden)) {
-    width: min(calc(92vw - 1rem), 24.7rem);
-    max-width: 24.7rem;
-    align-self: center;
+#attendancePopupWelcomeCharts {
+    width: 100%;
+    max-width: 100%;
+    align-self: stretch;
 }
 .attendance-welcome-chart-shell {
+    background: #fff;
+    border: 1px solid var(--line, #d0c6ba);
+    border-radius: 16px;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
     backdrop-filter: blur(2px);
 }
+/* Soft Mint 탭 — 밀당 분석(dashboard-view-v2)과 동일 톤 */
+.attendance-welcome-kind-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    padding: 4px;
+    border-radius: 14px;
+    border: 1px solid var(--line, #d0c6ba);
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+    box-sizing: border-box;
+}
 button.attendance-welcome-kind-btn {
-    font-size: 12px;
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 4px;
+    min-height: 2rem;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--muted, #7a7268);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
 }
 button.attendance-welcome-kind-btn.attendance-welcome-kind--active {
-    background: rgb(16 185 129);
-    color: #fff;
-    box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
+    font-weight: 600;
+    box-shadow: none;
 }
 button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
-    color: rgb(51 65 85);
+    color: var(--ink-2, #4f4841);
 }
 #attendanceWelcomeBtnReport.hidden {
     display: none;
+}
+.attendance-welcome-record-count {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--ink-2, #4f4841);
+}
+.attendance-welcome-analysis-more {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--green-deep, #2d9f74);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-color: color-mix(in srgb, var(--green, #3cb889) 55%, transparent);
+    cursor: pointer;
+}
+.attendance-welcome-analysis-more:hover {
+    color: var(--ink, #241f1c);
+}
+.attendance-welcome-chart-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 4px;
+    padding: 12px 12px 14px;
+    border-top: 1px solid var(--line, #d0c6ba);
+    background: var(--page, #fffcfa);
+}
+.attendance-welcome-chart-actions .mealog-btn {
+    width: 100%;
+}
+#attendancePopupCloseBtnBare.attendance-popup-close-bare {
+    margin-top: 0.35rem;
+    width: 100%;
+    max-width: 8.5rem;
 }
 .attendance-welcome-report-content {
     max-height: min(17.5rem, 52vh);
@@ -8859,7 +9030,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     font-size: 15px;
     font-weight: 700;
     line-height: 1.25;
-    color: rgb(51 65 85);
+    color: var(--ink-2, #4f4841);
     letter-spacing: -0.01em;
 }
 .attendance-welcome-report-nav-btn {
@@ -8873,15 +9044,15 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     border: 0;
     border-radius: 999px;
     background: transparent;
-    color: rgb(100 116 139);
+    color: var(--muted, #7a7268);
     font-size: 0.6875rem;
     line-height: 1;
     cursor: pointer;
     transition: color 0.15s ease, background 0.15s ease;
 }
 .attendance-welcome-report-nav-btn:hover:not(:disabled):not(.attendance-welcome-report-nav-btn--disabled) {
-    color: rgb(5 122 85);
-    background: rgb(236 253 245 / 0.9);
+    color: var(--green-deep, #2d9f74);
+    background: var(--green-soft, #eaf8f2);
 }
 .attendance-welcome-report-nav-btn:disabled,
 .attendance-welcome-report-nav-btn.attendance-welcome-report-nav-btn--disabled {
@@ -8947,13 +9118,13 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     width: 6px;
     height: 6px;
     border-radius: 9999px;
-    background: rgb(100 116 139);
+    background: var(--muted, #7a7268);
     transition:
         background 0.2s ease,
         transform 0.2s ease;
 }
 .attendance-welcome-dot--active {
-    background: rgb(5 122 85);
+    background: var(--green-deep, #2d9f74);
     transform: scale(1.15);
 }
 
@@ -9181,23 +9352,28 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 
 /* 기록 로딩 FAB — 오버레이와 별도 슬롯(빠른 전환) */
 #initialRecordsLoadFab .loading-food-icon:nth-child(1),
-#galleryMomentsRefreshFab .loading-food-icon:nth-child(1) {
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(1),
+#timelineRefreshFab .loading-food-icon:nth-child(1) {
     animation: loadingFoodSlideRTL0 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 #initialRecordsLoadFab .loading-food-icon:nth-child(2),
-#galleryMomentsRefreshFab .loading-food-icon:nth-child(2) {
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(2),
+#timelineRefreshFab .loading-food-icon:nth-child(2) {
     animation: loadingFoodSlideRTL1 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 #initialRecordsLoadFab .loading-food-icon:nth-child(3),
-#galleryMomentsRefreshFab .loading-food-icon:nth-child(3) {
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(3),
+#timelineRefreshFab .loading-food-icon:nth-child(3) {
     animation: loadingFoodSlideRTL2 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 #initialRecordsLoadFab .loading-food-icon:nth-child(4),
-#galleryMomentsRefreshFab .loading-food-icon:nth-child(4) {
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(4),
+#timelineRefreshFab .loading-food-icon:nth-child(4) {
     animation: loadingFoodSlideRTL3 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 #initialRecordsLoadFab .loading-food-icon:nth-child(5),
-#galleryMomentsRefreshFab .loading-food-icon:nth-child(5) {
+#galleryMomentsRefreshFab .loading-food-icon:nth-child(5),
+#timelineRefreshFab .loading-food-icon:nth-child(5) {
     animation: loadingFoodSlideRTL4 calc(var(--loading-food-fab-slot, 0.2s) * 5) linear infinite;
 }
 
@@ -9305,7 +9481,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     align-items: center;
     justify-content: center;
 }
-/* 직접 설정: 시작/종료 날짜 (흰색 컨테이너, 기간 탭과 높이 맞춤) */
+/* 직접 설정(더보기): 시작/종료 — 주간/월간 탭과 동일 타이포·높이에 맞춤 */
 .custom-date-range {
     width: 100%;
 }
@@ -9314,17 +9490,18 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     align-items: stretch;
     background: var(--page);
     border-radius: 10px;
-    padding: 0.375rem 0.75rem;
+    padding: 6px 12px;
     border: 1px solid var(--line);
-    min-height: 30px;
-    height: 30px;
+    min-height: 2rem;
+    height: auto;
+    box-sizing: border-box;
 }
 .custom-date-section {
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.375rem;
+    gap: 0.5rem;
     min-width: 0;
 }
 .custom-date-section:first-child {
@@ -9334,9 +9511,11 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     padding-left: 0.5rem;
 }
 .custom-date-label {
-    font-size: 0.8125rem;
-    font-weight: 400;
-    color: var(--ink-2);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--muted, #7a7268);
     white-space: nowrap;
     flex-shrink: 0;
 }
@@ -9344,16 +9523,18 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     position: relative;
     display: inline-flex;
     align-items: center;
-    margin-left: 0.75rem;
+    margin-left: 0;
 }
 .custom-date-placeholder {
     position: absolute;
     left: 0;
     top: 50%;
     transform: translateY(-50%);
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--muted);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--muted, #7a7268);
     pointer-events: none;
     display: none;
 }
@@ -9368,33 +9549,35 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 .custom-date-input {
     flex: 0 0 auto;
-    width: 7.5rem;
-    min-height: 1.25rem;
+    width: 8.75rem;
+    min-height: 1.5rem;
     padding: 0 0.25rem 0 0;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--ink);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--ink, #241f1c);
     background: transparent;
     border: none;
     outline: none;
     box-sizing: content-box;
 }
 .custom-date-input::-webkit-datetime-edit {
-    color: var(--ink);
+    color: var(--ink, #241f1c);
 }
 .custom-date-input::-webkit-calendar-picker-indicator {
     filter: none;
     opacity: 0.7;
     cursor: pointer;
     margin-left: 0;
-    width: 1.2em;
-    height: 1.2em;
+    width: 1.15em;
+    height: 1.15em;
 }
 .custom-date-divider {
     width: 1px;
     background: var(--line);
     flex-shrink: 0;
-    margin: 0.15rem 0;
+    margin: 0.2rem 0;
 }
 /* 분석창 카드 — 시안 v2: 인셋·라운드 (풀폭 제거) */
 
@@ -10145,6 +10328,10 @@ body[data-main-tab='dashboard'] #dashboardView {
     margin-bottom: 10px;
     background: #fff;
 }
+/* 베스트: 하단 편향 대신 사방으로 고른 그림자 */
+#dashboardView.dashboard-view-v2 #bestAnalysisSection .card {
+    box-shadow: 0 0 12px rgba(43, 40, 37, 0.1);
+}
 #dashboardView.dashboard-view-v2 #mainAnalysisSection .card:first-child,
 #dashboardView.dashboard-view-v2 #snackAnalysisSection .card:first-child,
 #dashboardView.dashboard-view-v2 #healthAnalysisSection .card:first-child {
@@ -10156,6 +10343,52 @@ body[data-main-tab='dashboard'] #dashboardView {
     font-size: 12px;
     margin-left: 6px;
 }
+/* 분석 상세 공통 팝업 — 어떻게/무엇을/함께 탭 */
+#detailModal .detail-modal-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    margin: 4px 16px 0;
+    padding: 4px;
+    border-radius: 14px;
+    border: 1px solid var(--line, #d0c6ba);
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+#detailModal .detail-modal-tabs.hidden {
+    display: none !important;
+}
+#detailModal .detail-modal-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 4px;
+    min-height: 2rem;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--muted, #7a7268);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+#detailModal .detail-modal-tab:hover {
+    color: var(--ink-2, #4f4841);
+}
+#detailModal .detail-modal-tab--active,
+#detailModal .detail-modal-tab[aria-selected="true"] {
+    background: var(--green-soft, #eaf8f2);
+    color: var(--ink, #241f1c);
+}
+#detailModal #detailContent {
+    padding-top: 0.75rem;
+}
+
 #dashboardView.dashboard-view-v2 .dashboard-detail-link {
     border: 0;
     background: transparent;
@@ -11015,7 +11248,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     filter: brightness(1.02);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 10px 24px rgba(60, 184, 137, 0.42);
 }
-/* 배경(원형 버튼)은 고정, + 아이콘만 360° 회전 (밀로그·라운지 공통) */
+/* 배경(원형 버튼)은 고정, + 아이콘만 180° 회전 (밀로그·라운지 공통) */
 #entryQuickInputFab.entry-quick-input-fab.cta-fab--spin,
 #boardWriteBtn.board-write-fab.cta-fab--spin {
     pointer-events: none;
@@ -11028,7 +11261,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 @keyframes cta-fab-icon-spin {
     from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
+    to { transform: rotate(180deg); }
 }
 #entryQuickInputFab.entry-quick-input-fab.hidden {
     display: none !important;
@@ -11037,7 +11270,8 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 
 /* 초기 기록 로딩 스피너 — mealSyncResendBtn 과 동일 위치·크기(48px), 음식 아이콘만 */
 #initialRecordsLoadFab.initial-records-load-fab,
-#galleryMomentsRefreshFab.initial-records-load-fab {
+#galleryMomentsRefreshFab.initial-records-load-fab,
+#timelineRefreshFab.initial-records-load-fab {
     position: fixed;
     bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + var(--fab-above-nav-gap));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
@@ -11059,16 +11293,19 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     cursor: pointer;
 }
 #initialRecordsLoadFab.initial-records-load-fab:active,
-#galleryMomentsRefreshFab.initial-records-load-fab:active {
+#galleryMomentsRefreshFab.initial-records-load-fab:active,
+#timelineRefreshFab.initial-records-load-fab:active {
     transform: scale(0.94);
 }
 #initialRecordsLoadFab.initial-records-load-fab.hidden,
-#galleryMomentsRefreshFab.initial-records-load-fab.hidden {
+#galleryMomentsRefreshFab.initial-records-load-fab.hidden,
+#timelineRefreshFab.initial-records-load-fab.hidden {
     display: none !important;
     pointer-events: none;
 }
-/* 갤러리 새로고침 전용: 표시만, 탭 불가 */
-#galleryMomentsRefreshFab.initial-records-load-fab {
+/* 갤러리·밀로그 새로고침 전용: 표시만, 탭 불가 */
+#galleryMomentsRefreshFab.initial-records-load-fab,
+#timelineRefreshFab.initial-records-load-fab {
     pointer-events: none;
     cursor: default;
     z-index: 41;
@@ -12003,11 +12240,6 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .lounge-post:last-child {
     margin-bottom: 0;
 }
-.lounge-post.notice,
-.lounge-post.lounge-post--notice {
-    background: linear-gradient(180deg, #fff 0%, #fffbeb 100%);
-    border-color: #fde68a;
-}
 .lounge-post.lounge-post--pending {
     border-color: #fde68a;
     background: linear-gradient(180deg, #fff 0%, #fffbeb 90%);
@@ -12015,20 +12247,32 @@ body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent 
 .lounge-notice-chip {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
     font-size: 11px;
     font-weight: 700;
     color: #b45309;
     background: #fef3c7;
     padding: 3px 8px;
     border-radius: 999px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.lounge-notice-chip [data-lucide],
+.lounge-notice-chip .lucide {
+    width: 12px;
+    height: 12px;
+    stroke-width: 2.25;
+    display: block;
 }
 .lounge-author-row {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 10px;
+}
+.lounge-author-row .lounge-notice-chip {
+    align-self: center;
 }
 .lounge-avatar {
     width: 36px;
@@ -12830,10 +13074,12 @@ button.board-detail-stat:disabled {
     overflow: visible !important;
     position: relative;
 }
-/* 시안 허브 · 팝업 · 팔레트: 콘텐츠 자연 높이 → 페이지 스크롤 */
+/* 시안 허브 · 팝업 · 플로우 · 팔레트: 콘텐츠 자연 높이 → 페이지 스크롤 */
 #adminPage #admin-tab-content-uiGuide #uiGuideHubMount.ui-guide-hub,
 #adminPage #admin-tab-content-uiGuide #uiGuidePopupMount,
 #adminPage #admin-tab-content-uiGuide #uiGuidePopupMount.popup-inventory,
+#adminPage #admin-tab-content-uiGuide #uiGuideFlowMount,
+#adminPage #admin-tab-content-uiGuide #uiGuideFlowMount.screen-flow,
 #adminPage #admin-tab-content-uiGuide #uiGuidePaletteMount.ui-guide-shadow-host {
     height: auto !important;
     max-height: none !important;
@@ -13691,7 +13937,7 @@ button.board-detail-stat:disabled {
     color: var(--entry-accent-dark);
 }
 
-/* ── 사진 등록 후: 히어로 → 아래 고정 툴바(가독) → 추가 썸네일 ── */
+/* ── 사진 등록 후: 스트립 썸네일 → 아래 고정 툴바 ── */
 /* :not(.hidden) — has-photos의 display:flex가 Tailwind .hidden을 덮지 않도록 */
 #entryModal .entry-photo-section--has-photos:not(.hidden) {
     position: relative;
@@ -13805,26 +14051,44 @@ button.board-detail-stat:disabled {
     opacity: 1;
     gap: 4px;
 }
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn {
-    width: 2.25rem;
-    height: 2.25rem;
-    min-height: 2.25rem;
-    padding: 0;
-    border-radius: 0.65rem;
+/* 사진 설정 행: 카메라/앨범·비율 버튼 높이·타이포 통일 */
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn,
+#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+    box-sizing: border-box;
+    height: 2rem;
+    min-height: 2rem;
+    max-height: 2rem;
+    border-radius: 0.55rem;
     border: 1px solid var(--entry-border);
     background: #ffffff;
-    color: var(--entry-action-icon);
     box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn i {
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn {
+    width: 2rem;
+    min-width: 2rem;
     color: var(--entry-action-icon);
-    font-size: 1rem;
+}
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn i,
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
+#entryModal .entry-photo-section--has-photos .record-photo-add-btn .lucide {
+    color: var(--entry-action-icon);
+    font-size: 0.875rem;
+    width: 0.875rem;
+    height: 0.875rem;
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
-    background: #ffffff;
-    border: 1px solid var(--entry-border);
+    width: auto;
+    min-width: 3rem;
+    padding: 0 0.65rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     color: var(--entry-text-secondary);
-    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.05);
 }
 #entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
@@ -13833,132 +14097,39 @@ button.board-detail-stat:disabled {
 }
 #entryModal .entry-photo-section--has-photos #photoPreviewContainer,
 #entryModal .entry-photo-section--has-photos #snackPhotoPreviewContainer {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: nowrap;
+    display: block;
     width: 100%;
-    gap: 0;
     padding: 0;
     box-sizing: border-box;
     min-width: 0;
 }
-/* 히어로 슬롯 — 선택/좌우 이동으로 표시, 슬롯 크기 유지 */
-#entryModal .entry-photo-section--has-photos .entry-photo-hero {
-    width: 100%;
-    margin: 0;
-    padding: 0;
-    line-height: 0;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-item--hero {
-    position: relative;
-    width: 100%;
-    max-width: 100%;
-    height: auto;
-    max-height: none;
-    margin: 0;
-    border: 0;
-    border-radius: 0;
-    display: block;
-    line-height: 0;
-    font-size: 0;
-    overflow: hidden;
-    background: #f1f5f9;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-item--hero .photo-preview-order-badge {
-    top: 10px;
-    left: 10px;
-    width: 22px;
-    height: 22px;
-    font-size: 11px;
-}
-/* 히어로 중앙 좌우 화살표 */
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 12;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    padding: 0;
-    border: 0;
-    border-radius: 9999px;
-    background: rgba(15, 23, 42, 0.48);
-    color: #ffffff;
-    cursor: pointer;
-    transition: background 0.15s ease, opacity 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav--prev {
-    left: 10px;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav--next {
-    right: 10px;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav:hover:not(:disabled) {
-    background: rgba(15, 23, 42, 0.68);
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav:disabled {
-    opacity: 0.28;
-    cursor: default;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav i,
-#entryModal .entry-photo-section--has-photos .photo-preview-hero-nav svg {
-    width: 1.15rem;
-    height: 1.15rem;
-    stroke: currentColor;
-}
-/* 히어로 좌하단 삭제 / 우하단 편집 (텍스트) */
-#entryModal .entry-photo-section--has-photos .photo-preview-delete-text,
-#entryModal .entry-photo-section--has-photos .photo-preview-edit-text {
-    position: absolute;
-    bottom: 10px;
-    z-index: 12;
-    margin: 0;
-    padding: 0.35rem 0.7rem;
-    border: 0;
-    border-radius: 9999px;
-    background: rgba(15, 23, 42, 0.62);
-    color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    line-height: 1.2;
-    cursor: pointer;
-    transition: background 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-delete-text {
-    left: 10px;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-edit-text {
-    right: 10px;
-}
-#entryModal .entry-photo-section--has-photos .photo-preview-delete-text:hover,
-#entryModal .entry-photo-section--has-photos .photo-preview-edit-text:hover {
-    background: rgba(15, 23, 42, 0.78);
-}
-/* 등록 사진 전체 썸네일 스트립 */
+/* 등록 사진 썸네일 스트립 — 사진과 컨트롤 분리 */
 #entryModal .entry-photo-section--has-photos .entry-photo-thumb-strip {
     display: flex;
     flex-wrap: nowrap;
-    align-items: flex-end;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 10px;
     width: 100%;
     margin: 0;
-    padding: 10px 12px;
+    padding: 10px 12px 12px;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     box-sizing: border-box;
 }
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 10.2rem;
+    min-width: 10.2rem;
+    flex: 0 0 auto;
+}
 #entryModal .entry-photo-section--has-photos .photo-preview-item--thumb {
     position: relative;
-    width: 4.25rem;
-    min-width: 4.25rem;
+    width: 100%;
     height: auto;
     max-height: none;
     margin: 0;
@@ -13966,16 +14137,71 @@ button.board-detail-stat:disabled {
     border-radius: 12px;
     border: 1.5px solid #d8cfc3;
     background: #f1f5f9;
-    flex: 0 0 auto;
-    cursor: pointer;
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb.is-selected,
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb[aria-pressed="true"] {
-    border-color: var(--green, #3cb889);
-    box-shadow: 0 0 0 2px rgb(60 184 137 / 0.28);
+#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
+    width: 24px;
+    height: 24px;
+    top: 6px;
+    right: 6px;
+    font-size: 12px;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
+#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
+    width: 12px;
+    height: 12px;
+}
+/* 사진 아래 독립 컨트롤: ‹ 편집 › */
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
+    box-sizing: border-box;
+    height: 28px;
+    min-height: 28px;
+    margin: 0;
+    border: 1px solid var(--entry-border, #e2e8f0);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--entry-text-secondary, #64748b);
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
+    background: #f8fafc;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
+    flex: 0 0 2rem;
+    width: 2rem;
+    min-width: 2rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--ink, #241f1c);
+}
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 0.4rem;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+    color: var(--ink, #241f1c);
 }
 
 /* ── 만족도·포만감·시간 ── */
@@ -14544,7 +14770,7 @@ button.board-detail-stat:disabled {
    Dialog · Sheet · Action · Search · Media · Banner/Toast
    ═══════════════════════════════════════════════════════════ */
 
-/* —— 공통 딤 (ink 42%) —— */
+/* —— 공통 딤 (ink-2 45%) —— */
 #contentPopupModal,
 #entryModal,
 #dailyJournalModal,
@@ -14553,10 +14779,12 @@ button.board-detail-stat:disabled {
 #deleteAccountConfirmModal,
 #emailAuthModal,
 #termsModal,
+#profileSetupModal,
 #passwordResetConfirmModal,
 #passwordResetSuccessModal,
 #demoIntroModal,
 #characterSelectPopup,
+#characterSelectModal,
 #bestSharePeriodNoticeModal,
 #bestShareModal,
 #insightShareModal,
@@ -14569,18 +14797,29 @@ button.board-detail-stat:disabled {
 #boardSearchModal,
 #trackerMonthCalendarModal,
 #domainErrorModal,
+#detailModal,
 #pwaInstallGuideModal,
-#desktopShortcutGuideModal {
+#desktopShortcutGuideModal,
+#reportModal {
     background-color: var(--shell-dim) !important;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
 }
 #entrySlotPickerBackdrop,
+#entryModalBackdrop,
+#dietReportBackdrop,
+#successPopupBackdrop,
+#attendancePopupBackdrop,
+#trackerMonthCalendarBackdrop,
+#pwaInstallGuideBackdrop,
+#desktopShortcutGuideBackdrop,
 #reportModal > .absolute.inset-0,
 #feedOptionsMenu > .absolute,
 #feedOptionsMenu > .fixed.inset-0,
 #boardPostOptionsMenu > .fixed.inset-0,
-#feedBubbleActionSheet > .absolute {
+#feedBubbleActionSheet > .absolute,
+.search-filter-modal__backdrop,
+.mealog-dialog-backdrop {
     background-color: var(--shell-dim) !important;
 }
 
@@ -14590,6 +14829,7 @@ button.board-detail-stat:disabled {
 #deleteAccountConfirmModal > div,
 #emailAuthModal > div,
 #termsModal > div,
+#profileSetupModal > div,
 #passwordResetConfirmModal > div,
 #passwordResetSuccessModal > div,
 #demoIntroModal > div,
@@ -14599,14 +14839,36 @@ button.board-detail-stat:disabled {
 #pwaInstallGuideModal > div,
 #desktopShortcutGuideModal > div,
 #entrySlotPickerModal .entry-slot-picker,
-#entryModal .entry-modal-panel {
+#entryModal .entry-modal-panel,
+#dietReportModal .diet-report-modal,
+#detailModal > div,
+#bestShareModal > div,
+#insightShareModal > div,
+#timelineSearchModal > .search-filter-modal__panel,
+#momentSearchModal > .search-filter-modal__panel,
+#boardSearchModal > .search-filter-modal__panel,
+#notificationModal > .notification-modal,
+#trackerMonthCalendarModal .tracker-month-calendar-panel,
+#photoEditModal > div {
     border-radius: var(--shell-r-dialog) !important;
     border: 1px solid var(--line);
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
     background: var(--card);
+    width: var(--shell-float-width) !important;
+    max-width: var(--shell-float-width) !important;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
 }
 #contentPopupModalInner {
     overflow: hidden;
+}
+/* 축하/웰컴·로딩 박스도 동일 폭 토큰 */
+#attendancePopupContent,
+#successPopupContent,
+#loadingOverlayBox {
+    width: var(--shell-float-width) !important;
+    max-width: var(--shell-float-width) !important;
 }
 #contentPopupLandingBtn {
     color: var(--green-deep) !important;
@@ -15012,15 +15274,15 @@ button.board-detail-stat:disabled {
 }
 .mealog-action-wrap {
     position: fixed;
-    left: 12px;
-    right: 12px;
+    left: var(--shell-float-gutter, 1.25rem);
+    right: var(--shell-float-gutter, 1.25rem);
     bottom: max(16px, env(safe-area-inset-bottom, 0px));
     z-index: 451;
     display: flex;
     flex-direction: column;
     gap: 8px;
     width: auto;
-    max-width: 28rem;
+    max-width: var(--shell-float-width, 28rem);
     margin-left: auto;
     margin-right: auto;
 }
@@ -15111,6 +15373,7 @@ button.board-detail-stat:disabled {
 #timelineSearchModal > .search-filter-modal__panel,
 #momentSearchModal > .search-filter-modal__panel,
 #boardSearchModal > .search-filter-modal__panel,
+#notificationModal > .notification-modal,
 #trackerMonthCalendarModal .tracker-month-calendar-panel {
     border-radius: var(--shell-r-dialog) !important;
     border: 1px solid var(--line) !important;
@@ -15303,16 +15566,12 @@ button.board-detail-stat:disabled {
     flex-shrink: 0;
 }
 
-/* 알림 팝업 — Soft Mint Search/List */
+/* 알림 팝업 — Soft Mint Search/List (검색 팝업과 동일 셸) */
 #notificationModal .notification-modal {
     /* 고정 높이로 목록 스크롤 영역을 확보 (내용 수에 따라 리스트가 짧아지던 문제 방지) */
     height: min(90vh, 42rem);
     max-height: min(90vh, 42rem);
     min-height: 0;
-    border-radius: var(--shell-r-dialog) !important;
-    border: 1px solid var(--line) !important;
-    background: var(--page-deep, #faf6f2) !important;
-    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.12);
 }
 #notificationModal .notification-modal-head {
     display: flex;
@@ -15322,12 +15581,12 @@ button.board-detail-stat:disabled {
     flex-shrink: 0;
     padding: 14px var(--mealog-dialog-pad-x) 12px;
     border-bottom: 1px solid var(--line);
-    background: var(--page-deep, #faf6f2);
+    background: var(--card);
     text-align: left;
 }
 #notificationModal .notification-modal-title {
     margin: 0;
-    font-size: 16px;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--ink);
@@ -15369,7 +15628,7 @@ button.board-detail-stat:disabled {
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
-    padding: 12px var(--mealog-dialog-pad-x) 0;
+    padding: 14px var(--mealog-dialog-pad-x) 8px;
     background: var(--page-deep, #faf6f2);
 }
 #notificationModal .notification-tab-row {
@@ -15549,9 +15808,9 @@ button.board-detail-stat:disabled {
 #notificationModal .notification-read-hint.hidden {
     display: none;
 }
-#notificationModal .mealog-dialog-actions--border {
+#notificationModal .mealog-dialog-actions {
     flex-shrink: 0;
-    background: var(--page-deep, #faf6f2);
+    background: var(--card);
 }
 
 /* —— Fullscreen Media —— */

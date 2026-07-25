@@ -78,7 +78,7 @@ export function momentPostV2ToPhotoGroup(doc) {
     photoDisplayUrl: p.displayUrl || p.photoDisplayUrl || '',
     photoThumbUrl: p.thumbUrl || p.photoThumbUrl || '',
     photoIndex: typeof p.index === 'number' ? p.index : idx,
-    photoAspectRatio: resolveAspect(p.aspectRatio),
+    photoAspectRatio: resolveAspect(p.aspectRatio || p.photoAspectRatio),
     userId: doc.userId,
     userNickname: doc.userNickname,
     userIcon: doc.userIcon,

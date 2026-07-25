@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mealog · 화면 플로우차트</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="./screen-flow.css" />
+  <script src="./themes.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { background: #faf6f2; }
+  </style>
+</head>
+<body>
+  <div id="screenFlowApp"></div>
+  <script src="./screen-flow.js"></script>
+  <script>
+    window.mountScreenFlow(document.getElementById('screenFlowApp'), { standalone: true });
+  </script>
+</body>
+</html>

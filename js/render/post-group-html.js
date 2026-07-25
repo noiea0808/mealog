@@ -236,7 +236,14 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         return (photo.place && menuLine) ? `${menuLine} @ ${photo.place}` : (photo.place || menuLine || photo.mealType || '');
     })();
     const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';
+    // 모먼트(shared) 문서 비율 우선 — mealHistory가 오래된 1:1이면 shared의 3:4/4:3을 덮지 않음
+    const mealFromMap =
+        entryId && mealHistoryMap
+            ? mealHistoryMap.get(entryId) || mealHistoryMap.get(String(entryId))
+            : null;
+    const mealAspect = mealFromMap?.photoAspectRatio;
+    let aspectRatio =
+        photo.photoAspectRatio || photo.aspectRatio || mealAspect || '1:1';
     if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
     const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const momentUrlsEncoded = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean)));

@@ -154,6 +154,18 @@ export function initCenterDialogGrabbers() {
                 if (typeof window.closePhotoEditModal === 'function') window.closePhotoEditModal();
                 else hideById('photoEditModal');
             }
+        },
+        {
+            rootId: 'entryModal',
+            panelSelector: '.entry-modal-panel',
+            backdropSelector: '#entryModalBackdrop',
+            onClose: () => {
+                if (typeof window.closeModal === 'function') window.closeModal();
+            },
+            isDisabled: () => {
+                const el = document.getElementById('entryModal');
+                return !el || el.classList.contains('entry-modal-saving');
+            }
         }
     ]);
 }

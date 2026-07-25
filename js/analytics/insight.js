@@ -1682,7 +1682,7 @@ export async function openShareInsightModal() {
     preview.innerHTML = screenshotHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('insightShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -1795,7 +1795,7 @@ export async function openEditInsightShareModal(photoUrl) {
     preview.innerHTML = existingImageHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('insightShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -1819,7 +1819,7 @@ export function closeShareInsightModal() {
     const modal = document.getElementById('insightShareModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('insightShareModal');
     }
 }
 

@@ -292,31 +292,21 @@ export function showToast(message, type = 'info') {
 }
 
 let successPopupTimer = null;
-let successPopupScrollLocked = false;
-let attendancePopupScrollLocked = false;
 
 function lockSuccessPopupScroll() {
-    if (successPopupScrollLocked) return;
-    lockBodyScroll();
-    successPopupScrollLocked = true;
+    lockBodyScroll('successPopup');
 }
 
 function unlockSuccessPopupScroll() {
-    if (!successPopupScrollLocked) return;
-    unlockBodyScroll();
-    successPopupScrollLocked = false;
+    unlockBodyScroll('successPopup');
 }
 
 function lockAttendancePopupScroll() {
-    if (attendancePopupScrollLocked) return;
-    lockBodyScroll();
-    attendancePopupScrollLocked = true;
+    lockBodyScroll('attendancePopup');
 }
 
 function unlockAttendancePopupScroll() {
-    if (!attendancePopupScrollLocked) return;
-    unlockBodyScroll();
-    attendancePopupScrollLocked = false;
+    unlockBodyScroll('attendancePopup');
 }
 
 /**
@@ -420,10 +410,12 @@ export function dismissSuccessPopup() {
 }
 
 function ensureAttendancePopupCloseBound() {
-    const btn = document.getElementById('attendancePopupCloseBtn');
-    if (!btn || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', closeAttendancePopup);
+    ['attendancePopupCloseBtn', 'attendancePopupCloseBtnBare'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (!btn || btn.dataset.bound === '1') return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', closeAttendancePopup);
+    });
 }
 
 const WELCOME_CHART_NS = 'http://www.w3.org/2000/svg';

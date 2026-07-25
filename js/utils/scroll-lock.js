@@ -1,5 +1,6 @@
-/** 배경 스크롤·휠·터치 차단 (중첩 팝업은 ref-count) */
-let lockCount = 0;
+/** 배경 스크롤·휠·터치 차단 (중첩 팝업은 owner Set으로 관리) */
+/** @type {Set<string>} */
+const lockOwners = new Set();
 let savedScrollY = 0;
 
 const SCROLL_ALLOW_SELECTOR =
@@ -14,6 +15,11 @@ const OPEN_OVERLAY_ROOT_SELECTOR = [
     '[id$="Modal"]:not(.hidden)',
     '[id$="Popup"]:not(.hidden)'
 ].join(', ');
+
+function ownerKey(owner) {
+    if (owner == null || owner === '') return 'default';
+    return String(owner);
+}
 
 function isInsideOpenOverlay(target) {
     if (!(target instanceof Element)) return false;
@@ -61,13 +67,13 @@ function canScrollEl(el, deltaX, deltaY) {
 }
 
 function onTouchMove(e) {
-    if (lockCount <= 0) return;
+    if (lockOwners.size <= 0) return;
     if (findScrollLockAllowEl(e.target) || isInsideOpenOverlay(e.target)) return;
     e.preventDefault();
 }
 
 function onWheel(e) {
-    if (lockCount <= 0) return;
+    if (lockOwners.size <= 0) return;
     const scrollable = findScrollLockAllowEl(e.target) || findScrollableInOverlay(e.target);
     if (scrollable && canScrollEl(scrollable, e.deltaX, e.deltaY)) return;
     e.preventDefault();
@@ -76,7 +82,7 @@ function onWheel(e) {
 const SCROLL_BLOCK_KEYS = new Set([' ', 'PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown']);
 
 function onKeyDown(e) {
-    if (lockCount <= 0) return;
+    if (lockOwners.size <= 0) return;
     if (!SCROLL_BLOCK_KEYS.has(e.key)) return;
     const t = e.target;
     if (
@@ -101,10 +107,7 @@ function detachScrollBlockListeners() {
     document.removeEventListener('keydown', onKeyDown, { capture: true });
 }
 
-export function lockBodyScroll() {
-    lockCount += 1;
-    if (lockCount > 1) return;
-
+function applyDomScrollLock() {
     savedScrollY = window.scrollY || window.pageYOffset || 0;
     document.documentElement.classList.add('mealog-scroll-locked');
     document.body.classList.add('mealog-scroll-locked');
@@ -112,14 +115,32 @@ export function lockBodyScroll() {
     attachScrollBlockListeners();
 }
 
-export function unlockBodyScroll() {
-    if (lockCount <= 0) return;
-    lockCount -= 1;
-    if (lockCount > 0) return;
-
+function clearDomScrollLock() {
     document.documentElement.classList.remove('mealog-scroll-locked');
     document.body.classList.remove('mealog-scroll-locked');
     document.body.style.top = '';
     detachScrollBlockListeners();
     window.scrollTo(0, savedScrollY);
+}
+
+/**
+ * @param {string} [owner] 같은 owner로 중복 lock해도 한 번만 잡힘. 다른 팝업은 다른 owner 사용.
+ */
+export function lockBodyScroll(owner = 'default') {
+    const key = ownerKey(owner);
+    if (lockOwners.has(key)) return;
+    const first = lockOwners.size === 0;
+    lockOwners.add(key);
+    if (first) applyDomScrollLock();
+}
+
+/**
+ * @param {string} [owner] lock 때 쓴 owner와 동일해야 함.
+ */
+export function unlockBodyScroll(owner = 'default') {
+    const key = ownerKey(owner);
+    if (!lockOwners.has(key)) return;
+    lockOwners.delete(key);
+    if (lockOwners.size > 0) return;
+    clearDomScrollLock();
 }

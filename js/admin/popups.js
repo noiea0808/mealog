@@ -14,6 +14,49 @@ const POPUP_TARGET_ENV_LABELS = { all: '전체', production: '프로덕션만', 
 let currentEditingPopupId = null;
 let currentSelectedPopupId = null;
 
+/** @returns {string} 유효한 http(s) URL 또는 빈 문자열 */
+function normalizePopupExternalUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    try {
+        const u = new URL(s);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+        return u.href;
+    } catch (_) {
+        return '';
+    }
+}
+
+function getPopupLandingType() {
+    const checked = document.querySelector('input[name="popupLandingType"]:checked');
+    return checked?.value || 'none';
+}
+
+function setPopupLandingType(type) {
+    const value = type === 'notice' || type === 'external' ? type : 'none';
+    document.querySelectorAll('input[name="popupLandingType"]').forEach((el) => {
+        el.checked = el.value === value;
+    });
+    syncPopupLandingTypeUI();
+}
+
+function syncPopupLandingTypeUI() {
+    const type = getPopupLandingType();
+    const labelWrap = document.getElementById('popupLandingButtonLabelWrap');
+    const noticePanel = document.getElementById('popupLandingNoticePanel');
+    const externalPanel = document.getElementById('popupLandingExternalPanel');
+    const labelInput = document.getElementById('popupLandingButtonLabel');
+    if (labelWrap) labelWrap.classList.toggle('hidden', type === 'none');
+    if (noticePanel) noticePanel.classList.toggle('hidden', type !== 'notice');
+    if (externalPanel) externalPanel.classList.toggle('hidden', type !== 'external');
+    if (labelInput) {
+        if (type === 'notice') labelInput.placeholder = '예: 선택한 공지 보기';
+        else if (type === 'external') labelInput.placeholder = '예: 앱스토어에서 업데이트';
+    }
+}
+
+window.syncPopupLandingTypeUI = syncPopupLandingTypeUI;
+
 export async function renderPopups() {
     const container = document.getElementById('popupsContainer');
     if (!container) return;
@@ -109,9 +152,17 @@ async function renderPopupDetailInAdmin(popupId) {
         const imagesHtml = Array.isArray(p.imageUrls) && p.imageUrls.length > 0
             ? `<div class="flex flex-col gap-2 mb-4">${p.imageUrls.map(url => `<img src="${url}" alt="팝업 사진" class="max-w-full h-auto rounded-xl border border-slate-200 object-contain" style="max-height: 50vh;">`).join('')}</div>`
             : '';
-        const landingHtml = p.landingNoticeId
-            ? `<p class="text-sm text-slate-600"><span class="font-bold">버튼 문구:</span> ${escapeHtml(p.landingButtonLabel || '선택한 공지 보기')}</p><p class="text-sm text-slate-600 mt-0.5"><span class="font-bold">연결 공지:</span> ${escapeHtml(p.landingNoticeTitle || '(공지)')}</p>`
-            : '<p class="text-sm text-slate-500">미설정</p>';
+        const externalUrl = normalizePopupExternalUrl(p.landingExternalUrl);
+        let landingHtml = '<p class="text-sm text-slate-500">미설정</p>';
+        if (p.landingNoticeId) {
+            landingHtml = `<p class="text-sm text-slate-600"><span class="font-bold">유형:</span> 라운지 공지</p>
+                <p class="text-sm text-slate-600 mt-0.5"><span class="font-bold">버튼 문구:</span> ${escapeHtml(p.landingButtonLabel || '선택한 공지 보기')}</p>
+                <p class="text-sm text-slate-600 mt-0.5"><span class="font-bold">연결 공지:</span> ${escapeHtml(p.landingNoticeTitle || '(공지)')}</p>`;
+        } else if (externalUrl) {
+            landingHtml = `<p class="text-sm text-slate-600"><span class="font-bold">유형:</span> 외부 링크</p>
+                <p class="text-sm text-slate-600 mt-0.5"><span class="font-bold">버튼 문구:</span> ${escapeHtml(p.landingButtonLabel || '자세히 보기')}</p>
+                <p class="text-sm text-slate-600 mt-0.5 break-all"><span class="font-bold">URL:</span> ${escapeHtml(externalUrl)}</p>`;
+        }
         container.innerHTML = `
             <div class="mb-4">
                 <h2 class="text-lg font-bold text-slate-800 mb-3">${escapeHtml(p.title || '제목 없음')}</h2>
@@ -227,11 +278,14 @@ window.openPopupWriteModal = function(popupId = null) {
     const landingSelectedWrap = document.getElementById('popupLandingSelectedWrap');
     const landingSelectedTitle = document.getElementById('popupLandingSelectedTitle');
     const landingButtonLabelInput = document.getElementById('popupLandingButtonLabel');
+    const landingExternalUrlInput = document.getElementById('popupLandingExternalUrl');
     if (landingIdEl) landingIdEl.value = '';
     if (landingLabelEl) landingLabelEl.textContent = '공지 선택하기';
     if (landingSelectedWrap) landingSelectedWrap.classList.add('hidden');
     if (landingSelectedTitle) landingSelectedTitle.textContent = '';
     if (landingButtonLabelInput) landingButtonLabelInput.value = '';
+    if (landingExternalUrlInput) landingExternalUrlInput.value = '';
+    setPopupLandingType('none');
     if (popupId) {
         if (titleEl) titleEl.textContent = '팝업 수정';
         if (submitBtn) submitBtn.textContent = '수정';
@@ -258,6 +312,8 @@ window.openPopupWriteModal = function(popupId = null) {
                 if (frequencySelect) frequencySelect.value = d.frequency || 'daily';
                 const targetEnvSelect = document.getElementById('popupTargetEnv');
                 if (targetEnvSelect) targetEnvSelect.value = d.targetEnv || 'all';
+                if (landingButtonLabelInput) landingButtonLabelInput.value = d.landingButtonLabel || '';
+                const externalUrl = normalizePopupExternalUrl(d.landingExternalUrl);
                 if (d.landingNoticeId) {
                     window.popupLandingNoticeId = d.landingNoticeId;
                     window.popupLandingNoticeTitle = d.landingNoticeTitle || '';
@@ -265,8 +321,13 @@ window.openPopupWriteModal = function(popupId = null) {
                     if (landingLabelEl) landingLabelEl.textContent = '공지 변경하기';
                     if (landingSelectedWrap) landingSelectedWrap.classList.remove('hidden');
                     if (landingSelectedTitle) landingSelectedTitle.textContent = d.landingNoticeTitle || '(공지)';
+                    setPopupLandingType('notice');
+                } else if (externalUrl) {
+                    if (landingExternalUrlInput) landingExternalUrlInput.value = externalUrl;
+                    setPopupLandingType('external');
+                } else {
+                    setPopupLandingType('none');
                 }
-                if (landingButtonLabelInput) landingButtonLabelInput.value = d.landingButtonLabel || '';
             }
         }).catch(e => {
             console.error("팝업 로드 실패:", e);
@@ -324,6 +385,7 @@ window.selectPopupLandingNotice = function(noticeId, noticeTitle) {
     if (landingLabelEl) landingLabelEl.textContent = '공지 변경하기';
     if (landingSelectedWrap) landingSelectedWrap.classList.remove('hidden');
     if (landingSelectedTitle) landingSelectedTitle.textContent = noticeTitle;
+    setPopupLandingType('notice');
     window.closePopupLandingNoticeSelect();
 };
 
@@ -400,7 +462,30 @@ window.submitPopup = async function() {
         }
         const landingIdEl = document.getElementById('popupLandingNoticeId');
         const landingButtonLabelInput = document.getElementById('popupLandingButtonLabel');
+        const landingExternalUrlInput = document.getElementById('popupLandingExternalUrl');
         const landingNoticeId = (landingIdEl && landingIdEl.value) ? landingIdEl.value.trim() : '';
+        const landingButtonLabel =
+            landingButtonLabelInput && landingButtonLabelInput.value
+                ? landingButtonLabelInput.value.trim()
+                : '';
+        const landingExternalUrl = normalizePopupExternalUrl(landingExternalUrlInput?.value);
+        const landingType = getPopupLandingType();
+        if (landingType === 'notice' && !landingNoticeId) {
+            alert('라운지 공지를 선택해주세요.');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = currentEditingPopupId ? '수정' : '등록';
+            }
+            return;
+        }
+        if (landingType === 'external' && !landingExternalUrl) {
+            alert('올바른 외부 URL(http/https)을 입력해주세요.');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = currentEditingPopupId ? '수정' : '등록';
+            }
+            return;
+        }
         const popupData = {
             title,
             content,
@@ -413,14 +498,23 @@ window.submitPopup = async function() {
             timestamp: new Date().toISOString(),
             authorDisplayName: await getAdminDisplayName()
         };
-        if (landingNoticeId) {
+        if (landingType === 'notice') {
             popupData.landingNoticeId = landingNoticeId;
             popupData.landingNoticeTitle = window.popupLandingNoticeTitle || '';
-            popupData.landingButtonLabel = (landingButtonLabelInput && landingButtonLabelInput.value) ? landingButtonLabelInput.value.trim() : '';
+            popupData.landingButtonLabel = landingButtonLabel;
+            if (currentEditingPopupId) popupData.landingExternalUrl = deleteField();
+        } else if (landingType === 'external') {
+            popupData.landingExternalUrl = landingExternalUrl;
+            popupData.landingButtonLabel = landingButtonLabel || '자세히 보기';
+            if (currentEditingPopupId) {
+                popupData.landingNoticeId = deleteField();
+                popupData.landingNoticeTitle = deleteField();
+            }
         } else if (currentEditingPopupId) {
             popupData.landingNoticeId = deleteField();
             popupData.landingNoticeTitle = deleteField();
             popupData.landingButtonLabel = deleteField();
+            popupData.landingExternalUrl = deleteField();
         }
         if (currentEditingPopupId) {
             const popupDoc = doc(db, 'artifacts', appId, 'popups', currentEditingPopupId);

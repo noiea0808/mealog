@@ -592,14 +592,14 @@ export function openDailyJournalModal(dateStr) {
     updateDailyJournalShareIndicator();
     updateDailyJournalModalActions(dailyJournalHasContent(entry));
     modal.classList.remove('hidden');
-    lockBodyScroll();
+    lockBodyScroll('dailyJournal');
     document.body.classList.add('daily-journal-modal-open');
 }
 
 export function closeDailyJournalModal() {
     const modal = document.getElementById('dailyJournalModal');
     if (modal) modal.classList.add('hidden');
-    unlockBodyScroll();
+    unlockBodyScroll('dailyJournal');
     document.body.classList.remove('daily-journal-modal-open');
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];

@@ -6,6 +6,9 @@
 
 - **google-services.json**: Firebase Console에서 앱(Android)을 등록한 뒤 `google-services.json`을 다운로드하여 `android/app/` 폴더에 넣어주세요.  
   없으면 `android/app/build.gradle`에서 Google Services 플러그인이 적용되지 않아 푸시가 동작하지 않습니다.
+- **알림 아이콘**: 상태바에는 흰 실루엣 `ic_stat_mealog`(투명 배경)을 씁니다.  
+  `AndroidManifest`의 `default_notification_icon` + Functions FCM `android.notification.icon`으로 지정합니다.  
+  컬러 런처(`ic_launcher`)를 쓰면 기기에서 색이 그대로/깨져 보입니다.
 - 빌드: `npm run cap:sync` 후 `npx cap open android`에서 앱을 빌드/실행하면, 로그인 시 FCM 토큰이 Firestore `users/{uid}/config/fcmTokens`에 저장됩니다.
 
 ## 2. Cloud Functions 배포

@@ -40,7 +40,10 @@
       --page: #fffcfa;
       --page-deep: #faf6f2;
       --card: #ffffff;
-      --shell-dim: rgba(36, 31, 28, 0.42);
+      --shell-dim: rgba(79, 72, 65, 0.45);
+      --shell-dim: color-mix(in srgb, var(--ink-2) 45%, transparent);
+      --shell-float-gutter: 1.25rem;
+      --shell-float-width: min(28rem, calc(100vw - (var(--shell-float-gutter) * 2)));
       --shell-r-dialog: 18px;
       --shell-r-sheet: 24px;
       --shell-danger: var(--danger);

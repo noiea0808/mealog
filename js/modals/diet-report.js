@@ -183,8 +183,8 @@ function setModalVisible(visible) {
     const wasVisible = !modal.classList.contains('hidden');
     modal.classList.toggle('hidden', !visible);
     document.body.classList.toggle('diet-report-modal-open', visible);
-    if (visible && !wasVisible) lockBodyScroll();
-    else if (!visible && wasVisible) unlockBodyScroll();
+    if (visible && !wasVisible) lockBodyScroll('dietReport');
+    else if (!visible && wasVisible) unlockBodyScroll('dietReport');
 }
 
 function setModalSubtitle(text) {

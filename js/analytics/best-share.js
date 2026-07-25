@@ -770,7 +770,7 @@ export async function openShareBestModal() {
     });
     scheduleLucideIcons(preview);
 
-    lockBodyScroll();
+    lockBodyScroll('bestShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -799,7 +799,7 @@ export function closeShareBestModal() {
     const modal = document.getElementById('bestShareModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('bestShareModal');
     }
 }
 
@@ -809,7 +809,7 @@ export function showBestSharePeriodNotice(message) {
     const messageEl = document.getElementById('bestSharePeriodNoticeMessage');
     if (modal && messageEl) {
         messageEl.textContent = message || '해당 기간이 더 경과된 후에 베스트 공유가 가능해요.';
-        lockBodyScroll();
+        lockBodyScroll('bestSharePeriodNotice');
         modal.classList.remove('hidden');
     }
 }
@@ -819,7 +819,7 @@ export function closeBestSharePeriodNotice() {
     const modal = document.getElementById('bestSharePeriodNoticeModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('bestSharePeriodNotice');
     }
 }
 
@@ -867,7 +867,7 @@ export async function openEditBestShareModal(photoUrl) {
     preview.innerHTML = existingImageHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('bestShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시

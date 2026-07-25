@@ -22,9 +22,35 @@ import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 function setContentPopupWidth() {
     const inner = document.getElementById('contentPopupModalInner');
     if (!inner) return;
-    const contentWidth = document.body.clientWidth || document.documentElement.clientWidth;
-    const popupWidth = Math.max(200, contentWidth - 10);
-    inner.style.width = popupWidth + 'px';
+    /* CSS --shell-float-width 와 맞춤: 좌우 gutter 남기고 충분 폭 (꽉 채우지 않음) */
+    inner.style.width = '';
+    inner.style.maxWidth = '';
+}
+
+/** @returns {string} 유효한 http(s) URL 또는 빈 문자열 */
+function normalizeContentPopupExternalUrl(raw) {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    try {
+        const u = new URL(s);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+        return u.href;
+    } catch (_) {
+        return '';
+    }
+}
+
+async function openContentPopupExternalUrl(url) {
+    const Browser = window.Capacitor?.Plugins?.Browser;
+    if (Browser?.open) {
+        try {
+            await Browser.open({ url });
+            return;
+        } catch (e) {
+            console.warn('[content-popup] Browser.open 실패, window.open으로 대체:', e);
+        }
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function fillContentPopupModal(popup) {
@@ -46,17 +72,34 @@ function fillContentPopupModal(popup) {
         });
     }
     contentEl.innerHTML = renderFormattedContent(popup.content || '');
-    if (landingWrap && landingBtn && popup.landingNoticeId) {
+    const noticeId = popup.landingNoticeId ? String(popup.landingNoticeId).trim() : '';
+    const externalUrl = normalizeContentPopupExternalUrl(popup.landingExternalUrl);
+    const buttonLabel =
+        popup.landingButtonLabel && String(popup.landingButtonLabel).trim()
+            ? String(popup.landingButtonLabel).trim()
+            : '';
+    if (landingWrap && landingBtn && noticeId) {
         landingWrap.classList.remove('hidden');
-        landingBtn.textContent = popup.landingButtonLabel && popup.landingButtonLabel.trim() ? popup.landingButtonLabel.trim() : '선택한 공지 보기';
+        landingBtn.textContent = buttonLabel || '선택한 공지 보기';
         landingBtn.onclick = () => {
             recordPopupClick(popup.id);
             window.closeContentPopupModal(false);
             if (appState.currentTab !== 'board') window.switchMainTab('board');
-            setTimeout(() => { if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(popup.landingNoticeId); }, 100);
+            setTimeout(() => {
+                if (typeof window.openNoticeDetail === 'function') window.openNoticeDetail(noticeId);
+            }, 100);
+        };
+    } else if (landingWrap && landingBtn && externalUrl) {
+        landingWrap.classList.remove('hidden');
+        landingBtn.textContent = buttonLabel || '자세히 보기';
+        landingBtn.onclick = () => {
+            recordPopupClick(popup.id);
+            window.closeContentPopupModal(false);
+            void openContentPopupExternalUrl(externalUrl);
         };
     } else if (landingWrap) {
         landingWrap.classList.add('hidden');
+        if (landingBtn) landingBtn.onclick = null;
     }
 }
 
@@ -242,7 +285,7 @@ export function registerContentPopup() {
                 };
             }
             updatePopupNavButtons();
-            lockBodyScroll();
+            lockBodyScroll('contentPopup');
             modal.classList.remove('hidden');
         } catch (e) {
             console.warn('콘텐츠 팝업 조회 실패:', e);
@@ -282,6 +325,6 @@ export function registerContentPopup() {
             nextBtn.disabled = false;
         }
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('contentPopup');
     };
 }

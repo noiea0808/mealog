@@ -99,7 +99,7 @@ function resetLbTransform() {
 export function closeMomentImageLightbox() {
     if (!_overlay || _overlay.classList.contains('hidden')) return;
     _overlay.classList.add('hidden');
-    unlockBodyScroll();
+    unlockBodyScroll('momentLightbox');
     _overlay.setAttribute('aria-hidden', 'true');
     const img = _overlay.querySelector('[data-moment-lb-img]');
     if (img) {
@@ -336,7 +336,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
     }
 
     syncMomentLightboxUi();
-    lockBodyScroll();
+    lockBodyScroll('momentLightbox');
     _overlay.classList.remove('hidden');
     _overlay.setAttribute('aria-hidden', 'false');
 

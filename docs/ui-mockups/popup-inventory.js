@@ -315,13 +315,22 @@
         </div>`
       },
       detailModal: {
-        shell: 'dialog', name: '상세 통계', dom: 'detailModal',
+        shell: 'dialog', name: '분석 상세(탭)', dom: 'detailModal',
         html: () => `<div class="pv-overlay pv-overlay--center">
           <div class="pv-dialog pv-dialog--md">
-            <div class="pv-head"><div><h3>상세 통계</h3></div>${xBtn()}</div>
+            <div class="pv-head"><div><h3>식사 상세</h3></div>${xBtn()}</div>
             <div class="pv-body">
-              <div style="height:120px;border-radius:12px;background:linear-gradient(180deg,var(--green-soft),var(--page));border:1px solid var(--line);margin-bottom:10px;display:grid;place-items:center;color:var(--green-deep);font-weight:700;font-size:13px">차트 영역</div>
-              <div class="pv-field">아침 3 · 점심 5 · 저녁 4</div>
+              <div style="display:flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:14px;margin-bottom:12px">
+                <span style="flex:1;text-align:center;padding:8px 4px;border-radius:10px;background:var(--green-soft);font-size:13px;font-weight:700">어떻게</span>
+                <span style="flex:1;text-align:center;padding:8px 4px;border-radius:10px;font-size:13px;font-weight:600;color:var(--muted)">무엇을</span>
+                <span style="flex:1;text-align:center;padding:8px 4px;border-radius:10px;font-size:13px;font-weight:600;color:var(--muted)">함께</span>
+              </div>
+              <div class="pv-field">1위 · 집 12회</div>
+              <div class="pv-field">2위 · 회사 5회</div>
+              <div class="pv-field">3위 · 카페 3회</div>
+            </div>
+            <div class="pv-actions pv-actions--single pv-actions--border">
+              <button type="button" class="pv-btn pv-btn-secondary" data-close>닫기</button>
             </div>
           </div>
         </div>`

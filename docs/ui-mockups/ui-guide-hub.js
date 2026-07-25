@@ -16,7 +16,7 @@
     return 'docs/ui-mockups/';
   }
   const BASE = resolveBase();
-  const HUB_VER = '20260723r';
+  const HUB_VER = '20260725a';
 
   const SCREENS = [
     { href: 'mealdang-v2.html', title: '밀당', desc: '분석 · 참견', phone: true },
@@ -34,6 +34,7 @@
       modal: true
     },
     { href: 'popup-inventory.html', title: '팝업 분류', desc: '인벤토리', phone: false, wide: true },
+    { href: 'screen-flow.html', title: '화면 플로우', desc: '여정 · 구성 상세', phone: false, wide: true },
     { href: 'palette-guide.html', title: '컬러 팔레트', desc: 'Soft Mint Air', phone: false, wide: true }
   ];
 

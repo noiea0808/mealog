@@ -703,12 +703,25 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
     const n = urls.length;
     const interactive = opts?.interactive !== false;
     const enc = encodeURIComponent(JSON.stringify(urls));
-    // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
-    const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
+    // 표시는 썸네일/디스플레이 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
+    const displayUrls = urls.map((u, i) =>
+        Array.isArray(thumbUrls) && thumbUrls[i] ? thumbUrls[i] : u
+    );
+    const displayFirst = displayUrls[0] || first;
     const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml, 'timeline.cell');
+    const displayEnc = encodeURIComponent(JSON.stringify(displayUrls));
     const badge =
         n > 1
-            ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
+            ? `<span class="timeline-meal-photo-badge absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm" data-timeline-photo-badge>1/${n}</span>`
+            : '';
+    const navHtml =
+        n > 1
+            ? `<button type="button" class="timeline-meal-photo-nav timeline-meal-photo-nav--prev" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.stepTimelineCardPhoto&&window.stepTimelineCardPhoto(this,-1)" aria-label="이전 사진" disabled>
+                    <i data-lucide="chevron-left" aria-hidden="true"></i>
+               </button>
+               <button type="button" class="timeline-meal-photo-nav timeline-meal-photo-nav--next" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.stepTimelineCardPhoto&&window.stepTimelineCardPhoto(this,1)" aria-label="다음 사진">
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
+               </button>`
             : '';
     const ctxAttrs =
         viewCtx && viewCtx.dateStr && viewCtx.slotId
@@ -717,12 +730,63 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
     const tapBtn = interactive
         ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>`
         : '';
-    return `<div class="absolute inset-0 overflow-hidden">
-        <img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
+    return `<div class="timeline-meal-photo-cell absolute inset-0 overflow-hidden" data-timeline-photo-cell data-photo-index="0" data-photos="${enc}" data-display-photos="${displayEnc}">
+        <img data-timeline-photo-img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
+        ${navHtml}
         ${tapBtn}
     </div>`;
 }
+
+/** 밀로그 카드: 다장 사진 좌우 화살표 탐색 (스와이프 없음 — 날짜 스와이프와 분리) */
+export function stepTimelineCardPhoto(btn, delta) {
+    const cell = btn?.closest?.('[data-timeline-photo-cell]');
+    if (!cell) return;
+    let originals = [];
+    let displays = [];
+    try {
+        originals = JSON.parse(decodeURIComponent(cell.getAttribute('data-photos') || '[]'));
+    } catch (_) {
+        originals = [];
+    }
+    try {
+        displays = JSON.parse(decodeURIComponent(cell.getAttribute('data-display-photos') || '[]'));
+    } catch (_) {
+        displays = [];
+    }
+    if (!Array.isArray(originals) || originals.length < 2) return;
+    const n = originals.length;
+    const d = Number(delta);
+    if (!Number.isInteger(d) || d === 0) return;
+    let idx = Math.floor(Number(cell.dataset.photoIndex || 0));
+    if (!Number.isFinite(idx)) idx = 0;
+    const next = Math.max(0, Math.min(n - 1, idx + d));
+    if (next === idx) return;
+    cell.dataset.photoIndex = String(next);
+    const img = cell.querySelector('[data-timeline-photo-img]');
+    const orig = originals[next] || '';
+    const disp = (Array.isArray(displays) && displays[next]) || orig;
+    if (img && orig) {
+        img.setAttribute('src', disp);
+        if (disp && disp !== orig) {
+            img.setAttribute('data-original-src', orig);
+            img.setAttribute('data-img-debug-component', 'timeline.cell');
+            img.setAttribute('onerror', 'window.__imgFallbackToOriginal&&window.__imgFallbackToOriginal(this)');
+        } else {
+            img.removeAttribute('data-original-src');
+            img.removeAttribute('data-img-debug-component');
+            img.removeAttribute('onerror');
+        }
+    }
+    const badge = cell.querySelector('[data-timeline-photo-badge]');
+    if (badge) badge.textContent = `${next + 1}/${n}`;
+    const prevBtn = cell.querySelector('.timeline-meal-photo-nav--prev');
+    const nextBtn = cell.querySelector('.timeline-meal-photo-nav--next');
+    if (prevBtn) prevBtn.disabled = next <= 0;
+    if (nextBtn) nextBtn.disabled = next >= n - 1;
+}
+
+window.stepTimelineCardPhoto = stepTimelineCardPhoto;
 
 const DATE_HEADER_ACTION_HEIGHT_CLASS = 'date-section-header__action-btn';
 
@@ -1761,20 +1825,12 @@ function buildTimelineDayEmptyHtml(dateStr, todayStr) {
     let icon = 'calendar-x';
     let title = '이 날 남겨진 기록이 없어요';
     let desc = '기억나는 식사를 추가해보세요.';
-    let fabHint = '';
 
     if (isFirstTime) {
         variant = 'first';
         icon = 'sparkles';
         title = '밀로그에 처음 오신걸 환영해요.';
-        desc = '우하단의 초록색 기록 버튼을 눌러서<br>우리의 첫 기록을 시작해 보세요';
-        fabHint = `<div class="timeline-day-empty__fab-hint" aria-hidden="true">
-            <span class="timeline-day-empty__fab-hint-label">기록 버튼</span>
-            <i data-lucide="corner-down-right" class="timeline-day-empty__fab-hint-chevron"></i>
-            <span class="timeline-day-empty__fab-hint-dot">
-                <i data-lucide="plus" class="timeline-day-empty__fab-hint-icon"></i>
-            </span>
-        </div>`;
+        desc = '우리의 첫 기록을 시작해 보세요';
     } else if (isToday) {
         variant = 'today';
         icon = 'utensils';
@@ -1789,7 +1845,6 @@ function buildTimelineDayEmptyHtml(dateStr, todayStr) {
         </div>
         <p class="timeline-day-empty__title">${title}</p>
         <p class="timeline-day-empty__desc">${desc}</p>
-        ${fabHint}
     </div>`;
 }
 

@@ -30,12 +30,12 @@
     <title>MEALOG-함께한, 맛있었던 이야기</title>
     
     <!-- Favicon / PWA icons (iOS 홈 화면 추가 시 apple-touch-icon 자동 적용) -->
-    <link rel="icon" href="/assets/icon_192.png" type="image/png" sizes="192x192">
-    <link rel="shortcut icon" href="/assets/icon_32.png" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" href="/assets/icon_180.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon_180.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_192.png">
-    <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_512.png">
+    <link rel="icon" href="/assets/icon_192.png?v=20260725" type="image/png" sizes="192x192">
+    <link rel="shortcut icon" href="/assets/icon_32.png?v=20260725" type="image/png" sizes="32x32">
+    <link rel="apple-touch-icon" href="/assets/icon_180.png?v=20260725">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon_180.png?v=20260725">
+    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_192.png?v=20260725">
+    <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_512.png?v=20260725">
     <link rel="manifest" href="./manifest.json">
     
     <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
@@ -947,41 +947,41 @@
             <svg id="attendancePopupTextSvg" width="340" height="60" viewBox="0 0 340 60" overflow="visible" class="max-w-full w-full shrink-0" aria-hidden="true" style="height:auto">
                 <text id="attendancePopupTextRoot" text-anchor="middle" class="attendance-popup-text-core" x="170" y="0"></text>
             </svg>
-            <div id="attendancePopupAuxWrap" class="hidden w-full max-w-[19rem] shrink-0 px-1 box-border attendance-popup-aux-wrap">
+            <div id="attendancePopupAuxWrap" class="hidden w-full shrink-0 px-1 box-border attendance-popup-aux-wrap">
                 <p id="attendancePopupAuxBox" class="attendance-popup-aux-box text-center"></p>
             </div>
-            <div id="attendancePopupWelcomeCharts" class="hidden w-full max-w-[19rem] shrink-0 px-1 box-border attendance-popup-welcome-charts-wrap">
-                <div class="attendance-welcome-chart-shell relative flex w-full flex-col items-stretch rounded-xl border border-slate-200/90 bg-white/80 shadow-sm overflow-hidden">
-                    <div class="flex w-full flex-col items-center gap-0.5 px-2 pt-2 pb-1">
+            <div id="attendancePopupWelcomeCharts" class="hidden w-full shrink-0 px-1 box-border attendance-popup-welcome-charts-wrap">
+                <div class="attendance-welcome-chart-shell relative flex w-full flex-col items-stretch overflow-hidden">
+                    <div class="flex w-full flex-col items-center gap-1.5 px-2.5 pt-2.5 pb-1">
                         <div
                             id="attendanceWelcomeMealSnackSwitch"
-                            class="flex items-center gap-0 rounded-lg border border-slate-200/80 bg-slate-100/95 p-0.5 shadow-sm"
+                            class="attendance-welcome-kind-tabs"
                             role="group"
                             aria-label="AI리포트·식사·간식"
                         >
                             <button
                                 type="button"
                                 id="attendanceWelcomeBtnReport"
-                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn"
                             >
                                 AI리포트
                             </button>
                             <button
                                 type="button"
                                 id="attendanceWelcomeBtnMeal"
-                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn"
                             >
                                 식사
                             </button>
                             <button
                                 type="button"
                                 id="attendanceWelcomeBtnSnack"
-                                class="attendance-welcome-kind-btn rounded-md px-2 py-1 font-bold text-slate-500 transition-colors"
+                                class="attendance-welcome-kind-btn"
                             >
                                 간식
                             </button>
                         </div>
-                        <p id="attendanceWelcomeRecordCount" class="m-0 w-full text-center text-[11px] font-bold leading-tight text-slate-700 tabular-nums" aria-live="polite">기록 0회</p>
+                        <p id="attendanceWelcomeRecordCount" class="attendance-welcome-record-count m-0 w-full text-center tabular-nums" aria-live="polite">기록 0회</p>
                         <div id="attendanceWelcomeReportDateNav" class="hidden attendance-welcome-report-date-nav flex w-full items-center justify-center gap-1" role="group" aria-label="리포트 날짜">
                             <button type="button" id="attendanceWelcomeReportPrev" class="attendance-welcome-report-nav-btn" aria-label="이전 리포트">
                                 <i data-lucide="chevron-left" aria-hidden="true"></i>
@@ -992,17 +992,17 @@
                             </button>
                         </div>
                     </div>
-                    <div id="attendanceWelcomeReportPanel" class="hidden w-full px-2 py-1 box-border">
+                    <div id="attendanceWelcomeReportPanel" class="hidden w-full px-2.5 py-1 box-border">
                         <div id="attendanceWelcomeReportContent" class="attendance-welcome-report-content w-full" role="region" aria-label="AI 식단분석 리포트"></div>
                     </div>
                     <div id="attendanceWelcomeChartViewport" class="attendance-welcome-chart-viewport relative w-full overflow-hidden select-none pt-0 pb-0">
                         <div id="attendanceWelcomeChartTrack" class="flex transition-transform duration-300 ease-out will-change-transform"></div>
                     </div>
-                    <div class="flex w-full flex-col items-center gap-1.5 px-2 pb-2 pt-1">
+                    <div class="flex w-full flex-col items-center gap-1.5 px-2.5 pt-1">
                         <button
                             type="button"
                             id="attendanceWelcomeAnalysisMore"
-                            class="border-0 bg-transparent p-0 text-[11px] font-bold text-emerald-700 underline decoration-emerald-500/80 underline-offset-2 hover:text-emerald-900"
+                            class="attendance-welcome-analysis-more"
                         >
                             분석 더보기
                         </button>
@@ -1012,9 +1012,14 @@
                             aria-hidden="true"
                         ></div>
                     </div>
+                    <div class="attendance-welcome-chart-actions">
+                        <button type="button" id="attendancePopupCloseBtn" class="mealog-btn mealog-btn-primary w-full">
+                            닫기
+                        </button>
+                    </div>
                 </div>
             </div>
-            <button type="button" id="attendancePopupCloseBtn" class="popup-celebrate-ring popup-celebrate-ring--btn">
+            <button type="button" id="attendancePopupCloseBtnBare" class="mealog-btn mealog-btn-primary attendance-popup-close-bare">
                 닫기
             </button>
         </div>
@@ -1591,7 +1596,15 @@
         </div>
 
         <main>
-            <div id="timelineView" class="ui-tab-view overflow-x-hidden timeline-view-mode-page"><div id="timelineContainer" class="ui-stack-lg"></div></div>
+            <div id="timelineView" class="ui-tab-view overflow-x-hidden timeline-view-mode-page">
+                <div id="timelinePullWrap">
+                    <div id="timelinePullIndicator" class="gallery-pull-indicator" aria-hidden="true">
+                        <i data-lucide="refresh-cw" class="text-emerald-500"></i>
+                        <span>당겨서 새로고침</span>
+                    </div>
+                    <div id="timelineContainer" class="ui-stack-lg"></div>
+                </div>
+            </div>
             <div id="galleryView" class="hidden ui-tab-view">
                 <div id="galleryPullWrap">
                     <div id="galleryPullIndicator" class="gallery-pull-indicator" aria-hidden="true">
@@ -1863,21 +1876,21 @@
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">어떻게</h3>
-                                <button type="button" onclick="window.openDetailModal('mealType', '어디서')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('mealType')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="propChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">무엇을</h3>
-                                <button type="button" onclick="window.openDetailModal('category', '자주 먹은 메뉴')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('category')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="categoryChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">함께</h3>
-                                <button type="button" onclick="window.openDetailModal('withWhom', '누구와')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('withWhom')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="mateChartContainer"></div>
                         </div>
@@ -1962,21 +1975,21 @@
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">무엇을</h3>
-                                <button type="button" onclick="window.openDetailModal('snackType', '자주 먹은 메뉴')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('snackType')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackTypeChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">어디서</h3>
-                                <button type="button" onclick="window.openDetailModal('snackPlace', '어디서')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('snackPlace')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackPlaceChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
                                 <h3 class="ui-section-label">누구와</h3>
-                                <button type="button" onclick="window.openDetailModal('snackWithWhom', '누구와 (간식)')" class="dashboard-detail-link">상세</button>
+                                <button type="button" onclick="window.openDetailModal('snackWithWhom')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="snackMateChartContainer"></div>
                         </div>
@@ -2270,6 +2283,15 @@
                 <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
             </span>
         </button>
+        <button type="button" id="timelineRefreshFab" class="initial-records-load-fab hidden" aria-hidden="true" aria-busy="true" aria-label="밀로그 새로고침 중" tabindex="-1">
+            <span class="initial-records-load-fab__icons loading-food-icons relative w-9 h-9 flex items-center justify-center text-2xl pointer-events-none" aria-hidden="true">
+                <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍔</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍕</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍎</span>
+                <span class="loading-food-icon absolute" aria-hidden="true">🍦</span>
+            </span>
+        </button>
         <!-- 미전송 식사 기록 일괄 재전송: 하단 네비 위 플로팅(게시판 글쓰기 FAB와 동일 계열) -->
         <button type="button" id="mealSyncResendBtn" class="meal-sync-resend-fab hidden" aria-label="동기화" title="등록 미확인·실패 또는 삭제 실패 항목을 다시 서버에 반영합니다">
             <i data-lucide="cloud-upload" class="meal-sync-resend-fab__icon meal-sync-resend-fab__icon--sync text-lg" aria-hidden="true"></i>
@@ -2392,12 +2414,12 @@
     </div>
 
     <!-- 알림 (중앙 팝업 · Soft Mint Search/List) -->
-    <div id="notificationModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
-        <button type="button" id="notificationBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
-        <div class="notification-modal relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+    <div id="notificationModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
+        <button type="button" id="notificationBackdrop" class="search-filter-modal__backdrop mealog-dialog-backdrop" data-mealog-dialog-backdrop aria-label="닫기"></button>
+        <div class="notification-modal search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden" data-mealog-dialog-panel>
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
-            <div class="notification-modal-head mealog-dialog-head">
-                <h2 id="notificationModalTitle" class="notification-modal-title">알림</h2>
+            <div class="notification-modal-head search-filter-modal__head mealog-dialog-head">
+                <h2 id="notificationModalTitle" class="notification-modal-title search-filter-modal__title">알림</h2>
                 <div class="notification-modal-head-actions">
                     <button type="button" id="notificationMarkAllReadBtn" class="notification-mark-all-btn">모두 읽음</button>
                 </div>
@@ -2663,8 +2685,9 @@
         </div>
     </div>
 
-    <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden">
-        <div class="entry-modal-panel w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden">
+    <div id="entryModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden" aria-modal="true" role="dialog" aria-label="기록 시트">
+        <button type="button" id="entryModalBackdrop" class="mealog-dialog-backdrop absolute inset-0 z-0 cursor-default border-0 p-0" data-mealog-dialog-backdrop aria-label="닫기" style="background:var(--shell-dim, rgba(15,23,42,0.4))"></button>
+        <div class="entry-modal-panel relative z-10 w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden" data-mealog-dialog-panel>
             <div class="entry-modal-header shrink-0">
                 <div id="entryModalGrabber" class="mealog-dialog-grabber entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
                 <div class="flex items-center gap-2 min-w-0 px-4 pt-1 pb-2.5">
@@ -3189,14 +3212,20 @@
         </div>
     </div>
 
-    <!-- Detail Analysis Modal (팝업) -->
+    <!-- Detail Analysis Modal (공통 팝업 · 어떻게/무엇을/함께 등 탭) -->
     <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4 px-4">
         <div class="w-full max-w-[20rem] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="detailModalHeader" class="mealog-dialog-head !pb-0 border-0">
                 <h2 id="detailModalTitle" class="font-bold text-slate-800">상세 통계</h2>
             </div>
-            <div id="detailContent" class="flex-1 overflow-y-auto px-5 pt-3 pb-4 min-h-0"></div>
+            <div
+                id="detailModalTabs"
+                class="detail-modal-tabs hidden"
+                role="tablist"
+                aria-label="상세 구분"
+            ></div>
+            <div id="detailContent" class="flex-1 overflow-y-auto px-5 pt-3 pb-4 min-h-0" role="tabpanel"></div>
             <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
                 <button type="button" onclick="window.closeDetailModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
             </div>
