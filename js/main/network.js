@@ -13,13 +13,18 @@ import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } f
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 import { probeMealogRemoteReachable } from '../utils/network-probe.js';
 import {
-    markMealogFirestoreActivity,
     markMealogRemoteProbeSuccess,
+    getMealogFirestoreLastActivityAt,
     isMealogFirestoreActivityStale,
     shouldProbeMealogNetworkConnectivity
 } from '../utils/network-activity.js';
 import { appState } from '../state.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
+
+/** waitForPendingWrites 등 쓰기 큐 flush 상한 */
+const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
+/** kick 후 onSnapshot 재개 대기 — 활동이 없으면 리스너 재구독 */
+const LISTENER_RESUME_WAIT_MS = 2500;
 
 function mealogMainAppVisible() {
     try {
@@ -47,6 +52,30 @@ function withMealogRecoveryTimeout(promise, timeoutMs, fallbackValue = undefined
     return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeoutPromise]).finally(() => {
         if (timer) clearTimeout(timer);
     });
+}
+
+/** @param {number} ms */
+function sleepMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * kick 직후 onSnapshot이 실제로 재개됐는지 확인한다.
+ * 활동이 없으면 리스너를 재구독해 half-open 고착을 끊는다.
+ * @param {number} activityBeforeKick
+ * @param {string} [reason]
+ */
+async function rebindListenersIfNoFirestoreActivityAfterKick(activityBeforeKick, reason = '') {
+    await withMealogRecoveryTimeout(sleepMs(LISTENER_RESUME_WAIT_MS), LISTENER_RESUME_WAIT_MS);
+    if (getMealogFirestoreLastActivityAt() > activityBeforeKick) {
+        return false;
+    }
+    console.warn(
+        '[network] kick 후 Firestore 활동 없음 — 리스너 재구독',
+        reason || '(no reason)'
+    );
+    rebindFirestoreListenersIfRegistered();
+    return true;
 }
 
 let recoveryTimer = null;
@@ -97,11 +126,14 @@ export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
 }
 
 /**
- * 모먼트「다시 불러오기」·당겨서 새로고침 직전: 원격 핑으로 연결을 확인하고
- * 로컬 강제 오프라인·Auth/App Check 를 갱신한다.
+ * 수동 새로고침·다시 불러오기 직전: 원격 핑 + Auth/App Check + Firestore transport kick.
+ * HTTP만 되고 WebChannel만 죽은 경우에도 getDocs/onSnapshot이 다시 붙도록 kick을 강제한다.
+ * @param {string} [reason]
+ * @param {{ rebindListeners?: boolean }} [options]
  * @returns {Promise<boolean>} 원격 서버 도달 가능 여부
  */
-export async function prepareMomentFeedNetworkForReload() {
+export async function prepareFirestoreNetworkForManualReload(reason = 'manual-reload', options = {}) {
+    const rebindListeners = options.rebindListeners === true;
     let reachable = false;
     try {
         reachable = await probeMealogRemoteReachable(5000);
@@ -127,7 +159,29 @@ export async function prepareMomentFeedNetworkForReload() {
         runMealogNetworkRecovery({ forceAuthRefresh: reachable }),
         WRITE_QUEUE_FLUSH_TIMEOUT_MS
     );
+    if (reachable) {
+        const activityBeforeKick = getMealogFirestoreLastActivityAt();
+        await withMealogRecoveryTimeout(
+            kickFirestoreTransportReconnect(reason || 'manual-reload', { force: true }),
+            WRITE_QUEUE_FLUSH_TIMEOUT_MS,
+            false
+        );
+        if (rebindListeners) {
+            rebindFirestoreListenersIfRegistered();
+        } else {
+            // 모먼트 getDocs는 kick 직후 바로 진행. 식사 리스너 half-open은 백그라운드에서 확인.
+            void rebindListenersIfNoFirestoreActivityAfterKick(activityBeforeKick, reason);
+        }
+    }
     return reachable;
+}
+
+/**
+ * 모먼트「다시 불러오기」·당겨서 새로고침 직전 네트워크 준비.
+ * @returns {Promise<boolean>} 원격 서버 도달 가능 여부
+ */
+export async function prepareMomentFeedNetworkForReload() {
+    return prepareFirestoreNetworkForManualReload('moment-reload');
 }
 
 /**
@@ -178,10 +232,8 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
 
 let momentFeedReloadInFlight = false;
 const FIRESTORE_STALE_ACTIVITY_MS = 180000;
-/** waitForPendingWrites 등 쓰기 큐 flush 상한 */
-const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
 /** 복구 1회 전체 상한 — 내부 await가 무한 대기해도 in-flight 플래그가 반드시 풀리도록 보장 */
-const CONNECTIVITY_RECOVERY_TIMEOUT_MS = 20000;
+const CONNECTIVITY_RECOVERY_TIMEOUT_MS = 25000;
 let connectivityRecoveryInFlight = null;
 let pendingRetryAfterRecoveryInFlight = false;
 
@@ -250,23 +302,35 @@ export function runMealogConnectivityRecovery(options = {}) {
         );
 
         const needTransportKick = forceTransportKick || stale || wasForcedOffline;
-        // 리스너 전체 재구독은 화면 전체 리렌더(깜박임)를 유발한다.
-        // 실제 오프라인이었거나 강제 복구일 때만 재구독하고, 단순 유휴(idle) stale에서는
-        // transport kick만 수행한다 — enableNetwork 후 기존 onSnapshot 리스너는 자동 재개된다.
+        // 강제 오프라인·online/connection 전환: 즉시 리스너 재구독.
+        // 유휴 stale: kick 후 실제 Firestore 활동이 없으면 그때 재구독(깜박임 최소화 + half-open 탈출).
         const needListenerRebind = forceTransportKick || wasForcedOffline;
         if (needTransportKick) {
+            const activityBeforeKick = getMealogFirestoreLastActivityAt();
+            // stale이면 쿨다운을 무시하고 kick — 하트비트가 12초 쿨다운에 막히면 복구가 지연된다.
             const kicked = await withMealogRecoveryTimeout(
                 kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
-                    force: forceTransportKick
+                    force: forceTransportKick || stale
                 }),
                 WRITE_QUEUE_FLUSH_TIMEOUT_MS,
                 false
             );
-            if (kicked) {
-                markMealogFirestoreActivity();
-            }
             if (needListenerRebind) {
                 rebindFirestoreListenersIfRegistered();
+            } else if (kicked || stale) {
+                // kick 성공/실패와 무관하게, 유휴 stale이면 활동 재개 여부를 확인한다.
+                // (이전에는 kick 성공만으로 markMealogFirestoreActivity 해서 stale 감지가 무력화됐다.)
+                await rebindListenersIfNoFirestoreActivityAfterKick(
+                    activityBeforeKick,
+                    reason || 'connectivity-recovery'
+                );
+                void import('../utils/meals-listener-degraded.js').then((dg) => {
+                    try {
+                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                });
             } else {
                 void import('../utils/meals-listener-degraded.js').then((dg) => {
                     try {
@@ -276,6 +340,8 @@ export function runMealogConnectivityRecovery(options = {}) {
                     }
                 });
             }
+            // kick/rebind 시도만으로 Firestore 활동 시각을 갱신하지 않는다.
+            // 실제 onSnapshot/getDocs 성공 시에만 listeners 등에서 markMealogFirestoreActivity 된다.
         } else {
             void import('../utils/meals-listener-degraded.js').then((dg) => {
                 try {

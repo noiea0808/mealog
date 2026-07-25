@@ -57,6 +57,7 @@ import {
     tryCloseDemoNavGuideFromBack
 } from '../demo-nav-guide.js';
 import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
+import { setupTimelinePullToRefresh } from './timeline-pull-refresh.js';
 import { ensureMomentImageLightbox } from './moment-image-lightbox.js';
 import {
     openSettings,
@@ -503,6 +504,7 @@ export function initEventListeners() {
         });
     }
     setupGalleryPullToRefresh();
+    setupTimelinePullToRefresh();
     ensureMomentImageLightbox();
 
     const navBoard = document.getElementById('nav-board');
