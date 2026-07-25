@@ -25,6 +25,7 @@
       --line: #d0c6ba;
       --page: #fffcfa;
       --page-deep: #faf6f2;
+      --page-mist: #f8f7f5;
       --card: #ffffff;
       --star: #fbbf24;
       --shell-danger: var(--danger);
@@ -88,7 +89,7 @@
 
     .hero-strip {
       display: grid;
-      grid-template-columns: repeat(8, 1fr);
+      grid-template-columns: repeat(9, 1fr);
       height: 72px;
       border-radius: 18px;
       overflow: hidden;
@@ -271,6 +272,7 @@
     <div class="hero-strip" aria-hidden="true">
       <span style="background:#fffcfa"></span>
       <span style="background:#faf6f2"></span>
+      <span style="background:#f8f7f5"></span>
       <span style="background:#eaf8f2"></span>
       <span style="background:#b4e2cd"></span>
       <span style="background:#3cb889"></span>
@@ -279,7 +281,7 @@
       <span style="background:#241f1c"></span>
     </div>
     <p class="hero-cap">
-      Paper → Page Deep → Soft → Mute → Mint → Deep → Coral → Danger → Ink ·
+      Paper → Page Deep → Page Mist → Soft → Mute → Mint → Deep → Coral → Ink ·
       소스: <code>css/style.css</code>, <code>docs/ui-mockups/themes.js</code> (theme A)
     </p>
 
@@ -419,6 +421,15 @@
             <code>#FAF6F2</code>
             <div class="token">--page-deep / --app-page-bg</div>
             <p class="desc">각 메뉴(밀당·모먼트·밀로그·라운지·마이) 캔버스 배경. Paper와 이전 딥톤의 중간 — 기기에서도 씻기지 않으면서 과하지 않음.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#f8f7f5"></div>
+          <div class="meta">
+            <div class="name">Page Mist</div>
+            <code>#F8F7F5</code>
+            <div class="token">--page-mist</div>
+            <p class="desc">Page Deep과 비슷한 밝기이되 웜을 줄인 옅은 회색빛 표면. 보조 밴드·구분 면·쿨톤이 필요할 때.</p>
           </div>
         </article>
         <article class="swatch">

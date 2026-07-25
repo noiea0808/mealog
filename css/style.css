@@ -92,6 +92,8 @@ html.platform-native-app .bottom-nav button i.lucide {
     --page: #fffcfa;
     /* Paper보다 한 단계 진한 메뉴 캔버스 — 기기/밝기에 따라 Paper가 씻겨 보일 때 대비 */
     --page-deep: #faf6f2;
+    /* Page Deep과 비슷한 밝기, 웜을 줄인 회색빛 표면(옅은 톤) */
+    --page-mist: #f8f7f5;
     --card: #ffffff;
     --star: #eab308;
     --color-primary: var(--green); /* 그린: CTA·선택·활성만 사용 */
@@ -834,6 +836,16 @@ body.keyboard-closed #boardWriteView {
     filter: none !important;
     font-size: calc(17px * 1.25) !important;
 }
+/* 장소·메뉴·코멘트 밴드: 위·아래 보더라인 사이 = Paper (본문 패딩 밖으로 좌우 full-bleed) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-body-caption,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-body-caption {
+    background: var(--page, #fffcfa);
+    margin-left: -16px;
+    margin-right: -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+    box-sizing: border-box;
+}
 #galleryContainer.moment-feed-layout-v2 .moment-v2-meal-heading,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-meal-heading {
     border-top: 1px solid var(--line, #d0c6ba);
@@ -877,7 +889,8 @@ body.keyboard-closed #boardWriteView {
     overflow: visible !important;
     text-indent: 0 !important;
     -webkit-text-fill-color: #64748b;
-    background: var(--page);
+    /* 밴드(.moment-v2-body-caption) Paper를 그대로 노출 */
+    background: transparent;
     border-radius: 12px;
 }
 /* 빈 캡션 블록은 JS에서 미렌더 — 남아도 높이 0 */

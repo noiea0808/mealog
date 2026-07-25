@@ -21,6 +21,7 @@
     '--line': '#d0c6ba',
     '--page': '#fffcfa',
     '--page-deep': '#faf6f2',
+    '--page-mist': '#f8f7f5',
     '--card': '#ffffff',
     '--c1': '#3cb889',
     '--c2': '#f2a8b4',
