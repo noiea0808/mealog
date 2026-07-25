@@ -17,7 +17,6 @@ import {
     renderGallery,
     renderFeed
 } from '../render/index.js';
-import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';

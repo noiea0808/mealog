@@ -61,8 +61,7 @@ import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, setAnalysisSlotFilter, setMealdangView, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal, initDashboardAnalysisUi } from './analytics.js';
-import { openEditBestShareModal } from './analytics/best-share.js';
+import { ensureAnalytics, installAnalyticsLazyStubs } from './analytics/ensure.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
@@ -421,53 +420,9 @@ window.removeFavoriteTag = removeFavoriteTag;
 window.Mealog.removeFavoriteTag = removeFavoriteTag;
 window.selectFavoriteMainTag = selectFavoriteMainTag;
 window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
-window.setDashboardMode = setDashboardMode;
-window.Mealog.setDashboardMode = setDashboardMode;
-window.updateCustomDates = updateCustomDates;
-window.syncCustomDatePlaceholder = syncCustomDatePlaceholder;
-window.Mealog.updateCustomDates = updateCustomDates;
-window.updateSelectedMonth = updateSelectedMonth;
-window.Mealog.updateSelectedMonth = updateSelectedMonth;
-window.updateSelectedWeek = updateSelectedWeek;
-window.Mealog.updateSelectedWeek = updateSelectedWeek;
-window.navigatePeriod = navigatePeriod;
-window.Mealog.navigatePeriod = navigatePeriod;
-window.openDetailModal = openDetailModal;
-window.Mealog.openDetailModal = openDetailModal;
-window.openCharacterSelectModal = openCharacterSelectModal;
-window.Mealog.openCharacterSelectModal = openCharacterSelectModal;
-window.closeCharacterSelectModal = closeCharacterSelectModal;
-window.Mealog.closeCharacterSelectModal = closeCharacterSelectModal;
-window.selectInsightCharacter = selectInsightCharacter;
-window.Mealog.selectInsightCharacter = selectInsightCharacter;
-window.generateInsightComment = generateInsightComment;
-window.Mealog.generateInsightComment = generateInsightComment;
-window.openShareInsightModal = openShareInsightModal;
-window.Mealog.openShareInsightModal = openShareInsightModal;
-window.closeShareInsightModal = closeShareInsightModal;
-window.Mealog.closeShareInsightModal = closeShareInsightModal;
-window.shareInsightToFeed = shareInsightToFeed;
-window.Mealog.shareInsightToFeed = shareInsightToFeed;
-window.closeDetailModal = closeDetailModal;
-window.Mealog.closeDetailModal = closeDetailModal;
-window.setAnalysisType = setAnalysisType;
-window.Mealog.setAnalysisType = setAnalysisType;
-window.setAnalysisSlotFilter = setAnalysisSlotFilter;
-window.Mealog.setAnalysisSlotFilter = setAnalysisSlotFilter;
-window.setMealdangView = setMealdangView;
-window.Mealog.setMealdangView = setMealdangView;
-initDashboardAnalysisUi();
-window.openShareBestModal = openShareBestModal;
-window.Mealog.openShareBestModal = openShareBestModal;
-window.closeShareBestModal = closeShareBestModal;
-window.Mealog.closeShareBestModal = closeShareBestModal;
-window.closeBestSharePeriodNotice = closeBestSharePeriodNotice;
-window.shareBestToFeed = shareBestToFeed;
-window.Mealog.shareBestToFeed = shareBestToFeed;
-window.editBestShare = openEditBestShareModal;
-window.Mealog.editBestShare = openEditBestShareModal;
-window.editInsightShare = openEditInsightShareModal;
-window.Mealog.editInsightShare = openEditInsightShareModal;
+/* 밀당(analytics): 첫 진입·onclick 시 ensureAnalytics로 지연 로드 */
+installAnalyticsLazyStubs();
+window.Mealog.ensureAnalytics = ensureAnalytics;
 window.toggleComment = toggleComment;
 window.Mealog.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
@@ -1304,7 +1259,9 @@ initAuth(async (user) => {
                     scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
-                        updateDashboard();
+                        void ensureAnalytics()
+                            .then((m) => m.updateDashboard())
+                            .catch((e) => console.warn('[dashboard] updateDashboard 실패:', e));
                         if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
                             window._recordsLoadHidePending = false;
                             hideLoading();
@@ -2048,31 +2005,18 @@ window.addEventListener('keydown', (e) => {
     
     // 대시보드 탭이 활성화되어 있고 주간/월간 모드일 때만 동작
     if (state.currentTab === 'dashboard') {
-        if (state.dashboardMode === 'week') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                changeWeek(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                changeWeek(1);
-            }
-        } else if (state.dashboardMode === 'month') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                changeMonth(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                changeMonth(1);
-            }
-        } else if (state.dashboardMode === 'year') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                navigatePeriod(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                navigatePeriod(1);
-            }
-        }
+        let delta = 0;
+        if (e.key === 'ArrowLeft') delta = -1;
+        else if (e.key === 'ArrowRight') delta = 1;
+        if (!delta) return;
+        e.preventDefault();
+        void ensureAnalytics()
+            .then((m) => {
+                if (state.dashboardMode === 'week' && typeof m.changeWeek === 'function') m.changeWeek(delta);
+                else if (state.dashboardMode === 'month' && typeof m.changeMonth === 'function') m.changeMonth(delta);
+                else if (state.dashboardMode === 'year' && typeof m.navigatePeriod === 'function') m.navigatePeriod(delta);
+            })
+            .catch((err) => console.warn('[dashboard] 키보드 기간 이동 실패:', err));
     }
 });
 

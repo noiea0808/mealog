@@ -100,33 +100,6 @@ import {
     fetchUserProfiles
 } from '../render/index.js';
 import {
-    updateDashboard,
-    setDashboardMode,
-    updateCustomDates,
-    syncCustomDatePlaceholder,
-    updateSelectedMonth,
-    updateSelectedWeek,
-    changeWeek,
-    changeMonth,
-    navigatePeriod,
-    openDetailModal,
-    closeDetailModal,
-    setAnalysisType,
-    openShareBestModal,
-    closeShareBestModal,
-    shareBestToFeed,
-    closeBestSharePeriodNotice,
-    openCharacterSelectModal,
-    closeCharacterSelectModal,
-    selectInsightCharacter,
-    generateInsightComment,
-    openShareInsightModal,
-    closeShareInsightModal,
-    shareInsightToFeed,
-    openEditInsightShareModal
-} from '../analytics.js';
-import { openEditBestShareModal } from '../analytics/best-share.js';
-import {
     openModal,
     closeModal,
     saveEntry,

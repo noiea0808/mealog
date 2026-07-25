@@ -114,33 +114,7 @@ import {
     switchGalleryFilterTab,
     fetchUserProfiles
 } from '../render/index.js';
-import {
-    updateDashboard,
-    setDashboardMode,
-    updateCustomDates,
-    syncCustomDatePlaceholder,
-    updateSelectedMonth,
-    updateSelectedWeek,
-    changeWeek,
-    changeMonth,
-    navigatePeriod,
-    openDetailModal,
-    closeDetailModal,
-    setAnalysisType,
-    openShareBestModal,
-    closeShareBestModal,
-    shareBestToFeed,
-    closeBestSharePeriodNotice,
-    openCharacterSelectModal,
-    closeCharacterSelectModal,
-    selectInsightCharacter,
-    generateInsightComment,
-    openShareInsightModal,
-    closeShareInsightModal,
-    shareInsightToFeed,
-    openEditInsightShareModal
-} from '../analytics.js';
-import { openEditBestShareModal } from '../analytics/best-share.js';
+import { ensureAnalytics } from '../analytics/ensure.js';
 import {
     openModal,
     closeModal,
@@ -836,7 +810,9 @@ window.backfillUserStats = async () => {
         const { mealCount, dayCount } = result.data || {};
         showToast(`통계 재계산 완료 (${mealCount}건, ${dayCount}일)`, 'success');
         if (appState.currentTab === 'timeline') { renderTimeline(); renderMiniCalendar(); }
-        if (appState.currentTab === 'dashboard') updateDashboard();
+        if (appState.currentTab === 'dashboard') {
+            void ensureAnalytics().then((m) => m.updateDashboard()).catch(() => {});
+        }
         return result.data;
     } catch (e) {
         console.error('backfillUserStats 실패:', e);

@@ -13,7 +13,8 @@ node scripts/embed-analysis-icons.mjs
 ```
 
 - 크롭 결과: `assets/analysis-icons/*.png`
-- 앱 표시용 임베드: `js/analytics/analysis-icon-assets.js` (data URI — 경로 깨짐 방지)
+- 앱 표시: `js/analytics/analysis-icon-assets.js` — **URL 맵** (`assets/analysis-icons/{key}.png`).  
+  data URI 임베드는 쓰지 않음(첫 로드 ~964KB 방지). `<img>`가 필요할 때 PNG를 받음.
 
 ## 파일 접두사
 
@@ -27,4 +28,3 @@ node scripts/embed-analysis-icons.mjs
 | `snack-when-*` | 간식 · 언제 |
 | `snack-type-*` | 간식 · 무엇을 |
 | `snack-place-*` | 간식 · 어디서 |
-

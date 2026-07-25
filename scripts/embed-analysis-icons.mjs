@@ -1,6 +1,8 @@
 /**
- * assets/analysis-icons/*.png → js/analytics/analysis-icon-assets.js (data URI)
+ * assets/analysis-icons/*.png → js/analytics/analysis-icon-assets.js (URL 맵)
  * 실행: node scripts/embed-analysis-icons.mjs
+ *
+ * data URI 임베드는 쓰지 않음(첫 로드 ~964KB 방지). PNG는 img src로 지연 로드.
  */
 import fs from 'fs';
 import path from 'path';
@@ -12,22 +14,33 @@ const outFile = path.join(__dirname, '..', 'js', 'analytics', 'analysis-icon-ass
 
 const files = fs
   .readdirSync(dir)
-  .filter((f) => f.endsWith('.png') && !f.startsWith('_') && !f.includes('colored'));
-const map = {};
-for (const f of files) {
-  const buf = fs.readFileSync(path.join(dir, f));
-  const key = f.replace(/\.png$/i, '');
-  map[key] = `data:image/png;base64,${buf.toString('base64')}`;
-}
+  .filter((f) => f.endsWith('.png') && !f.startsWith('_') && !f.includes('colored'))
+  .map((f) => f.replace(/\.png$/i, ''))
+  .sort();
 
-const body = `/** Auto-generated from assets/analysis-icons/*.png — do not edit by hand.
+const keysLit = files.map((k) => `    '${k}'`).join(',\n');
+
+const body = `/**
+ * 분석 Top 아이콘 — assets/analysis-icons/*.png URL 맵
+ * (이전 data URI 임베드는 ~964KB라 밀당 진입 시 URL로 지연 로드)
+ *
+ * Auto-generated — do not edit by hand.
  * Source cyan: assets/analysis-icons-colored.png
  * Crop: python3 scripts/crop-analysis-icons-from-cyan.py
  * Embed: node scripts/embed-analysis-icons.mjs
  */
-export const ANALYSIS_ICON_ASSETS = ${JSON.stringify(map, null, 2)};
+const BASE = 'assets/analysis-icons';
+
+const KEYS = [
+${keysLit}
+];
+
+/** @type {Record<string, string>} */
+export const ANALYSIS_ICON_ASSETS = Object.fromEntries(
+    KEYS.map((key) => [key, \`\${BASE}/\${key}.png\`])
+);
 `;
 
 fs.writeFileSync(outFile, body, 'utf8');
-const kb = Math.round(Buffer.byteLength(body) / 1024);
-console.log(`Embedded ${files.length} PNGs → ${path.relative(path.join(__dirname, '..'), outFile)} (${kb} KB)`);
+const kb = (Buffer.byteLength(body) / 1024).toFixed(1);
+console.log(`URL map ${files.length} icons → ${path.relative(path.join(__dirname, '..'), outFile)} (${kb} KB)`);

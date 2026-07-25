@@ -2,6 +2,7 @@
 
 ## `main.js` (앱 진입)
 
+- **밀당(analytics) 지연 로드** — `analytics/ensure.js`의 `installAnalyticsLazyStubs` / `ensureAnalytics`. 탭 `dashboard` 진입·HTML onclick 시에만 `analytics.js` 로드. 분석 아이콘은 `assets/analysis-icons/*.png` URL(데이터 URI 임베드 폐기).
 - **`main/network.js`** — 오프라인/온라인 시 네트워크 오버레이 (`registerMainNetworkListeners`)
 - **`main/cleanup.js`** — `window.cleanupFirestoreListeners` 등록 (`registerMainCleanup`)
 - **`main/shares-sync.js`** — `refreshMyMomentShares` / `syncOrphanedSharesToMoment`(캐시 갱신, canonical: `sharedPhotos` 컬렉션)

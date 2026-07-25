@@ -17,9 +17,6 @@ import { closeModal } from '../modals/entry-and-core.js';
 import { closeEntrySlotPicker } from '../modals/entry-slot-picker.js';
 import { closeDailyJournalModal } from '../modals/daily-journal.js';
 import { closeSettings } from '../modals/settings.js';
-import { closeDetailModal } from '../analytics/charts.js';
-import { closeCharacterSelectModal, closeShareInsightModal } from '../analytics/insight.js';
-import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/best-share.js';
 import { closeDietReportModal } from '../modals/diet-report.js';
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
@@ -132,7 +129,11 @@ function closeOverlayById(id) {
             if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);
             break;
         case 'bestSharePeriodNoticeModal':
-            closeBestSharePeriodNotice();
+            if (typeof window.closeBestSharePeriodNotice === 'function') {
+                void window.closeBestSharePeriodNotice();
+            } else {
+                document.getElementById('bestSharePeriodNoticeModal')?.classList.add('hidden');
+            }
             break;
         case 'passwordResetSuccessModal':
             closePasswordResetSuccessModal();
@@ -145,7 +146,11 @@ function closeOverlayById(id) {
             break;
         case 'characterSelectPopup':
         case 'characterSelectModal':
-            closeCharacterSelectModal();
+            if (typeof window.closeCharacterSelectModal === 'function') {
+                void window.closeCharacterSelectModal();
+            } else {
+                document.getElementById(id)?.classList.add('hidden');
+            }
             break;
         case 'dailySharePreviewModal':
             if (typeof window.closeDailySharePreviewModal === 'function') {
@@ -162,10 +167,18 @@ function closeOverlayById(id) {
             }
             break;
         case 'bestShareModal':
-            closeShareBestModal();
+            if (typeof window.closeShareBestModal === 'function') {
+                void window.closeShareBestModal();
+            } else {
+                document.getElementById('bestShareModal')?.classList.add('hidden');
+            }
             break;
         case 'insightShareModal':
-            closeShareInsightModal();
+            if (typeof window.closeShareInsightModal === 'function') {
+                void window.closeShareInsightModal();
+            } else {
+                document.getElementById('insightShareModal')?.classList.add('hidden');
+            }
             break;
         case 'dietReportModal':
             closeDietReportModal();
@@ -198,7 +211,11 @@ function closeOverlayById(id) {
             cancelDeleteAccount();
             break;
         case 'detailModal':
-            closeDetailModal();
+            if (typeof window.closeDetailModal === 'function') {
+                void window.closeDetailModal();
+            } else {
+                document.getElementById('detailModal')?.classList.add('hidden');
+            }
             break;
         case 'entryModal':
             closeModal();

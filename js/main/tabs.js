@@ -13,7 +13,7 @@ import {
     syncBoardFeedComposerVisibility,
     syncBoardSearchPanelVisibility
 } from '../render/index.js';
-import { updateDashboard } from '../analytics.js';
+import { ensureAnalytics } from '../analytics/ensure.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
 import {
@@ -119,9 +119,6 @@ export function registerMainTabSwitch() {
             const mealdangTabs = document.getElementById('mealdangHeaderTabs');
             if (mealdangTabs) {
                 mealdangTabs.classList.toggle('hidden', tab !== 'dashboard');
-            }
-            if (tab === 'dashboard' && typeof window.setMealdangView === 'function') {
-                window.setMealdangView(appState.mealdangView || 'analysis');
             }
             document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
             document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
@@ -276,7 +273,16 @@ export function registerMainTabSwitch() {
                 if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
             }
             if (tab === 'dashboard') {
-                runAfterNavPaint(() => updateDashboard());
+                runAfterNavPaint(() => {
+                    void ensureAnalytics()
+                        .then((mod) => {
+                            if (typeof mod.setMealdangView === 'function') {
+                                mod.setMealdangView(appState.mealdangView || 'analysis');
+                            }
+                            mod.updateDashboard();
+                        })
+                        .catch((e) => console.error('[탭전환] 밀당 모듈 로드 실패:', e));
+                });
             } else if (tab === 'settings') {
                 // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
             } else if (tab === 'gallery') {

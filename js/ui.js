@@ -1,5 +1,4 @@
 // UI 관련 함수들
-import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './analytics/charts.js';
 import {
     getLoadingSpinnerConfig,
     applyLoadingFoodIconDurationSeconds,
@@ -18,6 +17,15 @@ import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 import { getProfileAvatarDisplay } from './utils.js';
+
+/** 출석 환영 차트만 charts 모듈을 지연 로드 (밀당 전체 그래프와 분리) */
+let _welcomeChartsModPromise = null;
+function loadWelcomeChartsMod() {
+    if (!_welcomeChartsModPromise) {
+        _welcomeChartsModPromise = import('./analytics/charts.js');
+    }
+    return _welcomeChartsModPromise;
+}
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
@@ -710,10 +718,17 @@ function updateWelcomeKindSwitchUi() {
         snackBtn.setAttribute('aria-pressed', onSnack ? 'true' : 'false');
     }
     if (countEl && welcomeChartKind !== 'report') {
-        const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
-        countEl.textContent = `기록 ${n}회`;
         countEl.classList.remove('hidden');
         document.getElementById('attendanceWelcomeReportDateNav')?.classList.add('hidden');
+        void loadWelcomeChartsMod()
+            .then(({ getWelcomeWeekSlotRecordCount }) => {
+                if (welcomeChartKind === 'report') return;
+                const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
+                countEl.textContent = `기록 ${n}회`;
+            })
+            .catch(() => {
+                countEl.textContent = '기록 —';
+            });
     }
     if (welcomeChartKind === 'report') {
         updateWelcomeReportDateNavUi();
@@ -989,34 +1004,43 @@ function renderAttendanceWelcomeChartsArea() {
     if (reportPanel) reportPanel.classList.add('hidden');
     vp.classList.remove('hidden');
     dots.classList.remove('hidden');
+    wrap.classList.remove('hidden');
 
     const chartKind = welcomeChartKind === 'snack' ? 'snack' : 'meal';
-    const slides = getWelcomeWeekDonutSlides(7, chartKind);
-    const n = slides.length;
-    track.dataset.slideCount = String(n);
-    vp.dataset.slideCount = String(n);
-    attendanceWelcomeSlideIdx = 0;
+    void loadWelcomeChartsMod()
+        .then(({ getWelcomeWeekDonutSlides }) => {
+            if (welcomeChartKind === 'report') return;
+            const slides = getWelcomeWeekDonutSlides(7, chartKind);
+            const n = slides.length;
+            track.dataset.slideCount = String(n);
+            vp.dataset.slideCount = String(n);
+            attendanceWelcomeSlideIdx = 0;
 
-    const wPct = 100 / n;
-    track.style.width = `${n * 100}%`;
-    track.innerHTML = slides
-        .map((slide) => {
-            const inner = buildWelcomeChartSlideHtml(slide);
-            return `<div class="attendance-welcome-slide flex flex-col items-center justify-center py-0.5 box-border px-0.5" style="flex:0 0 ${wPct}%;width:${wPct}%">${inner}</div>`;
+            const wPct = 100 / n;
+            track.style.width = `${n * 100}%`;
+            track.innerHTML = slides
+                .map((slide) => {
+                    const inner = buildWelcomeChartSlideHtml(slide);
+                    return `<div class="attendance-welcome-slide flex flex-col items-center justify-center py-0.5 box-border px-0.5" style="flex:0 0 ${wPct}%;width:${wPct}%">${inner}</div>`;
+                })
+                .join('');
+
+            dots.innerHTML = slides
+                .map(
+                    (_, i) =>
+                        `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
+                )
+                .join('');
+
+            track.style.transform = 'translateX(0)';
+            updateWelcomeKindSwitchUi();
+            bindAttendanceWelcomeChartsOnce();
         })
-        .join('');
-
-    dots.innerHTML = slides
-        .map(
-            (_, i) =>
-                `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
-        )
-        .join('');
-
-    wrap.classList.remove('hidden');
-    track.style.transform = 'translateX(0)';
-    updateWelcomeKindSwitchUi();
-    bindAttendanceWelcomeChartsOnce();
+        .catch((e) => {
+            console.warn('환영 차트 로드 실패:', e);
+            track.innerHTML = '';
+            dots.innerHTML = '';
+        });
 }
 
 /**
