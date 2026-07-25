@@ -13054,6 +13054,17 @@ button.board-detail-stat:disabled {
     font-weight: 700;
     background-color: #f1f5f9;
 }
+/*
+ * 관리자 CTA 첫 클릭이 씹히는 문제 방지.
+ * 목록/테이블을 클릭 핸들러 안에서 다시 그리면 브라우저 scroll anchoring이
+ * 스크롤을 보정하면서 버튼이 포인터 아래에서 밀려나고, 화면이 흔들린 뒤
+ * 두 번째 클릭에야 동작하는 경우가 있다. (진입 직후 첫 클릭만 정상인 패턴)
+ */
+html:has(#adminPage:not(.hidden)),
+body:has(#adminPage:not(.hidden)),
+#adminPage {
+    overflow-anchor: none;
+}
 #adminPage .admin-header-inner {
     padding-top: 0.15rem;
     padding-bottom: 0.15rem;
