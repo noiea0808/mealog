@@ -166,6 +166,14 @@ export function initCenterDialogGrabbers() {
                 const el = document.getElementById('entryModal');
                 return !el || el.classList.contains('entry-modal-saving');
             }
+        },
+        {
+            rootId: 'dailyJournalModal',
+            panelSelector: '.daily-journal-modal-panel',
+            backdropSelector: '#dailyJournalModalBackdrop',
+            onClose: () => {
+                if (typeof window.closeDailyJournalModal === 'function') window.closeDailyJournalModal();
+            }
         }
     ]);
 }

@@ -181,7 +181,7 @@ window.shareDailySummary = async (dateStr) => {
     }
 };
 
-// 일간 식단 공유 미리보기 모달 열기
+// 하루 기록 공유 미리보기 모달 열기
 window.openDailySharePreviewModal = (dateStr) => {
     const existing = document.getElementById('dailySharePreviewModal');
     if (existing) existing.remove();
@@ -221,7 +221,7 @@ window.openDailySharePreviewModal = (dateStr) => {
                 <p class="text-slate-600 font-bold" id="dailyShareLoadingLabel">공유 중...</p>
             </div>
             <div class="mealog-dialog-head border-b border-slate-200">
-                <h2 id="dailySharePreviewTitle" class="text-base font-bold text-slate-800 tracking-tight">일간 식단 공유 미리보기</h2>
+                <h2 id="dailySharePreviewTitle" class="text-base font-bold text-slate-800 tracking-tight">하루 기록 공유하기</h2>
             </div>
             <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
                 <div id="dailySharePreviewScroll" class="bg-slate-50 py-0" style="padding: 3px;">

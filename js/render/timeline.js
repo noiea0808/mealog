@@ -1436,7 +1436,7 @@ function getDailyJournalForTimeline(dateStr) {
 function dailyJournalPhotoSyncLeadHtml(journal) {
     if (!dailyJournalHasPhotos(journal)) return '';
     if (dailyJournalHasPendingPhotoUpload(journal)) {
-        return mealLeadSyncRedDot('등록 중', '하루 기록 사진을 서버에 업로드하는 중이에요.');
+        return mealLeadSyncRedDot('등록 중', '하루 소감 사진을 서버에 업로드하는 중이에요.');
     }
     const dot = (bg) =>
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
@@ -1558,7 +1558,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     if (forShareCapture) {
         const photoCount = photos.length;
         const titleHtml = escapeHtml(
-            photoCount > 0 ? (photoCount === 1 ? '사진 1장' : `사진 ${photoCount}장`) : '하루 기록'
+            photoCount > 0 ? (photoCount === 1 ? '사진 1장' : `사진 ${photoCount}장`) : '하루 소감'
         );
         return buildHomeFeedCardShellHtml({
             openClick: '',
@@ -1584,7 +1584,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
         ? escapeHtml(
               comment
                   ? comment.replace(/\n/g, ' ').slice(0, 80)
-                  : dailyJournalSlotFallbackLine(journal) || '하루 기록'
+                  : dailyJournalSlotFallbackLine(journal) || '하루 소감'
           )
         : '기록하기';
     const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);

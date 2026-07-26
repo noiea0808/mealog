@@ -1280,8 +1280,8 @@ function ensureEntryWhatInputSnackCompositionInit() {
 function autosizeEntryWhatInput() {
     const el = document.getElementById('entryWhatInput');
     if (!el || el.tagName !== 'TEXTAREA') return;
-    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 42;
-    // 비어 있을 때(placeholder)는 고정 행 높이로 중앙 정렬 유지 — 태그 on/off와 동일
+    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 60;
+    // 비어 있을 때(2줄 placeholder)는 min-height 유지
     if (!(el.value || '').length) {
         el.style.height = `${minH}px`;
         return;

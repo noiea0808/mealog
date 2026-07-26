@@ -1,5 +1,5 @@
 /**
- * 타임라인 퀵입력 — 슬롯 피커를 연 뒤 본식·간식·하루 기록 선택
+ * 타임라인 퀵입력 — 슬롯 피커를 연 뒤 본식·간식·하루 소감 선택
  */
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';

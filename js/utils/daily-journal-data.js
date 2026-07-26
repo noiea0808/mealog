@@ -84,10 +84,10 @@ export function dailyJournalRecordedAtMillis(entry, dateStr) {
     return 0;
 }
 
-/** 모먼트·피드 휠 슬롯 칩 표기 (띄어쓰기 없음) */
-export const DAILY_JOURNAL_MOMENT_SLOT_LABEL = '하루기록';
+/** 모먼트·피드 휠 슬롯 칩 표기 (띄어쓰기 없음) — 일간 공유 캡처 '하루기록'과 구분 */
+export const DAILY_JOURNAL_MOMENT_SLOT_LABEL = '하루소감';
 
-/** 하루 기록 사진 모먼트 공유 여부 (slotId 또는 entryId) */
+/** 하루 소감 사진 모먼트 공유 여부 (slotId 또는 entryId) */
 export function isDailyJournalSharePhoto(photo, entryId) {
     if (photo && photo.slotId === 'daily_journal') return true;
     const eid =

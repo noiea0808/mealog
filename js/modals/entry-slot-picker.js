@@ -1,9 +1,9 @@
 /**
  * 타임라인 기록 추가 — 슬롯 선택 센터 팝업
- * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 기록은 하단에 둔다.
+ * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 소감은 하단에 둔다.
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
-import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, DAILY_JOURNAL_SLOT_STYLE, getSlotLucideIcon } from '../constants.js';
+import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
@@ -62,8 +62,14 @@ function slotLucideIcon(slot) {
     return getSlotLucideIcon(slot.id);
 }
 
+/** 피커에서 하루 소감 아이콘 — 보라 계열로 본식 슬롯처럼 강조 */
+const PICKER_DAILY_ICON_STYLE = {
+    iconBg: 'bg-violet-50',
+    iconText: 'text-violet-600'
+};
+
 function slotTint(slot) {
-    if (slot.type === 'daily') return DAILY_JOURNAL_SLOT_STYLE;
+    if (slot.type === 'daily') return PICKER_DAILY_ICON_STYLE;
     return SLOT_STYLES[slot.id] || SLOT_STYLES.default;
 }
 
@@ -73,7 +79,8 @@ function buildSlotRowHtml(slot, count) {
         count > 0
             ? `<span class="entry-slot-picker__count">${count}건 · 추가 가능</span>`
             : `<span class="entry-slot-picker__count entry-slot-picker__count--empty">아직 없음</span>`;
-    return `<button type="button" class="entry-slot-picker__item" data-slot-id="${escapeHtml(slot.id)}" data-slot-type="${escapeHtml(slot.type)}">
+    const itemMod = slot.type === 'daily' ? ' entry-slot-picker__item--daily' : '';
+    return `<button type="button" class="entry-slot-picker__item${itemMod}" data-slot-id="${escapeHtml(slot.id)}" data-slot-type="${escapeHtml(slot.type)}">
         <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
             <i data-lucide="${slotLucideIcon(slot)}" aria-hidden="true"></i>
         </span>
@@ -90,12 +97,9 @@ function renderPickerList(dateIso) {
 
     if (dateEl) dateEl.textContent = formatPickerDateLabel(dateIso);
 
-    // 식사·간식 통합 — SLOTS 정의 순서(시간순)
-    let html = `<div class="entry-slot-picker__group">
+    // 식사·간식(시간순) + 하루 소감 — 한 목록, 그룹 제목 없음
+    const html = `<div class="entry-slot-picker__group">
         ${SLOTS.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
-    </div>`;
-    html += `<div class="entry-slot-picker__group">
-        <p class="entry-slot-picker__group-title">하루</p>
         ${buildSlotRowHtml(DAILY_JOURNAL_SLOT, dailyJournalCount(dateIso))}
     </div>`;
 

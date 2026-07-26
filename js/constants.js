@@ -44,16 +44,16 @@ export const SLOTS = [
 /** 타임라인 하루 소감 슬롯 (meals 컬렉션과 별도, userSettings.dailyComments) */
 export const DAILY_JOURNAL_SLOT = {
     id: 'daily_journal',
-    label: '하루 기록',
+    label: '하루 소감',
     type: 'daily'
 };
 
 export const DAILY_JOURNAL_SLOT_STYLE = {
-    iconBg: 'bg-slate-50',
-    iconText: 'text-slate-400',
-    border: 'border-slate-100',
-    text: 'text-slate-400',
-    listLeft: 'border-l-[4px] border-l-slate-400/60'
+    iconBg: 'bg-violet-50',
+    iconText: 'text-violet-600',
+    border: 'border-violet-200',
+    text: 'text-violet-600',
+    listLeft: 'border-l-[4px] border-l-violet-600/60'
 };
 
 export const SLOT_STYLES = {

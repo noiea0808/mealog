@@ -2699,7 +2699,7 @@
                     <p id="entrySlotPickerDateLabel" class="min-w-0 truncate text-sm font-medium text-slate-500"></p>
                 </div>
             </div>
-            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(62vh,28rem)] overflow-y-auto pb-4 pt-1"></div>
+            <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(80vh,36rem)] overflow-y-auto pb-3 pt-1"></div>
         </div>
     </div>
 
@@ -2786,8 +2786,8 @@
                 </div>
                 <div id="entryFormFieldStackWhat" class="entry-sheet-zone entry-sheet-zone--core">
                     <div id="optionalFields">
-<div id="entryWhatSection" class="entry-form-field-section entry-field-quick-off entry-what-stack">
-                            <div class="entry-what-label-row">
+<div id="entryWhatSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
+                            <div class="entry-axis-label-row">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
                                         <i data-lucide="utensils" class="entry-axis-icon" aria-hidden="true"></i>
@@ -2798,7 +2798,7 @@
                                     <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <div id="mealWhatInputArea" class="entry-what-input-area w-full min-w-0">
+                            <div id="mealWhatInputArea" class="entry-axis-input-area w-full min-w-0">
                                 <div id="deliveryVendorSection" class="hidden">
                                     <div class="relative w-full">
                                         <button type="button" onclick="window.openKakaoPlaceSearch('deliveryVendor')" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="식당 검색">
@@ -2808,7 +2808,7 @@
                                     </div>
                                 </div>
                                 <div id="menuDetailInputRow" class="w-full">
-                                    <textarea id="entryWhatInput" rows="1" placeholder="무엇을 드셨나요? (예: 파스타, 된장찌개)" aria-label="무엇을" class="entry-what-textarea w-full px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 resize-none overflow-hidden"></textarea>
+                                    <textarea id="entryWhatInput" rows="2" placeholder="무엇을 드셨나요?&#10;구분도 고르면 내 패턴을 알 수 있어요." aria-label="무엇을" class="entry-what-textarea w-full px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 resize-none overflow-hidden"></textarea>
                                 </div>
                             </div>
                             <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
@@ -2836,43 +2836,43 @@
 
                 <div id="entrySheetPanelMore" class="entry-sheet-tabpanel hidden" role="tabpanel" aria-labelledby="entrySheetTabMore" data-entry-sheet-panel="more" hidden>
                 <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
-<div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off">
-                        <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+<div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
+                        <div class="entry-axis-label-row">
                             <div class="entry-axis-label-group shrink-0">
                                 <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
                                     <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
                             </div>
-                            <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
-                                <div class="relative min-w-0">
-                                    <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
-                                        <i data-lucide="search" aria-hidden="true"></i>
-                                    </button>
-                                    <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                </div>
-                            </div>
                             <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
                                 <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                             </button>
                         </div>
+                        <div class="entry-axis-input-area w-full min-w-0">
+                            <div class="relative min-w-0">
+                                <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
+                                    <i data-lucide="search" aria-hidden="true"></i>
+                                </button>
+                                <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
+                            </div>
+                        </div>
                         <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                         <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWhereInput"></div>
                     </div>
-<div id="entryWithSection" class="entry-form-field-section entry-field-quick-off">
-                            <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+<div id="entryWithSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
+                            <div class="entry-axis-label-row">
                                 <div class="entry-axis-label-group shrink-0">
                                     <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
                                         <i data-lucide="users" class="entry-axis-icon" aria-hidden="true"></i>
                                         <span>누구와</span>
                                     </span>
                                 </div>
-                                <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
-                                    <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
-                                </div>
                                 <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="with" aria-expanded="false" aria-label="누구와 빠른 입력" title="누구와 빠른 입력">
                                     <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                                 </button>
+                            </div>
+                            <div class="entry-axis-input-area w-full min-w-0">
+                                <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm font-bold border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
                             <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
                             <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWithInput"></div>
@@ -3096,43 +3096,57 @@
         </div>
     </div>
 
-    <!-- Daily Journal Modal (하루 기록) -->
-    <div id="dailyJournalModal" class="hidden fixed inset-0 z-[300] flex items-end overflow-hidden">
-        <div class="w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(92vh,100%)] bg-[var(--page)] rounded-t-[1.5rem] border-t border-[var(--line)]">
-            <div class="relative shrink-0 py-3 px-4 border-b border-[var(--line)] min-h-[3.25rem] flex items-center justify-center bg-white">
-                <h2 id="dailyJournalModalTitle" class="text-base font-bold text-slate-800 tracking-tight">하루 기록</h2>
-                <button type="button" onclick="window.closeDailyJournalModal()" class="absolute top-1/2 -translate-y-1/2 right-4 flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400"><i data-lucide="x" class="text-base"></i></button>
+    <!-- Daily Journal Modal (하루 소감) — 기록시트와 동일 센터 팝업 셸 -->
+    <div id="dailyJournalModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden" aria-modal="true" role="dialog" aria-labelledby="dailyJournalModalTitle">
+        <button type="button" id="dailyJournalModalBackdrop" class="mealog-dialog-backdrop absolute inset-0 z-0 cursor-default border-0 p-0" data-mealog-dialog-backdrop aria-label="닫기" style="background:var(--shell-dim, rgba(15,23,42,0.4))"></button>
+        <div class="daily-journal-modal-panel entry-modal-panel relative z-10 w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden" data-mealog-dialog-panel>
+            <div class="entry-modal-header shrink-0">
+                <div class="mealog-dialog-grabber entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+                <div class="flex items-center gap-2 min-w-0 px-4 pt-1 pb-2.5">
+                    <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2" data-entry-slot-theme="daily_journal">
+                        <span id="dailyJournalModalTitle" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800">날짜</span>
+                        <span class="entry-header-slot shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800">하루 소감</span>
+                    </div>
+                </div>
             </div>
-            <div id="dailyJournalModalScrollArea" class="flex-1 min-h-0 p-4 space-y-2 overflow-y-auto overflow-x-hidden pb-8">
-                <div class="mb-2">
-                    <div class="flex items-center justify-between mb-1.5">
-                        <span class="text-sm font-extrabold text-slate-600 block uppercase">사진</span>
-                        <div class="flex items-center gap-1">
-                            <span class="text-[10px] text-slate-400 font-bold mr-1">비율</span>
-                            <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('1:1')">1:1</button>
-                            <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('3:4')">3:4</button>
-                            <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('4:3')">4:3</button>
-                            <span id="dailyJournalPhotoCount" class="text-[10px] text-slate-400 font-bold ml-2">0/5</span>
+            <div id="dailyJournalModalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
+                <div class="entry-photo-section entry-sheet-zone entry-sheet-zone--media">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>사진</span>
+                            <span id="dailyJournalPhotoCount" class="entry-photo-count">0/5</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
+                                <button type="button" id="dailyJournalCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
+                                    <i data-lucide="camera" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" id="dailyJournalAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                    <i data-lucide="image" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-daily-journal px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setDailyJournalPhotoAspectRatio('4:3')">4:3</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex gap-2 overflow-x-auto pb-1">
-                        <div class="flex gap-1.5 shrink-0 self-start">
-                            <button type="button" id="dailyJournalCameraBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="사진 찍기" title="사진 찍기">
-                                <i data-lucide="camera" class="text-lg" aria-hidden="true"></i>
-                            </button>
-                            <button type="button" id="dailyJournalAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-14 h-14 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-400 active:bg-slate-100 transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                <i data-lucide="image" class="text-lg" aria-hidden="true"></i>
-                            </button>
-                        </div>
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
                         <div id="dailyJournalPhotoPreviewContainer" class="flex gap-2"></div>
                     </div>
                     <input type="file" id="dailyJournalImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
 
-                <div id="dailyJournalMetricsSection" class="pt-2 border-t border-slate-50 grid grid-cols-2 gap-2 items-start mb-2">
-                    <div id="dailyJournalWeightSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-1.5">
-                        <div class="flex items-center justify-between gap-1 mb-1">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase leading-tight">체중<span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">kg</span></span>
+                <div id="dailyJournalMetricsSection" class="entry-sheet-zone daily-journal-metrics-stack flex flex-col gap-2 px-4 py-3">
+                    <div id="dailyJournalWeightSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
+                                <i data-lucide="scale" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>체중</span>
+                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">kg</span>
+                            </span>
                             <label class="entry-gauge-switch shrink-0" title="체중 기록">
                                 <input type="checkbox" id="dailyJournalWeightToggle" class="peer sr-only" role="switch" aria-label="체중 기록 사용">
                                 <span class="entry-gauge-switch__track" aria-hidden="true"></span>
@@ -3141,17 +3155,21 @@
                         </div>
                         <div id="dailyJournalWeightWrap">
                             <div id="dailyJournalWeightRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalWeightRecords" class="space-y-1"></div>
+                                <div id="dailyJournalWeightRecords" class="flex flex-col gap-1.5"></div>
                                 <div id="dailyJournalWeightOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
                                     <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
                                 </div>
                             </div>
-                            <button type="button" id="dailyJournalWeightAddBtn" class="mt-1 w-full py-1.5 text-[11px] font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
+                            <button type="button" id="dailyJournalWeightAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
                         </div>
                     </div>
-                    <div id="dailyJournalBloodSugarSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-1.5">
-                        <div class="flex items-center justify-between gap-1 mb-1">
-                            <span class="text-sm font-extrabold text-slate-600 uppercase leading-tight">혈당<span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">mg/dL</span></span>
+                    <div id="dailyJournalBloodSugarSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+                        <div class="flex items-center justify-between gap-2 mb-1.5">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
+                                <i data-lucide="droplet" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>혈당</span>
+                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">mg/dL</span>
+                            </span>
                             <label class="entry-gauge-switch shrink-0" title="혈당 기록">
                                 <input type="checkbox" id="dailyJournalBloodSugarToggle" class="peer sr-only" role="switch" aria-label="혈당 기록 사용">
                                 <span class="entry-gauge-switch__track" aria-hidden="true"></span>
@@ -3160,33 +3178,42 @@
                         </div>
                         <div id="dailyJournalBloodSugarWrap">
                             <div id="dailyJournalBloodSugarRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalBloodSugarRecords" class="space-y-1"></div>
+                                <div id="dailyJournalBloodSugarRecords" class="flex flex-col gap-1.5"></div>
                                 <div id="dailyJournalBloodSugarOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
                                     <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
                                 </div>
                             </div>
-                            <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1 w-full py-1.5 text-[11px] font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
+                            <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="mb-2 -mx-4">
-                    <span class="text-sm font-extrabold text-slate-600 mb-1.5 block uppercase px-4">Comment</span>
-                    <textarea id="dailyJournalCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="5" class="w-full py-[0.8rem] px-4 bg-slate-100 rounded-none text-sm border-y border-x-0 border-slate-200 focus:border-slate-200 focus:ring-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus:shadow-none focus-visible:shadow-none active:shadow-none transition-none resize-y min-h-[128px] appearance-none"></textarea>
+                <div class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo">
+                    <div class="entry-comment-section">
+                        <span class="entry-comment-heading entry-comment-heading-with-icon">
+                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
+                            <span>메모</span>
+                        </span>
+                        <textarea id="dailyJournalCommentInput" placeholder="오늘 하루는 어떠셨나요? 하루 전체에 대한 생각을 기록해 보세요." rows="4" aria-label="하루 소감 메모" class="entry-comment-textarea w-full resize-none border bg-white px-3 text-sm outline-none transition-[min-height,padding] duration-200 appearance-none"></textarea>
+                    </div>
                 </div>
             </div>
-            <div id="dailyJournalModalActions" class="shrink-0 border-t border-slate-200 bg-white overflow-hidden">
+            <div id="dailyJournalModalActions" class="entry-modal-actions shrink-0 overflow-hidden">
                 <div class="flex items-stretch">
-                    <button type="button" id="btnDailyJournalDelete" onclick="window.deleteDailyJournal()" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5 bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100 transition-colors">
-                        <i data-lucide="trash-2" class="text-sm" aria-hidden="true"></i>
-                        <span class="text-xs font-bold leading-tight">삭제</span>
+                    <button type="button" id="btnDailyJournalDelete" onclick="window.deleteDailyJournal()" class="entry-action-btn entry-action-btn--delete hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2.5 py-2.5">
+                        <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5">
+                            <i data-lucide="trash-2" class="text-sm" aria-hidden="true"></i>
+                            <span class="text-xs font-bold leading-tight">삭제</span>
+                        </span>
                     </button>
-                    <button type="button" id="btnDailyJournalSave" onclick="window.saveDailyJournal()" class="mealog-btn mealog-btn-primary flex-[1.7]">
-                        <span>기록 완료</span>
+                    <button type="button" id="btnDailyJournalSave" onclick="window.saveDailyJournal()" class="entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5">
+                        <span class="entry-action-btn__inner"><span>기록 완료</span></span>
                     </button>
-                    <button type="button" id="dailyJournalShareIndicator" onclick="window.toggleDailyJournalSharePhoto()" aria-label="모먼트 공유" class="hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 bg-slate-50 text-slate-400 active:bg-slate-100 transition-colors min-w-0">
-                        <i data-lucide="send" class="text-sm shrink-0" aria-hidden="true"></i>
-                        <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
+                    <button type="button" id="dailyJournalShareIndicator" onclick="window.toggleDailyJournalSharePhoto()" aria-label="모먼트 공유" class="entry-action-btn entry-action-btn--share hidden flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 min-w-0">
+                        <span class="entry-action-btn__inner flex flex-col items-center justify-center gap-0.5 min-w-0">
+                            <i data-lucide="send" class="text-sm shrink-0" aria-hidden="true"></i>
+                            <span class="text-xs font-bold text-center leading-tight min-w-0">모먼트 공유</span>
+                        </span>
                     </button>
                 </div>
             </div>

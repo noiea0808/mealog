@@ -3344,22 +3344,17 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
 #entryModal.entry-modal-saving #btnSave {
     cursor: wait;
 }
-/* 하루 기록 모달: 시트 하단 + 액션바에 제스처/네비 세이프 영역 */
-#dailyJournalModal {
-    padding-bottom: 0;
-}
-#dailyJournalModal > div {
-    max-height: min(92vh, 100%);
+/* 하루 소감 모달: 기록시트와 동일 센터 팝업 */
+#dailyJournalModal > .daily-journal-modal-panel {
+    background: var(--card);
+    max-height: min(88vh, 100%);
     min-height: 0;
 }
-#dailyJournalModalActions {
-    padding-top: 2px !important;
-}
 html:not(.platform-web) #dailyJournalModal #dailyJournalModalActions {
-    padding-bottom: calc(10px + max(12px, calc(8px + env(safe-area-inset-bottom, 0px)), var(--safe-bottom))) !important;
+    padding-bottom: calc(16px + max(0px, env(safe-area-inset-bottom, 0px))) !important;
 }
 html.platform-web #dailyJournalModal #dailyJournalModalActions {
-    padding-bottom: calc(8px + max(16px, env(safe-area-inset-bottom, 0px))) !important;
+    padding-bottom: calc(16px + max(0px, env(safe-area-inset-bottom, 0px))) !important;
 }
 body.daily-journal-modal-open .bottom-nav,
 body.daily-journal-modal-open #navigationBarOverlay,
@@ -3370,6 +3365,138 @@ body.daily-journal-modal-open #galleryMomentsRefreshFab.initial-records-load-fab
 body.daily-journal-modal-open #timelineRefreshFab.initial-records-load-fab {
     visibility: hidden !important;
     pointer-events: none !important;
+}
+#dailyJournalModal .daily-journal-metrics-stack {
+    border-bottom: 1px solid var(--entry-border-row, #eef2f0);
+    background: var(--entry-surface);
+}
+/* 체중·혈당 입력 행 — 세로 스택 후 넉넉한 폭 사용 */
+#dailyJournalModal .daily-journal-metric-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    padding: 0.375rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #fff;
+    box-sizing: border-box;
+}
+#dailyJournalModal .daily-journal-metric-value {
+    flex: 0 0 8.625rem;
+    width: 8.625rem;
+    min-width: 8.625rem;
+    padding: 0.55rem 0.65rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: #f8fafc;
+    color: #0f172a;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    outline: none;
+}
+#dailyJournalModal .daily-journal-metric-value:focus {
+    box-shadow: 0 0 0 2px var(--entry-accent-ring, rgb(60 184 137 / 0.22));
+}
+#dailyJournalModal .daily-journal-metric-value::placeholder,
+#dailyJournalModal .daily-journal-metric-time::placeholder {
+    color: #94a3b8;
+    font-weight: 500;
+}
+#dailyJournalModal .daily-journal-metric-time-wrap {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    align-items: stretch;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    background: #f1f5f9;
+}
+#dailyJournalModal .daily-journal-metric-ampm {
+    flex: 0 0 5.625rem;
+    width: 5.625rem;
+    max-width: none;
+    padding: 0.55rem 0.35rem;
+    border: 0;
+    border-right: 1px solid #e2e8f0;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+#dailyJournalModal .daily-journal-metric-time {
+    flex: 1 1 auto;
+    min-width: 6.75rem;
+    padding: 0.55rem 0.85rem;
+    border: 0;
+    background: #f1f5f9;
+    color: #0f172a;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    outline: none;
+}
+#dailyJournalModal .daily-journal-metric-time:focus,
+#dailyJournalModal .daily-journal-metric-ampm:focus {
+    background: #fff;
+}
+#dailyJournalModal .daily-journal-metric-remove {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: auto;
+    min-height: 2.25rem;
+    border: 0;
+    border-radius: 0.5rem;
+    color: #94a3b8;
+    background: transparent;
+}
+#dailyJournalModal .daily-journal-metric-remove:hover {
+    background: #f1f5f9;
+    color: #475569;
+}
+#dailyJournalModal .daily-journal-metric-remove:active {
+    background: #e2e8f0;
+}
+#dailyJournalModal .daily-journal-metric-remove [data-lucide],
+#dailyJournalModal .daily-journal-metric-remove .lucide {
+    width: 0.875rem;
+    height: 0.875rem;
+}
+/* 메모: 식사기록과 동일 색·테두리, 하루 소감만 기본 높이 여유 */
+#dailyJournalModal .entry-sheet-zone--memo {
+    background: var(--entry-surface-band);
+}
+#dailyJournalModal #dailyJournalCommentInput.entry-comment-textarea {
+    background: var(--entry-input-bg);
+    border: 1px solid var(--entry-border, #d0c6ba);
+    border-radius: var(--entry-radius);
+    color: var(--entry-text-primary);
+    min-height: 7rem;
+    max-height: none;
+    height: auto;
+    resize: vertical;
+    white-space: pre-wrap;
+    text-overflow: clip;
+    overflow-y: auto;
+}
+#dailyJournalModal #dailyJournalCommentInput.entry-comment-textarea:focus {
+    background: var(--entry-input-bg-focus);
+    border-color: var(--entry-accent);
+    box-shadow: 0 0 0 3px var(--entry-accent-ring);
+}
+#dailyJournalModal #dailyJournalCommentInput.entry-comment-textarea::placeholder {
+    color: var(--entry-text-muted);
+    font-weight: 500;
 }
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
 #galleryContainer .moment-feed-photo {
@@ -11205,10 +11332,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     box-sizing: border-box;
 }
 .entry-slot-picker__group {
-    margin-bottom: 0.75rem;
-}
-.entry-slot-picker__group:last-child {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
 }
 .entry-slot-picker__group-title {
     margin: 0.35rem 0.5rem 0.35rem;
@@ -11231,6 +11355,13 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     text-align: left;
     transition: background-color 0.15s, border-color 0.15s;
     -webkit-tap-highlight-color: transparent;
+}
+.entry-slot-picker__item:last-child {
+    margin-bottom: 0;
+}
+/* 하루 소감: 끼니 목록과 살짝 띄워 마지막에 붙임 */
+.entry-slot-picker__item--daily {
+    margin-top: 0.35rem;
 }
 .entry-slot-picker__item:active {
     background: #f1f5f9;
@@ -13471,7 +13602,7 @@ body:has(#adminPage:not(.hidden)),
 /* ═══════════════════════════════════════════════════════════
    기록 시트 — 디자인 시스템 (위계: 핵심 입력 › 부가 › 메모)
    ═══════════════════════════════════════════════════════════ */
-#entryModal {
+:is(#entryModal, #dailyJournalModal) {
     --entry-accent: var(--green);
     --entry-accent-dark: var(--green-deep);
     --entry-accent-soft: var(--green-soft);
@@ -13504,14 +13635,14 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 헤더: 메타(날짜·슬롯) — 조용하게 ── */
-#entryModal .entry-modal-panel {
+:is(#entryModal, #dailyJournalModal) .entry-modal-panel {
     background: var(--card);
     border-radius: var(--shell-r-dialog);
     border: 1px solid var(--line);
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
     will-change: transform;
 }
-#entryModal .entry-modal-header {
+:is(#entryModal, #dailyJournalModal) .entry-modal-header {
     background: var(--entry-surface);
     border-bottom: 1px solid var(--entry-border-soft);
     border-radius: var(--shell-r-dialog) var(--shell-r-dialog) 0 0;
@@ -13520,8 +13651,8 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     gap: 0.375rem;
 }
-#entryModal .entry-header-date,
-#entryModal .entry-header-slot {
+:is(#entryModal, #dailyJournalModal) .entry-header-date,
+:is(#entryModal, #dailyJournalModal) .entry-header-slot {
     font-variant-numeric: tabular-nums;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -13548,6 +13679,11 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-header-slot,
 #entryModal .entry-header-controls[data-entry-slot-theme="dinner"] .entry-form-mode-switch {
     background: #e0f2fe;
+}
+/* 하루 소감: 보라 계열 헤더 칩 */
+#dailyJournalModal .entry-header-controls[data-entry-slot-theme="daily_journal"] .entry-header-date,
+#dailyJournalModal .entry-header-controls[data-entry-slot-theme="daily_journal"] .entry-header-slot {
+    background: #ede9fe;
 }
 #entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-date:focus,
 #entryModal .entry-header-controls[data-entry-slot-theme="morning"] .entry-header-slot:focus,
@@ -13578,7 +13714,7 @@ body:has(#adminPage:not(.hidden)),
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
     color: #0f172a;
 }
-#entryModal .entry-header-date {
+:is(#entryModal, #dailyJournalModal) .entry-header-date {
     flex: 0 1 auto;
     min-width: 6.5rem;
     max-width: 8.25rem;
@@ -13587,6 +13723,9 @@ body:has(#adminPage:not(.hidden)),
     font-variant-numeric: tabular-nums;
     cursor: pointer;
     text-align: center;
+}
+#dailyJournalModal .entry-header-date {
+    cursor: default;
 }
 #entryModal button.entry-header-date:focus {
     outline: none;
@@ -13606,6 +13745,16 @@ body:has(#adminPage:not(.hidden)),
     background-repeat: no-repeat;
     background-position: right 0.35rem center;
     background-size: 0.875rem;
+}
+#dailyJournalModal .entry-header-slot {
+    flex: 1 1 auto;
+    min-width: 8.75rem;
+    max-width: 12rem;
+    text-align: center;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    background-image: none;
+    cursor: default;
 }
 .entry-form-mode-switch {
     display: inline-flex;
@@ -13705,10 +13854,10 @@ body:has(#adminPage:not(.hidden)),
 }
 /* entry-detail-record-bar removed — 상세보기 칩 UI 삭제 */
 
-#entryModal .entry-sheet-body {
+:is(#entryModal, #dailyJournalModal) .entry-sheet-body {
     background: var(--entry-surface-body);
 }
-#entryModal .entry-sheet-zone--media {
+:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--media {
     background: var(--entry-surface);
     padding: 0;
     border-bottom: none;
@@ -13726,7 +13875,7 @@ body:has(#adminPage:not(.hidden)),
     padding: 0;
     border-top: 1px solid var(--entry-border-soft);
 }
-#entryModal .entry-sheet-zone--memo {
+:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--memo {
     background: var(--entry-surface-band);
     border-top: 1px solid var(--entry-border-soft);
 }
@@ -13780,17 +13929,20 @@ body:has(#adminPage:not(.hidden)),
     transform: rotate(90deg);
 }
 /* 어디서·무엇을·누구와: 입력란과 화살표 간격 + 입력란보다 조금 작은 화살표 */
-#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle {
+#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle,
+#entryModal .entry-sheet-zone--core .entry-axis-label-row > .entry-field-quick-toggle {
     width: calc(var(--entry-form-row-h) - 0.75rem);
     height: calc(var(--entry-form-row-h) - 0.75rem);
     margin-left: 0.5rem;
 }
-#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon {
+#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon,
+#entryModal .entry-sheet-zone--core .entry-axis-label-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon {
     font-size: 0.9rem;
     width: 0.9rem;
     height: 0.9rem;
 }
-#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon svg {
+#entryModal .entry-sheet-zone--core .entry-axis-input-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon svg,
+#entryModal .entry-sheet-zone--core .entry-axis-label-row > .entry-field-quick-toggle .entry-field-quick-toggle__icon svg {
     width: 0.9rem;
     height: 0.9rem;
 }
@@ -13869,7 +14021,7 @@ body:has(#adminPage:not(.hidden)),
     text-align: center;
     flex-shrink: 0;
 }
-#entryModal .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header .entry-axis-icon {
     color: #8b5cf6;
 }
 #entryModal #entryWhereSection .entry-axis-icon {
@@ -13920,7 +14072,8 @@ body:has(#adminPage:not(.hidden)),
 
 /* ── 입력 필드 (핵심 강조) ── */
 #entryModal .entry-axis-input-col input[type="text"],
-#entryModal .entry-comment-textarea {
+#entryModal .entry-axis-input-area input[type="text"],
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
     background: var(--entry-input-bg);
     border: 1px solid transparent;
     border-radius: var(--entry-radius);
@@ -13943,7 +14096,8 @@ body:has(#adminPage:not(.hidden)),
     font-size: 0.9375rem;
 }
 #entryModal .entry-axis-input-col input[type="text"]::placeholder,
-#entryModal .entry-comment-textarea::placeholder,
+#entryModal .entry-axis-input-area input[type="text"]::placeholder,
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea::placeholder,
 #entryModal #entryWhatSection .entry-what-textarea::placeholder {
     color: var(--entry-text-muted);
     font-weight: 500;
@@ -13955,7 +14109,8 @@ body:has(#adminPage:not(.hidden)),
     font-size: 0.875rem;
 }
 #entryModal .entry-axis-input-col input[type="text"]:focus,
-#entryModal .entry-comment-textarea:focus,
+#entryModal .entry-axis-input-area input[type="text"]:focus,
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
 #entryModal #entryWhatSection .entry-what-textarea:focus {
     outline: none;
     background: var(--entry-input-bg-focus);
@@ -13998,57 +14153,57 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 사진 (보조) ── */
-#entryModal .entry-photo-section {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section {
     margin-bottom: 0;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
 }
-#entryModal .entry-photo-header {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header {
     margin-bottom: 0;
 }
-#entryModal .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal) .entry-photo-preview-row {
     padding: 0;
     margin: 0;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     margin: 0;
     padding: 0;
 }
-#entryModal .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal) .record-photo-add-btn {
     border: 1px solid var(--entry-border, #e2e8f0);
     background: #ffffff;
     color: var(--entry-action-icon);
     box-sizing: border-box;
 }
-#entryModal .record-photo-add-btn i {
+:is(#entryModal, #dailyJournalModal) .record-photo-add-btn i {
     font-size: 1.125rem;
     color: var(--entry-action-icon);
 }
-#entryModal .record-photo-add-btn:hover {
+:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:hover {
     background: #ffffff;
     border-color: #cbd5e1;
 }
-#entryModal .record-photo-add-btn:active {
+:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:active {
     background: #f8fafc;
     border-color: var(--entry-action-icon);
 }
-#entryModal .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools {
     opacity: 1;
 }
-#entryModal .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn {
     font-size: 0.6875rem;
     font-weight: 800;
     color: var(--entry-text-secondary);
     border-color: var(--entry-border-soft);
     background: transparent;
 }
-#entryModal .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: #6ee7b7;
     color: var(--entry-accent-dark);
     font-weight: 800;
 }
-#entryModal .entry-photo-count {
+:is(#entryModal, #dailyJournalModal) .entry-photo-count {
     margin-left: 0.375rem;
     font-size: 0.625rem;
     font-weight: 700;
@@ -14057,13 +14212,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: 0;
     text-transform: none;
 }
-#entryModal .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal) .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
 }
 
 /* ── 사진 등록 후: 스트립 썸네일 → 아래 고정 툴바 ── */
 /* :not(.hidden) — has-photos의 display:flex가 Tailwind .hidden을 덮지 않도록 */
-#entryModal .entry-photo-section--has-photos:not(.hidden) {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos:not(.hidden) {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -14071,17 +14226,17 @@ body:has(#adminPage:not(.hidden)),
     border-bottom: 1px solid var(--entry-border-row);
     background: var(--entry-surface);
 }
-#entryModal .entry-photo-section.hidden {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section.hidden {
     display: none !important;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     order: 1;
     margin: 0;
     padding: 0;
     overflow: visible;
     display: block;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header {
     order: 2;
     position: static;
     inset: auto;
@@ -14097,7 +14252,7 @@ body:has(#adminPage:not(.hidden)),
     border-top: none; /* 사진과 바로 붙도록 구분선·간격 제거 */
     pointer-events: auto;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
     position: static;
     top: auto;
     right: auto;
@@ -14118,15 +14273,15 @@ body:has(#adminPage:not(.hidden)),
     align-items: center;
     gap: 0.35rem;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
     display: inline-block;
     font-size: 0.95rem;
     color: var(--entry-action-icon);
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
     display: inline;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-count {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count {
     margin: 0;
     margin-left: 0.25rem;
     padding: 2px 7px;
@@ -14137,12 +14292,12 @@ body:has(#adminPage:not(.hidden)),
     font-size: 0.6875rem;
     font-weight: 700;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
     border-color: var(--green-mute);
     background: var(--green-soft);
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
     position: static;
     inset: auto;
     padding: 0;
@@ -14155,10 +14310,10 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     pointer-events: auto;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
     padding-left: 0;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-add-btns {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-add-btns {
     position: static;
     left: auto;
     bottom: auto;
@@ -14166,7 +14321,7 @@ body:has(#adminPage:not(.hidden)),
     pointer-events: auto;
     gap: 6px;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
     position: static;
     right: auto;
     bottom: auto;
@@ -14176,8 +14331,8 @@ body:has(#adminPage:not(.hidden)),
     gap: 4px;
 }
 /* 사진 설정 행: 카메라/앨범·비율 버튼 높이·타이포 통일 */
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn,
-#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn,
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     box-sizing: border-box;
     height: 2rem;
     min-height: 2rem;
@@ -14192,20 +14347,20 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn {
     width: 2rem;
     min-width: 2rem;
     color: var(--entry-action-icon);
 }
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn i,
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
-#entryModal .entry-photo-section--has-photos .record-photo-add-btn .lucide {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn i,
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn .lucide {
     color: var(--entry-action-icon);
     font-size: 0.875rem;
     width: 0.875rem;
     height: 0.875rem;
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     width: auto;
     min-width: 3rem;
     padding: 0 0.65rem;
@@ -14214,13 +14369,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: -0.01em;
     color: var(--entry-text-secondary);
 }
-#entryModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: var(--green-mute);
     color: var(--entry-accent-dark);
 }
-#entryModal .entry-photo-section--has-photos #photoPreviewContainer,
-#entryModal .entry-photo-section--has-photos #snackPhotoPreviewContainer {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #photoPreviewContainer,
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #snackPhotoPreviewContainer {
     display: block;
     width: 100%;
     padding: 0;
@@ -14228,7 +14383,7 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
 }
 /* 등록 사진 썸네일 스트립 — 편집·좌우 이동은 사진 내 하단 오버레이 */
-#entryModal .entry-photo-section--has-photos .entry-photo-thumb-strip {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-thumb-strip {
     display: flex;
     flex-wrap: nowrap;
     align-items: flex-start;
@@ -14242,13 +14397,13 @@ body:has(#adminPage:not(.hidden)),
     scrollbar-width: thin;
     box-sizing: border-box;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-card {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-card {
     display: block;
     width: 10.2rem;
     min-width: 10.2rem;
     flex: 0 0 auto;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb {
     position: relative;
     width: 100%;
     height: auto;
@@ -14261,20 +14416,20 @@ body:has(#adminPage:not(.hidden)),
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
     width: 24px;
     height: 24px;
     top: 6px;
     right: 6px;
     font-size: 12px;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
-#entryModal .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
     width: 12px;
     height: 12px;
 }
 /* 사진 내 하단: ‹ 편집 › — 아래 패딩으로 살짝 올림 */
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
     display: flex;
     align-items: flex-end;
     gap: 2px;
@@ -14283,8 +14438,8 @@ body:has(#adminPage:not(.hidden)),
     padding: 0.75rem 0.25rem 0.35rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.28) 55%, transparent);
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
     box-sizing: border-box;
     flex: 1 1 0;
     min-width: 0;
@@ -14305,21 +14460,21 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
     background: rgba(0, 0, 0, 0.78);
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
     opacity: 0.32;
     cursor: not-allowed;
     pointer-events: none;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
     font-size: 1rem;
     font-weight: 700;
     color: #fff;
 }
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
     padding: 0 0.25rem;
     font-size: 12px;
     font-weight: 400;
@@ -14423,71 +14578,71 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* 빠른 입력 OFF: 텍스트·시간 행 높이 통일 */
-#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-row,
-#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-row,
-#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-row,
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-label-row,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-label-row,
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-label-row,
 #entryModal #entryMealTimeSectionMain .entry-axis-input-row,
 #entryModal #entryMealTimeSectionSnack .entry-axis-input-row,
-#entryModal .entry-photo-header {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header {
     min-height: var(--entry-form-row-h);
 }
-#entryModal .entry-photo-header {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header {
     display: grid;
     grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
 }
-#entryModal .entry-photo-header > .entry-axis-label {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-label {
     grid-column: 1;
 }
-#entryModal .entry-photo-header > .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-input-col {
     grid-column: 2;
     padding-left: var(--entry-form-input-pl);
 }
-#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col > input,
-#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col .relative > input,
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-area > input,
+#entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-area .relative > input,
 #entryModal #entryWhatSection.entry-field-quick-off #deliveryVendorInput,
-#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-col > input {
+#entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-area > input {
     height: var(--entry-form-row-h);
     min-height: var(--entry-form-row-h);
     box-sizing: border-box;
     padding-top: 0;
     padding-bottom: 0;
 }
-/* 무엇을 textarea는 태그 on/off와 무관하게 아래 .entry-what-textarea 패딩으로만 세로 중앙 유지
+/* 무엇을 textarea는 태그 on/off와 무관하게 아래 .entry-what-textarea 패딩으로만 세로 유지
    (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
 
 
-/* 무엇을: 라벨 위 · 입력란 아래 + 자동 높이 */
-#entryModal #entryWhatSection.entry-what-stack {
+/* 어디서·무엇을·누구와: 라벨 위 · 입력란 아래 */
+#entryModal .entry-form-field-section.entry-axis-stack {
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
 }
-#entryModal #entryWhatSection .entry-what-label-row {
+#entryModal .entry-axis-stack .entry-axis-label-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
     min-height: var(--entry-form-row-h);
 }
-#entryModal #entryWhatSection .entry-what-label-row .entry-axis-label-group {
+#entryModal .entry-axis-stack .entry-axis-label-row .entry-axis-label-group {
     min-width: 0;
     grid-column: auto;
 }
-#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle {
+#entryModal .entry-axis-stack .entry-axis-label-row .entry-field-quick-toggle {
     width: calc(var(--entry-form-row-h) - 0.75rem);
     height: calc(var(--entry-form-row-h) - 0.75rem);
     margin-left: 0;
 }
-#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon {
+#entryModal .entry-axis-stack .entry-axis-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon {
     font-size: 0.9rem;
     width: 0.9rem;
     height: 0.9rem;
 }
-#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon svg {
+#entryModal .entry-axis-stack .entry-axis-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon svg {
     width: 0.9rem;
     height: 0.9rem;
 }
-#entryModal #entryWhatSection .entry-what-input-area {
+#entryModal .entry-axis-stack .entry-axis-input-area {
     width: 100%;
 }
 #entryModal #entryWhatSection .entry-what-textarea,
@@ -14495,14 +14650,14 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #entryWhatSection:not(.entry-field-quick-off) .entry-what-textarea {
     display: block;
     width: 100%;
-    min-height: var(--entry-form-row-h);
-    height: var(--entry-form-row-h);
+    /* 2줄 placeholder(무엇을 + 구분 안내)가 잘리지 않도록 */
+    min-height: 3.75rem;
+    height: 3.75rem;
     font-size: 0.9375rem;
-    line-height: 1.25;
+    line-height: 1.35;
     box-sizing: border-box;
-    /* 태그(빠른입력) on/off와 무관하게 한 줄 placeholder·값 세로 중앙 — 동일 패딩 고정 */
-    padding-top: calc((var(--entry-form-row-h) - 1.25em) / 2) !important;
-    padding-bottom: calc((var(--entry-form-row-h) - 1.25em) / 2) !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
     overflow-x: hidden;
     overflow-y: hidden;
     resize: none;
@@ -14511,8 +14666,15 @@ body:has(#adminPage:not(.hidden)),
     /* py·height transition이 태그 토글 시 placeholder가 움직이는 것처럼 보이게 함 */
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
-#entryModal #entryWhatSection.entry-what-stack #entryWhatChips:not(.hidden),
-#entryModal #entryWhatSection.entry-what-stack #entryWhatSuggestions {
+#entryModal #entryWhatSection .entry-what-textarea::placeholder {
+    white-space: pre-wrap;
+}
+#entryModal .entry-axis-stack #entryWhereChips:not(.hidden),
+#entryModal .entry-axis-stack #entryWhatChips:not(.hidden),
+#entryModal .entry-axis-stack #entryWithChips:not(.hidden),
+#entryModal .entry-axis-stack #entryWhereSuggestions,
+#entryModal .entry-axis-stack #entryWhatSuggestions,
+#entryModal .entry-axis-stack #entryWithSuggestions {
     /* 라벨이 위인 스택 레이아웃: 칩/서브태그에 옆라벨용 들여쓰기 제거 */
     padding-left: 0;
 }
@@ -14522,19 +14684,19 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 메모·더 적기 (하단 보조) ── */
-#entryModal .entry-comment-detail-footer {
+:is(#entryModal, #dailyJournalModal) .entry-comment-detail-footer {
     margin-top: 0;
     padding: 0;
     background: transparent;
     border-top: none;
 }
-#entryModal .entry-comment-section {
+:is(#entryModal, #dailyJournalModal) .entry-comment-section {
     padding: 0.625rem 1rem;
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
     background: transparent;
 }
-#entryModal .entry-comment-heading {
+:is(#entryModal, #dailyJournalModal) .entry-comment-heading {
     display: block;
     font-size: 0.875rem;
     font-weight: 600;
@@ -14544,18 +14706,18 @@ body:has(#adminPage:not(.hidden)),
     margin-bottom: 0.375rem;
     text-transform: none;
 }
-#entryModal .entry-comment-heading-with-icon {
+:is(#entryModal, #dailyJournalModal) .entry-comment-heading-with-icon {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
 }
-#entryModal .entry-comment-icon {
+:is(#entryModal, #dailyJournalModal) .entry-comment-icon {
     font-size: 1.05rem;
     line-height: 1;
     color: var(--entry-action-icon);
     flex-shrink: 0;
 }
-#entryModal .entry-comment-textarea {
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
     --entry-comment-line: 1.35;
     box-sizing: border-box;
     line-height: var(--entry-comment-line);
@@ -14570,8 +14732,8 @@ body:has(#adminPage:not(.hidden)),
     text-overflow: ellipsis;
     transition: min-height 0.18s ease, max-height 0.18s ease, height 0.18s ease, padding 0.18s ease;
 }
-#entryModal .entry-comment-textarea:focus,
-#entryModal .entry-comment-textarea.entry-comment-textarea--expanded {
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
     min-height: calc(3em * var(--entry-comment-line) + 1.1rem);
     max-height: calc(3em * var(--entry-comment-line) + 1.1rem);
     height: calc(3em * var(--entry-comment-line) + 1.1rem);
@@ -14844,8 +15006,8 @@ body:has(#adminPage:not(.hidden)),
     transition: none;
 }
 
-/* ── 하단 액션 (기록 완료 강조) ── */
-#entryModal .entry-modal-actions {
+/* ── 하단 액션 (기록 완료 강조) — 기록시트·하루 소감 공통 ── */
+:is(#entryModal, #dailyJournalModal) .entry-modal-actions {
     background: var(--entry-surface);
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
@@ -14855,16 +15017,16 @@ body:has(#adminPage:not(.hidden)),
 #entryModal.keyboard-open .entry-modal-actions {
     border-radius: 0;
 }
-#entryModal .entry-modal-actions > .flex {
+:is(#entryModal, #dailyJournalModal) .entry-modal-actions > .flex {
     gap: 8px;
 }
-#entryModal .entry-action-btn {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn {
     transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
     border-radius: var(--shell-r-btn);
     min-height: 46px;
 }
 /* 버튼 배경은 영역 전체 유지, 내부 콘텐츠만 축소 → 주변 하얀 여백 방지 */
-#entryModal .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner {
     display: flex;
     flex-direction: inherit;
     align-items: inherit;
@@ -14873,17 +15035,17 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     transition: transform 0.1s ease;
 }
-#entryModal .entry-action-btn__inner--loading {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner--loading {
     flex-direction: row;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
 }
-#entryModal .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
-#entryModal .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
+:is(#entryModal, #dailyJournalModal) .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
     transform: scale(0.92);
 }
-#entryModal .entry-action-btn--save {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--save {
     background: var(--cta-mint-grad);
     color: #fff;
     font-size: 15px;
@@ -14893,69 +15055,69 @@ body:has(#adminPage:not(.hidden)),
     min-height: var(--cta-btn-h);
     box-shadow: var(--cta-mint-shadow);
 }
-#entryModal .entry-action-btn--save:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:hover:not(:disabled) {
     filter: brightness(1.02);
 }
-#entryModal .entry-action-btn--save:active:not(:disabled),
-#entryModal .entry-action-btn--save.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--save.btn-is-pressed:not(:disabled) {
     filter: brightness(0.96);
     box-shadow: inset 0 1px 6px rgb(0 0 0 / 0.1), 0 1px 4px rgba(45, 159, 116, 0.22);
 }
-#entryModal .entry-action-btn--save:disabled {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:disabled {
     cursor: not-allowed;
     box-shadow: none;
     opacity: 0.55;
     filter: none;
 }
-#entryModal .entry-action-btn--delete {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete {
     background: #fff1f2;
     color: #e11d48;
     border-right: 0;
 }
-#entryModal .entry-action-btn--delete:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:hover:not(:disabled) {
     background: #ffe4e6;
 }
-#entryModal .entry-action-btn--delete:active:not(:disabled),
-#entryModal .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
     background: #fda4af;
     color: #9f1239;
     box-shadow: inset 0 2px 10px rgb(159 18 57 / 0.22);
 }
-#entryModal .entry-action-btn--share {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share {
     background: var(--entry-surface-muted);
     color: var(--entry-text-muted);
     border-left: 0;
 }
-#entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
     background: var(--entry-border-soft);
 }
-#entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
-#entryModal .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
     background: #cbd5e1;
     color: #334155;
     box-shadow: inset 0 2px 10px rgb(15 23 42 / 0.14);
 }
-#entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
-#entryModal .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
     background: #6ee7b7;
     color: var(--green-deep);
     box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.2);
 }
-#entryModal .entry-action-btn--share.entry-action-btn--share-on {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on {
     background: var(--entry-accent-soft);
     color: var(--entry-accent-dark);
 }
-#entryModal .entry-action-btn--share.entry-action-btn--share-on i {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on i {
     color: var(--entry-accent-dark);
 }
-#entryModal .entry-action-btn--share.entry-action-btn--share-banned {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-banned {
     background: #fff1f2;
     color: #f87171;
     border-left-color: #fecaca;
     cursor: not-allowed;
     pointer-events: none;
 }
-#entryModal .entry-action-btn--share:disabled {
+:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:disabled {
     opacity: 1;
 }
 
@@ -15019,6 +15181,7 @@ body:has(#adminPage:not(.hidden)),
 }
 #entrySlotPickerBackdrop,
 #entryModalBackdrop,
+#dailyJournalModalBackdrop,
 #dietReportBackdrop,
 #successPopupBackdrop,
 #attendancePopupBackdrop,
@@ -15052,6 +15215,7 @@ body:has(#adminPage:not(.hidden)),
 #desktopShortcutGuideModal > div,
 #entrySlotPickerModal .entry-slot-picker,
 #entryModal .entry-modal-panel,
+#dailyJournalModal .daily-journal-modal-panel,
 #dietReportModal .diet-report-modal,
 #detailModal > div,
 #bestShareModal > div,
@@ -15093,17 +15257,7 @@ body:has(#adminPage:not(.hidden)),
     background: var(--green-mute) !important;
 }
 
-#dailyJournalModalActions {
-    padding: 12px 16px 16px;
-}
-#dailyJournalModalActions > .flex {
-    gap: 8px;
-}
-#dailyJournalModalActions #btnDailyJournalDelete,
-#dailyJournalModalActions #dailyJournalShareIndicator {
-    border-radius: var(--shell-r-btn);
-    min-height: 46px;
-}
+/* 하루 소감 하단 액션 — 기록시트 entry-modal-actions 와 동일 토큰 사용 */
 /* AI 식단분석 — Soft Mint Center Dialog */
 #dietReportModal .diet-report-modal {
     /* 고정 높이가 없으면 flex body(flex-basis:0)가 0px로 줄어 콘텐츠가 안 보임 */
@@ -15265,7 +15419,7 @@ body:has(#adminPage:not(.hidden)),
 
 /* Soft Mint Center Dialog — 상단 스와이프 핸들 */
 .mealog-dialog-grabber,
-#entryModal .entry-modal-grabber {
+:is(#entryModal, #dailyJournalModal) .entry-modal-grabber {
     flex: 0 0 auto;
     align-self: center;
     width: 100%;
@@ -15283,14 +15437,14 @@ body:has(#adminPage:not(.hidden)),
     -webkit-tap-highlight-color: transparent;
 }
 .mealog-dialog-grabber:active,
-#entryModal .entry-modal-grabber:active {
+:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:active {
     cursor: grabbing;
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;
 }
 .mealog-dialog-grabber:focus-visible,
-#entryModal .entry-modal-grabber:focus-visible {
+:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:focus-visible {
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;

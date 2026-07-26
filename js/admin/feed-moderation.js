@@ -212,7 +212,7 @@ function settingsDocToDailyJournalRows(docSnap) {
             sharedPhotos: entry.sharedPhotos,
             dailyJournalEntry: entry,
             slotDisplayDate: formatKoDateLabelFromYmd(dk),
-            slotDisplayLabel: '하루기록'
+            slotDisplayLabel: '하루소감'
         });
     }
     return rows;
@@ -339,7 +339,7 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
             photos: entry.photos,
             dailyJournalEntry: entry,
             slotDisplayDate: formatKoDateLabelFromYmd(g.date),
-            slotDisplayLabel: '하루기록'
+            slotDisplayLabel: '하루소감'
         });
     }
     if (rows.length > 0) {
@@ -1152,7 +1152,7 @@ function mealDocSnapToFeedRow(d) {
         ...row,
         ...dj,
         slotDisplayDate: formatKoDateLabelFromYmd(dateStr),
-        slotDisplayLabel: '하루기록'
+        slotDisplayLabel: '하루소감'
     };
 }
 
@@ -1472,7 +1472,7 @@ async function renderFeedManagement() {
 
         const dailyJournalOnPage = filteredMeals.filter((m) => m.isDailyJournal).length;
         console.log(
-            `✅ 필터 적용 후: ${filteredMeals.length}건 (하루 기록 ${dailyJournalOnPage}건, 페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 합산 총 ${feedTotalCount}건` : ' / 총 집계 생략'})`
+            `✅ 필터 적용 후: ${filteredMeals.length}건 (하루 소감 ${dailyJournalOnPage}건, 페이지 ${feedCurrentPage}${feedMealTotalCountKnown ? ` / 합산 총 ${feedTotalCount}건` : ' / 총 집계 생략'})`
         );
 
         filteredMeals.sort(compareModerationRowsDesc);
@@ -1710,7 +1710,7 @@ async function renderFeedManagement() {
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
                     <td class="px-3 py-3 align-middle text-center border-r border-slate-200">
-                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''} ${isDailyJournal ? 'data-is-daily-journal="true"' : ''} ${isDailyJournal ? 'disabled title="하루 기록은 이 화면에서 일괄 처리할 수 없습니다"' : ''}>
+                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''} ${isDailyJournal ? 'data-is-daily-journal="true"' : ''} ${isDailyJournal ? 'disabled title="하루 소감은 이 화면에서 일괄 처리할 수 없습니다"' : ''}>
                     </td>
                     <td class="px-2 py-3 align-middle text-center border-r border-slate-200 w-[56px] min-w-[56px]">
                         <div class="flex flex-col items-center gap-1">
