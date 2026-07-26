@@ -3184,24 +3184,29 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
 }
 #entryModal.keyboard-open {
     padding: 0 !important;
-    align-items: stretch !important;
+    /* stretch 대신 center 유지 — 키보드 모드 전환 시 시트가 상단으로 튀는 현상 방지 */
+    align-items: center !important;
     justify-content: center !important;
 }
 #entryModal > .entry-modal-panel {
     background: var(--card);
     /* vh만 쓰면 키보드 올라온 뒤에도 레이아웃 뷰포트 기준으로 커져 액션바가 키패드에 가려짐 → 부모 높이(visualViewport 반영) 안으로 제한 */
+    /* 기준 높이 잠금: 메모 확장 등으로 팝업 전체가 커졌다 줄어들지 않게 함. 사진 있을 때만 auto 성장 */
+    height: var(--entry-sheet-h, auto);
     max-height: min(88vh, 100%);
-    min-height: 0;
+    min-height: var(--entry-sheet-min-h, 0px);
 }
 #entryModal.keyboard-open > .entry-modal-panel {
+    /* 키보드 시 전체 높이로 키우지 않음 — 잠긴 시트 높이를 유지하고 공간 부족분만 클램프 */
+    height: var(--entry-sheet-h, auto);
     max-height: 100%;
-    height: 100%;
     border-radius: 0 !important;
 }
 #entryModal.keyboard-open .entry-modal-header {
     border-radius: 0 !important;
 }
 #modalScrollArea {
+    /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 내부 스크롤로 처리 */
     flex: 1 1 0%;
     min-height: 0;
     -webkit-overflow-scrolling: touch;
@@ -3291,7 +3296,8 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
 #entryModal #modalScrollArea input[type="text"],
 #entryModal #modalScrollArea input[type="search"],
 #entryModal #modalScrollArea textarea {
-    scroll-margin-top: max(50px, env(safe-area-inset-top, 0px));
+    /* 과도한 scroll-margin은 포커스 시 스크롤 점프·팝업 흔들림을 키움 */
+    scroll-margin-top: 0.5rem;
     scroll-margin-bottom: 0.5rem;
 }
 /* 기록 모달 열림(entry-modal-open은 JS에서 토글): 네비는 가려지므로 액션 패딩에 바 높이를 이중으로 넣지 않음 */
@@ -13645,6 +13651,60 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 본문 영역 ── */
+
+/* ── 기록 시트 항목 탭 ── */
+#entryModal .entry-sheet-tabs {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    margin: 0.5rem 1rem 0.5rem;
+    padding: 4px;
+    border-radius: 14px;
+    border: 1px solid var(--entry-border, #d0c6ba);
+    background: var(--entry-surface, #fff);
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+    box-sizing: border-box;
+    flex-shrink: 0;
+}
+#entryModal .entry-sheet-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 4px;
+    min-height: 2rem;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    text-align: center;
+    color: var(--entry-text-muted, #7a7268);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    white-space: normal;
+    word-break: keep-all;
+}
+#entryModal .entry-sheet-tab:hover:not(:disabled) {
+    color: var(--entry-text-secondary, #4f4841);
+}
+#entryModal .entry-sheet-tab--active,
+#entryModal .entry-sheet-tab[aria-selected="true"] {
+    background: var(--entry-accent-soft, #eaf8f2);
+    color: var(--entry-text-primary, #241f1c);
+}
+#entryModal .entry-sheet-tab--disabled,
+#entryModal .entry-sheet-tab:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+#entryModal .entry-sheet-tabpanel.hidden,
+#entryModal .entry-sheet-tabpanel[hidden] {
+    display: none !important;
+}
+/* entry-detail-record-bar removed — 상세보기 칩 UI 삭제 */
+
 #entryModal .entry-sheet-body {
     background: var(--entry-surface-body);
 }
@@ -13867,31 +13927,36 @@ body:has(#adminPage:not(.hidden)),
     color: var(--entry-text-primary);
     font-weight: 600;
     font-size: 0.875rem;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, min-height 0.2s ease, max-height 0.2s ease, padding 0.2s ease;
 }
 /* 어디서·무엇을·누구와: 초기 빈 입력란도 윤곽이 보이도록 */
 #entryModal #entryWhereSection input[type="text"],
 #entryModal #entryWhatSection input[type="text"],
+#entryModal #entryWhatSection .entry-what-textarea,
 #entryModal #entryWithSection input[type="text"] {
     border-color: var(--entry-border, #d0c6ba);
 }
 #entryModal .entry-sheet-zone--core #entryWhereSection input[type="text"],
 #entryModal .entry-sheet-zone--core #entryWhatSection input[type="text"],
+#entryModal .entry-sheet-zone--core #entryWhatSection .entry-what-textarea,
 #entryModal .entry-sheet-zone--core #entryWithSection input[type="text"] {
     font-size: 0.9375rem;
 }
 #entryModal .entry-axis-input-col input[type="text"]::placeholder,
-#entryModal .entry-comment-textarea::placeholder {
+#entryModal .entry-comment-textarea::placeholder,
+#entryModal #entryWhatSection .entry-what-textarea::placeholder {
     color: var(--entry-text-muted);
     font-weight: 500;
 }
 #entryModal #entryWhereSection input[type="text"]::placeholder,
 #entryModal #entryWhatSection input[type="text"]::placeholder,
+#entryModal #entryWhatSection .entry-what-textarea::placeholder,
 #entryModal #entryWithSection input[type="text"]::placeholder {
-    font-size: 0.75rem;
+    font-size: 0.875rem;
 }
 #entryModal .entry-axis-input-col input[type="text"]:focus,
-#entryModal .entry-comment-textarea:focus {
+#entryModal .entry-comment-textarea:focus,
+#entryModal #entryWhatSection .entry-what-textarea:focus {
     outline: none;
     background: var(--entry-input-bg-focus);
     border-color: var(--entry-accent);
@@ -14162,7 +14227,7 @@ body:has(#adminPage:not(.hidden)),
     box-sizing: border-box;
     min-width: 0;
 }
-/* 등록 사진 썸네일 스트립 — 사진과 컨트롤 분리 */
+/* 등록 사진 썸네일 스트립 — 편집·좌우 이동은 사진 내 하단 오버레이 */
 #entryModal .entry-photo-section--has-photos .entry-photo-thumb-strip {
     display: flex;
     flex-wrap: nowrap;
@@ -14178,10 +14243,7 @@ body:has(#adminPage:not(.hidden)),
     box-sizing: border-box;
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-card {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
+    display: block;
     width: 10.2rem;
     min-width: 10.2rem;
     flex: 0 0 auto;
@@ -14211,24 +14273,31 @@ body:has(#adminPage:not(.hidden)),
     width: 12px;
     height: 12px;
 }
-/* 사진 아래 독립 컨트롤: ‹ 편집 › */
-#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls {
+/* 사진 내 하단: ‹ 편집 › — 아래 패딩으로 살짝 올림 */
+#entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
     display: flex;
-    align-items: center;
-    gap: 4px;
+    align-items: flex-end;
+    gap: 2px;
     width: 100%;
+    box-sizing: border-box;
+    padding: 0.75rem 0.25rem 0.35rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.28) 55%, transparent);
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
     box-sizing: border-box;
-    height: 28px;
-    min-height: 28px;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 22px;
+    min-height: 22px;
+    max-height: 22px;
     margin: 0;
-    border: 1px solid var(--entry-border, #e2e8f0);
-    border-radius: 8px;
-    background: #ffffff;
-    color: var(--entry-text-secondary, #64748b);
-    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    box-shadow: none;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     display: inline-flex;
@@ -14238,29 +14307,25 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
-    background: #f8fafc;
+    background: rgba(0, 0, 0, 0.78);
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
-    opacity: 0.35;
+    opacity: 0.32;
     cursor: not-allowed;
+    pointer-events: none;
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
-    flex: 0 0 2rem;
-    width: 2rem;
-    min-width: 2rem;
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: 700;
-    color: var(--ink, #241f1c);
+    color: #fff;
 }
 #entryModal .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0 0.4rem;
+    padding: 0 0.25rem;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 400;
     letter-spacing: -0.01em;
     white-space: nowrap;
-    color: var(--ink, #241f1c);
+    color: #fff;
 }
 
 /* ── 만족도·포만감·시간 ── */
@@ -14379,8 +14444,6 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col > input,
 #entryModal #entryWhereSection.entry-field-quick-off .entry-axis-input-col .relative > input,
-#entryModal #entryWhatSection.entry-field-quick-off .entry-axis-input-col > input,
-#entryModal #entryWhatSection.entry-field-quick-off #entryWhatInput,
 #entryModal #entryWhatSection.entry-field-quick-off #deliveryVendorInput,
 #entryModal #entryWithSection.entry-field-quick-off .entry-axis-input-col > input {
     height: var(--entry-form-row-h);
@@ -14388,6 +14451,74 @@ body:has(#adminPage:not(.hidden)),
     box-sizing: border-box;
     padding-top: 0;
     padding-bottom: 0;
+}
+/* 무엇을 textarea는 태그 on/off와 무관하게 아래 .entry-what-textarea 패딩으로만 세로 중앙 유지
+   (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
+
+
+/* 무엇을: 라벨 위 · 입력란 아래 + 자동 높이 */
+#entryModal #entryWhatSection.entry-what-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+#entryModal #entryWhatSection .entry-what-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-height: var(--entry-form-row-h);
+}
+#entryModal #entryWhatSection .entry-what-label-row .entry-axis-label-group {
+    min-width: 0;
+    grid-column: auto;
+}
+#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle {
+    width: calc(var(--entry-form-row-h) - 0.75rem);
+    height: calc(var(--entry-form-row-h) - 0.75rem);
+    margin-left: 0;
+}
+#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon {
+    font-size: 0.9rem;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+#entryModal #entryWhatSection .entry-what-label-row .entry-field-quick-toggle .entry-field-quick-toggle__icon svg {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+#entryModal #entryWhatSection .entry-what-input-area {
+    width: 100%;
+}
+#entryModal #entryWhatSection .entry-what-textarea,
+#entryModal #entryWhatSection.entry-field-quick-off .entry-what-textarea,
+#entryModal #entryWhatSection:not(.entry-field-quick-off) .entry-what-textarea {
+    display: block;
+    width: 100%;
+    min-height: var(--entry-form-row-h);
+    height: var(--entry-form-row-h);
+    font-size: 0.9375rem;
+    line-height: 1.25;
+    box-sizing: border-box;
+    /* 태그(빠른입력) on/off와 무관하게 한 줄 placeholder·값 세로 중앙 — 동일 패딩 고정 */
+    padding-top: calc((var(--entry-form-row-h) - 1.25em) / 2) !important;
+    padding-bottom: calc((var(--entry-form-row-h) - 1.25em) / 2) !important;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    resize: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    /* py·height transition이 태그 토글 시 placeholder가 움직이는 것처럼 보이게 함 */
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#entryModal #entryWhatSection.entry-what-stack #entryWhatChips:not(.hidden),
+#entryModal #entryWhatSection.entry-what-stack #entryWhatSuggestions {
+    /* 라벨이 위인 스택 레이아웃: 칩/서브태그에 옆라벨용 들여쓰기 제거 */
+    padding-left: 0;
+}
+#entryModal #entryWhereSection.entry-field-quick-off input[type="text"],
+#entryModal #entryWithSection.entry-field-quick-off input[type="text"] {
+    line-height: var(--entry-form-row-h);
 }
 
 /* ── 메모·더 적기 (하단 보조) ── */
@@ -14425,8 +14556,30 @@ body:has(#adminPage:not(.hidden)),
     flex-shrink: 0;
 }
 #entryModal .entry-comment-textarea {
-    min-height: 4.5rem;
+    --entry-comment-line: 1.35;
     box-sizing: border-box;
+    line-height: var(--entry-comment-line);
+    /* 기본 1줄. 확장은 패널 height 잠금(--entry-sheet-h) 안에서만 일어나 팝업 점프 없음 */
+    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    max-height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+    overflow-y: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    transition: min-height 0.18s ease, max-height 0.18s ease, height 0.18s ease, padding 0.18s ease;
+}
+#entryModal .entry-comment-textarea:focus,
+#entryModal .entry-comment-textarea.entry-comment-textarea--expanded {
+    min-height: calc(3em * var(--entry-comment-line) + 1.1rem);
+    max-height: calc(3em * var(--entry-comment-line) + 1.1rem);
+    height: calc(3em * var(--entry-comment-line) + 1.1rem);
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    text-overflow: clip;
 }
 #entryModal .entry-detail-record-panel {
     margin: 0;

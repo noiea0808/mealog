@@ -104,6 +104,13 @@ import {
     setEntryDetailRecordPanelHidden,
     applyEntryDetailRecordUi,
 } from './entry-detail-record.js';
+import {
+    bindEntrySheetTabsOnce,
+    resetEntrySheetTab,
+    setEntrySheetTabsForSkip,
+    resetEntrySheetBaseHeight,
+    captureEntrySheetBaseHeight,
+} from './entry-sheet-tabs.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
@@ -182,6 +189,7 @@ export function syncDeliveryVendorSectionVisibility() {
             dvi.classList.add('rounded-xl', 'border', 'border-slate-200', 'bg-white', 'focus:border-slate-400');
         }
     }
+    autosizeEntryWhatInput();
 }
 
 function ensureEntryModalGaugesOnUserSettings() {
@@ -783,13 +791,13 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     const setKeyboardOpen = (open) => {
         if (open) {
-            entryModal.classList.add('keyboard-open');
-            // focusin 직후 visualViewport가 아직 키보드 이전 값 → rAF+debounce로 geometry 맞춤
-            lastAppliedVh = NaN;
-            lastAppliedVtop = NaN;
+            if (!entryModal.classList.contains('keyboard-open')) {
+                entryModal.classList.add('keyboard-open');
+                lastAppliedVh = NaN;
+                lastAppliedVtop = NaN;
+            }
             scheduleViewportGeometryFromVv();
-            scheduleViewportCheck();
-        } else {
+        } else if (entryModal.classList.contains('keyboard-open')) {
             entryModal.classList.remove('keyboard-open');
             lastAppliedVh = NaN;
             lastAppliedVtop = NaN;
@@ -811,7 +819,14 @@ function initEntryModalKeyboardHandling(entryModal) {
     };
     entryModal.setKeyboardBaseline = saveBaseline;
     entryModal.addEventListener('focusin', (e) => {
-        if (e.target.matches('input, textarea')) setKeyboardOpen(true);
+        if (!e.target.matches?.('input, textarea')) return;
+        // 키보드가 실제로 올라오기 전에는 keyboard-open 하지 않음.
+        // (센터 정렬 → stretch 전환으로 팝업이 위로 튕겼다 돌아오는 현상 방지)
+        // 메모는 확장 후 syncEntryCommentExpandedState에서 스크롤. 그 외 필드는 여기서 보정.
+        if (!e.target.classList?.contains('entry-comment-textarea')) {
+            scrollEntryFieldIntoView(e.target, { align: 'nearest' });
+        }
+        scheduleViewportCheck();
     });
     entryModal.addEventListener('focusout', (e) => {
         if (e.target.matches('input, textarea')) scheduleViewportCheck();
@@ -824,12 +839,8 @@ function initEntryModalKeyboardHandling(entryModal) {
             setKeyboardOpen(false);
             return;
         }
-        // 키보드가 아직 올라와 있으면 포커스 유무와 관계없이 geometry 유지 (칩 탭 등 focusout 깜빡임 방지)
-        if (!entryModal.classList.contains('keyboard-open')) {
-            entryModal.classList.add('keyboard-open');
-            lastAppliedVh = NaN;
-            lastAppliedVtop = NaN;
-        }
+        // 키보드가 실제로 줄어든 뒤에만 keyboard-open (칩 탭 등 focusout 깜빡임 방지)
+        setKeyboardOpen(true);
         if (imeComposing) return;
         scheduleViewportGeometryFromVv();
     };
@@ -1012,6 +1023,9 @@ function resetEntryModalFormFields() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    autosizeEntryWhatInput();
+    syncEntryCommentExpandedState(document.getElementById('generalCommentInput'));
+    syncEntryCommentExpandedState(document.getElementById('snackCommentInput'));
 
     const entryWhereInput = document.getElementById('entryWhereInput');
     if (entryWhereInput) {
@@ -1102,6 +1116,7 @@ function populateSavedRecordIntoForm(r, isS, state) {
         _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
     }
     setVal('entryWhatInput', r.menuDetail || '');
+    autosizeEntryWhatInput();
     setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
     const _dvi = document.getElementById('deliveryVendorInput');
     if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
@@ -1119,6 +1134,8 @@ function populateSavedRecordIntoForm(r, isS, state) {
     setVal('entryWithInput', r.withWhomDetail || '');
     setVal('generalCommentInput', r.comment || '');
     setVal('snackCommentInput', r.comment || '');
+    syncEntryCommentExpandedState(document.getElementById('generalCommentInput'));
+    syncEntryCommentExpandedState(document.getElementById('snackCommentInput'));
 
     const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
     const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
@@ -1229,6 +1246,7 @@ function activateSavedRecordTags(r, isS) {
         const entryWhatInput = document.getElementById(ENTRY_DOM.whatInput);
         if (entryWhatInput && detailValues.length > 0) {
             entryWhatInput.value = detailValues.join(', ');
+            autosizeEntryWhatInput();
         }
     }
     if (r.withWhomDetail) {
@@ -1257,6 +1275,72 @@ function ensureEntryWhatInputSnackCompositionInit() {
     };
     addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
     entryWhatInput._snackCompositionInit = true;
+}
+
+function autosizeEntryWhatInput() {
+    const el = document.getElementById('entryWhatInput');
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 42;
+    // 비어 있을 때(placeholder)는 고정 행 높이로 중앙 정렬 유지 — 태그 on/off와 동일
+    if (!(el.value || '').length) {
+        el.style.height = `${minH}px`;
+        return;
+    }
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(minH, el.scrollHeight)}px`;
+}
+
+function bindEntryWhatInputAutosizeOnce() {
+    const el = document.getElementById('entryWhatInput');
+    if (!el || el._whatAutosizeBound || el.tagName !== 'TEXTAREA') return;
+    el._whatAutosizeBound = true;
+    const resize = () => autosizeEntryWhatInput();
+    el.addEventListener('input', resize);
+    el.addEventListener('change', resize);
+}
+
+/** 기록 시트 스크롤 영역 안에서 필드를 보이게 맞춤 (오버레이/센터 정렬은 건드리지 않음) */
+function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
+    const scroll = document.getElementById('modalScrollArea');
+    if (!scroll || !el || !scroll.contains(el)) return;
+    const run = () => {
+        try {
+            const tRect = el.getBoundingClientRect();
+            const sRect = scroll.getBoundingClientRect();
+            const pad = 12;
+            if (align === 'end' || tRect.bottom > sRect.bottom - pad) {
+                scroll.scrollTop += tRect.bottom - sRect.bottom + pad;
+            } else if (tRect.top < sRect.top + pad) {
+                scroll.scrollTop -= sRect.top - tRect.top + pad;
+            }
+        } catch (_) { /* ignore */ }
+    };
+    requestAnimationFrame(run);
+    if (afterMs > 0) setTimeout(run, afterMs);
+}
+
+function syncEntryCommentExpandedState(el) {
+    if (!el) return;
+    // 포커스 중에만 3줄 — blur 시 접어 패널 높이 잠금과 충돌·원복 점프를 막음
+    const keepOpen = document.activeElement === el;
+    el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
+    el.rows = keepOpen ? 3 : 1;
+    if (keepOpen) {
+        // 확장 직후·transition(0.18s) 후 메모 입력란이 보이도록 아래로 스크롤
+        scrollEntryFieldIntoView(el, { align: 'end', afterMs: 200 });
+    }
+}
+
+function bindEntryCommentExpandOnce() {
+    ['generalCommentInput', 'snackCommentInput'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el || el._commentExpandBound) return;
+        el._commentExpandBound = true;
+        el.addEventListener('focus', () => syncEntryCommentExpandedState(el));
+        el.addEventListener('blur', () => syncEntryCommentExpandedState(el));
+        el.addEventListener('input', () => syncEntryCommentExpandedState(el));
+        syncEntryCommentExpandedState(el);
+    });
 }
 
 function revealEntryModalShell() {
@@ -1368,12 +1452,26 @@ export async function openModal(date, slotId, entryId = null) {
         initEntryModalGaugeControlsOnce();
         bindEntryQuickInputOnce();
         bindEntryDetailRecordOnce();
+        bindEntrySheetTabsOnce();
+        resetEntrySheetTab();
+        resetEntrySheetBaseHeight();
+        setEntrySheetTabsForSkip(false);
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
+        bindEntryWhatInputAutosizeOnce();
+        autosizeEntryWhatInput();
+        bindEntryCommentExpandOnce();
 
         const openGen = revealEntryModalShell();
         if (!openGen) return;
         const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (isStaleOpen()) return;
+                autosizeEntryWhatInput();
+                captureEntrySheetBaseHeight();
+            });
+        });
 
         const completeEntryModalOpen = async () => {
             if (isStaleOpen()) return;
@@ -1428,6 +1526,8 @@ export async function openModal(date, slotId, entryId = null) {
                     window.setSatiety?.(appState.currentSatiety);
                     applyEntryGaugeDialUi();
                 } catch (_) {}
+                autosizeEntryWhatInput();
+                captureEntrySheetBaseHeight();
             });
         };
 
@@ -3597,31 +3697,18 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
 }
 
 function toggleFieldsForSkip(isSkip) {
-    // 메뉴정보 섹션 (optionalFields) - 완전히 숨기기
+    // Skip: 무엇을(기본 탭) · 누구와(추가 탭) · 상세 메트릭 숨김
     const optionalFields = document.getElementById('optionalFields');
     if (optionalFields) {
-        if (isSkip) {
-            optionalFields.classList.add('hidden');
-        } else {
-            optionalFields.classList.remove('hidden');
-        }
+        optionalFields.classList.toggle('hidden', !!isSkip);
     }
+    document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
 
+    setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);
-    
+
     if (!isSkip) {
         applyEntryDetailRecordUi();
-    }
-    
-    // 만족도 섹션 (ratingSection) - Skip 시 숨김 (상세 기록 패널과 별도)
-    const ratingSection = document.getElementById('ratingSection');
-    if (ratingSection && isSkip) {
-        ratingSection.classList.add('hidden');
-    }
-
-    const entryMealTimeSectionMain = document.getElementById('entryMealTimeSectionMain');
-    if (entryMealTimeSectionMain && isSkip) {
-        entryMealTimeSectionMain.classList.add('hidden');
     }
     syncDeliveryVendorSectionVisibility();
 }

@@ -115,6 +115,8 @@ export function applyEntryQuickInputUi() {
         document.getElementById(section)?.classList.toggle('entry-field-quick-off', !on);
     });
     syncEntryFieldQuickInputToggles();
+    // 무엇을 textarea: 태그 행 on/off 후 placeholder 세로 중앙 유지
+    document.getElementById('entryWhatInput')?.dispatchEvent(new Event('input', { bubbles: false }));
 }
 
 export function schedulePersistEntryQuickInputPrefs() {

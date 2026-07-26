@@ -176,10 +176,10 @@ export const DEFAULT_USER_SETTINGS = {
         meal: { where: false, what: false, with: false },
         snack: { where: false, what: false, with: false },
     },
-    /** 기록 모달: 상세 기록(누구와·만족도·포만감·시간) 항목별 on/off */
+    /** 기록 모달: 상세 항목(누구와·만족도·포만감·시간) — 탭 상시 표시 */
     entryModalDetailRecord: {
-        main: { with: false, rating: false, satiety: false, time: false },
-        snack: { with: false, rating: false, satiety: false, time: false },
+        main: { with: true, rating: true, satiety: true, time: true },
+        snack: { with: true, rating: true, satiety: true, time: true },
     },
     /** 날짜별 하루 소감 — 값: string(구) | { comment, photos[], photoAspectRatio } */
     dailyComments: {}

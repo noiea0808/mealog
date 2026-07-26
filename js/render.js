@@ -28,7 +28,7 @@ export function clampRecordPhotoHeroIndex() {
     return i;
 }
 
-/** 기록 시트: 사진 + 아래 독립 컨트롤(‹ 편집 ›) */
+/** 기록 시트: 사진 내 하단 컨트롤(‹ 편집 ›) */
 function buildThumbPhotoHtml(src, idx, total, aspectCss) {
     const disPrev = idx <= 0 ? ' disabled' : '';
     const disNext = idx >= total - 1 ? ' disabled' : '';
@@ -39,11 +39,11 @@ function buildThumbPhotoHtml(src, idx, total, aspectCss) {
                         <i data-lucide="x" aria-hidden="true"></i>
                     </button>
                     <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
-                </div>
-                <div class="photo-preview-thumb-controls" role="group" aria-label="사진 ${idx + 1} 순서·편집">
-                    <button type="button" onclick="window.movePhotoOrder(${idx}, -1)" class="photo-order-btn photo-order-btn--arrow"${disPrev} title="순서 앞으로" aria-label="순서 앞으로"><span aria-hidden="true">‹</span></button>
-                    <button type="button" onclick="window.editPhoto(${idx})" class="photo-edit-btn photo-edit-btn--text" title="편집" aria-label="사진 편집">편집</button>
-                    <button type="button" onclick="window.movePhotoOrder(${idx}, 1)" class="photo-order-btn photo-order-btn--arrow"${disNext} title="순서 뒤로" aria-label="순서 뒤로"><span aria-hidden="true">›</span></button>
+                    <div class="photo-preview-bottom-bar photo-preview-thumb-controls absolute bottom-0 left-0 right-0 z-10 flex gap-0.5 pointer-events-none" role="group" aria-label="사진 ${idx + 1} 순서·편집">
+                        <button type="button" onclick="window.movePhotoOrder(${idx}, -1)" class="photo-order-btn photo-order-btn--arrow pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로"><span aria-hidden="true">‹</span></button>
+                        <button type="button" onclick="window.editPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar photo-edit-btn--text pointer-events-auto" title="편집" aria-label="사진 편집">편집</button>
+                        <button type="button" onclick="window.movePhotoOrder(${idx}, 1)" class="photo-order-btn photo-order-btn--arrow pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로"><span aria-hidden="true">›</span></button>
+                    </div>
                 </div>
             </div>`;
 }
