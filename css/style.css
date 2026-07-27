@@ -3206,10 +3206,12 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     border-radius: 0 !important;
 }
 #modalScrollArea {
-    /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 내부 스크롤로 처리 */
+    /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */
     flex: 1 1 0%;
     min-height: 0;
     -webkit-overflow-scrolling: touch;
+    /* 세로 스크롤은 네이티브, 가로 스와이프는 탭 전환(JS) */
+    touch-action: pan-y;
     /* 포커스·scroll-into-view 시 입력창 상단이 스크롤 영역 상단에서 약 50px 아래에 오도록 */
     scroll-padding-top: max(50px, env(safe-area-inset-top, 0px));
     scroll-padding-bottom: 1rem;
@@ -13814,6 +13816,8 @@ body:has(#adminPage:not(.hidden)),
     box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
     box-sizing: border-box;
     flex-shrink: 0;
+    /* 가로 스와이프 탭 전환은 JS, 브라우저는 세로만 네이티브 처리 */
+    touch-action: pan-y;
 }
 #entryModal .entry-sheet-tab {
     flex: 1 1 0;
@@ -13851,6 +13855,74 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-sheet-tabpanel.hidden,
 #entryModal .entry-sheet-tabpanel[hidden] {
     display: none !important;
+}
+/*
+ * 기준 높이 측정용 프로브:
+ * - 무엇을 메인 태그 1행 + 사용자 태그 1행이 보이는 상태
+ * - 메모는 포커스 시 3줄 높이
+ */
+#entryModal.entry-sheet-height-probe #entryWhatChips {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.375rem !important;
+    margin-bottom: 0 !important;
+    min-height: 2rem;
+    box-sizing: border-box;
+}
+#entryModal.entry-sheet-height-probe #entryWhatChips.hidden {
+    visibility: hidden;
+    pointer-events: none;
+}
+#entryModal.entry-sheet-height-probe #entryWhatSuggestions,
+#entryModal.entry-sheet-height-probe #entryWhatSuggestions:empty {
+    display: flex !important;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 0.25rem !important;
+    min-height: 1.875rem;
+    padding-bottom: 2px;
+    box-sizing: border-box;
+}
+#entryModal.entry-sheet-height-probe #entryWhatSuggestions:empty {
+    visibility: hidden;
+    pointer-events: none;
+    overflow: hidden;
+}
+#entryModal.entry-sheet-height-probe #entryCommentSectionMeal:not(.hidden) .entry-comment-textarea,
+#entryModal.entry-sheet-height-probe #entryCommentSectionSnack:not(.hidden) .entry-comment-textarea {
+    min-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
+    max-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
+    height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+    overflow: hidden !important;
+    white-space: pre-wrap !important;
+    text-overflow: clip !important;
+}
+/* 탭 스와이프/슬라이드 전환 */
+#entryModal #modalScrollArea.entry-sheet-dragging,
+#entryModal #modalScrollArea.entry-sheet-animating {
+    overflow-x: hidden;
+    overflow-y: hidden;
+    touch-action: none;
+}
+#entryModal #modalScrollArea.entry-sheet-animating {
+    position: relative;
+}
+#entryModal .entry-sheet-tabpanel--dragging,
+#entryModal .entry-sheet-tabpanel--leaving,
+#entryModal .entry-sheet-tabpanel--entering {
+    backface-visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+    #entryModal .entry-sheet-tabpanel--dragging,
+    #entryModal .entry-sheet-tabpanel--leaving,
+    #entryModal .entry-sheet-tabpanel--entering {
+        transition: none !important;
+    }
 }
 /* entry-detail-record-bar removed — 상세보기 칩 UI 삭제 */
 
@@ -14080,7 +14152,7 @@ body:has(#adminPage:not(.hidden)),
     color: var(--entry-text-primary);
     font-weight: 600;
     font-size: 0.875rem;
-    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, min-height 0.2s ease, max-height 0.2s ease, padding 0.2s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, min-height 0.2s ease, padding 0.2s ease;
 }
 /* 어디서·무엇을·누구와: 초기 빈 입력란도 윤곽이 보이도록 */
 #entryModal #entryWhereSection input[type="text"],
@@ -14695,6 +14767,9 @@ body:has(#adminPage:not(.hidden)),
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
     background: transparent;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
 }
 :is(#entryModal, #dailyJournalModal) .entry-comment-heading {
     display: block;
@@ -14720,28 +14795,45 @@ body:has(#adminPage:not(.hidden)),
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
     --entry-comment-line: 1.35;
     box-sizing: border-box;
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     line-height: var(--entry-comment-line);
-    /* 기본 1줄. 확장은 패널 height 잠금(--entry-sheet-h) 안에서만 일어나 팝업 점프 없음 */
+    /* 빈 칸: 1줄. 내용/포커스 시 확장 — 넘치는 분은 #modalScrollArea 세로 스크롤 */
     min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
     max-height: calc(1em * var(--entry-comment-line) + 0.9rem);
     height: calc(1em * var(--entry-comment-line) + 0.9rem);
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
+    overflow-x: hidden;
     overflow-y: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    transition: min-height 0.18s ease, max-height 0.18s ease, height 0.18s ease, padding 0.18s ease;
+    transition: min-height 0.18s ease, padding 0.18s ease;
 }
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
-    min-height: calc(3em * var(--entry-comment-line) + 1.1rem);
-    max-height: calc(3em * var(--entry-comment-line) + 1.1rem);
-    height: calc(3em * var(--entry-comment-line) + 1.1rem);
-    padding-top: 0.55rem;
-    padding-bottom: 0.55rem;
-    overflow-y: auto;
+    max-height: none;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: hidden;
     white-space: pre-wrap;
     text-overflow: clip;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+/* 내용만 있을 때: 실제 줄 수만큼 (최소 1줄) */
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded:not(:focus) {
+    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+}
+/* 입력 중: 타이핑 여유를 위해 최소 3줄 */
+:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus {
+    min-height: calc(3em * var(--entry-comment-line) + 1.1rem);
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
 }
 #entryModal .entry-detail-record-panel {
     margin: 0;

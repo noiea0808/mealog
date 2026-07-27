@@ -1319,15 +1319,37 @@ function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
     if (afterMs > 0) setTimeout(run, afterMs);
 }
 
-function syncEntryCommentExpandedState(el) {
+/** 메모 textarea: 내용/포커스 시 높이만큼 키우고, 시트(#modalScrollArea)가 스크롤되게 함 */
+function autosizeEntryCommentTextarea(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    const keepOpen = el.classList.contains('entry-comment-textarea--expanded')
+        || document.activeElement === el
+        || !!(el.value || '').length;
+    if (!keepOpen) {
+        el.style.height = '';
+        return;
+    }
+    el.style.height = 'auto';
+    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 0;
+    el.style.height = `${Math.max(minH, el.scrollHeight)}px`;
+}
+
+function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
     if (!el) return;
-    // 포커스 중에만 3줄 — blur 시 접어 패널 높이 잠금과 충돌·원복 점프를 막음
-    const keepOpen = document.activeElement === el;
+    // 내용이 있거나 포커스 중이면 확장 — 빈 칸 blur 시에만 1줄로 접음
+    const hasContent = !!(el.value || '').length;
+    const focused = document.activeElement === el;
+    const keepOpen = focused || hasContent;
     el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
-    el.rows = keepOpen ? 3 : 1;
-    if (keepOpen) {
-        // 확장 직후·transition(0.18s) 후 메모 입력란이 보이도록 아래로 스크롤
-        scrollEntryFieldIntoView(el, { align: 'end', afterMs: 200 });
+    el.rows = focused ? 3 : (hasContent ? 2 : 1);
+    if (!keepOpen) {
+        el.style.height = '';
+        return;
+    }
+    autosizeEntryCommentTextarea(el);
+    // 포커스·입력으로 줄이 늘 때만 시트 스크롤 (초기 로드 확장은 점프 방지)
+    if (focused) {
+        scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
     }
 }
 
@@ -1336,7 +1358,7 @@ function bindEntryCommentExpandOnce() {
         const el = document.getElementById(id);
         if (!el || el._commentExpandBound) return;
         el._commentExpandBound = true;
-        el.addEventListener('focus', () => syncEntryCommentExpandedState(el));
+        el.addEventListener('focus', () => syncEntryCommentExpandedState(el, { fromFocus: true }));
         el.addEventListener('blur', () => syncEntryCommentExpandedState(el));
         el.addEventListener('input', () => syncEntryCommentExpandedState(el));
         syncEntryCommentExpandedState(el);
@@ -1527,7 +1549,8 @@ export async function openModal(date, slotId, entryId = null) {
                     applyEntryGaugeDialUi();
                 } catch (_) {}
                 autosizeEntryWhatInput();
-                captureEntrySheetBaseHeight();
+                // 칩·폼 반영 후 재측정(무엇을 태그·메모 3줄 가정)
+                captureEntrySheetBaseHeight({ force: true });
             });
         };
 
