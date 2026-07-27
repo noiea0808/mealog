@@ -1839,8 +1839,12 @@ export function updateTimelineShareIndicators() {
 /**
  * 홈 타임라인 — 하루 기록이 비었을 때 empty UI.
  * 1) 첫 사용자(평생 무기록) 2) 오늘 무기록 3) 과거 날짜 무기록
+ * meals 첫 로드 전(loadedMealsDateRange 없음)에는 빈 화면 — 환영/무기록 문구 깜빡임 방지.
  */
 function buildTimelineDayEmptyHtml(dateStr, todayStr) {
+    const mealsReady = !!(typeof window !== 'undefined' && window.loadedMealsDateRange);
+    if (!mealsReady) return '';
+
     const isFirstTime = collectRecordedDateSet().size === 0;
     const isToday = dateStr === todayStr;
 

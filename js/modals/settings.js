@@ -1,7 +1,7 @@
 import { DEFAULT_USER_SETTINGS, SLOTS } from '../constants.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
 import { appState } from '../state.js';
-import { addCompositionAwareInput, normalizeBirthdateRaw, setupBirthdateInputFormatting } from '../utils.js';
+import { addCompositionAwareInput, normalizeBirthdateRaw, parseRrnPartial, birthdateGenderToRrnPartial, formatProfileRrnDisplay, mountRrnDigitGroup, setRrnDigitGroupValue } from '../utils.js';
 import { renderTagManager } from '../render/index.js';
 import { dbOps } from '../db.js';
 import { showToast, updateHeaderUI } from '../ui.js';
@@ -224,9 +224,8 @@ export function openSettings() {
     const birthdateVal = (state.tempSettings?.profile?.birthdate || '').trim();
     if (birthdateInput) birthdateInput.value = birthdateVal;
     const genderVal = (state.tempSettings?.profile?.gender || '').trim();
-    const genderText = genderVal === 'male' ? '(남)' : genderVal === 'female' ? '(여)' : '';
     if (birthdateDisplay) {
-        birthdateDisplay.textContent = formatBirthdateForDisplay(birthdateVal) + (genderText ? ' ' + genderText : '');
+        birthdateDisplay.textContent = formatProfileRrnDisplay(birthdateVal, genderVal) || '-';
         birthdateDisplay.classList.toggle('hidden', !!state.isProfileEditing);
     }
     if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !state.isProfileEditing);
@@ -737,7 +736,7 @@ function updateAccountHeaderNickname() {
     el.textContent = v || '-';
 }
 
-/** 계정 카드 생년월일(성별) */
+/** 계정 카드 주민등록번호(마스킹) */
 function updateAccountHeaderBirthdate() {
     const el = document.getElementById('accountHeaderBirthdate');
     if (!el) return;
@@ -745,12 +744,11 @@ function updateAccountHeaderBirthdate() {
     const birthdateInput = document.getElementById('settingBirthdate');
     const raw = (birthdateInput?.value ?? state?.tempSettings?.profile?.birthdate ?? '').trim();
     const gender = (document.getElementById('settingGender')?.value || state?.tempSettings?.profile?.gender || '').trim();
-    const genderText = gender === 'male' ? '(남)' : gender === 'female' ? '(여)' : '';
     if (!raw) {
-        el.textContent = '생년월일';
+        el.textContent = '주민등록번호';
         return;
     }
-    el.textContent = formatBirthdateForDisplay(raw) + (genderText ? ` ${genderText}` : '');
+    el.textContent = formatProfileRrnDisplay(raw, gender) || '주민등록번호';
 }
 
 function syncAccountCardDisplayFields() {
@@ -765,22 +763,6 @@ function syncProfileV2RowDisplays() {
         '-';
     const nickRow = document.getElementById('profileV2NicknameValue');
     if (nickRow) nickRow.textContent = nick;
-
-    const birthdateInput = document.getElementById('settingBirthdate');
-    const raw = (birthdateInput?.value ?? appState?.tempSettings?.profile?.birthdate ?? '').trim();
-    const gender = (document.getElementById('settingGender')?.value || appState?.tempSettings?.profile?.gender || '').trim();
-    const genderText = gender === 'male' ? '남' : gender === 'female' ? '여' : '';
-    const bdRow = document.getElementById('profileV2BirthdateValue');
-    if (bdRow) {
-        if (!raw) {
-            bdRow.textContent = '미입력';
-            bdRow.classList.add('profile-v2-row__value--muted');
-        } else {
-            bdRow.textContent =
-                formatBirthdateForDisplay(raw) + (genderText ? ` · ${genderText}` : '');
-            bdRow.classList.remove('profile-v2-row__value--muted');
-        }
-    }
 
     const bio =
         (document.getElementById('settingBio')?.value ||
@@ -805,6 +787,61 @@ function syncProfileV2RowDisplays() {
             loginRow.textContent = line || '-';
         }
     }
+}
+
+function applyProfileFieldEditRrnToTempSettings() {
+    const state = appState;
+    const rrnRaw = (document.getElementById('profileFieldEditBirthdate')?.value || '').trim();
+    const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
+    const existingGender = (window.userSettings?.profile?.gender || '').trim() || null;
+    const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
+    const parsed = parseRrnPartial(rrnRaw);
+    if (parsed.empty) {
+        state.tempSettings.profile.birthdate = existingBirthdate || '';
+        state.tempSettings.profile.gender = existingGender === 'male' || existingGender === 'female' ? existingGender : null;
+        state.tempSettings.profile.birthdateChangeCount = Number(
+            state.tempSettings.profile.birthdateChangeCount || existingCount || 0
+        );
+        state.tempSettings.profile.birthdateChangedAt =
+            state.tempSettings.profile.birthdateChangedAt ||
+            window.userSettings?.profile?.birthdateChangedAt ||
+            null;
+        return { ok: true };
+    }
+    if (!parsed.valid) {
+        showToast('주민번호 앞자리를 올바르게 입력해주세요. (예: 801102-1)', 'error');
+        return { ok: false };
+    }
+    const formattedBirthdate = parsed.birthdate;
+    const newGender = parsed.gender;
+    const isBirthdateChanged = !!(existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate);
+    const isGenderChanged = !!(
+        existingBirthdate &&
+        (existingGender === 'male' || existingGender === 'female' ? existingGender : null) !== (newGender || null)
+    );
+    if (isBirthdateChanged || isGenderChanged) {
+        if (existingCount >= 1) {
+            showToast('주민번호는 가입 후 1회만 변경할 수 있습니다.', 'error');
+            return { ok: false };
+        }
+        state.tempSettings.profile.birthdateChangeCount = existingCount + 1;
+        state.tempSettings.profile.birthdateChangedAt = new Date().toISOString();
+    } else {
+        state.tempSettings.profile.birthdateChangeCount = Number(
+            state.tempSettings.profile.birthdateChangeCount || existingCount || 0
+        );
+        state.tempSettings.profile.birthdateChangedAt =
+            state.tempSettings.profile.birthdateChangedAt ||
+            window.userSettings?.profile?.birthdateChangedAt ||
+            null;
+    }
+    state.tempSettings.profile.birthdate = formattedBirthdate;
+    state.tempSettings.profile.gender = newGender;
+    const bdDom = document.getElementById('settingBirthdate');
+    if (bdDom) bdDom.value = state.tempSettings.profile.birthdate || '';
+    const genderDom = document.getElementById('settingGender');
+    if (genderDom) genderDom.value = newGender || '';
+    return { ok: true };
 }
 
 let _saveProfileSingleFieldBusy = false;
@@ -913,24 +950,10 @@ function unmountBirthdateInline() {
 
 const PROFILE_FIELD_EDIT_TITLES = {
     nickname: '닉네임 수정',
-    birthdate: '생년월일 수정',
+    birthdate: '닉네임 수정',
     bio: '소개 수정',
     lifestyle: '라이프 스타일 수정'
 };
-
-function syncProfileFieldEditGenderUI() {
-    const selected = (document.getElementById('profileFieldEditGender')?.value || '').trim();
-    document.querySelectorAll('.profile-field-edit-gender-btn').forEach((btn) => {
-        const active = (btn.getAttribute('data-value') || '') === selected;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-500', !active);
-        btn.classList.toggle('border-slate-200', !active);
-        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-}
 
 function syncProfileFieldEditLifestyleUI() {
     const selected = (document.getElementById('profileFieldEditLifestyle')?.value || '').trim();
@@ -960,6 +983,8 @@ function openProfileFieldEditModal(field) {
     initProfileFieldEditModalOnce();
     const modal = document.getElementById('profileFieldEditModal');
     if (!modal) return;
+    // 주민번호는 닉네임 수정 팝업에서만 함께 편집
+    if (field === 'birthdate') field = 'nickname';
     const titleEl = document.getElementById('profileFieldEditTitle');
     if (titleEl) titleEl.textContent = PROFILE_FIELD_EDIT_TITLES[field] || '수정';
 
@@ -978,19 +1003,19 @@ function openProfileFieldEditModal(field) {
     if (field === 'nickname') {
         const input = document.getElementById('profileFieldEditNickname');
         if (input) input.value = p.nickname || '';
-    } else if (field === 'birthdate') {
-        const input = document.getElementById('profileFieldEditBirthdate');
-        if (input) {
-            input.value = p.birthdate || '';
-            setupBirthdateInputFormatting(input);
-        }
+        mountRrnDigitGroup('profileFieldEditRrnDigits', { hiddenId: 'profileFieldEditBirthdate' });
+        setRrnDigitGroupValue(
+            'profileFieldEditRrnDigits',
+            birthdateGenderToRrnPartial(p.birthdate || '', p.gender || '') || ''
+        );
         const genderEl = document.getElementById('profileFieldEditGender');
         if (genderEl) genderEl.value = p.gender || '';
-        syncProfileFieldEditGenderUI();
         const hint = document.getElementById('profileFieldEditBirthdateHint');
         const changeCount = Number(p.birthdateChangeCount || 0);
         if (hint) {
-            hint.textContent = changeCount >= 1 ? '이미 1회 수정 완료 (추가 변경 불가)' : '가입 후 1회만 수정 가능';
+            hint.textContent = changeCount >= 1
+                ? '이미 1회 수정 완료 (추가 변경 불가)'
+                : '앞 6자리와 뒤 첫 자리만 · 가입 후 1회만 수정 가능';
         }
     } else if (field === 'bio') {
         const input = document.getElementById('profileFieldEditBio');
@@ -1014,7 +1039,6 @@ function openProfileFieldEditModal(field) {
     modal.classList.remove('hidden');
     requestAnimationFrame(() => {
         if (field === 'nickname') document.getElementById('profileFieldEditNickname')?.focus();
-        else if (field === 'birthdate') document.getElementById('profileFieldEditBirthdate')?.focus();
         else if (field === 'bio') document.getElementById('profileFieldEditBio')?.focus();
         else if (field === 'lifestyle') document.querySelector('.profile-field-edit-lifestyle-btn')?.focus();
     });
@@ -1041,14 +1065,6 @@ function initProfileFieldEditModalOnce() {
         if (e.target === modal) closeProfileFieldEditModal();
     };
 
-    document.querySelectorAll('.profile-field-edit-gender-btn').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const v = btn.getAttribute('data-value') || '';
-            const hidden = document.getElementById('profileFieldEditGender');
-            if (hidden) hidden.value = v;
-            syncProfileFieldEditGenderUI();
-        });
-    });
     document.querySelectorAll('.profile-field-edit-lifestyle-btn').forEach((btn) => {
         btn.addEventListener('click', () => {
             const v = btn.getAttribute('data-value') || '';
@@ -1111,51 +1127,9 @@ export async function saveProfileSingleField(field) {
             }
             const nickDom = document.getElementById('settingNickname');
             if (nickDom) nickDom.value = state.tempSettings.profile.nickname;
+            if (!applyProfileFieldEditRrnToTempSettings().ok) return;
         } else if (field === 'birthdate') {
-            const newBirthdate = (document.getElementById('profileFieldEditBirthdate')?.value || '').trim();
-            const newGenderRaw = (document.getElementById('profileFieldEditGender')?.value || '').trim();
-            const newGender = newGenderRaw === 'male' || newGenderRaw === 'female' ? newGenderRaw : null;
-            const existingBirthdate = (window.userSettings?.profile?.birthdate || '').trim();
-            const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
-            if (newBirthdate) {
-                const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
-                if (!valid) {
-                    showToast('입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.', 'error');
-                    return;
-                }
-                const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;
-                if (isBirthdateChanged) {
-                    if (existingCount >= 1) {
-                        showToast('생년월일은 가입 후 1회만 변경할 수 있습니다.', 'error');
-                        return;
-                    }
-                    state.tempSettings.profile.birthdateChangeCount = existingCount + 1;
-                    state.tempSettings.profile.birthdateChangedAt = new Date().toISOString();
-                } else {
-                    state.tempSettings.profile.birthdateChangeCount = Number(
-                        state.tempSettings.profile.birthdateChangeCount || existingCount || 0
-                    );
-                    state.tempSettings.profile.birthdateChangedAt =
-                        state.tempSettings.profile.birthdateChangedAt ||
-                        window.userSettings?.profile?.birthdateChangedAt ||
-                        null;
-                }
-                state.tempSettings.profile.birthdate = formattedBirthdate;
-            } else {
-                state.tempSettings.profile.birthdate = existingBirthdate || '';
-                state.tempSettings.profile.birthdateChangeCount = Number(
-                    state.tempSettings.profile.birthdateChangeCount || existingCount || 0
-                );
-                state.tempSettings.profile.birthdateChangedAt =
-                    state.tempSettings.profile.birthdateChangedAt ||
-                    window.userSettings?.profile?.birthdateChangedAt ||
-                    null;
-            }
-            state.tempSettings.profile.gender = newGender;
-            const bdDom = document.getElementById('settingBirthdate');
-            if (bdDom) bdDom.value = state.tempSettings.profile.birthdate || '';
-            const genderDom = document.getElementById('settingGender');
-            if (genderDom) genderDom.value = newGender || '';
+            if (!applyProfileFieldEditRrnToTempSettings().ok) return;
         } else if (field === 'bio') {
             state.tempSettings.profile.bio = (document.getElementById('profileFieldEditBio')?.value || '').trim() || '';
             const bioDom = document.getElementById('settingBio');
@@ -1194,6 +1168,7 @@ export async function saveProfileSingleField(field) {
 }
 
 function startInlineProfileFieldEdit(field) {
+    if (field === 'birthdate') field = 'nickname';
     setProfileSettingsEditMode(true, field);
     openProfileFieldEditModal(field);
 }
@@ -1462,15 +1437,6 @@ export function renderSettingsProfileAvatarPreview() {
     }
 }
 
-function formatBirthdateForDisplay(raw) {
-    if (!raw || typeof raw !== 'string') return '-';
-    const s = raw.trim().replace(/-/g, '');
-    if (s.length === 8 && /^\d+$/.test(s)) {
-        return `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}`;
-    }
-    return raw;
-}
-
 /**
  * @param {boolean} isEditing
  * @param {'full'|'nickname'|'birthdate'|'bio'|'lifestyle'} [editScope] isEditing이 true일 때만 사용. 연필은 필드별, 아바타·전체는 'full'
@@ -1531,11 +1497,12 @@ function setProfileSettingsEditMode(isEditing, editScope = 'full') {
     const birthdateDisplay = document.getElementById('settingBirthdateDisplay');
     const birthdateEdit = document.getElementById('settingBirthdateEdit');
     const currentGender = (document.getElementById('settingGender')?.value || state.tempSettings?.profile?.gender || '').trim();
-    const genderText = currentGender === 'male' ? '(남)' : currentGender === 'female' ? '(여)' : '';
     if (birthdateDisplay) {
         birthdateDisplay.textContent =
-            formatBirthdateForDisplay(birthdateInput?.value || state.tempSettings?.profile?.birthdate || '') +
-            (genderText ? ' ' + genderText : '');
+            formatProfileRrnDisplay(
+                birthdateInput?.value || state.tempSettings?.profile?.birthdate || '',
+                currentGender
+            ) || '-';
         birthdateDisplay.classList.toggle('hidden', enableBirthdate);
     }
     if (birthdateEdit) birthdateEdit.classList.toggle('hidden', !enableBirthdate);
@@ -1791,17 +1758,17 @@ export async function saveProfileSettings() {
         const existingLifestyle = (window.userSettings?.profile?.lifestyle || '').trim();
         const existingCount = Number(window.userSettings?.profile?.birthdateChangeCount || 0);
         
-        // 생년월일: 값이 입력된 경우에만 저장 및 변경 체크 (숫자 8자리도 자동 포맷 후 검증)
+        // 생년월일: 히든 필드는 YYYY-MM-DD 보관
         if (newBirthdate) {
             const { formatted: formattedBirthdate, valid } = normalizeBirthdateRaw(newBirthdate);
             if (!valid) {
-                showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
+                showToast("주민등록번호 정보가 올바르지 않습니다. 다시 입력해주세요.", "error");
                 return;
             }
             const isBirthdateChanged = existingBirthdate && formattedBirthdate && existingBirthdate !== formattedBirthdate;
             if (isBirthdateChanged) {
                 if (existingCount >= 1) {
-                    showToast("생년월일은 가입 후 1회만 변경할 수 있습니다.", "error");
+                    showToast("주민등록번호는 가입 후 1회만 변경할 수 있습니다.", "error");
                     return;
                 }
                 state.tempSettings.profile.birthdateChangeCount = existingCount + 1;

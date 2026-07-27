@@ -10,7 +10,7 @@ import { GoogleAuthProvider, signInWithPopup, getRedirectResult, signInWithCrede
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
-import { normalizeBirthdateRaw } from './utils.js';
+import { parseRrnPartial, setRrnDigitGroupValue, mountRrnDigitGroup } from './utils.js';
 import { isDemoUser } from './demo-account.js';
 
 /**
@@ -1378,10 +1378,8 @@ function _showProfileSetupModalCommon() {
         if (nicknameInput) {
             nicknameInput.value = '';
         }
-        const birthdateInput = document.getElementById('setupBirthdate');
-        if (birthdateInput) {
-            birthdateInput.value = '';
-        }
+        mountRrnDigitGroup('setupRrnDigits', { hiddenId: 'setupBirthdate' });
+        setRrnDigitGroupValue('setupRrnDigits', '');
         const lifestyleSelect = document.getElementById('setupLifestyle');
         if (lifestyleSelect) {
             lifestyleSelect.value = '';
@@ -1393,10 +1391,6 @@ function _showProfileSetupModalCommon() {
         });
         const setupGenderHidden = document.getElementById('setupGender');
         if (setupGenderHidden) setupGenderHidden.value = '';
-        document.querySelectorAll('.setup-gender-btn').forEach(btn => {
-            btn.classList.remove('bg-emerald-600', 'text-white');
-            btn.classList.add('bg-slate-50', 'text-slate-600');
-        });
     }
 }
 
@@ -1554,9 +1548,8 @@ export async function handleEmailSignupWithProfile() {
     
     const nicknameInput = document.getElementById('setupNickname');
     const nickname = nicknameInput?.value.trim() || '';
-    const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
+    const rrnRaw = (document.getElementById('setupBirthdate')?.value || '').trim();
     const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
-    const gender = (document.getElementById('setupGender')?.value || '').trim() || null;
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -1577,13 +1570,13 @@ export async function handleEmailSignupWithProfile() {
         showToast("이미 사용 중인 닉네임입니다. 다른 닉네임을 입력해주세요.", "error");
         return;
     }
-    if (!birthdate) {
-        showToast("생년월일을 입력해주세요.", "error");
+    const parsed = parseRrnPartial(rrnRaw);
+    if (parsed.empty) {
+        showToast("주민등록번호 앞자리를 입력해주세요. (예: 801102-1)", "error");
         return;
     }
-    const { formatted, valid } = normalizeBirthdateRaw(birthdate);
-    if (!valid) {
-        showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
+    if (!parsed.valid) {
+        showToast("주민등록번호 앞자리를 올바르게 입력해주세요. (예: 801102-1)", "error");
         return;
     }
     
@@ -1598,9 +1591,9 @@ export async function handleEmailSignupWithProfile() {
         window._pendingEmailSignupProfile = {
             profile: {
                 nickname,
-                birthdate: formatted,
+                birthdate: parsed.birthdate,
                 lifestyle,
-                gender: (gender === 'male' || gender === 'female') ? gender : null,
+                gender: parsed.gender,
                 birthdateChangeCount: 0,
                 birthdateChangedAt: null,
                 iconType: 'text',
@@ -1629,9 +1622,8 @@ export async function confirmProfileSetup() {
     const nicknameInput = document.getElementById('setupNickname');
     const nickname = nicknameInput?.value.trim() || '';
 
-    const birthdate = (document.getElementById('setupBirthdate')?.value || '').trim();
+    const rrnRaw = (document.getElementById('setupBirthdate')?.value || '').trim();
     const lifestyle = (document.getElementById('setupLifestyle')?.value || '').trim();
-    const gender = (document.getElementById('setupGender')?.value || '').trim() || null;
     
     if (!nickname) {
         showToast("닉네임을 입력해주세요.", "error");
@@ -1655,14 +1647,13 @@ export async function confirmProfileSetup() {
         return;
     }
 
-    if (!birthdate) {
-        showToast("생년월일을 입력해주세요.", "error");
+    const parsed = parseRrnPartial(rrnRaw);
+    if (parsed.empty) {
+        showToast("주민등록번호 앞자리를 입력해주세요. (예: 801102-1)", "error");
         return;
     }
-
-    const { formatted, valid } = normalizeBirthdateRaw(birthdate);
-    if (!valid) {
-        showToast("입력한 생년월일이 올바르지 않습니다. 숫자 8자리(예: 19900115)로 입력해주세요.", "error");
+    if (!parsed.valid) {
+        showToast("주민등록번호 앞자리를 올바르게 입력해주세요. (예: 801102-1)", "error");
         return;
     }
 
@@ -1674,9 +1665,9 @@ export async function confirmProfileSetup() {
         }
         
         window.userSettings.profile.nickname = nickname;
-        window.userSettings.profile.birthdate = formatted;
+        window.userSettings.profile.birthdate = parsed.birthdate;
         window.userSettings.profile.lifestyle = lifestyle;
-        window.userSettings.profile.gender = (gender === 'male' || gender === 'female') ? gender : null;
+        window.userSettings.profile.gender = parsed.gender;
         window.userSettings.profile.birthdateChangeCount = 0;
         window.userSettings.profile.birthdateChangedAt = null;
         // 초기 가입은 아이콘 설정 없이 텍스트(닉네임 첫 글자) 기본

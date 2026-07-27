@@ -1397,19 +1397,15 @@
                     <button type="button" id="wizardNicknameSuggestBtn" class="flex-shrink-0 py-2.5 px-3 text-xs font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors whitespace-nowrap">다른 이름 추천</button>
                 </div>
             </div>
-            <!-- 3페이지: 생년월일 / 성별 / 라이프스타일 (선택) -->
+            <!-- 3페이지: 주민번호(앞자리) / 라이프스타일 (선택) -->
             <div id="signupWizardStep3" class="signup-wizard-step hidden">
                 <h2 class="text-xl font-bold text-slate-800 mb-6">생일과 라이프 스타일을 알려주세요 (선택)</h2>
                 <div class="space-y-5">
                     <div>
-                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">생년월일 · 성별</label>
-                        <div class="flex gap-2 items-center flex-wrap">
-                            <input type="text" id="wizardBirthdate" inputmode="numeric" maxlength="10" placeholder="예: 1990-01-15" class="wizard-input flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-slate-400" aria-label="생년월일">
-                            <div class="inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group">
-                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="male">남</button>
-                                <button type="button" class="wizard-gender-btn py-3 px-5 text-sm font-bold text-slate-600 bg-slate-50 border-0" data-value="female">여</button>
-                            </div>
-                        </div>
+                        <label class="text-xs font-bold text-slate-500 block mb-2 uppercase" for="wizardRrnDigits">주민등록번호</label>
+                        <div id="wizardRrnDigits" class="rrn-digits" data-rrn-hidden="wizardBirthdate"></div>
+                        <input type="hidden" id="wizardBirthdate" value="">
+                        <p class="text-[10px] text-slate-400 mt-1.5">앞 6자리와 뒤 첫 자리만 입력합니다. 나머지는 저장하지 않아요.</p>
                     </div>
                     <div>
                         <label class="text-xs font-bold text-slate-500 block mb-2 uppercase">라이프 스타일</label>
@@ -1489,20 +1485,13 @@
                     <input type="text" id="setupNickname" placeholder="닉네임을 입력하세요" maxlength="20" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors">
                     <p class="text-[10px] text-slate-400 mt-1">한글, 영문, 숫자 조합 최대 20자</p>
                 </div>
-                <!-- 생년월일 / 성별 스위치 -->
+                <!-- 주민등록번호 앞자리 (생년월일·성별 파생) -->
                 <div>
-                    <label class="text-sm font-bold text-slate-600 block mb-2">생년월일</label>
-                    <div class="flex gap-3 items-center">
-                        <div class="flex-1 min-w-0">
-                            <input type="text" id="setupBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="예: 19900115" class="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 text-sm outline-none focus:border-slate-400 transition-colors" aria-label="생년월일 입력 (숫자 8자리)">
-                        </div>
-                        <div id="setupGenderSwitch" class="setup-gender-switch flex-shrink-0 inline-flex rounded-xl overflow-hidden border border-slate-200 bg-slate-50" role="group" aria-label="성별">
-                            <button type="button" id="setupGenderMale" class="setup-gender-btn py-3 px-4 text-sm font-bold transition-colors rounded-l-[10px] bg-slate-50 text-slate-600 border-0" data-value="male">남</button>
-                            <button type="button" id="setupGenderFemale" class="setup-gender-btn py-3 px-4 text-sm font-bold transition-colors rounded-r-[10px] bg-slate-50 text-slate-600 border-0" data-value="female">여</button>
-                            <input type="hidden" id="setupGender" value="">
-                        </div>
-                    </div>
-                    <p class="text-[10px] text-slate-400 mt-1">실수로 입력한 경우에만 가입 후 1회 수정 가능합니다</p>
+                    <label class="text-sm font-bold text-slate-600 block mb-2" for="setupRrnDigits">주민등록번호</label>
+                    <div id="setupRrnDigits" class="rrn-digits" data-rrn-hidden="setupBirthdate"></div>
+                    <input type="hidden" id="setupBirthdate" value="">
+                    <input type="hidden" id="setupGender" value="">
+                    <p class="text-[10px] text-slate-400 mt-1">앞 6자리와 뒤 첫 자리만 입력 · 가입 후 1회만 수정 가능</p>
                 </div>
                 <!-- 라이프스타일 -->
                 <div>
@@ -2113,11 +2102,6 @@
                                 <span class="profile-v2-row__value" id="profileV2NicknameValue">-</span>
                                 <i data-lucide="chevron-right" class="profile-v2-row__chev" aria-hidden="true"></i>
                             </button>
-                            <button type="button" class="profile-v2-row" id="profileV2EditBirthdateRow" data-profile-field="birthdate">
-                                <span class="profile-v2-row__label">생일·성별</span>
-                                <span class="profile-v2-row__value" id="profileV2BirthdateValue">-</span>
-                                <i data-lucide="chevron-right" class="profile-v2-row__chev" aria-hidden="true"></i>
-                            </button>
                             <button type="button" class="profile-v2-row" id="accountEditBioBtn" data-action="edit" data-profile-field="bio">
                                 <span class="profile-v2-row__label">소개</span>
                                 <span class="profile-v2-row__value" id="profileV2BioValue">자신을 소개해주세요</span>
@@ -2611,26 +2595,21 @@
                 <button type="button" id="profileFieldEditCloseBtn" class="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
             <div class="px-4 py-4 overflow-y-auto min-h-0 flex-1">
-                <div id="profileFieldEditPanelNickname" class="hidden space-y-2">
-                    <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditNickname">닉네임</label>
-                    <input type="text" id="profileFieldEditNickname" maxlength="20" placeholder="닉네임을 입력하세요" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500" autocomplete="nickname">
-                    <p class="text-xs text-slate-400">최대 20자</p>
-                </div>
-                <div id="profileFieldEditPanelBirthdate" class="hidden space-y-3">
+                <div id="profileFieldEditPanelNickname" class="hidden space-y-5">
                     <div class="space-y-2">
-                        <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditBirthdate">생년월일</label>
-                        <input type="text" id="profileFieldEditBirthdate" inputmode="numeric" pattern="[0-9\-]*" maxlength="10" placeholder="YYYY-MM-DD" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500" aria-label="생년월일 (YYYY-MM-DD)">
-                        <p id="profileFieldEditBirthdateHint" class="text-xs text-slate-400">가입 후 1회만 수정 가능</p>
+                        <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditNickname">닉네임</label>
+                        <input type="text" id="profileFieldEditNickname" maxlength="20" placeholder="닉네임을 입력하세요" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-base font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500" autocomplete="nickname">
+                        <p class="text-xs text-slate-400">최대 20자</p>
                     </div>
                     <div class="space-y-2">
-                        <span class="block text-sm font-semibold text-slate-600">성별</span>
+                        <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditRrnDigits">주민번호</label>
+                        <div id="profileFieldEditRrnDigits" class="rrn-digits" data-rrn-hidden="profileFieldEditBirthdate"></div>
+                        <input type="hidden" id="profileFieldEditBirthdate" value="">
                         <input type="hidden" id="profileFieldEditGender" value="">
-                        <div class="flex items-center gap-2" role="group" aria-label="성별">
-                            <button type="button" class="profile-field-edit-gender-btn flex-1 min-h-[44px] rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-500 transition-colors" data-value="male">남</button>
-                            <button type="button" class="profile-field-edit-gender-btn flex-1 min-h-[44px] rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-500 transition-colors" data-value="female">여</button>
-                        </div>
+                        <p id="profileFieldEditBirthdateHint" class="text-xs text-slate-400">앞 6자리와 뒤 첫 자리만 · 가입 후 1회만 수정 가능</p>
                     </div>
                 </div>
+                <div id="profileFieldEditPanelBirthdate" class="hidden" aria-hidden="true"></div>
                 <div id="profileFieldEditPanelBio" class="hidden space-y-2">
                     <div class="flex items-center justify-between gap-2">
                         <label class="text-sm font-semibold text-slate-600" for="profileFieldEditBio">소개</label>

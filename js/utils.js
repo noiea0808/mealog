@@ -1233,6 +1233,391 @@ export function setupBirthdateInputFormatting(el) {
     });
 }
 
+/**
+ * 주민번호 앞 6 + 성별코드 1자리 입력 포맷 (예: 801102-1)
+ * @param {string} raw
+ * @returns {string}
+ */
+export function formatRrnPartialInput(raw) {
+    const d = String(raw || '').replace(/\D/g, '').slice(0, 7);
+    if (d.length <= 6) return d;
+    return `${d.slice(0, 6)}-${d.slice(6)}`;
+}
+
+/**
+ * 성별코드(주민 뒷자리 첫 숫자) → 세기·성별
+ * 1·2(1900s), 3·4(2000s), 5·6(1900s 외국인), 7·8(2000s 외국인), 9·0(1800s)
+ * @param {string|number} sexDigit
+ * @returns {{ century: number, gender: 'male'|'female' }|null}
+ */
+export function decodeRrnSexDigit(sexDigit) {
+    const d = String(sexDigit ?? '').trim();
+    if (!/^[0-9]$/.test(d)) return null;
+    const n = Number(d);
+    const gender = n % 2 === 1 ? 'male' : 'female';
+    let century;
+    if (n === 9 || n === 0) century = 1800;
+    else if (n === 1 || n === 2 || n === 5 || n === 6) century = 1900;
+    else century = 2000; // 3,4,7,8
+    return { century, gender };
+}
+
+/**
+ * 저장된 생년월일·성별로 주민번호 앞자리 성별코드 추정 (국내 출생 1~4 기준)
+ * @param {string} birthdate YYYY-MM-DD
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string} '1'|'2'|… 또는 ''
+ */
+export function encodeRrnSexDigit(birthdate, gender) {
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid || (gender !== 'male' && gender !== 'female')) return '';
+    const y = Number(formatted.slice(0, 4));
+    const isMale = gender === 'male';
+    if (y >= 2000 && y <= 2099) return isMale ? '3' : '4';
+    if (y >= 1900 && y <= 1999) return isMale ? '1' : '2';
+    if (y >= 1800 && y <= 1899) return isMale ? '9' : '0';
+    return '';
+}
+
+/**
+ * 주민번호 부분 입력 파싱 → birthdate(YYYY-MM-DD) + gender
+ * @param {string} raw
+ * @returns {{ empty: boolean, valid: boolean, birthdate: string, gender: 'male'|'female'|null, sexDigit: string, front6: string, formatted: string, error?: string }}
+ */
+export function parseRrnPartial(raw) {
+    const digits = String(raw || '').replace(/\D/g, '').slice(0, 7);
+    const empty = {
+        empty: true,
+        valid: true,
+        birthdate: '',
+        gender: null,
+        sexDigit: '',
+        front6: '',
+        formatted: ''
+    };
+    if (!digits) return empty;
+    if (digits.length < 7) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: null,
+            sexDigit: digits.length === 7 ? digits[6] : '',
+            front6: digits.slice(0, 6),
+            formatted: formatRrnPartialInput(digits),
+            error: 'incomplete'
+        };
+    }
+    const front6 = digits.slice(0, 6);
+    const sexDigit = digits[6];
+    const decoded = decodeRrnSexDigit(sexDigit);
+    if (!decoded) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: null,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'sex'
+        };
+    }
+    const yy = Number(front6.slice(0, 2));
+    const mm = front6.slice(2, 4);
+    const dd = front6.slice(4, 6);
+    const year = decoded.century + yy;
+    const birthdateCandidate = `${year}-${mm}-${dd}`;
+    const { formatted, valid } = normalizeBirthdateRaw(birthdateCandidate);
+    if (!valid) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: decoded.gender,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'date'
+        };
+    }
+    const today = new Date();
+    const birth = new Date(Number(formatted.slice(0, 4)), Number(formatted.slice(5, 7)) - 1, Number(formatted.slice(8, 10)));
+    if (birth.getTime() > today.getTime()) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: decoded.gender,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'future'
+        };
+    }
+    return {
+        empty: false,
+        valid: true,
+        birthdate: formatted,
+        gender: decoded.gender,
+        sexDigit,
+        front6,
+        formatted: formatRrnPartialInput(digits)
+    };
+}
+
+/**
+ * birthdate + gender → 입력란용 `YYMMDD-G`
+ * @param {string} birthdate
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string}
+ */
+export function birthdateGenderToRrnPartial(birthdate, gender) {
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid) return '';
+    const sex = encodeRrnSexDigit(formatted, gender);
+    if (!sex) return '';
+    const yymmdd = `${formatted.slice(2, 4)}${formatted.slice(5, 7)}${formatted.slice(8, 10)}`;
+    return `${yymmdd}-${sex}`;
+}
+
+/**
+ * 프로필 표시용 `YYMMDD-G******`
+ * @param {string} birthdate
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string} 없으면 ''
+ */
+export function formatProfileRrnDisplay(birthdate, gender) {
+    const partial = birthdateGenderToRrnPartial(birthdate, gender);
+    if (partial) return `${partial}******`;
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid) return '';
+    const yymmdd = `${formatted.slice(2, 4)}${formatted.slice(5, 7)}${formatted.slice(8, 10)}`;
+    return `${yymmdd}-*******`;
+}
+
+/**
+ * 주민번호 부분 input 자동 포맷 (######-#) — 레거시 단일 입력용
+ * @param {HTMLInputElement} el
+ */
+export function setupRrnPartialInputFormatting(el) {
+    if (!el || el.dataset.rrnPartialFormatted === 'true') return;
+    el.dataset.rrnPartialFormatted = 'true';
+    el.addEventListener('input', function () {
+        this.value = formatRrnPartialInput(this.value);
+    });
+}
+
+const RRN_DIGIT_COUNT = 7;
+const RRN_DIGIT_LABELS = [
+    '생년 십의 자리',
+    '생년 일의 자리',
+    '월 십의 자리',
+    '월 일의 자리',
+    '일 십의 자리',
+    '일 일의 자리',
+    '성별 코드'
+];
+
+function syncRrnDigitHidden(root) {
+    const hiddenId = root?.dataset?.rrnHidden;
+    if (!hiddenId) return;
+    const hidden = document.getElementById(hiddenId);
+    if (hidden) hidden.value = getRrnDigitGroupValue(root);
+}
+
+/**
+ * 주민번호 앞 7자리 숫자 칸 그룹 값 (하이픈 포함 포맷 또는 빈 문자열)
+ * @param {string|HTMLElement} rootOrId
+ * @returns {string}
+ */
+export function getRrnDigitGroupValue(rootOrId) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return '';
+    const cells = root.querySelectorAll('.rrn-digit');
+    let digits = '';
+    cells.forEach((el) => {
+        digits += String(el.value || '').replace(/\D/g, '').slice(0, 1);
+    });
+    return formatRrnPartialInput(digits);
+}
+
+/**
+ * 주민번호 숫자 칸 그룹에 값 채우기
+ * @param {string|HTMLElement} rootOrId
+ * @param {string} raw
+ */
+export function setRrnDigitGroupValue(rootOrId, raw) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return;
+    const digits = String(raw || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
+    const cells = root.querySelectorAll('.rrn-digit');
+    cells.forEach((el, i) => {
+        el.value = digits[i] || '';
+    });
+    syncRrnDigitHidden(root);
+}
+
+/**
+ * 주민번호 숫자 칸 포커스 (첫 빈 칸, 없으면 마지막)
+ * @param {string|HTMLElement} rootOrId
+ */
+export function focusRrnDigitGroup(rootOrId) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return;
+    const cells = [...root.querySelectorAll('.rrn-digit')];
+    const empty = cells.find((el) => !el.value);
+    (empty || cells[0])?.focus();
+}
+
+/**
+ * 주민번호 앞 6 + 성별 1 숫자 칸 UI 마운트/바인딩
+ * @param {string|HTMLElement} rootOrId
+ * @param {{ hiddenId?: string }} [options]
+ */
+export function mountRrnDigitGroup(rootOrId, options = {}) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return null;
+    if (options.hiddenId) root.dataset.rrnHidden = options.hiddenId;
+
+    if (!root.dataset.rrnDigitsBuilt) {
+        root.dataset.rrnDigitsBuilt = 'true';
+        root.classList.add('rrn-digits');
+        root.setAttribute('role', 'group');
+        if (!root.getAttribute('aria-label')) {
+            root.setAttribute('aria-label', '주민등록번호 앞 6자리와 뒤 첫 자리');
+        }
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < RRN_DIGIT_COUNT; i++) {
+            if (i === 6) {
+                const hyphen = document.createElement('span');
+                hyphen.className = 'rrn-digits__hyphen';
+                hyphen.setAttribute('aria-hidden', 'true');
+                hyphen.textContent = '-';
+                frag.appendChild(hyphen);
+            }
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'rrn-digit';
+            input.inputMode = 'numeric';
+            input.autocomplete = 'one-time-code';
+            input.maxLength = 1;
+            input.pattern = '[0-9]*';
+            input.setAttribute('data-rrn-i', String(i));
+            input.setAttribute('aria-label', RRN_DIGIT_LABELS[i] || `자리 ${i + 1}`);
+            input.setAttribute('enterkeyhint', i === RRN_DIGIT_COUNT - 1 ? 'done' : 'next');
+            frag.appendChild(input);
+        }
+        const mask = document.createElement('span');
+        mask.className = 'rrn-digits__mask';
+        mask.setAttribute('aria-hidden', 'true');
+        mask.textContent = '******';
+        frag.appendChild(mask);
+        root.textContent = '';
+        root.appendChild(frag);
+    }
+
+    if (root.dataset.rrnDigitsBound === 'true') {
+        syncRrnDigitHidden(root);
+        return root;
+    }
+    root.dataset.rrnDigitsBound = 'true';
+
+    const cells = () => [...root.querySelectorAll('.rrn-digit')];
+
+    const fillFromDigits = (digitStr, startIndex = 0) => {
+        const list = cells();
+        const digits = String(digitStr || '').replace(/\D/g, '');
+        let i = startIndex;
+        for (const ch of digits) {
+            if (i >= list.length) break;
+            list[i].value = ch;
+            i += 1;
+        }
+        syncRrnDigitHidden(root);
+        const next = list[Math.min(i, list.length - 1)];
+        next?.focus();
+        if (next && i < list.length) next.select();
+    };
+
+    root.addEventListener('input', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        const list = cells();
+        const idx = list.indexOf(t);
+        if (idx < 0) return;
+        const raw = t.value.replace(/\D/g, '');
+        if (raw.length > 1) {
+            fillFromDigits(raw, idx);
+            return;
+        }
+        t.value = raw.slice(0, 1);
+        syncRrnDigitHidden(root);
+        if (t.value && idx < list.length - 1) {
+            list[idx + 1].focus();
+            list[idx + 1].select();
+        }
+    });
+
+    root.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        const list = cells();
+        const idx = list.indexOf(t);
+        if (idx < 0) return;
+        if (e.key === 'Backspace') {
+            if (t.value) {
+                t.value = '';
+                syncRrnDigitHidden(root);
+                e.preventDefault();
+                return;
+            }
+            if (idx > 0) {
+                e.preventDefault();
+                list[idx - 1].focus();
+                list[idx - 1].value = '';
+                syncRrnDigitHidden(root);
+            }
+            return;
+        }
+        if (e.key === 'ArrowLeft' && idx > 0) {
+            e.preventDefault();
+            list[idx - 1].focus();
+            list[idx - 1].select();
+            return;
+        }
+        if (e.key === 'ArrowRight' && idx < list.length - 1) {
+            e.preventDefault();
+            list[idx + 1].focus();
+            list[idx + 1].select();
+            return;
+        }
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/\d/.test(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    root.addEventListener('paste', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        e.preventDefault();
+        const list = cells();
+        const idx = list.indexOf(t);
+        const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+        fillFromDigits(text, idx >= 0 ? idx : 0);
+    });
+
+    root.addEventListener('focusin', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLInputElement && t.classList.contains('rrn-digit')) {
+            requestAnimationFrame(() => t.select());
+        }
+    });
+
+    syncRrnDigitHidden(root);
+    return root;
+}
+
 // 로컬 타임존 기준으로 YYYY-MM-DD 형식 문자열 반환
 // toISOString()은 UTC로 변환되어 한국 시간(KST, UTC+9)에서 날짜가 하루 전으로 나올 수 있음
 export function toLocalDateString(date) {

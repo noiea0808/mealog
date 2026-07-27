@@ -7971,11 +7971,16 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     font-size: 13.5px;
     line-height: 1.45;
     color: var(--ink-2);
-    max-width: 280px;
+    max-width: 100%;
+    width: 100%;
     margin: 0 0 14px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 .profile-v2-identity-bio--empty {
     color: var(--muted);
+    white-space: normal;
 }
 .profile-v2-identity-cta {
     display: inline-flex;
@@ -8069,6 +8074,21 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .profile-v2-row__value--muted {
     color: var(--muted);
     font-weight: 500;
+}
+#accountEditBioBtn.profile-v2-row {
+    align-items: flex-start;
+}
+#accountEditBioBtn .profile-v2-row__label,
+#accountEditBioBtn .profile-v2-row__chev {
+    margin-top: 0.15rem;
+}
+#profileV2BioValue.profile-v2-row__value {
+    white-space: pre-wrap;
+    overflow: visible;
+    text-overflow: unset;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    line-height: 1.45;
 }
 .profile-v2-row__chev {
     color: var(--muted, #7a7268);
@@ -16778,5 +16798,61 @@ body:has(#adminPage:not(.hidden)),
     text-align: center;
     font-size: 0.875rem;
     color: #9a9084;
+}
+
+/* 주민등록번호 앞자리 숫자 칸 */
+.rrn-digits {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
+}
+.rrn-digit {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 2.25rem;
+    max-width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+    color: #1e293b;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.rrn-digit:focus {
+    border-color: #34d399;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+.rrn-digits__hyphen {
+    flex: 0 0 auto;
+    padding: 0 0.1rem;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+    user-select: none;
+}
+.rrn-digits__mask {
+    flex: 0 0 auto;
+    margin-left: 0.15rem;
+    color: #94a3b8;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    user-select: none;
+}
+#profileFieldEditPanelBirthdate .rrn-digit {
+    background: #fff;
+    height: 2.9rem;
 }
 

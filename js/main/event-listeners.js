@@ -7,7 +7,7 @@ import { initTimelineSearchModal } from '../timeline-search.js';
 import { initMomentSearchModal } from '../moment-search.js';
 import { initBoardSearchModal } from '../board-search.js';
 import { initNotificationModal } from './notifications.js';
-import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
+import { addCompositionAwareInput, mountRrnDigitGroup } from '../utils.js';
 import {
     handleGoogleLogin,
     handleKakaoLogin,
@@ -254,10 +254,7 @@ export function initEventListeners() {
         termsAgreeBtn.addEventListener('click', confirmTermsAgreement);
     }
 
-    const setupBirthdate = document.getElementById('setupBirthdate');
-    if (setupBirthdate) setupBirthdateInputFormatting(setupBirthdate);
-    const settingBirthdate = document.getElementById('settingBirthdate');
-    if (settingBirthdate) setupBirthdateInputFormatting(settingBirthdate);
+    mountRrnDigitGroup('setupRrnDigits', { hiddenId: 'setupBirthdate' });
 
     const setupProfileTypeEmoji = document.getElementById('setupProfileTypeEmoji');
     if (setupProfileTypeEmoji) {
@@ -309,21 +306,6 @@ export function initEventListeners() {
                 b.classList.toggle('bg-slate-50', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
-            });
-        });
-    });
-
-    document.querySelectorAll('.setup-gender-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const v = btn.getAttribute('data-value') || '';
-            const hidden = document.getElementById('setupGender');
-            if (hidden) hidden.value = v;
-            document.querySelectorAll('.setup-gender-btn').forEach(b => {
-                const active = b === btn;
-                b.classList.toggle('bg-emerald-600', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('bg-slate-50', !active);
-                b.classList.toggle('text-slate-600', !active);
             });
         });
     });
@@ -567,13 +549,6 @@ export function initEventListeners() {
         profileV2EditNicknameRow.addEventListener('click', (e) => {
             e.preventDefault();
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('nickname');
-        });
-    }
-    const profileV2EditBirthdateRow = document.getElementById('profileV2EditBirthdateRow');
-    if (profileV2EditBirthdateRow) {
-        profileV2EditBirthdateRow.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('birthdate');
         });
     }
     const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
