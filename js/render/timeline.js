@@ -13,6 +13,17 @@ import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getThumbImageUrl, getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
+
+/** 기록추가 슬롯 피커와 동일한 아이콘 톤 클래스 (SLOT_STYLES 색 매핑) */
+function slotPickerIconToneClass(slotId) {
+    if (slotId === 'daily_journal' || slotId === DAILY_JOURNAL_SLOT?.id) {
+        return 'home-feed-card__icon--tone-journal';
+    }
+    if (slotId && SLOT_STYLES[slotId]) {
+        return `home-feed-card__icon--tone-${slotId}`;
+    }
+    return 'home-feed-card__icon--tone-default';
+}
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
     getMealRowSyncLeadKind,
@@ -965,17 +976,20 @@ function buildShareCaptureRowHtml({
     photoHtml,
     iconHtml,
     iconKind = 'meal',
+    iconToneClass = '',
     metaHtml,
     titleHtml,
     starsText = '—',
     cardMbClass = ''
 }) {
-    const iconMod =
-        iconKind === 'snack'
-            ? ' share-cap-icon--snack'
-            : iconKind === 'journal'
-              ? ' share-cap-icon--journal'
-              : ' share-cap-icon--meal';
+    const tone = (iconToneClass || '').trim();
+    const iconMod = tone
+        ? ` ${tone}`
+        : iconKind === 'snack'
+          ? ' share-cap-icon--snack'
+          : iconKind === 'journal'
+            ? ' share-cap-icon--journal'
+            : ' share-cap-icon--meal';
     const thumbCell = hasPhoto && photoHtml
         ? `<div class="share-cap-cell share-cap-cell--thumb">${photoHtml}</div>`
         : '';
@@ -1007,6 +1021,7 @@ function buildHomeFeedCardShellHtml({
     photoHtml,
     iconHtml,
     iconKind = 'meal',
+    iconToneClass = '',
     metaHtml,
     titleHtml,
     noteHtml,
@@ -1014,12 +1029,14 @@ function buildHomeFeedCardShellHtml({
     ratingVal,
     forShareCapture = false
 }) {
-    const iconMod =
-        iconKind === 'snack'
-            ? ' home-feed-card__icon--snack'
-            : iconKind === 'journal'
-              ? ' home-feed-card__icon--journal'
-              : ' home-feed-card__icon--meal';
+    const tone = (iconToneClass || '').trim();
+    const iconMod = tone
+        ? ` ${tone}`
+        : iconKind === 'snack'
+          ? ' home-feed-card__icon--snack'
+          : iconKind === 'journal'
+            ? ' home-feed-card__icon--journal'
+            : ' home-feed-card__icon--meal';
 
     if (forShareCapture) {
         return buildShareCaptureRowHtml({
@@ -1027,6 +1044,7 @@ function buildHomeFeedCardShellHtml({
             photoHtml,
             iconHtml,
             iconKind,
+            iconToneClass: tone,
             metaHtml,
             titleHtml,
             starsText: buildShareCaptureStarsText(ratingVal),
@@ -1132,6 +1150,7 @@ function buildSnackTimelineCardHtml(
         photoHtml,
         iconHtml,
         iconKind: 'snack',
+        iconToneClass: slotPickerIconToneClass(slot.id),
         metaHtml,
         titleHtml,
         noteHtml,
@@ -1208,6 +1227,7 @@ function buildMainMealTimelineCardHtml(
         photoHtml,
         iconHtml,
         iconKind: 'meal',
+        iconToneClass: slotPickerIconToneClass(slot.id),
         metaHtml,
         titleHtml,
         noteHtml,
@@ -1219,9 +1239,10 @@ function buildMainMealTimelineCardHtml(
 
 function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeSlotLabel = escapeHtml(slot.label);
+    const tone = slotPickerIconToneClass(slot.id);
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon home-feed-card__icon--meal" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
+            <div class="home-feed-card__icon ${tone}" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta">${safeSlotLabel}</div>
                 <div class="home-feed-card__title">기록하기</div>
@@ -1232,9 +1253,10 @@ function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
 
 function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
+    const tone = slotPickerIconToneClass(slot.id);
     return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon home-feed-card__icon--snack" aria-hidden="true"><i data-lucide="${getSlotLucideIcon(slot.id)}"></i></div>
+            <div class="home-feed-card__icon ${tone}" aria-hidden="true"><i data-lucide="${getSlotLucideIcon(slot.id)}"></i></div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta">${safeLabel}</div>
                 <div class="home-feed-card__title">기록하기</div>
@@ -1568,6 +1590,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
             photoHtml,
             iconHtml,
             iconKind: 'journal',
+            iconToneClass: slotPickerIconToneClass('daily_journal'),
             metaHtml: safeLabel,
             titleHtml,
             noteHtml: '',
@@ -1602,7 +1625,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card home-feed-card${photoClass} daily-journal-slot mb-1.5${opacity} cursor-pointer active:scale-[0.98] transition-all">
         ${hasPhoto ? `<div class="home-feed-card__photo relative">${photoHtml}</div>` : ''}
         <div class="home-feed-card__body">
-            <div class="home-feed-card__icon home-feed-card__icon--journal" aria-hidden="true">${iconHtml}</div>
+            <div class="home-feed-card__icon ${slotPickerIconToneClass('daily_journal')}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
                 <div class="home-feed-card__meta-row">
                     <div class="home-feed-card__meta">${metaHtml}</div>

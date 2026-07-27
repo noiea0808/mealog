@@ -127,6 +127,33 @@ let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
+/**
+ * 입력란의 쉼표(, / ，) 구분 항목을 최근 서브태그로 각각 기억.
+ * 이미 있으면 맨 뒤로 옮겨 최근 순서를 갱신한다.
+ * @param {any[]} list
+ * @param {string} rawValue
+ * @param {string|null|undefined} parent
+ * @returns {boolean} 변경 여부
+ */
+function rememberCommaSeparatedSubTags(list, rawValue, parent) {
+    if (!Array.isArray(list)) return false;
+    const parts = String(rawValue || '')
+        .split(/[,，]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    if (!parts.length) return false;
+    let changed = false;
+    for (const val of parts) {
+        const existingIdx = list.findIndex((t) => (t.text || t) === val);
+        if (existingIdx >= 0) {
+            list.splice(existingIdx, 1);
+        }
+        list.push({ text: val, parent: parent || null });
+        changed = true;
+    }
+    return changed;
+}
+
 /** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
 function mergeActiveSubChipsIntoInputs() {
     mergeEntrySubChipsIntoInputs();
@@ -1828,43 +1855,36 @@ export async function saveEntry() {
         if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
         
         let tagsChanged = false;
-        if (!isS && entryWhereInputVal && !newSettings.subTags.place.find(t => (t.text || t) === entryWhereInputVal)) {
-            newSettings.subTags.place.push({ text: entryWhereInputVal, parent: mealTypeResolved });
-            tagsChanged = true;
+        // 장소·메뉴·누구와·간식: 쉼표로 구분된 항목을 최근 태그에 각각 기억
+        if (!isS && entryWhereInputVal) {
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.place, entryWhereInputVal, mealTypeResolved)) {
+                tagsChanged = true;
+            }
         }
-        if (isS && entryWhereInputVal && !newSettings.subTags.place.find(t => (t.text || t) === entryWhereInputVal)) {
-            newSettings.subTags.place.push({ text: entryWhereInputVal, parent: snackPlaceMainResolved || entryWhereInputVal });
-            tagsChanged = true;
+        if (isS && entryWhereInputVal) {
+            if (rememberCommaSeparatedSubTags(
+                newSettings.subTags.place,
+                entryWhereInputVal,
+                snackPlaceMainResolved || entryWhereInputVal
+            )) {
+                tagsChanged = true;
+            }
         }
-        // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
         if (menuInputVal) {
-            const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
-            menuValues.forEach(val => {
-                if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.menu.push({ text: val, parent: categoryResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.menu, menuInputVal, categoryResolved)) {
+                tagsChanged = true;
+            }
         }
-        // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
         const withInputValToSave = isS ? snackWithInputVal : withInputVal;
         if (withInputValToSave) {
-            const withValues = withInputValToSave.split(',').map(v => v.trim()).filter(v => v);
-            withValues.forEach(val => {
-                if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.people.push({ text: val, parent: withWhomResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.people, withInputValToSave, withWhomResolved)) {
+                tagsChanged = true;
+            }
         }
         if (isS && snackInputVal) {
-            const snackVals = snackInputVal.split(',').map((v) => v.trim()).filter((v) => v);
-            snackVals.forEach((val) => {
-                if (!newSettings.subTags.snack.find((t) => (t.text || t) === val)) {
-                    newSettings.subTags.snack.push({ text: val, parent: snackTypeResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.snack, snackInputVal, snackTypeResolved)) {
+                tagsChanged = true;
+            }
         }
         
         if (tagsChanged) {
@@ -3541,7 +3561,7 @@ function initEntryModalSubChipDeleteDelegation() {
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
-const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-suggestions, .entry-detail-record-chips';
+const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
 
 /**
  * 기록 모달 가로 스크롤 줄(서브태그·상세보기 칩): 드래그로 좌우 스크롤 (탭/클릭과 구분).
@@ -3559,7 +3579,7 @@ function initEntryModalSubtagDragScroll() {
 
     const markDragging = (el, on) => {
         el.classList.toggle('entry-hscroll-strip--dragging', on);
-        el.classList.toggle('entry-subtag-suggestions--dragging', on && el.classList.contains('entry-subtag-suggestions'));
+        el.classList.toggle('entry-subtag-suggestions--dragging', on && !!el.closest?.('.entry-subtag-suggestions'));
     };
 
     const release = () => {
@@ -3576,10 +3596,8 @@ function initEntryModalSubtagDragScroll() {
         if (e.button !== 0) return;
         const el = e.target.closest?.(ENTRY_MODAL_HSCROLL_STRIP_SELECTOR);
         if (!el || !root.contains(el)) return;
+        if (el.classList.contains('entry-subtag-chips--empty')) return;
         if (el.scrollWidth <= el.clientWidth + 1) return;
-        const onButton = !!e.target.closest?.('button');
-        /** 서브태그 줄: 마우스는 버튼 클릭 우선. 상세보기 칩·터치는 드래그 스크롤 허용 */
-        if (e.pointerType === 'mouse' && onButton && el.classList.contains('entry-subtag-suggestions')) return;
         state = {
             el,
             pointerId: e.pointerId,
@@ -3589,7 +3607,7 @@ function initEntryModalSubtagDragScroll() {
             dragging: false
         };
         /* pointer capture는 드래그 확정 후에만 — 조기 capture 시 click 타깃이
-           스트립으로 바뀌어 상세보기 칩 토글이 동작하지 않음 */
+           스트립으로 바뀌어 칩 토글이 동작하지 않음 */
     }, true);
 
     root.addEventListener('pointermove', (e) => {

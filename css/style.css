@@ -2237,27 +2237,146 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-right: 0;
     margin-bottom: 0;
 }
-/* 기록 모달 서브태그 줄: 칩 전체 라벨 유지, 넘치면 가로 스크롤 (식사·간식 공통) */
+/* 기록 모달 서브태그: 사용자 / 최근 2행 (식사·간식·어디서·무엇을·누구와 공통) */
 #entryModal .entry-subtag-suggestions {
     display: flex;
-    flex-flow: row nowrap;
-    align-items: center;
-    gap: 4px;
-    margin-top: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.375rem;
+    margin-top: 0.25rem;
     padding-bottom: 2px;
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    overflow: visible;
+    cursor: default;
+}
+#entryModal .entry-subtag-block {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    width: 100%;
+}
+#entryModal .entry-subtag-label {
+    flex: 0 0 auto;
+    width: 2.5rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--entry-text-muted, #7a7268);
+    line-height: 1.2;
+}
+#entryModal .entry-subtag-chips {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    flex: 1 1 auto;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
     cursor: grab;
+    padding-bottom: 1px;
+    /* 하단 스크롤바 숨김 — 넘치는 경우 우측 힌트로 안내 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* 마우스 드래그 스크롤 시 텍스트/칩 선택 방지 */
+    user-select: none;
+    -webkit-user-select: none;
 }
-#entryModal .entry-subtag-suggestions.entry-subtag-suggestions--dragging,
-#entryModal .entry-subtag-suggestions.entry-hscroll-strip--dragging {
+#entryModal .entry-subtag-chips.entry-hscroll-strip--dragging {
+    cursor: grabbing;
+}
+#entryModal .entry-subtag-chips .sub-chip {
+    /* 드래그 중 네이티브 이미지/텍스트 드래그 방지 */
+    -webkit-user-drag: none;
+}
+#entryModal .entry-subtag-chips::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+#entryModal .entry-subtag-chips-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+#entryModal .entry-subtag-chips-shell .entry-subtag-chips {
+    flex: 1 1 auto;
+    width: 100%;
+}
+#entryModal .entry-subtag-chips-shell--empty {
+    overflow: visible;
+}
+#entryModal .entry-subtag-chips-shell--scrollable::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 1.75rem;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--entry-surface, #fff) 70%);
+    z-index: 1;
+}
+#entryModal .entry-subtag-scroll-hint {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 999px;
+    background: var(--entry-surface, #fff);
+    color: var(--entry-text-muted, #7a7268);
+    box-shadow: 0 0 0 1px var(--entry-border-soft, #e8e2da);
+    pointer-events: none;
+}
+#entryModal .entry-subtag-scroll-hint[hidden] {
+    display: none !important;
+}
+#entryModal .entry-subtag-scroll-hint [data-lucide],
+#entryModal .entry-subtag-scroll-hint .lucide {
+    width: 0.75rem;
+    height: 0.75rem;
+    stroke-width: 2;
+}
+#entryModal .entry-subtag-chips.entry-subtag-chips--empty {
+    cursor: default;
+    overflow: visible;
+}
+#entryModal .entry-subtag-chips.entry-hscroll-strip--dragging,
+#entryModal .entry-subtag-suggestions.entry-subtag-suggestions--dragging .entry-subtag-chips {
     cursor: grabbing;
     user-select: none;
+}
+#entryModal .entry-subtag-empty {
+    margin: 0;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.3;
+    color: var(--entry-text-secondary, #4f4841);
+    background: var(--entry-accent-soft, #eaf8f2);
+    white-space: nowrap;
+}
+#entryModal .entry-subtag-empty--muted {
+    color: var(--entry-text-muted, #7a7268);
+    font-weight: 500;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
 }
 #entryModal .entry-subtag-suggestions .sub-chip,
 #entryModal .entry-subtag-suggestions .sub-chip-delete-btn {
@@ -2269,6 +2388,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-bottom: 0;
 }
 #entryModal .entry-subtag-suggestions .sub-chip {
+    flex-shrink: 0;
     white-space: nowrap;
     max-width: none;
     margin-right: 0;
@@ -6503,33 +6623,61 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 
 .daily-share-capture__sheet .share-cap-icon {
-    display: block;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.75rem;
     text-align: center;
-    line-height: 36px;
     box-sizing: border-box;
     overflow: hidden;
+    background: #f8fafc;
+    color: #94a3b8;
+}
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-morning {
+    background: #fffbeb;
+    color: #d97706;
+}
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-lunch {
+    background: #ecfdf5;
+    color: #059669;
+}
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-dinner {
+    background: #f0f9ff;
+    color: #0284c7;
+}
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-default,
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-pre_morning,
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-snack1,
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-snack2,
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-night {
+    background: #f8fafc;
+    color: #94a3b8;
+}
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-journal,
+.daily-share-capture__sheet .share-cap-icon.home-feed-card__icon--tone-daily_journal {
+    background: #f5f3ff;
+    color: #7c3aed;
 }
 .daily-share-capture__sheet .share-cap-icon--meal {
-    background: #e8f7f0;
-    color: #2d9f74;
+    background: #ecfdf5;
+    color: #059669;
 }
 .daily-share-capture__sheet .share-cap-icon--snack {
-    background: #fff1e6;
-    color: #c2410c;
+    background: #f8fafc;
+    color: #94a3b8;
 }
 .daily-share-capture__sheet .share-cap-icon--journal {
-    background: #eef0ff;
-    color: #4338ca;
+    background: #f5f3ff;
+    color: #7c3aed;
 }
 .daily-share-capture__sheet .share-cap-icon i,
 .daily-share-capture__sheet .share-cap-icon svg,
 .daily-share-capture__sheet .share-cap-icon .lucide {
-    display: inline-block;
-    width: 18px !important;
-    height: 18px !important;
+    display: block;
+    width: 1.125rem !important;
+    height: 1.125rem !important;
     vertical-align: middle;
     stroke: currentColor;
     color: inherit;
@@ -6616,36 +6764,63 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     padding-top: 12px;
 }
 .home-feed-card__icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: linear-gradient(145deg, var(--green-soft), #d1fae5);
+    /* 기록추가 슬롯 피커(.entry-slot-picker__icon)와 동일 형태 */
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.75rem;
     display: grid;
     place-items: center;
-    color: var(--green-deep, #2d9f74);
-    font-size: 20px;
     flex-shrink: 0;
+    font-size: 0.875rem;
+    background: #f8fafc;
+    color: #94a3b8;
 }
-/* 식사(본식): 민트 · 간식: 앰버 — 사진 없을 때 구분 */
+/* 슬롯 피커 Tailwind 톤과 동일 (amber/emerald/sky/violet/slate) */
+.home-feed-card__icon--tone-morning {
+    background: #fffbeb;
+    color: #d97706;
+}
+.home-feed-card__icon--tone-lunch {
+    background: #ecfdf5;
+    color: #059669;
+}
+.home-feed-card__icon--tone-dinner {
+    background: #f0f9ff;
+    color: #0284c7;
+}
+.home-feed-card__icon--tone-default,
+.home-feed-card__icon--tone-pre_morning,
+.home-feed-card__icon--tone-snack1,
+.home-feed-card__icon--tone-snack2,
+.home-feed-card__icon--tone-night {
+    background: #f8fafc;
+    color: #94a3b8;
+}
+.home-feed-card__icon--tone-journal,
+.home-feed-card__icon--tone-daily_journal {
+    background: #f5f3ff;
+    color: #7c3aed;
+}
+/* tone 미지정 폴백 */
 .home-feed-card__icon--meal {
-    background: linear-gradient(145deg, var(--green-soft), #d1fae5);
-    color: var(--green-deep, #2d9f74);
+    background: #ecfdf5;
+    color: #059669;
 }
 .home-feed-card__icon--snack {
-    background: linear-gradient(145deg, #fff7ed, #fed7aa);
-    color: #c2410c;
+    background: #f8fafc;
+    color: #94a3b8;
 }
 .home-feed-card__icon--journal {
-    background: linear-gradient(145deg, #eef2ff, #c7d2fe);
-    color: #4338ca;
+    background: #f5f3ff;
+    color: #7c3aed;
 }
 .home-feed-card__icon i,
 .home-feed-card__icon .lucide,
 .home-feed-card__icon [data-lucide],
 .home-feed-card__icon svg {
-    width: 1.2rem;
-    height: 1.2rem;
-    font-size: 1.1rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    font-size: 1.125rem;
     line-height: 1;
     color: inherit;
     stroke: currentColor;
@@ -13878,11 +14053,11 @@ body:has(#adminPage:not(.hidden)),
 #entryModal.entry-sheet-height-probe #entryWhatSuggestions,
 #entryModal.entry-sheet-height-probe #entryWhatSuggestions:empty {
     display: flex !important;
-    flex-flow: row nowrap;
-    align-items: center;
-    gap: 4px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.375rem;
     margin-top: 0.25rem !important;
-    min-height: 1.875rem;
+    min-height: 4.25rem;
     padding-bottom: 2px;
     box-sizing: border-box;
 }

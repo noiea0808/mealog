@@ -14,7 +14,7 @@ import { isEntryFieldQuickInputOn } from '../modals/entry-quick-input.js';
 import { refreshLucideIcons } from '../icons.js';
 
 /** 기록 모달 서브태그 중 '최근 사용'으로 보여 줄 최대 개수 (식사·간식 공통) */
-const RECENT_SUBTAG_CHIP_LIMIT = 5;
+const RECENT_SUBTAG_CHIP_LIMIT = 10;
 
 /**
  * onclick="..." 안에 삽입할 때 JSON.stringify는 큰따옴표로 속성이 끊겨 SyntaxError 남.
@@ -38,10 +38,10 @@ function expandCommaSeparatedSubTagItem(item) {
     const parent = typeof item === 'string' ? null : item.parent;
     const full = getSubTagItemText(item).trim();
     if (!full) return [];
-    if (!full.includes(',')) {
+    if (!/[,，]/.test(full)) {
         return [typeof item === 'string' ? { text: full, parent } : { ...item, text: full }];
     }
-    const parts = full.split(',').map((s) => s.trim()).filter(Boolean);
+    const parts = full.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
     if (parts.length <= 1) {
         return [typeof item === 'string' ? { text: full, parent } : { ...item, text: full }];
     }
@@ -50,6 +50,29 @@ function expandCommaSeparatedSubTagItem(item) {
 
 function getEntryFormMode() {
     return appState.entryFormMode === 'snack' ? 'snack' : 'meal';
+}
+
+/** 최근 태그 가로 넘침 시 스크롤 힌트(셰브론) 표시 */
+function syncEntrySubtagScrollHints(root) {
+    const shells = (root || document).querySelectorAll?.('.entry-subtag-chips-shell') || [];
+    shells.forEach((shell) => {
+        const chips = shell.querySelector('.entry-subtag-chips');
+        const hint = shell.querySelector('.entry-subtag-scroll-hint');
+        if (!chips || !hint) return;
+        const update = () => {
+            const overflow = chips.scrollWidth > chips.clientWidth + 2;
+            const atEnd = chips.scrollLeft + chips.clientWidth >= chips.scrollWidth - 2;
+            const show = overflow && !atEnd;
+            shell.classList.toggle('entry-subtag-chips-shell--scrollable', overflow);
+            hint.hidden = !show;
+            hint.setAttribute('aria-hidden', show ? 'false' : 'true');
+        };
+        if (!chips._subtagScrollHintBound) {
+            chips._subtagScrollHintBound = true;
+            chips.addEventListener('scroll', update, { passive: true });
+        }
+        requestAnimationFrame(update);
+    });
 }
 
 export function renderEntryChips() {
@@ -97,7 +120,7 @@ export function renderEntryChips() {
         const currentInputVal = document.getElementById(inputId)?.value || '';
         const isMultiSelect = id === d.whatSuggestions || id === d.withSuggestions;
         const currentValues = isMultiSelect
-            ? currentInputVal.split(',').map((v) => v.trim()).filter(Boolean)
+            ? currentInputVal.split(/[,，]/).map((v) => v.trim()).filter(Boolean)
             : [currentInputVal];
 
         if (!parentFilter) {
@@ -174,16 +197,30 @@ export function renderEntryChips() {
             return `<button type="button" class="sub-chip${active ? ' active' : ''}"${sourceAttr} onclick="window.selectTag('${inputId}', ${valueExprForOnclick(text)}, this, false, '${subTagKey}', '${id}')">${text}${star}</button>`;
         };
 
-        let html = '';
-        if (myTagsList.length) {
-            html += myTagsList.map((item) => renderChip(item, true)).join('');
-        }
-        if (recentList.length) {
-            if (html) html += '<span class="sub-chip-divider" aria-hidden="true"></span>';
-            html += recentList.map((item) => renderChip(item, false)).join('');
-        }
-        el.innerHTML = html;
-        if (html) refreshLucideIcons(el);
+        const userChipsHtml = myTagsList.length
+            ? myTagsList.map((item) => renderChip(item, true)).join('')
+            : `<p class="entry-subtag-empty">마이 → 태그에 등록하면 바로 고를 수 있어요.</p>`;
+        const recentChipsHtml = recentList.length
+            ? recentList.map((item) => renderChip(item, false)).join('')
+            : `<p class="entry-subtag-empty entry-subtag-empty--muted">최근 사용한 항목이 아직 없어요.</p>`;
+
+        el.innerHTML = `
+            <div class="entry-subtag-block entry-subtag-block--user">
+                <span class="entry-subtag-label">사용자</span>
+                <div class="entry-subtag-chips${myTagsList.length ? '' : ' entry-subtag-chips--empty'}">${userChipsHtml}</div>
+            </div>
+            <div class="entry-subtag-block entry-subtag-block--recent">
+                <span class="entry-subtag-label">최근</span>
+                <div class="entry-subtag-chips-shell${recentList.length ? '' : ' entry-subtag-chips-shell--empty'}">
+                    <div class="entry-subtag-chips${recentList.length ? '' : ' entry-subtag-chips--empty'}">${recentChipsHtml}</div>
+                    <span class="entry-subtag-scroll-hint" hidden aria-hidden="true" title="옆으로 밀어 더 보기">
+                        <i data-lucide="chevrons-right" aria-hidden="true"></i>
+                    </span>
+                </div>
+            </div>
+        `;
+        if (myTagsList.length || recentList.length) refreshLucideIcons(el);
+        syncEntrySubtagScrollHints(el);
     };
 
     const axis1List = getAxis1TagList(mode, tags);

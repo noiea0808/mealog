@@ -382,6 +382,7 @@ const TAB_SWIPE_IGNORE_SELECTOR = [
     '.overflow-x-auto',
     '.entry-photo-preview-row',
     '.entry-subtag-suggestions',
+    '.entry-subtag-chips',
     '.entry-detail-record-chips',
     '.entry-hscroll-strip',
 ].join(', ');

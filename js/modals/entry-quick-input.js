@@ -17,7 +17,7 @@ const FIELD_DOM = {
     with: { chips: ENTRY_DOM.withChips, section: ENTRY_DOM.withSection },
 };
 
-const DEFAULT_FIELD_PREFS = { where: false, what: false, with: false };
+const DEFAULT_FIELD_PREFS = { where: true, what: true, with: true };
 
 let quickInputSaveTimeout = null;
 
@@ -26,31 +26,46 @@ function getEntryFormModeKey() {
 }
 
 function migrateQuickInputPrefs(cur) {
+    let out;
     if (!cur || typeof cur !== 'object') {
-        return {
+        out = {
             meal: { ...DEFAULT_FIELD_PREFS },
             snack: { ...DEFAULT_FIELD_PREFS },
         };
-    }
-    if (cur?.meal?.where !== undefined || cur?.snack?.where !== undefined) {
-        return {
+    } else if (cur?.meal?.where !== undefined || cur?.snack?.where !== undefined) {
+        out = {
             meal: { ...DEFAULT_FIELD_PREFS, ...cur?.meal },
             snack: { ...DEFAULT_FIELD_PREFS, ...cur?.snack },
         };
+    } else {
+        const mainOn = cur?.main === true;
+        const snackOn = cur?.snack === true;
+        out = {
+            meal: { where: mainOn, what: mainOn, with: mainOn },
+            snack: { where: snackOn, what: snackOn, with: snackOn },
+        };
     }
-    const mainOn = cur?.main === true;
-    const snackOn = cur?.snack === true;
-    return {
-        meal: { where: mainOn, what: mainOn, with: mainOn },
-        snack: { where: snackOn, what: snackOn, with: snackOn },
-    };
+    // 레거시 기본(전부 접힘) → 열림 기본으로 한 번 승격
+    const legacyAllOff = (p) => p?.where === false && p?.what === false && p?.with === false;
+    if (!cur?.openedByDefaultV2 && legacyAllOff(out.meal) && legacyAllOff(out.snack)) {
+        out.meal = { ...DEFAULT_FIELD_PREFS };
+        out.snack = { ...DEFAULT_FIELD_PREFS };
+        out.openedByDefaultV2 = true;
+        out._didOpenByDefaultUpgrade = true;
+    } else if (cur?.openedByDefaultV2) {
+        out.openedByDefaultV2 = true;
+    }
+    return out;
 }
 
 export function ensureEntryModalQuickInputOnUserSettings() {
     if (!window.userSettings) return;
-    window.userSettings.entryModalQuickInput = migrateQuickInputPrefs(
-        window.userSettings.entryModalQuickInput
-    );
+    const prev = window.userSettings.entryModalQuickInput;
+    const next = migrateQuickInputPrefs(prev);
+    const upgraded = !!next._didOpenByDefaultUpgrade;
+    delete next._didOpenByDefaultUpgrade;
+    window.userSettings.entryModalQuickInput = next;
+    if (upgraded) schedulePersistEntryQuickInputPrefs();
 }
 
 function getFieldPrefs(modeKey) {
