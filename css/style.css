@@ -3617,7 +3617,7 @@ body.daily-journal-modal-open #timelineRefreshFab.initial-records-load-fab {
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
 }
 #dailyJournalModal #dailyJournalCommentInput.entry-comment-textarea::placeholder {
-    color: var(--entry-text-muted);
+    color: var(--entry-placeholder);
     font-weight: 500;
 }
 /* 모먼트 피드: 사진 탭 시 확대(라이트박스) 가능함을 표시 */
@@ -13812,6 +13812,8 @@ body:has(#adminPage:not(.hidden)),
     --entry-text-primary: var(--ink);
     --entry-text-secondary: var(--ink-2);
     --entry-text-muted: var(--muted);
+    /* placeholder만 muted보다 한 톤 연하게 */
+    --entry-placeholder: #b0a89e;
     --entry-border: var(--line);
     --entry-border-soft: var(--line);
     --entry-border-row: var(--line);
@@ -14339,12 +14341,13 @@ body:has(#adminPage:not(.hidden)),
 /* ── 입력 필드 (핵심 강조) ── */
 #entryModal .entry-axis-input-col input[type="text"],
 #entryModal .entry-axis-input-area input[type="text"],
+#entryModal #entryWhatSection .entry-what-textarea,
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
     background: var(--entry-input-bg);
     border: 1px solid transparent;
     border-radius: var(--entry-radius);
     color: var(--entry-text-primary);
-    font-weight: 600;
+    font-weight: 400;
     font-size: 0.875rem;
     transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, min-height 0.2s ease, padding 0.2s ease;
 }
@@ -14365,7 +14368,7 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-axis-input-area input[type="text"]::placeholder,
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea::placeholder,
 #entryModal #entryWhatSection .entry-what-textarea::placeholder {
-    color: var(--entry-text-muted);
+    color: var(--entry-placeholder);
     font-weight: 500;
 }
 #entryModal #entryWhereSection input[type="text"]::placeholder,
@@ -15385,16 +15388,16 @@ body:has(#adminPage:not(.hidden)),
 }
 :is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
 :is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
-    background: #6ee7b7;
-    color: var(--green-deep);
-    box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.2);
+    background: var(--green-deep);
+    color: #fff;
+    box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.28);
 }
 :is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on {
-    background: var(--entry-accent-soft);
-    color: var(--entry-accent-dark);
+    background: var(--green);
+    color: #fff;
 }
 :is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on i {
-    color: var(--entry-accent-dark);
+    color: #fff;
 }
 :is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-banned {
     background: #fff1f2;
