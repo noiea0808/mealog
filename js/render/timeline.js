@@ -1109,7 +1109,7 @@ function buildSnackTimelineCardHtml(
     const titleHtml = escapeHtml(menuLine || slotTitleForCard);
     const noteHtml =
         !forShareCapture && r.comment
-            ? `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`
+            ? `<p class="home-feed-card__note">"${escapeHtml(r.comment)}"</p>`
             : '';
     const tags = [];
     if (!forShareCapture) {
@@ -1185,7 +1185,7 @@ function buildMainMealTimelineCardHtml(
         if (p) metaHtml = escapeHtml(`${slotTitleForCard} · ${p}`);
         titleHtml = escapeHtml(menuLine || slotTitleForCard);
         if (!forShareCapture && r.comment) {
-            noteHtml = `<p class="home-feed-card__note">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>`;
+            noteHtml = `<p class="home-feed-card__note">"${escapeHtml(r.comment)}"</p>`;
         }
         if (!forShareCapture) {
             const clockTagMain = mealClockTagLabelFromRecord(r);
@@ -1353,7 +1353,7 @@ function buildMainMealListFilledRowHtml(
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 whitespace-pre-wrap break-words text-xs text-slate-400">"${escapeHtml(r.comment)}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -1361,7 +1361,7 @@ function buildMainMealListFilledRowHtml(
     </div>`;
 }
 
-/** 목록형: 기록 있음 — 좌: 슬롯 / @ 장소 · 우: 메뉴·코멘트(한 줄+말줄임) → 태그 */
+/** 목록형: 기록 있음 — 좌: 슬롯 / @ 장소 · 우: 메뉴·코멘트 → 태그 */
 function buildSnackListFilledRowHtml(
     dateStr,
     slot,
@@ -1418,7 +1418,7 @@ function buildSnackListFilledRowHtml(
                         ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 whitespace-pre-wrap break-words text-xs text-slate-400">"${escapeHtml(r.comment)}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -1614,7 +1614,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     const noteParts = [];
     if (comment && hasContent) {
         noteParts.push(
-            `<p class="home-feed-card__note">"${escapeHtml(comment).replace(/\n/g, ' ')}"</p>`
+            `<p class="home-feed-card__note">"${escapeHtml(comment)}"</p>`
         );
     }
     if (metricsPreview) noteParts.push(metricsPreview);
