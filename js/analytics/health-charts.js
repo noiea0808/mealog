@@ -687,7 +687,128 @@ function formatValue(v, decimals) {
     return n.toFixed(1);
 }
 
-/** 기간 내 체중·혈당 차트 렌더 */
+/** 스파크라인용 일별 값 (당일 복수는 close 사용) */
+function seriesValuesForSpark(series) {
+    const vals = series.dates.map((dateStr, index) => {
+        if (series.points[index] != null) return series.points[index];
+        const ohlc = series.ohlcDays.find((d) => d.index === index);
+        return ohlc ? ohlc.close : null;
+    });
+    return vals;
+}
+
+function lastDefined(values) {
+    for (let i = values.length - 1; i >= 0; i--) {
+        if (values[i] != null && Number.isFinite(values[i])) return { value: values[i], index: i };
+    }
+    return null;
+}
+
+function firstDefined(values) {
+    for (let i = 0; i < values.length; i++) {
+        if (values[i] != null && Number.isFinite(values[i])) return { value: values[i], index: i };
+    }
+    return null;
+}
+
+function renderVitalSparkCard({ sparkId, valueId, deltaId, emptyId, series, unit, decimals, stroke, fillId }) {
+    const sparkEl = document.getElementById(sparkId);
+    const valueEl = document.getElementById(valueId);
+    const deltaEl = document.getElementById(deltaId);
+    const emptyEl = document.getElementById(emptyId);
+    if (!sparkEl) return;
+
+    const values = seriesValuesForSpark(series);
+    const last = lastDefined(values);
+    const first = firstDefined(values);
+
+    if (!series.hasAny || !last) {
+        if (valueEl) valueEl.textContent = '—';
+        if (deltaEl) {
+            deltaEl.textContent = '';
+            deltaEl.classList.remove('is-up');
+        }
+        sparkEl.innerHTML = '';
+        if (emptyEl) {
+            emptyEl.classList.remove('hidden');
+            emptyEl.setAttribute('aria-hidden', 'false');
+        }
+        return;
+    }
+
+    if (emptyEl) {
+        emptyEl.classList.add('hidden');
+        emptyEl.setAttribute('aria-hidden', 'true');
+    }
+
+    if (valueEl) {
+        valueEl.textContent = formatValue(last.value, decimals);
+    }
+
+    if (deltaEl) {
+        if (first && first.index !== last.index) {
+            const delta = last.value - first.value;
+            const abs = Math.abs(delta);
+            const absText = formatValue(abs, decimals);
+            if (delta === 0 || abs < (decimals === 0 ? 0.5 : 0.05)) {
+                deltaEl.textContent = '변동 없음';
+                deltaEl.classList.remove('is-up');
+            } else if (delta < 0) {
+                deltaEl.textContent = `▼ ${absText} 기간`;
+                deltaEl.classList.remove('is-up');
+            } else {
+                deltaEl.textContent = `▲ ${absText} 기간`;
+                deltaEl.classList.add('is-up');
+            }
+        } else {
+            deltaEl.textContent = '';
+            deltaEl.classList.remove('is-up');
+        }
+    }
+
+    const defined = values.map((v, i) => (v == null ? null : { v, i })).filter(Boolean);
+    if (defined.length < 2) {
+        // 단일 점이면 수평선
+        const y = 36;
+        sparkEl.innerHTML = `<svg class="spark" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+            <circle cx="300" cy="${y}" r="3.5" fill="${stroke}"/>
+        </svg>`;
+        return;
+    }
+
+    const nums = defined.map((d) => d.v);
+    let min = Math.min(...nums);
+    let max = Math.max(...nums);
+    if (max === min) {
+        min -= 1;
+        max += 1;
+    }
+    const pad = (max - min) * 0.12;
+    min -= pad;
+    max += pad;
+    const w = 320;
+    const h = 72;
+    const coords = defined.map(({ v, i }) => {
+        const x = values.length <= 1 ? w : (i / (values.length - 1)) * w;
+        const y = h - ((v - min) / (max - min)) * (h - 12) - 6;
+        return { x, y };
+    });
+    const line = coords.map((c, idx) => `${idx === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+    const area = `${line} L${coords[coords.length - 1].x.toFixed(1)},${h} L${coords[0].x.toFixed(1)},${h} Z`;
+
+    sparkEl.innerHTML = `<svg class="spark" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+            <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${stroke}" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
+            </linearGradient>
+        </defs>
+        <path d="${area}" fill="url(#${fillId})"/>
+        <path d="${line}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+}
+
+/** 기간 내 체중·혈당 — 스파크라인(1차) + Chart.js 상세(토글) */
 export function renderHealthVitalsCharts(startStr, endStr) {
     const settings = window.userSettings;
     const dates = enumerateDates(startStr, endStr);
@@ -696,14 +817,38 @@ export function renderHealthVitalsCharts(startStr, endStr) {
     const weightSeries = buildDailySeries(settings, dates, 'weight');
     const glucoseSeries = buildDailySeries(settings, dates, 'bloodSugar');
 
-    renderVitalsChart('healthWeightChart', 'healthWeightEmpty', weightSeries, {
+    renderVitalSparkCard({
+        sparkId: 'healthWeightSpark',
+        valueId: 'healthWeightValue',
+        deltaId: 'healthWeightDelta',
+        emptyId: 'healthWeightEmpty',
+        series: weightSeries,
+        unit: 'kg',
+        decimals: 1,
+        stroke: '#3cb889',
+        fillId: 'wgSpark'
+    });
+    renderVitalSparkCard({
+        sparkId: 'healthBloodSugarSpark',
+        valueId: 'healthBloodSugarValue',
+        deltaId: 'healthBloodSugarDelta',
+        emptyId: 'healthBloodSugarEmpty',
+        series: glucoseSeries,
+        unit: 'mg/dL',
+        decimals: 0,
+        stroke: '#3b82f6',
+        fillId: 'bgSpark'
+    });
+
+    // 상세 Chart.js는 숨긴 wrap에 렌더 (펼칠 때 사용)
+    renderVitalsChart('healthWeightChart', null, weightSeries, {
         unit: 'kg',
         decimals: 1,
         styleKey: 'weight',
         metric: 'weight',
         metricLabel: '체중'
     });
-    renderVitalsChart('healthBloodSugarChart', 'healthBloodSugarEmpty', glucoseSeries, {
+    renderVitalsChart('healthBloodSugarChart', null, glucoseSeries, {
         unit: 'mg/dL',
         decimals: 0,
         styleKey: 'bloodSugar',

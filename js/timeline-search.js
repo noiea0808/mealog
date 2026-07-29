@@ -8,6 +8,7 @@ import { renderTimeline, localTodayYmd } from './render/timeline.js';
 import { escapeHtml } from './render/utils.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
+import { scheduleLucideIcons } from './icons.js';
 
 const PERIOD_PRESETS = {
     '7d': { label: '최근 1주', days: 7 },
@@ -100,12 +101,7 @@ function syncDateInputsFromPeriod() {
 function updatePeriodButtonUI() {
     document.querySelectorAll('[data-timeline-search-period]').forEach((btn) => {
         const active = btn.getAttribute('data-timeline-search-period') === searchPeriod;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active);
-        btn.classList.toggle('border-slate-200', !active);
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     syncDateInputsFromPeriod();
@@ -143,7 +139,7 @@ function renderSearchResults(results, keyword, range) {
     const ratingStarsHtml = (rating) => {
         const n = rating ? parseInt(rating, 10) : 0;
         if (n < 1 || n > 5) return '';
-        return `<span class="inline-flex items-center gap-0.5 text-yellow-500" title="만족도 ${n}점">${'<i class="fa-solid fa-star text-sm"></i>'.repeat(n)}</span>`;
+        return `<span class="timeline-search-rating inline-flex items-center gap-0.5" title="만족도 ${n}점">${'<i data-lucide="star" class="text-sm"></i>'.repeat(n)}</span>`;
     };
     const satietyIconHtml = (v) => {
         const s = satietyData(v);
@@ -211,6 +207,7 @@ export function openTimelineSearchModal() {
     if (!modal) return;
     modal.classList.remove('hidden');
     updatePeriodButtonUI();
+    scheduleLucideIcons(modal);
     requestAnimationFrame(() => {
         document.getElementById('timelineSearchKeyword')?.focus();
     });
@@ -296,7 +293,6 @@ export function handleSearch(k) {
 
 export function initTimelineSearchModal() {
     document.getElementById('timelineSearchBackdrop')?.addEventListener('click', closeTimelineSearchModal);
-    document.getElementById('timelineSearchCloseBtn')?.addEventListener('click', closeTimelineSearchModal);
     document.getElementById('timelineSearchCancelBtn')?.addEventListener('click', closeTimelineSearchModal);
     document.getElementById('timelineSearchSubmitBtn')?.addEventListener('click', () => {
         executeTimelineSearch();

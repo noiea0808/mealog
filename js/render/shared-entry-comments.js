@@ -3,7 +3,6 @@
  */
 import { escapeHtml } from './utils.js';
 import { applyCollapsedCaptionToElement } from './comment-caption-layout.js';
-import { syncMomentV2AuthorCommentBand } from '../main/moment-v2-author-comment.js';
 
 // 공유 게시물 코멘트 캐시 (lazy 로드 시 재요청 방지)
 const sharedCommentsCache = new Map();
@@ -16,7 +15,7 @@ export async function fetchMissingSharedComments(container, commentsPromise) {
     if (placeholders.length === 0) return;
     const items = [];
     const placeholdersByKey = new Map();
-    placeholders.forEach(div => {
+    placeholders.forEach((div) => {
         const entryId = div.getAttribute('data-entry-id');
         const ownerUserId = div.getAttribute('data-owner-user-id');
         if (!entryId || !ownerUserId) return;
@@ -40,7 +39,7 @@ export async function fetchMissingSharedComments(container, commentsPromise) {
     if (uncachedItems.length === 0) {
         placeholdersByKey.forEach((divs, key) => {
             const comment = commentByKey.get(key) || '';
-            divs.forEach(div => applyCommentToPlaceholder(el, div, comment));
+            divs.forEach((div) => applyCommentToPlaceholder(el, div, comment));
         });
         return;
     }
@@ -56,8 +55,8 @@ export async function fetchMissingSharedComments(container, commentsPromise) {
             const res = await callable({ items: uncachedItems });
             data = res && res.data ? res.data : res;
         }
-        const comments = (data && data.comments && Array.isArray(data.comments)) ? data.comments : [];
-        comments.forEach(c => {
+        const comments = data && data.comments && Array.isArray(data.comments) ? data.comments : [];
+        comments.forEach((c) => {
             const key = `${c.entryId}\t${c.ownerUserId}`;
             const comment = (c.comment && String(c.comment).trim()) || '';
             sharedCommentsCache.set(key, comment);
@@ -65,46 +64,72 @@ export async function fetchMissingSharedComments(container, commentsPromise) {
         });
         placeholdersByKey.forEach((divs, key) => {
             const comment = commentByKey.get(key) || '';
-            divs.forEach(div => applyCommentToPlaceholder(el, div, comment));
+            divs.forEach((div) => applyCommentToPlaceholder(el, div, comment));
         });
     } catch (e) {
         console.warn('공유 게시물 코멘트 일괄 조회 실패:', e);
-        placeholders.forEach(div => { div.remove(); });
+        placeholders.forEach((div) => {
+            div.remove();
+        });
     }
+}
+
+/** 시안 v2 본문 `.moment-v2-meal-note`에 작성자 코멘트 주입 */
+function injectMomentV2MealNote(v2Root, comment) {
+    const c = String(comment || '').trim();
+    if (!c || !v2Root?.querySelector) return;
+    const cap = v2Root.querySelector('[data-moment-v2-caption]');
+    if (!cap) return;
+    let bodyCaption = cap.querySelector('.moment-v2-body-caption');
+    if (!bodyCaption) {
+        bodyCaption = document.createElement('div');
+        bodyCaption.className = 'moment-v2-body-caption';
+        const social = cap.querySelector('.moment-v2-social-below-photo');
+        const author = cap.querySelector('.moment-v2-author-row');
+        if (social) cap.insertBefore(bodyCaption, social);
+        else if (author?.nextSibling) cap.insertBefore(bodyCaption, author.nextSibling);
+        else cap.appendChild(bodyCaption);
+    }
+    let note = bodyCaption.querySelector('.moment-v2-meal-note');
+    if (!note) {
+        note = document.createElement('div');
+        note.className = 'moment-v2-meal-note';
+        bodyCaption.appendChild(note);
+    }
+    note.innerHTML = `<div class="whitespace-pre-wrap break-words">${escapeHtml(c)}</div>`;
 }
 
 function applyCommentToPlaceholder(el, div, comment) {
     const groupIdx = div.getAttribute('data-group-idx');
     const postId = div.getAttribute('data-post-id');
-    const v2Root = div.closest?.('[data-moment-v2-root]');
-    if (v2Root && postId) {
+    const postEl = div.closest?.('.instagram-post');
+    const v2Root =
+        div.closest?.('[data-moment-v2-root]') || postEl?.querySelector?.('[data-moment-v2-root]') || null;
+
+    if (v2Root) {
         div.classList.remove('shared-comment-fetch-placeholder');
-        if (comment) {
+        const c = String(comment || '').trim();
+        if (c) {
             const raw = v2Root.getAttribute('data-moment-v2-labels');
             if (raw) {
                 try {
                     const labels = JSON.parse(decodeURIComponent(raw));
                     if (Array.isArray(labels)) {
-                        const c = String(comment).trim();
                         labels.forEach((row) => {
                             if (row && typeof row === 'object') row.ac = c;
                         });
                         v2Root.setAttribute('data-moment-v2-labels', encodeURIComponent(JSON.stringify(labels)));
-                        syncMomentV2AuthorCommentBand(v2Root);
                     }
                 } catch (_) {
                     /* ignore */
                 }
             }
-            const commentSection = el.querySelector(`#comment-section-${CSS.escape(postId)}`);
-            if (commentSection) {
-                commentSection.classList.remove('comments-empty');
-                commentSection.classList.add('border-t', 'border-slate-200');
-            }
+            injectMomentV2MealNote(v2Root, c);
         }
         div.remove();
         return;
     }
+
     div.classList.remove('shared-comment-fetch-placeholder');
     if (comment) {
         div.innerHTML = `
@@ -118,7 +143,10 @@ function applyCommentToPlaceholder(el, div, comment) {
             if (collapsed) applyCollapsedCaptionToElement(collapsed);
         });
         const commentSection = el.querySelector(`#comment-section-${CSS.escape(postId)}`);
-        if (commentSection) commentSection.classList.remove('comments-empty'), commentSection.classList.add('border-t', 'border-slate-200');
+        if (commentSection) {
+            commentSection.classList.remove('comments-empty');
+            commentSection.classList.add('border-t', 'border-slate-200');
+        }
     } else {
         div.remove();
     }

@@ -191,6 +191,28 @@ export function escapeHtml(text) {
 }
 
 /**
+ * 클릭/포인터 이벤트가 끝난 뒤에 DOM을 갱신한다.
+ * 클릭 핸들러 안에서 목록을 바로 다시 그리면 scroll anchoring으로
+ * 버튼이 밀려나 첫 클릭이 무시되는 경우가 있어, rAF 두 번 뒤에 실행한다.
+ * @param {() => void} fn
+ */
+export function afterAdminClick(fn) {
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            try {
+                fn();
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    });
+}
+
+if (typeof window !== 'undefined') {
+    window.afterAdminClick = afterAdminClick;
+}
+
+/**
  * 관리자 화면 새로고침 버튼: 조회 중 스피너·배경색·비활성화 후 복구
  * @param {HTMLElement|string|null} button — 요소 또는 id
  * @param {() => Promise<void>} work
@@ -210,11 +232,12 @@ export async function runAdminRefreshAction(button, work, options = {}) {
     el.dataset.arPrevStyle = el.getAttribute('style') || '';
     el.disabled = true;
     el.setAttribute('aria-busy', 'true');
-    el.innerHTML = `<i class="fa-solid fa-spinner fa-spin ${spinClass}" aria-hidden="true"></i><span>${loadingText}</span>`;
+    el.innerHTML = `<i data-lucide="loader-circle" class="${spinClass} lucide-spin" aria-hidden="true"></i><span>${loadingText}</span>`;
     el.style.backgroundColor = '#475569';
     el.style.color = '#fff';
     el.style.borderColor = 'transparent';
     el.style.cursor = 'wait';
+    if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(el);
     try {
         await work();
     } finally {
@@ -228,5 +251,6 @@ export async function runAdminRefreshAction(button, work, options = {}) {
         delete el.dataset.arPrevStyle;
         el.removeAttribute('aria-busy');
         el.disabled = false;
+        if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(el);
     }
 }

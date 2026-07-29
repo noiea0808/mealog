@@ -29,11 +29,13 @@ export const appState = {
     tempSettings: null,
     
     // UI 상태
-    viewMode: 'list',
+    /** 타임라인은 일간(page)만 사용 — 전체(list) 스크롤 모드는 제거됨 */
+    viewMode: 'page',
     currentTab: 'timeline',
     pageDate: new Date(),
     galleryFilterUserId: null, // 앨범 탭에서 필터링된 사용자 ID
     galleryFilterPostId: null,  // 알림에서 클릭 시 해당 게시물만 보기
+    galleryNotificationFilterPhotos: null, // 알림→모먼트: 피드에 없어도 열 수 있게 미리 로드한 사진들
     galleryFilterTab: 'moment',  // 사용자 프로필 뷰에서 탭: 'moment' | 'board' (모먼트 | 밀톡)
     /** 사용자 프로필 모먼트 그리드: 처음 3×5셀(15게시물), 더보기마다 +15 (클라이언트 슬라이스) */
     galleryUserProfileMomentVisiblePostCount: 15,
@@ -70,11 +72,15 @@ export const appState = {
     currentEditingDate: "",
     currentEditingSlotId: "",
     currentPhotos: [], // 미리보기용 원본 data URL(선택 직후) 또는 Storage URL; 업로드 시에만 압축
+    /** 기록 시트 히어로에 표시 중인 사진 인덱스 */
+    recordPhotoHeroIndex: 0,
     /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
     currentPhotoMeta: [],
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
+    /** 모달 열 때의 사진 비율 — 비율만 바뀌어도 모먼트 재동기화에 사용 */
+    originalPhotoAspectRatio: '1:1',
     wantsToShare: false, // 공유를 원하는지 여부
     currentRating: null,
     currentSatiety: null,
@@ -121,6 +127,9 @@ export const appState = {
     selectedWeek: 1,
     recentWeekStartDate: null, // 최근 1주 모드에서 사용하는 시작 날짜
     analysisType: 'main', // 'best', 'main', 'snack', 'health'
+    /** 식사/간식 분석 슬롯 필터: 'all' | morning|lunch|dinner | pre_morning|snack1|snack2|night */
+    analysisSlotFilter: 'all',
+    mealdangView: 'analysis', // 'analysis' | 'comment' — 밀당 헤더 탭
     
     // UI 상호작용
     currentDetailChart: null,

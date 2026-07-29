@@ -201,7 +201,7 @@ function openFeedImageLightbox(imageUrl) {
         _feedImageLightboxOverlay.id = 'feedImageLightbox';
         /* 본문과 동일 max-w-md 폭 안에서만 표시(데스크톡 웹에서 뷰포트 전체로 퍼지지 않게) */
         _feedImageLightboxOverlay.className =
-            'hidden fixed inset-0 z-[10001] flex justify-center bg-slate-950/90 backdrop-blur-sm';
+            'hidden fixed inset-0 z-[10001] flex justify-center';
         _feedImageLightboxOverlay.setAttribute('role', 'dialog');
         _feedImageLightboxOverlay.setAttribute('aria-modal', 'true');
         _feedImageLightboxOverlay.setAttribute('aria-labelledby', 'feedImageLightboxTitle');
@@ -212,11 +212,11 @@ function openFeedImageLightbox(imageUrl) {
                 <span class="text-xs font-medium text-white/80">사진</span>
                 <div class="flex items-center gap-2">
                     <button type="button" data-feed-lb-download class="inline-flex h-10 min-w-[2.5rem] items-center justify-center gap-1.5 rounded-full bg-white/15 px-3 text-sm font-medium text-white hover:bg-white/25 active:bg-white/20" aria-label="다운로드">
-                        <i class="fa-solid fa-download" aria-hidden="true"></i>
+                        <i data-lucide="download" aria-hidden="true"></i>
                         <span class="hidden sm:inline">다운로드</span>
                     </button>
                     <button type="button" data-feed-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25 active:bg-white/20" aria-label="닫기">
-                        <i class="fa-solid fa-times text-lg leading-none" aria-hidden="true"></i>
+                        <i data-lucide="x" class="text-lg leading-none" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
@@ -287,11 +287,11 @@ function feedOtherAuthorAvatarBlock(post, authorDisplay) {
         authorAvatar.type === 'photo' && photoSrc
             ? `<img src="${photoSrc}" alt="" width="36" height="36" class="h-9 w-9 rounded-full object-cover bg-slate-200 block" loading="lazy" decoding="async">`
             : authorAvatar.type === 'emoji'
-              ? `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-lg leading-none" style="font-family: system-ui, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">${escapeHtml(authorAvatar.value)}</span>`
-              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-100 text-sm font-bold text-slate-700">${escapeHtml(authorAvatar.value)}</span>`;
+              ? `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-200 text-lg leading-none" style="font-family: system-ui, 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;">${escapeHtml(authorAvatar.value)}</span>`
+              : `<span class="flex h-9 w-9 items-center justify-center rounded-full border-0 bg-slate-200 text-lg font-bold leading-none text-slate-700" style="font-family: var(--avatar-fallback-font);">${escapeHtml(authorAvatar.value)}</span>`;
 
     return `
-        <button type="button" class="feed-other-avatar-btn flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full p-0 shadow-sm outline-none ring-1 ring-white focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:opacity-90 ${authorAvatar.type === 'photo' && photoSrc ? 'border-0 bg-slate-200' : 'border-0 bg-transparent'}"
+        <button type="button" class="feed-other-avatar-btn flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full p-0 outline-none ring-1 ring-white focus-visible:ring-2 focus-visible:ring-emerald-500/40 active:opacity-90 ${authorAvatar.type === 'photo' && photoSrc ? 'border-0 bg-slate-200' : 'border-0 bg-transparent'}"
             onclick="event.stopPropagation(); window.openUserProfileFromBoard && window.openUserProfileFromBoard('${aid}')"
             aria-label="${escapeHtml(authorDisplay.nickname || '익명')} 프로필">
             ${inner}
@@ -311,17 +311,17 @@ function feedReactionRowHtml(post, alignEnd) {
         'inline-flex items-center gap-0.5 rounded-full border border-white/50 bg-white/80 px-1.5 py-[3.25px] shadow-sm';
     if (like > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-heart text-[13px] leading-none text-rose-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${like}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="heart" class="text-[13px] leading-none text-rose-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${like}</span></span>`
         );
     }
     if (thumbs > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-thumbs-up text-[13px] leading-none text-amber-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${thumbs}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="thumbs-up" class="text-[13px] leading-none text-amber-500" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${thumbs}</span></span>`
         );
     }
     if (check > 0) {
         chips.push(
-            `<span class="${chipShell}"><i class="fa-solid fa-check text-[13px] leading-none text-emerald-600" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${check}</span></span>`
+            `<span class="${chipShell}"><i data-lucide="check" class="text-[13px] leading-none text-emerald-600" aria-hidden="true"></i><span class="text-[13px] leading-none tabular-nums text-slate-700">${check}</span></span>`
         );
     }
     if (!chips.length) return '';
@@ -385,20 +385,22 @@ function feedBubbleHtml(post, opts = {}) {
 
     const imgOnlyPendingSpinner =
         isMine && isPendingSend && hasImg && !hasBody
-            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
+            ? `<span class="pointer-events-none absolute left-2 top-2 z-[1] flex h-5 w-5 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i data-lucide="loader-circle" class="text-[11px] leading-none lucide-spin" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`
             : '';
+    // 사진만: 말풍선 모서리와 동일 / 사진+글: 상단만 라운드(하단은 텍스트 영역)
+    const imgOnlyRound = isMine ? 'rounded-2xl rounded-br-md' : 'rounded-2xl rounded-bl-md';
     const imgWrapClass = hasImg
-        ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex flex-col gap-1.5 overflow-hidden ${
-              combinedImgText ? 'rounded-t-2xl rounded-b-none' : 'rounded-lg'
+        ? `${imgOnlyPendingSpinner ? 'relative' : ''} flex w-full flex-col gap-0.5 overflow-hidden ${
+              combinedImgText ? 'rounded-t-2xl rounded-b-none' : imgOnlyRound
           }`
         : '';
-    const imgChildRound = combinedImgText ? 'rounded-none' : 'rounded-lg';
+    const imgChildRound = combinedImgText ? 'rounded-none' : imgOnlyRound;
     const imgBlock = hasImg
         ? `<div class="${imgWrapClass}">${imgOnlyPendingSpinner}${imageUrlsToShow
               .map((urlRaw) => {
                   const src = escapeHtml(String(urlRaw));
-                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-w-[min(92vw,280px)] cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 ${imgChildRound}" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
-            <img src="${src}" alt="" class="pointer-events-none max-h-[min(42vh,280px)] w-full max-w-[min(92vw,280px)] ${imgChildRound} bg-slate-100 object-contain" loading="lazy" decoding="async">
+                  return `<button type="button" class="feed-image-lightbox-trigger block w-full max-h-[min(42vh,280px)] overflow-hidden cursor-zoom-in p-0 border-0 bg-transparent text-left outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900/40 ${imgChildRound}" data-feed-image-open data-feed-image-src="${src}" aria-label="사진 크게 보기">
+            <img src="${src}" alt="" class="pointer-events-none block h-auto w-full ${imgChildRound} bg-slate-100 object-cover object-center" loading="lazy" decoding="async">
         </button>`;
               })
               .join('')}</div>`
@@ -410,17 +412,21 @@ function feedBubbleHtml(post, opts = {}) {
     if (isMine) {
         const replyQ = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'mine') : '';
         const reactRow = feedReactionRowHtml(post, true);
-        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i class="fa-solid fa-spinner fa-spin text-[11px] leading-none" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
+        const pendingSpinnerLead = `<span class="pointer-events-none flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-800/85 text-white shadow-sm" aria-hidden="true"><i data-lucide="loader-circle" class="text-[11px] leading-none lucide-spin" aria-hidden="true"></i></span><span class="sr-only">전송 중</span>`;
         const bodyMine = hasBody
             ? isPendingSend
                 ? `<div class="flex min-w-0 max-w-full items-start gap-2 ${hasImg ? 'px-5 py-2' : ''}">${pendingSpinnerLead}<p class="m-0 min-w-0 flex-1 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem]">${body}</p></div>`
                 : `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>`
             : '';
+        const mineColW = hasImg
+            ? 'w-full max-w-[min(88%,22rem)] sm:max-w-[18rem]'
+            : 'w-fit max-w-[min(88%,22rem)] sm:max-w-[18rem]';
+        const mineBubbleW = hasImg ? 'block w-full max-w-full overflow-hidden' : 'inline-block w-fit max-w-full';
         return `
             <div class="feed-timeline-row feed-timeline-row-mine flex justify-end items-end gap-2 pr-0.5 sm:pr-2" data-post-id="${pid}"${isPendingSend ? ' aria-busy="true"' : ''}>
                 ${timeMine}
-                <div class="flex w-fit max-w-[min(88%,22rem)] flex-col items-end sm:max-w-[18rem]">
-                    <div class="feed-chat-bubble feed-chat-bubble-mine inline-block w-fit max-w-full text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
+                <div class="flex ${mineColW} flex-col items-end">
+                    <div class="feed-chat-bubble feed-chat-bubble-mine ${mineBubbleW} text-left rounded-2xl rounded-br-md ${hasImg ? 'p-0' : 'px-5 py-2'} text-base shadow-sm">
                         ${replyQ}
                         ${imgBlock}
                         ${bodyMine}
@@ -447,6 +453,7 @@ function feedBubbleHtml(post, opts = {}) {
     const reactRowOther = feedReactionRowHtml(post, false);
     const replyQOther = post.replyTo ? feedReplyQuoteHtml(post.replyTo, 'other') : '';
 
+    const otherBubbleW = hasImg ? 'block w-full max-w-[min(72vw,20rem)] sm:max-w-[18rem] overflow-hidden' : 'inline-block w-fit max-w-full';
     return `
         <div class="feed-timeline-row flex justify-start gap-2 pl-2 pr-2 sm:pr-10" data-post-id="${pid}">
             <div class="flex min-w-0 max-w-full items-start gap-2">
@@ -455,7 +462,7 @@ function feedBubbleHtml(post, opts = {}) {
                     ${nickRow}
                     <div class="flex min-w-0 max-w-full flex-col items-start">
                         <div class="flex max-w-full items-end gap-1">
-                            <div class="feed-chat-bubble feed-chat-bubble-other inline-block w-fit max-w-full rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
+                            <div class="feed-chat-bubble feed-chat-bubble-other ${otherBubbleW} rounded-2xl rounded-bl-md border ${hasImg ? 'p-0' : 'px-5 py-2'} text-left text-base shadow-sm">
                                 ${replyQOther}
                                 ${imgBlock}
                                 ${hasBody ? `<p class="m-0 max-w-[min(72vw,20rem)] whitespace-pre-wrap break-words leading-snug sm:max-w-[18rem] ${hasImg ? 'px-5 py-2' : ''}">${body}</p>` : ''}
@@ -473,7 +480,7 @@ function feedRefreshButtonHtml() {
     return `
     <div class="feed-timeline-footer mt-5 flex w-full shrink-0 justify-center px-2 pb-1 pt-0.5">
       <button type="button" class="feed-refresh-btn inline-flex items-center justify-center gap-2 rounded-full border border-white/40 bg-white/15 px-4 py-2 text-sm font-medium text-white shadow-sm backdrop-blur-sm outline-none transition-colors hover:bg-white/25 active:bg-white/20 disabled:pointer-events-none disabled:opacity-50" data-feed-refresh aria-label="대화 새로고침">
-        <i class="fa-solid fa-arrows-rotate text-base" aria-hidden="true"></i>
+        <i data-lucide="refresh-cw" class="text-base" aria-hidden="true"></i>
         <span>새로고침</span>
       </button>
     </div>`;
@@ -522,8 +529,8 @@ function feedDateSeparatorHtml(date) {
         ...SEOUL_LOCALE_OPTIONS
     });
     return `
-        <div class="feed-date-separator flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
-            <span class="max-w-[min(92vw,20rem)] truncate rounded-full bg-black/20 px-3 py-1 text-center text-[11px] font-medium text-white/95 shadow-sm backdrop-blur-[1px]">${escapeHtml(label)}</span>
+        <div class="feed-date-separator lounge-day-pill-wrap flex w-full shrink-0 justify-center py-2" role="separator" aria-label="${escapeHtml(label)}">
+            <span class="lounge-day-pill max-w-[min(92vw,20rem)] truncate">${escapeHtml(label)}</span>
         </div>`;
 }
 
@@ -533,7 +540,7 @@ function paintFeedTimeline(root, posts) {
         root.innerHTML = `
             <div class="feed-timeline-stack flex min-h-full flex-col justify-end">
                 <div class="feed-timeline-empty flex flex-1 flex-col items-center justify-center py-10 px-4 text-center">
-                    <i class="fa-regular fa-comments feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
+                    <i data-lucide="message-circle" class="feed-timeline-empty-icon text-3xl mb-2" aria-hidden="true"></i>
                     <p class="feed-timeline-empty-title text-xs">아직 메시지가 없어요</p>
                     <p class="feed-timeline-empty-sub text-[11px] mt-1">아래에서 첫 메시지를 보내 보세요</p>
                 </div>
@@ -743,7 +750,7 @@ export async function renderBoardFeedTab(options = {}) {
         appState.feedTimelineHasMore = false;
         root.innerHTML = `
         <div class="feed-panel-loading flex flex-col items-center justify-center py-10">
-            <i class="fa-solid fa-spinner fa-spin feed-panel-loading-icon text-2xl mb-2" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="feed-panel-loading-icon text-2xl mb-2 lucide-spin" aria-hidden="true"></i>
             <span class="feed-panel-loading-text text-xs">불러오는 중…</span>
         </div>`;
     }

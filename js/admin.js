@@ -8,6 +8,7 @@ import {
     checkAdminStatus,
     escapeHtml
 } from './admin/utils.js';
+import { initLucideIcons, scheduleLucideIcons } from './icons.js';
 import {
     getUserStatistics,
     getSharedPhotos,
@@ -106,6 +107,8 @@ function showAdminPage(user) {
     
     // 로딩 오버레이 숨기기
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
+
+    initLucideIcons();
     
     // 데이터 로드 (통계 제외 UID 문서가 없으면 기본값으로 시드 — rules·클라이언트와 맞춤)
     void (async () => {
@@ -152,6 +155,12 @@ window.switchAdminTab = function(tab) {
         activeTabContent.classList.remove('hidden');
     }
     resetAdminScrollTop();
+    scheduleLucideIcons(activeTabContent || document);
+
+    // UI가이드 mockup CSS/테마가 <html>에 남으면 다른 탭까지 깨지므로 항상 정리
+    if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+        window.clearUiGuideDocumentThemeLeak();
+    }
     
     // 탭별 데이터 새로고침
     if (tab === 'dashboard') {
@@ -172,6 +181,16 @@ window.switchAdminTab = function(tab) {
         switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
     } else if (tab === 'adminLog') {
         loadAdminLogTab();
+    } else if (tab === 'uiGuide') {
+        const active =
+            !document.getElementById('uiGuide-panel-flow')?.classList.contains('hidden')
+                ? 'flow'
+                : !document.getElementById('uiGuide-panel-popup')?.classList.contains('hidden')
+                  ? 'popup'
+                  : !document.getElementById('uiGuide-panel-palette')?.classList.contains('hidden')
+                    ? 'palette'
+                    : 'hub';
+        void ensureUiGuidePanel(active);
     }
 }
 
@@ -181,6 +200,217 @@ window.switchAdminTab = function(tab) {
 window.refreshDashboardStats = refreshDashboardStats;
 window.switchDashboardSubtab = switchDashboardSubtab;
 window.addDashboardExcludedUid = addExcludedUidFromAdminInput;
+
+window.switchUiGuideSubtab = function(which) {
+    const hubPanel = document.getElementById('uiGuide-panel-hub');
+    const palettePanel = document.getElementById('uiGuide-panel-palette');
+    const popupPanel = document.getElementById('uiGuide-panel-popup');
+    const flowPanel = document.getElementById('uiGuide-panel-flow');
+    const btnHub = document.getElementById('uiGuide-subtab-hub');
+    const btnPalette = document.getElementById('uiGuide-subtab-palette');
+    const btnPopup = document.getElementById('uiGuide-subtab-popup');
+    const btnFlow = document.getElementById('uiGuide-subtab-flow');
+    const active =
+        'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
+    const idle =
+        'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
+    const w =
+        which === 'palette'
+            ? 'palette'
+            : which === 'popup'
+              ? 'popup'
+              : which === 'flow'
+                ? 'flow'
+                : 'hub';
+    if (hubPanel) hubPanel.classList.toggle('hidden', w !== 'hub');
+    if (palettePanel) palettePanel.classList.toggle('hidden', w !== 'palette');
+    if (popupPanel) popupPanel.classList.toggle('hidden', w !== 'popup');
+    if (flowPanel) flowPanel.classList.toggle('hidden', w !== 'flow');
+    if (btnHub) btnHub.className = w === 'hub' ? active : idle;
+    if (btnPalette) btnPalette.className = w === 'palette' ? active : idle;
+    if (btnPopup) btnPopup.className = w === 'popup' ? active : idle;
+    if (btnFlow) btnFlow.className = w === 'flow' ? active : idle;
+    void ensureUiGuidePanel(w);
+};
+
+const UI_GUIDE_ASSET_VER = '20260725a';
+
+function loadUiGuideScript(src, globalName) {
+    if (!loadUiGuideScript._map) loadUiGuideScript._map = new Map();
+    if (!loadUiGuideScript._ver) loadUiGuideScript._ver = new Map();
+    const key = src + '@' + UI_GUIDE_ASSET_VER;
+    if (
+        globalName &&
+        typeof window[globalName] === 'function' &&
+        loadUiGuideScript._ver.get(globalName) === UI_GUIDE_ASSET_VER
+    ) {
+        return Promise.resolve();
+    }
+    if (loadUiGuideScript._map.has(key)) return loadUiGuideScript._map.get(key);
+    const p = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src + (src.includes('?') ? '&' : '?') + 'v=' + UI_GUIDE_ASSET_VER;
+        s.async = true;
+        s.onload = () => {
+            if (globalName) loadUiGuideScript._ver.set(globalName, UI_GUIDE_ASSET_VER);
+            resolve();
+        };
+        s.onerror = () => reject(new Error(src + ' load failed'));
+        document.head.appendChild(s);
+    }).catch((err) => {
+        loadUiGuideScript._map.delete(key);
+        throw err;
+    });
+    loadUiGuideScript._map.set(key, p);
+    return p;
+}
+
+function showUiGuideMountError(mount, err) {
+    if (!mount) return;
+    mount.innerHTML =
+        '<div style="padding:24px;color:#ee5f70;font-size:13px;line-height:1.5">' +
+        'UI 가이드를 불러오지 못했습니다.<br><small>' +
+        String(err && err.message ? err.message : err) +
+        '</small></div>';
+}
+
+function resetUiGuideMountIfStale(mount, kind) {
+    if (!mount) return;
+    if (mount.dataset.uiGuideAssetVer === UI_GUIDE_ASSET_VER) return;
+    mount.dataset.uiGuideAssetVer = UI_GUIDE_ASSET_VER;
+    mount.dataset.uiGuideEmbedded = '';
+    mount.dataset.uiGuideEmbedMode = '';
+    mount.dataset.ughMounted = '';
+    mount.dataset.piMounted = '';
+    mount.dataset.sfMounted = '';
+    mount.innerHTML = '';
+    if (mount.shadowRoot) mount.shadowRoot.innerHTML = '';
+    if (kind) mount.dataset.uiGuideKind = kind;
+}
+
+let uiGuideHubPromise = null;
+let uiGuidePopupInventoryPromise = null;
+let uiGuideScreenFlowPromise = null;
+let uiGuideRuntimeVer = null;
+
+function bustUiGuideRuntimeIfNeeded() {
+    if (uiGuideRuntimeVer === UI_GUIDE_ASSET_VER) return;
+    uiGuideRuntimeVer = UI_GUIDE_ASSET_VER;
+    uiGuideHubPromise = null;
+    uiGuidePopupInventoryPromise = null;
+    uiGuideScreenFlowPromise = null;
+    ['uiGuideHubMount', 'uiGuidePaletteMount', 'uiGuidePopupMount', 'uiGuideFlowMount'].forEach((id) => {
+        const mount = document.getElementById(id);
+        if (mount) resetUiGuideMountIfStale(mount, mount.getAttribute('data-ui-guide-kind') || '');
+    });
+}
+
+function ensureUiGuideHub() {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById('uiGuideHubMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountUiGuideHub === 'function' && mount.dataset.ughMounted === '1') {
+        return Promise.resolve(window.mountUiGuideHub(mount));
+    }
+    if (uiGuideHubPromise) return uiGuideHubPromise;
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">시안 허브 불러오는 중…</div>';
+    uiGuideHubPromise = loadUiGuideScript('docs/ui-mockups/ui-guide-hub.js', 'mountUiGuideHub')
+        .then(() => window.mountUiGuideHub(mount))
+        .catch((err) => {
+            uiGuideHubPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
+    return uiGuideHubPromise;
+}
+
+function ensureUiGuidePopupInventory() {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById('uiGuidePopupMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountPopupInventory === 'function' && mount.dataset.piMounted === '1') {
+        return Promise.resolve(window.mountPopupInventory(mount, { standalone: false }));
+    }
+    if (uiGuidePopupInventoryPromise) return uiGuidePopupInventoryPromise;
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">팝업 목록 불러오는 중…</div>';
+    uiGuidePopupInventoryPromise = loadUiGuideScript('docs/ui-mockups/popup-inventory.js', 'mountPopupInventory')
+        .then(() => window.mountPopupInventory(mount, { standalone: false }))
+        .catch((err) => {
+            uiGuidePopupInventoryPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
+    return uiGuidePopupInventoryPromise;
+}
+
+function ensureUiGuideScreenFlow() {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById('uiGuideFlowMount');
+    if (!mount) return Promise.resolve(null);
+    if (typeof window.mountScreenFlow === 'function' && mount.dataset.sfMounted === '1') {
+        return Promise.resolve(
+            window.mountScreenFlow(mount, {
+                standalone: false,
+                onOpenPopupTab: () => window.switchUiGuideSubtab('popup')
+            })
+        );
+    }
+    if (uiGuideScreenFlowPromise) return uiGuideScreenFlowPromise;
+    mount.innerHTML = '<div style="padding:24px;color:#7a7268;font-size:13px">화면 플로우 불러오는 중…</div>';
+    uiGuideScreenFlowPromise = loadUiGuideScript('docs/ui-mockups/screen-flow.js', 'mountScreenFlow')
+        .then(() =>
+            window.mountScreenFlow(mount, {
+                standalone: false,
+                onOpenPopupTab: () => window.switchUiGuideSubtab('popup')
+            })
+        )
+        .catch((err) => {
+            uiGuideScreenFlowPromise = null;
+            console.error(err);
+            showUiGuideMountError(mount, err);
+            return null;
+        });
+    return uiGuideScreenFlowPromise;
+}
+
+async function ensureUiGuideHtmlEmbed(mountId) {
+    bustUiGuideRuntimeIfNeeded();
+    const mount = document.getElementById(mountId);
+    if (!mount) return null;
+    const src = mount.getAttribute('data-ui-guide-src');
+    if (!src) return null;
+    if (mount.dataset.uiGuideEmbedded && mount.dataset.uiGuideEmbedMode === 'shadow') {
+        return mount;
+    }
+    const shadow = mount.shadowRoot || mount.attachShadow({ mode: 'open' });
+    shadow.innerHTML =
+        '<style>:host{display:block;height:100%;font:13px Pretendard,sans-serif;color:#7a7268}</style>' +
+        '<div style="display:grid;place-items:center;height:100%;padding:24px">페이지 불러오는 중…</div>';
+    try {
+        await loadUiGuideScript('docs/ui-mockups/embed-html-page.js', 'embedHtmlPage');
+        if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+            window.clearUiGuideDocumentThemeLeak();
+        }
+        return await window.embedHtmlPage(mount, src);
+    } catch (err) {
+        console.error(err);
+        showUiGuideMountError(mount, err);
+        return null;
+    }
+}
+
+function ensureUiGuidePanel(which) {
+    bustUiGuideRuntimeIfNeeded();
+    if (typeof window.clearUiGuideDocumentThemeLeak === 'function') {
+        window.clearUiGuideDocumentThemeLeak();
+    }
+    if (which === 'popup') return ensureUiGuidePopupInventory();
+    if (which === 'flow') return ensureUiGuideScreenFlow();
+    if (which === 'palette') return ensureUiGuideHtmlEmbed('uiGuidePaletteMount');
+    return ensureUiGuideHub();
+}
 
 // 공유 게시물 새로고침
 window.refreshSharedPhotos = async function() {
@@ -219,7 +449,7 @@ window.confirmDeletePhoto = async function() {
     
     const btn = document.getElementById('confirmDeleteBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>삭제 중...';
+    btn.innerHTML = '<i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>삭제 중...';
     
     try {
         await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', currentDeletePhotoId));
@@ -230,7 +460,7 @@ window.confirmDeletePhoto = async function() {
         // 성공 메시지
         const successDiv = document.createElement('div');
         successDiv.className = 'fixed top-4 right-4 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg z-[600] flex items-center gap-2';
-        successDiv.innerHTML = '<i class="fa-solid fa-check"></i> <span>게시물이 삭제되었습니다.</span>';
+        successDiv.innerHTML = '<i data-lucide="check"></i> <span>게시물이 삭제되었습니다.</span>';
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 3000);
         
@@ -657,6 +887,7 @@ window.switchContentSidebar = function (section, opts) {
     } else if (section === 'loginBanner') {
         loadLoginBannerConfig();
     }
+    scheduleLucideIcons(activeMainSection || document.getElementById('admin-tab-content-content') || document);
 };
 
 const ATT_DEFAULT_NO_L1 = '우리 오늘부터';
@@ -717,7 +948,7 @@ function createAdminLoadingSpinnerMessageRow(text = '') {
         'admin-loading-spinner-msg-remove shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:bg-red-50 hover:border-red-200 hover:text-red-600';
     rm.title = '삭제';
     rm.setAttribute('aria-label', '문구 삭제');
-    rm.innerHTML = '<i class="fa-solid fa-trash text-sm"></i>';
+    rm.innerHTML = '<i data-lucide="trash-2" class="text-sm"></i>';
     rm.addEventListener('click', () => {
         wrap.remove();
         const list = document.getElementById('adminLoadingSpinnerMessageList');
@@ -804,7 +1035,7 @@ async function loadApkContent() {
                 <p class="text-sm text-slate-600">용량: ${sizeMb} MB</p>
                 <p class="text-sm text-slate-500">등록일: ${updatedAt ? updatedAt.toLocaleString('ko-KR') : '-'}</p>
                 <a href="${d.downloadUrl}" target="_blank" class="inline-flex items-center gap-2 mt-2 px-3 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-200 transition-colors">
-                    <i class="fa-solid fa-download"></i> 다운로드 링크
+                    <i data-lucide="download"></i> 다운로드 링크
                 </a>
             `;
         } else {
@@ -1018,7 +1249,7 @@ function renderTermsContent(type, content, updatedAt) {
     // 편집 버튼 상태 초기화
     const editBtn = document.getElementById(`${type}EditBtn`);
     if (editBtn) {
-        editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+        editBtn.innerHTML = '<i data-lucide="pen" class="mr-1"></i>수정';
         editBtn.onclick = () => window.editTerms(type);
         editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
     }
@@ -1039,7 +1270,7 @@ window.editTerms = function(type) {
     textarea.focus();
     
     // 버튼 텍스트 변경
-    editBtn.innerHTML = '<i class="fa-solid fa-times mr-1"></i>취소';
+    editBtn.innerHTML = '<i data-lucide="x" class="mr-1"></i>취소';
     editBtn.onclick = () => window.cancelEditTerms(type);
     editBtn.className = 'px-3 py-1.5 bg-slate-600 text-white rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors';
 };
@@ -1061,7 +1292,7 @@ window.cancelEditTerms = function(type) {
     textarea.value = display.textContent;
     
     // 버튼 텍스트 변경
-    editBtn.innerHTML = '<i class="fa-solid fa-pencil mr-1"></i>수정';
+    editBtn.innerHTML = '<i data-lucide="pen" class="mr-1"></i>수정';
     editBtn.onclick = () => window.editTerms(type);
     editBtn.className = 'px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors';
 };
@@ -1101,7 +1332,7 @@ async function loadTermsHistory() {
     if (!historyList) return;
     
     try {
-        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
+        historyList.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p class="text-sm">약관 이력 로딩 중...</p></div>';
         
         // 배포된 약관 버전 목록 가져오기 (terms 문서의 하위 컬렉션으로 저장)
         const versionsColl = collection(db, 'artifacts', appId, 'content', 'terms', 'versions');
@@ -1155,7 +1386,7 @@ async function loadTermsHistory() {
                                 확인
                             </button>
                             ${!isCurrent ? `<button onclick="window.deleteTermsVersion('${v.id}')" class="px-4 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
-                                <i class="fa-solid fa-trash mr-1"></i>삭제
+                                <i data-lucide="trash-2" class="mr-1"></i>삭제
                             </button>` : ''}
                         </div>
                     </div>
@@ -1206,7 +1437,7 @@ window.showTermsVersion = async function(versionId) {
             <!-- 이용약관 -->
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                 <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-file-contract text-emerald-600"></i>
+                    <i data-lucide="file-text" class="text-emerald-600"></i>
                     이용약관
                 </h5>
                 <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">
@@ -1221,7 +1452,7 @@ window.showTermsVersion = async function(versionId) {
             <!-- 개인정보 처리방침 -->
             <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                 <h5 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-shield-halved text-blue-600"></i>
+                    <i data-lucide="shield" class="text-blue-600"></i>
                     개인정보 처리방침
                 </h5>
                 <div class="bg-white rounded-lg p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-line">

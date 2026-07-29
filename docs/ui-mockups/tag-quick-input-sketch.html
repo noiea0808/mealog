@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>mealog · 태그 빠른입력 스케치 (구분 먼저)</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
+  <style>
+    :root {
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcfa;
+      --page-deep: #faf6f2;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #1c1917;
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+      min-height: 100dvh;
+    }
+    [data-lucide], .lucide {
+      width: 1rem; height: 1rem; stroke-width: 1.5; flex-shrink: 0;
+    }
+    .page { max-width: 980px; margin: 0 auto; padding: 28px 20px 64px; }
+    .hero { color: #fff; margin-bottom: 22px; }
+    .hero h1 { font-size: 1.3rem; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.02em; }
+    .hero p { font-size: 0.9rem; line-height: 1.55; color: rgba(255,255,255,0.72); max-width: 42rem; }
+    .nav-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .nav-links a {
+      font-size: 12px; font-weight: 600; color: var(--green-mute); text-decoration: none;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+      padding: 7px 12px; border-radius: 999px;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+    .col-label {
+      display: flex; align-items: baseline; justify-content: space-between;
+      gap: 8px; margin-bottom: 10px; color: #fff;
+    }
+    .col-label h2 { font-size: 0.95rem; font-weight: 700; }
+    .badge {
+      font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+      background: var(--green-soft); color: var(--green-deep);
+    }
+    .phone {
+      background: var(--page); border-radius: 28px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+    }
+    .phone-head {
+      background: var(--card); padding: 14px 16px 10px; border-bottom: 1px solid var(--line);
+      font-size: 13px; font-weight: 700;
+    }
+    .phone-head .slot { color: var(--muted); font-weight: 600; }
+    .tabs {
+      display: flex; gap: 4px; margin: 10px 12px 0; padding: 4px;
+      border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+    }
+    .tabs span {
+      flex: 1; text-align: center; font-size: 11.5px; font-weight: 600;
+      padding: 8px 2px; border-radius: 10px; color: var(--muted); line-height: 1.25;
+    }
+    .tabs span.on { background: var(--green-soft); color: var(--ink); }
+    .body { background: var(--page-deep); padding-bottom: 14px; }
+    .zone {
+      background: var(--card); border-bottom: 1px solid rgba(208,198,186,0.55); padding: 12px 16px;
+    }
+    .zone-label {
+      display: flex; align-items: center; justify-content: space-between;
+      min-height: 2.4rem; margin-bottom: 8px;
+    }
+    .zone-label strong {
+      display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700;
+    }
+    .chev {
+      width: 1.75rem; height: 1.75rem; border-radius: 999px;
+      border: 1px solid var(--green-mute); background: var(--green-soft); color: var(--green-deep);
+      display: inline-flex; align-items: center; justify-content: center; transform: rotate(90deg);
+    }
+    .field {
+      width: 100%; border: 1px solid var(--line); border-radius: 16px; background: #fff;
+      padding: 10px 12px; font-size: 13px; font-weight: 500; color: var(--muted);
+      min-height: 3.2rem; line-height: 1.35;
+    }
+    .field.filled { color: var(--ink); font-weight: 700; font-size: 14px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .chip {
+      border: 1px solid #e2e8f0; background: #fff; color: var(--ink-2);
+      font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 999px;
+      cursor: pointer; font-family: inherit;
+    }
+    .chip.on { background: var(--green-deep); border-color: var(--green-deep); color: #fff; }
+    .sub {
+      display: flex; flex-direction: column; gap: 0.4rem; margin-top: 10px;
+    }
+    .sub-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+    .sub-label {
+      flex: 0 0 2.5rem; font-size: 11px; font-weight: 700; color: var(--muted);
+    }
+    .sub-chips {
+      display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; min-width: 0; flex: 1;
+    }
+    .sub-chip {
+      flex-shrink: 0; border: 1px solid #cbd5e1; background: #f1f5f9; color: #1e293b;
+      font-size: 12px; font-weight: 600; padding: 5px 8px; border-radius: 999px;
+      cursor: pointer; font-family: inherit; white-space: nowrap;
+    }
+    .sub-chip.on { background: #475569; border-color: #475569; color: #fff; }
+    .sub-empty {
+      margin: 0; font-size: 12px; font-weight: 500; line-height: 1.4; color: var(--ink-2);
+    }
+    .sub-empty.muted { color: var(--muted); }
+    .note {
+      margin-top: 12px; padding: 12px 14px; border-radius: 12px;
+      background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.78);
+      font-size: 12.5px; line-height: 1.5;
+    }
+    .note strong { color: #fff; }
+    .seg {
+      display: inline-flex; gap: 4px; padding: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 12px; margin-bottom: 16px;
+    }
+    .seg button {
+      border: 0; background: transparent; color: rgba(255,255,255,0.65);
+      font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px;
+      border-radius: 9px; cursor: pointer;
+    }
+    .seg button[aria-selected="true"] { background: #fff; color: var(--ink); }
+    .panel { display: none; }
+    .panel.is-on { display: block; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <h1>태그 빠른입력 · 구분 먼저</h1>
+      <p>
+        메인(구분)을 고르면 아래에 <strong style="color:#fff">사용자</strong> / <strong style="color:#fff">최근</strong>이 이어집니다.
+        무엇을·어디서·누구와, 식사·간식 동일. 빠른 입력은 기본 열림.
+      </p>
+      <div class="nav-links">
+        <a href="./index.html">시안 허브</a>
+        <a href="./entry-sheet-v2.html">기록시트 v2</a>
+      </div>
+    </header>
+
+    <div class="seg" role="tablist">
+      <button type="button" aria-selected="true" data-panel="what">무엇을</button>
+      <button type="button" aria-selected="false" data-panel="where">어디서</button>
+      <button type="button" aria-selected="false" data-panel="with">누구와</button>
+    </div>
+
+    <div class="panel is-on" id="panel-what">
+      <div class="board">
+        <div>
+          <div class="col-label"><h2>메인 선택 전</h2><span class="badge">열림 기본</span></div>
+          <div class="phone">
+            <div class="phone-head">3월 12일 <span class="slot">· 점심</span></div>
+            <div class="tabs"><span class="on">뭘 먹었어요?</span><span>어디서? 누구랑?</span><span>어땠어요?</span></div>
+            <div class="body">
+              <div class="zone">
+                <div class="zone-label">
+                  <strong><i data-lucide="utensils"></i> 무엇을</strong>
+                  <span class="chev"><i data-lucide="chevron-right"></i></span>
+                </div>
+                <div class="field">무엇을 드셨나요?</div>
+                <div class="chips">
+                  <button type="button" class="chip">한식</button>
+                  <button type="button" class="chip">양식</button>
+                  <button type="button" class="chip">일식</button>
+                  <button type="button" class="chip">중식</button>
+                  <button type="button" class="chip">기타</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="note"><strong>1단계</strong> 구분이 적어 먼저 고르기 쉽습니다. 사용자/최근은 메인 선택 후 표시.</div>
+        </div>
+        <div>
+          <div class="col-label"><h2>메인 선택 후</h2><span class="badge">사용자 + 최근</span></div>
+          <div class="phone" id="demoWhat">
+            <div class="phone-head">3월 12일 <span class="slot">· 점심</span></div>
+            <div class="tabs"><span class="on">뭘 먹었어요?</span><span>어디서? 누구랑?</span><span>어땠어요?</span></div>
+            <div class="body">
+              <div class="zone">
+                <div class="zone-label">
+                  <strong><i data-lucide="utensils"></i> 무엇을</strong>
+                  <span class="chev"><i data-lucide="chevron-right"></i></span>
+                </div>
+                <div class="field" id="whatField">무엇을 드셨나요?</div>
+                <div class="chips" id="whatMains">
+                  <button type="button" class="chip on" data-main="한식">한식</button>
+                  <button type="button" class="chip" data-main="양식">양식</button>
+                  <button type="button" class="chip" data-main="일식">일식</button>
+                  <button type="button" class="chip" data-main="중식">중식</button>
+                  <button type="button" class="chip" data-main="기타">기타</button>
+                </div>
+                <div class="sub" id="whatSub">
+                  <div class="sub-row">
+                    <span class="sub-label">사용자</span>
+                    <div class="sub-chips" id="whatUser">
+                      <p class="sub-empty">마이 → 태그에 등록하면 바로 고를 수 있어요.</p>
+                    </div>
+                  </div>
+                  <div class="sub-row">
+                    <span class="sub-label">최근</span>
+                    <div class="sub-chips" id="whatRecent">
+                      <button type="button" class="sub-chip">김치찌개</button>
+                      <button type="button" class="sub-chip">된장찌개</button>
+                      <button type="button" class="sub-chip">비빔밥</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="note"><strong>2단계</strong> 사용자 미설정 시 안내 문구. 최근은 기록하며 쌓입니다. 메인 칩을 바꿔 보세요.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-where">
+      <div class="board">
+        <div>
+          <div class="col-label"><h2>어디서 (식사)</h2><span class="badge">동일 패턴</span></div>
+          <div class="phone">
+            <div class="phone-head">어디서? 누구랑? 탭</div>
+            <div class="body">
+              <div class="zone">
+                <div class="zone-label">
+                  <strong><i data-lucide="map-pin"></i> 어디서</strong>
+                  <span class="chev"><i data-lucide="chevron-right"></i></span>
+                </div>
+                <div class="field">돋보기로 장소 검색 또는 직접 입력</div>
+                <div class="chips">
+                  <span class="chip on">집밥</span>
+                  <span class="chip">외식</span>
+                  <span class="chip">배달·포장</span>
+                </div>
+                <div class="sub">
+                  <div class="sub-row">
+                    <span class="sub-label">사용자</span>
+                    <div class="sub-chips"><span class="sub-chip">우리집</span><span class="sub-chip">본가</span></div>
+                  </div>
+                  <div class="sub-row">
+                    <span class="sub-label">최근</span>
+                    <div class="sub-chips"><span class="sub-chip">오피스</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="col-label"><h2>어디서 (간식)</h2><span class="badge">동일 패턴</span></div>
+          <div class="phone">
+            <div class="phone-head">간식 모드</div>
+            <div class="body">
+              <div class="zone">
+                <div class="zone-label">
+                  <strong><i data-lucide="map-pin"></i> 어디서</strong>
+                  <span class="chev"><i data-lucide="chevron-right"></i></span>
+                </div>
+                <div class="field">어디서 드셨나요?</div>
+                <div class="chips">
+                  <span class="chip on">카페</span>
+                  <span class="chip">집</span>
+                  <span class="chip">사무실</span>
+                </div>
+                <div class="sub">
+                  <div class="sub-row">
+                    <span class="sub-label">사용자</span>
+                    <div class="sub-chips">
+                      <p class="sub-empty">마이 → 태그에 등록하면 바로 고를 수 있어요.</p>
+                    </div>
+                  </div>
+                  <div class="sub-row">
+                    <span class="sub-label">최근</span>
+                    <div class="sub-chips"><span class="sub-chip">스타벅스</span><span class="sub-chip">투썸</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-with">
+      <div class="board">
+        <div>
+          <div class="col-label"><h2>누구와</h2><span class="badge">식사·간식 공통</span></div>
+          <div class="phone">
+            <div class="phone-head">어디서? 누구랑? 탭</div>
+            <div class="body">
+              <div class="zone">
+                <div class="zone-label">
+                  <strong><i data-lucide="users"></i> 누구와</strong>
+                  <span class="chev"><i data-lucide="chevron-right"></i></span>
+                </div>
+                <div class="field">누구와 드셨나요?</div>
+                <div class="chips">
+                  <span class="chip on">가족</span>
+                  <span class="chip">친구</span>
+                  <span class="chip">직장동료</span>
+                  <span class="chip">혼자</span>
+                </div>
+                <div class="sub">
+                  <div class="sub-row">
+                    <span class="sub-label">사용자</span>
+                    <div class="sub-chips"><span class="sub-chip">엄마</span><span class="sub-chip">동생</span></div>
+                  </div>
+                  <div class="sub-row">
+                    <span class="sub-label">최근</span>
+                    <div class="sub-chips"><span class="sub-chip">아빠</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="note">기록시트의 「어떻게」 설정 라벨은 「어디서」와 통일하는 편이 좋습니다. 구조는 동일합니다.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    lucide.createIcons();
+
+    const DATA = {
+      한식: {
+        user: [],
+        recent: ['김치찌개', '된장찌개', '비빔밥'],
+      },
+      양식: {
+        user: ['파스타', '스테이크'],
+        recent: ['피자'],
+      },
+      일식: {
+        user: ['초밥'],
+        recent: ['라멘', '돈카츠'],
+      },
+      중식: {
+        user: [],
+        recent: ['짜장면'],
+      },
+      기타: {
+        user: [],
+        recent: [],
+      },
+    };
+
+    document.querySelectorAll('.seg button').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.seg button').forEach((b) => b.setAttribute('aria-selected', 'false'));
+        btn.setAttribute('aria-selected', 'true');
+        document.querySelectorAll('.panel').forEach((p) => p.classList.remove('is-on'));
+        document.getElementById('panel-' + btn.dataset.panel)?.classList.add('is-on');
+      });
+    });
+
+    function renderWhatSub(main) {
+      const d = DATA[main] || { user: [], recent: [] };
+      const userEl = document.getElementById('whatUser');
+      const recentEl = document.getElementById('whatRecent');
+      if (!userEl || !recentEl) return;
+      if (d.user.length) {
+        userEl.innerHTML = d.user.map((t) => `<button type="button" class="sub-chip">${t}</button>`).join('');
+      } else {
+        userEl.innerHTML = '<p class="sub-empty">마이 → 태그에 등록하면 바로 고를 수 있어요.</p>';
+      }
+      if (d.recent.length) {
+        recentEl.innerHTML = d.recent.map((t) => `<button type="button" class="sub-chip">${t}</button>`).join('');
+      } else {
+        recentEl.innerHTML = '<p class="sub-empty muted">최근 사용한 항목이 아직 없어요.</p>';
+      }
+    }
+
+    document.getElementById('whatMains')?.addEventListener('click', (e) => {
+      const chip = e.target.closest('.chip');
+      if (!chip) return;
+      document.querySelectorAll('#whatMains .chip').forEach((c) => c.classList.remove('on'));
+      chip.classList.add('on');
+      renderWhatSub(chip.dataset.main);
+    });
+
+    document.getElementById('whatSub')?.addEventListener('click', (e) => {
+      const chip = e.target.closest('.sub-chip');
+      if (!chip) return;
+      document.querySelectorAll('#whatSub .sub-chip').forEach((c) => c.classList.remove('on'));
+      chip.classList.add('on');
+      const field = document.getElementById('whatField');
+      field.textContent = chip.textContent;
+      field.classList.add('filled');
+    });
+  </script>
+</body>
+</html>

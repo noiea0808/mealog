@@ -1,10 +1,10 @@
 import { addCompositionAwareInput } from '../utils.js';
 import { showToast } from '../ui.js';
 import { callableFunctions } from '../firebase.js';
+import { scheduleLucideIcons } from '../icons.js';
+import { ENTRY_DOM } from './entry-form-config.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
-
-import { ENTRY_DOM } from './entry-form-config.js';
 
 export function openKakaoPlaceSearch(mode = 'meal') {
     const targetId =
@@ -20,52 +20,56 @@ function createKakaoSearchModal() {
     const targetId = window._kakaoPlaceSearchTarget || ENTRY_DOM.whereInput;
     const targetInput = document.getElementById(targetId);
     if (!targetInput) return;
-    
-    // 기존 모달이 있으면 제거
+
     const existingModal = document.getElementById('kakaoPlaceSearchModal');
     if (existingModal) {
         existingModal.remove();
     }
-    
-    // 모달 생성
+
     const modal = document.createElement('div');
     modal.id = 'kakaoPlaceSearchModal';
-    modal.className = 'fixed inset-0 bg-slate-900/60 z-[400] flex items-end justify-center overflow-x-hidden';
+    modal.className = 'kakao-place-sheet';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'kakaoPlaceSearchTitle');
     modal.innerHTML = `
-        <div class="w-full max-w-md mx-auto bg-white rounded-t-[1.25rem] flex flex-col min-h-0 max-h-[min(80vh,100%)]">
-            <div class="p-4 border-b flex justify-between items-center shrink-0">
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">음식점 검색</h2>
-                <button type="button" onclick="document.getElementById('kakaoPlaceSearchModal').remove()" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+        <div class="kakao-place-sheet__panel">
+            <div class="kakao-place-sheet__handle" aria-hidden="true"></div>
+            <div class="kakao-place-sheet__header">
+                <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">음식점 검색</h2>
+                <button type="button" class="kakao-place-sheet__close" onclick="document.getElementById('kakaoPlaceSearchModal')?.remove()" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
             </div>
-            <div class="p-4 flex-1 min-h-0 flex flex-col">
-                <div class="relative mb-4 shrink-0">
-                    <button type="button" onclick="window.searchKakaoPlaces()" class="absolute left-2 top-1/2 -translate-y-1/2 w-[1.8rem] h-[1.8rem] flex items-center justify-center bg-slate-500 text-white rounded-md z-10 border border-slate-500 hover:bg-slate-600 hover:border-slate-600 transition-colors" aria-label="검색">
-                        <i class="fa-solid fa-magnifying-glass text-[11px] text-white"></i>
+            <div class="kakao-place-sheet__body">
+                <div class="kakao-place-sheet__search">
+                    <button type="button" class="kakao-place-sheet__search-btn" onclick="window.searchKakaoPlaces()" aria-label="검색">
+                        <i data-lucide="search" aria-hidden="true"></i>
                     </button>
-                    <input type="text" id="kakaoSearchInput" placeholder="음식점 이름을 2글자 이상 입력하세요" 
-                        class="w-full py-[0.6rem] pl-[46px] pr-[3.25rem] bg-slate-50 rounded-xl outline-none text-sm border border-transparent focus:border-slate-400 transition-all">
-                    <button type="button" onclick="window.applyKakaoPlaceManualText()" class="absolute right-2 top-1/2 -translate-y-1/2 z-10 px-1.5 py-1 text-sm font-extrabold text-emerald-600 hover:text-emerald-700 active:opacity-80 shrink-0" aria-label="검색어를 그대로 장소로 입력">입력</button>
+                    <input type="text" id="kakaoSearchInput" class="kakao-place-sheet__input" placeholder="음식점 이름을 2글자 이상 입력하세요" autocomplete="off">
+                    <button type="button" class="kakao-place-sheet__apply-btn" onclick="window.applyKakaoPlaceManualText()" aria-label="검색어를 그대로 장소로 입력">입력</button>
                 </div>
-                <div id="kakaoSearchResults" class="space-y-2 max-h-[50vh] min-h-0 overflow-y-auto flex-1"></div>
+                <p class="kakao-place-sheet__hint">목록에서 고르거나, 오른쪽 <strong>입력</strong>으로 그대로 넣을 수 있어요.</p>
+                <div id="kakaoSearchResults" class="kakao-place-sheet__results"></div>
             </div>
         </div>
     `;
-    
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+
     document.body.appendChild(modal);
-    
-    // 검색 입력창에 이벤트 추가
+    scheduleLucideIcons(modal);
+
     const searchInput = document.getElementById('kakaoSearchInput');
     if (searchInput) {
-        // 엔터 키 이벤트
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 window.searchKakaoPlaces();
             }
         });
-        
-        // 자동완성 (입력 중 실시간 검색) - 디바운싱 + 조합 이벤트 처리
+
         let searchTimeout = null;
         if (!searchInput._kakaoSearchCompositionInit) {
             const resultsContainer = document.getElementById('kakaoSearchResults');
@@ -84,7 +88,7 @@ function createKakaoSearchModal() {
             });
             searchInput._kakaoSearchCompositionInit = true;
         }
-        
+
         searchInput.focus();
     }
 }
@@ -95,37 +99,37 @@ function renderKakaoSearchResults(restaurants) {
     if (!resultsContainer) return;
     
     if (restaurants.length === 0) {
-        resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 결과가 없습니다.</div>';
+        resultsContainer.innerHTML = '<div class="kakao-place-sheet__empty">검색 결과가 없습니다.</div>';
         return;
     }
-    
+
     resultsContainer.innerHTML = restaurants.map((place) => {
         const placeName = place.place_name || '';
         const address = place.address_name || '';
         const roadAddress = place.road_address_name || '';
         const placeId = place.id || '';
         const category = place.category_name || '';
-        
+
         const escapeForAttr = (str) => {
             if (!str) return '';
             return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ').replace(/\r/g, '');
         };
-        
+
         const safePlaceName = escapeForAttr(placeName);
         const safeAddress = escapeForAttr(roadAddress || address);
         const safePlaceId = escapeForAttr(placeId);
-        
+
         const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category };
         let placeDataB64 = '';
         try {
             placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         } catch (e) {}
-        
+
         return `
-            <button onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')" 
-                class="w-full p-4 bg-white border border-slate-200 rounded-xl text-left hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                <div class="font-bold text-slate-800 mb-1">${placeName}</div>
-                <div class="text-xs text-slate-500">${roadAddress || address}</div>
+            <button type="button" onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')"
+                class="kakao-place-sheet__result">
+                <div class="kakao-place-sheet__result-name">${placeName}</div>
+                <div class="kakao-place-sheet__result-addr">${roadAddress || address}</div>
             </button>
         `;
     }).join('');
@@ -159,7 +163,7 @@ export async function searchKakaoPlaces() {
     }
 
     const seq = ++kakaoSearchRequestSeq;
-    resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중...</div>';
+    resultsContainer.innerHTML = '<div class="kakao-place-sheet__empty">검색 중...</div>';
     
     try {
         let restaurants = [];
@@ -219,7 +223,7 @@ export async function searchKakaoPlaces() {
         } else {
             showToast('검색 중 오류가 발생했습니다.', 'error');
         }
-        resultsContainer.innerHTML = '<div class="text-center py-8 text-slate-400 text-sm">검색 중 오류가 발생했습니다.</div>';
+        resultsContainer.innerHTML = '<div class="kakao-place-sheet__empty">검색 중 오류가 발생했습니다.</div>';
         console.error('카카오 장소 검색 오류:', err);
     }
 }

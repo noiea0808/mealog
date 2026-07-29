@@ -139,7 +139,7 @@ export async function renderLoungeChatManagement() {
     if (!container) return;
 
     container.innerHTML =
-        '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+        '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
 
     try {
         let { items, hasMore, empty } = await fetchLoungeChatPage(loungeCurrentPage);

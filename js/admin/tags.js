@@ -2,6 +2,7 @@
 import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 // 태그 콘텐츠 로드
 export async function loadTagsContent() {
@@ -67,20 +68,21 @@ function renderTags(type, tags) {
              data-tag-index="${index}"
              data-tag-type="${type}">
             <div class="flex items-center justify-center w-6 h-6 text-slate-400 flex-shrink-0">
-                <i class="fa-solid fa-grip-vertical text-xs"></i>
+                <i data-lucide="grip-vertical" class="text-xs"></i>
             </div>
             <input type="text" value="${escapeHtml(tag || '')}" 
                    onchange="window.updateTagItem('${type}', this)"
                    class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
                    placeholder="태그 이름">
             <button onclick="window.removeTagItem('${type}', this.closest('.tag-item'))" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                <i class="fa-solid fa-trash"></i>
+                <i data-lucide="trash-2"></i>
             </button>
         </div>
     `).join('');
     
     // 드래그 앤 드롭 이벤트 설정
     setupTagDragAndDrop(type, container);
+    scheduleLucideIcons(container);
 }
 
 // 태그 드래그 앤 드롭 설정

@@ -10,10 +10,12 @@ import {
     boardOperations,
     getFeedNotificationsForUser,
     subscribeFeedNotifications,
-    isNotificationTargetAvailable
+    isNotificationTargetAvailable,
+    loadSharedPhotosForMomentNotification
 } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml, renderGallery } from '../render/index.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
 const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
@@ -145,17 +147,32 @@ function getNotificationReadState() {
     return notificationReadStateCache;
 }
 
+/** 읽음 상태 저장 직렬화 — 동시 setDoc이 서로 덮어쓰지 않도록 */
+let _notificationReadWriteChain = Promise.resolve();
+
 /** 읽음 상태 저장: 메모리 캐시 + Firestore (필드명 제한으로 data는 JSON 문자열로 저장) */
 async function setNotificationReadState(state) {
     notificationReadStateCache = state;
     const user = window.currentUser;
     if (!user || user.isAnonymous) return;
+    let toSave;
     try {
-        const ref = doc(db, 'artifacts', appId, 'users', user.uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
-        await setDoc(ref, { data: JSON.stringify(state) }, { merge: true });
-    } catch (e) {
-        console.warn('알림 읽음 상태 Firestore 저장 실패:', e);
+        toSave = JSON.parse(JSON.stringify(state));
+    } catch (_) {
+        toSave = { ...state };
     }
+    const uid = user.uid;
+    _notificationReadWriteChain = _notificationReadWriteChain
+        .then(async () => {
+            try {
+                const ref = doc(db, 'artifacts', appId, 'users', uid, 'config', NOTIFICATION_READ_FIRESTORE_DOC);
+                await setDoc(ref, { data: JSON.stringify(toSave) }, { merge: true });
+            } catch (e) {
+                console.warn('알림 읽음 상태 Firestore 저장 실패:', e);
+            }
+        })
+        .catch(() => {});
+    return _notificationReadWriteChain;
 }
 
 window.openNotificationModal = () => {
@@ -178,7 +195,6 @@ window.closeNotificationPopup = () => {
 
 export function initNotificationModal() {
     document.getElementById('notificationBackdrop')?.addEventListener('click', window.closeNotificationPopup);
-    document.getElementById('notificationCloseBtn')?.addEventListener('click', window.closeNotificationPopup);
     document.getElementById('notificationDismissBtn')?.addEventListener('click', window.closeNotificationPopup);
 }
 
@@ -187,17 +203,53 @@ function getNotificationReadPostIds() {
     return new Set(Object.keys(state));
 }
 
-function markNotificationAsRead(notificationKey, lastCommentAt, commentCount) {
+/** 읽음 키: type:postId + 모먼트 alias + 레거시 postId */
+function notificationKeysForItem(item) {
+    const keys = new Set();
+    if (!item || !item.postId) return [];
+    const type = item.type || 'moment';
+    keys.add(`${type}:${item.postId}`);
+    if (type === 'moment') {
+        keys.add(item.postId);
+        (item.aliasPostIds || []).forEach((id) => {
+            const s = String(id || '').trim();
+            if (!s) return;
+            keys.add(`moment:${s}`);
+            keys.add(s);
+        });
+    }
+    return [...keys];
+}
+
+function markNotificationItemAsRead(item) {
     const state = getNotificationReadState();
-    state[notificationKey] = { lastCommentAt: lastCommentAt ?? 0, commentCount: commentCount ?? 0 };
+    const payload = {
+        lastCommentAt: Number(item.lastCommentAt) || 0,
+        commentCount: Number(item.commentCount) || 0,
+        readAt: Date.now()
+    };
+    notificationKeysForItem(item).forEach((key) => {
+        state[key] = { ...payload };
+    });
     setNotificationReadState(state);
 }
 
 /** 같은 글에 새 댓글이 달리면( lastCommentAt이 커지면) 미확인으로 표시 */
 function isNotificationRead(item, readState) {
-    const key = `${item.type}:${item.postId}`;
-    const legacyKey = item.type === 'moment' ? item.postId : null;
-    const stored = readState[key] || (legacyKey ? readState[legacyKey] : null);
+    const keys = notificationKeysForItem(item);
+    let stored = null;
+    for (const key of keys) {
+        const s = readState[key];
+        if (!s) continue;
+        if (
+            !stored ||
+            Number(s.lastCommentAt) > Number(stored.lastCommentAt) ||
+            (Number(s.lastCommentAt) === Number(stored.lastCommentAt) &&
+                Number(s.commentCount) >= Number(stored.commentCount || 0))
+        ) {
+            stored = s;
+        }
+    }
     if (!stored) return false;
     const lastAt = Number(stored.lastCommentAt);
     const count = Number(stored.commentCount);
@@ -232,15 +284,11 @@ function syncNotificationTabUi(unreadCount = 0) {
     const isUnread = notificationListActiveTab === 'unread';
     if (unreadBtn) {
         unreadBtn.setAttribute('aria-selected', isUnread ? 'true' : 'false');
-        unreadBtn.className = isUnread
-            ? 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80'
-            : 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70';
+        unreadBtn.classList.toggle('active', isUnread);
     }
     if (readBtn) {
         readBtn.setAttribute('aria-selected', !isUnread ? 'true' : 'false');
-        readBtn.className = !isUnread
-            ? 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/80'
-            : 'notification-tab-btn flex-1 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors bg-slate-100 text-slate-600 hover:bg-slate-200/70';
+        readBtn.classList.toggle('active', !isUnread);
     }
     if (markAll) {
         markAll.classList.toggle('invisible', !isUnread || unreadCount === 0);
@@ -261,7 +309,6 @@ function buildReadNotificationsList(merged, readState) {
 
 function appendNotificationRow(listEl, item, { dimmed }) {
     const { postId, type, lastCommentAt, commentCount, thumbnailUrl, title, momentLabel } = item;
-    const notificationKey = `${type}:${postId}`;
     const d = new Date(lastCommentAt);
     const timeStr =
         d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) +
@@ -269,9 +316,7 @@ function appendNotificationRow(listEl, item, { dimmed }) {
         d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = `w-full text-left px-3 py-2.5 rounded-lg hover:bg-slate-50 active:bg-slate-100 transition-colors border-b border-slate-50 last:border-0 flex items-center gap-3 ${
-        dimmed ? 'opacity-90' : ''
-    }`;
+    row.className = `notification-row${dimmed ? ' notification-row--dimmed' : ''}`;
     const label =
         type === 'feed'
             ? escapeHtml(item.title || '밀톡')
@@ -290,15 +335,15 @@ function appendNotificationRow(listEl, item, { dimmed }) {
               : `댓글 ${commentCount}개 · ${timeStr}`;
     const thumbHtml =
         type === 'moment' && thumbnailUrl
-            ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-slate-100 border border-slate-200"><img src="${escapeHtml(thumbnailUrl)}" alt="" class="w-full h-full object-cover" loading="lazy"></div>`
+            ? `<div class="notification-row-thumb"><img src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy"></div>`
             : type === 'feed'
-              ? `<div class="flex-shrink-0 w-10 h-10 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600"><i class="fa-solid fa-comment-dots" aria-hidden="true"></i></div>`
-              : '';
-    const titleCls = dimmed ? 'text-slate-500 text-sm font-medium block truncate' : 'text-slate-700 text-sm font-medium block truncate';
-    const subCls = dimmed ? 'text-slate-400 text-xs' : 'text-slate-500 text-xs';
-    row.innerHTML = `${thumbHtml}<div class="flex-1 min-w-0"><span class="${titleCls}">${label}</span><span class="${subCls}">${subText}</span></div>`;
+              ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="message-circle-more" aria-hidden="true"></i></div>`
+              : type === 'board'
+                ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="layout-list" aria-hidden="true"></i></div>`
+                : `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="images" aria-hidden="true"></i></div>`;
+    row.innerHTML = `${thumbHtml}<div class="notification-row-body"><span class="notification-row-title">${label}</span><span class="notification-row-sub">${subText}</span></div>`;
     row.addEventListener('click', async () => {
-        markNotificationAsRead(notificationKey, lastCommentAt, commentCount);
+        markNotificationItemAsRead(item);
         window.closeNotificationPopup();
         const ownerUid = window.currentUser?.uid;
         if (!ownerUid) {
@@ -307,31 +352,38 @@ function appendNotificationRow(listEl, item, { dimmed }) {
             return;
         }
         try {
-            const ok = await isNotificationTargetAvailable(type, postId, ownerUid);
-            if (!ok) {
-                if (type === 'feed') {
-                    showToast('삭제되었거나 볼 수 없는 밀톡입니다.', 'error');
-                } else if (type === 'board') {
-                    showToast('삭제되었거나 찾을 수 없는 게시글입니다.', 'error');
-                } else {
+            if (type === 'moment') {
+                const photos = await loadSharedPhotosForMomentNotification(postId, ownerUid);
+                if (!photos.length) {
                     showToast('공유가 해제되어 해당 게시물을 찾을 수 없습니다.', 'error');
+                    window.updateNotificationDot();
+                    return;
                 }
-                window.updateNotificationDot();
-                return;
+                appState.galleryNotificationFilterPhotos = photos;
+                window.navigateToNotificationPost(postId);
+            } else {
+                const ok = await isNotificationTargetAvailable(type, postId, ownerUid);
+                if (!ok) {
+                    if (type === 'feed') {
+                        showToast('삭제되었거나 볼 수 없는 밀톡입니다.', 'error');
+                    } else {
+                        showToast('삭제되었거나 찾을 수 없는 게시글입니다.', 'error');
+                    }
+                    window.updateNotificationDot();
+                    return;
+                }
+                if (type === 'feed') {
+                    if (typeof window.navigateToFeedNotification === 'function') window.navigateToFeedNotification(postId);
+                } else if (type === 'board') {
+                    if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
+                    if (typeof window.openBoardDetail === 'function') window.openBoardDetail(postId);
+                }
             }
         } catch (e) {
             console.warn('알림 대상 확인 실패:', e?.message || e);
             showToast('알림을 열 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
             window.updateNotificationDot();
             return;
-        }
-        if (type === 'feed') {
-            if (typeof window.navigateToFeedNotification === 'function') window.navigateToFeedNotification(postId);
-        } else if (type === 'board') {
-            if (typeof window.switchMainTab === 'function') window.switchMainTab('board');
-            if (typeof window.openBoardDetail === 'function') window.openBoardDetail(postId);
-        } else {
-            window.navigateToNotificationPost(postId);
         }
         window.updateNotificationDot();
     });
@@ -353,9 +405,16 @@ function renderNotificationPanelFromCache() {
     if (markAllReadBtn && notificationListActiveTab === 'unread') {
         markAllReadBtn.onclick = () => {
             const state = getNotificationReadState();
+            const readAt = Date.now();
             unread.forEach((item) => {
-                const key = `${item.type}:${item.postId}`;
-                state[key] = { lastCommentAt: item.lastCommentAt, commentCount: item.commentCount };
+                const payload = {
+                    lastCommentAt: Number(item.lastCommentAt) || 0,
+                    commentCount: Number(item.commentCount) || 0,
+                    readAt
+                };
+                notificationKeysForItem(item).forEach((key) => {
+                    state[key] = { ...payload };
+                });
             });
             setNotificationReadState(state);
             window.loadNotificationList();
@@ -366,34 +425,43 @@ function renderNotificationPanelFromCache() {
     listEl.innerHTML = '';
     if (notificationListActiveTab === 'unread') {
         if (unread.length === 0) {
+            listEl.classList.add('hidden');
             emptyEl.classList.remove('hidden');
             emptyEl.textContent = '새 알림이 없습니다.';
             return;
         }
+        listEl.classList.remove('hidden');
         emptyEl.classList.add('hidden');
         unread.forEach((item) => appendNotificationRow(listEl, item, { dimmed: false }));
+        scheduleLucideIcons(listEl);
         return;
     }
     if (readItems.length === 0) {
+        listEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
         emptyEl.textContent = '읽은 알림이 없습니다.';
         return;
     }
+    listEl.classList.remove('hidden');
     emptyEl.classList.add('hidden');
     readItems.forEach((item) => appendNotificationRow(listEl, item, { dimmed: true }));
+    scheduleLucideIcons(listEl);
 }
 
 window.loadNotificationList = async () => {
     const listEl = document.getElementById('notificationList');
     const emptyEl = document.getElementById('notificationEmpty');
     if (!listEl || !emptyEl) return;
-    listEl.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">불러오는 중...</div>';
+    listEl.classList.remove('hidden');
+    listEl.innerHTML = '<div class="notification-list-loading">불러오는 중…</div>';
     emptyEl.classList.add('hidden');
     bindNotificationTabsOnce();
     if (!window.currentUser || window.currentUser.isAnonymous || !window.postInteractions) {
         listEl.innerHTML = '';
+        listEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
         emptyEl.textContent = '로그인이 필요합니다.';
+        syncNotificationTabUi(0);
         return;
     }
     try {
@@ -410,12 +478,16 @@ window.loadNotificationList = async () => {
         mv2Mentions.forEach((m) => {
             const pid = String(m?.postId || '').trim();
             if (!pid) return;
-            const it = momentItems.find((x) => x && x.type === 'moment' && String(x.postId) === pid);
+            const it = momentItems.find(
+                (x) =>
+                    x &&
+                    x.type === 'moment' &&
+                    (String(x.postId) === pid || (x.aliasPostIds || []).map(String).includes(pid))
+            );
             if (!it) return;
             it.kind = 'mention';
             it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
-            const at = Number(m.at) || 0;
-            if (at > 0 && at > Number(it.lastCommentAt || 0)) it.lastCommentAt = at;
+            // lastCommentAt은 읽음 판정용 — localStorage 시각으로 올리면 모두 읽음이 다시 미읽음으로 돌아옴
         });
         _notificationMergedCache = [...momentItems, ...boardItems, ...feedItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
         renderNotificationPanelFromCache();
@@ -423,8 +495,10 @@ window.loadNotificationList = async () => {
         console.error('알림 목록 로드 실패:', e);
         _notificationMergedCache = null;
         listEl.innerHTML = '';
+        listEl.classList.add('hidden');
         emptyEl.textContent = '목록을 불러올 수 없습니다.';
         emptyEl.classList.remove('hidden');
+        syncNotificationTabUi(0);
     }
 };
 
@@ -448,12 +522,15 @@ window.updateNotificationDot = async () => {
         mv2Mentions.forEach((m) => {
             const pid = String(m?.postId || '').trim();
             if (!pid) return;
-            const it = momentItems.find((x) => x && x.type === 'moment' && String(x.postId) === pid);
+            const it = momentItems.find(
+                (x) =>
+                    x &&
+                    x.type === 'moment' &&
+                    (String(x.postId) === pid || (x.aliasPostIds || []).map(String).includes(pid))
+            );
             if (!it) return;
             it.kind = 'mention';
             it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
-            const at = Number(m.at) || 0;
-            if (at > 0 && at > Number(it.lastCommentAt || 0)) it.lastCommentAt = at;
         });
         const merged = [...momentItems, ...boardItems, ...feedItems];
         const readState = getNotificationReadState();
@@ -502,7 +579,7 @@ window.navigateToNotificationPost = (postId) => {
     appState.galleryFilterPostId = postId;
     appState.galleryFilterTab = 'moment';
     if (typeof window.switchMainTab === 'function') window.switchMainTab('gallery');
-    setTimeout(() => renderGallery(), 100);
+    else setTimeout(() => renderGallery(), 100);
 };
 
 /** 밀톡 알림 탭: 라운지 > 밀톡 피드로 이동 후 해당 말풍선으로 스크롤 */

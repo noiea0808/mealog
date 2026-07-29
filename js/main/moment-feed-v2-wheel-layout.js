@@ -155,6 +155,7 @@ function getPrimaryMomentV2PostEl() {
 
 /**
  * 뷰포트에 가장 가까운 화면2 게시물의 휠 푸터를 앱 하단 네비 바로 위에 고정(나머지는 인플로 숨김).
+ * 시안 v2(`skip-dock`): 캡션은 항상 카드 인플로 — 절대 숨기지 않음.
  */
 function runMomentV2PrimaryFixedDock() {
     if (typeof document === 'undefined') return;
@@ -169,11 +170,10 @@ function runMomentV2PrimaryFixedDock() {
             slab.style.height = '';
         }
         if (cap) {
+            const skipDock = root?.getAttribute?.('data-moment-v2-skip-dock') === '1';
             const swipePhotosOnly = root?.getAttribute?.('data-moment-v2-swipe-photos-only') === '1';
-            /* 다장: 휠+기록이 [data-moment-v2-caption]에 있음. 숨기면 스크롤할 때마다 ‘스냅’처럼 보임(단장은 휠이 v-unit 안에 있어 숨김 대상이 다름) */
-            if (swipePhotosOnly) {
-                cap.classList.remove('mv2-cap-inflow-hidden');
-            } else if (post === primary) {
+            /* skip-dock/다장: 본문(작성자·메타·소셜)이 캡션에 있음 → 숨기면 스크롤 전까지 안 보임 */
+            if (skipDock || swipePhotosOnly || post === primary) {
                 cap.classList.remove('mv2-cap-inflow-hidden');
             } else {
                 cap.classList.add('mv2-cap-inflow-hidden');
@@ -896,6 +896,12 @@ function bindOneMomentV2WheelStage(stageEl) {
             idx = getMomentV2CarouselActiveIndex(strip);
             const pageCur = stageEl.querySelector('[data-carousel-badge-cur]');
             if (pageCur) pageCur.textContent = String(idx + 1);
+            const dots = stageEl.querySelector('[data-moment-v2-dots]');
+            if (dots) {
+                dots.querySelectorAll('span').forEach((el, i) => {
+                    el.classList.toggle('on', i === idx);
+                });
+            }
             syncMomentV2HstripBgToIndex(strip, idx);
             preloadMomentV2HstripAdjacent(strip, idx);
         }

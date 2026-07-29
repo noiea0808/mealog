@@ -90,7 +90,7 @@ export async function loadExcludedAnalyticsAdminPanel() {
                     <td class="px-3 py-2.5 text-sm text-slate-700 align-top whitespace-nowrap">${cols.loginMethod}</td>
                     <td class="px-3 py-2.5 text-right align-top whitespace-nowrap">
                         <button type="button" class="dashboard-excluded-remove inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-700 hover:bg-red-50 hover:text-red-700 border border-slate-200 hover:border-red-200 transition-colors" data-uid="${safeUid}">
-                            <i class="fa-solid fa-user-minus" aria-hidden="true"></i>제외 해제
+                            <i data-lucide="user-minus" aria-hidden="true"></i>제외 해제
                         </button>
                     </td>
                 </tr>`;

@@ -6,6 +6,7 @@ import { addDaysToYmd } from './demo-date-shift.js';
 import { localTodayYmd } from './render/timeline.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
+import { scheduleLucideIcons } from './icons.js';
 import { getBoardSearchModalTitle } from './board-search-filter.js';
 
 const PERIOD_PRESETS = {
@@ -57,12 +58,7 @@ function syncDateInputsFromPeriod() {
 function updatePeriodButtonUI() {
     document.querySelectorAll('[data-board-search-period]').forEach((btn) => {
         const active = btn.getAttribute('data-board-search-period') === searchPeriod;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active);
-        btn.classList.toggle('border-slate-200', !active);
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     syncDateInputsFromPeriod();
@@ -72,22 +68,8 @@ function updateTraceButtonUI() {
     document.querySelectorAll('[data-board-search-trace]').forEach((btn) => {
         const trace = btn.getAttribute('data-board-search-trace');
         const active = searchTrace === trace;
-        btn.classList.toggle('bg-slate-800', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-slate-800', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active && trace !== 'like');
-        btn.classList.toggle('border-slate-200', !active);
-        if (trace === 'like') {
-            btn.classList.toggle('text-red-500', !active);
-            btn.classList.toggle('text-white', active);
-        }
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-        const icon = btn.querySelector('i');
-        if (icon && trace !== 'keyword') {
-            icon.classList.toggle('fa-solid', active);
-            icon.classList.toggle('fa-regular', !active);
-        }
     });
 
     const keywordWrap = document.getElementById('boardSearchKeywordWrap');
@@ -154,6 +136,7 @@ export function openBoardSearchModal() {
     modal.classList.remove('hidden');
     updatePeriodButtonUI();
     updateTraceButtonUI();
+    scheduleLucideIcons(modal);
     if (searchTrace !== 'keyword') {
         requestAnimationFrame(() => document.getElementById('boardSearchSubmitBtn')?.focus());
     }
@@ -229,7 +212,6 @@ export async function executeBoardSearch() {
 
 export function initBoardSearchModal() {
     document.getElementById('boardSearchBackdrop')?.addEventListener('click', closeBoardSearchModal);
-    document.getElementById('boardSearchCloseBtn')?.addEventListener('click', closeBoardSearchModal);
     document.getElementById('boardSearchCancelBtn')?.addEventListener('click', closeBoardSearchModal);
     document.getElementById('boardSearchSubmitBtn')?.addEventListener('click', () => {
         executeBoardSearch();

@@ -44,16 +44,16 @@ export const SLOTS = [
 /** 타임라인 하루 소감 슬롯 (meals 컬렉션과 별도, userSettings.dailyComments) */
 export const DAILY_JOURNAL_SLOT = {
     id: 'daily_journal',
-    label: '하루 기록',
+    label: '하루 소감',
     type: 'daily'
 };
 
 export const DAILY_JOURNAL_SLOT_STYLE = {
-    iconBg: 'bg-slate-50',
-    iconText: 'text-slate-400',
-    border: 'border-slate-100',
-    text: 'text-slate-400',
-    listLeft: 'border-l-[4px] border-l-slate-400/60'
+    iconBg: 'bg-violet-50',
+    iconText: 'text-violet-600',
+    border: 'border-violet-200',
+    text: 'text-violet-600',
+    listLeft: 'border-l-[4px] border-l-violet-600/60'
 };
 
 export const SLOT_STYLES = {
@@ -63,7 +63,23 @@ export const SLOT_STYLES = {
     'default': { iconBg: 'bg-slate-50', iconText: 'text-slate-400', border: 'border-slate-100', text: 'text-slate-400', listLeft: 'border-l-[4px] border-l-slate-400/60' }
 };
 
-export const VIBRANT_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
+/** Lucide — 홈피드·슬롯 피커·공유카드 공통 (간식: 과일·커피·쿠키·치킨) */
+export const SLOT_LUCIDE_ICONS = {
+    morning: 'cloud-sun',
+    lunch: 'soup',
+    dinner: 'moon',
+    pre_morning: 'apple',
+    snack1: 'coffee',
+    snack2: 'cookie',
+    night: 'drumstick',
+    daily_journal: 'book-open'
+};
+
+export function getSlotLucideIcon(slotId) {
+    return SLOT_LUCIDE_ICONS[slotId] || 'utensils';
+}
+
+export const VIBRANT_COLORS = ['#3cb889', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'];
 /** 분석 탭 누적 막대(식사방식/메뉴/함께한 즐거움) 좌→우 빈도순 그라데이션: 빨강→주황(1개)→호박→녹색→청록→남색 */
 export const CUMULATIVE_BAR_GRADIENT = ['#F06292', '#FF9800', '#FFC107', '#9CCC65', '#66BB6A', '#26C6DA', '#5C6BC0'];
 /** 만족도·포만감 5단계용: 1→5 순서로 남색→청록→녹색→호박→핑크 (한입만/1점=남색, 과식/5점=핑크) */
@@ -155,15 +171,15 @@ export const DEFAULT_USER_SETTINGS = {
         main: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false },
         snack: { ratingEnabled: false, satietyEnabled: false, timeEnabled: false }
     },
-    /** 기록 모달: 메인 태그 칩(빠른 입력) — 항목별·식사/간식별 기억 (신규: 접힘) */
+    /** 기록 모달: 메인 태그 칩(빠른 입력) — 항목별·식사/간식별 기억 (신규: 열림) */
     entryModalQuickInput: {
-        meal: { where: false, what: false, with: false },
-        snack: { where: false, what: false, with: false },
+        meal: { where: true, what: true, with: true },
+        snack: { where: true, what: true, with: true },
     },
-    /** 기록 모달: 상세 기록(누구와·만족도·포만감·시간) 항목별 on/off */
+    /** 기록 모달: 상세 항목(누구와·만족도·포만감·시간) — 탭 상시 표시 */
     entryModalDetailRecord: {
-        main: { with: false, rating: false, satiety: false, time: false },
-        snack: { with: false, rating: false, satiety: false, time: false },
+        main: { with: true, rating: true, satiety: true, time: true },
+        snack: { with: true, rating: true, satiety: true, time: true },
     },
     /** 날짜별 하루 소감 — 값: string(구) | { comment, photos[], photoAspectRatio } */
     dailyComments: {}

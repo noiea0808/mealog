@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>mealog · 팝업 셸 시안 v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <script src="./themes.js"></script>
+  <style>
+    :root {
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --danger: #ee5f70;
+      --danger-deep: #d9485a;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcfa;
+      --page-deep: #faf6f2;
+      --card: #ffffff;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --r-sheet: 24px;
+      --r-card: 18px;
+      --r-btn: 16px;
+      --dim: color-mix(in srgb, var(--ink-2) 45%, transparent);
+      --cta-mint-grad: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+      --cta-mint-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 8px 20px rgba(60, 184, 137, 0.36);
+      --cta-danger-grad: linear-gradient(135deg, #f78a96 0%, #ee5f70 55%, #d9485a 100%);
+      --cta-danger-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 20px rgba(238, 95, 112, 0.36);
+      --cta-btn-h: 52px;
+    }
+
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.25;
+      flex-shrink: 0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(1100px 520px at 12% -8%, var(--green-soft) 0%, transparent 55%),
+        radial-gradient(900px 480px at 96% 0%, #f5ebe3 0%, transparent 48%),
+        var(--page);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .stage {
+      min-height: 100%;
+      display: grid;
+      grid-template-columns: minmax(280px, 380px) minmax(320px, 420px);
+      gap: 40px;
+      align-items: start;
+      justify-content: center;
+      padding: 40px 24px 64px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    @media (max-width: 900px) {
+      .stage { grid-template-columns: 1fr; padding: 24px 16px 48px; }
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--green-deep);
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.25;
+      margin-bottom: 12px;
+    }
+    .lead {
+      font-size: 15px;
+      line-height: 1.6;
+      color: var(--ink-2);
+      margin-bottom: 22px;
+    }
+
+    .shell-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .shell-nav button {
+      display: grid;
+      grid-template-columns: 36px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      text-align: left;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .shell-nav button:hover { border-color: var(--green-mute); }
+    .shell-nav button.active {
+      border-color: var(--green-mute);
+      background: var(--green-soft);
+    }
+    .shell-nav .ico {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: var(--page);
+      color: var(--green-deep);
+    }
+    .shell-nav button.active .ico {
+      background: #fff;
+      color: var(--green);
+    }
+    .shell-nav strong {
+      display: block;
+      font-size: 13.5px;
+      font-weight: 700;
+      margin-bottom: 1px;
+    }
+    .shell-nav small {
+      font-size: 11.5px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .shell-nav .num {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .spec {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .spec h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .spec ul {
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+    .spec li {
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+      padding-left: 12px;
+      position: relative;
+    }
+    .spec li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .links a {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--ink-2);
+      text-decoration: none;
+      background: #fff;
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+    .links a.primary {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    /* ===== Phone ===== */
+    .preview { justify-self: center; width: min(390px, 100%); }
+    .phone {
+      width: 100%;
+      height: min(844px, calc(100dvh - 80px));
+      min-height: 640px;
+      background: var(--page);
+      border-radius: 40px;
+      box-shadow:
+        0 0 0 10px #1c1917,
+        0 0 0 12px #3f3a36,
+        0 24px 60px rgba(36, 31, 28, 0.28);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .notch {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 118px;
+      height: 28px;
+      background: #1c1917;
+      border-radius: 20px;
+      z-index: 20;
+    }
+    .status {
+      height: 52px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 0 22px 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--ink);
+      position: relative;
+      z-index: 5;
+    }
+
+    /* Fake home behind overlay */
+    .home-bg {
+      position: absolute;
+      inset: 0;
+      padding: 56px 16px 88px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .home-bg .brand {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--green);
+      letter-spacing: -0.03em;
+      margin-bottom: 14px;
+    }
+    .home-bg .cardish {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      height: 88px;
+      margin-bottom: 10px;
+    }
+    .home-bg .cardish.tall { height: 140px; }
+    .home-bg .nav {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 64px;
+      background: #fff;
+      border-top: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding-bottom: 8px;
+    }
+    .home-bg .nav span {
+      width: 22px; height: 6px;
+      border-radius: 4px;
+      background: var(--line);
+    }
+    .home-bg .nav span.on { background: var(--green); width: 28px; }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: none;
+    }
+    .overlay.active { display: block; }
+
+    .dim {
+      position: absolute;
+      inset: 0;
+      background: var(--dim);
+      backdrop-filter: blur(2px);
+    }
+
+    /* ----- 1. Center Dialog ----- */
+    .dialog {
+      position: absolute;
+      left: 20px; right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--card);
+      border-radius: var(--r-card);
+      border: 1px solid var(--line);
+      overflow: hidden;
+      max-height: calc(100% - 120px);
+      display: flex;
+      flex-direction: column;
+      width: auto;
+      max-width: none;
+      box-sizing: border-box;
+    }
+    .dialog-hero {
+      aspect-ratio: 16 / 10;
+      background:
+        linear-gradient(145deg, var(--green-soft), #fff 45%, var(--coral-soft));
+      display: grid;
+      place-items: center;
+      position: relative;
+    }
+    .dialog-hero .badge {
+      position: absolute;
+      top: 12px; left: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green-deep);
+      background: rgba(255,255,255,0.92);
+      border: 1px solid var(--green-mute);
+      padding: 4px 9px;
+      border-radius: 999px;
+    }
+    .dialog-hero .illus {
+      width: 72px; height: 72px;
+      border-radius: 20px;
+      background: #fff;
+      border: 1px solid var(--green-mute);
+      display: grid;
+      place-items: center;
+      color: var(--green);
+    }
+    .dialog-hero .illus [data-lucide] { width: 1.75rem; height: 1.75rem; }
+    .dialog-body { padding: 18px 18px 14px; }
+    .dialog-body h3 {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .dialog-body p {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--ink-2);
+    }
+    /* 버튼 영역만 여백·호흡 — 본문 패딩과 분리 */
+    .dialog-actions {
+      padding: 16px 20px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: transparent;
+    }
+    .dialog-actions--single { /* A · Single */ }
+    /* B·C · 다중 버튼은 가로 */
+    .dialog-actions--stack,
+    .dialog-actions--pair,
+    .dialog-actions:has(> :nth-child(2)) {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--stack > .btn,
+    .dialog-actions--pair > .btn,
+    .dialog-actions:has(> :nth-child(2)) > .btn { flex: 1; min-width: 0; }
+    /* ① 비대칭 pair — CTA를 더 넓게 */
+    .dialog-actions--asym {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--asym > .btn:first-child { flex: 1; min-width: 0; }
+    .dialog-actions--asym > .btn:last-child { flex: 1.35; min-width: 0; }
+    /* ② ghost + primary — 보조는 면 없이 텍스트 */
+    .dialog-actions--ghost-pair {
+      flex-direction: row;
+      align-items: stretch;
+    }
+    .dialog-actions--ghost-pair > .btn { flex: 1; min-width: 0; }
+    .dialog-actions--ghost-pair > .btn-ghost { height: 48px; }
+    /* ③ 여백 강조 — 본문과 CTA 사이 숨 쉬게 + 푸터 웰 */
+    .dialog-actions--air {
+      padding: 14px 20px 22px;
+      gap: 10px;
+      background: var(--page);
+      border-top: 1px solid var(--line);
+    }
+    .dialog.confirm .dialog-actions--air {
+      background: var(--page);
+    }
+    .dialog-actions--border { border-top: 1px solid var(--line); }
+    .btn {
+      height: var(--cta-btn-h);
+      border-radius: var(--r-btn);
+      border: 0;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: transform 0.12s ease, background 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+    }
+    .btn-primary {
+      background: var(--cta-mint-grad);
+      color: #fff;
+      box-shadow: var(--cta-mint-shadow);
+    }
+    .btn-primary:active {
+      filter: brightness(0.96);
+      transform: scale(0.98);
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      font-weight: 600;
+      height: 40px;
+    }
+    .btn-ghost:active { color: var(--ink-2); background: rgba(255,255,255,0.7); }
+    .dialog-actions--stack > .btn-ghost,
+    .dialog-actions--pair > .btn-ghost,
+    .dialog-actions--air > .btn-ghost,
+    .dialog-actions--ghost-pair > .btn-ghost,
+    .dialog-actions--asym > .btn-ghost,
+    .dialog-actions:has(> :nth-child(2)) > .btn-ghost { height: var(--cta-btn-h); }
+    .btn-secondary {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(36, 31, 28, 0.04);
+    }
+    .btn-secondary:active { background: var(--line); transform: scale(0.98); }
+    .btn-danger {
+      background: var(--cta-danger-grad);
+      color: #fff;
+      box-shadow: var(--cta-danger-shadow);
+    }
+    .btn-danger:active {
+      filter: brightness(0.96);
+      transform: scale(0.98);
+    }
+
+    /* 비교용 · Soft Lift / Bigger (채택은 Mint Glow가 기본) */
+    .cta-lift .btn-primary {
+      background: linear-gradient(180deg, #46c795 0%, #3cb889 100%);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 8px 18px rgba(60, 184, 137, 0.30);
+    }
+    .cta-big .btn-ghost { height: 52px; flex: 1 !important; }
+    .cta-big .btn-primary {
+      height: 56px;
+      flex: 1.4 !important;
+      font-size: 15.5px;
+      font-weight: 800;
+    }
+    .cta-glow .btn-primary {
+      /* 기본과 동일 — 채택안 */
+      background: var(--cta-mint-grad);
+      box-shadow: var(--cta-mint-shadow);
+    }
+
+    /* Confirm variant (no hero) */
+    .dialog.confirm .dialog-body { padding-top: 22px; text-align: center; }
+    .dialog.confirm .dialog-icon {
+      width: 48px; height: 48px;
+      margin: 0 auto 12px;
+      border-radius: 14px;
+      background: var(--coral-soft);
+      color: #c97a86;
+      display: grid;
+      place-items: center;
+    }
+
+    /* Footer A/B/C 샘플 카드 (aside) */
+    .footer-spec {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .footer-spec h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .footer-spec > p {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-bottom: 12px;
+    }
+    .footer-sample {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--page);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .footer-sample:last-child { margin-bottom: 0; }
+    .footer-sample .tag {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      color: var(--green-deep);
+    }
+    .footer-sample .tag span { font-weight: 600; color: var(--muted); letter-spacing: 0; }
+    .footer-sample .dialog-actions { padding: 8px 10px 10px; }
+    .footer-sample .btn { height: 40px; font-size: 13px; }
+    .footer-sample .btn-ghost { height: 40px; }
+    .footer-sample.is-compare {
+      background: #fff;
+      border-color: var(--green-mute);
+    }
+    .footer-sample .note {
+      padding: 0 10px 10px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+    }
+    .compare-grid {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .compare-grid h2 {
+      font-size: 13px;
+      font-weight: 700;
+      margin: 0 0 2px;
+    }
+    .compare-grid > p.lead-sm {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0 0 4px;
+    }
+
+    .footer-tabs {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      position: absolute;
+      left: 16px; right: 16px;
+      bottom: calc(18px + var(--safe-bottom));
+      z-index: 6;
+    }
+    .footer-tabs button {
+      flex: 1;
+      border: 1px solid var(--line);
+      background: rgba(255, 252, 250, 0.92);
+      color: var(--ink-2);
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      height: 32px;
+      border-radius: 999px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+    .footer-tabs button.active {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+    .dialog-footer-variant { display: none; }
+    .dialog-footer-variant.active { display: flex; flex-direction: column; }
+
+    /* ----- 2. Bottom Sheet ----- */
+    .sheet {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      max-height: 78%;
+      background: var(--page);
+      border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid var(--line);
+    }
+    .grabber {
+      width: 40px;
+      height: 4px;
+      background: var(--line);
+      border-radius: 999px;
+      margin: 10px auto 4px;
+      flex-shrink: 0;
+    }
+    .sheet-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px 12px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sheet-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .sheet-header .chip {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green-deep);
+      background: var(--green-soft);
+      border: 1px solid var(--green-mute);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+    .icon-x {
+      margin-left: auto;
+      width: 36px; height: 36px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .sheet-body {
+      flex: 1;
+      overflow: auto;
+      padding: 14px;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .field .box {
+      height: 46px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      font-size: 14px;
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .field .box.muted { color: var(--muted); font-weight: 500; }
+    .field .box [data-lucide] { color: var(--muted); }
+    .stars {
+      display: flex;
+      gap: 6px;
+      color: #fbbf24;
+    }
+    .stars .off { color: var(--line); }
+    .sheet-footer {
+      padding: 10px 14px calc(12px + var(--safe-bottom));
+      background: #fff;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    /* ----- 3. Action Sheet ----- */
+    .action-wrap {
+      position: absolute;
+      left: 12px; right: 12px; bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .action-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .action-card button {
+      width: 100%;
+      height: 52px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .action-card button:last-child { border-bottom: 0; }
+    .action-card button.danger { color: var(--danger); }
+    .action-card button [data-lucide] { width: 1rem; height: 1rem; color: var(--muted); }
+    .action-card button.danger [data-lucide] { color: var(--danger); }
+    .action-cancel {
+      height: 52px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--ink-2);
+      cursor: pointer;
+    }
+
+    /* ----- 4. Search / List ----- */
+    .search-panel {
+      position: absolute;
+      inset: 0;
+      background: var(--page);
+      display: flex;
+      flex-direction: column;
+      padding-top: 52px;
+    }
+    .search-bar {
+      padding: 8px 14px 12px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .search-input {
+      flex: 1;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid var(--green-mute);
+      background: var(--green-soft);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .search-input [data-lucide] { color: var(--green-deep); }
+    .search-input span { color: var(--ink); }
+    .search-cancel {
+      border: 0;
+      background: transparent;
+      color: var(--ink-2);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 8px;
+    }
+    .search-list { flex: 1; overflow: auto; padding: 6px 0; }
+    .search-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(208, 198, 186, 0.55);
+    }
+    .search-row .thumb {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      background: var(--green-soft);
+      border: 1px solid var(--green-mute);
+      flex-shrink: 0;
+    }
+    .search-row .thumb.alt { background: #f5ebe3; border-color: var(--line); }
+    .search-row .meta { flex: 1; min-width: 0; }
+    .search-row .meta strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .search-row .meta span {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .search-row time {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    /* ----- 5. Media ----- */
+    .media {
+      position: absolute;
+      inset: 0;
+      background: #1c1917;
+      display: flex;
+      flex-direction: column;
+    }
+    .media-top {
+      padding: 52px 16px 8px;
+      display: flex;
+      justify-content: flex-end;
+      z-index: 2;
+    }
+    .media-close {
+      width: 36px; height: 36px;
+      border-radius: 999px;
+      border: 0;
+      background: rgba(255,255,255,0.14);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+    .media-stage {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 8px 16px;
+    }
+    .media-photo {
+      width: 100%;
+      aspect-ratio: 4 / 5;
+      max-height: 68%;
+      border-radius: 12px;
+      background:
+        linear-gradient(160deg, #4a4038 0%, #2a2420 40%, #3d4f45 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .media-photo::after {
+      content: "";
+      position: absolute;
+      inset: 18% 22%;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.06);
+    }
+    .media-bottom {
+      padding: 12px 18px calc(20px + var(--safe-bottom));
+      color: #fff;
+    }
+    .media-dots {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .media-dots i {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.28);
+      display: block;
+    }
+    .media-dots i.on { background: var(--green); width: 16px; border-radius: 4px; }
+    .media-caption {
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.4;
+      opacity: 0.92;
+    }
+    .media-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.55);
+      font-weight: 500;
+    }
+
+    /* ----- 6. Banner / Toast ----- */
+    .sys-banner {
+      position: absolute;
+      left: 12px; right: 12px;
+      top: 56px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px 12px 12px 14px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      z-index: 12;
+      box-shadow: 0 2px 8px rgba(36, 31, 28, 0.06);
+    }
+    .sys-banner::before {
+      content: "";
+      width: 3px;
+      align-self: stretch;
+      border-radius: 3px;
+      background: var(--green);
+      flex-shrink: 0;
+    }
+    .sys-banner .txt { flex: 1; min-width: 0; }
+    .sys-banner strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .sys-banner span {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .sys-banner .cta {
+      border: 0;
+      background: var(--green-soft);
+      color: var(--green-deep);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .sys-toast {
+      position: absolute;
+      left: 50%;
+      bottom: 88px;
+      transform: translateX(-50%);
+      background: var(--ink);
+      color: #fff;
+      font-size: 13.5px;
+      font-weight: 600;
+      padding: 12px 18px;
+      border-radius: 999px;
+      white-space: nowrap;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sys-toast [data-lucide] {
+      width: 1rem; height: 1rem;
+      color: var(--green-mute);
+    }
+    .sys-label {
+      position: absolute;
+      left: 16px; right: 16px;
+      top: 46%;
+      text-align: center;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .sys-label p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      background: rgba(255,252,249,0.9);
+      display: inline-block;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px dashed var(--line);
+    }
+
+    .cap {
+      text-align: center;
+      margin-top: 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <aside>
+      <div class="eyebrow">MEALOG UI · Popup Shells v2</div>
+      <h1>팝업 셸 개선 시안</h1>
+      <p class="lead">
+        Soft Mint Air 톤에 맞춰 6종 셸을 통일합니다.
+        초록은 CTA·선택에만, 면은 warm paper·흰 카드·헤어라인으로 위계를 잡습니다.
+      </p>
+
+      <div class="footer-spec compare-grid" aria-label="CTA 시안 비교">
+        <h2>CTA · Mint Glow 채택</h2>
+        <p class="lead-sm">시안·앱 공통 primary는 <strong>C Mint Glow</strong>(135° 그라데이션 · h52 · radius 16)입니다. 아래는 비교용 잔여 시안입니다.</p>
+
+        <div class="footer-sample is-compare">
+          <div class="tag">채택 · C Mint Glow <span>앱 기본</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+          <p class="note">#5FD4A8 → #3CB889 → #2D9F74 · inset highlight · soft mint shadow</p>
+        </div>
+
+        <div class="footer-sample cta-lift">
+          <div class="tag">참고 · A Soft Lift <span>미채택</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+          <p class="note">세로 그라데이션만 — 비교용.</p>
+        </div>
+
+        <div class="footer-sample cta-big">
+          <div class="tag">참고 · B Bigger <span>미채택</span></div>
+          <div class="dialog-actions dialog-actions--ghost-pair">
+            <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+          <p class="note">h56 비대칭 — 비교용.</p>
+        </div>
+      </div>
+
+      <div class="footer-spec" aria-label="센터 Dialog 푸터 스펙">
+        <h2>Dialog Footer · A / B / C (현행 스펙)</h2>
+        <p>센터 팝업 하단: <strong>Mint Glow</strong> primary. 버튼 1개=A, 2개 이상은 항상 가로.</p>
+        <div class="footer-sample">
+          <div class="tag">A · Single <span>확인 · 적용 · 동의</span></div>
+          <div class="dialog-actions dialog-actions--single">
+            <button type="button" class="btn btn-primary">확인</button>
+          </div>
+        </div>
+        <div class="footer-sample">
+          <div class="tag">B · Row <span>보조 + 주 CTA (가로)</span></div>
+          <div class="dialog-actions dialog-actions--pair">
+            <button type="button" class="btn btn-secondary">오늘 하루 보지 않기</button>
+            <button type="button" class="btn btn-primary">자세히 보기</button>
+          </div>
+        </div>
+        <div class="footer-sample">
+          <div class="tag">C · Pair <span>취소 + 확정 / 탈퇴</span></div>
+          <div class="dialog-actions dialog-actions--pair">
+            <button type="button" class="btn btn-secondary">취소</button>
+            <button type="button" class="btn btn-danger">탈퇴하기</button>
+          </div>
+        </div>
+      </div>
+
+      <nav class="shell-nav" id="shellNav" aria-label="셸 선택">
+        <button type="button" class="active" data-shell="dialog">
+          <span class="ico"><i data-lucide="square"></i></span>
+          <span><strong>Center Dialog</strong><small>프로모션 · 확인 · 안내</small></span>
+          <span class="num">01</span>
+        </button>
+        <button type="button" data-shell="sheet">
+          <span class="ico"><i data-lucide="panel-bottom"></i></span>
+          <span><strong>Bottom Sheet</strong><small>입력 · 피커 · 리포트</small></span>
+          <span class="num">02</span>
+        </button>
+        <button type="button" data-shell="action">
+          <span class="ico"><i data-lucide="list"></i></span>
+          <span><strong>Action Sheet</strong><small>점3개 · 롱프레스</small></span>
+          <span class="num">03</span>
+        </button>
+        <button type="button" data-shell="search">
+          <span class="ico"><i data-lucide="search"></i></span>
+          <span><strong>Search / List</strong><small>검색 · 알림 · 캘린더</small></span>
+          <span class="num">04</span>
+        </button>
+        <button type="button" data-shell="media">
+          <span class="ico"><i data-lucide="image"></i></span>
+          <span><strong>Fullscreen Media</strong><small>라이트박스 · 사진 휠</small></span>
+          <span class="num">05</span>
+        </button>
+        <button type="button" data-shell="system">
+          <span class="ico"><i data-lucide="bell"></i></span>
+          <span><strong>Banner / Toast</strong><small>업데이트 · 짧은 피드백</small></span>
+          <span class="num">06</span>
+        </button>
+      </nav>
+
+      <div class="spec" id="specBox">
+        <h2 id="specTitle">Center Dialog</h2>
+        <ul id="specList"></ul>
+      </div>
+
+      <div class="links">
+        <a class="primary" href="./index.html">시안 허브</a>
+        <a href="./entry-sheet-v2.html">입력 시트</a>
+        <a href="./home-feed-v2.html">홈 피드</a>
+        <a href="./visual-samples.html">컬러 샘플</a>
+      </div>
+    </aside>
+
+    <div class="preview">
+      <div class="phone" id="phone">
+        <div class="notch" aria-hidden="true"></div>
+        <div class="status"><span>9:41</span><span>●●●</span></div>
+
+        <div class="home-bg" aria-hidden="true">
+          <div class="brand">mealog</div>
+          <div class="cardish"></div>
+          <div class="cardish tall"></div>
+          <div class="cardish"></div>
+          <div class="nav">
+            <span></span><span></span><span class="on"></span><span></span><span></span>
+          </div>
+        </div>
+
+        <!-- 01 Dialog · CTA 시안 A/B/C -->
+        <div class="overlay active" data-panel="dialog">
+          <div class="dim"></div>
+
+          <div class="dialog dialog-footer-variant cta-lift" data-footer="lift">
+            <div class="dialog-hero">
+              <span class="badge">A · Soft Lift (참고)</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
+            </div>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
+            </div>
+          </div>
+
+          <div class="dialog dialog-footer-variant cta-big" data-footer="big">
+            <div class="dialog-hero">
+              <span class="badge">B · Bigger (참고)</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
+            </div>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
+            </div>
+          </div>
+
+          <div class="dialog dialog-footer-variant active cta-glow" data-footer="glow">
+            <div class="dialog-hero">
+              <span class="badge">채택 · Mint Glow</span>
+              <div class="illus"><i data-lucide="gift"></i></div>
+            </div>
+            <div class="dialog-body">
+              <h3>7일 연속 기록 챌린지</h3>
+              <p>이번 주 식사만 기록해도 배지가 열려요. 오늘 한 끼부터 가볍게 시작해 보세요.</p>
+            </div>
+            <div class="dialog-actions dialog-actions--ghost-pair">
+              <button type="button" class="btn btn-ghost">오늘 하루 보지 않기</button>
+              <button type="button" class="btn btn-primary">자세히 보기</button>
+            </div>
+          </div>
+
+          <div class="footer-tabs" id="footerTabs" aria-label="CTA 시안 비교">
+            <button type="button" data-footer-tab="lift">A Lift</button>
+            <button type="button" data-footer-tab="big">B Bigger</button>
+            <button type="button" class="active" data-footer-tab="glow">C Glow 채택</button>
+          </div>
+        </div>
+
+        <!-- 02 Sheet -->
+        <div class="overlay" data-panel="sheet">
+          <div class="dim"></div>
+          <div class="sheet">
+            <div class="grabber"></div>
+            <div class="sheet-header">
+              <span class="chip">점심</span>
+              <h3>식사 기록</h3>
+              <button type="button" class="icon-x" aria-label="닫기"><i data-lucide="x"></i></button>
+            </div>
+            <div class="sheet-body">
+              <div class="field">
+                <label>무엇을</label>
+                <div class="box">김치찌개 · 공기밥</div>
+              </div>
+              <div class="field">
+                <label>어디서</label>
+                <div class="box muted"><i data-lucide="map-pin"></i> 장소 검색</div>
+              </div>
+              <div class="field">
+                <label>만족도</label>
+                <div class="box">
+                  <div class="stars">
+                    <i data-lucide="star"></i>
+                    <i data-lucide="star"></i>
+                    <i data-lucide="star"></i>
+                    <i data-lucide="star" class="off"></i>
+                    <i data-lucide="star" class="off"></i>
+                  </div>
+                </div>
+              </div>
+              <div class="field">
+                <label>메모</label>
+                <div class="box muted" style="height:72px;align-items:flex-start;padding-top:12px;">한 줄 메모…</div>
+              </div>
+            </div>
+            <div class="sheet-footer">
+              <button type="button" class="btn btn-primary" style="width:100%;">저장하기</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 03 Action -->
+        <div class="overlay" data-panel="action">
+          <div class="dim"></div>
+          <div class="action-wrap">
+            <div class="action-card">
+              <button type="button"><i data-lucide="pencil"></i> 수정하기</button>
+              <button type="button"><i data-lucide="share-2"></i> 공유 취소</button>
+              <button type="button" class="danger"><i data-lucide="flag"></i> 신고하기</button>
+            </div>
+            <button type="button" class="action-cancel">닫기</button>
+          </div>
+        </div>
+
+        <!-- 04 Search -->
+        <div class="overlay" data-panel="search">
+          <div class="search-panel">
+            <div class="search-bar">
+              <div class="search-input">
+                <i data-lucide="search"></i>
+                <span>김치</span>
+              </div>
+              <button type="button" class="search-cancel">취소</button>
+            </div>
+            <div class="search-list">
+              <div class="search-row">
+                <div class="thumb"></div>
+                <div class="meta">
+                  <strong>김치찌개</strong>
+                  <span>점심 · 집</span>
+                </div>
+                <time>어제</time>
+              </div>
+              <div class="search-row">
+                <div class="thumb alt"></div>
+                <div class="meta">
+                  <strong>김치전 · 막걸리</strong>
+                  <span>저녁 · 골목집</span>
+                </div>
+                <time>3일 전</time>
+              </div>
+              <div class="search-row">
+                <div class="thumb"></div>
+                <div class="meta">
+                  <strong>배추김치 담근 날</strong>
+                  <span>하루 기록</span>
+                </div>
+                <time>지난주</time>
+              </div>
+              <div class="search-row">
+                <div class="thumb alt"></div>
+                <div class="meta">
+                  <strong>김치볶음밥</strong>
+                  <span>아침 · 회사</span>
+                </div>
+                <time>2주 전</time>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 05 Media -->
+        <div class="overlay" data-panel="media">
+          <div class="media">
+            <div class="media-top">
+              <button type="button" class="media-close" aria-label="닫기"><i data-lucide="x"></i></button>
+            </div>
+            <div class="media-stage">
+              <div class="media-photo"></div>
+            </div>
+            <div class="media-bottom">
+              <div class="media-dots"><i class="on"></i><i></i><i></i></div>
+              <div class="media-caption">점심 · 김치찌개</div>
+              <div class="media-sub">어제 오후 12:28</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 06 System -->
+        <div class="overlay" data-panel="system">
+          <div class="sys-banner">
+            <div class="txt">
+              <strong>업데이트가 준비됐어요</strong>
+              <span>재시작하면 새 버전이 적용됩니다</span>
+            </div>
+            <button type="button" class="cta">재시작</button>
+          </div>
+          <div class="sys-label">
+            <p>배너는 방해를 줄인 상단 카드<br>토스트는 하단 잉크 필</p>
+          </div>
+          <div class="sys-toast">
+            <i data-lucide="check"></i>
+            기록이 저장됐어요
+          </div>
+        </div>
+      </div>
+      <div class="cap" id="capText">Center Dialog · 프로모션 / 확인</div>
+    </div>
+  </div>
+
+  <script src="./popup-shells-v2.js"></script>
+</body>
+</html>

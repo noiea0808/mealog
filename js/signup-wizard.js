@@ -1,13 +1,13 @@
 /**
  * 회원가입 위저드 (페이지 형식 4단계)
- * 1페이지: 이메일/비번/비번확인  2페이지: 닉네임  3페이지: 생년월일/성별/라이프스타일  4페이지: 약관
+ * 1페이지: 이메일/비번/비번확인  2페이지: 닉네임  3페이지: 주민번호(앞자리)/라이프스타일  4페이지: 약관
  */
 import { auth } from './firebase.js';
 import { createUserWithEmailAndPassword, deleteUser } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import { showRecordsPendingLoading } from './auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
-import { normalizeBirthdateRaw, setupBirthdateInputFormatting } from './utils.js';
+import { parseRrnPartial, mountRrnDigitGroup, setRrnDigitGroupValue, focusRrnDigitGroup } from './utils.js';
 
 const WIZARD_STEPS = 4;
 
@@ -40,6 +40,10 @@ function showStep(step) {
             : 'flex-1 min-w-0 py-3.5 bg-black text-white rounded-xl font-bold text-sm shadow-md active:bg-slate-800 transition-colors';
     }
     updateBackButtonVisibility();
+    if (step === 3) {
+        mountRrnDigitGroup('wizardRrnDigits', { hiddenId: 'wizardBirthdate' });
+        requestAnimationFrame(() => focusRrnDigitGroup('wizardRrnDigits'));
+    }
 }
 
 function isWizardTermsReady() {
@@ -124,21 +128,21 @@ async function validateStep2() {
 }
 
 async function validateStep3() {
-    const birthdate = (getEl('wizardBirthdate')?.value || '').trim();
+    const rrnRaw = (getEl('wizardBirthdate')?.value || '').trim();
     const lifestyle = (getEl('wizardLifestyle')?.value || '').trim();
-    const genderVal = document.querySelector('.wizard-gender-btn.bg-black')?.getAttribute('data-value') || '';
-    state.data.gender = (genderVal === 'male' || genderVal === 'female') ? genderVal : null;
     state.data.lifestyle = lifestyle || '';
-    if (!birthdate) {
+    const parsed = parseRrnPartial(rrnRaw);
+    if (parsed.empty) {
         state.data.birthdate = '';
+        state.data.gender = null;
         return true;
     }
-    const { formatted, valid } = normalizeBirthdateRaw(birthdate);
-    if (!valid) {
-        showToast('생년월일을 올바른 형식(예: 1990-01-15)으로 입력해주세요.', 'error');
+    if (!parsed.valid) {
+        showToast('주민등록번호 앞자리를 올바르게 입력해주세요. (예: 801102-1)', 'error');
         return false;
     }
-    state.data.birthdate = formatted;
+    state.data.birthdate = parsed.birthdate;
+    state.data.gender = parsed.gender;
     return true;
 }
 
@@ -311,18 +315,6 @@ async function onNextClick() {
 }
 
 function initWizardUI() {
-    document.querySelectorAll('.wizard-gender-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const wasSelected = btn.classList.contains('bg-black');
-            document.querySelectorAll('.wizard-gender-btn').forEach(b => {
-                const on = b === btn ? !wasSelected : false;
-                b.classList.toggle('bg-black', on);
-                b.classList.toggle('text-white', on);
-                b.classList.toggle('bg-slate-50', !on);
-                b.classList.toggle('text-slate-600', !on);
-            });
-        });
-    });
     document.querySelectorAll('.wizard-lifestyle-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const v = btn.getAttribute('data-value') || '';
@@ -400,8 +392,7 @@ function initWizardUI() {
             }
         });
     }
-    const birthdateInput = getEl('wizardBirthdate');
-    if (birthdateInput) setupBirthdateInputFormatting(birthdateInput);
+    mountRrnDigitGroup('wizardRrnDigits', { hiddenId: 'wizardBirthdate' });
 }
 
 /**
@@ -457,12 +448,8 @@ export function openSignupWizard(options = {}) {
             nicknameEl.value = '';
         }
     }
-    getEl('wizardBirthdate').value = '';
+    setRrnDigitGroupValue('wizardRrnDigits', '');
     getEl('wizardLifestyle').value = '';
-    document.querySelectorAll('.wizard-gender-btn').forEach(b => {
-        b.classList.remove('bg-black', 'text-white');
-        b.classList.add('bg-slate-50', 'text-slate-600');
-    });
     document.querySelectorAll('.wizard-lifestyle-btn').forEach(b => {
         b.classList.remove('bg-black', 'text-white', 'border-slate-300');
         b.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200');

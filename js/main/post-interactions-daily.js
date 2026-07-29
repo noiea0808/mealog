@@ -36,6 +36,8 @@ import {
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
+import { scheduleLucideIcons } from '../icons.js';
+import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
 import {
     getDisplayProfile,
     getProfileAvatarDisplay,
@@ -47,6 +49,10 @@ import {
     setupBirthdateInputFormatting
 } from '../utils.js';
 import { applyStackCommentBtnVisual } from '../render/moment-post-interactions.js';
+import {
+    patchMomentFeedSocialCounts,
+    syncMomentPostSeedCounts
+} from '../utils/moment-feed-cache.js';
 import {
     initAuth,
     handleGoogleLogin,
@@ -108,33 +114,7 @@ import {
     switchGalleryFilterTab,
     fetchUserProfiles
 } from '../render/index.js';
-import {
-    updateDashboard,
-    setDashboardMode,
-    updateCustomDates,
-    syncCustomDatePlaceholder,
-    updateSelectedMonth,
-    updateSelectedWeek,
-    changeWeek,
-    changeMonth,
-    navigatePeriod,
-    openDetailModal,
-    closeDetailModal,
-    setAnalysisType,
-    openShareBestModal,
-    closeShareBestModal,
-    shareBestToFeed,
-    closeBestSharePeriodNotice,
-    openCharacterSelectModal,
-    closeCharacterSelectModal,
-    selectInsightCharacter,
-    generateInsightComment,
-    openShareInsightModal,
-    closeShareInsightModal,
-    shareInsightToFeed,
-    openEditInsightShareModal
-} from '../analytics.js';
-import { openEditBestShareModal } from '../analytics/best-share.js';
+import { ensureAnalytics } from '../analytics/ensure.js';
 import {
     openModal,
     closeModal,
@@ -172,7 +152,16 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 
 // escapeHtml은 render/index.js에서 import됨
 
-// 일간보기 공유: 이미 공유된 경우 해제, 아니면 미리보기 모달 열기
+function findExistingDailyShare(dateStr, uid) {
+    if (!dateStr || !uid || !Array.isArray(window.sharedPhotos)) return null;
+    return (
+        window.sharedPhotos.find(
+            (photo) => photo.type === 'daily' && photo.date === dateStr && photo.userId === uid
+        ) || null
+    );
+}
+
+// 일간보기 공유: 미리보기 모달 열기 (이미 공유됨 → 하단 '공유 취소')
 window.shareDailySummary = async (dateStr) => {
     try {
         if (!dateStr) {
@@ -185,31 +174,6 @@ window.shareDailySummary = async (dateStr) => {
             if (typeof window.requestLogin === 'function') window.requestLogin();
             return;
         }
-
-        const existingShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
-            ? window.sharedPhotos.find(photo =>
-                photo.type === 'daily' && photo.date === dateStr && photo.userId === uid)
-            : null;
-
-        if (existingShare) {
-            const photoUrlToRemove = existingShare.photoUrl;
-            const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
-                    !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-                );
-            }
-            if (appState.currentTab === 'timeline') renderTimeline();
-            if (appState.currentTab === 'gallery') renderGallery();
-            showToast('공유가 해제되었습니다.', 'success');
-            dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
-                if (window.sharedPhotos) window.sharedPhotos = prevShared;
-                if (appState.currentTab === 'timeline') renderTimeline();
-                if (appState.currentTab === 'gallery') renderGallery();
-            });
-            return;
-        }
-
         window.openDailySharePreviewModal(dateStr);
     } catch (err) {
         console.error('[shareDailySummary]', err);
@@ -217,7 +181,7 @@ window.shareDailySummary = async (dateStr) => {
     }
 };
 
-// 일간 식단 공유 미리보기 모달 열기
+// 하루 기록 공유 미리보기 모달 열기
 window.openDailySharePreviewModal = (dateStr) => {
     const existing = document.getElementById('dailySharePreviewModal');
     if (existing) existing.remove();
@@ -235,43 +199,73 @@ window.openDailySharePreviewModal = (dateStr) => {
         return;
     }
 
+    const uid = window.currentUser?.uid;
+    const existingShare = findExistingDailyShare(dateStr, uid);
+    const isShared = !!existingShare;
+    const safeDate = String(dateStr).replace(/'/g, '');
+    const existingComment = existingShare?.comment ? String(existingShare.comment) : '';
+
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-black/50 capture-share-modal';
+    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-labelledby', 'dailySharePreviewTitle');
+    if (isShared) modal.setAttribute('data-daily-share-mode', 'unshare');
 
     modal.innerHTML = `
-        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
+        <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden border border-slate-200/80">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="dailyShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
                 <div class="w-10 h-10 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-3"></div>
-                <p class="text-slate-600 font-bold">공유 중...</p>
+                <p class="text-slate-600 font-bold" id="dailyShareLoadingLabel">공유 중...</p>
             </div>
-            <div class="flex justify-between items-center px-4 py-3 sm:py-3.5 border-b border-slate-200 flex-shrink-0">
-                <h3 class="text-base font-black text-slate-800">일간 식단 공유 미리보기</h3>
-                <button type="button" onclick="window.closeDailySharePreviewModal()" class="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 rounded-full shrink-0">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                </button>
+            <div class="mealog-dialog-head border-b border-slate-200">
+                <h2 id="dailySharePreviewTitle" class="text-base font-bold text-slate-800 tracking-tight">하루 기록 공유하기</h2>
             </div>
-            <div id="dailySharePreviewScroll" class="flex-1 overflow-y-auto overflow-x-hidden bg-slate-50 py-0 min-h-[min(280px,55vh)] max-h-[calc(92vh-9.5rem)]" style="padding: 3px;">
-                <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+            <div class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden">
+                <div id="dailySharePreviewScroll" class="bg-slate-50 py-0" style="padding: 3px;">
+                    <!-- createDailyShareCard(forPreview) 결과가 여기 들어감 -->
+                </div>
+                <div class="px-4 sm:px-5 pt-3 pb-2">
+                    <label for="dailyShareComment" class="text-sm font-bold text-slate-600 block mb-2">코멘트 (선택사항)</label>
+                    <textarea id="dailyShareComment" placeholder="모먼트에 함께 올릴 코멘트를 입력하세요..." class="w-full p-3 bg-slate-100 rounded-xl text-sm border border-slate-200/80 focus:border-slate-400 transition-all resize-none" rows="3"></textarea>
+                </div>
             </div>
-            <div class="border-t border-slate-200 overflow-hidden flex min-h-[3.25rem] sm:min-h-14 flex-shrink-0">
-                <button type="button" onclick="window.closeDailySharePreviewModal()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors">
-                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
-                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
-                </button>
-                <button type="button" id="dailyShareConfirmBtn" onclick="window.confirmDailyShare('${dateStr}', event)" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
-                    <span id="dailyShareConfirmLabel" class="text-sm sm:text-[15px] font-bold">공유</span>
-                    <span id="dailyShareConfirmSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 올리기</span>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                <button type="button" onclick="window.closeDailySharePreviewModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="dailyShareConfirmBtn" data-date="${safeDate}" data-mode="${isShared ? 'unshare' : 'share'}" class="${isShared ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary'}">
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">${isShared ? '공유 취소' : '공유하기'}</span></span>
                 </button>
             </div>
         </div>
     `;
 
     document.body.appendChild(modal);
+    const panel = modal.firstElementChild;
+    if (panel) {
+        bindDialogGrabberPullClose({
+            root: modal,
+            panel,
+            onClose: () => window.closeDailySharePreviewModal()
+        });
+    }
+    const confirmBtn = document.getElementById('dailyShareConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.onclick = (ev) => {
+            if (confirmBtn.getAttribute('data-mode') === 'unshare') {
+                void window.cancelDailyShare(safeDate, ev);
+            } else {
+                void window.confirmDailyShare(safeDate, ev);
+            }
+        };
+    }
+    const commentEl = document.getElementById('dailyShareComment');
+    if (commentEl && existingComment) commentEl.value = existingComment;
+    scheduleLucideIcons(modal);
     const scrollEl = document.getElementById('dailySharePreviewScroll');
     if (scrollEl && previewCard) {
         scrollEl.appendChild(previewCard);
-        // 처음부터 화면 안쪽을 꽉 채워서 보여주기 위해 스크롤을 상단으로
         setTimeout(() => {
             scrollEl.scrollTop = 0;
         }, 0);
@@ -280,6 +274,58 @@ window.openDailySharePreviewModal = (dateStr) => {
     modal.addEventListener('click', (e) => {
         if (e.target === modal) window.closeDailySharePreviewModal();
     });
+};
+
+/** 미리보기에서 일간 공유 취소 */
+window.cancelDailyShare = async (dateStr) => {
+    const uid = window.currentUser?.uid;
+    if (!uid) {
+        showToast('로그인이 필요합니다.', 'error');
+        if (typeof window.requestLogin === 'function') window.requestLogin();
+        return;
+    }
+    const existingShare = findExistingDailyShare(dateStr, uid);
+    if (!existingShare?.photoUrl) {
+        showToast('공유된 하루 기록을 찾을 수 없습니다.', 'error');
+        window.closeDailySharePreviewModal();
+        return;
+    }
+
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    const inModalSpinner = previewModal?.querySelector('#dailyShareLoadingOverlay');
+    const loadingLabel = previewModal?.querySelector('#dailyShareLoadingLabel');
+    if (loadingLabel) loadingLabel.textContent = '공유 취소 중...';
+    if (inModalSpinner) inModalSpinner.classList.remove('hidden');
+
+    const shareBtn = document.getElementById('dailyShareConfirmBtn');
+    if (shareBtn) {
+        shareBtn.disabled = true;
+        shareBtn.className = 'mealog-btn mealog-btn-danger opacity-50 cursor-not-allowed';
+        shareBtn.innerHTML =
+            '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유 취소 중...</span></span>';
+        scheduleLucideIcons(shareBtn);
+    }
+
+    const photoUrlToRemove = existingShare.photoUrl;
+    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
+    try {
+        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
+            window.sharedPhotos = window.sharedPhotos.filter(
+                (p) => !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+            );
+        }
+        window.closeDailySharePreviewModal();
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast('공유가 취소되었습니다.', 'success');
+        await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
+    } catch (e) {
+        console.error('[cancelDailyShare]', e);
+        if (window.sharedPhotos) window.sharedPhotos = prevShared;
+        if (appState.currentTab === 'timeline') renderTimeline();
+        if (appState.currentTab === 'gallery') renderGallery();
+        showToast(getUserFacingErrorMessage(e, 'share') || '공유 취소에 실패했습니다.', 'error');
+    }
 };
 
 // 일간 공유 미리보기 모달 닫기
@@ -313,18 +359,13 @@ window.confirmDailyShare = async (dateStr, ev) => {
         ? ev.target.closest('#dailyShareConfirmBtn')
         : null;
     const shareBtn = document.getElementById('dailyShareConfirmBtn') || fromEv || (ev && ev.target) || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-    const shareLabel = document.getElementById('dailyShareConfirmLabel');
-    const shareSub = document.getElementById('dailyShareConfirmSub');
     if (shareBtn) {
         shareBtn.disabled = true;
         shareBtn.classList.add('opacity-50', 'cursor-not-allowed');
-        if (shareSub) shareSub.classList.add('hidden');
-        if (shareLabel) {
-            shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-            shareLabel.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
-        } else {
-            shareBtn.textContent = '공유 중...';
-        }
+        shareBtn.className = 'mealog-btn mealog-btn-primary opacity-50 cursor-not-allowed';
+        shareBtn.innerHTML =
+            '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유 중...</span></span>';
+        scheduleLucideIcons(shareBtn);
     }
     // 스피너가 실제로 화면에 그려진 뒤 무거운 작업 진행 (두 프레임 양보로 페인트 확실히 반영)
     await new Promise(r => requestAnimationFrame(r));
@@ -390,7 +431,10 @@ window.confirmDailyShare = async (dateStr, ev) => {
         });
         await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
 
-        const innerContent = previewCard.querySelector('div[style*="width: 420px"]') || previewCard;
+        const innerContent =
+            previewCard.querySelector('.daily-share-capture__sheet') ||
+            previewCard.querySelector('div[style*="width: 420px"]') ||
+            previewCard;
 
         // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(innerContent, {
@@ -427,13 +471,6 @@ window.confirmDailyShare = async (dateStr, ev) => {
                         el.style.fontWeight = '700';
                     }
                 });
-                // Ghost Hack: 별점 배지들만 캡처본에서 margin-top으로 살짝 내려서 베이스라인 정렬 보정
-                const badges = clonedDoc.querySelectorAll('span[style*="fefce8"]');
-                badges.forEach(el => {
-                    el.style.marginTop = '-5px';
-                    el.style.display = 'flex';
-                    el.style.alignItems = 'center';
-                });
             }
         });
 
@@ -442,20 +479,9 @@ window.confirmDailyShare = async (dateStr, ev) => {
         const photoUrl = await uploadBase64ToStorage(base64Image, uid, `daily_${dateStr}`, 1024);
 
         const userProfile = window.userSettings?.profile || {};
-
-        let dailyComment = '';
-        try {
-            if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
-                dailyComment = window.dbOps.getDailyJournal(dateStr).comment || '';
-            } else if (window.dbOps && typeof window.dbOps.getDailyComment === 'function') {
-                dailyComment = window.dbOps.getDailyComment(dateStr) || '';
-            } else if (window.userSettings && window.userSettings.dailyComments) {
-                const raw = window.userSettings.dailyComments[dateStr];
-                dailyComment = typeof raw === 'string' ? raw : (raw?.comment || '');
-            }
-        } catch (e) {
-            console.warn('getDailyJournal 호출 실패:', e);
-        }
+        // 팝업 코멘트 → 모먼트 캡션(코멘트란). 캡처 이미지와 별개.
+        const dailyComment =
+            (document.getElementById('dailyShareComment')?.value || '').trim();
 
         // 낙관적 UI: 클라이언트 데이터로 즉시 반영 후 서버는 백그라운드 호출
         const dailyShareData = {
@@ -522,23 +548,12 @@ window.confirmDailyShare = async (dateStr, ev) => {
         if (spinner) spinner.classList.add('hidden');
         // 버튼 상태 복원 (모달이 아직 DOM에 있을 때만)
         const shareBtn = document.getElementById('dailyShareConfirmBtn') || document.querySelector(`button[onclick*="confirmDailyShare('${dateStr}')"]`);
-        const shareLabel = document.getElementById('dailyShareConfirmLabel');
-        const shareSub = document.getElementById('dailyShareConfirmSub');
         if (shareBtn) {
             shareBtn.disabled = false;
-            shareBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            if (shareLabel) {
-                shareLabel.innerHTML = '';
-                shareLabel.textContent = '공유';
-                shareLabel.className = 'text-sm sm:text-[15px] font-bold text-white';
-            } else {
-                shareBtn.textContent = '공유';
-            }
-            if (shareSub) {
-                shareSub.classList.remove('hidden');
-                shareSub.textContent = '피드에 올리기';
-                shareSub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-primary';
+            shareBtn.innerHTML =
+                '<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유하기</span></span>';
+            scheduleLucideIcons(shareBtn);
         }
     }
 };
@@ -657,7 +672,7 @@ window.openDailyCommentModal = (dateStr) => {
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-base font-black text-slate-800">하루 기록 수정</h3>
                 <button type="button" onclick="window.closeDailyCommentModal()" class="text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <i data-lucide="x" class="text-xl"></i>
                 </button>
             </div>
             <textarea id="dailyCommentModalInput" 
@@ -795,7 +810,9 @@ window.backfillUserStats = async () => {
         const { mealCount, dayCount } = result.data || {};
         showToast(`통계 재계산 완료 (${mealCount}건, ${dayCount}일)`, 'success');
         if (appState.currentTab === 'timeline') { renderTimeline(); renderMiniCalendar(); }
-        if (appState.currentTab === 'dashboard') updateDashboard();
+        if (appState.currentTab === 'dashboard') {
+            void ensureAnalytics().then((m) => m.updateDashboard()).catch(() => {});
+        }
         return result.data;
     } catch (e) {
         console.error('backfillUserStats 실패:', e);
@@ -840,12 +857,20 @@ window.toggleLike = async (postId) => {
             }
         });
 
-        const likes = await postInteractions.getLikes(postId);
-        const likeCount = likes.length || 0;
+        let likeCount = 0;
+        if (postInteractions.getLikeCount) {
+            likeCount = await postInteractions.getLikeCount(postId);
+        } else {
+            const likes = await postInteractions.getLikes(postId);
+            likeCount = likes.length || 0;
+        }
         const likeText = likeCount > 0 ? String(likeCount) : '';
         document.querySelectorAll(`.post-like-count[data-post-id="${postId}"]`).forEach((el) => {
             el.textContent = likeText;
         });
+        // 탭 재진입 시 시드/캐시가 비지 않도록 동기화 (likeCount 문서는 트리거로 보정)
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { likeCount });
+        syncMomentPostSeedCounts(postId, { likeCount });
     } catch (e) {
         console.error("좋아요 토글 실패:", e);
         showToast("좋아요 처리 중 오류가 발생했습니다.", 'error');
@@ -1074,7 +1099,13 @@ window.deleteCommentFromPost = async (commentId, postId) => {
     // 댓글 개수 즉시 감소
     if (commentCountEl) {
         const currentCount = parseInt(commentCountEl.textContent) || 0;
-        commentCountEl.textContent = currentCount > 0 ? currentCount - 1 : '';
+        const next = currentCount > 0 ? currentCount - 1 : 0;
+        commentCountEl.textContent = next > 0 ? String(next) : '';
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: next });
+        syncMomentPostSeedCounts(postId, { commentCount: next });
+        document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+            if (el !== commentCountEl) el.textContent = next > 0 ? String(next) : '';
+        });
     }
     
     // 댓글 목록이 비어있으면 스타일 제거
@@ -1121,6 +1152,13 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                     if (commentCountEl) {
                         commentCountEl.textContent = comments.length > 0 ? comments.length : '';
                     }
+                    window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, {
+                        commentCount: comments.length
+                    });
+                    syncMomentPostSeedCounts(postId, { commentCount: comments.length });
+                    document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+                        el.textContent = comments.length > 0 ? String(comments.length) : '';
+                    });
                     
                     if (commentsListEl && isMealPhotoOverlayList && typeof window.loadPostCommentsForMealPhotoOverlayList === 'function') {
                         await window.loadPostCommentsForMealPhotoOverlayList(postId, commentsListEl);
@@ -1729,6 +1767,11 @@ window.submitComment = async (postId) => {
     if (commentCountEl) {
         const n = (parseInt(commentCountEl.textContent || '0', 10) || 0) + 1;
         commentCountEl.textContent = n;
+        window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: n });
+        syncMomentPostSeedCounts(postId, { commentCount: n });
+        document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+            if (el !== commentCountEl) el.textContent = String(n);
+        });
     }
     
     try {
@@ -1804,6 +1847,11 @@ window.submitComment = async (postId) => {
         if (commentCountEl) {
             const n = Math.max(0, (parseInt(commentCountEl.textContent || '0', 10) || 0) - 1);
             commentCountEl.textContent = n || '';
+            window.sharedPhotosFeed = patchMomentFeedSocialCounts(window.sharedPhotosFeed, postId, { commentCount: n });
+            syncMomentPostSeedCounts(postId, { commentCount: n });
+            document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
+                if (el !== commentCountEl) el.textContent = n || '';
+            });
             if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
             else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
         }

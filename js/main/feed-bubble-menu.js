@@ -229,13 +229,13 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
         : `
         <div class="mb-2.5 flex justify-center gap-2.5">
             <button type="button" data-feed-react="like" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-500 shadow-md active:scale-95 active:opacity-90" aria-label="좋아요">
-                <i class="fa-solid fa-heart text-sm text-white" aria-hidden="true"></i>
+                <i data-lucide="heart" class="text-sm text-white" aria-hidden="true"></i>
             </button>
             <button type="button" data-feed-react="thumbs" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500 shadow-md active:scale-95 active:opacity-90" aria-label="따봉">
-                <i class="fa-solid fa-thumbs-up text-sm text-white" aria-hidden="true"></i>
+                <i data-lucide="thumbs-up" class="text-sm text-white" aria-hidden="true"></i>
             </button>
             <button type="button" data-feed-react="check" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 shadow-md active:scale-95 active:opacity-90" aria-label="체크">
-                <i class="fa-solid fa-check text-sm text-white" aria-hidden="true"></i>
+                <i data-lucide="check" class="text-sm text-white" aria-hidden="true"></i>
             </button>
         </div>`;
 
@@ -245,29 +245,29 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
     const replyBtn = isMine
         ? ''
         : `<button type="button" data-feed-action="reply" class="${rowBase} text-slate-900">
-            <i class="fa-solid fa-reply shrink-0 text-sm text-slate-600" aria-hidden="true"></i>답장
+            <i data-lucide="reply" class="shrink-0 text-sm text-slate-600" aria-hidden="true"></i>답장
         </button>`;
 
     const editBtn = isMine && !isDemoUser(window.currentUser)
         ? `<button type="button" data-feed-action="edit" class="${rowBase} text-slate-900">
-            <i class="fa-solid fa-pen shrink-0 text-sm text-slate-600" aria-hidden="true"></i>수정
+            <i data-lucide="pen" class="shrink-0 text-sm text-slate-600" aria-hidden="true"></i>수정
         </button>`
         : '';
 
     const delBtn = isMine && !isDemoUser(window.currentUser)
         ? `<button type="button" data-feed-action="delete" class="${rowBase} text-red-800 active:bg-red-50">
-            <i class="fa-solid fa-trash shrink-0 text-sm text-red-700" aria-hidden="true"></i>삭제
+            <i data-lucide="trash-2" class="shrink-0 text-sm text-red-700" aria-hidden="true"></i>삭제
         </button>`
         : '';
 
     /* 최소 너비: 반응 줄 기준 × 1.3, 본문은 영역 탭(테두리 없음) */
     root.innerHTML = `
-        <div class="feed-bubble-popup-backdrop absolute inset-0 bg-black/45 pointer-events-auto" data-feed-sheet-dismiss></div>
-        <div class="feed-bubble-popup-panel relative z-[1] mx-auto min-w-[12.025rem] w-max max-w-[92vw] pointer-events-auto overflow-y-auto rounded-2xl bg-white px-2 py-2 text-center shadow-xl" style="max-height:min(78vh, 420px)">
+        <div class="feed-bubble-popup-backdrop absolute inset-0 mealog-action-dim pointer-events-auto" data-feed-sheet-dismiss></div>
+        <div class="feed-bubble-popup-panel mealog-action-center-panel relative z-[1] mx-auto min-w-[12.025rem] w-max max-w-[92vw] pointer-events-auto overflow-y-auto px-2 py-2 text-center" style="max-height:min(78vh, 420px)">
             ${reactionsBlock}
             <div class="flex flex-col divide-y divide-slate-200/90">
                 <button type="button" data-feed-action="copy" class="${rowBase} text-slate-900 leading-tight">
-                    <i class="fa-regular fa-copy shrink-0 text-sm text-slate-600" aria-hidden="true"></i><span class="break-words">텍스트 복사</span>
+                    <i data-lucide="copy" class="shrink-0 text-sm text-slate-600" aria-hidden="true"></i><span class="break-words">텍스트 복사</span>
                 </button>
                 ${replyBtn}
                 ${editBtn}

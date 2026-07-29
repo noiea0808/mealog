@@ -298,7 +298,7 @@ export async function refreshAdminUserAnalytics() {
     _activityFilterLastWeek = false;
     mount.innerHTML = `
         <div class="text-center py-16 text-slate-500 text-sm">
-            <i class="fa-solid fa-spinner fa-spin text-2xl mb-3 text-emerald-600" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="text-2xl mb-3 text-emerald-600 lucide-spin" aria-hidden="true"></i>
             <p class="font-medium text-slate-700">전체 사용자를 불러오는 중입니다…</p>
             <p class="text-xs text-slate-400 mt-2">인원이 많으면 잠시 걸릴 수 있습니다.</p>
         </div>
@@ -310,7 +310,7 @@ export async function refreshAdminUserAnalytics() {
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
         mount.innerHTML = `
             <div class="text-center py-12 text-red-500 text-sm">
-                <i class="fa-solid fa-exclamation-triangle text-2xl mb-2" aria-hidden="true"></i>
+                <i data-lucide="triangle-alert" class="text-2xl mb-2" aria-hidden="true"></i>
                 <p>전체 사용자를 불러오지 못했습니다.</p>
                 <p class="text-xs text-slate-500 mt-2">${escapeHtml(errMsg)}</p>
             </div>

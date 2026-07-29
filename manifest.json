@@ -4,10 +4,16 @@
   "description": "우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#056c5b",
-  "theme_color": "#056c5b",
+  "background_color": "#3cb889",
+  "theme_color": "#3cb889",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "assets/icon_180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "assets/icon_192.png",
       "sizes": "192x192",

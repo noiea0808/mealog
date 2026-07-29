@@ -613,7 +613,7 @@ window.openLoginBannerLandingNoticeSelect = async function () {
     const modal = document.getElementById('loginBannerLandingNoticeModal');
     const listEl = document.getElementById('loginBannerLandingNoticeList');
     if (!modal || !listEl) return;
-    listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">로딩 중...</p></div>';
+    listEl.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-xl mb-2 lucide-spin"></i><p class="text-sm">로딩 중...</p></div>';
     modal.classList.remove('hidden');
     try {
         const noticesColl = collection(db, 'artifacts', appId, 'notices');

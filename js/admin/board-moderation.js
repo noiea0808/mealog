@@ -80,7 +80,7 @@ function _adminOpenDetailCommentLightbox(src) {
             <div class="detail-comment-lightbox__scrim" data-dclb-close="1" aria-label="닫기"></div>
             <div class="detail-comment-lightbox__stage" role="dialog" aria-modal="true" aria-label="이미지 확대">
                 <button type="button" class="detail-comment-lightbox__close" data-dclb-close="1" aria-label="닫기">
-                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
                 <img class="detail-comment-lightbox__img" alt="" />
             </div>
@@ -298,7 +298,7 @@ async function renderBoardPosts(category = 'all') {
 
     currentAdminBoardCategory = category;
     container.innerHTML =
-        '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+        '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
 
     try {
         const cached = boardListCache.get(category);
@@ -306,7 +306,7 @@ async function renderBoardPosts(category = 'all') {
         if (cached && now - cached.ts < ADMIN_BOARD_CACHE_TTL_MS) {
             if (!cached.rows.length) {
                 container.innerHTML =
-                    '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+                    '<div class="text-center py-8 text-slate-400"><i data-lucide="message-circle" class="text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
             } else {
                 const authorIds = cached.rows.map((r) => r.post?.authorId).filter(Boolean);
                 await fetchUserProfiles(authorIds);
@@ -338,7 +338,7 @@ async function renderBoardPosts(category = 'all') {
 
         if (rows.length === 0) {
             container.innerHTML =
-                '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-comments text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
+                '<div class="text-center py-8 text-slate-400"><i data-lucide="message-circle" class="text-2xl mb-2"></i><p>게시물이 없습니다.</p></div>';
             adminBoardMonitoringLoaded = true;
             return;
         }
@@ -349,7 +349,7 @@ async function renderBoardPosts(category = 'all') {
         adminBoardMonitoringLoaded = false;
         console.error('게시판 게시물 렌더링 실패:', e);
         container.innerHTML =
-            '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
+            '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>게시물을 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
@@ -455,7 +455,7 @@ async function renderBoardPostDetail(postId) {
     const container = document.getElementById('boardDetailContainer');
     const commentsContainer = document.getElementById('boardDetailCommentsList');
     if (!container || !postId) return;
-    container.innerHTML = '<div class="text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>로딩 중...</div>';
+    container.innerHTML = '<div class="text-slate-400"><i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>로딩 중...</div>';
     if (commentsContainer) commentsContainer.innerHTML = '';
     try {
         const postRef = doc(db, 'artifacts', appId, 'boardPosts', postId);

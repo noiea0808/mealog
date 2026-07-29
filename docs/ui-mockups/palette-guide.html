@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mealog · Soft Mint Air 팔레트</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="./themes.js"></script>
+  <style>
+    :root {
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --coral-soft: #fff0f3;
+      --danger: #ee5f70;
+      --danger-deep: #d9485a;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcfa;
+      --page-deep: #faf6f2;
+      --page-mist: #f8f7f5;
+      --card: #ffffff;
+      --star: #fbbf24;
+      --shell-danger: var(--danger);
+      --c1: #3cb889;
+      --c2: #f2a8b4;
+      --c3: #f0c89a;
+      --c4: #9ec4e0;
+      --c5: #d4aee0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: var(--page-deep, #faf6f2);
+      color: var(--ink);
+      min-height: 100dvh;
+      padding: 36px 20px 72px;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; }
+
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--green-deep);
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+    .lead {
+      margin-top: 10px;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--ink-2);
+      max-width: 40rem;
+    }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; }
+    .links a {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--green-deep);
+      text-decoration: none;
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+    .links a:hover { border-color: var(--green-mute); }
+
+    .hero-strip {
+      display: grid;
+      grid-template-columns: repeat(9, 1fr);
+      height: 72px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+    }
+    .hero-strip span { min-width: 0; }
+    .hero-cap {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-bottom: 36px;
+      line-height: 1.5;
+    }
+
+    .rule {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 20px;
+      margin-bottom: 36px;
+    }
+    .rule h2 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--green-deep);
+    }
+    .rule ul {
+      list-style: none;
+      display: grid;
+      gap: 8px;
+    }
+    .rule li {
+      font-size: 13.5px;
+      line-height: 1.55;
+      color: var(--ink-2);
+      padding-left: 14px;
+      position: relative;
+    }
+    .rule li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.55em;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .section { margin-bottom: 40px; }
+    .section-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .section-head h2 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .section-head p {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 28rem;
+      line-height: 1.45;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .swatch {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      min-height: 96px;
+    }
+    .swatch .chip {
+      border-right: 1px solid var(--line);
+    }
+    .swatch .chip.bordered {
+      box-shadow: inset 0 0 0 1px rgba(36, 31, 28, 0.08);
+    }
+    .swatch .meta {
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+    }
+    .swatch .name {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .swatch code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11.5px;
+      color: var(--muted);
+      background: var(--green-soft);
+      padding: 2px 6px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+    .swatch .token {
+      font-size: 11px;
+      color: var(--ink-2);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .swatch .desc {
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .pair-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .pair {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--card);
+    }
+    .pair .sample {
+      padding: 20px 16px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .pair .label {
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+      border-top: 1px solid var(--line);
+    }
+
+    .note {
+      margin-top: 8px;
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="eyebrow">Applied · css/style.css :root</div>
+        <h1>Soft Mint Air 팔레트</h1>
+        <p class="lead">
+          현재 앱·시안 v2에 적용된 기본 톤입니다.
+          밝고 가벼운 민트 그린을 브랜드 축으로 두고, 코랄로 감정·소셜 포인트를 줍니다.
+          종이처럼 따뜻한 오프화이트 위에 올라갑니다.
+        </p>
+      </div>
+      <div class="links">
+        <a href="./index.html">시안 허브</a>
+        <a href="./palette-compare.html">A / B / C 비교</a>
+        <a href="./visual-samples.html">실물 샘플</a>
+      </div>
+    </div>
+
+    <div class="hero-strip" aria-hidden="true">
+      <span style="background:#fffcfa"></span>
+      <span style="background:#faf6f2"></span>
+      <span style="background:#f8f7f5"></span>
+      <span style="background:#eaf8f2"></span>
+      <span style="background:#b4e2cd"></span>
+      <span style="background:#3cb889"></span>
+      <span style="background:#2d9f74"></span>
+      <span style="background:#f2a8b4"></span>
+      <span style="background:#241f1c"></span>
+    </div>
+    <p class="hero-cap">
+      Paper → Page Deep → Page Mist → Soft → Mute → Mint → Deep → Coral → Ink ·
+      소스: <code>css/style.css</code>, <code>docs/ui-mockups/themes.js</code> (theme A)
+    </p>
+
+    <div class="rule">
+      <h2>사용 원칙</h2>
+      <ul>
+        <li><strong>그린(--green)</strong>은 선택·활성 상태에 씁니다. 주 CTA 채움은 <strong>Mint Glow</strong>(135° 그라데이션)을 씁니다.</li>
+        <li><strong>코랄(--coral)</strong>은 좋아요·하트·감정 포인트용입니다. 브랜드 CTA와 역할을 나눕니다.</li>
+        <li><strong>데인저(--danger)</strong>는 탈퇴·삭제·신고 확정 CTA만. Soft Mint와 짝이 되는 선명한 코랄 레드(Glow)입니다.</li>
+        <li>본문·제목은 <strong>Ink</strong> 계열, 보조 설명은 <strong>Muted</strong>, 구분선은 <strong>Line</strong>만 사용합니다.</li>
+        <li>페이지·메뉴 캔버스는 <strong>Page Deep</strong>(<code>--page-deep</code> / <code>--app-page-bg</code>), 카드·시트 표면은 White(<code>--card</code>), 시트·입력 등 연한 면은 Paper(<code>--page</code>)로 계층을 만듭니다.</li>
+      </ul>
+    </div>
+
+    <!-- Brand green -->
+    <section class="section">
+      <div class="section-head">
+        <h2>브랜드 그린</h2>
+        <p>밀로그의 주 색. 건강·신선·기록의 긍정적 신호를 담당합니다.</p>
+      </div>
+      <div class="swatches">
+        <article class="swatch">
+          <div class="chip" style="background:#3cb889"></div>
+          <div class="meta">
+            <div class="name">Mint</div>
+            <code>#3CB889</code>
+            <div class="token">--green / --color-primary</div>
+            <p class="desc">브랜드 주조색·탭 활성·선택 칩. 주 CTA 채움은 Mint Glow 그라데이션.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#2d9f74"></div>
+          <div class="meta">
+            <div class="name">Mint Deep</div>
+            <code>#2D9F74</code>
+            <div class="token">--green-deep</div>
+            <p class="desc">눌림·호버·강조 텍스트. Mint보다 한 단계 진한 상태색.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#b4e2cd"></div>
+          <div class="meta">
+            <div class="name">Mint Mute</div>
+            <code>#B4E2CD</code>
+            <div class="token">--green-mute</div>
+            <p class="desc">테두리·세그먼트 비활성·소프트 필. Soft와 Mint 사이 중간톤.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#eaf8f2"></div>
+          <div class="meta">
+            <div class="name">Mint Soft</div>
+            <code>#EAF8F2</code>
+            <div class="token">--green-soft</div>
+            <p class="desc">선택 배경·아바타 fallback·아이콘 타일. 아주 옅은 민트 워시.</p>
+          </div>
+        </article>
+      </div>
+      <div class="pair-row">
+        <div class="pair">
+          <div class="sample" style="background:linear-gradient(135deg,#5fd4a8 0%,#3cb889 55%,#2d9f74 100%);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 8px 20px rgba(60,184,137,.36)">저장하기</div>
+          <div class="label">Mint Glow CTA — 주 버튼 (시안·앱 공통)</div>
+        </div>
+        <div class="pair">
+          <div class="sample" style="background:#eaf8f2;color:#2d9f74">선택됨</div>
+          <div class="label">Soft 배경 + Deep 텍스트 — 선택 칩</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Accent coral + danger -->
+    <section class="section">
+      <div class="section-head">
+        <h2>액센트 코랄 · 데인저</h2>
+        <p>감정 포인트(코랄)와 파괴적 CTA(데인저)를 나눕니다. 데인저는 Soft Mint와 대비되는 선명한 코랄 레드입니다.</p>
+      </div>
+      <div class="swatches">
+        <article class="swatch">
+          <div class="chip" style="background:#f2a8b4"></div>
+          <div class="meta">
+            <div class="name">Coral</div>
+            <code>#F2A8B4</code>
+            <div class="token">--coral</div>
+            <p class="desc">좋아요·하트·북마크 활성. 차트 2번째 시리즈에도 사용.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#fff0f3"></div>
+          <div class="meta">
+            <div class="name">Coral Soft</div>
+            <code>#FFF0F3</code>
+            <div class="token">--coral-soft</div>
+            <p class="desc">코랄 관련 배지·알림 배경. 연한 블러시 워시.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#ee5f70"></div>
+          <div class="meta">
+            <div class="name">Danger</div>
+            <code>#EE5F70</code>
+            <div class="token">--danger / --shell-danger</div>
+            <p class="desc">탈퇴·삭제·로그아웃 확정 등 파괴적 CTA 채움. 탁한 rose(#C45C6A) 대신 선명한 코랄 레드.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#d9485a"></div>
+          <div class="meta">
+            <div class="name">Danger Deep</div>
+            <code>#D9485A</code>
+            <div class="token">--danger-deep</div>
+            <p class="desc">데인저 버튼 호버·눌림. Danger보다 한 단계 진한 상태색.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Surfaces & type -->
+    <section class="section">
+      <div class="section-head">
+        <h2>표면 · 타이포</h2>
+        <p>종이 질감의 배경과 웜 그레이 잉크로 가독성 계층을 만듭니다.</p>
+      </div>
+      <div class="swatches">
+        <article class="swatch">
+          <div class="chip bordered" style="background:#fffcfa"></div>
+          <div class="meta">
+            <div class="name">Paper</div>
+            <code>#FFFCFA</code>
+            <div class="token">--page</div>
+            <p class="desc">시트·입력·소프트 필 등 연한 표면. 순백보다 따뜻한 오프화이트.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#faf6f2"></div>
+          <div class="meta">
+            <div class="name">Page Deep</div>
+            <code>#FAF6F2</code>
+            <div class="token">--page-deep / --app-page-bg</div>
+            <p class="desc">각 메뉴(밀당·모먼트·밀로그·라운지·마이) 캔버스 배경. Paper와 이전 딥톤의 중간 — 기기에서도 씻기지 않으면서 과하지 않음.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#f8f7f5"></div>
+          <div class="meta">
+            <div class="name">Page Mist</div>
+            <code>#F8F7F5</code>
+            <div class="token">--page-mist</div>
+            <p class="desc">Page Deep과 비슷한 밝기이되 웜을 줄인 옅은 회색빛 표면. 보조 밴드·구분 면·쿨톤이 필요할 때.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip bordered" style="background:#ffffff"></div>
+          <div class="meta">
+            <div class="name">Card</div>
+            <code>#FFFFFF</code>
+            <div class="token">--card</div>
+            <p class="desc">카드·시트·다이얼로그·인라인 컴포저 표면.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#241f1c"></div>
+          <div class="meta">
+            <div class="name">Ink</div>
+            <code>#241F1C</code>
+            <div class="token">--ink</div>
+            <p class="desc">제목·본문 기본 텍스트. 차가운 블랙 대신 따뜻한 브라운-블랙.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#4f4841"></div>
+          <div class="meta">
+            <div class="name">Ink 2</div>
+            <code>#4F4841</code>
+            <div class="token">--ink-2</div>
+            <p class="desc">부제·리드 문장. Ink보다 한 단계 옅은 본문 보조.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#7a7268"></div>
+          <div class="meta">
+            <div class="name">Muted</div>
+            <code>#7A7268</code>
+            <div class="token">--muted</div>
+            <p class="desc">메타·시간·플레이스홀더·비활성 아이콘.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#d0c6ba"></div>
+          <div class="meta">
+            <div class="name">Line</div>
+            <code>#D0C6BA</code>
+            <div class="token">--line</div>
+            <p class="desc">구분선·카드 보더·입력 아웃라인. 웜 베이지 그레이.</p>
+          </div>
+        </article>
+      </div>
+      <div class="pair-row">
+        <div class="pair">
+          <div class="sample" style="background:#faf6f2;color:#241f1c;text-align:left;padding:16px 18px">
+            <div style="font-size:16px;margin-bottom:4px">오늘의 밀로그</div>
+            <div style="font-size:12.5px;color:#7a7268;font-weight:500">보조 설명은 Muted</div>
+          </div>
+          <div class="label">Page Deep 위 Ink / Muted — 메뉴 캔버스 타이포</div>
+        </div>
+        <div class="pair">
+          <div class="sample" style="background:#fff;color:#4f4841;border-bottom:1px solid #d0c6ba;border-radius:0;text-align:left;padding:16px 18px">
+            카드 표면
+          </div>
+          <div class="label">Card + Line — 리스트·시트 구분</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Data / chart -->
+    <section class="section">
+      <div class="section-head">
+        <h2>차트 · 데이터</h2>
+        <p>밀당 분석 등 다색 시리즈용. 브랜드·코랄에서 시작해 파스텔로 확장합니다.</p>
+      </div>
+      <div class="swatches">
+        <article class="swatch">
+          <div class="chip" style="background:#3cb889"></div>
+          <div class="meta">
+            <div class="name">Series 1</div>
+            <code>#3CB889</code>
+            <div class="token">--c1</div>
+            <p class="desc">1순위 데이터 — 브랜드 민트와 동일.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#f2a8b4"></div>
+          <div class="meta">
+            <div class="name">Series 2</div>
+            <code>#F2A8B4</code>
+            <div class="token">--c2</div>
+            <p class="desc">2순위 — 코랄. 대비가 잘 보이는 감정색.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#f0c89a"></div>
+          <div class="meta">
+            <div class="name">Series 3</div>
+            <code>#F0C89A</code>
+            <div class="token">--c3</div>
+            <p class="desc">샌드 골드. 음식·온기 뉘앙스의 중립 파스텔.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#9ec4e0"></div>
+          <div class="meta">
+            <div class="name">Series 4</div>
+            <code>#9EC4E0</code>
+            <div class="token">--c4</div>
+            <p class="desc">스카이 블루. 민트와 어울리는 차가운 보조색.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#d4aee0"></div>
+          <div class="meta">
+            <div class="name">Series 5</div>
+            <code>#D4AEE0</code>
+            <div class="token">--c5</div>
+            <p class="desc">라일락. 5번째 이후 시리즈·태그 구분용.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#fbbf24"></div>
+          <div class="meta">
+            <div class="name">Star</div>
+            <code>#FBBF24</code>
+            <div class="token">--star</div>
+            <p class="desc">별점·즐겨찾기 채움. 앰버 옐로.</p>
+          </div>
+        </article>
+      </div>
+      <div class="pair-row">
+        <div class="pair" style="grid-column: 1 / -1">
+          <div class="sample" style="display:flex;height:28px;padding:0;gap:0">
+            <span style="flex:42;background:#3cb889"></span>
+            <span style="flex:28;background:#f2a8b4"></span>
+            <span style="flex:18;background:#f0c89a"></span>
+            <span style="flex:12;background:#9ec4e0"></span>
+          </div>
+          <div class="label">차트 막대 예시 — c1 → c4 비율 샘플</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Shell -->
+    <section class="section">
+      <div class="section-head">
+        <h2>팝업 셸</h2>
+        <p>다이얼로그·시트 오버레이용. Soft Mint 팝업 셸 v2와 공유합니다.</p>
+      </div>
+      <div class="swatches">
+        <article class="swatch">
+          <div class="chip" style="background:color-mix(in srgb, var(--ink-2) 45%, transparent)"></div>
+          <div class="meta">
+            <div class="name">Dim</div>
+            <code>ink-2 45%</code>
+            <div class="token">--shell-dim</div>
+            <p class="desc">모달 뒤 스크림. Ink-2 기반 반투명.</p>
+          </div>
+        </article>
+        <article class="swatch">
+          <div class="chip" style="background:#1c1917"></div>
+          <div class="meta">
+            <div class="name">Shell Ink</div>
+            <code>#1C1917</code>
+            <div class="token">--shell-ink</div>
+            <p class="desc">팝업 타이틀·본문 강조용. 앱 Ink보다 약간 더 진함.</p>
+          </div>
+        </article>
+      </div>
+      <p class="note">
+        대안 톤(B Blush Air · C Soft Clay Air)은
+        <a href="./palette-compare.html" style="color:var(--green-deep);font-weight:600">색상톤 비교</a>에서 확인하세요.
+        런타임 기본값은 A(Soft Mint Air)입니다.
+      </p>
+    </section>
+  </div>
+</body>
+</html>

@@ -8,7 +8,10 @@
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
+        <!-- 본문 page-deep: 앱 네비 숨김 시 하단 공백이 흰색으로 남지 않도록 -->
+        <item name="android:navigationBarColor">#faf6f2</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowTranslucentNavigation">false</item>
     </style>
 
@@ -17,7 +20,9 @@
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">#faf6f2</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowTranslucentNavigation">false</item>
     </style>
 
@@ -27,7 +32,9 @@
         <!-- 배경이 흰색이므로 코너 라운드 마스크 애니메이션 비활성화 -->
         <item name="windowSplashScreenAnimationDuration">0</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:navigationBarColor">#faf6f2</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowTranslucentNavigation">false</item>
     </style>
 </resources>

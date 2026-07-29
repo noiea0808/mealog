@@ -6,6 +6,7 @@ import { addDaysToYmd } from './demo-date-shift.js';
 import { localTodayYmd } from './render/timeline.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
+import { scheduleLucideIcons } from './icons.js';
 
 const PERIOD_PRESETS = {
     '7d': { days: 7 },
@@ -56,12 +57,7 @@ function syncDateInputsFromPeriod() {
 function updatePeriodButtonUI() {
     document.querySelectorAll('[data-moment-search-period]').forEach((btn) => {
         const active = btn.getAttribute('data-moment-search-period') === searchPeriod;
-        btn.classList.toggle('bg-emerald-600', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-emerald-600', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active);
-        btn.classList.toggle('border-slate-200', !active);
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     syncDateInputsFromPeriod();
@@ -71,22 +67,8 @@ function updateTraceButtonUI() {
     document.querySelectorAll('[data-moment-search-trace]').forEach((btn) => {
         const trace = btn.getAttribute('data-moment-search-trace');
         const active = searchTrace === trace;
-        btn.classList.toggle('bg-slate-800', active);
-        btn.classList.toggle('text-white', active);
-        btn.classList.toggle('border-slate-800', active);
-        btn.classList.toggle('bg-white', !active);
-        btn.classList.toggle('text-slate-700', !active && trace !== 'like');
-        btn.classList.toggle('border-slate-200', !active);
-        if (trace === 'like') {
-            btn.classList.toggle('text-red-500', !active);
-            btn.classList.toggle('text-white', active);
-        }
+        btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-        const icon = btn.querySelector('i');
-        if (icon && trace !== 'keyword') {
-            icon.classList.toggle('fa-solid', active);
-            icon.classList.toggle('fa-regular', !active);
-        }
     });
 
     const keywordWrap = document.getElementById('momentSearchKeywordWrap');
@@ -150,6 +132,7 @@ export function openMomentSearchModal() {
     modal.classList.remove('hidden');
     updatePeriodButtonUI();
     updateTraceButtonUI();
+    scheduleLucideIcons(modal);
     if (searchTrace !== 'keyword') {
         requestAnimationFrame(() => document.getElementById('momentSearchSubmitBtn')?.focus());
     }
@@ -222,7 +205,6 @@ export async function executeMomentSearch() {
 
 export function initMomentSearchModal() {
     document.getElementById('momentSearchBackdrop')?.addEventListener('click', closeMomentSearchModal);
-    document.getElementById('momentSearchCloseBtn')?.addEventListener('click', closeMomentSearchModal);
     document.getElementById('momentSearchCancelBtn')?.addEventListener('click', closeMomentSearchModal);
     document.getElementById('momentSearchSubmitBtn')?.addEventListener('click', () => {
         executeMomentSearch();

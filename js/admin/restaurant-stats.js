@@ -156,7 +156,7 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
 
     container.innerHTML = `
         <div class="text-center py-8 text-slate-400">
-            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i>
             <p>로딩 중...</p>
         </div>
     `;
@@ -226,7 +226,7 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
             const filterMsg = filter === 'all' ? '등록된 식당 정보가 없습니다.' : filter === 'kakao' ? '카카오맵으로 입력된 식당이 없습니다.' : '수동으로 입력된 식당이 없습니다.';
             container.innerHTML = `
                 <div class="text-center py-12 text-slate-400">
-                    <i class="fa-solid fa-utensils text-4xl mb-4"></i>
+                    <i data-lucide="utensils" class="text-4xl mb-4"></i>
                     <p class="text-sm font-bold">${filterMsg}${slotLabel}</p>
                 </div>
             `;
@@ -252,10 +252,10 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
                             .map((restaurant, index) => {
                                 const inputTypeBadge = restaurant.isKakao
                                     ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                                    <i class="fa-solid fa-map-marker-alt mr-1"></i>카카오맵
+                                    <i data-lucide="map-pin" class="mr-1"></i>카카오맵
                                    </span>`
                                     : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-                                    <i class="fa-solid fa-keyboard mr-1"></i>수동입력
+                                    <i data-lucide="keyboard" class="mr-1"></i>수동입력
                                    </span>`;
 
                                 const countDetail =
@@ -297,7 +297,7 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         console.error('식당정보 조회 실패:', e);
         container.innerHTML = `
             <div class="text-center py-8 text-red-400">
-                <i class="fa-solid fa-circle-exclamation text-2xl mb-2"></i>
+                <i data-lucide="circle-alert" class="text-2xl mb-2"></i>
                 <p>데이터를 불러오는 중 오류가 발생했습니다.</p>
                 <p class="text-xs mt-2">${e.message}</p>
             </div>
@@ -347,7 +347,7 @@ export function registerRestaurantStats() {
             adminRestaurantMonitoringRendered = false;
             container.innerHTML = `
         <div class="text-center py-8 text-slate-400">
-            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i>
             <p>전체 집계 중...</p>
         </div>
     `;

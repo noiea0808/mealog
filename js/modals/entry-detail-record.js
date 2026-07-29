@@ -1,10 +1,8 @@
 /**
- * 기록 모달 — 상세기록 (누구와·만족도·포만감·시간)
- * 하단 칩으로 각 항목 on/off → 해당 입력란 표시 + 게이지/시간 활성화
+ * 기록 모달 — 누구와·만족도·포만감·시간 섹션 표시
+ * (상세보기 칩 UI 제거 후 항상 표시, 게이지/시간 활성은 prefs 이벤트로 동기화)
  */
 import { appState } from '../state.js';
-import { dbOps } from '../db.js';
-import { isDemoUser } from '../demo-account.js';
 
 /** @typedef {'with'|'rating'|'satiety'|'time'} DetailRecordField */
 
@@ -25,185 +23,90 @@ const FIELD_SECTIONS = {
     },
 };
 
-let detailSaveTimeout = null;
-let detailBound = false;
+const ALWAYS_ON = { with: true, rating: true, satiety: true, time: true };
 
 function getModeKey() {
     return appState.entryFormMode === 'snack' ? 'snack' : 'meal';
 }
 
+/** 하위 호환 — 항상 on */
 export function ensureEntryModalDetailRecordOnUserSettings() {
     if (!window.userSettings) return;
-    const defaults = { with: false, rating: false, satiety: false, time: false };
-    const cur = window.userSettings.entryModalDetailRecord;
-    if (!cur || typeof cur !== 'object') {
-        window.userSettings.entryModalDetailRecord = { main: { ...defaults }, snack: { ...defaults } };
-        return;
-    }
-    ['main', 'snack'].forEach((key) => {
-        const slot = cur[key] && typeof cur[key] === 'object' ? cur[key] : {};
-        cur[key] = {
-            with: !!slot.with,
-            rating: !!slot.rating,
-            satiety: !!slot.satiety,
-            time: !!slot.time,
-        };
-    });
+    window.userSettings.entryModalDetailRecord = {
+        main: { ...ALWAYS_ON },
+        snack: { ...ALWAYS_ON },
+    };
 }
 
 /** @param {'meal'|'snack'} [mode] */
 export function getEntryDetailRecordPrefs(mode) {
-    const m = mode ?? getModeKey();
-    ensureEntryModalDetailRecordOnUserSettings();
-    const prefs = window.userSettings?.entryModalDetailRecord;
-    const slot = m === 'snack' ? prefs?.snack : prefs?.main;
-    return slot || { with: false, rating: false, satiety: false, time: false };
+    void mode;
+    return { ...ALWAYS_ON };
 }
 
 function getSections(mode) {
     return FIELD_SECTIONS[mode === 'snack' ? 'snack' : 'meal'];
 }
 
-function syncChipButtons(prefs) {
-    document.querySelectorAll('#entryDetailRecordChips .entry-detail-record-chip').forEach((btn) => {
-        const field = btn.getAttribute('data-field');
-        const on = !!prefs[field];
-        btn.classList.toggle('entry-detail-record-chip--active', on);
-        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-}
-
-function syncFieldSections(mode, prefs) {
+/** @param {boolean} [forceHide] Skip 등에서 메트릭 숨김 */
+function syncFieldSections(mode, prefs, forceHide = false) {
     const sections = getSections(mode);
     /** @type {DetailRecordField[]} */
     const fields = ['with', 'rating', 'satiety', 'time'];
     fields.forEach((field) => {
         const el = document.getElementById(sections[field]);
         if (!el) return;
-        el.classList.toggle('hidden', !prefs[field]);
+        if (field === 'with') {
+            // 누구와는 Skip일 때만 숨김
+            el.classList.toggle('hidden', forceHide);
+            return;
+        }
+        el.classList.toggle('hidden', forceHide || !prefs[field]);
     });
 
     const reviewWrap = document.getElementById(sections.reviewWrap);
     if (reviewWrap) {
-        const showReview = !!prefs.rating || !!prefs.satiety;
+        const showReview = !forceHide && (!!prefs.rating || !!prefs.satiety);
         reviewWrap.classList.toggle('hidden', !showReview);
     }
 }
 
-export function applyEntryDetailRecordUi() {
+export function applyEntryDetailRecordUi(opts = {}) {
     const mode = getModeKey();
     const prefs = getEntryDetailRecordPrefs(mode);
-    syncChipButtons(prefs);
-    syncFieldSections(mode, prefs);
+    const forceHide = !!opts.forceHide;
+    syncFieldSections(mode, prefs, forceHide);
+    // with는 more 탭에 있어 meal/snack 섹션 맵과 별도로 Skip만 처리
+    if (!forceHide) {
+        document.getElementById('entryWithSection')?.classList.remove('hidden');
+    }
     document.getElementById('entryModal')?.dispatchEvent(
-        new CustomEvent('entrydetailprefs', { detail: { prefs, mode } })
+        new CustomEvent('entrydetailprefs', { detail: { prefs: forceHide ? { with: false, rating: false, satiety: false, time: false } : prefs, mode } })
     );
 }
 
-function schedulePersistDetailRecordPrefs() {
-    ensureEntryModalDetailRecordOnUserSettings();
-    if (window.currentUser && isDemoUser(window.currentUser)) return;
-    clearTimeout(detailSaveTimeout);
-    detailSaveTimeout = setTimeout(async () => {
-        try {
-            await dbOps.saveSettings(window.userSettings);
-        } catch (_) {
-            /* ignore */
-        }
-    }, 500);
-}
+/** @deprecated 칩 UI 제거 — no-op 유지 */
+export function setEntryDetailRecordField() {}
 
-function writePrefsToSettings(prefs) {
-    ensureEntryModalDetailRecordOnUserSettings();
-    const mode = getModeKey();
-    if (mode === 'snack') {
-        window.userSettings.entryModalDetailRecord.snack = { ...prefs };
-    } else {
-        window.userSettings.entryModalDetailRecord.main = { ...prefs };
-    }
-    schedulePersistDetailRecordPrefs();
-}
+/** @deprecated */
+export function toggleEntryDetailRecordField() {}
 
-/** @param {DetailRecordField} field @param {boolean} enabled */
-export function setEntryDetailRecordField(field, enabled) {
-    const prefs = { ...getEntryDetailRecordPrefs(), [field]: !!enabled };
-    writePrefsToSettings(prefs);
-    applyEntryDetailRecordUi();
-}
-
-export function toggleEntryDetailRecordField(field) {
-    const prefs = getEntryDetailRecordPrefs();
-    setEntryDetailRecordField(field, !prefs[field]);
-}
-
-/**
- * 수정 모드: 저장된 값이 있으면 해당 항목 칩 자동 on
- * @param {object|null|undefined} record
- */
-export function seedEntryDetailRecordFromRecord(record) {
-    if (!record) return;
-    const prefs = { ...getEntryDetailRecordPrefs() };
-    let changed = false;
-
-    const withDetail = (record.withWhomDetail || '').trim();
-    const withMain = (record.withWhom || '').trim();
-    if (withDetail || (withMain && withMain !== '기타')) {
-        if (!prefs.with) {
-            prefs.with = true;
-            changed = true;
-        }
-    }
-
-    const rating = record.rating;
-    if (rating != null && rating !== '' && Number(rating) > 0) {
-        if (!prefs.rating) {
-            prefs.rating = true;
-            changed = true;
-        }
-    }
-
-    const satiety = record.satiety;
-    if (satiety != null && satiety !== '' && Number(satiety) > 0) {
-        if (!prefs.satiety) {
-            prefs.satiety = true;
-            changed = true;
-        }
-    }
-
-    const hasCustomTime = typeof record.mealClock === 'string' && record.mealClock.trim();
-    if (hasCustomTime) {
-        if (!prefs.time) {
-            prefs.time = true;
-            changed = true;
-        }
-    }
-
-    if (changed) {
-        writePrefsToSettings(prefs);
-    }
-}
+/** @deprecated */
+export function seedEntryDetailRecordFromRecord() {}
 
 export function setEntryDetailRecordPanelHidden(hidden) {
-    document.getElementById('entryDetailRecordPanel')?.classList.toggle('hidden', !!hidden);
+    applyEntryDetailRecordUi({ forceHide: !!hidden });
+    // Skip 시 무엇을·누구와 개별 숨김은 toggleFieldsForSkip에서 처리
+    if (hidden) {
+        document.getElementById('entryWithSection')?.classList.add('hidden');
+    }
 }
 
-export function finalizeEntryModalDetailRecord(record) {
+export function finalizeEntryModalDetailRecord() {
     ensureEntryModalDetailRecordOnUserSettings();
-    if (record) {
-        seedEntryDetailRecordFromRecord(record);
-    }
     applyEntryDetailRecordUi();
 }
 
 export function bindEntryDetailRecordOnce() {
-    if (detailBound) return;
-    detailBound = true;
-
-    document.getElementById('entryDetailRecordChips')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.entry-detail-record-chip');
-        if (!btn) return;
-        const field = btn.getAttribute('data-field');
-        if (!field) return;
-        toggleEntryDetailRecordField(/** @type {DetailRecordField} */ (field));
-    });
+    /* 칩 UI 없음 */
 }

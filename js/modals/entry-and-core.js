@@ -2,7 +2,7 @@
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
-import { renderEntryChips, renderPhotoPreviews, renderTagManager } from '../render/index.js';
+import { renderEntryChips, renderPhotoPreviews, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
 import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
@@ -17,7 +17,6 @@ import {
     renderGallery,
     renderFeed
 } from '../render/index.js';
-import { getDashboardData } from '../analytics.js';
 import { callableFunctions, db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
@@ -89,21 +88,29 @@ import {
     refreshEntryModalHeader,
     inferEntryFormModeFromRecord,
     applyEntryFormModeToModalUI,
-    closeEntrySlotPicker,
     closeEntryHeaderDatePicker,
 } from './entry-modal-header.js';
+import { closeEntrySlotPicker } from './entry-slot-picker.js';
 import {
     bindEntryQuickInputOnce,
     applyEntryQuickInputUi,
     finalizeEntryModalQuickInput,
     syncEntryQuickInputToggle,
 } from './entry-quick-input.js';
+import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
 import {
     bindEntryDetailRecordOnce,
     finalizeEntryModalDetailRecord,
     setEntryDetailRecordPanelHidden,
     applyEntryDetailRecordUi,
 } from './entry-detail-record.js';
+import {
+    bindEntrySheetTabsOnce,
+    resetEntrySheetTab,
+    setEntrySheetTabsForSkip,
+    resetEntrySheetBaseHeight,
+    captureEntrySheetBaseHeight,
+} from './entry-sheet-tabs.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
@@ -119,6 +126,33 @@ let settingsSaveTimeout = null;
 let entryGaugeSaveTimeout = null;
 
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
+/**
+ * 입력란의 쉼표(, / ，) 구분 항목을 최근 서브태그로 각각 기억.
+ * 이미 있으면 맨 뒤로 옮겨 최근 순서를 갱신한다.
+ * @param {any[]} list
+ * @param {string} rawValue
+ * @param {string|null|undefined} parent
+ * @returns {boolean} 변경 여부
+ */
+function rememberCommaSeparatedSubTags(list, rawValue, parent) {
+    if (!Array.isArray(list)) return false;
+    const parts = String(rawValue || '')
+        .split(/[,，]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    if (!parts.length) return false;
+    let changed = false;
+    for (const val of parts) {
+        const existingIdx = list.findIndex((t) => (t.text || t) === val);
+        if (existingIdx >= 0) {
+            list.splice(existingIdx, 1);
+        }
+        list.push({ text: val, parent: parent || null });
+        changed = true;
+    }
+    return changed;
+}
 
 /** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
 function mergeActiveSubChipsIntoInputs() {
@@ -182,6 +216,7 @@ export function syncDeliveryVendorSectionVisibility() {
             dvi.classList.add('rounded-xl', 'border', 'border-slate-200', 'bg-white', 'focus:border-slate-400');
         }
     }
+    autosizeEntryWhatInput();
 }
 
 function ensureEntryModalGaugesOnUserSettings() {
@@ -651,19 +686,42 @@ function setEntryModalSavingState(saving) {
     entryModal.setAttribute('aria-busy', saving ? 'true' : 'false');
     const btnSave = document.getElementById('btnSave');
     const btnDelete = document.getElementById('btnDelete');
-    const closeBtn = entryModal.querySelector('button[onclick*="closeModal"]');
+    const grabber = entryModal.querySelector('.entry-modal-grabber');
     if (btnSave) {
         btnSave.disabled = saving;
         if (saving) {
             if (!btnSave.dataset.defaultHtml) btnSave.dataset.defaultHtml = btnSave.innerHTML;
             btnSave.innerHTML =
-                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i class="fa-solid fa-spinner fa-spin text-sm shrink-0" aria-hidden="true"></i><span>저장 중…</span></span>';
+                '<span class="entry-action-btn__inner entry-action-btn__inner--loading"><i data-lucide="loader-circle" class="text-sm shrink-0 lucide-spin" aria-hidden="true"></i><span>저장 중…</span></span>';
         } else if (btnSave.dataset.defaultHtml) {
             btnSave.innerHTML = btnSave.dataset.defaultHtml;
         }
     }
     if (btnDelete) btnDelete.disabled = saving;
-    if (closeBtn) closeBtn.disabled = saving;
+    if (grabber) {
+        grabber.setAttribute('aria-disabled', saving ? 'true' : 'false');
+        grabber.tabIndex = saving ? -1 : 0;
+    }
+}
+
+/** 기록 모달: 상단 핸들 아래로 스와이프(드래그)해 닫기 */
+function initEntryModalGrabberPullClose(entryModal) {
+    if (!entryModal || entryModal._grabberPullCloseInit) return;
+    const panel = entryModal.querySelector('.entry-modal-panel');
+    const grabber = entryModal.querySelector('.mealog-dialog-grabber, .entry-modal-grabber');
+    if (!panel || !grabber) return;
+    entryModal._grabberPullCloseInit = true;
+    bindDialogGrabberPullClose({
+        root: entryModal,
+        panel,
+        grabber,
+        onClose: () => {
+            if (typeof window.closeModal === 'function') window.closeModal();
+            else closeModal();
+        },
+        isDisabled: () =>
+            entryModal.classList.contains('hidden') || entryModal.classList.contains('entry-modal-saving')
+    });
 }
 
 /** 저장 성공 후 모달 닫기 (저장 중 사용자가 새 모달을 연 경우 stale 완료는 무시) */
@@ -688,7 +746,7 @@ function nudgeEntryModalInputRepaint(entryModal) {
     });
 }
 
-/** 끼니 등록 모달: 키보드 열림 시 모달 높이를 viewport에 맞추고, 닫힘 시 네비바 영역 복원 */
+/** 끼니 등록 모달: 키보드 열림 시 팝업 높이를 viewport에 맞추고, 닫힘 시 복원 */
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
@@ -760,13 +818,13 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     const setKeyboardOpen = (open) => {
         if (open) {
-            entryModal.classList.add('keyboard-open');
-            // focusin 직후 visualViewport가 아직 키보드 이전 값 → rAF+debounce로 geometry 맞춤
-            lastAppliedVh = NaN;
-            lastAppliedVtop = NaN;
+            if (!entryModal.classList.contains('keyboard-open')) {
+                entryModal.classList.add('keyboard-open');
+                lastAppliedVh = NaN;
+                lastAppliedVtop = NaN;
+            }
             scheduleViewportGeometryFromVv();
-            scheduleViewportCheck();
-        } else {
+        } else if (entryModal.classList.contains('keyboard-open')) {
             entryModal.classList.remove('keyboard-open');
             lastAppliedVh = NaN;
             lastAppliedVtop = NaN;
@@ -788,7 +846,14 @@ function initEntryModalKeyboardHandling(entryModal) {
     };
     entryModal.setKeyboardBaseline = saveBaseline;
     entryModal.addEventListener('focusin', (e) => {
-        if (e.target.matches('input, textarea')) setKeyboardOpen(true);
+        if (!e.target.matches?.('input, textarea')) return;
+        // 키보드가 실제로 올라오기 전에는 keyboard-open 하지 않음.
+        // (센터 정렬 → stretch 전환으로 팝업이 위로 튕겼다 돌아오는 현상 방지)
+        // 메모는 확장 후 syncEntryCommentExpandedState에서 스크롤. 그 외 필드는 여기서 보정.
+        if (!e.target.classList?.contains('entry-comment-textarea')) {
+            scrollEntryFieldIntoView(e.target, { align: 'nearest' });
+        }
+        scheduleViewportCheck();
     });
     entryModal.addEventListener('focusout', (e) => {
         if (e.target.matches('input, textarea')) scheduleViewportCheck();
@@ -801,12 +866,8 @@ function initEntryModalKeyboardHandling(entryModal) {
             setKeyboardOpen(false);
             return;
         }
-        // 키보드가 아직 올라와 있으면 포커스 유무와 관계없이 geometry 유지 (칩 탭 등 focusout 깜빡임 방지)
-        if (!entryModal.classList.contains('keyboard-open')) {
-            entryModal.classList.add('keyboard-open');
-            lastAppliedVh = NaN;
-            lastAppliedVtop = NaN;
-        }
+        // 키보드가 실제로 줄어든 뒤에만 keyboard-open (칩 탭 등 focusout 깜빡임 방지)
+        setKeyboardOpen(true);
         if (imeComposing) return;
         scheduleViewportGeometryFromVv();
     };
@@ -989,6 +1050,9 @@ function resetEntryModalFormFields() {
         const el = document.getElementById(id);
         if (el) el.value = '';
     });
+    autosizeEntryWhatInput();
+    syncEntryCommentExpandedState(document.getElementById('generalCommentInput'));
+    syncEntryCommentExpandedState(document.getElementById('snackCommentInput'));
 
     const entryWhereInput = document.getElementById('entryWhereInput');
     if (entryWhereInput) {
@@ -1051,6 +1115,7 @@ function applyEntryModalSaveButtonState(entryId, savedRecord) {
 
 function populateSavedRecordIntoForm(r, isS, state) {
     state.currentPhotos = Array.isArray(r.photos) ? r.photos : r.photos ? [r.photos] : [];
+    state.recordPhotoHeroIndex = 0;
     state.currentPhotoMeta = normalizePhotoMetaFromRecord(r.photoMeta, state.currentPhotos.length);
     const isShareBanned = r.shareBanned === true;
     const sharedUrls = r.id ? getSharedPhotoUrlsForEntry(r.id) : [];
@@ -1058,6 +1123,7 @@ function populateSavedRecordIntoForm(r, isS, state) {
     state.originalSharedPhotos = [...sharedUrls];
     state.recordPhotoAspectRatio =
         r.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(r.photoAspectRatio) ? r.photoAspectRatio : '1:1';
+    state.originalPhotoAspectRatio = state.recordPhotoAspectRatio;
 
     state.wantsToShare = isShareBanned ? false : sharedUrls.length > 0;
 
@@ -1077,6 +1143,7 @@ function populateSavedRecordIntoForm(r, isS, state) {
         _pi.setAttribute('data-kakao-place-name', (r.placeData && r.placeData.name) || r.place || '');
     }
     setVal('entryWhatInput', r.menuDetail || '');
+    autosizeEntryWhatInput();
     setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
     const _dvi = document.getElementById('deliveryVendorInput');
     if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
@@ -1094,6 +1161,8 @@ function populateSavedRecordIntoForm(r, isS, state) {
     setVal('entryWithInput', r.withWhomDetail || '');
     setVal('generalCommentInput', r.comment || '');
     setVal('snackCommentInput', r.comment || '');
+    syncEntryCommentExpandedState(document.getElementById('generalCommentInput'));
+    syncEntryCommentExpandedState(document.getElementById('snackCommentInput'));
 
     const rn = r.rating != null && r.rating !== '' ? Number(r.rating) : NaN;
     const sn = r.satiety != null && r.satiety !== '' ? Number(r.satiety) : NaN;
@@ -1204,6 +1273,7 @@ function activateSavedRecordTags(r, isS) {
         const entryWhatInput = document.getElementById(ENTRY_DOM.whatInput);
         if (entryWhatInput && detailValues.length > 0) {
             entryWhatInput.value = detailValues.join(', ');
+            autosizeEntryWhatInput();
         }
     }
     if (r.withWhomDetail) {
@@ -1234,6 +1304,94 @@ function ensureEntryWhatInputSnackCompositionInit() {
     entryWhatInput._snackCompositionInit = true;
 }
 
+function autosizeEntryWhatInput() {
+    const el = document.getElementById('entryWhatInput');
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 60;
+    // 비어 있을 때(2줄 placeholder)는 min-height 유지
+    if (!(el.value || '').length) {
+        el.style.height = `${minH}px`;
+        return;
+    }
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(minH, el.scrollHeight)}px`;
+}
+
+function bindEntryWhatInputAutosizeOnce() {
+    const el = document.getElementById('entryWhatInput');
+    if (!el || el._whatAutosizeBound || el.tagName !== 'TEXTAREA') return;
+    el._whatAutosizeBound = true;
+    const resize = () => autosizeEntryWhatInput();
+    el.addEventListener('input', resize);
+    el.addEventListener('change', resize);
+}
+
+/** 기록 시트 스크롤 영역 안에서 필드를 보이게 맞춤 (오버레이/센터 정렬은 건드리지 않음) */
+function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
+    const scroll = document.getElementById('modalScrollArea');
+    if (!scroll || !el || !scroll.contains(el)) return;
+    const run = () => {
+        try {
+            const tRect = el.getBoundingClientRect();
+            const sRect = scroll.getBoundingClientRect();
+            const pad = 12;
+            if (align === 'end' || tRect.bottom > sRect.bottom - pad) {
+                scroll.scrollTop += tRect.bottom - sRect.bottom + pad;
+            } else if (tRect.top < sRect.top + pad) {
+                scroll.scrollTop -= sRect.top - tRect.top + pad;
+            }
+        } catch (_) { /* ignore */ }
+    };
+    requestAnimationFrame(run);
+    if (afterMs > 0) setTimeout(run, afterMs);
+}
+
+/** 메모 textarea: 내용/포커스 시 높이만큼 키우고, 시트(#modalScrollArea)가 스크롤되게 함 */
+function autosizeEntryCommentTextarea(el) {
+    if (!el || el.tagName !== 'TEXTAREA') return;
+    const keepOpen = el.classList.contains('entry-comment-textarea--expanded')
+        || document.activeElement === el
+        || !!(el.value || '').length;
+    if (!keepOpen) {
+        el.style.height = '';
+        return;
+    }
+    el.style.height = 'auto';
+    const minH = Number.parseFloat(getComputedStyle(el).minHeight) || 0;
+    el.style.height = `${Math.max(minH, el.scrollHeight)}px`;
+}
+
+function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
+    if (!el) return;
+    // 내용이 있거나 포커스 중이면 확장 — 빈 칸 blur 시에만 1줄로 접음
+    const hasContent = !!(el.value || '').length;
+    const focused = document.activeElement === el;
+    const keepOpen = focused || hasContent;
+    el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
+    el.rows = focused ? 3 : (hasContent ? 2 : 1);
+    if (!keepOpen) {
+        el.style.height = '';
+        return;
+    }
+    autosizeEntryCommentTextarea(el);
+    // 포커스·입력으로 줄이 늘 때만 시트 스크롤 (초기 로드 확장은 점프 방지)
+    if (focused) {
+        scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
+    }
+}
+
+function bindEntryCommentExpandOnce() {
+    ['generalCommentInput', 'snackCommentInput'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el || el._commentExpandBound) return;
+        el._commentExpandBound = true;
+        el.addEventListener('focus', () => syncEntryCommentExpandedState(el, { fromFocus: true }));
+        el.addEventListener('blur', () => syncEntryCommentExpandedState(el));
+        el.addEventListener('input', () => syncEntryCommentExpandedState(el));
+        syncEntryCommentExpandedState(el);
+    });
+}
+
 function revealEntryModalShell() {
     const entryModal = document.getElementById('entryModal');
     if (!entryModal) {
@@ -1243,7 +1401,7 @@ function revealEntryModalShell() {
     setEntryModalSavingState(false);
     bindEntryModalHeaderOnce();
     refreshEntryModalHeader();
-    lockBodyScroll();
+    lockBodyScroll('entryModal');
     const openGen = (window.__entryModalOpenGeneration || 0) + 1;
     window.__entryModalOpenGeneration = openGen;
     entryModal.classList.remove('hidden');
@@ -1254,6 +1412,10 @@ function revealEntryModalShell() {
     requestAnimationFrame(resetEntryModalScrollTop);
     setTimeout(resetEntryModalScrollTop, 60);
     initEntryModalKeyboardHandling(entryModal);
+    initEntryModalGrabberPullClose(entryModal);
+    if (typeof entryModal.resetGrabberPullTransform === 'function') {
+        entryModal.resetGrabberPullTransform();
+    }
     if (typeof entryModal.setKeyboardBaseline === 'function') {
         entryModal.setKeyboardBaseline();
     }
@@ -1306,6 +1468,7 @@ export async function openModal(date, slotId, entryId = null) {
         state.currentEditingSlotId = slotId;
         resetEntryMealClockSessionFlagsForOpen(!entryId);
         state.currentPhotos = [];
+        state.recordPhotoHeroIndex = 0;
         state.currentPhotoMeta = [];
         state.entryMealClockSourceMain = null;
         state.entryMealClockSourceSnack = null;
@@ -1314,6 +1477,7 @@ export async function openModal(date, slotId, entryId = null) {
         state.wantsToShare = false; // 공유를 원하는지 여부
         // 새 기록 시 비율은 전역 선택값 사용 (수정 시에는 아래에서 기존 기록값으로 덮어씀)
         state.recordPhotoAspectRatio = appState.recordPhotoAspectRatio || '1:1';
+        state.originalPhotoAspectRatio = state.recordPhotoAspectRatio;
         
         const slot = SLOTS.find((s) => s.id === slotId);
         if (!slot) {
@@ -1337,12 +1501,26 @@ export async function openModal(date, slotId, entryId = null) {
         initEntryModalGaugeControlsOnce();
         bindEntryQuickInputOnce();
         bindEntryDetailRecordOnce();
+        bindEntrySheetTabsOnce();
+        resetEntrySheetTab();
+        resetEntrySheetBaseHeight();
+        setEntrySheetTabsForSkip(false);
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
+        bindEntryWhatInputAutosizeOnce();
+        autosizeEntryWhatInput();
+        bindEntryCommentExpandOnce();
 
         const openGen = revealEntryModalShell();
         if (!openGen) return;
         const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (isStaleOpen()) return;
+                autosizeEntryWhatInput();
+                captureEntrySheetBaseHeight();
+            });
+        });
 
         const completeEntryModalOpen = async () => {
             if (isStaleOpen()) return;
@@ -1397,6 +1575,9 @@ export async function openModal(date, slotId, entryId = null) {
                     window.setSatiety?.(appState.currentSatiety);
                     applyEntryGaugeDialUi();
                 } catch (_) {}
+                autosizeEntryWhatInput();
+                // 칩·폼 반영 후 재측정(무엇을 태그·메모 3줄 가정)
+                captureEntrySheetBaseHeight({ force: true });
             });
         };
 
@@ -1421,8 +1602,11 @@ export function closeModal() {
         entryModal.classList.remove('keyboard-open');
         entryModal.style.height = '';
         entryModal.style.top = '';
+        if (typeof entryModal.resetGrabberPullTransform === 'function') {
+            entryModal.resetGrabberPullTransform();
+        }
         entryModal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('entryModal');
     }
     syncEntryModalBodyClass();
     // 모달을 닫을 때 로딩 오버레이도 숨김
@@ -1435,11 +1619,13 @@ export function closeModal() {
     if (state) {
         state.currentEditingId = null;
         state.currentPhotos = [];
+        state.recordPhotoHeroIndex = 0;
         state.currentPhotoMeta = [];
         state.entryMealClockSourceMain = null;
         state.entryMealClockSourceSnack = null;
         state.sharedPhotos = [];
         state.originalSharedPhotos = [];
+        state.originalPhotoAspectRatio = '1:1';
         state.wantsToShare = false;
     }
 }
@@ -1669,43 +1855,36 @@ export async function saveEntry() {
         if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
         
         let tagsChanged = false;
-        if (!isS && entryWhereInputVal && !newSettings.subTags.place.find(t => (t.text || t) === entryWhereInputVal)) {
-            newSettings.subTags.place.push({ text: entryWhereInputVal, parent: mealTypeResolved });
-            tagsChanged = true;
+        // 장소·메뉴·누구와·간식: 쉼표로 구분된 항목을 최근 태그에 각각 기억
+        if (!isS && entryWhereInputVal) {
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.place, entryWhereInputVal, mealTypeResolved)) {
+                tagsChanged = true;
+            }
         }
-        if (isS && entryWhereInputVal && !newSettings.subTags.place.find(t => (t.text || t) === entryWhereInputVal)) {
-            newSettings.subTags.place.push({ text: entryWhereInputVal, parent: snackPlaceMainResolved || entryWhereInputVal });
-            tagsChanged = true;
+        if (isS && entryWhereInputVal) {
+            if (rememberCommaSeparatedSubTags(
+                newSettings.subTags.place,
+                entryWhereInputVal,
+                snackPlaceMainResolved || entryWhereInputVal
+            )) {
+                tagsChanged = true;
+            }
         }
-        // 메뉴 상세 태그는 다중 선택 가능 (쉼표로 구분)
         if (menuInputVal) {
-            const menuValues = menuInputVal.split(',').map(v => v.trim()).filter(v => v);
-            menuValues.forEach(val => {
-                if (!newSettings.subTags.menu.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.menu.push({ text: val, parent: categoryResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.menu, menuInputVal, categoryResolved)) {
+                tagsChanged = true;
+            }
         }
-        // 함께한 사람 상세 태그는 다중 선택 가능 (쉼표로 구분)
         const withInputValToSave = isS ? snackWithInputVal : withInputVal;
         if (withInputValToSave) {
-            const withValues = withInputValToSave.split(',').map(v => v.trim()).filter(v => v);
-            withValues.forEach(val => {
-                if (!newSettings.subTags.people.find(t => (t.text || t) === val)) {
-                    newSettings.subTags.people.push({ text: val, parent: withWhomResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.people, withInputValToSave, withWhomResolved)) {
+                tagsChanged = true;
+            }
         }
         if (isS && snackInputVal) {
-            const snackVals = snackInputVal.split(',').map((v) => v.trim()).filter((v) => v);
-            snackVals.forEach((val) => {
-                if (!newSettings.subTags.snack.find((t) => (t.text || t) === val)) {
-                    newSettings.subTags.snack.push({ text: val, parent: snackTypeResolved });
-                    tagsChanged = true;
-                }
-            });
+            if (rememberCommaSeparatedSubTags(newSettings.subTags.snack, snackInputVal, snackTypeResolved)) {
+                tagsChanged = true;
+            }
         }
         
         if (tagsChanged) {
@@ -1890,6 +2069,15 @@ export async function saveEntry() {
         // closeModal()이 originalSharedPhotos를 비우므로, 공유 비교용 목록은 여기서 스냅샷으로 고정한다.
         const originalShareList = Array.isArray(state.originalSharedPhotos) ? [...state.originalSharedPhotos] : [];
         const hadSharedPhotos = originalShareList.length > 0;
+        const originalPhotoAspect =
+            state.originalPhotoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(state.originalPhotoAspectRatio)
+                ? state.originalPhotoAspectRatio
+                : '1:1';
+        const nextPhotoAspect =
+            record.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(record.photoAspectRatio)
+                ? record.photoAspectRatio
+                : '1:1';
+        const photoAspectChanged = originalPhotoAspect !== nextPhotoAspect;
         
         console.log('저장 시작:', record);
 
@@ -2396,15 +2584,18 @@ export async function saveEntry() {
                 // 현재 공유할 사진이 있는지 확인
                 const hasPhotosToShare = photosToShare && photosToShare.length > 0;
 
-                // 공유 목록이 실제로 바뀐 경우에만 서버 재공유(sharePhotos)를 호출한다.
+                // 공유 목록이 바뀌거나, 이미 공유 중인데 사진 비율만 바뀐 경우 모먼트 재동기화.
                 // (originalShareList는 closeModal 전에 캡처한 스냅샷 — state.originalSharedPhotos는 닫힌 뒤 비어 있음)
                 // 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
-                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제 시에만 최신으로 이동)
+                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제·비율 변경 시 동기화; 비율만 변경이면 서버가 sharedAt 유지)
                 const shareListChanged =
                     photosToShare.length !== originalShareList.length ||
                     photosToShare.some((url, i) => url !== originalShareList[i]);
+                // 비율만 바꿔도 모먼트 프레임이 갱신되도록 — 공유 중(또는 공유할) 사진이 있으면 재동기화
+                const shouldResyncMomentShare =
+                    shareListChanged || (hasPhotosToShare && photoAspectChanged);
 
-                if (shareListChanged) {
+                if (shouldResyncMomentShare) {
                     sharedPhotosUpdated = true;
                     // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
                     if (record.id) {
@@ -3301,7 +3492,7 @@ export function setRating(s) {
         const sts = el.children;
         const active = rating || 0;
         for (let i = 0; i < 5; i++) {
-            sts[i].className = i < active ? 'star-btn text-2xl text-yellow-400' : 'star-btn text-2xl text-slate-200';
+            sts[i].className = i < active ? 'star-btn text-2xl text-amber-500' : 'star-btn text-2xl text-slate-400';
         }
     };
     paintStarRow('starContainer');
@@ -3370,7 +3561,7 @@ function initEntryModalSubChipDeleteDelegation() {
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
-const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-suggestions, .entry-detail-record-chips';
+const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
 
 /**
  * 기록 모달 가로 스크롤 줄(서브태그·상세보기 칩): 드래그로 좌우 스크롤 (탭/클릭과 구분).
@@ -3388,7 +3579,7 @@ function initEntryModalSubtagDragScroll() {
 
     const markDragging = (el, on) => {
         el.classList.toggle('entry-hscroll-strip--dragging', on);
-        el.classList.toggle('entry-subtag-suggestions--dragging', on && el.classList.contains('entry-subtag-suggestions'));
+        el.classList.toggle('entry-subtag-suggestions--dragging', on && !!el.closest?.('.entry-subtag-suggestions'));
     };
 
     const release = () => {
@@ -3405,10 +3596,8 @@ function initEntryModalSubtagDragScroll() {
         if (e.button !== 0) return;
         const el = e.target.closest?.(ENTRY_MODAL_HSCROLL_STRIP_SELECTOR);
         if (!el || !root.contains(el)) return;
+        if (el.classList.contains('entry-subtag-chips--empty')) return;
         if (el.scrollWidth <= el.clientWidth + 1) return;
-        const onButton = !!e.target.closest?.('button');
-        /** 서브태그 줄: 마우스는 버튼 클릭 우선. 상세보기 칩·터치는 드래그 스크롤 허용 */
-        if (e.pointerType === 'mouse' && onButton && el.classList.contains('entry-subtag-suggestions')) return;
         state = {
             el,
             pointerId: e.pointerId,
@@ -3417,9 +3606,8 @@ function initEntryModalSubtagDragScroll() {
             startScrollLeft: el.scrollLeft,
             dragging: false
         };
-        try {
-            el.setPointerCapture(e.pointerId);
-        } catch (_) {}
+        /* pointer capture는 드래그 확정 후에만 — 조기 capture 시 click 타깃이
+           스트립으로 바뀌어 칩 토글이 동작하지 않음 */
     }, true);
 
     root.addEventListener('pointermove', (e) => {
@@ -3434,6 +3622,9 @@ function initEntryModalSubtagDragScroll() {
             if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
             state.dragging = true;
             markDragging(state.el, true);
+            try {
+                state.el.setPointerCapture(state.pointerId);
+            } catch (_) {}
         }
         state.el.scrollLeft = state.startScrollLeft - dx;
         e.preventDefault();
@@ -3547,31 +3738,18 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
 }
 
 function toggleFieldsForSkip(isSkip) {
-    // 메뉴정보 섹션 (optionalFields) - 완전히 숨기기
+    // Skip: 무엇을(기본 탭) · 누구와(추가 탭) · 상세 메트릭 숨김
     const optionalFields = document.getElementById('optionalFields');
     if (optionalFields) {
-        if (isSkip) {
-            optionalFields.classList.add('hidden');
-        } else {
-            optionalFields.classList.remove('hidden');
-        }
+        optionalFields.classList.toggle('hidden', !!isSkip);
     }
+    document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
 
+    setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);
-    
+
     if (!isSkip) {
         applyEntryDetailRecordUi();
-    }
-    
-    // 만족도 섹션 (ratingSection) - Skip 시 숨김 (상세 기록 패널과 별도)
-    const ratingSection = document.getElementById('ratingSection');
-    if (ratingSection && isSkip) {
-        ratingSection.classList.add('hidden');
-    }
-
-    const entryMealTimeSectionMain = document.getElementById('entryMealTimeSectionMain');
-    if (entryMealTimeSectionMain && isSkip) {
-        entryMealTimeSectionMain.classList.add('hidden');
     }
     syncDeliveryVendorSectionVisibility();
 }
@@ -3618,13 +3796,18 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
             const exifMetaEntries = await Promise.all(filesToProcess.map((file) => createPhotoMetaFromFile(file)));
 
+            let added = 0;
             sortedResults.slice(0, availableSlots).forEach(({ index, dataUrl }) => {
                 if (state.currentPhotos.length < RECORD_MAX_PHOTOS) {
                     state.currentPhotos.push(dataUrl);
                     if (!Array.isArray(state.currentPhotoMeta)) state.currentPhotoMeta = [];
                     state.currentPhotoMeta.push(exifMetaEntries[index] || { takenAt: null });
+                    added += 1;
                 }
             });
+            if (added > 0) {
+                state.recordPhotoHeroIndex = state.currentPhotos.length - 1;
+            }
 
             renderPhotoPreviews();
             updateShareIndicator();
@@ -3666,12 +3849,42 @@ export function openRecordGalleryPicker(isSnack = false) {
 
 export function removePhoto(idx) {
     const state = appState;
-    state.currentPhotos.splice(idx, 1);
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0 || i >= state.currentPhotos.length) return;
+    state.currentPhotos.splice(i, 1);
     if (Array.isArray(state.currentPhotoMeta)) {
-        state.currentPhotoMeta.splice(idx, 1);
+        state.currentPhotoMeta.splice(i, 1);
     }
+    if (state.recordPhotoHeroIndex > i) {
+        state.recordPhotoHeroIndex -= 1;
+    }
+    clampRecordPhotoHeroIndex();
     renderPhotoPreviews();
     updateShareIndicator();
+}
+
+/** 히어로에 표시할 사진 선택 (썸네일 탭) */
+export function selectRecordPhotoPreview(idx) {
+    const photos = appState.currentPhotos;
+    if (!Array.isArray(photos) || photos.length === 0) return;
+    const i = Number(idx);
+    if (!Number.isInteger(i) || i < 0 || i >= photos.length) return;
+    if (appState.recordPhotoHeroIndex === i) return;
+    appState.recordPhotoHeroIndex = i;
+    renderPhotoPreviews();
+}
+
+/** 히어로 사진 좌우 이동 */
+export function navigateRecordPhotoPreview(delta) {
+    const photos = appState.currentPhotos;
+    if (!Array.isArray(photos) || photos.length < 2) return;
+    const d = Number(delta);
+    if (!Number.isInteger(d) || d === 0) return;
+    const cur = clampRecordPhotoHeroIndex();
+    const next = cur + d;
+    if (next < 0 || next >= photos.length) return;
+    appState.recordPhotoHeroIndex = next;
+    renderPhotoPreviews();
 }
 
 /** 사진 순서: 인접 항목과 교환 (delta -1 = 앞쪽, +1 = 뒤쪽) */
@@ -3693,6 +3906,8 @@ export function movePhotoOrder(idx, delta) {
         meta[i] = meta[j];
         meta[j] = tmpMeta;
     }
+    if (state.recordPhotoHeroIndex === i) state.recordPhotoHeroIndex = j;
+    else if (state.recordPhotoHeroIndex === j) state.recordPhotoHeroIndex = i;
     renderPhotoPreviews();
 }
 

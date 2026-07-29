@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>mealog · 색상톤 A / B / C 비교</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      background: #f0ebe4;
+      color: #2c2622;
+      min-height: 100dvh;
+      padding: 32px 20px 64px;
+    }
+    .wrap { max-width: 1180px; margin: 0 auto; }
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .eyebrow {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #6b8f71;
+      margin-bottom: 6px;
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .lead {
+      margin-top: 8px;
+      font-size: 14.5px;
+      line-height: 1.55;
+      color: #5e554e;
+      max-width: 42rem;
+    }
+    .links { display: flex; flex-wrap: wrap; gap: 8px; }
+    .links a {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #5a7a60;
+      text-decoration: none;
+      background: #fff;
+      border: 1px solid #ede5dc;
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 20px;
+    }
+    @media (max-width: 980px) {
+      .grid { grid-template-columns: 1fr; max-width: 400px; margin: 0 auto; }
+    }
+
+    .option {
+      background: #fff;
+      border: 1px solid #e6ddd3;
+      border-radius: 22px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .option.applied { outline: 2px solid #6b8f71; outline-offset: 2px; }
+    .option-head {
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid #ede5dc;
+    }
+    .option-head .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 999px;
+      margin-bottom: 8px;
+    }
+    .option.a .badge { background: #e9f0ea; color: #5a7a60; }
+    .option.b .badge { background: #f3e6e6; color: #9a6b6b; }
+    .option.c .badge { background: #f3ebe4; color: #9a6a4f; }
+    .option-head h2 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    .option-head p {
+      font-size: 12.5px;
+      line-height: 1.45;
+      color: #7a7168;
+    }
+
+    .swatches {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      padding: 12px 16px;
+    }
+    .swatch {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.06);
+    }
+    .swatch-labels {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px 8px;
+      padding: 0 16px 12px;
+      font-size: 10.5px;
+      color: #8a8178;
+    }
+    .swatch-labels span { display: block; }
+    .swatch-labels strong {
+      display: block;
+      color: #3a342f;
+      font-size: 11px;
+      margin-bottom: 1px;
+    }
+
+    /* Mini phone preview — theme variables per option */
+    .option.a {
+      --p-page: #fbf7f2;
+      --p-ink: #2c2622;
+      --p-ink2: #5e554e;
+      --p-muted: #9c9289;
+      --p-line: #ede5dc;
+      --p-brand: #6b8f71;
+      --p-accent: #c97b84;
+      --p-card: #ffffff;
+      --p-c1: #5a7a60;
+      --p-c2: #c97b84;
+      --p-c3: #d4a574;
+      --p-c4: #8ba4b5;
+    }
+    .option.b {
+      --p-page: #fff8f3;
+      --p-ink: #3a2f2c;
+      --p-ink2: #6a5a55;
+      --p-muted: #a89892;
+      --p-line: #f0e4dc;
+      --p-brand: #d4a5a5;
+      --p-accent: #c4a484;
+      --p-card: #ffffff;
+      --p-c1: #d4a5a5;
+      --p-c2: #c4a484;
+      --p-c3: #e8c4b8;
+      --p-c4: #9bb0a5;
+    }
+    .option.c {
+      --p-page: #faf6f0;
+      --p-ink: #2b2622;
+      --p-ink2: #5a524a;
+      --p-muted: #978c80;
+      --p-line: #ebe3d8;
+      --p-brand: #c4785a;
+      --p-accent: #7a8a6a;
+      --p-card: #ffffff;
+      --p-c1: #c4785a;
+      --p-c2: #7a8a6a;
+      --p-c3: #d4a574;
+      --p-c4: #8ba4b5;
+    }
+
+    .phone {
+      margin: 0 16px 16px;
+      background: var(--p-page);
+      border: 1px solid var(--p-line);
+      border-radius: 28px;
+      overflow: hidden;
+      min-height: 420px;
+      display: flex;
+      flex-direction: column;
+    }
+    .ph-status {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px 18px 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--p-ink);
+    }
+    .ph-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px 10px;
+      background: var(--p-card);
+      border-bottom: 1px solid var(--p-line);
+    }
+    .ph-logo {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--p-brand);
+    }
+    .ph-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 3px;
+      background: var(--p-page);
+      border: 1px solid var(--p-line);
+      border-radius: 999px;
+      margin-right: auto;
+    }
+    .ph-tab {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 999px;
+      color: var(--p-muted);
+    }
+    .ph-tab.on {
+      background: var(--p-ink);
+      color: #fff;
+    }
+    .ph-ico { color: var(--p-ink2); display: grid; place-items: center; }
+    .ph-ico [data-lucide] { width: 16px; height: 16px; stroke-width: 1.5; }
+
+    .ph-body { padding: 12px; flex: 1; }
+    .ph-card {
+      background: var(--p-card);
+      border: 1px solid var(--p-line);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .ph-card-title {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--p-ink);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .ph-card-title em {
+      font-style: normal;
+      color: var(--p-brand);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .ph-bar {
+      display: flex;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+    .ph-bar i { display: block; height: 100%; }
+    .ph-meta {
+      font-size: 11px;
+      color: var(--p-ink2);
+      line-height: 1.45;
+    }
+    .ph-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--p-accent);
+    }
+    .ph-chip [data-lucide] { width: 12px; height: 12px; fill: currentColor; }
+
+    .ph-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0;
+      padding: 8px 4px 12px;
+      background: var(--p-card);
+      border-top: 1px solid var(--p-line);
+      text-align: center;
+    }
+    .ph-nav span {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--p-muted);
+    }
+    .ph-nav span.on { color: var(--p-ink); }
+    .ph-nav [data-lucide] { width: 18px; height: 18px; stroke-width: 1.5; }
+
+    .actions {
+      padding: 0 16px 16px;
+      display: flex;
+      gap: 8px;
+    }
+    .actions a {
+      flex: 1;
+      text-align: center;
+      text-decoration: none;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 11px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--p-line);
+      color: var(--p-ink);
+      background: var(--p-page);
+    }
+    .actions a.primary {
+      background: var(--p-brand);
+      border-color: var(--p-brand);
+      color: #fff;
+    }
+    .note {
+      margin-top: 24px;
+      font-size: 13px;
+      color: #7a7168;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="eyebrow">MEALOG · Audience 20–40F</div>
+        <h1>색상톤 A / B / C 비교</h1>
+        <p class="lead">
+          세 안을 나란히 볼 수 있습니다. 목업에는 현재 <strong>A안</strong>이 적용돼 있고,
+          B·C는 아래에서 미리본 뒤 적용을 요청하면 됩니다.
+        </p>
+      </div>
+      <div class="links">
+        <a href="./index.html">시안 허브</a>
+        <a href="./mealdang-v2.html?phone=1">밀당 (A 적용중)</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- A -->
+      <article class="option a applied">
+        <div class="option-head">
+          <div class="badge">A · 현재 목업 적용</div>
+          <h2>Soft Sage + Rose</h2>
+          <p>브랜드 연속성. soft sage 워드마크 + dusty rose 소셜.</p>
+        </div>
+        <div class="swatches" aria-hidden="true">
+          <div class="swatch" style="background:#fbf7f2"></div>
+          <div class="swatch" style="background:#6b8f71"></div>
+          <div class="swatch" style="background:#c97b84"></div>
+          <div class="swatch" style="background:#2c2622"></div>
+          <div class="swatch" style="background:#9c9289"></div>
+          <div class="swatch" style="background:#ede5dc"></div>
+        </div>
+        <div class="swatch-labels">
+          <span><strong>Paper</strong>#FBF7F2</span>
+          <span><strong>Sage</strong>#6B8F71</span>
+          <span><strong>Rose</strong>#C97B84</span>
+        </div>
+        <div class="phone">
+          <div class="ph-status"><span>9:41</span><span>A</span></div>
+          <div class="ph-header">
+            <div class="ph-logo">meal-dang</div>
+            <div class="ph-tabs"><span class="ph-tab on">분석</span><span class="ph-tab">참견</span></div>
+            <span class="ph-ico"><i data-lucide="search"></i></span>
+          </div>
+          <div class="ph-body">
+            <div class="ph-card">
+              <div class="ph-card-title">어떻게 <em>상세</em></div>
+              <div class="ph-bar"><i style="width:42%;background:var(--p-c1)"></i><i style="width:28%;background:var(--p-c2)"></i><i style="width:18%;background:var(--p-c3)"></i><i style="width:12%;background:var(--p-c4)"></i></div>
+              <div class="ph-meta">집밥 42% · 외식 28% · 배달 18%</div>
+              <div class="ph-chip"><i data-lucide="heart"></i> 좋아요 · Rose</div>
+            </div>
+          </div>
+          <div class="ph-nav">
+            <span class="on"><i data-lucide="pie-chart"></i>밀당</span>
+            <span><i data-lucide="image"></i>모먼트</span>
+            <span><i data-lucide="book-open"></i>밀로그</span>
+            <span><i data-lucide="message-circle"></i>라운지</span>
+            <span><i data-lucide="user"></i>마이</span>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="primary" href="./mealdang-v2.html?phone=1">A로 보기</a>
+        </div>
+      </article>
+
+      <!-- B -->
+      <article class="option b">
+        <div class="option-head">
+          <div class="badge">B · 미적용</div>
+          <h2>Blush Cream</h2>
+          <p>감성·소셜 강조. 블러시 브랜드 + clay 포인트.</p>
+        </div>
+        <div class="swatches" aria-hidden="true">
+          <div class="swatch" style="background:#fff8f3"></div>
+          <div class="swatch" style="background:#d4a5a5"></div>
+          <div class="swatch" style="background:#c4a484"></div>
+          <div class="swatch" style="background:#3a2f2c"></div>
+          <div class="swatch" style="background:#a89892"></div>
+          <div class="swatch" style="background:#f0e4dc"></div>
+        </div>
+        <div class="swatch-labels">
+          <span><strong>Cream</strong>#FFF8F3</span>
+          <span><strong>Blush</strong>#D4A5A5</span>
+          <span><strong>Clay</strong>#C4A484</span>
+        </div>
+        <div class="phone">
+          <div class="ph-status"><span>9:41</span><span>B</span></div>
+          <div class="ph-header">
+            <div class="ph-logo">meal-dang</div>
+            <div class="ph-tabs"><span class="ph-tab on">분석</span><span class="ph-tab">참견</span></div>
+            <span class="ph-ico"><i data-lucide="search"></i></span>
+          </div>
+          <div class="ph-body">
+            <div class="ph-card">
+              <div class="ph-card-title">어떻게 <em>상세</em></div>
+              <div class="ph-bar"><i style="width:42%;background:var(--p-c1)"></i><i style="width:28%;background:var(--p-c2)"></i><i style="width:18%;background:var(--p-c3)"></i><i style="width:12%;background:var(--p-c4)"></i></div>
+              <div class="ph-meta">집밥 42% · 외식 28% · 배달 18%</div>
+              <div class="ph-chip"><i data-lucide="heart"></i> 좋아요 · Clay</div>
+            </div>
+          </div>
+          <div class="ph-nav">
+            <span class="on"><i data-lucide="pie-chart"></i>밀당</span>
+            <span><i data-lucide="image"></i>모먼트</span>
+            <span><i data-lucide="book-open"></i>밀로그</span>
+            <span><i data-lucide="message-circle"></i>라운지</span>
+            <span><i data-lucide="user"></i>마이</span>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="primary" href="./mealdang-v2.html?phone=1&theme=b">B로 목업 보기</a>
+        </div>
+      </article>
+
+      <!-- C -->
+      <article class="option c">
+        <div class="option-head">
+          <div class="badge">C · 미적용</div>
+          <h2>Warm Clay</h2>
+          <p>음식·온도감. 테라코타 브랜드 + olive 보조.</p>
+        </div>
+        <div class="swatches" aria-hidden="true">
+          <div class="swatch" style="background:#faf6f0"></div>
+          <div class="swatch" style="background:#c4785a"></div>
+          <div class="swatch" style="background:#7a8a6a"></div>
+          <div class="swatch" style="background:#2b2622"></div>
+          <div class="swatch" style="background:#978c80"></div>
+          <div class="swatch" style="background:#ebe3d8"></div>
+        </div>
+        <div class="swatch-labels">
+          <span><strong>Ivory</strong>#FAF6F0</span>
+          <span><strong>Clay</strong>#C4785A</span>
+          <span><strong>Olive</strong>#7A8A6A</span>
+        </div>
+        <div class="phone">
+          <div class="ph-status"><span>9:41</span><span>C</span></div>
+          <div class="ph-header">
+            <div class="ph-logo">meal-dang</div>
+            <div class="ph-tabs"><span class="ph-tab on">분석</span><span class="ph-tab">참견</span></div>
+            <span class="ph-ico"><i data-lucide="search"></i></span>
+          </div>
+          <div class="ph-body">
+            <div class="ph-card">
+              <div class="ph-card-title">어떻게 <em>상세</em></div>
+              <div class="ph-bar"><i style="width:42%;background:var(--p-c1)"></i><i style="width:28%;background:var(--p-c2)"></i><i style="width:18%;background:var(--p-c3)"></i><i style="width:12%;background:var(--p-c4)"></i></div>
+              <div class="ph-meta">집밥 42% · 외식 28% · 배달 18%</div>
+              <div class="ph-chip"><i data-lucide="heart"></i> 좋아요 · Olive</div>
+            </div>
+          </div>
+          <div class="ph-nav">
+            <span class="on"><i data-lucide="pie-chart"></i>밀당</span>
+            <span><i data-lucide="image"></i>모먼트</span>
+            <span><i data-lucide="book-open"></i>밀로그</span>
+            <span><i data-lucide="message-circle"></i>라운지</span>
+            <span><i data-lucide="user"></i>마이</span>
+          </div>
+        </div>
+        <div class="actions">
+          <a class="primary" href="./mealdang-v2.html?phone=1&theme=c">C로 목업 보기</a>
+        </div>
+      </article>
+    </div>
+
+    <p class="note">
+      B·C 링크는 밀당 시안에 <code>?theme=b|c</code>로 토큰만 잠시 덮어씁니다.
+      전체 화면에 고정 적용하려면 원하는 안을 알려 주세요.
+    </p>
+  </div>
+  <script>lucide.createIcons();</script>
+</body>
+</html>

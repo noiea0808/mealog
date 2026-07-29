@@ -10,6 +10,8 @@ export {
     updateDashboard, 
     setDashboardMode, 
     setAnalysisType,
+    setAnalysisSlotFilter,
+    setMealdangView,
     updateCustomDates,
     syncCustomDatePlaceholder,
     updateSelectedMonth,
@@ -20,7 +22,8 @@ export {
     changeRecentWeek,
     navigatePeriod,
     syncDashboardInsightGradientHeight,
-    scheduleDashboardInsightGradientSync
+    scheduleDashboardInsightGradientSync,
+    initDashboardAnalysisUi
 } from './analytics/dashboard.js';
 
 // Insight 관련 함수들

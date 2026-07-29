@@ -4,6 +4,7 @@ console.log('📦 main.js 모듈 로드 시작');
 // 모듈 로드 시작 플래그 설정 (index.html의 체크가 감지할 수 있도록)
 window.moduleLoading = true;
 
+import { initLucideIcons } from './icons.js';
 import { appState, getState } from './state.js';
 import {
     auth,
@@ -14,7 +15,7 @@ import {
     recoverFirestoreAfterWatchAssertion
 } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
-import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
+import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, ensureMealsLoadedAroundDate, needsMealsLoadedAroundDate, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
 import { callableFunctions } from './firebase.js';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, limit, orderBy, getDocs, getDocsFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { serverTimestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
@@ -52,18 +53,18 @@ import { scheduleAttendanceCheckIfNeeded, updateTrackerStreakLabel } from './att
 window.scheduleAttendanceCheckIfNeeded = scheduleAttendanceCheckIfNeeded;
 import { isDemoUser, markUserHasRealLogin } from './demo-account.js';
 import { clearMealsWindowStatsReconcileMeta, clearStreakEmptyDayTrustAll } from './meal-record-count.js';
+import { clearLoadedMealsRanges } from './utils/loaded-meals-range.js';
 import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write-guard.js';
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { showLandingAppPromo } from './pwa-install.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
-import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
+import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
-import { updateDashboard, setDashboardMode, updateCustomDates, syncCustomDatePlaceholder, updateSelectedMonth, updateSelectedWeek, changeWeek, changeMonth, navigatePeriod, openDetailModal, closeDetailModal, setAnalysisType, openShareBestModal, closeShareBestModal, shareBestToFeed, closeBestSharePeriodNotice, openCharacterSelectModal, closeCharacterSelectModal, selectInsightCharacter, generateInsightComment, openShareInsightModal, closeShareInsightModal, shareInsightToFeed, openEditInsightShareModal } from './analytics.js';
-import { openEditBestShareModal } from './analytics/best-share.js';
+import { ensureAnalytics, installAnalyticsLazyStubs } from './analytics/ensure.js';
 import { 
     openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
-    handleMultipleImages, removePhoto, movePhotoOrder, updateShareIndicator, toggleSharePhoto,
+    handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
@@ -74,7 +75,8 @@ import {
     handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
     editDailyJournalPhoto,
     addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
-    openDailyCommentModal, closeDailyCommentModal
+    openDailyCommentModal, closeDailyCommentModal,
+    openEntrySlotPicker, closeEntrySlotPicker
 } from './modals.js';
 import { openQuickEntryModal } from './modals/entry-quick-open.js';
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from './constants.js';
@@ -97,6 +99,7 @@ import { registerMainBoardHandlers } from './main/board-handlers.js';
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
+initLucideIcons();
 registerContentPopup();
 registerEventListenerManager();
 registerMomentSyncDevTools();
@@ -133,6 +136,8 @@ window.filterGalleryByUser = filterGalleryByUser;
 window.Mealog.filterGalleryByUser = filterGalleryByUser;
 window.clearGalleryFilter = clearGalleryFilter;
 window.Mealog.clearGalleryFilter = clearGalleryFilter;
+window.resetGalleryUserFilterState = resetGalleryUserFilterState;
+window.Mealog.resetGalleryUserFilterState = resetGalleryUserFilterState;
 window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 let reloadMomentFeedInFlight = false;
@@ -237,17 +242,25 @@ window.openMyPostsFromSettings = () => {
 };
 window.Mealog.openMyPostsFromSettings = window.openMyPostsFromSettings;
 
-// 사용자 프로필 뷰 내 모먼트/밀톡 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
+// 사용자 프로필 뷰 내 모먼트/게시판 탭 전환 시 하단 탭 표시 동기화 (render.js에서 호출)
 window.syncBottomNavForGalleryFilter = () => {
     const navGallery = document.getElementById('nav-gallery');
     const navBoard = document.getElementById('nav-board');
     if (!navGallery || !navBoard) return;
-    if (appState.currentTab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-        navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-        navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
-    } else if (appState.currentTab === 'gallery') {
-        navGallery.className = 'text-slate-600 flex justify-center items-center py-1';
-        navBoard.className = 'text-slate-300 flex justify-center items-center py-1';
+    if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+        document.body.dataset.galleryFilterNav = 'board';
+        if (appState.currentTab === 'gallery') {
+            navGallery.classList.remove('active');
+            navBoard.classList.add('active');
+        }
+    } else if (appState.galleryFilterUserId) {
+        document.body.dataset.galleryFilterNav = 'moment';
+        if (appState.currentTab === 'gallery') {
+            navGallery.classList.add('active');
+            navBoard.classList.remove('active');
+        }
+    } else {
+        document.body.removeAttribute('data-gallery-filter-nav');
     }
 };
 window.Mealog.syncBottomNavForGalleryFilter = window.syncBottomNavForGalleryFilter;
@@ -307,6 +320,10 @@ window.openModal = openModal;
 window.Mealog.openModal = openModal;
 window.openQuickEntryModal = openQuickEntryModal;
 window.Mealog.openQuickEntryModal = openQuickEntryModal;
+window.openEntrySlotPicker = openEntrySlotPicker;
+window.Mealog.openEntrySlotPicker = openEntrySlotPicker;
+window.closeEntrySlotPicker = closeEntrySlotPicker;
+window.Mealog.closeEntrySlotPicker = closeEntrySlotPicker;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
 window.openDailyJournalModal = openDailyJournalModal;
@@ -363,6 +380,10 @@ window.removePhoto = removePhoto;
 window.Mealog.removePhoto = removePhoto;
 window.movePhotoOrder = movePhotoOrder;
 window.Mealog.movePhotoOrder = movePhotoOrder;
+window.selectRecordPhotoPreview = selectRecordPhotoPreview;
+window.Mealog.selectRecordPhotoPreview = selectRecordPhotoPreview;
+window.navigateRecordPhotoPreview = navigateRecordPhotoPreview;
+window.Mealog.navigateRecordPhotoPreview = navigateRecordPhotoPreview;
 window.updateShareIndicator = updateShareIndicator;
 window.Mealog.updateShareIndicator = updateShareIndicator;
 window.toggleSharePhoto = toggleSharePhoto;
@@ -399,48 +420,9 @@ window.removeFavoriteTag = removeFavoriteTag;
 window.Mealog.removeFavoriteTag = removeFavoriteTag;
 window.selectFavoriteMainTag = selectFavoriteMainTag;
 window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
-window.setDashboardMode = setDashboardMode;
-window.Mealog.setDashboardMode = setDashboardMode;
-window.updateCustomDates = updateCustomDates;
-window.syncCustomDatePlaceholder = syncCustomDatePlaceholder;
-window.Mealog.updateCustomDates = updateCustomDates;
-window.updateSelectedMonth = updateSelectedMonth;
-window.Mealog.updateSelectedMonth = updateSelectedMonth;
-window.updateSelectedWeek = updateSelectedWeek;
-window.Mealog.updateSelectedWeek = updateSelectedWeek;
-window.navigatePeriod = navigatePeriod;
-window.Mealog.navigatePeriod = navigatePeriod;
-window.openDetailModal = openDetailModal;
-window.Mealog.openDetailModal = openDetailModal;
-window.openCharacterSelectModal = openCharacterSelectModal;
-window.Mealog.openCharacterSelectModal = openCharacterSelectModal;
-window.closeCharacterSelectModal = closeCharacterSelectModal;
-window.Mealog.closeCharacterSelectModal = closeCharacterSelectModal;
-window.selectInsightCharacter = selectInsightCharacter;
-window.Mealog.selectInsightCharacter = selectInsightCharacter;
-window.generateInsightComment = generateInsightComment;
-window.Mealog.generateInsightComment = generateInsightComment;
-window.openShareInsightModal = openShareInsightModal;
-window.Mealog.openShareInsightModal = openShareInsightModal;
-window.closeShareInsightModal = closeShareInsightModal;
-window.Mealog.closeShareInsightModal = closeShareInsightModal;
-window.shareInsightToFeed = shareInsightToFeed;
-window.Mealog.shareInsightToFeed = shareInsightToFeed;
-window.closeDetailModal = closeDetailModal;
-window.Mealog.closeDetailModal = closeDetailModal;
-window.setAnalysisType = setAnalysisType;
-window.Mealog.setAnalysisType = setAnalysisType;
-window.openShareBestModal = openShareBestModal;
-window.Mealog.openShareBestModal = openShareBestModal;
-window.closeShareBestModal = closeShareBestModal;
-window.Mealog.closeShareBestModal = closeShareBestModal;
-window.closeBestSharePeriodNotice = closeBestSharePeriodNotice;
-window.shareBestToFeed = shareBestToFeed;
-window.Mealog.shareBestToFeed = shareBestToFeed;
-window.editBestShare = openEditBestShareModal;
-window.Mealog.editBestShare = openEditBestShareModal;
-window.editInsightShare = openEditInsightShareModal;
-window.Mealog.editInsightShare = openEditInsightShareModal;
+/* 밀당(analytics): 첫 진입·onclick 시 ensureAnalytics로 지연 로드 */
+installAnalyticsLazyStubs();
+window.Mealog.ensureAnalytics = ensureAnalytics;
 window.toggleComment = toggleComment;
 window.Mealog.toggleComment = toggleComment;
 window.toggleFeedComment = toggleFeedComment;
@@ -474,20 +456,18 @@ window.Mealog.renderNoticeDetail = renderNoticeDetail;
 // 콘텐츠 팝업: main/content-popup.js → registerContentPopup()
 
 window.setViewMode = (m) => {
-    appState.viewMode = m;
-    document.getElementById('btn-view-list').className = `view-tab ${m === 'list' ? 'active' : 'inactive'}`;
-    document.getElementById('btn-view-page').className = `view-tab ${m === 'page' ? 'active' : 'inactive'}`;
-    document.getElementById('timelineView')?.classList.toggle('timeline-view-mode-page', m === 'page');
+    // 일간(page)만 지원 — list 요청도 page로 고정
+    appState.viewMode = 'page';
+    document.getElementById('timelineView')?.classList.add('timeline-view-mode-page');
     if (m === 'list') {
-        // 오늘 날짜로 설정
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         appState.pageDate = today;
     }
     window.loadedDates = [];
-    window.hasScrolledToToday = false; // 스크롤 플래그 리셋
+    window.hasScrolledToToday = false;
     const c = document.getElementById('timelineContainer');
-    if (c) c.innerHTML = "";
+    if (c) c.innerHTML = '';
     renderTimeline();
     renderMiniCalendar();
 };
@@ -520,25 +500,30 @@ window.jumpToDate = async (iso, opts = {}) => {
         }
     }
 
+    // 빠른 연속 이동 시 이전 ensure 완료가 최신 화면을 덮지 않도록 세대 토큰
+    window._jumpToDateGen = (window._jumpToDateGen || 0) + 1;
+    const jumpGen = window._jumpToDateGen;
+
     // 날짜를 명확하게 설정 (시간대 문제 방지)
     const targetDate = new Date(iso + 'T00:00:00');
     appState.pageDate = targetDate;
     
-    // 선택한 날짜가 로드된 범위 밖이면 먼저 데이터 로드
-    const range = window.loadedMealsDateRange;
-    if (range && iso < range.start) {
+    // 트래커/날짜 이동: 해당일 ±3일을 미리 로드 (좌우 넘김 대비)
+    if (needsMealsLoadedAroundDate(iso, 3)) {
+        const loadingOverlay = document.getElementById('loadingOverlay');
         try {
-            const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-            await loadMealsForDateRange(iso, range.start);
+            await ensureMealsLoadedAroundDate(iso, 3);
         } catch (e) {
             console.warn('날짜 이동 시 데이터 로드 실패:', e);
             showToast('기록을 불러오는 중 오류가 발생했습니다.', 'error');
         } finally {
-            const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) loadingOverlay.classList.add('hidden');
         }
     }
+
+    // 더 최근 jumpToDate가 있으면 렌더/스크롤 생략
+    if (jumpGen !== window._jumpToDateGen) return;
     
     if (appState.viewMode === 'list') {
         const today = new Date();
@@ -575,6 +560,7 @@ window.jumpToDate = async (iso, opts = {}) => {
             // 리스너 재렌더가 직후에 들어와도 "해당 날짜 섹션 앵커"를 잠깐만 허용
             window._timelineAnchorScrollUntil = Date.now() + Math.max(0, Number(anchorAfterRenderMs) || 0);
             setTimeout(() => {
+                if (jumpGen !== window._jumpToDateGen) return;
                 const el = document.getElementById(`date-${targetStr}`);
                 if (el) {
                     const trackerSection = document.getElementById('trackerSection');
@@ -627,6 +613,7 @@ window.closeSearch = () => {
 
 window.clearGalleryFilterPostId = () => {
     appState.galleryFilterPostId = null;
+    appState.galleryNotificationFilterPhotos = null;
     renderGallery();
 };
 
@@ -1122,6 +1109,8 @@ initAuth(async (user) => {
             window.mealHistory = null;
             clearStreakEmptyDayTrustAll();
             clearMealsWindowStatsReconcileMeta();
+            clearLoadedMealsRanges();
+            resetTrackerMiniCalendarRange();
             window.dailyStats = null;
             window.sharedPhotos = null;
             window.sharedPhotosFeed = [];
@@ -1270,7 +1259,9 @@ initAuth(async (user) => {
                     scheduleAttendanceCheckIfNeeded();
                     const tab = appState.currentTab;
                     if (tab === 'dashboard') {
-                        updateDashboard();
+                        void ensureAnalytics()
+                            .then((m) => m.updateDashboard())
+                            .catch((e) => console.warn('[dashboard] updateDashboard 실패:', e));
                         if (window._recordsLoadHidePending && window.loadedMealsDateRange) {
                             window._recordsLoadHidePending = false;
                             hideLoading();
@@ -1326,9 +1317,35 @@ initAuth(async (user) => {
                             window.hasScrolledToToday = false;
                         }
                         const container = document.getElementById('timelineContainer');
+                        if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
                         if (container) container.innerHTML = '';
                         renderTimeline();
                         renderMiniCalendar();
+                        // 밀로그 진입 직후 첫 로드로 화면이 다시 그려지면 스와이프 힌트 재예약(미재생분만)
+                        if (
+                            window.__pendingDailySwipeHint &&
+                            !window.__dailySwipeHintPlayed &&
+                            typeof window.scheduleDailySwipeHint === 'function'
+                        ) {
+                            window.scheduleDailySwipeHint(0);
+                        }
+                        // 리스너 initial 재렌더 직후: 선택일이 로드 구간 밖이면 on-demand로 보강
+                        if (appState.viewMode === 'page' && appState.pageDate instanceof Date && !isNaN(+appState.pageDate)) {
+                            const py = appState.pageDate.getFullYear();
+                            const pm = String(appState.pageDate.getMonth() + 1).padStart(2, '0');
+                            const pd = String(appState.pageDate.getDate()).padStart(2, '0');
+                            const pageIso = `${py}-${pm}-${pd}`;
+                            if (needsMealsLoadedAroundDate(pageIso, 3)) {
+                                void ensureMealsLoadedAroundDate(pageIso, 3)
+                                    .then(() => {
+                                        if (appState.currentTab !== 'timeline') return;
+                                        invalidateTimelineDateSection(pageIso);
+                                        renderTimelineDateSections([pageIso]);
+                                        refreshMiniCalendarDots();
+                                    })
+                                    .catch(() => {});
+                            }
+                        }
                         if (preserveTimelineScroll) {
                             requestAnimationFrame(() => {
                                 requestAnimationFrame(() => {
@@ -1350,10 +1367,12 @@ initAuth(async (user) => {
                                                 const totalOffset = headerHeight + trackerHeight;
                                                 const elementTop = el.getBoundingClientRect().top + window.pageYOffset;
                                                 const offsetPosition = elementTop - totalOffset - 16;
+                                                window.__suppressChromeScrollHideUntil = Date.now() + 500;
                                                 window.scrollTo({
                                                     top: Math.max(0, offsetPosition),
                                                     behavior: 'instant'
                                                 });
+                                                window.__revealAppChromeAfterProgrammaticScroll?.();
                                                 return;
                                             }
                                         }
@@ -1804,6 +1823,27 @@ let _headerScrollRaf = null;
 // 헤더 숨김/표시 토글 직후 쿨다운: 토글로 문서 높이가 바뀌며 발생하는 합성 scroll 이벤트가
 // 곧바로 반대 토글을 일으켜 헤더가 덜덜 떨리는 현상(oscillation)을 방지한다.
 let _chromeToggleLockUntil = 0;
+
+function syncAppChromeScrollBaseline() {
+    _lastScrollY = window.scrollY;
+}
+
+function revealAppChromeAfterProgrammaticScroll() {
+    document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
+    document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+    document.body.classList.remove('bottom-nav-scroll-hidden');
+    syncAppChromeScrollBaseline();
+    _chromeToggleLockUntil = Date.now() + 320;
+}
+
+window.__syncAppChromeScrollLast = syncAppChromeScrollBaseline;
+window.__revealAppChromeAfterProgrammaticScroll = revealAppChromeAfterProgrammaticScroll;
+window.__suppressChromeScrollHideUntil = 0;
+
+window.addEventListener('mealog:mainScreenShown', () => {
+    revealAppChromeAfterProgrammaticScroll();
+});
+
 window.addEventListener('scroll', () => {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp || mainApp.classList.contains('hidden')) return;
@@ -1816,6 +1856,11 @@ window.addEventListener('scroll', () => {
         _headerScrollRaf = null;
         // 쿨다운 중에는 기준값만 따라가고 토글하지 않음 (떨림 차단)
         if (Date.now() < _chromeToggleLockUntil) {
+            _lastScrollY = y;
+            return;
+        }
+        const suppressUntil = Number(window.__suppressChromeScrollHideUntil || 0) || 0;
+        if (suppressUntil && Date.now() < suppressUntil) {
             _lastScrollY = y;
             return;
         }
@@ -1960,31 +2005,18 @@ window.addEventListener('keydown', (e) => {
     
     // 대시보드 탭이 활성화되어 있고 주간/월간 모드일 때만 동작
     if (state.currentTab === 'dashboard') {
-        if (state.dashboardMode === 'week') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                changeWeek(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                changeWeek(1);
-            }
-        } else if (state.dashboardMode === 'month') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                changeMonth(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                changeMonth(1);
-            }
-        } else if (state.dashboardMode === 'year') {
-            if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                navigatePeriod(-1);
-            } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                navigatePeriod(1);
-            }
-        }
+        let delta = 0;
+        if (e.key === 'ArrowLeft') delta = -1;
+        else if (e.key === 'ArrowRight') delta = 1;
+        if (!delta) return;
+        e.preventDefault();
+        void ensureAnalytics()
+            .then((m) => {
+                if (state.dashboardMode === 'week' && typeof m.changeWeek === 'function') m.changeWeek(delta);
+                else if (state.dashboardMode === 'month' && typeof m.changeMonth === 'function') m.changeMonth(delta);
+                else if (state.dashboardMode === 'year' && typeof m.navigatePeriod === 'function') m.navigatePeriod(delta);
+            })
+            .catch((err) => console.warn('[dashboard] 키보드 기간 이동 실패:', err));
     }
 });
 
@@ -1993,14 +2025,36 @@ function initDailySwipeGesture() {
     if (window.__dailySwipeGestureInitialized) return;
     const tv = document.getElementById('timelineView');
     if (!tv) return;
+    /** 카드 아래 page-deep 빈 영역은 #timelineView 밖(body/main)일 수 있어 문서 단위로 수신 */
+    const swipeListenRoot = document;
 
     const getTimelineContainer = () => document.getElementById('timelineContainer');
     /** 일간 스와이프: 버튼·입력 등 실제 조작 요소만 제외(카드 본문은 스와이프 허용) */
     const isInteractiveSwipeTarget = (node) => {
         if (!node || node.nodeType !== 1) return false;
         return !!node.closest(
-            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap'
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap, .timeline-meal-photo-nav, .timeline-meal-photo-aspect-toggle'
         );
+    };
+    /** 밀로그 일간 + 빈 배경(카드 사이·아래)까지 스와이프 허용. 상단 크롬·다른 탭·모달은 제외 */
+    const canStartDailySwipe = (node) => {
+        if (!node || node.nodeType !== 1) return false;
+        if (document.body?.dataset?.mainTab !== 'timeline') return false;
+        if (tv.classList.contains('hidden')) return false;
+        if (isInteractiveSwipeTarget(node)) return false;
+        if (
+            node.closest(
+                '#appTopChrome, #mainAppHeader, #trackerSection, .bottom-nav, #entryQuickInputFab, #mealSyncResendBtn, #initialRecordsLoadFab, #galleryMomentsRefreshFab, #timelineRefreshFab, #boardWriteBtn, #statusBarOverlay, #navigationBarOverlay'
+            )
+        ) {
+            return false;
+        }
+        const otherView = node.closest('#galleryView, #boardListView, #dashboardView, #settingsView');
+        if (otherView && !otherView.classList.contains('hidden')) return false;
+        if (node.closest('#entryModal, [role="dialog"], .mealog-center-popup, .mealog-update-banner')) {
+            return false;
+        }
+        return true;
     };
     const SWIPE_TRIGGER_PX = 28;
     const AXIS_LOCK_PX = 10;
@@ -2011,6 +2065,145 @@ function initDailySwipeGesture() {
     let currentDragX = 0;
     let horizontalLocked = null; // null: 미결정, true: 가로, false: 세로
     let isAnimating = false;
+    let isSwipeHintPlaying = false;
+    let swipeHintTimer = null;
+    let swipeHintToken = 0;
+    let swipeHintFallbackTimer = null;
+
+    const prefersReducedMotion = () => {
+        try {
+            return !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const clearSwipeHintAnimation = () => {
+        const tc = getTimelineContainer();
+        if (!tc) return;
+        tc.classList.remove('timeline-container--swipe-hint');
+        tc.style.transition = '';
+        tc.style.transform = 'translate3d(0, 0, 0)';
+        tc.style.willChange = '';
+    };
+
+    const cancelDailySwipeHint = () => {
+        swipeHintToken += 1;
+        if (swipeHintTimer) {
+            clearTimeout(swipeHintTimer);
+            swipeHintTimer = null;
+        }
+        if (swipeHintFallbackTimer) {
+            clearTimeout(swipeHintFallbackTimer);
+            swipeHintFallbackTimer = null;
+        }
+        if (isSwipeHintPlaying) {
+            isSwipeHintPlaying = false;
+            clearSwipeHintAnimation();
+        }
+        // 아직 재생 전이면 schedule 예약만 풀어 initial 재시도 가능하게
+        if (!window.__dailySwipeHintPlayed && window.__dailySwipeHintScheduled) {
+            window.__dailySwipeHintScheduled = false;
+            window.__pendingDailySwipeHint = true;
+        }
+    };
+
+    const playDailySwipeHintNow = () => {
+        if (prefersReducedMotion()) {
+            window.__pendingDailySwipeHint = false;
+            window.__dailySwipeHintPlayed = true;
+            return;
+        }
+        if (document.body?.dataset?.mainTab !== 'timeline') return false;
+        if (tv.classList.contains('hidden')) return false;
+        if (appState.viewMode !== 'page') return false;
+        if (isAnimating || tracking) return false;
+        const tc = getTimelineContainer();
+        if (!tc || tc.childElementCount === 0) return false;
+
+        isSwipeHintPlaying = true;
+        tc.style.transition = 'none';
+        tc.style.transform = '';
+        tc.style.willChange = 'transform';
+        // 재시작을 위해 클래스 토글
+        tc.classList.remove('timeline-container--swipe-hint');
+        void tc.offsetWidth;
+        tc.classList.add('timeline-container--swipe-hint');
+
+        const finish = () => {
+            if (!isSwipeHintPlaying) return;
+            isSwipeHintPlaying = false;
+            window.__pendingDailySwipeHint = false;
+            if (swipeHintFallbackTimer) {
+                clearTimeout(swipeHintFallbackTimer);
+                swipeHintFallbackTimer = null;
+            }
+            clearSwipeHintAnimation();
+        };
+        const onEnd = (ev) => {
+            if (ev.target !== tc) return;
+            if (ev.animationName && ev.animationName !== 'mealog-timeline-swipe-hint') return;
+            tc.removeEventListener('animationend', onEnd);
+            finish();
+        };
+        tc.addEventListener('animationend', onEnd);
+        if (swipeHintFallbackTimer) clearTimeout(swipeHintFallbackTimer);
+        swipeHintFallbackTimer = setTimeout(finish, 900);
+        return true;
+    };
+
+    /** 밀로그 진입 직후 좌우 스와이프 힌트 재생 (방문당 1회) */
+    const scheduleDailySwipeHint = (delayMs = 0) => {
+        if (prefersReducedMotion()) {
+            window.__pendingDailySwipeHint = false;
+            window.__dailySwipeHintPlayed = true;
+            return;
+        }
+        // schedule 예약 시점에 소진 — 탭/initial 중복 호출이 동시에 와도 1회만
+        if (window.__dailySwipeHintPlayed || window.__dailySwipeHintScheduled) {
+            window.__pendingDailySwipeHint = false;
+            return;
+        }
+        window.__dailySwipeHintScheduled = true;
+        window.__pendingDailySwipeHint = false;
+
+        const token = ++swipeHintToken;
+        if (swipeHintTimer) clearTimeout(swipeHintTimer);
+        if (isSwipeHintPlaying) {
+            isSwipeHintPlaying = false;
+            clearSwipeHintAnimation();
+        }
+        const start = () => {
+            if (token !== swipeHintToken) {
+                if (!window.__dailySwipeHintPlayed) {
+                    window.__dailySwipeHintScheduled = false;
+                    window.__pendingDailySwipeHint = true;
+                }
+                return;
+            }
+            const started = playDailySwipeHintNow();
+            if (started) {
+                window.__dailySwipeHintPlayed = true;
+                window.__dailySwipeHintScheduled = false;
+                return;
+            }
+            // 컨테이너 비어 있으면 initial 재시도 허용
+            window.__dailySwipeHintScheduled = false;
+            window.__pendingDailySwipeHint = true;
+        };
+        if (delayMs > 0) {
+            swipeHintTimer = setTimeout(() => {
+                swipeHintTimer = null;
+                start();
+            }, delayMs);
+        } else {
+            swipeHintTimer = null;
+            start();
+        }
+    };
+
+    window.scheduleDailySwipeHint = scheduleDailySwipeHint;
+    window.cancelDailySwipeHint = cancelDailySwipeHint;
 
     const resetTransform = () => {
         const tc = getTimelineContainer();
@@ -2020,20 +2213,48 @@ function initDailySwipeGesture() {
         tc.style.willChange = '';
     };
 
+    const waitForTransformEnd = (el, fallbackMs) => new Promise((resolve) => {
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            el.removeEventListener('transitionend', onEnd);
+            clearTimeout(timer);
+            resolve();
+        };
+        const onEnd = (ev) => {
+            if (ev.target !== el || (ev.propertyName && ev.propertyName !== 'transform')) return;
+            finish();
+        };
+        const timer = setTimeout(finish, fallbackMs);
+        el.addEventListener('transitionend', onEnd);
+    });
+
+    const preloadDateRangeIfNeeded = async (targetIso) => {
+        if (!needsMealsLoadedAroundDate(targetIso, 3)) return;
+        try {
+            await ensureMealsLoadedAroundDate(targetIso, 3);
+        } catch (error) {
+            console.warn('스와이프 날짜 프리로드 실패:', error);
+        }
+    };
+
     const animateToDate = async (dayDelta, releaseX = 0) => {
         if (isAnimating) return;
         const tc = getTimelineContainer();
         if (!tc) return;
 
+        cancelDailySwipeHint();
         isAnimating = true;
         const viewportWidth = tv.clientWidth || window.innerWidth || 360;
-        // 카드 사이 공백을 줄이기 위해 기본 전환 거리를 더 짧게 유지한다.
-        const slideDistance = Math.max(72, Math.round(viewportWidth * 0.24));
-        // 손을 뗀 위치에서 같은 방향으로 자연스럽게 이어서 밀려나가도록 거리 계산
+        // 화면 밖으로 충분히 밀어내 콘텐츠 교체 대기 구간이 보이지 않게 한다.
+        const slideDistance = Math.round(viewportWidth * 1.02);
         const releaseDistance = Math.abs(releaseX);
-        const minCarry = Math.max(12, Math.round(viewportWidth * 0.04));
-        const maxOutgoingDistance = Math.max(slideDistance, Math.round(viewportWidth * 0.5));
-        const outgoingDistance = Math.min(maxOutgoingDistance, Math.max(slideDistance, releaseDistance + minCarry));
+        const minCarry = Math.max(24, Math.round(viewportWidth * 0.08));
+        const outgoingDistance = Math.min(
+            slideDistance,
+            Math.max(Math.round(viewportWidth * 0.72), releaseDistance + minCarry)
+        );
         const outgoingX = dayDelta > 0 ? -outgoingDistance : outgoingDistance;
         const incomingStartX = dayDelta > 0 ? slideDistance : -slideDistance;
 
@@ -2044,50 +2265,46 @@ function initDailySwipeGesture() {
         const day = String(targetDate.getDate()).padStart(2, '0');
         const targetIso = `${year}-${month}-${day}`;
 
+        // 슬라이드아웃과 데이터 프리로드를 병렬로 진행해 멈춤 구간을 줄인다.
+        const preloadPromise = preloadDateRangeIfNeeded(targetIso);
+
         tc.style.willChange = 'transform';
-        tc.style.transition = 'transform 150ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transition = 'transform 160ms cubic-bezier(0.25, 0.1, 0.25, 1)';
         tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
 
-        const onSlideOutEnd = async (ev) => {
-            if (ev.target !== tc || (ev.propertyName && ev.propertyName !== 'transform')) return;
-            tc.removeEventListener('transitionend', onSlideOutEnd);
+        try {
+            await Promise.all([waitForTransformEnd(tc, 220), preloadPromise]);
 
             try {
-                await window.jumpToDate(targetIso);
+                await window.jumpToDate(targetIso, { scroll: false });
             } catch (error) {
                 console.warn('스와이프 날짜 이동 실패:', error);
             }
 
-            requestAnimationFrame(() => {
-                const newTc = getTimelineContainer();
-                if (!newTc) {
-                    isAnimating = false;
-                    return;
-                }
-                // 새 날짜 콘텐츠를 먼저 반대편에 배치한 뒤 중앙으로 슬라이드 인시켜
-                // 좌/우 스와이프별 진입 방향이 확실히 보이도록 한다.
-                newTc.style.transition = 'none';
-                newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
-                newTc.style.willChange = 'transform';
-                requestAnimationFrame(() => {
-                    newTc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-                    newTc.style.transform = 'translate3d(0, 0, 0)';
-                });
+            const newTc = getTimelineContainer();
+            if (!newTc) {
+                isAnimating = false;
+                return;
+            }
 
-                const onSlideInEnd = (slideInEv) => {
-                    if (slideInEv.target !== newTc || (slideInEv.propertyName && slideInEv.propertyName !== 'transform')) return;
-                    newTc.removeEventListener('transitionend', onSlideInEnd);
-                    newTc.style.willChange = '';
-                    isAnimating = false;
-                };
-                newTc.addEventListener('transitionend', onSlideInEnd);
-            });
-        };
-        tc.addEventListener('transitionend', onSlideOutEnd);
+            // 새 날짜를 반대편에 고정한 뒤 한 프레임에 슬라이드 인 (이중 rAF 제거)
+            newTc.style.transition = 'none';
+            newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
+            newTc.style.willChange = 'transform';
+            void newTc.offsetWidth;
+            newTc.style.transition = 'transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            newTc.style.transform = 'translate3d(0, 0, 0)';
+
+            await waitForTransformEnd(newTc, 260);
+            newTc.style.willChange = '';
+        } finally {
+            isAnimating = false;
+        }
     };
 
     const beginSwipe = (clientX, clientY) => {
         if (appState.viewMode !== 'page' || isAnimating) return false;
+        if (isSwipeHintPlaying) cancelDailySwipeHint();
         startX = clientX;
         startY = clientY;
         lastX = clientX;
@@ -2158,47 +2375,82 @@ function initDailySwipeGesture() {
         resetTransform();
     };
 
-    tv.addEventListener('touchstart', (e) => {
+    swipeListenRoot.addEventListener('touchstart', (e) => {
         if (e.touches.length !== 1) return;
-        if (isInteractiveSwipeTarget(e.target)) return;
+        if (!canStartDailySwipe(e.target)) return;
         beginSwipe(e.touches[0].clientX, e.touches[0].clientY);
     }, { passive: true });
 
-    tv.addEventListener('touchmove', (e) => {
+    swipeListenRoot.addEventListener('touchmove', (e) => {
         if (e.touches.length !== 1) return;
         moveSwipe(e.touches[0].clientX, e.touches[0].clientY, true, e);
     }, { passive: false });
 
-    tv.addEventListener('touchend', () => {
+    swipeListenRoot.addEventListener('touchend', () => {
         endSwipe();
     }, { passive: true });
 
-    tv.addEventListener('touchcancel', () => {
+    swipeListenRoot.addEventListener('touchcancel', () => {
         cancelSwipe();
     }, { passive: true });
 
     // 웹(데스크톱) 테스트용: 마우스 드래그로 스와이프 제스처 시뮬레이션
-    tv.addEventListener('pointerdown', (e) => {
+    // pointerdown 직후 setPointerCapture 하면 카드 클릭이 막히므로, 가로 축 확정 후에만 캡처
+    let mouseSwipeCaptureActive = false;
+    let mouseSwipePointerId = null;
+    let mouseSwipeCaptureEl = null;
+
+    swipeListenRoot.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        if (isInteractiveSwipeTarget(e.target)) return;
+        if (!canStartDailySwipe(e.target)) return;
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         if (!beginSwipe(e.clientX, e.clientY)) return;
-        tv.setPointerCapture?.(e.pointerId);
+        mouseSwipePointerId = e.pointerId;
     });
 
-    tv.addEventListener('pointermove', (e) => {
+    swipeListenRoot.addEventListener('pointermove', (e) => {
         if (e.pointerType !== 'mouse') return;
+        if (mouseSwipePointerId != null && e.pointerId !== mouseSwipePointerId) return;
         moveSwipe(e.clientX, e.clientY, true, e);
+        if (
+            tracking &&
+            horizontalLocked === true &&
+            !mouseSwipeCaptureActive &&
+            mouseSwipePointerId != null
+        ) {
+            mouseSwipeCaptureActive = true;
+            mouseSwipeCaptureEl = tv;
+            try {
+                tv.setPointerCapture?.(mouseSwipePointerId);
+            } catch (_) {}
+        }
     });
 
-    tv.addEventListener('pointerup', (e) => {
+    swipeListenRoot.addEventListener('pointerup', (e) => {
         if (e.pointerType !== 'mouse') return;
-        tv.releasePointerCapture?.(e.pointerId);
+        if (mouseSwipeCaptureActive && mouseSwipeCaptureEl) {
+            try {
+                mouseSwipeCaptureEl.releasePointerCapture?.(e.pointerId);
+            } catch (_) {}
+        }
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         endSwipe();
     });
 
-    tv.addEventListener('pointercancel', (e) => {
+    swipeListenRoot.addEventListener('pointercancel', (e) => {
         if (e.pointerType !== 'mouse') return;
-        tv.releasePointerCapture?.(e.pointerId);
+        if (mouseSwipeCaptureActive && mouseSwipeCaptureEl) {
+            try {
+                mouseSwipeCaptureEl.releasePointerCapture?.(e.pointerId);
+            } catch (_) {}
+        }
+        mouseSwipeCaptureActive = false;
+        mouseSwipePointerId = null;
+        mouseSwipeCaptureEl = null;
         cancelSwipe();
     });
 

@@ -22,7 +22,8 @@ import { getMomentsFeedView } from '../db.js';
 import { buildMomentFeedV2PhotoAndLabelHtml } from './moment-feed-v2.js';
 import { buildSharedMomentWheelOverlayRow } from './post-group-html.js';
 import { setupMomentFeedV2WheelLayout } from '../main/moment-feed-v2-wheel-layout.js';
-import { markMomentFeedPhotosLoadedIn } from './gallery.js';
+import { markMomentFeedPhotosLoadedIn, buildMomentNetworkReconnectHtml } from './gallery.js';
+import { scheduleLucideIcons } from '../icons.js';
 import { getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 
 export async function renderFeed() {
@@ -40,26 +41,13 @@ export async function renderFeed() {
     
     if (photosToUse.length === 0) {
         if (appState.galleryFeedNetworkError) {
-            container.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-12 text-center px-3">
-                <i class="fa-regular fa-wifi text-4xl text-slate-200 mb-3" aria-hidden="true"></i>
-                <p class="text-xs font-bold text-slate-600">모먼트를 불러오지 못했습니다</p>
-                <p class="text-[10px] text-slate-400 mt-1 leading-relaxed">네트워크가 끊겼거나 불안정할 때 이 안내가 나올 수 있습니다.</p>
-                <button type="button" class="mt-4 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5" id="feedRetryLoadBtn">
-                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>다시 불러오기
-                </button>
-            </div>`;
-            const retry = container.querySelector('#feedRetryLoadBtn');
-            if (retry && typeof window.reloadMomentFeed === 'function') {
-                retry.addEventListener('click', () => {
-                    window.reloadMomentFeed();
-                });
-            }
+            container.innerHTML = buildMomentNetworkReconnectHtml({ buttonId: 'feedRetryLoadBtn' });
+            scheduleLucideIcons(container);
             return;
         }
         container.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-center">
-                <i class="fa-solid fa-images text-4xl text-slate-200 mb-3"></i>
+                <i data-lucide="images" class="text-4xl text-slate-200 mb-3"></i>
                 <p class="text-xs font-bold text-slate-400">공유된 사진이 없습니다</p>
                 <p class="text-[10px] text-slate-300 mt-1">타임라인에서 사진을 공유해보세요!</p>
             </div>
@@ -235,8 +223,13 @@ export async function renderFeed() {
         
         const captionAttr = (caption || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
         
-        // 사진 비율: shared doc 또는 meal 기록에서 가져오기
-        let aspectRatio = photo.photoAspectRatio || (entryId && window.mealHistory ? (window.mealHistory.find(m => m.id === entryId)?.photoAspectRatio) : null) || '1:1';
+        // 사진 비율: 모먼트(shared) 문서 우선, 없으면 meal 기록
+        const mealRec =
+            entryId && window.mealHistory
+                ? window.mealHistory.find((m) => m && (m.id === entryId || String(m.id) === String(entryId)))
+                : null;
+        let aspectRatio =
+            photo.photoAspectRatio || photo.aspectRatio || mealRec?.photoAspectRatio || '1:1';
         if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
         const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
         const momentUrlsEncoded = encodeURIComponent(
@@ -314,7 +307,7 @@ export async function renderFeed() {
                               ? `
                     <div class="absolute inset-0 bg-orange-500/20 flex items-center justify-center pointer-events-none">
                         <div class="bg-orange-600 text-white px-3 py-1.5 rounded-lg">
-                            <i class="fa-solid fa-ban mr-1"></i>공유 금지
+                            <i data-lucide="ban" class="mr-1"></i>공유 금지
                         </div>
                     </div>
                 `
@@ -338,7 +331,7 @@ export async function renderFeed() {
                 ${
                     layoutV2
                         ? isBanned
-                            ? `<div class="px-2 pt-2"><div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full inline-flex items-center"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div></div>`
+                            ? `<div class="px-2 pt-2"><div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full inline-flex items-center"><i data-lucide="ban" class="mr-1"></i>공유 금지</div></div>`
                             : ''
                         : `<div class="${headPad} flex items-center gap-3 relative">
                     ${avatarDisplay.type === 'photo' ? `
@@ -357,10 +350,10 @@ export async function renderFeed() {
                             ${mealLabel ? `<span class="text-[10px] font-bold ${mealLabelStyle || 'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full whitespace-nowrap ml-1">${mealLabel}</span>` : ''}
                         </div>
                     </div>
-                    ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i class="fa-solid fa-ban mr-1"></i>공유 금지</div>` : ''}
+                    ${isBanned ? `<div class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0"><i data-lucide="ban" class="mr-1"></i>공유 금지</div>` : ''}
                     <div class="relative flex-shrink-0">
                         <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                            <i data-lucide="ellipsis-vertical" class="text-lg"></i>
                         </button>
                     </div>
                 </div>`

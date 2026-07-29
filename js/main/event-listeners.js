@@ -7,13 +7,12 @@ import { initTimelineSearchModal } from '../timeline-search.js';
 import { initMomentSearchModal } from '../moment-search.js';
 import { initBoardSearchModal } from '../board-search.js';
 import { initNotificationModal } from './notifications.js';
-import { addCompositionAwareInput, setupBirthdateInputFormatting } from '../utils.js';
+import { addCompositionAwareInput, mountRrnDigitGroup } from '../utils.js';
 import {
     handleGoogleLogin,
     handleKakaoLogin,
     startGuest,
     openEmailModal,
-    closeEmailModal,
     handleEmailAuth,
     requestPasswordReset,
     sendPasswordResetAfterConfirm,
@@ -32,16 +31,22 @@ import {
     continueAsGuestFromProfileSetup,
     cancelDeleteAccount,
     confirmDeleteAccountAction,
-    confirmLogoutAction
+    confirmLogoutAction,
+    closeProfileSetupModal
 } from '../auth.js';
-import { registerDemoIntroModalHandlers } from '../demo-account.js';
+import { registerDemoIntroModalHandlers, dismissDemoIntroModal } from '../demo-account.js';
 import {
     configureLandingAppPromo,
     registerPwaInstallGuideHandlers,
 } from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
+import { initCenterDialogGrabbers } from './init-center-dialog-grabbers.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
-import { triggerQuickEntryFromFab } from '../modals/entry-quick-open.js';
+import {
+    CTA_FAB_SPIN_CLASS,
+    playFabIconSpin,
+    triggerQuickEntryFromFab,
+} from '../modals/entry-quick-open.js';
 import { openRecordCameraPicker, openRecordGalleryPicker } from '../modals/entry-and-core.js';
 import { openDailyJournalCameraPicker, openDailyJournalGalleryPicker } from '../modals/daily-journal.js';
 import { kakaoTalkLogoSvgHtml } from '../utils/kakao-brand.js';
@@ -52,6 +57,7 @@ import {
     tryCloseDemoNavGuideFromBack
 } from '../demo-nav-guide.js';
 import { setupGalleryPullToRefresh } from './gallery-pull-refresh.js';
+import { setupTimelinePullToRefresh } from './timeline-pull-refresh.js';
 import { ensureMomentImageLightbox } from './moment-image-lightbox.js';
 import {
     openSettings,
@@ -173,11 +179,6 @@ export function initEventListeners() {
     if (guestLoginBtn) {
         guestLoginBtn.addEventListener('click', startGuest);
     }
-    const emailAuthCloseBtn = document.getElementById('emailAuthCloseBtn');
-    if (emailAuthCloseBtn) {
-        emailAuthCloseBtn.addEventListener('click', closeEmailModal);
-    }
-
     const emailAuthBtn = document.getElementById('emailAuthBtn');
     if (emailAuthBtn) {
         const runEmailAuth = (e) => {
@@ -253,10 +254,7 @@ export function initEventListeners() {
         termsAgreeBtn.addEventListener('click', confirmTermsAgreement);
     }
 
-    const setupBirthdate = document.getElementById('setupBirthdate');
-    if (setupBirthdate) setupBirthdateInputFormatting(setupBirthdate);
-    const settingBirthdate = document.getElementById('settingBirthdate');
-    if (settingBirthdate) setupBirthdateInputFormatting(settingBirthdate);
+    mountRrnDigitGroup('setupRrnDigits', { hiddenId: 'setupBirthdate' });
 
     const setupProfileTypeEmoji = document.getElementById('setupProfileTypeEmoji');
     if (setupProfileTypeEmoji) {
@@ -308,21 +306,6 @@ export function initEventListeners() {
                 b.classList.toggle('bg-slate-50', !active);
                 b.classList.toggle('text-slate-600', !active);
                 b.classList.toggle('border-slate-200', !active);
-            });
-        });
-    });
-
-    document.querySelectorAll('.setup-gender-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const v = btn.getAttribute('data-value') || '';
-            const hidden = document.getElementById('setupGender');
-            if (hidden) hidden.value = v;
-            document.querySelectorAll('.setup-gender-btn').forEach(b => {
-                const active = b === btn;
-                b.classList.toggle('bg-emerald-600', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('bg-slate-50', !active);
-                b.classList.toggle('text-slate-600', !active);
             });
         });
     });
@@ -388,15 +371,7 @@ export function initEventListeners() {
         });
     }
 
-    const btnViewList = document.getElementById('btn-view-list');
-    if (btnViewList) {
-        btnViewList.addEventListener('click', () => window.setViewMode('list'));
-    }
-
-    const btnViewPage = document.getElementById('btn-view-page');
-    if (btnViewPage) {
-        btnViewPage.addEventListener('click', () => window.setViewMode('page'));
-    }
+    // 전체/일간 토글 제거됨 — 일간(page)만 사용
 
     initMainAppKeyboardHandling();
 
@@ -469,10 +444,23 @@ export function initEventListeners() {
         addSubmitHandlers(document.getElementById('boardWriteSubmitBtn') || document.querySelector('#boardWriteView button[id="boardWriteSubmitBtn"]'), () => window.submitBoardPost());
     })();
 
+    /** 내 게시물·댓글 달린 게시물 필터 중 하단 네비로 이동하면 필터 해제 */
+    const exitGalleryUserFilterOnNav = () => {
+        if (appState.galleryFilterUserId && typeof window.resetGalleryUserFilterState === 'function') {
+            window.resetGalleryUserFilterState();
+            return;
+        }
+        if (appState.galleryFilterPostId) {
+            appState.galleryFilterPostId = null;
+            appState.galleryNotificationFilterPhotos = null;
+        }
+    };
+
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) {
         navDashboard.addEventListener('click', () => {
             handleDemoAwareNavClick('dashboard');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('dashboard');
             showPendingDemoGuide();
         });
@@ -482,6 +470,7 @@ export function initEventListeners() {
     if (navTimeline) {
         navTimeline.addEventListener('click', () => {
             handleDemoAwareNavClick('timeline');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('timeline');
             showPendingDemoGuide();
         });
@@ -491,17 +480,20 @@ export function initEventListeners() {
     if (navGallery) {
         navGallery.addEventListener('click', () => {
             handleDemoAwareNavClick('gallery');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('gallery');
             showPendingDemoGuide();
         });
     }
     setupGalleryPullToRefresh();
+    setupTimelinePullToRefresh();
     ensureMomentImageLightbox();
 
     const navBoard = document.getElementById('nav-board');
     if (navBoard) {
         navBoard.addEventListener('click', () => {
             handleDemoAwareNavClick('board');
+            exitGalleryUserFilterOnNav();
             window.switchMainTab('board');
             showPendingDemoGuide();
         });
@@ -511,6 +503,7 @@ export function initEventListeners() {
     if (navSettings) {
         navSettings.addEventListener('click', () => {
             handleDemoAwareNavClick('settings');
+            exitGalleryUserFilterOnNav();
             if (typeof openSettings === 'function') openSettings();
             else if (typeof window.switchMainTab === 'function') window.switchMainTab('settings');
             showPendingDemoGuide();
@@ -549,6 +542,13 @@ export function initEventListeners() {
         accountEditBioBtn.addEventListener('click', (e) => {
             e.preventDefault();
             if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('bio');
+        });
+    }
+    const profileV2EditNicknameRow = document.getElementById('profileV2EditNicknameRow');
+    if (profileV2EditNicknameRow) {
+        profileV2EditNicknameRow.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof window.activateAccountFieldEdit === 'function') window.activateAccountFieldEdit('nickname');
         });
     }
     const accountEditLifestyleBtn = document.getElementById('accountEditLifestyleBtn');
@@ -599,15 +599,15 @@ export function initEventListeners() {
             const v = btn.getAttribute('data-value') || '';
             const hidden = document.getElementById('settingLifestyle');
             if (hidden) hidden.value = v;
-            document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
-                const active = b === btn;
-                b.classList.toggle('bg-emerald-600', active);
-                b.classList.toggle('text-white', active);
-                b.classList.toggle('border-emerald-600', active);
-                b.classList.toggle('bg-white', !active);
-                b.classList.toggle('text-slate-600', !active);
-                b.classList.toggle('border-slate-200', !active);
-            });
+            if (typeof window.syncLifestyleChipsUIFromHidden === 'function') {
+                window.syncLifestyleChipsUIFromHidden();
+            } else {
+                document.querySelectorAll('.settings-lifestyle-btn').forEach(b => {
+                    const active = b === btn;
+                    b.classList.toggle('selected', active);
+                    b.classList.toggle('active', active);
+                });
+            }
         });
     });
     document.querySelectorAll('.setting-gender-btn').forEach(btn => {
@@ -629,8 +629,19 @@ export function initEventListeners() {
     });
 
     const boardWriteBtn = document.getElementById('boardWriteBtn');
+    let boardWriteFabOpening = false;
     if (boardWriteBtn) {
-        boardWriteBtn.addEventListener('click', window.openBoardWrite);
+        boardWriteBtn.addEventListener('click', async () => {
+            if (boardWriteFabOpening || boardWriteBtn.classList.contains('hidden')) return;
+            boardWriteFabOpening = true;
+            try {
+                await playFabIconSpin(boardWriteBtn);
+                window.openBoardWrite();
+            } finally {
+                boardWriteBtn.classList.remove(CTA_FAB_SPIN_CLASS);
+                boardWriteFabOpening = false;
+            }
+        });
     }
     document.querySelectorAll('#boardWriteView .format-toolbar-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -706,6 +717,20 @@ export function initEventListeners() {
         }
     });
 
+    document.querySelectorAll('#analysisMealSlotTabs [data-analysis-slot], #analysisSnackSlotTabs [data-analysis-slot]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const slot = btn.getAttribute('data-analysis-slot') || 'all';
+            window.setAnalysisSlotFilter?.(slot);
+        });
+    });
+
+    ['analysis', 'comment'].forEach(view => {
+        const btn = document.getElementById(`btn-mealdang-${view}`);
+        if (btn) {
+            btn.addEventListener('click', () => window.setMealdangView?.(view));
+        }
+    });
+
     const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
     if (logoutConfirmCancelBtn) {
         logoutConfirmCancelBtn.addEventListener('click', () => {
@@ -758,6 +783,12 @@ export function initEventListeners() {
     }
 
     registerEscapeCloseModals();
+    // grabber onClose용 — escape-close와 동일 API를 window에 노출
+    window.closePasswordResetConfirmModal = closePasswordResetConfirmModal;
+    window.closePasswordResetSuccessModal = closePasswordResetSuccessModal;
+    window.closeProfileSetupModal = closeProfileSetupModal;
+    window.dismissDemoIntroModal = dismissDemoIntroModal;
+    initCenterDialogGrabbers();
 }
 
 function bindRecordPhotoSourcePickersOnce() {

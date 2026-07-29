@@ -10,8 +10,8 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    /** 앱 chrome 그라데이션 상단 톤 (--timeline-chrome-green-deep) */
-    private static final int STATUS_BAR_COLOR = Color.parseColor("#064e3b");
+    /** 본문 캔버스(--page-deep / --app-page-bg) — 하단 시스템 네비 공백과 동일 */
+    private static final int PAGE_BG = Color.parseColor("#faf6f2");
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -29,15 +29,18 @@ public class MainActivity extends BridgeActivity {
     private void applySystemBarsChrome() {
         Window window = getWindow();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.setStatusBarColor(STATUS_BAR_COLOR);
-            window.setNavigationBarColor(Color.WHITE);
+            // edge-to-edge: 웹 #statusBarOverlay가 상단 색을 담당
+            window.setStatusBarColor(Color.TRANSPARENT);
+            // 앱 네비 숨김 시 시스템 네비 영역이 본문 배경으로 이어지도록
+            window.setNavigationBarColor(PAGE_BG);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.setNavigationBarContrastEnforced(false);
         }
         WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
         if (controller != null) {
-            controller.setAppearanceLightStatusBars(false);
+            // 헤더·상태바 오버레이가 밝은 면이므로 시스템 아이콘/시계는 진하게
+            controller.setAppearanceLightStatusBars(true);
             controller.setAppearanceLightNavigationBars(true);
         }
     }

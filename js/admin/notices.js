@@ -31,7 +31,7 @@ export async function renderNotices() {
         const noticesSnapshot = await getDocs(query(noticesColl, orderBy('timestamp', 'desc')));
         
         if (noticesSnapshot.empty) {
-            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i class="fa-solid fa-bullhorn text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
+            container.innerHTML = '<div class="text-center py-8 text-slate-400 px-4"><i data-lucide="megaphone" class="text-2xl mb-2"></i><p>공지가 없습니다.</p></div>';
             document.getElementById('noticeDetailContainer').innerHTML = '목록에서 공지를 선택하면 본문이 표시됩니다.';
             return;
         }
@@ -78,7 +78,7 @@ export async function renderNotices() {
         if (detailPage) detailPage.classList.add('hidden');
     } catch (e) {
         console.error("공지 렌더링 실패:", e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400 px-4"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>공지를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
@@ -128,10 +128,10 @@ async function renderNoticeDetailInAdmin(noticeId) {
                             <i class="fa-solid fa-eye${notice.hidden === true ? '-slash' : ''} mr-1.5"></i>${notice.hidden === true ? '숨김 해제' : '숨김'}
                         </button>
                         <button type="button" onclick="window.editNotice('${noticeId}')" class="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">
-                            <i class="fa-solid fa-pencil mr-1"></i>수정
+                            <i data-lucide="pen" class="mr-1"></i>수정
                         </button>
                         <button type="button" onclick="window.deleteNotice('${noticeId}')" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">
-                            <i class="fa-solid fa-trash mr-1"></i>삭제
+                            <i data-lucide="trash-2" class="mr-1"></i>삭제
                         </button>
                     </div>
                 </div>
@@ -277,7 +277,7 @@ export function renderNoticeImagePreviews() {
         wrap.innerHTML = `
             <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', (e) => {
@@ -295,7 +295,7 @@ export function renderNoticeImagePreviews() {
         wrap.innerHTML = `
             <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', (e) => {
@@ -358,7 +358,7 @@ window.submitNotice = async function() {
     
     if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>처리 중...';
+        submitBtn.innerHTML = '<i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>처리 중...';
     }
     
     try {
@@ -427,7 +427,7 @@ function renderNoticeInlineImagePreviews() {
     existing.forEach((url, i) => {
         const wrap = document.createElement('div');
         wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
-        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl" data-type="url" data-index="${i}"><i class="fa-solid fa-times"></i></button>`;
+        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl" data-type="url" data-index="${i}"><i data-lucide="x"></i></button>`;
         wrap.querySelector('button').onclick = () => { window.noticeExistingUrls.splice(i, 1); renderNoticeInlineImagePreviews(); };
         container.appendChild(wrap);
     });
@@ -436,7 +436,7 @@ function renderNoticeInlineImagePreviews() {
         if (!url) return;
         const wrap = document.createElement('div');
         wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0';
-        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl"><i class="fa-solid fa-times"></i></button>`;
+        wrap.innerHTML = `<img src="${url}" alt="미리보기" class="w-full h-full object-cover"><button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl"><i data-lucide="x"></i></button>`;
         wrap.querySelector('button').onclick = () => {
             window.noticeFiles.splice(i, 1);
             window.noticeObjectUrls.splice(i, 1);

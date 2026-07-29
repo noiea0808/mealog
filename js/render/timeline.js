@@ -6,12 +6,24 @@ import {
     DAILY_JOURNAL_SLOT_STYLE,
     SATIETY_DATA,
     SNACK_TIMELINE_VIEW_STORAGE_KEY,
-    MEAL_TIMELINE_VIEW_STORAGE_KEY
+    MEAL_TIMELINE_VIEW_STORAGE_KEY,
+    getSlotLucideIcon
 } from '../constants.js';
 import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
-import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
+import { getThumbImageUrl, getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
+
+/** 기록추가 슬롯 피커와 동일한 아이콘 톤 클래스 (SLOT_STYLES 색 매핑) */
+function slotPickerIconToneClass(slotId) {
+    if (slotId === 'daily_journal' || slotId === DAILY_JOURNAL_SLOT?.id) {
+        return 'home-feed-card__icon--tone-journal';
+    }
+    if (slotId && SLOT_STYLES[slotId]) {
+        return `home-feed-card__icon--tone-${slotId}`;
+    }
+    return 'home-feed-card__icon--tone-default';
+}
 import { getRecordCountForIso, buildMealHistoryCountByDate } from '../meal-record-count.js';
 import {
     getMealRowSyncLeadKind,
@@ -26,7 +38,7 @@ import {
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
-import { updateTrackerStreakLabel } from '../attendance-check.js';
+import { updateTrackerStreakLabel, collectRecordedDateSet } from '../attendance-check.js';
 import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
 import {
     getDailyJournalFromSettings,
@@ -46,20 +58,15 @@ import {
     isAiDietReportDateVisible,
     refreshAiDietReportFlagsForDates
 } from '../modals/diet-report.js';
+import { scheduleLucideIcons } from '../icons.js';
 
-const MAIN_MEAL_SLOT_FA_ICONS = {
-    morning: 'fa-cloud-sun',
-    lunch: 'fa-burger',
-    dinner: 'fa-moon'
-};
-
-function mainMealSlotFaIcon(slotId) {
-    return MAIN_MEAL_SLOT_FA_ICONS[slotId] || 'fa-utensils';
+function mainMealSlotLucideIcon(slotId) {
+    return getSlotLucideIcon(slotId);
 }
 
 function mainMealSlotIconHtml(slotId, iconTextClass = 'text-slate-400', size = 'lg') {
     const sizeClass = size === 'sm' ? 'text-lg' : 'text-2xl';
-    return `<i class="fa-solid ${mainMealSlotFaIcon(slotId)} ${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
+    return `<i data-lucide="${mainMealSlotLucideIcon(slotId)}" class="${sizeClass} ${iconTextClass} shrink-0" aria-hidden="true"></i>`;
 }
 
 function mainMealSlotListTitleHtml(slot, specificStyle, displayLabel = null) {
@@ -88,7 +95,7 @@ function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
         }, getMealThumbUrlsForTimeline(r));
     }
     if (r.mealType === 'Skip') {
-        return `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
+        return `<i data-lucide="ban" class="text-2xl text-slate-600" aria-hidden="true"></i>`;
     }
     return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
 }
@@ -325,7 +332,7 @@ function buildSnackTagRowInnerHtml(r) {
             <span class="text-[11px] font-black">${r.rating}</span>
         </span>`
         : '';
-    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp}"><i class="fa-solid fa-share text-slate-500 text-[8px] ml-1" title="게시됨"></i></span>${ratingHtml}`;
+    return `<span class="inline-flex items-center gap-1 min-w-0 max-w-full">${mealEntrySyncLeadHtml(r)}<span class="min-w-0">${label}</span></span><span class="timeline-share-arrow" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}" title="게시됨"><i data-lucide="send" aria-hidden="true"></i></span>${ratingHtml}`;
 }
 
 function applySnackTagPendingUi(tagEl, record) {
@@ -454,10 +461,10 @@ function ensureMealSyncRetryClickDelegation() {
     );
 }
 
-/** false면 타임라인 첫 날짜 헤더의 간식보기(태그/카드) 전환 UI를 숨김 */
-const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = true;
+/** false면 타임라인 날짜 헤더의 식사/간식 보기 전환 UI를 숨김 */
+const SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE = false;
 
-/** true면 간식은 항상 태그 행으로만 표시 (localStorage의 카드 설정 무시) */
+/** @deprecated 간식은 홈피드 카드만 사용 */
 const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 
 // entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
@@ -470,19 +477,10 @@ function isEntryShared(entryId, record) {
 }
 
 function getSnackTimelineView() {
-    if (SNACK_TIMELINE_FORCE_TAGS_MODE) return 'tags';
-    try {
-        const v = localStorage.getItem(SNACK_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'tags' || v === 'list' || v === 'mixed') return v;
-    } catch (_) {}
-    return 'tags';
+    return 'cards';
 }
 
 function getMealTimelineView() {
-    try {
-        const v = localStorage.getItem(MEAL_TIMELINE_VIEW_STORAGE_KEY);
-        if (v === 'cards' || v === 'list' || v === 'mixed') return v;
-    } catch (_) {}
     return 'cards';
 }
 
@@ -586,11 +584,22 @@ export function getMealPhotoUrlsForTimeline(r) {
  * 타임라인 썸네일 표시용 URL(원본과 index 정렬).
  * 신규 업로드는 200px thumb → 없으면 800px display → 없으면 원본.
  * 반환 배열은 getMealPhotoUrlsForTimeline과 같은 길이/순서를 유지한다(팝업 원본과 매칭).
+ * 작은 셀·태그용. 홈피드 와이드 카드는 getMealDisplayUrlsForTimeline 사용.
  */
 export function getMealThumbUrlsForTimeline(r) {
     const originals = getMealPhotoUrlsForTimeline(r);
     if (originals.length === 0) return [];
     return originals.map((orig, i) => getThumbImageUrl(r, i, 'timeline.cell') || orig);
+}
+
+/**
+ * 홈피드 와이드 카드용(800px display → 원본).
+ * 200px thumb을 카드 전폭에 쓰면 화질이 크게 떨어진다.
+ */
+export function getMealDisplayUrlsForTimeline(r) {
+    const originals = getMealPhotoUrlsForTimeline(r);
+    if (originals.length === 0) return [];
+    return originals.map((orig, i) => getDisplayImageUrl(r, i, 'timeline.home-feed') || orig);
 }
 
 /**
@@ -694,28 +703,149 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
  * @param {object|null} viewCtx
  * @param {string[]|null} thumbUrls 표시용 썸네일 URL(원본과 index 정렬). 미제공 시 원본 사용.
  */
-function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null) {
+/**
+ * @param {object|null} viewCtx
+ * @param {string[]|null} thumbUrls
+ * @param {{ interactive?: boolean, showAspectToggle?: boolean }} [opts] interactive=false 면 사진 확대 버튼 없이 장식만(홈피드 카드 탭=수정)
+ */
+function normalizeCardPhotoAspect(ar) {
+    return ar === '3:4' || ar === '4:3' || ar === '1:1' ? ar : '1:1';
+}
+
+const TIMELINE_CARD_PHOTO_ASPECT_USER_KEY = 'mealog_timeline_card_photo_aspect_user';
+
+function isTimelineCardPhotoAspectUserOn() {
+    try {
+        return localStorage.getItem(TIMELINE_CARD_PHOTO_ASPECT_USER_KEY) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+/** 밀로그 카드 사진: 원본 비율 보기 on/off를 타임라인 전체에 동기화 */
+export function applyTimelineCardPhotoAspectView(root = document.getElementById('timelineContainer')) {
+    if (!root) return;
+    const on = isTimelineCardPhotoAspectUserOn();
+    root.classList.toggle('timeline-card-photo-aspect-user', on);
+    root.querySelectorAll('.timeline-meal-photo-aspect-toggle').forEach((btn) => {
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.classList.toggle('timeline-meal-photo-aspect-toggle--active', on);
+        const label = on ? '기본 비율로 보기' : '원본 비율로 보기';
+        btn.setAttribute('title', label);
+        btn.setAttribute('aria-label', label);
+    });
+}
+
+function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null, opts = null) {
     const first = urls[0];
     if (!first) return '';
     const n = urls.length;
+    const interactive = opts?.interactive !== false;
     const enc = encodeURIComponent(JSON.stringify(urls));
-    // 표시는 썸네일 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
-    const displayFirst = (Array.isArray(thumbUrls) && thumbUrls[0]) ? thumbUrls[0] : first;
+    // 표시는 썸네일/디스플레이 우선, 로딩 실패 시 원본으로 폴백. 팝업(data-photos)은 항상 원본 유지.
+    const displayUrls = urls.map((u, i) =>
+        Array.isArray(thumbUrls) && thumbUrls[i] ? thumbUrls[i] : u
+    );
+    const displayFirst = displayUrls[0] || first;
     const fallbackAttrs = imgFallbackAttrs(first, displayFirst, escapeHtml, 'timeline.cell');
+    const displayEnc = encodeURIComponent(JSON.stringify(displayUrls));
     const badge =
         n > 1
-            ? `<span class="absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm">1/${n}</span>`
+            ? `<span class="timeline-meal-photo-badge absolute top-1 right-1 z-30 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-bold leading-none pointer-events-none shadow-sm" data-timeline-photo-badge>1/${n}</span>`
             : '';
+    const navHtml =
+        n > 1
+            ? `<button type="button" class="timeline-meal-photo-nav timeline-meal-photo-nav--prev" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.stepTimelineCardPhoto&&window.stepTimelineCardPhoto(this,-1)" aria-label="이전 사진" disabled>
+                    <i data-lucide="chevron-left" aria-hidden="true"></i>
+               </button>
+               <button type="button" class="timeline-meal-photo-nav timeline-meal-photo-nav--next" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.stepTimelineCardPhoto&&window.stepTimelineCardPhoto(this,1)" aria-label="다음 사진">
+                    <i data-lucide="chevron-right" aria-hidden="true"></i>
+               </button>`
+            : '';
+    const aspectToggle = opts?.showAspectToggle
+        ? `<button type="button" class="timeline-meal-photo-aspect-toggle" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.toggleTimelineCardPhotoAspect&&window.toggleTimelineCardPhotoAspect(this)" aria-label="원본 비율로 보기" aria-pressed="false" title="원본 비율로 보기">
+                <i data-lucide="ratio" aria-hidden="true"></i>
+           </button>`
+        : '';
     const ctxAttrs =
         viewCtx && viewCtx.dateStr && viewCtx.slotId
             ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
             : '';
-    return `<div class="absolute inset-0 overflow-hidden">
-        <img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
+    const tapBtn = interactive
+        ? `<button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>`
+        : '';
+    return `<div class="timeline-meal-photo-cell absolute inset-0 overflow-hidden" data-timeline-photo-cell data-photo-index="0" data-photos="${enc}" data-display-photos="${displayEnc}">
+        <img data-timeline-photo-img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
-        <button type="button" class="timeline-meal-photo-tap absolute inset-0 z-20 h-full w-full cursor-zoom-in border-0 bg-transparent p-0 active:bg-white/5" style="-webkit-tap-highlight-color:transparent" aria-label="사진 ${n}장 보기"${ctxAttrs} data-photos="${enc}" onclick="event.stopPropagation();window.openTimelineMealPhotosPopup(this);"></button>
+        ${navHtml}
+        ${aspectToggle}
+        ${tapBtn}
     </div>`;
 }
+
+/** 밀로그 카드: 기본(16:10) ↔ 원본 이미지 비율 — 타임라인 전체 일괄 적용 */
+export function toggleTimelineCardPhotoAspect() {
+    const next = !isTimelineCardPhotoAspectUserOn();
+    try {
+        localStorage.setItem(TIMELINE_CARD_PHOTO_ASPECT_USER_KEY, next ? '1' : '0');
+    } catch (_) {
+        /* ignore */
+    }
+    applyTimelineCardPhotoAspectView();
+}
+
+window.toggleTimelineCardPhotoAspect = toggleTimelineCardPhotoAspect;
+window.applyTimelineCardPhotoAspectView = applyTimelineCardPhotoAspectView;
+
+/** 밀로그 카드: 다장 사진 좌우 화살표 탐색 (스와이프 없음 — 날짜 스와이프와 분리) */
+export function stepTimelineCardPhoto(btn, delta) {
+    const cell = btn?.closest?.('[data-timeline-photo-cell]');
+    if (!cell) return;
+    let originals = [];
+    let displays = [];
+    try {
+        originals = JSON.parse(decodeURIComponent(cell.getAttribute('data-photos') || '[]'));
+    } catch (_) {
+        originals = [];
+    }
+    try {
+        displays = JSON.parse(decodeURIComponent(cell.getAttribute('data-display-photos') || '[]'));
+    } catch (_) {
+        displays = [];
+    }
+    if (!Array.isArray(originals) || originals.length < 2) return;
+    const n = originals.length;
+    const d = Number(delta);
+    if (!Number.isInteger(d) || d === 0) return;
+    let idx = Math.floor(Number(cell.dataset.photoIndex || 0));
+    if (!Number.isFinite(idx)) idx = 0;
+    const next = Math.max(0, Math.min(n - 1, idx + d));
+    if (next === idx) return;
+    cell.dataset.photoIndex = String(next);
+    const img = cell.querySelector('[data-timeline-photo-img]');
+    const orig = originals[next] || '';
+    const disp = (Array.isArray(displays) && displays[next]) || orig;
+    if (img && orig) {
+        img.setAttribute('src', disp);
+        if (disp && disp !== orig) {
+            img.setAttribute('data-original-src', orig);
+            img.setAttribute('data-img-debug-component', 'timeline.cell');
+            img.setAttribute('onerror', 'window.__imgFallbackToOriginal&&window.__imgFallbackToOriginal(this)');
+        } else {
+            img.removeAttribute('data-original-src');
+            img.removeAttribute('data-img-debug-component');
+            img.removeAttribute('onerror');
+        }
+    }
+    const badge = cell.querySelector('[data-timeline-photo-badge]');
+    if (badge) badge.textContent = `${next + 1}/${n}`;
+    const prevBtn = cell.querySelector('.timeline-meal-photo-nav--prev');
+    const nextBtn = cell.querySelector('.timeline-meal-photo-nav--next');
+    if (prevBtn) prevBtn.disabled = next <= 0;
+    if (nextBtn) nextBtn.disabled = next >= n - 1;
+}
+
+window.stepTimelineCardPhoto = stepTimelineCardPhoto;
 
 const DATE_HEADER_ACTION_HEIGHT_CLASS = 'date-section-header__action-btn';
 
@@ -730,12 +860,12 @@ function buildMealTimelineViewSelectHtml(current) {
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
             <span class="timeline-view-picker__visual" aria-hidden="true">
-                <span class="timeline-view-picker__icon"><i class="fa-solid fa-utensils"></i></span>
+                <span class="timeline-view-picker__icon"><i data-lucide="utensils"></i></span>
                 <span class="timeline-view-picker__body">
                     <span class="timeline-view-picker__category">식사</span>
                     <span class="timeline-view-picker__value-row">
                         <span class="timeline-view-picker__value">${current === 'cards' ? '카드' : current === 'list' ? '목록' : '자동'}</span>
-                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                        <span class="timeline-view-picker__chevron"><i data-lucide="chevron-down"></i></span>
                     </span>
                 </span>
             </span>
@@ -757,12 +887,12 @@ function buildSnackTimelineViewSelectHtml(current) {
                 <option value="mixed"${mixedSel}>자동</option>
             </select>
             <span class="timeline-view-picker__visual" aria-hidden="true">
-                <span class="timeline-view-picker__icon"><i class="fa-solid fa-cookie"></i></span>
+                <span class="timeline-view-picker__icon"><i data-lucide="cookie"></i></span>
                 <span class="timeline-view-picker__body">
                     <span class="timeline-view-picker__category">간식</span>
                     <span class="timeline-view-picker__value-row">
                         <span class="timeline-view-picker__value">${valueLabel}</span>
-                        <span class="timeline-view-picker__chevron"><i class="fa-solid fa-chevron-down"></i></span>
+                        <span class="timeline-view-picker__chevron"><i data-lucide="chevron-down"></i></span>
                     </span>
                 </span>
             </span>
@@ -782,17 +912,14 @@ function getDailyShareButtonHtmlForDate(dateStr) {
     const styleCls = isShared
         ? 'date-section-header__share-btn--shared'
         : 'date-section-header__share-btn--default';
-    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}">
-        <i class="fa-solid fa-share text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
+    const icon = isShared ? 'check' : 'send';
+    return `<button type="button" data-mealog-daily="share" data-mealog-date="${dateStr}" class="date-section-header__share-btn ${DATE_HEADER_ACTION_HEIGHT_CLASS} ${styleCls}" title="${isShared ? '공유됨 — 탭하면 미리보기·공유 취소' : '모먼트에 공유하기'}" aria-pressed="${isShared ? 'true' : 'false'}">
+        <i data-lucide="${icon}" class="text-[10px]" aria-hidden="true"></i>${isShared ? '공유됨' : '공유하기'}
     </button>`;
 }
 
-function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false } = {}) {
+function buildDateHeaderRightActionsHtml(dateStr) {
     const parts = [];
-    if (includeViewPickers) {
-        parts.push(buildMealTimelineViewSelectHtml(getMealTimelineView()));
-        parts.push(buildSnackTimelineViewSelectHtml(getSnackTimelineView()));
-    }
     const share = getDailyShareButtonHtmlForDate(dateStr);
     if (share) parts.push(share);
     if (!parts.length) return '';
@@ -801,7 +928,7 @@ function buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers = false }
 
 function buildDateHeaderDateHtml(dateStr) {
     const weekendCls = isWeekendIsoDate(dateStr) ? ' date-section-header__date--weekend' : '';
-    return `<h3 class="min-w-0 text-sm font-bold tracking-tight text-black${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
+    return `<h3 class="date-section-header__date min-w-0${weekendCls}">${escapeHtml(formatMealogDateLabel(dateStr))}</h3>`;
 }
 
 function buildDateHeaderLeftHtml(dateStr) {
@@ -811,23 +938,200 @@ function buildDateHeaderLeftHtml(dateStr) {
 }
 
 /**
- * 트래커 바로 아래 첫 날짜 헤더: 날짜 오른쪽에 간식 표시 방식 드롭다운 (일간 보기 시 공유 버튼 유지)
+ * 트래커 바로 아래 날짜 헤더: 공유 버튼 등 우측 액션 동기화
  */
 export function syncSnackViewDropdown(container) {
     const timeline = container || document.getElementById('timelineContainer');
     if (!timeline) return;
     const sections = Array.from(timeline.querySelectorAll(':scope > [id^="date-"]'));
-    sections.forEach((section, index) => {
+    sections.forEach((section) => {
         const header = section.querySelector('.date-section-header');
         if (!header) return;
         const dateStr = section.id.replace(/^date-/, '');
         const leftHtml = buildDateHeaderLeftHtml(dateStr);
-        const includeViewPickers = index === 0 && SNACK_TIMELINE_VIEW_TOGGLE_VISIBLE;
-        const rightHtml = buildDateHeaderRightActionsHtml(dateStr, { includeViewPickers });
+        const rightHtml = buildDateHeaderRightActionsHtml(dateStr);
 
         header.className = 'date-section-header flex items-center gap-2';
         header.innerHTML = rightHtml ? `${leftHtml}${rightHtml}` : leftHtml;
     });
+}
+
+function timelineRatingHtml(value) {
+    const parsed = Number(value);
+    const count = Number.isFinite(parsed) ? Math.min(5, Math.max(0, Math.round(parsed))) : 0;
+    const label = count > 0 ? `만족도 ${count}점` : '만족도 미입력';
+    const stars =
+        count > 0
+            ? `<i data-lucide="star" aria-hidden="true"></i><span class="timeline-entry-rating__count" aria-hidden="true">× ${count}</span>`
+            : `<i data-lucide="star" class="timeline-entry-rating__empty" aria-hidden="true"></i>`;
+    return `<span class="timeline-entry-rating" aria-label="${label}" title="${label}">${stars}</span>`;
+}
+
+function timelineTagsHtml(tags) {
+    const clean = tags.map((tag) => String(tag || '').trim()).filter(Boolean);
+    if (!clean.length) return '';
+    return `<div class="timeline-entry-tags scrollbar-hide">${clean
+        .map((tag) => `<span class="timeline-entry-tag">#${escapeHtml(tag)}</span>`)
+        .join('')}</div>`;
+}
+
+function buildHomeFeedStarsHtml(rating) {
+    const n = Number.parseInt(rating, 10);
+    const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
+    if (filled <= 0) {
+        return `<div class="home-feed-card__stars home-feed-card__stars--empty" aria-label="만족도 미입력"><i data-lucide="star" class="home-feed-card__star--empty" aria-hidden="true"></i></div>`;
+    }
+    return `<div class="home-feed-card__stars" aria-label="만족도 ${filled}점"><i data-lucide="star" aria-hidden="true"></i><span class="home-feed-card__star-count" aria-hidden="true">${filled}</span></div>`;
+}
+
+function buildHomeFeedTagsHtml(tags) {
+    if (!Array.isArray(tags) || tags.length === 0) return '';
+    const shown = tags.slice(0, 2);
+    return `<div class="home-feed-card__tags">${shown
+        .map((t) => `<span class="home-feed-card__tag">#${escapeHtml(t)}</span>`)
+        .join('')}</div>`;
+}
+
+/** 공유 캡처용 — 텍스트 ★ (lucide SVG는 html2canvas 정렬이 흔들림) */
+function buildShareCaptureStarsText(rating) {
+    const n = Number.parseInt(rating, 10);
+    const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
+    if (filled <= 0) return '—';
+    return '★'.repeat(filled);
+}
+
+/** 일간 공유 캡처용 — 좌측 1:1 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */
+function buildShareCaptureThumbHtml(urls) {
+    const first = urls?.[0];
+    if (!first) return '';
+    const n = urls.length;
+    const badge =
+        n > 1
+            ? `<span class="share-cap-thumb__badge" aria-hidden="true">1/${n}</span>`
+            : '';
+    const src = escapeHtml(first);
+    return `<div class="share-cap-thumb">
+        <img src="${src}" alt="" class="share-cap-thumb__img" width="92" height="92" data-photo-url="${src}" draggable="false" loading="eager">
+        ${badge}
+    </div>`;
+}
+
+/**
+ * 공유 캡처 전용 행 — table-cell + 고정 px (flex/grid보다 html2canvas 정렬이 안정적)
+ */
+function buildShareCaptureRowHtml({
+    hasPhoto,
+    photoHtml,
+    iconHtml,
+    iconKind = 'meal',
+    iconToneClass = '',
+    metaHtml,
+    titleHtml,
+    starsText = '—',
+    cardMbClass = ''
+}) {
+    const tone = (iconToneClass || '').trim();
+    const iconMod = tone
+        ? ` ${tone}`
+        : iconKind === 'snack'
+          ? ' share-cap-icon--snack'
+          : iconKind === 'journal'
+            ? ' share-cap-icon--journal'
+            : ' share-cap-icon--meal';
+    const thumbCell = hasPhoto && photoHtml
+        ? `<div class="share-cap-cell share-cap-cell--thumb">${photoHtml}</div>`
+        : '';
+    return `<div class="share-cap-row ${cardMbClass}">
+        <div class="share-cap-row__inner${hasPhoto ? ' share-cap-row__inner--photo' : ''}">
+            ${thumbCell}
+            <div class="share-cap-cell share-cap-cell--icon">
+                <div class="share-cap-icon${iconMod}" aria-hidden="true">${iconHtml}</div>
+            </div>
+            <div class="share-cap-cell share-cap-cell--text">
+                <div class="share-cap-meta">${metaHtml}</div>
+                <div class="share-cap-title">${titleHtml}</div>
+            </div>
+            <div class="share-cap-cell share-cap-cell--stars" aria-label="만족도">${escapeHtml(starsText)}</div>
+        </div>
+    </div>`;
+}
+
+/**
+ * 시안 v2 세로 피드 카드 — 상단 사진(선택) + 본문(아이콘·텍스트·별점)
+ * 공유 캡처(forShareCapture): table 행 + 텍스트 별점
+ * @param {{ forShareCapture?: boolean }} [extra]
+ */
+function buildHomeFeedCardShellHtml({
+    openClick,
+    cardMbClass,
+    record,
+    hasPhoto,
+    photoHtml,
+    iconHtml,
+    iconKind = 'meal',
+    iconToneClass = '',
+    metaHtml,
+    titleHtml,
+    noteHtml,
+    tagsHtml,
+    ratingVal,
+    forShareCapture = false,
+    photoAspectRatio = '1:1'
+}) {
+    const tone = (iconToneClass || '').trim();
+    const iconMod = tone
+        ? ` ${tone}`
+        : iconKind === 'snack'
+          ? ' home-feed-card__icon--snack'
+          : iconKind === 'journal'
+            ? ' home-feed-card__icon--journal'
+            : ' home-feed-card__icon--meal';
+
+    if (forShareCapture) {
+        return buildShareCaptureRowHtml({
+            hasPhoto,
+            photoHtml,
+            iconHtml,
+            iconKind,
+            iconToneClass: tone,
+            metaHtml,
+            titleHtml,
+            starsText: buildShareCaptureStarsText(ratingVal),
+            cardMbClass
+        });
+    }
+
+    const stars = buildHomeFeedStarsHtml(ratingVal);
+    const openAttrs = openClick || '';
+    const pointerCls = mealEntryRowPointerClass(record);
+    const relativeCls = mealCardRelativeClass(record);
+    const syncLead = mealEntrySyncLeadHtml(record);
+    const entryAttr =
+        record?.id != null ? ` data-entry-id="${escapeHtml(String(record.id))}"` : '';
+    const shareDisp = isEntryShared(record?.id, record) ? 'inline' : 'none';
+    const shareArrowHtml = `<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>`;
+
+    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
+    const ar = normalizeCardPhotoAspect(photoAspectRatio);
+    const photoBlock = hasPhoto
+        ? `<div class="home-feed-card__photo relative" data-photo-aspect="${escapeHtml(ar)}">${photoHtml}</div>`
+        : '';
+    return `<div ${openAttrs} class="card home-feed-card${photoClass} ${cardMbClass} ${pointerCls} ${relativeCls}"${entryAttr}>
+        ${photoBlock}
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon${iconMod}" aria-hidden="true">${iconHtml}</div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta-row">
+                    <div class="home-feed-card__meta">${syncLead}${metaHtml}</div>
+                    ${shareArrowHtml}
+                    ${stars}
+                </div>
+                <div class="home-feed-card__title">${titleHtml}</div>
+                ${noteHtml || ''}
+                ${tagsHtml || ''}
+            </div>
+        </div>
+    </div>`;
 }
 
 function buildSnackTimelineCardHtml(
@@ -837,8 +1141,10 @@ function buildSnackTimelineCardHtml(
     specificStyle,
     cardMbClass = 'mb-1.5',
     ordinal1Based = 1,
-    totalInSlot = 1
+    totalInSlot = 1,
+    opts = {}
 ) {
+    const forShareCapture = !!opts.forShareCapture;
     const p = r.snackPlace || r.place || '';
     const m = formatMealMenuDisplayLine(r);
     const menuLine =
@@ -847,68 +1153,62 @@ function buildSnackTimelineCardHtml(
         (r.category && String(r.category).trim()) ||
         '';
     const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
-    const safeSlotLabel = escapeHtml(slotTitleForCard);
-    const safePlace = escapeHtml(p);
-    let titleLine1 = '';
-    if (p) {
-        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
-    } else {
-        titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-    }
-    const titleLine2 = escapeHtml(menuLine);
+    const metaParts = [slotTitleForCard];
+    if (p) metaParts.push(p);
+    const metaHtml = escapeHtml(metaParts.join(' · '));
+    const titleHtml = escapeHtml(menuLine || slotTitleForCard);
+    const noteHtml =
+        !forShareCapture && r.comment
+            ? `<p class="home-feed-card__note">"${escapeHtml(r.comment)}"</p>`
+            : '';
     const tags = [];
-    const clockTag = mealClockTagLabelFromRecord(r);
-    if (clockTag) tags.push(clockTag);
-    if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
-    if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
-    if (r.withWhomDetail) tags.push(r.withWhomDetail);
-    else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
-    if (r.satiety) {
-        const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
-        if (sData) tags.push(sData.label);
+    if (!forShareCapture) {
+        const clockTag = mealClockTagLabelFromRecord(r);
+        if (clockTag) tags.push(clockTag);
+        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+        if (r.snackType && String(r.snackType).trim() && !tags.includes(r.snackType)) tags.push(r.snackType);
+        if (r.satiety) {
+            const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+            if (sData) tags.push(sData.label);
+        }
     }
-    let tagsHtml = '';
-    if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`)
-            .join('')}</div>`;
-    }
-    let iconHtml = '';
     const snackPhotoUrls = getMealPhotoUrlsForTimeline(r);
-    if (snackPhotoUrls.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(snackPhotoUrls, 'object-cover', { dateStr, slotId: slot.id, recordId: r.id }, getMealThumbUrlsForTimeline(r));
+    const hasPhoto = snackPhotoUrls.length > 0;
+    let photoHtml = '';
+    let iconHtml = `<i data-lucide="${getSlotLucideIcon(slot.id)}"></i>`;
+    if (hasPhoto) {
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(snackPhotoUrls)
+            : buildTimelinePhotoCellInnerHtml(
+                  snackPhotoUrls,
+                  'object-cover',
+                  { dateStr, slotId: slot.id, recordId: r.id },
+                  getMealDisplayUrlsForTimeline(r),
+                  { interactive: false, showAspectToggle: true }
+              );
     } else if (r.mealType === 'Skip') {
-        iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600" aria-hidden="true"></i>`;
-    } else {
-        iconHtml = `<i class="fa-solid fa-mug-saucer text-2xl text-slate-400" aria-hidden="true"></i>`;
+        iconHtml = `<i data-lucide="ban"></i>`;
     }
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
-    const openClick = blockOpen
-        ? ''
-        : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r border-slate-200 bg-slate-100 ${specificStyle.iconText} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0 overflow-hidden">
-                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
-                    </div>
-                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
-                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
-                </div>
-                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
-                ${tagsHtml}
-            </div>
-        </div>
-    </div>`;
+    const openClick = forShareCapture || blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    return buildHomeFeedCardShellHtml({
+        openClick,
+        cardMbClass,
+        record: r,
+        hasPhoto,
+        photoHtml,
+        iconHtml,
+        iconKind: 'snack',
+        iconToneClass: slotPickerIconToneClass(slot.id),
+        metaHtml,
+        titleHtml,
+        noteHtml,
+        tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
+        ratingVal,
+        forShareCapture,
+        photoAspectRatio: r.photoAspectRatio
+    });
 }
 
 function buildMainMealTimelineCardHtml(
@@ -918,82 +1218,86 @@ function buildMainMealTimelineCardHtml(
     specificStyle,
     cardMbClass = 'mb-1.5',
     ordinal1Based = 1,
-    totalInSlot = 1
+    totalInSlot = 1,
+    opts = {}
 ) {
+    const forShareCapture = !!opts.forShareCapture;
     const slotTitleForCard = slotOrdinalTitle(slot, ordinal1Based, totalInSlot);
-    const safeSlotLabel = escapeHtml(slotTitleForCard);
-    let titleLine1 = '';
-    let titleLine2 = '';
-    let tagsHtml = '';
+    let metaHtml = escapeHtml(slotTitleForCard);
+    let titleHtml = escapeHtml(slotTitleForCard);
+    let noteHtml = '';
+    let tags = [];
     if (r.mealType === 'Skip') {
-        titleLine1 = 'Skip';
+        titleHtml = 'Skip';
     } else {
         const p = r.place || '';
         const m = formatMealMenuDisplayLine(r);
-        const safePlace = escapeHtml(p);
-        if (p) {
-            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span> <span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>`;
-        } else {
-            titleLine1 = `<span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>`;
-        }
         const menuLine = (m || '').trim() || (r.category && String(r.category).trim()) || '';
-        titleLine2 = escapeHtml(menuLine);
-        const tags = [];
-        const clockTagMain = mealClockTagLabelFromRecord(r);
-        if (clockTagMain) tags.push(clockTagMain);
-        if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
-        if (r.withWhomDetail) tags.push(r.withWhomDetail);
-        else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
-        if (r.satiety) {
-            const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
-            if (sData) tags.push(sData.label);
+        if (p) metaHtml = escapeHtml(`${slotTitleForCard} · ${p}`);
+        titleHtml = escapeHtml(menuLine || slotTitleForCard);
+        if (!forShareCapture && r.comment) {
+            noteHtml = `<p class="home-feed-card__note">"${escapeHtml(r.comment)}"</p>`;
         }
-        if (tags.length > 0) {
-            tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-                .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-                .join('')}</div>`;
+        if (!forShareCapture) {
+            const clockTagMain = mealClockTagLabelFromRecord(r);
+            if (clockTagMain) tags.push(clockTagMain);
+            if (r.mealType && r.mealType !== 'Skip') tags.push(r.mealType);
+            if (r.withWhomDetail) tags.push(r.withWhomDetail);
+            else if (r.withWhom && r.withWhom !== '혼자') tags.push(r.withWhom);
+            if (r.satiety) {
+                const sData = SATIETY_DATA.find((d) => d.val === r.satiety);
+                if (sData) tags.push(sData.label);
+            }
         }
     }
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-    const iconHtml = buildMainMealPhotoAreaHtml(slot, r, dateStr, specificStyle.iconText);
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
+    const mainPhotoUrls = getMealPhotoUrlsForTimeline(r);
+    const hasPhoto = mainPhotoUrls.length > 0;
+    let photoHtml = '';
+    let iconHtml = mainMealSlotIconHtml(slot.id, '', 'lg');
+    if (hasPhoto) {
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(mainPhotoUrls)
+            : buildTimelinePhotoCellInnerHtml(
+                  mainPhotoUrls,
+                  'object-cover',
+                  { dateStr, slotId: slot.id, recordId: r.id },
+                  getMealDisplayUrlsForTimeline(r),
+                  { interactive: false, showAspectToggle: true }
+              );
+    } else if (r.mealType === 'Skip') {
+        iconHtml = `<i data-lucide="ban"></i>`;
+    }
+    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '';
     const blockOpen = isMealEntryRowBlocked(r);
-    const openClick = blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClick} class="card ${cardMbClass} border border-slate-200 ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0 overflow-hidden">
-                    <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-2">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
-                    </div>
-                    <h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${titleLine1}</span></h4>
-                    ${titleLine2 ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-sm font-bold text-slate-600">${titleLine2}</p>` : ''}
-                </div>
-                ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
-                ${tagsHtml}
-            </div>
-        </div>
-    </div>`;
+    const openClick = forShareCapture || blockOpen ? '' : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
+    return buildHomeFeedCardShellHtml({
+        openClick,
+        cardMbClass,
+        record: r,
+        hasPhoto,
+        photoHtml,
+        iconHtml,
+        iconKind: 'meal',
+        iconToneClass: slotPickerIconToneClass(slot.id),
+        metaHtml,
+        titleHtml,
+        noteHtml,
+        tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
+        ratingVal,
+        forShareCapture,
+        photoAspectRatio: r.photoAspectRatio
+    });
 }
 
 function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeSlotLabel = escapeHtml(slot.label);
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
-                ${mainMealSlotIconHtml(slot.id, specificStyle.iconText, 'lg')}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <h4 class="mb-0 leading-tight"><span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span></h4>
-                <p class="mt-1.5 mb-0"><span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span></p>
+    const tone = slotPickerIconToneClass(slot.id);
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon ${tone}" aria-hidden="true">${mainMealSlotIconHtml(slot.id, '', 'lg')}</div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${safeSlotLabel}</div>
+                <div class="home-feed-card__title">기록하기</div>
             </div>
         </div>
     </div>`;
@@ -1001,18 +1305,13 @@ function buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle) {
 
 function buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
-    /** 행 높이만 본식 카드(140px)의 1/3 — 사진 열 너비는 식사 카드와 동일 140px */
-    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex ${hThird}">
-            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 bg-slate-100 border-slate-200 ${specificStyle.iconText} flex items-center justify-center overflow-hidden border-r">
-                <span class="text-3xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
-            </div>
-            <div class="flex-1 min-w-0 flex items-center px-4 py-0.5">
-                <p class="mb-0 truncate text-xs leading-tight">
-                    <span class="font-bold ${specificStyle.iconText}">${safeLabel}</span>
-                    <span class="text-slate-400 font-normal"> <span class="font-bold">+</span> 기록하기</span>
-                </p>
+    const tone = slotPickerIconToneClass(slot.id);
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card home-feed-card mb-1.5 opacity-80 cursor-pointer active:scale-[0.98] transition-all">
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon ${tone}" aria-hidden="true"><i data-lucide="${getSlotLucideIcon(slot.id)}"></i></div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta">${safeLabel}</div>
+                <div class="home-feed-card__title">기록하기</div>
             </div>
         </div>
     </div>`;
@@ -1023,7 +1322,7 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-row mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -1040,7 +1339,7 @@ function buildSnackListEmptyRowHtml(dateStr, slot, specificStyle) {
 function buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle) {
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
-    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="card timeline-entry-row mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 ${mainMealSlotListTitleHtml(slot, specificStyle)}
@@ -1085,18 +1384,15 @@ function buildMainMealListFilledRowHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-            .join('')}</div>`;
+        tagsHtml = timelineTagsHtml(tags);
     }
 
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const blockMainList = isMealEntryRowBlocked(r);
     const openClickMainList = blockMainList
         ? ''
         : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-    return `<div ${openClickMainList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickMainList} class="card timeline-entry-row ${cardMbClass} ${listLeft} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 ${mainMealSlotListTitleHtml(slot, specificStyle, slotTitle)}
@@ -1105,14 +1401,11 @@ function buildMainMealListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        <span class="timeline-share-arrow" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline-flex' : 'none'}"><i data-lucide="send" aria-hidden="true"></i></span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 whitespace-pre-wrap break-words text-xs text-slate-400">"${escapeHtml(r.comment)}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -1120,7 +1413,7 @@ function buildMainMealListFilledRowHtml(
     </div>`;
 }
 
-/** 목록형: 기록 있음 — 좌: 슬롯 / @ 장소 · 우: 메뉴·코멘트(한 줄+말줄임) → 태그 */
+/** 목록형: 기록 있음 — 좌: 슬롯 / @ 장소 · 우: 메뉴·코멘트 → 태그 */
 function buildSnackListFilledRowHtml(
     dateStr,
     slot,
@@ -1154,12 +1447,9 @@ function buildSnackListFilledRowHtml(
     }
     let tagsHtml = '';
     if (tags.length > 0) {
-        tagsHtml = `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags
-            .map((t) => `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(t)}</span>`)
-            .join('')}</div>`;
+        tagsHtml = timelineTagsHtml(tags);
     }
 
-    const ratingVal = r.rating != null && r.rating !== '' ? r.rating : '-';
     const safeMenu = escapeHtml(menuLine || '간식');
     const listLeft = specificStyle.listLeft || SLOT_STYLES.default.listLeft;
     const pendingSnackList = isMealEntryRowBlocked(r);
@@ -1167,7 +1457,7 @@ function buildSnackListFilledRowHtml(
         ? ''
         : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
 
-    return `<div ${openClickSnackList} class="card ${cardMbClass} border border-slate-200 ${listLeft} ${mealEntryRowPointerClass(r)} transition-all !rounded-none ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
+    return `<div ${openClickSnackList} class="card timeline-entry-row ${cardMbClass} ${listLeft} ${mealEntryRowPointerClass(r)} transition-all ${mealCardRelativeClass(r)}" data-entry-id="${escapeHtml(String(r.id))}">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${specificStyle.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words">${safeSlotTitle}</span>
@@ -1176,14 +1466,11 @@ function buildSnackListFilledRowHtml(
             <div class="flex min-w-0 flex-1 flex-col py-2 pl-3 pr-2">
                 <div class="min-w-0 overflow-hidden">
                     <div class="float-right mb-1 ml-2 flex shrink-0 items-center gap-1.5">
-                        <span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline' : 'none'}"><i class="fa-solid fa-share"></i></span>
-                        <span class="flex items-center gap-0.5 rounded-full border border-yellow-300 bg-yellow-50 px-1.5 py-0.5 text-xs font-bold text-yellow-600">
-                            <span class="text-[13px]">⭐</span>
-                            <span class="text-[12px] font-black">${ratingVal}</span>
-                        </span>
+                        <span class="timeline-share-arrow" title="게시됨" style="display:${isEntryShared(r.id, r) ? 'inline-flex' : 'none'}"><i data-lucide="send" aria-hidden="true"></i></span>
+                        ${timelineRatingHtml(r.rating)}
                     </div>
                     <p class="mb-0 flex min-w-0 items-center gap-1.5 pl-2 text-sm font-bold leading-snug text-slate-800">${mealEntrySyncLeadHtml(r)}<span class="min-w-0 flex-1 truncate">${safeMenu}</span></p>
-                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">"${escapeHtml(r.comment).replace(/\n/g, ' ')}"</p>` : ''}
+                    ${r.comment ? `<p class="clear-both mt-1.5 mb-0 min-w-0 whitespace-pre-wrap break-words text-xs text-slate-400">"${escapeHtml(r.comment)}"</p>` : ''}
                     ${tagsHtml}
                 </div>
             </div>
@@ -1207,7 +1494,7 @@ function dailyJournalCardDataAttrs(dateStr, journal) {
 function dailyJournalShareArrowHtml(dateStr, journal) {
     if (!dailyJournalHasPhotos(journal)) return '';
     const disp = isDailyJournalShared(dateStr, journal) ? 'inline' : 'none';
-    return `<span class="timeline-share-arrow text-xs text-slate-500" title="게시됨" style="display:${disp}"><i class="fa-solid fa-share"></i></span>`;
+    return `<span class="timeline-share-arrow" title="게시됨" style="display:${disp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>`;
 }
 
 function getDailyJournalForTimeline(dateStr) {
@@ -1223,7 +1510,7 @@ function getDailyJournalForTimeline(dateStr) {
 function dailyJournalPhotoSyncLeadHtml(journal) {
     if (!dailyJournalHasPhotos(journal)) return '';
     if (dailyJournalHasPendingPhotoUpload(journal)) {
-        return mealLeadSyncRedDot('등록 중', '하루 기록 사진을 서버에 업로드하는 중이에요.');
+        return mealLeadSyncRedDot('등록 중', '하루 소감 사진을 서버에 업로드하는 중이에요.');
     }
     const dot = (bg) =>
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
@@ -1245,7 +1532,7 @@ function dailyJournalCommentPreviewHtml(comment) {
 function dailyJournalMetricHashtagSpan(label, chain) {
     if (!chain) return '';
     const tagText = `${label} ${chain}`;
-    return `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${escapeHtml(tagText)}</span>`;
+    return `<span class="home-feed-card__tag">#${escapeHtml(tagText)}</span>`;
 }
 
 function dailyJournalMetricsSlotPreviewHtml(journal) {
@@ -1262,21 +1549,11 @@ function dailyJournalMetricsSlotPreviewHtml(journal) {
         if (span) tags.push(span);
     }
     if (!tags.length) return '';
-    return `<div class="clear-both mt-1.5 flex flex-nowrap gap-1 overflow-x-auto scrollbar-hide">${tags.join('')}</div>`;
+    return `<div class="home-feed-card__tags">${tags.join('')}</div>`;
 }
 
 function buildDailyJournalSlotHtml(dateStr) {
     const journal = getDailyJournalForTimeline(dateStr);
-    const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
-    const mealView = getMealTimelineView();
-    const useListLayout =
-        mealView === 'list' || (mealView === 'mixed' && photos.length === 0);
-
-    if (useListLayout) {
-        return dailyJournalHasContent(journal)
-            ? buildDailyJournalListFilledHtml(dateStr, journal)
-            : buildDailyJournalListEmptyHtml(dateStr);
-    }
     return buildDailyJournalCardHtml(dateStr, journal);
 }
 
@@ -1286,7 +1563,7 @@ function buildDailyJournalListEmptyHtml(dateStr) {
     const safeLabel = escapeHtml(slot.label);
     const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
     const listLeft = style.listLeft || '';
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex ${hThird}">
             <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
                 <span class="text-sm font-bold leading-tight">${safeLabel}</span>
@@ -1318,7 +1595,7 @@ function buildDailyJournalListFilledHtml(dateStr, journal) {
         (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
     const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
 
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border border-slate-200 ${listLeft} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} cursor-pointer active:scale-[0.98] transition-all">
         <div class="flex items-stretch">
             <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
                 <span class="text-sm font-bold leading-tight break-words inline-flex items-center justify-center gap-1">${safeLabel}${dailyJournalShareArrowHtml(dateStr, journal)}</span>
@@ -1330,58 +1607,141 @@ function buildDailyJournalListFilledHtml(dateStr, journal) {
     </div>`;
 }
 
-function buildDailyJournalCardHtml(dateStr, journal) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
+function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
+    const forShareCapture = !!opts.forShareCapture;
     const slot = DAILY_JOURNAL_SLOT;
     const hasContent = dailyJournalHasContent(journal);
     const comment = String(journal.comment || '').trim();
     const photos = Array.isArray(journal.photos) ? journal.photos.filter(Boolean) : [];
     const safeLabel = escapeHtml(slot.label);
+    const hasPhoto = photos.length > 0;
 
-    let iconHtml = '';
-    if (photos.length > 0) {
-        iconHtml = buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null);
-    } else if (hasContent) {
-        iconHtml = `<i class="fa-solid fa-book-open text-2xl ${style.iconText}"></i>`;
-    } else {
-        iconHtml = `<div class="flex flex-col items-center justify-center text-center px-2">
-            <span class="text-3xl font-bold text-slate-400 mb-1">+</span>
-            <span class="text-[10px] text-slate-400 leading-tight">입력해주세요</span>
-        </div>`;
+    let photoHtml = '';
+    let iconHtml = `<i data-lucide="book-open"></i>`;
+    if (hasPhoto) {
+        photoHtml = forShareCapture
+            ? buildShareCaptureThumbHtml(photos)
+            : buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
+                  interactive: false,
+                  showAspectToggle: true
+              });
+    } else if (!hasContent) {
+        iconHtml = `<i data-lucide="plus"></i>`;
     }
 
-    const titleLine1 = dailyJournalHasPhotos(journal)
-        ? `<h4 class="mb-0 flex min-w-0 items-center gap-1.5 leading-tight">${dailyJournalPhotoSyncLeadHtml(journal)}<span class="text-sm font-bold ${style.text} min-w-0">${safeLabel}</span>${dailyJournalShareArrowHtml(dateStr, journal)}</h4>`
-        : `<span class="text-sm font-bold ${style.text}">${safeLabel}</span>`;
-    const titleLine2 = hasContent
-        ? ''
-        : '<span class="text-xs text-slate-400"><span class="font-bold">+</span> 기록하기</span>';
+    // 공유 캡처: 코멘트·태그 제외, 사진은 좌측 썸네일
+    if (forShareCapture) {
+        const photoCount = photos.length;
+        const titleHtml = escapeHtml(
+            photoCount > 0 ? (photoCount === 1 ? '사진 1장' : `사진 ${photoCount}장`) : '하루 소감'
+        );
+        return buildHomeFeedCardShellHtml({
+            openClick: '',
+            cardMbClass: 'mb-0 daily-journal-slot',
+            record: null,
+            hasPhoto,
+            photoHtml,
+            iconHtml,
+            iconKind: 'journal',
+            iconToneClass: slotPickerIconToneClass('daily_journal'),
+            metaHtml: safeLabel,
+            titleHtml,
+            noteHtml: '',
+            tagsHtml: '',
+            ratingVal: '',
+            forShareCapture: true,
+            photoAspectRatio: journal.photoAspectRatio
+        });
+    }
+
+    const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
+    const syncLead = dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : '';
+    const metaHtml = `${syncLead}${safeLabel}${shareArrow}`;
+    const titleHtml = hasContent
+        ? escapeHtml(
+              comment
+                  ? comment.replace(/\n/g, ' ').slice(0, 80)
+                  : dailyJournalSlotFallbackLine(journal) || '하루 소감'
+          )
+        : '기록하기';
     const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);
-    const commentPreview = dailyJournalCommentPreviewHtml(comment);
-    const fallbackPreview =
-        !comment && !metricsPreview && hasContent
-            ? `<p class="clear-both mt-1.5 mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(dailyJournalSlotFallbackLine(journal))}</p>`
-            : '';
+    const noteParts = [];
+    if (comment && hasContent) {
+        noteParts.push(
+            `<p class="home-feed-card__note">"${escapeHtml(comment)}"</p>`
+        );
+    }
+    if (metricsPreview) noteParts.push(metricsPreview);
+    const noteHtml = noteParts.join('');
+    const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
+    const opacity = hasContent ? '' : ' opacity-80';
+    const photoAspect = normalizeCardPhotoAspect(journal.photoAspectRatio);
 
-    const containerClass = hasContent ? 'border-slate-200' : 'border-slate-200 opacity-80';
-    const iconBoxClass = `bg-slate-100 border-slate-200 ${style.iconText}`;
-
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card daily-journal-slot mb-1.5 border ${containerClass} cursor-pointer active:scale-[0.98] transition-all !rounded-none">
-        <div class="flex">
-            <div class="relative w-[140px] h-[140px] flex-shrink-0 overflow-hidden border-r ${iconBoxClass} flex items-center justify-center">
-                ${iconHtml}
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center p-4">
-                <div class="min-w-0">
-                    ${dailyJournalHasPhotos(journal) ? titleLine1 : `<h4 class="mb-0 leading-tight">${titleLine1}</h4>`}
-                    ${titleLine2 ? `<p class="mt-1.5 mb-0">${titleLine2}</p>` : ''}
-                    ${commentPreview}
-                    ${metricsPreview || ''}
-                    ${fallbackPreview}
+    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card home-feed-card${photoClass} daily-journal-slot mb-1.5${opacity} cursor-pointer active:scale-[0.98] transition-all">
+        ${hasPhoto ? `<div class="home-feed-card__photo relative" data-photo-aspect="${escapeHtml(photoAspect)}">${photoHtml}</div>` : ''}
+        <div class="home-feed-card__body">
+            <div class="home-feed-card__icon ${slotPickerIconToneClass('daily_journal')}" aria-hidden="true">${iconHtml}</div>
+            <div class="home-feed-card__main min-w-0">
+                <div class="home-feed-card__meta-row">
+                    <div class="home-feed-card__meta">${metaHtml}</div>
                 </div>
+                <div class="home-feed-card__title">${titleHtml}</div>
+                ${noteHtml}
             </div>
         </div>
     </div>`;
+}
+
+/**
+ * 일간 공유 캡처용 본문
+ * — 기록 있는 슬롯만 / 하루 기록 포함 / 코멘트·태그 제외
+ * — table 행 + 1:1 썸네일 + 아이콘 (캡처 정렬 안정화)
+ */
+export function buildDailyShareHomeFeedBodyHtml(dateStr) {
+    let html = '';
+    const shareOpts = { forShareCapture: true };
+    SLOTS.forEach((slot) => {
+        const recordsRaw = (window.mealHistory || []).filter((m) => m.date === dateStr && m.slotId === slot.id);
+        const records = sortSnackSlotRecordsChronological(recordsRaw);
+        if (records.length === 0) return;
+        const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES.default;
+        const groupClass = slot.type === 'main' ? 'main-slot-card-group' : 'snack-slot-card-group';
+        html += `<div class="${groupClass}">`;
+        records.forEach((r, idx) => {
+            if (slot.type === 'main') {
+                html += buildMainMealTimelineCardHtml(
+                    dateStr,
+                    slot,
+                    r,
+                    specificStyle,
+                    'mb-0',
+                    idx + 1,
+                    records.length,
+                    shareOpts
+                );
+            } else {
+                html += buildSnackTimelineCardHtml(
+                    dateStr,
+                    slot,
+                    r,
+                    specificStyle,
+                    'mb-0',
+                    idx + 1,
+                    records.length,
+                    shareOpts
+                );
+            }
+        });
+        html += `</div>`;
+    });
+    const dailyJournal = getDailyJournalForTimeline(dateStr);
+    if (dailyJournalHasContent(dailyJournal)) {
+        html += buildDailyJournalCardHtml(dateStr, dailyJournal, shareOpts);
+    }
+    if (!html) {
+        html = `<div class="daily-share-capture__empty"><p>이 날은 기록이 없어요.</p></div>`;
+    }
+    return html;
 }
 
 function refreshTimelineAfterSnackViewChange() {
@@ -1404,7 +1764,17 @@ function ensureTimelineOpenModalDelegation() {
         (e) => {
             const root = document.getElementById('timelineContainer');
             if (!root) return;
-            if (e.target?.closest?.('.timeline-meal-photo-tap, .meal-sync-retry-btn')) return;
+            if (e.target?.closest?.('.timeline-meal-photo-tap, .timeline-meal-photo-nav, .timeline-meal-photo-aspect-toggle, .meal-sync-retry-btn')) return;
+            const slotPickerBtn = e.target.closest('[data-mealog-slot-picker-date]');
+            if (slotPickerBtn && root.contains(slotPickerBtn)) {
+                const pickerDate = slotPickerBtn.getAttribute('data-mealog-slot-picker-date');
+                if (pickerDate && typeof window.openEntrySlotPicker === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void window.openEntrySlotPicker(pickerDate);
+                    return;
+                }
+            }
             const dailyTarget = e.target.closest('.daily-journal-slot[data-mealog-open-daily]');
             if (dailyTarget && root.contains(dailyTarget)) {
                 const dailyDate = dailyTarget.getAttribute('data-mealog-open-daily');
@@ -1516,9 +1886,48 @@ export function updateTimelineShareIndicators() {
             const shared = entryId?.startsWith('dailyJournal_')
                 ? isDailyJournalShared(entryId.slice('dailyJournal_'.length), record)
                 : isEntryShared(entryId, record);
-            arrow.style.display = shared ? 'inline' : 'none';
+            arrow.style.display = shared ? 'inline-flex' : 'none';
         }
     });
+}
+
+/**
+ * 홈 타임라인 — 하루 기록이 비었을 때 empty UI.
+ * 1) 첫 사용자(평생 무기록) 2) 오늘 무기록 3) 과거 날짜 무기록
+ * meals 첫 로드 전(loadedMealsDateRange 없음)에는 빈 화면 — 환영/무기록 문구 깜빡임 방지.
+ */
+function buildTimelineDayEmptyHtml(dateStr, todayStr) {
+    const mealsReady = !!(typeof window !== 'undefined' && window.loadedMealsDateRange);
+    if (!mealsReady) return '';
+
+    const isFirstTime = collectRecordedDateSet().size === 0;
+    const isToday = dateStr === todayStr;
+
+    let variant = 'past';
+    let icon = 'calendar-x';
+    let title = '이 날 남겨진 기록이 없어요';
+    let desc = '기억나는 식사를 추가해보세요.';
+
+    if (isFirstTime) {
+        variant = 'first';
+        icon = 'sparkles';
+        title = '밀로그에 처음 오신걸 환영해요.';
+        desc = '우리의 첫 기록을 시작해 보세요';
+    } else if (isToday) {
+        variant = 'today';
+        icon = 'utensils';
+        title = '아직 오늘의 기록이 없어요';
+        desc = '첫 식사를 기록해보세요.';
+    }
+
+    return `<div class="timeline-day-empty timeline-day-empty--${variant}" role="status">
+        <div class="timeline-day-empty__visual" aria-hidden="true">
+            <span class="timeline-day-empty__ring"></span>
+            <i data-lucide="${icon}" class="timeline-day-empty__icon"></i>
+        </div>
+        <p class="timeline-day-empty__title">${title}</p>
+        <p class="timeline-day-empty__desc">${desc}</p>
+    </div>`;
 }
 
 export function renderTimelineDateSections(dateStrs) {
@@ -1713,211 +2122,49 @@ export function renderTimeline(options = {}) {
         SLOTS.forEach(slot => {
             const recordsRaw = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
             const records = sortSnackSlotRecordsChronological(recordsRaw);
+            // 빈 슬롯은 타임라인에 표시하지 않음 — 추가는 슬롯 피커로
+            if (records.length === 0) return;
             const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES['default'];
             if (slot.type === 'main') {
-                const mealView = getMealTimelineView();
-                const mainAddBtn = (label) =>
-                    `<button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(label)} 추가">+ 추가</button>`;
-                if (mealView === 'list') {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-list-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const rowHtml = buildMainMealListFilledRowHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${rowHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += rowHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
-                } else if (mealView === 'mixed') {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-mixed-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
-                            const mb = isLast ? 'mb-0' : 'mb-1.5';
-                            const blockHtml = hasPhotos
-                                ? buildMainMealTimelineCardHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length)
-                                : buildMainMealListFilledRowHtml(dateStr, slot, r, specificStyle, mb, idx + 1, records.length);
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${blockHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += blockHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
-                } else {
-                    if (records.length > 0) {
-                        html += `<div class="main-slot-card-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const cardHtml = buildMainMealTimelineCardHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">${cardHtml}${mainAddBtn(slot.label)}</div>`;
-                            } else {
-                                html += cardHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildMainMealEmptySlotCardHtml(dateStr, slot, specificStyle);
-                    }
-                }
+                html += `<div class="main-slot-card-group">`;
+                records.forEach((r, idx) => {
+                    html += buildMainMealTimelineCardHtml(
+                        dateStr,
+                        slot,
+                        r,
+                        specificStyle,
+                        'mb-1.5',
+                        idx + 1,
+                        records.length
+                    );
+                });
+                html += `</div>`;
             } else {
-                const snackView = getSnackTimelineView();
-                if (snackView === 'cards') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-card-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const cardHtml = buildSnackTimelineCardHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
-                                ${cardHtml}
-                                <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                            </div>`;
-                            } else {
-                                html += cardHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackEmptySlotCardHtml(dateStr, slot, specificStyle);
-                    }
-                } else if (snackView === 'list') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-list-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const rowHtml = buildSnackListFilledRowHtml(
-                                dateStr,
-                                slot,
-                                r,
-                                specificStyle,
-                                isLast ? 'mb-0' : 'mb-1.5',
-                                idx + 1,
-                                records.length
-                            );
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
-                                    ${rowHtml}
-                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                                </div>`;
-                            } else {
-                                html += rowHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
-                } else if (snackView === 'mixed') {
-                    if (records.length > 0) {
-                        html += `<div class="snack-slot-mixed-group">`;
-                        records.forEach((r, idx) => {
-                            const isLast = idx === records.length - 1;
-                            const hasPhotos = getMealPhotoUrlsForTimeline(r).length > 0;
-                            const mb = isLast ? 'mb-0' : 'mb-1.5';
-                            let blockHtml;
-                            if (hasPhotos) {
-                                blockHtml = buildSnackTimelineCardHtml(
-                                    dateStr,
-                                    slot,
-                                    r,
-                                    specificStyle,
-                                    mb,
-                                    idx + 1,
-                                    records.length
-                                );
-                            } else {
-                                blockHtml = buildSnackListFilledRowHtml(
-                                    dateStr,
-                                    slot,
-                                    r,
-                                    specificStyle,
-                                    mb,
-                                    idx + 1,
-                                    records.length
-                                );
-                            }
-                            if (isLast) {
-                                html += `<div class="relative mb-1.5">
-                                    ${blockHtml}
-                                    <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="absolute bottom-2 right-2 z-10 text-xs font-bold text-slate-600 bg-white/95 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-slate-200 active:scale-95 transition-transform" aria-label="${escapeHtml(slot.label)} 추가">+ 추가</button>
-                                </div>`;
-                            } else {
-                                html += blockHtml;
-                            }
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += buildSnackListEmptyRowHtml(dateStr, slot, specificStyle);
-                    }
-                } else {
-                    html += `<div class="snack-row mb-1.5 flex items-center">
-                    <span class="text-xs font-black text-slate-400 uppercase mr-3 flex-shrink-0 px-4">${slot.label}</span>
-                    <div class="flex-1 flex flex-wrap gap-2 items-center">
-                        ${records.length > 0 ? records.map((r) => {
-                            const tagDeleting = isMealEntryDeleting(r);
-                            const tagDeleteFailed = isMealEntryDeleteFailed(r);
-                            const tagPending = isMealEntryPendingSync(r);
-                            const tagRedoable = isMealEntrySyncRedoable(r);
-                            const tagBusy = tagDeleting || tagPending;
-                            const tagClick = tagBusy
-                                ? ''
-                                : mealTimelineOpenDataAttrs(dateStr, slot.id, r.id);
-                            const tagCls = tagDeleting
-                                ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
-                                : tagDeleteFailed
-                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-amber-200/90'
-                                : tagPending
-                                  ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-wait pointer-events-none opacity-90'
-                                  : tagRedoable
-                                    ? 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50 ring-1 ring-red-200/90'
-                                    : 'snack-tag relative inline-flex items-center gap-0.5 rounded-md cursor-pointer active:bg-slate-50';
-                            return `<div ${tagClick} class="${tagCls}" data-entry-id="${escapeHtml(String(r.id))}">
-                                ${buildSnackTagRowInnerHtml(r)}
-                            </div>`;
-                        }).join('') : `<span class="text-xs text-slate-400 italic">기록없음</span>`}
-                        <button type="button" ${mealTimelineOpenDataAttrs(dateStr, slot.id)} class="text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200 transition-colors">+ 추가</button>
-                    </div>
-                </div>`;
-                }
+                html += `<div class="snack-slot-card-group">`;
+                records.forEach((r, idx) => {
+                    html += buildSnackTimelineCardHtml(
+                        dateStr,
+                        slot,
+                        r,
+                        specificStyle,
+                        'mb-1.5',
+                        idx + 1,
+                        records.length
+                    );
+                });
+                html += `</div>`;
             }
         });
-        html += buildDailyJournalSlotHtml(dateStr);
+        const dailyJournal = getDailyJournalForTimeline(dateStr);
+        if (dailyJournalHasContent(dailyJournal)) {
+            html += buildDailyJournalSlotHtml(dateStr);
+        }
+
+        const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
+        if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
+            html += buildTimelineDayEmptyHtml(dateStr, todayStr);
+        }
+
         section.innerHTML = html;
         insertTimelineDateSectionInChronologicalOrder(container, section, dateStr);
         pendingTimelineSectionRebuildDates.delete(dateStr);
@@ -1934,6 +2181,7 @@ export function renderTimeline(options = {}) {
     ) {
         const todaySection = document.getElementById(`date-${todayStr}`);
         if (todaySection) {
+            window.__suppressChromeScrollHideUntil = Date.now() + 1600;
             timelineScrollToTodayTimer = setTimeout(() => {
                 timelineScrollToTodayTimer = null;
                 if (window.hasScrolledToToday || window.scrollY >= 80) return;
@@ -1945,6 +2193,9 @@ export function renderTimeline(options = {}) {
                 const offsetPosition = elementTop - totalOffset - 16;
                 window.scrollTo({ top: Math.max(0, offsetPosition), behavior: 'smooth' });
                 window.hasScrolledToToday = true;
+                if (typeof window.__revealAppChromeAfterProgrammaticScroll === 'function') {
+                    setTimeout(() => window.__revealAppChromeAfterProgrammaticScroll(), 480);
+                }
             }, 300);
         }
     }
@@ -1969,7 +2220,7 @@ export function renderTimeline(options = {}) {
                 <button onclick="window.loadMoreMealsTimeline()" 
                         class="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold 
                                active:bg-slate-300 transition-colors flex items-center gap-2">
-                    <i class="fa-solid fa-chevron-down"></i>
+                    <i data-lucide="chevron-down"></i>
                     <span>더보기</span>
                 </button>
             `;
@@ -1984,6 +2235,8 @@ export function renderTimeline(options = {}) {
     ensureTimelineOpenModalDelegation();
     ensureTimelineViewSelectDelegation();
     syncSnackViewDropdown(container);
+    applyTimelineCardPhotoAspectView(container);
+    scheduleLucideIcons(container);
 
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {
         window.bindMealogDailyTimelineDelegation();
@@ -2003,6 +2256,24 @@ let miniCalendarScrollTitleBound = false;
 let trackerMonthTitleRaf = null;
 let trackerMonthCalendarModalBound = false;
 
+/** 가로 트래커: 오늘 포함 초기 61일(과거 60+오늘). 왼쪽 끝에서 +30일 prepend, 최대 약 1년 */
+const TRACKER_INITIAL_PAST_DAYS = 60;
+const TRACKER_EXTEND_DAYS = 30;
+const TRACKER_MAX_PAST_DAYS = 364;
+const TRACKER_EXTEND_EDGE_PX = 48;
+const TRACKER_EXTEND_COOLDOWN_MS = 400;
+
+let trackerPastDays = TRACKER_INITIAL_PAST_DAYS;
+let trackerExtendInFlight = false;
+let trackerLastExtendAt = 0;
+
+/** 로그아웃·계정 전환 시 트래커 과거 창 초기화 */
+export function resetTrackerMiniCalendarRange() {
+    trackerPastDays = TRACKER_INITIAL_PAST_DAYS;
+    trackerExtendInFlight = false;
+    trackerLastExtendAt = 0;
+}
+
 function pad2(n) {
     return String(n).padStart(2, '0');
 }
@@ -2018,6 +2289,7 @@ function closeTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (modal) modal.classList.add('hidden');
 }
+window.closeTrackerMonthCalendar = closeTrackerMonthCalendar;
 
 function renderTrackerMonthCalendarPopup() {
     const grid = document.getElementById('trackerMonthCalendarGrid');
@@ -2044,11 +2316,13 @@ function renderTrackerMonthCalendarPopup() {
     for (let d = 1; d <= dim; d++) {
         const iso = `${y}-${pad2(m)}-${pad2(d)}`;
         const c = getRecordCountForIso(iso, historyByDate);
-        const st = c >= 3 ? 'dot-full' : c > 0 ? 'dot-partial' : 'dot-none';
+        const st = dotStatusFromCount(c);
         const sel = iso === activeIso ? 'dot-selected' : '';
+        const dow = new Date(y, m - 1, d).getDay();
+        const weekend = dow === 0 || dow === 6 ? 'tracker-month-dot--weekend' : '';
         parts.push(
             `<button type="button" class="tracker-month-cell" data-tracker-popup-iso="${iso}" aria-label="${y}년 ${m}월 ${d}일">` +
-                `<div class="calendar-dot tracker-month-dot ${st} ${sel}">${d}</div>` +
+                `<div class="calendar-dot tracker-month-dot ${st} ${sel} ${weekend}">${d}</div>` +
                 `</button>`
         );
     }
@@ -2071,6 +2345,7 @@ export function openTrackerMonthCalendar() {
     if (!modal) return;
     modal.classList.remove('hidden');
     renderTrackerMonthCalendarPopup();
+    scheduleLucideIcons(modal);
 }
 
 export function refreshTrackerMonthCalendarPopupIfOpen() {
@@ -2081,10 +2356,10 @@ export function refreshTrackerMonthCalendarPopupIfOpen() {
 
 function setupTrackerMonthCalendarModal() {
     const backdrop = document.getElementById('trackerMonthCalendarBackdrop');
-    const closeBtn = document.getElementById('trackerMonthCalendarClose');
     const prevBtn = document.getElementById('trackerMonthPrevMonth');
     const nextBtn = document.getElementById('trackerMonthNextMonth');
     const openBtn = document.getElementById('trackerMonthCalendarBtn');
+    const goTodayBtn = document.getElementById('trackerGoTodayBtn');
 
     const goPrev = () => {
         if (trackerMonthPopupYear == null || trackerMonthPopupMonth == null) return;
@@ -2114,7 +2389,6 @@ function setupTrackerMonthCalendarModal() {
     if (!trackerMonthCalendarModalBound) {
         trackerMonthCalendarModalBound = true;
         if (backdrop) backdrop.addEventListener('click', closeTrackerMonthCalendar);
-        if (closeBtn) closeBtn.addEventListener('click', closeTrackerMonthCalendar);
         if (prevBtn) prevBtn.addEventListener('click', goPrev);
         if (nextBtn) nextBtn.addEventListener('click', goNext);
     }
@@ -2124,6 +2398,17 @@ function setupTrackerMonthCalendarModal() {
             e.preventDefault();
             e.stopPropagation();
             openTrackerMonthCalendar();
+        });
+    }
+    if (goTodayBtn && !goTodayBtn.dataset.trackerGoTodayBound) {
+        goTodayBtn.dataset.trackerGoTodayBound = '1';
+        goTodayBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const todayIso = localTodayYmd();
+            if (typeof window.jumpToDate === 'function') {
+                window.jumpToDate(todayIso, { scroll: true, behavior: 'smooth' });
+            }
         });
     }
 }
@@ -2199,7 +2484,9 @@ function setupMiniCalendarScrollTitle(container) {
 
     const onScrollOrResize = () => {
         const c = document.getElementById('miniCalendar');
-        if (c) scheduleTrackerMonthTitleUpdate(c);
+        if (!c) return;
+        scheduleTrackerMonthTitleUpdate(c);
+        maybeExtendTrackerPastOnScroll(c);
     };
 
     container.addEventListener('scroll', onScrollOrResize, { passive: true });
@@ -2295,33 +2582,127 @@ function setupMiniCalendarPointerDrag(container) {
 }
 
 function dotStatusFromCount(count) {
-    return count >= 3 ? 'dot-full' : count > 0 ? 'dot-partial' : 'dot-none';
+    if (count <= 0) return 'dot-none';
+    if (count === 1) return 'dot-low';
+    if (count === 2) return 'dot-mid';
+    return 'dot-full';
 }
 
-/** 오늘 포함 과거 61일 스펙 (로컬 날짜) */
+function activePageDateIso() {
+    const d = appState.pageDate;
+    if (!(d instanceof Date) || isNaN(+d)) return localTodayYmd();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** todayStr − iso 일수 (iso가 더 과거면 양수) */
+function daysBeforeToday(iso, todayStr = localTodayYmd()) {
+    if (typeof iso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return 0;
+    const a = new Date(`${iso}T00:00:00`);
+    const b = new Date(`${todayStr}T00:00:00`);
+    if (isNaN(+a) || isNaN(+b)) return 0;
+    return Math.round((b - a) / 86400000);
+}
+
+/** 달력/스와이프로 선택일이 창 밖이면 트래커 span을 그 날짜까지 확장 */
+function ensureTrackerSpanCoversIso(iso) {
+    const today = localTodayYmd();
+    if (!iso || iso > today) return;
+    const diff = daysBeforeToday(iso, today);
+    if (diff > trackerPastDays) {
+        trackerPastDays = Math.min(TRACKER_MAX_PAST_DAYS, diff);
+    }
+}
+
+function daySpecFromOffset(offsetFromToday, activeStr) {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - offsetFromToday);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const iso = `${year}-${month}-${day}`;
+    return {
+        iso,
+        dayNum: d.getDate(),
+        dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
+        weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
+        isActive: iso === activeStr
+    };
+}
+
+/** 오늘 포함 과거 trackerPastDays+1일 (오른쪽=오늘, 왼쪽=더 과거) */
 function buildMiniCalendarDaySpecs(activeStr) {
+    ensureTrackerSpanCoversIso(activeStr);
     const days = [];
-    for (let i = 60; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const iso = `${year}-${month}-${day}`;
-        days.push({
-            iso,
-            dayNum: d.getDate(),
-            dayColorClass: d.getDay() === 0 || d.getDay() === 6 ? 'text-rose-400' : 'text-slate-400',
-            weekdayLabel: d.toLocaleDateString('ko-KR', { weekday: 'narrow' }),
-            isActive: iso === activeStr
-        });
+    for (let i = trackerPastDays; i >= 0; i--) {
+        days.push(daySpecFromOffset(i, activeStr));
     }
     return days;
+}
+
+function createMiniCalendarItemEl(day, count) {
+    const status = dotStatusFromCount(count);
+    const weekend = day.dayColorClass.includes('rose');
+    const item = document.createElement('div');
+    item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
+    item.setAttribute('data-tracker-date', day.iso);
+    item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
+        <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
+    item.onclick = () => window.jumpToDate(day.iso);
+    return item;
+}
+
+/**
+ * 왼쪽 끝에 가까우면 과거 +30일을 prepend (스크롤 위치 유지).
+ * @returns {boolean} 확장했는지
+ */
+function tryExtendTrackerPast(container) {
+    if (!container || trackerExtendInFlight) return false;
+    if (trackerPastDays >= TRACKER_MAX_PAST_DAYS) return false;
+
+    const prevSpan = trackerPastDays;
+    const nextSpan = Math.min(TRACKER_MAX_PAST_DAYS, trackerPastDays + TRACKER_EXTEND_DAYS);
+    if (nextSpan <= prevSpan) return false;
+
+    trackerExtendInFlight = true;
+    try {
+        const activeStr = activePageDateIso();
+        const historyByDate = buildMealHistoryCountByDate();
+        const oldScrollLeft = container.scrollLeft;
+        const oldScrollWidth = container.scrollWidth;
+
+        const frag = document.createDocumentFragment();
+        for (let i = nextSpan; i > prevSpan; i--) {
+            const day = daySpecFromOffset(i, activeStr);
+            const count = getRecordCountForIso(day.iso, historyByDate);
+            frag.appendChild(createMiniCalendarItemEl(day, count));
+        }
+        container.insertBefore(frag, container.firstChild);
+        trackerPastDays = nextSpan;
+
+        const delta = container.scrollWidth - oldScrollWidth;
+        container.scrollLeft = oldScrollLeft + delta;
+        scheduleTrackerMonthTitleUpdate(container);
+        return true;
+    } finally {
+        trackerExtendInFlight = false;
+        trackerLastExtendAt = Date.now();
+    }
+}
+
+function maybeExtendTrackerPastOnScroll(container) {
+    if (!container || !window.currentUser) return;
+    if (container.scrollLeft > TRACKER_EXTEND_EDGE_PX) return;
+    if (Date.now() - trackerLastExtendAt < TRACKER_EXTEND_COOLDOWN_MS) return;
+    tryExtendTrackerPast(container);
 }
 
 function canPatchMiniCalendarDom(container, days) {
     const items = container.querySelectorAll('.calendar-item');
     if (items.length !== days.length) return false;
+    if (!items[0]?.querySelector('.calendar-dow') || !items[0]?.querySelector('.calendar-density')) {
+        return false;
+    }
     for (let i = 0; i < days.length; i++) {
         if (items[i].getAttribute('data-tracker-date') !== days[i].iso) return false;
     }
@@ -2330,19 +2711,11 @@ function canPatchMiniCalendarDom(container, days) {
 
 function patchMiniCalendarItem(item, day, count) {
     item.setAttribute('data-tracker-date', day.iso);
-    const label = item.querySelector('span');
-    if (label) {
-        label.className = `text-[11px] font-bold ${day.dayColorClass}`;
-        label.textContent = day.weekdayLabel;
-    }
-    let dot = item.querySelector('.calendar-dot');
-    if (!dot) {
-        dot = document.createElement('div');
-        item.appendChild(dot);
-    }
-    dot.id = `dot-${day.iso}`;
-    dot.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
-    dot.textContent = String(day.dayNum);
+    const status = dotStatusFromCount(count);
+    const weekend = day.dayColorClass.includes('rose');
+    item.className = `calendar-item cal-day flex flex-col items-center flex-shrink-0${weekend ? ' weekend' : ''}${day.isActive ? ' selected' : ''}`;
+    item.innerHTML = `<span id="dot-${day.iso}" class="calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}">${day.dayNum}<span class="calendar-density" aria-hidden="true"></span></span>
+        <span class="calendar-dow ${day.dayColorClass}">${day.weekdayLabel}</span>`;
     item.onclick = () => window.jumpToDate(day.iso);
 }
 
@@ -2385,14 +2758,29 @@ export function refreshMiniCalendarDots() {
     const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
     const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
     const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    ensureTrackerSpanCoversIso(activeStr);
     const historyByDate = buildMealHistoryCountByDate();
     const days = buildMiniCalendarDaySpecs(activeStr);
+
+    // span이 DOM보다 길면(달력 점프 등) 전체 재구성
+    if (container.querySelectorAll('.calendar-item').length !== days.length) {
+        renderMiniCalendar();
+        return;
+    }
 
     days.forEach((day) => {
         const dotEl = document.getElementById(`dot-${day.iso}`);
         if (!dotEl) return;
         const count = getRecordCountForIso(day.iso, historyByDate);
-        dotEl.className = `calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}`;
+        const status = dotStatusFromCount(count);
+        dotEl.className = `calendar-dot ${status}${day.isActive ? ' dot-selected' : ''}`;
+        if (!dotEl.querySelector('.calendar-density')) {
+            dotEl.insertAdjacentHTML('beforeend', '<span class="calendar-density" aria-hidden="true"></span>');
+        }
+        const item = dotEl.closest('.calendar-item');
+        if (item) {
+            item.classList.toggle('selected', day.isActive);
+        }
     });
     refreshTrackerMonthCalendarPopupIfOpen();
     updateTrackerStreakLabel();
@@ -2406,6 +2794,7 @@ export function renderMiniCalendar() {
     const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
     const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
     const activeStr = `${pageYear}-${pageMonth}-${pageDay}`;
+    ensureTrackerSpanCoversIso(activeStr);
     const days = buildMiniCalendarDaySpecs(activeStr);
     const historyByDate = buildMealHistoryCountByDate();
 
@@ -2421,13 +2810,7 @@ export function renderMiniCalendar() {
     container.innerHTML = '';
     days.forEach((day) => {
         const count = getRecordCountForIso(day.iso, historyByDate);
-        const item = document.createElement('div');
-        item.className = 'calendar-item flex flex-col items-center gap-1 flex-shrink-0';
-        item.setAttribute('data-tracker-date', day.iso);
-        item.innerHTML = `<span class="text-[11px] font-bold ${day.dayColorClass}">${day.weekdayLabel}</span>
-            <div id="dot-${day.iso}" class="calendar-dot ${dotStatusFromCount(count)} ${day.isActive ? 'dot-selected' : ''}">${day.dayNum}</div>`;
-        item.onclick = () => window.jumpToDate(day.iso);
-        container.appendChild(item);
+        container.appendChild(createMiniCalendarItemEl(day, count));
     });
 
     finishMiniCalendarAfterRender(container, activeStr);

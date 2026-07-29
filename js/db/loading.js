@@ -1,12 +1,16 @@
 // 데이터 로딩 관련 함수들
 import { db, appId } from '../firebase.js';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { collection, query, where, orderBy, getDocs, getDocsFromServer, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { toLocalDateString, uploadBase64ToStorage } from '../utils.js';
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { addDaysToYmd, applyDemoDateShiftToDailyStats, applyDemoDateShiftToMeals } from '../demo-date-shift.js';
-import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow } from '../meal-record-count.js';
+import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { onMealDocFirestoreServerAcknowledged } from '../utils/meal-entry-pending.js';
+import {
+    isMealsRangeFullyLoaded,
+    markMealsRangeLoaded
+} from '../utils/loaded-meals-range.js';
 
 /** getDocs로 서버에서 읽은 meal 문서 — 타임라인 동기화 도트를 반영 완료로 표시 */
 function acknowledgeServerMealDocsFromGetDocs(docs) {
@@ -93,11 +97,18 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
         if (newMeals.length > 0) {
             window.mealHistory = [...window.mealHistory, ...newMeals]
                 .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+            invalidateMealHistoryCountCache();
         }
 
         // 기록이 0건인 주도 범위를 전진해야 빈 구간에서 fetch가 멈춘다
         const displayNewStart = shift ? addDaysToYmd(newStartStrRaw, shift) : newStartStrRaw;
-        window.loadedMealsDateRange.start = displayNewStart || newStartStrRaw;
+        const rangeEndExclusive = currentStart;
+        const rangeEndInclusive = addDaysToYmd(rangeEndExclusive, -1);
+        if (displayNewStart && rangeEndInclusive && displayNewStart <= rangeEndInclusive) {
+            markMealsRangeLoaded(displayNewStart, rangeEndInclusive);
+        } else if (displayNewStart) {
+            markMealsRangeLoaded(displayNewStart, displayNewStart);
+        }
         
         return { count: newMeals.length, newMeals };
     } catch (e) {
@@ -110,28 +121,46 @@ export async function loadMoreMeals(amount = 1, unit = 'month') {
     }
 }
 
+/**
+ * 중심일 기준 전후 radiusDays를 meals 메모리에 보장 (트래커 점프·스와이프용).
+ * @param {string} centerIso YYYY-MM-DD
+ * @param {number} [radiusDays=3]
+ */
+export async function ensureMealsLoadedAroundDate(centerIso, radiusDays = 3, options = {}) {
+    if (typeof centerIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(centerIso)) return 0;
+    const radius = Number.isFinite(radiusDays) ? Math.max(0, Math.round(radiusDays)) : 3;
+    const startStr = addDaysToYmd(centerIso, -radius);
+    const endStr = addDaysToYmd(centerIso, radius);
+    if (!startStr || !endStr) return 0;
+    return loadMealsForDateRange(startStr, endStr, options);
+}
+
+/** @param {string} centerIso @param {number} [radiusDays=3] */
+export function needsMealsLoadedAroundDate(centerIso, radiusDays = 3) {
+    if (typeof centerIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(centerIso)) return false;
+    const radius = Number.isFinite(radiusDays) ? Math.max(0, Math.round(radiusDays)) : 3;
+    const startStr = addDaysToYmd(centerIso, -radius);
+    const endStr = addDaysToYmd(centerIso, radius);
+    if (!startStr || !endStr) return false;
+    return !isMealsRangeFullyLoaded(startStr, endStr);
+}
+
 // 특정 날짜 범위의 데이터 로드 (대시보드용)
-export async function loadMealsForDateRange(startDate, endDate) {
+/** @param {string|Date} startDate @param {string|Date} endDate @param {{ force?: boolean }} [options] */
+export async function loadMealsForDateRange(startDate, endDate, options = {}) {
     if (!window.currentUser) {
         console.error("로그인이 필요합니다.");
         return 0;
     }
+    const force = options?.force === true;
     
     try {
         const startStr = typeof startDate === 'string' ? startDate : toLocalDateString(startDate);
         const endStr = typeof endDate === 'string' ? endDate : toLocalDateString(endDate);
         
-        // 이미 로드된 범위 확인
-        if (window.loadedMealsDateRange) {
-            const loadedStart = new Date(window.loadedMealsDateRange.start);
-            const loadedEnd = new Date(window.loadedMealsDateRange.end);
-            const requestedStart = new Date(startStr);
-            const requestedEnd = new Date(endStr);
-            
-            // 요청한 범위가 이미 로드된 범위에 포함되는지 확인
-            if (requestedStart >= loadedStart && requestedEnd <= loadedEnd) {
-                return 0;
-            }
+        // 이미 로드된 구간(합집합)으로 완전 커버되면 skip — 멀리 점프한 구멍은 커버로 보지 않음
+        if (!force && isMealsRangeFullyLoaded(startStr, endStr)) {
+            return 0;
         }
         
         const shift = isDemoUser(window.currentUser) ? Number(window.__demoDateShiftDays) || 0 : 0;
@@ -149,36 +178,49 @@ export async function loadMealsForDateRange(startDate, endDate) {
             orderBy('date', 'desc')
         );
         
-        const snapshot = await getDocs(q);
+        let snapshot;
+        if (force) {
+            try {
+                snapshot = await getDocsFromServer(q);
+            } catch (_) {
+                snapshot = await getDocs(q);
+            }
+        } else {
+            snapshot = await getDocs(q);
+        }
         acknowledgeServerMealDocsFromGetDocs(snapshot.docs);
         let additionalMeals = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         if (shift) {
             additionalMeals = applyDemoDateShiftToMeals(additionalMeals, shift);
         }
         
-        // 기존 데이터와 병합 (중복 제거)
-        const existingIds = new Set(window.mealHistory.map(m => m.id));
-        const newMeals = additionalMeals.filter(m => !existingIds.has(m.id));
-        
-        if (newMeals.length > 0) {
-            window.mealHistory = [...window.mealHistory, ...newMeals]
-                .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+        if (!Array.isArray(window.mealHistory)) window.mealHistory = [];
+        if (force) {
+            const map = new Map(window.mealHistory.map((m) => [m.id, m]));
+            for (const meal of additionalMeals) {
+                const prev = map.get(meal.id);
+                map.set(meal.id, prev ? { ...prev, ...meal } : meal);
+            }
+            window.mealHistory = [...map.values()].sort(
+                (a, b) => b.date.localeCompare(a.date) || String(b.time || '').localeCompare(String(a.time || ''))
+            );
+            invalidateMealHistoryCountCache();
+        } else {
+            // 기존 데이터와 병합 (중복 제거)
+            const existingIds = new Set(window.mealHistory.map(m => m.id));
+            const newMeals = additionalMeals.filter(m => !existingIds.has(m.id));
             
-            // 로드된 범위 업데이트
-            if (!window.loadedMealsDateRange) {
-                window.loadedMealsDateRange = { start: startStr, end: endStr };
-            } else {
-                const currentStart = new Date(window.loadedMealsDateRange.start);
-                const currentEnd = new Date(window.loadedMealsDateRange.end);
-                const newStart = new Date(startStr);
-                const newEnd = new Date(endStr);
-                
-                window.loadedMealsDateRange.start = newStart < currentStart ? startStr : window.loadedMealsDateRange.start;
-                window.loadedMealsDateRange.end = newEnd > currentEnd ? endStr : window.loadedMealsDateRange.end;
+            if (newMeals.length > 0) {
+                window.mealHistory = [...window.mealHistory, ...newMeals]
+                    .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+                invalidateMealHistoryCountCache();
             }
         }
+
+        // 기록이 0건이어도 해당 구간만 mark — 중간 구멍을 가짜로 메우지 않음
+        markMealsRangeLoaded(startStr, endStr);
         
-        return newMeals.length;
+        return additionalMeals.length;
     } catch (e) {
         console.error("Load Meals For Date Range Error:", e);
         if (e.code === 'failed-precondition') {

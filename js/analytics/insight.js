@@ -34,6 +34,10 @@ import {
     effectiveSnackTypeForAnalytics,
     effectiveSnackPlaceForAnalytics
 } from './meal-analytics-tags.js';
+import {
+    computeMainMealKpiFromRecords,
+    computeMainMealKpiDenominator,
+} from './meal-kpi-count.js';
 
 // escapeHtml 함수 (필요한 경우)
 function escapeHtml(text) {
@@ -443,20 +447,22 @@ export function selectInsightCharacter(characterId) {
     
     // 캐릭터 아이콘 업데이트
     const iconEl = document.getElementById('insightCharacterIcon');
+    const charBtn = document.getElementById('insightCharacterBtn');
     if (iconEl) {
         if (character.image) {
-            // 이미지가 있으면 이미지 표시
-            iconEl.innerHTML = `<img src="${character.image}" alt="${character.name}" class="w-full h-full object-cover">`;
-            iconEl.className = 'w-full h-full flex items-center justify-center';
+            iconEl.innerHTML = `<img src="${escapeHtml(character.image)}" alt="${escapeHtml(character.name)}" class="w-full h-full object-cover">`;
+            iconEl.className = 'dashboard-comment-char__icon';
         } else if (character.id === 'mealog') {
-            // MEALOG는 스마트폰용 밀로그 아이콘 이미지 (70x70 정사각형)
-            iconEl.innerHTML = `<div class="insight-character-icon-box w-[70px] h-[70px] flex items-center justify-center overflow-hidden rounded-2xl flex-shrink-0"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
-            iconEl.className = 'w-full h-full flex items-center justify-center mealog-character-m';
+            iconEl.innerHTML = `<div class="insight-character-icon-box"><img src="${MEALOG_ICON_URL}" alt="MEALOG" class="w-full h-full object-contain" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden');"><span class="hidden text-2xl font-black mealog-character-m text-white">M</span></div>`;
+            iconEl.className = 'dashboard-comment-char__icon mealog-character-m';
         } else {
-            // 기본 이모지 아이콘
-            iconEl.textContent = character.icon;
-            iconEl.className = 'text-3xl';
+            iconEl.textContent = character.icon || '';
+            iconEl.className = 'dashboard-comment-char__icon';
         }
+    }
+    if (charBtn) {
+        charBtn.classList.toggle('dashboard-comment-char--mealog', character.id === 'mealog');
+        charBtn.classList.toggle('dashboard-comment-char--picked', character.id !== 'mealog');
     }
     
     // 캐릭터 목록 UI 업데이트
@@ -733,7 +739,7 @@ export async function generateInsightComment() {
         // 버튼 활성화 및 원래 텍스트로 복원
         if (btn) {
             btn.disabled = false;
-            btn.textContent = '코멘트';
+            btn.innerHTML = '<i data-lucide="sparkles" aria-hidden="true"></i> 코멘트';
         }
         
         // 분석 중 메시지도 제거 (에러 발생 시에도)
@@ -1113,15 +1119,16 @@ async function getGeminiComment(filteredData, characterId = currentCharacter, da
             return character ? `${character.icon} 기록을 분석할 수 없습니다.` : "기록을 분석할 수 없습니다.";
         }
         
-        // 본식 기록 비율 (밀당 박스 기준: 본식만, days*3 대비)
+        // 본식 기록 비율 (밀당 박스·대시보드와 동일: 분자=전체 건수, 분모=일수×3+추가본식)
         const dashData = typeof window.getDashboardData === 'function' ? window.getDashboardData() : null;
         const days = dashData?.days ?? 1;
         const targetDays = Math.max(1, days);
-        const totalMainSlots = targetDays * 3;
-        const mainMealCount = filteredData.filter(m => {
-            const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'main');
-            return slot && m.mealType !== 'Skip';
-        }).length;
+        const kpiSource =
+            dashData?.mealRecordsForTable?.length > 0
+                ? dashData.mealRecordsForTable
+                : filteredData;
+        const { recCount: mainMealCount, extraMain } = computeMainMealKpiFromRecords(kpiSource);
+        const totalMainSlots = computeMainMealKpiDenominator(targetDays, extraMain);
         const mealRecordPercent = totalMainSlots > 0 ? Math.round((mainMealCount / totalMainSlots) * 100) : 0;
         
         // 공통 페르소나 가져오기
@@ -1553,13 +1560,11 @@ export async function updateShareButtonStatus() {
         const isShared = !!existingShare;
         
         if (isShared) {
-            // 공유됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨';
-            shareBtn.className = 'insight-share-btn insight-share-btn--shared flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+            shareBtn.innerHTML = '<i data-lucide="send" aria-hidden="true"></i> 공유됨';
+            shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--shared';
         } else {
-            // 공유 안 됨 상태: 흰 배경으로 구분감
-            shareBtn.innerHTML = '<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기';
-            shareBtn.className = 'insight-share-btn insight-share-btn--default flex-shrink-0 rounded-lg font-bold text-[12px] py-1 px-2';
+            shareBtn.innerHTML = '<i data-lucide="send" aria-hidden="true"></i> 공유';
+            shareBtn.className = 'dashboard-mini-btn insight-share-btn insight-share-btn--default';
         }
     }
 }
@@ -1644,7 +1649,7 @@ export async function openShareInsightModal() {
             <!-- 헤더: 흰 배경, 초록 타이틀 (html2canvas 호환 - line-height로 하단 잘림 방지, align-items: center) -->
             <div style="background: #ffffff; padding: 10px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 8px; min-width: 0;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #059669; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase; line-height: 1.2; min-width: 0;">mealog</span>
+                    <span style="font-size: 28.8px; font-weight: 600; color: #3cb889; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase; line-height: 1.2; min-width: 0;">mealog</span>
                     <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE}; font-weight: normal; color: #64748b; flex-shrink: 0; line-height: 1.35; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY};">${escapeHtml(dateRangeText || '')}</span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
@@ -1659,7 +1664,7 @@ export async function openShareInsightModal() {
                 </div>
                 <!-- 말풍선 (초록 보더, 흰 배경, 어두운 텍스트) -->
                 <div style="flex: 1; min-width: 0;">
-                    <div style="background: #ffffff; border: 1px solid #047857; padding: 8px 20px 12px 20px; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-height: 132px; display: flex; flex-direction: column;">
+                    <div style="background: #ffffff; border: 1px solid #2d9f74; padding: 8px 20px 12px 20px; border-radius: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); min-height: 132px; display: flex; flex-direction: column;">
                         <div style="margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                             ${characterNameText ? `<span style="font-size: 15px; font-weight: 700; color: #1e293b; letter-spacing: -0.01em;">${escapeHtml(characterNameText)}</span>` : '<span></span>'}
                             <span class="insight-share-button" style="font-size: 12px; font-weight: 600; color: #64748b; flex-shrink: 0;">공유</span>
@@ -1677,7 +1682,7 @@ export async function openShareInsightModal() {
     preview.innerHTML = screenshotHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('insightShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -1739,7 +1744,7 @@ function setInsightShareSubmitLoading(isLoading) {
     if (isLoading) {
         sub.classList.add('hidden');
         label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-        label.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
+        label.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin"></i><span>공유 중...</span>';
     }
 }
 
@@ -1790,7 +1795,7 @@ export async function openEditInsightShareModal(photoUrl) {
     preview.innerHTML = existingImageHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('insightShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -1814,7 +1819,7 @@ export function closeShareInsightModal() {
     const modal = document.getElementById('insightShareModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('insightShareModal');
     }
 }
 

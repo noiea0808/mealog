@@ -4,6 +4,7 @@
 import { app, db, appId, callableFunctions, auth } from '../firebase.js';
 import { uploadPersonaImageToStorage } from '../utils.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { scheduleLucideIcons } from '../icons.js';
 import { GEMINI_MEALDANG_MODEL } from '../constants.js';
 import {
     collection,
@@ -34,7 +35,8 @@ async function loadMealogComments() {
     const container = document.getElementById('mealogCommentsContainer');
     if (!container) return;
     
-    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+    container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
+    scheduleLucideIcons(container);
     
     try {
         const mealogDocRef = doc(db, 'artifacts', appId, 'persona', 'mealog');
@@ -78,7 +80,8 @@ Best, 식사, 간식 탭을 눌러서
         renderMealogComments(comments);
     } catch (e) {
         console.error('MEALOG 코멘트 로드 실패:', e);
-        container.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>MEALOG 코멘트를 불러오는 중 오류가 발생했습니다: ' + e.message + '</p></div>';
+        container.innerHTML = '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>MEALOG 코멘트를 불러오는 중 오류가 발생했습니다: ' + e.message + '</p></div>';
+        scheduleLucideIcons(container);
     }
 }
 
@@ -100,7 +103,7 @@ function renderMealogComments(comments) {
             <div class="flex items-start justify-between mb-3">
                 <span class="text-xs font-bold text-slate-500">메시지 ${index + 1}</span>
                 <button onclick="window.removeMealogComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors">
-                    <i class="fa-solid fa-trash"></i>
+                    <i data-lucide="trash-2"></i>
                 </button>
             </div>
             <textarea onchange="window.updateMealogComment(${index}, this.value)"
@@ -116,6 +119,7 @@ function renderMealogComments(comments) {
         
         container.appendChild(commentDiv);
     });
+    scheduleLucideIcons(container);
 }
 
 // MEALOG 코멘트 추가
@@ -294,7 +298,7 @@ async function renderPersonaCharacters() {
     const listContainer = document.getElementById('personaCharactersList');
     if (!listContainer) return;
     
-    listContainer.innerHTML = '<div class="text-center py-4 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-xs">로딩 중...</p></div>';
+    listContainer.innerHTML = '<div class="text-center py-4 text-slate-400"><i data-lucide="loader-circle" class="text-xl mb-2 lucide-spin"></i><p class="text-xs">로딩 중...</p></div>';
     
     try {
         // 기본 캐릭터 + Firebase 캐릭터 로드
@@ -384,16 +388,18 @@ async function renderPersonaCharacters() {
                     ${!isCommon ? `
                         <button type="button" onclick="window.deleteCharacter('${String(char.id).replace(/'/g, "\\'")}')" 
                                 class="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-xs font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                            <i class="fa-solid fa-trash mr-1"></i>삭제
+                            <i data-lucide="trash-2" class="mr-1"></i>삭제
                         </button>
                     ` : ''}
                 </div>
             `;
         }).join('');
         await refreshPersonaGeminiModelInfo();
+        scheduleLucideIcons(listContainer);
     } catch (e) {
         console.error("페르소나 캐릭터 렌더링 실패:", e);
-        listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i class="fa-solid fa-exclamation-triangle text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
+        listContainer.innerHTML = '<div class="text-center py-4 text-red-400"><i data-lucide="triangle-alert" class="text-xl mb-2"></i><p class="text-xs">캐릭터를 불러오는 중 오류가 발생했습니다.</p></div>';
+        scheduleLucideIcons(listContainer);
     }
 }
 
@@ -427,7 +433,7 @@ async function loadCharacterEditor(characterId) {
     const editorContent = document.getElementById('personaCharacterEditorContent');
     if (!editorContent) return;
     
-    editorContent.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>로딩 중...</p></div>';
+    editorContent.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
     
     try {
         // 공통 캐릭터인지 확인
@@ -492,7 +498,7 @@ async function loadCharacterEditor(characterId) {
         renderCharacterEditorForm(characterData);
     } catch (e) {
         console.error('캐릭터 편집 폼 로드 실패:', e);
-        editorContent.innerHTML = '<div class="text-center py-8 text-red-400"><i class="fa-solid fa-exclamation-triangle text-2xl mb-2"></i><p>캐릭터 정보를 불러오는 중 오류가 발생했습니다.</p></div>';
+        editorContent.innerHTML = '<div class="text-center py-8 text-red-400"><i data-lucide="triangle-alert" class="text-2xl mb-2"></i><p>캐릭터 정보를 불러오는 중 오류가 발생했습니다.</p></div>';
     }
 }
 
@@ -505,7 +511,7 @@ function renderCommonPersonaForm(commonData) {
         <div class="space-y-6">
             <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <div class="flex items-start gap-3">
-                    <i class="fa-solid fa-info-circle text-blue-600 text-xl mt-0.5"></i>
+                    <i data-lucide="info" class="text-blue-600 text-xl mt-0.5"></i>
                     <div>
                         <h3 class="text-sm font-bold text-blue-800 mb-1">공통 페르소나</h3>
                         <p class="text-xs text-blue-700">이 페르소나는 모든 AI 캐릭터의 분석에 공통으로 적용됩니다. 각 캐릭터의 고유한 페르소나와 함께 사용됩니다.</p>
@@ -516,7 +522,7 @@ function renderCommonPersonaForm(commonData) {
             <!-- 공통 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-robot mr-2"></i>공통 페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
+                    <i data-lucide="bot" class="mr-2"></i>공통 페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="commonSystemPrompt" 
                           class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
@@ -537,7 +543,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 이미지: 좌(미리보기) | 우(선택+경로, 이미지 높이에 맞춤) -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-image mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75×132)</span>
+                    <i data-lucide="image" class="mr-2"></i>캐릭터 이미지 <span class="text-slate-500 font-normal">(75×132)</span>
                 </label>
                 <div class="flex gap-3 items-stretch">
                     <div id="characterImagePreview" class="relative flex-shrink-0 w-[75px] h-[132px] rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center overflow-hidden">
@@ -545,7 +551,7 @@ function renderCharacterEditorForm(characterData) {
                             <img src="${escapeHtml(characterData.image)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
                             <button type="button" onclick="window.removeCharacterImage()" 
                                     class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                                <i class="fa-solid fa-times"></i>
+                                <i data-lucide="x"></i>
                             </button>
                         ` : '<span class="text-slate-400 text-2xl">👤</span>'}
                     </div>
@@ -555,7 +561,7 @@ function renderCharacterEditorForm(characterData) {
                                class="hidden">
                         <button type="button" onclick="document.getElementById('characterImageFile').click()" 
                                 class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-upload"></i>
+                            <i data-lucide="upload"></i>
                             <span>이미지 선택</span>
                         </button>
                         <input type="text" id="characterImage" value="${escapeHtml(characterData.image || '')}" 
@@ -569,7 +575,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 캐릭터 이름: 타이틀 오른쪽에 입력 -->
             <div class="flex gap-4 items-center">
                 <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28">
-                    <i class="fa-solid fa-tag mr-2"></i>캐릭터 이름
+                    <i data-lucide="tag" class="mr-2"></i>캐릭터 이름
                 </label>
                 <input type="text" id="characterName" value="${escapeHtml(characterData.name || '')}" 
                        placeholder="예: 엄격한 트레이너"
@@ -579,7 +585,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 기본 멘트: 타이틀 오른쪽에 입력 -->
             <div class="flex gap-4 items-start">
                 <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
-                    <i class="fa-solid fa-comment mr-2"></i>기본 멘트
+                    <i data-lucide="message-circle" class="mr-2"></i>기본 멘트
                 </label>
                 <div class="flex-1 min-w-0">
                     <p class="text-xs text-slate-500 mb-2">COMMENT 버튼 클릭 시 표시. 여러 개 입력 시 랜덤 표시.</p>
@@ -590,13 +596,13 @@ function renderCharacterEditorForm(characterData) {
                                           class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                                           placeholder="기본 멘트를 입력하세요">${escapeHtml(comment || '')}</textarea>
                                 <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                                    <i class="fa-solid fa-trash"></i>
+                                    <i data-lucide="trash-2"></i>
                                 </button>
                             </div>
                         `).join('') : ''}
                     </div>
                     <button onclick="window.addCharacterDefaultComment()" class="mt-2 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                        <i class="fa-solid fa-plus mr-2"></i>멘트 추가
+                        <i data-lucide="plus" class="mr-2"></i>멘트 추가
                     </button>
                 </div>
             </div>
@@ -604,7 +610,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 로딩 멘트: 타이틀 오른쪽에 입력 -->
             <div class="flex gap-4 items-start">
                 <label class="flex-shrink-0 text-sm font-bold text-slate-700 w-28 pt-2">
-                    <i class="fa-solid fa-spinner mr-2"></i>로딩 멘트
+                    <i data-lucide="loader-circle" class="mr-2"></i>로딩 멘트
                 </label>
                 <div class="flex-1 min-w-0">
                     <p class="text-xs text-slate-500 mb-2">AI 코멘트 생성 중 표시 (일반 텍스트)</p>
@@ -640,7 +646,7 @@ function renderCharacterEditorForm(characterData) {
             <!-- 페르소나: 입력 텍스트만큼 창 자동 확장 -->
             <div>
                 <label class="block text-sm font-bold text-slate-700 mb-2">
-                    <i class="fa-solid fa-robot mr-2"></i>페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
+                    <i data-lucide="bot" class="mr-2"></i>페르소나 (구글 AI 스튜디오에 발송할 프롬프트)
                 </label>
                 <textarea id="characterSystemPrompt" 
                           class="persona-auto-resize w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 min-h-[200px] resize-none overflow-hidden"
@@ -649,6 +655,7 @@ function renderCharacterEditorForm(characterData) {
         </div>
     `;
     attachPersonaAutoResize();
+    scheduleLucideIcons(editorContent);
 }
 
 // 페르소나 입력창: 입력 텍스트만큼 자동 확장 (스크롤 없음)
@@ -677,10 +684,11 @@ window.addCharacterDefaultComment = function() {
                   class="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:border-emerald-500 resize-y min-h-[80px] overflow-hidden"
                   placeholder="기본 멘트를 입력하세요"></textarea>
         <button onclick="window.removeCharacterDefaultComment(${index})" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-            <i class="fa-solid fa-trash"></i>
+            <i data-lucide="trash-2"></i>
         </button>
     `;
     container.appendChild(newCommentDiv);
+    scheduleLucideIcons(newCommentDiv);
 };
 
 // 기본 멘트 제거
@@ -772,7 +780,7 @@ function updateCharacterImagePreview(imageUrl) {
             <img src="${escapeHtml(imageUrl)}" alt="미리보기" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<span class=\\'text-slate-400 text-2xl\\'>👤</span>'">
             <button type="button" onclick="window.removeCharacterImage()" 
                     class="absolute top-0.5 right-0.5 px-1.5 py-0.5 bg-red-500 text-white rounded text-xs font-bold hover:bg-red-600">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
     } else {

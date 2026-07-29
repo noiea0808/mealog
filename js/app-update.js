@@ -38,44 +38,27 @@ function showFlexibleRestartBanner(onRestart) {
 
     const banner = document.createElement('div');
     banner.id = 'appUpdateRestartBanner';
+    banner.className = 'mealog-update-banner';
     banner.setAttribute('role', 'status');
     banner.style.cssText = [
         'position:fixed',
-        'left:50%',
-        'transform:translateX(-50%)',
-        'bottom:calc(env(safe-area-inset-bottom, 0px) + 84px)',
         'z-index:99999',
-        'width:min(420px, calc(100vw - 24px))',
         'box-sizing:border-box',
-        'display:flex',
-        'align-items:center',
-        'gap:12px',
-        'padding:14px 16px',
-        'border-radius:14px',
-        'background:#1f2937',
-        'color:#fff',
-        'box-shadow:0 8px 24px rgba(0,0,0,0.28)',
-        'font-size:14px',
         'line-height:1.4',
     ].join(';');
 
     const text = document.createElement('span');
-    text.style.cssText = 'flex:1;font-weight:500;';
-    text.textContent = '업데이트 다운로드가 완료되었습니다.';
+    text.style.cssText = 'flex:1;font-weight:600;min-width:0;';
+    text.innerHTML = '<strong style="display:block;font-size:13px;margin-bottom:2px;">업데이트가 준비됐어요</strong><span style="font-size:12px;font-weight:500;color:#7a7268;">재시작하면 새 버전이 적용됩니다</span>';
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = '재시작';
     btn.style.cssText = [
         'flex:none',
-        'padding:8px 14px',
         'border:none',
-        'border-radius:10px',
-        'background:#10b981',
-        'color:#fff',
-        'font-weight:700',
-        'font-size:14px',
         'cursor:pointer',
+        'font-family:inherit',
     ].join(';');
     btn.addEventListener('click', () => {
         btn.disabled = true;
@@ -151,7 +134,7 @@ function showSimulatedUpdateConfirm({ version, onAccept, onDismiss }) {
     install.textContent = '지금 설치';
     install.style.cssText = [
         'flex:1', 'padding:12px', 'border:none', 'border-radius:12px',
-        'background:#10b981', 'color:#fff', 'font-weight:800', 'font-size:14px', 'cursor:pointer',
+        'background:#3cb889', 'color:#fff', 'font-weight:800', 'font-size:14px', 'cursor:pointer',
     ].join(';');
     install.addEventListener('click', () => {
         removeSimNode('appUpdateSimConfirm');
@@ -190,7 +173,7 @@ function showSimulatedDownloadProgress(onDone) {
     const track = document.createElement('div');
     track.style.cssText = 'height:6px;border-radius:3px;background:rgba(255,255,255,0.2);overflow:hidden;';
     const fill = document.createElement('div');
-    fill.style.cssText = 'height:100%;width:0%;background:#10b981;transition:width 0.2s ease;';
+    fill.style.cssText = 'height:100%;width:0%;background:#3cb889;transition:width 0.2s ease;';
     track.appendChild(fill);
 
     bar.appendChild(label);

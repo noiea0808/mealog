@@ -236,7 +236,14 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         return (photo.place && menuLine) ? `${menuLine} @ ${photo.place}` : (photo.place || menuLine || photo.mealType || '');
     })();
     const captionAttr = (captionText || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-    let aspectRatio = photo.photoAspectRatio || (entryId && mealHistoryMap && mealHistoryMap.has(entryId) ? mealHistoryMap.get(entryId).photoAspectRatio : null) || '1:1';
+    // 모먼트(shared) 문서 비율 우선 — mealHistory가 오래된 1:1이면 shared의 3:4/4:3을 덮지 않음
+    const mealFromMap =
+        entryId && mealHistoryMap
+            ? mealHistoryMap.get(entryId) || mealHistoryMap.get(String(entryId))
+            : null;
+    const mealAspect = mealFromMap?.photoAspectRatio;
+    let aspectRatio =
+        photo.photoAspectRatio || photo.aspectRatio || mealAspect || '1:1';
     if (aspectRatio !== '1:1' && aspectRatio !== '3:4' && aspectRatio !== '4:3') aspectRatio = '1:1';
     const momentAspectCss = (aspectRatio === '3:4' ? '3/4' : aspectRatio === '4:3' ? '4/3' : '1');
     const momentUrlsEncoded = encodeURIComponent(JSON.stringify(photoGroup.map((p) => p.photoUrl).filter(Boolean)));
@@ -267,6 +274,17 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
               }
           })
         : null;
+    const v2MetaEarly = photo._v2Parent || (photo.schemaVersion === 2 ? photo : null);
+    const seedLikeCountRaw = v2MetaEarly?.likeCount ?? photo.likeCount;
+    const seedCommentCountRaw = v2MetaEarly?.commentCount ?? photo.commentCount;
+    const seedLikeCountEarly =
+        typeof seedLikeCountRaw === 'number' && !Number.isNaN(seedLikeCountRaw)
+            ? seedLikeCountRaw
+            : null;
+    const seedCommentCountEarly =
+        typeof seedCommentCountRaw === 'number' && !Number.isNaN(seedCommentCountRaw)
+            ? seedCommentCountRaw
+            : null;
     const v2PhotoLabelBlock = layoutV2
         ? buildMomentFeedV2PhotoAndLabelHtml({
               photoGroup,
@@ -281,7 +299,9 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
               postId,
               postIdJs,
               mealHistoryMap,
-              groupEntryId: entryId
+              groupEntryId: entryId,
+              seedLikeCount: seedLikeCountEarly,
+              seedCommentCount: seedCommentCountEarly
           })
         : '';
     const photosHtml = layoutV2
@@ -322,7 +342,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         photo.userId === appState.galleryFilterUserId;
     const profileBackBtn = showProfileMomentBack
         ? `<button type="button" onclick="window.clearGalleryFilterPostId && window.clearGalleryFilterPostId()" class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 -ml-1" aria-label="사진 목록으로">
-                        <i class="fa-solid fa-arrow-left text-lg" aria-hidden="true"></i>
+                        <i data-lucide="arrow-left" class="text-lg" aria-hidden="true"></i>
                     </button>`
         : '';
     const v2PostCaptionAndFetch =
@@ -331,7 +351,13 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                   caption && isInsightShare
                       ? `<div class="px-3 pt-2 text-sm text-slate-800">${caption}</div>`
                       : '',
-                  !isBestShare && !isDailyShare && !isInsightShare && entryId && photo.userId && !isMyPost
+                  /* 작성자 코멘트 없는 식단 공유 → meals에서 lazy fetch (본인/타인 공통) */
+                  !isBestShare &&
+                  !isDailyShare &&
+                  !isInsightShare &&
+                  entryId &&
+                  photo.userId &&
+                  !comment
                       ? `<div class="shared-comment-fetch-placeholder hidden h-0 overflow-hidden p-0" aria-hidden="true" data-post-id="${postId}" data-entry-id="${entryId}" data-owner-user-id="${photo.userId}" data-group-idx="${groupIdx}"></div>`
                       : ''
               ]
@@ -351,13 +377,15 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
-    const v2Meta = photo._v2Parent || (photo.schemaVersion === 2 ? photo : null);
-    const seedLikeCount = v2Meta && typeof v2Meta.likeCount === 'number' ? v2Meta.likeCount : null;
-    const seedCommentCount = v2Meta && typeof v2Meta.commentCount === 'number' ? v2Meta.commentCount : null;
+    const seedLikeCount = seedLikeCountEarly;
+    const seedCommentCount = seedCommentCountEarly;
     const seedCountAttrs =
         seedLikeCount != null || seedCommentCount != null
             ? ` data-seed-like-count="${seedLikeCount != null ? seedLikeCount : ''}" data-seed-comment-count="${seedCommentCount != null ? seedCommentCount : ''}"`
             : '';
+    const likeCountTxt = seedLikeCount != null && seedLikeCount > 0 ? String(seedLikeCount) : '';
+    const commentCountTxt =
+        seedCommentCount != null && seedCommentCount > 0 ? String(seedCommentCount) : '';
     return `
             <div class="${cardClassList}" data-post-id="${postId}" data-post-id-alternates="${alternatePostIds}" data-group-key="${groupKey}"${layoutV2 ? ' data-moment-card-layout="2"' : ''}${seedCountAttrs}>
                 ${
@@ -387,7 +415,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                     </div>
                     <div class="relative">
                         <button data-entry-id="${entryId || ''}" data-photo-urls="${(photoGroup.map(p => p.photoUrl).filter(Boolean).join(',') || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}" data-caption="${captionAttr}" data-is-best="${isBestShare ? 'true' : 'false'}" data-is-daily="${isDailyShare ? 'true' : 'false'}" data-is-insight="${isInsightShare ? 'true' : 'false'}" data-photo-date="${photo.date || ''}" data-date-range-text="${photo.dateRangeText || ''}" data-photo-slot-id="${photo.slotId || ''}" data-post-id="${postId || ''}" data-author-user-id="${photo.userId || ''}" class="feed-options-btn w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-50 rounded-full transition-colors">
-                            <i class="fa-solid fa-ellipsis-vertical text-lg"></i>
+                            <i data-lucide="ellipsis-vertical" class="text-lg"></i>
                         </button>
                     </div>
                 </div>`
@@ -424,16 +452,16 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                     <div class="feed-post-buttons flex items-center justify-between mb-2 pb-2 -mx-3 px-3 border-b border-slate-200">
                         <div class="flex items-center gap-4">
                             <button onclick='window.toggleLike(${postIdJs})' class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-heart text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
-                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                                <i data-lucide="heart" class="text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
+                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">${likeCountTxt}</span>
                             </button>
                             <button onclick='window.toggleCommentInput(${postIdJs})' class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                                <i class="fa-regular fa-comment text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>
-                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}"></span>
+                                <i data-lucide="message-circle" class="text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>
+                                <span class="post-comment-count text-sm font-bold text-slate-800" data-post-id="${postId}">${commentCountTxt}</span>
                             </button>
                         </div>
                         <button onclick='window.toggleBookmark(${postIdJs})' class="post-bookmark-btn active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
-                            <i class="fa-regular fa-bookmark text-2xl text-slate-800 post-bookmark-icon social-action-icon-stroke"></i>
+                            <i data-lucide="bookmark" class="text-2xl text-slate-800 post-bookmark-icon social-action-icon-stroke"></i>
                         </button>
                     </div>
                     ${caption && (isBestShare || isInsightShare) ? `<div class="mb-2 text-sm text-slate-800">${caption}</div>` : ''}

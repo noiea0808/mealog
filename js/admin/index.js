@@ -77,7 +77,7 @@ window.confirmDeletePhoto = async function() {
     
     const btn = document.getElementById('confirmDeleteBtn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>삭제 중...';
+    btn.innerHTML = '<i data-lucide="loader-circle" class="mr-2 lucide-spin"></i>삭제 중...';
     
     try {
         await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', currentDeletePhotoId));
@@ -88,7 +88,7 @@ window.confirmDeletePhoto = async function() {
         // 성공 메시지
         const successDiv = document.createElement('div');
         successDiv.className = 'fixed top-4 right-4 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-lg z-[600] flex items-center gap-2';
-        successDiv.innerHTML = '<i class="fa-solid fa-check"></i> <span>게시물이 삭제되었습니다.</span>';
+        successDiv.innerHTML = '<i data-lucide="check"></i> <span>게시물이 삭제되었습니다.</span>';
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 3000);
         

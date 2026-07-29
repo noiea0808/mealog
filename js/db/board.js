@@ -612,6 +612,9 @@ export const boardOperations = {
             const byPost = {};
             for (const d of commentsSnap.docs) {
                 const data = d.data();
+                const commenterId = String(data.authorId || data.userId || '').trim();
+                // 푸시와 동일: 본인 댓글은 앱 알림에서 제외
+                if (commenterId && commenterId === ownerId) continue;
                 const postId = String(data.postId || '').trim();
                 if (!postId) continue;
                 const title = myPostTitles.get(postId) || '밀톡';

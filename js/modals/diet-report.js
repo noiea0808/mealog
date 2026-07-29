@@ -22,6 +22,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -157,7 +158,7 @@ export function getAiDietReportButtonHtml(dateStr) {
     if (!isAiDietReportDateVisible(dateStr)) return '';
     const styleCls = aiDietReportButtonStyleClasses(isAiDietReportReady(dateStr));
     return `<button type="button" data-mealog-diet-report="1" data-mealog-date="${dateStr}" class="${AI_DIET_REPORT_BTN_BASE} ${styleCls}">
-        <i class="fa-solid fa-wand-magic-sparkles text-[10px]" aria-hidden="true"></i>AI 리포트
+        <i data-lucide="sparkles" class="text-[10px]" aria-hidden="true"></i>AI 리포트
     </button>`;
 }
 
@@ -182,8 +183,8 @@ function setModalVisible(visible) {
     const wasVisible = !modal.classList.contains('hidden');
     modal.classList.toggle('hidden', !visible);
     document.body.classList.toggle('diet-report-modal-open', visible);
-    if (visible && !wasVisible) lockBodyScroll();
-    else if (!visible && wasVisible) unlockBodyScroll();
+    if (visible && !wasVisible) lockBodyScroll('dietReport');
+    else if (!visible && wasVisible) unlockBodyScroll('dietReport');
 }
 
 function setModalSubtitle(text) {
@@ -222,19 +223,18 @@ function getShareCaptureFontCss() {
 function setSnsShareButtonPreparing(preparing) {
     const btn = document.getElementById('dietReportSnsShareBtn');
     if (!btn || btn.classList.contains('hidden')) return;
-    const icon = btn.querySelector('i');
-    if (!icon) return;
     if (preparing) {
         btn.disabled = true;
-        icon.className = 'fa-solid fa-spinner fa-spin text-[1.05rem]';
+        btn.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i>';
         btn.setAttribute('aria-label', '공유 이미지 준비 중');
         btn.title = '공유 이미지 준비 중…';
     } else {
         btn.disabled = false;
-        icon.className = 'fa-solid fa-share-nodes text-[1.05rem]';
+        btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
         btn.setAttribute('aria-label', '다른 SNS에 공유');
         btn.title = '다른 SNS에 공유';
     }
+    scheduleLucideIcons(btn);
 }
 
 /** 백그라운드 캐시용 — 공유 아이콘은 유지하고 살짝 흐리게만 */
@@ -298,45 +298,53 @@ function setSnsShareButton(visible) {
     if (!visible) {
         setSnsShareButtonPreparing(false);
         setSnsShareButtonCacheBusy(false);
-    } else if (!_snsShareCachePromise) {
-        btn.disabled = false;
-        btn.classList.remove('opacity-60');
+    } else {
+        if (!_snsShareCachePromise) {
+            btn.disabled = false;
+            btn.classList.remove('opacity-60');
+        }
+        if (!btn.querySelector('[data-lucide], svg')) {
+            btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
+        }
+        scheduleLucideIcons(btn);
     }
 }
 
-const DIET_REPORT_SHARE_BTN_BASE =
-    'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 border-l border-slate-200 transition-colors disabled:opacity-60 min-w-0';
-
-/** 하단 3종세트형 버튼(다시 분석·모먼트 공유) 표시/상태 제어 */
+/** 헤더(다시 분석) + 하단(모먼트 공유) 표시/상태 제어 */
 function setFooterButtons({ regen = false, share = false, regenLabel = '다시 분석', shareMode = 'share' } = {}) {
     const regenBtn = document.getElementById('dietReportRegenerateBtn');
     if (regenBtn) {
         regenBtn.classList.toggle('hidden', !regen);
         regenBtn.disabled = false;
-        const main = regenBtn.querySelector('.diet-report-btn-main');
-        if (main) main.textContent = regenLabel;
+        regenBtn.setAttribute('aria-label', regenLabel);
+        regenBtn.title = regenLabel;
+        if (regen) {
+            if (!regenBtn.querySelector('[data-lucide], svg')) {
+                regenBtn.innerHTML = '<i data-lucide="refresh-cw" aria-hidden="true"></i>';
+            }
+            scheduleLucideIcons(regenBtn);
+        }
     }
     const shareBtn = document.getElementById('dietReportShareBtn');
     if (shareBtn) {
         shareBtn.classList.toggle('hidden', !share);
         shareBtn.disabled = false;
-        const main = shareBtn.querySelector('.diet-report-btn-main');
-        const sub = shareBtn.querySelector('.diet-report-btn-sub');
         if (shareMode === 'unshare') {
-            shareBtn.className = `${DIET_REPORT_SHARE_BTN_BASE} bg-rose-50 text-rose-700 hover:bg-rose-100/90 active:bg-rose-100`;
-            if (main) main.textContent = '공유 취소';
-            if (sub) {
-                sub.textContent = '피드에서 내리기';
-                sub.className = 'diet-report-btn-sub text-[11px] text-rose-600/90 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-danger';
+            shareBtn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>공유 취소</span></span>';
         } else {
-            shareBtn.className = `${DIET_REPORT_SHARE_BTN_BASE} bg-emerald-600 text-white hover:bg-emerald-700 active:bg-emerald-800`;
-            if (main) main.textContent = '모먼트 공유';
-            if (sub) {
-                sub.textContent = '피드에 공유';
-                sub.className = 'diet-report-btn-sub text-[11px] text-white/80 font-medium';
-            }
+            shareBtn.className = 'mealog-btn mealog-btn-primary';
+            shareBtn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span>';
         }
+        if (!share) shareBtn.classList.add('hidden');
+        else scheduleLucideIcons(shareBtn);
+    }
+    const actions = document.getElementById('dietReportModalActions');
+    if (actions) {
+        actions.classList.toggle('mealog-dialog-actions--pair', !!share);
+        actions.classList.toggle('mealog-dialog-actions--single', !share);
     }
 }
 
@@ -346,7 +354,7 @@ function renderLoading(mode = 'fetch') {
     const label = mode === 'writing' ? '리포트 작성중' : '리포트 불러오는 중…';
     body.innerHTML = `
         <div class="flex flex-col items-center justify-center py-10 text-slate-400">
-            <i class="fa-solid fa-spinner fa-spin text-2xl mb-3" aria-hidden="true"></i>
+            <i data-lucide="loader-circle" class="text-2xl mb-3 lucide-spin" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-500">${label}</p>
         </div>`;
     _currentReport = null;
@@ -377,10 +385,10 @@ function renderEmpty(dateStr, mealCount) {
     }
     body.innerHTML = `
         <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center">
-            <i class="fa-solid fa-wand-magic-sparkles text-2xl text-emerald-500 mb-3" aria-hidden="true"></i>
+            <i data-lucide="sparkles" class="text-2xl text-emerald-500 mb-3" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-700">아직 AI 리포트가 없어요</p>
             <p class="text-xs text-slate-500 mt-2 leading-relaxed">아래 버튼으로 지금 바로 분석할 수 있어요.</p>
-            <button type="button" id="dietReportAnalyzeNowBtn" class="mt-4 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl transition-colors">
+            <button type="button" id="dietReportAnalyzeNowBtn" class="mealog-btn mealog-btn-primary mt-4 mx-auto min-w-[10rem]">
                 지금 분석하기
             </button>
         </div>`;
@@ -626,7 +634,7 @@ function applyDietReportCaptureAlignFix(root) {
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
 function buildDietReportShareCaptureBadgeHtml() {
     const colors =
-        'font-size:11px;font-weight:700;color:#047857;background:#ecfdf5;border:1px solid #bbf7d0;';
+        'font-size:11px;font-weight:700;color:#2d9f74;background:#ecfdf5;border:1px solid #bbf7d0;';
     return `<span data-diet-report-capture-badge="1" style="${buildDietReportCapturePillStyle('4px 12px', colors)}">✨AI식단분석</span>`;
 }
 
@@ -648,7 +656,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         ? `<span data-diet-report-capture-mood="1" style="${dietReportCaptureYOffsetStyle(DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX)}margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
         : '';
     const scoreSpan = hasScore
-        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#059669;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
         : '';
     // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
@@ -663,7 +671,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         ? `<div><div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">오늘의 식사 흐름</div><div style="font-size:13.5px;color:#334155;line-height:1.5;">${e(summary)}</div></div>`
         : '';
     const highlightHtml = highlight
-        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#047857;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
+        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
         : '';
     const nudgeHtml = nudge
         ? `<div style="border-radius:12px;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:3px;">내일의 힌트</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
@@ -688,7 +696,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         <div style="background:#ffffff;padding:12px 16px 14px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;gap:8px;overflow:visible;">
             <div style="min-width:0;white-space:nowrap;line-height:1;overflow:visible;">
                 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-spacing:0;width:auto;display:inline-table;"><tr>
-                    <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#059669;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
+                    <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#3cb889;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
                     <td style="vertical-align:middle;padding:${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px;line-height:1;">${buildDietReportShareCaptureBadgeHtml()}</td>
                 </tr></table>
             </div>
@@ -884,14 +892,18 @@ async function shareDietReportToMoment() {
 window.openDietReportModal = openDietReportModal;
 window.closeDietReportModal = closeDietReportModal;
 
+document.getElementById('dietReportBackdrop')?.addEventListener('click', () => {
+    closeDietReportModal();
+});
+document.getElementById('dietReportCloseBtn')?.addEventListener('click', () => {
+    closeDietReportModal();
+});
 document.getElementById('dietReportRegenerateBtn')?.addEventListener('click', () => {
     if (_currentDate) void runRegenerate(_currentDate);
 });
-
 document.getElementById('dietReportShareBtn')?.addEventListener('click', () => {
     void shareDietReportToMoment();
 });
-
 document.getElementById('dietReportSnsShareBtn')?.addEventListener('click', () => {
     void shareDietReportToSns();
 });

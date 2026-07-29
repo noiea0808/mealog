@@ -1,5 +1,4 @@
 // UI 관련 함수들
-import { getWelcomeWeekDonutSlides, getWelcomeWeekSlotRecordCount } from './analytics/charts.js';
 import {
     getLoadingSpinnerConfig,
     applyLoadingFoodIconDurationSeconds,
@@ -18,6 +17,16 @@ import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 import { getProfileAvatarDisplay } from './utils.js';
+import { scheduleLucideIcons } from './icons.js';
+
+/** 출석 환영 차트만 charts 모듈을 지연 로드 (밀당 전체 그래프와 분리) */
+let _welcomeChartsModPromise = null;
+function loadWelcomeChartsMod() {
+    if (!_welcomeChartsModPromise) {
+        _welcomeChartsModPromise = import('./analytics/charts.js');
+    }
+    return _welcomeChartsModPromise;
+}
 
 // 로딩 오버레이 중앙 관리
 let loadingOverlayTimeout = null;
@@ -268,13 +277,9 @@ export function showToast(message, type = 'info') {
     if (!container) return;
     const toast = document.createElement('div');
     toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    const bg =
-        type === 'error'
-            ? 'bg-red-500'
-            : type === 'success'
-              ? 'bg-emerald-600'
-              : 'bg-slate-600';
-    toast.className = `animate-toast px-4 py-3 rounded-xl text-sm font-medium text-white shadow-lg max-w-full ${bg}`;
+    const tone =
+        type === 'error' ? 'mealog-toast--error' : type === 'success' ? 'mealog-toast--success' : 'mealog-toast--info';
+    toast.className = `mealog-toast animate-toast ${tone}`;
     toast.textContent = message;
     container.appendChild(toast);
     const remove = () => {
@@ -288,31 +293,21 @@ export function showToast(message, type = 'info') {
 }
 
 let successPopupTimer = null;
-let successPopupScrollLocked = false;
-let attendancePopupScrollLocked = false;
 
 function lockSuccessPopupScroll() {
-    if (successPopupScrollLocked) return;
-    lockBodyScroll();
-    successPopupScrollLocked = true;
+    lockBodyScroll('successPopup');
 }
 
 function unlockSuccessPopupScroll() {
-    if (!successPopupScrollLocked) return;
-    unlockBodyScroll();
-    successPopupScrollLocked = false;
+    unlockBodyScroll('successPopup');
 }
 
 function lockAttendancePopupScroll() {
-    if (attendancePopupScrollLocked) return;
-    lockBodyScroll();
-    attendancePopupScrollLocked = true;
+    lockBodyScroll('attendancePopup');
 }
 
 function unlockAttendancePopupScroll() {
-    if (!attendancePopupScrollLocked) return;
-    unlockBodyScroll();
-    attendancePopupScrollLocked = false;
+    unlockBodyScroll('attendancePopup');
 }
 
 /**
@@ -416,10 +411,12 @@ export function dismissSuccessPopup() {
 }
 
 function ensureAttendancePopupCloseBound() {
-    const btn = document.getElementById('attendancePopupCloseBtn');
-    if (!btn || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', closeAttendancePopup);
+    ['attendancePopupCloseBtn', 'attendancePopupCloseBtnBare'].forEach((id) => {
+        const btn = document.getElementById(id);
+        if (!btn || btn.dataset.bound === '1') return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', closeAttendancePopup);
+    });
 }
 
 const WELCOME_CHART_NS = 'http://www.w3.org/2000/svg';
@@ -676,6 +673,31 @@ function prefetchWelcomeLatestDietReport() {
     void fetchReadyDietReportDates(uid);
 }
 
+function updateAttendanceWelcomeChartNavUi() {
+    const prevBtn = document.getElementById('attendanceWelcomeChartPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeChartNext');
+    const track = document.getElementById('attendanceWelcomeChartTrack');
+    const n = Number(track?.dataset.slideCount || 0);
+    const show = welcomeChartKind !== 'report' && n > 1;
+    [prevBtn, nextBtn].forEach((btn) => {
+        if (!btn) return;
+        btn.classList.toggle('hidden', !show);
+    });
+    if (!show) return;
+    const atStart = attendanceWelcomeSlideIdx <= 0;
+    const atEnd = attendanceWelcomeSlideIdx >= n - 1;
+    if (prevBtn) {
+        prevBtn.disabled = atStart;
+        prevBtn.classList.toggle('attendance-welcome-chart-nav--disabled', atStart);
+        prevBtn.setAttribute('aria-disabled', atStart ? 'true' : 'false');
+    }
+    if (nextBtn) {
+        nextBtn.disabled = atEnd;
+        nextBtn.classList.toggle('attendance-welcome-chart-nav--disabled', atEnd);
+        nextBtn.setAttribute('aria-disabled', atEnd ? 'true' : 'false');
+    }
+}
+
 function applyAttendanceWelcomeSlideTransform() {
     const track = document.getElementById('attendanceWelcomeChartTrack');
     const dots = document.getElementById('attendanceWelcomeChartDots');
@@ -688,6 +710,36 @@ function applyAttendanceWelcomeSlideTransform() {
             d.classList.toggle('attendance-welcome-dot--active', i === attendanceWelcomeSlideIdx);
         });
     }
+    updateAttendanceWelcomeChartNavUi();
+}
+
+function bindAttendanceWelcomeChartNavOnce() {
+    const prevBtn = document.getElementById('attendanceWelcomeChartPrev');
+    const nextBtn = document.getElementById('attendanceWelcomeChartNext');
+    if (!prevBtn || !nextBtn || prevBtn.dataset.bound === '1') return;
+    prevBtn.dataset.bound = '1';
+    nextBtn.dataset.bound = '1';
+
+    const go = (delta) => {
+        const track = document.getElementById('attendanceWelcomeChartTrack');
+        const n = Number(track?.dataset.slideCount || 0);
+        if (n < 2) return;
+        const next = Math.max(0, Math.min(n - 1, attendanceWelcomeSlideIdx + delta));
+        if (next === attendanceWelcomeSlideIdx) return;
+        attendanceWelcomeSlideIdx = next;
+        applyAttendanceWelcomeSlideTransform();
+    };
+
+    prevBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        go(-1);
+    });
+    nextBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        go(1);
+    });
 }
 
 function updateWelcomeKindSwitchUi() {
@@ -714,10 +766,17 @@ function updateWelcomeKindSwitchUi() {
         snackBtn.setAttribute('aria-pressed', onSnack ? 'true' : 'false');
     }
     if (countEl && welcomeChartKind !== 'report') {
-        const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
-        countEl.textContent = `기록 ${n}회`;
         countEl.classList.remove('hidden');
         document.getElementById('attendanceWelcomeReportDateNav')?.classList.add('hidden');
+        void loadWelcomeChartsMod()
+            .then(({ getWelcomeWeekSlotRecordCount }) => {
+                if (welcomeChartKind === 'report') return;
+                const n = getWelcomeWeekSlotRecordCount(7, welcomeChartKind);
+                countEl.textContent = `기록 ${n}회`;
+            })
+            .catch(() => {
+                countEl.textContent = '기록 —';
+            });
     }
     if (welcomeChartKind === 'report') {
         updateWelcomeReportDateNavUi();
@@ -781,7 +840,7 @@ function bindWelcomeReportDateNavOnce() {
 
         let data = welcomeReportDataCache.get(dateStr);
         if (!data) {
-            content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+            content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
             const result = await fetchReadyDietReportByDate(uid, dateStr);
             if (welcomeChartKind !== 'report' || welcomeReportDates[welcomeReportIndex] !== dateStr) return;
             if (!result?.data) return;
@@ -822,13 +881,14 @@ async function loadWelcomeReportAtIndex(uid, index) {
 async function renderWelcomeReportPanel() {
     const panel = document.getElementById('attendanceWelcomeReportPanel');
     const content = document.getElementById('attendanceWelcomeReportContent');
-    const vp = document.getElementById('attendanceWelcomeChartViewport');
+    const carousel = document.getElementById('attendanceWelcomeChartCarousel');
     const dots = document.getElementById('attendanceWelcomeChartDots');
     if (!panel || !content) return;
 
     panel.classList.remove('hidden');
-    if (vp) vp.classList.add('hidden');
+    if (carousel) carousel.classList.add('hidden');
     if (dots) dots.classList.add('hidden');
+    updateAttendanceWelcomeChartNavUi();
 
     const uid = window.currentUser?.uid;
     if (!uid) {
@@ -848,7 +908,7 @@ async function renderWelcomeReportPanel() {
         return;
     }
 
-    content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
+    content.innerHTML = `<div class="attendance-welcome-report-loading" aria-busy="true"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>리포트 불러오는 중…</span></div>`;
     updateWelcomeKindSwitchUi();
 
     let dates = [];
@@ -991,36 +1051,52 @@ function renderAttendanceWelcomeChartsArea() {
     }
 
     if (reportPanel) reportPanel.classList.add('hidden');
+    const carousel = document.getElementById('attendanceWelcomeChartCarousel');
+    if (carousel) carousel.classList.remove('hidden');
     vp.classList.remove('hidden');
     dots.classList.remove('hidden');
+    wrap.classList.remove('hidden');
 
     const chartKind = welcomeChartKind === 'snack' ? 'snack' : 'meal';
-    const slides = getWelcomeWeekDonutSlides(7, chartKind);
-    const n = slides.length;
-    track.dataset.slideCount = String(n);
-    vp.dataset.slideCount = String(n);
-    attendanceWelcomeSlideIdx = 0;
+    void loadWelcomeChartsMod()
+        .then(({ getWelcomeWeekDonutSlides }) => {
+            if (welcomeChartKind === 'report') return;
+            const slides = getWelcomeWeekDonutSlides(7, chartKind);
+            const n = slides.length;
+            track.dataset.slideCount = String(n);
+            vp.dataset.slideCount = String(n);
+            attendanceWelcomeSlideIdx = 0;
 
-    const wPct = 100 / n;
-    track.style.width = `${n * 100}%`;
-    track.innerHTML = slides
-        .map((slide) => {
-            const inner = buildWelcomeChartSlideHtml(slide);
-            return `<div class="attendance-welcome-slide flex flex-col items-center justify-center py-0.5 box-border px-0.5" style="flex:0 0 ${wPct}%;width:${wPct}%">${inner}</div>`;
+            const wPct = 100 / n;
+            track.style.width = `${n * 100}%`;
+            track.innerHTML = slides
+                .map((slide) => {
+                    const inner = buildWelcomeChartSlideHtml(slide);
+                    return `<div class="attendance-welcome-slide flex flex-col items-center justify-center py-0.5 box-border px-0.5" style="flex:0 0 ${wPct}%;width:${wPct}%">${inner}</div>`;
+                })
+                .join('');
+
+            dots.innerHTML = slides
+                .map(
+                    (_, i) =>
+                        `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
+                )
+                .join('');
+
+            track.style.transform = 'translateX(0)';
+            updateWelcomeKindSwitchUi();
+            bindAttendanceWelcomeChartsOnce();
+            bindAttendanceWelcomeChartNavOnce();
+            updateAttendanceWelcomeChartNavUi();
+            const carouselEl = document.getElementById('attendanceWelcomeChartCarousel');
+            if (carouselEl) scheduleLucideIcons(carouselEl);
         })
-        .join('');
-
-    dots.innerHTML = slides
-        .map(
-            (_, i) =>
-                `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
-        )
-        .join('');
-
-    wrap.classList.remove('hidden');
-    track.style.transform = 'translateX(0)';
-    updateWelcomeKindSwitchUi();
-    bindAttendanceWelcomeChartsOnce();
+        .catch((e) => {
+            console.warn('환영 차트 로드 실패:', e);
+            track.innerHTML = '';
+            dots.innerHTML = '';
+            updateAttendanceWelcomeChartNavUi();
+        });
 }
 
 /**
@@ -1044,10 +1120,13 @@ export function closeAttendancePopup() {
     const reportContent = document.getElementById('attendanceWelcomeReportContent');
     if (reportPanel) reportPanel.classList.add('hidden');
     if (reportContent) reportContent.innerHTML = '';
+    const chartCarousel = document.getElementById('attendanceWelcomeChartCarousel');
     const chartVp = document.getElementById('attendanceWelcomeChartViewport');
     const chartDots = document.getElementById('attendanceWelcomeChartDots');
+    if (chartCarousel) chartCarousel.classList.remove('hidden');
     if (chartVp) chartVp.classList.remove('hidden');
     if (chartDots) chartDots.classList.remove('hidden');
+    updateAttendanceWelcomeChartNavUi();
     updateWelcomeKindSwitchUi();
     document.body.classList.remove('attendance-popup-anim');
     unlockAttendancePopupScroll();
@@ -1263,7 +1342,7 @@ export function updateHeaderUI() {
                 const iconEl = document.getElementById('navProfileIcon');
                 if (iconEl) {
                     // 모든 스타일 및 클래스 초기화
-                    iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-300 flex-shrink-0 overflow-hidden border border-slate-400 text-slate-500';
+                    iconEl.className = 'nav-item__avatar';
                     iconEl.style.backgroundImage = '';
                     iconEl.style.backgroundSize = '';
                     iconEl.style.backgroundPosition = '';
@@ -1272,7 +1351,7 @@ export function updateHeaderUI() {
                     iconEl.style.height = '';
                     iconEl.style.objectFit = '';
                     iconEl.style.position = '';
-                    iconEl.innerHTML = '<i class="fa-solid fa-user text-slate-500 text-base"></i>';
+                    iconEl.innerHTML = '<i data-lucide="user" class="text-slate-500 text-sm"></i>';
                     
                     const currentProfileKey = `게스트||${isGuest}`;
                     if (lastHeaderUpdate !== currentProfileKey) {
@@ -1314,7 +1393,7 @@ export function updateHeaderUI() {
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
                 iconEl.style.position = 'relative';
-                iconEl.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300';
+                iconEl.className = 'nav-item__avatar';
                 
                 // 게스트 모드이면 '게' 오버레이 추가
                 if (isGuest) {
@@ -1322,7 +1401,12 @@ export function updateHeaderUI() {
                 }
             } else {
                 const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: p.photoUrl });
-                iconEl.className = `w-8 h-8 rounded-full flex items-center justify-center bg-slate-200 flex-shrink-0 overflow-hidden border border-slate-300 ${av.type === 'emoji' ? 'text-base' : 'text-sm font-bold text-slate-600'}`;
+                const isInitial = av.type === 'initial' || (isGuest && av.type !== 'emoji' && av.type !== 'photo');
+                iconEl.className = [
+                    'nav-item__avatar',
+                    av.type === 'emoji' ? '' : 'font-bold',
+                    isInitial || isGuest ? 'nav-item__avatar--initial' : ''
+                ].filter(Boolean).join(' ');
                 iconEl.textContent = isGuest ? '게' : av.value;
             }
         }

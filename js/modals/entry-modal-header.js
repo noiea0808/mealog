@@ -582,18 +582,6 @@ function shiftDatePickerMonth(delta) {
 
 
 
-/** @deprecated 슬롯 피커 제거 — no-op */
-
-export function openEntrySlotPicker() {}
-
-
-
-/** @deprecated 슬롯 피커 제거 — no-op */
-
-export function closeEntrySlotPicker() {}
-
-
-
 export function bindEntryModalHeaderOnce() {
 
     if (headerBound) return;

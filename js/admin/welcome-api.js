@@ -16,7 +16,7 @@ let lastWelcomeApiRows = [];
 let welcomeApiListCache = null;
 
 const WELCOME_BTN_SPINNER =
-    '<i class="fa-solid fa-spinner fa-spin shrink-0" aria-hidden="true"></i>';
+    '<i data-lucide="loader-circle" class="shrink-0 lucide-spin" aria-hidden="true"></i>';
 
 function setRowGeminiButtonsDisabled(disabled) {
     document.querySelectorAll('.welcome-api-gemini-one').forEach((b) => {

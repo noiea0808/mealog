@@ -14,18 +14,17 @@ import {
     cancelDeleteAccount
 } from '../auth.js';
 import { closeModal } from '../modals/entry-and-core.js';
+import { closeEntrySlotPicker } from '../modals/entry-slot-picker.js';
 import { closeDailyJournalModal } from '../modals/daily-journal.js';
 import { closeSettings } from '../modals/settings.js';
-import { closeDetailModal } from '../analytics/charts.js';
-import { closeCharacterSelectModal, closeShareInsightModal } from '../analytics/insight.js';
-import { closeShareBestModal, closeBestSharePeriodNotice } from '../analytics/best-share.js';
+import { closeDietReportModal } from '../modals/diet-report.js';
 import { closeSignupWizard } from '../signup-wizard.js';
 import { dismissDemoIntroModal } from '../demo-account.js';
 import { closePwaInstallGuideModal, closeDesktopShortcutGuideModal } from '../pwa-install.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
 import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 
-/** termsModal 제외 — 동적 생성 kakaoPlaceSearchModal 포함 */
+/** termsModal 제외 — 동적 생성 kakaoPlaceSearchModal·dailySharePreviewModal 등 포함 */
 const ESCAPE_OVERLAY_IDS = [
     'successPopup',
     'attendancePopup',
@@ -45,9 +44,14 @@ const ESCAPE_OVERLAY_IDS = [
     'passwordResetSuccessModal',
     'passwordResetConfirmModal',
     'kakaoPlaceSearchModal',
+    'characterSelectPopup',
     'characterSelectModal',
+    'dailySharePreviewModal',
+    'dailyCommentModal',
     'bestShareModal',
     'insightShareModal',
+    'dietReportModal',
+    'profileFieldEditModal',
     'accountAvatarModal',
     'photoEditModal',
     'momentImageLightbox',
@@ -56,6 +60,7 @@ const ESCAPE_OVERLAY_IDS = [
     'deleteAccountConfirmModal',
     'detailModal',
     'entryModal',
+    'entrySlotPickerModal',
     'dailyJournalModal'
 ];
 
@@ -124,7 +129,11 @@ function closeOverlayById(id) {
             if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);
             break;
         case 'bestSharePeriodNoticeModal':
-            closeBestSharePeriodNotice();
+            if (typeof window.closeBestSharePeriodNotice === 'function') {
+                void window.closeBestSharePeriodNotice();
+            } else {
+                document.getElementById('bestSharePeriodNoticeModal')?.classList.add('hidden');
+            }
             break;
         case 'passwordResetSuccessModal':
             closePasswordResetSuccessModal();
@@ -135,14 +144,51 @@ function closeOverlayById(id) {
         case 'kakaoPlaceSearchModal':
             document.getElementById('kakaoPlaceSearchModal')?.remove();
             break;
+        case 'characterSelectPopup':
         case 'characterSelectModal':
-            closeCharacterSelectModal();
+            if (typeof window.closeCharacterSelectModal === 'function') {
+                void window.closeCharacterSelectModal();
+            } else {
+                document.getElementById(id)?.classList.add('hidden');
+            }
+            break;
+        case 'dailySharePreviewModal':
+            if (typeof window.closeDailySharePreviewModal === 'function') {
+                window.closeDailySharePreviewModal();
+            } else {
+                document.getElementById('dailySharePreviewModal')?.remove();
+            }
+            break;
+        case 'dailyCommentModal':
+            if (typeof window.closeDailyCommentModal === 'function') {
+                window.closeDailyCommentModal();
+            } else {
+                document.getElementById('dailyCommentModal')?.remove();
+            }
             break;
         case 'bestShareModal':
-            closeShareBestModal();
+            if (typeof window.closeShareBestModal === 'function') {
+                void window.closeShareBestModal();
+            } else {
+                document.getElementById('bestShareModal')?.classList.add('hidden');
+            }
             break;
         case 'insightShareModal':
-            closeShareInsightModal();
+            if (typeof window.closeShareInsightModal === 'function') {
+                void window.closeShareInsightModal();
+            } else {
+                document.getElementById('insightShareModal')?.classList.add('hidden');
+            }
+            break;
+        case 'dietReportModal':
+            closeDietReportModal();
+            break;
+        case 'profileFieldEditModal':
+            if (typeof window.closeProfileFieldEditModal === 'function') {
+                window.closeProfileFieldEditModal();
+            } else {
+                document.getElementById('profileFieldEditModal')?.classList.add('hidden');
+            }
             break;
         case 'accountAvatarModal':
             if (typeof window.tryCloseAccountAvatarModalOrCancelInlineEdit === 'function') {
@@ -165,10 +211,17 @@ function closeOverlayById(id) {
             cancelDeleteAccount();
             break;
         case 'detailModal':
-            closeDetailModal();
+            if (typeof window.closeDetailModal === 'function') {
+                void window.closeDetailModal();
+            } else {
+                document.getElementById('detailModal')?.classList.add('hidden');
+            }
             break;
         case 'entryModal':
             closeModal();
+            break;
+        case 'entrySlotPickerModal':
+            closeEntrySlotPicker();
             break;
         case 'dailyJournalModal':
             closeDailyJournalModal();

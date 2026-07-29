@@ -454,6 +454,124 @@ export function base64ToBlob(base64DataUrl) {
 }
 
 /**
+ * 공유 캡처 clone 보정 — 이미지·아이콘·table 셀에 고정 px를 강제해
+ * 미리보기와 캡처 PNG의 정렬 오차를 줄인다.
+ * @param {Document|HTMLElement} root
+ */
+export function normalizeShareCaptureClone(root) {
+    const doc = root?.querySelector ? root : root?.documentElement ? root : null;
+    const scope = doc || root;
+    if (!scope?.querySelectorAll) return;
+
+    scope.querySelectorAll('.share-cap-thumb__img').forEach((img) => {
+        const isBest = !!img.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const w = Number.parseInt(img.getAttribute('width'), 10) || (isBest ? 87 : 92);
+        const h = Number.parseInt(img.getAttribute('height'), 10) || w;
+        img.setAttribute('width', String(w));
+        img.setAttribute('height', String(h));
+        img.style.width = `${w}px`;
+        img.style.height = `${h}px`;
+        img.style.maxWidth = `${w}px`;
+        img.style.maxHeight = `${h}px`;
+        img.style.objectFit = 'cover';
+        img.style.display = 'block';
+        img.style.border = '0';
+        img.style.verticalAlign = 'top';
+    });
+
+    scope.querySelectorAll('.share-cap-thumb').forEach((el) => {
+        const isBest = !!el.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const s = isBest ? 87 : 92;
+        el.style.width = `${s}px`;
+        el.style.height = `${s}px`;
+        el.style.overflow = 'hidden';
+        el.style.display = 'block';
+        el.style.position = 'relative';
+        if (!isBest) {
+            el.style.borderRadius = '13px 0 0 13px';
+            el.style.margin = '0';
+        } else {
+            el.style.borderRadius = '12px';
+        }
+    });
+    scope.querySelectorAll('.daily-share-capture__sheet .share-cap-cell--thumb').forEach((el) => {
+        el.style.padding = '0';
+        el.style.width = '92px';
+        el.style.height = '92px';
+        el.style.verticalAlign = 'top';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--thumb').forEach((el) => {
+        el.style.padding = '7px 0';
+        el.style.width = '99px';
+        el.style.verticalAlign = 'top';
+    });
+
+    scope.querySelectorAll('.share-cap-row__inner').forEach((el) => {
+        el.style.display = 'table';
+        el.style.width = '100%';
+        el.style.tableLayout = 'fixed';
+        el.style.borderCollapse = 'separate';
+        el.style.borderSpacing = '0';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-row__inner--best').forEach((el) => {
+        el.style.height = '101px';
+    });
+
+    // vertical-align: middle은 html2canvas가 다르게 계산해 텍스트가 아래로 잠김 → top + CSS padding-top 고정
+    scope.querySelectorAll('.share-cap-cell').forEach((el) => {
+        el.style.display = 'table-cell';
+        el.style.verticalAlign = 'top';
+    });
+    scope.querySelectorAll('.share-cap-cell--text').forEach((el) => {
+        el.style.overflow = 'visible';
+        el.style.paddingBottom = '12px';
+    });
+    scope.querySelectorAll('.best-share-capture__sheet .share-cap-cell--text').forEach((el) => {
+        el.style.paddingTop = '28px';
+        el.style.paddingBottom = '12px';
+    });
+    scope.querySelectorAll('.share-cap-meta').forEach((el) => {
+        el.style.lineHeight = '18px';
+        el.style.paddingBottom = '3px';
+    });
+    scope.querySelectorAll('.share-cap-title').forEach((el) => {
+        el.style.lineHeight = '22px';
+        el.style.paddingBottom = '5px';
+    });
+    scope.querySelectorAll('.share-cap-row').forEach((el) => {
+        el.style.overflow = 'visible';
+    });
+
+    // 헤더 타이틀(mealog 행)만 10px 위로 — 헤더 높이·다른 요소는 그대로
+    scope.querySelectorAll('.daily-share-capture__brand-row, .best-share-capture__brand-row').forEach((el) => {
+        el.style.position = 'relative';
+        el.style.top = '-10px';
+    });
+
+    scope.querySelectorAll('.share-cap-icon svg, .share-cap-icon i, .share-cap-icon .lucide').forEach((el) => {
+        el.style.width = '18px';
+        el.style.height = '18px';
+        el.setAttribute('width', '18');
+        el.setAttribute('height', '18');
+        if (el.tagName === 'svg' || el.tagName === 'SVG') {
+            el.style.display = 'inline-block';
+            el.style.verticalAlign = 'middle';
+        }
+    });
+    scope.querySelectorAll('.share-cap-thumb--empty svg, .share-cap-thumb--empty i, .share-cap-thumb--empty .lucide').forEach((el) => {
+        const isBest = !!el.closest('.best-share-capture__sheet, .share-cap-row--best');
+        const s = isBest ? 32 : 28;
+        el.style.width = `${s}px`;
+        el.style.height = `${s}px`;
+        el.setAttribute('width', String(s));
+        el.setAttribute('height', String(s));
+        el.style.display = 'inline-block';
+        el.style.verticalAlign = 'middle';
+        el.style.color = '#a8a29e';
+    });
+}
+
+/**
  * 유령 캡처(Ghost Capture): 화면 밖에 복제본을 만들어 부모 간섭(모달, transform, Flex/Grid) 없이 캡처
  * @param {HTMLElement} originalElement - 캡처할 원본 요소
  * @param {Object} options - html2canvas 옵션 + captureWidth
@@ -461,7 +579,7 @@ export function base64ToBlob(base64DataUrl) {
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function captureWithGhostStrategy(originalElement, options = {}) {
-    const { captureWidth = 420, ...html2canvasOptions } = options;
+    const { captureWidth = 420, onclone: userOnClone, ...html2canvasOptions } = options;
     const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
     if (!html2canvasFunc) throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
 
@@ -476,6 +594,7 @@ export async function captureWithGhostStrategy(originalElement, options = {}) {
     ghostNode.style.margin = '0';
 
     document.body.appendChild(ghostNode);
+    normalizeShareCaptureClone(ghostNode);
 
     try {
         await document.fonts.ready;
@@ -488,6 +607,10 @@ export async function captureWithGhostStrategy(originalElement, options = {}) {
             allowTaint: true,
             fontEmbedCSS: true,
             ...html2canvasOptions,
+            onclone: (clonedDoc, element) => {
+                normalizeShareCaptureClone(clonedDoc);
+                if (typeof userOnClone === 'function') userOnClone(clonedDoc, element);
+            },
         });
         return canvas;
     } finally {
@@ -1110,6 +1233,391 @@ export function setupBirthdateInputFormatting(el) {
     });
 }
 
+/**
+ * 주민번호 앞 6 + 성별코드 1자리 입력 포맷 (예: 801102-1)
+ * @param {string} raw
+ * @returns {string}
+ */
+export function formatRrnPartialInput(raw) {
+    const d = String(raw || '').replace(/\D/g, '').slice(0, 7);
+    if (d.length <= 6) return d;
+    return `${d.slice(0, 6)}-${d.slice(6)}`;
+}
+
+/**
+ * 성별코드(주민 뒷자리 첫 숫자) → 세기·성별
+ * 1·2(1900s), 3·4(2000s), 5·6(1900s 외국인), 7·8(2000s 외국인), 9·0(1800s)
+ * @param {string|number} sexDigit
+ * @returns {{ century: number, gender: 'male'|'female' }|null}
+ */
+export function decodeRrnSexDigit(sexDigit) {
+    const d = String(sexDigit ?? '').trim();
+    if (!/^[0-9]$/.test(d)) return null;
+    const n = Number(d);
+    const gender = n % 2 === 1 ? 'male' : 'female';
+    let century;
+    if (n === 9 || n === 0) century = 1800;
+    else if (n === 1 || n === 2 || n === 5 || n === 6) century = 1900;
+    else century = 2000; // 3,4,7,8
+    return { century, gender };
+}
+
+/**
+ * 저장된 생년월일·성별로 주민번호 앞자리 성별코드 추정 (국내 출생 1~4 기준)
+ * @param {string} birthdate YYYY-MM-DD
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string} '1'|'2'|… 또는 ''
+ */
+export function encodeRrnSexDigit(birthdate, gender) {
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid || (gender !== 'male' && gender !== 'female')) return '';
+    const y = Number(formatted.slice(0, 4));
+    const isMale = gender === 'male';
+    if (y >= 2000 && y <= 2099) return isMale ? '3' : '4';
+    if (y >= 1900 && y <= 1999) return isMale ? '1' : '2';
+    if (y >= 1800 && y <= 1899) return isMale ? '9' : '0';
+    return '';
+}
+
+/**
+ * 주민번호 부분 입력 파싱 → birthdate(YYYY-MM-DD) + gender
+ * @param {string} raw
+ * @returns {{ empty: boolean, valid: boolean, birthdate: string, gender: 'male'|'female'|null, sexDigit: string, front6: string, formatted: string, error?: string }}
+ */
+export function parseRrnPartial(raw) {
+    const digits = String(raw || '').replace(/\D/g, '').slice(0, 7);
+    const empty = {
+        empty: true,
+        valid: true,
+        birthdate: '',
+        gender: null,
+        sexDigit: '',
+        front6: '',
+        formatted: ''
+    };
+    if (!digits) return empty;
+    if (digits.length < 7) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: null,
+            sexDigit: digits.length === 7 ? digits[6] : '',
+            front6: digits.slice(0, 6),
+            formatted: formatRrnPartialInput(digits),
+            error: 'incomplete'
+        };
+    }
+    const front6 = digits.slice(0, 6);
+    const sexDigit = digits[6];
+    const decoded = decodeRrnSexDigit(sexDigit);
+    if (!decoded) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: null,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'sex'
+        };
+    }
+    const yy = Number(front6.slice(0, 2));
+    const mm = front6.slice(2, 4);
+    const dd = front6.slice(4, 6);
+    const year = decoded.century + yy;
+    const birthdateCandidate = `${year}-${mm}-${dd}`;
+    const { formatted, valid } = normalizeBirthdateRaw(birthdateCandidate);
+    if (!valid) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: decoded.gender,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'date'
+        };
+    }
+    const today = new Date();
+    const birth = new Date(Number(formatted.slice(0, 4)), Number(formatted.slice(5, 7)) - 1, Number(formatted.slice(8, 10)));
+    if (birth.getTime() > today.getTime()) {
+        return {
+            empty: false,
+            valid: false,
+            birthdate: '',
+            gender: decoded.gender,
+            sexDigit,
+            front6,
+            formatted: formatRrnPartialInput(digits),
+            error: 'future'
+        };
+    }
+    return {
+        empty: false,
+        valid: true,
+        birthdate: formatted,
+        gender: decoded.gender,
+        sexDigit,
+        front6,
+        formatted: formatRrnPartialInput(digits)
+    };
+}
+
+/**
+ * birthdate + gender → 입력란용 `YYMMDD-G`
+ * @param {string} birthdate
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string}
+ */
+export function birthdateGenderToRrnPartial(birthdate, gender) {
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid) return '';
+    const sex = encodeRrnSexDigit(formatted, gender);
+    if (!sex) return '';
+    const yymmdd = `${formatted.slice(2, 4)}${formatted.slice(5, 7)}${formatted.slice(8, 10)}`;
+    return `${yymmdd}-${sex}`;
+}
+
+/**
+ * 프로필 표시용 `YYMMDD-G******`
+ * @param {string} birthdate
+ * @param {'male'|'female'|string|null|undefined} gender
+ * @returns {string} 없으면 ''
+ */
+export function formatProfileRrnDisplay(birthdate, gender) {
+    const partial = birthdateGenderToRrnPartial(birthdate, gender);
+    if (partial) return `${partial}******`;
+    const { valid, formatted } = normalizeBirthdateRaw(birthdate || '');
+    if (!valid) return '';
+    const yymmdd = `${formatted.slice(2, 4)}${formatted.slice(5, 7)}${formatted.slice(8, 10)}`;
+    return `${yymmdd}-*******`;
+}
+
+/**
+ * 주민번호 부분 input 자동 포맷 (######-#) — 레거시 단일 입력용
+ * @param {HTMLInputElement} el
+ */
+export function setupRrnPartialInputFormatting(el) {
+    if (!el || el.dataset.rrnPartialFormatted === 'true') return;
+    el.dataset.rrnPartialFormatted = 'true';
+    el.addEventListener('input', function () {
+        this.value = formatRrnPartialInput(this.value);
+    });
+}
+
+const RRN_DIGIT_COUNT = 7;
+const RRN_DIGIT_LABELS = [
+    '생년 십의 자리',
+    '생년 일의 자리',
+    '월 십의 자리',
+    '월 일의 자리',
+    '일 십의 자리',
+    '일 일의 자리',
+    '성별 코드'
+];
+
+function syncRrnDigitHidden(root) {
+    const hiddenId = root?.dataset?.rrnHidden;
+    if (!hiddenId) return;
+    const hidden = document.getElementById(hiddenId);
+    if (hidden) hidden.value = getRrnDigitGroupValue(root);
+}
+
+/**
+ * 주민번호 앞 7자리 숫자 칸 그룹 값 (하이픈 포함 포맷 또는 빈 문자열)
+ * @param {string|HTMLElement} rootOrId
+ * @returns {string}
+ */
+export function getRrnDigitGroupValue(rootOrId) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return '';
+    const cells = root.querySelectorAll('.rrn-digit');
+    let digits = '';
+    cells.forEach((el) => {
+        digits += String(el.value || '').replace(/\D/g, '').slice(0, 1);
+    });
+    return formatRrnPartialInput(digits);
+}
+
+/**
+ * 주민번호 숫자 칸 그룹에 값 채우기
+ * @param {string|HTMLElement} rootOrId
+ * @param {string} raw
+ */
+export function setRrnDigitGroupValue(rootOrId, raw) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return;
+    const digits = String(raw || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
+    const cells = root.querySelectorAll('.rrn-digit');
+    cells.forEach((el, i) => {
+        el.value = digits[i] || '';
+    });
+    syncRrnDigitHidden(root);
+}
+
+/**
+ * 주민번호 숫자 칸 포커스 (첫 빈 칸, 없으면 마지막)
+ * @param {string|HTMLElement} rootOrId
+ */
+export function focusRrnDigitGroup(rootOrId) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return;
+    const cells = [...root.querySelectorAll('.rrn-digit')];
+    const empty = cells.find((el) => !el.value);
+    (empty || cells[0])?.focus();
+}
+
+/**
+ * 주민번호 앞 6 + 성별 1 숫자 칸 UI 마운트/바인딩
+ * @param {string|HTMLElement} rootOrId
+ * @param {{ hiddenId?: string }} [options]
+ */
+export function mountRrnDigitGroup(rootOrId, options = {}) {
+    const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
+    if (!root) return null;
+    if (options.hiddenId) root.dataset.rrnHidden = options.hiddenId;
+
+    if (!root.dataset.rrnDigitsBuilt) {
+        root.dataset.rrnDigitsBuilt = 'true';
+        root.classList.add('rrn-digits');
+        root.setAttribute('role', 'group');
+        if (!root.getAttribute('aria-label')) {
+            root.setAttribute('aria-label', '주민등록번호 앞 6자리와 뒤 첫 자리');
+        }
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < RRN_DIGIT_COUNT; i++) {
+            if (i === 6) {
+                const hyphen = document.createElement('span');
+                hyphen.className = 'rrn-digits__hyphen';
+                hyphen.setAttribute('aria-hidden', 'true');
+                hyphen.textContent = '-';
+                frag.appendChild(hyphen);
+            }
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'rrn-digit';
+            input.inputMode = 'numeric';
+            input.autocomplete = 'one-time-code';
+            input.maxLength = 1;
+            input.pattern = '[0-9]*';
+            input.setAttribute('data-rrn-i', String(i));
+            input.setAttribute('aria-label', RRN_DIGIT_LABELS[i] || `자리 ${i + 1}`);
+            input.setAttribute('enterkeyhint', i === RRN_DIGIT_COUNT - 1 ? 'done' : 'next');
+            frag.appendChild(input);
+        }
+        const mask = document.createElement('span');
+        mask.className = 'rrn-digits__mask';
+        mask.setAttribute('aria-hidden', 'true');
+        mask.textContent = '******';
+        frag.appendChild(mask);
+        root.textContent = '';
+        root.appendChild(frag);
+    }
+
+    if (root.dataset.rrnDigitsBound === 'true') {
+        syncRrnDigitHidden(root);
+        return root;
+    }
+    root.dataset.rrnDigitsBound = 'true';
+
+    const cells = () => [...root.querySelectorAll('.rrn-digit')];
+
+    const fillFromDigits = (digitStr, startIndex = 0) => {
+        const list = cells();
+        const digits = String(digitStr || '').replace(/\D/g, '');
+        let i = startIndex;
+        for (const ch of digits) {
+            if (i >= list.length) break;
+            list[i].value = ch;
+            i += 1;
+        }
+        syncRrnDigitHidden(root);
+        const next = list[Math.min(i, list.length - 1)];
+        next?.focus();
+        if (next && i < list.length) next.select();
+    };
+
+    root.addEventListener('input', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        const list = cells();
+        const idx = list.indexOf(t);
+        if (idx < 0) return;
+        const raw = t.value.replace(/\D/g, '');
+        if (raw.length > 1) {
+            fillFromDigits(raw, idx);
+            return;
+        }
+        t.value = raw.slice(0, 1);
+        syncRrnDigitHidden(root);
+        if (t.value && idx < list.length - 1) {
+            list[idx + 1].focus();
+            list[idx + 1].select();
+        }
+    });
+
+    root.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        const list = cells();
+        const idx = list.indexOf(t);
+        if (idx < 0) return;
+        if (e.key === 'Backspace') {
+            if (t.value) {
+                t.value = '';
+                syncRrnDigitHidden(root);
+                e.preventDefault();
+                return;
+            }
+            if (idx > 0) {
+                e.preventDefault();
+                list[idx - 1].focus();
+                list[idx - 1].value = '';
+                syncRrnDigitHidden(root);
+            }
+            return;
+        }
+        if (e.key === 'ArrowLeft' && idx > 0) {
+            e.preventDefault();
+            list[idx - 1].focus();
+            list[idx - 1].select();
+            return;
+        }
+        if (e.key === 'ArrowRight' && idx < list.length - 1) {
+            e.preventDefault();
+            list[idx + 1].focus();
+            list[idx + 1].select();
+            return;
+        }
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/\d/.test(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    root.addEventListener('paste', (e) => {
+        const t = e.target;
+        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
+        e.preventDefault();
+        const list = cells();
+        const idx = list.indexOf(t);
+        const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+        fillFromDigits(text, idx >= 0 ? idx : 0);
+    });
+
+    root.addEventListener('focusin', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLInputElement && t.classList.contains('rrn-digit')) {
+            requestAnimationFrame(() => t.select());
+        }
+    });
+
+    syncRrnDigitHidden(root);
+    return root;
+}
+
 // 로컬 타임존 기준으로 YYYY-MM-DD 형식 문자열 반환
 // toISOString()은 UTC로 변환되어 한국 시간(KST, UTC+9)에서 날짜가 하루 전으로 나올 수 있음
 export function toLocalDateString(date) {
@@ -1157,7 +1665,7 @@ export function addCalendarDaysSeoulYmd(ymd, deltaDays) {
  * 폴백 글꼴을 섞지 않음(Noto 등) — 한 줄 안에서 티 나는 이질감 방지.
  */
 async function drawShareLogoTagline(ctx, cx, centerY, maxW, splitLines) {
-    ctx.fillStyle = '#059669';
+    ctx.fillStyle = '#3cb889';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
     if ('fontKerning' in ctx) ctx.fontKerning = 'normal';
@@ -1277,7 +1785,7 @@ async function createMealogLogoImage() {
             ctx.clip();
             ctx.drawImage(imgEl, iconX, iconY, iconSize, iconSize);
             ctx.restore();
-            ctx.fillStyle = '#059669';
+            ctx.fillStyle = '#3cb889';
             ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
             ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
             await drawShareLogoTagline(ctx, cw / 2, iconY + iconSize + 200, maxTextW, TAGLINE_SPLIT);
@@ -1286,7 +1794,7 @@ async function createMealogLogoImage() {
         }
     }
     if (!imgEl) {
-        ctx.fillStyle = '#059669';
+        ctx.fillStyle = '#3cb889';
         ctx.font = 'bold 72px "Fredoka", sans-serif';
         ctx.fillText('mealog', cw / 2, ch / 2 - 60);
         await drawShareLogoTagline(ctx, cw / 2, ch / 2 + 72, maxTextW, TAGLINE_SPLIT);
@@ -1317,7 +1825,7 @@ async function addCaptionToImage(imageBlob, caption) {
                 canvas.height = ch + barH;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0);
-                ctx.fillStyle = '#047857';
+                ctx.fillStyle = '#2d9f74';
                 ctx.fillRect(0, ch, cw, barH);
                 ctx.fillStyle = '#ffffff';
                 ctx.textAlign = 'left';

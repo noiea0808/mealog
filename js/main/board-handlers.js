@@ -116,33 +116,6 @@ import {
     fetchUserProfiles
 } from '../render/index.js';
 import {
-    updateDashboard,
-    setDashboardMode,
-    updateCustomDates,
-    syncCustomDatePlaceholder,
-    updateSelectedMonth,
-    updateSelectedWeek,
-    changeWeek,
-    changeMonth,
-    navigatePeriod,
-    openDetailModal,
-    closeDetailModal,
-    setAnalysisType,
-    openShareBestModal,
-    closeShareBestModal,
-    shareBestToFeed,
-    closeBestSharePeriodNotice,
-    openCharacterSelectModal,
-    closeCharacterSelectModal,
-    selectInsightCharacter,
-    generateInsightComment,
-    openShareInsightModal,
-    closeShareInsightModal,
-    shareInsightToFeed,
-    openEditInsightShareModal
-} from '../analytics.js';
-import { openEditBestShareModal } from '../analytics/best-share.js';
-import {
     openModal,
     closeModal,
     saveEntry,
@@ -356,7 +329,7 @@ window.renderBoardWritePreviews = () => {
         wrap.innerHTML = `
             <img src="${url}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="url" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -373,7 +346,7 @@ window.renderBoardWritePreviews = () => {
         wrap.innerHTML = `
             <img src="${objectUrl}" alt="미리보기" class="w-full h-full object-cover">
             <button type="button" class="absolute top-0 right-0 w-6 h-6 flex items-center justify-center bg-red-500 text-white text-xs rounded-bl hover:bg-red-600" data-type="file" data-index="${i}" aria-label="삭제">
-                <i class="fa-solid fa-times"></i>
+                <i data-lucide="x"></i>
             </button>
         `;
         wrap.querySelector('button').addEventListener('click', () => {
@@ -633,19 +606,29 @@ window.toggleBoardLike = async (postId, isLike) => {
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-post-id="${postId}"]`);
     const firstBtn = likeBtns[0];
-    const likeIcon = firstBtn?.querySelector('.fa-heart');
     const likeCountEl = firstBtn?.querySelector('span.text-xs');
-    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    const wasLiked = firstBtn?.classList.contains('liked') || !!firstBtn?.querySelector('.fa-solid.fa-heart, svg[fill="currentColor"]');
     
     try {
         await boardOperations.toggleLike(postId, isLike);
         likeBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-heart');
-            const countEl = btn.querySelector('span.text-xs');
+            const nextLiked = !wasLiked;
+            btn.classList.toggle('liked', nextLiked);
+            const icon = btn.querySelector('[data-lucide="heart"], .lucide, .fa-heart, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
-                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+                icon.classList?.remove?.('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                if (icon.tagName === 'I' && icon.hasAttribute('data-lucide')) {
+                    icon.classList.toggle('text-red-500', nextLiked);
+                    icon.classList.toggle('text-slate-800', !nextLiked);
+                } else if (icon.tagName === 'svg') {
+                    icon.style.fill = nextLiked ? 'currentColor' : 'none';
+                    icon.classList.toggle('text-red-500', nextLiked);
+                    icon.classList.toggle('text-slate-800', !nextLiked);
+                } else {
+                    icon.classList.add(nextLiked ? 'fa-solid' : 'fa-regular', 'fa-heart', nextLiked ? 'text-red-500' : 'text-slate-800');
+                }
             }
+            const countEl = btn.querySelector('span.text-xs');
             if (countEl) {
                 const current = parseInt(countEl.textContent || '0', 10);
                 countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
@@ -673,10 +656,18 @@ window.toggleBoardBookmark = async (postId) => {
     try {
         const result = await boardOperations.toggleBookmark(postId);
         bookmarkBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-bookmark');
+            const on = !!result?.bookmarked;
+            btn.classList.toggle('bookmarked', on);
+            const icon = btn.querySelector('[data-lucide="bookmark"], .lucide, .fa-bookmark, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid');
-                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                icon.classList?.remove?.('fa-regular', 'fa-solid');
+                if (icon.tagName === 'svg') {
+                    icon.style.fill = on ? 'currentColor' : 'none';
+                } else if (icon.tagName === 'I' && icon.hasAttribute('data-lucide')) {
+                    /* fill via .bookmarked CSS */
+                } else {
+                    icon.classList.add(on ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                }
             }
         });
     } catch (e) {
@@ -695,59 +686,66 @@ window.showBoardPostOptions = (postId, isAuthor) => {
     menu.className = 'fixed inset-0 z-[450]';
     
     const bg = document.createElement('div');
-    bg.className = 'fixed inset-0 bg-black/40';
+    bg.className = 'fixed inset-0 mealog-action-dim';
     bg.onclick = () => menu.remove();
     
     const menuContainer = document.createElement('div');
-    menuContainer.className = 'fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white rounded-t-3xl p-4 pb-8 animate-fade-up z-[451]';
+    menuContainer.className = 'mealog-action-wrap animate-fade-up';
     
-    const handlebar = document.createElement('div');
-    handlebar.className = 'w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4';
-    
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'space-y-2';
+    const actionCard = document.createElement('div');
+    actionCard.className = 'mealog-action-card';
     
     if (isAuthor) {
         const editBtn = document.createElement('button');
-        editBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        editBtn.className = 'mealog-action-btn';
         editBtn.type = 'button';
         editBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.editBoardPost(postId), 100);
         });
-        editBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-pencil text-emerald-600 text-lg"></i><span class="font-bold text-slate-800">수정하기</span></div>';
-        buttonContainer.appendChild(editBtn);
+        editBtn.innerHTML = '<i data-lucide="pen"></i><span>수정하기</span>';
+        actionCard.appendChild(editBtn);
         
         const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        deleteBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         deleteBtn.type = 'button';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.deleteBoardPost(postId), 100);
         });
-        deleteBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-trash text-red-500 text-lg"></i><span class="font-bold text-red-500">삭제하기</span></div>';
-        buttonContainer.appendChild(deleteBtn);
+        deleteBtn.innerHTML = '<i data-lucide="trash-2"></i><span>삭제하기</span>';
+        actionCard.appendChild(deleteBtn);
     } else {
         const reportBtn = document.createElement('button');
-        reportBtn.className = 'w-full py-4 text-left px-4 bg-slate-50 rounded-xl active:bg-slate-100 transition-colors';
+        reportBtn.className = 'mealog-action-btn mealog-action-btn--danger';
         reportBtn.type = 'button';
         reportBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             menu.remove();
             setTimeout(() => window.showReportModal && window.showReportModal(`board_${postId}`), 100);
         });
-        reportBtn.innerHTML = '<div class="flex items-center gap-3"><i class="fa-solid fa-flag text-amber-600 text-lg"></i><span class="font-bold text-slate-800">신고하기</span></div>';
-        buttonContainer.appendChild(reportBtn);
+        reportBtn.innerHTML = '<i data-lucide="flag"></i><span>신고하기</span>';
+        actionCard.appendChild(reportBtn);
     }
     
     menuContainer.addEventListener('click', (e) => e.stopPropagation());
-    menuContainer.appendChild(handlebar);
-    menuContainer.appendChild(buttonContainer);
+    menuContainer.appendChild(actionCard);
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'mealog-action-cancel';
+    cancelBtn.textContent = '닫기';
+    cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.remove();
+    });
+    menuContainer.appendChild(cancelBtn);
     menu.appendChild(bg);
     menu.appendChild(menuContainer);
     document.body.appendChild(menu);
+    if (typeof window.scheduleLucideIcons === 'function') window.scheduleLucideIcons(menu);
+    else if (typeof window.lucide?.createIcons === 'function') window.lucide.createIcons({ root: menu });
 };
 
 window.toggleNoticeLike = async (noticeId, isLike = true) => {
@@ -763,18 +761,20 @@ window.toggleNoticeLike = async (noticeId, isLike = true) => {
     
     const likeBtns = document.querySelectorAll(`.board-post-like-btn[data-notice-id="${noticeId}"]`);
     const firstBtn = likeBtns[0];
-    const likeIcon = firstBtn?.querySelector('.fa-heart');
-    const wasLiked = likeIcon?.classList.contains('fa-solid');
+    const wasLiked = firstBtn?.classList.contains('liked');
     
     try {
         await noticeOperations.toggleNoticeLike(noticeId, isLike);
         likeBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-heart');
-            const countEl = btn.querySelector('span.text-xs');
+            const nextLiked = !wasLiked;
+            btn.classList.toggle('liked', nextLiked);
+            const icon = btn.querySelector('[data-lucide="heart"], .lucide, .fa-heart, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
-                icon.classList.add(wasLiked ? 'fa-regular' : 'fa-solid', 'fa-heart', wasLiked ? 'text-slate-800' : 'text-red-500');
+                if (typeof window.setLucideIconFilled === 'function') window.setLucideIconFilled(icon, nextLiked);
+                icon.classList?.remove?.('fa-regular', 'fa-solid', 'text-red-500', 'text-slate-800');
+                icon.classList?.add?.(nextLiked ? 'text-red-500' : 'text-slate-800');
             }
+            const countEl = btn.querySelector('span.text-xs');
             if (countEl) {
                 const current = parseInt(countEl.textContent || '0', 10);
                 countEl.textContent = wasLiked ? Math.max(0, current - 1) : current + 1;
@@ -802,10 +802,12 @@ window.toggleNoticeBookmark = async (noticeId) => {
     try {
         const result = await noticeOperations.toggleNoticeBookmark(noticeId);
         bookmarkBtns.forEach(btn => {
-            const icon = btn.querySelector('.fa-bookmark');
+            const on = !!result?.bookmarked;
+            btn.classList.toggle('bookmarked', on);
+            const icon = btn.querySelector('[data-lucide="bookmark"], .lucide, .fa-bookmark, svg');
             if (icon) {
-                icon.classList.remove('fa-regular', 'fa-solid');
-                icon.classList.add(result?.bookmarked ? 'fa-solid' : 'fa-regular', 'fa-bookmark');
+                if (typeof window.setLucideIconFilled === 'function') window.setLucideIconFilled(icon, on);
+                icon.classList?.remove?.('fa-regular', 'fa-solid');
             }
         });
     } catch (e) {
@@ -1025,22 +1027,22 @@ function buildBoardDetailCommentRowHtml({
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="board-detail-comment__time">${commentDateStr} ${commentTimeStr}</time>`
             : '';
     const actionsPart = showDelete
-        ? `<button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        ? `<button type="button" onclick="window.deleteBoardComment('${commentId}', '${postId}')" class="board-detail-comment__delete">삭제</button>`
         : '';
     const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'board');
     const bodyPart = body
-        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-board-comment-body="1">${escapeHtml(body)}</p>`
+        ? `<p class="board-detail-comment__body" data-board-comment-body="1">${escapeHtml(body)}</p>`
         : '';
-    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${commentId}">
-    <div class="flex items-start justify-between gap-2">
-      <div class="min-w-0 flex items-baseline gap-2">
-        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+    return `<div class="board-detail-comment" data-comment-id="${commentId}">
+    <div class="board-detail-comment__head">
+      <div class="board-detail-comment__meta">
+        <span class="board-detail-comment__nick">${escapeHtml(nickname)}</span>
         ${timePart}
       </div>
-      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
+      ${actionsPart || ''}
     </div>
     ${bodyPart}
     ${imagesPart}
@@ -1091,7 +1093,7 @@ window.addBoardComment = async (postId) => {
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
-        commentsListEl.classList.add('divide-y', 'divide-slate-100');
+        commentsListEl.classList.add('has-items');
         commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
         const last = commentsListEl.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1135,9 +1137,9 @@ window.addBoardComment = async (postId) => {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
             if (commentsListEl.children.length === 0) {
-                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.classList.remove('has-items');
                 commentsListEl.innerHTML =
-                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                    '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
             }
         }
         if (commentsCountEl) {
@@ -1167,24 +1169,24 @@ function buildNoticeDetailCommentRowHtml({
 }) {
     const timePart =
         commentDateStr && commentTimeStr
-            ? `<time class="text-xs text-slate-500 tabular-nums">${commentDateStr} ${commentTimeStr}</time>`
+            ? `<time class="board-detail-comment__time">${commentDateStr} ${commentTimeStr}</time>`
             : '';
     const safeNid = String(noticeId || '').replace(/'/g, "\\'");
     const safeCid = String(commentId || '').replace(/'/g, "\\'");
     const actionsPart = showDelete
-        ? `<button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="text-xs font-semibold text-slate-400 hover:text-red-500 transition-colors">삭제</button>`
+        ? `<button type="button" onclick="window.deleteNoticeComment('${safeCid}', '${safeNid}')" class="board-detail-comment__delete">삭제</button>`
         : '';
     const imagesPart = renderDetailCommentImagesHtml(imageUrls, 'notice');
     const bodyPart = body
-        ? `<p class="text-sm text-slate-700 leading-relaxed mt-1.5 whitespace-pre-wrap break-words" data-notice-comment-body="1">${escapeHtml(body)}</p>`
+        ? `<p class="board-detail-comment__body" data-notice-comment-body="1">${escapeHtml(body)}</p>`
         : '';
-    return `<div class="py-3 first:pt-0 last:pb-0 text-sm" data-comment-id="${String(commentId)}">
-    <div class="flex items-start justify-between gap-2">
-      <div class="min-w-0 flex items-baseline gap-2">
-        <span class="font-bold text-slate-800 shrink-0">${escapeHtml(nickname)}</span>
+    return `<div class="board-detail-comment" data-comment-id="${String(commentId)}">
+    <div class="board-detail-comment__head">
+      <div class="board-detail-comment__meta">
+        <span class="board-detail-comment__nick">${escapeHtml(nickname)}</span>
         ${timePart}
       </div>
-      ${(actionsPart) ? `<div class="flex items-center justify-end gap-3 shrink-0">${actionsPart}</div>` : ''}
+      ${actionsPart || ''}
     </div>
     ${bodyPart}
     ${imagesPart}
@@ -1235,7 +1237,7 @@ window.addNoticeComment = async (noticeId) => {
     });
     if (commentsListEl) {
         commentsListEl.querySelector('.board-detail-comments-empty')?.remove();
-        commentsListEl.classList.add('divide-y', 'divide-slate-100');
+        commentsListEl.classList.add('has-items');
         commentsListEl.insertAdjacentHTML('beforeend', rowHtml);
         const last = commentsListEl.lastElementChild;
         if (last) last.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1281,9 +1283,9 @@ window.addNoticeComment = async (noticeId) => {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
             if (commentsListEl.children.length === 0) {
-                commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                commentsListEl.classList.remove('has-items');
                 commentsListEl.innerHTML =
-                    '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                    '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
             }
         }
         if (commentsCountEl) {
@@ -1325,7 +1327,7 @@ function openDetailCommentLightbox(src) {
             <div class="detail-comment-lightbox__scrim" data-dclb-close="1" aria-label="닫기"></div>
             <div class="detail-comment-lightbox__stage" role="dialog" aria-modal="true" aria-label="이미지 확대">
                 <button type="button" class="detail-comment-lightbox__close" data-dclb-close="1" aria-label="닫기">
-                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                    <i data-lucide="x" aria-hidden="true"></i>
                 </button>
                 <img class="detail-comment-lightbox__img" alt="" />
             </div>
@@ -1476,9 +1478,9 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
         row.remove();
         if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
         if (commentsListEl && commentsListEl.children.length === 0) {
-            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.classList.remove('has-items');
             commentsListEl.innerHTML =
-                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
         }
     }
 
@@ -1493,7 +1495,7 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
             if (commentsListEl && commentsCountEl) {
                 commentsCountEl.textContent = String(comments.length);
                 if (comments.length > 0) {
-                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.add('has-items');
                     commentsListEl.innerHTML = comments
                         .map((comment) => {
                             let commentDate;
@@ -1530,9 +1532,9 @@ window.deleteNoticeComment = async (commentId, noticeId) => {
                         })
                         .join('');
                 } else {
-                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.remove('has-items');
                     commentsListEl.innerHTML =
-                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                        '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
                 }
             }
         } catch (err) {
@@ -1608,9 +1610,9 @@ window.deleteBoardComment = async (commentId, postId) => {
         row.remove();
         if (commentsCountEl) commentsCountEl.textContent = String(Math.max(0, prevCount - 1));
         if (commentsListEl && commentsListEl.children.length === 0) {
-            commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+            commentsListEl.classList.remove('has-items');
             commentsListEl.innerHTML =
-                '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
         }
     }
     
@@ -1625,7 +1627,7 @@ window.deleteBoardComment = async (commentId, postId) => {
             if (commentsListEl && commentsCountEl) {
                 commentsCountEl.textContent = comments.length;
                 if (comments.length > 0) {
-                    commentsListEl.classList.add('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.add('has-items');
                     commentsListEl.innerHTML = comments.map(comment => {
                         let commentDate;
                         if (!comment.timestamp) commentDate = new Date();
@@ -1659,9 +1661,9 @@ window.deleteBoardComment = async (commentId, postId) => {
                         });
                     }).join('');
                 } else {
-                    commentsListEl.classList.remove('divide-y', 'divide-slate-100');
+                    commentsListEl.classList.remove('has-items');
                     commentsListEl.innerHTML =
-                        '<p class="board-detail-comments-empty py-6 text-center text-sm text-slate-400">아직 댓글이 없습니다</p>';
+                        '<p class="board-detail-comments-empty">아직 댓글이 없습니다</p>';
                 }
             }
         } catch (err) {
@@ -1735,7 +1737,7 @@ window.syncBoardInlineComposerAvatar = () => {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         el.className =
             'board-inline-composer-avatar w-9 h-9 rounded-full flex-shrink-0 bg-slate-200 flex items-center justify-center text-slate-500 overflow-hidden border border-slate-200';
-        el.innerHTML = '<i class="fa-solid fa-user text-xs"></i>';
+        el.innerHTML = '<i data-lucide="user" class="text-xs"></i>';
         return;
     }
     const display = getDisplayProfile(window.currentUser.uid, window.userSettings?.profile);
@@ -1787,7 +1789,7 @@ function renderFeedComposerPhotoPreview() {
     prev.innerHTML = `
         <div class="relative w-12 h-12 rounded-md overflow-hidden border border-slate-200 shrink-0">
             <img src="${window.feedComposerPhotoObjectUrl}" alt="" class="w-full h-full object-cover">
-            <button type="button" class="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-black/55 text-white text-[10px] rounded-bl" aria-label="사진 제거"><i class="fa-solid fa-times"></i></button>
+            <button type="button" class="absolute top-0 right-0 w-5 h-5 flex items-center justify-center bg-black/55 text-white text-[10px] rounded-bl" aria-label="사진 제거"><i data-lucide="x"></i></button>
         </div>`;
     prev.querySelector('button')?.addEventListener('click', () => {
         clearFeedComposerPhoto();
@@ -1874,10 +1876,10 @@ async function runBoardInlineFeedSubmit() {
     syncBoardInlineComposerUi();
 
     const submitBtn = boardInlineSubmit;
-    const sendIconHtml = '<i class="fa-solid fa-arrow-up text-sm"></i>';
+    const sendIconHtml = '<i data-lucide="arrow-up" class="text-sm"></i>';
     const prevHtml = submitBtn.innerHTML;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-sm"></i>';
+    submitBtn.innerHTML = '<i data-lucide="loader-circle" class="text-sm lucide-spin"></i>';
 
     let imageUrls = [];
     if (hasPhoto) {

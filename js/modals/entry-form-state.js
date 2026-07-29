@@ -175,10 +175,14 @@ export function applyEntryModeLabels(mode) {
 export function setEntryExtrasVisibility(mode) {
     const isSnack = mode === 'snack';
     const d = ENTRY_DOM;
-    document.getElementById(d.mealPhoto)?.classList.toggle('hidden', isSnack);
+    const mealPhoto = document.getElementById(d.mealPhoto);
+    const snackPhoto = document.getElementById(d.snackPhoto);
+    mealPhoto?.classList.toggle('hidden', isSnack);
     document.getElementById(d.mealExtras)?.classList.toggle('hidden', isSnack);
-    document.getElementById(d.snackPhoto)?.classList.toggle('hidden', !isSnack);
+    snackPhoto?.classList.toggle('hidden', !isSnack);
     document.getElementById(d.snackExtras)?.classList.toggle('hidden', !isSnack);
     document.getElementById('entryCommentSectionMeal')?.classList.toggle('hidden', isSnack);
     document.getElementById('entryCommentSectionSnack')?.classList.toggle('hidden', !isSnack);
+    /* 비활성 사진 영역의 has-photos가 display:flex로 .hidden을 덮지 않도록 정리 */
+    (isSnack ? mealPhoto : snackPhoto)?.classList.remove('entry-photo-section--has-photos');
 }

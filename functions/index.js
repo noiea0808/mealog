@@ -5,7 +5,7 @@ const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
-const { onDocumentCreated, onDocumentWritten } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
@@ -421,7 +421,10 @@ async function sendPushToUser(userId, payload, options = {}) {
       title: payload.title,
       body: payload.body || '',
       channelId: 'fcm_fallback_notification_channel',
-      sound: 'default'
+      sound: 'default',
+      // 상태바용 흰 실루엣 drawable (런처 컬러 아이콘 대신)
+      icon: 'ic_stat_mealog',
+      color: '#3CB889'
     };
     const androidNotification = {
       ...androidNotificationBase,
@@ -1762,6 +1765,53 @@ async function bumpMomentPostV2CommentCount(postId, delta) {
   await ref.update({ commentCount: FieldValue.increment(delta) });
 }
 
+async function bumpMomentPostV2LikeCount(postId, delta) {
+  if (!postId || !delta) return;
+  const docId = momentPostV2.sanitizeMomentPostDocId(String(postId));
+  const ref = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists || snap.data().schemaVersion !== 2) return;
+  const current = Number(snap.data().likeCount) || 0;
+  if (delta < 0 && current <= 0) return;
+  await ref.update({ likeCount: FieldValue.increment(delta) });
+}
+
+/** postLikes 생성 → 모먼트 v2 likeCount +1 */
+exports.onPostLikeCreated = onDocumentCreated(
+  {
+    document: `artifacts/${APP_ID}/postLikes/{likeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const data = event.data?.data();
+    const postId = data?.postId ? String(data.postId) : '';
+    if (!postId) return;
+    try {
+      await bumpMomentPostV2LikeCount(postId, 1);
+    } catch (e) {
+      logger.warn('onPostLikeCreated: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
+  }
+);
+
+/** postLikes 삭제 → 모먼트 v2 likeCount -1 */
+exports.onPostLikeDeleted = onDocumentDeleted(
+  {
+    document: `artifacts/${APP_ID}/postLikes/{likeId}`,
+    region: REGION
+  },
+  async (event) => {
+    const data = event.data?.data();
+    const postId = data?.postId ? String(data.postId) : '';
+    if (!postId) return;
+    try {
+      await bumpMomentPostV2LikeCount(postId, -1);
+    } catch (e) {
+      logger.warn('onPostLikeDeleted: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
+  }
+);
+
 /**
  * 공유 사진 추가 (Callable)
  * photosToShare가 빈 배열이면 공유 해제로 처리
@@ -3091,8 +3141,7 @@ exports.adminBackfillUserRootCreatedAtFromAuthRunAll = onCall(
 );
 
 /**
- * main 끼니(아침/점심/저녁) 중복 문서 정리 - 동일 (date, slotId)당 1개만 유지
- * 삭제 시 onMealWritten 트리거로 stats 자동 보정
+ * @deprecated 본식 슬롯 다건 허용 — 중복 삭제하지 않음 (하위 호환용 no-op)
  */
 exports.removeDuplicateMeals = onCall(
   { region: REGION },
@@ -3101,44 +3150,7 @@ exports.removeDuplicateMeals = onCall(
     if (!auth || !auth.uid) {
       throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
     }
-    const userId = auth.uid;
-    const mealsRef = db.collection('artifacts').doc(APP_ID)
-      .collection('users').doc(userId)
-      .collection('meals');
-
-    const snapshot = await mealsRef.get();
-    const byKey = {};
-    snapshot.docs.forEach((doc) => {
-      const d = doc.data();
-      if (!d?.date || !d?.slotId || !isMainSlot(d.slotId)) return;
-      const key = `${d.date}|${d.slotId}`;
-      if (!byKey[key]) byKey[key] = [];
-      byKey[key].push({ ref: doc.ref, id: doc.id });
-    });
-
-    const toDelete = [];
-    Object.values(byKey).forEach((arr) => {
-      if (arr.length <= 1) return;
-      arr.sort((a, b) => a.id.localeCompare(b.id));
-      for (let i = 1; i < arr.length; i++) toDelete.push(arr[i].ref);
-    });
-
-    const BATCH_SIZE = 500;
-    let deletedCount = 0;
-    for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
-      const chunk = toDelete.slice(i, i + BATCH_SIZE);
-      const batch = db.batch();
-      chunk.forEach((ref) => batch.delete(ref));
-      if (chunk.length > 0) {
-        await batch.commit();
-        deletedCount += chunk.length;
-      }
-    }
-
-    if (deletedCount > 0) {
-      logger.info('removeDuplicateMeals: completed', { userId, deletedCount });
-    }
-    return { success: true, deletedCount };
+    return { success: true, deletedCount: 0 };
   })
 );
 

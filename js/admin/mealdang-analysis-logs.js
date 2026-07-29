@@ -47,7 +47,7 @@ function renderDetailEmpty() {
     if (!el) return;
     el.innerHTML = `
         <div class="h-full min-h-[280px] flex flex-col items-center justify-center text-slate-400 border border-dashed border-slate-200 rounded-xl bg-slate-50/50 p-6">
-            <i class="fa-solid fa-robot text-3xl mb-3 opacity-40" aria-hidden="true"></i>
+            <i data-lucide="bot" class="text-3xl mb-3 opacity-40" aria-hidden="true"></i>
             <p class="text-sm font-bold text-slate-500">목록에서 항목을 선택하세요</p>
             <p class="text-xs mt-1 text-center">밀당 COMMENT(Gemini) 분석 요청·응답 상세가 표시됩니다.</p>
         </div>`;
@@ -102,7 +102,7 @@ function paintListTable(rows) {
     if (!rows.length) {
         container.innerHTML = `
             <div class="text-center py-12 text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                <i class="fa-solid fa-inbox text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                <i data-lucide="inbox" class="text-2xl mb-2 opacity-40" aria-hidden="true"></i>
                 <p class="text-sm font-bold">기록이 없습니다</p>
                 <p class="text-xs mt-1">Functions 배포 후 사용자가 밀당 COMMENT를 실행하면 여기에 쌓입니다.</p>
             </div>`;
@@ -158,7 +158,7 @@ export async function renderMealdangAnalysisLogs({ append = false } = {}) {
     if (!listEl) return;
 
     if (!append) {
-        listEl.innerHTML = '<div class="text-center py-10 text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl mb-2"></i><p class="text-sm">불러오는 중…</p></div>';
+        listEl.innerHTML = '<div class="text-center py-10 text-slate-400"><i data-lucide="loader-circle" class="text-xl mb-2 lucide-spin"></i><p class="text-sm">불러오는 중…</p></div>';
     }
 
     try {

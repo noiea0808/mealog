@@ -13,7 +13,7 @@ import {
     syncBoardFeedComposerVisibility,
     syncBoardSearchPanelVisibility
 } from '../render/index.js';
-import { updateDashboard } from '../analytics.js';
+import { ensureAnalytics } from '../analytics/ensure.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
 import {
@@ -33,11 +33,23 @@ const HEADER_TITLE_BY_TAB = {
     timeline: 'mealog',
     gallery: 'moment',
     board: 'lounge',
-    settings: 'profile'
+    settings: 'my'
 };
 
 let _tabSwitchNavDotsTimer = null;
 const TAB_SWITCH_NAV_DOTS_DEBOUNCE_MS = 380;
+/** 네비 active/뷰 토글이 먼저 그려진 뒤 무거운 탭 작업을 실행 */
+function runAfterNavPaint(fn) {
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            try {
+                fn();
+            } catch (e) {
+                console.error('[탭전환] 지연 작업 오류:', e);
+            }
+        });
+    });
+}
 function scheduleNavDotsAfterTabSwitch(prevTab, tab) {
     if (prevTab === tab) return;
     clearTimeout(_tabSwitchNavDotsTimer);
@@ -61,6 +73,7 @@ export function registerMainTabSwitch() {
             console.log('[탭전환] 시작:', { 이전탭: appState.currentTab, 새탭: tab });
             const prevTab = appState.currentTab;
             appState.currentTab = tab;
+            document.body.dataset.mainTab = tab;
             if (prevTab !== tab) {
                 window._contentPopupDismissedVisit = new Set();
             }
@@ -103,6 +116,10 @@ export function registerMainTabSwitch() {
                 if (mainHeader) mainHeader.classList.remove('hidden');
             }
             updateHeaderTitle(tab);
+            const mealdangTabs = document.getElementById('mealdangHeaderTabs');
+            if (mealdangTabs) {
+                mealdangTabs.classList.toggle('hidden', tab !== 'dashboard');
+            }
             document.getElementById('timelineView').classList.toggle('hidden', tab !== 'timeline');
             document.getElementById('galleryView').classList.toggle('hidden', tab !== 'gallery');
             document.getElementById('dashboardView').classList.toggle('hidden', tab !== 'dashboard');
@@ -128,11 +145,13 @@ export function registerMainTabSwitch() {
 
                 if (typeof window.updateGalleryTraceFilterBarUI === 'function') window.updateGalleryTraceFilterBarUI();
                 const category = window.currentBoardCategory || 'all';
-                renderBoard(category);
-                if (typeof window.__resetBoardPanelScrollNav === 'function') window.__resetBoardPanelScrollNav();
-                setTimeout(() => {
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }, 100);
+                runAfterNavPaint(() => {
+                    renderBoard(category);
+                    if (typeof window.__resetBoardPanelScrollNav === 'function') window.__resetBoardPanelScrollNav();
+                    setTimeout(() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }, 100);
+                });
             } else {
                 if (boardListView) boardListView.classList.add('hidden');
                 if (boardDetailView) boardDetailView.classList.add('hidden');
@@ -143,28 +162,21 @@ export function registerMainTabSwitch() {
             }
 
             document.getElementById('trackerSection').classList.toggle('hidden', tab !== 'timeline');
-            document.getElementById('nav-timeline').className = tab === 'timeline'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-gallery').className = tab === 'gallery'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-dashboard').className = tab === 'dashboard'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            document.getElementById('nav-board').className = tab === 'board'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1';
-            const navSettings = document.getElementById('nav-settings');
-            if (navSettings) navSettings.className = tab === 'settings'
-                ? 'text-slate-600 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden'
-                : 'text-slate-300 flex justify-center items-center py-1 flex-1 rounded-full overflow-hidden';
+            const setNavActive = (id, active) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.classList.toggle('active', !!active);
+            };
+            // 밀로그(중앙)가 홈피드 — timeline 활성
+            setNavActive('nav-timeline', tab === 'timeline');
+            setNavActive('nav-dashboard', tab === 'dashboard');
+            setNavActive('nav-gallery', tab === 'gallery');
+            setNavActive('nav-board', tab === 'board');
+            setNavActive('nav-settings', tab === 'settings');
 
             if (tab === 'gallery' && appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-                const navGallery = document.getElementById('nav-gallery');
-                const navBoard = document.getElementById('nav-board');
-                if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-                if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+                setNavActive('nav-gallery', false);
+                setNavActive('nav-board', true);
             }
 
             const searchBtn = document.getElementById('searchTriggerBtn');
@@ -254,63 +266,96 @@ export function registerMainTabSwitch() {
                     }, PREFETCH_DELAY_MS);
                 }
             }
+            if (prevTab === 'timeline' && tab !== 'timeline') {
+                window.__pendingDailySwipeHint = false;
+                window.__dailySwipeHintPlayed = false;
+                window.__dailySwipeHintScheduled = false;
+                if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
+            }
             if (tab === 'dashboard') {
-                updateDashboard();
+                runAfterNavPaint(() => {
+                    void ensureAnalytics()
+                        .then((mod) => {
+                            if (typeof mod.setMealdangView === 'function') {
+                                mod.setMealdangView(appState.mealdangView || 'analysis');
+                            }
+                            mod.updateDashboard();
+                        })
+                        .catch((e) => console.error('[탭전환] 밀당 모듈 로드 실패:', e));
+                });
             } else if (tab === 'settings') {
                 // 설정 탭 전환 시 폼 채우기는 nav-settings 클릭 시 openSettings()에서 수행
             } else if (tab === 'gallery') {
                 document.body.classList.remove('bottom-nav-scroll-hidden');
                 document.getElementById('mainAppHeader')?.classList.remove('header-scroll-hidden');
                 document.getElementById('trackerSection')?.classList.remove('tracker-header-hidden');
+                /* 모먼트 헤더: 검색+알림만 — 인라인 흔적 필터 패널은 숨김 */
+                const galleryTracePanel = document.getElementById('galleryTraceFilterPanel');
+                if (galleryTracePanel) {
+                    galleryTracePanel.classList.add('hidden');
+                    galleryTracePanel.classList.remove('expanded');
+                }
                 // 모먼트 네비 점: 새 글을 스크롤해 볼 필요 없이, 탭(아이콘)으로 들어오면 제거
                 markMomentFeedNavSeen();
-                if (!appState.galleryFilterUserId) {
-                    const CACHE_VALID_MS = 30000;
-                    const hasValidCache = (window.sharedPhotosFeed?.length ?? 0) > 0 &&
-                        (Date.now() - (appState.sharedPhotosFeedPrefetchedAt || 0)) < CACHE_VALID_MS;
-                    if (hasValidCache) {
-                        renderGallery();
+                runAfterNavPaint(() => {
+                    if (appState.currentTab !== 'gallery') return;
+                    if (!appState.galleryFilterUserId) {
+                        const CACHE_VALID_MS = 30000;
+                        const hasValidCache = (window.sharedPhotosFeed?.length ?? 0) > 0 &&
+                            (Date.now() - (appState.sharedPhotosFeedPrefetchedAt || 0)) < CACHE_VALID_MS;
+                        if (hasValidCache) {
+                            renderGallery();
+                        } else {
+                            window.sharedPhotosFeed = [];
+                            appState.sharedPhotosFeedLastDoc = null;
+                            appState.sharedPhotosFeedHasMore = false;
+                            appState.galleryFeedNetworkError = false;
+                            showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
+                            // 반쯤 끊긴 채널에서 무한 대기하지 않도록 타임아웃·재시도가 있는 reliable 버전 사용
+                            loadSharedPhotosPageReliable(10, null, { maxAttempts: 2, timeoutMs: 8000 })
+                                .then(({ docs, lastDoc, hasMore }) => {
+                                    appState.galleryFeedNetworkError = false;
+                                    window.sharedPhotosFeed = docs;
+                                    appState.sharedPhotosFeedLastDoc = lastDoc;
+                                    appState.sharedPhotosFeedHasMore = hasMore;
+                                    appState.sharedPhotosFeedPrefetchedAt = Date.now();
+                                    renderGallery();
+                                })
+                                .catch(e => {
+                                    console.error('공유 사진 로드 실패:', e);
+                                    appState.galleryFeedNetworkError = true;
+                                    renderGallery();
+                                })
+                                .finally(() => {
+                                    hideLoading();
+                                });
+                        }
+                        syncOrphanedSharesToMoment().catch(() => {});
                     } else {
-                        window.sharedPhotosFeed = [];
-                        appState.sharedPhotosFeedLastDoc = null;
-                        appState.sharedPhotosFeedHasMore = false;
-                        appState.galleryFeedNetworkError = false;
-                        showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
-                        // 반쯤 끊긴 채널에서 무한 대기하지 않도록 타임아웃·재시도가 있는 reliable 버전 사용
-                        loadSharedPhotosPageReliable(10, null, { maxAttempts: 2, timeoutMs: 8000 })
-                            .then(({ docs, lastDoc, hasMore }) => {
-                                appState.galleryFeedNetworkError = false;
-                                window.sharedPhotosFeed = docs;
-                                appState.sharedPhotosFeedLastDoc = lastDoc;
-                                appState.sharedPhotosFeedHasMore = hasMore;
-                                appState.sharedPhotosFeedPrefetchedAt = Date.now();
-                                renderGallery();
-                            })
-                            .catch(e => {
-                                console.error('공유 사진 로드 실패:', e);
-                                appState.galleryFeedNetworkError = true;
-                                renderGallery();
-                            })
-                            .finally(() => {
-                                hideLoading();
-                            });
-                    }
-                    syncOrphanedSharesToMoment().catch(() => {});
-                } else {
-                    renderGallery();
-                }
-                setTimeout(() => {
-                    if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
-                        const navGallery = document.getElementById('nav-gallery');
-                        const navBoard = document.getElementById('nav-board');
-                        if (navGallery) navGallery.className = 'text-slate-300 flex justify-center items-center py-1';
-                        if (navBoard) navBoard.className = 'text-slate-600 flex justify-center items-center py-1';
+                        renderGallery();
                     }
                     setTimeout(() => {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }, 100);
-                }, 200);
+                        if (appState.galleryFilterUserId && appState.galleryFilterTab === 'board') {
+                            document.getElementById('nav-gallery')?.classList.remove('active');
+                            document.getElementById('nav-board')?.classList.add('active');
+                        }
+                        setTimeout(() => {
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }, 100);
+                    }, 200);
+                });
             } else if (tab === 'timeline') {
+                // 다른 탭→밀로그 진입 시에만 힌트 리셋. logTabVisit(로그인 직후 중복 호출)로
+                // played를 다시 false로 풀면 스와이프 힌트가 두 번 재생된다.
+                const enteringFromOtherTab = prevTab !== 'timeline';
+                const shouldPlaySwipeHint =
+                    enteringFromOtherTab ||
+                    (opts.logTabVisit === true && !window.__dailySwipeHintPlayed);
+                if (enteringFromOtherTab) {
+                    window.__dailySwipeHintPlayed = false;
+                    window.__dailySwipeHintScheduled = false;
+                }
+                window.__pendingDailySwipeHint = !!shouldPlaySwipeHint;
                 if (appState.viewMode === 'list') {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
@@ -319,9 +364,19 @@ export function registerMainTabSwitch() {
                 window.loadedDates = [];
                 window.hasScrolledToToday = false;
                 const c = document.getElementById('timelineContainer');
-                if (c) c.innerHTML = "";
+                if (c) c.innerHTML = '';
+                if (typeof window.cancelDailySwipeHint === 'function') window.cancelDailySwipeHint();
                 renderTimeline();
                 renderMiniCalendar();
+                // 기록 데이터가 이미 있으면 즉시 재생. 아직이면 initial 재렌더 경로에서 재생.
+                if (
+                    shouldPlaySwipeHint &&
+                    !window.__dailySwipeHintPlayed &&
+                    window.loadedMealsDateRange &&
+                    typeof window.scheduleDailySwipeHint === 'function'
+                ) {
+                    window.scheduleDailySwipeHint(0);
+                }
                 loadMyShares().then((myShares) => {
                     window.sharedPhotos = myShares;
                     if (appState.currentTab !== 'timeline') return;
@@ -335,18 +390,6 @@ export function registerMainTabSwitch() {
                     window.sharedPhotos = [];
                     if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
                 });
-            } else if (tab !== 'board') {
-                if (appState.viewMode === 'list') {
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    appState.pageDate = today;
-                }
-                window.loadedDates = [];
-                window.hasScrolledToToday = false;
-                const c = document.getElementById('timelineContainer');
-                if (c) c.innerHTML = "";
-                renderTimeline();
-                renderMiniCalendar();
             }
             if (typeof window.checkAndShowContentPopup === 'function') {
                 setTimeout(() => window.checkAndShowContentPopup(tab), 200);

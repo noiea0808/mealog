@@ -2,13 +2,7 @@
 import {
     SLOTS,
     SLOT_STYLES,
-    SATIETY_DATA,
-    MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY,
-    MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR,
-    MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT,
-    MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS
+    SATIETY_DATA
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
@@ -18,7 +12,10 @@ import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { getWeekRange, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
+import { buildBestShareCaptureHtml } from '../render/best-share-card.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
+import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -28,7 +25,36 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-const BEST_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
+function bestThumbEmptyHtml() {
+    return `<div class="dashboard-best-thumb dashboard-best-thumb--empty" aria-hidden="true"><i data-lucide="utensils"></i></div>`;
+}
+
+/** 썸네일/원본 로드 실패 시 utensils 플레이스홀더로 교체 */
+function ensureBestThumbErrorHandler() {
+    if (typeof window === 'undefined' || window.__bestThumbOnError) return;
+    window.__bestThumbOnError = function (img) {
+        try {
+            if (!img) return;
+            if (img.dataset.imgFellBack !== '1') {
+                const orig = (img.getAttribute('data-original-src') || '').trim();
+                if (orig && img.src !== orig) {
+                    img.dataset.imgFellBack = '1';
+                    img.src = orig;
+                    return;
+                }
+            }
+            const wrap = document.createElement('div');
+            wrap.innerHTML = bestThumbEmptyHtml();
+            const empty = wrap.firstElementChild;
+            if (empty) {
+                img.replaceWith(empty);
+                scheduleLucideIcons(empty);
+            }
+        } catch {
+            /* no-op */
+        }
+    };
+}
 
 function getRecentWeekRangeForBest() {
     const today = new Date();
@@ -46,56 +72,34 @@ function getRecentWeekRangeForBest() {
 /** @param {'default' | 'unshare' | 'edit'} variant */
 function applyBestShareSubmitVariant(variant) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    label.innerHTML = '';
-    label.classList.remove('hidden');
-    sub.classList.remove('hidden');
-    if (variant === 'unshare') {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-rose-50 hover:bg-rose-100/90 active:bg-rose-100`;
-        label.textContent = '공유 취소';
-        label.className = 'text-sm sm:text-[15px] font-bold text-rose-700';
-        sub.textContent = '피드에서 내리기';
-        sub.className = 'text-[11px] sm:text-xs text-rose-600/90 font-medium';
-    } else if (variant === 'edit') {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
-        label.textContent = '수정 완료';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-        sub.textContent = '코멘트 반영';
-        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-    } else {
-        btn.className = `${BEST_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
-        label.textContent = '공유하기';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-        sub.textContent = '피드에 공유';
-        sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
-    }
+    if (!btn) return;
+    const labelText =
+        variant === 'unshare' ? '공유 취소' : variant === 'edit' ? '수정 완료' : '공유하기';
+    btn.className = variant === 'unshare' ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary';
+    btn.disabled = false;
+    btn.innerHTML =
+        `<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="bestShareSubmitLabel">${labelText}</span></span>`;
+    scheduleLucideIcons(btn);
 }
 
 function setBestShareSubmitLoading(isLoading) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    if (isLoading) {
-        sub.classList.add('hidden');
-        label.className = 'text-sm sm:text-[15px] font-bold text-white flex items-center justify-center gap-2';
-        label.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>공유 중...</span>';
-    }
+    if (!btn || !isLoading) return;
+    btn.disabled = true;
+    btn.className = 'mealog-btn mealog-btn-primary';
+    btn.innerHTML =
+        '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>공유 중...</span></span>';
+    scheduleLucideIcons(btn);
 }
 
 function setBestShareSubmitEditing(isEditing) {
     const btn = document.getElementById('bestShareSubmitBtn');
-    const label = document.getElementById('bestShareSubmitLabel');
-    const sub = document.getElementById('bestShareSubmitSub');
-    if (!btn || !label || !sub) return;
-    if (isEditing) {
-        sub.classList.add('hidden');
-        label.innerHTML = '';
-        label.textContent = '수정 중...';
-        label.className = 'text-sm sm:text-[15px] font-bold text-white';
-    }
+    if (!btn || !isEditing) return;
+    btn.disabled = true;
+    btn.className = 'mealog-btn mealog-btn-primary';
+    btn.innerHTML =
+        '<span class="mealog-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>수정 중...</span></span>';
+    scheduleLucideIcons(btn);
 }
 
 function getRangeBestMeals(start, end, minRating = 4) {
@@ -314,48 +318,34 @@ export function renderBestMeals() {
     
     const state = appState;
     let meals = [];
-    let periodLabel = '';
     let periodKey = '';
-    
-    // periodLabel 업데이트
-    const periodLabelEl = document.getElementById('bestPeriodLabel');
     
     if (state.dashboardMode === '7d') {
         const { start, end } = getRecentWeekRangeForBest();
         meals = getRangeBestMeals(start, end, 4);
         periodKey = getBestPeriodKey();
-        periodLabel = `${formatDateWithDay(start)} ~ ${formatDateWithDay(end)} (최근1주)`;
     } else if (state.dashboardMode === 'week') {
         // 주간 모드: 해당 기간의 만족도 4~5개 리스트
         const { start, end } = getWeekRange(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek);
         meals = getWeekBestMeals(state.selectedYear, state.selectedMonthForWeek, state.selectedWeek, 4);
         const { year, month, week } = getWeekInfoFromDate(start);
         periodKey = `week_${year}_${month}_${week}`;
-        periodLabel = getWeekDisplayLabel(start, end);
     } else if (state.dashboardMode === 'month') {
         // 월간 모드: 각 주간에서 1~5위
         const [y, m] = state.selectedMonth.split('-').map(Number);
         meals = getMonthBestMeals(y, m);
         periodKey = `month_${state.selectedMonth}`;
-        periodLabel = `${y}년 ${m}월`;
     } else if (state.dashboardMode === 'year') {
         // 연간 모드: 각 월별 1~5위
         const year = state.selectedYearForYear || new Date().getFullYear();
         meals = getYearBestMeals(year);
         periodKey = `year_${year}`;
-        periodLabel = `${year}년`;
     } else if (state.dashboardMode === 'custom') {
         // 직접설정 → 연간 베스트 표시 (연간과 동일한 형식: 해당 연도만 표시)
         const startDate = state.customStartDate || new Date();
         const year = startDate.getFullYear();
         meals = getYearBestMeals(year);
         periodKey = `year_${year}_custom`;
-        periodLabel = `${year}년 (연간 BEST를 표시합니다)`;
-    }
-    
-    // periodLabel 표시 (BEST 기간 옆 기간 텍스트)
-    if (periodLabelEl) {
-        periodLabelEl.textContent = periodLabel;
     }
     
     // 공유 버튼 표시: 주간/월간에서 베스트 메뉴가 1개 이상이면 항상 표시 (기간 충족 여부는 클릭 시 안내)
@@ -405,14 +395,19 @@ export function renderBestMeals() {
             
             const isShared = !!bestShare;
             
-            // 버튼 텍스트 및 스타일 업데이트 (베스트는 초록색 배경)
+            // 밀로그 타임라인과 동일 — 공유됨은 check + 솔리드 green
             if (isShared) {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유됨`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 bg-slate-800 text-white rounded-lg border-2 border-slate-600';
+                shareBtn.innerHTML = '<i data-lucide="check" class="text-[10px]" aria-hidden="true"></i>공유됨';
+                shareBtn.className = 'date-section-header__share-btn date-section-header__share-btn--shared';
+                shareBtn.title = '공유됨 — 탭하면 공유 모달';
+                shareBtn.setAttribute('aria-pressed', 'true');
             } else {
-                shareBtn.innerHTML = `<i class="fa-solid fa-share text-[12px] mr-1"></i>공유하기`;
-                shareBtn.className = 'text-xs font-bold px-3 py-1 active:opacity-70 transition-colors ml-2 text-slate-700 rounded-lg';
+                shareBtn.innerHTML = '<i data-lucide="send" class="text-[10px]" aria-hidden="true"></i>공유하기';
+                shareBtn.className = 'date-section-header__share-btn date-section-header__share-btn--default';
+                shareBtn.title = '모먼트에 공유하기';
+                shareBtn.setAttribute('aria-pressed', 'false');
             }
+            scheduleLucideIcons(shareBtn);
         } else {
             shareBtn.classList.add('hidden');
         }
@@ -492,125 +487,57 @@ export function renderBestMeals() {
         const slotLabel = slot ? slot.label : '알 수 없음';
         const isSnack = slot && slot.type === 'snack';
         const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
-        const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
-        const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-        const dateStr = `${date.getMonth() + 1}.${date.getDate()}(${getDayName(date)})`;
+        const originalUrl = getOriginalImageUrl(meal, 0, 'best.list') || '';
+        const thumbUrl = getThumbImageUrl(meal, 0, 'best.list') || originalUrl;
         const rating = meal.rating ? parseInt(meal.rating) : 0;
-        const rank = index + 1;
-        
-        // 1~3위는 금은동 색상, 4위 이상은 기본 색상
-        let rankDisplay = rank.toString();
-        let rankBgClass = 'bg-emerald-100';
-        let rankTextClass = 'text-emerald-700';
-        if (rank === 1) {
-            // 1위: 금색
-            rankBgClass = 'bg-yellow-500';
-            rankTextClass = 'text-white';
-        } else if (rank === 2) {
-            // 2위: 은색
-            rankBgClass = 'bg-gray-400';
-            rankTextClass = 'text-white';
-        } else if (rank === 3) {
-            // 3위: 동색
-            rankBgClass = 'bg-amber-600';
-            rankTextClass = 'text-white';
-        } else {
-            // 4위 이상: 기본 색상
-            rankBgClass = 'bg-emerald-100';
-            rankTextClass = 'text-emerald-700';
-        }
-        
-        // 타임라인과 동일한 정보 구성
         const place = meal.place || '';
         const menuDetail = meal.menuDetail || '';
         const safePlace = escapeHtml(place);
         const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
         
-        // 태그 정보 수집
-        const tags = [];
-        if (meal.mealType && meal.mealType !== 'Skip') tags.push(meal.mealType);
-        if (meal.withWhomDetail) tags.push(meal.withWhomDetail);
-        else if (meal.withWhom && meal.withWhom !== '혼자') tags.push(meal.withWhom);
-        if (meal.satiety) {
-            const sData = SATIETY_DATA.find(d => d.val === meal.satiety);
-            if (sData) tags.push(sData.label);
-        }
-        
-        // 날짜 포맷 (타임라인과 동일하게)
-        const dateObj = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-        const formattedDate = dateObj.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
-        
-        // 슬롯 스타일 가져오기
-        const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
-        const iconBoxClass = `bg-slate-100 border-slate-200 ${specificStyle.iconText}`;
-        const safeSlotLabel = escapeHtml(slotLabel);
-        
-        // 아이콘 HTML 생성
-        let iconHtml = '';
-        if (photoUrl) {
-            iconHtml = `<img src="${photoUrl}" class="w-full h-full object-cover">`;
-        } else if (meal.mealType === 'Skip') {
-            iconHtml = `<i class="fa-solid fa-ban text-2xl text-slate-600"></i>`;
-        } else {
-            iconHtml = `<i class="fa-solid fa-utensils text-2xl text-slate-400"></i>`;
-        }
-        
-        // 태그 HTML 생성
-        let tagsHtml = '';
-        if (tags.length > 0) {
-            tagsHtml = `<div class="mt-1 flex flex-nowrap gap-1 pr-2 overflow-x-auto scrollbar-hide">${tags.map(t => 
-                `<span class="text-xs text-slate-700 bg-slate-50 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">#${t}</span>`
-            ).join('')}</div>`;
-        }
-        
-        // 안전한 문자열 이스케이프
         const safeDate = (meal.date || '').replace(/'/g, "\\'");
         const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
+        const slotLine = place ? `${escapeHtml(slotLabel)} · ${safePlace}` : escapeHtml(slotLabel);
+        const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
         
+        let thumbHtml = '';
+        if (thumbUrl) {
+            ensureBestThumbErrorHandler();
+            const dataOrig = (originalUrl && originalUrl !== thumbUrl)
+                ? ` data-original-src="${escapeHtml(originalUrl)}"`
+                : '';
+            thumbHtml = `<img class="dashboard-best-thumb" alt="" src="${escapeHtml(thumbUrl)}"${dataOrig} loading="lazy" onerror="window.__bestThumbOnError&&window.__bestThumbOnError(this)" />`;
+        } else {
+            thumbHtml = bestThumbEmptyHtml();
+        }
+
+        const rank = index + 1;
         const showOrderControls = displayMeals.length > 1;
         const orderControlsHtml = showOrderControls ? `
-                    <div class="absolute top-1/2 right-2 -translate-y-1/2 flex flex-col gap-0.5 z-10">
-                        <button type="button" class="best-order-btn best-order-up-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-up text-xs"></i>
+                    <div class="dashboard-best-order flex flex-col gap-0.5 ml-1">
+                        <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
+                            <i data-lucide="chevron-up" class="text-xs"></i>
                         </button>
-                        <button type="button" class="best-order-btn best-order-down-btn w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:bg-slate-100 rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
-                            <i class="fa-solid fa-chevron-down text-xs"></i>
+                        <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
+                            <i data-lucide="chevron-down" class="text-xs"></i>
                         </button>
                     </div>` : '';
 
         return `
-            <div class="best-meal-item card mb-0 border-t border-b border-slate-200 cursor-pointer active:scale-[0.98] transition-all bg-white min-h-[140px]" 
-                 data-meal-id="${safeMealId}" 
+            <div class="dashboard-best-item best-meal-item cursor-pointer"
+                 data-meal-id="${safeMealId}"
                  data-rating="${rating}"
                  data-date="${safeDate}"
                  data-slot-id="${safeSlotId}">
-                <div class="flex relative">
-                    <div class="w-[140px] min-h-[140px] ${iconBoxClass} flex-shrink-0 flex items-center justify-center overflow-hidden border-r relative">
-                        <div class="absolute top-1 left-1 w-6 h-6 rounded-full ${rankBgClass} ${rankTextClass} flex items-center justify-center text-xs font-bold z-10">
-                            ${rankDisplay}
-                        </div>
-                        ${iconHtml}
-                    </div>
-                        <div class="flex-1 min-w-0 flex flex-col p-4 pr-12 relative">
-                        <div class="absolute top-2 right-2 flex items-center gap-2 z-10">
-                            ${meal.sharedPhotos && Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0 ? `<span class="text-xs text-emerald-600" title="게시됨"><i class="fa-solid fa-share"></i></span>` : ''}
-                            <span class="text-xs font-bold text-yellow-600 bg-yellow-50 border border-yellow-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                                <span class="text-[13px]">⭐</span>
-                                <span class="text-[12px] font-black">${rating || '-'}</span>
-                            </span>
-                        </div>
-                        <div class="mb-1 pr-16">
-                            <span class="text-xs text-slate-400">${formattedDate}</span>
-                        </div>
-                        <div class="flex items-center gap-2 mb-1.5 pr-16">
-                            <span class="text-sm font-bold ${specificStyle.iconText}">${safeSlotLabel}</span>
-                            ${place ? `<span class="text-xs font-bold text-slate-400">@ ${safePlace}</span>` : ''}
-                        </div>
-                        <h4 class="text-sm font-bold truncate text-slate-800 mb-1 pr-2">${safeMenuDetail}</h4>
-                        ${meal.comment ? `<p class="text-xs text-slate-400 mb-1.5 line-clamp-1 pr-2">"${escapeHtml(meal.comment)}"</p>` : ''}
-                        ${tagsHtml}
-                    </div>
+                <span class="dashboard-best-rank" aria-label="${rank}위">${rank}</span>
+                ${thumbHtml}
+                <div class="dashboard-best-meta min-w-0">
+                    <div class="slot">${slotLine}</div>
+                    <div class="name truncate">${safeMenuDetail}</div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <div class="dashboard-best-stars" aria-label="${rating}점">${stars}</div>
                     ${orderControlsHtml}
                 </div>
             </div>
@@ -618,6 +545,7 @@ export function renderBestMeals() {
     }).join('');
     
     setupBestOrderControls();
+    scheduleLucideIcons(container);
 }
 
 async function updateBestOrder() {
@@ -639,32 +567,13 @@ async function updateBestOrder() {
     }
     window.userSettings.bestMeals[periodKey] = order;
     
-    // 순위 번호 업데이트 (동그라미 내부)
+    // 순위 번호 갱신 (순서 변경 직후)
     items.forEach((item, index) => {
-        const newRank = index + 1;
-        // 순위 동그라미 찾기 (absolute top-1 left-1을 가진 요소)
-        const rankCircle = Array.from(item.querySelectorAll('*')).find(el => 
-            el.classList.contains('absolute') && 
-            el.classList.contains('top-1') && 
-            el.classList.contains('left-1') &&
-            el.classList.contains('rounded-full')
-        );
-        if (rankCircle) {
-            // 1~3위는 금은동 색상, 4위 이상은 기본 색상
-            rankCircle.textContent = newRank;
-            if (newRank === 1) {
-                // 1위: 금색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-yellow-500 text-white';
-            } else if (newRank === 2) {
-                // 2위: 은색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-gray-400 text-white';
-            } else if (newRank === 3) {
-                // 3위: 동색
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-amber-600 text-white';
-            } else {
-                // 4위 이상: 기본 색상
-                rankCircle.className = 'absolute top-1 left-1 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold z-10 bg-emerald-100 text-emerald-700';
-            }
+        const rankEl = item.querySelector('.dashboard-best-rank');
+        if (rankEl) {
+            const newRank = index + 1;
+            rankEl.textContent = String(newRank);
+            rankEl.setAttribute('aria-label', `${newRank}위`);
         }
     });
     
@@ -844,102 +753,24 @@ export async function openShareBestModal() {
         return;
     }
     
-    // 사용자 닉네임 및 아이콘 가져오기
     const userNickname = window.userSettings?.profile?.nickname || '익명';
-    const userIcon = window.userSettings?.profile?.icon || '🐻';
-    
-    // 스크린샷용 HTML 생성 (하루 기록과 동일 레이아웃, mealog만 노란색)
-    const borderLightGray = '#e2e8f0';
-    const borderOuterGray = '#cbd5e1';
-    const mealogYellow = '#fcd34d';
-    const photoAreaEmptyBg = '#e2e8f0';
-    const screenshotHtml = `
-        <div id="bestScreenshotContainer" style="width: 420px; max-width: 420px; margin: 0 auto; border: 1px solid ${borderOuterGray}; border-radius: 20px; overflow: hidden; font-family: Pretendard, sans-serif; background: #f1f5f9;">
-            <!-- 헤더 (패딩 6/16/16으로 텍스트 10px 상향) -->
-            <div style="background: #ffffff; padding: 6px 16px 16px; border-bottom: 1px solid ${borderLightGray};">
-                <div style="display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px;">
-                    <span style="font-size: 28.8px; font-weight: 600; color: #eab308; font-family: 'Fredoka', sans-serif; letter-spacing: -0.5px; text-transform: lowercase;">mealog</span>
-                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_DATE_FONT_SIZE}; font-weight: normal; color: #64748b; flex-shrink: 0; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${periodText}</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <span style="font-size: 16px;">🏆</span>
-                    <span style="font-size: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_SIZE}; font-weight: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_FONT_WEIGHT}; color: ${MEALOG_SHARE_CAPTURE_HEADER_TITLE_COLOR}; font-family: ${MEALOG_SHARE_CAPTURE_HEADER_FONT_FAMILY}; line-height: 1.35;">${escapeHtml(userNickname)}의 ${periodType} Best</span>
-                </div>
-            </div>
-            <div style="padding: 0 0 12px 0; background: #f1f5f9; border-bottom-left-radius: 19px; border-bottom-right-radius: 19px;">
-            ${top3Meals.map((meal, index) => {
-                const slot = SLOTS.find(s => s.id === meal.slotId);
-                const slotLabel = slot ? slot.label : '알 수 없음';
-                const isSnack = slot && slot.type === 'snack';
-                const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
-                const photoUrl = meal.photos && Array.isArray(meal.photos) && meal.photos.length > 0 ? meal.photos[0] : null;
-                const date = meal.date ? new Date(meal.date + 'T00:00:00') : new Date();
-                const formattedDate = date.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
-                const rating = meal.rating ? parseInt(meal.rating) : 0;
-                const place = meal.place || '';
-                const menuDetail = meal.menuDetail || '';
-                const comment = meal.comment || '';
-                
-                const specificStyle = SLOT_STYLES[meal.slotId] || SLOT_STYLES['default'];
-                const slotColor = specificStyle.iconText === 'text-amber-600' ? '#d97706' : 
-                                 specificStyle.iconText === 'text-emerald-600' ? '#059669' : 
-                                 specificStyle.iconText === 'text-sky-600' ? '#0284c7' : '#64748b';
-                
-                let rankBg = '#10b981';
-                let rankText = '#ffffff';
-                if (index === 0) {
-                    rankBg = '#eab308';
-                } else if (index === 1) {
-                    rankBg = '#9ca3af';
-                } else if (index === 2) {
-                    rankBg = '#d97706';
-                }
-                const safePlace = escapeHtml(place);
-                const safeMenuDetail = escapeHtml(menuDetail || displayTitle);
-                const safeComment = escapeHtml(comment);
-                const safeSlotLabel = escapeHtml(slotLabel);
-                const photoBoxBg = photoUrl ? '' : `background: ${photoAreaEmptyBg};`;
-                const photoBoxBorder = 'border-right: 1px solid #e2e8f0;';
-                return `
-                    <div style="display: flex; margin: 4px 8px; margin-bottom: 7px; border: 1px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: rgba(255, 255, 255, 0.9); box-shadow: 0 1px 3px rgba(0,0,0,0.05); min-height: 130px;">
-                        <div style="width: 130px; min-height: 130px; ${photoBoxBg} ${photoBoxBorder} display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; border-radius: 12px 0 0 12px; overflow: hidden;">
-                            ${photoUrl ? `<img src="${photoUrl}" style="width: 100%; height: 100%; min-height: 130px; object-fit: cover;">` : `<i class="fa-solid fa-utensils" style="font-size: 24px; color: #94a3b8;"></i>`}
-                            <div style="position: absolute; top: 10px; left: 10px; width: 28px; height: 28px; border-radius: 50%; background: ${rankBg}; color: ${rankText}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.15); padding: 0; margin: 0;">
-                                <span style="display: inline-block; line-height: 1; vertical-align: middle; margin: 0; padding: 0;">${index + 1}</span>
-                            </div>
-                        </div>
-                        <div style="flex: 1; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; justify-content: flex-start; min-width: 0; min-height: 130px;">
-                            <div style="font-size: 11px; color: #64748b; margin-bottom: 6px; line-height: 1.4;">
-                                <span style="font-weight: 700; color: ${slotColor};">${safeSlotLabel}</span>
-                                ${place ? ` <span style="color: #94a3b8; font-weight: 700;">@ ${safePlace}</span>` : ''}
-                                <span style="color: #cbd5e1; margin: 0 4px;">·</span>
-                                <span style="color: #94a3b8;">${formattedDate}</span>
-                            </div>
-                            <div style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; line-height: 1.3; word-break: break-word;">
-                                ${safeMenuDetail}
-                            </div>
-                            ${comment ? `<div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: italic; padding-bottom: 2px;">
-                                "${safeComment}"
-                            </div>` : ''}
-                            <div style="display: flex; align-items: center; justify-content: flex-start; gap: 4px; margin-top: auto; padding-top: 4px;">
-                                <span style="font-size: 10px; color: #ca8a04; font-weight: 900; background: #fefce8; padding: 3px 8px; border-radius: 999px; border: 1px solid #fde047; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-height: 20px; white-space: nowrap; box-sizing: border-box;">
-                                    <span style="font-size: 11px; line-height: 1;">⭐</span>
-                                    <span style="font-size: 11px; font-weight: 900; line-height: 1;">${rating}</span>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('')}
-            </div>
-        </div>
-    `;
-    
-    // 미리보기 영역에 HTML 표시
-    preview.innerHTML = screenshotHtml;
-    
-    // 모달 열기
-    lockBodyScroll();
+
+    // 일간 공유와 동일 Soft Mint 캡처 (좌측 썸네일·헤더 A·코멘트 제외)
+    if (document.fonts?.check && !document.fonts.check('1em Fredoka')) {
+        const link = document.createElement('link');
+        link.href = 'https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap';
+        link.rel = 'stylesheet';
+        document.head.appendChild(link);
+    }
+
+    preview.innerHTML = buildBestShareCaptureHtml(top3Meals, {
+        userNickname,
+        periodType,
+        periodText
+    });
+    scheduleLucideIcons(preview);
+
+    lockBodyScroll('bestShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -968,7 +799,7 @@ export function closeShareBestModal() {
     const modal = document.getElementById('bestShareModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('bestShareModal');
     }
 }
 
@@ -978,7 +809,7 @@ export function showBestSharePeriodNotice(message) {
     const messageEl = document.getElementById('bestSharePeriodNoticeMessage');
     if (modal && messageEl) {
         messageEl.textContent = message || '해당 기간이 더 경과된 후에 베스트 공유가 가능해요.';
-        lockBodyScroll();
+        lockBodyScroll('bestSharePeriodNotice');
         modal.classList.remove('hidden');
     }
 }
@@ -988,7 +819,7 @@ export function closeBestSharePeriodNotice() {
     const modal = document.getElementById('bestSharePeriodNoticeModal');
     if (modal) {
         modal.classList.add('hidden');
-        unlockBodyScroll();
+        unlockBodyScroll('bestSharePeriodNotice');
     }
 }
 
@@ -1036,7 +867,7 @@ export async function openEditBestShareModal(photoUrl) {
     preview.innerHTML = existingImageHtml;
     
     // 모달 열기
-    lockBodyScroll();
+    lockBodyScroll('bestShareModal');
     modal.classList.remove('hidden');
     
     // Comment 초기화 또는 기존 코멘트 표시
@@ -1213,13 +1044,16 @@ export async function shareBestToFeed() {
 
     try {
         const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
-        const targetElement = screenshotContainer || preview;
+        const targetElement =
+            screenshotContainer?.querySelector('.best-share-capture__sheet') ||
+            screenshotContainer ||
+            preview;
 
         await document.fonts.ready;
         let fontCSS = '';
         try {
             const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
-            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+            fontCSS = await fredokaRes.text();
         } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
 
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처

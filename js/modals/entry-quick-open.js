@@ -1,11 +1,9 @@
 /**
- * 타임라인 퀵입력 — 오늘 날짜·시간대별 기본 슬롯으로 입력 시트 열기
+ * 타임라인 퀵입력 — 슬롯 피커를 연 뒤 본식·간식·하루 소감 선택
  */
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
-import { openModal } from './entry-and-core.js';
-
-const QUICK_MAIN_SLOT_IDS = ['morning', 'lunch', 'dinner'];
+import { openEntrySlotPicker } from './entry-slot-picker.js';
 
 export function localTodayIso() {
     const t = new Date();
@@ -23,13 +21,15 @@ export function getTimeBasedMainSlotId(refDate = new Date()) {
     return 'dinner';
 }
 
+const QUICK_MAIN_SLOT_IDS = ['morning', 'lunch', 'dinner'];
+
 function isSlotOccupiedOnDate(dateIso, slotId, history) {
     return history.some((m) => m?.date === dateIso && m?.slotId === slotId);
 }
 
 /**
  * 시간대 기본 슬롯부터 순서대로 비어 있는 첫 본식 슬롯.
- * 모두 차 있으면 시간대 기본 슬롯(동일 슬롯 추가 기록).
+ * (슬롯 피커 하이라이트용 — 피커가 최종 선택)
  * @param {string} dateIso
  * @param {Date} [refDate]
  */
@@ -48,6 +48,7 @@ export function resolveQuickEntrySlotId(dateIso, refDate = new Date()) {
 export function syncEntryQuickInputFabVisibility() {
     const fab = document.getElementById('entryQuickInputFab');
     if (!fab) return;
+    // 하단 중앙은 밀로그 탭 — 기록 추가는 플로팅 + FAB(슬롯 피커)
     const show =
         appState.currentTab === 'timeline' &&
         window.currentUser &&
@@ -56,13 +57,17 @@ export function syncEntryQuickInputFabVisibility() {
     fab.setAttribute('aria-hidden', show ? 'false' : 'true');
 }
 
-const FAB_SPIN_CLASS = 'entry-quick-input-fab--spin';
-const FAB_SPIN_MS = 380;
+/** 밀로그·라운지 CTA FAB 공통 — 배경 고정, + 아이콘만 360° */
+export const CTA_FAB_SPIN_CLASS = 'cta-fab--spin';
+export const CTA_FAB_SPIN_MS = 280;
 
-let quickFabOpening = false;
-
-/** @param {HTMLElement} fab */
-function playEntryQuickInputFabSpin(fab) {
+/**
+ * @param {HTMLElement} fab
+ * @param {{ spinClass?: string, durationMs?: number }} [opts]
+ */
+export function playFabIconSpin(fab, opts = {}) {
+    const spinClass = opts.spinClass || CTA_FAB_SPIN_CLASS;
+    const durationMs = opts.durationMs ?? CTA_FAB_SPIN_MS;
     return new Promise((resolve) => {
         let settled = false;
         const done = () => {
@@ -72,16 +77,27 @@ function playEntryQuickInputFabSpin(fab) {
             resolve();
         };
         const onEnd = (e) => {
-            if (e.target !== fab || e.animationName !== 'entry-quick-input-fab-spin') return;
+            if (e.animationName !== 'cta-fab-icon-spin') return;
+            if (!fab.contains(e.target)) return;
             done();
         };
-        fab.classList.add(FAB_SPIN_CLASS);
+        fab.classList.add(spinClass);
         fab.addEventListener('animationend', onEnd);
-        window.setTimeout(done, FAB_SPIN_MS + 80);
+        window.setTimeout(done, durationMs + 80);
     });
 }
 
-/** FAB 탭 — 180° 회전 피드백 후 기록 시트 */
+let quickFabOpening = false;
+
+function resolvePickerDateIso() {
+    const d = appState.pageDate instanceof Date ? appState.pageDate : new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/** FAB 탭 — 회전 피드백 후 슬롯 피커 */
 export async function triggerQuickEntryFromFab(fab) {
     if (quickFabOpening || !fab || fab.classList.contains('hidden')) return;
     if (!window.currentUser || window.currentUser.isAnonymous) {
@@ -90,12 +106,10 @@ export async function triggerQuickEntryFromFab(fab) {
     }
     quickFabOpening = true;
     try {
-        await playEntryQuickInputFabSpin(fab);
-        const date = localTodayIso();
-        const slotId = resolveQuickEntrySlotId(date);
-        await openModal(date, slotId, null);
+        await playFabIconSpin(fab);
+        await openEntrySlotPicker(resolvePickerDateIso());
     } finally {
-        fab.classList.remove(FAB_SPIN_CLASS);
+        fab.classList.remove(CTA_FAB_SPIN_CLASS);
         quickFabOpening = false;
     }
 }
@@ -105,7 +119,5 @@ export async function openQuickEntryModal() {
         showToast('로그인이 필요합니다.', 'error');
         return;
     }
-    const date = localTodayIso();
-    const slotId = resolveQuickEntrySlotId(date);
-    await openModal(date, slotId, null);
+    await openEntrySlotPicker(resolvePickerDateIso());
 }

@@ -10,7 +10,6 @@ import {
     getDailyJournalShareEntryId,
     isDailyJournalShared
 } from '../utils/daily-journal-data.js';
-import { formatMealogDateLabel } from '../utils/date-label.js';
 import { invalidateTimelineDateSection, renderTimelineDateSections, updateTimelineShareIndicators } from '../render/index.js';
 import { isDemoUser } from '../demo-account.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
@@ -21,6 +20,7 @@ import {
     formatMealClock12TextWhileTyping
 } from '../meal-time-utils.js';
 import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 const MAX_DAILY_JOURNAL_PHOTOS = 5;
 const MAX_DAILY_JOURNAL_METRIC_RECORDS = 3;
@@ -33,7 +33,7 @@ const METRIC_CONFIG = {
         offLayerId: 'dailyJournalWeightOffLayer',
         addBtnId: 'dailyJournalWeightAddBtn',
         unit: 'kg',
-        placeholder: '',
+        placeholder: '예: 62.5',
         step: '0.1',
         inputMode: 'decimal'
     },
@@ -43,7 +43,7 @@ const METRIC_CONFIG = {
         offLayerId: 'dailyJournalBloodSugarOffLayer',
         addBtnId: 'dailyJournalBloodSugarAddBtn',
         unit: 'mg/dL',
-        placeholder: '',
+        placeholder: '예: 105',
         step: '1',
         inputMode: 'numeric'
     }
@@ -129,25 +129,25 @@ function buildMetricRowHtml(type, idx, row) {
     const { ampm, display } = mealClock24ToAmPmAndDisplay(storedTime);
     const rowCount = (appState[metricStateKey(type)] || []).length;
     const clearOnly = rowCount <= 1;
-    return `<div class="daily-journal-metric-row flex items-center gap-0.5 rounded-md border border-slate-200/90 bg-white p-0.5" data-metric-type="${type}" data-metric-index="${idx}">
+    return `<div class="daily-journal-metric-row" data-metric-type="${type}" data-metric-index="${idx}">
         <input type="number" min="0" step="${cfg.step}" inputmode="${cfg.inputMode}"
             value="${value.replace(/"/g, '&quot;')}"
-            placeholder="—"
-            class="daily-journal-metric-value daily-journal-metric-no-spin shrink-0 w-[34%] max-w-[3.75rem] min-w-[2.5rem] py-1 px-1 bg-slate-50 rounded border-0 text-sm font-bold text-slate-800 outline-none focus:ring-0 tabular-nums text-center"
+            placeholder="${escapeHtml(cfg.placeholder)}"
+            class="daily-journal-metric-value daily-journal-metric-no-spin"
             aria-label="${type === 'weight' ? '체중' : '혈당'}">
-        <div class="daily-journal-metric-time-wrap flex min-w-0 flex-1 items-stretch overflow-hidden rounded bg-slate-100">
-            <select class="daily-journal-metric-ampm shrink-0 max-w-[2.65rem] border-0 border-r border-slate-200/80 bg-slate-100 py-1 pl-0.5 pr-0 text-[10px] font-extrabold leading-tight text-slate-600 outline-none focus:ring-0"
+        <div class="daily-journal-metric-time-wrap">
+            <select class="daily-journal-metric-ampm"
                 aria-label="${type === 'weight' ? '체중' : '혈당'} 오전 또는 오후">
                 <option value="am"${ampm === 'am' ? ' selected' : ''}>오전</option>
                 <option value="pm"${ampm === 'pm' ? ' selected' : ''}>오후</option>
             </select>
             <input type="text" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false"
                 value="${escapeHtml(display)}"
-                placeholder="시:분"
-                class="daily-journal-metric-time min-w-0 flex-1 py-1 px-0.5 bg-slate-100 border-0 text-sm font-bold text-slate-800 outline-none focus:ring-0 tabular-nums text-center"
+                placeholder="예: 8:30"
+                class="daily-journal-metric-time"
                 aria-label="${type === 'weight' ? '체중' : '혈당'} 기록 시간 (선택)">
         </div>
-        <button type="button" class="daily-journal-metric-remove shrink-0 w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:bg-slate-200" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+        <button type="button" class="daily-journal-metric-remove" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i data-lucide="x" aria-hidden="true"></i></button>
     </div>`;
 }
 
@@ -327,17 +327,17 @@ export function renderDailyJournalPhotoPreviews() {
                 return `<div class="photo-preview-item relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-300 select-none" style="width: 7rem; aspect-ratio: ${aspectCss};-webkit-touch-callout:none;" data-index="${idx}">
                 <img src="${src}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
                 <button type="button" onclick="window.removeDailyJournalPhoto(${idx})" class="photo-remove-btn" aria-label="사진 삭제">
-                    <i class="fa-solid fa-xmark"></i>
+                    <i data-lucide="x"></i>
                 </button>
                 <div class="photo-preview-bottom-bar absolute bottom-0 left-0 right-0 z-10 flex gap-0.5 px-0.5 pb-0.5 pt-2 bg-gradient-to-t from-black/65 via-black/30 to-transparent pointer-events-none">
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, -1)" class="photo-order-btn pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로">
-                        <i class="fa-solid fa-chevron-left text-[9px]"></i>
+                        <i data-lucide="chevron-left" class="text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.editDailyJournalPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
-                        <i class="fa-solid fa-pen-to-square text-[9px]"></i>
+                        <i data-lucide="square-pen" class="text-[9px]"></i>
                     </button>
                     <button type="button" onclick="window.moveDailyJournalPhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
-                        <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                        <i data-lucide="chevron-right" class="text-[9px]"></i>
                     </button>
                 </div>
                 <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
@@ -351,6 +351,10 @@ export function renderDailyJournalPhotoPreviews() {
         countEl.classList.toggle('text-emerald-600', currentCount >= MAX_DAILY_JOURNAL_PHOTOS);
         countEl.classList.toggle('text-slate-400', currentCount < MAX_DAILY_JOURNAL_PHOTOS);
     }
+
+    document
+        .querySelector('#dailyJournalModal .entry-photo-section')
+        ?.classList.toggle('entry-photo-section--has-photos', currentCount > 0);
 
     const full = currentCount >= MAX_DAILY_JOURNAL_PHOTOS;
     setPhotoAddButtonsEnabled([cameraBtn, albumBtn], !full, {
@@ -370,13 +374,7 @@ export function updateDailyJournalShareIndicator() {
         return;
     }
     shareIndicator.classList.remove('hidden');
-    if (appState.dailyJournalWantsToShare) {
-        shareIndicator.classList.add('bg-emerald-100', 'text-emerald-600');
-        shareIndicator.classList.remove('bg-slate-50', 'text-slate-400');
-    } else {
-        shareIndicator.classList.remove('bg-emerald-100', 'text-emerald-600');
-        shareIndicator.classList.add('bg-slate-50', 'text-slate-400');
-    }
+    shareIndicator.classList.toggle('entry-action-btn--share-on', !!appState.dailyJournalWantsToShare);
 }
 
 export function toggleDailyJournalSharePhoto() {
@@ -542,22 +540,22 @@ function updateDailyJournalModalActions(hasExisting) {
     if (window.currentUser?.isAnonymous) {
         btnSave.disabled = true;
         btnSave.className =
-            'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-300 text-slate-500 text-base font-bold transition-colors cursor-not-allowed';
-        btnSave.innerHTML = '<span>로그인 후 사용할 수 있어요</span>';
+            'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
+        btnSave.innerHTML = '<span class="entry-action-btn__inner"><span>로그인 후 사용할 수 있어요</span></span>';
         btnDelete?.classList.add('hidden');
         return;
     }
 
     btnSave.disabled = false;
     btnSave.className =
-        'flex-[1.7] flex flex-col items-center justify-center px-3 py-4 bg-slate-900 text-white text-base font-bold hover:bg-slate-800 active:bg-slate-800 transition-colors';
+        'entry-action-btn entry-action-btn--save flex-[1.7] flex flex-col items-center justify-center px-3 py-3.5';
 
     if (hasExisting && !isDemoUser(window.currentUser)) {
         btnDelete?.classList.remove('hidden');
-        btnSave.innerHTML = '<span>수정 완료</span>';
+        btnSave.innerHTML = '<span class="entry-action-btn__inner"><span>수정 완료</span></span>';
     } else {
         btnDelete?.classList.add('hidden');
-        btnSave.innerHTML = '<span>기록 완료</span>';
+        btnSave.innerHTML = '<span class="entry-action-btn__inner"><span>기록 완료</span></span>';
     }
 }
 
@@ -582,7 +580,11 @@ export function openDailyJournalModal(dateStr) {
     loadDailyJournalMetricsFromEntry(entry);
 
     const titleEl = document.getElementById('dailyJournalModalTitle');
-    if (titleEl) titleEl.textContent = formatMealogDateLabel(dateStr);
+    if (titleEl) {
+        // 식사 기록 헤더와 동일: YYYY.MM.DD (요일 없음)
+        const [y, m, d] = String(dateStr).split('-');
+        titleEl.textContent = y && m && d ? `${y}.${m}.${d}` : '날짜';
+    }
 
     const commentInput = document.getElementById('dailyJournalCommentInput');
     if (commentInput) commentInput.value = entry.comment || '';
@@ -592,14 +594,15 @@ export function openDailyJournalModal(dateStr) {
     updateDailyJournalShareIndicator();
     updateDailyJournalModalActions(dailyJournalHasContent(entry));
     modal.classList.remove('hidden');
-    lockBodyScroll();
+    lockBodyScroll('dailyJournal');
     document.body.classList.add('daily-journal-modal-open');
+    scheduleLucideIcons(modal);
 }
 
 export function closeDailyJournalModal() {
     const modal = document.getElementById('dailyJournalModal');
     if (modal) modal.classList.add('hidden');
-    unlockBodyScroll();
+    unlockBodyScroll('dailyJournal');
     document.body.classList.remove('daily-journal-modal-open');
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];
@@ -636,10 +639,10 @@ export async function deleteDailyJournal() {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast('샘플 계정에서는 하루 기록을 삭제할 수 없습니다.', 'error');
+        showToast('샘플 계정에서는 하루 소감을 삭제할 수 없습니다.', 'error');
         return;
     }
-    if (!confirm('정말 이 하루 기록을 삭제하시겠습니까?')) return;
+    if (!confirm('정말 이 하루 소감을 삭제하시겠습니까?')) return;
 
     const loadingOverlay = document.getElementById('loadingOverlay');
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
@@ -649,7 +652,7 @@ export async function deleteDailyJournal() {
         await dbOps.saveDailyJournal(dateStr, normalizeDailyJournalEntry(null));
         await applyDailyJournalMomentShare(dateStr, [], prev, false);
         closeDailyJournalModal();
-        showToast('하루 기록이 삭제되었습니다.', 'success');
+        showToast('하루 소감이 삭제되었습니다.', 'success');
         invalidateTimelineDateSection(dateStr);
         renderTimelineDateSections([dateStr]);
     } catch (e) {
@@ -671,7 +674,7 @@ export async function saveDailyJournal() {
         return;
     }
     if (isDemoUser(window.currentUser)) {
-        showToast('샘플 계정에서는 하루 기록을 저장할 수 없습니다.', 'error');
+        showToast('샘플 계정에서는 하루 소감을 저장할 수 없습니다.', 'error');
         return;
     }
 
@@ -704,7 +707,7 @@ export async function saveDailyJournal() {
         await applyDailyJournalMomentShare(dateStr, photos, entry, wantsToShare);
         closeDailyJournalModal();
         showToast(
-            dailyJournalHasContent(entry) ? '하루 기록이 저장되었습니다.' : '하루 기록이 삭제되었습니다.',
+            dailyJournalHasContent(entry) ? '하루 소감이 저장되었습니다.' : '하루 소감이 삭제되었습니다.',
             'success'
         );
         invalidateTimelineDateSection(dateStr);
