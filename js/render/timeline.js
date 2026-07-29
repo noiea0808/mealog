@@ -706,8 +706,36 @@ function mealPhotoViewerRowFromRecord(dateStr, slot, r, ordinal1Based, totalInSl
 /**
  * @param {object|null} viewCtx
  * @param {string[]|null} thumbUrls
- * @param {{ interactive?: boolean }} [opts] interactive=false 면 사진 확대 버튼 없이 장식만(홈피드 카드 탭=수정)
+ * @param {{ interactive?: boolean, showAspectToggle?: boolean }} [opts] interactive=false 면 사진 확대 버튼 없이 장식만(홈피드 카드 탭=수정)
  */
+function normalizeCardPhotoAspect(ar) {
+    return ar === '3:4' || ar === '4:3' || ar === '1:1' ? ar : '1:1';
+}
+
+const TIMELINE_CARD_PHOTO_ASPECT_USER_KEY = 'mealog_timeline_card_photo_aspect_user';
+
+function isTimelineCardPhotoAspectUserOn() {
+    try {
+        return localStorage.getItem(TIMELINE_CARD_PHOTO_ASPECT_USER_KEY) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+/** 밀로그 카드 사진: 원본 비율 보기 on/off를 타임라인 전체에 동기화 */
+export function applyTimelineCardPhotoAspectView(root = document.getElementById('timelineContainer')) {
+    if (!root) return;
+    const on = isTimelineCardPhotoAspectUserOn();
+    root.classList.toggle('timeline-card-photo-aspect-user', on);
+    root.querySelectorAll('.timeline-meal-photo-aspect-toggle').forEach((btn) => {
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.classList.toggle('timeline-meal-photo-aspect-toggle--active', on);
+        const label = on ? '기본 비율로 보기' : '원본 비율로 보기';
+        btn.setAttribute('title', label);
+        btn.setAttribute('aria-label', label);
+    });
+}
+
 function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCtx = null, thumbUrls = null, opts = null) {
     const first = urls[0];
     if (!first) return '';
@@ -734,6 +762,11 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
                     <i data-lucide="chevron-right" aria-hidden="true"></i>
                </button>`
             : '';
+    const aspectToggle = opts?.showAspectToggle
+        ? `<button type="button" class="timeline-meal-photo-aspect-toggle" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();window.toggleTimelineCardPhotoAspect&&window.toggleTimelineCardPhotoAspect(this)" aria-label="원본 비율로 보기" aria-pressed="false" title="원본 비율로 보기">
+                <i data-lucide="ratio" aria-hidden="true"></i>
+           </button>`
+        : '';
     const ctxAttrs =
         viewCtx && viewCtx.dateStr && viewCtx.slotId
             ? ` data-meal-view-date="${escapeHtml(String(viewCtx.dateStr))}" data-meal-view-slot="${escapeHtml(String(viewCtx.slotId))}" data-meal-view-record="${escapeHtml(viewCtx.recordId != null ? String(viewCtx.recordId) : '')}"`
@@ -745,9 +778,24 @@ function buildTimelinePhotoCellInnerHtml(urls, imgClass = 'object-cover', viewCt
         <img data-timeline-photo-img src="${escapeHtml(displayFirst)}"${fallbackAttrs} class="absolute inset-0 z-0 h-full w-full ${imgClass} select-none pointer-events-none" alt="" draggable="false" loading="lazy">
         ${badge}
         ${navHtml}
+        ${aspectToggle}
         ${tapBtn}
     </div>`;
 }
+
+/** 밀로그 카드: 기본(16:10) ↔ 원본 이미지 비율 — 타임라인 전체 일괄 적용 */
+export function toggleTimelineCardPhotoAspect() {
+    const next = !isTimelineCardPhotoAspectUserOn();
+    try {
+        localStorage.setItem(TIMELINE_CARD_PHOTO_ASPECT_USER_KEY, next ? '1' : '0');
+    } catch (_) {
+        /* ignore */
+    }
+    applyTimelineCardPhotoAspectView();
+}
+
+window.toggleTimelineCardPhotoAspect = toggleTimelineCardPhotoAspect;
+window.applyTimelineCardPhotoAspectView = applyTimelineCardPhotoAspectView;
 
 /** 밀로그 카드: 다장 사진 좌우 화살표 탐색 (스와이프 없음 — 날짜 스와이프와 분리) */
 export function stepTimelineCardPhoto(btn, delta) {
@@ -1027,7 +1075,8 @@ function buildHomeFeedCardShellHtml({
     noteHtml,
     tagsHtml,
     ratingVal,
-    forShareCapture = false
+    forShareCapture = false,
+    photoAspectRatio = '1:1'
 }) {
     const tone = (iconToneClass || '').trim();
     const iconMod = tone
@@ -1063,8 +1112,9 @@ function buildHomeFeedCardShellHtml({
     const shareArrowHtml = `<span class="timeline-share-arrow home-feed-card__share" title="게시됨" style="display:${shareDisp === 'none' ? 'none' : 'inline-flex'}"><i data-lucide="send" aria-hidden="true"></i></span>`;
 
     const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
+    const ar = normalizeCardPhotoAspect(photoAspectRatio);
     const photoBlock = hasPhoto
-        ? `<div class="home-feed-card__photo relative">${photoHtml}</div>`
+        ? `<div class="home-feed-card__photo relative" data-photo-aspect="${escapeHtml(ar)}">${photoHtml}</div>`
         : '';
     return `<div ${openAttrs} class="card home-feed-card${photoClass} ${cardMbClass} ${pointerCls} ${relativeCls}"${entryAttr}>
         ${photoBlock}
@@ -1134,7 +1184,7 @@ function buildSnackTimelineCardHtml(
                   'object-cover',
                   { dateStr, slotId: slot.id, recordId: r.id },
                   getMealDisplayUrlsForTimeline(r),
-                  { interactive: false }
+                  { interactive: false, showAspectToggle: true }
               );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i data-lucide="ban"></i>`;
@@ -1156,7 +1206,8 @@ function buildSnackTimelineCardHtml(
         noteHtml,
         tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
         ratingVal,
-        forShareCapture
+        forShareCapture,
+        photoAspectRatio: r.photoAspectRatio
     });
 }
 
@@ -1211,7 +1262,7 @@ function buildMainMealTimelineCardHtml(
                   'object-cover',
                   { dateStr, slotId: slot.id, recordId: r.id },
                   getMealDisplayUrlsForTimeline(r),
-                  { interactive: false }
+                  { interactive: false, showAspectToggle: true }
               );
     } else if (r.mealType === 'Skip') {
         iconHtml = `<i data-lucide="ban"></i>`;
@@ -1233,7 +1284,8 @@ function buildMainMealTimelineCardHtml(
         noteHtml,
         tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
         ratingVal,
-        forShareCapture
+        forShareCapture,
+        photoAspectRatio: r.photoAspectRatio
     });
 }
 
@@ -1570,7 +1622,8 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
         photoHtml = forShareCapture
             ? buildShareCaptureThumbHtml(photos)
             : buildTimelinePhotoCellInnerHtml(photos, 'object-cover', null, null, {
-                  interactive: false
+                  interactive: false,
+                  showAspectToggle: true
               });
     } else if (!hasContent) {
         iconHtml = `<i data-lucide="plus"></i>`;
@@ -1596,7 +1649,8 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
             noteHtml: '',
             tagsHtml: '',
             ratingVal: '',
-            forShareCapture: true
+            forShareCapture: true,
+            photoAspectRatio: journal.photoAspectRatio
         });
     }
 
@@ -1621,9 +1675,10 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     const noteHtml = noteParts.join('');
     const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
     const opacity = hasContent ? '' : ' opacity-80';
+    const photoAspect = normalizeCardPhotoAspect(journal.photoAspectRatio);
 
     return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card home-feed-card${photoClass} daily-journal-slot mb-1.5${opacity} cursor-pointer active:scale-[0.98] transition-all">
-        ${hasPhoto ? `<div class="home-feed-card__photo relative">${photoHtml}</div>` : ''}
+        ${hasPhoto ? `<div class="home-feed-card__photo relative" data-photo-aspect="${escapeHtml(photoAspect)}">${photoHtml}</div>` : ''}
         <div class="home-feed-card__body">
             <div class="home-feed-card__icon ${slotPickerIconToneClass('daily_journal')}" aria-hidden="true">${iconHtml}</div>
             <div class="home-feed-card__main min-w-0">
@@ -1709,7 +1764,7 @@ function ensureTimelineOpenModalDelegation() {
         (e) => {
             const root = document.getElementById('timelineContainer');
             if (!root) return;
-            if (e.target?.closest?.('.timeline-meal-photo-tap, .meal-sync-retry-btn')) return;
+            if (e.target?.closest?.('.timeline-meal-photo-tap, .timeline-meal-photo-nav, .timeline-meal-photo-aspect-toggle, .meal-sync-retry-btn')) return;
             const slotPickerBtn = e.target.closest('[data-mealog-slot-picker-date]');
             if (slotPickerBtn && root.contains(slotPickerBtn)) {
                 const pickerDate = slotPickerBtn.getAttribute('data-mealog-slot-picker-date');
@@ -2180,6 +2235,7 @@ export function renderTimeline(options = {}) {
     ensureTimelineOpenModalDelegation();
     ensureTimelineViewSelectDelegation();
     syncSnackViewDropdown(container);
+    applyTimelineCardPhotoAspectView(container);
     scheduleLucideIcons(container);
 
     if (typeof window.bindMealogDailyTimelineDelegation === 'function') {

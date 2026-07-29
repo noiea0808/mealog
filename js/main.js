@@ -2033,7 +2033,7 @@ function initDailySwipeGesture() {
     const isInteractiveSwipeTarget = (node) => {
         if (!node || node.nodeType !== 1) return false;
         return !!node.closest(
-            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap, .timeline-meal-photo-nav'
+            'button, a, input, textarea, select, label, [contenteditable="true"], [data-mealog-daily="share"], .snack-tag, .meal-sync-retry-btn, .timeline-meal-photo-tap, .timeline-meal-photo-nav, .timeline-meal-photo-aspect-toggle'
         );
     };
     /** 밀로그 일간 + 빈 배경(카드 사이·아래)까지 스와이프 허용. 상단 크롬·다른 탭·모달은 제외 */

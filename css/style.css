@@ -6321,11 +6321,12 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .daily-share-capture__sheet .daily-share-capture__body > .card.home-feed-card:last-child {
     margin-bottom: 0;
 }
-#timelineContainer .card.home-feed-card:active:not(:has(.timeline-meal-photo-nav:active)) {
+#timelineContainer .card.home-feed-card:active:not(:has(.timeline-meal-photo-nav:active)):not(:has(.timeline-meal-photo-aspect-toggle:active)) {
     transform: scale(0.985);
 }
-/* 다장 사진 화살표 조작 시 카드 전체 눌림(스케일) 효과 제거 */
-#timelineContainer .card:has(.timeline-meal-photo-nav:active) {
+/* 다장 사진 화살표·비율 토글 조작 시 카드 전체 눌림(스케일) 효과 제거 */
+#timelineContainer .card:has(.timeline-meal-photo-nav:active),
+#timelineContainer .card:has(.timeline-meal-photo-aspect-toggle:active) {
     transform: none !important;
 }
 
@@ -6712,10 +6713,47 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 
 .home-feed-card__photo {
+    /* 기본: 칸 너비 고정, 16:10 + object-cover */
     width: 100%;
+    max-width: 100%;
+    height: auto;
     aspect-ratio: 16 / 10;
     background: #e2e8f0;
     overflow: hidden;
+}
+.home-feed-card__photo .timeline-meal-photo-cell,
+.home-feed-card__photo .timeline-meal-photo-cell [data-timeline-photo-img] {
+    width: 100%;
+    height: 100%;
+}
+/*
+ * 토글 ON: 입력시트 비율이 아니라 원본 이미지 고유 비율
+ * — 너비 100%, 높이는 이미지 intrinsic ratio
+ */
+#timelineContainer.timeline-card-photo-aspect-user .home-feed-card__photo {
+    aspect-ratio: auto;
+    height: auto;
+}
+#timelineContainer.timeline-card-photo-aspect-user .home-feed-card__photo .timeline-meal-photo-cell {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: auto;
+}
+#timelineContainer.timeline-card-photo-aspect-user .home-feed-card__photo [data-timeline-photo-img] {
+    position: relative !important;
+    inset: auto !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+    object-fit: unset !important;
+    object-position: center;
+    transform: none;
 }
 /* 밀로그 다장: 좌우 화살표로만 사진 전환 (스와이프는 날짜 이동용) */
 .timeline-meal-photo-nav {
@@ -6752,6 +6790,43 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     width: 1.1rem;
     height: 1.1rem;
     stroke-width: 2.5;
+}
+/* 밀로그 카드: 기본(16:10) ↔ 기록 시 선택한 사진 비율 */
+.timeline-meal-photo-aspect-toggle {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    z-index: 36;
+    width: 2rem;
+    height: 2rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 9999px;
+    background: rgba(15, 23, 42, 0.48);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.timeline-meal-photo-aspect-toggle:hover {
+    background: rgba(15, 23, 42, 0.68);
+}
+.timeline-meal-photo-aspect-toggle--active,
+.timeline-meal-photo-aspect-toggle[aria-pressed="true"],
+#timelineContainer.timeline-card-photo-aspect-user .timeline-meal-photo-aspect-toggle {
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);
+}
+.timeline-meal-photo-aspect-toggle [data-lucide],
+.timeline-meal-photo-aspect-toggle .lucide {
+    width: 1.05rem;
+    height: 1.05rem;
+    stroke-width: 2.25;
 }
 .home-feed-card__body {
     padding: 12px 14px 10px;
