@@ -3324,15 +3324,15 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     margin-bottom: 0 !important;
     margin-left: auto;
     margin-right: auto;
-    /* 높이·top은 JS가 px로 잠금. auto/중앙정렬 경로를 끊음 */
+    /* 높이·top은 JS가 px로 잠금. 상한은 뷰포트 80% */
     height: var(--entry-sheet-h, auto);
-    max-height: calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px)));
+    max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
 #entryModal.keyboard-open > .entry-modal-panel {
     top: 0 !important;
     height: var(--entry-sheet-h, auto);
-    max-height: 100%;
+    max-height: min(80vh, 100%);
     border-radius: 0 !important;
 }
 #entryModal.keyboard-open .entry-modal-header {

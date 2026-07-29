@@ -43,17 +43,31 @@ function prefersReducedMotion() {
     }
 }
 
+function getEntrySheetMaxHeightPx() {
+    const modal = document.getElementById('entryModal');
+    const vh = modal?.clientHeight || window.innerHeight || 0;
+    if (!(vh > 0)) return 0;
+    const top = entrySheetTopPx != null ? entrySheetTopPx : 16;
+    const bottomPad = 16;
+    const byLayout = Math.max(0, vh - top - bottomPad);
+    const byVh = Math.floor(vh * 0.8);
+    return Math.max(0, Math.min(byLayout, byVh));
+}
+
 function applyEntrySheetHeightLock() {
     const panel = getEntryModalPanel();
     const modal = document.getElementById('entryModal');
     if (!panel) return;
-    const lockH = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
+    const maxH = getEntrySheetMaxHeightPx();
+    let lockH = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
+    if (maxH > 0 && lockH > maxH) lockH = maxH;
     if (lockH > 0) {
         const px = `${lockH}px`;
         panel.style.setProperty('--entry-sheet-min-h', px);
         panel.style.setProperty('--entry-sheet-h', px);
         panel.style.height = px;
         panel.style.minHeight = px;
+        // CSS max-height(80vh)가 먹도록 인라인 maxHeight는 비움
         panel.style.maxHeight = '';
     } else {
         panel.style.removeProperty('--entry-sheet-min-h');
