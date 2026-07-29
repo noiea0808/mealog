@@ -10,6 +10,8 @@ let tabsBound = false;
 let activeTab = 'basic';
 /** 사진 없을 때 기본 탭 기준 패널 높이(px) — height/min-height 동시 잠금 */
 let entrySheetBaseMinHeightPx = 0;
+/** 모달 1회 오픈당 헤더 Y(--entry-sheet-top) 잠금 여부 */
+let entrySheetTopLocked = false;
 /** 탭 슬라이드 전환 중이면 true */
 let tabAnimating = false;
 /** 진행 중 전환 취소/교체용 토큰 */
@@ -56,9 +58,31 @@ function applyEntrySheetHeightLock() {
     }
 }
 
+/**
+ * 기준 패널 높이가 세로 중앙에 오도록 top padding을 잠근다.
+ * 이후 탭별 높이 변화는 아래로만 반영되어 헤더 Y가 유지된다.
+ * @param {number} panelHeightPx
+ */
+function lockEntrySheetTopAnchor(panelHeightPx) {
+    const modal = document.getElementById('entryModal');
+    if (!modal || !(panelHeightPx > 0) || entrySheetTopLocked) return;
+    const vh = modal.clientHeight || window.innerHeight || 0;
+    if (!(vh > 0)) return;
+    const bottomPad = 16;
+    const ideal = Math.floor((vh - panelHeightPx) / 2);
+    const top = Math.max(16, ideal);
+    // 하단이 뷰포트를 크게 넘지 않도록 상한
+    const maxTop = Math.max(16, vh - panelHeightPx - bottomPad);
+    modal.style.setProperty('--entry-sheet-top', `${Math.min(top, maxTop)}px`);
+    entrySheetTopLocked = true;
+}
+
 /** 모달 열 때 기준 높이 초기화 */
 export function resetEntrySheetBaseHeight() {
     entrySheetBaseMinHeightPx = 0;
+    entrySheetTopLocked = false;
+    const modal = document.getElementById('entryModal');
+    modal?.style.removeProperty('--entry-sheet-top');
     applyEntrySheetHeightLock();
 }
 
@@ -104,10 +128,23 @@ export function captureEntrySheetBaseHeight(opts = {}) {
     if (!modal || !panel || modal.classList.contains('hidden')) return;
     if (entrySheetHasPhotos()) {
         applyEntrySheetHeightLock();
+        if (!entrySheetTopLocked) {
+            const h = Math.ceil(panel.getBoundingClientRect().height);
+            if (h > 0) lockEntrySheetTopAnchor(h);
+            else {
+                requestAnimationFrame(() => {
+                    const ph = Math.ceil(panel.getBoundingClientRect().height);
+                    if (ph > 0) lockEntrySheetTopAnchor(ph);
+                });
+            }
+        }
         return;
     }
     if (entrySheetBaseMinHeightPx > 0 && !opts.force) {
         applyEntrySheetHeightLock();
+        if (!entrySheetTopLocked && entrySheetBaseMinHeightPx > 0) {
+            lockEntrySheetTopAnchor(entrySheetBaseMinHeightPx);
+        }
         return;
     }
 
@@ -134,6 +171,9 @@ export function captureEntrySheetBaseHeight(opts = {}) {
     endProbe();
     if (scroll) scroll.style.flex = prevScrollFlex;
     applyEntrySheetHeightLock();
+    if (entrySheetBaseMinHeightPx > 0) {
+        lockEntrySheetTopAnchor(entrySheetBaseMinHeightPx);
+    }
 
     if (prevTab !== 'basic') {
         setEntrySheetTab(prevTab);
