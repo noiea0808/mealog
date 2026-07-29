@@ -272,6 +272,9 @@ function isMainScreenVisibleForWelcome() {
 /** 실제 표시 직전: 온보딩·모달이 가리면 스킵. 로딩은 z가 더 낮아 웰컴이 위에 그려지므로 여기서 막지 않음(막으면 로딩과 타이밍만 겹쳐도 영구 미노출). */
 function shouldShowWelcomeNow() {
     if (typeof document === 'undefined') return false;
+    if (window._serviceGuideActive) return false;
+    const guide = document.getElementById('serviceGuideOverlay');
+    if (guide && !guide.classList.contains('hidden')) return false;
     const wiz = document.getElementById('signupWizard');
     if (wiz && !wiz.classList.contains('hidden')) return false;
     const terms = document.getElementById('termsModal');
@@ -788,6 +791,9 @@ export function resetAttendanceCheckSessionForTesting() {
  */
 export function scheduleAttendanceCheckIfNeeded() {
     if (typeof window === 'undefined') return;
+    if (window._serviceGuideActive) return;
+    const guide = document.getElementById('serviceGuideOverlay');
+    if (guide && !guide.classList.contains('hidden')) return;
     const user = window.currentUser;
     if (!user?.uid || user.isAnonymous) return;
     if (isDemoUser(user)) return;

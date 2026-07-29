@@ -1,161 +1,324 @@
-// 온보딩 관련 함수들
-import { showToast } from './ui.js';
-import { DEFAULT_USER_SETTINGS } from './constants.js';
-import { dbOps } from './db.js';
+/**
+ * 로그인 전 서비스 가이드 (랜딩)
+ * 미로그인: 가이드 → 로그인 화면 (매번)
+ * 이미 로그인(세션 복원) 시 스킵
+ */
+import {
+    getLandingAppPromoKind,
+    openOsInstallGuideModal,
+} from './pwa-install.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
-// 온보딩 슬라이드 데이터
-const ONBOARDING_SLIDES = [
+/** 레거시 키 — 더 이상 저장하지 않고 발견 시 삭제만 */
+const SEEN_KEY = 'mealog_landingServiceGuideSeen';
+
+const SLIDE_DEFS = [
     {
-        icon: '📝',
-        title: '식사 기록하기',
-        description: '매일 먹은 식사와 간식을 기록해보세요.\n사진, 메뉴, 장소, 누구와 등을 기록할 수 있어요.'
+        id: 'welcome',
+        visual: 'welcome',
+        eyebrow: 'Welcome',
+        title: '오늘의 한 끼가\n작은 이야기가 됩니다',
+        body: '특별하지 않아도 괜찮아요.\n평범한 식탁도 지나고 나면 소중한 하루가 됩니다.',
     },
     {
-        icon: '📊',
-        title: '통계 보기',
-        description: '대시보드에서 식사 패턴을 분석해보세요.\n주간, 월간, 연간 통계를 확인할 수 있어요.'
+        id: 'mealog',
+        visual: 'mealog',
+        eyebrow: '밀로그',
+        title: '한 끼의 장면을\n오래 남겨두세요',
+        body: '사진 한 장, 메뉴 하나, 짧은 한마디.\n오늘의 식탁이 하나의 기억이 됩니다.',
     },
     {
-        icon: '📸',
-        title: '사진 공유하기',
-        description: '맛있었던 식사 사진을 피드에 공유해보세요.\n다른 사람들의 식사도 구경할 수 있어요.'
+        id: 'analysis',
+        visual: 'analysis',
+        eyebrow: '분석',
+        title: '기록이 쌓이면\n나의 식탁이 보여요',
+        body: '자주 찾는 음식과 반복되는 습관까지.\n기록 속에서 몰랐던 나를 발견해 보세요.',
     },
     {
-        icon: '💬',
-        title: '소통하기',
-        description: 'MEAL TALK 게시판에서\n식사 관련 이야기를 나눠보세요!'
-    }
+        id: 'moment',
+        visual: 'moment',
+        eyebrow: '모먼트',
+        title: '맛있었던 순간을\n슬쩍 나눠보세요',
+        body: '근사한 식사가 아니어도 괜찮아요.\n평범한 한 끼가 누군가에게는 좋은 이야기가 됩니다.',
+    },
 ];
 
-let currentOnboardingSlide = 0;
+const INSTALL_SLIDES = {
+    android: {
+        id: 'install',
+        visual: 'install',
+        eyebrow: '더 가까이',
+        title: '자주 찾는 곳에\n밀로그를 두세요',
+        body: '홈 화면에 추가해 두면\n오늘의 식탁을 더 가볍게 기록할 수 있어요.',
+        cta: '방법 보기',
+        ctaAction: 'guide',
+    },
+    ios: {
+        id: 'install',
+        visual: 'install',
+        eyebrow: '더 가까이',
+        title: '자주 찾는 곳에\n밀로그를 두세요',
+        body: '홈 화면에 추가해 두면\n오늘의 식탁을 더 가볍게 기록할 수 있어요.',
+        cta: '방법 보기',
+        ctaAction: 'guide',
+    },
+    desktop: {
+        id: 'install',
+        visual: 'install',
+        eyebrow: '더 가까이',
+        title: '자주 찾는 곳에\n밀로그를 두세요',
+        body: '홈 화면에 추가해 두면\n오늘의 식탁을 더 가볍게 기록할 수 있어요.',
+        cta: '방법 보기',
+        ctaAction: 'guide',
+    },
+};
 
-// 온보딩 모달 표시
-export function showOnboardingModal() {
-    const modal = document.getElementById('onboardingModal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        currentOnboardingSlide = 0;
-        renderOnboardingSlide();
-        updateOnboardingButtons();
-    }
+let slides = [];
+let currentIndex = 0;
+let active = false;
+let completing = false;
+let onCompleteCb = null;
+let bound = false;
+
+function $(id) {
+    return document.getElementById(id);
 }
 
-// 온보딩 모달 닫기
-export function closeOnboardingModal() {
-    const modal = document.getElementById('onboardingModal');
-    if (modal) {
-        modal.classList.add('hidden');
-    }
+export function hasSeenLandingServiceGuide() {
+    return false;
 }
 
-// 온보딩 슬라이드 렌더링
-function renderOnboardingSlide() {
-    const content = document.getElementById('onboardingContent');
-    const indicators = document.getElementById('onboardingIndicators');
-    
-    if (!content || !indicators) return;
-    
-    const slide = ONBOARDING_SLIDES[currentOnboardingSlide];
-    
-    content.innerHTML = `
-        <div class="text-center">
-            <div class="text-5xl mb-4">${slide.icon}</div>
-            <h4 class="text-base font-bold text-slate-800 mb-2">${slide.title}</h4>
-            <p class="text-xs text-slate-600 leading-relaxed whitespace-pre-line">${slide.description}</p>
-        </div>
-    `;
-    
-    indicators.innerHTML = ONBOARDING_SLIDES.map((_, index) => `
-        <div class="w-2 h-2 rounded-full ${index === currentOnboardingSlide ? 'bg-emerald-600' : 'bg-slate-300'} transition-colors"></div>
-    `).join('');
+export function markLandingServiceGuideSeen() {
+    clearLandingServiceGuideSeen();
 }
 
-// 온보딩 버튼 상태 업데이트
-function updateOnboardingButtons() {
-    const prevBtn = document.getElementById('onboardingPrevBtn');
-    const nextBtn = document.getElementById('onboardingNextBtn');
-    const skipBtn = document.getElementById('onboardingSkipBtn');
-    
-    if (currentOnboardingSlide === 0) {
-        if (prevBtn) prevBtn.classList.add('hidden');
-        if (skipBtn) skipBtn.classList.remove('hidden');
-        if (nextBtn) {
-            nextBtn.textContent = '다음';
-            nextBtn.classList.remove('hidden');
-        }
-    } else if (currentOnboardingSlide === ONBOARDING_SLIDES.length - 1) {
-        if (prevBtn) prevBtn.classList.remove('hidden');
-        if (skipBtn) skipBtn.classList.add('hidden');
-        if (nextBtn) {
-            nextBtn.textContent = '시작하기';
-            nextBtn.classList.remove('hidden');
-        }
-    } else {
-        if (prevBtn) prevBtn.classList.remove('hidden');
-        if (skipBtn) skipBtn.classList.remove('hidden');
-        if (nextBtn) {
-            nextBtn.textContent = '다음';
-            nextBtn.classList.remove('hidden');
-        }
-    }
-}
-
-// 온보딩 이전
-export function onboardingPrev() {
-    if (currentOnboardingSlide > 0) {
-        currentOnboardingSlide--;
-        renderOnboardingSlide();
-        updateOnboardingButtons();
-    }
-}
-
-// 온보딩 다음
-export async function onboardingNext() {
-    if (currentOnboardingSlide < ONBOARDING_SLIDES.length - 1) {
-        currentOnboardingSlide++;
-        renderOnboardingSlide();
-        updateOnboardingButtons();
-    } else {
-        // 마지막 슬라이드에서 "시작하기" 클릭
-        await completeOnboarding();
-    }
-}
-
-// 온보딩 건너뛰기
-export async function onboardingSkip() {
-    await completeOnboarding();
-}
-
-// 온보딩 완료
-async function completeOnboarding() {
+export function clearLandingServiceGuideSeen() {
     try {
-        if (!window.userSettings) {
-            window.userSettings = { ...DEFAULT_USER_SETTINGS };
+        localStorage.removeItem(SEEN_KEY);
+    } catch (_) {}
+}
+
+function buildSlides() {
+    const list = SLIDE_DEFS.map((s) => ({ ...s }));
+    const kind = getLandingAppPromoKind();
+    if (kind && INSTALL_SLIDES[kind]) {
+        list.push({ ...INSTALL_SLIDES[kind] });
+    }
+    return list;
+}
+
+function renderDots() {
+    const dots = $('serviceGuideDots');
+    if (!dots) return;
+    dots.innerHTML = slides
+        .map((_, i) => `<i class="${i === currentIndex ? 'on' : ''}" aria-hidden="true"></i>`)
+        .join('');
+}
+
+function renderSlide() {
+    const slide = slides[currentIndex];
+    if (!slide) return;
+
+    const eyebrow = $('serviceGuideEyebrow');
+    const title = $('serviceGuideTitle');
+    const body = $('serviceGuideBody');
+    const cta = $('serviceGuideInstallCta');
+    const prevBtn = $('serviceGuidePrevBtn');
+    const nextBtn = $('serviceGuideNextBtn');
+    const skipBtn = $('serviceGuideSkipBtn');
+    const panel = $('serviceGuideCopy');
+    const overlay = $('serviceGuideOverlay');
+
+    if (eyebrow) eyebrow.textContent = slide.eyebrow || '';
+    if (title) title.textContent = slide.title || '';
+    if (body) body.textContent = slide.body || '';
+
+    const last = currentIndex === slides.length - 1;
+    if (prevBtn) prevBtn.disabled = currentIndex === 0;
+    if (nextBtn) nextBtn.textContent = last ? '시작하기' : '다음';
+    if (skipBtn) skipBtn.classList.toggle('invisible', last);
+
+    if (cta) {
+        const showCta = !!slide.cta;
+        cta.classList.toggle('hidden', !showCta);
+        if (showCta) {
+            cta.textContent = slide.cta;
+            cta.dataset.action = slide.ctaAction || '';
         }
-        
-        window.userSettings.onboardingCompleted = true;
-        window.userSettings.isFirstLogin = false;
-        
-        await dbOps.saveSettings(window.userSettings);
-        
-        closeOnboardingModal();
-        showToast("환영합니다! 이제 MEALOG를 시작해보세요.", "success");
-        
-        // 인증 플로우 관리자에게 온보딩 완료 알림
-        const { authFlowManager } = await import('./auth-flow.js');
-        await authFlowManager.onOnboardingCompleted();
-    } catch (e) {
-        console.error("온보딩 완료 저장 실패:", e);
-        closeOnboardingModal();
-        showToast("온보딩이 완료되었습니다.", "success");
-        
-        // 에러가 발생해도 플로우는 계속 진행
-        try {
-            const { authFlowManager } = await import('./auth-flow.js');
-            await authFlowManager.onOnboardingCompleted();
-        } catch (flowError) {
-            console.error("인증 플로우 처리 실패:", flowError);
+    }
+
+    document.querySelectorAll('.service-guide-visual').forEach((el) => {
+        el.classList.toggle('is-active', el.dataset.visual === slide.visual);
+    });
+
+    if (panel) {
+        panel.classList.remove('service-guide-copy--enter');
+        void panel.offsetWidth;
+        panel.classList.add('service-guide-copy--enter');
+    }
+
+    if (overlay) overlay.dataset.slide = slide.id || '';
+    renderDots();
+}
+
+async function finishGuide() {
+    if (completing) return;
+    completing = true;
+    try {
+        closeServiceGuideOverlay();
+        if (typeof onCompleteCb === 'function') {
+            const cb = onCompleteCb;
+            onCompleteCb = null;
+            cb();
         }
+    } finally {
+        completing = false;
     }
 }
 
+function onInstallCta() {
+    const kind = getLandingAppPromoKind() || 'desktop';
+    openOsInstallGuideModal(kind);
+}
+
+function bindOnce() {
+    if (bound) return;
+    bound = true;
+    $('serviceGuideNextBtn')?.addEventListener('click', () => {
+        if (currentIndex < slides.length - 1) {
+            currentIndex += 1;
+            renderSlide();
+        } else {
+            void finishGuide();
+        }
+    });
+    $('serviceGuidePrevBtn')?.addEventListener('click', () => {
+        if (currentIndex > 0) {
+            currentIndex -= 1;
+            renderSlide();
+        }
+    });
+    $('serviceGuideSkipBtn')?.addEventListener('click', () => void finishGuide());
+    $('serviceGuideInstallCta')?.addEventListener('click', onInstallCta);
+
+    let touchX = null;
+    const overlay = $('serviceGuideOverlay');
+    overlay?.addEventListener(
+        'touchstart',
+        (e) => {
+            touchX = e.changedTouches[0]?.clientX ?? null;
+        },
+        { passive: true }
+    );
+    overlay?.addEventListener(
+        'touchend',
+        (e) => {
+            if (touchX == null) return;
+            const dx = (e.changedTouches[0]?.clientX ?? 0) - touchX;
+            touchX = null;
+            if (Math.abs(dx) < 56) return;
+            if (dx < 0 && currentIndex < slides.length - 1) {
+                currentIndex += 1;
+                renderSlide();
+            } else if (dx > 0 && currentIndex > 0) {
+                currentIndex -= 1;
+                renderSlide();
+            }
+        },
+        { passive: true }
+    );
+}
+
+export function isServiceGuideActive() {
+    return active;
+}
+
+export function closeServiceGuideOverlay() {
+    const overlay = $('serviceGuideOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    document.documentElement.classList.remove('service-guide-active');
+    unlockBodyScroll('serviceGuideOverlay');
+    window._serviceGuideActive = false;
+    active = false;
+    currentIndex = 0;
+}
+
+/**
+ * 로그인 화면 직전에 호출.
+ * 로그인(비익명) 세션이 있을 때만 스킵 — 미로그인이면 매번 표시.
+ * @returns {Promise<boolean>} 가이드를 띄웠으면 true
+ */
+export async function maybeStartLandingServiceGuide(options = {}) {
+    onCompleteCb = typeof options.onComplete === 'function' ? options.onComplete : null;
+
+    try {
+        const { auth } = await import('./firebase.js');
+        if (auth?.currentUser && !auth.currentUser.isAnonymous) {
+            return false;
+        }
+    } catch (_) {}
+
+    // 예전 1회 시청 플래그가 남아 있으면 정리
+    clearLandingServiceGuideSeen();
+
+    const overlay = $('serviceGuideOverlay');
+    if (!overlay) return false;
+
+    slides = buildSlides();
+    if (!slides.length) return false;
+
+    if (typeof window.dismissMealogBootSplash === 'function') {
+        window.dismissMealogBootSplash();
+    }
+
+    bindOnce();
+    currentIndex = 0;
+    active = true;
+    window._serviceGuideActive = true;
+    document.documentElement.classList.add('service-guide-active');
+    overlay.classList.remove('hidden');
+    lockBodyScroll('serviceGuideOverlay');
+    renderSlide();
+    return true;
+}
+
+/** @deprecated 이름 호환 */
+export async function maybeStartServiceGuide(options = {}) {
+    return maybeStartLandingServiceGuide(options);
+}
+
+export function showOnboardingModal() {
+    return maybeStartLandingServiceGuide();
+}
+export function closeOnboardingModal() {
+    closeServiceGuideOverlay();
+}
+export function onboardingPrev() {
+    if (currentIndex > 0) {
+        currentIndex -= 1;
+        renderSlide();
+    }
+}
+export async function onboardingNext() {
+    if (currentIndex < slides.length - 1) {
+        currentIndex += 1;
+        renderSlide();
+    } else {
+        await finishGuide();
+    }
+}
+export async function onboardingSkip() {
+    await finishGuide();
+}
+
+/** @deprecated 가입 후 플로우용 — no-op 유지 */
+export function markServiceGuidePending() {}
+
+/** 콘솔: `__mealogDebugServiceGuide()` */
+if (typeof window !== 'undefined') {
+    window.__mealogDebugServiceGuide = async () => {
+        return maybeStartLandingServiceGuide({
+            onComplete: () => window.location.reload(),
+        });
+    };
+}

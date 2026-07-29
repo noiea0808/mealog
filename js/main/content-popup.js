@@ -187,6 +187,15 @@ export function registerContentPopup() {
 
     window.checkAndShowContentPopup = async function(tab) {
         if (sessionStorage.getItem('loginBannerLandingNoticeId')) return;
+        if (window._serviceGuideActive) {
+            window._pendingContentPopupTab = tab;
+            return;
+        }
+        const serviceGuideEl = document.getElementById('serviceGuideOverlay');
+        if (serviceGuideEl && !serviceGuideEl.classList.contains('hidden')) {
+            window._pendingContentPopupTab = tab;
+            return;
+        }
         if (window._attendancePopupResolutionPending) {
             window._pendingContentPopupTab = tab;
             return;
