@@ -102,6 +102,9 @@ export function renderPhotoPreviews() {
     const idleId = isSnackMode ? 'entryMealPhoto' : 'entrySnackPhoto';
     document.getElementById(activeId)?.classList.toggle('entry-photo-section--has-photos', currentCount > 0);
     document.getElementById(idleId)?.classList.remove('entry-photo-section--has-photos');
+    if (typeof window.syncEntrySheetHeightLock === 'function') {
+        window.syncEntrySheetHeightLock();
+    }
 }
 
 // Comment 확장/축소 토글 함수

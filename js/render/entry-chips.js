@@ -125,6 +125,9 @@ export function renderEntryChips() {
 
         if (!parentFilter) {
             el.innerHTML = '';
+            if (typeof window.syncEntrySheetHeightLock === 'function') {
+                window.syncEntrySheetHeightLock();
+            }
             return;
         }
 
@@ -221,6 +224,9 @@ export function renderEntryChips() {
         `;
         if (myTagsList.length || recentList.length) refreshLucideIcons(el);
         syncEntrySubtagScrollHints(el);
+        if (typeof window.syncEntrySheetHeightLock === 'function') {
+            window.syncEntrySheetHeightLock();
+        }
     };
 
     const axis1List = getAxis1TagList(mode, tags);

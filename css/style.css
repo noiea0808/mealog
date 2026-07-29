@@ -3298,36 +3298,41 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     color: white; 
 }
 
-/* 끼니 등록 모달: 상단 고정(헤더 Y 고정) + 높이만 변동. 키보드 열림 시 visualViewport에 맞춤 */
+/* 끼니 등록 모달: flex 중앙정렬 사용 금지 — 패널 absolute top만으로 Y 결정
+ * display는 :not(.hidden)에만 — #entryModal{display:block}이면 .hidden을 덮어 항상 노출됨 */
 #entryModal {
-    align-items: flex-start;
-    justify-content: center;
-    /* 열릴 때 기준 높이 기준 중앙에 맞춘 top을 잠그고, 이후 탭/콘텐츠 높이 변화는 아래로만 반영 */
-    padding-top: var(--entry-sheet-top, max(1rem, env(safe-area-inset-top, 0px)));
-    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    padding-left: 1rem;
+    padding-right: 1rem;
+    padding-top: 0;
+    padding-bottom: 0;
     box-sizing: border-box;
 }
+#entryModal:not(.hidden) {
+    display: block;
+}
 #entryModal.keyboard-open {
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    padding-bottom: 0 !important;
-    /* stretch 대신 상단 고정 유지 — 탭·키보드 전환 시 헤더가 위아래로 튀지 않게 */
-    align-items: flex-start !important;
-    justify-content: center !important;
-    padding-top: var(--entry-sheet-top, 0px) !important;
+    padding: 0 !important;
 }
 #entryModal > .entry-modal-panel {
     background: var(--card);
-    /* vh만 쓰면 키보드 올라온 뒤에도 레이아웃 뷰포트 기준으로 커져 액션바가 키패드에 가려짐 → 부모 높이(visualViewport 반영) 안으로 제한 */
-    /* 기준 높이 잠금: 메모 확장 등으로 팝업 전체가 커졌다 줄어들지 않게 함. 사진 있을 때만 auto 성장 */
+    position: absolute !important;
+    top: var(--entry-sheet-top, 1rem) !important;
+    bottom: auto !important;
+    left: 0;
+    right: 0;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    margin-left: auto;
+    margin-right: auto;
+    /* 높이·top은 JS가 px로 잠금. auto/중앙정렬 경로를 끊음 */
     height: var(--entry-sheet-h, auto);
-    max-height: min(88vh, calc(100% - var(--entry-sheet-top, 1rem) - 1rem));
+    max-height: calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px)));
     min-height: var(--entry-sheet-min-h, 0px);
 }
 #entryModal.keyboard-open > .entry-modal-panel {
-    /* 키보드 시 전체 높이로 키우지 않음 — 잠긴 시트 높이를 유지하고 공간 부족분만 클램프 */
+    top: 0 !important;
     height: var(--entry-sheet-h, auto);
-    max-height: calc(100% - var(--entry-sheet-top, 0px));
+    max-height: 100%;
     border-radius: 0 !important;
 }
 #entryModal.keyboard-open .entry-modal-header {
