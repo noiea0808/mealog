@@ -2760,7 +2760,7 @@
         <div class="entry-modal-panel z-10 w-full max-w-md mx-auto flex flex-col min-h-0 overflow-hidden" data-mealog-dialog-panel>
             <div class="entry-modal-header shrink-0">
                 <div id="entryModalGrabber" class="mealog-dialog-grabber entry-modal-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
-                <div class="flex items-center gap-2 min-w-0 px-4 pt-1 pb-2.5">
+                <div class="flex items-center gap-2 min-w-0 px-4 pt-1.5 pb-3">
                     <div class="entry-header-controls flex min-w-0 flex-1 items-center gap-2">
                         <input type="hidden" id="entryHeaderDate" value="">
                         <button type="button" id="entryHeaderDateBtn" aria-label="날짜" aria-haspopup="dialog" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800 outline-none transition-colors">날짜</button>
@@ -2772,10 +2772,13 @@
                     </div>
                 </div>
             </div>
-            <div id="entrySheetTabs" class="entry-sheet-tabs" role="tablist" aria-label="기록 항목">
-                <button type="button" class="entry-sheet-tab entry-sheet-tab--active" role="tab" id="entrySheetTabBasic" data-entry-sheet-tab="basic" aria-controls="entrySheetPanelBasic" aria-selected="true">뭘 먹었어요?</button>
-                <button type="button" class="entry-sheet-tab" role="tab" id="entrySheetTabMore" data-entry-sheet-tab="more" aria-controls="entrySheetPanelMore" aria-selected="false">어디서? 누구랑?</button>
-                <button type="button" class="entry-sheet-tab" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false">어땠어요?</button>
+            <div class="entry-sheet-step-header shrink-0" aria-live="polite">
+                <p id="entrySheetStepLabel" class="entry-sheet-step-label">뭘 먹었어요?</p>
+                <div id="entrySheetTabs" class="entry-sheet-step-dots" role="tablist" aria-label="기록 단계">
+                    <button type="button" class="entry-sheet-step-dot entry-sheet-step-dot--active" role="tab" id="entrySheetTabBasic" data-entry-sheet-tab="basic" aria-controls="entrySheetPanelBasic" aria-selected="true" aria-label="1단계 뭘 먹었어요?" title="뭘 먹었어요?"></button>
+                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabMore" data-entry-sheet-tab="more" aria-controls="entrySheetPanelMore" aria-selected="false" aria-label="2단계 어디서? 누구랑?" title="어디서? 누구랑?"></button>
+                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false" aria-label="3단계 어땠어요?" title="어땠어요?"></button>
+                </div>
             </div>
 
             <div id="modalScrollArea" class="entry-sheet-body flex-1 min-h-0 space-y-0 overflow-y-auto overflow-x-hidden pb-0">
@@ -2863,8 +2866,19 @@
                                     <textarea id="entryWhatInput" rows="2" placeholder="무엇을 드셨나요?&#10;구분도 고르면 내 패턴을 알 수 있어요." aria-label="무엇을" class="entry-what-textarea w-full px-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 resize-none overflow-hidden"></textarea>
                                 </div>
                             </div>
-                            <div id="entryWhatChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
-                            <div id="entryWhatSuggestions" class="entry-form-field-subtags entry-subtag-suggestions"></div>
+                            <div class="entry-tag-stage" data-entry-tag-stage="what">
+                                <div class="entry-tag-stage__viewport">
+                                    <div class="entry-tag-stage__track">
+                                        <div id="entryWhatChips" class="entry-tag-stage__panel entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                                        <div class="entry-tag-stage__panel entry-tag-stage__panel--sub">
+                                            <button type="button" class="entry-tag-stage__back" data-entry-tag-back="entryWhatSuggestions" aria-label="구분 목록으로 돌아가기" title="구분 목록">
+                                                <i data-lucide="chevron-left" aria-hidden="true"></i>
+                                            </button>
+                                            <div id="entryWhatSuggestions" class="entry-form-field-subtags entry-subtag-suggestions min-w-0 flex-1"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2908,8 +2922,19 @@
                                 <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
                         </div>
-                        <div id="entryWhereChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
-                        <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWhereInput"></div>
+                        <div class="entry-tag-stage" data-entry-tag-stage="where">
+                            <div class="entry-tag-stage__viewport">
+                                <div class="entry-tag-stage__track">
+                                    <div id="entryWhereChips" class="entry-tag-stage__panel entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                                    <div class="entry-tag-stage__panel entry-tag-stage__panel--sub">
+                                        <button type="button" class="entry-tag-stage__back" data-entry-tag-back="entryWhereSuggestions" aria-label="구분 목록으로 돌아가기" title="구분 목록">
+                                            <i data-lucide="chevron-left" aria-hidden="true"></i>
+                                        </button>
+                                        <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions min-w-0 flex-1" data-input-id="entryWhereInput"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 <div id="entryWithSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
                             <div class="entry-axis-label-row">
@@ -2926,8 +2951,19 @@
                             <div class="entry-axis-input-area w-full min-w-0">
                                 <input id="entryWithInput" type="text" placeholder="누구와 드셨나요? (예: 김철수)" class="w-full py-[0.6rem] px-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
-                            <div id="entryWithChips" class="entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
-                            <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions" data-input-id="entryWithInput"></div>
+                            <div class="entry-tag-stage" data-entry-tag-stage="with">
+                                <div class="entry-tag-stage__viewport">
+                                    <div class="entry-tag-stage__track">
+                                        <div id="entryWithChips" class="entry-tag-stage__panel entry-form-field-chips flex flex-wrap gap-1 hidden" aria-hidden="true"></div>
+                                        <div class="entry-tag-stage__panel entry-tag-stage__panel--sub">
+                                            <button type="button" class="entry-tag-stage__back" data-entry-tag-back="entryWithSuggestions" aria-label="구분 목록으로 돌아가기" title="구분 목록">
+                                                <i data-lucide="chevron-left" aria-hidden="true"></i>
+                                            </button>
+                                            <div id="entryWithSuggestions" class="entry-form-field-subtags entry-subtag-suggestions min-w-0 flex-1" data-input-id="entryWithInput"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                 </div>
                 </div>
@@ -3106,6 +3142,19 @@
                 </div>
                 </div>
                 </div>
+            </div>
+
+            <div id="entrySheetNavBar" class="entry-sheet-nav-bar shrink-0">
+                <button type="button" id="entrySheetPrevBtn" class="entry-sheet-nav-btn entry-sheet-nav-btn--prev hidden">
+                    <i data-lucide="chevron-left" class="entry-sheet-nav-btn__icon" aria-hidden="true"></i>
+                    <span class="entry-sheet-nav-btn__hint">이전</span>
+                    <span id="entrySheetPrevLabel" class="entry-sheet-nav-btn__label">뭘 먹었어요?</span>
+                </button>
+                <button type="button" id="entrySheetNextBtn" class="entry-sheet-nav-btn entry-sheet-nav-btn--next">
+                    <span class="entry-sheet-nav-btn__hint">다음</span>
+                    <span id="entrySheetNextLabel" class="entry-sheet-nav-btn__label">어디서? 누구랑?</span>
+                    <i data-lucide="chevron-right" class="entry-sheet-nav-btn__icon" aria-hidden="true"></i>
+                </button>
             </div>
 
             <div id="entryModalActions" class="entry-modal-actions shrink-0 overflow-hidden">

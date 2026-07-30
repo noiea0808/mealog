@@ -1513,6 +1513,11 @@ export async function openModal(date, slotId, entryId = null) {
         document.getElementById('optionalFields')?.classList.remove('hidden');
         document.getElementById('btnDelete')?.classList.add('hidden');
         updatePhotoAspectButtons();
+        ['entryWhatSuggestions', 'entryWhereSuggestions', 'entryWithSuggestions'].forEach((id) => {
+            if (typeof window.setEntryTagStageView === 'function') {
+                window.setEntryTagStageView(id, 'main');
+            }
+        });
         if (isS) appState.selectedSnackPlaceMainTag = null;
         if (!isS) toggleFieldsForSkip(false);
 
@@ -3579,6 +3584,22 @@ function initEntryModalSubChipDeleteDelegation() {
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
+function initEntryModalTagStageBackOnce() {
+    const modal = document.getElementById('entryModal');
+    if (!modal || modal._tagStageBackBound) return;
+    modal._tagStageBackBound = true;
+    modal.addEventListener('click', (e) => {
+        const back = e.target.closest?.('[data-entry-tag-back]');
+        if (!back || !modal.contains(back)) return;
+        e.preventDefault();
+        const suggestionsId = back.getAttribute('data-entry-tag-back');
+        if (suggestionsId && typeof window.setEntryTagStageView === 'function') {
+            window.setEntryTagStageView(suggestionsId, 'main');
+        }
+    });
+}
+setTimeout(initEntryModalTagStageBackOnce, 0);
+
 const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
 
 /**
@@ -3751,6 +3772,9 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const inputIdForSecondary = (subTagKey === 'people') ? 'entryWithInput' : 
             (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
         window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
+        if (typeof window.setEntryTagStageView === 'function') {
+            window.setEntryTagStageView(subContainerId, selectedValue ? 'sub' : 'main');
+        }
     }
     syncDeliveryVendorSectionVisibility();
 }

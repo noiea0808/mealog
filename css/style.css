@@ -2238,6 +2238,73 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-bottom: 0;
 }
 /* 기록 모달 서브태그: 사용자 / 최근 2행 (식사·간식·어디서·무엇을·누구와 공통) */
+#entryModal .entry-tag-stage {
+    width: 100%;
+    min-width: 0;
+    margin-top: 0.35rem;
+}
+#entryModal .entry-tag-stage__viewport {
+    width: 100%;
+    overflow: hidden;
+}
+#entryModal .entry-tag-stage__track {
+    display: flex;
+    width: 200%;
+    transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: transform;
+}
+#entryModal .entry-tag-stage--sub .entry-tag-stage__track {
+    transform: translateX(-50%);
+}
+#entryModal .entry-tag-stage__panel {
+    flex: 0 0 50%;
+    width: 50%;
+    max-width: 50%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+#entryModal .entry-tag-stage__panel--sub {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+#entryModal .entry-tag-stage__back {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    width: 2rem;
+    height: 2rem;
+    margin-top: 0;
+    border: 1px solid var(--entry-border, #d0c6ba);
+    border-radius: 0.65rem;
+    background: #fff;
+    color: #4f4841;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+#entryModal .entry-tag-stage__back:hover,
+#entryModal .entry-tag-stage__back:active {
+    background: #f7f4ef;
+}
+#entryModal .entry-tag-stage__back [data-lucide],
+#entryModal .entry-tag-stage__back .lucide {
+    width: 1rem;
+    height: 1rem;
+}
+#entryModal .entry-tag-stage:not(.entry-tag-stage--sub) .entry-tag-stage__panel--sub {
+    visibility: hidden;
+    pointer-events: none;
+}
+#entryModal .entry-tag-stage--sub .entry-form-field-chips {
+    /* 슬라이드 후에도 폭 유지 */
+    visibility: hidden;
+    pointer-events: none;
+}
+#entryModal .entry-tag-stage__panel--sub .entry-subtag-suggestions {
+    margin-top: 0;
+}
 #entryModal .entry-subtag-suggestions {
     display: flex;
     flex-direction: column;
@@ -14208,54 +14275,138 @@ body:has(#adminPage:not(.hidden)),
 
 /* ── 본문 영역 ── */
 
-/* ── 기록 시트 항목 탭 ── */
-#entryModal .entry-sheet-tabs {
+/* ── 기록 시트 단계: 상단 현재 단계 + 하단 이전/다음 유도 ── */
+#entryModal .entry-sheet-step-header {
     display: flex;
-    align-items: stretch;
-    gap: 4px;
-    margin: 0.5rem 1rem 0.5rem;
-    padding: 4px;
-    border-radius: 14px;
-    border: 1px solid var(--entry-border, #d0c6ba);
-    background: var(--entry-surface, #fff);
-    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    margin: 0.45rem 1rem 0.85rem;
+    padding: 0.35rem 0 0.2rem;
     box-sizing: border-box;
     flex-shrink: 0;
+}
+#entryModal .entry-sheet-step-label {
+    margin: 0;
+    min-width: 0;
+    flex: 1 1 auto;
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.3;
+    color: var(--ink, #241f1c);
+    text-align: left;
+}
+#entryModal .entry-sheet-step-dots {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+    padding: 0.2rem 0;
     /* 가로 스와이프 탭 전환은 JS, 브라우저는 세로만 네이티브 처리 */
     touch-action: pan-y;
 }
-#entryModal .entry-sheet-tab {
-    flex: 1 1 0;
-    min-width: 0;
-    border: none;
-    border-radius: 10px;
-    padding: 8px 4px;
-    min-height: 2rem;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    line-height: 1.25;
-    text-align: center;
-    color: var(--entry-text-muted, #7a7268);
-    background: transparent;
+#entryModal .entry-sheet-step-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: #d0c6ba;
     cursor: pointer;
-    transition: background 0.2s ease, color 0.2s ease;
+    transition: width 0.2s ease, background 0.2s ease, opacity 0.2s ease;
     -webkit-tap-highlight-color: transparent;
-    white-space: normal;
-    word-break: keep-all;
 }
-#entryModal .entry-sheet-tab:hover:not(:disabled) {
-    color: var(--entry-text-secondary, #4f4841);
+#entryModal .entry-sheet-step-dot--active,
+#entryModal .entry-sheet-step-dot[aria-selected="true"] {
+    width: 1.25rem;
+    background: var(--green, #3cb889);
 }
-#entryModal .entry-sheet-tab--active,
-#entryModal .entry-sheet-tab[aria-selected="true"] {
-    background: var(--entry-accent-soft, #eaf8f2);
-    color: var(--entry-text-primary, #241f1c);
-}
-#entryModal .entry-sheet-tab--disabled,
-#entryModal .entry-sheet-tab:disabled {
-    opacity: 0.4;
+#entryModal .entry-sheet-step-dot--disabled,
+#entryModal .entry-sheet-step-dot:disabled {
+    opacity: 0.35;
     cursor: not-allowed;
+}
+#entryModal .entry-sheet-nav-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin: 0.35rem 1rem 0.55rem;
+    flex-shrink: 0;
+}
+#entryModal .entry-sheet-nav-bar.hidden {
+    display: none !important;
+}
+#entryModal .entry-sheet-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    min-width: 0;
+    min-height: 2.35rem;
+    padding: 0.4rem 0.65rem;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+#entryModal .entry-sheet-nav-btn.hidden {
+    display: none !important;
+}
+#entryModal .entry-sheet-nav-btn--prev {
+    flex: 0 1 36%;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #7a7268;
+}
+#entryModal .entry-sheet-nav-btn--prev:hover,
+#entryModal .entry-sheet-nav-btn--prev:active {
+    background: rgba(36, 31, 28, 0.04);
+    color: #4f4841;
+}
+#entryModal .entry-sheet-nav-btn--next {
+    flex: 1 1 auto;
+    border: 1.5px solid var(--green-mute, #b4e2cd);
+    background: transparent;
+    color: var(--green-deep, #1f8a62);
+}
+#entryModal .entry-sheet-nav-btn--next:hover,
+#entryModal .entry-sheet-nav-btn--next:active {
+    background: var(--green-soft, #eaf8f2);
+    border-color: var(--green, #3cb889);
+}
+#entryModal .entry-sheet-nav-bar--single .entry-sheet-nav-btn--prev,
+#entryModal .entry-sheet-nav-bar--single .entry-sheet-nav-btn--next {
+    flex: 1 1 auto;
+}
+#entryModal .entry-sheet-nav-btn__hint {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    flex-shrink: 0;
+}
+#entryModal .entry-sheet-nav-btn--next .entry-sheet-nav-btn__hint {
+    color: var(--green, #3cb889);
+    opacity: 0.9;
+}
+#entryModal .entry-sheet-nav-btn__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#entryModal .entry-sheet-nav-btn__icon {
+    width: 0.95rem;
+    height: 0.95rem;
+    flex-shrink: 0;
 }
 #entryModal .entry-sheet-tabpanel.hidden,
 #entryModal .entry-sheet-tabpanel[hidden] {
@@ -14666,7 +14817,11 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-action-icon);
 }
 :is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools {
+    display: none;
     opacity: 1;
+}
+:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
+    display: inline-flex;
 }
 :is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn {
     font-size: 0.6875rem;

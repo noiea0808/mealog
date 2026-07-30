@@ -5,6 +5,12 @@ const TAB_IDS = /** @type {const} */ (['basic', 'more', 'detail']);
 
 /** @typedef {'basic'|'more'|'detail'} EntrySheetTabId */
 
+const TAB_LABELS = /** @type {Record<EntrySheetTabId, string>} */ ({
+    basic: '뭘 먹었어요?',
+    more: '어디서? 누구랑?',
+    detail: '어땠어요?',
+});
+
 let tabsBound = false;
 /** @type {EntrySheetTabId} */
 let activeTab = 'basic';
@@ -292,9 +298,62 @@ function updateEntrySheetTabButtons(tabId) {
     root.querySelectorAll('[data-entry-sheet-tab]').forEach((btn) => {
         const on = btn.getAttribute('data-entry-sheet-tab') === tabId;
         btn.classList.toggle('entry-sheet-tab--active', on);
+        btn.classList.toggle('entry-sheet-step-dot--active', on);
         btn.setAttribute('aria-selected', on ? 'true' : 'false');
         btn.tabIndex = on ? 0 : -1;
     });
+    syncEntrySheetStepChrome(tabId);
+}
+
+/** 상단 현재 단계 라벨 + 하단 이전/다음 유도 버튼 */
+function syncEntrySheetStepChrome(tabId) {
+    const labelEl = document.getElementById('entrySheetStepLabel');
+    if (labelEl) labelEl.textContent = TAB_LABELS[tabId] || '';
+
+    const navBar = document.getElementById('entrySheetNavBar');
+    const prevBtn = document.getElementById('entrySheetPrevBtn');
+    const nextBtn = document.getElementById('entrySheetNextBtn');
+    const prevLabel = document.getElementById('entrySheetPrevLabel');
+    const nextLabel = document.getElementById('entrySheetNextLabel');
+    const enabled = getEnabledEntrySheetTabIds();
+    const idx = enabled.indexOf(tabId);
+    const prevId = idx > 0 ? enabled[idx - 1] : null;
+    const nextId = idx >= 0 ? enabled[idx + 1] : null;
+    const showPrev = !!prevId;
+    const showNext = !!nextId;
+
+    if (navBar) {
+        const showBar = showPrev || showNext;
+        navBar.classList.toggle('hidden', !showBar);
+        navBar.classList.toggle('entry-sheet-nav-bar--single', showPrev !== showNext);
+        navBar.setAttribute('aria-hidden', showBar ? 'false' : 'true');
+    }
+
+    if (prevBtn) {
+        prevBtn.classList.toggle('hidden', !showPrev);
+        prevBtn.disabled = !showPrev;
+        if (showPrev) {
+            prevBtn.setAttribute('aria-label', `이전: ${TAB_LABELS[prevId]}`);
+            prevBtn.dataset.prevTab = prevId;
+        } else {
+            prevBtn.removeAttribute('aria-label');
+            delete prevBtn.dataset.prevTab;
+        }
+    }
+    if (prevLabel && showPrev) prevLabel.textContent = TAB_LABELS[prevId];
+
+    if (nextBtn) {
+        nextBtn.classList.toggle('hidden', !showNext);
+        nextBtn.disabled = !showNext;
+        if (showNext) {
+            nextBtn.setAttribute('aria-label', `다음: ${TAB_LABELS[nextId]}`);
+            nextBtn.dataset.nextTab = nextId;
+        } else {
+            nextBtn.removeAttribute('aria-label');
+            delete nextBtn.dataset.nextTab;
+        }
+    }
+    if (nextLabel && showNext) nextLabel.textContent = TAB_LABELS[nextId];
 }
 
 /** 패널 show/hide·inert·스크롤 리셋 (애니메이션 없음) */
@@ -483,10 +542,13 @@ export function setEntrySheetTabsForSkip(isSkip) {
     if (btn) {
         btn.toggleAttribute('disabled', skip);
         btn.classList.toggle('entry-sheet-tab--disabled', skip);
+        btn.classList.toggle('entry-sheet-step-dot--disabled', skip);
         btn.setAttribute('aria-disabled', skip ? 'true' : 'false');
     }
     if (skip && activeTab === 'detail') {
         setEntrySheetTab('basic');
+    } else {
+        syncEntrySheetStepChrome(activeTab);
     }
 }
 
@@ -693,6 +755,22 @@ export function bindEntrySheetTabsOnce() {
             setEntrySheetTab(tab, { animate: true });
             next.focus();
         }
+    });
+
+    const prevBtn = document.getElementById('entrySheetPrevBtn');
+    prevBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const prevId = prevBtn.dataset.prevTab;
+        if (prevId) setEntrySheetTab(prevId, { animate: true });
+        else goToAdjacentEntrySheetTab(-1);
+    });
+
+    const nextBtn = document.getElementById('entrySheetNextBtn');
+    nextBtn?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nextId = nextBtn.dataset.nextTab;
+        if (nextId) setEntrySheetTab(nextId, { animate: true });
+        else goToAdjacentEntrySheetTab(1);
     });
 
     bindEntrySheetTabSwipeOnce();
