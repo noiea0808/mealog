@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>mealog · 첫 방문 가이드 샘플 (풀스크린)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --green: #3cb889;
+      --green-deep: #2d9f74;
+      --green-soft: #eaf8f2;
+      --green-mute: #b4e2cd;
+      --coral: #f2a8b4;
+      --ink: #241f1c;
+      --ink-2: #4f4841;
+      --muted: #7a7268;
+      --line: #d0c6ba;
+      --page: #fffcfa;
+      --page-deep: #f3efe9;
+      --card: #ffffff;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      color: var(--ink);
+      background: #1a1715;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    [data-lucide], .lucide {
+      width: 1.125rem;
+      height: 1.125rem;
+      stroke-width: 1.35;
+      flex-shrink: 0;
+    }
+
+    /* ===== Studio chrome (dev only) ===== */
+    .studio-bar {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 50;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: calc(100vw - 24px);
+    }
+    .studio-bar a,
+    .studio-bar button {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(26, 23, 21, 0.72);
+      color: rgba(255,255,255,0.82);
+      font: inherit;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 7px 10px;
+      border-radius: 999px;
+      text-decoration: none;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+    }
+    .studio-bar button[aria-pressed="true"] {
+      background: rgba(60, 184, 137, 0.28);
+      border-color: rgba(180, 226, 205, 0.45);
+      color: #d8f5e8;
+    }
+
+    /* ===== Fullscreen stage ===== */
+    .tour {
+      position: relative;
+      width: 100%;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(1.02);
+      transition: opacity 0.55s var(--ease), transform 0.7s var(--ease);
+    }
+    .slide.is-active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+      z-index: 2;
+    }
+    .slide.is-exit {
+      opacity: 0;
+      transform: scale(0.985);
+      z-index: 1;
+    }
+
+    /* Background atmosphere per slide */
+    .slide-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+    }
+    .slide[data-id="welcome"] .slide-bg {
+      background:
+        radial-gradient(90% 70% at 50% 0%, rgba(95, 212, 168, 0.35), transparent 55%),
+        radial-gradient(70% 50% at 80% 90%, rgba(242, 168, 180, 0.18), transparent 50%),
+        linear-gradient(165deg, #f7fffb 0%, #fffcfa 45%, #f3efe9 100%);
+    }
+    .slide[data-id="mealog"] .slide-bg {
+      background:
+        radial-gradient(80% 60% at 20% 10%, rgba(60, 184, 137, 0.22), transparent 50%),
+        linear-gradient(180deg, #f4faf7 0%, #fffcfa 40%, #f7f2ec 100%);
+    }
+    .slide[data-id="analysis"] .slide-bg {
+      background:
+        radial-gradient(70% 55% at 85% 15%, rgba(158, 196, 224, 0.35), transparent 50%),
+        radial-gradient(60% 50% at 10% 80%, rgba(60, 184, 137, 0.16), transparent 50%),
+        linear-gradient(180deg, #f5f9fc 0%, #fffcfa 50%, #f3efe9 100%);
+    }
+    .slide[data-id="moment"] .slide-bg {
+      background:
+        radial-gradient(70% 55% at 70% 0%, rgba(242, 168, 180, 0.28), transparent 50%),
+        radial-gradient(55% 45% at 10% 90%, rgba(212, 174, 224, 0.18), transparent 50%),
+        linear-gradient(180deg, #fff8f9 0%, #fffcfa 48%, #f3efe9 100%);
+    }
+    .slide[data-id="install"] .slide-bg {
+      background:
+        radial-gradient(90% 70% at 50% 20%, rgba(95, 212, 168, 0.3), transparent 55%),
+        linear-gradient(165deg, #f7fffb 0%, #fffcfa 55%, #efeae3 100%);
+    }
+
+    .slide-inner {
+      position: relative;
+      z-index: 1;
+      width: min(1120px, 100%);
+      height: 100%;
+      margin: 0 auto;
+      padding: 72px 24px 96px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      align-items: center;
+    }
+    .slide[data-id="welcome"] .slide-inner,
+    .slide[data-id="install"] .slide-inner {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      text-align: center;
+      max-width: 720px;
+    }
+
+    @media (max-width: 860px) {
+      .slide-inner {
+        grid-template-columns: 1fr;
+        gap: 28px;
+        padding: 64px 20px 110px;
+        align-content: center;
+      }
+      .copy { order: 1; text-align: center; }
+      .visual { order: 2; justify-self: center; }
+      .slide[data-id="welcome"] .slide-inner,
+      .slide[data-id="install"] .slide-inner { padding-top: 80px; }
+    }
+
+    /* Copy */
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--green-deep);
+      margin-bottom: 14px;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    .headline {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(34px, 5vw, 52px);
+      font-weight: 400;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--ink);
+      margin-bottom: 16px;
+      opacity: 0;
+      transform: translateY(18px);
+    }
+    .headline em {
+      font-style: italic;
+      color: var(--green-deep);
+    }
+    .sub {
+      font-size: clamp(15px, 1.8vw, 17px);
+      line-height: 1.7;
+      color: var(--ink-2);
+      max-width: 28rem;
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    .slide[data-id="welcome"] .sub,
+    .slide[data-id="install"] .sub {
+      margin-inline: auto;
+    }
+    .copy-meta {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    .slide[data-id="welcome"] .copy-meta,
+    .slide[data-id="install"] .copy-meta {
+      justify-content: center;
+    }
+    .pill {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--green-deep);
+      background: rgba(234, 248, 242, 0.9);
+      border: 1px solid var(--green-mute);
+      padding: 6px 11px;
+      border-radius: 999px;
+    }
+
+    .slide.is-active .eyebrow { animation: rise 0.7s var(--ease) 0.08s forwards; }
+    .slide.is-active .headline { animation: rise 0.75s var(--ease) 0.18s forwards; }
+    .slide.is-active .sub { animation: rise 0.75s var(--ease) 0.3s forwards; }
+    .slide.is-active .copy-meta { animation: rise 0.7s var(--ease) 0.42s forwards; }
+    .slide.is-active .visual { animation: floatIn 0.9s var(--ease) 0.2s forwards; }
+
+    @keyframes rise {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes floatIn {
+      from { opacity: 0; transform: translateY(28px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes softPulse {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes barGrow {
+      from { transform: scaleY(0.2); opacity: 0.4; }
+      to { transform: scaleY(1); opacity: 1; }
+    }
+    @keyframes tileIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 100% 50%; }
+    }
+
+    .visual {
+      width: min(360px, 100%);
+      opacity: 0;
+      transform: translateY(28px) scale(0.96);
+    }
+    .phone {
+      position: relative;
+      border-radius: 28px;
+      overflow: hidden;
+      background: var(--card);
+      border: 1px solid rgba(208, 198, 186, 0.7);
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.8) inset,
+        0 24px 50px rgba(36, 31, 28, 0.16),
+        0 8px 18px rgba(36, 31, 28, 0.08);
+      aspect-ratio: 9 / 16;
+      max-height: min(560px, 62dvh);
+    }
+    .slide.is-active .phone {
+      animation: softPulse 5.5s ease-in-out 1.1s infinite;
+    }
+    .phone-screen {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--page);
+      padding: 14px 12px 10px;
+      gap: 10px;
+    }
+    .phone-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 4px 4px;
+    }
+    .phone-top strong {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .phone-top span {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    /* --- 밀로그 mini UI --- */
+    .day-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      align-self: flex-start;
+      background: var(--green-soft);
+      color: var(--green-deep);
+      font-size: 11px;
+      font-weight: 800;
+      padding: 5px 9px;
+      border-radius: 999px;
+    }
+    .meal-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 10px;
+      opacity: 0;
+    }
+    .slide.is-active .meal-card { animation: tileIn 0.55s var(--ease) forwards; }
+    .slide.is-active .meal-card:nth-child(3) { animation-delay: 0.35s; }
+    .slide.is-active .meal-card:nth-child(4) { animation-delay: 0.48s; }
+    .slide.is-active .meal-card:nth-child(5) { animation-delay: 0.61s; }
+    .meal-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      background:
+        linear-gradient(135deg, #ffe8c8, #f2a8b4 55%, #b4e2cd);
+    }
+    .meal-thumb.t2 {
+      background: linear-gradient(135deg, #d8f0e5, #9ec4e0 60%, #f0c89a);
+    }
+    .meal-thumb.t3 {
+      background: linear-gradient(135deg, #f8e1e6, #d4aee0 50%, #ffe8c8);
+    }
+    .meal-card b {
+      display: block;
+      font-size: 12.5px;
+      margin-bottom: 2px;
+    }
+    .meal-card small {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .journal {
+      margin-top: auto;
+      background: linear-gradient(135deg, #fff8f0, #eaf8f2);
+      border: 1px dashed var(--green-mute);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+      opacity: 0;
+    }
+    .slide.is-active .journal { animation: tileIn 0.6s var(--ease) 0.75s forwards; }
+
+    /* --- 분석 mini UI --- */
+    .stat-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px;
+      opacity: 0;
+    }
+    .slide.is-active .stat { animation: tileIn 0.5s var(--ease) forwards; }
+    .slide.is-active .stat:nth-child(1) { animation-delay: 0.32s; }
+    .slide.is-active .stat:nth-child(2) { animation-delay: 0.42s; }
+    .stat em {
+      display: block;
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .stat strong {
+      font-family: Fredoka, Pretendard, sans-serif;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--green-deep);
+    }
+    .chart {
+      flex: 1;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 10px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      opacity: 0;
+    }
+    .slide.is-active .chart { animation: tileIn 0.55s var(--ease) 0.5s forwards; }
+    .chart-label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--ink-2);
+    }
+    .bars {
+      flex: 1;
+      display: flex;
+      align-items: flex-end;
+      gap: 7px;
+      padding: 4px 2px 0;
+      min-height: 110px;
+    }
+    .bars span {
+      flex: 1;
+      border-radius: 8px 8px 4px 4px;
+      background: linear-gradient(180deg, #5fd4a8, #2d9f74);
+      transform-origin: bottom;
+      opacity: 0.35;
+      transform: scaleY(0.2);
+    }
+    .slide.is-active .bars span { animation: barGrow 0.7s var(--ease) forwards; }
+    .slide.is-active .bars span:nth-child(1) { animation-delay: 0.55s; height: 42%; }
+    .slide.is-active .bars span:nth-child(2) { animation-delay: 0.62s; height: 68%; }
+    .slide.is-active .bars span:nth-child(3) { animation-delay: 0.69s; height: 54%; }
+    .slide.is-active .bars span:nth-child(4) { animation-delay: 0.76s; height: 86%; }
+    .slide.is-active .bars span:nth-child(5) { animation-delay: 0.83s; height: 62%; }
+    .slide.is-active .bars span:nth-child(6) { animation-delay: 0.9s; height: 74%; }
+    .slide.is-active .bars span:nth-child(7) { animation-delay: 0.97s; height: 48%; }
+    .comment {
+      background: var(--green-soft);
+      border-radius: 12px;
+      padding: 10px 11px;
+      font-size: 11.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+      opacity: 0;
+    }
+    .slide.is-active .comment { animation: tileIn 0.55s var(--ease) 1.05s forwards; }
+
+    /* --- 모먼트 mini UI --- */
+    .moment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      flex: 1;
+    }
+    .moment-tile {
+      border-radius: 14px;
+      min-height: 0;
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      border: 1px solid rgba(208, 198, 186, 0.45);
+    }
+    .moment-tile:nth-child(1) {
+      grid-row: span 2;
+      background: linear-gradient(160deg, #ffe0c2 0%, #f2a8b4 45%, #d4aee0 100%);
+    }
+    .moment-tile:nth-child(2) {
+      background: linear-gradient(160deg, #c8ebe0, #9ec4e0);
+    }
+    .moment-tile:nth-child(3) {
+      background: linear-gradient(160deg, #f8e1e6, #f0c89a);
+    }
+    .moment-tile::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 45%, rgba(36,31,28,0.38));
+    }
+    .moment-tile b {
+      position: absolute;
+      left: 8px;
+      bottom: 8px;
+      z-index: 1;
+      font-size: 10.5px;
+      color: #fff;
+      font-weight: 700;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    }
+    .slide.is-active .moment-tile { animation: tileIn 0.55s var(--ease) forwards; }
+    .slide.is-active .moment-tile:nth-child(1) { animation-delay: 0.32s; }
+    .slide.is-active .moment-tile:nth-child(2) { animation-delay: 0.44s; }
+    .slide.is-active .moment-tile:nth-child(3) { animation-delay: 0.56s; }
+    .react-row {
+      display: flex;
+      gap: 6px;
+      opacity: 0;
+    }
+    .slide.is-active .react-row { animation: tileIn 0.5s var(--ease) 0.72s forwards; }
+    .react-row span {
+      flex: 1;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink-2);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 4px;
+    }
+
+    /* Welcome / Install visuals */
+    .hero-mark {
+      width: min(220px, 56vw);
+      aspect-ratio: 1;
+      border-radius: 36px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.9), rgba(234,248,242,0.95));
+      border: 1px solid var(--green-mute);
+      box-shadow: 0 20px 50px rgba(60, 184, 137, 0.22);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero-mark::before {
+      content: "";
+      position: absolute;
+      inset: -40%;
+      background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.55), transparent 70%);
+      background-size: 200% 200%;
+      animation: shimmer 3.2s linear infinite;
+    }
+    .hero-mark img {
+      width: 58%;
+      height: 58%;
+      object-fit: cover;
+      border-radius: 22px;
+      position: relative;
+      z-index: 1;
+    }
+    .welcome-visual,
+    .install-visual {
+      display: grid;
+      justify-items: center;
+      gap: 18px;
+    }
+    .install-actions {
+      display: grid;
+      gap: 10px;
+      width: min(340px, 100%);
+      margin-top: 8px;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    .slide.is-active .install-actions {
+      animation: rise 0.7s var(--ease) 0.5s forwards;
+    }
+    .install-btn {
+      appearance: none;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 16px;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .install-btn.primary {
+      color: #fff;
+      background: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 10px 22px rgba(60,184,137,0.3);
+    }
+    .install-btn.ghost {
+      background: rgba(255,255,255,0.8);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+    .install-btn .lucide { width: 1.15rem; height: 1.15rem; }
+
+    /* Footer controls */
+    .tour-ui {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10;
+      padding: 0 20px calc(18px + env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+    }
+    .tour-ui > * { pointer-events: auto; }
+    .progress {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .progress i {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(36, 31, 28, 0.18);
+      display: block;
+      transition: 0.3s var(--ease);
+    }
+    .progress i.on {
+      width: 22px;
+      background: var(--green);
+    }
+    .nav-btns {
+      display: flex;
+      gap: 8px;
+    }
+    .nav-btns button,
+    .skip-link {
+      appearance: none;
+      border: 0;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      border-radius: 999px;
+      padding: 11px 16px;
+      cursor: pointer;
+    }
+    .skip-link {
+      background: transparent;
+      color: var(--muted);
+      padding-left: 4px;
+    }
+    .nav-btns .prev {
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      color: var(--ink-2);
+    }
+    .nav-btns .next {
+      color: #fff;
+      background: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+      box-shadow: 0 8px 18px rgba(60, 184, 137, 0.28);
+      min-width: 108px;
+    }
+    .nav-btns .prev[disabled] {
+      opacity: 0.35;
+      cursor: default;
+    }
+
+    /* iOS guide overlay */
+    .ios-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(36, 31, 28, 0.45);
+      backdrop-filter: blur(4px);
+    }
+    .ios-layer.open { display: flex; }
+    .ios-card {
+      width: min(400px, 100%);
+      background: #fff;
+      border-radius: 22px;
+      padding: 20px 18px 16px;
+      border: 1px solid var(--line);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+    }
+    .ios-card h4 {
+      font-size: 16px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .ios-card > p {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+    .ios-card ol {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .ios-card li {
+      display: grid;
+      grid-template-columns: 26px 1fr;
+      gap: 10px;
+      font-size: 13.5px;
+      line-height: 1.45;
+      color: var(--ink-2);
+    }
+    .ios-card .step {
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green-deep);
+      font-size: 12px;
+      font-weight: 800;
+      display: grid;
+      place-items: center;
+    }
+
+    .done-flash {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(70% 50% at 50% 40%, rgba(95,212,168,0.28), transparent 60%),
+        #fffcfa;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.45s var(--ease);
+    }
+    .done-flash.show {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .done-flash h2 {
+      font-family: "Instrument Serif", Georgia, serif;
+      font-size: clamp(28px, 5vw, 42px);
+      text-align: center;
+      line-height: 1.25;
+    }
+    .done-flash p {
+      margin-top: 10px;
+      text-align: center;
+      color: var(--ink-2);
+    }
+  </style>
+</head>
+<body>
+  <div class="studio-bar" aria-label="샘플 컨트롤">
+    <a href="./index.html">시안 허브</a>
+    <button type="button" data-platform="android" aria-pressed="true">Android 웹</button>
+    <button type="button" data-platform="ios" aria-pressed="false">iOS 웹</button>
+    <button type="button" data-platform="native" aria-pressed="false">앱/PWA</button>
+    <a href="/" title="본구현: 로그인 후 콘솔에서 __mealogDebugServiceGuide()">앱 미리보기</a>
+  </div>
+
+  <div class="tour" id="tour">
+    <!-- 0. Welcome -->
+    <section class="slide is-active" data-id="welcome" aria-hidden="false">
+      <div class="slide-bg"></div>
+      <div class="slide-inner">
+        <div class="welcome-visual visual">
+          <div class="hero-mark">
+            <img src="../../assets/icon-only.png" alt="밀로그" />
+          </div>
+        </div>
+        <div class="copy">
+          <div class="eyebrow"><i data-lucide="sparkles"></i> Welcome to MEALOG</div>
+          <h2 class="headline">오늘의 한 끼가<br /><em>작은 이야기</em>가 됩니다</h2>
+          <p class="sub">밀로그는 거창한 기록이 아니어도 괜찮아요.<br />먹었던 순간을 남겨두면, 당신의 리듬이 보이기 시작해요.</p>
+          <div class="copy-meta">
+            <span class="pill">밀로그</span>
+            <span class="pill">분석</span>
+            <span class="pill">모먼트</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 1. 밀로그 -->
+    <section class="slide" data-id="mealog" aria-hidden="true">
+      <div class="slide-bg"></div>
+      <div class="slide-inner">
+        <div class="copy">
+          <div class="eyebrow"><i data-lucide="book-open"></i> 밀로그</div>
+          <h2 class="headline">먹었던 하루를<br /><em>그대로</em> 남겨요</h2>
+          <p class="sub">식사와 간식, 짧은 소감만 적어도 충분해요.<br />사진 한 장, 한 줄의 감정도 당신의 기록이 됩니다.</p>
+          <div class="copy-meta">
+            <span class="pill">끼니 기록</span>
+            <span class="pill">하루 소감</span>
+            <span class="pill">사진</span>
+          </div>
+        </div>
+        <div class="visual">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-screen">
+              <div class="phone-top"><strong>밀로그</strong><span>오늘</span></div>
+              <div class="day-chip">7월 30일 · 수요일</div>
+              <div class="meal-card">
+                <div class="meal-thumb"></div>
+                <div>
+                  <b>아침 · 요거트 볼</b>
+                  <small>집 · 혼자<br />상큼하게 시작</small>
+                </div>
+              </div>
+              <div class="meal-card">
+                <div class="meal-thumb t2"></div>
+                <div>
+                  <b>점심 · 비빔밥</b>
+                  <small>회사 근처 · 동료와<br />든든했어요</small>
+                </div>
+              </div>
+              <div class="meal-card">
+                <div class="meal-thumb t3"></div>
+                <div>
+                  <b>간식 · 아이스아메리카노</b>
+                  <small>카페 · 오후 3시</small>
+                </div>
+              </div>
+              <div class="journal">“오늘은 과하지 않게 먹어서 기분이 좋아요.”</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 분석 -->
+    <section class="slide" data-id="analysis" aria-hidden="true">
+      <div class="slide-bg"></div>
+      <div class="slide-inner">
+        <div class="copy">
+          <div class="eyebrow"><i data-lucide="pie-chart"></i> 분석</div>
+          <h2 class="headline">쌓인 기록이<br /><em>패턴</em>이 됩니다</h2>
+          <p class="sub">밀당에서 주간·월간 흐름을 살펴보세요.<br />참견 한마디가, 내일의 선택을 조금 더 다정하게 만들어요.</p>
+          <div class="copy-meta">
+            <span class="pill">밀당</span>
+            <span class="pill">주간 흐름</span>
+            <span class="pill">참견</span>
+          </div>
+        </div>
+        <div class="visual">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-screen">
+              <div class="phone-top"><strong>밀당</strong><span>이번 주</span></div>
+              <div class="stat-row">
+                <div class="stat"><em>식사</em><strong>18</strong></div>
+                <div class="stat"><em>연속</em><strong>5일</strong></div>
+              </div>
+              <div class="chart">
+                <div class="chart-label">끼니 리듬</div>
+                <div class="bars">
+                  <span></span><span></span><span></span><span></span>
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+              <div class="comment">“주말엔 간식이 늘어났어요. 오늘은 한 끼만 천천히 즐겨볼까요?”</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 모먼트 -->
+    <section class="slide" data-id="moment" aria-hidden="true">
+      <div class="slide-bg"></div>
+      <div class="slide-inner">
+        <div class="copy">
+          <div class="eyebrow"><i data-lucide="image"></i> 모먼트</div>
+          <h2 class="headline">맛있었던 장면을<br /><em>함께</em> 나눠요</h2>
+          <p class="sub">혼자만의 기록이어도 좋고, 공유해도 좋아요.<br />누군가의 식탁이 당신의 하루에 작은 영감이 됩니다.</p>
+          <div class="copy-meta">
+            <span class="pill">사진 피드</span>
+            <span class="pill">반응</span>
+            <span class="pill">영감</span>
+          </div>
+        </div>
+        <div class="visual">
+          <div class="phone" aria-hidden="true">
+            <div class="phone-screen">
+              <div class="phone-top"><strong>모먼트</strong><span>피드</span></div>
+              <div class="moment-grid">
+                <div class="moment-tile"><b>토마토 파스타</b></div>
+                <div class="moment-tile"><b>아침 샐러드</b></div>
+                <div class="moment-tile"><b>주말 브런치</b></div>
+              </div>
+              <div class="react-row">
+                <span>♥ 24</span>
+                <span>맛있어 보여요</span>
+                <span>저장</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Install (web only) -->
+    <section class="slide" data-id="install" aria-hidden="true">
+      <div class="slide-bg"></div>
+      <div class="slide-inner">
+        <div class="install-visual visual">
+          <div class="hero-mark">
+            <img src="../../assets/icon-only.png" alt="" />
+          </div>
+        </div>
+        <div class="copy">
+          <div class="eyebrow"><i data-lucide="smartphone"></i> 더 가까이</div>
+          <h2 class="headline" id="installHeadline">주머니 속에<br /><em>밀로그</em>를 두세요</h2>
+          <p class="sub" id="installSub">웹에서도 충분하지만, 앱처럼 열면 기록이 더 가까워져요.</p>
+          <div class="install-actions" id="installActions">
+            <button type="button" class="install-btn primary" id="installPrimary">
+              <i data-lucide="download"></i>
+              <span>앱 설치하기</span>
+            </button>
+            <button type="button" class="install-btn ghost" id="installLater">나중에 할게요</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="tour-ui">
+      <button type="button" class="skip-link" id="skipBtn">건너뛰기</button>
+      <div class="progress" id="progress" aria-hidden="true"></div>
+      <div class="nav-btns">
+        <button type="button" class="prev" id="prevBtn" disabled>이전</button>
+        <button type="button" class="next" id="nextBtn">다음</button>
+      </div>
+    </div>
+
+    <div class="ios-layer" id="iosGuide" aria-hidden="true">
+      <div class="ios-card">
+        <h4>아이폰에서 앱처럼 사용하기</h4>
+        <p>Safari·Chrome에서 홈 화면에 추가하면 바로 열 수 있어요.</p>
+        <ol>
+          <li><span class="step">1</span><span>브라우저의 공유 버튼을 눌러주세요.</span></li>
+          <li><span class="step">2</span><span>홈 화면에 추가를 선택해주세요.</span></li>
+          <li><span class="step">3</span><span>추가를 누르면 홈 화면 아이콘으로 실행할 수 있어요.</span></li>
+        </ol>
+        <button type="button" class="install-btn primary" style="width:100%" id="iosGuideClose">확인</button>
+      </div>
+    </div>
+
+    <div class="done-flash" id="doneFlash">
+      <div>
+        <h2>당신의 식탁 이야기가<br />시작돼요</h2>
+        <p>첫 기록을 남겨볼까요?</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const INSTALL_COPY = {
+      android: {
+        headline: '주머니 속에<br /><em>밀로그</em>를 두세요',
+        sub: '구글 플레이에서 설치하면, 웹보다 더 가까이에서 하루를 남길 수 있어요.',
+        cta: '앱 설치하기',
+        icon: 'download',
+      },
+      ios: {
+        headline: '홈 화면에 두고<br /><em>앱처럼</em> 열어보세요',
+        sub: '설치 없이도, 홈 화면에 추가하면 아이콘 하나로 바로 시작할 수 있어요.',
+        cta: '방법 보기',
+        icon: 'share',
+      },
+      native: null,
+    };
+
+    let platform = 'android';
+    let index = 0;
+    let animating = false;
+
+    const slidesEls = [...document.querySelectorAll('.slide')];
+    const progress = document.getElementById('progress');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const skipBtn = document.getElementById('skipBtn');
+    const doneFlash = document.getElementById('doneFlash');
+    const iosGuide = document.getElementById('iosGuide');
+    const installHeadline = document.getElementById('installHeadline');
+    const installSub = document.getElementById('installSub');
+    const installPrimary = document.getElementById('installPrimary');
+    const installLater = document.getElementById('installLater');
+
+    function visibleSlides() {
+      return slidesEls.filter((el) => {
+        if (el.dataset.id === 'install' && platform === 'native') return false;
+        return true;
+      });
+    }
+
+    function updateInstallCopy() {
+      const conf = INSTALL_COPY[platform];
+      const installSlide = document.querySelector('.slide[data-id="install"]');
+      if (!conf) {
+        installSlide?.setAttribute('hidden', '');
+        return;
+      }
+      installSlide?.removeAttribute('hidden');
+      installHeadline.innerHTML = conf.headline;
+      installSub.textContent = conf.sub;
+      installPrimary.innerHTML = `<i data-lucide="${conf.icon}"></i><span>${conf.cta}</span>`;
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function renderProgress() {
+      const list = visibleSlides();
+      progress.innerHTML = list.map((_, i) => `<i class="${i === index ? 'on' : ''}"></i>`).join('');
+    }
+
+    function goTo(nextIndex, dir = 1) {
+      const list = visibleSlides();
+      if (animating) return;
+      if (nextIndex < 0) return;
+      if (nextIndex >= list.length) {
+        finish();
+        return;
+      }
+
+      animating = true;
+      const current = list[index];
+      const next = list[nextIndex];
+
+      current.classList.remove('is-active');
+      current.classList.add('is-exit');
+      current.setAttribute('aria-hidden', 'true');
+
+      next.classList.remove('is-exit');
+      next.classList.add('is-active');
+      next.setAttribute('aria-hidden', 'false');
+
+      index = nextIndex;
+      prevBtn.disabled = index === 0;
+      nextBtn.textContent = index === list.length - 1 ? '시작하기' : '다음';
+      renderProgress();
+
+      setTimeout(() => {
+        current.classList.remove('is-exit');
+        animating = false;
+      }, 560);
+    }
+
+    function finish() {
+      doneFlash.classList.add('show');
+      setTimeout(() => {
+        doneFlash.classList.remove('show');
+        index = 0;
+        visibleSlides().forEach((el, i) => {
+          el.classList.toggle('is-active', i === 0);
+          el.classList.remove('is-exit');
+          el.setAttribute('aria-hidden', String(i !== 0));
+        });
+        prevBtn.disabled = true;
+        nextBtn.textContent = '다음';
+        renderProgress();
+      }, 1800);
+    }
+
+    nextBtn.addEventListener('click', () => goTo(index + 1, 1));
+    prevBtn.addEventListener('click', () => goTo(index - 1, -1));
+    skipBtn.addEventListener('click', finish);
+    installLater.addEventListener('click', finish);
+
+    installPrimary.addEventListener('click', () => {
+      if (platform === 'ios') {
+        iosGuide.classList.add('open');
+        iosGuide.setAttribute('aria-hidden', 'false');
+      } else if (platform === 'android') {
+        // sample only
+        installPrimary.querySelector('span').textContent = 'Play Store로 이동…';
+        setTimeout(() => {
+          installPrimary.querySelector('span').textContent = INSTALL_COPY.android.cta;
+        }, 1000);
+      }
+    });
+
+    document.getElementById('iosGuideClose').addEventListener('click', () => {
+      iosGuide.classList.remove('open');
+      iosGuide.setAttribute('aria-hidden', 'true');
+    });
+
+    document.querySelectorAll('[data-platform]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        platform = btn.dataset.platform;
+        document.querySelectorAll('[data-platform]').forEach((b) => {
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+        updateInstallCopy();
+        index = 0;
+        visibleSlides().forEach((el, i) => {
+          el.classList.toggle('is-active', i === 0);
+          el.classList.remove('is-exit');
+          el.setAttribute('aria-hidden', String(i !== 0));
+        });
+        // hide inactive install slide properly when native
+        slidesEls.forEach((el) => {
+          if (el.dataset.id === 'install' && platform === 'native') {
+            el.classList.remove('is-active');
+            el.setAttribute('aria-hidden', 'true');
+          }
+        });
+        prevBtn.disabled = true;
+        nextBtn.textContent = '다음';
+        renderProgress();
+      });
+    });
+
+    // keyboard
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        e.preventDefault();
+        goTo(index + 1, 1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goTo(index - 1, -1);
+      } else if (e.key === 'Escape') finish();
+    });
+
+    // touch swipe
+    let touchX = null;
+    const tour = document.getElementById('tour');
+    tour.addEventListener('touchstart', (e) => {
+      touchX = e.changedTouches[0].clientX;
+    }, { passive: true });
+    tour.addEventListener('touchend', (e) => {
+      if (touchX == null) return;
+      const dx = e.changedTouches[0].clientX - touchX;
+      touchX = null;
+      if (Math.abs(dx) < 50) return;
+      if (dx < 0) goTo(index + 1, 1);
+      else goTo(index - 1, -1);
+    }, { passive: true });
+
+    updateInstallCopy();
+    renderProgress();
+    if (window.lucide) lucide.createIcons();
+  </script>
+</body>
+</html>

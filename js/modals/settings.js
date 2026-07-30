@@ -163,7 +163,9 @@ export function fillProfileActivityStats() {
 /** 설정 하단 로그아웃 버튼 — 샘플 계정만 '홈으로' */
 function syncProfileLogoutFooterButton() {
     const btn =
+        document.getElementById('profileLogoutBtn') ||
         document.querySelector('#logoutBtnArea button') ||
+        document.querySelector('.profile-v2-logout-btn') ||
         document.querySelector('.profile-v2-ghost-btn') ||
         document.querySelector('.profile-logout-btn');
     if (!btn) return;
@@ -171,10 +173,10 @@ function syncProfileLogoutFooterButton() {
     const demo = u && !u.isAnonymous && isDemoUser(u);
     if (demo) {
         btn.textContent = '홈으로';
-        btn.className = 'profile-v2-ghost-btn profile-v2-ghost-btn--home';
+        btn.className = 'profile-v2-logout-btn profile-v2-logout-btn--home';
     } else {
         btn.textContent = '로그아웃';
-        btn.className = 'profile-v2-ghost-btn';
+        btn.className = 'profile-v2-logout-btn';
     }
 }
 

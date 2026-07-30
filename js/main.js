@@ -1664,12 +1664,28 @@ initAuth(async (user) => {
 
             setTimeout(runLandingTitleRise, LANDING_ICON_FADE_MS + LANDING_PAUSE_BEFORE_RISE_MS);
         };
+
+        const presentLandingOrGuide = () => {
+            import('./onboarding.js')
+                .then(async (m) => {
+                    const shown = await m.maybeStartLandingServiceGuide({
+                        onComplete: () => showLoginScreen(),
+                    });
+                    if (!shown) showLoginScreen();
+                })
+                .catch((e) => {
+                    console.warn('랜딩 서비스 가이드 로드 실패:', e);
+                    showLoginScreen();
+                });
+        };
+
         const showOptionsNow = wasExplicitLogout;
         if (showOptionsNow) {
-            showLoginScreen();
+            // 로그아웃 후에도 미로그인이면 가이드 → 로그인
+            presentLandingOrGuide();
         } else {
             authCheckShowOptionsTimeout = setTimeout(() => {
-                if (auth.currentUser === null) showLoginScreen();
+                if (auth.currentUser === null) presentLandingOrGuide();
                 authCheckShowOptionsTimeout = null;
             }, 400);
         }

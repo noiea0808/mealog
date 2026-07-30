@@ -8226,9 +8226,38 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     font-size: 12.5px;
 }
 .profile-v2-foot {
-    margin-top: 8px;
-    padding: 8px 4px 0;
+    margin-top: 16px;
+    padding: 4px 0 8px;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+}
+.profile-v2-foot__logout {
+    margin-bottom: 4px;
+}
+.profile-v2-logout-btn {
+    display: block;
+    width: 100%;
+    border: 1px solid var(--line, #d0c6ba);
+    background: #fff;
+    color: var(--ink-2, #4f4841);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    padding: 13px 16px;
+    border-radius: 14px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.04);
+}
+.profile-v2-logout-btn:active {
+    background: #faf7f3;
+}
+.profile-v2-logout-btn--home {
+    border-color: var(--green-mute, #b4e2cd);
+    color: var(--green-deep, #2d9f74);
+    background: var(--green-soft, #eaf8f2);
 }
 .profile-v2-ghost-btn {
     border: 0;
@@ -8253,10 +8282,41 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     opacity: 0.75;
 }
 .profile-v2-ver {
-    margin-top: 6px;
+    margin: 18px 0 14px;
     font-size: 11px;
     color: var(--muted);
     font-weight: 500;
+    text-align: center;
+}
+.profile-v2-danger-zone {
+    margin-top: 4px;
+    padding: 14px 12px 6px;
+    border-top: 1px dashed #e5ddd4;
+    text-align: center;
+}
+.profile-v2-danger-zone__hint {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #a39a90;
+    line-height: 1.4;
+}
+.profile-v2-danger-link {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #b91c1c;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 10px;
+    cursor: pointer;
+    opacity: 0.55;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.profile-v2-danger-link:active {
+    opacity: 0.85;
 }
 .profile-v2-guest {
     display: flex;
@@ -16944,5 +17004,345 @@ body:has(#adminPage:not(.hidden)),
 #profileFieldEditPanelBirthdate .rrn-digit {
     background: #fff;
     height: 2.9rem;
+}
+
+/* ===== 로그인 전 서비스 가이드 (풀스크린 → 로그인) ===== */
+.service-guide-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10040;
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    background:
+        radial-gradient(90% 70% at 50% 0%, rgba(95, 212, 168, 0.28), transparent 55%),
+        radial-gradient(70% 50% at 85% 90%, rgba(242, 168, 180, 0.16), transparent 50%),
+        linear-gradient(165deg, #f7fffb 0%, #fffcfa 48%, #f3efe9 100%);
+    pointer-events: auto;
+}
+.service-guide-overlay.hidden {
+    display: none !important;
+}
+.service-guide-overlay[data-slide="analysis"] {
+    background:
+        radial-gradient(70% 55% at 85% 15%, rgba(158, 196, 224, 0.32), transparent 50%),
+        radial-gradient(60% 50% at 10% 80%, rgba(60, 184, 137, 0.14), transparent 50%),
+        linear-gradient(180deg, #f5f9fc 0%, #fffcfa 50%, #f3efe9 100%);
+}
+.service-guide-overlay[data-slide="moment"] {
+    background:
+        radial-gradient(70% 55% at 70% 0%, rgba(242, 168, 180, 0.26), transparent 50%),
+        radial-gradient(55% 45% at 10% 90%, rgba(212, 174, 224, 0.16), transparent 50%),
+        linear-gradient(180deg, #fff8f9 0%, #fffcfa 48%, #f3efe9 100%);
+}
+.service-guide-stage {
+    width: min(520px, 100%);
+    margin: 0 auto;
+    padding: calc(28px + env(safe-area-inset-top, 0px)) 20px calc(18px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 100%;
+    box-sizing: border-box;
+}
+.service-guide-visuals {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: min(52dvh, 480px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.service-guide-visual {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(16px) scale(0.97);
+    pointer-events: none;
+    transition: opacity 0.4s cubic-bezier(0.22, 1, 0.36, 1), transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.service-guide-visual.is-active {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+.sg-hero-mark {
+    width: min(168px, 42vw);
+    aspect-ratio: 1;
+    border-radius: 32px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(145deg, #fff, #eaf8f2);
+    border: 1px solid #b4e2cd;
+    box-shadow: 0 18px 40px rgba(60, 184, 137, 0.22);
+}
+.sg-hero-mark img {
+    width: 58%;
+    height: 58%;
+    object-fit: cover;
+    border-radius: 20px;
+}
+.sg-shot {
+    width: min(320px, 86vw);
+    max-height: min(52dvh, 480px);
+    border-radius: 22px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid rgba(208, 198, 186, 0.7);
+    box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.8) inset,
+        0 18px 40px rgba(36, 31, 28, 0.14);
+}
+.sg-shot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: min(52dvh, 480px);
+    object-fit: cover;
+    object-position: top center;
+}
+/* 밀로그: 헤더 고정 + 본문 자동 스크롤 (폭 기준으로 원본 비율 유지) */
+.sg-shot--mealog-scroll {
+    /* 원본 296×1024 — 고정은 로고~캘린더만(≈108). 날짜/AI/공유·카드는 스크롤 */
+    --sg-mealog-src-w: 296;
+    --sg-mealog-src-header-h: 108;
+    position: relative;
+    width: min(320px, 86vw);
+    height: min(52dvh, 520px);
+    max-height: min(52dvh, 520px);
+    aspect-ratio: unset;
+}
+.sg-mealog-scroll-clip {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    container-type: size;
+}
+.sg-mealog-scroll-img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    object-fit: unset !important;
+    object-position: top center !important;
+    display: block;
+    transform: translateY(0);
+    will-change: transform;
+}
+.service-guide-visual.is-active .sg-mealog-scroll-img {
+    animation: sg-mealog-scroll 14s cubic-bezier(0.4, 0.05, 0.2, 1) infinite alternate;
+}
+.service-guide-visual:not(.is-active) .sg-mealog-scroll-img {
+    animation: none;
+    transform: translateY(0);
+}
+.sg-mealog-header-pin {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    /* 프레임 폭에 맞춰 헤더 높이 = 원본 헤더 비율 */
+    aspect-ratio: var(--sg-mealog-src-w) / var(--sg-mealog-src-header-h);
+    height: auto;
+    overflow: hidden;
+    z-index: 2;
+    pointer-events: none;
+    background: #f5f1eb;
+    box-shadow: 0 8px 16px -12px rgba(36, 31, 28, 0.35);
+}
+.sg-mealog-header-pin img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    object-fit: unset !important;
+    display: block;
+}
+@keyframes sg-mealog-scroll {
+    from {
+        transform: translateY(0);
+    }
+    to {
+        transform: translateY(calc(-100% + 100cqh));
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .service-guide-visual.is-active .sg-mealog-scroll-img {
+        animation: none;
+    }
+}
+.service-guide-copy {
+    flex: 0 0 auto;
+    text-align: center;
+    padding-top: 4px;
+}
+.service-guide-copy--enter .service-guide-eyebrow,
+.service-guide-copy--enter .service-guide-title,
+.service-guide-copy--enter .service-guide-body,
+.service-guide-copy--enter .service-guide-install-cta {
+    animation: service-guide-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.service-guide-copy--enter .service-guide-title { animation-delay: 0.06s; }
+.service-guide-copy--enter .service-guide-body { animation-delay: 0.14s; }
+.service-guide-copy--enter .service-guide-install-cta { animation-delay: 0.2s; }
+@keyframes service-guide-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.service-guide-eyebrow {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #2d9f74;
+}
+.service-guide-title {
+    margin: 0 0 10px;
+    font-family: "Yeon Sung", "Nanum Pen Script", cursive;
+    font-size: clamp(1.65rem, 5.2vw, 2.05rem);
+    font-weight: 400;
+    line-height: 1.28;
+    letter-spacing: -0.01em;
+    color: #241f1c;
+    white-space: pre-line;
+}
+.service-guide-body {
+    margin: 0 auto 14px;
+    max-width: 22rem;
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: #4f4841;
+    white-space: pre-line;
+}
+.service-guide-install-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 20rem;
+    margin: 0 auto 12px;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 14px;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: #fff;
+    background: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 8px 18px rgba(60, 184, 137, 0.28);
+    cursor: pointer;
+}
+.service-guide-install-cta.hidden {
+    display: none !important;
+}
+.service-guide-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+}
+.service-guide-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    min-height: 10px;
+}
+.service-guide-dots i {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: #d0c6ba;
+    transition: width 0.25s ease, background 0.25s ease;
+}
+.service-guide-dots i.on {
+    width: 18px;
+    background: #3cb889;
+}
+.service-guide-nav {
+    display: grid;
+    grid-template-columns: 1fr 1.35fr;
+    gap: 8px;
+    width: min(100%, 20rem);
+}
+.service-guide-btn {
+    appearance: none;
+    border: 0;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 800;
+    border-radius: 14px;
+    padding: 12px 14px;
+    cursor: pointer;
+    width: 100%;
+}
+.service-guide-btn--ghost {
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid #d0c6ba;
+    color: #4f4841;
+}
+.service-guide-btn--ghost:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+.service-guide-btn--primary {
+    color: #fff;
+    background: linear-gradient(135deg, #5fd4a8 0%, #3cb889 55%, #2d9f74 100%);
+    box-shadow: 0 6px 14px rgba(60, 184, 137, 0.25);
+}
+.service-guide-skip {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #9a9187;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 4px 8px;
+    cursor: pointer;
+    text-align: center;
+}
+.service-guide-skip.invisible {
+    visibility: hidden;
+    pointer-events: none;
+}
+.os-install-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 4px;
+    background: #f3eee8;
+    border-radius: 12px;
+}
+.os-install-tab {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #7a7268;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    padding: 9px 6px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.os-install-tab.is-active,
+.os-install-tab[aria-selected="true"] {
+    background: #fff;
+    color: #2d9f74;
+    box-shadow: 0 1px 3px rgba(36, 31, 28, 0.08);
+}
+.os-install-panel.hidden {
+    display: none !important;
+}
+html.service-guide-active #landingPage {
+    visibility: hidden;
 }
 
