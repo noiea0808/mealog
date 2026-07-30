@@ -55,10 +55,31 @@ function getPromoElements() {
     };
 }
 
+function getActiveOsInstallTab() {
+    const active = document.querySelector('[data-os-tab][aria-selected="true"]');
+    const tab = active?.getAttribute('data-os-tab');
+    return tab === 'android' || tab === 'ios' || tab === 'desktop' ? tab : null;
+}
+
 function updateDesktopPwaInstallOptionalVisibility() {
-    const wrap = document.getElementById('desktopPwaInstallOptional');
-    if (!wrap) return;
-    wrap.classList.toggle('hidden', !deferredInstallPrompt);
+    const tip = document.getElementById('desktopPwaInstallOptional');
+    const activeTab = getActiveOsInstallTab();
+    if (tip) tip.classList.toggle('hidden', activeTab !== 'desktop' || !deferredInstallPrompt);
+    if (activeTab) updateOsInstallActions(activeTab);
+}
+
+/** 활성 탭에 맞춰 하단 버튼(확인 / 스토어 / 바로가기) 표시·가로 배치 */
+function updateOsInstallActions(tab) {
+    const actions = document.getElementById('osInstallActions');
+    const playStore = document.getElementById('osInstallPlayStoreLink');
+    const desktopInstall = document.getElementById('desktopShortcutInstallBtn');
+    if (!actions) return;
+
+    const showPlay = tab === 'android';
+    const showDesktop = tab === 'desktop' && !!deferredInstallPrompt;
+    if (playStore) playStore.classList.toggle('hidden', !showPlay);
+    if (desktopInstall) desktopInstall.classList.toggle('hidden', !showDesktop);
+    actions.classList.toggle('os-install-actions--dual', showPlay || showDesktop);
 }
 
 export function initDeferredInstallPrompt() {
@@ -120,6 +141,11 @@ export function setOsInstallGuideTab(tab) {
         panel.classList.toggle('hidden', !match);
     });
     if (allowed === 'desktop') updateDesktopPwaInstallOptionalVisibility();
+    else {
+        const tip = document.getElementById('desktopPwaInstallOptional');
+        if (tip) tip.classList.add('hidden');
+    }
+    updateOsInstallActions(allowed);
     if (typeof window.lucide?.createIcons === 'function') {
         try {
             window.lucide.createIcons();
