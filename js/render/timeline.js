@@ -1657,13 +1657,8 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
     const syncLead = dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : '';
     const metaHtml = `${syncLead}${safeLabel}${shareArrow}`;
-    const titleHtml = hasContent
-        ? escapeHtml(
-              comment
-                  ? comment.replace(/\n/g, ' ').slice(0, 80)
-                  : dailyJournalSlotFallbackLine(journal) || '하루 소감'
-          )
-        : '기록하기';
+    // 기록된 카드는 제목 없이 메모·지표만 (제목=메모 중복 방지). 빈 슬롯만 CTA 제목.
+    const titleHtml = hasContent ? '' : '기록하기';
     const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);
     const noteParts = [];
     if (comment && hasContent) {
@@ -1685,7 +1680,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
                 <div class="home-feed-card__meta-row">
                     <div class="home-feed-card__meta">${metaHtml}</div>
                 </div>
-                <div class="home-feed-card__title">${titleHtml}</div>
+                ${titleHtml ? `<div class="home-feed-card__title">${titleHtml}</div>` : ''}
                 ${noteHtml}
             </div>
         </div>

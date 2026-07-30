@@ -124,6 +124,8 @@ export function syncEntrySheetHeightLock() {
     const modal = document.getElementById('entryModal');
     const panel = getEntryModalPanel();
     if (!modal || !panel || modal.classList.contains('hidden')) return;
+    // 키보드 열린 동안 peak/top 재측정·rachet 금지 (시트가 흔들리거나 위로 붙는 원인)
+    if (modal.classList.contains('keyboard-open')) return;
 
     const floor = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
     panel.style.setProperty('--entry-sheet-min-h', floor > 0 ? `${floor}px` : '0px');
@@ -135,7 +137,7 @@ export function syncEntrySheetHeightLock() {
     if (entrySheetSyncHeightRaf) cancelAnimationFrame(entrySheetSyncHeightRaf);
     entrySheetSyncHeightRaf = requestAnimationFrame(() => {
         entrySheetSyncHeightRaf = 0;
-        if (modal.classList.contains('hidden')) return;
+        if (modal.classList.contains('hidden') || modal.classList.contains('keyboard-open')) return;
         const h = Math.ceil(panel.getBoundingClientRect().height);
         if (h > entrySheetPeakHeightPx) {
             entrySheetPeakHeightPx = h;
