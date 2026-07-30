@@ -1179,6 +1179,11 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                             syncMomentV2SocialCommentEmptyOverlay(String(postId));
                         } else if (isMomentV2SheetAfterDel) {
                             const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
+                            try {
+                                await fetchUserProfiles(
+                                    [...new Set(comments.map((c) => c.userId).filter(Boolean))]
+                                );
+                            } catch (_) {}
                             commentsListEl.innerHTML = comments
                                 .map((c) => {
                                     let dateStr = '';
@@ -1206,15 +1211,12 @@ window.deleteCommentFromPost = async (commentId, postId) => {
                                             /* ignore */
                                         }
                                     }
-                                    const commentDisplay = getDisplayProfile(
-                                        c.userId,
-                                        { nickname: c.userNickname, icon: c.userIcon },
-                                        { preferStoredNickname: true }
-                                    );
+                                    const { nickname, avatarProfile } = resolveMomentV2CommentDisplay(c);
                                     return buildMomentV2SocialCommentRowHtml({
                                         commentId: c.id,
                                         postId,
-                                        nickname: commentDisplay.nickname,
+                                        nickname,
+                                        avatarProfile,
                                         body: c.comment || '',
                                         dateStr,
                                         timeStr,
@@ -1305,7 +1307,16 @@ function mv2EscapeAttr(s) {
         .replace(/'/g, '&#39;');
 }
 
-/** Soft Mint 모먼트 댓글 시트 행 — 라운지 상세와 동일 계층 */
+function buildMomentV2SocialCommentAvatarHtml(profile = {}) {
+    const av = getProfileAvatarDisplay(profile || {});
+    if (av.type === 'photo') {
+        return `<span class="moment-v2-social-comment__avatar" aria-hidden="true"><img src="${mv2EscapeAttr(av.value)}" alt="" decoding="async" loading="lazy" referrerpolicy="no-referrer" /></span>`;
+    }
+    const emojiClass = av.type === 'emoji' ? ' moment-v2-social-comment__avatar--emoji' : '';
+    return `<span class="moment-v2-social-comment__avatar${emojiClass}" aria-hidden="true">${escapeHtml(av.value)}</span>`;
+}
+
+/** Soft Mint 모먼트 댓글 시트 행 — 왼쪽 아바타 + 닉/본문 */
 function buildMomentV2SocialCommentRowHtml({
     commentId = '',
     postId = '',
@@ -1314,7 +1325,8 @@ function buildMomentV2SocialCommentRowHtml({
     dateStr = '',
     timeStr = '',
     showDelete = false,
-    tempId = ''
+    tempId = '',
+    avatarProfile = null
 } = {}) {
     const safePostId = String(postId || '').replace(/'/g, "\\'");
     const safeCommentId = String(commentId || '').replace(/'/g, "\\'");
@@ -1333,16 +1345,34 @@ function buildMomentV2SocialCommentRowHtml({
     const bodyHtml = body
         ? `<p class="moment-v2-social-comment__body">${escapeHtml(body)}</p>`
         : '';
+    const avatarHtml = buildMomentV2SocialCommentAvatarHtml(
+        avatarProfile || { nickname, icon: null, photoUrl: null }
+    );
     return `<div class="moment-v2-social-comment"${idAttr}>
-    <div class="moment-v2-social-comment__head">
-      <div class="moment-v2-social-comment__meta">
-        <button type="button" class="moment-v2-social-comment__nick" data-mv2-mention-nick="${mv2EscapeAttr(nickname)}">${escapeHtml(nickname)}</button>
-        ${timeHtml}
+    ${avatarHtml}
+    <div class="moment-v2-social-comment__main">
+      <div class="moment-v2-social-comment__head">
+        <div class="moment-v2-social-comment__meta">
+          <button type="button" class="moment-v2-social-comment__nick" data-mv2-mention-nick="${mv2EscapeAttr(nickname)}">${escapeHtml(nickname)}</button>
+          ${timeHtml}
+        </div>
+        ${deleteHtml}
       </div>
-      ${deleteHtml}
+      ${bodyHtml}
     </div>
-    ${bodyHtml}
   </div>`;
+}
+
+/** 닉네임은 스냅샷 우선, 아바타는 캐시/프로필 반영 */
+function resolveMomentV2CommentDisplay(comment) {
+    const stored = {
+        nickname: comment?.userNickname,
+        icon: comment?.userIcon,
+        photoUrl: comment?.userPhotoUrl
+    };
+    const nickDisplay = getDisplayProfile(comment?.userId, stored, { preferStoredNickname: true });
+    const avatarProfile = getDisplayProfile(comment?.userId, stored);
+    return { nickname: nickDisplay.nickname, avatarProfile };
 }
 
 function syncMomentV2SocialCommentSheetCount(postId, count) {
@@ -1650,17 +1680,14 @@ window.viewAllComments = async (postId) => {
                     }
                     
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(
-                    comment.userId,
-                    { nickname: comment.userNickname, icon: comment.userIcon },
-                    { preferStoredNickname: true }
-                );
+                    const { nickname, avatarProfile } = resolveMomentV2CommentDisplay(comment);
                     mv2NotifyIfMentionedOnce(postId, comment);
                     if (isMomentV2Sheet) {
                         return buildMomentV2SocialCommentRowHtml({
                             commentId: comment.id,
                             postId,
-                            nickname: commentDisplay.nickname,
+                            nickname,
+                            avatarProfile,
                             body: comment.comment || '',
                             dateStr,
                             timeStr,
@@ -1669,7 +1696,7 @@ window.viewAllComments = async (postId) => {
                     }
                     return `
                         <div class="mb-1 text-sm">
-                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
+                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(nickname)}">${escapeHtml(nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
@@ -1869,11 +1896,16 @@ window.submitComment = async (postId) => {
             commentsListEl.classList.add('bg-slate-50');
         }
         if (isMomentV2SocialCommentSheetList) {
+            const optimisticAvatar = getDisplayProfile(
+                window.currentUser?.uid,
+                window.userSettings?.profile || {}
+            );
             commentsListEl.insertAdjacentHTML(
                 'beforeend',
                 buildMomentV2SocialCommentRowHtml({
                     postId,
                     nickname: userNickname,
+                    avatarProfile: optimisticAvatar,
                     body: commentText,
                     tempId,
                     showDelete: false
@@ -1948,6 +1980,14 @@ window.submitComment = async (postId) => {
                         commentId: result.id,
                         postId,
                         nickname: commentDisplay.nickname,
+                        avatarProfile: getDisplayProfile(
+                            window.currentUser?.uid,
+                            {
+                                nickname: result.userNickname,
+                                icon: result.userIcon,
+                                photoUrl: result.userPhotoUrl
+                            }
+                        ),
                         body: result.comment || '',
                         dateStr,
                         timeStr,
@@ -2112,6 +2152,13 @@ async function loadPostComments(postId) {
                 const isMomentV2Sheet = Boolean(commentsListEl.closest?.('.moment-v2-social-comments-sheet'));
                 if (!isMomentV2Sheet) commentsListEl.classList.add('bg-slate-50');
                 const displayComments = isMomentV2Sheet ? comments : comments.slice(0, 2);
+                if (isMomentV2Sheet) {
+                    try {
+                        await fetchUserProfiles(
+                            [...new Set(comments.map((c) => c.userId).filter(Boolean))]
+                        );
+                    } catch (_) {}
+                }
                 commentsListEl.innerHTML = displayComments.map(comment => {
                     // timestamp가 유효한지 확인
                     let dateStr = '';
@@ -2133,17 +2180,14 @@ async function loadPostComments(postId) {
                     
                     const isLoggedIn = window.currentUser && !window.currentUser.isAnonymous;
                     const isMyComment = isLoggedIn && comment.userId === window.currentUser.uid;
-                    const commentDisplay = getDisplayProfile(
-                    comment.userId,
-                    { nickname: comment.userNickname, icon: comment.userIcon },
-                    { preferStoredNickname: true }
-                );
+                    const { nickname, avatarProfile } = resolveMomentV2CommentDisplay(comment);
                     if (isMomentV2Sheet) mv2NotifyIfMentionedOnce(postId, comment);
                     if (isMomentV2Sheet) {
                         return buildMomentV2SocialCommentRowHtml({
                             commentId: comment.id,
                             postId,
-                            nickname: commentDisplay.nickname,
+                            nickname,
+                            avatarProfile,
                             body: comment.comment || '',
                             dateStr,
                             timeStr,
@@ -2152,7 +2196,7 @@ async function loadPostComments(postId) {
                     }
                     return `
                         <div class="mb-1 text-sm">
-                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(commentDisplay.nickname)}">${escapeHtml(commentDisplay.nickname)}</button>
+                            <button type="button" class="font-bold text-slate-800" data-mv2-mention-nick="${mv2EscapeAttr(nickname)}">${escapeHtml(nickname)}</button>
                             <span class="text-slate-800 ml-2">${escapeHtml(comment.comment || '')}</span>
                             ${dateStr && timeStr ? `<span class="text-xs text-slate-500 ml-2">${dateStr} ${timeStr}</span>` : ''}
                             ${isMyComment ? `<button onclick="window.deleteCommentFromPost('${comment.id}', '${postId}')" class="ml-2 text-slate-400 text-xs hover:text-red-500">삭제</button>` : ''}
