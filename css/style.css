@@ -5105,6 +5105,13 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     padding: 0 1rem 0.35rem;
     position: relative;
 }
+/* 댓글이 있을 때: 빈 상태와 같은 Paper(--page) 톤 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-body:has(.moment-v2-social-comments-list.has-items) {
+    background: var(--page);
+    border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+    padding-top: 0.35rem;
+    padding-bottom: 0.5rem;
+}
 
 /* Soft Mint 댓글 행 — 라운지 상세와 동일 계층 */
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list {
@@ -5115,6 +5122,9 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
     padding: 12px 0;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment:first-child {
@@ -5122,6 +5132,39 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment:last-child {
     padding-bottom: 4px;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    margin-top: 1px;
+    border-radius: 9999px;
+    background: var(--avatar-fallback-bg);
+    border: 0;
+    color: var(--avatar-fallback-fg);
+    box-shadow: var(--avatar-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--avatar-fallback-font);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    overflow: hidden;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar--emoji {
+    font-size: 16px;
+    font-weight: 400;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__main {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__head {
     display: flex;
@@ -5194,7 +5237,24 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-inner {
     margin: 0;
     max-width: 18rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     text-align: center;
+}
+/* 연속기록·출석 등과 같이 배경 없는 네이티브 컬러 이모지 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-emoji {
+    display: block;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+    font-size: 1.75rem;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+    user-select: none;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-text {
+    margin: 0;
     font-family: 'Pretendard', sans-serif;
     font-weight: 600;
     font-size: 13px;
@@ -15906,12 +15966,17 @@ body:has(#adminPage:not(.hidden)),
 #trackerMonthCalendarModal,
 #domainErrorModal,
 #detailModal,
-#pwaInstallGuideModal,
 #desktopShortcutGuideModal,
 #reportModal {
     background-color: var(--shell-dim) !important;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+}
+/* 설치 가이드: 뒤 화면이 축소·후퇴되어 보이지 않도록 blur 없이 딤만 */
+#pwaInstallGuideModal {
+    background-color: var(--shell-dim) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 #entrySlotPickerBackdrop,
 #entryModalBackdrop,
@@ -15969,6 +16034,11 @@ body:has(#adminPage:not(.hidden)),
     margin-left: auto;
     margin-right: auto;
     box-sizing: border-box;
+}
+/* 설치 가이드: 공통 float보다 조금 좁게 (패널만 — backdrop에는 적용하지 않음) */
+#pwaInstallGuideModal .os-install-guide-panel {
+    width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
+    max-width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
 }
 /* 이메일 로그인: Soft Mint 공통 폭 대신 화면 80%(최대 20rem) */
 #emailAuthModal > div {
@@ -17343,15 +17413,18 @@ body:has(#adminPage:not(.hidden)),
     padding: calc(28px + env(safe-area-inset-top, 0px)) 20px calc(18px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 18px;
+    justify-content: flex-start;
+    gap: 14px;
+    height: 100%;
     min-height: 100%;
+    max-height: 100%;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .service-guide-visuals {
     position: relative;
     flex: 1 1 auto;
-    min-height: min(52dvh, 480px);
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -17497,12 +17570,12 @@ body:has(#adminPage:not(.hidden)),
 .service-guide-copy--enter .service-guide-eyebrow,
 .service-guide-copy--enter .service-guide-title,
 .service-guide-copy--enter .service-guide-body,
-.service-guide-copy--enter .service-guide-install-cta {
+.service-guide-copy--enter .service-guide-install-cta:not(.hidden) {
     animation: service-guide-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .service-guide-copy--enter .service-guide-title { animation-delay: 0.06s; }
 .service-guide-copy--enter .service-guide-body { animation-delay: 0.14s; }
-.service-guide-copy--enter .service-guide-install-cta { animation-delay: 0.2s; }
+.service-guide-copy--enter .service-guide-install-cta:not(.hidden) { animation-delay: 0.2s; }
 @keyframes service-guide-rise {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
@@ -17526,12 +17599,21 @@ body:has(#adminPage:not(.hidden)),
     white-space: pre-line;
 }
 .service-guide-body {
-    margin: 0 auto 14px;
+    margin: 0 auto 10px;
     max-width: 22rem;
     font-size: 0.9rem;
     line-height: 1.65;
     color: #4f4841;
     white-space: pre-line;
+}
+/* CTA 유무와 관계없이 자리 예약 → 하단 버튼이 밀리지 않음 */
+.service-guide-cta-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 3.25rem;
+    margin-bottom: 2px;
 }
 .service-guide-install-cta {
     display: inline-flex;
@@ -17540,7 +17622,7 @@ body:has(#adminPage:not(.hidden)),
     gap: 6px;
     width: 100%;
     max-width: 20rem;
-    margin: 0 auto 12px;
+    margin: 0 auto;
     padding: 11px 14px;
     border: 1.5px solid #3cb889;
     border-radius: 14px;
@@ -17563,11 +17645,12 @@ body:has(#adminPage:not(.hidden)),
     display: none !important;
 }
 .service-guide-footer {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    margin-top: 4px;
+    margin-top: auto;
 }
 .service-guide-dots {
     display: flex;
@@ -17669,29 +17752,122 @@ body:has(#adminPage:not(.hidden)),
 .os-install-tabs {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    padding: 4px;
-    background: #f3eee8;
-    border-radius: 12px;
+    gap: 4px;
+    padding: 3px;
+    background: #f5f3f0;
+    border-radius: 999px;
 }
 .os-install-tab {
     appearance: none;
     border: 0;
     background: transparent;
-    color: #7a7268;
+    color: #8a837a;
     font: inherit;
-    font-size: 0.8125rem;
-    font-weight: 800;
-    padding: 9px 6px;
-    border-radius: 9px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: 8px 6px;
+    border-radius: 999px;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, font-weight 0.15s ease;
 }
 .os-install-tab.is-active,
 .os-install-tab[aria-selected="true"] {
     background: #fff;
-    color: #2d9f74;
-    box-shadow: 0 1px 3px rgba(36, 31, 28, 0.08);
+    color: #166534;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
+}
+.os-install-step-num {
+    flex-shrink: 0;
+    width: 1.375rem;
+    height: 1.375rem;
+    margin-top: 0.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid #86c5a8;
+    background: transparent;
+    color: #166534;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.os-install-inline-icon {
+    color: #166534;
+    display: inline;
+    vertical-align: -0.125em;
+}
+.os-install-guide-figure {
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+.os-install-guide-img {
+    display: block;
+    width: 100%;
+    max-width: 15.5rem;
+    margin: 0 auto;
+    border-radius: 0.875rem;
+    border: 1px solid #e8e4de;
+    box-shadow: 0 2px 10px rgba(36, 31, 28, 0.07);
+    background: #f5f5f7;
+}
+.os-install-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.os-install-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.75rem;
+    padding: 0.7rem 0.85rem;
+    border: 0;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    box-sizing: border-box;
+}
+.os-install-btn--secondary {
+    flex: 0 0 30%;
+    max-width: 30%;
+    background: #f1f5f9;
+    color: #334155;
+}
+.os-install-btn--secondary:hover {
+    background: #e2e8f0;
+}
+.os-install-btn--secondary:active {
+    background: #cbd5e1;
+}
+.os-install-btn--primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #059669;
+    color: #fff;
+}
+.os-install-btn--primary:hover {
+    background: #047857;
+}
+.os-install-btn--primary:active {
+    background: #065f46;
+}
+.os-install-btn.hidden {
+    display: none !important;
+}
+/* 확인만 있을 때: 전체 폭 */
+.os-install-actions:not(.os-install-actions--dual) .os-install-btn--secondary {
+    flex: 1 1 auto;
+    max-width: none;
 }
 .os-install-panel.hidden {
     display: none !important;

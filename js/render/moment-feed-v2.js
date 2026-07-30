@@ -199,7 +199,10 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                     data-moment-v2-social-comments-empty="1"
                     aria-live="polite"
                 >
-                    <p class="moment-v2-social-comments-empty-inner">아직 댓글이 없습니다</p>
+                    <div class="moment-v2-social-comments-empty-inner">
+                        <span class="moment-v2-social-comments-empty-emoji" aria-hidden="true">💬</span>
+                        <p class="moment-v2-social-comments-empty-text">아직 댓글이 없습니다</p>
+                    </div>
                 </div>
                 <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden">
                     <div class="moment-v2-social-comments-composer">

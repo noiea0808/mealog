@@ -956,15 +956,17 @@
 작은 이야기가 됩니다</h2>
                 <p class="service-guide-body" id="serviceGuideBody">특별하지 않아도 괜찮아요.
 평범한 식탁도 지나고 나면 소중한 하루가 됩니다.</p>
-                <button type="button" id="serviceGuideInstallCta" class="service-guide-install-cta hidden">앱 설치하기</button>
-                <div class="service-guide-footer">
-                    <div class="service-guide-dots" id="serviceGuideDots" aria-hidden="true"></div>
-                    <div class="service-guide-nav">
-                        <button type="button" class="service-guide-btn service-guide-btn--ghost" id="serviceGuidePrevBtn" disabled>이전</button>
-                        <button type="button" class="service-guide-btn service-guide-btn--primary" id="serviceGuideNextBtn">다음</button>
-                    </div>
-                    <button type="button" class="service-guide-skip" id="serviceGuideSkipBtn">건너뛰기</button>
+                <div class="service-guide-cta-slot">
+                    <button type="button" id="serviceGuideInstallCta" class="service-guide-install-cta hidden">앱 설치하기</button>
                 </div>
+            </div>
+            <div class="service-guide-footer">
+                <div class="service-guide-dots" id="serviceGuideDots" aria-hidden="true"></div>
+                <div class="service-guide-nav">
+                    <button type="button" class="service-guide-btn service-guide-btn--ghost" id="serviceGuidePrevBtn" disabled>이전</button>
+                    <button type="button" class="service-guide-btn service-guide-btn--primary" id="serviceGuideNextBtn">다음</button>
+                </div>
+                <button type="button" class="service-guide-skip" id="serviceGuideSkipBtn">건너뛰기</button>
             </div>
         </div>
     </div>
@@ -1208,13 +1210,12 @@
         <div id="pwaInstallGuideBackdrop" aria-hidden="true"></div>
         <div class="pwa-install-guide-panel bg-white rounded-2xl shadow-2xl border border-slate-200/80">
             <div class="px-5 pt-5 pb-3 border-b border-slate-100">
-                <div class="flex items-start gap-3">
+                <div class="flex items-center gap-3">
                     <div class="shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden">
                         <img src="assets/icon-only.png" alt="" class="w-full h-full object-cover object-center" />
                     </div>
                     <div class="min-w-0 flex-1">
-                        <h2 id="pwaInstallGuideTitle" class="text-base font-black text-slate-900 leading-snug">설치 · 바로가기 안내</h2>
-                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">기기에 맞는 방법을 확인해 보세요.</p>
+                        <h2 id="pwaInstallGuideTitle" class="text-base font-semibold text-slate-800 leading-snug tracking-tight">밀로그를 좀더 편하게 쓸 수 있어요</h2>
                     </div>
                 </div>
                 <div class="os-install-tabs mt-4" role="tablist" aria-label="기기 선택">
@@ -1226,7 +1227,7 @@
 
             <div id="osInstallPanelAndroid" class="os-install-panel hidden px-5 py-4" role="tabpanel" aria-labelledby="osInstallTabAndroid">
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">구글 플레이에서 앱을 설치하면 알림과 사용이 더 편해져요.</p>
-                <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
+                <ol class="os-install-steps space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
                         <span class="os-install-step-num" aria-hidden="true">1</span>
                         <span>아래 <strong class="text-slate-900">플레이 스토어로 이동</strong>을 눌러주세요.</span>
@@ -1248,7 +1249,7 @@
 
             <div id="osInstallPanelIos" class="os-install-panel hidden px-5 py-4" role="tabpanel" aria-labelledby="osInstallTabIos">
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">Safari·Chrome 등 브라우저에서 홈 화면에 추가하면 앱처럼 바로 열 수 있어요.</p>
-                <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
+                <ol class="os-install-steps space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
                         <span class="os-install-step-num" aria-hidden="true">1</span>
                         <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><svg class="os-install-share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>을 눌러주세요.</span>
@@ -1257,6 +1258,11 @@
                         <span class="os-install-step-num" aria-hidden="true">2</span>
                         <span>메뉴에서 <strong class="text-slate-900">홈 화면에 추가</strong>를 선택해주세요.</span>
                     </li>
+                </ol>
+                <figure class="os-install-guide-figure">
+                    <img src="assets/service-guide/ios-add-to-home.png" alt="공유 메뉴에서 홈 화면에 추가 선택" class="os-install-guide-img" width="320" height="280" loading="lazy" decoding="async" />
+                </figure>
+                <ol class="os-install-steps space-y-3 text-sm text-slate-700 leading-relaxed list-none mt-3" start="3">
                     <li class="flex gap-3">
                         <span class="os-install-step-num" aria-hidden="true">3</span>
                         <span>오른쪽 상단 <strong class="text-slate-900">추가</strong>를 누르면 완료! 홈 화면의 밀로그 아이콘으로 실행할 수 있어요.</span>
@@ -1266,7 +1272,7 @@
 
             <div id="osInstallPanelDesktop" class="os-install-panel hidden px-5 py-4" role="tabpanel" aria-labelledby="osInstallTabDesktop">
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">브라우저 보안 정책상 웹사이트에서 즐겨찾기를 자동으로 추가할 수 없어요. 아래 방법으로 저장해 주세요.</p>
-                <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
+                <ol class="os-install-steps space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
                         <span class="os-install-step-num" aria-hidden="true">1</span>
                         <span>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
