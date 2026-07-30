@@ -28,6 +28,7 @@ import { closeMomentImageLightbox } from './moment-image-lightbox.js';
 const ESCAPE_OVERLAY_IDS = [
     'successPopup',
     'attendancePopup',
+    'serviceGuideOverlay',
     'signupWizard',
     'domainErrorModal',
     'profileSetupModal',
@@ -91,6 +92,11 @@ function closeOverlayById(id) {
             break;
         case 'attendancePopup':
             closeAttendancePopup();
+            break;
+        case 'serviceGuideOverlay':
+            // ESC = 건너뛰기와 동일하게 완료 처리하지 않고 닫기만 하면 플래그가 안 남을 수 있음
+            // 건너뛰기와 동일하게 finish는 onboardingSkip 경로를 쓰도록 클릭 트리거
+            document.getElementById('serviceGuideSkipBtn')?.click();
             break;
         case 'signupWizard':
             closeSignupWizard();

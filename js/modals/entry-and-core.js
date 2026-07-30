@@ -762,21 +762,32 @@ function initEntryModalKeyboardHandling(entryModal) {
     const applyViewportGeometry = (vh, vtop) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
-        const tRaw = Number.isFinite(vtop) ? vtop : 0;
-        // 키보드 애니 첫 프레임에 offsetTop이 음수·과대로 나와 시트가 위로 튀는 경우 방지
+        // 키보드 구간: 오버레이를 vv.offsetTop으로 들어 올리지 않음(시트가 위로 점프하던 원인).
+        // 레이아웃 상단에 고정한 채 보이는 높이만 줄이고, 패널은 top 유지 + max-height로 맞춤.
         const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
-        const top = Math.max(0, tRaw);
-        if (
-            !Number.isNaN(lastAppliedVh) &&
-            Math.abs(lastAppliedVh - h) < 1 &&
-            Math.abs(lastAppliedVtop - top) < 1
-        ) {
+        if (!Number.isNaN(lastAppliedVh) && Math.abs(lastAppliedVh - h) < 1) {
             return;
         }
         lastAppliedVh = h;
-        lastAppliedVtop = top;
-        entryModal.style.height = h + 'px';
-        entryModal.style.top = top + 'px';
+        lastAppliedVtop = 0;
+        entryModal.style.top = '0px';
+        entryModal.style.height = `${h}px`;
+
+        const panel = entryModal.querySelector('.entry-modal-panel');
+        if (!panel) return;
+        const topPx = Number.parseFloat(getComputedStyle(panel).top) || 16;
+        const avail = Math.max(160, Math.floor(h - topPx - 8));
+        panel.style.maxHeight = `${avail}px`;
+        const lockedH = Number.parseFloat(panel.style.height) || panel.getBoundingClientRect().height || 0;
+        if (lockedH > avail) {
+            panel.style.height = `${avail}px`;
+            panel.style.minHeight = '0px';
+            panel.style.setProperty('--entry-sheet-h', `${avail}px`);
+        }
+        const active = document.activeElement;
+        if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
+            scrollEntryFieldIntoView(active, { align: 'nearest' });
+        }
     };
 
     const scheduleViewportGeometryFromVv = () => {
@@ -788,9 +799,8 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (imeComposing) return;
             const vv = window.visualViewport;
             if (!vv) return;
-            const vh = vv.height;
-            const vtop = vv.offsetTop ?? 0;
-            applyViewportGeometry(vh, vtop);
+            // offsetTop은 사용하지 않음 — 높이만 반영
+            applyViewportGeometry(vv.height, 0);
         });
     };
 
@@ -838,6 +848,14 @@ function initEntryModalKeyboardHandling(entryModal) {
             }
             entryModal.style.height = '';
             entryModal.style.top = '';
+            const panel = entryModal.querySelector('.entry-modal-panel');
+            if (panel) {
+                panel.style.maxHeight = '';
+            }
+            // 키보드로 일시 축소했던 패널 높이를 피크 잠금으로 복원
+            if (typeof window.syncEntrySheetHeightLock === 'function') {
+                window.syncEntrySheetHeightLock();
+            }
         }
     };
     // 모달 열릴 때 baseline 저장 (openModal에서 호출)
@@ -1495,6 +1513,11 @@ export async function openModal(date, slotId, entryId = null) {
         document.getElementById('optionalFields')?.classList.remove('hidden');
         document.getElementById('btnDelete')?.classList.add('hidden');
         updatePhotoAspectButtons();
+        ['entryWhatSuggestions', 'entryWhereSuggestions', 'entryWithSuggestions'].forEach((id) => {
+            if (typeof window.setEntryTagStageView === 'function') {
+                window.setEntryTagStageView(id, 'main');
+            }
+        });
         if (isS) appState.selectedSnackPlaceMainTag = null;
         if (!isS) toggleFieldsForSkip(false);
 
@@ -3561,6 +3584,22 @@ function initEntryModalSubChipDeleteDelegation() {
 }
 setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
+function initEntryModalTagStageBackOnce() {
+    const modal = document.getElementById('entryModal');
+    if (!modal || modal._tagStageBackBound) return;
+    modal._tagStageBackBound = true;
+    modal.addEventListener('click', (e) => {
+        const back = e.target.closest?.('[data-entry-tag-back]');
+        if (!back || !modal.contains(back)) return;
+        e.preventDefault();
+        const suggestionsId = back.getAttribute('data-entry-tag-back');
+        if (suggestionsId && typeof window.setEntryTagStageView === 'function') {
+            window.setEntryTagStageView(suggestionsId, 'main');
+        }
+    });
+}
+setTimeout(initEntryModalTagStageBackOnce, 0);
+
 const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
 
 /**
@@ -3733,6 +3772,9 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         const inputIdForSecondary = (subTagKey === 'people') ? 'entryWithInput' : 
             (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
         window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
+        if (typeof window.setEntryTagStageView === 'function') {
+            window.setEntryTagStageView(subContainerId, selectedValue ? 'sub' : 'main');
+        }
     }
     syncDeliveryVendorSectionVisibility();
 }

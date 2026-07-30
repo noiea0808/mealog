@@ -1,9 +1,14 @@
 /**
  * 로그인 화면 하단 앱 설치 유도
  * Android: Play Store · iOS: 홈 화면 추가 · PC: 즐겨찾기 안내
+ * 가이드 모달은 OS 탭(Android / iPhone / PC) 통합
  */
 
 let deferredInstallPrompt = null;
+let osInstallTabsBound = false;
+
+const PLAY_STORE_URL =
+    'https://play.google.com/store/apps/details?id=com.mealog.app&pcampaignid=web_share';
 
 export function isCapacitorNative() {
     try {
@@ -65,7 +70,7 @@ export function initDeferredInstallPrompt() {
     window.addEventListener('appinstalled', () => {
         deferredInstallPrompt = null;
         updateDesktopPwaInstallOptionalVisibility();
-        closeDesktopShortcutGuideModal();
+        closeOsInstallGuideModal();
     });
 }
 
@@ -97,29 +102,63 @@ export function showLandingAppPromo() {
     }
 }
 
-export function openPwaInstallGuideModal() {
+/** @param {'android'|'ios'|'desktop'} tab */
+export function setOsInstallGuideTab(tab) {
+    const allowed = tab === 'android' || tab === 'ios' || tab === 'desktop' ? tab : 'desktop';
+    document.querySelectorAll('[data-os-tab]').forEach((btn) => {
+        const on = btn.getAttribute('data-os-tab') === allowed;
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        btn.classList.toggle('is-active', on);
+    });
+    document.querySelectorAll('.os-install-panel').forEach((panel) => {
+        const id = panel.id || '';
+        const match =
+            (allowed === 'android' && id === 'osInstallPanelAndroid') ||
+            (allowed === 'ios' && id === 'osInstallPanelIos') ||
+            (allowed === 'desktop' && id === 'osInstallPanelDesktop');
+        panel.classList.toggle('hidden', !match);
+    });
+    if (allowed === 'desktop') updateDesktopPwaInstallOptionalVisibility();
+    if (typeof window.lucide?.createIcons === 'function') {
+        try {
+            window.lucide.createIcons();
+        } catch (_) {}
+    }
+}
+
+/**
+ * @param {'android'|'ios'|'desktop'|null} [preferredTab]
+ */
+export function openOsInstallGuideModal(preferredTab = null) {
     const modal = document.getElementById('pwaInstallGuideModal');
     if (!modal) return;
+    const kind = preferredTab || getLandingAppPromoKind() || 'desktop';
+    setOsInstallGuideTab(kind);
     modal.classList.remove('hidden');
+}
+
+export function closeOsInstallGuideModal() {
+    const modal = document.getElementById('pwaInstallGuideModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+}
+
+/** @deprecated 통합 모달 — iOS 탭 */
+export function openPwaInstallGuideModal() {
+    openOsInstallGuideModal('ios');
 }
 
 export function closePwaInstallGuideModal() {
-    const modal = document.getElementById('pwaInstallGuideModal');
-    if (!modal) return;
-    modal.classList.add('hidden');
+    closeOsInstallGuideModal();
 }
 
+/** @deprecated 통합 모달 — PC 탭 */
 export function openDesktopShortcutGuideModal() {
-    const modal = document.getElementById('desktopShortcutGuideModal');
-    if (!modal) return;
-    updateDesktopPwaInstallOptionalVisibility();
-    modal.classList.remove('hidden');
+    openOsInstallGuideModal('desktop');
 }
 
 export function closeDesktopShortcutGuideModal() {
-    const modal = document.getElementById('desktopShortcutGuideModal');
-    if (!modal) return;
-    modal.classList.add('hidden');
+    closeOsInstallGuideModal();
 }
 
 async function tryTriggerDesktopPwaInstall() {
@@ -141,11 +180,25 @@ async function handleDesktopPromoClick() {
         const installed = await tryTriggerDesktopPwaInstall();
         if (installed) return;
     }
-    openDesktopShortcutGuideModal();
+    openOsInstallGuideModal('desktop');
+}
+
+function bindOsInstallTabsOnce() {
+    if (osInstallTabsBound) return;
+    osInstallTabsBound = true;
+    document.querySelectorAll('[data-os-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-os-tab');
+            if (tab === 'android' || tab === 'ios' || tab === 'desktop') {
+                setOsInstallGuideTab(tab);
+            }
+        });
+    });
 }
 
 export function registerPwaInstallGuideHandlers() {
     initDeferredInstallPrompt();
+    bindOsInstallTabsOnce();
 
     const pwaOpenBtn = document.getElementById('pwaInstallOpenGuideBtn');
     const pwaModal = document.getElementById('pwaInstallGuideModal');
@@ -153,44 +206,35 @@ export function registerPwaInstallGuideHandlers() {
     const pwaBackdrop = document.getElementById('pwaInstallGuideBackdrop');
 
     if (pwaOpenBtn) {
-        pwaOpenBtn.addEventListener('click', openPwaInstallGuideModal);
+        pwaOpenBtn.addEventListener('click', () => openOsInstallGuideModal('ios'));
     }
     if (pwaCloseBtn) {
-        pwaCloseBtn.addEventListener('click', closePwaInstallGuideModal);
+        pwaCloseBtn.addEventListener('click', closeOsInstallGuideModal);
     }
     if (pwaBackdrop) {
-        pwaBackdrop.addEventListener('click', closePwaInstallGuideModal);
+        pwaBackdrop.addEventListener('click', closeOsInstallGuideModal);
     }
     if (pwaModal) {
         pwaModal.addEventListener('click', (e) => {
-            if (e.target === pwaModal) closePwaInstallGuideModal();
+            if (e.target === pwaModal) closeOsInstallGuideModal();
         });
     }
 
     const desktopOpenBtn = document.getElementById('desktopShortcutOpenGuideBtn');
-    const desktopModal = document.getElementById('desktopShortcutGuideModal');
-    const desktopCloseBtn = document.getElementById('desktopShortcutGuideCloseBtn');
-    const desktopBackdrop = document.getElementById('desktopShortcutGuideBackdrop');
     const desktopInstallBtn = document.getElementById('desktopShortcutInstallBtn');
+    const apkLink = document.getElementById('apkDownloadLink');
 
     if (desktopOpenBtn) {
         desktopOpenBtn.addEventListener('click', handleDesktopPromoClick);
     }
-    if (desktopCloseBtn) {
-        desktopCloseBtn.addEventListener('click', closeDesktopShortcutGuideModal);
-    }
-    if (desktopBackdrop) {
-        desktopBackdrop.addEventListener('click', closeDesktopShortcutGuideModal);
-    }
-    if (desktopModal) {
-        desktopModal.addEventListener('click', (e) => {
-            if (e.target === desktopModal) closeDesktopShortcutGuideModal();
-        });
-    }
     if (desktopInstallBtn) {
         desktopInstallBtn.addEventListener('click', async () => {
             const installed = await tryTriggerDesktopPwaInstall();
-            if (installed) closeDesktopShortcutGuideModal();
+            if (installed) closeOsInstallGuideModal();
         });
+    }
+    // 랜딩 Android 배너는 스토어 직행 유지. 가이드 「방법 보기」는 탭 모달 사용.
+    if (apkLink && !apkLink.getAttribute('href')) {
+        apkLink.setAttribute('href', PLAY_STORE_URL);
     }
 }

@@ -13,8 +13,30 @@ import {
 import { isEntryFieldQuickInputOn } from '../modals/entry-quick-input.js';
 import { refreshLucideIcons } from '../icons.js';
 
-/** 기록 모달 서브태그 중 '최근 사용'으로 보여 줄 최대 개수 (식사·간식 공통) */
+/** 최근 서브태그 칩 상한 */
 const RECENT_SUBTAG_CHIP_LIMIT = 10;
+
+/**
+ * 메인 칩 ↔ 사용자/최근 패널 전환.
+ * @param {string} suggestionsId
+ * @param {'main'|'sub'} view
+ */
+export function setEntryTagStageView(suggestionsId, view) {
+    const suggestions = document.getElementById(suggestionsId);
+    const stage = suggestions?.closest?.('.entry-tag-stage');
+    if (!stage) return;
+    const toSub = view === 'sub';
+    stage.classList.toggle('entry-tag-stage--sub', toSub);
+    const back = stage.querySelector('[data-entry-tag-back]');
+    if (back) back.setAttribute('aria-hidden', toSub ? 'false' : 'true');
+    if (typeof window.syncEntrySheetHeightLock === 'function') {
+        window.syncEntrySheetHeightLock();
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.setEntryTagStageView = setEntryTagStageView;
+}
 
 /**
  * onclick="..." 안에 삽입할 때 JSON.stringify는 큰따옴표로 속성이 끊겨 SyntaxError 남.
@@ -125,6 +147,10 @@ export function renderEntryChips() {
 
         if (!parentFilter) {
             el.innerHTML = '';
+            setEntryTagStageView(id, 'main');
+            if (typeof window.syncEntrySheetHeightLock === 'function') {
+                window.syncEntrySheetHeightLock();
+            }
             return;
         }
 
@@ -221,6 +247,12 @@ export function renderEntryChips() {
         `;
         if (myTagsList.length || recentList.length) refreshLucideIcons(el);
         syncEntrySubtagScrollHints(el);
+        setEntryTagStageView(id, 'sub');
+        const stage = el.closest('.entry-tag-stage');
+        if (stage) refreshLucideIcons(stage);
+        if (typeof window.syncEntrySheetHeightLock === 'function') {
+            window.syncEntrySheetHeightLock();
+        }
     };
 
     const axis1List = getAxis1TagList(mode, tags);

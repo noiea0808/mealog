@@ -12,9 +12,21 @@ import { isDemoUser } from '../demo-account.js';
 const QUICK_FIELDS = /** @type {const} */ (['where', 'what', 'with']);
 
 const FIELD_DOM = {
-    where: { chips: ENTRY_DOM.whereChips, section: ENTRY_DOM.whereSection },
-    what: { chips: ENTRY_DOM.whatChips, section: ENTRY_DOM.whatSection },
-    with: { chips: ENTRY_DOM.withChips, section: ENTRY_DOM.withSection },
+    where: {
+        chips: ENTRY_DOM.whereChips,
+        section: ENTRY_DOM.whereSection,
+        suggestions: ENTRY_DOM.whereSuggestions,
+    },
+    what: {
+        chips: ENTRY_DOM.whatChips,
+        section: ENTRY_DOM.whatSection,
+        suggestions: ENTRY_DOM.whatSuggestions,
+    },
+    with: {
+        chips: ENTRY_DOM.withChips,
+        section: ENTRY_DOM.withSection,
+        suggestions: ENTRY_DOM.withSuggestions,
+    },
 };
 
 const DEFAULT_FIELD_PREFS = { where: true, what: true, with: true };
@@ -121,13 +133,20 @@ export function clearPrimaryChipSelection() {
 export function applyEntryQuickInputUi() {
     QUICK_FIELDS.forEach((field) => {
         const on = isEntryFieldQuickInputOn(field);
-        const { chips, section } = FIELD_DOM[field];
+        const { chips, section, suggestions } = FIELD_DOM[field];
         const chipsEl = document.getElementById(chips);
         if (chipsEl) {
             chipsEl.classList.toggle('hidden', !on);
             chipsEl.setAttribute('aria-hidden', on ? 'false' : 'true');
         }
         document.getElementById(section)?.classList.toggle('entry-field-quick-off', !on);
+        const stage = chipsEl?.closest?.('.entry-tag-stage');
+        if (stage) {
+            stage.classList.toggle('hidden', !on);
+            if (!on && typeof window.setEntryTagStageView === 'function' && suggestions) {
+                window.setEntryTagStageView(suggestions, 'main');
+            }
+        }
     });
     syncEntryFieldQuickInputToggles();
     // 무엇을 textarea: 태그 행 on/off 후 placeholder 세로 중앙 유지

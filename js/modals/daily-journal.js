@@ -33,9 +33,10 @@ const METRIC_CONFIG = {
         offLayerId: 'dailyJournalWeightOffLayer',
         addBtnId: 'dailyJournalWeightAddBtn',
         unit: 'kg',
-        placeholder: '예: 62.5',
+        placeholder: '62.5',
         step: '0.1',
-        inputMode: 'decimal'
+        inputMode: 'decimal',
+        label: '체중'
     },
     bloodSugar: {
         containerId: 'dailyJournalBloodSugarRecords',
@@ -43,9 +44,10 @@ const METRIC_CONFIG = {
         offLayerId: 'dailyJournalBloodSugarOffLayer',
         addBtnId: 'dailyJournalBloodSugarAddBtn',
         unit: 'mg/dL',
-        placeholder: '예: 105',
+        placeholder: '105',
         step: '1',
-        inputMode: 'numeric'
+        inputMode: 'numeric',
+        label: '혈당'
     }
 };
 
@@ -94,6 +96,13 @@ function ensureMetricState(type) {
     }
 }
 
+/** 현재 시각 → 12시 표시용 { ampm, display } (placeholder·기본 오전/오후) */
+function getCurrentMetricClockParts() {
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return mealClock24ToAmPmAndDisplay(hhmm);
+}
+
 function syncMetricToggleUi(type) {
     const cfg = METRIC_CONFIG[type];
     const enabled = appState[metricEnabledKey(type)] === true;
@@ -110,9 +119,11 @@ function syncMetricToggleUi(type) {
     const rowCount = (appState[metricStateKey(type)] || []).length;
     const atMax = rowCount >= MAX_DAILY_JOURNAL_METRIC_RECORDS;
     if (addBtn) {
+        addBtn.classList.toggle('hidden', disabled);
         addBtn.disabled = disabled || atMax;
-        addBtn.classList.toggle('opacity-50', disabled || atMax);
-        addBtn.classList.toggle('pointer-events-none', disabled || atMax);
+        addBtn.classList.toggle('opacity-50', !disabled && atMax);
+        addBtn.classList.toggle('pointer-events-none', !disabled && atMax);
+        addBtn.setAttribute('aria-hidden', disabled ? 'true' : 'false');
     }
     if (container) {
         container.querySelectorAll('input, select, button.daily-journal-metric-remove').forEach((el) => {
@@ -126,26 +137,42 @@ function buildMetricRowHtml(type, idx, row) {
     const cfg = METRIC_CONFIG[type];
     const value = row?.value != null && row.value !== '' ? String(row.value) : '';
     const storedTime = row?.time || '';
-    const { ampm, display } = mealClock24ToAmPmAndDisplay(storedTime);
+    const currentClock = getCurrentMetricClockParts();
+    const parsed = mealClock24ToAmPmAndDisplay(storedTime);
+    const ampm = storedTime ? parsed.ampm : currentClock.ampm;
+    const display = storedTime ? parsed.display : '';
+    const timePlaceholder = currentClock.display || '시:분';
     const rowCount = (appState[metricStateKey(type)] || []).length;
     const clearOnly = rowCount <= 1;
+    const label = cfg.label;
     return `<div class="daily-journal-metric-row" data-metric-type="${type}" data-metric-index="${idx}">
-        <input type="number" min="0" step="${cfg.step}" inputmode="${cfg.inputMode}"
-            value="${value.replace(/"/g, '&quot;')}"
-            placeholder="${escapeHtml(cfg.placeholder)}"
-            class="daily-journal-metric-value daily-journal-metric-no-spin"
-            aria-label="${type === 'weight' ? '체중' : '혈당'}">
-        <div class="daily-journal-metric-time-wrap">
-            <select class="daily-journal-metric-ampm"
-                aria-label="${type === 'weight' ? '체중' : '혈당'} 오전 또는 오후">
-                <option value="am"${ampm === 'am' ? ' selected' : ''}>오전</option>
-                <option value="pm"${ampm === 'pm' ? ' selected' : ''}>오후</option>
-            </select>
-            <input type="text" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false"
-                value="${escapeHtml(display)}"
-                placeholder="예: 8:30"
-                class="daily-journal-metric-time"
-                aria-label="${type === 'weight' ? '체중' : '혈당'} 기록 시간 (선택)">
+        <div class="daily-journal-metric-row__main">
+            <div class="daily-journal-metric-value-wrap">
+                <span class="daily-journal-metric-field-label">측정값</span>
+                <div class="daily-journal-metric-value-field">
+                    <input type="number" min="0" step="${cfg.step}" inputmode="${cfg.inputMode}"
+                        value="${value.replace(/"/g, '&quot;')}"
+                        placeholder="${escapeHtml(cfg.placeholder)}"
+                        class="daily-journal-metric-value daily-journal-metric-no-spin"
+                        aria-label="${label}">
+                    <span class="daily-journal-metric-unit" aria-hidden="true">${escapeHtml(cfg.unit)}</span>
+                </div>
+            </div>
+            <div class="daily-journal-metric-time-block">
+                <span class="daily-journal-metric-field-label">시간</span>
+                <div class="daily-journal-metric-time-wrap">
+                    <select class="daily-journal-metric-ampm"
+                        aria-label="${label} 오전 또는 오후">
+                        <option value="am"${ampm === 'am' ? ' selected' : ''}>오전</option>
+                        <option value="pm"${ampm === 'pm' ? ' selected' : ''}>오후</option>
+                    </select>
+                    <input type="text" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false"
+                        value="${escapeHtml(display)}"
+                        placeholder="${escapeHtml(timePlaceholder)}"
+                        class="daily-journal-metric-time"
+                        aria-label="${label} 기록 시간 (선택)">
+                </div>
+            </div>
         </div>
         <button type="button" class="daily-journal-metric-remove" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i data-lucide="x" aria-hidden="true"></i></button>
     </div>`;
@@ -204,6 +231,7 @@ export function renderDailyJournalMetricRows(type, { skipDomSync = false } = {})
     const displayRows = appState[metricStateKey(type)];
     container.innerHTML = displayRows.map((row, idx) => buildMetricRowHtml(type, idx, row)).join('');
     syncMetricToggleUi(type);
+    scheduleLucideIcons(container);
 }
 
 export function renderDailyJournalAllMetrics() {
