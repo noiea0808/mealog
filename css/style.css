@@ -3428,10 +3428,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
-/* 키보드 열림: 헤더 Y(--entry-sheet-top) 유지. top:0으로 올리지 않음 */
+/* 키보드 열림: 패널을 상단(safe-area)에 더 붙여 본문 확보 */
 #entryModal.keyboard-open > .entry-modal-panel {
-    top: var(--entry-sheet-top, 1rem) !important;
-    max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
+    top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(100% - max(0.35rem, env(safe-area-inset-top, 0px)) - 0.5rem);
 }
 #modalScrollArea {
     /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */
@@ -3556,11 +3556,15 @@ html:not(.platform-web) #entryModal:not(.keyboard-open) #entryModalActions {
 html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     padding-bottom: 16px !important;
 }
-#entryModal.keyboard-open #entryModalActions {
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
-}
+/* 키보드 열림: nav·CTA는 JS가 #modalScrollArea 끝으로 옮겨 스크롤로 노출 */
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
+}
+#entryModal.keyboard-open #modalScrollArea > #entrySheetNavBar {
+    margin-top: 0.75rem;
+}
+#entryModal.keyboard-open #modalScrollArea > #entryModalActions {
+    margin-top: 0.25rem;
 }
 /* 저장 중: 스크롤 영역·액션 버튼 비활성 (모달은 열린 채 스피너 표시) */
 #entryModal.entry-modal-saving #modalScrollArea {
@@ -14586,7 +14590,7 @@ body:has(#adminPage:not(.hidden)),
 /*
  * 기준 높이 측정용 프로브:
  * - 무엇을 메인 태그 1행 + 사용자 태그 1행이 보이는 상태
- * - 메모는 포커스 시 3줄 높이
+ * - 메모는 접힌 1줄 (포커스 시 확장은 syncEntrySheetHeightLock으로 시트 성장)
  */
 #entryModal.entry-sheet-height-probe #entryWhatChips {
     display: flex !important;
@@ -14620,14 +14624,14 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal.entry-sheet-height-probe #entryCommentSectionMeal:not(.hidden) .entry-comment-textarea,
 #entryModal.entry-sheet-height-probe #entryCommentSectionSnack:not(.hidden) .entry-comment-textarea {
-    min-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    max-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    padding-top: 0.55rem !important;
-    padding-bottom: 0.55rem !important;
+    min-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    max-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
     overflow: hidden !important;
-    white-space: pre-wrap !important;
-    text-overflow: clip !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
 }
 /* 탭 스와이프/슬라이드 전환 */
 #entryModal #modalScrollArea.entry-sheet-dragging,
@@ -15837,9 +15841,6 @@ body:has(#adminPage:not(.hidden)),
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
     padding: 16px 16px 16px;
-}
-#entryModal.keyboard-open .entry-modal-actions {
-    border-radius: 0;
 }
 :is(#entryModal, #dailyJournalModal) .entry-modal-actions > .flex {
     gap: 8px;
