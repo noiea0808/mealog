@@ -176,7 +176,7 @@ export function resetEntrySheetBaseHeight() {
 }
 
 /**
- * 기준 높이 측정 시 인라인 높이를 잠시 비워 CSS 프로브(메모 3줄 등)가 먹게 함.
+ * 기준 높이 측정 시 인라인 높이를 잠시 비워 CSS 프로브(메모 1줄 등)가 먹게 함.
  * @returns {() => void} restore
  */
 function beginEntrySheetHeightProbe(modal) {
@@ -208,7 +208,7 @@ function beginEntrySheetHeightProbe(modal) {
 
 /**
  * 사진 없는 기본 탭 기준 높이를 잠근다.
- * 측정 가정: 무엇을 메인 태그·사용자 태그 행이 보이고, 메모는 3줄.
+ * 측정 가정: 무엇을 메인 태그·사용자 태그 행이 보이고, 메모는 접힌 1줄.
  * @param {{ force?: boolean }} [opts]
  */
 export function captureEntrySheetBaseHeight(opts = {}) {
