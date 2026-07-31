@@ -3,6 +3,7 @@
  * Android: Play Store · iOS: 홈 화면 추가 · PC: 즐겨찾기 안내
  * 가이드 모달은 OS 탭(Android / iPhone / PC) 통합
  */
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 let deferredInstallPrompt = null;
 let osInstallTabsBound = false;
@@ -134,13 +135,19 @@ export function openOsInstallGuideModal(preferredTab = null) {
     if (!modal) return;
     const kind = preferredTab || getLandingAppPromoKind() || 'desktop';
     setOsInstallGuideTab(kind);
+    // 서비스 가이드 위에서 보이도록 body 직속으로 올림
+    if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+    }
     modal.classList.remove('hidden');
+    lockBodyScroll('pwaInstallGuideModal');
 }
 
 export function closeOsInstallGuideModal() {
     const modal = document.getElementById('pwaInstallGuideModal');
     if (!modal) return;
     modal.classList.add('hidden');
+    unlockBodyScroll('pwaInstallGuideModal');
 }
 
 /** @deprecated 통합 모달 — iOS 탭 */

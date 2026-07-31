@@ -1203,10 +1203,10 @@
         </div>
     </div>
 
-    <!-- OS별 설치/홈화면 가이드 (탭: Android · iPhone · PC) -->
-    <div id="pwaInstallGuideModal" class="hidden fixed inset-0 z-[10055] flex items-end sm:items-center justify-center p-4 bg-slate-900/55 backdrop-blur-sm" aria-modal="true" role="dialog" aria-labelledby="pwaInstallGuideTitle">
-        <div id="pwaInstallGuideBackdrop" class="absolute inset-0" aria-hidden="true"></div>
-        <div class="relative bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200/80 overflow-hidden">
+    <!-- OS별 설치/홈화면 가이드 (탭: Android · iPhone · PC) — z-index는 css #pwaInstallGuideModal -->
+    <div id="pwaInstallGuideModal" class="hidden" aria-modal="true" role="dialog" aria-labelledby="pwaInstallGuideTitle">
+        <div id="pwaInstallGuideBackdrop" aria-hidden="true"></div>
+        <div class="pwa-install-guide-panel bg-white rounded-2xl shadow-2xl border border-slate-200/80">
             <div class="px-5 pt-5 pb-3 border-b border-slate-100">
                 <div class="flex items-start gap-3">
                     <div class="shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden">
@@ -1228,15 +1228,15 @@
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">구글 플레이에서 앱을 설치하면 알림과 사용이 더 편해져요.</p>
                 <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
+                        <span class="os-install-step-num" aria-hidden="true">1</span>
                         <span>아래 <strong class="text-slate-900">플레이 스토어로 이동</strong>을 눌러주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
+                        <span class="os-install-step-num" aria-hidden="true">2</span>
                         <span><strong class="text-slate-900">설치</strong>를 눌러 밀로그 앱을 받아주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
+                        <span class="os-install-step-num" aria-hidden="true">3</span>
                         <span>홈 화면 아이콘으로 바로 열어 기록할 수 있어요.</span>
                     </li>
                 </ol>
@@ -1250,15 +1250,15 @@
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">Safari·Chrome 등 브라우저에서 홈 화면에 추가하면 앱처럼 바로 열 수 있어요.</p>
                 <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
-                        <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><i data-lucide="upload" class="text-emerald-600 mx-0.5" aria-hidden="true"></i>을 눌러주세요.</span>
+                        <span class="os-install-step-num" aria-hidden="true">1</span>
+                        <span>브라우저 <strong class="text-slate-900">하단 또는 상단의 공유 버튼</strong><svg class="os-install-share-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>을 눌러주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
+                        <span class="os-install-step-num" aria-hidden="true">2</span>
                         <span>메뉴에서 <strong class="text-slate-900">홈 화면에 추가</strong>를 선택해주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
+                        <span class="os-install-step-num" aria-hidden="true">3</span>
                         <span>오른쪽 상단 <strong class="text-slate-900">추가</strong>를 누르면 완료! 홈 화면의 밀로그 아이콘으로 실행할 수 있어요.</span>
                     </li>
                 </ol>
@@ -1268,16 +1268,16 @@
                 <p class="text-xs text-slate-500 leading-relaxed mb-3">브라우저 보안 정책상 웹사이트에서 즐겨찾기를 자동으로 추가할 수 없어요. 아래 방법으로 저장해 주세요.</p>
                 <ol class="space-y-3 text-sm text-slate-700 leading-relaxed list-none">
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">1</span>
-                        <span><i data-lucide="keyboard" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
+                        <span class="os-install-step-num" aria-hidden="true">1</span>
+                        <span>키보드 <strong class="text-slate-900">Ctrl+D</strong> (Mac은 <strong class="text-slate-900">⌘+D</strong>)를 눌러주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">2</span>
-                        <span><i data-lucide="star" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
+                        <span class="os-install-step-num" aria-hidden="true">2</span>
+                        <span>또는 주소창 오른쪽 <strong class="text-slate-900">별(☆)</strong> 아이콘을 눌러주세요.</span>
                     </li>
                     <li class="flex gap-3">
-                        <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-black flex items-center justify-center">3</span>
-                        <span><i data-lucide="folder" class="text-emerald-500/80 mr-1" aria-hidden="true"></i>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
+                        <span class="os-install-step-num" aria-hidden="true">3</span>
+                        <span>저장할 폴더를 고른 뒤 <strong class="text-slate-900">완료</strong>를 누르면 즐겨찾기에 추가됩니다.</span>
                     </li>
                 </ol>
                 <div id="desktopPwaInstallOptional" class="hidden mt-4">
@@ -1287,7 +1287,7 @@
             </div>
 
             <div class="px-5 pb-5 pt-1">
-                <button type="button" id="pwaInstallGuideCloseBtn" class="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-200 active:bg-slate-300 transition-colors">확인</button>
+                <button type="button" id="pwaInstallGuideCloseBtn" class="w-full py-3 rounded-xl font-bold text-sm transition-colors">확인</button>
             </div>
         </div>
     </div>

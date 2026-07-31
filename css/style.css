@@ -3874,6 +3874,12 @@ body.daily-journal-modal-open #timelineRefreshFab.initial-records-load-fab {
     border-bottom-left-radius: 0 !important;
     border-bottom-right-radius: 0 !important;
 }
+/* 사진 블록 하단 구분선 (작성자·캡션 위) */
+#galleryContainer.moment-feed-layout-v2 .moment-v2-photo-shell,
+#feedContent[data-moment-feed-layout='2'] .moment-v2-photo-shell,
+#moment-v2-fixed-caption-layer .moment-v2-photo-shell {
+    border-bottom: 1px solid var(--line, #d0c6ba);
+}
 /* 캡처 공유 PNG(베스트/하루 기록): 다장 스와이프 슬롯도 뷰포트 폭 100%·흰 배경 */
 #galleryContainer.moment-feed-layout-v2 .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
 #feedContent[data-moment-feed-layout='2'] .moment-v2-hstrip .moment-v2-photo-surface--capture-share,
@@ -6861,6 +6867,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     aspect-ratio: 16 / 10;
     background: #e2e8f0;
     overflow: hidden;
+    border-bottom: 1px solid var(--line, #d0c6ba);
 }
 .home-feed-card__photo .timeline-meal-photo-cell,
 .home-feed-card__photo .timeline-meal-photo-cell [data-timeline-photo-img] {
@@ -15864,7 +15871,7 @@ body:has(#adminPage:not(.hidden)),
 #characterSelectPopup > div,
 #bestSharePeriodNoticeModal > div,
 #domainErrorModal > div,
-#pwaInstallGuideModal > div,
+#pwaInstallGuideModal .pwa-install-guide-panel,
 #desktopShortcutGuideModal > div,
 #entrySlotPickerModal .entry-slot-picker,
 #entryModal .entry-modal-panel,
@@ -17554,6 +17561,37 @@ body:has(#adminPage:not(.hidden)),
     visibility: hidden;
     pointer-events: none;
 }
+/* 설치·바로가기 안내: Tailwind z-* 없이도 서비스 가이드(10040) 위에 표시 */
+#pwaInstallGuideModal {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+}
+@media (min-width: 640px) {
+    #pwaInstallGuideModal {
+        align-items: center;
+    }
+}
+#pwaInstallGuideModal.hidden {
+    display: none !important;
+}
+#pwaInstallGuideBackdrop {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+}
+#pwaInstallGuideModal .pwa-install-guide-panel {
+    position: relative;
+    z-index: 1;
+    width: min(24rem, 100%) !important;
+    max-width: min(24rem, 100%) !important;
+    overflow: hidden;
+}
 .os-install-tabs {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -17583,6 +17621,37 @@ body:has(#adminPage:not(.hidden)),
 }
 .os-install-panel.hidden {
     display: none !important;
+}
+.os-install-step-num {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 9999px;
+    background: #3cb889;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.os-install-share-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    margin: 0 0.15em;
+    vertical-align: -0.12em;
+    color: #3cb889;
+}
+#pwaInstallGuideCloseBtn {
+    background: #eef1f4;
+    color: #5b6470;
+}
+#pwaInstallGuideCloseBtn:hover,
+#pwaInstallGuideCloseBtn:active {
+    background: #e4e8ed;
+    color: #3f4752;
 }
 html.service-guide-active #landingPage {
     visibility: hidden;
