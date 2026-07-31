@@ -747,6 +747,27 @@ function nudgeEntryModalInputRepaint(entryModal) {
 }
 
 /** 끼니 등록 모달: 키보드 열림 시 팝업 높이를 viewport에 맞추고, 닫힘 시 복원 */
+/**
+ * 키보드 열림: nav·CTA를 #modalScrollArea 끝으로 옮겨 스크롤로 접근.
+ * 닫힘: 스크롤 영역 바로 아래(패널 하단 chrome)로 복원.
+ * @param {boolean} intoScroll
+ */
+function placeEntryModalChrome(intoScroll) {
+    const scroll = document.getElementById('modalScrollArea');
+    const nav = document.getElementById('entrySheetNavBar');
+    const actions = document.getElementById('entryModalActions');
+    if (!scroll || !nav || !actions) return;
+    if (intoScroll) {
+        if (nav.parentElement !== scroll) scroll.appendChild(nav);
+        if (actions.parentElement !== scroll) scroll.appendChild(actions);
+        return;
+    }
+    if (nav.parentElement === scroll || actions.parentElement === scroll) {
+        scroll.after(nav);
+        nav.after(actions);
+    }
+}
+
 function initEntryModalKeyboardHandling(entryModal) {
     if (!entryModal || entryModal._keyboardHandlingInit) return;
     entryModal._keyboardHandlingInit = true;
@@ -777,13 +798,11 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (!panel) return;
         const topPx = Number.parseFloat(getComputedStyle(panel).top) || 16;
         const avail = Math.max(160, Math.floor(h - topPx - 8));
+        // 축소만 하면 vv 중간 프레임(작은 height)에 고착됨 → 키보드 구간은 항상 avail에 맞춤
         panel.style.maxHeight = `${avail}px`;
-        const lockedH = Number.parseFloat(panel.style.height) || panel.getBoundingClientRect().height || 0;
-        if (lockedH > avail) {
-            panel.style.height = `${avail}px`;
-            panel.style.minHeight = '0px';
-            panel.style.setProperty('--entry-sheet-h', `${avail}px`);
-        }
+        panel.style.height = `${avail}px`;
+        panel.style.minHeight = '0px';
+        panel.style.setProperty('--entry-sheet-h', `${avail}px`);
         const active = document.activeElement;
         if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
             scrollEntryFieldIntoView(active, { align: 'nearest' });
@@ -830,12 +849,14 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (open) {
             if (!entryModal.classList.contains('keyboard-open')) {
                 entryModal.classList.add('keyboard-open');
+                placeEntryModalChrome(true);
                 lastAppliedVh = NaN;
                 lastAppliedVtop = NaN;
             }
             scheduleViewportGeometryFromVv();
         } else if (entryModal.classList.contains('keyboard-open')) {
             entryModal.classList.remove('keyboard-open');
+            placeEntryModalChrome(false);
             lastAppliedVh = NaN;
             lastAppliedVtop = NaN;
             if (viewportGeomRaf != null) {
@@ -1385,6 +1406,7 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
     const hasContent = !!(el.value || '').length;
     const focused = document.activeElement === el;
     const keepOpen = focused || hasContent;
+    const wasExpanded = el.classList.contains('entry-comment-textarea--expanded');
     el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
     el.rows = focused ? 3 : (hasContent ? 2 : 1);
     if (!keepOpen) {
@@ -1392,6 +1414,10 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
         return;
     }
     autosizeEntryCommentTextarea(el);
+    // 접힌 1줄 → 확장 시 시트 peak 높이를 키움 (키보드 중에는 sync가 no-op)
+    if ((!wasExpanded || fromFocus) && typeof window.syncEntrySheetHeightLock === 'function') {
+        window.syncEntrySheetHeightLock();
+    }
     // 포커스·입력으로 줄이 늘 때만 시트 스크롤 (초기 로드 확장은 점프 방지)
     if (focused) {
         scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
@@ -1424,6 +1450,7 @@ function revealEntryModalShell() {
     window.__entryModalOpenGeneration = openGen;
     entryModal.classList.remove('hidden');
     entryModal.classList.remove('keyboard-open');
+    placeEntryModalChrome(false);
     entryModal.style.height = '';
     entryModal.style.top = '';
     resetEntryModalScrollTop();
@@ -1623,6 +1650,7 @@ export function closeModal() {
     if (entryModal) {
         setEntryModalSavingState(false);
         entryModal.classList.remove('keyboard-open');
+        placeEntryModalChrome(false);
         entryModal.style.height = '';
         entryModal.style.top = '';
         if (typeof entryModal.resetGrabberPullTransform === 'function') {

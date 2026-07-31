@@ -187,8 +187,12 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
             <button type="button" class="moment-v2-social-comments-scrim" aria-label="댓글 닫기" onclick='event.preventDefault();event.stopPropagation();window.closeMomentV2SocialCommentSheet&&window.closeMomentV2SocialCommentSheet(${postIdJs})'></button>
             <div class="moment-v2-social-comments-sheet" role="dialog" aria-modal="true" aria-label="댓글">
                 <div class="moment-v2-social-comments-sheet-handle" aria-label="아래로 드래그하여 닫기" role="button" tabindex="0"></div>
+                <div class="moment-v2-social-comments-sheet-header">
+                    <h3 class="moment-v2-social-comments-sheet-title">댓글</h3>
+                    <span class="moment-v2-social-comments-sheet-count" data-moment-v2-social-comments-count="1" hidden></span>
+                </div>
                 <div class="moment-v2-social-comments-sheet-body">
-                    <div class="post-comments-list moment-v2-social-comments-list mb-1 rounded-lg py-2" data-post-id="${p}" id="comments-list-${p}"></div>
+                    <div class="post-comments-list moment-v2-social-comments-list" data-post-id="${p}" id="comments-list-${p}"></div>
                 </div>
                 <div
                     class="moment-v2-social-comments-empty hidden"
@@ -196,17 +200,19 @@ function buildV2SocialCommentPanelHtml(postId, postIdJs) {
                     aria-live="polite"
                 >
                     <div class="moment-v2-social-comments-empty-inner">
-                        아직 댓글이 없습니다.<br />
-                        첫번째 댓글을 남겨주세요
+                        <span class="moment-v2-social-comments-empty-emoji" aria-hidden="true">💬</span>
+                        <p class="moment-v2-social-comments-empty-text">아직 댓글이 없습니다</p>
                     </div>
                 </div>
-                <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden px-1.5 pt-1.5 pb-2">
-                    <div class="moment-v2-social-comments-input-shell relative backdrop-blur-sm">
+                <div id="comment-input-${p}" class="moment-v2-social-comments-input-wrap hidden">
+                    <div class="moment-v2-social-comments-composer">
                         <span class="moment-v2-social-comments-input-avatar" aria-hidden="true"></span>
-                        <textarea id="comment-text-${p}" rows="1" placeholder="댓글을 입력하세요…" class="moment-v2-social-comments-input w-full min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent py-1 text-[14px] leading-snug text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-0" onkeydown='if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();window.submitComment(${postIdJs});}'></textarea>
-                        <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="입력">
-                            <i data-lucide="arrow-up" class="text-sm" aria-hidden="true"></i>
-                        </button>
+                        <div class="moment-v2-social-comments-input-shell">
+                            <textarea id="comment-text-${p}" rows="1" placeholder="댓글을 남겨보세요" class="moment-v2-social-comments-input" onkeydown='if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();window.submitComment(${postIdJs});}'></textarea>
+                            <button type="button" class="moment-v2-social-comments-send" data-comment-send-btn="1" data-post-id="${p}" onclick='event.preventDefault();event.stopPropagation();window.submitComment(${postIdJs})' aria-label="전송">
+                                <i data-lucide="arrow-up" class="text-sm" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>

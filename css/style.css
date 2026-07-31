@@ -604,6 +604,36 @@ body.keyboard-closed #boardWriteView {
     padding-left: max(0.75rem, 1em);
     padding-right: max(0.75rem, 1em);
 }
+/* 일간 좌우 스와이프: 현재·다음 날짜 패널이 함께 이동 */
+.timeline-daily-swipe-viewport {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    touch-action: pan-y;
+    min-height: 30vh;
+}
+.timeline-daily-swipe-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 30vh;
+    will-change: transform;
+}
+.timeline-daily-swipe-panel--current {
+    z-index: 1;
+}
+.timeline-daily-swipe-panel--incoming {
+    z-index: 0;
+    background: var(--page-deep, #faf6f2);
+}
+.timeline-daily-swipe-panel > #timelineContainer,
+.timeline-daily-swipe-panel > #timelineContainerOutgoing {
+    width: 100%;
+    box-sizing: border-box;
+}
 /* meals 리스너 degraded: 일부만 표시 / 인덱스·재시도 안내 */
 .meals-load-degraded-banner {
     margin: 0 0 0.75rem;
@@ -3398,10 +3428,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
-/* 키보드 열림: 헤더 Y(--entry-sheet-top) 유지. top:0으로 올리지 않음 */
+/* 키보드 열림: 패널을 상단(safe-area)에 더 붙여 본문 확보 */
 #entryModal.keyboard-open > .entry-modal-panel {
-    top: var(--entry-sheet-top, 1rem) !important;
-    max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
+    top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
+    max-height: calc(100% - max(0.35rem, env(safe-area-inset-top, 0px)) - 0.5rem);
 }
 #modalScrollArea {
     /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */
@@ -3526,11 +3556,15 @@ html:not(.platform-web) #entryModal:not(.keyboard-open) #entryModalActions {
 html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     padding-bottom: 16px !important;
 }
-#entryModal.keyboard-open #entryModalActions {
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)) !important;
-}
+/* 키보드 열림: nav·CTA는 JS가 #modalScrollArea 끝으로 옮겨 스크롤로 노출 */
 #entryModal.keyboard-open #modalScrollArea {
     padding-bottom: 0 !important;
+}
+#entryModal.keyboard-open #modalScrollArea > #entrySheetNavBar {
+    margin-top: 0.75rem;
+}
+#entryModal.keyboard-open #modalScrollArea > #entryModalActions {
+    margin-top: 0.25rem;
 }
 /* 저장 중: 스크롤 영역·액션 버튼 비활성 (모달은 열린 채 스피너 표시) */
 #entryModal.entry-modal-saving #modalScrollArea {
@@ -5029,7 +5063,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
-    background: rgba(15, 23, 42, 0.52);
+    background: var(--shell-dim);
     pointer-events: auto;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet {
@@ -5041,14 +5075,12 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     display: flex;
     flex-direction: column;
     min-height: 0;
-    border-radius: 0.5625rem 0.5625rem 0 0;
-    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: var(--shell-r-sheet) var(--shell-r-sheet) 0 0;
+    border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
     border-bottom: 0;
-    background: rgba(255, 255, 255, 0.72);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
-    color: rgba(15, 23, 42, 0.92);
-    box-shadow: 0 -12px 48px rgba(15, 23, 42, 0.24);
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 -8px 32px rgba(36, 31, 28, 0.14);
     overflow: hidden;
     pointer-events: auto;
     transform: translate3d(0, 110%, 0);
@@ -5062,14 +5094,35 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     flex: 0 0 auto;
     width: 2.25rem;
     height: 0.28rem;
-    margin: 0.65rem auto 0.35rem;
+    margin: 0.7rem auto 0.2rem;
     border-radius: 9999px;
-    background: rgba(15, 23, 42, 0.25);
+    background: color-mix(in srgb, var(--muted) 45%, transparent);
     touch-action: none;
     cursor: grab;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle:active {
     cursor: grabbing;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0.35rem 1rem 0.55rem;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-count {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-body {
     flex: 1 1 auto;
@@ -5077,153 +5130,267 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     max-height: min(48vh, 400px);
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 0 0.5rem 0.5rem;
+    padding: 0 1rem 0.35rem;
     position: relative;
 }
+/* 댓글이 있을 때: 빈 상태와 같은 Paper(--page) 톤 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-body:has(.moment-v2-social-comments-list.has-items) {
+    background: var(--page);
+    border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+    padding-top: 0.35rem;
+    padding-bottom: 0.5rem;
+}
 
-/* 빈 댓글 안내문: 입력창 바로 위(스크롤 밖) */
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty {
+/* Soft Mint 댓글 행 — 라운지 상세와 동일 계층 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list {
+    display: flex;
+    flex-direction: column;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list.has-items > .moment-v2-social-comment + .moment-v2-social-comment {
+    border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment:first-child {
+    padding-top: 2px;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment:last-child {
+    padding-bottom: 4px;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar {
     flex: 0 0 auto;
-    height: 120px;
+    width: 32px;
+    height: 32px;
+    margin-top: 1px;
+    border-radius: 9999px;
+    background: var(--avatar-fallback-bg);
+    border: 0;
+    color: var(--avatar-fallback-fg);
+    box-shadow: var(--avatar-shadow);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 0.75rem;
+    font-family: var(--avatar-fallback-font);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    overflow: hidden;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar--emoji {
+    font-size: 16px;
+    font-weight: 400;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__meta {
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__nick {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: pointer;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__nick:hover {
+    color: var(--green-deep);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__time {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__delete {
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    padding: 2px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    cursor: pointer;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__delete:hover {
+    color: var(--danger);
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comment__body {
+    margin: 6px 0 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* 빈 댓글 안내 — 입력창 위 Paper 톤 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty {
+    flex: 0 0 auto;
+    min-height: 7.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem 1rem;
     pointer-events: none;
-    border-top: 1px solid rgba(15, 23, 42, 0.06);
-    background: rgba(255, 255, 255, 0.35);
+    border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+    background: var(--page);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty.hidden {
     display: none !important;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-inner {
+    margin: 0;
     max-width: 18rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
     text-align: center;
-    font-family: 'Yeon Sung', serif;
+}
+/* 연속기록·출석 등과 같이 배경 없는 네이티브 컬러 이모지 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-emoji {
+    display: block;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+    font-size: 1.75rem;
     font-weight: 400;
-    font-size: 2rem;
-    letter-spacing: 0.01em;
-    line-height: 1.45;
-    color: rgba(15, 23, 42, 0.82);
-    margin-top: 10px;
+    font-style: normal;
+    line-height: 1;
+    user-select: none;
 }
-
-/* 댓글 텍스트 아래 노트 줄(편지지 느낌) */
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list .mb-1 {
-    position: relative;
-    padding-bottom: 0.35rem;
-    margin-bottom: 0.45rem;
-}
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-list .mb-1::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0.05rem;
-    height: 3px;
-    opacity: 0.75;
-    background-repeat: repeat-x;
-    background-position: left bottom;
-    background-size: 120px 3px;
-    /* 펜으로 그은 듯 울퉁불퉁한 라인(svg) */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='3' viewBox='0 0 120 3'%3E%3Cpath d='M0 1.6 C 10 0.9, 20 2.4, 30 1.5 S 50 0.8, 60 1.6 S 80 2.3, 90 1.4 S 110 0.9, 120 1.6' fill='none' stroke='%230f172a' stroke-opacity='0.45' stroke-width='1.15' stroke-linecap='round'/%3E%3C/svg%3E");
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-empty-text {
+    margin: 0;
+    font-family: 'Pretendard', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+    line-height: 1.5;
+    color: var(--muted);
 }
 
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-more {
-    color: rgba(15, 23, 42, 0.55);
+    color: var(--muted);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-more:hover {
-    color: rgba(15, 23, 42, 0.92);
+    color: var(--ink);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-wrap:not(.hidden) {
     flex: 0 0 auto;
-    border-top: 1px solid rgba(15, 23, 42, 0.08);
-    background: rgba(15, 23, 42, 0.04);
+    border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent);
+    background: var(--card);
+    padding: 10px 14px 12px;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-wrap.hidden {
     display: none !important;
 }
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
-    position: relative;
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-composer {
     display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
-    gap: 0.25rem;
-    min-height: 2.5rem;
-    height: auto;
-    padding: 0.375rem 0.375rem 0.375rem calc(0.375rem + (2.5rem - 4px) + 0.25rem);
-    box-sizing: border-box;
-    /* 왼쪽만 크게 라운드(아이콘이 들어가는 캡슐) */
-    border-radius: 9999px 0 0 9999px;
-    background: rgba(226, 232, 240, 0.55);
-}
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell:focus-within {
-    background: rgba(226, 232, 240, 0.65);
-}
-body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input {
-    border: 0 !important;
-    box-shadow: none !important;
-    outline: none !important;
+    align-items: flex-end;
+    gap: 8px;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-avatar {
-    position: absolute;
     flex: 0 0 auto;
-    left: 0.375rem;
-    top: 0.4rem;
-    transform: none;
-    width: calc(2.5rem - 4px);
-    height: calc(2.5rem - 4px);
-    aspect-ratio: 1 / 1;
+    width: 32px;
+    height: 32px;
+    margin-bottom: 4px;
     border-radius: 9999px;
-    z-index: 3;
-    /* 아이콘 원형 밖(상하/좌측)으로 보이는 배경이 입력창과 같게 */
-    background: rgba(226, 232, 240, 0.55);
-    border: 1px solid rgba(71, 85, 105, 0.9);
-    color: rgba(15, 23, 42, 0.82);
+    background: var(--avatar-fallback-bg);
+    border: 0;
+    color: var(--avatar-fallback-fg);
+    box-shadow: var(--avatar-shadow);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.95rem;
+    font-family: var(--avatar-fallback-font);
+    font-size: 12px;
+    font-weight: 700;
     line-height: 1;
     overflow: hidden;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+    min-height: 2.5rem;
+    box-sizing: border-box;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--page);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input-shell:focus-within {
+    border-color: var(--green-mute);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--green-soft) 80%, transparent);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input {
     flex: 1 1 auto;
     min-width: 0;
-    min-height: 2.25rem !important;
+    min-height: 2.5rem !important;
     height: auto !important;
     max-height: 11rem;
     overflow-x: hidden;
     overflow-y: auto;
-    padding-left: 0.125rem !important;
-    /* 전송 버튼 영역 확보 */
-    padding-right: 2.75rem !important;
-    padding-top: 0.375rem !important;
-    padding-bottom: 0.375rem !important;
-    line-height: 1.38 !important;
+    margin: 0;
+    padding: 10px 3rem 10px 14px !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    outline: none !important;
+    resize: none;
+    background: transparent !important;
+    color: var(--ink) !important;
+    font-size: 14px !important;
+    line-height: 1.45 !important;
     word-break: break-word;
     white-space: pre-wrap;
-    background: transparent !important;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-input::placeholder {
+    color: var(--muted);
+    opacity: 0.85;
 }
 
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send {
     position: absolute;
-    right: 0.25rem;
-    bottom: 0.35rem;
+    right: 6px;
+    bottom: 6px;
     top: auto;
     transform: none;
     height: 2.1rem;
     width: 2.1rem;
     border-radius: 9999px;
     border: 0;
-    background: rgba(16, 185, 129, 0.92); /* emerald */
+    background: var(--cta-mint-grad);
     color: #fff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+    box-shadow: var(--cta-mint-shadow);
     cursor: pointer;
-    transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
+    transition: transform 120ms ease, opacity 120ms ease, filter 120ms ease;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send.hidden {
     display: none !important;
@@ -5231,9 +5398,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:disabled {
     opacity: 0.35;
     cursor: default;
+    filter: grayscale(0.15);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:hover:not(:disabled) {
-    background: rgba(60, 184, 137, 0.95);
+    filter: brightness(1.03);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-send:active:not(:disabled) {
     transform: scale(0.96);
@@ -14415,7 +14583,7 @@ body:has(#adminPage:not(.hidden)),
 /*
  * 기준 높이 측정용 프로브:
  * - 무엇을 메인 태그 1행 + 사용자 태그 1행이 보이는 상태
- * - 메모는 포커스 시 3줄 높이
+ * - 메모는 접힌 1줄 (포커스 시 확장은 syncEntrySheetHeightLock으로 시트 성장)
  */
 #entryModal.entry-sheet-height-probe #entryWhatChips {
     display: flex !important;
@@ -14449,14 +14617,14 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal.entry-sheet-height-probe #entryCommentSectionMeal:not(.hidden) .entry-comment-textarea,
 #entryModal.entry-sheet-height-probe #entryCommentSectionSnack:not(.hidden) .entry-comment-textarea {
-    min-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    max-height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    height: calc(3em * var(--entry-comment-line, 1.35) + 1.1rem) !important;
-    padding-top: 0.55rem !important;
-    padding-bottom: 0.55rem !important;
+    min-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    max-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
     overflow: hidden !important;
-    white-space: pre-wrap !important;
-    text-overflow: clip !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
 }
 /* 탭 스와이프/슬라이드 전환 */
 #entryModal #modalScrollArea.entry-sheet-dragging,
@@ -15667,9 +15835,6 @@ body:has(#adminPage:not(.hidden)),
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
     padding: 16px 16px 16px;
 }
-#entryModal.keyboard-open .entry-modal-actions {
-    border-radius: 0;
-}
 :is(#entryModal, #dailyJournalModal) .entry-modal-actions > .flex {
     gap: 8px;
 }
@@ -15825,12 +15990,17 @@ body:has(#adminPage:not(.hidden)),
 #trackerMonthCalendarModal,
 #domainErrorModal,
 #detailModal,
-#pwaInstallGuideModal,
 #desktopShortcutGuideModal,
 #reportModal {
     background-color: var(--shell-dim) !important;
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
+}
+/* 설치 가이드: 뒤 화면이 축소·후퇴되어 보이지 않도록 blur 없이 딤만 */
+#pwaInstallGuideModal {
+    background-color: var(--shell-dim) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 #entrySlotPickerBackdrop,
 #entryModalBackdrop,
@@ -15864,7 +16034,7 @@ body:has(#adminPage:not(.hidden)),
 #characterSelectPopup > div,
 #bestSharePeriodNoticeModal > div,
 #domainErrorModal > div,
-#pwaInstallGuideModal > div,
+#pwaInstallGuideModal .os-install-guide-panel,
 #desktopShortcutGuideModal > div,
 #entrySlotPickerModal .entry-slot-picker,
 #entryModal .entry-modal-panel,
@@ -15888,6 +16058,11 @@ body:has(#adminPage:not(.hidden)),
     margin-left: auto;
     margin-right: auto;
     box-sizing: border-box;
+}
+/* 설치 가이드: 공통 float보다 조금 좁게 (패널만 — backdrop에는 적용하지 않음) */
+#pwaInstallGuideModal .os-install-guide-panel {
+    width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
+    max-width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
 }
 /* 이메일 로그인: Soft Mint 공통 폭 대신 화면 80%(최대 20rem) */
 #emailAuthModal > div {
@@ -17262,15 +17437,18 @@ body:has(#adminPage:not(.hidden)),
     padding: calc(28px + env(safe-area-inset-top, 0px)) 20px calc(18px + env(safe-area-inset-bottom, 0px));
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 18px;
+    justify-content: flex-start;
+    gap: 14px;
+    height: 100%;
     min-height: 100%;
+    max-height: 100%;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .service-guide-visuals {
     position: relative;
     flex: 1 1 auto;
-    min-height: min(52dvh, 480px);
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -17416,12 +17594,12 @@ body:has(#adminPage:not(.hidden)),
 .service-guide-copy--enter .service-guide-eyebrow,
 .service-guide-copy--enter .service-guide-title,
 .service-guide-copy--enter .service-guide-body,
-.service-guide-copy--enter .service-guide-install-cta {
+.service-guide-copy--enter .service-guide-install-cta:not(.hidden) {
     animation: service-guide-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .service-guide-copy--enter .service-guide-title { animation-delay: 0.06s; }
 .service-guide-copy--enter .service-guide-body { animation-delay: 0.14s; }
-.service-guide-copy--enter .service-guide-install-cta { animation-delay: 0.2s; }
+.service-guide-copy--enter .service-guide-install-cta:not(.hidden) { animation-delay: 0.2s; }
 @keyframes service-guide-rise {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
@@ -17445,12 +17623,21 @@ body:has(#adminPage:not(.hidden)),
     white-space: pre-line;
 }
 .service-guide-body {
-    margin: 0 auto 14px;
+    margin: 0 auto 10px;
     max-width: 22rem;
     font-size: 0.9rem;
     line-height: 1.65;
     color: #4f4841;
     white-space: pre-line;
+}
+/* CTA 유무와 관계없이 자리 예약 → 하단 버튼이 밀리지 않음 */
+.service-guide-cta-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 3.25rem;
+    margin-bottom: 2px;
 }
 .service-guide-install-cta {
     display: inline-flex;
@@ -17459,7 +17646,7 @@ body:has(#adminPage:not(.hidden)),
     gap: 6px;
     width: 100%;
     max-width: 20rem;
-    margin: 0 auto 12px;
+    margin: 0 auto;
     padding: 11px 14px;
     border: 1.5px solid #3cb889;
     border-radius: 14px;
@@ -17482,11 +17669,12 @@ body:has(#adminPage:not(.hidden)),
     display: none !important;
 }
 .service-guide-footer {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 12px;
-    margin-top: 4px;
+    margin-top: auto;
 }
 .service-guide-dots {
     display: flex;
@@ -17557,29 +17745,122 @@ body:has(#adminPage:not(.hidden)),
 .os-install-tabs {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    padding: 4px;
-    background: #f3eee8;
-    border-radius: 12px;
+    gap: 4px;
+    padding: 3px;
+    background: #f5f3f0;
+    border-radius: 999px;
 }
 .os-install-tab {
     appearance: none;
     border: 0;
     background: transparent;
-    color: #7a7268;
+    color: #8a837a;
     font: inherit;
-    font-size: 0.8125rem;
-    font-weight: 800;
-    padding: 9px 6px;
-    border-radius: 9px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: 8px 6px;
+    border-radius: 999px;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, color 0.15s ease, font-weight 0.15s ease;
 }
 .os-install-tab.is-active,
 .os-install-tab[aria-selected="true"] {
     background: #fff;
-    color: #2d9f74;
-    box-shadow: 0 1px 3px rgba(36, 31, 28, 0.08);
+    color: #166534;
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(36, 31, 28, 0.06);
+}
+.os-install-step-num {
+    flex-shrink: 0;
+    width: 1.375rem;
+    height: 1.375rem;
+    margin-top: 0.1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid #86c5a8;
+    background: transparent;
+    color: #166534;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+.os-install-inline-icon {
+    color: #166534;
+    display: inline;
+    vertical-align: -0.125em;
+}
+.os-install-guide-figure {
+    margin: 0.75rem 0 0;
+    padding: 0;
+}
+.os-install-guide-img {
+    display: block;
+    width: 100%;
+    max-width: 15.5rem;
+    margin: 0 auto;
+    border-radius: 0.875rem;
+    border: 1px solid #e8e4de;
+    box-shadow: 0 2px 10px rgba(36, 31, 28, 0.07);
+    background: #f5f5f7;
+}
+.os-install-actions {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+.os-install-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.75rem;
+    padding: 0.7rem 0.85rem;
+    border: 0;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    box-sizing: border-box;
+}
+.os-install-btn--secondary {
+    flex: 0 0 30%;
+    max-width: 30%;
+    background: #f1f5f9;
+    color: #334155;
+}
+.os-install-btn--secondary:hover {
+    background: #e2e8f0;
+}
+.os-install-btn--secondary:active {
+    background: #cbd5e1;
+}
+.os-install-btn--primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: #059669;
+    color: #fff;
+}
+.os-install-btn--primary:hover {
+    background: #047857;
+}
+.os-install-btn--primary:active {
+    background: #065f46;
+}
+.os-install-btn.hidden {
+    display: none !important;
+}
+/* 확인만 있을 때: 전체 폭 */
+.os-install-actions:not(.os-install-actions--dual) .os-install-btn--secondary {
+    flex: 1 1 auto;
+    max-width: none;
 }
 .os-install-panel.hidden {
     display: none !important;

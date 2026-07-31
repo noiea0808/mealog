@@ -931,51 +931,12 @@ let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
-function shouldTryAutoDemoSignIn(wasExplicitLogout, wasDemoUserLogout) {
-    // ⚠️ 중요: localStorage를 먼저 확인 (페이지 리로드 후에도 유지)
-    // ⚠️ 중요: 동기적으로 즉시 확인 (비동기 작업 전에)
-    const localStorageExplicitLogout = localStorage.getItem('explicitLogout') === 'true';
-    const localStorageDemoLogout = localStorage.getItem('wasDemoUserLogout') === 'true';
-    const sessionStorageExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-    const sessionStorageDemoLogout = sessionStorage.getItem('wasDemoUserLogout') === 'true';
-    
-    // ⚠️ 중요: 모든 저장소에서 플래그 확인 (하나라도 true이면 차단)
-    const hasExplicitLogout = wasExplicitLogout || localStorageExplicitLogout || sessionStorageExplicitLogout;
-    const hasDemoLogout = wasDemoUserLogout || localStorageDemoLogout || sessionStorageDemoLogout;
-
-    // 명시적 로그아웃이면 절대 자동 로그인하지 않음
-    if (hasExplicitLogout) {
-        console.log('🚫 자동 데모 로그인 스킵: 명시적 로그아웃', {
-            wasExplicitLogout,
-            localStorageExplicitLogout,
-            sessionStorageExplicitLogout,
-            hasExplicitLogout
-        });
-        return false;
-    }
-    // 더미 계정에서 명시적으로 로그아웃한 경우 자동 로그인하지 않음
-    if (hasDemoLogout) {
-        console.log('🚫 자동 데모 로그인 스킵: 더미 계정 로그아웃', {
-            wasDemoUserLogout,
-            localStorageDemoLogout,
-            sessionStorageDemoLogout,
-            hasDemoLogout
-        });
-        return false;
-    }
-    // 추가 안전장치
-    try {
-        if (localStorage.getItem('mealog_seen_real_login') === '1') {
-            console.log('🚫 자동 데모 로그인 스킵: 실제 로그인 경험 있음');
-            return false;
-        }
-        if (localStorage.getItem('mealog_auto_demo_off') === '1') {
-            console.log('🚫 자동 데모 로그인 스킵: 자동 데모 비활성화');
-            return false;
-        }
-    } catch (_) {}
-    console.log('✅ 자동 데모 로그인 시도');
-    return true;
+/**
+ * 자동 둘러보기(데모 로그인) 여부.
+ * 의도: 첫 실행은 서비스 가이드 → 로그인 화면. 둘러보기는 로그인 화면「둘러보기」버튼으로만.
+ */
+function shouldTryAutoDemoSignIn(_wasExplicitLogout, _wasDemoUserLogout) {
+    return false;
 }
 
 initAuth(async (user) => {
@@ -2036,7 +1997,7 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// 터치 제스처 초기화 (일간 스와이프: 좌<->우 전환 방향 고정)
+// 터치 제스처 초기화 (일간 스와이프: 현재·다음 날짜가 함께 이동)
 function initDailySwipeGesture() {
     if (window.__dailySwipeGestureInitialized) return;
     const tv = document.getElementById('timelineView');
@@ -2085,6 +2046,12 @@ function initDailySwipeGesture() {
     let swipeHintTimer = null;
     let swipeHintToken = 0;
     let swipeHintFallbackTimer = null;
+    /**
+     * fingerLeft: 손가락이 왼쪽으로 움직임(다음날, 새 화면은 오른쪽에서)
+     * fingerLeft === false: 손가락이 오른쪽으로 움직임(전날, 새 화면은 왼쪽에서)
+     * @type {null | { viewport: HTMLElement, currentPanel: HTMLElement, incomingPanel: HTMLElement, fingerLeft: boolean, vw: number }}
+     */
+    let scaffold = null;
 
     const prefersReducedMotion = () => {
         try {
@@ -2221,12 +2188,12 @@ function initDailySwipeGesture() {
     window.scheduleDailySwipeHint = scheduleDailySwipeHint;
     window.cancelDailySwipeHint = cancelDailySwipeHint;
 
-    const resetTransform = () => {
-        const tc = getTimelineContainer();
-        if (!tc) return;
-        tc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-        tc.style.transform = 'translate3d(0, 0, 0)';
-        tc.style.willChange = '';
+    const getVw = () => {
+        if (scaffold?.viewport?.clientWidth) return Math.max(1, scaffold.viewport.clientWidth);
+        const style = window.getComputedStyle(tv);
+        const pl = parseFloat(style.paddingLeft) || 0;
+        const pr = parseFloat(style.paddingRight) || 0;
+        return Math.max(1, (tv.clientWidth || window.innerWidth || 360) - pl - pr);
     };
 
     const waitForTransformEnd = (el, fallbackMs) => new Promise((resolve) => {
@@ -2246,6 +2213,123 @@ function initDailySwipeGesture() {
         el.addEventListener('transitionend', onEnd);
     });
 
+    const clearSwipeInlineStyles = (el) => {
+        if (!el) return;
+        el.style.transform = '';
+        el.style.transition = '';
+        el.style.willChange = '';
+    };
+
+    const teardownScaffold = (keepEl) => {
+        if (!scaffold) return;
+        const { viewport } = scaffold;
+        // #timelineContainer 는 #timelineView 직속이 아니라 #timelinePullWrap 안일 수 있음
+        const host = viewport.parentNode;
+        if (keepEl && host) {
+            clearSwipeInlineStyles(keepEl);
+            if (keepEl.parentNode !== host) {
+                host.insertBefore(keepEl, viewport);
+            }
+        }
+        viewport.remove();
+        scaffold = null;
+    };
+
+    /**
+     * 손가락 deltaX에 맞춰 두 패널을 동시에 이동.
+     * - 손가락→왼쪽: 현재는 왼쪽으로, 새 화면은 오른쪽(+vw)에서 따라옴
+     * - 손가락→오른쪽: 현재는 오른쪽으로, 새 화면은 왼쪽(-vw)에서 따라옴
+     */
+    const applyPanelDrag = (dragX, withTransition = false) => {
+        if (!scaffold) return;
+        const { currentPanel, incomingPanel, fingerLeft, vw } = scaffold;
+        const transition = withTransition
+            ? 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)'
+            : 'none';
+        const incomingBase = fingerLeft ? vw : -vw;
+        currentPanel.style.transition = transition;
+        incomingPanel.style.transition = transition;
+        currentPanel.style.willChange = 'transform';
+        incomingPanel.style.willChange = 'transform';
+        currentPanel.style.transform = `translate3d(${dragX}px, 0, 0)`;
+        incomingPanel.style.transform = `translate3d(${dragX + incomingBase}px, 0, 0)`;
+    };
+
+    const syncViewportHeight = () => {
+        if (!scaffold) return;
+        const h = Math.max(
+            scaffold.currentPanel.scrollHeight || 0,
+            scaffold.incomingPanel.scrollHeight || 0,
+            240
+        );
+        scaffold.viewport.style.minHeight = `${h}px`;
+    };
+
+    const ensureScaffold = (fingerLeft, dragX) => {
+        const tc = getTimelineContainer();
+        // 실제 부모(#timelinePullWrap)에 삽입 — #timelineView 직속이라고 가정하면 insertBefore 실패
+        const host = tc?.parentNode;
+        if (!tc || !host) return null;
+        if (scaffold && scaffold.fingerLeft === fingerLeft) {
+            scaffold.vw = getVw();
+            applyPanelDrag(dragX);
+            return scaffold;
+        }
+        if (scaffold) {
+            const keep =
+                scaffold.currentPanel.querySelector('#timelineContainer') ||
+                scaffold.currentPanel.querySelector('#timelineContainerOutgoing') ||
+                getTimelineContainer();
+            if (keep?.id === 'timelineContainerOutgoing') keep.id = 'timelineContainer';
+            teardownScaffold(keep);
+        }
+
+        // teardown 후 DOM이 바뀌었을 수 있어 다시 조회
+        const liveTc = getTimelineContainer();
+        const liveHost = liveTc?.parentNode;
+        if (!liveTc || !liveHost) return null;
+
+        clearSwipeInlineStyles(liveTc);
+        const vw = getVw();
+        const viewport = document.createElement('div');
+        viewport.className = 'timeline-daily-swipe-viewport';
+        const currentPanel = document.createElement('div');
+        currentPanel.className = 'timeline-daily-swipe-panel timeline-daily-swipe-panel--current';
+        const incomingPanel = document.createElement('div');
+        incomingPanel.className = 'timeline-daily-swipe-panel timeline-daily-swipe-panel--incoming';
+
+        liveHost.insertBefore(viewport, liveTc);
+        currentPanel.appendChild(liveTc);
+        viewport.append(currentPanel, incomingPanel);
+        const measured = Math.max(1, viewport.clientWidth || vw);
+
+        scaffold = { viewport, currentPanel, incomingPanel, fingerLeft, vw: measured };
+        applyPanelDrag(dragX);
+        syncViewportHeight();
+        return scaffold;
+    };
+
+    const resetTransform = () => {
+        if (scaffold) {
+            const { currentPanel } = scaffold;
+            const keep =
+                currentPanel.querySelector('#timelineContainer') ||
+                currentPanel.querySelector('#timelineContainerOutgoing') ||
+                getTimelineContainer();
+            if (keep?.id === 'timelineContainerOutgoing') keep.id = 'timelineContainer';
+            applyPanelDrag(0, true);
+            waitForTransformEnd(currentPanel, 280).then(() => {
+                teardownScaffold(keep);
+            });
+            return;
+        }
+        const tc = getTimelineContainer();
+        if (!tc) return;
+        tc.style.transition = 'transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+        tc.style.transform = 'translate3d(0, 0, 0)';
+        tc.style.willChange = '';
+    };
+
     const preloadDateRangeIfNeeded = async (targetIso) => {
         if (!needsMealsLoadedAroundDate(targetIso, 3)) return;
         try {
@@ -2257,62 +2341,63 @@ function initDailySwipeGesture() {
 
     const animateToDate = async (dayDelta, releaseX = 0) => {
         if (isAnimating) return;
-        const tc = getTimelineContainer();
-        if (!tc) return;
-
         cancelDailySwipeHint();
         isAnimating = true;
-        const viewportWidth = tv.clientWidth || window.innerWidth || 360;
-        // 화면 밖으로 충분히 밀어내 콘텐츠 교체 대기 구간이 보이지 않게 한다.
-        const slideDistance = Math.round(viewportWidth * 1.02);
-        const releaseDistance = Math.abs(releaseX);
-        const minCarry = Math.max(24, Math.round(viewportWidth * 0.08));
-        const outgoingDistance = Math.min(
-            slideDistance,
-            Math.max(Math.round(viewportWidth * 0.72), releaseDistance + minCarry)
-        );
-        const outgoingX = dayDelta > 0 ? -outgoingDistance : outgoingDistance;
-        const incomingStartX = dayDelta > 0 ? slideDistance : -slideDistance;
-
-        const targetDate = new Date(appState.pageDate);
-        targetDate.setDate(targetDate.getDate() + dayDelta);
-        const year = targetDate.getFullYear();
-        const month = String(targetDate.getMonth() + 1).padStart(2, '0');
-        const day = String(targetDate.getDate()).padStart(2, '0');
-        const targetIso = `${year}-${month}-${day}`;
-
-        // 슬라이드아웃과 데이터 프리로드를 병렬로 진행해 멈춤 구간을 줄인다.
-        const preloadPromise = preloadDateRangeIfNeeded(targetIso);
-
-        tc.style.willChange = 'transform';
-        tc.style.transition = 'transform 160ms cubic-bezier(0.25, 0.1, 0.25, 1)';
-        tc.style.transform = `translate3d(${outgoingX}px, 0, 0)`;
-
+        // 손가락 왼쪽(releaseX<0) → 다음날, 오른쪽 → 전날. 패널 위치는 손가락 방향만 따름.
+        const fingerLeft = releaseX < 0;
         try {
-            await Promise.all([waitForTransformEnd(tc, 220), preloadPromise]);
+            const sc = ensureScaffold(fingerLeft, releaseX);
+            if (!sc) {
+                isAnimating = false;
+                return;
+            }
+            sc.vw = getVw();
+            applyPanelDrag(releaseX);
+
+            const targetDate = new Date(appState.pageDate);
+            targetDate.setDate(targetDate.getDate() + dayDelta);
+            const year = targetDate.getFullYear();
+            const month = String(targetDate.getMonth() + 1).padStart(2, '0');
+            const day = String(targetDate.getDate()).padStart(2, '0');
+            const targetIso = `${year}-${month}-${day}`;
+
+            await preloadDateRangeIfNeeded(targetIso);
+
+            const oldTc =
+                sc.currentPanel.querySelector('#timelineContainer') ||
+                sc.currentPanel.querySelector('#timelineContainerOutgoing');
+            if (oldTc) oldTc.id = 'timelineContainerOutgoing';
+            const newTc = document.createElement('div');
+            newTc.id = 'timelineContainer';
+            newTc.className = oldTc?.className || 'ui-stack-lg';
+            sc.incomingPanel.innerHTML = '';
+            sc.incomingPanel.appendChild(newTc);
 
             try {
                 await window.jumpToDate(targetIso, { scroll: false });
             } catch (error) {
                 console.warn('스와이프 날짜 이동 실패:', error);
-            }
-
-            const newTc = getTimelineContainer();
-            if (!newTc) {
-                isAnimating = false;
+                if (oldTc) oldTc.id = 'timelineContainer';
+                newTc.remove();
+                applyPanelDrag(0, true);
+                await waitForTransformEnd(sc.currentPanel, 280);
+                teardownScaffold(oldTc || getTimelineContainer());
                 return;
             }
 
-            // 새 날짜를 반대편에 고정한 뒤 한 프레임에 슬라이드 인 (이중 rAF 제거)
-            newTc.style.transition = 'none';
-            newTc.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
-            newTc.style.willChange = 'transform';
-            void newTc.offsetWidth;
-            newTc.style.transition = 'transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1)';
-            newTc.style.transform = 'translate3d(0, 0, 0)';
+            syncViewportHeight();
+            const vw = getVw();
+            sc.vw = vw;
+            // 손가락이 왼쪽으로 갔으면 최종 -vw(오른쪽 패널이 화면 중앙), 오른쪽이면 +vw
+            const settledX = fingerLeft ? -vw : vw;
+            applyPanelDrag(settledX, true);
+            sc.currentPanel.style.transition = 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            sc.incomingPanel.style.transition = 'transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1)';
+            await waitForTransformEnd(sc.incomingPanel, 300);
 
-            await waitForTransformEnd(newTc, 260);
-            newTc.style.willChange = '';
+            const live = document.getElementById('timelineContainer') || newTc;
+            teardownScaffold(live);
+            clearSwipeInlineStyles(live);
         } finally {
             isAnimating = false;
         }
@@ -2348,13 +2433,26 @@ function initDailySwipeGesture() {
 
         if (!horizontalLocked) return;
 
-        const tc = getTimelineContainer();
-        if (!tc) return;
         currentDragX = deltaX;
         if (shouldPreventDefault && rawEvent) rawEvent.preventDefault();
-        tc.style.willChange = 'transform';
-        tc.style.transition = 'none';
-        tc.style.transform = `translate3d(${deltaX}px, 0, 0)`;
+        if (deltaX === 0 && !scaffold) return;
+
+        const fingerLeft = deltaX < 0;
+        if (fingerLeft) {
+            const pageDate = new Date(appState.pageDate);
+            pageDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (pageDate >= today) {
+                const tc = getTimelineContainer();
+                if (tc && !scaffold) {
+                    tc.style.transition = 'none';
+                    tc.style.transform = `translate3d(${Math.round(deltaX * 0.25)}px, 0, 0)`;
+                }
+                return;
+            }
+        }
+        ensureScaffold(fingerLeft, deltaX);
     };
 
     const endSwipe = () => {
@@ -2369,8 +2467,7 @@ function initDailySwipeGesture() {
             return;
         }
 
-        // 왼쪽 스와이프(deltaX<0): 다음날(dayDelta=+1)이 오른쪽에서 진입
-        // 오른쪽 스와이프(deltaX>0): 전날(dayDelta=-1)이 왼쪽에서 진입
+        // 손가락 왼쪽 → 다음날(+1), 오른쪽 → 전날(-1)
         const dayDelta = deltaX < 0 ? 1 : -1;
         if (dayDelta > 0) {
             const pageDate = new Date(appState.pageDate);
