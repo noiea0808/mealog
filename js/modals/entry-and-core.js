@@ -2932,8 +2932,21 @@ export async function retryMealEntrySync(entryIdRaw) {
 
     window._mealEntryRetryInFlight[entryId] = true;
     try {
-        /** 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지 */
-        if (getMealRowSyncLeadKind(record) === 'register_scheduled' && !entryId.startsWith('temp_')) {
+        /**
+         * 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지.
+         * 단 아직 Storage에 안 올라간 로컬 사진이 남아 있으면 건너뛴다: 오프라인 저장은 photos를 비운 채
+         * 큐에 들어가므로, 문서 존재만 보고 완료 처리하면 사진이 영영 업로드되지 않는다.
+         * (markServerWorkComplete가 pendingPhoto 표식을 지워 스냅샷 병합의 base64 보존도 함께 끊긴다)
+         */
+        const hasUnuploadedPhotos =
+            mealRecordHasBase64PendingPhotos(record) ||
+            getMealSyncManager().hasPendingPhotoEntry(entryId) ||
+            getMealSyncManager().hasPendingPhotoSlot(`${record.date || ''}__${record.slotId || ''}`);
+        if (
+            getMealRowSyncLeadKind(record) === 'register_scheduled' &&
+            !entryId.startsWith('temp_') &&
+            !hasUnuploadedPhotos
+        ) {
             const uid = window.currentUser?.uid;
             if (uid) {
                 try {
