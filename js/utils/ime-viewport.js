@@ -485,37 +485,77 @@ export function ensureFocusedInputVisible(el, opts = {}) {
 }
 
 /**
+ * 요소를 visualViewport 박스에 핀 (기록시트 등 강제 핀용).
+ * - 루트 시프트 중: 이미 VV 프레임이므로 top/left=0, 크기는 루트 client
+ * - 그 외: layout 좌표의 vv.offsetTop/height
+ * @param {HTMLElement|null} el
+ * @param {{ force?: boolean }} [opts] force면 open 전이라도 현재 VV에 핀
+ */
+export function pinElementToVisualViewport(el, opts = {}) {
+    if (!el) return false;
+    const m = getImeMetrics();
+    if (m.mode === 'resize') return false;
+    const focusPending =
+        isMobileWebTouchUi() &&
+        isImeInputLike(document.activeElement) &&
+        Date.now() < focusPollUntil;
+    if (!opts.force && !m.open && !focusPending) return false;
+
+    const vv = window.visualViewport;
+    const rootShifted = isWebImeRootShifted();
+    let pinTop;
+    let pinLeft;
+    let pinHeight;
+    let pinWidth;
+    if (rootShifted) {
+        const de = document.documentElement;
+        pinTop = 0;
+        pinLeft = 0;
+        pinHeight = Math.max(
+            120,
+            Math.round(de?.clientHeight || m.vvH || Number(vv?.height) || window.innerHeight || 0)
+        );
+        pinWidth = Math.max(
+            120,
+            Math.round(de?.clientWidth || m.pinWidth || Number(vv?.width) || window.innerWidth || 0)
+        );
+    } else {
+        pinTop = Math.max(0, Math.round(Number(vv?.offsetTop) || m.vvTop || 0));
+        pinLeft = Math.max(0, Math.round(Number(vv?.offsetLeft) || m.pinLeft || 0));
+        pinHeight = Math.max(
+            120,
+            Math.round(Number(vv?.height) || m.vvH || window.innerHeight || 0)
+        );
+        pinWidth = Math.max(
+            120,
+            Math.round(Number(vv?.width) || m.pinWidth || window.innerWidth || 0)
+        );
+    }
+
+    el.classList.add('is-ime-open');
+    el.style.top = `${pinTop}px`;
+    el.style.left = `${pinLeft}px`;
+    el.style.width = `${pinWidth}px`;
+    el.style.height = `${pinHeight}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.style.transform = '';
+    return true;
+}
+
+/**
  * overlay 모드에서만 VV 박스 핀. resize·웹 루트 시프트 중에는 no-op(이중 핀 금지).
+ * 기록시트는 pinElementToVisualViewport(..., { force: true })를 사용.
  */
 export function applyOverlayImePin(root) {
     if (!root) return false;
     const m = getImeMetrics();
     if (m.mode === 'resize') return false;
-    // 웹 전체 시프트가 켜져 있으면 개별 모달 핀 불필요
+    // 웹 전체 시프트가 켜져 있으면 일반 오버레이 개별 핀 불필요
     if (isWebImeRootShifted() || (m.mode === 'overlay' && imeOpen)) {
         return false;
     }
-    // overlay: open 전이라도 포커스+폴링 중이면 현재 VV에 핀
-    const focusPending = isMobileWebTouchUi() && isImeInputLike(document.activeElement) && Date.now() < focusPollUntil;
-    if (!m.open && !focusPending) {
-        return false;
-    }
-    const vv = window.visualViewport;
-    const layoutH = m.layoutH || window.innerHeight || 0;
-    let pinTop = Math.max(0, Number(vv?.offsetTop) || m.pinTop || 0);
-    let pinLeft = Math.max(0, Number(vv?.offsetLeft) || m.pinLeft || 0);
-    let pinHeight = Math.max(120, Math.round(Number(vv?.height) || m.vvH || layoutH));
-    let pinWidth = Math.max(120, Math.round(Number(vv?.width) || m.pinWidth || window.innerWidth || 0));
-    root.classList.add('is-ime-open');
-    root.style.top = `${Math.round(pinTop)}px`;
-    root.style.left = `${Math.round(pinLeft)}px`;
-    root.style.width = `${Math.round(pinWidth)}px`;
-    root.style.height = `${Math.round(pinHeight)}px`;
-    root.style.right = 'auto';
-    root.style.bottom = 'auto';
-    root.style.transform = '';
-    publishImeCssVars({ ...m, open: true, pinHeight, vvH: pinHeight, vvTop: pinTop });
-    return true;
+    return pinElementToVisualViewport(root, { force: false });
 }
 
 export function clearOverlayImePinStyles(root) {

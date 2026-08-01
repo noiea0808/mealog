@@ -3520,10 +3520,13 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-/* overlay: 문서 루트가 이미 VV 프레임 — 기록시트는 inset-0으로 그 안을 채움 */
+/* overlay: 기록시트 모달 VV 직접 핀(is-ime-open) 또는 루트 시프트 프레임 */
+#entryModal.keyboard-open.is-ime-open,
 html.ime-root-shifted #entryModal.keyboard-open {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 #entryModal > .entry-modal-panel {
     background: var(--card);
@@ -3546,7 +3549,8 @@ html.ime-root-shifted #entryModal.keyboard-open {
     top: var(--entry-sheet-top, 1rem) !important;
     max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
 }
-/* 웹 루트 시프트 중: 패널 상한은 모달(VV 프레임) 100% 기준 */
+/* 핀/시프트된 모달 안: 패널 상한은 모달 100% 기준 */
+#entryModal.keyboard-open.is-ime-open > .entry-modal-panel,
 html.ime-root-shifted #entryModal.keyboard-open > .entry-modal-panel {
     max-height: calc(100% - var(--entry-sheet-top, 0.5rem) - 0.25rem) !important;
 }

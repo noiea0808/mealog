@@ -83,8 +83,8 @@ import {
     captureImeBaseline,
     clearOverlayImePinStyles,
     isMobileWebTouchUi,
-    isWebImeRootShifted,
-    applyWebImeRootShift
+    applyWebImeRootShift,
+    pinElementToVisualViewport
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
@@ -811,7 +811,7 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     /**
      * 키보드 중 시트 top·가용 높이.
-     * overlay: 문서 루트 VV 시프트 후 모달(inset-0) 높이 = VV → 패널은 pad만
+     * overlay: 모달을 VV에 직접 핀한 뒤 패널은 pad만 (루트 시프트 대기 없음)
      * resize: layoutH 기준
      */
     const getKeyboardSheetMetrics = () => {
@@ -823,11 +823,9 @@ function initEntryModalKeyboardHandling(entryModal) {
         const pad = Math.max(12, Math.min(safeTop || 12, 28));
         if (m.mode === 'overlay') {
             const topPad = Math.min(pad, 10);
-            // 루트 시프트 후 entryModal.clientHeight ≈ vvH
             const frameH = Math.max(
                 0,
                 entryModal.clientHeight ||
-                    document.documentElement.clientHeight ||
                     m.vvH ||
                     window.visualViewport?.height ||
                     window.innerHeight ||
@@ -867,17 +865,18 @@ function initEntryModalKeyboardHandling(entryModal) {
     const applyViewportGeometry = (opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const m = getImeMetrics();
-        // overlay: 개별 모달 핀 금지 — 문서 루트 VV 시프트만 사용
-        clearOverlayImePinStyles(entryModal);
-        entryModal.style.top = '';
-        entryModal.style.height = '';
-        entryModal.style.left = '';
-        entryModal.style.width = '';
-        entryModal.style.right = '';
-        entryModal.style.bottom = '';
         if (m.mode === 'overlay') {
-            if (!isWebImeRootShifted()) applyWebImeRootShift();
+            // 기록시트는 루트 시프트와 별도로 모달을 VV에 직접 핀 (force: open 전이 포함)
+            applyWebImeRootShift();
+            pinElementToVisualViewport(entryModal, { force: true });
         } else {
+            clearOverlayImePinStyles(entryModal);
+            entryModal.style.top = '';
+            entryModal.style.height = '';
+            entryModal.style.left = '';
+            entryModal.style.width = '';
+            entryModal.style.right = '';
+            entryModal.style.bottom = '';
             pinLayoutViewport();
         }
 
@@ -1038,6 +1037,10 @@ function initEntryModalKeyboardHandling(entryModal) {
         captureImeBaseline();
         const isMemo = !!e.target.classList?.contains('entry-comment-textarea');
         const overlay = getImeMetrics().mode === 'overlay' || isMobileWebTouchUi();
+        // overlay: 포커스 직후 모달을 현재 VV에 바로 핀 (전역 ime-open 대기 없음)
+        if (overlay) {
+            pinElementToVisualViewport(entryModal, { force: true });
+        }
         // overlay/메모: 키보드 settle 전에 #modalScrollArea 안으로 올려 가림을 줄임
         if (isMemo || overlay) {
             scrollEntryFieldIntoView(e.target, {
