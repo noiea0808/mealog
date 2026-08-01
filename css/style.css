@@ -104,6 +104,9 @@ html.platform-native-app .bottom-nav button i.lucide {
     /* 플로팅 패널: 좌우 여백 남기되 화면 폭을 충분히 사용 (꽉 채우지 않음) */
     --shell-float-gutter: 1.25rem;
     --shell-float-width: min(28rem, calc(100vw - (var(--shell-float-gutter) * 2)));
+    /* body max-w-md 컬럼 기준 — 웹에서 브라우저 전체 폭의 90%로 늘어나지 않게 */
+    --shell-app-column-width: min(28rem, 100vw);
+    --shell-dialog-width-90: calc(var(--shell-app-column-width) * 0.9);
     --shell-r-dialog: 18px;
     --shell-r-sheet: 24px;
     --shell-r-btn: 14px;
@@ -3428,10 +3431,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
-/* 키보드 열림: 패널을 상단(safe-area)에 더 붙여 본문 확보 */
+/* 키보드 열림: 헤더 Y(--entry-sheet-top) 유지. top을 올리면 시트 아래/위 배경이 드러남 */
 #entryModal.keyboard-open > .entry-modal-panel {
-    top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
-    max-height: calc(100% - max(0.35rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+    top: var(--entry-sheet-top, 1rem) !important;
+    max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
 }
 #modalScrollArea {
     /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */
@@ -16067,6 +16070,7 @@ body:has(#adminPage:not(.hidden)),
     box-sizing: border-box;
 }
 /* 설치 가이드: 공통 float보다 조금 좁게 (패널만 — backdrop에는 적용하지 않음) */
+#pwaInstallGuideModal .os-install-guide-panel,
 #pwaInstallGuideModal .pwa-install-guide-panel {
     width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
     max-width: min(21rem, calc(100vw - (var(--shell-float-gutter) * 2))) !important;
@@ -16075,6 +16079,24 @@ body:has(#adminPage:not(.hidden)),
 #emailAuthModal > div {
     width: 80% !important;
     max-width: 20rem !important;
+}
+/* 알림·찾기: 앱 컬럼(max-w-md)의 약 90% — 웹에서 브라우저 폭 90%로 커지지 않음 */
+#timelineSearchModal > .search-filter-modal__panel,
+#momentSearchModal > .search-filter-modal__panel,
+#boardSearchModal > .search-filter-modal__panel,
+#notificationModal > .notification-modal {
+    width: var(--shell-dialog-width-90) !important;
+    max-width: var(--shell-dialog-width-90) !important;
+}
+/* 키보드(IME) 열림: 센터 정렬 대신 상단 고정 — 입력란이 키보드와 함께 통째로 올라가는 체감 완화 */
+#timelineSearchModal.is-ime-open,
+#momentSearchModal.is-ime-open,
+#boardSearchModal.is-ime-open,
+#notificationModal.is-ime-open {
+    align-items: flex-start !important;
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 0.5rem !important;
+    box-sizing: border-box;
 }
 #contentPopupModalInner {
     overflow: hidden;
@@ -17445,7 +17467,7 @@ body:has(#adminPage:not(.hidden)),
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
-    gap: 14px;
+    gap: 7px;
     height: 100%;
     min-height: 100%;
     max-height: 100%;
@@ -17507,7 +17529,8 @@ body:has(#adminPage:not(.hidden)),
 }
 .sg-shot {
     width: min(320px, 86vw);
-    max-height: min(52dvh, 480px);
+    /* 짧은 기기: 뷰포트 52%가 아니라 상단 visuals 영역 높이를 넘지 않게 */
+    max-height: min(52dvh, 480px, 100%);
     border-radius: 22px;
     overflow: hidden;
     background: #fff;
@@ -17520,7 +17543,7 @@ body:has(#adminPage:not(.hidden)),
     display: block;
     width: 100%;
     height: 100%;
-    max-height: min(52dvh, 480px);
+    max-height: min(52dvh, 480px, 100%);
     object-fit: cover;
     object-position: top center;
 }
@@ -17531,8 +17554,8 @@ body:has(#adminPage:not(.hidden)),
     --sg-mealog-src-header-h: 108;
     position: relative;
     width: min(320px, 86vw);
-    height: min(52dvh, 520px);
-    max-height: min(52dvh, 520px);
+    height: min(52dvh, 520px, 100%);
+    max-height: min(52dvh, 520px, 100%);
     aspect-ratio: unset;
 }
 .sg-mealog-scroll-clip {
@@ -17630,20 +17653,20 @@ body:has(#adminPage:not(.hidden)),
     white-space: pre-line;
 }
 .service-guide-body {
-    margin: 0 auto 10px;
+    margin: 0 auto 5px;
     max-width: 22rem;
     font-size: 0.9rem;
     line-height: 1.65;
     color: #4f4841;
     white-space: pre-line;
 }
-/* CTA 유무와 관계없이 자리 예약 → 하단 버튼이 밀리지 않음 */
+/* CTA 유무와 관계없이 자리 예약 → 하단 버튼이 밀리지 않음 (짧은 기기에서 상단 그림과 겹치지 않도록 절반 수준) */
 .service-guide-cta-slot {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: 3.25rem;
+    min-height: 1.625rem;
     margin-bottom: 2px;
 }
 .service-guide-install-cta {
@@ -17680,7 +17703,7 @@ body:has(#adminPage:not(.hidden)),
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     margin-top: auto;
 }
 .service-guide-dots {

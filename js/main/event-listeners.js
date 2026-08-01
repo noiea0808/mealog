@@ -41,6 +41,7 @@ import {
 } from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { initCenterDialogGrabbers } from './init-center-dialog-grabbers.js';
+import { initOverlayKeyboardPin } from '../utils/overlay-keyboard-pin.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import {
     CTA_FAB_SPIN_CLASS,
@@ -374,6 +375,7 @@ export function initEventListeners() {
     // 전체/일간 토글 제거됨 — 일간(page)만 사용
 
     initMainAppKeyboardHandling();
+    initOverlayKeyboardPin();
 
     (function initSubmitButtonFirstTap() {
         const SUBMIT_DEBOUNCE_MS = 500;
