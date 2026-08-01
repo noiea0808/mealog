@@ -85,7 +85,7 @@ import {
     isMobileWebTouchUi,
     pinElementToVisualViewport
 } from '../utils/ime-viewport.js';
-import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
+import { ENTRY_DOM, ENTRY_MODE_CONFIG, PHOTO_ASPECT_OPTIONS, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
@@ -133,8 +133,6 @@ function isMealActionEffectiveOffline() {
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
 let entryGaugeSaveTimeout = null;
-
-const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
 /**
  * 입력란의 쉼표(, / ，) 구분 항목을 최근 서브태그로 각각 기억.
