@@ -16176,16 +16176,25 @@ body:has(#adminPage:not(.hidden)),
     max-height: calc(100% - 0.75rem);
     overflow-y: auto;
 }
-/* 검색 필터: IME 중 CTA는 body 스크롤 끝으로 이동 — 입력란을 가리지 않음 */
-.search-filter-modal.is-ime-open .search-filter-modal__panel {
-    max-height: calc(100% - 0.5rem);
-}
-.search-filter-modal.is-ime-open .search-filter-modal__body > .mealog-dialog-actions {
+/* 검색 필터: 헤더(·그랩바)만 고정, 본문+CTA는 스크롤 — IME 때도 CTA를 키보드 위에 고정하지 않음 */
+.search-filter-modal .mealog-dialog-grabber,
+.search-filter-modal .search-filter-modal__head {
     flex-shrink: 0;
-    margin-top: 0.75rem;
+}
+.search-filter-modal .search-filter-modal__body > .mealog-dialog-actions {
+    flex-shrink: 0;
+    margin-top: 0.25rem;
     margin-left: calc(-1 * var(--mealog-dialog-pad-x, 1rem));
     margin-right: calc(-1 * var(--mealog-dialog-pad-x, 1rem));
     width: calc(100% + 2 * var(--mealog-dialog-pad-x, 1rem));
+    margin-bottom: 0;
+}
+.search-filter-modal.is-ime-open .search-filter-modal__panel {
+    max-height: calc(100% - 0.5rem);
+    height: auto;
+}
+.search-filter-modal.is-ime-open .search-filter-modal__body {
+    overscroll-behavior: contain;
 }
 /* 프로필 필드 시트: IME 중 CTA를 스크롤 body 끝으로 */
 #profileFieldEditModal.is-ime-open .profile-field-edit-body > .mealog-dialog-actions {
@@ -16730,6 +16739,9 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: transparent;
 }
 .search-filter-modal__panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     background: var(--card);
     max-height: min(85vh, 36rem);
 }
@@ -16780,8 +16792,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 .search-filter-modal__body {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-x: hidden;
     overflow-y: auto;
-    padding: 14px var(--mealog-dialog-pad-x) 8px;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px var(--mealog-dialog-pad-x) 0;
     background: var(--page-deep, #faf6f2);
     display: flex;
     flex-direction: column;

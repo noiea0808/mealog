@@ -46,24 +46,6 @@ function pinLayoutScroll() {
 }
 
 /**
- * 검색 필터 팝업: 키보드 중 CTA를 body 스크롤 안으로 옮겨 입력란을 가리지 않게 함.
- * @param {HTMLElement} root
- * @param {boolean} intoBody
- */
-function placeSearchFilterActions(root, intoBody) {
-    if (!root?.classList?.contains('search-filter-modal')) return;
-    const panel = root.querySelector('.search-filter-modal__panel');
-    const body = root.querySelector('.search-filter-modal__body');
-    const actions = panel?.querySelector('.mealog-dialog-actions');
-    if (!panel || !body || !actions) return;
-    if (intoBody) {
-        if (actions.parentElement !== body) body.appendChild(actions);
-        return;
-    }
-    if (actions.parentElement === body) panel.appendChild(actions);
-}
-
-/**
  * 프로필 필드 시트: CTA를 스크롤 body로 이동
  * @param {HTMLElement} root
  * @param {boolean} intoBody
@@ -81,14 +63,9 @@ function placeProfileFieldEditActions(root, intoBody) {
     if (actions.parentElement === body) panel.appendChild(actions);
 }
 
-function placeOverlayActions(root, intoBody) {
-    placeSearchFilterActions(root, intoBody);
-    placeProfileFieldEditActions(root, intoBody);
-}
-
 function clearOverlayVvPin(root) {
     if (!root) return;
-    placeOverlayActions(root, false);
+    placeProfileFieldEditActions(root, false);
     root.classList.remove('is-ime-open');
     root.style.top = '';
     root.style.left = '';
@@ -118,7 +95,7 @@ function applyOverlayVvPin(root) {
         return;
     }
     root.classList.add('is-ime-open');
-    placeOverlayActions(root, true);
+    placeProfileFieldEditActions(root, true);
 
     const top = Math.max(0, Number(vv.offsetTop) || 0);
     const left = Math.max(0, Number(vv.offsetLeft) || 0);
