@@ -16046,6 +16046,14 @@ body:has(#adminPage:not(.hidden)),
     width: 80% !important;
     max-width: 20rem !important;
 }
+/* 알림·찾기(밀로그/모먼트/게시판): 뷰포트 좌우 약 90% */
+#timelineSearchModal > .search-filter-modal__panel,
+#momentSearchModal > .search-filter-modal__panel,
+#boardSearchModal > .search-filter-modal__panel,
+#notificationModal > .notification-modal {
+    width: 90vw !important;
+    max-width: 90vw !important;
+}
 #contentPopupModalInner {
     overflow: hidden;
 }
