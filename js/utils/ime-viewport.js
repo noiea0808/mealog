@@ -3,7 +3,7 @@
  *
  * 모드:
  * - resize: Capacitor body resize — layoutH가 키보드만큼 줄어듦 → fixed bottom ≈ 0
- * - overlay: 모바일 웹 등 — layoutH 유지, visualViewport만 축소 → fixed bottom = imeOverlap
+ * - overlay: 모바일 웹 — html/body를 visualViewport 박스에 핀(전체 화면 시프트) → fixed bottom = 0
  */
 
 let baselineLayoutH = 0;
@@ -16,6 +16,8 @@ let pollTimer = null;
 let nativeImeHeight = 0;
 /** 포커스 직후 VV open 전이 폴링 종료 시각 (ms) */
 let focusPollUntil = 0;
+/** overlay 웹 루트 VV 시프트 활성 */
+let webRootShifted = false;
 
 /** @type {Set<(open: boolean) => void>} */
 const listeners = new Set();
@@ -166,19 +168,13 @@ export function getImeMetrics() {
         }
     }
 
-    const fixedBottom = mode === 'resize' ? 0 : Math.round(imeOverlap);
+    // resize: 레이아웃이 이미 줄어듦 / overlay: 루트 VV 시프트로 bottom=키보드 상단
+    const fixedBottom = 0;
     const pinTop = mode === 'resize' ? 0 : Math.max(0, vvTop);
     const pinHeight =
         mode === 'resize'
             ? Math.max(120, Math.round(layoutH))
-            : Math.max(
-                  120,
-                  Math.round(
-                      vv
-                          ? Math.min(vvH, Math.max(0, layoutH - pinTop - imeOverlap))
-                          : Math.max(0, layoutH - imeOverlap)
-                  )
-              );
+            : Math.max(120, Math.round(vvH));
     const pinWidth = Math.max(120, Math.round(vvW));
     return {
         open,
@@ -198,6 +194,88 @@ export function getImeMetrics() {
     };
 }
 
+/**
+ * overlay 웹: html/body를 visualViewport 박스에 맞춰 전체 화면이 키보드 위로 올라간 것처럼 동작.
+ * resize(APP)에서는 no-op.
+ */
+export function applyWebImeRootShift() {
+    const m = getImeMetrics();
+    if (m.mode !== 'overlay') {
+        clearWebImeRootShift();
+        return false;
+    }
+    if (!m.open && !(isMobileWebTouchUi() && isImeInputLike(document.activeElement) && Date.now() < focusPollUntil)) {
+        return false;
+    }
+    const root = document.documentElement;
+    const body = document.body;
+    if (!root || !body) return false;
+    const vv = window.visualViewport;
+    const top = Math.max(0, Math.round(Number(vv?.offsetTop) || m.vvTop || 0));
+    const left = Math.max(0, Math.round(Number(vv?.offsetLeft) || m.pinLeft || 0));
+    const height = Math.max(120, Math.round(Number(vv?.height) || m.vvH || window.innerHeight || 0));
+    const width = Math.max(120, Math.round(Number(vv?.width) || m.pinWidth || window.innerWidth || 0));
+
+    root.classList.add('ime-root-shifted');
+    body.classList.add('ime-root-shifted');
+    // fixed 자손이 이 박스를 containing block으로 쓰도록 transform 유지
+    root.style.position = 'fixed';
+    root.style.top = `${top}px`;
+    root.style.left = `${left}px`;
+    root.style.width = `${width}px`;
+    root.style.height = `${height}px`;
+    root.style.right = 'auto';
+    root.style.bottom = 'auto';
+    root.style.transform = 'translate3d(0,0,0)';
+    root.style.overflow = 'hidden';
+    root.style.boxSizing = 'border-box';
+
+    body.style.position = 'relative';
+    body.style.width = '100%';
+    body.style.height = '100%';
+    body.style.minHeight = '0';
+    body.style.maxHeight = '100%';
+    body.style.overflow = 'hidden';
+    body.style.boxSizing = 'border-box';
+
+    webRootShifted = true;
+    return true;
+}
+
+export function clearWebImeRootShift() {
+    const root = document.documentElement;
+    const body = document.body;
+    if (root) {
+        root.classList.remove('ime-root-shifted');
+        root.style.position = '';
+        root.style.top = '';
+        root.style.left = '';
+        root.style.width = '';
+        root.style.height = '';
+        root.style.right = '';
+        root.style.bottom = '';
+        root.style.transform = '';
+        root.style.overflow = '';
+        root.style.boxSizing = '';
+    }
+    if (body) {
+        body.classList.remove('ime-root-shifted');
+        body.style.position = '';
+        body.style.width = '';
+        body.style.height = '';
+        body.style.minHeight = '';
+        body.style.maxHeight = '';
+        body.style.overflow = '';
+        body.style.boxSizing = '';
+    }
+    webRootShifted = false;
+}
+
+/** overlay 웹 루트 VV 시프트가 켜져 있으면 true (개별 모달 핀 스킵용) */
+export function isWebImeRootShifted() {
+    return webRootShifted || !!document.documentElement?.classList?.contains('ime-root-shifted');
+}
+
 function publishImeCssVars(m) {
     const root = document.documentElement;
     const body = document.body;
@@ -205,7 +283,8 @@ function publishImeCssVars(m) {
     const open = !!m?.open;
     const mode = m?.mode || 'overlay';
     const overlap = open ? Math.round(m.imeOverlap || 0) : 0;
-    const fixedBottom = open ? Math.round(m.fixedBottom ?? (mode === 'resize' ? 0 : overlap)) : 0;
+    // UI bottom은 항상 0 — overlay는 루트 시프트, resize는 레이아웃 축소
+    const fixedBottom = 0;
     const vvH = open
         ? Math.round(mode === 'resize' ? (m.layoutH || window.innerHeight || 0) : (m.vvH || window.innerHeight || 0))
         : Math.round(window.innerHeight || 0);
@@ -238,8 +317,11 @@ export function setAppImeOpen(open) {
     const next = !!open;
     const m = getImeMetrics();
     if (next) {
-        publishImeCssVars({ ...m, open: true });
+        publishImeCssVars({ ...m, open: true, fixedBottom: 0 });
+        if (m.mode === 'overlay') applyWebImeRootShift();
+        else clearWebImeRootShift();
     } else {
+        clearWebImeRootShift();
         publishImeCssVars({
             open: false,
             mode: m.mode,
@@ -253,6 +335,8 @@ export function setAppImeOpen(open) {
     if (imeOpen === next) {
         document.body.classList.toggle('ime-open', next);
         document.body.classList.toggle('keyboard-closed', !next);
+        // open 유지 중 VV scroll/resize면 루트 핀만 갱신
+        if (next && m.mode === 'overlay') applyWebImeRootShift();
         return;
     }
     imeOpen = next;
@@ -401,12 +485,16 @@ export function ensureFocusedInputVisible(el, opts = {}) {
 }
 
 /**
- * overlay 모드에서만 VV 박스 핀. resize 모드에서는 no-op(레이아웃이 이미 줄어듦).
+ * overlay 모드에서만 VV 박스 핀. resize·웹 루트 시프트 중에는 no-op(이중 핀 금지).
  */
 export function applyOverlayImePin(root) {
     if (!root) return false;
     const m = getImeMetrics();
     if (m.mode === 'resize') return false;
+    // 웹 전체 시프트가 켜져 있으면 개별 모달 핀 불필요
+    if (isWebImeRootShifted() || (m.mode === 'overlay' && imeOpen)) {
+        return false;
+    }
     // overlay: open 전이라도 포커스+폴링 중이면 현재 VV에 핀
     const focusPending = isMobileWebTouchUi() && isImeInputLike(document.activeElement) && Date.now() < focusPollUntil;
     if (!m.open && !focusPending) {
@@ -591,7 +679,14 @@ export function initAppImeViewport() {
 
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', scheduleSyncBurst, { passive: true });
-        window.visualViewport.addEventListener('scroll', scheduleSync, { passive: true });
+        window.visualViewport.addEventListener(
+            'scroll',
+            () => {
+                if (imeOpen && getImeMetrics().mode === 'overlay') applyWebImeRootShift();
+                scheduleSync();
+            },
+            { passive: true }
+        );
     }
     window.addEventListener('resize', scheduleSyncBurst, { passive: true });
 }

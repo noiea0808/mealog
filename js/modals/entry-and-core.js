@@ -81,9 +81,10 @@ import {
     getImeMetrics,
     getNativeImeHeight,
     captureImeBaseline,
-    applyOverlayImePin,
     clearOverlayImePinStyles,
-    isMobileWebTouchUi
+    isMobileWebTouchUi,
+    isWebImeRootShifted,
+    applyWebImeRootShift
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
@@ -810,7 +811,7 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     /**
      * 키보드 중 시트 top·가용 높이.
-     * overlay(+루트 VV 핀): 루트가 이미 VV 박스 → 패널 top은 작은 pad만 (vvTop 이중 가산 금지)
+     * overlay: 문서 루트 VV 시프트 후 모달(inset-0) 높이 = VV → 패널은 pad만
      * resize: layoutH 기준
      */
     const getKeyboardSheetMetrics = () => {
@@ -822,20 +823,20 @@ function initEntryModalKeyboardHandling(entryModal) {
         const pad = Math.max(12, Math.min(safeTop || 12, 28));
         if (m.mode === 'overlay') {
             const topPad = Math.min(pad, 10);
-            const pinned = entryModal.classList.contains('is-ime-open');
-            const rootH = pinned ? (entryModal.clientHeight || 0) : 0;
-            const vvH = Math.max(
+            // 루트 시프트 후 entryModal.clientHeight ≈ vvH
+            const frameH = Math.max(
                 0,
-                rootH || m.vvH || window.visualViewport?.height || window.innerHeight || 0
+                entryModal.clientHeight ||
+                    document.documentElement.clientHeight ||
+                    m.vvH ||
+                    window.visualViewport?.height ||
+                    window.innerHeight ||
+                    0
             );
-            // 핀 실패 시에만 layout 좌표로 vvTop 보정 (핀되면 이중 가산 금지)
-            const topPx = pinned
-                ? topPad
-                : Math.round(Math.max(0, m.vvTop || 0) + topPad);
             return {
-                topPx,
-                availPx: Math.max(160, Math.floor(vvH - topPad - 8)),
-                trackH: vvH,
+                topPx: topPad,
+                availPx: Math.max(160, Math.floor(frameH - topPad - 8)),
+                trackH: frameH,
                 overlay: true
             };
         }
@@ -866,28 +867,17 @@ function initEntryModalKeyboardHandling(entryModal) {
     const applyViewportGeometry = (opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const m = getImeMetrics();
-        // overlay: 루트를 visualViewport에 핀 (하루소감/검색과 동일). top/height를 비우면 핀이 풀림.
+        // overlay: 개별 모달 핀 금지 — 문서 루트 VV 시프트만 사용
+        clearOverlayImePinStyles(entryModal);
+        entryModal.style.top = '';
+        entryModal.style.height = '';
+        entryModal.style.left = '';
+        entryModal.style.width = '';
+        entryModal.style.right = '';
+        entryModal.style.bottom = '';
         if (m.mode === 'overlay') {
-            const pinned = applyOverlayImePin(entryModal);
-            // open 직후 pin API가 false여도 포커스 폴링 중이면 강제 핀
-            if (!pinned && isMobileWebTouchUi() && window.visualViewport) {
-                const vv = window.visualViewport;
-                entryModal.classList.add('is-ime-open');
-                entryModal.style.top = `${Math.round(Number(vv.offsetTop) || 0)}px`;
-                entryModal.style.left = `${Math.round(Number(vv.offsetLeft) || 0)}px`;
-                entryModal.style.width = `${Math.round(Number(vv.width) || window.innerWidth || 0)}px`;
-                entryModal.style.height = `${Math.round(Number(vv.height) || window.innerHeight || 0)}px`;
-                entryModal.style.right = 'auto';
-                entryModal.style.bottom = 'auto';
-            }
+            if (!isWebImeRootShifted()) applyWebImeRootShift();
         } else {
-            clearOverlayImePinStyles(entryModal);
-            entryModal.style.top = '';
-            entryModal.style.height = '';
-            entryModal.style.left = '';
-            entryModal.style.width = '';
-            entryModal.style.right = '';
-            entryModal.style.bottom = '';
             pinLayoutViewport();
         }
 

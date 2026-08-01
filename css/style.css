@@ -88,7 +88,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
     --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
     --safe-bottom: var(--safe-bottom-nav-slot);
-    /* IME (js/utils/ime-viewport.js) — resize: fixed-bottom≈0 / overlay: overlap=VV 가림 */
+    /* IME (js/utils/ime-viewport.js) — resize·overlay 모두 fixed-bottom≈0 (overlay는 루트 VV 시프트) */
     --ime-overlap: 0px;
     --ime-inset: 0px;
     --ime-fixed-bottom: 0px;
@@ -400,9 +400,22 @@ body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:foc
     padding-bottom: 0 !important;
 }
 /*
+ * overlay 웹 루트 VV 시프트: html/body를 visualViewport 박스에 맞춤
+ * (JS 인라인 top/height + transform — fixed 자손이 같은 프레임을 씀)
+ */
+html.ime-root-shifted,
+html.ime-root-shifted body.ime-root-shifted {
+    min-height: 0 !important;
+    max-height: 100% !important;
+}
+html.ime-root-shifted body.ime-root-shifted {
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+/*
  * IME 열림(body.ime-open): 키보드 위 빈 띠 제거
  * - #navigationBarOverlay(nav-slot) 숨김
- * - padding-bottom: 0 (fixed UI는 --ime-fixed-bottom: resize=0 / overlay=VV overlap)
+ * - padding-bottom: 0 (fixed bottom은 루트 시프트/resize로 이미 키보드 상단)
  * - keyboard-closed 복원 규칙이 IME 중 이기지 않도록 :not(.ime-open) 한정
  */
 body.ime-open #navigationBarOverlay {
@@ -3507,12 +3520,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
-/* overlay IME: 루트를 visualViewport 박스에 핀한 뒤 패널이 그 안을 채움 */
-#entryModal.keyboard-open.is-ime-open {
+/* overlay: 문서 루트가 이미 VV 프레임 — 기록시트는 inset-0으로 그 안을 채움 */
+html.ime-root-shifted #entryModal.keyboard-open {
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
-    overflow: hidden;
-    box-sizing: border-box;
 }
 #entryModal > .entry-modal-panel {
     background: var(--card);
@@ -3535,8 +3546,8 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     top: var(--entry-sheet-top, 1rem) !important;
     max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
 }
-/* 핀된 루트(100%=VV 높이) 기준으로 패널 상한 — 레이아웃 100vh 의존 제거 */
-#entryModal.keyboard-open.is-ime-open > .entry-modal-panel {
+/* 웹 루트 시프트 중: 패널 상한은 모달(VV 프레임) 100% 기준 */
+html.ime-root-shifted #entryModal.keyboard-open > .entry-modal-panel {
     max-height: calc(100% - var(--entry-sheet-top, 0.5rem) - 0.25rem) !important;
 }
 #modalScrollArea {
@@ -12781,7 +12792,7 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
 }
 /*
  * IME 열림일 때만 키보드에 붙임 (포커스만으로는 적용 금지).
- * --ime-fixed-bottom: resize=0 / overlay=VV overlap (js/utils/ime-viewport.js)
+ * --ime-fixed-bottom: 항상 0 (overlay=루트 VV 시프트 / resize=레이아웃 축소)
  */
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: var(--ime-fixed-bottom, 0px);

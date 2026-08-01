@@ -1,9 +1,10 @@
 /**
  * 검색·알림·프로필·신고·밀톡 수정·모먼트 댓글 시트:
- * overlay IME 모드에서 visualViewport 박스로 fixed 오버레이 핀.
+ * IME 중 포커스 스크롤 + (필요 시) 개별 VV 핀.
  *
- * resize 모드(Capacitor body resize): 핀 생략 — 레이아웃이 이미 키보드를 제외함.
- * overlay 모드(모바일 웹): VV 핀 + 본문 스크롤 (브라우저 팬을 되돌리지 않음).
+ * resize(APP): 모달 핀 생략.
+ * overlay 웹 + 루트 VV 시프트: 모달 핀 생략(이중 핀 금지), 스크롤만.
+ * overlay이지만 루트 시프트 전: 임시 모달 핀 허용.
  */
 
 import {
@@ -15,6 +16,7 @@ import {
     shouldTreatImeOpen,
     getImeMetrics,
     isMobileWebTouchUi,
+    isWebImeRootShifted,
     onAppImeChange
 } from './ime-viewport.js';
 
@@ -102,10 +104,13 @@ function scrollFocusedInOverlay(root) {
 function applyOverlayVvPin(root) {
     if (!root) return;
     const m = getImeMetrics();
-    // resize 모드: VV 핀 생략 (레이아웃이 이미 키보드 제외)
-    if (m.mode === 'resize') {
+    const focused =
+        isImeInputLike(document.activeElement) && root.contains(document.activeElement);
+
+    // resize 또는 웹 루트 VV 시프트: 개별 모달 핀 생략 — 스크롤·chrome만
+    if (m.mode === 'resize' || isWebImeRootShifted() || (m.mode === 'overlay' && document.body?.classList?.contains('ime-open'))) {
         clearOverlayVvPin(root);
-        if (shouldTreatImeOpen() && isImeInputLike(document.activeElement) && root.contains(document.activeElement)) {
+        if (focused && (shouldTreatImeOpen() || m.mode === 'overlay')) {
             placeProfileFieldEditActions(root, true);
             requestAnimationFrame(() => scrollFocusedInOverlay(root));
         }
@@ -113,13 +118,10 @@ function applyOverlayVvPin(root) {
     }
 
     pinLayoutScroll();
-    const shouldPin =
-        shouldTreatImeOpen() &&
-        isImeInputLike(document.activeElement) &&
-        root.contains(document.activeElement);
+    const shouldPin = shouldTreatImeOpen() && focused;
     if (!shouldPin) {
-        // overlay: 포커스 직후 VV open 전이 — 포커스만으로도 임시 핀 (applyOverlayImePin 내부 가드)
-        if (isMobileWebTouchUi() && isImeInputLike(document.activeElement) && root.contains(document.activeElement)) {
+        // 루트 시프트 전 전이: 포커스만으로 임시 모달 핀
+        if (isMobileWebTouchUi() && focused) {
             placeProfileFieldEditActions(root, true);
             if (applyOverlayImePin(root)) {
                 requestAnimationFrame(() => scrollFocusedInOverlay(root));
