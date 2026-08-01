@@ -7,6 +7,7 @@ import { localTodayYmd } from './render/timeline.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
 import { scheduleLucideIcons } from './icons.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 const PERIOD_PRESETS = {
     '7d': { days: 7 },
@@ -130,6 +131,7 @@ export function openMomentSearchModal() {
     if (keywordInput) keywordInput.value = appState.gallerySearchKeyword || '';
 
     modal.classList.remove('hidden');
+    lockBodyScroll('momentSearchModal');
     updatePeriodButtonUI();
     updateTraceButtonUI();
     scheduleLucideIcons(modal);
@@ -140,6 +142,7 @@ export function openMomentSearchModal() {
 
 export function closeMomentSearchModal() {
     document.getElementById('momentSearchModal')?.classList.add('hidden');
+    unlockBodyScroll('momentSearchModal');
 }
 
 export async function clearGallerySearch() {

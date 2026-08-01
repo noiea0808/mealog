@@ -16189,12 +16189,22 @@ body:has(#adminPage:not(.hidden)),
     width: calc(100% + 2 * var(--mealog-dialog-pad-x, 1rem));
     margin-bottom: 0;
 }
+/*
+ * IME 중: 패널을 보이는 뷰포트 높이에 맞춰 잠금.
+ * height:auto면 콘텐츠만큼 커진 뒤 키보드에 잘리고, body에 overflow가 없어 배경이 스크롤됨.
+ */
 .search-filter-modal.is-ime-open .search-filter-modal__panel {
+    height: calc(100% - 0.5rem);
     max-height: calc(100% - 0.5rem);
-    height: auto;
+    overflow: hidden;
 }
 .search-filter-modal.is-ime-open .search-filter-modal__body {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
+    touch-action: pan-y;
 }
 /* 프로필 필드 시트: IME 중 CTA를 스크롤 body 끝으로 */
 #profileFieldEditModal.is-ime-open .profile-field-edit-body > .mealog-dialog-actions {

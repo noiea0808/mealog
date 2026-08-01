@@ -8,6 +8,7 @@ import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
 import { scheduleLucideIcons } from './icons.js';
 import { getBoardSearchModalTitle } from './board-search-filter.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 const PERIOD_PRESETS = {
     '7d': { days: 7 },
@@ -134,6 +135,7 @@ export function openBoardSearchModal() {
     if (keywordInput) keywordInput.value = appState.boardSearchKeyword || '';
 
     modal.classList.remove('hidden');
+    lockBodyScroll('boardSearchModal');
     updatePeriodButtonUI();
     updateTraceButtonUI();
     scheduleLucideIcons(modal);
@@ -144,6 +146,7 @@ export function openBoardSearchModal() {
 
 export function closeBoardSearchModal() {
     document.getElementById('boardSearchModal')?.classList.add('hidden');
+    unlockBodyScroll('boardSearchModal');
 }
 
 export async function clearBoardSearch() {
