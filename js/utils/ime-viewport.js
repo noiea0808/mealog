@@ -40,15 +40,16 @@ export function isMobileWebTouchUi() {
 
 /**
  * 키보드가 올라온 것으로 보고 UI(ime-open·오버레이 핀)를 적용할지.
- * 네이티브·모바일 웹: Keyboard/VV 축소 전이라도 입력 포커스면 true
- * (포커스~이벤트 사이 keyboard-closed가 네비 슬롯(80px)을 남기지 않게).
+ * - 네이티브: Keyboard/VV로 실제 열림이 보일 때만 true (포커스만으로 true면
+ *   뒤로가기로 키보드만 내린 뒤에도 ime-open·기록시트 keyboard-open이 남아 시트가 늘어남)
+ * - 모바일 웹: Keyboard 플러그인 없음 → 포커스면 true (CSS는 포커스 중 nav 복원 안 함)
  */
 export function shouldTreatImeOpen() {
     if (nativeImeHeight > 80) return true;
     if (!isImeInputLike(document.activeElement)) return false;
     if (getImeMetrics().open) return true;
     try {
-        if (window.Capacitor?.isNativePlatform?.()) return true;
+        if (window.Capacitor?.isNativePlatform?.()) return false;
     } catch (_) { /* ignore */ }
     return isMobileWebTouchUi();
 }
@@ -416,6 +417,13 @@ function bindCapacitorKeyboard() {
                 window.visualViewport?.height || 0,
                 baselineLayoutH || 0
             );
+            // 밀톡: 뒤로가기로 키보드만 내리면 포커스가 남아 컴포저가 bottom:0에 고착될 수 있음 → blur로 네비 위 복원
+            try {
+                const mealtalk = document.getElementById('boardInlineComposerInput');
+                if (mealtalk && document.activeElement === mealtalk) {
+                    mealtalk.blur();
+                }
+            } catch (_) { /* ignore */ }
         };
 
         if (typeof Keyboard.addListener === 'function') {

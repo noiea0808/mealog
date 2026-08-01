@@ -79,8 +79,8 @@ import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
     getImeMetrics,
-    captureImeBaseline,
-    shouldTreatImeOpen
+    getNativeImeHeight,
+    captureImeBaseline
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
@@ -783,8 +783,13 @@ function initEntryModalKeyboardHandling(entryModal) {
     let lastAppliedVtop = NaN;
     let viewportGeomRaf = null;
     let viewportCheckTimer = null;
+    let geomSettleTimer = null;
+    let chromePlaceRaf = null;
     /** 키보드 열리기 직전 시트 top — 닫을 때 --entry-sheet-top 즉시 복원용 */
     let sheetTopBeforeKeyboard = null;
+    /** VV 애니 중 미세 높이 변화에 따른 연속 리레이아웃(깜박임) 억제 */
+    const GEOM_SETTLE_MS = 120;
+    const GEOM_MIN_DELTA_PX = 12;
 
     const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
@@ -809,21 +814,28 @@ function initEntryModalKeyboardHandling(entryModal) {
         return Math.max(12, Math.min(safeTop || 12, 28));
     };
 
-    const applyViewportGeometry = (vh) => {
+    const readViewportH = () => {
+        const vvH = window.visualViewport?.height;
+        const layoutH = window.innerHeight || 0;
+        const hRaw = Number.isFinite(vvH) ? vvH : layoutH;
+        return Math.max(0, Math.min(hRaw, layoutH || hRaw));
+    };
+
+    /**
+     * @param {number} [vh]
+     * @param {{ scroll?: boolean, force?: boolean }} [opts]
+     */
+    const applyViewportGeometry = (vh, opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
-        const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
-        // 오버레이(#entryModal)는 inset-0 전체 유지. height를 vv에 맞추면
-        // vv.offsetTop>0일 때 레이아웃 하단이 비어 앱 배경이 드러난다.
-        // 패널은 상단으로 올리고 키보드 위 가용 높이로 키운다.
-        const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
+        const h = Number.isFinite(vh) ? vh : readViewportH();
         const topPx = getKeyboardSheetTopPx();
+        const minDelta = opts.force ? 0.5 : GEOM_MIN_DELTA_PX;
         if (
             !Number.isNaN(lastAppliedVh) &&
-            Math.abs(lastAppliedVh - h) < 1 &&
+            Math.abs(lastAppliedVh - h) < minDelta &&
             !Number.isNaN(lastAppliedVtop) &&
             Math.abs(lastAppliedVtop - topPx) < 1
         ) {
-            pinLayoutViewport();
             return;
         }
         lastAppliedVh = h;
@@ -838,40 +850,45 @@ function initEntryModalKeyboardHandling(entryModal) {
         entryModal.style.setProperty('--entry-sheet-top', `${topPx}px`);
         panel.style.top = `${topPx}px`;
         const avail = Math.max(160, Math.floor(h - topPx - 8));
-        // 키보드 애니 중간 프레임에도 avail을 따라가며, 닫힐 때 sync로 피크·top 복원
         panel.style.maxHeight = `${avail}px`;
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
         panel.style.setProperty('--entry-sheet-h', `${avail}px`);
-        const active = document.activeElement;
-        if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
-            scrollEntryFieldIntoView(active, { align: 'nearest' });
+        if (opts.scroll) {
+            const active = document.activeElement;
+            if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
+                // 딜레이 버스트 없이 한 번만 — 키보드 애니 중 스크롤 점프/깜박임 완화
+                scrollEntryFieldIntoView(active, { align: 'nearest', afterMs: 0, once: true });
+            }
         }
     };
 
-    const scheduleViewportGeometryFromVv = () => {
-        if (viewportGeomRaf != null) return;
-        viewportGeomRaf = requestAnimationFrame(() => {
-            viewportGeomRaf = null;
+    /** VV 애니 중에는 settle 후 한 번만 맞춤 (매 프레임 높이 추종으로 깜박이던 원인) */
+    const scheduleViewportGeometryFromVv = ({ immediate = false } = {}) => {
+        if (entryModal.classList.contains('hidden')) return;
+        if (!entryModal.classList.contains('keyboard-open')) return;
+        if (imeComposing) return;
+        const h = readViewportH();
+        if (immediate && Number.isNaN(lastAppliedVh)) {
+            applyViewportGeometry(h, { scroll: false, force: true });
+        }
+        if (geomSettleTimer != null) clearTimeout(geomSettleTimer);
+        geomSettleTimer = setTimeout(() => {
+            geomSettleTimer = null;
             if (entryModal.classList.contains('hidden')) return;
             if (!entryModal.classList.contains('keyboard-open')) return;
             if (imeComposing) return;
-            const vv = window.visualViewport;
-            if (!vv) return;
-            applyViewportGeometry(vv.height);
-        });
+            applyViewportGeometry(readViewportH(), { scroll: true, force: true });
+        }, GEOM_SETTLE_MS);
     };
 
     entryModal.querySelectorAll('input, textarea').forEach(el => {
         el.addEventListener('compositionstart', () => { imeComposing = true; });
         el.addEventListener('compositionend', () => {
             imeComposing = false;
+            // input마다 selection 리셋하면 깜박임 — 조합 종료 시에만 리페인트
             nudgeEntryModalInputRepaint(entryModal);
             scheduleViewportGeometryFromVv();
-        });
-        el.addEventListener('input', () => {
-            if (imeComposing) return;
-            nudgeEntryModalInputRepaint(entryModal);
         });
     });
     const scheduleViewportCheck = () => {
@@ -895,12 +912,21 @@ function initEntryModalKeyboardHandling(entryModal) {
                     )
                     || 16;
                 sheetTopBeforeKeyboard = Number.isFinite(prevTop) ? prevTop : 16;
-                entryModal.classList.add('keyboard-open');
-                placeEntryModalChrome(true);
                 lastAppliedVh = NaN;
                 lastAppliedVtop = NaN;
+                entryModal.classList.add('keyboard-open');
+                // 높이·top을 먼저 맞춘 뒤, 다음 프레임에 CTA DOM 이동 (한 프레임 이중 리플로우 완화)
+                applyViewportGeometry(readViewportH(), { scroll: false, force: true });
+                if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
+                chromePlaceRaf = requestAnimationFrame(() => {
+                    chromePlaceRaf = null;
+                    if (!entryModal.classList.contains('keyboard-open')) return;
+                    placeEntryModalChrome(true);
+                    scheduleViewportGeometryFromVv({ immediate: false });
+                });
+            } else {
+                scheduleViewportGeometryFromVv();
             }
-            scheduleViewportGeometryFromVv();
         } else if (entryModal.classList.contains('keyboard-open')) {
             entryModal.classList.remove('keyboard-open');
             placeEntryModalChrome(false);
@@ -909,6 +935,14 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (viewportGeomRaf != null) {
                 cancelAnimationFrame(viewportGeomRaf);
                 viewportGeomRaf = null;
+            }
+            if (chromePlaceRaf != null) {
+                cancelAnimationFrame(chromePlaceRaf);
+                chromePlaceRaf = null;
+            }
+            if (geomSettleTimer != null) {
+                clearTimeout(geomSettleTimer);
+                geomSettleTimer = null;
             }
             if (viewportCheckTimer != null) {
                 clearTimeout(viewportCheckTimer);
@@ -919,7 +953,11 @@ function initEntryModalKeyboardHandling(entryModal) {
             pinLayoutViewport();
             const panel = entryModal.querySelector('.entry-modal-panel');
             if (panel) {
+                // 키보드 중 키운 인라인 높이를 비워 피크 잠금이 다시 먹게 함
                 panel.style.maxHeight = '';
+                panel.style.height = '';
+                panel.style.minHeight = '';
+                panel.style.removeProperty('--entry-sheet-h');
                 // sync rAF 전에 중앙 top이 잠깐 키보드 top으로 남지 않도록 즉시 복원
                 if (sheetTopBeforeKeyboard != null) {
                     const t = `${sheetTopBeforeKeyboard}px`;
@@ -942,11 +980,13 @@ function initEntryModalKeyboardHandling(entryModal) {
     entryModal.addEventListener('focusin', (e) => {
         if (!e.target.matches?.('input, textarea')) return;
         captureImeBaseline();
-        // 키보드가 실제로 올라오기 전에는 keyboard-open 하지 않음.
-        // (센터 정렬 → stretch 전환으로 팝업이 위로 튕겼다 돌아오는 현상 방지)
-        // 메모는 확장 후 syncEntryCommentExpandedState에서 스크롤. 그 외 필드는 여기서 보정.
-        if (!e.target.classList?.contains('entry-comment-textarea')) {
-            scrollEntryFieldIntoView(e.target, { align: 'nearest', afterMs: 120 });
+        // 키보드 전에는 scroll-into-view 버스트를 하지 않음 (센터 시트 점프/깜박임).
+        // 메모 확장은 syncEntryCommentExpandedState, 그 외는 키보드 settle 후 스크롤.
+        if (
+            entryModal.classList.contains('keyboard-open') &&
+            !e.target.classList?.contains('entry-comment-textarea')
+        ) {
+            scrollEntryFieldIntoView(e.target, { align: 'nearest', afterMs: 0, once: true });
         }
         scheduleViewportCheck();
     });
@@ -958,8 +998,12 @@ function initEntryModalKeyboardHandling(entryModal) {
         const m = getImeMetrics();
         const vh = m.vvH || window.visualViewport?.height || window.innerHeight;
         const threshold = getViewportThreshold();
-        // VV/네이티브 + 모바일 웹 포커스(Keyboard 플러그인 대체)
-        const open = m.open || vh < threshold || shouldTreatImeOpen();
+        // 실제 키보드/VV 축소만 인정 — 포커스만으로 keyboard-open 유지하면
+        // 뒤로가기로 키보드만 내릴 때 시트가 vv 전체 높이로 늘어남
+        const open =
+            m.open ||
+            vh < threshold ||
+            getNativeImeHeight() > 80;
         if (!open) {
             setKeyboardOpen(false);
             return;
@@ -1437,10 +1481,15 @@ function bindEntryWhatInputAutosizeOnce() {
 }
 
 /** 기록 시트 스크롤 영역 안에서 필드를 보이게 맞춤 (오버레이/센터 정렬은 건드리지 않음) */
-function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
+function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0, once = false } = {}) {
     const scroll = document.getElementById('modalScrollArea');
     if (!scroll || !el || !scroll.contains(el)) return;
-    const delays = afterMs > 0 ? [0, afterMs, afterMs + 150, afterMs + 350] : [0, 80, 200, 400];
+    // once: 키보드 settle 후 단일 보정 — 다중 딜레이 버스트는 시트 깜박임 유발
+    const delays = once
+        ? [0]
+        : afterMs > 0
+          ? [0, afterMs, afterMs + 150, afterMs + 350]
+          : [0, 80, 200, 400];
     ensureFocusedInputVisible(el, {
         align,
         scrollParent: scroll,
@@ -1483,19 +1532,21 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
     const nextHeight = el.offsetHeight || 0;
     const grewBy = nextHeight - prevHeight;
     const grew = grewBy > 1;
+    const modal = document.getElementById('entryModal');
+    const keyboardOpen = !!modal?.classList.contains('keyboard-open');
     if (
         (grew || !wasExpanded || fromFocus) &&
         typeof window.syncEntrySheetHeightLock === 'function'
     ) {
-        const modal = document.getElementById('entryModal');
-        if (modal?.classList.contains('keyboard-open') && grew) {
+        if (keyboardOpen && grew) {
             window.syncEntrySheetHeightLock({ growthPx: grewBy });
         } else {
             window.syncEntrySheetHeightLock();
         }
     }
-    if (focused && (grew || fromFocus)) {
-        scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
+    // 키보드 전에는 시트 점프를 피하고, 열린 뒤에는 한 번만 맞춤
+    if (focused && (grew || fromFocus) && keyboardOpen) {
+        scrollEntryFieldIntoView(el, { align: 'end', once: true });
     }
 }
 
