@@ -377,6 +377,29 @@ body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:foc
     padding-top: var(--safe-top) !important;
     padding-bottom: var(--safe-bottom) !important;
 }
+/*
+ * IME 열림(body.ime-open): 키보드 위 빈 띠 제거
+ * - #navigationBarOverlay(--safe-bottom 최소 48px) 숨김
+ * - padding-bottom은 실제 env safe만 (토큰 최소 48px 사용 금지)
+ * - keyboard-closed 복원 규칙이 IME 중 이기지 않도록 :not(.ime-open) 한정
+ */
+body.ime-open #navigationBarOverlay {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    pointer-events: none !important;
+}
+body.ime-open:not(.entry-modal-open) {
+    padding-top: var(--safe-top) !important;
+    padding-bottom: max(0px, env(safe-area-inset-bottom, 0px)) !important;
+}
+body.ime-open .bottom-nav,
+body.ime-open #trackerSection {
+    display: none !important;
+}
+body.ime-open #boardWriteView {
+    padding-bottom: calc(1rem + max(0px, env(safe-area-inset-bottom, 0px))) !important;
+}
 /* 식사 기록 모달 열림: 입력 포커스로 body padding·배경 chrome이 튀지 않도록 전역 규칙 예외 */
 body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) {
     padding-top: 0 !important;
@@ -396,25 +419,24 @@ input, textarea, [contenteditable="true"] {
     -webkit-transform: translateZ(0);
     transform: translateZ(0);
 }
-/* 키보드 닫혔을 때: viewport 복원 시 모든 UI 복원 (뒤로가기로 닫아도 포커스가 남아있는 경우) */
-body.keyboard-closed .bottom-nav {
+/* 키보드 닫힘: UI 복원 — IME 중(body.ime-open)에는 적용하지 않음 (adjustResize 오판으로 빈 층 생기던 원인) */
+body.keyboard-closed:not(.ime-open) .bottom-nav {
     display: grid !important;
     grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 }
-body.keyboard-closed #navigationBarOverlay,
-body.keyboard-closed #mainAppHeader,
-body.keyboard-closed #statusBarOverlay {
+body.keyboard-closed:not(.ime-open) #navigationBarOverlay,
+body.keyboard-closed:not(.ime-open) #mainAppHeader,
+body.keyboard-closed:not(.ime-open) #statusBarOverlay {
     display: block !important;
 }
-/* trackerSection: 탭이 timeline일 때만 표시 (hidden이 아닐 때만 복원) */
-body.keyboard-closed #trackerSection:not(.hidden) {
+body.keyboard-closed:not(.ime-open) #trackerSection:not(.hidden) {
     display: block !important;
 }
-body.keyboard-closed {
+body.keyboard-closed:not(.ime-open) {
     padding-top: var(--safe-top) !important;
     padding-bottom: calc(80px + var(--safe-bottom)) !important;
 }
-body.keyboard-closed #boardWriteView {
+body.keyboard-closed:not(.ime-open) #boardWriteView {
     padding-bottom: calc(80px + var(--safe-bottom)) !important;
 }
 /* =========================
@@ -12680,8 +12702,9 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     margin: 0;
     box-shadow: none;
 }
-/* 키보드 포커스 시 네비가 숨겨지므로 입력창은 하단 안전영역에 붙임 */
-body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+/* 키보드 포커스/IME: 네비·safe-bottom 토큰 띠 없이 실제 inset만 */
+body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
+body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
     z-index: 120;
 }
@@ -13673,8 +13696,9 @@ button.board-detail-stat:disabled {
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
 }
-/* 상세 댓글 포커스: 밀톡 컴포저와 같이 하단 fixed + safe-bottom (키보드 위) */
-body:has(#boardCommentInput:focus, #noticeCommentInput:focus) .board-detail-composer {
+/* 상세 댓글 포커스/IME: 밀톡 컴포저와 같이 하단 fixed (키보드 위, 토큰 safe-bottom 띠 제외) */
+body:has(#boardCommentInput:focus, #noticeCommentInput:focus) .board-detail-composer,
+body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
@@ -13689,7 +13713,8 @@ body:has(#boardCommentInput:focus, #noticeCommentInput:focus) .board-detail-comp
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
     box-shadow: 0 -4px 16px rgba(36, 31, 28, 0.06);
 }
-body:has(#boardCommentInput:focus, #noticeCommentInput:focus) #boardDetailContent {
+body:has(#boardCommentInput:focus, #noticeCommentInput:focus) #boardDetailContent,
+body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
 }
 .board-detail-composer__row {

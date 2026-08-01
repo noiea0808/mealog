@@ -76,6 +76,7 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { ensureFocusedInputVisible } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
@@ -1431,20 +1432,13 @@ function bindEntryWhatInputAutosizeOnce() {
 function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
     const scroll = document.getElementById('modalScrollArea');
     if (!scroll || !el || !scroll.contains(el)) return;
-    const run = () => {
-        try {
-            const tRect = el.getBoundingClientRect();
-            const sRect = scroll.getBoundingClientRect();
-            const pad = 12;
-            if (align === 'end' || tRect.bottom > sRect.bottom - pad) {
-                scroll.scrollTop += tRect.bottom - sRect.bottom + pad;
-            } else if (tRect.top < sRect.top + pad) {
-                scroll.scrollTop -= sRect.top - tRect.top + pad;
-            }
-        } catch (_) { /* ignore */ }
-    };
-    requestAnimationFrame(run);
-    if (afterMs > 0) setTimeout(run, afterMs);
+    const delays = afterMs > 0 ? [0, afterMs, afterMs + 150, afterMs + 350] : [0, 80, 200, 400];
+    ensureFocusedInputVisible(el, {
+        align,
+        scrollParent: scroll,
+        pad: 16,
+        delays
+    });
 }
 
 /** 메모 textarea: 내용/포커스 시 높이만큼 키우고, 시트(#modalScrollArea)가 스크롤되게 함 */
