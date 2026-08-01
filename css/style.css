@@ -88,9 +88,12 @@ html.platform-native-app .bottom-nav button i.lucide {
     --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
     --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
     --safe-bottom: var(--safe-bottom-nav-slot);
-    /* IME: Edge-to-edge에서 레이아웃이 안 줄어들 때 키보드가 덮는 높이 (js/utils/ime-viewport.js) */
+    /* IME (js/utils/ime-viewport.js) — resize: fixed-bottom≈0 / overlay: overlap=VV 가림 */
     --ime-overlap: 0px;
     --ime-inset: 0px;
+    --ime-fixed-bottom: 0px;
+    --ime-vv-height: 100dvh;
+    --ime-vv-top: 0px;
     /* 시안 v2 토큰 — Light Mint mid (#3CB889) */
     --green: #3cb889;
     --green-deep: #2d9f74;
@@ -399,7 +402,7 @@ body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:foc
 /*
  * IME 열림(body.ime-open): 키보드 위 빈 띠 제거
  * - #navigationBarOverlay(nav-slot) 숨김
- * - padding-bottom: 0 (adjustResize·edge-to-edge 모두; fixed UI는 --ime-overlap 사용)
+ * - padding-bottom: 0 (fixed UI는 --ime-fixed-bottom: resize=0 / overlay=VV overlap)
  * - keyboard-closed 복원 규칙이 IME 중 이기지 않도록 :not(.ime-open) 한정
  */
 body.ime-open #navigationBarOverlay {
@@ -12651,16 +12654,22 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom));
 }
-/* 태그/메모 입력: nav-slot(--safe-bottom)을 높이에서 빼면 키보드 위 빈 띠가 됨 */
-body:has(#settingsView:not(.hidden) input:not(.push-pref-toggle):focus, #settingsView:not(.hidden) textarea:focus) #settingsView:not(.hidden),
-body.ime-open #settingsView:not(.hidden) {
+/* 태그/메모: nav-slot 제거. IME 중 높이는 --ime-vv-height(resize=layoutH / overlay=vvH) */
+body:has(#settingsView:not(.hidden) input:not(.push-pref-toggle):focus, #settingsView:not(.hidden) textarea:focus) #settingsView:not(.hidden) {
     height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h));
     max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h));
 }
-body:has(#mainAppHeader.header-scroll-hidden):has(#settingsView:not(.hidden) input:not(.push-pref-toggle):focus, #settingsView:not(.hidden) textarea:focus) #settingsView:not(.hidden),
-body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
+body.ime-open #settingsView:not(.hidden) {
+    height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
+    max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
+}
+body:has(#mainAppHeader.header-scroll-hidden):has(#settingsView:not(.hidden) input:not(.push-pref-toggle):focus, #settingsView:not(.hidden) textarea:focus) #settingsView:not(.hidden) {
     height: calc(100dvh - var(--safe-top));
     max-height: calc(100dvh - var(--safe-top));
+}
+body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
+    height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
+    max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
 }
 /* 사용자 뷰 본문: 밀톡(#boardLoungeScrollArea)과 동일 — 얇은 막대, 스크롤 중에만 표시 */
 #settingsView .settings-view-content {
@@ -12761,11 +12770,10 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
 }
 /*
  * IME 열림일 때만 키보드에 붙임 (포커스만으로는 적용 금지).
- * 뒤로가기로 키보드만 내린 뒤 포커스가 남으면 bottom:0 + 네비 숨김이 고착되던 원인.
- * adjustResize → --ime-overlap=0 / edge-to-edge → overlap만큼 올림.
+ * --ime-fixed-bottom: resize=0 / overlay=VV overlap (js/utils/ime-viewport.js)
  */
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: max(0px, var(--ime-overlap, 0px));
+    bottom: var(--ime-fixed-bottom, 0px);
     z-index: 120;
 }
 /* 포커스·키보드 닫힘: 앱 네비 위로 복원 (기본 bottom과 동일) */
@@ -13167,18 +13175,18 @@ body.bottom-nav-scroll-hidden #boardListView #boardListPanel:not(.hidden) {
     padding-bottom: calc(1.25rem + var(--safe-bottom));
 }
 
-/* IME 중 피드 높이·스크롤 inset — 포커스만으로는 nav-slot을 빼지 않음 */
+/* IME 중 피드 높이·스크롤 inset — 토큰만 사용 (이중 overlap 금지) */
 body.ime-open #boardListView #boardFeedPanelContent {
     --board-feed-scroll-inset-bottom: calc(
-        max(0px, var(--ime-overlap, 0px)) +
+        var(--ime-fixed-bottom, 0px) +
             var(--board-feed-composer-face) + var(--board-feed-above-composer)
     );
 }
 body.ime-open:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden),
 body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: 0;
-    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--ime-overlap, 0px));
-    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--ime-overlap, 0px));
+    height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
+    max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
 }
 /* 패널(#boardListPanel)에서 이미 풀폭·배경 처리 — 이중 네거티브 마진 제거 */
 #boardListView #noticesContainer,
@@ -13769,13 +13777,12 @@ button.board-detail-stat:disabled {
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
 }
-/* 상세 댓글 포커스/IME: 하단 fixed + --ime-overlap(Edge-to-edge 미축소 시) */
-/* 상세 댓글: IME 중에만 fixed+키보드 붙임 (포커스만으로 bottom:0 고착 방지) */
+/* 상세 댓글: IME 중에만 fixed + --ime-fixed-bottom */
 body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: max(0px, var(--ime-overlap, 0px));
+    bottom: var(--ime-fixed-bottom, 0px);
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
     z-index: 120;
@@ -13787,7 +13794,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     box-shadow: 0 -4px 16px rgba(36, 31, 28, 0.06);
 }
 body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
-    padding-bottom: calc(5.75rem + max(0px, var(--ime-overlap, 0px)));
+    padding-bottom: calc(5.75rem + var(--ime-fixed-bottom, 0px));
 }
 .board-detail-composer__row {
     position: relative;
@@ -16346,7 +16353,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-sheet-root {
     max-height: 100%;
     padding-top: max(0.25rem, env(safe-area-inset-top, 0px));
-    padding-bottom: calc(max(0px, var(--ime-overlap, 0px)) + 6px);
+    padding-bottom: calc(var(--ime-fixed-bottom, 0px) + 6px);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-composer {
     padding-bottom: 2px;

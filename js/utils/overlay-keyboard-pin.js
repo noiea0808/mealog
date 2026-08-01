@@ -1,10 +1,9 @@
 /**
  * 검색·알림·프로필·신고·밀톡 수정·모먼트 댓글 시트:
- * 키보드로 visualViewport가 밀릴 때 fixed 오버레이 핀 + IME 레이아웃.
- * 감지/핀 수치는 ime-viewport 공유 헬퍼를 사용한다.
+ * overlay IME 모드에서 visualViewport 박스로 fixed 오버레이 핀.
  *
- * 모바일 웹: Capacitor Keyboard가 없으므로 입력 포커스만으로 VV에 핀하고,
- * 브라우저가 올린 스크롤을 pinLayoutScroll로 되돌리지 않는다.
+ * resize 모드(Capacitor body resize): 핀 생략 — 레이아웃이 이미 키보드를 제외함.
+ * overlay 모드(모바일 웹): VV 핀 + 본문 스크롤 (브라우저 팬을 되돌리지 않음).
  */
 
 import {
@@ -14,6 +13,7 @@ import {
     ensureFocusedInputVisible,
     captureImeBaseline,
     shouldTreatImeOpen,
+    getImeMetrics,
     isMobileWebTouchUi,
     onAppImeChange
 } from './ime-viewport.js';
@@ -101,12 +101,31 @@ function scrollFocusedInOverlay(root) {
 
 function applyOverlayVvPin(root) {
     if (!root) return;
+    const m = getImeMetrics();
+    // resize 모드: VV 핀 생략 (레이아웃이 이미 키보드 제외)
+    if (m.mode === 'resize') {
+        clearOverlayVvPin(root);
+        if (shouldTreatImeOpen() && isImeInputLike(document.activeElement) && root.contains(document.activeElement)) {
+            placeProfileFieldEditActions(root, true);
+            requestAnimationFrame(() => scrollFocusedInOverlay(root));
+        }
+        return;
+    }
+
     pinLayoutScroll();
     const shouldPin =
         shouldTreatImeOpen() &&
         isImeInputLike(document.activeElement) &&
         root.contains(document.activeElement);
     if (!shouldPin) {
+        // overlay: 포커스 직후 VV open 전이 — 포커스만으로도 임시 핀 (applyOverlayImePin 내부 가드)
+        if (isMobileWebTouchUi() && isImeInputLike(document.activeElement) && root.contains(document.activeElement)) {
+            placeProfileFieldEditActions(root, true);
+            if (applyOverlayImePin(root)) {
+                requestAnimationFrame(() => scrollFocusedInOverlay(root));
+                return;
+            }
+        }
         clearOverlayVvPin(root);
         return;
     }
@@ -168,8 +187,8 @@ export function initOverlayKeyboardPin() {
         (e) => {
             if (!isImeInputLike(e.target) || !findOverlayRoot(e.target)) return;
             captureImeBaseline();
-            // 모바일 웹: VV resize 전에도 즉시 핀 (헤더 고정 + 본문 스크롤 영역 확보)
-            if (isMobileWebTouchUi()) {
+            // overlay(모바일 웹): VV resize 전에도 즉시 동기화
+            if (isMobileWebTouchUi() || getImeMetrics().mode === 'overlay') {
                 scheduleSync();
             }
             scheduleSyncBurst();

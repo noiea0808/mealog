@@ -1,8 +1,9 @@
 /**
  * 앱 전역 IME(키보드) 감지·오버레이 핀·입력란 가시 스크롤.
  *
- * - 네이티브: @capacitor/keyboard(resizeOnFullScreen) + visualViewport
- * - 모바일 웹: Keyboard 플러그인 없음 → 포커스 시 VV 박스로 핀·본문 스크롤 (브라우저 팬을 되돌리지 않음)
+ * 모드:
+ * - resize: Capacitor body resize — layoutH가 키보드만큼 줄어듦 → fixed bottom ≈ 0
+ * - overlay: 모바일 웹 등 — layoutH 유지, visualViewport만 축소 → fixed bottom = imeOverlap
  */
 
 let baselineLayoutH = 0;
@@ -13,6 +14,8 @@ let burstTimers = [];
 let pollTimer = null;
 /** Capacitor Keyboard 플러그인이 보고한 키보드 높이(px). 0이면 미보고/닫힘 */
 let nativeImeHeight = 0;
+/** 포커스 직후 VV open 전이 폴링 종료 시각 (ms) */
+let focusPollUntil = 0;
 
 /** @type {Set<(open: boolean) => void>} */
 const listeners = new Set();
@@ -38,20 +41,49 @@ export function isMobileWebTouchUi() {
     return touch && shortSide > 0 && shortSide < 900;
 }
 
+function isNativePlatform() {
+    try {
+        return !!window.Capacitor?.isNativePlatform?.();
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
+ * @param {{ adjustResizeLikely: boolean }} partial
+ * @returns {'resize'|'overlay'}
+ */
+function resolveImeMode(partial) {
+    if (isNativePlatform() && partial.adjustResizeLikely) return 'resize';
+    if (isMobileWebTouchUi()) return 'overlay';
+    // native인데 리사이즈가 안 잡히면 overlay로 VV 보정
+    if (isNativePlatform()) return partial.adjustResizeLikely ? 'resize' : 'overlay';
+    return 'overlay';
+}
+
+/**
+ * VV/네이티브 기준 실제 키보드 열림 (포커스만으로는 true 아님).
+ */
+function computeImeOpenSignal(layoutH, vvH, vvTop, vvBottom, baseline) {
+    if (nativeImeHeight > 80) return true;
+    if (!(layoutH > 0)) return false;
+    const overlap = Math.max(0, layoutH - vvBottom);
+    return (
+        vvH < layoutH * 0.92 ||
+        layoutH < baseline * 0.92 ||
+        vvTop > 8 ||
+        overlap > 80
+    );
+}
+
 /**
  * 키보드가 올라온 것으로 보고 UI(ime-open·오버레이 핀)를 적용할지.
- * - 네이티브: Keyboard/VV로 실제 열림이 보일 때만 true (포커스만으로 true면
- *   뒤로가기로 키보드만 내린 뒤에도 ime-open·기록시트 keyboard-open이 남아 시트가 늘어남)
- * - 모바일 웹: Keyboard 플러그인 없음 → 포커스면 true (CSS는 포커스 중 nav 복원 안 함)
+ * 네이티브·모바일 웹 모두 실제 VV/Keyboard 신호 기준 (포커스-only 금지).
  */
 export function shouldTreatImeOpen() {
     if (nativeImeHeight > 80) return true;
     if (!isImeInputLike(document.activeElement)) return false;
-    if (getImeMetrics().open) return true;
-    try {
-        if (window.Capacitor?.isNativePlatform?.()) return false;
-    } catch (_) { /* ignore */ }
-    return isMobileWebTouchUi();
+    return getImeMetrics().open;
 }
 
 export function captureImeBaseline() {
@@ -90,6 +122,7 @@ export function getNativeImeHeight() {
 /**
  * @returns {{
  *   open: boolean,
+ *   mode: 'resize'|'overlay',
  *   layoutH: number,
  *   vvH: number,
  *   vvTop: number,
@@ -100,6 +133,7 @@ export function getNativeImeHeight() {
  *   pinWidth: number,
  *   pinLeft: number,
  *   imeOverlap: number,
+ *   fixedBottom: number,
  *   adjustResizeLikely: boolean
  * }}
  */
@@ -112,34 +146,43 @@ export function getImeMetrics() {
     const vvW = vv ? Number(vv.width) || window.innerWidth || 0 : window.innerWidth || 0;
     const vvBottom = vvTop + vvH;
     const baseline = baselineLayoutH > 0 ? baselineLayoutH : layoutH;
-    const open =
-        layoutH > 0 &&
-        (vvH < layoutH * 0.92 ||
-            layoutH < baseline * 0.92 ||
-            vvTop > 8 ||
-            nativeImeHeight > 80);
     // adjustResize/body resize: 레이아웃이 이미 키보드 제외 → fixed bottom은 0에 두면 됨
     const adjustResizeLikely = baseline > 0 && layoutH < baseline * 0.92 && vvTop <= 8;
+    const mode = resolveImeMode({ adjustResizeLikely });
+    const open = computeImeOpenSignal(layoutH, vvH, vvTop, vvBottom, baseline);
+
     const overlapFromVv = Math.max(0, layoutH - vvBottom);
-    // VV가 알려주는 실제 가림량 우선. 리사이즈된 뒤에 native 높이를 또 더하면 이중 상승됨.
-    let imeOverlap = overlapFromVv > 8 ? overlapFromVv : 0;
-    if (!adjustResizeLikely && imeOverlap < 8 && nativeImeHeight > 80) {
-        imeOverlap = nativeImeHeight;
+    let imeOverlap = 0;
+    if (mode === 'resize') {
+        // 리사이즈된 레이아웃: VV overlap을 또 더하면 이중 상승
+        imeOverlap = 0;
+        if (!adjustResizeLikely && nativeImeHeight > 80) {
+            imeOverlap = nativeImeHeight;
+        }
+    } else {
+        imeOverlap = overlapFromVv > 8 ? overlapFromVv : 0;
+        if (imeOverlap < 8 && nativeImeHeight > 80) {
+            imeOverlap = nativeImeHeight;
+        }
     }
-    const pinTop = adjustResizeLikely ? 0 : Math.max(0, vvTop);
-    const pinHeight = adjustResizeLikely
-        ? Math.max(120, Math.round(layoutH))
-        : Math.max(
-              120,
-              Math.round(
-                  vv
-                      ? Math.min(vvH, Math.max(0, layoutH - pinTop - imeOverlap))
-                      : Math.max(0, layoutH - imeOverlap)
-              )
-          );
+
+    const fixedBottom = mode === 'resize' ? 0 : Math.round(imeOverlap);
+    const pinTop = mode === 'resize' ? 0 : Math.max(0, vvTop);
+    const pinHeight =
+        mode === 'resize'
+            ? Math.max(120, Math.round(layoutH))
+            : Math.max(
+                  120,
+                  Math.round(
+                      vv
+                          ? Math.min(vvH, Math.max(0, layoutH - pinTop - imeOverlap))
+                          : Math.max(0, layoutH - imeOverlap)
+                  )
+              );
     const pinWidth = Math.max(120, Math.round(vvW));
     return {
         open,
+        mode,
         layoutH,
         vvH,
         vvTop,
@@ -148,23 +191,42 @@ export function getImeMetrics() {
         pinTop,
         pinHeight,
         pinWidth,
-        pinLeft: adjustResizeLikely ? 0 : Math.max(0, vvLeft),
+        pinLeft: mode === 'resize' ? 0 : Math.max(0, vvLeft),
         imeOverlap,
+        fixedBottom,
         adjustResizeLikely
     };
 }
 
 function publishImeCssVars(m) {
     const root = document.documentElement;
+    const body = document.body;
     if (!root) return;
-    const overlap = m?.open ? Math.round(m.imeOverlap || 0) : 0;
+    const open = !!m?.open;
+    const mode = m?.mode || 'overlay';
+    const overlap = open ? Math.round(m.imeOverlap || 0) : 0;
+    const fixedBottom = open ? Math.round(m.fixedBottom ?? (mode === 'resize' ? 0 : overlap)) : 0;
+    const vvH = open
+        ? Math.round(mode === 'resize' ? (m.layoutH || window.innerHeight || 0) : (m.vvH || window.innerHeight || 0))
+        : Math.round(window.innerHeight || 0);
+    const vvTop = open && mode === 'overlay' ? Math.round(m.vvTop || 0) : 0;
+
     root.style.setProperty('--ime-overlap', `${overlap}px`);
     root.style.setProperty('--ime-inset', `${overlap}px`);
-    root.style.setProperty('--ime-vv-height', `${Math.round(m?.vvH || window.innerHeight || 0)}px`);
+    root.style.setProperty('--ime-fixed-bottom', `${fixedBottom}px`);
+    root.style.setProperty('--ime-vv-height', `${vvH}px`);
+    root.style.setProperty('--ime-vv-top', `${vvTop}px`);
+    root.setAttribute('data-ime-mode', mode);
+    if (body) body.setAttribute('data-ime-mode', mode);
 }
 
 export function isAppImeOpen() {
     return imeOpen;
+}
+
+/** @returns {'resize'|'overlay'} */
+export function getImeMode() {
+    return getImeMetrics().mode;
 }
 
 export function onAppImeChange(fn) {
@@ -175,7 +237,19 @@ export function onAppImeChange(fn) {
 export function setAppImeOpen(open) {
     const next = !!open;
     const m = getImeMetrics();
-    publishImeCssVars(next ? m : { open: false, imeOverlap: 0, vvH: window.innerHeight || 0 });
+    if (next) {
+        publishImeCssVars({ ...m, open: true });
+    } else {
+        publishImeCssVars({
+            open: false,
+            mode: m.mode,
+            imeOverlap: 0,
+            fixedBottom: 0,
+            vvH: window.innerHeight || 0,
+            vvTop: 0,
+            layoutH: window.innerHeight || 0
+        });
+    }
     if (imeOpen === next) {
         document.body.classList.toggle('ime-open', next);
         document.body.classList.toggle('keyboard-closed', !next);
@@ -194,7 +268,7 @@ export function setAppImeOpen(open) {
 export function syncAppImeState() {
     const focused = isImeInputLike(document.activeElement);
     if (!focused) {
-        // 포커스 없으면 닫힘. baseline은 현재 레이아웃으로 갱신(다음 오픈 비교용)
+        focusPollUntil = 0;
         setAppImeOpen(false);
         if (nativeImeHeight <= 80) {
             baselineLayoutH = Math.max(
@@ -210,7 +284,6 @@ export function syncAppImeState() {
 
 /**
  * 보이는 영역(visualViewport − 패드) 안에서 포커스 입력이 가려지지 않게 스크롤.
- * 스크롤 부모 bounds만 보면 키보드에 덮인 채 “이미 보임”으로 오판하므로 VV bottom을 함께 쓴다.
  * @param {Element|null} [el]
  * @param {{ align?: 'nearest'|'end'|'center', pad?: number, delays?: number[], scrollParent?: Element|null }} [opts]
  */
@@ -244,12 +317,11 @@ export function ensureFocusedInputVisible(el, opts = {}) {
         const m = getImeMetrics();
         if (vv) {
             const top = (Number(vv.offsetTop) || 0) + pad;
-            // 레이아웃이 안 줄어든 경우 imeOverlap만큼 하단을 추가로 비움
             const bottom =
                 (Number(vv.offsetTop) || 0) +
                 (Number(vv.height) || window.innerHeight) -
                 pad -
-                (m.adjustResizeLikely ? 0 : Math.max(0, m.imeOverlap));
+                (m.mode === 'resize' ? 0 : Math.max(0, m.imeOverlap));
             return { top, bottom: Math.max(top + 40, bottom) };
         }
         const top = pad;
@@ -274,7 +346,6 @@ export function ensureFocusedInputVisible(el, opts = {}) {
         try {
             const tRect = target.getBoundingClientRect();
             const sRect = scrollParent.getBoundingClientRect();
-            // 스크롤 부모 ∩ 실제 보이는 밴드
             const clipTop = Math.max(sRect.top, band.top);
             const clipBottom = Math.min(sRect.bottom, band.bottom);
 
@@ -291,7 +362,6 @@ export function ensureFocusedInputVisible(el, opts = {}) {
                 scrollParent.scrollTop -= clipTop - tRect.top;
             }
 
-            // 한 번 더: 스크롤 후에도 VV 밖으로 나가면 scrollIntoView로 보정
             const after = target.getBoundingClientRect();
             const band2 = visibleBand();
             if (after.bottom > band2.bottom || after.top < band2.top) {
@@ -310,26 +380,24 @@ export function ensureFocusedInputVisible(el, opts = {}) {
     });
 }
 
+/**
+ * overlay 모드에서만 VV 박스 핀. resize 모드에서는 no-op(레이아웃이 이미 줄어듦).
+ */
 export function applyOverlayImePin(root) {
     if (!root) return false;
     const m = getImeMetrics();
-    // 모바일 웹: open 판정 전에도 포커스면 현재 VV에 핀 (키보드 애니·iOS 팬 대응)
-    if (!m.open && !(isMobileWebTouchUi() && isImeInputLike(document.activeElement))) {
+    if (m.mode === 'resize') return false;
+    // overlay: open 전이라도 포커스+폴링 중이면 현재 VV에 핀
+    const focusPending = isMobileWebTouchUi() && isImeInputLike(document.activeElement) && Date.now() < focusPollUntil;
+    if (!m.open && !focusPending) {
         return false;
     }
     const vv = window.visualViewport;
     const layoutH = m.layoutH || window.innerHeight || 0;
-    // 웹/비-resize: 항상 보이는 VV 박스. adjustResize: 레이아웃 높이.
-    let pinTop = m.pinTop;
-    let pinLeft = m.pinLeft;
-    let pinHeight = m.pinHeight;
-    let pinWidth = m.pinWidth;
-    if (!m.adjustResizeLikely && vv) {
-        pinTop = Math.max(0, Number(vv.offsetTop) || 0);
-        pinLeft = Math.max(0, Number(vv.offsetLeft) || 0);
-        pinHeight = Math.max(120, Math.round(Number(vv.height) || layoutH));
-        pinWidth = Math.max(120, Math.round(Number(vv.width) || window.innerWidth || 0));
-    }
+    let pinTop = Math.max(0, Number(vv?.offsetTop) || m.pinTop || 0);
+    let pinLeft = Math.max(0, Number(vv?.offsetLeft) || m.pinLeft || 0);
+    let pinHeight = Math.max(120, Math.round(Number(vv?.height) || m.vvH || layoutH));
+    let pinWidth = Math.max(120, Math.round(Number(vv?.width) || m.pinWidth || window.innerWidth || 0));
     root.classList.add('is-ime-open');
     root.style.top = `${Math.round(pinTop)}px`;
     root.style.left = `${Math.round(pinLeft)}px`;
@@ -338,7 +406,7 @@ export function applyOverlayImePin(root) {
     root.style.right = 'auto';
     root.style.bottom = 'auto';
     root.style.transform = '';
-    publishImeCssVars({ ...m, open: true, pinHeight, vvH: pinHeight });
+    publishImeCssVars({ ...m, open: true, pinHeight, vvH: pinHeight, vvTop: pinTop });
     return true;
 }
 
@@ -365,7 +433,7 @@ function scheduleSyncBurst() {
         burstTimers.push(
             setTimeout(() => {
                 scheduleSync();
-                if (isImeInputLike(document.activeElement)) {
+                if (isImeInputLike(document.activeElement) && imeOpen) {
                     ensureFocusedInputVisible(document.activeElement, {
                         align: 'nearest',
                         delays: [0]
@@ -386,8 +454,7 @@ function scheduleSync() {
 
 function bindCapacitorKeyboard() {
     try {
-        if (!window.Capacitor?.isNativePlatform?.()) return;
-        // 정적 ES 모듈 앱: 네이티브 브릿지 Plugins.Keyboard 사용 (번들 import 없음)
+        if (!isNativePlatform()) return;
         const Keyboard = window.Capacitor?.Plugins?.Keyboard;
         if (!Keyboard) return;
 
@@ -417,7 +484,6 @@ function bindCapacitorKeyboard() {
                 window.visualViewport?.height || 0,
                 baselineLayoutH || 0
             );
-            // 밀톡: 뒤로가기로 키보드만 내리면 포커스가 남아 컴포저가 bottom:0에 고착될 수 있음 → blur로 네비 위 복원
             try {
                 const mealtalk = document.getElementById('boardInlineComposerInput');
                 if (mealtalk && document.activeElement === mealtalk) {
@@ -443,7 +509,6 @@ export function initAppImeViewport() {
     if (initialized || typeof document === 'undefined') return;
     initialized = true;
 
-    // 앱 기동 시 전체 높이 저장 — 이후 키보드 리사이즈와 비교
     baselineLayoutH = Math.max(
         window.innerHeight || 0,
         window.visualViewport?.height || 0
@@ -456,24 +521,29 @@ export function initAppImeViewport() {
         (e) => {
             if (!isImeInputLike(e.target)) return;
             captureImeBaseline();
+            // 웹: Keyboard 플러그인 대체 — 포커스 직후 VV open 전이만 폴링 (포커스-only ime-open 금지)
+            focusPollUntil = Date.now() + 500;
             scheduleSyncBurst();
-            ensureFocusedInputVisible(e.target, { align: 'nearest' });
             if (pollTimer) clearInterval(pollTimer);
             const start = Date.now();
             pollTimer = setInterval(() => {
                 syncAppImeState();
-                if (isImeInputLike(document.activeElement)) {
+                const m = getImeMetrics();
+                if (m.open && isImeInputLike(document.activeElement)) {
                     ensureFocusedInputVisible(document.activeElement, {
                         align: 'nearest',
                         delays: [0]
                     });
                 }
-                const m = getImeMetrics();
-                if ((!m.open && nativeImeHeight <= 80 && Date.now() - start > 800) || Date.now() - start > 12000) {
+                const pastFocusWindow = Date.now() > focusPollUntil;
+                if (
+                    (pastFocusWindow && !m.open && nativeImeHeight <= 80 && Date.now() - start > 800) ||
+                    Date.now() - start > 12000
+                ) {
                     clearInterval(pollTimer);
                     pollTimer = null;
                 }
-            }, 150);
+            }, 100);
         },
         true
     );
@@ -482,6 +552,7 @@ export function initAppImeViewport() {
         'focusout',
         (e) => {
             if (!isImeInputLike(e.target)) return;
+            focusPollUntil = 0;
             if (pollTimer) {
                 clearInterval(pollTimer);
                 pollTimer = null;

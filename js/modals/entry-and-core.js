@@ -806,19 +806,27 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     /** 키보드 중 시트 상단 여백(세션 entrySheetTopPx는 건드리지 않음 — 닫히면 복원) */
     const getKeyboardSheetTopPx = () => {
+        const m = getImeMetrics();
         const safeRaw = Number.parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue('--safe-top')
         );
         const safeTop = Number.isFinite(safeRaw) ? Math.max(0, Math.round(safeRaw)) : 0;
-        // 상단으로 올려 입력 콘텐츠 영역을 확보 (완전 flush는 노치/상태줄과 겹칠 수 있어 소량 패딩)
-        return Math.max(12, Math.min(safeTop || 12, 28));
+        const base = Math.max(12, Math.min(safeTop || 12, 28));
+        // overlay(모바일 웹): iOS VV 팬만큼 올려 보이는 영역 상단에 맞춤
+        if (m.mode === 'overlay' && (m.vvTop || 0) > 0) {
+            return Math.round((m.vvTop || 0) + Math.min(base, 12));
+        }
+        return base;
     };
 
+    /** resize: layoutH / overlay: visualViewport.height */
     const readViewportH = () => {
-        const vvH = window.visualViewport?.height;
-        const layoutH = window.innerHeight || 0;
-        const hRaw = Number.isFinite(vvH) ? vvH : layoutH;
-        return Math.max(0, Math.min(hRaw, layoutH || hRaw));
+        const m = getImeMetrics();
+        if (m.mode === 'resize') {
+            return Math.max(0, m.layoutH || window.innerHeight || 0);
+        }
+        const vvH = m.vvH || window.visualViewport?.height || window.innerHeight || 0;
+        return Math.max(0, vvH);
     };
 
     /**
@@ -996,14 +1004,15 @@ function initEntryModalKeyboardHandling(entryModal) {
     const checkViewport = () => {
         if (entryModal.classList.contains('hidden')) return;
         const m = getImeMetrics();
-        const vh = m.vvH || window.visualViewport?.height || window.innerHeight;
+        const vh = m.mode === 'resize'
+            ? (m.layoutH || window.innerHeight || 0)
+            : (m.vvH || window.visualViewport?.height || window.innerHeight || 0);
         const threshold = getViewportThreshold();
-        // 실제 키보드/VV 축소만 인정 — 포커스만으로 keyboard-open 유지하면
-        // 뒤로가기로 키보드만 내릴 때 시트가 vv 전체 높이로 늘어남
+        // ime-viewport open 신호 우선 (웹 포커스-only 제거와 정합). threshold는 보조.
         const open =
             m.open ||
-            vh < threshold ||
-            getNativeImeHeight() > 80;
+            getNativeImeHeight() > 80 ||
+            (vh > 0 && vh < threshold);
         if (!open) {
             setKeyboardOpen(false);
             return;
