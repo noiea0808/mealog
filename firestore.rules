@@ -116,10 +116,10 @@ service cloud.firestore {
     match /artifacts/{appId}/sharedPhotos/{photoId} {
       allow read: if isAuthenticated();
       allow create: if isAdmin();
-      allow update: if isAuthenticated() && !isReadOnlyDemoAccount() &&
-                     resource.data.userId == request.auth.uid && 
+      allow update: if hasValidAppCheckToken() && isAuthenticated() && !isReadOnlyDemoAccount() &&
+                     resource.data.userId == request.auth.uid &&
                      request.resource.data.userId == request.auth.uid;
-      allow delete: if isAdmin() || (isOwnerOfResource() && !isReadOnlyDemoAccount());
+      allow delete: if hasValidAppCheckToken() && (isAdmin() || (isOwnerOfResource() && !isReadOnlyDemoAccount()));
     }
     
     // ============================================
@@ -213,16 +213,18 @@ service cloud.firestore {
       allow create: if false;
       // 수정/삭제: 관리자 또는 작성자. 조회수(views)·댓글수(comments)·좋아요/비추(likes·dislikes)만 바꿀 때는 로그인 사용자 허용
       // (Cloud Functions는 admin SDK로 쓰므로 Rules를 우회하여 업데이트 가능)
-      allow update: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount()) || (
-        isAuthenticated() && !isReadOnlyDemoAccount() && (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dislikes']) ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'dislikes'])
+      allow update: if hasValidAppCheckToken() && (
+        isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount()) || (
+          isAuthenticated() && !isReadOnlyDemoAccount() && (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['dislikes']) ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'dislikes'])
+          )
         )
       );
-      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+      allow delete: if hasValidAppCheckToken() && (isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount()));
     }
     
     // ============================================
@@ -274,18 +276,18 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
       allow create: if false;
-      allow update: if isAuthorOfResource() && !isReadOnlyDemoAccount();
-      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+      allow update: if hasValidAppCheckToken() && isAuthorOfResource() && !isReadOnlyDemoAccount();
+      allow delete: if hasValidAppCheckToken() && (isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount()));
     }
-    
+
     // ============================================
     // 공지 댓글 (noticeComments 컬렉션) — 생성/댓글 수 갱신은 Cloud Functions만
     // ============================================
     match /artifacts/{appId}/noticeComments/{commentId} {
       allow read: if isAuthenticated();
       allow create: if false;
-      allow update: if isAuthorOfResource() && !isReadOnlyDemoAccount();
-      allow delete: if isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount());
+      allow update: if hasValidAppCheckToken() && isAuthorOfResource() && !isReadOnlyDemoAccount();
+      allow delete: if hasValidAppCheckToken() && (isAdmin() || (isAuthorOfResource() && !isReadOnlyDemoAccount()));
     }
     
     // ============================================
@@ -326,10 +328,10 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
       allow create: if false;
-      allow update: if isOwnerOfResource() && !isReadOnlyDemoAccount();
-      allow delete: if isOwnerOfResource() && !isReadOnlyDemoAccount();
+      allow update: if hasValidAppCheckToken() && isOwnerOfResource() && !isReadOnlyDemoAccount();
+      allow delete: if hasValidAppCheckToken() && isOwnerOfResource() && !isReadOnlyDemoAccount();
     }
-    
+
     // ============================================
     // 게시물 신고 (postReports 컬렉션)
     // ============================================
@@ -338,7 +340,7 @@ service cloud.firestore {
       allow read: if isAdmin();
       // create는 Cloud Functions를 통해서만 허용 (클라이언트 직접 쓰기 차단)
       allow create: if false;
-      allow update, delete: if isAdmin();
+      allow update, delete: if hasValidAppCheckToken() && isAdmin();
     }
     
     // ============================================
