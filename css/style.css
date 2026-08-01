@@ -3398,10 +3398,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
-/* 키보드 열림: 패널을 상단(safe-area)에 더 붙여 본문 확보 */
+/* 키보드 열림: 헤더 Y(--entry-sheet-top) 유지. top을 올리면 시트 아래/위 배경이 드러남 */
 #entryModal.keyboard-open > .entry-modal-panel {
-    top: max(0.35rem, env(safe-area-inset-top, 0px)) !important;
-    max-height: calc(100% - max(0.35rem, env(safe-area-inset-top, 0px)) - 0.5rem);
+    top: var(--entry-sheet-top, 1rem) !important;
+    max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
 }
 #modalScrollArea {
     /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */

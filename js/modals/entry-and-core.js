@@ -780,25 +780,41 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
-    const applyViewportGeometry = (vh, vtop) => {
+    /** 키보드로 브라우저가 페이지/뷰포트를 밀어 올린 경우 원위치 — fixed 오버레이 아래 배경 노출 방지 */
+    const pinLayoutViewport = () => {
+        if (window.scrollX || window.scrollY) {
+            window.scrollTo(0, 0);
+        }
+        const de = document.documentElement;
+        const body = document.body;
+        if (de && de.scrollTop) de.scrollTop = 0;
+        if (body && body.scrollTop) body.scrollTop = 0;
+    };
+
+    const applyViewportGeometry = (vh) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
-        // 키보드 구간: 오버레이를 vv.offsetTop으로 들어 올리지 않음(시트가 위로 점프하던 원인).
-        // 레이아웃 상단에 고정한 채 보이는 높이만 줄이고, 패널은 top 유지 + max-height로 맞춤.
+        // 오버레이(#entryModal)는 inset-0 전체 유지. height를 vv에 맞추면
+        // vv.offsetTop>0일 때 레이아웃 하단이 비어 앱 배경이 드러난다.
+        // 패널만 top 유지 + 키보드 위 가용 높이로 축소한다.
         const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
         if (!Number.isNaN(lastAppliedVh) && Math.abs(lastAppliedVh - h) < 1) {
+            pinLayoutViewport();
             return;
         }
         lastAppliedVh = h;
         lastAppliedVtop = 0;
-        entryModal.style.top = '0px';
-        entryModal.style.height = `${h}px`;
+        entryModal.style.top = '';
+        entryModal.style.height = '';
+        pinLayoutViewport();
 
         const panel = entryModal.querySelector('.entry-modal-panel');
         if (!panel) return;
-        const topPx = Number.parseFloat(getComputedStyle(panel).top) || 16;
+        const topPx = Number.parseFloat(panel.style.top)
+            || Number.parseFloat(getComputedStyle(panel).top)
+            || 16;
         const avail = Math.max(160, Math.floor(h - topPx - 8));
-        // 축소만 하면 vv 중간 프레임(작은 height)에 고착됨 → 키보드 구간은 항상 avail에 맞춤
+        // 키보드 애니 중간 프레임에도 avail을 따라가며, 닫힐 때 sync로 피크 복원
         panel.style.maxHeight = `${avail}px`;
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
@@ -818,8 +834,7 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (imeComposing) return;
             const vv = window.visualViewport;
             if (!vv) return;
-            // offsetTop은 사용하지 않음 — 높이만 반영
-            applyViewportGeometry(vv.height, 0);
+            applyViewportGeometry(vv.height);
         });
     };
 
@@ -869,6 +884,7 @@ function initEntryModalKeyboardHandling(entryModal) {
             }
             entryModal.style.height = '';
             entryModal.style.top = '';
+            pinLayoutViewport();
             const panel = entryModal.querySelector('.entry-modal-panel');
             if (panel) {
                 panel.style.maxHeight = '';
