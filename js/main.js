@@ -58,6 +58,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { showLandingAppPromo } from './pwa-install.js';
+import { maybeStartLandingServiceGuide } from './onboarding.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
@@ -927,7 +928,6 @@ window.ensureUserRegistered = async function () {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
-let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
@@ -1037,11 +1037,6 @@ initAuth(async (user) => {
     // 더미 계정 로그아웃 플래그도 나중에 제거 (shouldTryAutoDemoSignIn에서 사용)
     
     if (user) {
-        // 자동 로그인으로 전환될 때 로그인 옵션 표시 타이머 취소 (타이틀만 보다가 메인으로 이동)
-        if (authCheckShowOptionsTimeout) {
-            clearTimeout(authCheckShowOptionsTimeout);
-            authCheckShowOptionsTimeout = null;
-        }
         // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
         if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
             console.log('⚠️ 사용자 변경 감지:', { 
@@ -1626,30 +1621,19 @@ initAuth(async (user) => {
             setTimeout(runLandingTitleRise, LANDING_ICON_FADE_MS + LANDING_PAUSE_BEFORE_RISE_MS);
         };
 
-        const presentLandingOrGuide = () => {
-            import('./onboarding.js')
-                .then(async (m) => {
-                    const shown = await m.maybeStartLandingServiceGuide({
-                        onComplete: () => showLoginScreen(),
-                    });
-                    if (!shown) showLoginScreen();
-                })
-                .catch((e) => {
-                    console.warn('랜딩 서비스 가이드 로드 실패:', e);
-                    showLoginScreen();
+        // 자동 둘러보기 비활성: auth null 확정 즉시 가이드 → 로그인 (400ms 대기 제거)
+        const presentLandingOrGuide = async () => {
+            try {
+                const shown = await maybeStartLandingServiceGuide({
+                    onComplete: () => showLoginScreen(),
                 });
+                if (!shown) showLoginScreen();
+            } catch (e) {
+                console.warn('랜딩 서비스 가이드 표시 실패:', e);
+                showLoginScreen();
+            }
         };
-
-        const showOptionsNow = wasExplicitLogout;
-        if (showOptionsNow) {
-            // 로그아웃 후에도 미로그인이면 가이드 → 로그인
-            presentLandingOrGuide();
-        } else {
-            authCheckShowOptionsTimeout = setTimeout(() => {
-                if (auth.currentUser === null) presentLandingOrGuide();
-                authCheckShowOptionsTimeout = null;
-            }, 400);
-        }
+        void presentLandingOrGuide();
         
         switchScreen(false);
         if (appState.settingsUnsubscribe) {
