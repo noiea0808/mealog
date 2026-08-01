@@ -41,39 +41,15 @@
     <link rel="manifest" href="./manifest.json">
 
     <!-- 외부 도메인 DNS/TLS 핸드셰이크를 병렬로 미리 시작 (부팅 지연 단축) -->
-    <link rel="preconnect" href="https://cdn.tailwindcss.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 
-    <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
-    <script>
-      /* 시안 mid-mint 브랜드 → emerald 스케일 매핑 (앱 전역 emerald-* 일괄 반영) */
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              emerald: {
-                50: '#eaf8f2',
-                100: '#eaf8f2',
-                200: '#b4e2cd',
-                300: '#8fd4b5',
-                400: '#5fc49a',
-                500: '#3cb889',
-                600: '#3cb889',
-                700: '#2d9f74',
-                800: '#247a59',
-                900: '#1c5f45',
-                950: '#164a36'
-              }
-            }
-          }
-        }
-      };
-    </script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind는 빌드타임 정적 CSS로 전환됨 → <head> 최하단의 css/tailwind.build.css 참고.
+         (기존 인라인 tailwind.config는 CDN보다 먼저 실행돼 ReferenceError로 죽고 있었다.
+          브랜드 emerald 팔레트 적용은 별도 커밋에서 다룬다 — tailwind.config.js 주석 참고) -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
@@ -913,6 +889,11 @@
             }
         });
     </script>
+
+    <!-- Tailwind 정적 빌드 (scripts/build-tailwind.js).
+         위치 주의: Play CDN이 <style>을 <head> 맨 끝에 주입해 css/style.css를 이기고 있었다.
+         캐스케이드를 그대로 재현하려면 반드시 여기(head 최하단)에 두어야 한다. -->
+    <link rel="stylesheet" href="css/tailwind.build.css?v=1">
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
     <!-- 기동 스플래시: body/max-w 컬럼·#landingPage flex와 무관하게 뷰포트 정중앙 (네이티브 스플래시 → 웹 전환 브릿지) -->

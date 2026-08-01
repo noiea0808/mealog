@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mealog-static",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-static-server.js"],
+      "port": 8777
+    }
+  ]
+}
