@@ -16159,10 +16159,14 @@ body:has(#adminPage:not(.hidden)),
 #notificationModal.is-ime-open,
 #profileFieldEditModal.is-ime-open,
 #feedBubbleEditOverlay.is-ime-open,
-#reportModal.is-ime-open {
+#reportModal.is-ime-open,
+/* adjustResize: VV가 안 줄어도 포커스만으로 상단 도킹 (검색 3종) */
+#timelineSearchModal:has(input:focus, textarea:focus),
+#momentSearchModal:has(input:focus, textarea:focus),
+#boardSearchModal:has(input:focus, textarea:focus) {
     align-items: flex-start !important;
-    padding-top: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
-    padding-bottom: 0.5rem !important;
+    padding-top: max(0.25rem, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 0.25rem !important;
     box-sizing: border-box;
 }
 #profileFieldEditModal.is-ime-open {
@@ -16190,21 +16194,43 @@ body:has(#adminPage:not(.hidden)),
     margin-bottom: 0;
 }
 /*
- * IME 중: 패널을 보이는 뷰포트 높이에 맞춰 잠금.
- * height:auto면 콘텐츠만큼 커진 뒤 키보드에 잘리고, body에 overflow가 없어 배경이 스크롤됨.
+ * 검색 포커스: 상단 정렬 + 가용 높이 상한 — 헤더 고정, 헤더 아래 스크롤.
+ * IME(is-ime-open): 가용 높이를 채워 키보드에 가려진 만큼 본문 스크롤 영역을 확보.
  */
-.search-filter-modal.is-ime-open .search-filter-modal__panel {
-    height: calc(100% - 0.5rem);
-    max-height: calc(100% - 0.5rem);
+#timelineSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel,
+#momentSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel,
+#boardSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel {
+    height: auto;
+    max-height: calc(100% - 0.35rem);
+    margin-top: 0;
     overflow: hidden;
 }
-.search-filter-modal.is-ime-open .search-filter-modal__body {
+#timelineSearchModal.is-ime-open .search-filter-modal__panel,
+#momentSearchModal.is-ime-open .search-filter-modal__panel,
+#boardSearchModal.is-ime-open .search-filter-modal__panel {
+    height: calc(100% - 0.35rem);
+    max-height: calc(100% - 0.35rem);
+    margin-top: 0;
+    overflow: hidden;
+}
+#timelineSearchModal.is-ime-open .search-filter-modal__body,
+#momentSearchModal.is-ime-open .search-filter-modal__body,
+#boardSearchModal.is-ime-open .search-filter-modal__body,
+#timelineSearchModal:has(input:focus, textarea:focus) .search-filter-modal__body,
+#momentSearchModal:has(input:focus, textarea:focus) .search-filter-modal__body,
+#boardSearchModal:has(input:focus, textarea:focus) .search-filter-modal__body {
     flex: 1 1 0%;
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     touch-action: pan-y;
+}
+/* 알림 등 기타 is-ime-open 패널(검색 제외) */
+.search-filter-modal.is-ime-open:not(#timelineSearchModal):not(#momentSearchModal):not(#boardSearchModal) .search-filter-modal__panel {
+    height: calc(100% - 0.5rem);
+    max-height: calc(100% - 0.5rem);
+    overflow: hidden;
 }
 /* 프로필 필드 시트: IME 중 CTA를 스크롤 body 끝으로 */
 #profileFieldEditModal.is-ime-open .profile-field-edit-body > .mealog-dialog-actions {

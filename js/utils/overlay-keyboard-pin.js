@@ -19,6 +19,8 @@ let activeRoot = null;
 let syncRaf = null;
 let pinTimers = [];
 let initialized = false;
+/** 포커스 직전 레이아웃 높이 — adjustResize로 innerHeight만 줄어드는 기기 감지용 */
+let focusBaselineLayoutH = 0;
 
 function isInputLike(el) {
     return !!(
@@ -76,33 +78,63 @@ function clearOverlayVvPin(root) {
     root.style.transform = '';
 }
 
+function isSearchFilterModal(root) {
+    return !!root?.classList?.contains('search-filter-modal')
+        && root.id !== 'notificationModal';
+}
+
 function isKeyboardLikelyOpen() {
-    const vv = window.visualViewport;
-    if (!vv) return false;
     const layoutH = window.innerHeight || 0;
     if (!(layoutH > 0)) return false;
-    // 레이아웃 대비 보이는 높이가 크게 줄었거나, 뷰포트가 위로 밀린 경우
-    return vv.height < layoutH * 0.85 || (Number(vv.offsetTop) || 0) > 8;
+    const vv = window.visualViewport;
+    const vvH = vv ? Number(vv.height) || layoutH : layoutH;
+    const vvTop = vv ? Number(vv.offsetTop) || 0 : 0;
+    const baseline = focusBaselineLayoutH > 0 ? focusBaselineLayoutH : layoutH;
+    // 1) VV가 레이아웃보다 작음  2) adjustResize로 innerHeight 자체 축소  3) VV가 위로 밀림
+    return (
+        vvH < layoutH * 0.92
+        || layoutH < baseline * 0.92
+        || vvTop > 8
+    );
+}
+
+function scrollActiveIntoSearchBody(root) {
+    if (!isSearchFilterModal(root)) return;
+    const ae = document.activeElement;
+    const body = root.querySelector('.search-filter-modal__body');
+    if (!ae || !body || !body.contains(ae)) return;
+    try {
+        ae.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    } catch (_) { /* ignore */ }
 }
 
 function applyOverlayVvPin(root) {
     const vv = window.visualViewport;
     if (!root) return;
     pinLayoutScroll();
-    if (!vv || !isKeyboardLikelyOpen()) {
+    if (!isKeyboardLikelyOpen()) {
         // 포커스만 있고 키보드가 없으면 인라인 핀·상단 정렬을 걸지 않음 (웹 데스크톱)
+        // 검색 모달은 CSS :has(input:focus)로 상단 도킹·본문 스크롤이 이미 적용됨
         clearOverlayVvPin(root);
         return;
     }
     root.classList.add('is-ime-open');
     placeProfileFieldEditActions(root, true);
 
-    const top = Math.max(0, Number(vv.offsetTop) || 0);
-    const left = Math.max(0, Number(vv.offsetLeft) || 0);
-    const h = Math.max(120, Math.round(Number(vv.height) || window.innerHeight || 0));
-    const w = Math.max(120, Math.round(Number(vv.width) || window.innerWidth || 0));
+    const layoutH = window.innerHeight || 0;
+    const top = vv ? Math.max(0, Number(vv.offsetTop) || 0) : 0;
+    const left = vv ? Math.max(0, Number(vv.offsetLeft) || 0) : 0;
+    // adjustResize: VV≈innerHeight → 레이아웃 박스 그대로. VV 축소(iOS 등): VV 박스에 핀.
+    const h = Math.max(
+        120,
+        Math.round(vv ? Math.min(Number(vv.height) || layoutH, layoutH) : layoutH)
+    );
+    const w = Math.max(
+        120,
+        Math.round(vv ? Number(vv.width) || window.innerWidth || 0 : window.innerWidth || 0)
+    );
 
-    // fixed inset-0 오버레이를 보이는 visualViewport에 맞춤 (키보드 위로 통째로 밀림 방지)
+    // fixed inset-0 오버레이를 보이는 영역에 맞춤 (키보드 위로 통째로 밀림 방지)
     root.style.top = `${Math.round(top)}px`;
     root.style.left = `${Math.round(left)}px`;
     root.style.width = `${w}px`;
@@ -110,6 +142,8 @@ function applyOverlayVvPin(root) {
     root.style.right = 'auto';
     root.style.bottom = 'auto';
     root.style.transform = '';
+
+    requestAnimationFrame(() => scrollActiveIntoSearchBody(root));
 }
 
 function clearPinTimers() {
@@ -160,7 +194,17 @@ export function initOverlayKeyboardPin() {
         'focusin',
         (e) => {
             if (!isInputLike(e.target) || !findOverlayRoot(e.target)) return;
+            const layoutH = window.innerHeight || 0;
+            const vvH = window.visualViewport?.height ?? layoutH;
+            focusBaselineLayoutH = Math.max(layoutH, vvH, focusBaselineLayoutH || 0);
             scheduleSyncBurst();
+            // 검색: 키보드 애니 후에도 입력란이 본문 스크롤 안에 보이도록
+            const root = findOverlayRoot(e.target);
+            if (isSearchFilterModal(root)) {
+                [50, 150, 320, 500].forEach((ms) => {
+                    pinTimers.push(setTimeout(() => scrollActiveIntoSearchBody(root), ms));
+                });
+            }
         },
         true
     );
@@ -177,6 +221,9 @@ export function initOverlayKeyboardPin() {
             pinTimers.push(
                 setTimeout(() => {
                     scheduleSync();
+                    if (!isInputLike(document.activeElement)) {
+                        focusBaselineLayoutH = 0;
+                    }
                 }, 320)
             );
         },
