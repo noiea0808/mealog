@@ -931,51 +931,12 @@ let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
-function shouldTryAutoDemoSignIn(wasExplicitLogout, wasDemoUserLogout) {
-    // ⚠️ 중요: localStorage를 먼저 확인 (페이지 리로드 후에도 유지)
-    // ⚠️ 중요: 동기적으로 즉시 확인 (비동기 작업 전에)
-    const localStorageExplicitLogout = localStorage.getItem('explicitLogout') === 'true';
-    const localStorageDemoLogout = localStorage.getItem('wasDemoUserLogout') === 'true';
-    const sessionStorageExplicitLogout = sessionStorage.getItem('explicitLogout') === 'true';
-    const sessionStorageDemoLogout = sessionStorage.getItem('wasDemoUserLogout') === 'true';
-    
-    // ⚠️ 중요: 모든 저장소에서 플래그 확인 (하나라도 true이면 차단)
-    const hasExplicitLogout = wasExplicitLogout || localStorageExplicitLogout || sessionStorageExplicitLogout;
-    const hasDemoLogout = wasDemoUserLogout || localStorageDemoLogout || sessionStorageDemoLogout;
-
-    // 명시적 로그아웃이면 절대 자동 로그인하지 않음
-    if (hasExplicitLogout) {
-        console.log('🚫 자동 데모 로그인 스킵: 명시적 로그아웃', {
-            wasExplicitLogout,
-            localStorageExplicitLogout,
-            sessionStorageExplicitLogout,
-            hasExplicitLogout
-        });
-        return false;
-    }
-    // 더미 계정에서 명시적으로 로그아웃한 경우 자동 로그인하지 않음
-    if (hasDemoLogout) {
-        console.log('🚫 자동 데모 로그인 스킵: 더미 계정 로그아웃', {
-            wasDemoUserLogout,
-            localStorageDemoLogout,
-            sessionStorageDemoLogout,
-            hasDemoLogout
-        });
-        return false;
-    }
-    // 추가 안전장치
-    try {
-        if (localStorage.getItem('mealog_seen_real_login') === '1') {
-            console.log('🚫 자동 데모 로그인 스킵: 실제 로그인 경험 있음');
-            return false;
-        }
-        if (localStorage.getItem('mealog_auto_demo_off') === '1') {
-            console.log('🚫 자동 데모 로그인 스킵: 자동 데모 비활성화');
-            return false;
-        }
-    } catch (_) {}
-    console.log('✅ 자동 데모 로그인 시도');
-    return true;
+/**
+ * 자동 둘러보기(데모 로그인) 여부.
+ * 의도: 첫 실행은 서비스 가이드 → 로그인 화면. 둘러보기는 로그인 화면「둘러보기」버튼으로만.
+ */
+function shouldTryAutoDemoSignIn(_wasExplicitLogout, _wasDemoUserLogout) {
+    return false;
 }
 
 initAuth(async (user) => {
