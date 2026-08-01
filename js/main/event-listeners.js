@@ -42,7 +42,12 @@ import {
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { initCenterDialogGrabbers } from './init-center-dialog-grabbers.js';
 import { initOverlayKeyboardPin } from '../utils/overlay-keyboard-pin.js';
-import { initAppImeViewport, ensureFocusedInputVisible } from '../utils/ime-viewport.js';
+import {
+    initAppImeViewport,
+    ensureFocusedInputVisible,
+    isImeInputLike,
+    setAppImeOpen
+} from '../utils/ime-viewport.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import {
     CTA_FAB_SPIN_CLASS,
@@ -91,9 +96,9 @@ function initMainAppKeyboardHandling() {
                     return;
                 }
                 const active = document.activeElement;
-                if (isInputLike(active)) {
+                if (isImeInputLike(active)) {
                     active.blur();
-                    setKeyboardClosed(true);
+                    setAppImeOpen(false);
                 } else if (canGoBack) {
                     window.history.back();
                 } else if (typeof App.exitApp === 'function') {

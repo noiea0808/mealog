@@ -80,6 +80,9 @@ html.platform-native-app .bottom-nav button i.lucide {
     /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
     --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
     --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
+    /* IME: Edge-to-edge에서 레이아웃이 안 줄어들 때 키보드가 덮는 높이 (js/utils/ime-viewport.js) */
+    --ime-overlap: 0px;
+    --ime-inset: 0px;
     /* 시안 v2 토큰 — Light Mint mid (#3CB889) */
     --green: #3cb889;
     --green-deep: #2d9f74;
@@ -12702,10 +12705,10 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
     margin: 0;
     box-shadow: none;
 }
-/* 키보드 포커스/IME: 네비·safe-bottom 토큰 띠 없이 실제 inset만 */
+/* 키보드 포커스/IME: 네비 띠 제거 + Edge-to-edge에서 안 줄어들 때 --ime-overlap만큼 올림 */
 body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)));
     z-index: 120;
 }
 #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
@@ -13100,12 +13103,17 @@ body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtal
     height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
     max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
 }
-body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
-    /* 컴포저와 동일: bottom: max(0.35rem, env(safe-area-inset-bottom)) — 네비 숨김 후 키보드 대응 */
+body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent,
+body.ime-open #boardListView #boardFeedPanelContent {
+    /* 컴포저 + --ime-overlap(Edge-to-edge 미축소 시) */
     --board-feed-scroll-inset-bottom: calc(
-        max(0.35rem, env(safe-area-inset-bottom, 0px)) + var(--board-feed-composer-face) +
-            var(--board-feed-above-composer)
+        var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)) +
+            var(--board-feed-composer-face) + var(--board-feed-above-composer)
     );
+}
+body.ime-open:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--ime-overlap, 0px));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--ime-overlap, 0px));
 }
 /* 패널(#boardListPanel)에서 이미 풀폭·배경 처리 — 이중 네거티브 마진 제거 */
 #boardListView #noticesContainer,
@@ -13696,13 +13704,13 @@ button.board-detail-stat:disabled {
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
 }
-/* 상세 댓글 포커스/IME: 밀톡 컴포저와 같이 하단 fixed (키보드 위, 토큰 safe-bottom 띠 제외) */
+/* 상세 댓글 포커스/IME: 하단 fixed + --ime-overlap(Edge-to-edge 미축소 시) */
 body:has(#boardCommentInput:focus, #noticeCommentInput:focus) .board-detail-composer,
 body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)));
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
     z-index: 120;
@@ -13715,7 +13723,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
 }
 body:has(#boardCommentInput:focus, #noticeCommentInput:focus) #boardDetailContent,
 body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
-    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(5.75rem + var(--ime-overlap, 0px) + env(safe-area-inset-bottom, 0px));
 }
 .board-detail-composer__row {
     position: relative;
@@ -16272,7 +16280,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-sheet-root {
     max-height: 100%;
     padding-top: max(0.25rem, env(safe-area-inset-top, 0px));
-    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--ime-overlap, 0px) + max(6px, env(safe-area-inset-bottom, 0px)));
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-composer {
     padding-bottom: 2px;

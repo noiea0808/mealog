@@ -1,1 +1,33 @@
-{"appId":"com.mealog.app","appName":"MEALOG","webDir":"www","server":{"androidScheme":"https"},"plugins":{"SystemBars":{"insetsHandling":"disable","style":"LIGHT"},"SocialLogin":{"providers":{"google":true,"facebook":false,"apple":false,"twitter":false}},"PushNotifications":{"presentationOptions":["alert","sound","badge"]}}}
+{
+  "appId": "com.mealog.app",
+  "appName": "MEALOG",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "disable",
+      "style": "LIGHT"
+    },
+    "SocialLogin": {
+      "providers": {
+        "google": true,
+        "facebook": false,
+        "apple": false,
+        "twitter": false
+      }
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "alert",
+        "sound",
+        "badge"
+      ]
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
+    }
+  }
+}

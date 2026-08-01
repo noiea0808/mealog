@@ -76,7 +76,7 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { ensureFocusedInputVisible } from '../utils/ime-viewport.js';
+import { ensureFocusedInputVisible, getImeMetrics, captureImeBaseline } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
@@ -936,11 +936,12 @@ function initEntryModalKeyboardHandling(entryModal) {
     entryModal.setKeyboardBaseline = saveBaseline;
     entryModal.addEventListener('focusin', (e) => {
         if (!e.target.matches?.('input, textarea')) return;
+        captureImeBaseline();
         // 키보드가 실제로 올라오기 전에는 keyboard-open 하지 않음.
         // (센터 정렬 → stretch 전환으로 팝업이 위로 튕겼다 돌아오는 현상 방지)
         // 메모는 확장 후 syncEntryCommentExpandedState에서 스크롤. 그 외 필드는 여기서 보정.
         if (!e.target.classList?.contains('entry-comment-textarea')) {
-            scrollEntryFieldIntoView(e.target, { align: 'nearest' });
+            scrollEntryFieldIntoView(e.target, { align: 'nearest', afterMs: 120 });
         }
         scheduleViewportCheck();
     });
@@ -949,13 +950,15 @@ function initEntryModalKeyboardHandling(entryModal) {
     });
     const checkViewport = () => {
         if (entryModal.classList.contains('hidden')) return;
-        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const m = getImeMetrics();
+        const vh = m.vvH || window.visualViewport?.height || window.innerHeight;
         const threshold = getViewportThreshold();
-        if (vh >= threshold) {
+        // VV 축소뿐 아니라 baseline 레이아웃 축소·vvTop·네이티브 IME 높이도 키보드로 본다
+        const open = m.open || vh < threshold;
+        if (!open) {
             setKeyboardOpen(false);
             return;
         }
-        // 키보드가 실제로 줄어든 뒤에만 keyboard-open (칩 탭 등 focusout 깜빡임 방지)
         setKeyboardOpen(true);
         if (imeComposing) return;
         scheduleViewportGeometryFromVv();

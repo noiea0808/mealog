@@ -1,6 +1,8 @@
 /**
  * 앱 전역 IME(키보드) 감지·오버레이 핀·입력란 가시 스크롤.
- * Android adjustResize에서 innerHeight와 VV가 같이 줄어드는 경우를 baseline으로 처리한다.
+ *
+ * Edge-to-edge Android에서는 adjustResize가 거의 안 먹을 수 있어
+ * @capacitor/keyboard(resizeOnFullScreen) + visualViewport + --ime-overlap 을 함께 쓴다.
  */
 
 let baselineLayoutH = 0;
@@ -9,6 +11,8 @@ let initialized = false;
 let syncRaf = null;
 let burstTimers = [];
 let pollTimer = null;
+/** Capacitor Keyboard 플러그인이 보고한 키보드 높이(px). 0이면 미보고/닫힘 */
+let nativeImeHeight = 0;
 
 /** @type {Set<(open: boolean) => void>} */
 const listeners = new Set();
@@ -25,11 +29,34 @@ export function isImeInputLike(el) {
 export function captureImeBaseline() {
     const layoutH = window.innerHeight || 0;
     const vvH = window.visualViewport?.height ?? layoutH;
+    // 키보드가 이미 올라온 뒤의 작은 높이로 baseline이 덮이지 않게 상승만 허용
     baselineLayoutH = Math.max(layoutH, vvH, baselineLayoutH || 0);
+}
+
+/** 플러그인 키보드 높이로 baseline을 보정 (리사이즈 이후 첫 캡처 오판 방지) */
+function ensureBaselineWithKeyboard(keyboardH) {
+    const layoutH = window.innerHeight || 0;
+    const kh = Math.max(0, Number(keyboardH) || 0);
+    if (kh > 80) {
+        baselineLayoutH = Math.max(baselineLayoutH || 0, layoutH + kh);
+    } else {
+        captureImeBaseline();
+    }
 }
 
 export function clearImeBaseline() {
     baselineLayoutH = 0;
+}
+
+export function setNativeImeHeight(px) {
+    const n = Math.max(0, Math.round(Number(px) || 0));
+    if (nativeImeHeight === n) return;
+    nativeImeHeight = n;
+    scheduleSyncBurst();
+}
+
+export function getNativeImeHeight() {
+    return nativeImeHeight;
 }
 
 /**
@@ -38,10 +65,13 @@ export function clearImeBaseline() {
  *   layoutH: number,
  *   vvH: number,
  *   vvTop: number,
+ *   vvBottom: number,
  *   baseline: number,
  *   pinTop: number,
  *   pinHeight: number,
  *   pinWidth: number,
+ *   pinLeft: number,
+ *   imeOverlap: number,
  *   adjustResizeLikely: boolean
  * }}
  */
@@ -52,29 +82,57 @@ export function getImeMetrics() {
     const vvTop = vv ? Number(vv.offsetTop) || 0 : 0;
     const vvLeft = vv ? Number(vv.offsetLeft) || 0 : 0;
     const vvW = vv ? Number(vv.width) || window.innerWidth || 0 : window.innerWidth || 0;
+    const vvBottom = vvTop + vvH;
     const baseline = baselineLayoutH > 0 ? baselineLayoutH : layoutH;
     const open =
         layoutH > 0 &&
-        (vvH < layoutH * 0.92 || layoutH < baseline * 0.92 || vvTop > 8);
-    // adjustResize: 레이아웃이 이미 키보드 제외 → 오버레이를 VV로 줄이면 offsetTop>0일 때 하단 빈 띠
+        (vvH < layoutH * 0.92 ||
+            layoutH < baseline * 0.92 ||
+            vvTop > 8 ||
+            nativeImeHeight > 80);
+    // adjustResize/body resize: 레이아웃이 이미 키보드 제외 → fixed bottom은 0에 두면 됨
     const adjustResizeLikely = baseline > 0 && layoutH < baseline * 0.92 && vvTop <= 8;
+    const overlapFromVv = Math.max(0, layoutH - vvBottom);
+    // VV가 알려주는 실제 가림량 우선. 리사이즈된 뒤에 native 높이를 또 더하면 이중 상승됨.
+    let imeOverlap = overlapFromVv > 8 ? overlapFromVv : 0;
+    if (!adjustResizeLikely && imeOverlap < 8 && nativeImeHeight > 80) {
+        imeOverlap = nativeImeHeight;
+    }
     const pinTop = adjustResizeLikely ? 0 : Math.max(0, vvTop);
     const pinHeight = adjustResizeLikely
         ? Math.max(120, Math.round(layoutH))
-        : Math.max(120, Math.round(Math.min(vvH, Math.max(0, layoutH - pinTop))));
+        : Math.max(
+              120,
+              Math.round(
+                  vv
+                      ? Math.min(vvH, Math.max(0, layoutH - pinTop - imeOverlap))
+                      : Math.max(0, layoutH - imeOverlap)
+              )
+          );
     const pinWidth = Math.max(120, Math.round(vvW));
     return {
         open,
         layoutH,
         vvH,
         vvTop,
+        vvBottom,
         baseline,
         pinTop,
         pinHeight,
         pinWidth,
         pinLeft: adjustResizeLikely ? 0 : Math.max(0, vvLeft),
+        imeOverlap,
         adjustResizeLikely
     };
+}
+
+function publishImeCssVars(m) {
+    const root = document.documentElement;
+    if (!root) return;
+    const overlap = m?.open ? Math.round(m.imeOverlap || 0) : 0;
+    root.style.setProperty('--ime-overlap', `${overlap}px`);
+    root.style.setProperty('--ime-inset', `${overlap}px`);
+    root.style.setProperty('--ime-vv-height', `${Math.round(m?.vvH || window.innerHeight || 0)}px`);
 }
 
 export function isAppImeOpen() {
@@ -88,9 +146,10 @@ export function onAppImeChange(fn) {
 
 export function setAppImeOpen(open) {
     const next = !!open;
+    const m = getImeMetrics();
+    publishImeCssVars(next ? m : { open: false, imeOverlap: 0, vvH: window.innerHeight || 0 });
     if (imeOpen === next) {
         document.body.classList.toggle('ime-open', next);
-        // keyboard-closed = 키보드 없음 (레거시 CSS 호환). IME 중에는 절대 복원 규칙이 이기면 안 됨.
         document.body.classList.toggle('keyboard-closed', !next);
         return;
     }
@@ -107,17 +166,24 @@ export function setAppImeOpen(open) {
 export function syncAppImeState() {
     const focused = isImeInputLike(document.activeElement);
     if (!focused) {
+        // 포커스 없으면 닫힘. baseline은 현재 레이아웃으로 갱신(다음 오픈 비교용)
         setAppImeOpen(false);
-        clearImeBaseline();
+        if (nativeImeHeight <= 80) {
+            baselineLayoutH = Math.max(
+                window.innerHeight || 0,
+                window.visualViewport?.height || 0
+            );
+        }
         return false;
     }
     const { open } = getImeMetrics();
-    setAppImeOpen(open);
-    return open;
+    setAppImeOpen(open || nativeImeHeight > 80);
+    return imeOpen;
 }
 
 /**
- * 스크롤 부모 안에서 포커스된 입력란이 보이도록 맞춤 (지연 버스트 포함).
+ * 보이는 영역(visualViewport − 패드) 안에서 포커스 입력이 가려지지 않게 스크롤.
+ * 스크롤 부모 bounds만 보면 키보드에 덮인 채 “이미 보임”으로 오판하므로 VV bottom을 함께 쓴다.
  * @param {Element|null} [el]
  * @param {{ align?: 'nearest'|'end'|'center', pad?: number, delays?: number[], scrollParent?: Element|null }} [opts]
  */
@@ -143,11 +209,30 @@ export function ensureFocusedInputVisible(el, opts = {}) {
             }
             n = n.parentElement;
         }
-        return null;
+        return document.scrollingElement || document.documentElement;
+    };
+
+    const visibleBand = () => {
+        const vv = window.visualViewport;
+        const m = getImeMetrics();
+        if (vv) {
+            const top = (Number(vv.offsetTop) || 0) + pad;
+            // 레이아웃이 안 줄어든 경우 imeOverlap만큼 하단을 추가로 비움
+            const bottom =
+                (Number(vv.offsetTop) || 0) +
+                (Number(vv.height) || window.innerHeight) -
+                pad -
+                (m.adjustResizeLikely ? 0 : Math.max(0, m.imeOverlap));
+            return { top, bottom: Math.max(top + 40, bottom) };
+        }
+        const top = pad;
+        const bottom = (window.innerHeight || 0) - pad - Math.max(0, m.imeOverlap);
+        return { top, bottom: Math.max(top + 40, bottom) };
     };
 
     const run = () => {
         if (!document.contains(target) || document.activeElement !== target) return;
+        const band = visibleBand();
         const scrollParent = findScrollParent(target);
         if (!scrollParent) {
             try {
@@ -162,14 +247,32 @@ export function ensureFocusedInputVisible(el, opts = {}) {
         try {
             const tRect = target.getBoundingClientRect();
             const sRect = scrollParent.getBoundingClientRect();
-            if (align === 'end' || tRect.bottom > sRect.bottom - pad) {
-                scrollParent.scrollTop += tRect.bottom - sRect.bottom + pad;
-            } else if (align === 'center') {
+            // 스크롤 부모 ∩ 실제 보이는 밴드
+            const clipTop = Math.max(sRect.top, band.top);
+            const clipBottom = Math.min(sRect.bottom, band.bottom);
+
+            if (align === 'center') {
                 const tMid = (tRect.top + tRect.bottom) / 2;
-                const sMid = (sRect.top + sRect.bottom) / 2;
-                scrollParent.scrollTop += tMid - sMid;
-            } else if (tRect.top < sRect.top + pad) {
-                scrollParent.scrollTop -= sRect.top - tRect.top + pad;
+                const cMid = (clipTop + clipBottom) / 2;
+                scrollParent.scrollTop += tMid - cMid;
+                return;
+            }
+
+            if (align === 'end' || tRect.bottom > clipBottom) {
+                scrollParent.scrollTop += tRect.bottom - clipBottom;
+            } else if (tRect.top < clipTop) {
+                scrollParent.scrollTop -= clipTop - tRect.top;
+            }
+
+            // 한 번 더: 스크롤 후에도 VV 밖으로 나가면 scrollIntoView로 보정
+            const after = target.getBoundingClientRect();
+            const band2 = visibleBand();
+            if (after.bottom > band2.bottom || after.top < band2.top) {
+                target.scrollIntoView({
+                    block: after.bottom > band2.bottom ? 'end' : 'center',
+                    inline: 'nearest',
+                    behavior: 'auto'
+                });
             }
         } catch (_) { /* ignore */ }
     };
@@ -219,7 +322,10 @@ function scheduleSyncBurst() {
             setTimeout(() => {
                 scheduleSync();
                 if (isImeInputLike(document.activeElement)) {
-                    ensureFocusedInputVisible(document.activeElement, { align: 'nearest' });
+                    ensureFocusedInputVisible(document.activeElement, {
+                        align: 'nearest',
+                        delays: [0]
+                    });
                 }
             }, ms)
         );
@@ -234,6 +340,50 @@ function scheduleSync() {
     });
 }
 
+function bindCapacitorKeyboard() {
+    try {
+        if (!window.Capacitor?.isNativePlatform?.()) return;
+        // 정적 ES 모듈 앱: 네이티브 브릿지 Plugins.Keyboard 사용 (번들 import 없음)
+        const Keyboard = window.Capacitor?.Plugins?.Keyboard;
+        if (!Keyboard) return;
+
+        if (typeof Keyboard.setResizeMode === 'function') {
+            try {
+                Keyboard.setResizeMode({ mode: 'body' });
+            } catch (_) { /* ignore */ }
+        }
+
+        const onShow = (info) => {
+            const h = Number(info?.keyboardHeight) || 0;
+            ensureBaselineWithKeyboard(h);
+            setNativeImeHeight(h);
+            setAppImeOpen(true);
+            if (isImeInputLike(document.activeElement)) {
+                ensureFocusedInputVisible(document.activeElement, {
+                    align: 'nearest',
+                    delays: [0, 80, 200, 400]
+                });
+            }
+        };
+        const onHide = () => {
+            setNativeImeHeight(0);
+            setAppImeOpen(false);
+            baselineLayoutH = Math.max(
+                window.innerHeight || 0,
+                window.visualViewport?.height || 0,
+                baselineLayoutH || 0
+            );
+        };
+
+        if (typeof Keyboard.addListener === 'function') {
+            Keyboard.addListener('keyboardWillShow', onShow);
+            Keyboard.addListener('keyboardDidShow', onShow);
+            Keyboard.addListener('keyboardWillHide', onHide);
+            Keyboard.addListener('keyboardDidHide', onHide);
+        }
+    } catch (_) { /* ignore */ }
+}
+
 /**
  * body.ime-open / keyboard-closed 동기화 + 포커스 입력 가시화.
  * overlay-keyboard-pin과 함께 사용.
@@ -242,8 +392,13 @@ export function initAppImeViewport() {
     if (initialized || typeof document === 'undefined') return;
     initialized = true;
 
-    // 초기: 키보드 없음
+    // 앱 기동 시 전체 높이 저장 — 이후 키보드 리사이즈와 비교
+    baselineLayoutH = Math.max(
+        window.innerHeight || 0,
+        window.visualViewport?.height || 0
+    );
     setAppImeOpen(false);
+    bindCapacitorKeyboard();
 
     document.addEventListener(
         'focusin',
@@ -263,7 +418,7 @@ export function initAppImeViewport() {
                     });
                 }
                 const m = getImeMetrics();
-                if ((!m.open && Date.now() - start > 800) || Date.now() - start > 10000) {
+                if ((!m.open && nativeImeHeight <= 80 && Date.now() - start > 800) || Date.now() - start > 12000) {
                     clearInterval(pollTimer);
                     pollTimer = null;
                 }

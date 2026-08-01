@@ -12,7 +12,15 @@
       "style": "LIGHT"
     },
     "PushNotifications": {
-      "presentationOptions": ["alert", "sound", "badge"]
+      "presentationOptions": [
+        "alert",
+        "sound",
+        "badge"
+      ]
+    },
+    "Keyboard": {
+      "resize": "body",
+      "resizeOnFullScreen": true
     }
   }
 }

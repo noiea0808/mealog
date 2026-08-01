@@ -22,6 +22,8 @@ const OVERLAY_ROOT_SELECTORS = [
     '#feedBubbleEditOverlay',
     '#reportModal',
     '#dailyJournalModal',
+    '#emailAuthModal',
+    '#signupWizard',
     '.moment-v2-social-comments-panel--sheet-in-body'
 ];
 
