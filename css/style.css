@@ -77,9 +77,17 @@ html.platform-native-app .bottom-nav button i.lucide {
 }
 
 :root { 
-    /* env()가 0 반환해도 최소값 보장 (상태바~28px, 제스처네비~48px) */
-    --safe-top: max(env(safe-area-inset-top, 28px), 28px); 
-    --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
+    /* env()가 0 반환해도 최소값 보장 (상태바~28px) */
+    --safe-top: max(env(safe-area-inset-top, 28px), 28px);
+    /*
+     * 하단 safe 토큰 (의미를 분리 — 이중 사용 방지)
+     * - gesture: 실제 홈 인디케이터/제스처 inset (IME·시트 하단, 최소 48 강제 없음)
+     * - nav-slot: 하단 앱 네비·FAB·뷰 높이용 (네이티브에서 최소 48px)
+     * - --safe-bottom: 하위 호환 alias (= nav-slot). 신규 코드는 gesture/nav-slot을 명시
+     */
+    --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
+    --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
+    --safe-bottom: var(--safe-bottom-nav-slot);
     /* IME: Edge-to-edge에서 레이아웃이 안 줄어들 때 키보드가 덮는 높이 (js/utils/ime-viewport.js) */
     --ime-overlap: 0px;
     --ime-inset: 0px;
@@ -167,9 +175,11 @@ html.platform-native-app .bottom-nav button i.lucide {
     /* 갤러리 화면2: #galleryPostsInsertPoint `gap` = 이전 글 하단 ↔ 다음 글 상단(투명 래퍼 기준) 유일 간격 */
     --moment-v2-gallery-post-gap: 14px;
 }
-/* Web: 핸폰 네비 없음 → safe-bottom 0, 상단은 브라우저 env만(28px 최소값은 네이티브용) */
+/* Web: 네비 슬롯 최소치 없음. gesture는 브라우저 env 유지(모바일 웹 IME/홈바용) */
 html.platform-web {
     --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
+    --safe-bottom-nav-slot: 0px;
     --safe-bottom: 0px;
     /* max-w-md 폰 컬럼 바깥(뷰포트 좌우) — line 톤의 은은한 프레임 */
     background-color: var(--line);
@@ -184,6 +194,8 @@ html.platform-web #navigationBarOverlay {
  */
 html.platform-native-inset-padded {
     --safe-top: 0px;
+    --safe-bottom-gesture: 0px;
+    --safe-bottom-nav-slot: 0px;
     --safe-bottom: 0px;
 }
 html.platform-native-inset-padded #statusBarOverlay,
@@ -375,15 +387,15 @@ body:has(#searchInput:focus) #navigationBarOverlay,
 body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
     display: block !important;
 }
-/* 포커스 시에도 safe-area 유지. 하단 네비 슬롯(80px)만 제거 */
+/* 포커스 시: 네비 슬롯(80px·nav-slot) 제거, 실제 제스처 inset(gesture)만 유지 */
 body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
     padding-top: var(--safe-top) !important;
-    padding-bottom: var(--safe-bottom) !important;
+    padding-bottom: var(--safe-bottom-gesture) !important;
 }
 /*
  * IME 열림(body.ime-open): 키보드 위 빈 띠 제거
- * - #navigationBarOverlay(--safe-bottom 최소 48px) 숨김
- * - padding-bottom은 실제 env safe만 (토큰 최소 48px 사용 금지)
+ * - #navigationBarOverlay(nav-slot 최소 48px) 숨김
+ * - padding-bottom은 --safe-bottom-gesture만 (nav-slot/최소 48 사용 금지)
  * - keyboard-closed 복원 규칙이 IME 중 이기지 않도록 :not(.ime-open) 한정
  */
 body.ime-open #navigationBarOverlay {
@@ -394,14 +406,14 @@ body.ime-open #navigationBarOverlay {
 }
 body.ime-open:not(.entry-modal-open) {
     padding-top: var(--safe-top) !important;
-    padding-bottom: max(0px, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: var(--safe-bottom-gesture) !important;
 }
 body.ime-open .bottom-nav,
 body.ime-open #trackerSection {
     display: none !important;
 }
 body.ime-open #boardWriteView {
-    padding-bottom: calc(1rem + max(0px, env(safe-area-inset-bottom, 0px))) !important;
+    padding-bottom: calc(1rem + var(--safe-bottom-gesture)) !important;
 }
 /* 식사 기록 모달 열림: 입력 포커스로 body padding·배경 chrome이 튀지 않도록 전역 규칙 예외 */
 body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) {
@@ -413,33 +425,39 @@ body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(
 body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #trackerSection:not(.hidden) {
     display: block !important;
 }
-/* 글쓰기: 키보드 중에도 하단 safe + CTA 스크롤 여유 */
+/* 글쓰기: 키보드 중에도 하단 gesture safe + CTA 스크롤 여유 (nav-slot 최소 48 제외) */
 body:has(#boardWriteContent:focus) #boardWriteView {
-    padding-bottom: calc(1rem + var(--safe-bottom)) !important;
+    padding-bottom: calc(1rem + var(--safe-bottom-gesture)) !important;
 }
 /* iOS Safari: 입력 텍스트가 바로 안 보이는 버그 수정 (GPU compositing으로 리페인트 강제) */
 input, textarea, [contenteditable="true"] {
     -webkit-transform: translateZ(0);
     transform: translateZ(0);
 }
-/* 키보드 닫힘: UI 복원 — IME 중(body.ime-open)에는 적용하지 않음 (adjustResize 오판으로 빈 층 생기던 원인) */
-body.keyboard-closed:not(.ime-open) .bottom-nav {
+/*
+ * 키보드 닫힘: UI 복원
+ * - IME 중(body.ime-open)에는 적용하지 않음
+ * - 텍스트 입력 포커스 중에도 적용하지 않음
+ *   (네이티브: 포커스~Keyboard 이벤트 사이 keyboard-closed가 이겨
+ *    하단 네비 높이(~80px) 빈 띠가 키보드 위에 남던 원인)
+ */
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) .bottom-nav {
     display: grid !important;
     grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 }
-body.keyboard-closed:not(.ime-open) #navigationBarOverlay,
-body.keyboard-closed:not(.ime-open) #mainAppHeader,
-body.keyboard-closed:not(.ime-open) #statusBarOverlay {
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) #navigationBarOverlay,
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) #mainAppHeader,
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) #statusBarOverlay {
     display: block !important;
 }
-body.keyboard-closed:not(.ime-open) #trackerSection:not(.hidden) {
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) #trackerSection:not(.hidden) {
     display: block !important;
 }
-body.keyboard-closed:not(.ime-open) {
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) {
     padding-top: var(--safe-top) !important;
     padding-bottom: calc(80px + var(--safe-bottom)) !important;
 }
-body.keyboard-closed:not(.ime-open) #boardWriteView {
+body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus)) #boardWriteView {
     padding-bottom: calc(80px + var(--safe-bottom)) !important;
 }
 /* =========================
@@ -3423,7 +3441,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 body.bottom-nav-scroll-hidden .bottom-nav {
     transform: translateX(-50%) translateY(100%);
 }
-/* 네비 슬롯(~72px)만큼 하단 여백 축소 — 콘텐츠가 아래까지 이어짐. safe-bottom(제스처)만 유지 */
+/* 네비 슬롯(~72px)만큼 하단 여백 축소 — 콘텐츠가 아래까지 이어짐. --safe-bottom(nav-slot)만 유지 */
 body.bottom-nav-scroll-hidden {
     padding-bottom: calc(12px + var(--safe-bottom));
     --moment-v2-app-nav-top-from-bottom: var(--safe-bottom);
@@ -3495,7 +3513,7 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     margin-right: auto;
     /* 높이·top은 JS가 px로 잠금. 상한은 뷰포트 80% */
     height: var(--entry-sheet-h, auto);
-    max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
+    max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, var(--safe-bottom-gesture))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
 /* 키보드 열림: JS가 --entry-sheet-top을 상단으로 낮춰 콘텐츠 영역 확보 */
@@ -3655,10 +3673,10 @@ html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     min-height: 0;
 }
 html:not(.platform-web) #dailyJournalModal #dailyJournalModalActions {
-    padding-bottom: calc(16px + max(0px, env(safe-area-inset-bottom, 0px))) !important;
+    padding-bottom: calc(16px + var(--safe-bottom-gesture)) !important;
 }
 html.platform-web #dailyJournalModal #dailyJournalModalActions {
-    padding-bottom: calc(16px + max(0px, env(safe-area-inset-bottom, 0px))) !important;
+    padding-bottom: calc(16px + var(--safe-bottom-gesture)) !important;
 }
 body.daily-journal-modal-open .bottom-nav,
 body.daily-journal-modal-open #navigationBarOverlay,
@@ -12729,7 +12747,7 @@ body:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden) {
 /* 키보드 포커스/IME: 네비 띠 제거 + Edge-to-edge에서 안 줄어들 때 --ime-overlap만큼 올림 */
 body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, var(--safe-bottom-gesture)));
     z-index: 120;
 }
 #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
@@ -13126,9 +13144,9 @@ body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtal
 }
 body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent,
 body.ime-open #boardListView #boardFeedPanelContent {
-    /* 컴포저 + --ime-overlap(Edge-to-edge 미축소 시) */
+    /* 컴포저 + --ime-overlap(Edge-to-edge 미축소 시) — gesture만 (nav-slot 최소 48 제외) */
     --board-feed-scroll-inset-bottom: calc(
-        var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)) +
+        var(--ime-overlap, 0px) + max(0.35rem, var(--safe-bottom-gesture)) +
             var(--board-feed-composer-face) + var(--board-feed-above-composer)
     );
 }
@@ -13731,7 +13749,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(var(--ime-overlap, 0px) + max(0.35rem, var(--safe-bottom-gesture)));
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
     z-index: 120;
@@ -13744,7 +13762,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
 }
 body:has(#boardCommentInput:focus, #noticeCommentInput:focus) #boardDetailContent,
 body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
-    padding-bottom: calc(5.75rem + var(--ime-overlap, 0px) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(5.75rem + var(--ime-overlap, 0px) + var(--safe-bottom-gesture));
 }
 .board-detail-composer__row {
     position: relative;
@@ -16303,7 +16321,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-sheet-root {
     max-height: 100%;
     padding-top: max(0.25rem, env(safe-area-inset-top, 0px));
-    padding-bottom: calc(var(--ime-overlap, 0px) + max(6px, env(safe-area-inset-bottom, 0px)));
+    padding-bottom: calc(var(--ime-overlap, 0px) + max(6px, var(--safe-bottom-gesture)));
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-composer {
     padding-bottom: 2px;

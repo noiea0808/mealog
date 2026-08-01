@@ -121,10 +121,12 @@
         html.mealog-landing-active body {
             background: #ffffff;
         }
-        /* style.css와 동일 — 첫 페인트부터 dvh·safe-top 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
+        /* style.css와 동일 — 첫 페인트부터 dvh·safe 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
         :root {
             --safe-top: max(env(safe-area-inset-top, 28px), 28px);
-            --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
+            --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
+            --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
+            --safe-bottom: var(--safe-bottom-nav-slot);
         }
         #landingPage {
             display: flex;
@@ -367,7 +369,7 @@
             box-sizing: border-box;
         }
         html.platform-native-app #landingBottomFixed {
-            padding-bottom: max(env(safe-area-inset-bottom), 48px);
+            padding-bottom: var(--safe-bottom-nav-slot);
         }
         html.platform-native-inset-padded #landingPage {
             padding-top: 0;
@@ -686,6 +688,14 @@
                         var m = ua.match(/Chrom(?:e|ium)\/(\d+)/);
                         return m ? parseInt(m[1], 10) : 0;
                     }
+                    function setSafeBottomTokens(gesturePx, navSlotPx) {
+                        var g = Math.max(0, Math.round(Number(gesturePx) || 0));
+                        var n = Math.max(0, Math.round(Number(navSlotPx) || 0));
+                        document.documentElement.style.setProperty('--safe-bottom-gesture', g + 'px');
+                        document.documentElement.style.setProperty('--safe-bottom-nav-slot', n + 'px');
+                        /* 하위 호환: 기존 var(--safe-bottom) 사용처 = nav-slot */
+                        document.documentElement.style.setProperty('--safe-bottom', n + 'px');
+                    }
                     function applyNativeSafeAreaMode() {
                         var top = readEnvSafeInset('top');
                         var bottom = readEnvSafeInset('bottom');
@@ -697,13 +707,15 @@
                         document.documentElement.classList.toggle('platform-native-inset-passthrough', !legacyPaddedWebView);
                         if (legacyPaddedWebView) {
                             document.documentElement.style.setProperty('--safe-top', '0px');
-                            document.documentElement.style.setProperty('--safe-bottom', '0px');
+                            setSafeBottomTokens(0, 0);
                         } else if (envHasInsets) {
                             document.documentElement.style.setProperty('--safe-top', Math.max(top, SAFE_TOP_MIN) + 'px');
-                            document.documentElement.style.setProperty('--safe-bottom', Math.max(bottom, SAFE_BOTTOM_MIN) + 'px');
+                            /* gesture=실제 inset, nav-slot=네비용 최소 48 */
+                            setSafeBottomTokens(bottom, Math.max(bottom, SAFE_BOTTOM_MIN));
                         } else {
                             document.documentElement.style.setProperty('--safe-top', SAFE_TOP_MIN + 'px');
-                            document.documentElement.style.setProperty('--safe-bottom', SAFE_BOTTOM_MIN + 'px');
+                            /* env 미보고 기기: 침범 방지용 추정값 — gesture·nav-slot 동일 */
+                            setSafeBottomTokens(SAFE_BOTTOM_MIN, SAFE_BOTTOM_MIN);
                         }
                     }
                     applyNativeSafeAreaMode();

@@ -40,12 +40,16 @@ export function isMobileWebTouchUi() {
 
 /**
  * 키보드가 올라온 것으로 보고 UI(ime-open·오버레이 핀)를 적용할지.
- * 모바일 웹은 VV 축소 전이라도 입력 포커스면 true (앱의 Keyboard 이벤트를 대체).
+ * 네이티브·모바일 웹: Keyboard/VV 축소 전이라도 입력 포커스면 true
+ * (포커스~이벤트 사이 keyboard-closed가 네비 슬롯(80px)을 남기지 않게).
  */
 export function shouldTreatImeOpen() {
     if (nativeImeHeight > 80) return true;
     if (!isImeInputLike(document.activeElement)) return false;
     if (getImeMetrics().open) return true;
+    try {
+        if (window.Capacitor?.isNativePlatform?.()) return true;
+    } catch (_) { /* ignore */ }
     return isMobileWebTouchUi();
 }
 
