@@ -1350,12 +1350,25 @@ function activateSavedRecordTags(r, isS) {
 function ensureEntryWhatInputSnackCompositionInit() {
     const entryWhatInput = document.getElementById('entryWhatInput');
     if (!entryWhatInput || entryWhatInput._snackCompositionInit) return;
-    const updateSnackSuggestions = () => {
-        const subTags = window.userSettings.subTags.snack || [];
-        const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-        window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+    // 입력(스페이스 포함)마다 스테이지를 main↔sub로 뒤집지 않고, 선택된 메인태그 아래 칩 active만 갱신
+    const updateWhatSuggestionActives = () => {
+        const parentFilter = document.querySelector('#entryWhatChips button.active')?.innerText;
+        if (!parentFilter) return;
+        const isSnack = appState.entryFormMode === 'snack';
+        const subTagKey = isSnack ? 'snack' : 'menu';
+        const list = window.userSettings?.subTags?.[subTagKey] || [];
+        if (typeof window.renderSecondary === 'function') {
+            window.renderSecondary(
+                'entryWhatSuggestions',
+                list,
+                'entryWhatInput',
+                parentFilter,
+                subTagKey,
+                { preserveStage: true }
+            );
+        }
     };
-    addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
+    addCompositionAwareInput(entryWhatInput, updateWhatSuggestionActives);
     entryWhatInput._snackCompositionInit = true;
 }
 
@@ -1422,20 +1435,31 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
     const hasContent = !!(el.value || '').length;
     const focused = document.activeElement === el;
     const keepOpen = focused || hasContent;
+    const prevHeight = el.offsetHeight || 0;
     const wasExpanded = el.classList.contains('entry-comment-textarea--expanded');
     el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
-    el.rows = focused ? 3 : (hasContent ? 2 : 1);
+    // 여유 줄(rows=3)을 미리 비워두지 않음 — 내용만큼만 키우고 시트 높이를 올린다
+    el.rows = 1;
     if (!keepOpen) {
         el.style.height = '';
         return;
     }
     autosizeEntryCommentTextarea(el);
-    // 접힌 1줄 → 확장 시 시트 peak 높이를 키움 (키보드 중에는 sync가 no-op)
-    if ((!wasExpanded || fromFocus) && typeof window.syncEntrySheetHeightLock === 'function') {
-        window.syncEntrySheetHeightLock();
+    const nextHeight = el.offsetHeight || 0;
+    const grewBy = nextHeight - prevHeight;
+    const grew = grewBy > 1;
+    if (
+        (grew || !wasExpanded || fromFocus) &&
+        typeof window.syncEntrySheetHeightLock === 'function'
+    ) {
+        const modal = document.getElementById('entryModal');
+        if (modal?.classList.contains('keyboard-open') && grew) {
+            window.syncEntrySheetHeightLock({ growthPx: grewBy });
+        } else {
+            window.syncEntrySheetHeightLock();
+        }
     }
-    // 포커스·입력으로 줄이 늘 때만 시트 스크롤 (초기 로드 확장은 점프 방지)
-    if (focused) {
+    if (focused && (grew || fromFocus)) {
         scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
     }
 }

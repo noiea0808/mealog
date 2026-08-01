@@ -124,14 +124,25 @@ let entrySheetSyncHeightRaf = 0;
 
 /**
  * 자연 높이로 잠깐 측정해 피크·top을 갱신한 뒤, 피크 높이로 다시 잠근다.
- * 사진/서브태그로 커질 때는 헤더가 올라갈 수 있고, 이후 탭 전환에서는 축소되지 않는다.
+ * 사진/서브태그/메모 확장으로 커질 때는 헤더가 올라갈 수 있고, 이후 탭 전환에서는 축소되지 않는다.
+ * @param {{ growthPx?: number }} [opts] growthPx: 키보드 열린 동안 내용이 늘어난 만큼 peak만 반영
  */
-export function syncEntrySheetHeightLock() {
+export function syncEntrySheetHeightLock(opts = {}) {
     const modal = document.getElementById('entryModal');
     const panel = getEntryModalPanel();
     if (!modal || !panel || modal.classList.contains('hidden')) return;
     // 키보드 열린 동안 peak/top 재측정·rachet 금지 (시트가 흔들리거나 위로 붙는 원인)
-    if (modal.classList.contains('keyboard-open')) return;
+    // 단, 메모 확장 등으로 늘어난 분은 peak에만 쌓아 키보드 닫힌 뒤 시트 높이에 반영
+    if (modal.classList.contains('keyboard-open')) {
+        const growth = Number(opts?.growthPx) || 0;
+        if (growth > 0) {
+            entrySheetPeakHeightPx = Math.max(
+                entrySheetBaseMinHeightPx,
+                entrySheetPeakHeightPx + growth
+            );
+        }
+        return;
+    }
 
     const floor = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
     panel.style.setProperty('--entry-sheet-min-h', floor > 0 ? `${floor}px` : '0px');
