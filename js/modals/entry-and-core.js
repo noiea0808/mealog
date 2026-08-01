@@ -66,8 +66,7 @@ import {
 import {
     createPhotoMetaFromFile,
     normalizePhotoMetaFromRecord,
-    resolveFirstPhotoTakenAt,
-    syncPhotoMetaLength
+    resolveFirstPhotoTakenAt
 } from '../photo-meta.js';
 import {
     closeTimeSourceSheets,
@@ -93,6 +92,7 @@ import {
     resolveEntrySaveFields,
 } from './entry-form-state.js';
 import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
+import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import {
     bindEntryModalHeaderOnce,
     refreshEntryModalHeader,
@@ -2041,26 +2041,7 @@ export async function saveEntry() {
         const resolved = resolveEntrySaveFields(form, {
             selectedSnackPlaceMainTag: appState.selectedSnackPlaceMainTag,
         });
-        const {
-            isSkip: isSk,
-            mealTypeResolved,
-            categoryResolved,
-            withWhomResolved,
-            snackTypeResolved,
-            snackPlaceMainResolved,
-        } = resolved;
-
-        const entryWhereInputVal = form.placeInput;
-        const menuInputVal = form.whatInput;
-        const withInputVal = form.withInput;
-        const snackInputVal = form.whatInput;
-        const snackWithInputVal = form.withInput;
-        const mealType = form.axis1Chip;
-
-        const deliveryVendorEl = document.getElementById('deliveryVendorInput');
-        const deliveryVendorVal = (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl)
-            ? form.deliveryVendor
-            : '';
+        const { isSkip: isSk } = resolved;
 
         const rateOn = isS
             ? appState.entryGaugeRatingOnSnack === true
@@ -2099,183 +2080,26 @@ export async function saveEntry() {
             scheduleEntrySettingsSave();
         }
 
-        // main 끼니: 동일 (date, slotId)에 이미 기록이 있어도 신규 문서로 추가 (다건 표시)
-        let idToUse = state.currentEditingId;
-        // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
-        const existingRecord = idToUse ? window.mealHistory.find(m => m.id === idToUse) : null;
-        const shareBanned = existingRecord?.shareBanned === true;
-        
-        // 카카오맵 API로 입력된 장소 정보 확인 (식사: entryWhereInput, 간식: entryWhereInput)
-        const kakaoSourceInput = document.getElementById('entryWhereInput');
-        const kakaoPlaceId = kakaoSourceInput?.getAttribute('data-kakao-place-id');
-        const kakaoPlaceAddress = kakaoSourceInput?.getAttribute('data-kakao-place-address');
-        const kakaoPlaceData = kakaoSourceInput?.getAttribute('data-kakao-place-data');
-        const kakaoPlaceName = kakaoSourceInput?.getAttribute('data-kakao-place-name') || '';
-        const placeValForKakao = entryWhereInputVal;
-        // 카카오에서 선택한 장소명을 수정한 경우: 주소·placeId를 저장하지 않음 (잘못된 주소 매칭 방지)
-        const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
-        const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
+        const { record, sourcePhotos, sourcePhotoMeta, existingPhotoUrls } = buildEntrySaveRecord({
+            state,
+            form,
+            resolved,
+            entryMode,
+            gauges: { rateOn, satOn, timeOn, normalizedClock },
+            mealHistory: window.mealHistory,
+        });
 
-        let shouldUseDeliveryKakao = false;
-        let deliveryKakaoPlaceId = '';
-        let deliveryKakaoPlaceAddress = '';
-        let deliveryKakaoPlaceDataStr = '';
-        if (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl) {
-            const dvId = deliveryVendorEl.getAttribute('data-kakao-place-id');
-            const dvName = deliveryVendorEl.getAttribute('data-kakao-place-name') || '';
-            const dvNameMatches = !dvName || (String(deliveryVendorVal || '').trim() === String(dvName).trim());
-            if (dvId && dvNameMatches) {
-                shouldUseDeliveryKakao = true;
-                deliveryKakaoPlaceId = dvId;
-                deliveryKakaoPlaceAddress = deliveryVendorEl.getAttribute('data-kakao-place-address') || '';
-                deliveryKakaoPlaceDataStr = deliveryVendorEl.getAttribute('data-kakao-place-data') || '';
-            }
-        }
+        // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
+        const shareSnapshot = buildEntryShareSnapshot({
+            state,
+            record,
+            existingPhotoUrls,
+            mealHistory: window.mealHistory,
+        });
+        const { isShareBanned, wantsToShare, originalShareList, hadSharedPhotos, photoAspectChanged } = shareSnapshot;
+        // 사진 업로드 단계에서 Storage URL로 교체되므로 let
+        let photosToShare = shareSnapshot.photosToShare;
 
-        const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
-        const sourcePhotoMeta = syncPhotoMetaLength(state.currentPhotoMeta, sourcePhotos.length);
-        /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
-        const isLocalPendingPhoto = (photo) =>
-            typeof photo === 'string' &&
-            photo &&
-            (photo.startsWith('data:image') || photo.startsWith('blob:'));
-        const existingPhotoUrls = sourcePhotos.filter(
-            (photo) => typeof photo === 'string' && photo && !isLocalPendingPhoto(photo)
-        );
-
-        /** getMealClock24FromModal(isMain) — 간식이 아닐 때 본식 입력, 간식일 때 간식 입력을 읽음 */
-        const mealClockVal = !isSk && timeOn ? (normalizedClock || null) : null;
-        const nowLocaleTime = () =>
-            new Date().toLocaleTimeString('ko-KR', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-        let timeSortStr = nowLocaleTime();
-        if (!isSk && timeOn && normalizedClock) {
-            timeSortStr = `${normalizedClock}:00`;
-        }
-        const slotChanged = Boolean(
-            idToUse && existingRecord && existingRecord.slotId !== state.currentEditingSlotId
-        );
-        const dateChanged = Boolean(
-            idToUse && existingRecord && existingRecord.date !== state.currentEditingDate
-        );
-
-        const record = {
-            id: idToUse,
-            date: state.currentEditingDate,
-            slotId: state.currentEditingSlotId,
-            mealType: mealTypeResolved,
-            withWhom: withWhomResolved,
-            withWhomDetail: isSk ? '' : (isS ? snackWithInputVal : withInputVal),
-            category: categoryResolved,
-            placeType: '',
-            snackType: snackTypeResolved,
-            photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
-            // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
-            photos: existingPhotoUrls,
-            photoMeta: sourcePhotoMeta,
-            menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
-            place: isSk ? '' : (isS ? (entryWhereInputVal || appState.selectedSnackPlaceMainTag || '') : entryWhereInputVal),
-            comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
-            rating: isSk ? null : (rateOn && state.currentRating != null && Number(state.currentRating) > 0 ? Number(state.currentRating) : null),
-            satiety: isSk ? null : (satOn && state.currentSatiety != null && Number(state.currentSatiety) > 0 ? Number(state.currentSatiety) : null),
-            mealClock: mealClockVal,
-            // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
-            time: timeSortStr,
-        };
-        if (!idToUse) {
-            record.recordedAt = new Date().toISOString();
-        } else if (slotChanged || dateChanged) {
-            // 슬롯·날짜 변경 시 해당 슬롯에서 뒷번호(맨 뒤)로 쌓이도록 기록 시각 갱신
-            record.recordedAt = new Date().toISOString();
-        } else if (existingRecord?.recordedAt) {
-            record.recordedAt = existingRecord.recordedAt;
-        }
-        if (isS && !isSk && snackPlaceMainResolved) {
-            record.snackPlaceMain = snackPlaceMainResolved;
-        }
-
-        if (!isS && !isSk && mealType === '배달/포장') {
-            record.deliveryVendor = deliveryVendorVal;
-            if (shouldUseDeliveryKakao) {
-                record.deliveryPlaceId = deliveryKakaoPlaceId;
-                record.deliveryPlaceAddress = deliveryKakaoPlaceAddress || '';
-                record.deliveryKakaoPlace = true;
-                if (deliveryKakaoPlaceDataStr) {
-                    try {
-                        record.deliveryPlaceData = JSON.parse(deliveryKakaoPlaceDataStr);
-                    } catch (_) {
-                        record.deliveryPlaceData = null;
-                    }
-                } else {
-                    record.deliveryPlaceData = null;
-                }
-            } else {
-                record.deliveryPlaceId = '';
-                record.deliveryPlaceAddress = '';
-                record.deliveryPlaceData = null;
-                record.deliveryKakaoPlace = false;
-            }
-        } else {
-            record.deliveryVendor = '';
-            record.deliveryPlaceId = '';
-            record.deliveryPlaceAddress = '';
-            record.deliveryPlaceData = null;
-            record.deliveryKakaoPlace = false;
-        }
-        
-        // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장 (선택한 장소명을 수정한 경우는 제외 → 잘못된 주소 매칭 방지)
-        if (shouldUseKakaoFields) {
-            record.placeId = kakaoPlaceId;
-            record.kakaoPlaceId = kakaoPlaceId;
-            record.placeAddress = kakaoPlaceAddress || '';
-            if (kakaoPlaceData) {
-                try {
-                    record.placeData = JSON.parse(kakaoPlaceData);
-                } catch (e) {
-                    console.warn('카카오 장소 데이터 파싱 실패:', e);
-                }
-            }
-            record.kakaoPlace = true; // 카카오맵으로 입력된 식당임을 표시
-        }
-        
-        // shareBanned 필드 추가 (기존 값 유지)
-        if (shareBanned) {
-            record.shareBanned = true;
-        }
-        
-        // 디버깅: 저장될 record 확인
-        if (isS) {
-            console.log('저장될 간식 record:', record);
-        }
-        
-        // 공유 금지 체크
-        const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
-        
-        // 상태 초기화 전에 공유 의사를 보존한다. (수정 저장 + 사진 업로드 시 필요)
-        const wantsToShare = Boolean(state.wantsToShare);
-        
-        // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
-        let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
-            ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
-            : [];                        // 공유 비활성화 또는 금지: 빈 배열
-        // sharedPhotos 필드는 sharedPhotos 컬렉션(서버 sharePhotos)이 canonical — meal save에 포함하지 않음
-        // closeModal()이 originalSharedPhotos를 비우므로, 공유 비교용 목록은 여기서 스냅샷으로 고정한다.
-        const originalShareList = Array.isArray(state.originalSharedPhotos) ? [...state.originalSharedPhotos] : [];
-        const hadSharedPhotos = originalShareList.length > 0;
-        const originalPhotoAspect =
-            state.originalPhotoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(state.originalPhotoAspectRatio)
-                ? state.originalPhotoAspectRatio
-                : '1:1';
-        const nextPhotoAspect =
-            record.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(record.photoAspectRatio)
-                ? record.photoAspectRatio
-                : '1:1';
-        const photoAspectChanged = originalPhotoAspect !== nextPhotoAspect;
-        
         console.log('저장 시작:', record);
 
         // 진행 상태: 모달은 열린 채 저장 UI + 타임라인 슬롯 인라인 스피너
