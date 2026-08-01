@@ -757,16 +757,22 @@ function nudgeEntryModalInputRepaint(entryModal) {
 
 /** 끼니 등록 모달: 키보드 열림 시 팝업 높이를 viewport에 맞추고, 닫힘 시 복원 */
 /**
- * 키보드 열림: nav·CTA를 #modalScrollArea 끝으로 옮겨 스크롤로 접근.
- * 닫힘: 스크롤 영역 바로 아래(패널 하단 chrome)로 복원.
- * @param {boolean} intoScroll
+ * nav·CTA 위치.
+ * 키보드 중에도 패널 하단(스크롤 밖)에 두는 것이 기본 — 스크롤 안으로 옮기면
+ * 중간 필드(무엇을 등) 포커스 시 WebView가 포커스 가시 클램프를 걸어 CTA까지 스크롤이 막힌다.
+ * @param {boolean} intoScroll 레거시 호환용. true여도 APP/resize에서는 하단 고정 유지.
  */
 function placeEntryModalChrome(intoScroll) {
     const scroll = document.getElementById('modalScrollArea');
     const nav = document.getElementById('entrySheetNavBar');
     const actions = document.getElementById('entryModalActions');
     if (!scroll || !nav || !actions) return;
-    if (intoScroll) {
+    // resize(APP): 패널이 이미 키보드 위 → CTA는 항상 패널 하단 고정
+    const forceDock =
+        getImeMetrics().mode === 'resize' ||
+        !!window.Capacitor?.isNativePlatform?.();
+    const moveInto = !!intoScroll && !forceDock;
+    if (moveInto) {
         if (nav.parentElement !== scroll) scroll.appendChild(nav);
         if (actions.parentElement !== scroll) scroll.appendChild(actions);
         return;
@@ -963,13 +969,13 @@ function initEntryModalKeyboardHandling(entryModal) {
                     entryModal.contains(active) &&
                     (active.classList?.contains('entry-comment-textarea') ||
                         getImeMetrics().mode === 'overlay');
-                // 높이·top·(overlay)루트 핀을 먼저 맞춘 뒤 CTA 이동
+                // 높이·top 맞춤. CTA/nav는 패널 하단에 고정(스크롤 클램프에 CTA가 안 닿는 문제 방지)
                 applyViewportGeometry({ scroll: wantScroll, force: true });
                 if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
                 chromePlaceRaf = requestAnimationFrame(() => {
                     chromePlaceRaf = null;
                     if (!entryModal.classList.contains('keyboard-open')) return;
-                    placeEntryModalChrome(true);
+                    placeEntryModalChrome(false);
                     scheduleViewportGeometryFromVv({ immediate: false });
                 });
             } else {
