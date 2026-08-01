@@ -1,8 +1,8 @@
 /**
  * 앱 전역 IME(키보드) 감지·오버레이 핀·입력란 가시 스크롤.
  *
- * Edge-to-edge Android에서는 adjustResize가 거의 안 먹을 수 있어
- * @capacitor/keyboard(resizeOnFullScreen) + visualViewport + --ime-overlap 을 함께 쓴다.
+ * - 네이티브: @capacitor/keyboard(resizeOnFullScreen) + visualViewport
+ * - 모바일 웹: Keyboard 플러그인 없음 → 포커스 시 VV 박스로 핀·본문 스크롤 (브라우저 팬을 되돌리지 않음)
  */
 
 let baselineLayoutH = 0;
@@ -24,6 +24,29 @@ export function isImeInputLike(el) {
             'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not(.push-pref-toggle), textarea'
         ) || el.getAttribute?.('contenteditable') === 'true')
     );
+}
+
+/** Capacitor 앱이 아닌 터치 모바일 웹(Chrome/Safari) */
+export function isMobileWebTouchUi() {
+    if (typeof window === 'undefined') return false;
+    if (window.Capacitor?.isNativePlatform?.()) return false;
+    try {
+        if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) return true;
+    } catch (_) { /* ignore */ }
+    const touch = (navigator.maxTouchPoints || 0) > 0;
+    const shortSide = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+    return touch && shortSide > 0 && shortSide < 900;
+}
+
+/**
+ * 키보드가 올라온 것으로 보고 UI(ime-open·오버레이 핀)를 적용할지.
+ * 모바일 웹은 VV 축소 전이라도 입력 포커스면 true (앱의 Keyboard 이벤트를 대체).
+ */
+export function shouldTreatImeOpen() {
+    if (nativeImeHeight > 80) return true;
+    if (!isImeInputLike(document.activeElement)) return false;
+    if (getImeMetrics().open) return true;
+    return isMobileWebTouchUi();
 }
 
 export function captureImeBaseline() {
@@ -176,8 +199,7 @@ export function syncAppImeState() {
         }
         return false;
     }
-    const { open } = getImeMetrics();
-    setAppImeOpen(open || nativeImeHeight > 80);
+    setAppImeOpen(shouldTreatImeOpen());
     return imeOpen;
 }
 
@@ -286,15 +308,32 @@ export function ensureFocusedInputVisible(el, opts = {}) {
 export function applyOverlayImePin(root) {
     if (!root) return false;
     const m = getImeMetrics();
-    if (!m.open) return false;
+    // 모바일 웹: open 판정 전에도 포커스면 현재 VV에 핀 (키보드 애니·iOS 팬 대응)
+    if (!m.open && !(isMobileWebTouchUi() && isImeInputLike(document.activeElement))) {
+        return false;
+    }
+    const vv = window.visualViewport;
+    const layoutH = m.layoutH || window.innerHeight || 0;
+    // 웹/비-resize: 항상 보이는 VV 박스. adjustResize: 레이아웃 높이.
+    let pinTop = m.pinTop;
+    let pinLeft = m.pinLeft;
+    let pinHeight = m.pinHeight;
+    let pinWidth = m.pinWidth;
+    if (!m.adjustResizeLikely && vv) {
+        pinTop = Math.max(0, Number(vv.offsetTop) || 0);
+        pinLeft = Math.max(0, Number(vv.offsetLeft) || 0);
+        pinHeight = Math.max(120, Math.round(Number(vv.height) || layoutH));
+        pinWidth = Math.max(120, Math.round(Number(vv.width) || window.innerWidth || 0));
+    }
     root.classList.add('is-ime-open');
-    root.style.top = `${Math.round(m.pinTop)}px`;
-    root.style.left = `${Math.round(m.pinLeft)}px`;
-    root.style.width = `${Math.round(m.pinWidth)}px`;
-    root.style.height = `${Math.round(m.pinHeight)}px`;
+    root.style.top = `${Math.round(pinTop)}px`;
+    root.style.left = `${Math.round(pinLeft)}px`;
+    root.style.width = `${Math.round(pinWidth)}px`;
+    root.style.height = `${Math.round(pinHeight)}px`;
     root.style.right = 'auto';
     root.style.bottom = 'auto';
     root.style.transform = '';
+    publishImeCssVars({ ...m, open: true, pinHeight, vvH: pinHeight });
     return true;
 }
 

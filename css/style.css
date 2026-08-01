@@ -5167,14 +5167,31 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     transform: translate3d(0, 0, 0);
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle {
+    /* 시각 바는 ::after, 히트 영역은 가로 전체·최소 ~44px */
+    position: relative;
     flex: 0 0 auto;
-    width: 2.25rem;
-    height: 0.28rem;
-    margin: 0.7rem auto 0.2rem;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--muted) 45%, transparent);
+    align-self: stretch;
+    width: 100%;
+    height: 2.75rem;
+    margin: 0;
+    border-radius: 0;
+    background: transparent;
     touch-action: none;
     cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 2.25rem;
+    height: 0.28rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--muted) 45%, transparent);
+    pointer-events: none;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-handle:active {
     cursor: grabbing;
@@ -5185,6 +5202,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
+    touch-action: none;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
     padding: 0.35rem 1rem 0.55rem;
 }
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body .moment-v2-social-comments-sheet-title {
@@ -16227,17 +16248,12 @@ body:has(#adminPage:not(.hidden)),
     margin-bottom: 0;
 }
 /*
- * 검색 포커스: 상단 정렬 + 가용 높이 상한 — 헤더 고정, 헤더 아래 스크롤.
- * IME(is-ime-open): 가용 높이를 채워 키보드에 가려진 만큼 본문 스크롤 영역을 확보.
+ * 검색 포커스/IME: 가용 높이를 채워 헤더 고정 + 본문 스크롤.
+ * 모바일 웹은 is-ime-open 전이라도 포커스만으로 동일 높이 잠금 (height:auto면 본문이 안 줄어 스크롤 불가).
  */
 #timelineSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel,
 #momentSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel,
-#boardSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel {
-    height: auto;
-    max-height: calc(100% - 0.35rem);
-    margin-top: 0;
-    overflow: hidden;
-}
+#boardSearchModal:has(input:focus, textarea:focus) .search-filter-modal__panel,
 #timelineSearchModal.is-ime-open .search-filter-modal__panel,
 #momentSearchModal.is-ime-open .search-filter-modal__panel,
 #boardSearchModal.is-ime-open .search-filter-modal__panel {
@@ -16245,6 +16261,13 @@ body:has(#adminPage:not(.hidden)),
     max-height: calc(100% - 0.35rem);
     margin-top: 0;
     overflow: hidden;
+    min-height: 0;
+}
+/* 모바일 웹: VV 높이 토큰이 있으면 패널을 보이는 영역에 맞춤(JS 핀과 이중 안전) */
+html.platform-web #timelineSearchModal.is-ime-open .search-filter-modal__panel,
+html.platform-web #momentSearchModal.is-ime-open .search-filter-modal__panel,
+html.platform-web #boardSearchModal.is-ime-open .search-filter-modal__panel {
+    max-height: min(calc(100% - 0.35rem), var(--ime-vv-height, 100%));
 }
 #timelineSearchModal.is-ime-open .search-filter-modal__body,
 #momentSearchModal.is-ime-open .search-filter-modal__body,

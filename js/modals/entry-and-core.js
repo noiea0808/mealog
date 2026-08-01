@@ -76,7 +76,12 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { ensureFocusedInputVisible, getImeMetrics, captureImeBaseline } from '../utils/ime-viewport.js';
+import {
+    ensureFocusedInputVisible,
+    getImeMetrics,
+    captureImeBaseline,
+    shouldTreatImeOpen
+} from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
@@ -953,8 +958,8 @@ function initEntryModalKeyboardHandling(entryModal) {
         const m = getImeMetrics();
         const vh = m.vvH || window.visualViewport?.height || window.innerHeight;
         const threshold = getViewportThreshold();
-        // VV 축소뿐 아니라 baseline 레이아웃 축소·vvTop·네이티브 IME 높이도 키보드로 본다
-        const open = m.open || vh < threshold;
+        // VV/네이티브 + 모바일 웹 포커스(Keyboard 플러그인 대체)
+        const open = m.open || vh < threshold || shouldTreatImeOpen();
         if (!open) {
             setKeyboardOpen(false);
             return;

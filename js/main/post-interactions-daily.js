@@ -1498,55 +1498,42 @@ function syncMomentV2SocialCommentEmptyOverlay(postId) {
     syncMomentV2SocialCommentSheetCount(pid, 0);
 }
 
-/** 모먼트2 하단 시트: 핸들 아래로 드래그해 닫기 */
+/** 모먼트2 하단 시트: 핸들·헤더 아래로 드래그해 닫기 (센터 다이얼로그 grabber와 동일 pointer 경로) */
 function bindMomentV2SocialSheetHandlePullClose(commentSection) {
     const sheet = commentSection.querySelector('.moment-v2-social-comments-sheet');
     const handle = commentSection.querySelector('.moment-v2-social-comments-sheet-handle');
-    if (!sheet || !handle || handle.dataset.mv2PullBound === '1') return;
-    handle.dataset.mv2PullBound = '1';
+    const header = commentSection.querySelector('.moment-v2-social-comments-sheet-header');
+    if (!sheet || !handle) return;
+    if (commentSection.dataset.mv2PullBound === '1') return;
+    commentSection.dataset.mv2PullBound = '1';
+
     const postId = String(commentSection.id || '').replace(/^comment-section-/, '');
-    let startY = 0;
-    let tracking = false;
-    let dragY = 0;
-    const threshold = 80;
-    const resetSheetTransform = () => {
-        sheet.style.transform = '';
-        sheet.style.transition = '';
+    const onClose = () => {
+        if (postId) window.closeMomentV2SocialCommentSheet?.(postId);
     };
-    handle.addEventListener(
-        'touchstart',
-        (e) => {
-            if (!commentSection.classList.contains('comment-input-open')) return;
-            if (e.touches?.length !== 1) return;
-            tracking = true;
-            startY = e.touches[0].clientY;
-            dragY = 0;
-        },
-        { passive: true }
-    );
-    handle.addEventListener(
-        'touchmove',
-        (e) => {
-            if (!tracking || e.touches?.length !== 1) return;
-            dragY = Math.max(0, e.touches[0].clientY - startY);
-            sheet.style.transition = 'none';
-            sheet.style.transform = `translate3d(0, ${dragY}px, 0)`;
-            e.preventDefault();
-        },
-        { passive: false }
-    );
-    const end = () => {
-        if (!tracking) return;
-        tracking = false;
-        if (dragY >= threshold && postId) {
-            resetSheetTransform();
-            window.closeMomentV2SocialCommentSheet?.(postId);
-            return;
-        }
-        resetSheetTransform();
-    };
-    handle.addEventListener('touchend', end, { passive: true });
-    handle.addEventListener('touchcancel', end, { passive: true });
+    const isDisabled = () =>
+        commentSection.classList.contains('hidden') ||
+        !commentSection.classList.contains('comment-input-open');
+
+    bindDialogGrabberPullClose({
+        root: commentSection,
+        panel: sheet,
+        grabber: handle,
+        threshold: 72,
+        onClose,
+        isDisabled
+    });
+    // 얇은 핸들만으로는 터치가 거의 안 잡히므로 헤더도 동일 제스처 허용
+    if (header) {
+        bindDialogGrabberPullClose({
+            root: commentSection,
+            panel: sheet,
+            grabber: header,
+            threshold: 72,
+            onClose,
+            isDisabled
+        });
+    }
 }
 
 function mv2SetSocialSheetBodyScrollLock(on) {
