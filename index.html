@@ -39,7 +39,15 @@
     <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_192.png?v=20260725">
     <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_512.png?v=20260725">
     <link rel="manifest" href="./manifest.json">
-    
+
+    <!-- 외부 도메인 DNS/TLS 핸드셰이크를 병렬로 미리 시작 (부팅 지연 단축) -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+
     <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
     <script>
       /* 시안 mid-mint 브랜드 → emerald 스케일 매핑 (앱 전역 emerald-* 일괄 반영) */
@@ -71,8 +79,9 @@
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Yeon+Sung&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- 통계/공유카드 화면에서만 쓰임 (첫 화면 무관) — defer로 초기 파싱 차단 해제 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* === Tailwind FOUC 방지 (중요) ===

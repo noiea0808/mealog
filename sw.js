@@ -1,5 +1,5 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v5';
+const CACHE_NAME = 'mealog-v6';
 // 상대 경로 사용 (서브디렉토리 배포 대응)
 const basePath = self.location.pathname.replace(/\/sw\.js$/, '') || '/';
 const urlsToCache = [
@@ -40,7 +40,7 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch event - 네트워크 우선, 실패 시 캐시 사용
+// Fetch event - Stale-While-Revalidate (캐시 우선 응답 + 백그라운드 네트워크 갱신)
 self.addEventListener('fetch', (event) => {
   // 외부 도메인 요청은 Service Worker를 우회하도록 함 (CORS 문제 방지)
   try {
@@ -70,26 +70,28 @@ self.addEventListener('fetch', (event) => {
     }
   } catch (_) {}
 
+  // Stale-While-Revalidate: 캐시가 있으면 즉시 응답(부팅 체감 속도),
+  // 동시에 네트워크로 갱신해 다음 방문부터 최신 반영. 캐시가 없으면(첫 방문) 네트워크를 기다림.
+  // 배포 후 새 콘텐츠 반영은 위 updatefound → reload 흐름(index.html)이 담당.
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // 네트워크 응답이 성공하면 캐시에 저장하고 반환 (GET 요청만 캐시)
-        if (response && response.status === 200) {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            })
-            .catch((err) => {
-              console.error('Service Worker: 캐시 저장 실패', err);
-            });
-        }
-        return response;
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(event.request).then((cachedResponse) => {
+        const networkUpdate = fetch(event.request)
+          .then((response) => {
+            if (response && response.status === 200) {
+              cache.put(event.request, response.clone());
+            }
+            return response;
+          })
+          .catch((err) => {
+            if (!cachedResponse) console.error('Service Worker: 네트워크 요청 실패', err);
+            return cachedResponse;
+          });
+        // 캐시를 즉시 반환한 뒤에도 SW가 살아서 백그라운드 갱신을 마치도록 보장
+        event.waitUntil(networkUpdate.catch(() => {}));
+        return cachedResponse || networkUpdate;
       })
-      .catch(() => {
-        // 네트워크 실패 시 캐시에서 찾기
-        return caches.match(event.request);
-      })
+    )
   );
 });
 
