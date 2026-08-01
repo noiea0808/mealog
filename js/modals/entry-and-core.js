@@ -93,6 +93,7 @@ import {
 } from './entry-form-state.js';
 import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
+import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import {
     bindEntryModalHeaderOnce,
     refreshEntryModalHeader,
@@ -2327,128 +2328,22 @@ export async function saveEntry() {
             // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
             // 오프라인 등으로 업로드·재저장이 끝없이 대기하면 스피너가 영구 유지되므로 1차 저장과 동일한 상한(ms)으로 감싼다.
             if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
-                const preloadImage = (url, timeoutMs = 1500) => new Promise((resolve) => {
-                    if (!url || typeof url !== 'string') {
-                        resolve(false);
-                        return;
-                    }
-                    const img = new Image();
-                    let done = false;
-                    const finish = (ok) => {
-                        if (done) return;
-                        done = true;
-                        resolve(ok);
-                    };
-                    const timer = setTimeout(() => finish(false), timeoutMs);
-                    img.onload = () => { clearTimeout(timer); finish(true); };
-                    img.onerror = () => { clearTimeout(timer); finish(false); };
-                    img.src = url;
-                });
                 let photoPhaseSavedViaCallable = false;
                 try {
-                    await saveWithTimeout(
+                    const photoPhase = await saveWithTimeout(
                         () =>
-                            (async () => {
-                                try {
-                                    const dataUrlsForUpload = await Promise.all(
-                                        base64Photos.map((photo) => ensureDataUrlForStorage(photo))
-                                    );
-                                    // 신규 업로드: 원본 + 표시용(800px) + 썸네일(200px) 파생본 동시 생성. 파생본은 best-effort.
-                                    const uploadedVariants = await Promise.all(
-                                        dataUrlsForUpload.map((photo) =>
-                                            uploadMealPhotoVariants(photo, window.currentUser.uid, record.id)
-                                        )
-                                    );
-                                    let uploadedIndex = 0;
-                                    let metaIndex = 0;
-                                    const finalPhotoUrls = [];
-                                    const finalPhotoMeta = [];
-                                    // photos와 index 정렬 유지. 기존 URL(수정 건)은 파생본 미상 → '' (원본 fallback)
-                                    const finalDisplayUrls = [];
-                                    const finalThumbUrls = [];
-                                    sourcePhotos.forEach((photo) => {
-                                        const meta = sourcePhotoMeta[metaIndex++] || { takenAt: null };
-                                        if (isLocalPendingPhoto(photo)) {
-                                            const variant = uploadedVariants[uploadedIndex++];
-                                            if (variant && variant.url) {
-                                                finalPhotoUrls.push(variant.url);
-                                                finalPhotoMeta.push(meta);
-                                                finalDisplayUrls.push(variant.displayUrl || '');
-                                                finalThumbUrls.push(variant.thumbUrl || '');
-                                            }
-                                            return;
-                                        }
-                                        if (typeof photo === 'string' && photo) {
-                                            finalPhotoUrls.push(photo);
-                                            finalPhotoMeta.push(meta);
-                                            finalDisplayUrls.push('');
-                                            finalThumbUrls.push('');
-                                        }
-                                    });
-
-                                    record.photos = finalPhotoUrls;
-                                    record.photoMeta = finalPhotoMeta;
-                                    // 파생본이 하나라도 있을 때만 신규 필드 저장(기존 데이터 스키마 오염 방지)
-                                    if (finalDisplayUrls.some(Boolean)) {
-                                        record.photoDisplayUrls = finalDisplayUrls;
-                                    }
-                                    if (finalThumbUrls.some(Boolean)) {
-                                        record.photoThumbUrls = finalThumbUrls;
-                                    }
-                                    photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
-                                        ? [...finalPhotoUrls]
-                                        : [];
-
-                                    const photoSaveRes = unwrapMealSaveResult(await dbOps.save(record, true));
-                                    photoPhaseSavedViaCallable = photoSaveRes.savedViaCallableFallback;
-                                    if (photoSaveRes.savedViaCallableFallback && record.id) {
-                                        onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
-                                    }
-                                    await preloadImage(finalPhotoUrls[0]);
-                                    if (window.mealHistory && Array.isArray(window.mealHistory)) {
-                                        const localIdx = window.mealHistory.findIndex(m => m.id === record.id);
-                                        if (localIdx >= 0) {
-                                            window.mealHistory[localIdx] = {
-                                                ...window.mealHistory[localIdx],
-                                                photos: [...finalPhotoUrls],
-                                                photoMeta: record.photoMeta,
-                                                ...(record.photoDisplayUrls ? { photoDisplayUrls: [...record.photoDisplayUrls] } : {}),
-                                                ...(record.photoThumbUrls ? { photoThumbUrls: [...record.photoThumbUrls] } : {})
-                                            };
-                                        }
-                                    }
-                                } catch (uploadError) {
-                                    photoUploadPhaseFailed = true;
-                                    if (record.id) markMealEntrySaveFailedById(String(record.id));
-                                    console.error('사진 업로드 실패:', uploadError);
-                                    showToast(getUserFacingErrorMessage(uploadError, 'save'), 'error');
-                                    // 네트워크 복구 후 재전송할 수 있도록 base64 원본 유지(URL만 있던 수정 건은 기존 URL 유지)
-                                    const preserve = sourcePhotos.filter((p) => typeof p === 'string' && p);
-                                    record.photos = preserve.length ? preserve : existingPhotoUrls;
-                                    photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
-                                        ? [...existingPhotoUrls]
-                                        : [];
-                                    if (window.mealHistory && record.id) {
-                                        const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
-                                        if (hi >= 0) {
-                                            window.mealHistory[hi] = {
-                                                ...window.mealHistory[hi],
-                                                photos: [...record.photos],
-                                                _localSaveFailed: true
-                                            };
-                                        }
-                                    }
-                                    try {
-                                        const recoverRes = unwrapMealSaveResult(await dbOps.save(record, true));
-                                        photoPhaseSavedViaCallable = recoverRes.savedViaCallableFallback;
-                                        if (recoverRes.savedViaCallableFallback && record.id) {
-                                            onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
-                                        }
-                                    } catch (recoverErr) {
-                                        console.warn('사진 유지 상태 재저장 실패(로컬 보존):', recoverErr?.message || recoverErr);
-                                    }
-                                }
-                            })(),
+                            uploadEntryPhotosAndResave({
+                                record,
+                                base64Photos,
+                                sourcePhotos,
+                                sourcePhotoMeta,
+                                existingPhotoUrls,
+                                isShareBanned,
+                                wantsToShare,
+                                photosToShare,
+                                optimisticTempId,
+                                uid: window.currentUser.uid,
+                            }),
                         {
                             timeoutMs: MEAL_PHOTO_UPLOAD_PHASE_TIMEOUT_MS,
                             onTimeout: () => {
@@ -2456,6 +2351,9 @@ export async function saveEntry() {
                             }
                         }
                     );
+                    photoUploadPhaseFailed = photoPhase.photoUploadPhaseFailed;
+                    photoPhaseSavedViaCallable = photoPhase.photoPhaseSavedViaCallable;
+                    photosToShare = photoPhase.photosToShare;
                     if (record.date) invalidateTimelineDateSection(record.date);
                     /* 업로드 실패 시에도 내부 catch가 throw하지 않아 여기까지 옴 — 성공 시에만 대기 해제·ack 스케줄 */
                     if (!photoUploadPhaseFailed) {
@@ -3065,21 +2963,6 @@ export async function deleteEntry() {
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
 
 /** data:image 또는 blob: → Storage 업로드용 data URL */
-async function ensureDataUrlForStorage(photo) {
-    if (typeof photo !== 'string' || !photo) return photo;
-    if (photo.startsWith('data:image')) return photo;
-    if (photo.startsWith('blob:')) {
-        const blob = await (await fetch(photo)).blob();
-        return await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(r.result);
-            r.onerror = () => reject(new Error('blob 이미지 읽기 실패'));
-            r.readAsDataURL(blob);
-        });
-    }
-    return photo;
-}
-
 /**
  * meal 레코드에 남아 있는 로컬(data:image·blob:) 사진을 Storage에 올린 뒤 photos/sharedPhotos를 https URL 기준으로 맞춘다.
  * dbOps.save는 data URL을 저장하지 않으므로 재시도 경로에서 반드시 선행해야 한다.
