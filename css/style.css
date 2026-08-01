@@ -88,7 +88,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
     --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
     --safe-bottom: var(--safe-bottom-nav-slot);
-    /* IME (js/utils/ime-viewport.js) — resize·overlay 모두 fixed-bottom≈0 (overlay는 루트 VV 시프트) */
+    /* IME — resize/루트시프트: fixed-bottom=0 / overlay(시프트 실패): overlap */
     --ime-overlap: 0px;
     --ime-inset: 0px;
     --ime-fixed-bottom: 0px;
@@ -12795,27 +12795,21 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
     box-shadow: none;
 }
 /*
- * IME 열림일 때만 키보드에 붙임 (포커스만으로는 적용 금지).
- * --ime-fixed-bottom: 항상 0 (overlay=루트 VV 시프트 / resize=레이아웃 축소)
+ * 밀톡 컴포저 (main 호환 + staging 보정)
+ * - 포커스 즉시 하단 안전영역 (main과 동일 — 웹에서 브라우저/키보드와 맞춤)
+ * - ime-open 시 --ime-fixed-bottom(overlay overlap)로 추가 상승 (루트 시프트 실패 대비)
  */
-body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: var(--ime-fixed-bottom, 0px);
+body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
     z-index: 120;
 }
-/* 포커스·키보드 닫힘: 앱 네비 위로 복원 (기본 bottom과 동일) */
-body:has(#boardInlineComposerInput:focus):not(.ime-open) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: calc(66px + var(--safe-bottom));
-    z-index: 45;
-}
-body:has(#boardInlineComposerInput:focus):not(.ime-open) .bottom-nav {
-    display: grid !important;
-    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-}
-body:has(#boardInlineComposerInput:focus):not(.ime-open) #navigationBarOverlay {
-    display: block !important;
-}
-body:has(#boardInlineComposerInput:focus):not(.ime-open) {
-    padding-bottom: calc(80px + var(--safe-bottom)) !important;
+body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    bottom: max(
+        0.35rem,
+        var(--ime-fixed-bottom, 0px),
+        env(safe-area-inset-bottom, 0px)
+    );
+    z-index: 120;
 }
 #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
     box-shadow: none;
@@ -13201,14 +13195,24 @@ body.bottom-nav-scroll-hidden #boardListView #boardListPanel:not(.hidden) {
     padding-bottom: calc(1.25rem + var(--safe-bottom));
 }
 
-/* IME 중 피드 높이·스크롤 inset — 토큰만 사용 (이중 overlap 금지) */
-body.ime-open #boardListView #boardFeedPanelContent {
+/* 밀톡 포커스/IME: 피드 높이·스크롤 inset (main focus 규칙 + ime 토큰) */
+body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    margin-top: 0;
+    height: calc(100dvh - var(--safe-top));
+    max-height: calc(100dvh - var(--safe-top));
+}
+body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
     --board-feed-scroll-inset-bottom: calc(
-        var(--ime-fixed-bottom, 0px) +
+        max(0.35rem, env(safe-area-inset-bottom, 0px), var(--ime-fixed-bottom, 0px)) +
             var(--board-feed-composer-face) + var(--board-feed-above-composer)
     );
 }
-body.ime-open:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden),
+body.ime-open #boardListView #boardFeedPanelContent {
+    --board-feed-scroll-inset-bottom: calc(
+        max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px)) +
+            var(--board-feed-composer-face) + var(--board-feed-above-composer)
+    );
+}
 body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: 0;
     height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
@@ -13803,12 +13807,12 @@ button.board-detail-stat:disabled {
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
 }
-/* 상세 댓글: IME 중에만 fixed + --ime-fixed-bottom */
+/* 상세 댓글: IME 중에만 fixed + --ime-fixed-bottom(overlay overlap) */
 body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: var(--ime-fixed-bottom, 0px);
+    bottom: max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px));
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
     z-index: 120;

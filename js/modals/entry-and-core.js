@@ -83,7 +83,6 @@ import {
     captureImeBaseline,
     clearOverlayImePinStyles,
     isMobileWebTouchUi,
-    applyWebImeRootShift,
     pinElementToVisualViewport
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
@@ -866,8 +865,7 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const m = getImeMetrics();
         if (m.mode === 'overlay') {
-            // 기록시트는 루트 시프트와 별도로 모달을 VV에 직접 핀 (force: open 전이 포함)
-            applyWebImeRootShift();
+            // 기록시트: 모달을 VV에 직접 핀 (전역 루트 시프트에 의존하지 않음)
             pinElementToVisualViewport(entryModal, { force: true });
         } else {
             clearOverlayImePinStyles(entryModal);
