@@ -111,7 +111,9 @@ async function ensureNotificationReadStateLoaded() {
         if (snap.exists() && snap.data().data) {
             try {
                 state = typeof snap.data().data === 'string' ? JSON.parse(snap.data().data) : { ...snap.data().data };
-            } catch (_) {}
+            } catch (e) {
+                console.warn('알림 읽음 상태 JSON 파싱 실패(빈 상태로 대체):', e?.message || e);
+            }
         }
         const local = parseLocalNotificationReadState();
         if (Object.keys(local).length > 0) {

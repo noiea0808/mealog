@@ -187,10 +187,14 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
             if (typeof auth.authStateReady === 'function') {
                 await auth.authStateReady();
             }
-        } catch (_) {}
+        } catch (e) {
+            console.warn('[카카오 로그인] authStateReady 대기 실패(무시):', e?.message || e);
+        }
         try {
             if (auth.currentUser) await auth.currentUser.reload();
-        } catch (_) {}
+        } catch (e) {
+            console.warn('[카카오 로그인] currentUser.reload 실패(무시):', e?.message || e);
+        }
         const kn = typeof data.kakaoNickname === 'string' ? data.kakaoNickname.trim() : '';
         if (kn && auth.currentUser && !(auth.currentUser.displayName || '').trim()) {
             try {
@@ -217,7 +221,9 @@ async function finalizeKakaoSignInWithCode(code, redirectUri) {
                     email: ke,
                     providerId: 'kakao.com'
                 });
-            } catch (_) {}
+            } catch (e) {
+                console.warn('[카카오 로그인] 이메일 patchArtifactUserRoot 실패(무시):', e?.message || e);
+            }
             try {
                 if (!window.userSettings) window.userSettings = {};
                 window.userSettings.email = window.userSettings.email || ke;
