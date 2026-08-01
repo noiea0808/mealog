@@ -1,5 +1,5 @@
 /**
- * 검색·알림 센터 다이얼로그 / 모먼트 댓글 시트:
+ * 검색·알림 센터 다이얼로그 / 모먼트 댓글 시트 / 프로필·신고·밀톡 수정:
  * 키보드로 visualViewport가 밀릴 때 fixed 오버레이·입력란이 함께 올라가는 현상 완화.
  * 오버레이를 visualViewport 박스에 맞추고 레이아웃 스크롤을 원위치한다.
  */
@@ -9,6 +9,9 @@ const OVERLAY_ROOT_SELECTORS = [
     '#momentSearchModal',
     '#boardSearchModal',
     '#notificationModal',
+    '#profileFieldEditModal',
+    '#feedBubbleEditOverlay',
+    '#reportModal',
     '.moment-v2-social-comments-panel--sheet-in-body'
 ];
 
@@ -42,8 +45,50 @@ function pinLayoutScroll() {
     if (body?.scrollTop) body.scrollTop = 0;
 }
 
+/**
+ * 검색 필터 팝업: 키보드 중 CTA를 body 스크롤 안으로 옮겨 입력란을 가리지 않게 함.
+ * @param {HTMLElement} root
+ * @param {boolean} intoBody
+ */
+function placeSearchFilterActions(root, intoBody) {
+    if (!root?.classList?.contains('search-filter-modal')) return;
+    const panel = root.querySelector('.search-filter-modal__panel');
+    const body = root.querySelector('.search-filter-modal__body');
+    const actions = panel?.querySelector('.mealog-dialog-actions');
+    if (!panel || !body || !actions) return;
+    if (intoBody) {
+        if (actions.parentElement !== body) body.appendChild(actions);
+        return;
+    }
+    if (actions.parentElement === body) panel.appendChild(actions);
+}
+
+/**
+ * 프로필 필드 시트: CTA를 스크롤 body로 이동
+ * @param {HTMLElement} root
+ * @param {boolean} intoBody
+ */
+function placeProfileFieldEditActions(root, intoBody) {
+    if (root?.id !== 'profileFieldEditModal') return;
+    const panel = root.querySelector('.profile-field-edit-panel');
+    const body = root.querySelector('.profile-field-edit-body');
+    const actions = panel?.querySelector('.mealog-dialog-actions');
+    if (!panel || !body || !actions) return;
+    if (intoBody) {
+        if (actions.parentElement !== body) body.appendChild(actions);
+        return;
+    }
+    if (actions.parentElement === body) panel.appendChild(actions);
+}
+
+function placeOverlayActions(root, intoBody) {
+    placeSearchFilterActions(root, intoBody);
+    placeProfileFieldEditActions(root, intoBody);
+}
+
 function clearOverlayVvPin(root) {
     if (!root) return;
+    placeOverlayActions(root, false);
     root.classList.remove('is-ime-open');
     root.style.top = '';
     root.style.left = '';
@@ -73,6 +118,7 @@ function applyOverlayVvPin(root) {
         return;
     }
     root.classList.add('is-ime-open');
+    placeOverlayActions(root, true);
 
     const top = Math.max(0, Number(vv.offsetTop) || 0);
     const left = Math.max(0, Number(vv.offsetLeft) || 0);
@@ -114,7 +160,12 @@ function syncOverlayKeyboardPin() {
     const root = isInputLike(ae) ? findOverlayRoot(ae) : null;
     if (!root) {
         if (activeRoot) {
-            clearOverlayVvPin(activeRoot);
+            // 동적으로 제거된 오버레이(신고·밀톡 수정)도 안전하게 정리
+            if (document.contains(activeRoot)) {
+                clearOverlayVvPin(activeRoot);
+            } else {
+                activeRoot.classList?.remove?.('is-ime-open');
+            }
             activeRoot = null;
         }
         return;

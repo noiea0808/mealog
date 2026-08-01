@@ -329,15 +329,32 @@ body:has(#boardListView:not(.hidden) #boardFeedPanel:not(.hidden)) #navigationBa
 body:has(#mainApp:not(.hidden)) #navigationBarOverlay {
     background-color: var(--app-page-bg) !important;
 }
-/* 앱 전체 키보드 열림 시: 헤더·상태바·트래커·하단 네비·핸폰 네비 영역 모두 숨김 (텍스트 입력 포커스 시) — 푸시 설정 스위치(.push-pref-toggle)는 제외 */
+/*
+ * 앱 전체 키보드(텍스트 포커스) 시:
+ * - 하단 네비·트래커만 숨김 (입력 공간)
+ * - 상태줄·홈 인디케이터 오버레이·safe-area 패딩은 유지 (침범 방지)
+ * - 메인 헤더는 기본 숨김, 라운지/글쓰기/상세/마이는 예외로 유지
+ * 푸시 설정 스위치(.push-pref-toggle)는 제외
+ */
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) .bottom-nav,
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay,
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader,
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
 body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #trackerSection {
     display: none !important;
 }
-/* 밀로그 검색창 포커스·확장 시: 헤더·트래커·상태바 유지 (입력·필터 사용 중 chrome 숨김 방지) */
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #statusBarOverlay,
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #navigationBarOverlay {
+    display: block !important;
+}
+body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #mainAppHeader {
+    display: none !important;
+}
+/* 라운지·게시판 글쓰기·상세·마이: 헤더 유지 (서브탭/타이틀이 상태줄로 올라가지 않게) */
+body:has(#boardListView:not(.hidden) input:not(.push-pref-toggle):focus, #boardListView:not(.hidden) textarea:focus, #boardListView:not(.hidden) [contenteditable="true"]:focus) #mainAppHeader,
+body:has(#boardWriteView:not(.hidden) input:focus, #boardWriteView:not(.hidden) textarea:focus, #boardWriteView:not(.hidden) [contenteditable="true"]:focus) #mainAppHeader,
+body:has(#boardDetailView:not(.hidden) input:focus, #boardDetailView:not(.hidden) textarea:focus) #mainAppHeader,
+body:has(#settingsView:not(.hidden) input:not(.push-pref-toggle):focus, #settingsView:not(.hidden) textarea:focus) #mainAppHeader {
+    display: block !important;
+}
+/* 밀로그 검색창 포커스·확장 시: 헤더·트래커·상태바·네비 유지 */
 body:has(#searchInput:focus) #mainAppHeader,
 body:has(#timelineSearchPanel.expanded) #mainAppHeader,
 body:has(#searchInput:focus) #trackerSection:not(.hidden),
@@ -355,9 +372,10 @@ body:has(#searchInput:focus) #navigationBarOverlay,
 body:has(#timelineSearchPanel.expanded) #navigationBarOverlay {
     display: block !important;
 }
+/* 포커스 시에도 safe-area 유지. 하단 네비 슬롯(80px)만 제거 */
 body:not(.entry-modal-open):has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) {
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+    padding-top: var(--safe-top) !important;
+    padding-bottom: var(--safe-bottom) !important;
 }
 /* 식사 기록 모달 열림: 입력 포커스로 body padding·배경 chrome이 튀지 않도록 전역 규칙 예외 */
 body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) {
@@ -369,8 +387,9 @@ body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(
 body.entry-modal-open:has(#entryModal:not(.hidden) input:focus, #entryModal:not(.hidden) textarea:focus) #trackerSection:not(.hidden) {
     display: block !important;
 }
-body:has(input:not(.push-pref-toggle):focus, textarea:focus, [contenteditable="true"]:focus) #boardWriteView {
-    padding-bottom: 1rem !important;
+/* 글쓰기: 키보드 중에도 하단 safe + CTA 스크롤 여유 */
+body:has(#boardWriteContent:focus) #boardWriteView {
+    padding-bottom: calc(1rem + var(--safe-bottom)) !important;
 }
 /* iOS Safari: 입력 텍스트가 바로 안 보이는 버그 수정 (GPU compositing으로 리페인트 강제) */
 input, textarea, [contenteditable="true"] {
@@ -3454,7 +3473,7 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     max-height: min(80vh, calc(100% - var(--entry-sheet-top, 1rem) - max(1rem, env(safe-area-inset-bottom, 0px))));
     min-height: var(--entry-sheet-min-h, 0px);
 }
-/* 키보드 열림: 헤더 Y(--entry-sheet-top) 유지. top을 올리면 시트 아래/위 배경이 드러남 */
+/* 키보드 열림: JS가 --entry-sheet-top을 상단으로 낮춰 콘텐츠 영역 확보 */
 #entryModal.keyboard-open > .entry-modal-panel {
     top: var(--entry-sheet-top, 1rem) !important;
     max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
@@ -12309,9 +12328,21 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     box-shadow: 0 0 0 2px #fff;
 }
 
-/* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 */
+/* 밀톡 글쓰기: 하단 취소/등록 버튼이 네비에 가려지지 않도록 + 키보드 시 스크롤 */
 #boardWriteView {
     padding-bottom: calc(80px + var(--safe-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+}
+#boardWriteView .board-write-actions {
+    flex-shrink: 0;
+    padding-bottom: 0.25rem;
+}
+body:has(#boardWriteContent:focus) #boardWriteView .board-write-actions {
+    margin-top: 0.5rem;
+    padding-bottom: 0.5rem;
 }
 
 /* 밀톡/공지 내용 에디터: placeholder (format-editor-empty 클래스 시 표시) */
@@ -13038,13 +13069,13 @@ body.bottom-nav-scroll-hidden #boardListView #boardListPanel:not(.hidden) {
     padding-bottom: calc(1.25rem + var(--safe-bottom));
 }
 
-/* 피드 입력 포커스 시 헤더·네비가 display:none → 목록 높이에서 네비/헤더 슬롯 제거 */
+/* 피드 입력 포커스: 헤더·safe-area 유지, 하단 네비만 숨김 → 기본 뷰 높이식 유지 */
 body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: 0;
-    height: calc(100vh - var(--safe-top));
-    max-height: calc(100vh - var(--safe-top));
-    height: calc(100dvh - var(--safe-top));
-    max-height: calc(100dvh - var(--safe-top));
+    height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100vh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
+    max-height: calc(100dvh - var(--safe-top) - var(--app-chrome-header-h) - var(--safe-bottom));
 }
 body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
     /* 컴포저와 동일: bottom: max(0.35rem, env(safe-area-inset-bottom)) — 네비 숨김 후 키보드 대응 */
@@ -13641,6 +13672,25 @@ button.board-detail-stat:disabled {
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
+}
+/* 상세 댓글 포커스: 밀톡 컴포저와 같이 하단 fixed + safe-bottom (키보드 위) */
+body:has(#boardCommentInput:focus, #noticeCommentInput:focus) .board-detail-composer {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+    width: var(--app-bottom-bar-width, min(100%, 28rem));
+    max-width: 100%;
+    z-index: 120;
+    margin: 0;
+    padding: 10px 14px 12px;
+    box-sizing: border-box;
+    background: var(--page-deep, #faf6f2);
+    border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
+    box-shadow: 0 -4px 16px rgba(36, 31, 28, 0.06);
+}
+body:has(#boardCommentInput:focus, #noticeCommentInput:focus) #boardDetailContent {
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
 }
 .board-detail-composer__row {
     position: relative;
@@ -16106,11 +16156,56 @@ body:has(#adminPage:not(.hidden)),
 #timelineSearchModal.is-ime-open,
 #momentSearchModal.is-ime-open,
 #boardSearchModal.is-ime-open,
-#notificationModal.is-ime-open {
+#notificationModal.is-ime-open,
+#profileFieldEditModal.is-ime-open,
+#feedBubbleEditOverlay.is-ime-open,
+#reportModal.is-ime-open {
     align-items: flex-start !important;
     padding-top: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
     padding-bottom: 0.5rem !important;
     box-sizing: border-box;
+}
+#profileFieldEditModal.is-ime-open {
+    align-items: flex-end !important;
+}
+#profileFieldEditModal.is-ime-open .profile-field-edit-panel {
+    max-height: calc(100% - 0.5rem);
+}
+#feedBubbleEditOverlay.is-ime-open .feed-bubble-edit-panel,
+#reportModal.is-ime-open > .relative {
+    max-height: calc(100% - 0.75rem);
+    overflow-y: auto;
+}
+/* 검색 필터: IME 중 CTA는 body 스크롤 끝으로 이동 — 입력란을 가리지 않음 */
+.search-filter-modal.is-ime-open .search-filter-modal__panel {
+    max-height: calc(100% - 0.5rem);
+}
+.search-filter-modal.is-ime-open .search-filter-modal__body > .mealog-dialog-actions {
+    flex-shrink: 0;
+    margin-top: 0.75rem;
+    margin-left: calc(-1 * var(--mealog-dialog-pad-x, 1rem));
+    margin-right: calc(-1 * var(--mealog-dialog-pad-x, 1rem));
+    width: calc(100% + 2 * var(--mealog-dialog-pad-x, 1rem));
+}
+/* 프로필 필드 시트: IME 중 CTA를 스크롤 body 끝으로 */
+#profileFieldEditModal.is-ime-open .profile-field-edit-body > .mealog-dialog-actions {
+    flex-shrink: 0;
+    margin-top: 0.75rem;
+    margin-left: -1rem;
+    margin-right: -1rem;
+    width: calc(100% + 2rem);
+}
+/* 모먼트 댓글 시트: IME 중 시트·컴포저 safe 여백 */
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open {
+    justify-content: flex-end;
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-sheet-root {
+    max-height: 100%;
+    padding-top: max(0.25rem, env(safe-area-inset-top, 0px));
+    padding-bottom: max(6px, env(safe-area-inset-bottom, 0px));
+}
+body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body.is-ime-open .moment-v2-social-comments-composer {
+    padding-bottom: 2px;
 }
 #contentPopupModalInner {
     overflow: hidden;

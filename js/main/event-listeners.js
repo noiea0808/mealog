@@ -668,6 +668,19 @@ export function initEventListeners() {
             const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
             document.execCommand('insertText', false, text);
         });
+        // 키보드 중 취소/등록 CTA는 뷰 스크롤로만 보이게 — 포커스 시 하단이 가려지지 않게 맞춤
+        boardWriteContentEl.addEventListener('focus', () => {
+            const view = document.getElementById('boardWriteView');
+            const actions = view?.querySelector?.('.board-write-actions');
+            if (!view || !actions) return;
+            requestAnimationFrame(() => {
+                try {
+                    actions.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } catch (_) {
+                    view.scrollTop = Math.max(0, view.scrollHeight - view.clientHeight);
+                }
+            });
+        });
     }
     const boardWriteImagesInput = document.getElementById('boardWriteImages');
     const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');

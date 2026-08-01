@@ -777,6 +777,8 @@ function initEntryModalKeyboardHandling(entryModal) {
     let lastAppliedVtop = NaN;
     let viewportGeomRaf = null;
     let viewportCheckTimer = null;
+    /** 키보드 열리기 직전 시트 top — 닫을 때 --entry-sheet-top 즉시 복원용 */
+    let sheetTopBeforeKeyboard = null;
 
     const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
@@ -791,30 +793,46 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (body && body.scrollTop) body.scrollTop = 0;
     };
 
+    /** 키보드 중 시트 상단 여백(세션 entrySheetTopPx는 건드리지 않음 — 닫히면 복원) */
+    const getKeyboardSheetTopPx = () => {
+        const safeRaw = Number.parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--safe-top')
+        );
+        const safeTop = Number.isFinite(safeRaw) ? Math.max(0, Math.round(safeRaw)) : 0;
+        // 상단으로 올려 입력 콘텐츠 영역을 확보 (완전 flush는 노치/상태줄과 겹칠 수 있어 소량 패딩)
+        return Math.max(12, Math.min(safeTop || 12, 28));
+    };
+
     const applyViewportGeometry = (vh) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
         const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
         // 오버레이(#entryModal)는 inset-0 전체 유지. height를 vv에 맞추면
         // vv.offsetTop>0일 때 레이아웃 하단이 비어 앱 배경이 드러난다.
-        // 패널만 top 유지 + 키보드 위 가용 높이로 축소한다.
+        // 패널은 상단으로 올리고 키보드 위 가용 높이로 키운다.
         const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
-        if (!Number.isNaN(lastAppliedVh) && Math.abs(lastAppliedVh - h) < 1) {
+        const topPx = getKeyboardSheetTopPx();
+        if (
+            !Number.isNaN(lastAppliedVh) &&
+            Math.abs(lastAppliedVh - h) < 1 &&
+            !Number.isNaN(lastAppliedVtop) &&
+            Math.abs(lastAppliedVtop - topPx) < 1
+        ) {
             pinLayoutViewport();
             return;
         }
         lastAppliedVh = h;
-        lastAppliedVtop = 0;
+        lastAppliedVtop = topPx;
         entryModal.style.top = '';
         entryModal.style.height = '';
         pinLayoutViewport();
 
         const panel = entryModal.querySelector('.entry-modal-panel');
         if (!panel) return;
-        const topPx = Number.parseFloat(panel.style.top)
-            || Number.parseFloat(getComputedStyle(panel).top)
-            || 16;
+        // 세션 top(중앙 정렬값)은 entry-sheet-tabs가 보관. 여기는 CSS 변수만 임시 변경.
+        entryModal.style.setProperty('--entry-sheet-top', `${topPx}px`);
+        panel.style.top = `${topPx}px`;
         const avail = Math.max(160, Math.floor(h - topPx - 8));
-        // 키보드 애니 중간 프레임에도 avail을 따라가며, 닫힐 때 sync로 피크 복원
+        // 키보드 애니 중간 프레임에도 avail을 따라가며, 닫힐 때 sync로 피크·top 복원
         panel.style.maxHeight = `${avail}px`;
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
@@ -863,6 +881,14 @@ function initEntryModalKeyboardHandling(entryModal) {
     const setKeyboardOpen = (open) => {
         if (open) {
             if (!entryModal.classList.contains('keyboard-open')) {
+                const panel = entryModal.querySelector('.entry-modal-panel');
+                const prevTop = Number.parseFloat(panel?.style?.top)
+                    || Number.parseFloat(panel ? getComputedStyle(panel).top : '')
+                    || Number.parseFloat(
+                        entryModal.style.getPropertyValue('--entry-sheet-top')
+                    )
+                    || 16;
+                sheetTopBeforeKeyboard = Number.isFinite(prevTop) ? prevTop : 16;
                 entryModal.classList.add('keyboard-open');
                 placeEntryModalChrome(true);
                 lastAppliedVh = NaN;
@@ -888,7 +914,14 @@ function initEntryModalKeyboardHandling(entryModal) {
             const panel = entryModal.querySelector('.entry-modal-panel');
             if (panel) {
                 panel.style.maxHeight = '';
+                // sync rAF 전에 중앙 top이 잠깐 키보드 top으로 남지 않도록 즉시 복원
+                if (sheetTopBeforeKeyboard != null) {
+                    const t = `${sheetTopBeforeKeyboard}px`;
+                    entryModal.style.setProperty('--entry-sheet-top', t);
+                    panel.style.top = t;
+                }
             }
+            sheetTopBeforeKeyboard = null;
             // 키보드로 일시 축소했던 패널 높이를 피크 잠금으로 복원
             if (typeof window.syncEntrySheetHeightLock === 'function') {
                 window.syncEntrySheetHeightLock();
