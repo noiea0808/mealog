@@ -388,6 +388,11 @@ export function ensureFocusedInputVisible(el, opts = {}) {
     const delays = opts.delays || [0, 50, 150, 320, 500];
 
     const entryRoot = target.closest?.('#entryModal');
+    // 기록시트: 사용자가 스크롤 중이면 포커스 필드로 되감지 않음 (CTA 도달 방해 방지)
+    if (entryRoot) {
+        const area = entryRoot.querySelector('#modalScrollArea');
+        if (area?.dataset?.entryUserScrolling === '1') return;
+    }
     const suppressDocumentScroll =
         opts.suppressDocumentScroll === true || !!entryRoot;
 

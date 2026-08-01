@@ -3677,13 +3677,17 @@ html:not(.platform-web) #entryModal:not(.keyboard-open) #entryModalActions {
 html.platform-web #entryModal:not(.keyboard-open) #entryModalActions {
     padding-bottom: 16px !important;
 }
-/* 키보드 열림: nav·CTA는 패널 하단 고정(스크롤 밖). 본문만 #modalScrollArea */
+/* 키보드 열림: nav·CTA는 JS가 #modalScrollArea 끝으로 옮겨 스크롤로 노출 */
 #entryModal.keyboard-open #modalScrollArea {
-    padding-bottom: 0.5rem !important;
+    padding-bottom: 0 !important;
+    /* 중간 필드 포커스 시에도 CTA까지 스크롤 여유 */
+    scroll-padding-bottom: 5.5rem;
 }
-#entryModal.keyboard-open > .entry-modal-panel > #entrySheetNavBar,
-#entryModal.keyboard-open > .entry-modal-panel > #entryModalActions {
-    flex-shrink: 0;
+#entryModal.keyboard-open #modalScrollArea > #entrySheetNavBar {
+    margin-top: 0.75rem;
+}
+#entryModal.keyboard-open #modalScrollArea > #entryModalActions {
+    margin-top: 0.25rem;
 }
 /* 저장 중: 스크롤 영역·액션 버튼 비활성 (모달은 열린 채 스피너 표시) */
 #entryModal.entry-modal-saving #modalScrollArea {

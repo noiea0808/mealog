@@ -757,22 +757,16 @@ function nudgeEntryModalInputRepaint(entryModal) {
 
 /** 끼니 등록 모달: 키보드 열림 시 팝업 높이를 viewport에 맞추고, 닫힘 시 복원 */
 /**
- * nav·CTA 위치.
- * 키보드 중에도 패널 하단(스크롤 밖)에 두는 것이 기본 — 스크롤 안으로 옮기면
- * 중간 필드(무엇을 등) 포커스 시 WebView가 포커스 가시 클램프를 걸어 CTA까지 스크롤이 막힌다.
- * @param {boolean} intoScroll 레거시 호환용. true여도 APP/resize에서는 하단 고정 유지.
+ * 키보드 열림: nav·CTA를 #modalScrollArea 끝으로 옮겨 스크롤로 접근.
+ * 닫힘: 스크롤 영역 바로 아래(패널 하단 chrome)로 복원.
+ * @param {boolean} intoScroll
  */
 function placeEntryModalChrome(intoScroll) {
     const scroll = document.getElementById('modalScrollArea');
     const nav = document.getElementById('entrySheetNavBar');
     const actions = document.getElementById('entryModalActions');
     if (!scroll || !nav || !actions) return;
-    // resize(APP): 패널이 이미 키보드 위 → CTA는 항상 패널 하단 고정
-    const forceDock =
-        getImeMetrics().mode === 'resize' ||
-        !!window.Capacitor?.isNativePlatform?.();
-    const moveInto = !!intoScroll && !forceDock;
-    if (moveInto) {
+    if (intoScroll) {
         if (nav.parentElement !== scroll) scroll.appendChild(nav);
         if (actions.parentElement !== scroll) scroll.appendChild(actions);
         return;
@@ -852,15 +846,17 @@ function initEntryModalKeyboardHandling(entryModal) {
         };
     };
 
-    const scrollActiveEntryField = () => {
+    const scrollActiveEntryField = ({ force = false } = {}) => {
+        const scroll = document.getElementById('modalScrollArea');
+        // 사용자가 직접 스크롤 중이면 포커스 필드로 되감아 CTA 도달을 막지 않음
+        if (!force && scroll?.dataset?.entryUserScrolling === '1') return;
         const active = document.activeElement;
         if (!active || !entryModal.contains(active) || !active.matches?.('input, textarea')) return;
         const isMemo = !!active.classList?.contains('entry-comment-textarea');
-        const overlay = getImeMetrics().mode === 'overlay';
         scrollEntryFieldIntoView(active, {
             align: isMemo ? 'end' : 'nearest',
-            afterMs: overlay ? 80 : 0,
-            once: !(overlay || isMemo)
+            afterMs: 0,
+            once: true
         });
     };
 
@@ -894,7 +890,7 @@ function initEntryModalKeyboardHandling(entryModal) {
             !Number.isNaN(lastAppliedVtop) &&
             Math.abs(lastAppliedVtop - topPx) < 1
         ) {
-            if (opts.scroll) scrollActiveEntryField();
+            // settle 반복 시 스크롤 되감기 금지 — 사용자 스크롤로 CTA 도달 가능해야 함
             return;
         }
         lastAppliedVh = avail;
@@ -909,10 +905,10 @@ function initEntryModalKeyboardHandling(entryModal) {
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
         panel.style.setProperty('--entry-sheet-h', `${avail}px`);
-        if (opts.scroll) scrollActiveEntryField();
+        if (opts.scroll) scrollActiveEntryField({ force: !!opts.forceScroll });
     };
 
-    /** VV 애니 중에는 settle 후 한 번만 맞춤 (매 프레임 높이 추종으로 깜박이던 원인) */
+    /** VV 애니 중에는 settle 후 높이만 맞춤 — 스크롤은 포커스 시에만 */
     const scheduleViewportGeometryFromVv = ({ immediate = false } = {}) => {
         if (entryModal.classList.contains('hidden')) return;
         if (!entryModal.classList.contains('keyboard-open')) return;
@@ -926,7 +922,7 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (entryModal.classList.contains('hidden')) return;
             if (!entryModal.classList.contains('keyboard-open')) return;
             if (imeComposing) return;
-            applyViewportGeometry({ scroll: true, force: true });
+            applyViewportGeometry({ scroll: false, force: true });
         }, GEOM_SETTLE_MS);
     };
 
@@ -964,18 +960,14 @@ function initEntryModalKeyboardHandling(entryModal) {
                 lastAppliedVtop = NaN;
                 entryModal.classList.add('keyboard-open');
                 const active = document.activeElement;
-                const wantScroll =
-                    !!active &&
-                    entryModal.contains(active) &&
-                    (active.classList?.contains('entry-comment-textarea') ||
-                        getImeMetrics().mode === 'overlay');
-                // 높이·top 맞춤. CTA/nav는 패널 하단에 고정(스크롤 클램프에 CTA가 안 닿는 문제 방지)
-                applyViewportGeometry({ scroll: wantScroll, force: true });
+                const isMemo = !!active?.classList?.contains('entry-comment-textarea');
+                // 높이·top 맞춤 후 CTA를 스크롤 끝으로. 자동 스크롤은 메모만(중간 필드는 사용자 스크롤 방해 금지)
+                applyViewportGeometry({ scroll: isMemo, force: true, forceScroll: isMemo });
                 if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
                 chromePlaceRaf = requestAnimationFrame(() => {
                     chromePlaceRaf = null;
                     if (!entryModal.classList.contains('keyboard-open')) return;
-                    placeEntryModalChrome(false);
+                    placeEntryModalChrome(true);
                     scheduleViewportGeometryFromVv({ immediate: false });
                 });
             } else {
@@ -1036,6 +1028,23 @@ function initEntryModalKeyboardHandling(entryModal) {
         baselineHeight = Math.max(window.visualViewport?.height ?? window.innerHeight, window.innerHeight * 0.5);
     };
     entryModal.setKeyboardBaseline = saveBaseline;
+    const scrollAreaEl = document.getElementById('modalScrollArea');
+    let entryUserScrollClearTimer = null;
+    const markEntryUserScrolling = () => {
+        if (!scrollAreaEl) return;
+        scrollAreaEl.dataset.entryUserScrolling = '1';
+        if (entryUserScrollClearTimer != null) clearTimeout(entryUserScrollClearTimer);
+        entryUserScrollClearTimer = setTimeout(() => {
+            entryUserScrollClearTimer = null;
+            if (scrollAreaEl) delete scrollAreaEl.dataset.entryUserScrolling;
+        }, 2000);
+    };
+    if (scrollAreaEl && !scrollAreaEl._entryUserScrollBound) {
+        scrollAreaEl._entryUserScrollBound = true;
+        scrollAreaEl.addEventListener('touchstart', markEntryUserScrolling, { passive: true });
+        scrollAreaEl.addEventListener('wheel', markEntryUserScrolling, { passive: true });
+    }
+
     entryModal.addEventListener('focusin', (e) => {
         if (!e.target.matches?.('input, textarea')) return;
         captureImeBaseline();
@@ -1045,15 +1054,14 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (overlay) {
             pinElementToVisualViewport(entryModal, { force: true });
         }
-        // overlay/메모: 키보드 settle 전에 #modalScrollArea 안으로 올려 가림을 줄임
-        if (isMemo || overlay) {
+        // 포커스 진입 시 한 번만 맞춤. 이후 VV settle/자동 스크롤로 되감지 않음 → CTA까지 수동 스크롤 가능
+        if (entryModal.classList.contains('keyboard-open') || isMemo || overlay) {
+            if (scrollAreaEl) delete scrollAreaEl.dataset.entryUserScrolling;
             scrollEntryFieldIntoView(e.target, {
                 align: isMemo ? 'end' : 'nearest',
-                afterMs: overlay ? 80 : 0,
-                once: !overlay
+                afterMs: 0,
+                once: true
             });
-        } else if (entryModal.classList.contains('keyboard-open')) {
-            scrollEntryFieldIntoView(e.target, { align: 'nearest', afterMs: 0, once: true });
         }
         scheduleViewportCheck();
     });
@@ -1552,13 +1560,14 @@ function bindEntryWhatInputAutosizeOnce() {
 function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0, once = false } = {}) {
     const scroll = document.getElementById('modalScrollArea');
     if (!scroll || !el || !scroll.contains(el)) return;
-    // once: 키보드 settle 후 단일 보정 — 다중 딜레이 버스트는 시트 깜박임 유발
-    // overlay/사진+메모: VV 애니·chrome 이동 이후까지 몇 차례 더 맞춤
+    // 사용자 스크롤 중에는 포커스 필드로 되감지 않음 (무엇을 포커스→CTA 도달 방해 방지)
+    if (scroll.dataset?.entryUserScrolling === '1') return;
+    // once: 키보드 settle 후 단일 보정 — 다중 딜레이 버스트는 시트 깜박임·스크롤 고착 유발
     const delays = once
         ? [0]
         : afterMs > 0
-          ? [0, afterMs, afterMs + 150, afterMs + 350, afterMs + 600]
-          : [0, 80, 200, 400, 700];
+          ? [0, afterMs, afterMs + 150]
+          : [0, 80, 200];
     ensureFocusedInputVisible(el, {
         align,
         scrollParent: scroll,
