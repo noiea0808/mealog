@@ -56,10 +56,12 @@ function isNativePlatform() {
  * @returns {'resize'|'overlay'}
  */
 function resolveImeMode(partial) {
-    if (isNativePlatform() && partial.adjustResizeLikely) return 'resize';
-    if (isMobileWebTouchUi()) return 'overlay';
-    // native인데 리사이즈가 안 잡히면 overlay로 VV 보정
-    if (isNativePlatform()) return partial.adjustResizeLikely ? 'resize' : 'overlay';
+    // 레이아웃 뷰포트가 키보드만큼 줄어든 경우 resize:
+    // - APP: Capacitor Keyboard resize:'body'가 WebView를 축소
+    // - 모바일 웹: meta interactive-widget=resizes-content (Chromium)
+    // 데스크톱은 창 리사이즈를 키보드로 오판하지 않도록 제외.
+    if (partial.adjustResizeLikely && (isNativePlatform() || isMobileWebTouchUi())) return 'resize';
+    // 리사이즈가 안 잡히면(iOS Safari 등) overlay로 VV 보정
     return 'overlay';
 }
 

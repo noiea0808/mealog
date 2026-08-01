@@ -2,7 +2,9 @@
 <html lang="ko" class="mealog-landing-active mealog-boot-active">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=overlays-content">
+    <!-- interactive-widget=resizes-content: 키보드가 올라오면 layout viewport가 줄어듦.
+         overlays-content는 VV도 그대로 유지되어 ime-viewport.js의 VV 기반 보정이 전부 무력화됐다. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
     <meta name="description" content="우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인">
     <meta name="theme-color" content="#ffffff">
     <meta name="mobile-web-app-capable" content="yes">

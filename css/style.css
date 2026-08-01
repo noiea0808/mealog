@@ -12799,7 +12799,8 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
 /*
  * 밀톡 컴포저
  * - APP(resize): ime-open일 때만 bottom≈0 (레이아웃이 이미 키보드 제외). 포커스만으로는 네비 위 유지.
- * - 웹(platform-web): 포커스·IME 모두 --ime-fixed-bottom(VV overlap)으로 키보드 위에 부착.
+ * - 웹 overlay(iOS Safari): 포커스·IME 모두 --ime-fixed-bottom(VV overlap)으로 키보드 위에 부착.
+ * - 웹 resize(Android/Chromium): 레이아웃이 이미 키보드 제외 → APP 규칙(bottom≈0)을 그대로 사용.
  */
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: var(--ime-fixed-bottom, 0px);
@@ -12809,8 +12810,8 @@ body:has(#boardInlineComposerInput:focus):not(.ime-open) #boardInlineComposer.bo
     bottom: calc(66px + var(--safe-bottom));
     z-index: 45;
 }
-html.platform-web body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
-html.platform-web body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+html.platform-web:not([data-ime-mode="resize"]) body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
+html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: max(
         0.35rem,
         var(--ime-fixed-bottom, 0px),
@@ -13214,15 +13215,15 @@ body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
     max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
 }
-/* 웹: 포커스·IME 모두 overlap 기준 */
-html.platform-web body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden),
-html.platform-web body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+/* 웹 overlay(iOS Safari): 포커스·IME 모두 overlap 기준. resize 웹은 위 APP 규칙 사용 */
+html.platform-web:not([data-ime-mode="resize"]) body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden),
+html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: 0;
     height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
     max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
 }
-html.platform-web body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent,
-html.platform-web body.ime-open #boardListView #boardFeedPanelContent {
+html.platform-web:not([data-ime-mode="resize"]) body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent,
+html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardListView #boardFeedPanelContent {
     --board-feed-scroll-inset-bottom: calc(
         max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px)) +
             var(--board-feed-composer-face) + var(--board-feed-above-composer)
@@ -13836,7 +13837,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
 body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
     padding-bottom: calc(5.75rem + var(--ime-fixed-bottom, 0px));
 }
-html.platform-web body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
+html.platform-web:not([data-ime-mode="resize"]) body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     bottom: max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 .board-detail-composer__row {
