@@ -313,16 +313,47 @@ export function setAppImeOpen(open) {
             applyWebImeRootShift();
             publishImeCssVars({ ...getImeMetrics(), open: true });
         }
+        syncWebMealtalkComposerLift();
         return;
     }
     imeOpen = next;
     document.body.classList.toggle('ime-open', next);
     document.body.classList.toggle('keyboard-closed', !next);
+    syncWebMealtalkComposerLift();
     listeners.forEach((fn) => {
         try {
             fn(next);
         } catch (_) { /* ignore */ }
     });
+}
+
+/** 웹 밀톡: ime-open 전이라도 VV overlap으로 --ime-fixed-bottom을 갱신 (APP resize는 건드리지 않음) */
+function syncWebMealtalkComposerLift() {
+    if (!isMobileWebTouchUi()) return;
+    const m = getImeMetrics();
+    if (m.mode === 'resize') return;
+    const input = document.getElementById('boardInlineComposerInput');
+    const mealtalkFocused = !!(input && document.activeElement === input);
+    if (!mealtalkFocused && !imeOpen) return;
+
+    const layoutH = m.layoutH || window.innerHeight || 0;
+    let lift = Math.max(0, Math.round(layoutH - (m.vvBottom || 0)));
+    if (lift < 40 && baselineLayoutH > 0) {
+        const byH = Math.max(0, Math.round(baselineLayoutH - (m.vvH || layoutH)));
+        if (byH > 80) lift = byH;
+    }
+    if (mealtalkFocused && lift < 40 && m.fixedBottom > 40) {
+        lift = Math.round(m.fixedBottom);
+    }
+    const root = document.documentElement;
+    if (!root) return;
+    root.style.setProperty('--ime-fixed-bottom', `${lift}px`);
+    root.style.setProperty('--ime-overlap', `${lift}px`);
+    root.style.setProperty('--ime-inset', `${lift}px`);
+    root.style.setProperty(
+        '--ime-vv-height',
+        `${Math.round(m.vvH || Math.max(0, layoutH - lift) || layoutH)}px`
+    );
 }
 
 export function syncAppImeState() {
@@ -339,6 +370,7 @@ export function syncAppImeState() {
         return false;
     }
     setAppImeOpen(shouldTreatImeOpen());
+    syncWebMealtalkComposerLift();
     return imeOpen;
 }
 

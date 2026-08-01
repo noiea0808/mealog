@@ -12795,15 +12795,20 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
     box-shadow: none;
 }
 /*
- * 밀톡 컴포저 (main 호환 + staging 보정)
- * - 포커스 즉시 하단 안전영역 (main과 동일 — 웹에서 브라우저/키보드와 맞춤)
- * - ime-open 시 --ime-fixed-bottom(overlay overlap)로 추가 상승 (루트 시프트 실패 대비)
+ * 밀톡 컴포저
+ * - APP(resize): ime-open일 때만 bottom≈0 (레이아웃이 이미 키보드 제외). 포커스만으로는 네비 위 유지.
+ * - 웹(platform-web): 포커스·IME 모두 --ime-fixed-bottom(VV overlap)으로 키보드 위에 부착.
  */
-body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
-    bottom: max(0.35rem, env(safe-area-inset-bottom, 0px));
+body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    bottom: var(--ime-fixed-bottom, 0px);
     z-index: 120;
 }
-body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+body:has(#boardInlineComposerInput:focus):not(.ime-open) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
+    bottom: calc(66px + var(--safe-bottom));
+    z-index: 45;
+}
+html.platform-web body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
+html.platform-web body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: max(
         0.35rem,
         var(--ime-fixed-bottom, 0px),
@@ -13195,21 +13200,10 @@ body.bottom-nav-scroll-hidden #boardListView #boardListPanel:not(.hidden) {
     padding-bottom: calc(1.25rem + var(--safe-bottom));
 }
 
-/* 밀톡 포커스/IME: 피드 높이·스크롤 inset (main focus 규칙 + ime 토큰) */
-body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
-    margin-top: 0;
-    height: calc(100dvh - var(--safe-top));
-    max-height: calc(100dvh - var(--safe-top));
-}
-body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent {
-    --board-feed-scroll-inset-bottom: calc(
-        max(0.35rem, env(safe-area-inset-bottom, 0px), var(--ime-fixed-bottom, 0px)) +
-            var(--board-feed-composer-face) + var(--board-feed-above-composer)
-    );
-}
+/* APP: IME 중 피드 inset — fixed-bottom≈0 */
 body.ime-open #boardListView #boardFeedPanelContent {
     --board-feed-scroll-inset-bottom: calc(
-        max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px)) +
+        var(--ime-fixed-bottom, 0px) +
             var(--board-feed-composer-face) + var(--board-feed-above-composer)
     );
 }
@@ -13217,6 +13211,20 @@ body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
     margin-top: 0;
     height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
     max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top) - var(--app-chrome-header-h));
+}
+/* 웹: 포커스·IME 모두 overlap 기준 */
+html.platform-web body:has(#boardInlineComposerInput:focus) #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden),
+html.platform-web body.ime-open #boardListView.board-list-view-mealtalk.ui-tab-view:not(.hidden) {
+    margin-top: 0;
+    height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
+    max-height: calc(var(--ime-vv-height, 100dvh) - var(--safe-top));
+}
+html.platform-web body:has(#boardInlineComposerInput:focus) #boardListView #boardFeedPanelContent,
+html.platform-web body.ime-open #boardListView #boardFeedPanelContent {
+    --board-feed-scroll-inset-bottom: calc(
+        max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px)) +
+            var(--board-feed-composer-face) + var(--board-feed-above-composer)
+    );
 }
 /* 패널(#boardListPanel)에서 이미 풀폭·배경 처리 — 이중 네거티브 마진 제거 */
 #boardListView #noticesContainer,
@@ -13807,12 +13815,12 @@ button.board-detail-stat:disabled {
     padding-top: 12px;
     border-top: 1px solid color-mix(in srgb, var(--line, #d0c6ba) 65%, transparent);
 }
-/* 상세 댓글: IME 중에만 fixed + --ime-fixed-bottom(overlay overlap) */
+/* 상세 댓글: IME 중에만 fixed — APP는 0, 웹은 overlap 토큰 */
 body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px));
+    bottom: var(--ime-fixed-bottom, 0px);
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
     z-index: 120;
@@ -13825,6 +13833,9 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
 }
 body.ime-open:has(#boardDetailView:not(.hidden)) #boardDetailContent {
     padding-bottom: calc(5.75rem + var(--ime-fixed-bottom, 0px));
+}
+html.platform-web body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
+    bottom: max(0.35rem, var(--ime-fixed-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 .board-detail-composer__row {
     position: relative;
