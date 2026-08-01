@@ -94,6 +94,7 @@ import {
 import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
+import { syncMomentShareAfterSave } from './entry-save-share.js';
 import {
     bindEntryModalHeaderOnce,
     refreshEntryModalHeader,
@@ -2194,9 +2195,6 @@ export async function saveEntry() {
             }
         }
         
-        // 공유 상태 변경 여부 추적 (closeModal 전에 originalSharedPhotos 기준으로 캡처됨)
-        let sharedPhotosUpdated = false;
-
         // 로컬 낙관 반영 완료 → 시트는 즉시 닫는다 (오프라인 우선: 서버 동기화는 백그라운드 진행,
         // 진행 상태는 타임라인 도트·칩으로 표시). 서버 실패 시에도 입력 내용은 로컬에 남는다.
         finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
@@ -2494,96 +2492,14 @@ export async function saveEntry() {
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             
-            /** 모먼트(sharedPhotos 컬렉션) 동기화 실패 시 공유 성공 토스트를 막기 위함 */
-            let shareSyncFailed = false;
-            // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
-            // sharePhotos: sharedPhotos 컬렉션 쓰기 + 서버가 meals.sharedPhotos 미러링
-            // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
-            if (record.id) {
-                // 현재 공유할 사진이 있는지 확인
-                const hasPhotosToShare = photosToShare && photosToShare.length > 0;
-
-                // 공유 목록이 바뀌거나, 이미 공유 중인데 사진 비율만 바뀐 경우 모먼트 재동기화.
-                // (originalShareList는 closeModal 전에 캡처한 스냅샷 — state.originalSharedPhotos는 닫힌 뒤 비어 있음)
-                // 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
-                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제·비율 변경 시 동기화; 비율만 변경이면 서버가 sharedAt 유지)
-                const shareListChanged =
-                    photosToShare.length !== originalShareList.length ||
-                    photosToShare.some((url, i) => url !== originalShareList[i]);
-                // 비율만 바꿔도 모먼트 프레임이 갱신되도록 — 공유 중(또는 공유할) 사진이 있으면 재동기화
-                const shouldResyncMomentShare =
-                    shareListChanged || (hasPhotosToShare && photoAspectChanged);
-
-                if (shouldResyncMomentShare) {
-                    sharedPhotosUpdated = true;
-                    // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
-                    if (record.id) {
-                        if (hasPhotosToShare && photosToShare?.length) {
-                            if (!window.sharedPhotos) window.sharedPhotos = [];
-                            const newEntries = photosToShare.map(url => ({ entryId: record.id, photoUrl: url, userId: window.currentUser?.uid }));
-                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== record.id).concat(newEntries);
-                        } else if (hadSharedPhotos && !hasPhotosToShare) {
-                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== record.id);
-                            }
-                        }
-                        updateTimelineShareIndicators();
-                    }
-                    try {
-                        const { buildOptimisticMomentPostV2 } = await import('../utils/moment-post-v2.js');
-                        const { mergeMomentPostIntoFeed, removeMomentPostFromFeed } = await import('../utils/moment-feed-cache.js');
-                        const profile = window.userSettings?.profile || {};
-                        const uid = window.currentUser?.uid;
-
-                        await dbOps.sharePhotos(photosToShare, record);
-                        console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
-
-                        if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
-                            const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
-                            if (hi >= 0) {
-                                window.mealHistory[hi] = {
-                                    ...window.mealHistory[hi],
-                                    sharedPhotos: hasPhotosToShare ? [...photosToShare] : []
-                                };
-                            }
-                        }
-
-                        if (hasPhotosToShare && photosToShare?.length) {
-                            window.sharedPhotosFeed = mergeMomentPostIntoFeed(
-                                window.sharedPhotosFeed,
-                                buildOptimisticMomentPostV2(record, photosToShare, profile, uid)
-                            );
-                        } else if (record?.id) {
-                            window.sharedPhotosFeed = removeMomentPostFromFeed(window.sharedPhotosFeed, record.id, uid);
-                        }
-
-                        if (appState.currentTab === 'gallery') renderGallery();
-                        if (document.getElementById('feedContent')) renderFeed();
-
-                        import('../db.js').then(({ loadSharedPhotosPage }) =>
-                            loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
-                                if (typeof appState !== 'undefined') {
-                                    appState.sharedPhotosFeedLastDoc = lastDoc;
-                                    appState.sharedPhotosFeedHasMore = hasMore;
-                                }
-                                if (!hasPhotosToShare || !record?.id) return;
-                                const serverPost = docs.find(
-                                    (d) => d.schemaVersion === 2 && d.entryId === record.id
-                                );
-                                if (serverPost) {
-                                    window.sharedPhotosFeed = mergeMomentPostIntoFeed(window.sharedPhotosFeed, serverPost);
-                                    if (appState.currentTab === 'gallery') renderGallery();
-                                    if (document.getElementById('feedContent')) renderFeed();
-                                }
-                            })
-                        ).catch(() => {});
-                    } catch (e) {
-                        shareSyncFailed = true;
-                        console.error("공유 처리 실패:", e);
-                        showToast(getUserFacingErrorMessage(e, 'share'), 'error');
-                    }
-                }
-            }
+            /** 모먼트 동기화 실패 시 공유 성공 토스트를 막기 위함 */
+            const { shareSyncFailed } = await syncMomentShareAfterSave({
+                record,
+                photosToShare,
+                originalShareList,
+                hadSharedPhotos,
+                photoAspectChanged,
+            });
 
             if (!wasNewRecord) {
                 const finalShare = !!(photosToShare && photosToShare.length > 0);
