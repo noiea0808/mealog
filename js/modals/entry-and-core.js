@@ -80,7 +80,10 @@ import {
     ensureFocusedInputVisible,
     getImeMetrics,
     getNativeImeHeight,
-    captureImeBaseline
+    captureImeBaseline,
+    applyOverlayImePin,
+    clearOverlayImePinStyles,
+    isMobileWebTouchUi
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
 import {
@@ -807,7 +810,8 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     /**
      * 키보드 중 시트 top·가용 높이.
-     * overlay: top = vvTop + pad, height = vvH - pad (vvTop을 높이에 다시 빼지 않음)
+     * overlay(+루트 VV 핀): 루트가 이미 VV 박스 → 패널 top은 작은 pad만 (vvTop 이중 가산 금지)
+     * resize: layoutH 기준
      */
     const getKeyboardSheetMetrics = () => {
         const m = getImeMetrics();
@@ -817,21 +821,43 @@ function initEntryModalKeyboardHandling(entryModal) {
         const safeTop = Number.isFinite(safeRaw) ? Math.max(0, Math.round(safeRaw)) : 0;
         const pad = Math.max(12, Math.min(safeTop || 12, 28));
         if (m.mode === 'overlay') {
-            const vvTop = Math.max(0, m.vvTop || 0);
-            const vvH = Math.max(0, m.vvH || window.visualViewport?.height || window.innerHeight || 0);
-            const topPad = Math.min(pad, 12);
+            const topPad = Math.min(pad, 10);
+            const pinned = entryModal.classList.contains('is-ime-open');
+            const rootH = pinned ? (entryModal.clientHeight || 0) : 0;
+            const vvH = Math.max(
+                0,
+                rootH || m.vvH || window.visualViewport?.height || window.innerHeight || 0
+            );
+            // 핀 실패 시에만 layout 좌표로 vvTop 보정 (핀되면 이중 가산 금지)
+            const topPx = pinned
+                ? topPad
+                : Math.round(Math.max(0, m.vvTop || 0) + topPad);
             return {
-                topPx: Math.round(vvTop + topPad),
+                topPx,
                 availPx: Math.max(160, Math.floor(vvH - topPad - 8)),
-                trackH: vvH
+                trackH: vvH,
+                overlay: true
             };
         }
         const layoutH = Math.max(0, m.layoutH || window.innerHeight || 0);
         return {
             topPx: pad,
             availPx: Math.max(160, Math.floor(layoutH - pad - 8)),
-            trackH: layoutH
+            trackH: layoutH,
+            overlay: false
         };
+    };
+
+    const scrollActiveEntryField = () => {
+        const active = document.activeElement;
+        if (!active || !entryModal.contains(active) || !active.matches?.('input, textarea')) return;
+        const isMemo = !!active.classList?.contains('entry-comment-textarea');
+        const overlay = getImeMetrics().mode === 'overlay';
+        scrollEntryFieldIntoView(active, {
+            align: isMemo ? 'end' : 'nearest',
+            afterMs: overlay ? 80 : 0,
+            once: !(overlay || isMemo)
+        });
     };
 
     /**
@@ -839,6 +865,32 @@ function initEntryModalKeyboardHandling(entryModal) {
      */
     const applyViewportGeometry = (opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
+        const m = getImeMetrics();
+        // overlay: 루트를 visualViewport에 핀 (하루소감/검색과 동일). top/height를 비우면 핀이 풀림.
+        if (m.mode === 'overlay') {
+            const pinned = applyOverlayImePin(entryModal);
+            // open 직후 pin API가 false여도 포커스 폴링 중이면 강제 핀
+            if (!pinned && isMobileWebTouchUi() && window.visualViewport) {
+                const vv = window.visualViewport;
+                entryModal.classList.add('is-ime-open');
+                entryModal.style.top = `${Math.round(Number(vv.offsetTop) || 0)}px`;
+                entryModal.style.left = `${Math.round(Number(vv.offsetLeft) || 0)}px`;
+                entryModal.style.width = `${Math.round(Number(vv.width) || window.innerWidth || 0)}px`;
+                entryModal.style.height = `${Math.round(Number(vv.height) || window.innerHeight || 0)}px`;
+                entryModal.style.right = 'auto';
+                entryModal.style.bottom = 'auto';
+            }
+        } else {
+            clearOverlayImePinStyles(entryModal);
+            entryModal.style.top = '';
+            entryModal.style.height = '';
+            entryModal.style.left = '';
+            entryModal.style.width = '';
+            entryModal.style.right = '';
+            entryModal.style.bottom = '';
+            pinLayoutViewport();
+        }
+
         const sheet = getKeyboardSheetMetrics();
         const topPx = sheet.topPx;
         const avail = sheet.availPx;
@@ -849,24 +901,11 @@ function initEntryModalKeyboardHandling(entryModal) {
             !Number.isNaN(lastAppliedVtop) &&
             Math.abs(lastAppliedVtop - topPx) < 1
         ) {
-            if (opts.scroll) {
-                const active = document.activeElement;
-                if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
-                    const isMemo = !!active.classList?.contains('entry-comment-textarea');
-                    scrollEntryFieldIntoView(active, {
-                        align: isMemo ? 'end' : 'nearest',
-                        afterMs: getImeMetrics().mode === 'overlay' ? 100 : 0,
-                        once: !(getImeMetrics().mode === 'overlay' && isMemo)
-                    });
-                }
-            }
+            if (opts.scroll) scrollActiveEntryField();
             return;
         }
         lastAppliedVh = avail;
         lastAppliedVtop = topPx;
-        entryModal.style.top = '';
-        entryModal.style.height = '';
-        pinLayoutViewport();
 
         const panel = entryModal.querySelector('.entry-modal-panel');
         if (!panel) return;
@@ -877,19 +916,7 @@ function initEntryModalKeyboardHandling(entryModal) {
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
         panel.style.setProperty('--entry-sheet-h', `${avail}px`);
-        if (opts.scroll) {
-            const active = document.activeElement;
-            if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
-                const isMemo = !!active.classList?.contains('entry-comment-textarea');
-                const overlay = getImeMetrics().mode === 'overlay';
-                // 메모·overlay: settle 후 버스트로 키보드 위까지 올림 (nearest 한 번은 사진+메모에서 부족)
-                scrollEntryFieldIntoView(active, {
-                    align: isMemo ? 'end' : 'nearest',
-                    afterMs: overlay ? 100 : 0,
-                    once: !(overlay && isMemo)
-                });
-            }
-        }
+        if (opts.scroll) scrollActiveEntryField();
     };
 
     /** VV 애니 중에는 settle 후 한 번만 맞춤 (매 프레임 높이 추종으로 깜박이던 원인) */
@@ -943,8 +970,14 @@ function initEntryModalKeyboardHandling(entryModal) {
                 lastAppliedVh = NaN;
                 lastAppliedVtop = NaN;
                 entryModal.classList.add('keyboard-open');
-                // 높이·top을 먼저 맞춘 뒤, 다음 프레임에 CTA DOM 이동 (한 프레임 이중 리플로우 완화)
-                applyViewportGeometry({ scroll: false, force: true });
+                const active = document.activeElement;
+                const wantScroll =
+                    !!active &&
+                    entryModal.contains(active) &&
+                    (active.classList?.contains('entry-comment-textarea') ||
+                        getImeMetrics().mode === 'overlay');
+                // 높이·top·(overlay)루트 핀을 먼저 맞춘 뒤 CTA 이동
+                applyViewportGeometry({ scroll: wantScroll, force: true });
                 if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
                 chromePlaceRaf = requestAnimationFrame(() => {
                     chromePlaceRaf = null;
@@ -976,8 +1009,13 @@ function initEntryModalKeyboardHandling(entryModal) {
                 clearTimeout(viewportCheckTimer);
                 viewportCheckTimer = null;
             }
+            clearOverlayImePinStyles(entryModal);
             entryModal.style.height = '';
             entryModal.style.top = '';
+            entryModal.style.left = '';
+            entryModal.style.width = '';
+            entryModal.style.right = '';
+            entryModal.style.bottom = '';
             pinLayoutViewport();
             const panel = entryModal.querySelector('.entry-modal-panel');
             if (panel) {
@@ -1008,12 +1046,16 @@ function initEntryModalKeyboardHandling(entryModal) {
     entryModal.addEventListener('focusin', (e) => {
         if (!e.target.matches?.('input, textarea')) return;
         captureImeBaseline();
-        // 키보드 전에는 scroll-into-view 버스트를 하지 않음 (센터 시트 점프/깜박임).
-        // 메모 확장은 syncEntryCommentExpandedState, 그 외는 키보드 settle 후 스크롤.
-        if (
-            entryModal.classList.contains('keyboard-open') &&
-            !e.target.classList?.contains('entry-comment-textarea')
-        ) {
+        const isMemo = !!e.target.classList?.contains('entry-comment-textarea');
+        const overlay = getImeMetrics().mode === 'overlay' || isMobileWebTouchUi();
+        // overlay/메모: 키보드 settle 전에 #modalScrollArea 안으로 올려 가림을 줄임
+        if (isMemo || overlay) {
+            scrollEntryFieldIntoView(e.target, {
+                align: isMemo ? 'end' : 'nearest',
+                afterMs: overlay ? 80 : 0,
+                once: !overlay
+            });
+        } else if (entryModal.classList.contains('keyboard-open')) {
             scrollEntryFieldIntoView(e.target, { align: 'nearest', afterMs: 0, once: true });
         }
         scheduleViewportCheck();
@@ -1514,16 +1556,18 @@ function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0, once = f
     const scroll = document.getElementById('modalScrollArea');
     if (!scroll || !el || !scroll.contains(el)) return;
     // once: 키보드 settle 후 단일 보정 — 다중 딜레이 버스트는 시트 깜박임 유발
+    // overlay/사진+메모: VV 애니·chrome 이동 이후까지 몇 차례 더 맞춤
     const delays = once
         ? [0]
         : afterMs > 0
-          ? [0, afterMs, afterMs + 150, afterMs + 350]
-          : [0, 80, 200, 400];
+          ? [0, afterMs, afterMs + 150, afterMs + 350, afterMs + 600]
+          : [0, 80, 200, 400, 700];
     ensureFocusedInputVisible(el, {
         align,
         scrollParent: scroll,
-        pad: 16,
-        delays
+        pad: 12,
+        delays,
+        suppressDocumentScroll: true
     });
 }
 
@@ -1573,13 +1617,13 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
             window.syncEntrySheetHeightLock();
         }
     }
-    // 키보드 전에는 시트 점프를 피하고, 열린 뒤에는 메모를 키보드 위로
-    if (focused && (grew || fromFocus) && keyboardOpen) {
-        const overlay = getImeMetrics().mode === 'overlay';
+    // 메모: 키보드 전이라도 시트 스크롤 영역 안으로. 열린 뒤에는 end 정렬 버스트.
+    if (focused && (grew || fromFocus)) {
+        const overlay = getImeMetrics().mode === 'overlay' || isMobileWebTouchUi();
         scrollEntryFieldIntoView(el, {
             align: 'end',
-            afterMs: overlay ? 100 : 0,
-            once: !overlay
+            afterMs: overlay || keyboardOpen ? 80 : 0,
+            once: !(overlay || keyboardOpen)
         });
     }
 }
@@ -1611,8 +1655,13 @@ function revealEntryModalShell() {
     entryModal.classList.remove('hidden');
     entryModal.classList.remove('keyboard-open');
     placeEntryModalChrome(false);
+    clearOverlayImePinStyles(entryModal);
     entryModal.style.height = '';
     entryModal.style.top = '';
+    entryModal.style.left = '';
+    entryModal.style.width = '';
+    entryModal.style.right = '';
+    entryModal.style.bottom = '';
     resetEntryModalScrollTop();
     requestAnimationFrame(resetEntryModalScrollTop);
     setTimeout(resetEntryModalScrollTop, 60);
@@ -1811,8 +1860,13 @@ export function closeModal() {
         setEntryModalSavingState(false);
         entryModal.classList.remove('keyboard-open');
         placeEntryModalChrome(false);
+        clearOverlayImePinStyles(entryModal);
         entryModal.style.height = '';
         entryModal.style.top = '';
+        entryModal.style.left = '';
+        entryModal.style.width = '';
+        entryModal.style.right = '';
+        entryModal.style.bottom = '';
         if (typeof entryModal.resetGrabberPullTransform === 'function') {
             entryModal.resetGrabberPullTransform();
         }

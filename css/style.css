@@ -3507,6 +3507,13 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
+/* overlay IME: 루트를 visualViewport 박스에 핀한 뒤 패널이 그 안을 채움 */
+#entryModal.keyboard-open.is-ime-open {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    overflow: hidden;
+    box-sizing: border-box;
+}
 #entryModal > .entry-modal-panel {
     background: var(--card);
     position: absolute !important;
@@ -3527,6 +3534,10 @@ body.meal-photo-moment-chrome-hidden .bottom-nav {
 #entryModal.keyboard-open > .entry-modal-panel {
     top: var(--entry-sheet-top, 1rem) !important;
     max-height: calc(100% - var(--entry-sheet-top, 1rem) - 0.5rem);
+}
+/* 핀된 루트(100%=VV 높이) 기준으로 패널 상한 — 레이아웃 100vh 의존 제거 */
+#entryModal.keyboard-open.is-ime-open > .entry-modal-panel {
+    max-height: calc(100% - var(--entry-sheet-top, 0.5rem) - 0.25rem) !important;
 }
 #modalScrollArea {
     /* 패널 높이 잠금(--entry-sheet-h) 시 남는 공간을 흡수, 메모 확장은 이 영역 스크롤로 처리 */

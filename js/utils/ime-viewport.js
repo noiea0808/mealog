@@ -295,8 +295,17 @@ export function ensureFocusedInputVisible(el, opts = {}) {
     const pad = Number.isFinite(opts.pad) ? opts.pad : 16;
     const delays = opts.delays || [0, 50, 150, 320, 500];
 
+    const entryRoot = target.closest?.('#entryModal');
+    const suppressDocumentScroll =
+        opts.suppressDocumentScroll === true || !!entryRoot;
+
     const findScrollParent = (node) => {
         if (opts.scrollParent) return opts.scrollParent;
+        // 기록시트: 페이지 scrollIntoView 대신 #modalScrollArea만 사용
+        if (entryRoot) {
+            const area = entryRoot.querySelector('#modalScrollArea');
+            if (area) return area;
+        }
         let n = node?.parentElement;
         while (n && n !== document.body) {
             const st = getComputedStyle(n);
@@ -337,6 +346,7 @@ export function ensureFocusedInputVisible(el, opts = {}) {
         const band = visibleBand();
         const scrollParent = findScrollParent(target);
         if (!scrollParent) {
+            if (suppressDocumentScroll) return;
             try {
                 target.scrollIntoView({
                     block: align === 'end' ? 'end' : align === 'center' ? 'center' : 'nearest',
@@ -349,8 +359,13 @@ export function ensureFocusedInputVisible(el, opts = {}) {
         try {
             const tRect = target.getBoundingClientRect();
             const sRect = scrollParent.getBoundingClientRect();
-            const clipTop = Math.max(sRect.top, band.top);
-            const clipBottom = Math.min(sRect.bottom, band.bottom);
+            // 핀된 시트 안에서는 스크롤 부모 clip을 우선 (VV 밴드와 이중 좌표계 충돌 방지)
+            const clipTop = suppressDocumentScroll
+                ? sRect.top + pad
+                : Math.max(sRect.top, band.top);
+            const clipBottom = suppressDocumentScroll
+                ? Math.max(clipTop + 40, sRect.bottom - pad)
+                : Math.min(sRect.bottom, band.bottom);
 
             if (align === 'center') {
                 const tMid = (tRect.top + tRect.bottom) / 2;
@@ -364,6 +379,8 @@ export function ensureFocusedInputVisible(el, opts = {}) {
             } else if (tRect.top < clipTop) {
                 scrollParent.scrollTop -= clipTop - tRect.top;
             }
+
+            if (suppressDocumentScroll) return;
 
             const after = target.getBoundingClientRect();
             const band2 = visibleBand();
