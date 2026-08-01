@@ -104,6 +104,9 @@ html.platform-native-app .bottom-nav button i.lucide {
     /* 플로팅 패널: 좌우 여백 남기되 화면 폭을 충분히 사용 (꽉 채우지 않음) */
     --shell-float-gutter: 1.25rem;
     --shell-float-width: min(28rem, calc(100vw - (var(--shell-float-gutter) * 2)));
+    /* body max-w-md 컬럼 기준 — 웹에서 브라우저 전체 폭의 90%로 늘어나지 않게 */
+    --shell-app-column-width: min(28rem, 100vw);
+    --shell-dialog-width-90: calc(var(--shell-app-column-width) * 0.9);
     --shell-r-dialog: 18px;
     --shell-r-sheet: 24px;
     --shell-r-btn: 14px;
@@ -16046,13 +16049,23 @@ body:has(#adminPage:not(.hidden)),
     width: 80% !important;
     max-width: 20rem !important;
 }
-/* 알림·찾기(밀로그/모먼트/게시판): 뷰포트 좌우 약 90% */
+/* 알림·찾기: 앱 컬럼(max-w-md)의 약 90% — 웹에서 브라우저 폭 90%로 커지지 않음 */
 #timelineSearchModal > .search-filter-modal__panel,
 #momentSearchModal > .search-filter-modal__panel,
 #boardSearchModal > .search-filter-modal__panel,
 #notificationModal > .notification-modal {
-    width: 90vw !important;
-    max-width: 90vw !important;
+    width: var(--shell-dialog-width-90) !important;
+    max-width: var(--shell-dialog-width-90) !important;
+}
+/* 키보드(IME) 열림: 센터 정렬 대신 상단 고정 — 입력란이 키보드와 함께 통째로 올라가는 체감 완화 */
+#timelineSearchModal.is-ime-open,
+#momentSearchModal.is-ime-open,
+#boardSearchModal.is-ime-open,
+#notificationModal.is-ime-open {
+    align-items: flex-start !important;
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
+    padding-bottom: 0.5rem !important;
+    box-sizing: border-box;
 }
 #contentPopupModalInner {
     overflow: hidden;
