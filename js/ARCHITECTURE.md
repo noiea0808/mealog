@@ -21,6 +21,10 @@
 
 - **`modals.js`** — `modals/` 하위 모듈 re-export (진입점만 유지)
 - **`modals/entry-and-core.js`** — 기록 모달·사진·태그·`saveEntry` 등
+- **`modals/entry-form-config.js`** — 기록 시트 DOM id·entryMode별 메타, `PHOTO_ASPECT_OPTIONS`
+- **`modals/entry-form-state.js`** — 폼 DOM 읽기·검증·저장 필드 해석 (`readEntryFormFromDom`, `validateEntryForm`, `resolveEntrySaveFields`)
+- **`modals/entry-save-record.js`** — `saveEntry` payload 조립. `buildEntrySaveRecord`(Firestore record 객체) / `buildEntryShareSnapshot`(공유 비교 스냅샷) / `isLocalPendingPhoto`. 부수효과 없음
+- **`modals/entry-save-subtags.js`** — 저장 시 최근 서브태그 학습 + 설정 디바운스 저장 (`buildSettingsWithRememberedSubTags`, `scheduleEntrySettingsSave`)
 - **`modals/settings.js`** — 설정 모달·프로필·태그 관리
 - **`modals/kakao-place.js`** — 카카오 장소 검색
 
@@ -57,3 +61,11 @@
 ## 다음 리팩터링 후보
 
 - `render.js`: `toggleComment` 등 추가 분리 여지
+- `modals/entry-and-core.js`의 `saveEntry` 2단계 분해 (1단계로 1,076줄 → 854줄):
+  - **사진 Storage 업로드 + 재저장 파이프라인** (약 215줄) — 자체 완결된 하위 파이프라인이나
+    `record.photos`·`photosToShare`·`window.mealHistory`를 직접 갱신하고 성공/실패/타임아웃
+    경로가 각각 달라 회귀 위험이 있다
+  - **모먼트 공유 동기화** (약 90줄) — `window.sharedPhotos`·`sharedPhotosFeed` 낙관 반영과
+    `dbOps.sharePhotos` 호출이 섞여 있다
+  - 함께 정리할 것: `shareBanned`(record 조립)와 `isShareBanned`(공유 스냅샷)는 같은 값을
+    두 번 계산한다 — 통합 가능하나 1단계에서는 동작 보존을 우선해 남겨 뒀다
