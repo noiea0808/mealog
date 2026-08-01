@@ -1,5 +1,5 @@
 // 모달 및 입력 처리 관련 함수들
-import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
+import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
@@ -92,6 +92,7 @@ import {
     validateEntryForm,
     resolveEntrySaveFields,
 } from './entry-form-state.js';
+import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
 import {
     bindEntryModalHeaderOnce,
     refreshEntryModalHeader,
@@ -130,36 +131,8 @@ function isMealActionEffectiveOffline() {
     return !!appState.localNetworkForcedOffline;
 }
 
-// 설정 저장 디바운싱을 위한 타이머
-let settingsSaveTimeout = null;
+// 설정 저장 디바운싱을 위한 타이머 (기록 저장 쪽 디바운스는 entry-save-subtags.js가 소유)
 let entryGaugeSaveTimeout = null;
-
-/**
- * 입력란의 쉼표(, / ，) 구분 항목을 최근 서브태그로 각각 기억.
- * 이미 있으면 맨 뒤로 옮겨 최근 순서를 갱신한다.
- * @param {any[]} list
- * @param {string} rawValue
- * @param {string|null|undefined} parent
- * @returns {boolean} 변경 여부
- */
-function rememberCommaSeparatedSubTags(list, rawValue, parent) {
-    if (!Array.isArray(list)) return false;
-    const parts = String(rawValue || '')
-        .split(/[,，]/)
-        .map((v) => v.trim())
-        .filter(Boolean);
-    if (!parts.length) return false;
-    let changed = false;
-    for (const val of parts) {
-        const existingIdx = list.findIndex((t) => (t.text || t) === val);
-        if (existingIdx >= 0) {
-            list.splice(existingIdx, 1);
-        }
-        list.push({ text: val, parent: parent || null });
-        changed = true;
-    }
-    return changed;
-}
 
 /** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
 function mergeActiveSubChipsIntoInputs() {
@@ -2114,63 +2087,18 @@ export async function saveEntry() {
             return;
         }
         
-        const newSettings = JSON.parse(JSON.stringify(window.userSettings));
-        if (!newSettings.subTags) newSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-        
-        // subTags의 각 배열이 정의되어 있는지 확인
-        if (!newSettings.subTags.place) newSettings.subTags.place = [];
-        if (!newSettings.subTags.menu) newSettings.subTags.menu = [];
-        if (!newSettings.subTags.people) newSettings.subTags.people = [];
-        if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
-        
-        let tagsChanged = false;
-        // 장소·메뉴·누구와·간식: 쉼표로 구분된 항목을 최근 태그에 각각 기억
-        if (!isS && entryWhereInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.place, entryWhereInputVal, mealTypeResolved)) {
-                tagsChanged = true;
-            }
-        }
-        if (isS && entryWhereInputVal) {
-            if (rememberCommaSeparatedSubTags(
-                newSettings.subTags.place,
-                entryWhereInputVal,
-                snackPlaceMainResolved || entryWhereInputVal
-            )) {
-                tagsChanged = true;
-            }
-        }
-        if (menuInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.menu, menuInputVal, categoryResolved)) {
-                tagsChanged = true;
-            }
-        }
-        const withInputValToSave = isS ? snackWithInputVal : withInputVal;
-        if (withInputValToSave) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.people, withInputValToSave, withWhomResolved)) {
-                tagsChanged = true;
-            }
-        }
-        if (isS && snackInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.snack, snackInputVal, snackTypeResolved)) {
-                tagsChanged = true;
-            }
-        }
-        
+        // 이번 입력을 다음 기록 시트의 서브칩 후보로 기억 (변경이 있을 때만 저장)
+        const { settings: nextSettings, changed: tagsChanged } = buildSettingsWithRememberedSubTags(
+            window.userSettings,
+            form,
+            resolved,
+            entryMode
+        );
         if (tagsChanged) {
-            window.userSettings = newSettings;
-            // 디바운싱: 1초 내 여러 태그 변경을 묶어서 한 번만 저장
-            clearTimeout(settingsSaveTimeout);
-            settingsSaveTimeout = setTimeout(async () => {
-                try {
-                    await dbOps.saveSettings(window.userSettings);
-                    console.log('디바운싱된 설정 저장 완료');
-                } catch (e) {
-                    console.error('설정 저장 실패:', e);
-                    // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 로그만
-                }
-            }, 1000);
+            window.userSettings = nextSettings;
+            scheduleEntrySettingsSave();
         }
-        
+
         // main 끼니: 동일 (date, slotId)에 이미 기록이 있어도 신규 문서로 추가 (다건 표시)
         let idToUse = state.currentEditingId;
         // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
