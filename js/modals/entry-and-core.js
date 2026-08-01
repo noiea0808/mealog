@@ -793,8 +793,9 @@ function initEntryModalKeyboardHandling(entryModal) {
 
     const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
-    /** 키보드로 브라우저가 페이지/뷰포트를 밀어 올린 경우 원위치 — fixed 오버레이 아래 배경 노출 방지 */
+    /** 네이티브: 키보드로 밀린 페이지 스크롤 원위치. 모바일 웹은 브라우저 팬을 되돌리면 입력이 키보드에 가림 */
     const pinLayoutViewport = () => {
+        if (!window.Capacitor?.isNativePlatform?.()) return;
         if (window.scrollX || window.scrollY) {
             window.scrollTo(0, 0);
         }
@@ -804,49 +805,64 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (body && body.scrollTop) body.scrollTop = 0;
     };
 
-    /** 키보드 중 시트 상단 여백(세션 entrySheetTopPx는 건드리지 않음 — 닫히면 복원) */
-    const getKeyboardSheetTopPx = () => {
+    /**
+     * 키보드 중 시트 top·가용 높이.
+     * overlay: top = vvTop + pad, height = vvH - pad (vvTop을 높이에 다시 빼지 않음)
+     */
+    const getKeyboardSheetMetrics = () => {
         const m = getImeMetrics();
         const safeRaw = Number.parseFloat(
             getComputedStyle(document.documentElement).getPropertyValue('--safe-top')
         );
         const safeTop = Number.isFinite(safeRaw) ? Math.max(0, Math.round(safeRaw)) : 0;
-        const base = Math.max(12, Math.min(safeTop || 12, 28));
-        // overlay(모바일 웹): iOS VV 팬만큼 올려 보이는 영역 상단에 맞춤
-        if (m.mode === 'overlay' && (m.vvTop || 0) > 0) {
-            return Math.round((m.vvTop || 0) + Math.min(base, 12));
+        const pad = Math.max(12, Math.min(safeTop || 12, 28));
+        if (m.mode === 'overlay') {
+            const vvTop = Math.max(0, m.vvTop || 0);
+            const vvH = Math.max(0, m.vvH || window.visualViewport?.height || window.innerHeight || 0);
+            const topPad = Math.min(pad, 12);
+            return {
+                topPx: Math.round(vvTop + topPad),
+                availPx: Math.max(160, Math.floor(vvH - topPad - 8)),
+                trackH: vvH
+            };
         }
-        return base;
-    };
-
-    /** resize: layoutH / overlay: visualViewport.height */
-    const readViewportH = () => {
-        const m = getImeMetrics();
-        if (m.mode === 'resize') {
-            return Math.max(0, m.layoutH || window.innerHeight || 0);
-        }
-        const vvH = m.vvH || window.visualViewport?.height || window.innerHeight || 0;
-        return Math.max(0, vvH);
+        const layoutH = Math.max(0, m.layoutH || window.innerHeight || 0);
+        return {
+            topPx: pad,
+            availPx: Math.max(160, Math.floor(layoutH - pad - 8)),
+            trackH: layoutH
+        };
     };
 
     /**
-     * @param {number} [vh]
      * @param {{ scroll?: boolean, force?: boolean }} [opts]
      */
-    const applyViewportGeometry = (vh, opts = {}) => {
+    const applyViewportGeometry = (opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
-        const h = Number.isFinite(vh) ? vh : readViewportH();
-        const topPx = getKeyboardSheetTopPx();
+        const sheet = getKeyboardSheetMetrics();
+        const topPx = sheet.topPx;
+        const avail = sheet.availPx;
         const minDelta = opts.force ? 0.5 : GEOM_MIN_DELTA_PX;
         if (
             !Number.isNaN(lastAppliedVh) &&
-            Math.abs(lastAppliedVh - h) < minDelta &&
+            Math.abs(lastAppliedVh - avail) < minDelta &&
             !Number.isNaN(lastAppliedVtop) &&
             Math.abs(lastAppliedVtop - topPx) < 1
         ) {
+            if (opts.scroll) {
+                const active = document.activeElement;
+                if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
+                    const isMemo = !!active.classList?.contains('entry-comment-textarea');
+                    scrollEntryFieldIntoView(active, {
+                        align: isMemo ? 'end' : 'nearest',
+                        afterMs: getImeMetrics().mode === 'overlay' ? 100 : 0,
+                        once: !(getImeMetrics().mode === 'overlay' && isMemo)
+                    });
+                }
+            }
             return;
         }
-        lastAppliedVh = h;
+        lastAppliedVh = avail;
         lastAppliedVtop = topPx;
         entryModal.style.top = '';
         entryModal.style.height = '';
@@ -857,7 +873,6 @@ function initEntryModalKeyboardHandling(entryModal) {
         // 세션 top(중앙 정렬값)은 entry-sheet-tabs가 보관. 여기는 CSS 변수만 임시 변경.
         entryModal.style.setProperty('--entry-sheet-top', `${topPx}px`);
         panel.style.top = `${topPx}px`;
-        const avail = Math.max(160, Math.floor(h - topPx - 8));
         panel.style.maxHeight = `${avail}px`;
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
@@ -865,8 +880,14 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (opts.scroll) {
             const active = document.activeElement;
             if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
-                // 딜레이 버스트 없이 한 번만 — 키보드 애니 중 스크롤 점프/깜박임 완화
-                scrollEntryFieldIntoView(active, { align: 'nearest', afterMs: 0, once: true });
+                const isMemo = !!active.classList?.contains('entry-comment-textarea');
+                const overlay = getImeMetrics().mode === 'overlay';
+                // 메모·overlay: settle 후 버스트로 키보드 위까지 올림 (nearest 한 번은 사진+메모에서 부족)
+                scrollEntryFieldIntoView(active, {
+                    align: isMemo ? 'end' : 'nearest',
+                    afterMs: overlay ? 100 : 0,
+                    once: !(overlay && isMemo)
+                });
             }
         }
     };
@@ -876,9 +897,8 @@ function initEntryModalKeyboardHandling(entryModal) {
         if (entryModal.classList.contains('hidden')) return;
         if (!entryModal.classList.contains('keyboard-open')) return;
         if (imeComposing) return;
-        const h = readViewportH();
         if (immediate && Number.isNaN(lastAppliedVh)) {
-            applyViewportGeometry(h, { scroll: false, force: true });
+            applyViewportGeometry({ scroll: false, force: true });
         }
         if (geomSettleTimer != null) clearTimeout(geomSettleTimer);
         geomSettleTimer = setTimeout(() => {
@@ -886,7 +906,7 @@ function initEntryModalKeyboardHandling(entryModal) {
             if (entryModal.classList.contains('hidden')) return;
             if (!entryModal.classList.contains('keyboard-open')) return;
             if (imeComposing) return;
-            applyViewportGeometry(readViewportH(), { scroll: true, force: true });
+            applyViewportGeometry({ scroll: true, force: true });
         }, GEOM_SETTLE_MS);
     };
 
@@ -924,7 +944,7 @@ function initEntryModalKeyboardHandling(entryModal) {
                 lastAppliedVtop = NaN;
                 entryModal.classList.add('keyboard-open');
                 // 높이·top을 먼저 맞춘 뒤, 다음 프레임에 CTA DOM 이동 (한 프레임 이중 리플로우 완화)
-                applyViewportGeometry(readViewportH(), { scroll: false, force: true });
+                applyViewportGeometry({ scroll: false, force: true });
                 if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
                 chromePlaceRaf = requestAnimationFrame(() => {
                     chromePlaceRaf = null;
@@ -1553,9 +1573,14 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
             window.syncEntrySheetHeightLock();
         }
     }
-    // 키보드 전에는 시트 점프를 피하고, 열린 뒤에는 한 번만 맞춤
+    // 키보드 전에는 시트 점프를 피하고, 열린 뒤에는 메모를 키보드 위로
     if (focused && (grew || fromFocus) && keyboardOpen) {
-        scrollEntryFieldIntoView(el, { align: 'end', once: true });
+        const overlay = getImeMetrics().mode === 'overlay';
+        scrollEntryFieldIntoView(el, {
+            align: 'end',
+            afterMs: overlay ? 100 : 0,
+            once: !overlay
+        });
     }
 }
 

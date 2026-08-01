@@ -315,17 +315,20 @@ export function ensureFocusedInputVisible(el, opts = {}) {
     const visibleBand = () => {
         const vv = window.visualViewport;
         const m = getImeMetrics();
+        // visualViewport가 있으면 이미 키보드를 제외한 보이는 영역이다.
+        // overlay에서 imeOverlap을 또 빼면 clipBottom이 거의 0이 되어
+        // 기록시트 메모 등이 키보드 뒤로 남는 스크롤 실패가 난다.
         if (vv) {
             const top = (Number(vv.offsetTop) || 0) + pad;
             const bottom =
                 (Number(vv.offsetTop) || 0) +
-                (Number(vv.height) || window.innerHeight) -
-                pad -
-                (m.mode === 'resize' ? 0 : Math.max(0, m.imeOverlap));
+                (Number(vv.height) || window.innerHeight || 0) -
+                pad;
             return { top, bottom: Math.max(top + 40, bottom) };
         }
         const top = pad;
-        const bottom = (window.innerHeight || 0) - pad - Math.max(0, m.imeOverlap);
+        const bottom =
+            (window.innerHeight || 0) - pad - (m.mode === 'overlay' ? Math.max(0, m.imeOverlap) : 0);
         return { top, bottom: Math.max(top + 40, bottom) };
     };
 
