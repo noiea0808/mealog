@@ -55,6 +55,7 @@ import {
     getMealRowSyncLeadKind
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
+import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import {
     normalizeMealClockInputValue,
@@ -127,10 +128,8 @@ import {
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
 function isMealActionEffectiveOffline() {
-    try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    } catch (_) {}
-    return !!appState.localNetworkForcedOffline;
+    // navigator.onLine=false 고착 무시 포함 — 판정은 isMealogTransportOffline 단일 소스
+    return isMealogTransportOffline();
 }
 
 // 설정 저장 디바운싱을 위한 타이머 (기록 저장 쪽 디바운스는 entry-save-subtags.js가 소유)

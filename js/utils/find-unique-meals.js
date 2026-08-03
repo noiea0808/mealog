@@ -20,6 +20,10 @@ function isOrphanCandidate(m, serverIds) {
     if (m._localSaveFailed === true || m.is_sync_error === true) return true;
     if (mgr.hasErrorId(id)) return true;
     if (mgr.hasAbandonedId(id)) return true;
+    // 등록예정 칩·저장 진행 중: Firestore 로컬 큐에 없는 행(Callable 폴백·setDoc 이전 타임아웃 등)은
+    // 스냅샷에 안 나타나므로, 여기서 보호하지 않으면 리스너 재구독 때 조용히 사라진다.
+    if (mgr.hasRegisterScheduledChip(id)) return true;
+    if (mgr.hasInFlight(id)) return true;
     if (mgr.hasPendingPhotoEntry(id)) return true;
     if (mgr.hasOptimisticTemp(id)) return true;
     if (mgr.isDeleting(m) || mgr.isDeleteInFlight(m) || mgr.isDeleteFailed(m)) return true;

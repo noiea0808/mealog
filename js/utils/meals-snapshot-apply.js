@@ -29,7 +29,7 @@ import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { markMealsRangeLoaded, replaceLoadedMealsRanges } from './loaded-meals-range.js';
-import { appState } from '../state.js';
+import { isMealogTransportOffline } from './mealog-offline-ui.js';
 /** 스냅샷에 실제로 포함된 날짜만으로 실시간 윈도우 start를 잡을 때 사용 */
 function minMealDateYmdInWindow(meals, cutoffDateStr) {
     if (!Array.isArray(meals) || !meals.length) return null;
@@ -43,11 +43,10 @@ function minMealDateYmdInWindow(meals, cutoffDateStr) {
     return min;
 }
 
-/** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지) */
+/** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지).
+ * navigator.onLine=false 고착 무시 포함(isMealogTransportOffline 단일 판정) — 고착 시 삭제예정이 영구히 안 풀리던 문제 방지 */
 function mealsSnapshotDeleteHoldWhileTransportOffline() {
-    if (appState.localNetworkForcedOffline === true) return true;
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    return false;
+    return isMealogTransportOffline();
 }
 
 function countDataImageInPhotos(recordOrDoc) {
@@ -66,6 +65,42 @@ function countHttpsInPhotos(recordOrDoc) {
           ? [recordOrDoc.photos]
           : [];
     return arr.filter((p) => typeof p === 'string' && /^https?:\/\//.test(p)).length;
+}
+
+/**
+ * 초기 로드·1회성 조회 병합에서 로컬 base64(업로드 대기) 사진을 보존한다.
+ * 오프라인 저장 시 Firestore 큐 문서는 data:image 사진이 제거된 상태라(ops.save sanitizePhotoArray),
+ * 스냅샷 행으로 그대로 교체하면 업로드 원본이 유실되어 재시도 때 올릴 사진이 없어진다.
+ * (증분 병합 분기의 shouldKeepLocalPreview/serverMissingUploadedPhotos 와 동일 취지)
+ * @param {object} row 스냅샷에서 온 행
+ * @param {Map<string, object>} prevById 병합 전 mealHistory (id → 행)
+ */
+function preserveLocalPendingPhotosOnRow(row, prevById) {
+    if (!row?.id) return row;
+    const local = prevById.get(String(row.id));
+    if (!local) return row;
+    const localPhotos = Array.isArray(local.photos) ? local.photos : local.photos ? [local.photos] : [];
+    const localB64N = countDataImageInPhotos({ photos: localPhotos });
+    if (localB64N === 0) return row;
+    const mgr = getMealSyncManager();
+    const slotKey = `${row.date || ''}__${row.slotId || ''}`;
+    const docHttpsN = countHttpsInPhotos(row);
+    if (mgr.hasPendingPhotoEntry(row.id) || mgr.hasPendingPhotoSlot(slotKey) || docHttpsN < localB64N) {
+        return { ...row, photos: [...localPhotos] };
+    }
+    return row;
+}
+
+/** 초기 로드 ack 시 base64 업로드 대기 행은 초록 처리 보류 (증분 분기의 deferAck 와 동일) */
+function shouldDeferServerAckForRow(row) {
+    if (!row?.id) return false;
+    const mgr = getMealSyncManager();
+    const slotKey = `${row.date || ''}__${row.slotId || ''}`;
+    return (
+        mealRecordHasBase64PendingPhotos(row) ||
+        mgr.hasPendingPhotoEntry(row.id) ||
+        mgr.hasPendingPhotoSlot(slotKey)
+    );
 }
 
 function triggerLoadMyShares() {
@@ -188,17 +223,22 @@ export function applyMealsSnapshotPrimary(p) {
 
     if (wasInitialLoad) {
         const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+        const prevById = new Map(
+            prevForMerge.filter((m) => m?.id).map((m) => [String(m.id), m])
+        );
         const serverMapped = snap.docs
             .map((d) => {
-                const row = { id: d.id, ...d.data() };
+                let row = { id: d.id, ...d.data() };
                 const sid = String(d.id);
                 if (getMealSyncManager().hasErrorId(sid)) {
                     row._localSaveFailed = true;
                     row.is_sync_error = true;
                 }
+                row = preserveLocalPendingPhotosOnRow(row, prevById);
                 return row;
             })
             .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+        const mergedById = new Map(serverMapped.map((r) => [String(r.id), r]));
         // 최근 N일 부분 윈도우: cutoff 이전 on-demand 캐시는 유지 (트래커 과거 이동 후 사라짐 방지)
         window.mealHistory = findUniqueMeals(serverMapped, prevForMerge, {
             preserveBeforeDate: cutoffDateStr
@@ -211,9 +251,9 @@ export function applyMealsSnapshotPrimary(p) {
         loadState.isInitialLoad = false;
         invalidateMealHistoryCountCache();
         snap.docs.forEach((d) => {
-            if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
-                onMealDocFirestoreServerAcknowledged(d.id, null);
-            }
+            if (!mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) return;
+            if (shouldDeferServerAckForRow(mergedById.get(String(d.id)))) return;
+            onMealDocFirestoreServerAcknowledged(d.id, null);
         });
     } else {
         const changes = snap.docChanges();
@@ -467,17 +507,22 @@ export function applyMealsOneTimeFetchResult(p) {
     }
 
     const prevForMerge = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+    const prevById = new Map(
+        prevForMerge.filter((m) => m?.id).map((m) => [String(m.id), m])
+    );
     const serverMapped = snap.docs
         .map((d) => {
-            const row = { id: d.id, ...d.data() };
+            let row = { id: d.id, ...d.data() };
             const sid = String(d.id);
             if (getMealSyncManager().hasErrorId(sid)) {
                 row._localSaveFailed = true;
                 row.is_sync_error = true;
             }
+            row = preserveLocalPendingPhotosOnRow(row, prevById);
             return row;
         })
         .sort((a, b) => b.date.localeCompare(a.date) || b.time.localeCompare(a.time));
+    const mergedById = new Map(serverMapped.map((r) => [String(r.id), r]));
     window.mealHistory = findUniqueMeals(serverMapped, prevForMerge, {
         preserveBeforeDate: cutoffDateStr
     });
@@ -485,9 +530,9 @@ export function applyMealsOneTimeFetchResult(p) {
     const minInWindow = minMealDateYmdInWindow(serverMapped, cutoffDateStr) ?? cutoffDateStr;
     markMealsRangeLoaded(minInWindow, todayStr);
     snap.docs.forEach((d) => {
-        if (mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) {
-            onMealDocFirestoreServerAcknowledged(d.id, null);
-        }
+        if (!mealDocSnapshotAppearsServerAcked(d.metadata, { allowFromCacheAck: true })) return;
+        if (shouldDeferServerAckForRow(mergedById.get(String(d.id)))) return;
+        onMealDocFirestoreServerAcknowledged(d.id, null);
     });
     window.__mealogMealsQueryCutoff = cutoffDateStr;
     window.__mealogMealsQueryEnd = todayStr;

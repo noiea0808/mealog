@@ -13,6 +13,7 @@ import { isMealogTransportOffline } from './mealog-offline-ui.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
+const MEAL_REGISTER_SCHEDULED_IDS_KEY = 'mealog_mealSyncRegisterScheduledIds_v1';
 
 function mealPhotosHaveBase64(record) {
     if (!record) return false;
@@ -77,6 +78,36 @@ function persistAbandonedId(entryId) {
             arr.push(s);
             window.localStorage.setItem(MEAL_ABANDONED_IDS_KEY, JSON.stringify(arr));
         }
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+function persistRegisterScheduledId(entryId) {
+    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
+    const s = String(entryId);
+    if (s.startsWith('temp_')) return; // temp 행 데이터는 재시작 후 없으므로 영속화하지 않음
+    try {
+        const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return;
+        if (!arr.includes(s)) {
+            arr.push(s);
+            window.localStorage.setItem(MEAL_REGISTER_SCHEDULED_IDS_KEY, JSON.stringify(arr));
+        }
+    } catch (_) {
+        /* ignore */
+    }
+}
+
+function unpersistRegisterScheduledId(entryId) {
+    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
+    try {
+        const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(arr)) return;
+        const s = String(entryId);
+        window.localStorage.setItem(MEAL_REGISTER_SCHEDULED_IDS_KEY, JSON.stringify(arr.filter((x) => x !== s)));
     } catch (_) {
         /* ignore */
     }
@@ -218,6 +249,23 @@ export class MealSyncManager {
         return !!this._abandoned.get(String(id));
     }
 
+    /** 등록예정 칩 상태 — 리스너 재구독 병합(find-unique-meals)에서 로컬 전용 행 보호에 사용 */
+    hasRegisterScheduledChip(id) {
+        return id != null && id !== '' && this._registerScheduledChip.has(String(id));
+    }
+
+    _addRegisterScheduledChip(id) {
+        const s = String(id);
+        this._registerScheduledChip.add(s);
+        persistRegisterScheduledId(s);
+    }
+
+    _deleteRegisterScheduledChip(id) {
+        const s = String(id);
+        this._registerScheduledChip.delete(s);
+        unpersistRegisterScheduledId(s);
+    }
+
     hasPendingPhotoEntry(id) {
         return !!this._pendingPhotoByEntry.get(String(id));
     }
@@ -253,7 +301,7 @@ export class MealSyncManager {
     markInFlight(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this._inFlight.set(s, true);
         this._bump();
     }
@@ -279,7 +327,7 @@ export class MealSyncManager {
     markAbandoned(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this._serverSynced.delete(s);
         this._abandoned.set(s, true);
         persistAbandonedId(entryId);
@@ -289,7 +337,7 @@ export class MealSyncManager {
     clearAbandoned(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this._abandoned.delete(s);
         unpersistAbandonedId(entryId);
         this._bump();
@@ -299,7 +347,7 @@ export class MealSyncManager {
     markError(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this._serverSynced.delete(s);
         this._abandoned.delete(s);
         unpersistAbandonedId(entryId);
@@ -333,7 +381,7 @@ export class MealSyncManager {
     markDeleteComplete(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this._deletePending.delete(s);
         this._deleteInFlight.delete(s);
         this._bump();
@@ -342,7 +390,7 @@ export class MealSyncManager {
     markDeleteFailed(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._registerScheduledChip.delete(s);
+        this._deleteRegisterScheduledChip(s);
         this.markDeleteComplete(entryId);
         this._deleteFailed.set(s, true);
         this._bump();
@@ -402,13 +450,13 @@ export class MealSyncManager {
         if (!id) return;
         if (this.hasServerSynced(id)) return;
         this.clearAbandoned(id);
-        this._registerScheduledChip.add(id);
+        this._addRegisterScheduledChip(id);
         this.clearInFlight(id);
         const ot = opts.optimisticTempId != null ? String(opts.optimisticTempId) : '';
         if (ot && ot.startsWith('temp_')) {
             this.clearAbandoned(ot);
             this.clearOptimisticPending(ot);
-            this._registerScheduledChip.add(ot);
+            this._addRegisterScheduledChip(ot);
         }
         const row =
             Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
@@ -459,7 +507,7 @@ export class MealSyncManager {
     removeTempRowSideEffects(m) {
         if (!m?.id) return;
         const id = String(m.id);
-        this._registerScheduledChip.delete(id);
+        this._deleteRegisterScheduledChip(id);
         this._pendingPhotoByEntry.delete(id);
         if (m.date && m.slotId) {
             this._pendingPhotoBySlot.delete(`${m.date}__${m.slotId}`);
@@ -471,7 +519,7 @@ export class MealSyncManager {
     clearDuplicateRealIdSideEffects(id) {
         const sid = String(id);
         this.clearGraceTimer(sid);
-        this._registerScheduledChip.delete(sid);
+        this._deleteRegisterScheduledChip(sid);
         this._inFlight.delete(sid);
         this._serverSynced.delete(sid);
         this._pendingPhotoByEntry.delete(sid);
@@ -531,7 +579,7 @@ export class MealSyncManager {
             this.clearGraceTimer(String(optimisticTempId));
         }
         this.clearInFlight(sid);
-        this._registerScheduledChip.delete(sid);
+        this._deleteRegisterScheduledChip(sid);
         const row =
             Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === sid) : null;
         const rowIndicatesFailure =
@@ -553,7 +601,7 @@ export class MealSyncManager {
                 this.clearError(tid);
             }
             this.clearAbandoned(tid);
-            this._registerScheduledChip.delete(tid);
+            this._deleteRegisterScheduledChip(tid);
         }
         this.markServerSynced(sid);
         this._bump();
@@ -831,6 +879,24 @@ export class MealSyncManager {
                     const s = String(id);
                     this._abandoned.set(s, true);
                     this._serverSynced.delete(s);
+                }
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        this._bump();
+    }
+
+    /** 등록예정 칩 복원 — 재시작 후에도 서버 미확인 기록이 등록예정으로 남도록. 서버 ack 시 자동 해제됨 */
+    hydrateRegisterScheduledFromStorage() {
+        if (typeof window === 'undefined' || !window.localStorage) return;
+        try {
+            const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
+            const arr = raw ? JSON.parse(raw) : [];
+            if (!Array.isArray(arr)) return;
+            for (const id of arr) {
+                if (id != null && id !== '' && !String(id).startsWith('temp_')) {
+                    this._registerScheduledChip.add(String(id));
                 }
             }
         } catch (_) {

@@ -19,7 +19,8 @@ import {
 import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
     hydrateMealSyncErrorIdsFromStorage,
-    hydrateMealSyncAbandonedIdsFromStorage
+    hydrateMealSyncAbandonedIdsFromStorage,
+    hydrateMealSyncRegisterScheduledIdsFromStorage
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsOneTimeFetchResult } from '../utils/meals-snapshot-apply.js';
 import {
@@ -96,6 +97,7 @@ function mergeEntryModalGaugesIntoUserSettings() {
 export function setupListeners(userId, callbacks) {
     hydrateMealSyncErrorIdsFromStorage();
     hydrateMealSyncAbandonedIdsFromStorage();
+    hydrateMealSyncRegisterScheduledIdsFromStorage();
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅

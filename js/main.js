@@ -1184,6 +1184,15 @@ initAuth(async (user) => {
                 const cur = auth.currentUser;
                 if (!cur || cur.isAnonymous) return;
                 stopNotificationListeners();
+                // setupListeners는 settings/data만 해제하므로 stats는 여기서 해제 — 재구독마다 누적되는 리스너 누수 방지
+                if (appState.statsUnsubscribe) {
+                    try {
+                        appState.statsUnsubscribe();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                    appState.statsUnsubscribe = null;
+                }
                 const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(cur.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)

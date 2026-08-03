@@ -4,6 +4,7 @@
  */
 import { appState } from '../state.js';
 import { isLikelyNetworkTransportFailure } from '../ui.js';
+import { markMealogOfflineEvidence } from './network-activity.js';
 import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
@@ -27,6 +28,7 @@ export function tryMarkAppOfflineFromNetworkFailure(err) {
     if (!isLikelyNetworkTransportFailure(err)) return false;
     const alreadyForced = appState.localNetworkForcedOffline === true;
     appState.localNetworkForcedOffline = true;
+    markMealogOfflineEvidence();
     // Firestore·fetch 등이 동시에 여러 번 실패하면 오버레이·abandon·타임라인 갱신이 연속 호출되어
     // 팝업이 반복되고 UI가 멈춘 것처럼 보임 → 최초 1회만 무거운 처리 수행
     if (alreadyForced) {

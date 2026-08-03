@@ -14,6 +14,7 @@ import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 import { probeMealogRemoteReachable } from '../utils/network-probe.js';
 import {
     markMealogRemoteProbeSuccess,
+    markMealogOfflineEvidence,
     getMealogFirestoreLastActivityAt,
     isMealogFirestoreActivityStale,
     shouldProbeMealogNetworkConnectivity
@@ -93,21 +94,21 @@ export async function runMealogNetworkRecovery(options = {}) {
         } catch (_) {
             /* ignore */
         }
-        let idTokenOk = false;
+        let reachedAuthServer = false;
         try {
             const u = auth.currentUser;
             if (u && typeof u.getIdToken === 'function') {
                 await u.getIdToken(forceAuthRefresh);
-                idTokenOk = true;
-            } else {
-                idTokenOk = true;
+                reachedAuthServer = forceAuthRefresh;
             }
         } catch (_) {
             /* ignore */
         }
-        // 강제 갱신으로 Google에 실제로 닿았다면 로컬 강제 오프라인 해제(위 fetch 성공과 별개로 보강)
-        if (forceAuthRefresh && idTokenOk) {
+        // 강제 갱신으로 Google에 실제로 닿았다면 로컬 강제 오프라인 해제 + 온라인 증거로 기록
+        // (navigator.onLine=false 고착 무시 판정에 사용)
+        if (reachedAuthServer) {
             clearLocalNetworkForcedOffline();
+            markMealogRemoteProbeSuccess();
         }
     })();
     try {
@@ -459,6 +460,7 @@ function registerCapacitorNetworkRecovery() {
                 if (status && status.connected === false) {
                     // 실패 확인 전이라도 네이티브가 단절을 알려주면 즉시 오프라인 UI로
                     appState.localNetworkForcedOffline = true;
+                    markMealogOfflineEvidence();
                     applyOfflineUiTransition();
                     return;
                 }
@@ -480,6 +482,7 @@ function registerCapacitorNetworkRecovery() {
 export function registerMainNetworkListeners() {
     installFetchFailureAppOfflineBridge();
     window.addEventListener('offline', () => {
+        markMealogOfflineEvidence();
         applyOfflineUiTransition();
     });
     window.addEventListener('online', () => {

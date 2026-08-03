@@ -42,6 +42,9 @@ export function hydrateMealSyncErrorIdsFromStorage() {
 export function hydrateMealSyncAbandonedIdsFromStorage() {
     mgr().hydrateAbandonedFromStorage();
 }
+export function hydrateMealSyncRegisterScheduledIdsFromStorage() {
+    mgr().hydrateRegisterScheduledFromStorage();
+}
 export function markMealEntrySyncAbandonedById(entryId) {
     mgr().markAbandoned(entryId);
 }

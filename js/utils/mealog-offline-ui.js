@@ -2,11 +2,18 @@
  * 전송 계층 오프라인 UX — 전면「연결할 수 없습니다」팝업 대신 FAB·토스트만 사용.
  */
 import { appState } from '../state.js';
+import { getMealogRemoteProbeLastAt, getMealogOfflineEvidenceAt } from './network-activity.js';
 
 export function isMealogTransportOffline() {
     if (appState.localNetworkForcedOffline === true) return true;
     try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            // Android WebView 는 재연결 후에도 onLine 이 false 로 고착되는 경우가 많다.
+            // 마지막 오프라인 증거(offline 이벤트·단절 통지·끊김 실패) 이후에 원격 프로브가
+            // 실제로 성공했다면 onLine=false 를 고착으로 보고 온라인으로 취급한다.
+            if (getMealogRemoteProbeLastAt() > getMealogOfflineEvidenceAt()) return false;
+            return true;
+        }
     } catch (_) {
         /* ignore */
     }

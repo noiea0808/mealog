@@ -8,6 +8,7 @@ import { isMealogTransportOffline } from './mealog-offline-ui.js';
 
 let lastMealogFirestoreActivityAt = Date.now();
 let lastMealogRemoteProbeAt = 0;
+let lastMealogOfflineEvidenceAt = 0;
 
 /** @param {number} [at] */
 export function markMealogFirestoreActivity(at = Date.now()) {
@@ -29,6 +30,20 @@ export function getMealogFirestoreLastActivityAt() {
 
 export function getMealogRemoteProbeLastAt() {
     return lastMealogRemoteProbeAt;
+}
+
+/**
+ * 오프라인 증거 시각 기록 — window 'offline' 이벤트, Capacitor 단절 통지, 끊김 계열 fetch/Firestore 실패.
+ * navigator.onLine=false 고착(Android WebView) 판별에 사용: 이 시각보다 나중에 원격 프로브가
+ * 성공했다면 onLine=false 는 고착으로 보고 무시한다.
+ * @param {number} [at]
+ */
+export function markMealogOfflineEvidence(at = Date.now()) {
+    lastMealogOfflineEvidenceAt = at;
+}
+
+export function getMealogOfflineEvidenceAt() {
+    return lastMealogOfflineEvidenceAt;
 }
 
 export function getMealogFirestoreActivityAgeMs() {
