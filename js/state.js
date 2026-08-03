@@ -15,6 +15,7 @@ export const appState = {
     settingsUnsubscribe: null,
     statsUnsubscribe: null,
     notificationUnsubscribePost: null,
+    notificationUnsubscribeLike: null,
     notificationUnsubscribeBoard: null,
     notificationUnsubscribeFeed: null,
     notificationUnreadCount: 0,

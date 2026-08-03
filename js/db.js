@@ -13,7 +13,7 @@ export {
     hasSharedPhotosForEntry,
     peekLatestSharedPhotoTimestampMs
 } from './db/listeners.js';
-export { postInteractions, subscribeToMyPostComments, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';
+export { postInteractions, subscribeToMyPostComments, subscribeToMyLikeNotifications, getUserReportForPost, submitReport, withdrawReport, getReportsAggregateByGroupKeys } from './db/social.js';
 export {
     boardOperations,
     noticeOperations,

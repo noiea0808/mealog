@@ -17350,6 +17350,117 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: var(--card);
 }
 
+/* —— 좋아요 누른 사람 목록 —— */
+#postLikesModal > .post-likes-modal {
+    height: min(70vh, 32rem);
+    max-height: min(70vh, 32rem);
+    min-height: 0;
+}
+#postLikesModal .post-likes-modal-head {
+    flex-shrink: 0;
+    padding: 14px var(--mealog-dialog-pad-x) 12px;
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    text-align: left;
+}
+#postLikesModal .post-likes-modal-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.25;
+}
+#postLikesModal .post-likes-modal-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 10px var(--mealog-dialog-pad-x) 8px;
+    background: var(--page-deep, #faf6f2);
+}
+#postLikesModal .post-likes-list {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 4px 0;
+    display: block;
+}
+#postLikesModal .post-likes-list.hidden {
+    display: none;
+}
+#postLikesModal .post-likes-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 4px;
+}
+#postLikesModal .post-likes-row-avatar {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: var(--green-soft);
+    border: 1px solid var(--green-mute);
+    font-size: 16px;
+    color: var(--green-deep);
+    font-weight: 700;
+}
+#postLikesModal .post-likes-row-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+#postLikesModal .post-likes-row-avatar--emoji {
+    font-size: 18px;
+}
+#postLikesModal .post-likes-row-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#postLikesModal .post-likes-empty {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    padding: 16px 12px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--muted);
+    line-height: 1.45;
+}
+#postLikesModal .post-likes-empty.hidden {
+    display: none;
+}
+#postLikesModal .post-likes-loading {
+    padding: 28px 12px;
+    text-align: center;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--muted);
+}
+#postLikesModal .mealog-dialog-actions {
+    flex-shrink: 0;
+    background: var(--card);
+}
+
 /* —— Fullscreen Media —— */
 #momentImageLightbox,
 #feedImageLightbox {

@@ -98,6 +98,13 @@ service cloud.firestore {
         allow create, update: if false;
         allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
+
+      // 좋아요 알림 (postId당 1건, 최근 누른 사람 닉네임 + 개수만 집계) — 생성/갱신은 CF, 탈퇴 시 본인만 일괄 삭제
+      match /likeNotifications/{notifId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update: if false;
+        allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
+      }
     }
     
     // ============================================

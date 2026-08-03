@@ -40,6 +40,7 @@ const ESCAPE_OVERLAY_IDS = [
     'momentSearchModal',
     'boardSearchModal',
     'notificationModal',
+    'postLikesModal',
     'contentPopupModal',
     'bestSharePeriodNoticeModal',
     'passwordResetSuccessModal',
@@ -130,6 +131,9 @@ function closeOverlayById(id) {
             break;
         case 'notificationModal':
             if (typeof window.closeNotificationPopup === 'function') window.closeNotificationPopup();
+            break;
+        case 'postLikesModal':
+            if (typeof window.closePostLikesModal === 'function') window.closePostLikesModal();
             break;
         case 'contentPopupModal':
             if (typeof window.closeContentPopupModal === 'function') window.closeContentPopupModal(false);

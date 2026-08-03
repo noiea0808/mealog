@@ -2532,6 +2532,24 @@
         </div>
     </div>
 
+    <!-- 좋아요 누른 사람 목록 -->
+    <div id="postLikesModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="postLikesModalTitle">
+        <button type="button" id="postLikesBackdrop" class="search-filter-modal__backdrop mealog-dialog-backdrop" data-mealog-dialog-backdrop aria-label="닫기"></button>
+        <div class="post-likes-modal search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden" data-mealog-dialog-panel>
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="post-likes-modal-head mealog-dialog-head">
+                <h2 id="postLikesModalTitle" class="post-likes-modal-title">좋아요</h2>
+            </div>
+            <div class="post-likes-modal-body">
+                <div id="postLikesList" class="post-likes-list"></div>
+                <div id="postLikesEmpty" class="post-likes-empty hidden"></div>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <button type="button" id="postLikesDismissBtn" class="mealog-btn mealog-btn-secondary">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 밀로그 기록 검색 (기간 + 키워드) -->
     <div id="timelineSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
         <button type="button" id="timelineSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>

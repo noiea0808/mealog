@@ -7,6 +7,7 @@ import { initTimelineSearchModal } from '../timeline-search.js';
 import { initMomentSearchModal } from '../moment-search.js';
 import { initBoardSearchModal } from '../board-search.js';
 import { initNotificationModal } from './notifications.js';
+import { initPostLikesModal } from './post-likes-modal.js';
 import { addCompositionAwareInput, mountRrnDigitGroup } from '../utils.js';
 import {
     handleGoogleLogin,
@@ -289,6 +290,7 @@ export function initEventListeners() {
     initMomentSearchModal();
     initBoardSearchModal();
     initNotificationModal();
+    initPostLikesModal();
 
     const boardSearchTriggerBtn = document.getElementById('boardSearchTriggerBtn');
     if (boardSearchTriggerBtn) {

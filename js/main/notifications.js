@@ -7,6 +7,7 @@ import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/
 import {
     postInteractions,
     subscribeToMyPostComments,
+    subscribeToMyLikeNotifications,
     boardOperations,
     getFeedNotificationsForUser,
     subscribeFeedNotifications,
@@ -213,11 +214,13 @@ function notificationKeysForItem(item) {
     keys.add(`${type}:${item.postId}`);
     if (type === 'moment') {
         keys.add(item.postId);
+    }
+    if (type === 'moment' || type === 'momentLike') {
         (item.aliasPostIds || []).forEach((id) => {
             const s = String(id || '').trim();
             if (!s) return;
-            keys.add(`moment:${s}`);
-            keys.add(s);
+            keys.add(`${type}:${s}`);
+            if (type === 'moment') keys.add(s);
         });
     }
     return [...keys];
@@ -334,15 +337,21 @@ function appendNotificationRow(listEl, item, { dimmed }) {
             ? `밀톡 알림 · ${timeStr}`
             : type === 'moment' && item.kind === 'mention'
               ? `${escapeHtml(String(item.actorNickname || '누군가'))}님이 회원님을 언급했어요 · ${timeStr}`
-              : `댓글 ${commentCount}개 · ${timeStr}`;
+              : type === 'momentLike'
+                ? commentCount > 1
+                    ? `${escapeHtml(String(item.actorNickname || '누군가'))}님 외 ${commentCount - 1}명이 좋아합니다 · ${timeStr}`
+                    : `${escapeHtml(String(item.actorNickname || '누군가'))}님이 좋아합니다 · ${timeStr}`
+                : `댓글 ${commentCount}개 · ${timeStr}`;
     const thumbHtml =
-        type === 'moment' && thumbnailUrl
+        (type === 'moment' || type === 'momentLike') && thumbnailUrl
             ? `<div class="notification-row-thumb"><img src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy"></div>`
             : type === 'feed'
               ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="message-circle-more" aria-hidden="true"></i></div>`
               : type === 'board'
                 ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="layout-list" aria-hidden="true"></i></div>`
-                : `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="images" aria-hidden="true"></i></div>`;
+                : type === 'momentLike'
+                  ? `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="heart" aria-hidden="true"></i></div>`
+                  : `<div class="notification-row-ico" aria-hidden="true"><i data-lucide="images" aria-hidden="true"></i></div>`;
     row.innerHTML = `${thumbHtml}<div class="notification-row-body"><span class="notification-row-title">${label}</span><span class="notification-row-sub">${subText}</span></div>`;
     row.addEventListener('click', async () => {
         markNotificationItemAsRead(item);
@@ -354,7 +363,7 @@ function appendNotificationRow(listEl, item, { dimmed }) {
             return;
         }
         try {
-            if (type === 'moment') {
+            if (type === 'moment' || type === 'momentLike') {
                 const photos = await loadSharedPhotosForMomentNotification(postId, ownerUid);
                 if (!photos.length) {
                     showToast('공유가 해제되어 해당 게시물을 찾을 수 없습니다.', 'error');
@@ -468,8 +477,9 @@ window.loadNotificationList = async () => {
     }
     try {
         await ensureNotificationReadStateLoaded();
-        const [momentItems, boardItems, feedItems] = await Promise.all([
+        const [momentItems, momentLikeItems, boardItems, feedItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            postInteractions.getPostsWithLikesForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
                 ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
                 : Promise.resolve([]),
@@ -491,7 +501,7 @@ window.loadNotificationList = async () => {
             it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
             // lastCommentAt은 읽음 판정용 — localStorage 시각으로 올리면 모두 읽음이 다시 미읽음으로 돌아옴
         });
-        _notificationMergedCache = [...momentItems, ...boardItems, ...feedItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        _notificationMergedCache = [...momentItems, ...momentLikeItems, ...boardItems, ...feedItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
         renderNotificationPanelFromCache();
     } catch (e) {
         console.error('알림 목록 로드 실패:', e);
@@ -513,8 +523,9 @@ window.updateNotificationDot = async () => {
     }
     try {
         await ensureNotificationReadStateLoaded();
-        const [momentItems, boardItems, feedItems] = await Promise.all([
+        const [momentItems, momentLikeItems, boardItems, feedItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
+            postInteractions.getPostsWithLikesForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
                 ? window.boardOperations.getBoardPostsWithCommentsForUser(window.currentUser.uid)
                 : Promise.resolve([]),
@@ -534,7 +545,7 @@ window.updateNotificationDot = async () => {
             it.kind = 'mention';
             it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
         });
-        const merged = [...momentItems, ...boardItems, ...feedItems];
+        const merged = [...momentItems, ...momentLikeItems, ...boardItems, ...feedItems];
         const readState = getNotificationReadState();
         const unread = merged.filter(item => !isNotificationRead(item, readState));
         if (unread.length > 0) dotEl.classList.remove('hidden'); else dotEl.classList.add('hidden');
@@ -626,6 +637,7 @@ export function startNotificationListeners() {
     stopNotificationListeners();
     try {
         appState.notificationUnsubscribePost = subscribeToMyPostComments(uid, onNotificationChange);
+        appState.notificationUnsubscribeLike = subscribeToMyLikeNotifications(uid, onNotificationChange);
         if (typeof boardOperations.subscribeToMyBoardComments === 'function') {
             appState.notificationUnsubscribeBoard = boardOperations.subscribeToMyBoardComments(uid, onNotificationChange);
         }
@@ -639,6 +651,10 @@ export function stopNotificationListeners() {
     if (appState.notificationUnsubscribePost) {
         appState.notificationUnsubscribePost();
         appState.notificationUnsubscribePost = null;
+    }
+    if (appState.notificationUnsubscribeLike) {
+        appState.notificationUnsubscribeLike();
+        appState.notificationUnsubscribeLike = null;
     }
     if (appState.notificationUnsubscribeBoard) {
         appState.notificationUnsubscribeBoard();
