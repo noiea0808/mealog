@@ -312,9 +312,11 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
         ? `<div class="moment-v2-meal-meta">${escapeHtml(place)}</div>`
         : '';
 
+    const { isBestShare, isDailyShare, isInsightShare } = flags || {};
     const menuFromFields = resolveMomentV2MenuTitle(photo, mealHistoryMap, groupEntryId, flags);
     let menu = menuFromFields;
-    if (!menu && menuCaptionPlain) {
+    /* best/daily/insight 공유는 menuCaptionPlain이 메뉴가 아니라 공유 코멘트이므로 폴백 제외(본문 note와 중복 방지) */
+    if (!menu && menuCaptionPlain && !isBestShare && !isDailyShare && !isInsightShare) {
         /* 레거시 captionText에 "메뉴 @ 장소"가 오면 메뉴만 사용 */
         const plain = String(menuCaptionPlain).trim();
         if (plain && plain !== '—' && plain !== '간식') {
