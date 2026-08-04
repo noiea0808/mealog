@@ -8,7 +8,7 @@ const fs = require('fs');
 
 const androidDir = path.join(__dirname, '..', 'android');
 const isWin = process.platform === 'win32';
-const gradlew = isWin ? 'gradlew.bat' : './gradlew';
+const gradlew = isWin ? '.\\gradlew.bat' : './gradlew';
 const task = process.argv[2] || 'assembleStagingDebug';
 
 function isValidAndroidSdk(dir) {
