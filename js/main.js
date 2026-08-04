@@ -1631,7 +1631,12 @@ initAuth(async (user) => {
         };
 
         // 자동 둘러보기 비활성: auth null 확정 즉시 가이드 → 로그인 (400ms 대기 제거)
+        // 명시적 로그아웃(둘러보기·체험 모드에서「로그인하기」등)은 가이드를 건너뛰고 바로 로그인 화면으로 이동
         const presentLandingOrGuide = async () => {
+            if (wasExplicitLogout) {
+                showLoginScreen();
+                return;
+            }
             try {
                 const shown = await maybeStartLandingServiceGuide({
                     onComplete: () => showLoginScreen(),
