@@ -997,7 +997,7 @@ function buildShareCaptureStarsText(rating) {
     const n = Number.parseInt(rating, 10);
     const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
     if (filled <= 0) return '—';
-    return '★'.repeat(filled);
+    return `★ ${filled}`;
 }
 
 /** 일간 공유 캡처용 — 좌측 1:1 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */

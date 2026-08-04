@@ -7002,9 +7002,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     padding: 36px 12px 0 0;
     text-align: right;
     white-space: nowrap;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
-    line-height: 18px;
+    line-height: 20px;
     letter-spacing: 0.5px;
     color: #d4a017;
 }
@@ -11550,8 +11550,8 @@ body[data-main-tab='dashboard'] #dashboardView {
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-stars {
     color: #fbbf24;
-    font-size: 11px;
-    letter-spacing: -1px;
+    font-size: 13px;
+    font-weight: 700;
     white-space: nowrap;
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn {

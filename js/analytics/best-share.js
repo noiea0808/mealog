@@ -499,7 +499,7 @@ export function renderBestMeals() {
         const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
         const slotLine = place ? `${escapeHtml(slotLabel)} · ${safePlace}` : escapeHtml(slotLabel);
-        const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
+        const stars = rating > 0 ? `★ ${Math.min(5, rating)}` : '—';
         
         let thumbHtml = '';
         if (thumbUrl) {
