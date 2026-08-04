@@ -17481,7 +17481,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 #toastContainer {
     bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
     width: auto;
-    max-width: min(26rem, calc(100% - 2rem));
+    max-width: min(34rem, calc(100% - 1rem));
     padding: 0;
 }
 #toastContainer .mealog-toast {
@@ -17494,16 +17494,17 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-size: 13.5px;
     font-weight: 600;
     color: #fff;
-    background: var(--ink-2);
+    background: #000;
     box-shadow: 0 4px 16px rgba(36, 31, 28, 0.18);
     max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 #toastContainer .mealog-toast--success,
-#toastContainer .mealog-toast--info {
-    background: var(--ink-2);
-}
+#toastContainer .mealog-toast--info,
 #toastContainer .mealog-toast--error {
-    background: #9f1239;
+    background: #000;
 }
 
 #appUpdateRestartBanner.mealog-update-banner {
