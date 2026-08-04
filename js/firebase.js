@@ -246,6 +246,11 @@ export function registerFirestoreListenersRebind(fn) {
     firestoreListenersRebind = typeof fn === 'function' ? fn : null;
 }
 
+/** 관찰 가능한 onSnapshot 리스너가 붙어 있는지 — 복구 성공을 활동 시각으로 판정할 수 있는지에 사용 */
+export function hasFirestoreListenersRegistered() {
+    return typeof firestoreListenersRebind === 'function';
+}
+
 /** 복구·전환 후 등록된 onSnapshot 리스너 재부착 */
 export function rebindFirestoreListenersIfRegistered() {
     if (!firestoreListenersRebind) return false;

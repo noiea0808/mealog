@@ -4,7 +4,7 @@
  */
 import { appState } from '../state.js';
 import { isLikelyNetworkTransportFailure } from '../ui.js';
-import { markMealogOfflineEvidence } from './network-activity.js';
+import { markNetworkChannelDown, pokeNetworkLoop, isNetworkChannelDown } from './network-loop.js';
 import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
@@ -26,9 +26,9 @@ function mealogMainAppVisible() {
  */
 export function tryMarkAppOfflineFromNetworkFailure(err) {
     if (!isLikelyNetworkTransportFailure(err)) return false;
-    const alreadyForced = appState.localNetworkForcedOffline === true;
-    appState.localNetworkForcedOffline = true;
-    markMealogOfflineEvidence();
+    const alreadyForced = isNetworkChannelDown();
+    // 오프라인 표시 + 복구 루프 기동 — 이후 재연결 판단은 전적으로 루프가 한다.
+    markNetworkChannelDown('transport-failure');
     // Firestore·fetch 등이 동시에 여러 번 실패하면 오버레이·abandon·타임라인 갱신이 연속 호출되어
     // 팝업이 반복되고 UI가 멈춘 것처럼 보임 → 최초 1회만 무거운 처리 수행
     if (alreadyForced) {
@@ -68,25 +68,41 @@ export function tryMarkAppOfflineFromNetworkFailure(err) {
     return true;
 }
 
+/** 오프라인 표시를 직접 내린다 — 사용자가 명시적으로 재전송을 누른 경로 등. 이후 판정은 루프가 이어받는다. */
 export function clearLocalNetworkForcedOffline() {
     appState.localNetworkForcedOffline = false;
 }
 
-/** window.fetch 실패 시 로컬 오프라인 플래그 (한 번만 설치) */
+/**
+ * 원격 호스트로 나간 요청인지. Capacitor 앱은 자산을 localhost 에서 서빙하고 Service Worker 캐시 응답도
+ * 성공으로 잡히므로, 자기 origin 요청의 성공은 인터넷 연결의 증거가 되지 못한다.
+ */
+function isRemoteRequestUrl(input) {
+    try {
+        const raw = typeof input === 'string' ? input : input?.url || String(input || '');
+        if (!raw) return false;
+        const url = new URL(raw, window.location.href);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+        return url.origin !== window.location.origin;
+    } catch (_) {
+        return false;
+    }
+}
+
+/** window.fetch 결과를 복구 루프에 전달 (한 번만 설치) */
 export function installFetchFailureAppOfflineBridge() {
     if (typeof window === 'undefined' || fetchBridgeInstalled) return;
     const w = window;
     const orig = w.fetch;
     if (typeof orig !== 'function') return;
     fetchBridgeInstalled = true;
-    w.fetch = function fetchWithOfflineBridge() {
+    w.fetch = function fetchWithOfflineBridge(input) {
+        const remote = isRemoteRequestUrl(input);
         return orig.apply(this, arguments).then(
             (res) => {
-                // HTTP 도달성 회복은 로컬 오프라인 플래그만 해제한다.
-                // Firestore 활동 시각(markMealogFirestoreActivity)은 여기서 갱신하지 않는다 —
-                // Wi-Fi↔LTE 전환 시 일반 fetch는 되는데 Firestore WebChannel만 죽은 경우,
-                // 이 갱신이 stale 감지를 무력화해 transport kick을 막았다.
-                clearLocalNetworkForcedOffline();
+                // 원격 요청 성공은 「무선이 살아났다」는 힌트일 뿐 Firestore 채널 생존의 증거가 아니다.
+                // 오프라인 표시를 직접 내리지 않고, 루프를 깨워 채널을 실제로 확인하게 한다.
+                if (remote && isNetworkChannelDown()) pokeNetworkLoop('remote-fetch-ok');
                 return res;
             },
             (err) => {

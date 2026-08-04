@@ -4,36 +4,6 @@
  */
 
 /**
- * @param {number} [timeoutMs]
- * @returns {Promise<boolean>}
- */
-export async function probeMealogNetworkReachable(timeoutMs = 8000) {
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
-    if (typeof window === 'undefined' || typeof fetch !== 'function') return false;
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-        const href =
-            window.location && typeof window.location.href === 'string'
-                ? window.location.href.split('#')[0]
-                : '/';
-        const res = await fetch(href, {
-            method: 'GET',
-            cache: 'no-store',
-            signal: ctrl.signal,
-            credentials: 'same-origin'
-        });
-        if (res.ok) return true;
-        if (res.type === 'opaqueredirect') return true;
-        return res.status > 0 && res.status < 500;
-    } catch {
-        return false;
-    } finally {
-        clearTimeout(tid);
-    }
-}
-
-/**
  * 실제 인터넷(원격 서버) 도달 여부.
  * Capacitor 네이티브 앱은 로컬(localhost)에서 자산을 서빙하므로 자기 href fetch는 오프라인에서도
  * 성공할 수 있다. 재연결 감지에는 외부 호스트로의 왕복이 필요하다.

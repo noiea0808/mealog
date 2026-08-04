@@ -1,31 +1,28 @@
 /**
- * 메인 앱 네트워크 상태 (오프라인 오버레이) + 온라인/포그라운드 복구
+ * 네트워크 이벤트 배선 + 복구 후속 작업.
+ *
+ * 재연결 판단·재시도는 전부 utils/network-loop.js 의 단일 루프가 한다. 이 파일은 두 가지만 한다.
+ *  1. OS·플러그인 이벤트를 루프를 깨우는 호출 하나로 연결한다 (무엇이 왔는지 구분하지 않는다).
+ *  2. 루프가 복구에 성공했을 때 실행할 후속 작업(기록 동기화 재맞춤·모먼트 재로드)을 등록한다.
  */
 import { hideNetworkErrorOverlay } from '../ui.js';
-import {
-    notifyTransportOfflineUi,
-    clearOfflineDraftFlagsOnMeals,
-    isMealogTransportOffline
-} from '../utils/mealog-offline-ui.js';
-import { auth, db, refreshAppCheckTokenBeforeFirestore, kickFirestoreTransportReconnect, rebindFirestoreListenersIfRegistered } from '../firebase.js';
+import { notifyTransportOfflineUi, clearOfflineDraftFlagsOnMeals } from '../utils/mealog-offline-ui.js';
+import { db } from '../firebase.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
-import { installFetchFailureAppOfflineBridge, clearLocalNetworkForcedOffline } from '../utils/network-reachability.js';
+import { installFetchFailureAppOfflineBridge } from '../utils/network-reachability.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
-import { probeMealogRemoteReachable } from '../utils/network-probe.js';
 import {
-    markMealogRemoteProbeSuccess,
-    markMealogOfflineEvidence,
-    getMealogFirestoreLastActivityAt,
-    isMealogFirestoreActivityStale,
-    shouldProbeMealogNetworkConnectivity
-} from '../utils/network-activity.js';
+    startNetworkLoop,
+    pokeNetworkLoop,
+    markNetworkChannelDown,
+    runNetworkRecoveryNow,
+    onNetworkRecovered
+} from '../utils/network-loop.js';
 import { appState } from '../state.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 /** waitForPendingWrites 등 쓰기 큐 flush 상한 */
 const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
-/** kick 후 onSnapshot 재개 대기 — 활동이 없으면 리스너 재구독 */
-const LISTENER_RESUME_WAIT_MS = 2500;
 
 function mealogMainAppVisible() {
     try {
@@ -36,170 +33,50 @@ function mealogMainAppVisible() {
     }
 }
 
-/**
- * 반쯤 끊긴(half-open) 연결에서 영원히 resolve되지 않는 Promise가 복구 체인을 마비시키는 것을 막는 상한.
- * 타임아웃 시 reject하지 않고 조용히 넘어간다(복구는 best-effort).
- * @param {Promise<T>} promise
- * @param {number} timeoutMs
- * @param {T} [fallbackValue]
- * @returns {Promise<T>}
- * @template T
- */
-function withMealogRecoveryTimeout(promise, timeoutMs, fallbackValue = undefined) {
+/** half-open 연결에서 멈춘 Promise가 후속 작업을 마비시키지 않도록 하는 상한 */
+function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
     let timer = 0;
-    const timeoutPromise = new Promise((resolve) => {
+    const timeout = new Promise((resolve) => {
         timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
     });
-    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeoutPromise]).finally(() => {
+    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeout]).finally(() => {
         if (timer) clearTimeout(timer);
     });
 }
 
-/** @param {number} ms */
-function sleepMs(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
- * kick 직후 onSnapshot이 실제로 재개됐는지 확인한다.
- * 활동이 없으면 리스너를 재구독해 half-open 고착을 끊는다.
- * @param {number} activityBeforeKick
- * @param {string} [reason]
+ * App Check·Auth 토큰 갱신 후 즉시 복구 시도.
+ * @deprecated 이벤트 경로는 pokeNetworkLoop 를 쓴다. window.Mealog.runNetworkRecovery 호환용.
  */
-async function rebindListenersIfNoFirestoreActivityAfterKick(activityBeforeKick, reason = '') {
-    await withMealogRecoveryTimeout(sleepMs(LISTENER_RESUME_WAIT_MS), LISTENER_RESUME_WAIT_MS);
-    if (getMealogFirestoreLastActivityAt() > activityBeforeKick) {
-        return false;
-    }
-    console.warn(
-        '[network] kick 후 Firestore 활동 없음 — 리스너 재구독',
-        reason || '(no reason)'
-    );
-    rebindFirestoreListenersIfRegistered();
-    return true;
-}
-
-let recoveryTimer = null;
-let recoveryInFlight = null;
-
-/**
- * App Check·Auth 토큰 갱신. Firestore 전송 재연결은 `runMealogConnectivityRecovery`에서 조건부로 수행.
- */
-export async function runMealogNetworkRecovery(options = {}) {
-    const forceAuthRefresh = options.forceAuthRefresh === true;
-    if (recoveryInFlight) return recoveryInFlight;
-    recoveryInFlight = (async () => {
-        try {
-            await refreshAppCheckTokenBeforeFirestore();
-        } catch (_) {
-            /* ignore */
-        }
-        let reachedAuthServer = false;
-        try {
-            const u = auth.currentUser;
-            if (u && typeof u.getIdToken === 'function') {
-                await u.getIdToken(forceAuthRefresh);
-                reachedAuthServer = forceAuthRefresh;
-            }
-        } catch (_) {
-            /* ignore */
-        }
-        // 강제 갱신으로 Google에 실제로 닿았다면 로컬 강제 오프라인 해제 + 온라인 증거로 기록
-        // (navigator.onLine=false 고착 무시 판정에 사용)
-        if (reachedAuthServer) {
-            clearLocalNetworkForcedOffline();
-            markMealogRemoteProbeSuccess();
-        }
-    })();
-    try {
-        await recoveryInFlight;
-    } finally {
-        recoveryInFlight = null;
-    }
-}
-
-export function scheduleMealogNetworkRecovery(delayMs = 0, options = {}) {
-    if (recoveryTimer) clearTimeout(recoveryTimer);
-    recoveryTimer = setTimeout(() => {
-        recoveryTimer = null;
-        void runMealogNetworkRecovery(options);
-    }, delayMs);
+export async function runMealogNetworkRecovery() {
+    await runNetworkRecoveryNow('manual');
 }
 
 /**
- * 수동 새로고침·다시 불러오기 직전: 원격 핑 + Auth/App Check + Firestore transport kick.
- * HTTP만 되고 WebChannel만 죽은 경우에도 getDocs/onSnapshot이 다시 붙도록 kick을 강제한다.
+ * 수동 새로고침·다시 불러오기 직전: 복구 루프를 즉시 1회 돌려 채널을 확인한다.
  * @param {string} [reason]
  * @param {{ rebindListeners?: boolean }} [options]
- * @returns {Promise<boolean>} 원격 서버 도달 가능 여부
+ * @returns {Promise<boolean>} 채널이 살아 있으면 true
  */
 export async function prepareFirestoreNetworkForManualReload(reason = 'manual-reload', options = {}) {
-    const rebindListeners = options.rebindListeners === true;
-    let reachable = false;
-    try {
-        reachable = await probeMealogRemoteReachable(5000);
-    } catch (_) {
-        reachable = false;
-    }
-    if (reachable) {
-        markMealogRemoteProbeSuccess();
-        clearLocalNetworkForcedOffline();
-        try {
-            clearOfflineDraftFlagsOnMeals();
-        } catch (_) {
-            /* ignore */
-        }
-        try {
-            hideNetworkErrorOverlay();
-        } catch (_) {
-            /* ignore */
-        }
-    }
-    // 토큰 갱신이 half-open에서 멈춰 「당겨서 새로고침」 FAB가 영원히 남는 것을 막기 위해 상한을 둔다.
-    await withMealogRecoveryTimeout(
-        runMealogNetworkRecovery({ forceAuthRefresh: reachable }),
-        WRITE_QUEUE_FLUSH_TIMEOUT_MS
-    );
-    if (reachable) {
-        const activityBeforeKick = getMealogFirestoreLastActivityAt();
-        await withMealogRecoveryTimeout(
-            kickFirestoreTransportReconnect(reason || 'manual-reload', { force: true }),
-            WRITE_QUEUE_FLUSH_TIMEOUT_MS,
-            false
-        );
-        if (rebindListeners) {
-            rebindFirestoreListenersIfRegistered();
-        } else {
-            // 모먼트 getDocs는 kick 직후 바로 진행. 식사 리스너 half-open은 백그라운드에서 확인.
-            void rebindListenersIfNoFirestoreActivityAfterKick(activityBeforeKick, reason);
-        }
-    }
-    return reachable;
+    return runNetworkRecoveryNow(reason, { forceRebind: options.rebindListeners === true });
 }
 
 /**
  * 모먼트「다시 불러오기」·당겨서 새로고침 직전 네트워크 준비.
- * @returns {Promise<boolean>} 원격 서버 도달 가능 여부
+ * @returns {Promise<boolean>} 채널이 살아 있으면 true
  */
 export async function prepareMomentFeedNetworkForReload() {
-    return prepareFirestoreNetworkForManualReload('moment-reload');
+    return runNetworkRecoveryNow('moment-reload');
 }
 
 /**
  * Firestore 로컬 쓰기 큐가 비면 식사 동기화 UI(초록 도트)·삭제 완료 처리를 `reconcile`로 맞춤.
- * `online` 이벤트가 안 오는 모바일·웹뷰에서도 `visibilitychange` / resume 경로에서 동일 호출.
  */
 async function flushMealWriteQueueAndRefreshSyncUi() {
-    // meals 실시간 리스너가 강등(1회 조회 폴백) 상태였다면 온라인 복구 시 자동 재부착
-    void import('../utils/meals-listener-degraded.js').then((dg) => {
-        try {
-            if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-        } catch (_) {
-            /* ignore */
-        }
-    });
-    // half-open 채널에서 waitForPendingWrites가 영원히 대기하면 복구 체인 전체가 멈추므로 상한을 둔다.
-    await withMealogRecoveryTimeout(waitForPendingWrites(db), WRITE_QUEUE_FLUSH_TIMEOUT_MS);
+    // meals 실시간 리스너가 강등(1회 조회 폴백) 상태였다면 자동 재부착
+    retryDegradedMealsListener();
+    await withTimeout(waitForPendingWrites(db), WRITE_QUEUE_FLUSH_TIMEOUT_MS);
     try {
         const m = await import('../utils/meal-entry-pending.js');
         if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
@@ -231,16 +108,22 @@ async function flushMealWriteQueueAndRefreshSyncUi() {
     }
 }
 
+function retryDegradedMealsListener() {
+    void import('../utils/meals-listener-degraded.js').then((dg) => {
+        try {
+            if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
+        } catch (_) {
+            /* ignore */
+        }
+    });
+}
+
 let momentFeedReloadInFlight = false;
-const FIRESTORE_STALE_ACTIVITY_MS = 180000;
-/** 복구 1회 전체 상한 — 내부 await가 무한 대기해도 in-flight 플래그가 반드시 풀리도록 보장 */
-const CONNECTIVITY_RECOVERY_TIMEOUT_MS = 25000;
-let connectivityRecoveryInFlight = null;
 let pendingRetryAfterRecoveryInFlight = false;
 
 /**
  * 연결 복구 직후 서버 미등록(실패·abandon·register_scheduled) 식사 기록을 자동 재전송.
- * entry-and-core 는 무겁고 순환 의존 가능성이 있어 동적 import. 내부에 항목별 in-flight 가드가 있어 중복 안전.
+ * Firestore 로컬 큐에 없는 항목은 waitForPendingWrites 만으로는 올라가지 않으므로 여기서 함께 밀어준다.
  */
 async function retryPendingMealEntriesAfterRecovery() {
     if (pendingRetryAfterRecoveryInFlight) return;
@@ -259,126 +142,8 @@ async function retryPendingMealEntriesAfterRecovery() {
 }
 
 /**
- * 원격 프로브 성공 시 토큰 갱신 + (필요 시) Firestore transport kick + 리스너 재부착.
- * @param {{ reason?: string, forceTransportKick?: boolean, skipProbe?: boolean }} [options]
- * @returns {Promise<boolean>}
- */
-export function runMealogConnectivityRecovery(options = {}) {
-    const reason = options.reason || '';
-    const forceTransportKick = options.forceTransportKick === true;
-    const skipProbe = options.skipProbe === true;
-    if (connectivityRecoveryInFlight) return connectivityRecoveryInFlight;
-
-    const work = (async () => {
-        let reachable = true;
-        if (!skipProbe) {
-            try {
-                reachable = await probeMealogRemoteReachable(5000);
-            } catch (_) {
-                reachable = false;
-            }
-        }
-        if (!reachable) return false;
-
-        const wasForcedOffline = isMealogTransportOffline();
-        const stale = isMealogFirestoreActivityStale(FIRESTORE_STALE_ACTIVITY_MS);
-
-        markMealogRemoteProbeSuccess();
-        clearLocalNetworkForcedOffline();
-        try {
-            clearOfflineDraftFlagsOnMeals();
-        } catch (_) {
-            /* ignore */
-        }
-        try {
-            hideNetworkErrorOverlay();
-        } catch (_) {
-            /* ignore */
-        }
-
-        // 토큰 갱신도 half-open에서 멈출 수 있어 상한을 둔다.
-        await withMealogRecoveryTimeout(
-            runMealogNetworkRecovery({ forceAuthRefresh: true }),
-            WRITE_QUEUE_FLUSH_TIMEOUT_MS
-        );
-
-        const needTransportKick = forceTransportKick || stale || wasForcedOffline;
-        // 강제 오프라인·online/connection 전환: 즉시 리스너 재구독.
-        // 유휴 stale: kick 후 실제 Firestore 활동이 없으면 그때 재구독(깜박임 최소화 + half-open 탈출).
-        const needListenerRebind = forceTransportKick || wasForcedOffline;
-        if (needTransportKick) {
-            const activityBeforeKick = getMealogFirestoreLastActivityAt();
-            // stale이면 쿨다운을 무시하고 kick — 하트비트가 12초 쿨다운에 막히면 복구가 지연된다.
-            const kicked = await withMealogRecoveryTimeout(
-                kickFirestoreTransportReconnect(reason || 'connectivity-recovery', {
-                    force: forceTransportKick || stale
-                }),
-                WRITE_QUEUE_FLUSH_TIMEOUT_MS,
-                false
-            );
-            if (needListenerRebind) {
-                rebindFirestoreListenersIfRegistered();
-            } else if (kicked || stale) {
-                // kick 성공/실패와 무관하게, 유휴 stale이면 활동 재개 여부를 확인한다.
-                // (이전에는 kick 성공만으로 markMealogFirestoreActivity 해서 stale 감지가 무력화됐다.)
-                await rebindListenersIfNoFirestoreActivityAfterKick(
-                    activityBeforeKick,
-                    reason || 'connectivity-recovery'
-                );
-                void import('../utils/meals-listener-degraded.js').then((dg) => {
-                    try {
-                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-                    } catch (_) {
-                        /* ignore */
-                    }
-                });
-            } else {
-                void import('../utils/meals-listener-degraded.js').then((dg) => {
-                    try {
-                        if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-                    } catch (_) {
-                        /* ignore */
-                    }
-                });
-            }
-            // kick/rebind 시도만으로 Firestore 활동 시각을 갱신하지 않는다.
-            // 실제 onSnapshot/getDocs 성공 시에만 listeners 등에서 markMealogFirestoreActivity 된다.
-        } else {
-            void import('../utils/meals-listener-degraded.js').then((dg) => {
-                try {
-                    if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-        }
-
-        await flushMealWriteQueueAndRefreshSyncUi();
-        // 실제로 나쁜 상태(오프라인/stale/강제 kick)에서 복구된 경우에만 서버 미등록 기록을 자동 재전송.
-        // Firestore 로컬 큐에 없는 항목(실패 처리·Callable 폴백·register_scheduled)은 waitForPendingWrites
-        // 만으로는 다시 올라가지 않으므로, online/포그라운드/connection-change/heartbeat 복구 시 함께 밀어준다.
-        if (needTransportKick) {
-            await retryPendingMealEntriesAfterRecovery();
-        }
-        maybeReloadMomentFeedAfterRecovery();
-        return true;
-    })();
-
-    // 내부 body가 어떤 이유로든 settle되지 않아도 상한 뒤 플래그를 풀어 다음 트리거가 재시도할 수 있게 한다.
-    connectivityRecoveryInFlight = withMealogRecoveryTimeout(
-        work,
-        CONNECTIVITY_RECOVERY_TIMEOUT_MS,
-        false
-    ).finally(() => {
-        connectivityRecoveryInFlight = null;
-    });
-    return connectivityRecoveryInFlight;
-}
-
-/**
  * 재연결 직후, 모먼트 피드가 네트워크 오류 상태로 멈춰 있고 사용자가 모먼트/앨범 탭을 보고 있으면
- * '다시 불러오기' 버튼을 누르지 않아도 자동으로 다시 로드한다.
- * (online/포그라운드 복구에서는 모먼트가 자동 갱신되지 않아 수동 버튼·앱 재시작을 유발하던 문제 보완)
+ * '다시 불러오기'를 누르지 않아도 자동으로 다시 로드한다.
  */
 function maybeReloadMomentFeedAfterRecovery() {
     try {
@@ -396,12 +161,25 @@ function maybeReloadMomentFeedAfterRecovery() {
     }
 }
 
-/** 화면 복귀 시: 원격 연결 확인 후 transport kick·동기화 UI 재맞춤 */
-function runForegroundMealSyncAndOverlayRecovery() {
-    void runMealogConnectivityRecovery({ reason: 'foreground' });
+/** 루프가 채널 복구에 성공했을 때 1회 실행 */
+async function handleNetworkRecovered() {
+    try {
+        clearOfflineDraftFlagsOnMeals();
+    } catch (_) {
+        /* ignore */
+    }
+    try {
+        hideNetworkErrorOverlay();
+    } catch (_) {
+        /* ignore */
+    }
+    retryDegradedMealsListener();
+    await flushMealWriteQueueAndRefreshSyncUi();
+    await retryPendingMealEntriesAfterRecovery();
+    maybeReloadMomentFeedAfterRecovery();
 }
 
-/** 오프라인 진입 시 공통 UI 처리 (window 'offline' 이벤트·Capacitor Network 단절 공용) */
+/** 오프라인 진입 시 공통 UI 처리 */
 function applyOfflineUiTransition() {
     try {
         applyMealSyncAbandonOnOffline();
@@ -425,127 +203,67 @@ function applyOfflineUiTransition() {
     }
 }
 
-function registerForegroundRecovery() {
-    document.addEventListener(
-        'visibilitychange',
-        () => {
-            if (document.visibilityState !== 'visible') return;
-            runForegroundMealSyncAndOverlayRecovery();
-        },
-        { passive: true }
-    );
-    // bare import('@capacitor/app')는 WebView에서 pending 되는 경우가 있어 스크립트로 등록된 window.Capacitor.Plugins.App 사용
-    try {
-        const App = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.App : null;
-        if (App?.addListener) {
-            App.addListener('resume', () => {
-                runForegroundMealSyncAndOverlayRecovery();
-            });
-        }
-    } catch (_) {
-        /* 웹 전용 빌드 등 */
-    }
-}
-
 /**
- * Capacitor Network 플러그인: Wi-Fi↔LTE 전환·단절을 네이티브에서 신뢰성 있게 통지.
- * WebView의 online/offline 이벤트가 안 오거나 늦는 문제를 보완한다.
+ * 단절 통지 — 이벤트가 왔다는 것 자체는 신뢰하되(고착된 boolean 을 읽는 것과 다르다),
+ * 복구 여부 판단은 루프에 맡긴다.
  */
-function registerCapacitorNetworkRecovery() {
-    try {
-        const Network = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Network : null;
-        if (!Network?.addListener) return;
-        Network.addListener('networkStatusChange', (status) => {
-            try {
-                if (status && status.connected === false) {
-                    // 실패 확인 전이라도 네이티브가 단절을 알려주면 즉시 오프라인 UI로
-                    appState.localNetworkForcedOffline = true;
-                    markMealogOfflineEvidence();
-                    applyOfflineUiTransition();
-                    return;
-                }
-                // connected === true 또는 연결타입 변경(wifi↔cellular) — 죽은 채널 재연결 + 미전송 재전송
-                void runMealogConnectivityRecovery({
-                    reason: 'cap-network',
-                    forceTransportKick: true
-                });
-            } catch (_) {
-                /* ignore */
-            }
-        });
-    } catch (_) {
-        /* 플러그인 미탑재(웹 등) */
-    }
+function handleOfflineSignal(reason) {
+    markNetworkChannelDown(reason);
+    applyOfflineUiTransition();
 }
 
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
     installFetchFailureAppOfflineBridge();
-    window.addEventListener('offline', () => {
-        markMealogOfflineEvidence();
-        applyOfflineUiTransition();
-    });
-    window.addEventListener('online', () => {
-        void runMealogConnectivityRecovery({ reason: 'online', forceTransportKick: true });
-    });
-    registerForegroundRecovery();
-    registerConnectionChangeRecovery();
-    registerCapacitorNetworkRecovery();
-    startMealogReachabilityHeartbeat();
-}
+    onNetworkRecovered(handleNetworkRecovered);
 
-/**
- * online 이벤트가 오지 않는 WebView 대비: 로컬 오프라인 또는 Firestore 활동 정체 시
- * 원격 프로브 → transport kick → 리스너·모먼트 자동 복구.
- */
-const REACHABILITY_HEARTBEAT_MS = 30000;
-let reachabilityHeartbeatTimer = null;
-let reachabilityProbeInFlight = false;
+    window.addEventListener('offline', () => handleOfflineSignal('offline-event'));
+    window.addEventListener('online', () => pokeNetworkLoop('online-event'));
 
-function reachabilityHeartbeatTick() {
-    if (!shouldProbeMealogNetworkConnectivity(FIRESTORE_STALE_ACTIVITY_MS)) return;
-    if (reachabilityProbeInFlight) return;
-    reachabilityProbeInFlight = true;
-    void runMealogConnectivityRecovery({ reason: 'heartbeat' }).finally(() => {
-        reachabilityProbeInFlight = false;
-    });
-}
+    document.addEventListener(
+        'visibilitychange',
+        () => {
+            if (document.visibilityState !== 'visible') return;
+            pokeNetworkLoop('foreground');
+        },
+        { passive: true }
+    );
 
-function startMealogReachabilityHeartbeat() {
-    if (reachabilityHeartbeatTimer) return;
+    // bare import('@capacitor/app')는 WebView에서 pending 되는 경우가 있어 window.Capacitor.Plugins 사용
     try {
-        reachabilityHeartbeatTimer = setInterval(reachabilityHeartbeatTick, REACHABILITY_HEARTBEAT_MS);
+        const App = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.App : null;
+        if (App?.addListener) {
+            App.addListener('resume', () => pokeNetworkLoop('app-resume'));
+        }
     } catch (_) {
-        /* ignore */
+        /* 웹 전용 빌드 등 */
     }
-}
 
-/** Network Information API: online 이벤트가 안 올 때도 연결 전환 시 복구 */
-let lastConnectionRecoverAt = 0;
-const CONNECTION_RECOVER_MIN_MS = 4000;
+    // Capacitor Network: Wi-Fi↔LTE 전환·단절을 네이티브에서 통지 (WebView online 이벤트 누락 보완)
+    try {
+        const Network = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Network : null;
+        if (Network?.addListener) {
+            Network.addListener('networkStatusChange', (status) => {
+                if (status && status.connected === false) {
+                    handleOfflineSignal('cap-network-disconnected');
+                    return;
+                }
+                pokeNetworkLoop('cap-network');
+            });
+        }
+    } catch (_) {
+        /* 플러그인 미탑재(웹 등) */
+    }
 
-function registerConnectionChangeRecovery() {
+    // Network Information API: online 이벤트가 안 올 때도 연결 전환 시 복구
     try {
         const conn = typeof navigator !== 'undefined' ? navigator.connection : null;
-        if (!conn || typeof conn.addEventListener !== 'function') return;
-        conn.addEventListener(
-            'change',
-            () => {
-                try {
-                    const now = Date.now();
-                    if (now - lastConnectionRecoverAt < CONNECTION_RECOVER_MIN_MS) return;
-                    lastConnectionRecoverAt = now;
-                    void runMealogConnectivityRecovery({
-                        reason: 'connection-change',
-                        forceTransportKick: true
-                    });
-                } catch (_) {
-                    /* ignore */
-                }
-            },
-            { passive: true }
-        );
+        if (conn && typeof conn.addEventListener === 'function') {
+            conn.addEventListener('change', () => pokeNetworkLoop('connection-change'), { passive: true });
+        }
     } catch (_) {
         /* ignore */
     }
+
+    startNetworkLoop();
 }
