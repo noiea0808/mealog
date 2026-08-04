@@ -1943,7 +1943,7 @@ export async function shareInsightToFeed() {
         } else if (appState.currentTab === 'feed') {
             import('../render/index.js').then(({ renderFeed }) => renderFeed());
         }
-        dbOps.unsharePhotos([photoUrlToRemove], null, false, true).catch(() => {
+        dbOps.unsharePhotos([photoUrlToRemove], null, false, false, true).catch(() => {
             if (window.sharedPhotos) window.sharedPhotos = prevShared;
             updateShareButtonStatus();
             if (appState.currentTab === 'gallery') {
