@@ -120,7 +120,7 @@ function showAdminPage(user) {
         updateStatistics();
     })();
     renderSharedPhotos();
-    switchAdminTab('dashboard');
+    window.switchAdminTab('dashboard');
 }
 
 function resetAdminScrollTop() {
@@ -166,19 +166,19 @@ window.switchAdminTab = function(tab) {
     if (tab === 'dashboard') {
         updateStatistics();
     } else if (tab === 'monitoring') {
-        switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
+        window.switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'ai') {
-        switchAiSidebar('characters');
+        window.switchAiSidebar('characters');
     } else if (tab === 'persona') {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
         ensureAdminUsersSortHandlers();
         /* 사용자 목록은 새로고침 버튼으로만 로드 */
     } else if (tab === 'alerts') {
-        switchAlertsSidebar('pushMessage');
+        window.switchAlertsSidebar('pushMessage');
     } else if (tab === 'content') {
-        switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
+        window.switchContentSidebar('mealog'); // 콘텐츠 탭 첫 메뉴(MEALOG)
     } else if (tab === 'adminLog') {
         loadAdminLogTab();
     } else if (tab === 'uiGuide') {
@@ -1055,16 +1055,16 @@ window.uploadApkFile = async function() {
     const statusEl = document.getElementById('apkUploadStatus');
     const versionInput = document.getElementById('apkVersionInput');
     if (!input?.files?.length) {
-        if (typeof showToast === 'function') showToast('APK 파일을 선택해주세요.', 'error');
+        if (typeof window.showToast === 'function') window.showToast('APK 파일을 선택해주세요.', 'error');
         return;
     }
     const file = input.files[0];
     if (!file.name.toLowerCase().endsWith('.apk')) {
-        if (typeof showToast === 'function') showToast('APK 파일만 업로드할 수 있습니다.', 'error');
+        if (typeof window.showToast === 'function') window.showToast('APK 파일만 업로드할 수 있습니다.', 'error');
         return;
     }
     if (file.size > 100 * 1024 * 1024) {
-        if (typeof showToast === 'function') showToast('파일 크기는 100MB 이하여야 합니다.', 'error');
+        if (typeof window.showToast === 'function') window.showToast('파일 크기는 100MB 이하여야 합니다.', 'error');
         return;
     }
     try {
@@ -1097,7 +1097,7 @@ window.uploadApkFile = async function() {
             statusEl.className = 'mt-2 text-sm text-emerald-600';
             statusEl.textContent = '업로드 완료!';
         }
-        if (typeof showToast === 'function') showToast('APK 업로드가 완료되었습니다.');
+        if (typeof window.showToast === 'function') window.showToast('APK 업로드가 완료되었습니다.');
         loadApkContent();
         input.value = '';
         document.getElementById('apkFileInfo')?.classList.add('hidden');
@@ -1108,7 +1108,7 @@ window.uploadApkFile = async function() {
             statusEl.textContent = '업로드 실패: ' + (e.message || '알 수 없는 오류');
             statusEl.classList.remove('hidden');
         }
-        if (typeof showToast === 'function') showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'), 'error');
+        if (typeof window.showToast === 'function') window.showToast('업로드 실패: ' + (e.message || '알 수 없는 오류'), 'error');
     } finally {
         uploadBtn.disabled = false;
     }
@@ -1150,17 +1150,18 @@ async function loadTermsContent() {
     
     if (!termsDisplay || !termsEditor || !termsTextarea || !privacyDisplay || !privacyEditor || !privacyTextarea) return;
     
+    /** catch의 기본값 렌더링에서도 참조하므로 try 밖에서 선언한다 */
+    const termsData = {
+        terms: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제1조 (정의)\n1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.\n2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.\n\n제2조 (서비스의 제공)\n회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등\n\n제3조 (이용자의 의무)\n이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.',
+        privacy: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:\n1. 서비스 제공 및 계약의 이행\n2. 회원 관리 및 본인 확인\n3. 서비스 개선 및 신규 서비스 개발\n\n제1조 (수집하는 개인정보의 항목)\n회사는 다음과 같은 개인정보를 수집합니다:\n1. 필수항목: 이메일, 닉네임, 프로필 아이콘\n2. 선택항목: 위치 정보 (카카오 지도 이용 시)\n\n제2조 (개인정보의 보유 및 이용기간)\n회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.',
+        updatedAt: null
+    };
+
     try {
         // Firestore에서 약관 데이터 가져오기
         const termsDoc = doc(db, 'artifacts', appId, 'content', 'terms');
         const termsSnap = await getDoc(termsDoc);
-        
-        let termsData = {
-            terms: '본 약관은 MEALOG(이하 "회사")가 제공하는 식사 기록 서비스의 이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을 목적으로 합니다.\n\n제1조 (정의)\n1. "서비스"란 회사가 제공하는 식사 기록 및 관리 서비스를 의미합니다.\n2. "이용자"란 본 약관에 동의하고 회사가 제공하는 서비스를 이용하는 자를 의미합니다.\n\n제2조 (서비스의 제공)\n회사는 다음과 같은 서비스를 제공합니다: 식사 기록, 통계 분석, 사진 공유 등\n\n제3조 (이용자의 의무)\n이용자는 서비스를 이용함에 있어 관련 법령을 준수해야 합니다.',
-            privacy: '회사는 다음의 목적을 위하여 개인정보를 처리합니다:\n1. 서비스 제공 및 계약의 이행\n2. 회원 관리 및 본인 확인\n3. 서비스 개선 및 신규 서비스 개발\n\n제1조 (수집하는 개인정보의 항목)\n회사는 다음과 같은 개인정보를 수집합니다:\n1. 필수항목: 이메일, 닉네임, 프로필 아이콘\n2. 선택항목: 위치 정보 (카카오 지도 이용 시)\n\n제2조 (개인정보의 보유 및 이용기간)\n회원 탈퇴 시까지 보유하며, 탈퇴 후 즉시 파기합니다.',
-            updatedAt: null
-        };
-        
+
         if (termsSnap.exists()) {
             const data = termsSnap.data();
             // 기존 배열 형식에서 단일 텍스트로 변환

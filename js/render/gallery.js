@@ -2,6 +2,7 @@
  * 모먼트 갤러리(공유 피드) 렌더링·필터·더보기
  */
 import { appState } from '../state.js';
+import { showToast } from '../ui.js';
 import { escapeHtml } from './utils.js';
 import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
@@ -1101,7 +1102,7 @@ export async function renderGallery(options = {}) {
                     } catch (err) {
                         console.error('모먼트(사용자) 추가 로드 실패:', err);
                         appState.galleryFeedNetworkError = true;
-                        if (typeof showToast === 'function') showToast('더 불러오지 못했습니다. 연결을 확인해 주세요.', 'error');
+                        showToast('더 불러오지 못했습니다. 연결을 확인해 주세요.', 'error');
                         lm.innerHTML = prev;
                         lm.disabled = false;
                         return;
@@ -1270,7 +1271,7 @@ export async function renderGallery(options = {}) {
                         document.getElementById('galleryLoadMoreWrap')?.remove();
                     }
                 } else if (res?.reason === 'error') {
-                    if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
+                    showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                     loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
                 } else {
                     loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>더보기';
@@ -1278,7 +1279,7 @@ export async function renderGallery(options = {}) {
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
                 appState.galleryFeedNetworkError = true;
-                if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
+                showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                 loadMoreBtn.disabled = false;
                 loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
             }
