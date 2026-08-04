@@ -306,7 +306,7 @@ function proportionSegmentDisplayName(name, key) {
     if (key === 'rating' || key === 'snackRating') {
         const ratingNum = parseInt(name);
         if (!isNaN(ratingNum)) {
-            return `${ratingNum}점`;
+            return '★'.repeat(ratingNum);
         }
     } else if (key === 'satiety' || key === 'snackSatiety') {
         const satietyNum = parseInt(name);
@@ -481,8 +481,7 @@ export function renderProportionChart(containerId, data, key) {
         if (key === 'rating' || key === 'snackRating') {
             const ratingNum = parseInt(name);
             if (!isNaN(ratingNum)) {
-                displayName = '★'.repeat(ratingNum) + (ratingNum < 5 ? '' : '');
-                if (ratingNum <= 2) displayName = `${ratingNum}점`;
+                displayName = '★'.repeat(ratingNum);
             }
         } else if (key === 'satiety' || key === 'snackSatiety') {
             const satietyNum = parseInt(name);
