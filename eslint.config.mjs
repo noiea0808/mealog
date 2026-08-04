@@ -48,6 +48,15 @@ export default [
         rules: {
             // 오타·import 누락으로 런타임에서만 터지는 참조를 잡는다
             'no-undef': 'error',
+            /**
+             * window.sharedPhotos 는 appState 로 이관됐고 호환 shim 도 제거했다.
+             * 다시 쓰면 아무 데도 반영되지 않는 전역이 새로 생기므로 막는다.
+             */
+            'no-restricted-properties': ['error', {
+                object: 'window',
+                property: 'sharedPhotos',
+                message: "moment-share-state.js 의 getSharedPhotos() / setSharedPhotos() 를 쓰세요."
+            }],
             // 삼켜진 에러: 실패가 로그에도 남지 않아 원인 추적이 불가능해진다
             'no-empty': ['warn', { allowEmptyCatch: false }],
             'no-unused-vars': ['warn', {

@@ -42,6 +42,7 @@ import {
 } from './moment-feed-skeleton.js';
 import { scheduleLucideIcons } from '../icons.js';
 
+import { getSharedPhotos } from '../utils/moment-share-state.js';
 ensureMomentFeedPinchDelegate();
 
 // 모먼트 네트워크 오류 화면「다시 연결하기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
@@ -580,7 +581,7 @@ export async function renderGallery(options = {}) {
     const mySession = galleryRenderSession;
     try {
         isRenderingGallery = true;
-        console.log('[renderGallery] 시작, window.sharedPhotos:', window.sharedPhotos?.length || 0);
+        console.log('[renderGallery] 시작, sharedPhotos:', getSharedPhotos().length || 0);
         
         const container = document.getElementById('galleryContainer');
         if (!container) {
@@ -1625,7 +1626,7 @@ export async function renderGallery(options = {}) {
         }, 300); // 100ms에서 300ms로 증가 (초기 렌더링 완료 후 연결)
     }
     
-    console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
+    console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', getSharedPhotos().length || 0);
     scheduleLucideIcons(container);
     if (filterUserId && window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
     } catch (error) {

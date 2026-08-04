@@ -60,6 +60,7 @@ import {
 } from '../modals/diet-report.js';
 import { scheduleLucideIcons } from '../icons.js';
 
+import { getSharedPhotos } from '../utils/moment-share-state.js';
 function mainMealSlotLucideIcon(slotId) {
     return getSlotLucideIcon(slotId);
 }
@@ -470,10 +471,7 @@ const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 // entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
 function isEntryShared(entryId, record) {
     if (!entryId) return false;
-    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        return window.sharedPhotos.some(photo => photo.entryId === entryId);
-    }
-    return false;
+    return getSharedPhotos().some(photo => photo.entryId === entryId);
 }
 
 function getSnackTimelineView() {
@@ -901,13 +899,10 @@ function buildSnackTimelineViewSelectHtml(current) {
 
 function getDailyShareButtonHtmlForDate(dateStr) {
     if (!window.currentUser || window.currentUser.isAnonymous) return '';
-    const dailyShare =
-        window.sharedPhotos && Array.isArray(window.sharedPhotos)
-            ? window.sharedPhotos.find(
-                  (photo) =>
-                      photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser?.uid
-              )
-            : null;
+    const dailyShare = getSharedPhotos().find(
+        (photo) =>
+            photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser?.uid
+    );
     const isShared = !!dailyShare;
     const styleCls = isShared
         ? 'date-section-header__share-btn--shared'

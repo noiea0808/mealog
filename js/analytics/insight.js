@@ -26,7 +26,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
-import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
 import {
     effectiveMealTypeForAnalytics,
     effectiveCategoryForAnalytics,
@@ -1519,11 +1519,11 @@ export async function getInsightCharacters() {
 
 // 인사이트 공유 상태 확인
 async function checkInsightShareStatus(dateRangeText) {
-    if (!window.currentUser || !window.sharedPhotos) return null;
+    if (!window.currentUser) return null;
     
-    // window.sharedPhotos에서 해당 기간의 인사이트 공유 찾기
+    // 공유 캐시에서 해당 기간의 인사이트 공유 찾기
     // 각 기간별로 한 번만 공유 가능하므로 dateRangeText만으로 확인
-    const insightShare = window.sharedPhotos.find(photo => 
+    const insightShare = getSharedPhotos().find(photo => 
         photo.type === 'insight' && 
         photo.dateRangeText === dateRangeText
     );
@@ -1755,13 +1755,13 @@ function setInsightShareSubmitEditing(isEditing) {
 
 // 밀당 코멘트 공유 수정 모달 열기 (photoUrl로 찾기)
 export async function openEditInsightShareModal(photoUrl) {
-    if (!photoUrl || !window.sharedPhotos) {
+    if (!photoUrl) {
         showToast('밀당 코멘트 공유를 찾을 수 없습니다.', 'error');
         return;
     }
     
-    // window.sharedPhotos에서 해당 photoUrl의 인사이트 공유 찾기
-    const insightShare = window.sharedPhotos.find(photo => 
+    // 공유 캐시에서 해당 photoUrl의 인사이트 공유 찾기
+    const insightShare = getSharedPhotos().find(photo => 
         photo.type === 'insight' && 
         (photo.photoUrl === photoUrl || photo.photoUrl?.includes(photoUrl) || photoUrl?.includes(photo.photoUrl))
     );
@@ -1880,14 +1880,14 @@ export async function shareInsightToFeed() {
                     comment: comment
                 });
                 
-                // window.sharedPhotos 업데이트
-                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    const shareIndex = window.sharedPhotos.findIndex(photo => 
+                // 공유 캐시 업데이트
+                if (getSharedPhotos()) {
+                    const shareIndex = getSharedPhotos().findIndex(photo => 
                         photo.type === 'insight' && 
                         (photo.photoUrl === editPhotoUrl || photo.photoUrl?.includes(editPhotoUrl) || editPhotoUrl?.includes(photo.photoUrl))
                     );
                     if (shareIndex !== -1) {
-                        window.sharedPhotos[shareIndex].comment = comment;
+                        getSharedPhotos()[shareIndex].comment = comment;
                     }
                 }
                 
@@ -2047,12 +2047,9 @@ export async function shareInsightToFeed() {
             comment: comment || ''
         };
 
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        window.sharedPhotos = window.sharedPhotos.filter(p =>
-            !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
+        upsertSharedPhoto(insightShareData, (p) =>
+            p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid
         );
-        window.sharedPhotos.push(insightShareData);
-        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
         showToast('밀당(MEAL-DANG)들의 참견이 피드에 공유되었습니다!', 'success');
         closeShareInsightModal();
@@ -2072,18 +2069,18 @@ export async function shareInsightToFeed() {
             comment
         }).then((result) => {
             const serverData = result.data;
-            const idx = window.sharedPhotos?.findIndex(p => p.id === insightShareData.id || (p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
-            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
-                window.sharedPhotos[idx] = serverData;
+            const idx = getSharedPhotos().findIndex(p => p.id === insightShareData.id || (p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== -1) {
+                getSharedPhotos()[idx] = serverData;
                 if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
                 if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());
             }
         }).catch((e) => {
             console.error('인사이트 공유 서버 반영 실패:', e);
-            if (window.sharedPhotos) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
+            if (getSharedPhotos()) {
+                setSharedPhotos(getSharedPhotos().filter(p =>
                     !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
-                );
+                ));
                 updateShareButtonStatus();
                 if (appState.currentTab === 'gallery') import('../render/index.js').then(({ renderGallery }) => renderGallery());
                 if (appState.currentTab === 'feed') import('../render/index.js').then(({ renderFeed }) => renderFeed());

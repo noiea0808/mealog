@@ -28,6 +28,7 @@ import { logUsageMetric } from '../usage-metrics.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
 
+import { setSharedPhotos } from '../utils/moment-share-state.js';
 const HEADER_TITLE_BY_TAB = {
     dashboard: 'meal-dang',
     timeline: 'mealog',
@@ -378,7 +379,7 @@ export function registerMainTabSwitch() {
                     window.scheduleDailySwipeHint(0);
                 }
                 loadMyShares().then((myShares) => {
-                    window.sharedPhotos = myShares;
+                    setSharedPhotos(myShares);
                     if (appState.currentTab !== 'timeline') return;
                     updateTimelineShareIndicators();
                     syncOrphanedSharesToMoment().then(() => {
@@ -387,7 +388,7 @@ export function registerMainTabSwitch() {
                     }).catch(() => {});
                 }).catch(e => {
                     console.error('본인 공유 로드 실패:', e);
-                    window.sharedPhotos = [];
+                    setSharedPhotos([]);
                     if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
                 });
             }

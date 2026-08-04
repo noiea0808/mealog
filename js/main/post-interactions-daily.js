@@ -37,7 +37,7 @@ import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/fire
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { scheduleLucideIcons } from '../icons.js';
-import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
 import {
     getDisplayProfile,
@@ -154,9 +154,9 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 // escapeHtml은 render/index.js에서 import됨
 
 function findExistingDailyShare(dateStr, uid) {
-    if (!dateStr || !uid || !Array.isArray(window.sharedPhotos)) return null;
+    if (!dateStr || !uid) return null;
     return (
-        window.sharedPhotos.find(
+        getSharedPhotos().find(
             (photo) => photo.type === 'daily' && photo.date === dateStr && photo.userId === uid
         ) || null
     );
@@ -491,12 +491,9 @@ window.confirmDailyShare = async (dateStr, ev) => {
             comment: dailyComment || ''
         };
 
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        window.sharedPhotos = window.sharedPhotos.filter(p =>
-            !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+        upsertSharedPhoto(dailyShareData, (p) =>
+            p.type === 'daily' && p.date === dateStr && p.userId === uid
         );
-        window.sharedPhotos.push(dailyShareData);
-        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
         // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
         if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
         const { sortSharedPhotosByTimestampDesc } = await import('../utils/shared-photo-timestamp.js');
@@ -514,18 +511,18 @@ window.confirmDailyShare = async (dateStr, ev) => {
             comment: dailyComment
         }).then((result) => {
             const serverData = result.data;
-            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === uid && p.photoUrl === photoUrl));
-            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
-                window.sharedPhotos[idx] = serverData;
+            const idx = getSharedPhotos().findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === uid && p.photoUrl === photoUrl));
+            if (idx !== -1) {
+                getSharedPhotos()[idx] = serverData;
                 if (appState.currentTab === 'timeline') renderTimeline();
                 if (appState.currentTab === 'gallery') renderGallery();
             }
         }).catch((e) => {
             console.error('일간보기 공유 서버 반영 실패:', e);
-            if (window.sharedPhotos) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
+            if (getSharedPhotos()) {
+                setSharedPhotos(getSharedPhotos().filter(p =>
                     !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-                );
+                ));
                 if (appState.currentTab === 'timeline') renderTimeline();
                 if (appState.currentTab === 'gallery') renderGallery();
             }

@@ -1,4 +1,5 @@
 /** userSettings.dailyComments[date] — 문자열(구) 또는 확장 객체 */
+import { getSharedPhotos } from './moment-share-state.js';
 
 function normalizeMetricRecord(raw) {
     if (!raw || typeof raw !== 'object') return null;
@@ -107,8 +108,8 @@ export function getDailyJournalShareEntryId(dateStr) {
 
 export function isDailyJournalShared(dateStr, entry) {
     const entryId = getDailyJournalShareEntryId(dateStr);
-    if (entryId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        if (window.sharedPhotos.some((p) => p.entryId === entryId)) return true;
+    if (entryId) {
+        if (getSharedPhotos().some((p) => p.entryId === entryId)) return true;
     }
     const n = normalizeDailyJournalEntry(entry);
     if (n.sharedPhotos && n.sharedPhotos.length > 0) return true;

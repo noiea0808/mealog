@@ -22,6 +22,7 @@ import {
 import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
 import { scheduleLucideIcons } from '../icons.js';
 
+import { getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 const MAX_DAILY_JOURNAL_PHOTOS = 5;
 const MAX_DAILY_JOURNAL_METRIC_RECORDS = 3;
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
@@ -419,16 +420,13 @@ export function toggleDailyJournalSharePhoto() {
 function syncDailyJournalSharedPhotosCache(entryId, photoUrls) {
     const uid = window.currentUser?.uid;
     if (!entryId || !uid) return;
-    if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
-        window.sharedPhotos = [];
-    }
     if (photoUrls.length > 0) {
         const newEntries = photoUrls.map((url) => ({ entryId, photoUrl: url, userId: uid }));
-        window.sharedPhotos = window.sharedPhotos
+        setSharedPhotos(getSharedPhotos()
             .filter((p) => p.entryId !== entryId)
-            .concat(newEntries);
+            .concat(newEntries));
     } else {
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryId);
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== entryId));
     }
     updateTimelineShareIndicators();
 }

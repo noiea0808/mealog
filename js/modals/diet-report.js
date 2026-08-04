@@ -22,7 +22,7 @@ import {
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { scheduleLucideIcons } from '../icons.js';
-import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -437,7 +437,7 @@ function renderReport(data) {
     const momentShare = findDietReportMomentShare(
         reportDate,
         window.currentUser?.uid,
-        window.sharedPhotos
+        getSharedPhotos()
     );
 
     body.innerHTML = `
@@ -789,8 +789,7 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
         });
 
         if (res?.data) {
-            if (!Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
-            window.sharedPhotos = window.sharedPhotos.filter(
+            setSharedPhotos(getSharedPhotos().filter(
                 (p) =>
                     !(
                         p &&
@@ -798,8 +797,8 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
                         p.userId === window.currentUser.uid &&
                         (p.dateRangeText === dateRangeText || p.date === dateStr)
                     )
-            );
-            window.sharedPhotos.push(res.data);
+            ));
+            getSharedPhotos().push(res.data);
         }
 
         showToast('AI 리포트를 모먼트에 공유했어요.', 'success');
@@ -865,7 +864,7 @@ async function shareDietReportToMoment() {
     const existingShare = findDietReportMomentShare(
         dateStr,
         window.currentUser.uid,
-        window.sharedPhotos
+        getSharedPhotos()
     );
 
     if (existingShare) {

@@ -10,6 +10,7 @@ import {
     todayLocalYmd
 } from '../demo-date-shift.js';
 import { findUniqueMeals, dedupeMealListOnly } from './find-unique-meals.js';
+import { getSharedPhotos, setSharedPhotos } from './moment-share-state.js';
 import {
     MealSyncManager,
     getMealSyncManager,
@@ -107,7 +108,7 @@ function triggerLoadMyShares() {
     void import('../db.js').then(({ loadMyShares }) => {
         loadMyShares()
             .then((list) => {
-                window.sharedPhotos = list;
+                setSharedPhotos(list);
                 if (typeof window.updateTimelineShareIndicators === 'function') {
                     window.updateTimelineShareIndicators();
                 }
@@ -410,10 +411,10 @@ export function applyMealsSnapshotPrimary(p) {
                             }
                         }
                         window.mealHistory[tempIdx] = mergedRow;
-                        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                            window.sharedPhotos = window.sharedPhotos.map((p) =>
+                        if (getSharedPhotos()) {
+                            setSharedPhotos(getSharedPhotos().map((p) =>
                                 p.entryId === tempRecord.id ? { ...p, entryId: docData.id } : p
-                            );
+                            ));
                         }
                         if (mgrSync.hasPendingPhotoEntry(tempRecord.id)) {
                             mgrSync.movePendingPhotoTempToReal(tempRecord.id, docData.id);

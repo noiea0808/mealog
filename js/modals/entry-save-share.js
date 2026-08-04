@@ -8,6 +8,7 @@ import { updateTimelineShareIndicators, renderGallery, renderFeed } from '../ren
 import { showToast } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 
+import { getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 /**
  * 공유 목록이 바뀌거나, 이미 공유 중인데 사진 비율만 바뀐 경우 모먼트 재동기화.
  * 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
@@ -55,12 +56,11 @@ export async function syncMomentShareAfterSave({
 
     // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
     if (hasPhotosToShare && photosToShare?.length) {
-        if (!window.sharedPhotos) window.sharedPhotos = [];
         const newEntries = photosToShare.map(url => ({ entryId: record.id, photoUrl: url, userId: window.currentUser?.uid }));
-        window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== record.id).concat(newEntries);
+        setSharedPhotos((getSharedPhotos() || []).filter(p => p.entryId !== record.id).concat(newEntries));
     } else if (hadSharedPhotos && !hasPhotosToShare) {
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== record.id);
+        if (getSharedPhotos()) {
+            setSharedPhotos(getSharedPhotos().filter(p => p.entryId !== record.id));
         }
     }
     updateTimelineShareIndicators();

@@ -97,6 +97,7 @@ import { registerMainPostInteractions } from './main/post-interactions-daily.js'
 import './modals/diet-report.js';
 import { registerMainFeedOptionsReport } from './main/feed-options-report.js';
 import { registerMainBoardHandlers } from './main/board-handlers.js';
+import { setSharedPhotos } from './utils/moment-share-state.js';
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
@@ -1068,7 +1069,7 @@ initAuth(async (user) => {
             clearLoadedMealsRanges();
             resetTrackerMiniCalendarRange();
             window.dailyStats = null;
-            window.sharedPhotos = null;
+            setSharedPhotos(null);
             window.sharedPhotosFeed = [];
             window._duplicateCleanupDone = false;
             authFlowManager.hasCompleted = false;
@@ -1169,7 +1170,7 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe = null;
             }
 
-            window.sharedPhotos = [];
+            setSharedPhotos([]);
             window.sharedPhotosFeed = [];
             stopNotificationListeners();
 
@@ -1375,7 +1376,7 @@ initAuth(async (user) => {
             registerFirestoreListenersRebind(attachMealDataListeners);
 
             // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
-            window.sharedPhotos = [];
+            setSharedPhotos([]);
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
             appState.sharedPhotosFeedHasMore = false;

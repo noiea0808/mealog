@@ -167,12 +167,6 @@ Object.defineProperty(window, 'mealHistory', {
     configurable: true
 });
 
-Object.defineProperty(window, 'sharedPhotos', {
-    get: () => appState._data.sharedPhotos,
-    set: (value) => { appState._data.sharedPhotos = value; },
-    configurable: true
-});
-
 Object.defineProperty(window, 'sharedPhotosFeed', {
     get: () => appState._data.sharedPhotosFeed,
     set: (value) => { appState._data.sharedPhotosFeed = value; },

@@ -22,7 +22,7 @@ import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
-import { getSharedPhotoUrlsForEntry } from '../utils/moment-share-state.js';
+import { getSharedPhotoUrlsForEntry, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     isMealEntryPendingSync,
@@ -2151,16 +2151,15 @@ export async function saveEntry() {
         invalidateMealHistoryCountCache();
         // 공유 아이콘도 서버 반영 전에 즉시 낙관 반영
         if (optimisticRecord.id && !isShareBanned) {
-            if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
             if (wantsToShare) {
                 const optimisticShared = (sourcePhotos.length > 0 ? sourcePhotos : ['']).map(url => ({
                     entryId: optimisticRecord.id,
                     photoUrl: url || '',
                     userId: window.currentUser?.uid
                 }));
-                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared);
+                setSharedPhotos(getSharedPhotos().filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared));
             } else {
-                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id);
+                setSharedPhotos(getSharedPhotos().filter(p => p.entryId !== optimisticRecord.id));
             }
             updateTimelineShareIndicators();
         }
@@ -2272,10 +2271,10 @@ export async function saveEntry() {
             if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
                 getMealSyncManager().movePendingPhotoTempToReal(optimisticTempId, savedId);
             }
-            if (wasNewRecord && optimisticTempId && savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.map(p => (
+            if (wasNewRecord && optimisticTempId && savedId) {
+                setSharedPhotos(getSharedPhotos().map(p => (
                     p.entryId === optimisticTempId ? { ...p, entryId: savedId } : p
-                ));
+                )));
                 updateTimelineShareIndicators();
             }
 
@@ -2719,9 +2718,7 @@ export async function deleteEntry() {
         if (Array.isArray(window.mealHistory)) {
             window.mealHistory = window.mealHistory.filter((m) => m.id !== entryIdToDelete);
         }
-        if (Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
-        }
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== entryIdToDelete));
         invalidateMealHistoryCountCache();
         rerenderAfterMealDelete(tempRec?.date);
         showToast('기록이 삭제되었습니다.', 'success');
@@ -2998,10 +2995,10 @@ export async function retryMealEntrySync(entryIdRaw) {
                 const realId = String(existingRealForSlot.id);
                 getMealSyncManager().removeTempRowSideEffects(record);
                 window.mealHistory = histMerge.filter((m) => m && String(m.id) !== entryId);
-                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                if (getSharedPhotos()) {
+                    setSharedPhotos(getSharedPhotos().map((p) =>
                         p.entryId === entryId ? { ...p, entryId: realId } : p
-                    );
+                    ));
                 }
                 clearMealEntrySaveFailedById(entryId);
                 clearMealEntrySaveFailedById(realId);
@@ -3039,10 +3036,10 @@ export async function retryMealEntrySync(entryIdRaw) {
                         delete window.mealHistory[ix].is_sync_error;
                     }
                 }
-                if (savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                if (savedId) {
+                    setSharedPhotos(getSharedPhotos().map((p) =>
                         p.entryId === entryId ? { ...p, entryId: savedId } : p
-                    );
+                    ));
                 }
                 clearMealEntrySaveFailedById(entryId);
                 clearMealEntrySaveFailedById(savedId);
