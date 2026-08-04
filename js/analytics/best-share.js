@@ -16,6 +16,7 @@ import { buildBestShareCaptureHtml } from '../render/best-share-card.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -1012,20 +1013,20 @@ export async function shareBestToFeed() {
         const photoUrlToRemove = existingShare.photoUrl;
         const prevPeriodType = existingShare.periodType;
         const prevPeriodText = existingShare.periodText;
-        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(p =>
-                !(p.type === 'best' && p.periodType === prevPeriodType && p.periodText === prevPeriodText && p.userId === window.currentUser.uid)
-            );
-        }
         closeShareBestModal();
-        renderBestMeals();
-        if (appState.currentTab === 'gallery') renderGallery();
         showToast('공유가 취소되었습니다.', 'success');
-        dbOps.unsharePhotos([photoUrlToRemove], null, true).catch(() => {
-            if (window.sharedPhotos) window.sharedPhotos = prevShared;
-            renderBestMeals();
-            if (appState.currentTab === 'gallery') renderGallery();
+        unshareWithOptimisticUpdate({
+            photos: [photoUrlToRemove],
+            shareType: 'best',
+            matches: (p) =>
+                p.type === 'best' &&
+                p.periodType === prevPeriodType &&
+                p.periodText === prevPeriodText &&
+                p.userId === window.currentUser.uid,
+            onChange: () => {
+                renderBestMeals();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
         });
         return;
     }

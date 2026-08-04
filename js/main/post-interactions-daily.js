@@ -37,6 +37,7 @@ import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/fire
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
 import {
     getDisplayProfile,
@@ -307,25 +308,17 @@ window.cancelDailyShare = async (dateStr) => {
     }
 
     const photoUrlToRemove = existingShare.photoUrl;
-    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-    try {
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(
-                (p) => !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-            );
+    window.closeDailySharePreviewModal();
+    showToast('공유가 취소되었습니다.', 'success');
+    await unshareWithOptimisticUpdate({
+        photos: [photoUrlToRemove],
+        shareType: 'daily',
+        matches: (p) => p.type === 'daily' && p.date === dateStr && p.userId === uid,
+        onChange: () => {
+            if (appState.currentTab === 'timeline') renderTimeline();
+            if (appState.currentTab === 'gallery') renderGallery();
         }
-        window.closeDailySharePreviewModal();
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-        showToast('공유가 취소되었습니다.', 'success');
-        await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
-    } catch (e) {
-        console.error('[cancelDailyShare]', e);
-        if (window.sharedPhotos) window.sharedPhotos = prevShared;
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-        showToast(getUserFacingErrorMessage(e, 'share') || '공유 취소에 실패했습니다.', 'error');
-    }
+    });
 };
 
 // 일간 공유 미리보기 모달 닫기
@@ -2031,6 +2024,8 @@ window.submitComment = async (postId) => {
             document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
                 if (el !== commentCountEl) el.textContent = n || '';
             });
+            /** 미선언 상태로 참조돼 롤백 경로가 ReferenceError로 중단되고 있었다 */
+            const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
             if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
             else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
         }

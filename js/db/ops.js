@@ -831,8 +831,33 @@ export const dbOps = {
         }
     },
     // 공유 사진 해제 (Cloud Functions 사용)
-    /** @param {{ mealEntryId: string, mealSharedPhotos: string[] } | null} [mealSync] 일반 식사 공유 취소 시 서버에서 meals.sharedPhotos 병합(클라 setDoc 생략) */
-    async unsharePhotos(photos, entryId, isBestShare = false, isDailyShare = false, isInsightShare = false, mealSync = null) {
+    /**
+     * @param {string[]} photos 해제할 photoUrl 목록
+     * @param {object} [options]
+     * @param {string|null} [options.entryId] 일반 식사 기록 공유일 때의 entryId
+     * @param {'best'|'daily'|'insight'|null} [options.shareType]
+     *   공유 종류. null이면 일반 식사 기록 공유.
+     *   서버는 이 값으로 조회 대상 type을 가르므로 실제 문서 type과 반드시 일치해야 한다.
+     * @param {{ mealEntryId: string, mealSharedPhotos: string[] }|null} [options.mealSync]
+     *   일반 식사 공유 취소 시 서버에서 meals.sharedPhotos 병합(클라 setDoc 생략)
+     */
+    async unsharePhotos(photos, options) {
+        /**
+         * 이전 시그니처는 (photos, entryId, isBestShare, isDailyShare, isInsightShare, mealSync)로
+         * 불리언 3개가 연속돼 인자 위치를 한 칸 밀면 조용히 다른 type을 지우려 시도했다.
+         * (서버는 deletedCount 0 / success true를 돌려주므로 호출부 catch도 동작하지 않았다.)
+         * 잘못된 호출은 조용히 넘어가지 않도록 즉시 실패시킨다.
+         */
+        if (typeof options === 'string' || options === null || arguments.length > 2) {
+            throw new TypeError(
+                'unsharePhotos(photos, { entryId, shareType, mealSync }) 형태로 호출해야 합니다.'
+            );
+        }
+        const { entryId = null, shareType = null, mealSync = null } = options || {};
+        if (shareType !== null && !['best', 'daily', 'insight'].includes(shareType)) {
+            throw new TypeError(`unsharePhotos: 알 수 없는 shareType "${shareType}"`);
+        }
+
         if (!window.currentUser || !photos || photos.length === 0) return;
         if (isDemoUser(window.currentUser)) {
             showToast('샘플 계정에서는 공유를 해제할 수 없습니다.', 'error');
@@ -842,9 +867,9 @@ export const dbOps = {
             const payload = {
                 photos,
                 entryId,
-                isBestShare,
-                isDailyShare,
-                isInsightShare
+                isBestShare: shareType === 'best',
+                isDailyShare: shareType === 'daily',
+                isInsightShare: shareType === 'insight'
             };
             if (
                 mealSync &&
@@ -856,7 +881,16 @@ export const dbOps = {
                 payload.mealSharedPhotos = mealSync.mealSharedPhotos;
             }
             const result = await callableFunctions.unsharePhotos(payload);
-            return result.data;
+            const data = result.data;
+            /** 서버가 아무것도 못 지웠는데 success를 돌려주는 경우 — 대개 shareType 불일치 */
+            if (data && data.deletedCount === 0) {
+                console.warn('unsharePhotos: 서버에서 삭제된 문서가 없습니다.', {
+                    shareType,
+                    entryId,
+                    photos
+                });
+            }
+            return data;
         } catch (e) {
             console.error("Unshare Photos Error:", e);
             showToast(formatCallableErrorForToast(e), 'error');

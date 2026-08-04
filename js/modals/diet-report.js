@@ -2,7 +2,6 @@
  * 밀로그 날짜별 AI 식단분석 리포트 팝업
  */
 import { db, appId, callableFunctions } from '../firebase.js';
-import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
@@ -23,6 +22,7 @@ import {
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -717,25 +717,16 @@ async function unshareDietReportFromMoment(dateStr, existingShare) {
     if (!existingShare?.photoUrl) return;
     closeDietReportModal();
     const photoUrl = existingShare.photoUrl;
-    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        window.sharedPhotos = window.sharedPhotos.filter(
-            (p) =>
-                !(
-                    p &&
-                    isDietReportInsightShare(p) &&
-                    p.userId === window.currentUser?.uid &&
-                    (p.dateRangeText === existingShare.dateRangeText || p.photoUrl === photoUrl)
-                )
-        );
-    }
-    try {
-        await dbOps.unsharePhotos([photoUrl], null, false, false, true);
-        showToast('모먼트 공유를 취소했어요.', 'success');
-    } catch (e) {
-        console.error('unshareDietReportFromMoment failed', e);
-        if (window.sharedPhotos) window.sharedPhotos = prevShared;
-    }
+    const ok = await unshareWithOptimisticUpdate({
+        photos: [photoUrl],
+        shareType: 'insight',
+        matches: (p) =>
+            !!p &&
+            isDietReportInsightShare(p) &&
+            p.userId === window.currentUser?.uid &&
+            (p.dateRangeText === existingShare.dateRangeText || p.photoUrl === photoUrl)
+    });
+    if (ok) showToast('모먼트 공유를 취소했어요.', 'success');
 }
 
 async function captureDietReportShareCanvas(dateStr, report, reportDoc) {

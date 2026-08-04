@@ -19,7 +19,6 @@ import {
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { dbOps } from '../db.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { db, appId, callableFunctions } from '../firebase.js';
@@ -27,6 +26,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
 import {
     effectiveMealTypeForAnalytics,
     effectiveCategoryForAnalytics,
@@ -296,10 +296,6 @@ function displayInsightText(text, characterName = '') {
         
         bubble.style.cursor = 'default';
         bubble.title = '';
-        // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
-        if (typeof handleInsightBubbleClick === 'function') {
-            bubble.removeEventListener('click', handleInsightBubbleClick);
-        }
     }
 
     if (typeof window.scheduleDashboardInsightGradientSync === 'function') {
@@ -340,11 +336,7 @@ export function setupInsightBubbleClick() {
     const bubble = document.getElementById('insightBubble');
     if (!bubble) return;
     
-    // 페이징이 없으므로 클릭 이벤트 제거
-    // handleInsightBubbleClick 함수가 정의되어 있을 때만 제거
-    if (typeof handleInsightBubbleClick === 'function') {
-        bubble.removeEventListener('click', handleInsightBubbleClick);
-    }
+    // 페이징이 없으므로 클릭 이벤트 없음
     bubble.style.cursor = 'default';
     bubble.title = '';
 }
@@ -1929,27 +1921,22 @@ export async function shareInsightToFeed() {
     
     if (existingShare) {
         const photoUrlToRemove = existingShare.photoUrl;
-        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(p =>
-                !(p.type === 'insight' && p.dateRangeText === dateRangeText && p.userId === window.currentUser.uid)
-            );
-        }
         closeShareInsightModal();
         showToast('공유가 취소되었습니다.', 'success');
-        updateShareButtonStatus();
-        if (appState.currentTab === 'gallery') {
-            import('../render/index.js').then(({ renderGallery }) => renderGallery());
-        } else if (appState.currentTab === 'feed') {
-            import('../render/index.js').then(({ renderFeed }) => renderFeed());
-        }
-        dbOps.unsharePhotos([photoUrlToRemove], null, false, false, true).catch(() => {
-            if (window.sharedPhotos) window.sharedPhotos = prevShared;
-            updateShareButtonStatus();
-            if (appState.currentTab === 'gallery') {
-                import('../render/index.js').then(({ renderGallery }) => renderGallery());
-            } else if (appState.currentTab === 'feed') {
-                import('../render/index.js').then(({ renderFeed }) => renderFeed());
+        unshareWithOptimisticUpdate({
+            photos: [photoUrlToRemove],
+            shareType: 'insight',
+            matches: (p) =>
+                p.type === 'insight' &&
+                p.dateRangeText === dateRangeText &&
+                p.userId === window.currentUser.uid,
+            onChange: () => {
+                updateShareButtonStatus();
+                if (appState.currentTab === 'gallery') {
+                    import('../render/index.js').then(({ renderGallery }) => renderGallery());
+                } else if (appState.currentTab === 'feed') {
+                    import('../render/index.js').then(({ renderFeed }) => renderFeed());
+                }
             }
         });
         return;

@@ -5,7 +5,6 @@ import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
 import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
-    dbOps,
     setupListeners,
     loadSharedPhotosPage,
     loadMyShares,
@@ -133,6 +132,7 @@ import {
 import { DEFAULT_SUB_TAGS, REPORT_REASONS, SATIETY_DATA } from '../constants.js';
 import { normalizeUrl } from '../utils.js';
 import { syncOrphanedSharesToMoment } from './shares-sync.js';
+import { unshareWithOptimisticUpdate } from '../utils/moment-share-state.js';
 
 export function registerMainFeedOptionsReport() {
 // 피드 옵션 관련 함수
@@ -487,8 +487,10 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
     const validEntryId = (entryId && entryId !== '' && entryId !== 'null' && entryId !== 'undefined') ? entryId : null;
     const normalizedPhotoUrls = photoUrlArray.map(normalizeUrl);
     
-    // 롤백용 이전 상태 저장
-    const prevSharedPhotos = window.sharedPhotos && Array.isArray(window.sharedPhotos) ? [...window.sharedPhotos] : [];
+    /** 불리언 3개 → 상호배타 단일 값 (sharedPhotos 문서의 type과 일치) */
+    const shareType = isBestShare ? 'best' : isDailyShare ? 'daily' : isInsightShare ? 'insight' : null;
+
+    // 롤백용 이전 상태 저장 (window.sharedPhotos는 unshareWithOptimisticUpdate가 처리)
     let record = null;
     let prevRecordSharedPhotos = null;
     if (entryId && entryId !== '' && entryId !== 'null' && window.mealHistory) {
@@ -505,17 +507,12 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
             normalizedUrl === photoUrlNormalized || photo.photoUrl === normalizedUrl
         );
         if (!isMatched) return false;
-        if (isBestShare) return photo.type === 'best';
-        if (isDailyShare) return photo.type === 'daily';
-        if (isInsightShare) return photo.type === 'insight';
+        if (shareType) return photo.type === shareType;
         if (validEntryId) return photo.entryId === validEntryId || !photo.entryId || photo.entryId === null;
         return true;
     };
     
-    // 낙관적 업데이트: UI 즉시 반영
-    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        window.sharedPhotos = window.sharedPhotos.filter(photo => !shouldRemovePhoto(photo));
-    }
+    // 낙관적 업데이트: UI 즉시 반영 (sharedPhotos는 unshareWithOptimisticUpdate가 처리)
     if (record && record.sharedPhotos && Array.isArray(record.sharedPhotos)) {
         record.sharedPhotos = record.sharedPhotos.filter(url => {
             if (photoUrlArray.includes(url)) return false;
@@ -529,36 +526,37 @@ window.deleteFeedPost = async (entryId, photoUrls, isBestShare = false, isDailyS
         });
         if (record.sharedPhotos.length === 0) record.sharedPhotos = [];
     }
-    if (appState.currentTab === 'timeline') {
-        updateTimelineShareIndicators();
-        renderTimeline();
-    }
-    if (appState.currentTab === 'gallery') {
-        // 일반 식사 기록: 해당 카드만 DOM에서 제거 (전체 renderGallery 호출 없이 즉시 반영)
-        const uid = window.currentUser?.uid;
-        if (!isBestShare && !isDailyShare && !isInsightShare && validEntryId && uid) {
-            const groupKey = `${validEntryId}_${uid}`;
-            const container = document.getElementById('galleryContainer');
-            const postEl = container?.querySelector(`[data-group-key="${groupKey}"]`);
-            if (postEl) postEl.remove();
-        } else {
-            renderGallery();
-        }
-    }
     if (!window._feedPostDeleteInProgress) {
         window._feedPostDeleteInProgress = true;
         showToast("공유가 취소되었습니다.", 'success');
         setTimeout(() => { window._feedPostDeleteInProgress = false; }, 1000);
     }
-    
-    dbOps.unsharePhotos(photoUrlArray, validEntryId, isBestShare, isDailyShare, isInsightShare).catch(() => {
-        if (window.sharedPhotos) window.sharedPhotos = prevSharedPhotos;
-        if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
-        if (appState.currentTab === 'timeline') {
-            updateTimelineShareIndicators();
-            renderTimeline();
+
+    unshareWithOptimisticUpdate({
+        photos: photoUrlArray,
+        entryId: validEntryId,
+        shareType,
+        matches: shouldRemovePhoto,
+        onChange: (phase) => {
+            if (appState.currentTab === 'timeline') {
+                updateTimelineShareIndicators();
+                renderTimeline();
+            }
+            if (appState.currentTab !== 'gallery') return;
+            // 일반 식사 기록 반영 시: 해당 카드만 DOM에서 제거 (전체 renderGallery 호출 없이 즉시 반영)
+            const uid = window.currentUser?.uid;
+            if (phase === 'applied' && !shareType && validEntryId && uid) {
+                const groupKey = `${validEntryId}_${uid}`;
+                const container = document.getElementById('galleryContainer');
+                const postEl = container?.querySelector(`[data-group-key="${groupKey}"]`);
+                if (postEl) postEl.remove();
+            } else {
+                renderGallery();
+            }
+        },
+        rollbackExtra: () => {
+            if (record && prevRecordSharedPhotos !== null) record.sharedPhotos = prevRecordSharedPhotos;
         }
-        if (appState.currentTab === 'gallery') renderGallery();
     });
 };
 }
