@@ -625,10 +625,8 @@ export class MealSyncManager {
      */
     async reconcileSyncUiAfterClientWriteQueueFlush() {
         if (typeof window === 'undefined') return;
-        // navigator.onLine 은 Wi-Fi↔LTE 전환 후 false 로 고착되어 오탐이 잦으므로 게이트로 쓰지 않는다.
-        // 실패로 확인된 오프라인(localNetworkForcedOffline)일 때만 건너뛴다 — `online` 이벤트 없이 복귀한
-        // 경우에도 큐 flush 후 초록 도트로 맞출 수 있어야 함. (오프라인이면 아래 서버 읽기가 실패해 자연히 skip)
-        if (appState.localNetworkForcedOffline === true) return;
+        // 연결 상태 boolean 으로 게이트하지 않는다. navigator.onLine 이 그랬듯,
+        // 값이 틀리면 정합이 통째로 막힌다. 실제로 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
         const hist = window.mealHistory;
         if (!Array.isArray(hist) || hist.length === 0) return;
         // waitForPendingWrites 직후에도 inFlight 플래그만 남아 '등록 중' 레드닷이 고착되는 경우가 있음
@@ -694,8 +692,7 @@ export class MealSyncManager {
      */
     async reconcilePendingDeletesWithServer() {
         if (typeof window === 'undefined') return;
-        // navigator.onLine 오탐 회피 — 실패로 확인된 오프라인일 때만 skip
-        if (appState.localNetworkForcedOffline === true) return;
+        // 연결 상태 boolean 으로 게이트하지 않는다 — 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
         const uid = window.currentUser?.uid;
         if (!uid || window.currentUser?.isAnonymous) return;
 
@@ -739,8 +736,7 @@ export class MealSyncManager {
      */
     async reconcileStaleMealSyncDotsAgainstServer() {
         if (typeof window === 'undefined') return;
-        // navigator.onLine 오탐 회피 — 실패로 확인된 오프라인일 때만 skip
-        if (appState.localNetworkForcedOffline === true) return;
+        // 연결 상태 boolean 으로 게이트하지 않는다 — 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
         const uid = window.currentUser?.uid;
         if (!uid || window.currentUser?.isAnonymous) return;
         const hist = window.mealHistory;
@@ -1103,11 +1099,8 @@ export class MealSyncManager {
             currentTab: currentTabVal,
             graceMs: typeof graceMs === 'number' && graceMs > 0 ? graceMs : undefined
         });
-        // navigator.onLine 오탐으로 ack 대기를 건너뛰면 초록 도트가 안 뜨므로, 실패로 확인된 오프라인일 때만 skip.
-        // (실제 오프라인이면 waitForPendingWrites 는 재연결 후 resolve 되고 그 사이 grace→등록예정 칩으로 표시됨)
-        if (appState.localNetworkForcedOffline === true) {
-            return Promise.resolve();
-        }
+        // 오프라인이어도 ack 대기를 건다. waitForPendingWrites 는 재연결 후 resolve 되므로
+        // 쓰기가 서버에 닿는 즉시 초록 도트로 바뀐다. 그 사이에는 syncing 으로 표시된다.
         const self = this;
         return (async () => {
             try {
