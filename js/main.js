@@ -86,6 +86,7 @@ import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
 import { registerMainTabSwitch } from './main/tabs.js';
+import { registerMomentFeedAutoRetry } from './main/moment-feed-auto-retry.js';
 import { clearNavFeedUpdateDots, refreshNavFeedUpdateDots } from './main/nav-feed-update-dots.js';
 import { registerContentPopup, recordBannerView, recordBannerClick } from './main/content-popup.js';
 import { initEventListeners } from './main/event-listeners.js';
@@ -101,6 +102,7 @@ import { setSharedPhotos } from './utils/moment-share-state.js';
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
+registerMomentFeedAutoRetry();
 initLucideIcons();
 registerContentPopup();
 registerEventListenerManager();
@@ -144,12 +146,16 @@ window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 let reloadMomentFeedInFlight = false;
 
-/** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
-window.reloadMomentFeed = async function reloadMomentFeed() {
+/**
+ * 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리.
+ * @param {{ quiet?: boolean }} [options] quiet: 로딩 오버레이 없이 조용히 재시도 (자동 재시도용 — 오버레이가 깜빡이면 안 된다)
+ */
+window.reloadMomentFeed = async function reloadMomentFeed(options = {}) {
     if (reloadMomentFeedInFlight) return;
     reloadMomentFeedInFlight = true;
+    const quiet = options && options.quiet === true;
     invalidateGalleryRenderSession();
-    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
+    if (!quiet) showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
         await prepareMomentFeedNetworkForReload();
         appState.galleryFeedNetworkError = false;
@@ -214,7 +220,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         if (typeof renderFeed === 'function') renderFeed();
     } finally {
         reloadMomentFeedInFlight = false;
-        hideLoading();
+        if (!quiet) hideLoading();
     }
 };
 window.Mealog.reloadMomentFeed = window.reloadMomentFeed;

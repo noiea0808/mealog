@@ -18,7 +18,6 @@ import {
     runNetworkRecoveryNow,
     onNetworkRecovered
 } from '../utils/network-loop.js';
-import { appState } from '../state.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 /** waitForPendingWrites 등 쓰기 큐 flush 상한 */
@@ -118,7 +117,6 @@ function retryDegradedMealsListener() {
     });
 }
 
-let momentFeedReloadInFlight = false;
 let pendingRetryAfterRecoveryInFlight = false;
 
 /**
@@ -141,26 +139,6 @@ async function retryPendingMealEntriesAfterRecovery() {
     }
 }
 
-/**
- * 재연결 직후, 모먼트 피드가 네트워크 오류 상태로 멈춰 있고 사용자가 모먼트/앨범 탭을 보고 있으면
- * '다시 불러오기'를 누르지 않아도 자동으로 다시 로드한다.
- */
-function maybeReloadMomentFeedAfterRecovery() {
-    try {
-        if (appState.galleryFeedNetworkError !== true) return;
-        const tab = appState.currentTab;
-        if (tab !== 'feed' && tab !== 'gallery') return;
-        if (typeof window.reloadMomentFeed !== 'function') return;
-        if (momentFeedReloadInFlight) return;
-        momentFeedReloadInFlight = true;
-        void Promise.resolve(window.reloadMomentFeed()).finally(() => {
-            momentFeedReloadInFlight = false;
-        });
-    } catch (_) {
-        momentFeedReloadInFlight = false;
-    }
-}
-
 /** 루프가 채널 복구에 성공했을 때 1회 실행 */
 async function handleNetworkRecovered() {
     try {
@@ -176,7 +154,6 @@ async function handleNetworkRecovered() {
     retryDegradedMealsListener();
     await flushMealWriteQueueAndRefreshSyncUi();
     await retryPendingMealEntriesAfterRecovery();
-    maybeReloadMomentFeedAfterRecovery();
 }
 
 /** 오프라인 진입 시 공통 UI 처리 */
