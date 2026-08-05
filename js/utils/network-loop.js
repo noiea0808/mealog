@@ -1,81 +1,46 @@
 /**
- * 네트워크 복구 단일 루프.
+ * 전송 채널 넛지.
  *
- * 설계 원칙:
- *  1. 진실은 하나 — 「Firestore가 실제로 서버 응답을 전달했는가」(markMealogFirestoreActivity).
- *     navigator.onLine 은 이 파일을 포함해 어디서도 읽지 않는다. Android WebView에서 재연결 후에도
- *     false 로 고착돼, 값을 게이트로 쓰면 복구가 통째로 막힌다.
- *  2. OS·플러그인 이벤트(online / connection change / resume / Capacitor Network)는 아무것도 판단하지
- *     않는다. 백오프를 0으로 되돌리고 루프를 깨우는 힌트일 뿐이다. 시도를 막는 조건으로는 쓰지 않는다.
- *  3. 복구는 사다리다. kick → 토큰 갱신+리스너 재부착. 연속 실패마다 한 칸 오르고, 성공하면
- *     사다리와 백오프가 함께 리셋된다. 인스턴스 재생성(terminate)은 이 사다리에 없다 — 붙어 있는
- *     리스너를 전부 죽이는 파괴적 수단이라, SDK 가 실제로 깨졌을 때(Watch 내부 assertion)만
- *     firebase.js 의 전역 핸들러가 쓴다. 망 문제에 쓰면 살아나는 중인 채널을 스스로 끊는다.
+ * 이 파일은 「지금 온라인인가」를 판정하지 않는다. 판정 값도, 그 값을 읽는 API 도 없다.
+ * 모바일에서 그 지식은 원리적으로 정확할 수 없다 — navigator.onLine 은 재연결 후에도 false 로
+ * 고착되고, 실패로 세운 플래그는 조용히 half-open 된 경우 아예 서지 않는다. 7~8월 네트워크
+ * 버그는 전부 「틀린 지식을 게이트로 썼다」는 같은 뿌리였고, 지식을 더 정확하게 만들려는 시도가
+ * 계속 실패했으므로 지식 자체를 쓰지 않는 쪽으로 뒤집었다.
  *
- * 복구 성공 판정에 별도 읽기 비용은 들지 않는다. meals 리스너가 includeMetadataChanges 로 붙어 있어
- * 채널이 살아나면 fromCache=false 스냅샷이 발화하고, 그 시점이 곧 활동 시각으로 기록되기 때문이다.
- * 리스너가 없는 상태(로그아웃·게스트)에서만 원격 프로브로 대신 판정한다.
+ * 남은 사실은 하나다 — Firestore 가 서버 응답을 마지막으로 전달한 시각(network-activity).
+ * 채널이 오래 조용하고 보낼 것이 남아 있으면 한 번 찔러본다. 찌른 결과가 성공인지는 판정하지
+ * 않는다. 살아났으면 다음 서버 응답이 그 시각을 갱신할 것이고, 아니면 다음 넛지가 또 찌른다.
+ * 판정이 없으므로 판정이 틀려서 복구가 막히는 일도 없다.
+ *
+ * 「내 기록이 서버에 올라갔는가」는 여기가 답하지 않는다. 그건 추측이 아니라 기록별 서버 ack
+ * 으로 알 수 있는 사실이고, meal-sync-manager 가 그것만 본다.
  */
-import { appState } from '../state.js';
-import {
-    getMealogFirestoreActivityAgeMs,
-    getMealogFirestoreLastActivityAt,
-    isMealogFirestoreActivityStale
-} from './network-activity.js';
+import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import {
     auth,
-    hasFirestoreListenersRegistered,
     kickFirestoreTransportReconnect,
     rebindFirestoreListenersIfRegistered,
     refreshAppCheckTokenBeforeFirestore
 } from '../firebase.js';
-import { probeMealogRemoteReachable } from './network-probe.js';
 
-/** 재시도 간격 — 마지막 값에서 고정된다. 각 값에 ±25% 지터를 준다. */
-const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000, 60000];
-/** 이 시간 안에 서버 응답이 있었다면 채널이 살아 있는 것으로 보고 시도를 건너뛴다. */
-const ACTIVITY_FRESH_MS = 20000;
-/** 유휴 중 이만큼 서버 응답이 없으면 채널을 의심한다. */
-const ACTIVITY_STALE_MS = 90000;
+/** 이만큼 조용하면 토큰 갱신·리스너 재부착까지 함께 한다. 가벼운 kick 으로 안 풀린 상황. */
+const DEEP_NUDGE_MS = 60000;
+/** 각 단계의 상한 — half-open 에서 영원히 resolve 되지 않는 Promise 가 넛지를 마비시키지 않게. */
+const STEP_TIMEOUT_MS = 8000;
+
+let nudgeInFlight = false;
+let lastNudgeAt = 0;
+
 /**
- * 복구 시도 후 서버 응답이 돌아오기를 기다리는 시간 — 이 안에 안 오면 실패로 보고 사다리를 올린다.
- * 짧게 잡으면 회복 중인 셀룰러에서 아직 핸드셰이크 중인 채널을 실패로 오판해, 살아나는 연결을
- * 계속 다시 두드리게 된다. 실패 판정이 늦는 것은 손해가 없지만(그 사이 응답이 오면 성공이다),
- * 오판은 이미 진행 중인 복구를 되돌린다.
+ * 넛지 최소 간격. 조용한 시간이 길수록 뜸하게 — 백오프를 별도 카운터·사다리로 들고 있지 않고
+ * 「얼마나 조용했나」에서 파생한다. 상태가 없으니 리셋을 놓쳐 어긋날 일도 없다.
  */
-const ACTIVITY_RESUME_WAIT_MS = 10000;
-/** 사다리 각 단계의 상한 — 초과하면 그 단계는 실패로 보고 다음 칸으로 올라간다. */
-const LADDER_STEP_TIMEOUT_MS = 8000;
-/** 루프가 멈춰 있을 때 채널을 점검하는 주기. */
-const WATCHDOG_MS = 30000;
-const LADDER_TOP = 1;
-/**
- * 끊긴 것을 화면에 표시하기까지의 유예. 사다리 0단(kick)만으로 대개 1초 안에 풀리는데, 그렇게
- * 금방 없어질 끊김까지 사용자에게 보이면 없어질 걱정을 만들 뿐이다. 복구 시도 자체는 즉시
- * 시작한다 — 이건 표시만 늦춘다. 복구(healthy 전환)는 지연 없이 바로 반영한다(비대칭).
- */
-const UI_OFFLINE_GRACE_MS = 3000;
-
-let attemptTimer = 0;
-let attemptInFlight = false;
-let watchdogTimer = 0;
-let ladderStep = 0;
-let backoffIndex = 0;
-let downSince = 0;
-let uiGraceTimer = 0;
-
-function jitter(ms) {
-    return Math.round(ms * (0.75 + Math.random() * 0.5));
+function minIntervalForQuiet(quietMs) {
+    if (quietMs < 60000) return 5000;
+    if (quietMs < 300000) return 20000;
+    return 60000;
 }
 
-function sleepMs(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * half-open 연결에서 영원히 resolve되지 않는 Promise가 루프를 마비시키는 것을 막는 상한.
- * 복구는 best-effort이므로 타임아웃 시 reject하지 않고 조용히 넘어간다.
- */
 function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
     let timer = 0;
     const timeout = new Promise((resolve) => {
@@ -84,111 +49,6 @@ function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
     return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeout]).finally(() => {
         if (timer) clearTimeout(timer);
     });
-}
-
-function documentVisible() {
-    try {
-        return typeof document === 'undefined' || document.visibilityState === 'visible';
-    } catch (_) {
-        return true;
-    }
-}
-
-/** 채널이 죽은 것으로 확인된 상태인지 — 즉시값. 정합성이 걸린 판정(예: 스냅샷 removed 보류)에 쓴다. */
-export function isNetworkChannelDown() {
-    return appState.localNetworkForcedOffline === true;
-}
-
-/**
- * 화면에 표시할 때 쓰는 값 — 끊긴 지 UI_OFFLINE_GRACE_MS 가 지나야 true 가 된다.
- * FAB·토스트 등 사용자에게 보이는 판정은 전부 이걸 쓴다.
- */
-export function isNetworkChannelDownForDisplay() {
-    if (appState.localNetworkForcedOffline !== true) return false;
-    return downSince > 0 && Date.now() - downSince >= UI_OFFLINE_GRACE_MS;
-}
-
-/** FAB 갱신 — 정적으로 부르면 순환 import 가 되므로 동적으로 가져온다 */
-function refreshOfflineFab() {
-    void import('../main/meal-sync-resend-header.js').then((m) => {
-        try {
-            if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
-        } catch (_) {
-            /* ignore */
-        }
-    });
-}
-
-/** 채널이 down 으로 확인된 지점 공통 처리 — 최초 진입 시에만 유예 타이머를 세운다 */
-function noteChannelDown() {
-    appState.localNetworkForcedOffline = true;
-    if (downSince) return; // 이미 down — 타이머 중복 예약 방지
-    downSince = Date.now();
-    uiGraceTimer = setTimeout(() => {
-        uiGraceTimer = 0;
-        // 유예가 지났는데도 여전히 끊겨 있으면 그때 FAB를 갱신한다. 그 사이 회복됐다면
-        // isNetworkChannelDownForDisplay 가 이미 false 를 주므로 별도 처리가 필요 없다.
-        if (appState.localNetworkForcedOffline === true) refreshOfflineFab();
-    }, UI_OFFLINE_GRACE_MS);
-}
-
-function clearAttemptTimer() {
-    if (attemptTimer) {
-        clearTimeout(attemptTimer);
-        attemptTimer = 0;
-    }
-}
-
-function scheduleAttempt(delayMs, reason) {
-    clearAttemptTimer();
-    attemptTimer = setTimeout(() => {
-        attemptTimer = 0;
-        void runRecoveryAttempt(reason);
-    }, delayMs);
-}
-
-/**
- * 채널이 살아났을 때 — 사다리·백오프를 리셋하고 오프라인 표시를 내린다.
- *
- * 복구 후속 작업(기록 재전송·모먼트 재로드)은 여기서 하지 않는다. 예전에는 down → healthy
- * '전환'일 때만 훅을 돌렸는데, 조용히 half-open 된 경우에는 오프라인으로 표시된 적이 없어
- * 전환이 성립하지 않았다. 그래서 복구가 1회 시도로 성공할수록 후속 작업이 누락되는
- * 역설이 있었다. 두 작업은 각자 남은 일을 보고 스스로 재시도한다.
- */
-function markHealthy() {
-    const wasDown = appState.localNetworkForcedOffline === true || downSince > 0;
-    ladderStep = 0;
-    backoffIndex = 0;
-    appState.localNetworkForcedOffline = false;
-    downSince = 0;
-    if (uiGraceTimer) {
-        clearTimeout(uiGraceTimer);
-        uiGraceTimer = 0;
-    }
-    clearAttemptTimer();
-    // 표시 되돌리기는 여기가 맞다. 재전송처럼 「반드시 되어야 하는 일」은 전환이 없으면 실행되지
-    // 않아서 위 이유로 뺐지만, 오프라인 모습을 되돌리는 일은 애초에 전환이 있었을 때만 필요하다.
-    // 이 갱신이 없으면 채널이 살아나도 FAB 가 오프라인 모습으로 남는다 — 드레인은 남은 일이
-    // 있을 때만 UI 를 건드리므로, 대기 중인 기록이 없으면 아무도 FAB 를 되돌리지 않았다.
-    if (wasDown) refreshOfflineFab();
-}
-
-function markAttemptFailed(reason) {
-    noteChannelDown();
-    ladderStep = Math.min(ladderStep + 1, LADDER_TOP);
-    const delay = jitter(BACKOFF_MS[Math.min(backoffIndex, BACKOFF_MS.length - 1)]);
-    backoffIndex += 1;
-    scheduleAttempt(delay, reason);
-}
-
-/** 서버 응답이 돌아왔는지 기다린다 — 돌아왔으면 true */
-async function waitForActivityAfter(activityBefore, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        if (getMealogFirestoreLastActivityAt() > activityBefore) return true;
-        await sleepMs(200);
-    }
-    return getMealogFirestoreLastActivityAt() > activityBefore;
 }
 
 async function refreshAuthTokens() {
@@ -206,118 +66,47 @@ async function refreshAuthTokens() {
 }
 
 /**
- * 사다리 한 칸 실행.
- * 0: transport kick — 전환 직후 죽은 WebChannel은 대개 이것만으로 살아난다.
- * 1: 토큰 갱신 + kick + 리스너 재부착 — 만료된 토큰·고착된 리스너를 함께 턴다.
+ * 채널을 한 번 찌른다. 얼마나 세게 찌를지는 조용한 시간에서 파생한다 — 사다리도 실패 카운터도 없다.
  *
- * 인스턴스 재생성(terminate → createFirestore)은 여기 없다. 붙어 있는 리스너를 전부 죽이고 캐시까지
- * 지울 수 있어, 아직 핸드셰이크 중인 채널에 걸리면 스스로 만든 연결을 스스로 끊는다. 사다리는
- * 실패할수록 위 칸에 고착되므로 그 파괴가 매 백오프마다 반복됐다. SDK 가 실제로 깨진 경우는
+ * 인스턴스 재생성(terminate)은 여기서 하지 않는다. 붙어 있는 리스너를 전부 죽이므로, 아직
+ * 핸드셰이크 중인 채널에 걸리면 스스로 만든 연결을 스스로 끊는다. SDK 가 실제로 깨진 경우는
  * firebase.js 의 전역 assertion 핸들러가 관측해서 따로 복구한다.
  */
-async function climbLadder(reason) {
-    if (ladderStep >= 1) {
-        await withTimeout(refreshAuthTokens(), LADDER_STEP_TIMEOUT_MS);
-    }
-    await withTimeout(
-        kickFirestoreTransportReconnect(reason || 'network-loop', { force: true }),
-        LADDER_STEP_TIMEOUT_MS,
-        false
-    );
-    if (ladderStep >= 1) rebindFirestoreListenersIfRegistered();
-}
-
-/**
- * 복구 1회 시도. 이미 채널이 살아 있으면 아무것도 하지 않는다.
- * @param {string} [reason]
- * @param {{ forceRebind?: boolean }} [options] forceRebind: 채널이 멀쩡해도 리스너를 새로 붙인다
- *   (사용자가 당겨서 새로고침한 경우 — 최신 데이터를 기대하므로)
- * @returns {Promise<boolean>} 시도 후 채널이 살아 있으면 true
- */
-async function runRecoveryAttempt(reason = '', options = {}) {
-    if (attemptInFlight) return !isNetworkChannelDown();
-    attemptInFlight = true;
+async function nudge(reason, deep) {
+    if (nudgeInFlight) return;
+    nudgeInFlight = true;
+    lastNudgeAt = Date.now();
     try {
-        // 최근에 서버 응답이 있었다면 채널은 살아 있다 — 비용 0의 빠른 경로
-        if (getMealogFirestoreActivityAgeMs() < ACTIVITY_FRESH_MS) {
-            if (options.forceRebind === true) rebindFirestoreListenersIfRegistered();
-            markHealthy();
-            return true;
-        }
-
-        const activityBefore = getMealogFirestoreLastActivityAt();
-        await climbLadder(reason);
-        if (options.forceRebind === true && ladderStep < 1) rebindFirestoreListenersIfRegistered();
-
-        if (await waitForActivityAfter(activityBefore, ACTIVITY_RESUME_WAIT_MS)) {
-            markHealthy();
-            return true;
-        }
-
-        // 관찰할 리스너가 없으면(로그아웃·게스트) 응답을 기다릴 수 없으므로 원격 프로브로 대신 판정한다.
-        if (!hasFirestoreListenersRegistered()) {
-            if (await probeMealogRemoteReachable(4000)) {
-                markHealthy();
-                return true;
-            }
-        }
-
-        markAttemptFailed(reason);
-        return false;
+        const hard = deep === true || getMealogFirestoreActivityAgeMs() >= DEEP_NUDGE_MS;
+        if (hard) await withTimeout(refreshAuthTokens(), STEP_TIMEOUT_MS);
+        await withTimeout(
+            kickFirestoreTransportReconnect(reason || 'nudge', { force: true }),
+            STEP_TIMEOUT_MS,
+            false
+        );
+        if (hard) rebindFirestoreListenersIfRegistered();
     } catch (e) {
-        console.warn('[network-loop] 복구 시도 실패:', e?.message || e);
-        markAttemptFailed(reason);
-        return false;
+        console.warn('[network] 넛지 실패:', reason, e?.message || e);
     } finally {
-        attemptInFlight = false;
+        nudgeInFlight = false;
     }
 }
 
 /**
- * 루프를 깨운다 — 백오프를 0으로 되돌리고 즉시 한 번 시도한다.
- * OS·플러그인 이벤트는 전부 이 함수 하나로 들어온다. 무엇이 왔는지 구분하지 않는다.
+ * 채널을 찔러 달라는 힌트. OS·플러그인 이벤트, 전송 실패, 남은 작업이 안 나가는 상황 등이
+ * 전부 이 함수 하나로 들어온다. 무엇이 왔는지 구분하지 않고, 시도를 막는 조건으로도 쓰지 않는다.
  */
 export function pokeNetworkLoop(reason = '') {
-    backoffIndex = 0;
-    if (attemptInFlight) return;
-    scheduleAttempt(0, reason);
+    const quiet = getMealogFirestoreActivityAgeMs();
+    if (Date.now() - lastNudgeAt < minIntervalForQuiet(quiet)) return;
+    void nudge(reason, false);
 }
 
 /**
- * 전송 실패가 확인됐을 때 — 즉시 오프라인으로 표시하고 루프를 깨운다.
- * 사다리는 유지한다(연속 실패 중이면 계속 위 칸부터).
+ * 사용자가 결과를 기다리는 경로(당겨서 새로고침·재전송 버튼) — 간격을 무시하고 세게 찌른다.
+ * 성공 여부는 돌려주지 않는다. 이 함수가 boolean 을 돌려주면 호출부가 그걸 다시 게이트로 쓰게 되고,
+ * 그것이 없애려는 구조 그 자체다.
  */
-export function markNetworkChannelDown(reason = '') {
-    noteChannelDown();
-    pokeNetworkLoop(reason);
-}
-
-/**
- * 즉시 복구를 시도하고 결과를 기다린다 — 당겨서 새로고침 등 사용자가 기다리는 경로용.
- * @param {string} [reason]
- * @param {{ forceRebind?: boolean }} [options]
- * @returns {Promise<boolean>} 채널이 살아 있으면 true
- */
-export async function runNetworkRecoveryNow(reason = '', options = {}) {
-    backoffIndex = 0;
-    clearAttemptTimer();
-    return runRecoveryAttempt(reason, options);
-}
-
-function watchdogTick() {
-    if (!documentVisible()) return;
-    if (attemptInFlight || attemptTimer) return; // 루프가 이미 돌고 있으면 관여하지 않는다
-    if (isNetworkChannelDown() || isMealogFirestoreActivityStale(ACTIVITY_STALE_MS)) {
-        pokeNetworkLoop('watchdog');
-    }
-}
-
-/** main.js 초기화 시 1회 — 루프가 멈춰 있을 때만 동작하는 감시 타이머를 건다. */
-export function startNetworkLoop() {
-    if (watchdogTimer) return;
-    try {
-        watchdogTimer = setInterval(watchdogTick, WATCHDOG_MS);
-    } catch (_) {
-        /* ignore */
-    }
+export async function runNetworkRecoveryNow(reason = '') {
+    await nudge(reason, true);
 }

@@ -64,9 +64,6 @@ export function scheduleMealSyncGraceAbandon(entryId, opts = {}) {
 export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs) {
     return mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs);
 }
-export function applyMealSyncAbandonOnOffline() {
-    mgr().applyAbandonOnOffline();
-}
 export function markMealEntryServerSynced(entryId) {
     mgr().markServerSynced(entryId);
 }
@@ -105,12 +102,6 @@ export function countMealCloudFabManualRetryEntries() {
 }
 export function countMealSyncFabScheduledChipEntries() {
     return mgr().countMealSyncFabScheduledChipEntries();
-}
-export function countMealSyncFabRedDotTransportSyncEntries() {
-    return mgr().countMealSyncFabRedDotTransportSyncEntries();
-}
-export function applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts) {
-    mgr().applyOfflineUnconfirmed(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts);
 }
 export function markMealEntryDeletePending(entryId) {
     mgr().markDeletePending(entryId);

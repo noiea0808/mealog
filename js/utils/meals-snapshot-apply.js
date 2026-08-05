@@ -30,7 +30,6 @@ import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { markMealsRangeLoaded, replaceLoadedMealsRanges } from './loaded-meals-range.js';
-import { isNetworkChannelDown } from './network-loop.js';
 /** 스냅샷에 실제로 포함된 날짜만으로 실시간 윈도우 start를 잡을 때 사용 */
 function minMealDateYmdInWindow(meals, cutoffDateStr) {
     if (!Array.isArray(meals) || !meals.length) return null;
@@ -42,14 +41,6 @@ function minMealDateYmdInWindow(meals, cutoffDateStr) {
         if (min == null || d < min) min = d;
     }
     return min;
-}
-
-/** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지).
- * navigator.onLine=false 고착 무시 포함(즉시값 단일 판정) — 고착 시 삭제예정이 영구히 안 풀리던 문제 방지.
- * 표시용(3초 유예) isMealogTransportOffline 이 아니라 즉시값을 쓴다 — 유예를 두면 그 3초 동안
- * 실제 삭제된 문서가 removed 로 확정 처리돼 삭제예정 보류가 무력화된다. */
-function mealsSnapshotDeleteHoldWhileTransportOffline() {
-    return isNetworkChannelDown();
 }
 
 function countDataImageInPhotos(recordOrDoc) {
@@ -268,14 +259,13 @@ export function applyMealsSnapshotPrimary(p) {
                 const meta = change.doc.metadata;
                 const prev = window.mealHistory.find((m) => m.id === rid);
                 const mgrRm = getMealSyncManager();
-                const wasDeleteFlow = !!(prev && (mgrRm.isDeleting(prev) || mgrRm.isDeleteInFlight(prev)));
                 /**
-                 * 삭제 예약 중 + 앱이 오프라인으로 보일 때: 로컬 큐만 반영된 removed 로는 행을 유지(삭제예정 칩).
-                 * 온라인 복구 후에는 `allowFromCacheAck` 로 서버 삭제 반영(캐시 메타만 와도 처리) — fromCache===false 강제 시 레드닷 고착.
+                 * 삭제를 확정할지는 이 removed 이벤트 자체가 답한다 — hasPendingWrites 가 true 면 아직
+                 * 우리 큐에 남아 있는 우리 삭제이므로 행을 유지한다(삭제예정 칩). 앱 전역의 「오프라인
+                 * 인가」를 따로 볼 필요가 없다. 이벤트별 출처는 고착되지도, 틀리지도 않는다.
+                 * 큐가 서버에 닿으면 hasPendingWrites 가 내려가고, 그때 확정된다. 오프라인 중에 큐만
+                 * 비워진 경우는 meal-outbox-drain 의 reconcilePendingMealDeletesWithServer 가 맞춘다.
                  */
-                if (wasDeleteFlow && mealsSnapshotDeleteHoldWhileTransportOffline()) {
-                    return;
-                }
                 const serverAckedRemove = mealDocSnapshotAppearsServerAcked(meta, {
                     allowFromCacheAck: true
                 });

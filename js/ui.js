@@ -1483,9 +1483,6 @@ export function showNetworkErrorOverlay(options = {}) {
     } catch (_) {
         /* ignore */
     }
-    void import('./utils/mealog-offline-ui.js').then((m) => {
-        if (typeof m.notifyTransportOfflineUi === 'function') m.notifyTransportOfflineUi();
-    });
 }
 
 export function hideNetworkErrorOverlay() {

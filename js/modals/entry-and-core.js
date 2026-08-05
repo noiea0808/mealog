@@ -46,7 +46,6 @@ import {
     scheduleMealSyncGraceAbandon,
     isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
-    applyOfflineAfterLocalSaveUi,
     onMealDocFirestoreServerAcknowledged,
     scheduleMealServerAckAfterPendingWrites,
     MEAL_SYNC_GRACE_MS_NO_PHOTO,
@@ -55,7 +54,6 @@ import {
     getMealRowSyncLeadKind
 } from '../utils/meal-entry-pending.js';
 import { getMealSyncManager } from '../utils/meal-sync-manager.js';
-import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import {
     normalizeMealClockInputValue,
@@ -126,11 +124,6 @@ import {
 } from './entry-sheet-tabs.js';
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
-
-function isMealActionEffectiveOffline() {
-    // navigator.onLine=false 고착 무시 포함 — 판정은 isMealogTransportOffline 단일 소스
-    return isMealogTransportOffline();
-}
 
 // 설정 저장 디바운싱을 위한 타이머 (기록 저장 쪽 디바운스는 entry-save-subtags.js가 소유)
 let entryGaugeSaveTimeout = null;
@@ -2199,10 +2192,6 @@ export async function saveEntry() {
         if (wasNewRecord) {
             showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
         }
-        if (isMealActionEffectiveOffline()) {
-            showToast('오프라인 상태예요. 연결되면 서버에 자동 등록됩니다.', 'info');
-        }
-
         // 저장 실행 (백그라운드, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
@@ -2278,25 +2267,6 @@ export async function saveEntry() {
                 updateTimelineShareIndicators();
             }
 
-            if (isMealActionEffectiveOffline() && effectiveMealId) {
-                void import('../utils/mealog-offline-ui.js').then((m) => {
-                    try {
-                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
-                            m.markMealOfflineDraftForRecord(effectiveMealId);
-                        }
-                    } catch (_) {
-                        /* ignore */
-                    }
-                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                        try {
-                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
-                });
-            }
-
             const base64Photos = sourcePhotos.filter(isLocalPendingPhoto);
             // 추가 업로드 없음 — 클라이언트 Firestore 쓰기까지 끝나면 스피너 해제(오프라인 큐 동기화는 백그라운드)
             if (base64Photos.length === 0) {
@@ -2311,16 +2281,6 @@ export async function saveEntry() {
                     console.warn('저장 직후 타임라인 갱신:', e);
                 }
             }
-            /* DevTools/웹뷰에서 onLine 갱신이 한 틱 늦는 경우 보정 — 실제 오프라인·강제 오프라인이면 inFlight 유지(등록예정 칩) */
-            queueMicrotask(() => {
-                if (isMealActionEffectiveOffline()) return;
-                try {
-                    applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, record.date, currentTab);
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-
             // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
             // 오프라인 등으로 업로드·재저장이 끝없이 대기하면 스피너가 영구 유지되므로 1차 저장과 동일한 상한(ms)으로 감싼다.
             if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
@@ -2363,34 +2323,6 @@ export async function saveEntry() {
                                 MEAL_SYNC_GRACE_MS_WITH_PHOTO
                             );
                         }
-                        queueMicrotask(() => {
-                            if (isMealActionEffectiveOffline()) {
-                                void import('../utils/mealog-offline-ui.js').then((m) => {
-                                    try {
-                                        if (record?.id && typeof m.markMealOfflineDraftForRecord === 'function') {
-                                            m.markMealOfflineDraftForRecord(record.id);
-                                        }
-                                    } catch (_) {
-                                        /* ignore */
-                                    }
-                                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                                        try {
-                                            if (typeof h.refreshMealSyncResendNavButton === 'function') {
-                                                h.refreshMealSyncResendNavButton();
-                                            }
-                                        } catch (_) {
-                                            /* ignore */
-                                        }
-                                    });
-                                });
-                                return;
-                            }
-                            try {
-                                applyOfflineAfterLocalSaveUi(record.id, optimisticTempId, record.date, currentTab);
-                            } catch (_) {
-                                /* ignore */
-                            }
-                        });
                     }
                     refreshTimelineAfterMealSaveResult(record?.date || editingDate || undefined);
                 } catch (uploadPhaseError) {
@@ -2530,21 +2462,12 @@ export async function saveEntry() {
                 } catch (_) {
                     /* ignore */
                 }
-                void import('../utils/mealog-offline-ui.js').then((m) => {
+                void import('../main/meal-sync-resend-header.js').then((h) => {
                     try {
-                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
-                            m.markMealOfflineDraftForRecord(timedOutId);
-                        }
+                        if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
                     } catch (_) {
                         /* ignore */
                     }
-                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                        try {
-                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
                 });
                 try {
                     if (record.date) {
@@ -2770,10 +2693,6 @@ export async function deleteEntry() {
     }
 
     const mealDate = mealForDelete.date;
-
-    if (isMealActionEffectiveOffline()) {
-        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
-    }
 
     markMealEntryDeletePending(entryIdToDelete);
     /** 스냅샷 `removed` 이전에 로컬 반영 — 연속 일수·트래커가 삭제 직후 갱신되도록 */
@@ -3176,10 +3095,6 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     const mealForDelete = record;
     const mealDate = mealForDelete.date;
     window._mealEntryDeleteRetryInFlight[entryId] = true;
-
-    if (isMealActionEffectiveOffline()) {
-        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
-    }
 
     markMealEntryDeletePending(entryId);
     let deleteRetryOptCtx = null;

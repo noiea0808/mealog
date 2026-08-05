@@ -17,10 +17,10 @@ import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import {
     countMealPendingSyncAndDeleteQueue,
-    countMealCloudFabManualRetryEntries,
-    isMealEntryServerSynced
+    countMealCloudFabManualRetryEntries
 } from './meal-entry-pending.js';
-import { countOfflineDraftMeals } from './mealog-offline-ui.js';
+import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
+import { pokeNetworkLoop } from './network-loop.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 
 /** 남은 일이 있을 때의 재시도 간격 — 마지막 값에서 고정 */
@@ -51,30 +51,10 @@ export function hasOutstandingMealWork() {
     try {
         return (
             countMealPendingSyncAndDeleteQueue() > 0 ||
-            countMealCloudFabManualRetryEntries() > 0 ||
-            countOfflineDraftMeals() > 0
+            countMealCloudFabManualRetryEntries() > 0
         );
     } catch (_) {
         return false;
-    }
-}
-
-/**
- * 서버 반영이 확인된 기록의 「오프라인 저장」 표시를 지운다 (재전송 FAB 배지 해제).
- *
- * 예전에는 복구 시점에 전부 일괄 해제했는데, 그 시점을 놓치면 배지가 영구히 남았다.
- * 기록별로 서버 반영 여부를 보고 지우므로 아무 때나 불러도 안전하다.
- */
-function clearSettledOfflineDraftFlags() {
-    const hist = window.mealHistory;
-    if (!Array.isArray(hist)) return;
-    for (let i = 0; i < hist.length; i++) {
-        const m = hist[i];
-        if (!m || m._mealogOfflineDraft !== true) continue;
-        if (!isMealEntryServerSynced(m)) continue;
-        const next = { ...m };
-        delete next._mealogOfflineDraft;
-        hist[i] = next;
     }
 }
 
@@ -147,7 +127,6 @@ export async function drainMealOutbox(reason = '') {
         retryDegradedMealsListener();
         await reconcileSyncUiAgainstServer();
         await retryPendingMealEntries();
-        clearSettledOfflineDraftFlags();
     } catch (e) {
         console.warn('[meal-outbox] 드레인 실패:', reason, e?.message || e);
     } finally {
@@ -163,12 +142,19 @@ export async function drainMealOutbox(reason = '') {
     }
 }
 
+/** 보낼 게 남았는데 채널이 이만큼 조용하면 찔러본다 */
+const CHANNEL_QUIET_MS = 20000;
+
 function tick() {
     if (!hasOutstandingMealWork()) {
         backoffIndex = 0;
         nextAttemptAt = 0;
         return;
     }
+    // 네트워크 워치독을 따로 두지 않는 이유가 여기 있다. 보낼 것이 없으면 채널이 살았는지 알 필요가
+    // 없고(그때 찌르면 멀쩡한 연결을 공회전시킬 뿐이다), 보낼 것이 있는데 조용하면 그 자체가 찔러야
+    // 할 이유다. 「상태를 감시」하는 대신 「남은 일」이 복구를 끌고 간다.
+    if (getMealogFirestoreActivityAgeMs() >= CHANNEL_QUIET_MS) pokeNetworkLoop('outbox-quiet');
     if (Date.now() < nextAttemptAt) return;
     void drainMealOutbox('tick');
 }

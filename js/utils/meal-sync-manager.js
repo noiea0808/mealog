@@ -9,7 +9,6 @@
 import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
-import { isMealogTransportOffline } from './mealog-offline-ui.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -23,14 +22,6 @@ function mealPhotosHaveBase64(record) {
             typeof p === 'string' &&
             (p.startsWith('data:image') || p.startsWith('blob:'))
     );
-}
-
-/**
- * 타임라인 `mealEntrySyncLeadHtml` 오프라인 분기와 동일.
- * 오프라인일 때 `pending`·`await_server_ack`도 ‘등록예정’ 칩으로 보이므로 FAB 배지에 포함한다.
- */
-function isMealSyncUiEffectiveOfflineFab() {
-    return isMealogTransportOffline();
 }
 
 /** 저장 grace(30초) 분기용 — entry-and-core 등에서 사용 */
@@ -526,47 +517,6 @@ export class MealSyncManager {
         this._bump();
     }
 
-    applyAbandonOnOffline() {
-        for (const id of [...this._inFlight.keys()]) {
-            this.clearGraceTimer(id);
-            this.promoteToRegisterScheduledChip(id, {});
-        }
-        for (const tid of [...this._optimisticPending.keys()]) {
-            this.clearGraceTimer(tid);
-            this.promoteToRegisterScheduledChip(tid, {});
-        }
-        for (const pid of [...this._pendingPhotoByEntry.keys()]) {
-            this.clearGraceTimer(pid);
-            this.promoteToRegisterScheduledChip(pid, {});
-        }
-        this._bump();
-    }
-
-    applyOfflineUnconfirmed(effectiveMealId, optimisticTempId, dateStr, currentTabVal, opts) {
-        const force = opts && opts.forceUnconfirmedUi === true;
-        // navigator.onLine 뿐 아니라 localNetworkForcedOffline(실패로 감지된 오프라인)도 등록예정 칩으로 승격
-        if (!force && !isMealogTransportOffline()) return;
-        const id = effectiveMealId != null ? String(effectiveMealId) : '';
-        if (!id || id.startsWith('temp_')) return;
-        this.clearGraceTimer(id);
-        const ot =
-            optimisticTempId != null && String(optimisticTempId).startsWith('temp_')
-                ? String(optimisticTempId)
-                : '';
-        if (ot) this.clearGraceTimer(ot);
-        this.promoteToRegisterScheduledChip(id, {
-            optimisticTempId: ot || null,
-            dateStr,
-            currentTab: currentTabVal
-        });
-        const rowDraft =
-            Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
-        if (rowDraft) rowDraft._mealogOfflineDraft = true;
-        const run = () => void refreshTimelineFull(dateStr, currentTabVal);
-        run();
-        if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(run);
-    }
-
     /**
      * 리스너 전용: 서버 스냅샷에서 문서가 서버에 반영됨을 확인했을 때만 호출.
      * 스피너·grace·낙관 temp 정리, 실패 플래그는 기존 규칙 유지.
@@ -962,29 +912,7 @@ export class MealSyncManager {
         return n;
     }
 
-    /** FAB 배지: 등록예정·삭제예정 칩(레드닷 진행 제외) 건수 */
-    /**
-     * 온라인일 때 레드닷 동기화 진행 중(pending / 서버 반영 대기 / 삭제 중) 건수.
-     * 이 동안에는 FAB를 숨겨 예정 칩 전용 뱃지와 역할이 겹치지 않게 한다.
-     */
-    countMealSyncFabRedDotTransportSyncEntries() {
-        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        if (isMealSyncUiEffectiveOfflineFab()) return 0;
-        const seen = new Set();
-        let n = 0;
-        for (const m of window.mealHistory) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_')) continue;
-            if (seen.has(id)) continue;
-            if (this.getRowSyncLeadKind(m) === 'syncing') {
-                seen.add(id);
-                n++;
-            }
-        }
-        return n;
-    }
-
+    /** FAB 배지: 등록예정·삭제예정 칩 건수 */
     countMealSyncFabScheduledChipEntries() {
         if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
         const seen = new Set();

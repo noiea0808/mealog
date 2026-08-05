@@ -26,7 +26,7 @@ import {
 import { showToast } from '../ui.js';
 import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
-import { tryMarkAppOfflineFromNetworkFailure } from '../utils/network-reachability.js';
+import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { clearLoadedMealsRanges } from '../utils/loaded-meals-range.js';
 
 /**
@@ -308,7 +308,7 @@ export const dbOps = {
                 throw e1;
             }
         } catch (e) {
-            tryMarkAppOfflineFromNetworkFailure(e);
+            noteNetworkTransportFailure(e);
             console.error("Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
             console.error("저장 실패 상세:", { 
@@ -386,7 +386,7 @@ export const dbOps = {
             }
             // 성공 토스트는 호출자에서 표시
         } catch (e) {
-            tryMarkAppOfflineFromNetworkFailure(e);
+            noteNetworkTransportFailure(e);
             console.error("Delete Error:", e);
             throw e;
         }
@@ -625,7 +625,7 @@ export const dbOps = {
                 }
             }
         } catch (e) {
-            tryMarkAppOfflineFromNetworkFailure(e);
+            noteNetworkTransportFailure(e);
             console.error("Settings Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
             console.error("설정 저장 실패 상세:", { 

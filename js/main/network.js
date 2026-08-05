@@ -1,37 +1,18 @@
 /**
  * 네트워크 이벤트 배선.
  *
- * 재연결 판단·재시도는 utils/network-loop.js 의 단일 루프가 한다. 이 파일은 OS·플러그인 이벤트를
- * 루프를 깨우는 호출 하나로 연결하고, 단절이 확인됐을 때의 UI 전환만 담당한다.
+ * OS·플러그인 이벤트는 아무것도 판단하지 않는다. 「offline 이 왔으니 오프라인이다」로 취급하지
+ * 않고, 전부 채널을 한 번 찔러 보라는 힌트로만 쓴다 — 이벤트가 사실인지 아닌지를 앱이 알 방법이
+ * 없기 때문이다(WebView 는 재연결 후에도 offline 을 남기고, 전환 시 online 을 안 주기도 한다).
  *
- * 복구 후속 작업은 여기에 없다. 「복구에 성공한 시점」에 훅을 걸던 방식은 끊김이 관측됐을 때만
- * 동작해서, 조용히 half-open 된 경우 기록 재전송·모먼트 재로드가 통째로 누락됐다. 두 작업은
- * 각자 남은 일이 있으면 스스로 재시도하는 구조로 옮겼다.
- *   - 미전송 기록: utils/meal-outbox-drain.js
- *   - 모먼트 피드: main/moment-feed-auto-retry.js
+ * 오프라인 「전환 시」 UI 처리도 여기 없다. 사용자에게 필요한 정보는 무선 상태가 아니라
+ * 「내 기록이 서버에 올라갔는가」이고, 그건 기록별 ack 이 답한다(meal-sync-manager → 재전송 FAB).
  */
-import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
-import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
 import { installFetchFailureAppOfflineBridge } from '../utils/network-reachability.js';
-import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
-import {
-    startNetworkLoop,
-    pokeNetworkLoop,
-    markNetworkChannelDown,
-    runNetworkRecoveryNow
-} from '../utils/network-loop.js';
-
-function mealogMainAppVisible() {
-    try {
-        const main = document.getElementById('mainApp');
-        return !!(main && !main.classList.contains('hidden'));
-    } catch (_) {
-        return false;
-    }
-}
+import { pokeNetworkLoop, runNetworkRecoveryNow } from '../utils/network-loop.js';
 
 /**
- * App Check·Auth 토큰 갱신 후 즉시 복구 시도.
+ * App Check·Auth 토큰 갱신 후 즉시 넛지.
  * @deprecated 이벤트 경로는 pokeNetworkLoop 를 쓴다. window.Mealog.runNetworkRecovery 호환용.
  */
 export async function runMealogNetworkRecovery() {
@@ -39,61 +20,24 @@ export async function runMealogNetworkRecovery() {
 }
 
 /**
- * 수동 새로고침·다시 불러오기 직전: 복구 루프를 즉시 1회 돌려 채널을 확인한다.
+ * 수동 새로고침·다시 불러오기 직전: 채널을 세게 한 번 찌른다.
+ * 성공 여부는 돌려주지 않는다 — 호출부가 그걸 게이트로 쓰면 다시 같은 문제가 생긴다.
  * @param {string} [reason]
- * @param {{ rebindListeners?: boolean }} [options]
- * @returns {Promise<boolean>} 채널이 살아 있으면 true
  */
-export async function prepareFirestoreNetworkForManualReload(reason = 'manual-reload', options = {}) {
-    return runNetworkRecoveryNow(reason, { forceRebind: options.rebindListeners === true });
+export async function prepareFirestoreNetworkForManualReload(reason = 'manual-reload') {
+    await runNetworkRecoveryNow(reason);
 }
 
-/**
- * 모먼트「다시 불러오기」·당겨서 새로고침 직전 네트워크 준비.
- * @returns {Promise<boolean>} 채널이 살아 있으면 true
- */
+/** 모먼트「다시 불러오기」·당겨서 새로고침 직전 네트워크 준비. */
 export async function prepareMomentFeedNetworkForReload() {
-    return runNetworkRecoveryNow('moment-reload');
-}
-
-/** 오프라인 진입 시 공통 UI 처리 */
-function applyOfflineUiTransition() {
-    try {
-        applyMealSyncAbandonOnOffline();
-        void import('../render/timeline.js').then((m) => {
-            try {
-                m.updateTimelineMealEntryPendingIndicators();
-            } catch (_) {
-                /* ignore */
-            }
-        });
-        try {
-            refreshMealSyncResendNavButton();
-        } catch (_) {
-            /* ignore */
-        }
-    } catch (_) {
-        /* ignore */
-    }
-    if (mealogMainAppVisible() && window.currentUser) {
-        notifyTransportOfflineUi();
-    }
-}
-
-/**
- * 단절 통지 — 이벤트가 왔다는 것 자체는 신뢰하되(고착된 boolean 을 읽는 것과 다르다),
- * 복구 여부 판단은 루프에 맡긴다.
- */
-function handleOfflineSignal(reason) {
-    markNetworkChannelDown(reason);
-    applyOfflineUiTransition();
+    await runNetworkRecoveryNow('moment-reload');
 }
 
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
     installFetchFailureAppOfflineBridge();
 
-    window.addEventListener('offline', () => handleOfflineSignal('offline-event'));
+    window.addEventListener('offline', () => pokeNetworkLoop('offline-event'));
     window.addEventListener('online', () => pokeNetworkLoop('online-event'));
 
     document.addEventListener(
@@ -119,19 +63,13 @@ export function registerMainNetworkListeners() {
     try {
         const Network = typeof window !== 'undefined' ? window.Capacitor?.Plugins?.Network : null;
         if (Network?.addListener) {
-            Network.addListener('networkStatusChange', (status) => {
-                if (status && status.connected === false) {
-                    handleOfflineSignal('cap-network-disconnected');
-                    return;
-                }
-                pokeNetworkLoop('cap-network');
-            });
+            Network.addListener('networkStatusChange', () => pokeNetworkLoop('cap-network'));
         }
     } catch (_) {
         /* 플러그인 미탑재(웹 등) */
     }
 
-    // Network Information API: online 이벤트가 안 올 때도 연결 전환 시 복구
+    // Network Information API: online 이벤트가 안 올 때도 연결 전환 시 넛지
     try {
         const conn = typeof navigator !== 'undefined' ? navigator.connection : null;
         if (conn && typeof conn.addEventListener === 'function') {
@@ -140,6 +78,4 @@ export function registerMainNetworkListeners() {
     } catch (_) {
         /* ignore */
     }
-
-    startNetworkLoop();
 }

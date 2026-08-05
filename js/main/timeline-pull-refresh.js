@@ -97,9 +97,7 @@ export function setupTimelinePullToRefresh() {
         const ymd = pageYmd();
         try {
             try {
-                await prepareFirestoreNetworkForManualReload('timeline-pull-refresh', {
-                    rebindListeners: true
-                });
+                await prepareFirestoreNetworkForManualReload('timeline-pull-refresh');
             } catch (_) {
                 /* ignore */
             }
@@ -115,9 +113,7 @@ export function setupTimelinePullToRefresh() {
                 try {
                     // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 지금 보고 있는 기록
                     // 리스너를 죽이고 캐시까지 지울 수 있어, 새로고침이 오히려 화면을 비운다.
-                    await prepareFirestoreNetworkForManualReload('timeline-pull-refresh-retry', {
-                        rebindListeners: true
-                    });
+                    await prepareFirestoreNetworkForManualReload('timeline-pull-refresh-retry');
                 } catch (recoverErr) {
                     console.warn('밀로그 새로고침: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                 }
