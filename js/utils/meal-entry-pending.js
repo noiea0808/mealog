@@ -172,9 +172,14 @@ export function scheduleReconcileStaleMealSyncDotsAfterSnapshot() {
     }, 500);
 }
 
-/** 타임라인 도트 분기 단일화 — 레드닷 조건 꼬임 방지 */
+/** 행 동기화 표시 — 'none' | 'syncing' | 'failed' | 'synced' */
 export function getMealRowSyncLeadKind(record) {
     return mgr().getRowSyncLeadKind(record);
+}
+
+/** 다시 밀어 올릴 대상인지 (서버 미확인 + 전송 중 아님) */
+export function isMealEntryRetryEligible(record) {
+    return mgr().isRetryEligible(record);
 }
 
 export function subscribeMealSyncState(fn) {

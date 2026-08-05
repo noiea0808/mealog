@@ -44,7 +44,7 @@ import {
     clearMealEntrySyncAbandonedById,
     clearMealSyncGraceTimer,
     scheduleMealSyncGraceAbandon,
-    isMealEntrySyncAbandoned,
+    isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
     applyOfflineAfterLocalSaveUi,
     onMealDocFirestoreServerAcknowledged,
@@ -2918,11 +2918,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('기록을 찾을 수 없습니다.', 'error');
         return;
     }
-    if (
-        !isMealEntrySaveFailed(record) &&
-        !isMealEntrySyncAbandoned(record) &&
-        getMealRowSyncLeadKind(record) !== 'register_scheduled'
-    ) {
+    if (!isMealEntryRetryEligible(record)) {
         return;
     }
 
@@ -2939,7 +2935,7 @@ export async function retryMealEntrySync(entryIdRaw) {
             getMealSyncManager().hasPendingPhotoEntry(entryId) ||
             getMealSyncManager().hasPendingPhotoSlot(`${record.date || ''}__${record.slotId || ''}`);
         if (
-            getMealRowSyncLeadKind(record) === 'register_scheduled' &&
+            getMealRowSyncLeadKind(record) === 'syncing' &&
             !entryId.startsWith('temp_') &&
             !hasUnuploadedPhotos
         ) {
@@ -3286,10 +3282,7 @@ export async function retryPendingMealEntriesOnAppReady() {
     for (const m of hist) {
         if (!m?.id || seen.has(String(m.id))) continue;
         const deleteRedo = isMealEntryDeleteFailed(m);
-        const saveRedo =
-            isMealEntrySaveFailed(m) ||
-            isMealEntrySyncAbandoned(m) ||
-            getMealRowSyncLeadKind(m) === 'register_scheduled';
+        const saveRedo = !deleteRedo && isMealEntryRetryEligible(m);
         if (!deleteRedo && !saveRedo) continue;
         seen.add(String(m.id));
         try {

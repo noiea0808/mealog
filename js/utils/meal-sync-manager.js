@@ -660,23 +660,12 @@ export class MealSyncManager {
             if (mealRecordHasBase64PendingPhotos(m)) continue;
             const slotKey = `${m.date || ''}__${m.slotId || ''}`;
             if (this.hasPendingPhotoEntry(id) || this.hasPendingPhotoSlot(slotKey)) continue;
-            const kind = this.getRowSyncLeadKind(m);
-            if (kind === 'redoable_failed') continue;
-            if (kind === 'register_scheduled') {
-                if (!seenCand.has(id)) {
-                    seenCand.add(id);
-                    candidates.push(id);
-                }
-                continue;
-            }
-            if (
-                (kind === 'await_server_ack' || kind === 'pending' || kind === 'redoable_abandoned') &&
-                !this.hasInFlight(id)
-            ) {
-                if (!seenCand.has(id)) {
-                    seenCand.add(id);
-                    candidates.push(id);
-                }
+            // 서버 반영이 확인되지 않았고 지금 보내는 중도 아닌 것만 대조 대상
+            if (this.getRowSyncLeadKind(m) !== 'syncing') continue;
+            if (this.hasInFlight(id)) continue;
+            if (!seenCand.has(id)) {
+                seenCand.add(id);
+                candidates.push(id);
             }
         }
 
@@ -764,14 +753,7 @@ export class MealSyncManager {
             const id = String(m.id);
             if (id.startsWith('temp_') || seen.has(id)) continue;
             const kind = this.getRowSyncLeadKind(m);
-            if (
-                kind !== 'pending' &&
-                kind !== 'await_server_ack' &&
-                kind !== 'delete_inflight' &&
-                kind !== 'delete_scheduled'
-            ) {
-                continue;
-            }
+            if (kind !== 'syncing') continue;
             seen.add(id);
             tasks.push({ id, kind, record: m });
         }
@@ -999,8 +981,7 @@ export class MealSyncManager {
             const id = String(m.id);
             if (id.startsWith('temp_')) continue;
             if (seen.has(id)) continue;
-            const k = this.getRowSyncLeadKind(m);
-            if (k === 'pending' || k === 'await_server_ack' || k === 'delete_inflight') {
+            if (this.getRowSyncLeadKind(m) === 'syncing') {
                 seen.add(id);
                 n++;
             }
@@ -1010,7 +991,6 @@ export class MealSyncManager {
 
     countMealSyncFabScheduledChipEntries() {
         if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const effOff = isMealSyncUiEffectiveOfflineFab();
         const seen = new Set();
         let n = 0;
         for (const m of window.mealHistory) {
@@ -1018,13 +998,7 @@ export class MealSyncManager {
             const id = String(m.id);
             if (id.startsWith('temp_')) continue;
             if (seen.has(id)) continue;
-            const k = this.getRowSyncLeadKind(m);
-            const chipLike =
-                k === 'register_scheduled' ||
-                k === 'delete_scheduled' ||
-                (effOff && (k === 'pending' || k === 'await_server_ack')) ||
-                (effOff && k === 'delete_inflight');
-            if (chipLike) {
+            if (this.getRowSyncLeadKind(m) === 'syncing') {
                 seen.add(id);
                 n++;
             }
@@ -1056,22 +1030,44 @@ export class MealSyncManager {
         return c;
     }
 
-    /** 타임라인 도트: 조건 한 줄로 분기 (레드닷 꼬임 방지) */
+    /**
+     * 행 동기화 표시 — 사용자가 다르게 행동할 수 있는 것만 남긴 3가지.
+     *
+     *   syncing : 서버 반영이 아직 확인되지 않음 → 기다리면 된다
+     *   failed  : 쓰기가 실제로 실패함 → 탭해서 다시 시도한다
+     *   synced  : 서버 반영 확인됨
+     *
+     * 예전에는 pending·await_server_ack·register_scheduled·abandoned·delete_scheduled·
+     * delete_inflight 를 따로 구분했는데, 어느 쪽이든 사용자가 할 수 있는 일은 같았다.
+     * 게다가 그 구분이 시간(grace 10·30초)과 연결 상태에 따라 바뀌어서, 느린 네트워크와
+     * 끊긴 네트워크가 같은 UI로 수렴했고 「진짜 끊겼는지」를 되묻는 로직이 UI 쪽으로 번졌다.
+     *
+     * 삭제/등록 구분은 상태가 아니라 문구의 문제이므로 렌더에서 isDeleting 으로 판단한다.
+     */
     getRowSyncLeadKind(record) {
         if (!record || record.id == null || record.id === '') return 'none';
-        if (this.isDeleting(record)) {
-            return this.isDeleteInFlight(record) ? 'delete_inflight' : 'delete_scheduled';
-        }
-        if (this.isDeleteFailed(record)) return 'delete_failed';
-        if (this.isSaveFailed(record)) return 'redoable_failed';
-        const rid = String(record.id);
-        if (this._registerScheduledChip.has(rid) && !this.isServerSynced(record)) {
-            return 'register_scheduled';
-        }
-        if (this.isAbandoned(record)) return 'redoable_abandoned';
-        if (this.isPendingSync(record)) return 'pending';
-        if (!this.isServerSynced(record)) return 'await_server_ack';
+        if (this.isDeleteFailed(record) || this.isSaveFailed(record)) return 'failed';
+        if (this.isDeleting(record)) return 'syncing';
+        if (this.isPendingSync(record)) return 'syncing';
+        if (!this.isServerSynced(record)) return 'syncing';
         return 'synced';
+    }
+
+    /**
+     * 다시 밀어 올릴 대상인지 — 아웃박스 드레인·재전송 FAB 공용.
+     *
+     * 「서버 반영이 확인되지 않았고, 지금 보내는 중도 아니다」가 기준이다.
+     * 예전에는 abandoned·register_scheduled 표식이 붙은 것만 대상으로 삼았는데,
+     * 그 표식은 grace 타이머가 붙여 주는 것이라 타이머를 놓치면 재전송에서 누락됐다.
+     */
+    isRetryEligible(record) {
+        if (!record?.id) return false;
+        const id = String(record.id);
+        if (id.startsWith('temp_')) return false;
+        if (this.isDeleteFailed(record) || this.isSaveFailed(record)) return true;
+        if (this.isDeleting(record)) return false; // 삭제는 별도 재시도 경로
+        if (this.hasInFlight(id)) return false; // 이미 전송 중
+        return !this.isServerSynced(record);
     }
 
     /** runWithTimeout 만료 시 — Firestore 큐와 무관하게 UI 실패 고정 */
