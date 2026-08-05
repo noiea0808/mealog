@@ -158,8 +158,8 @@ window.showFeedOptions = (
     const isCenterPopup = placement === 'center';
     /* 사진 휠 오버레이(z-310) 위에 두되, 가입 마법사 등(z-550)보다 낮을 수 있어 중앙 메뉴는 충분히 높게 */
     menu.className = isCenterPopup
-        ? 'fixed inset-0 z-[580] flex items-center justify-center p-4'
-        : 'fixed inset-0 z-[450]';
+        ? 'fixed inset-0 z-[var(--z-report-sheet)] flex items-center justify-center p-4'
+        : 'fixed inset-0 z-[var(--z-content-popup)]';
     
     const isMyPost = window.currentUser && authorUserId && window.currentUser.uid === authorUserId;
     const deleteButtonText = '공유 취소';
@@ -333,7 +333,7 @@ window.showReportModal = async (targetGroupKey) => {
     
     const overlay = document.createElement('div');
     overlay.id = 'reportModal';
-    overlay.className = 'fixed inset-0 z-[500] flex items-end sm:items-center justify-center';
+    overlay.className = 'fixed inset-0 z-[var(--z-onboarding)] flex items-end sm:items-center justify-center';
     
     const bg = document.createElement('div');
     bg.className = 'absolute inset-0 mealog-action-dim';

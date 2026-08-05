@@ -683,7 +683,7 @@ window.showBoardPostOptions = (postId, isAuthor) => {
     
     const menu = document.createElement('div');
     menu.id = 'boardPostOptionsMenu';
-    menu.className = 'fixed inset-0 z-[450]';
+    menu.className = 'fixed inset-0 z-[var(--z-content-popup)]';
     
     const bg = document.createElement('div');
     bg.className = 'fixed inset-0 mealog-action-dim';

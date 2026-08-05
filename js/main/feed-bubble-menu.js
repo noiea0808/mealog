@@ -157,7 +157,7 @@ function openEditFeedModal(postId) {
     const wrap = document.createElement('div');
     wrap.id = 'feedBubbleEditOverlay';
     wrap.className =
-        'fixed inset-0 z-[210] flex items-center justify-center px-4 py-6 bg-slate-900/45';
+        'fixed inset-0 z-[var(--z-bubble-menu)] flex items-center justify-center px-4 py-6 bg-slate-900/45';
     wrap.innerHTML = `
         <div class="feed-bubble-edit-panel w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:mx-4" role="dialog" aria-modal="true" aria-labelledby="feedEditTitle">
             <h2 id="feedEditTitle" class="mb-3 text-base font-bold text-slate-800">메시지 수정</h2>
@@ -220,7 +220,7 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
     const root = document.createElement('div');
     root.id = SHEET_ID;
     root.className =
-        'fixed inset-0 z-[200] flex items-center justify-center p-4 pointer-events-none';
+        'fixed inset-0 z-[var(--z-bubble-backdrop)] flex items-center justify-center p-4 pointer-events-none';
     root.setAttribute('role', 'presentation');
 
     // 샘플 계정도 버튼은 보여주되(체험), 누르면 현재 팝업 상태에서 토스트로 안내만 한다.

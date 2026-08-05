@@ -296,7 +296,7 @@ function escapeAttr(s) {
 function showAdminLogToast(message, kind = 'ok') {
     const bg = kind === 'error' ? 'bg-red-600' : 'bg-emerald-600';
     const div = document.createElement('div');
-    div.className = `fixed top-4 right-4 ${bg} text-white px-5 py-3 rounded-xl shadow-lg z-[600] text-sm font-bold`;
+    div.className = `fixed top-4 right-4 ${bg} text-white px-5 py-3 rounded-xl shadow-lg z-[var(--z-toast)] text-sm font-bold`;
     div.textContent = message;
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 2800);

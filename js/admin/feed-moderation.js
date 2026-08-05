@@ -2083,7 +2083,7 @@ window.showReportDetailPopup = function(targetGroupKey) {
     
     const overlay = document.createElement('div');
     overlay.id = 'reportDetailModal';
-    overlay.className = 'fixed inset-0 z-[600] flex items-center justify-center p-4';
+    overlay.className = 'fixed inset-0 z-[var(--z-toast)] flex items-center justify-center p-4';
     
     const bg = document.createElement('div');
     bg.className = 'absolute inset-0 bg-black/50';
@@ -3038,7 +3038,7 @@ function openMomentExportRangePopup() {
 
         const overlay = document.createElement('div');
         overlay.id = 'momentExportRangeModal';
-        overlay.className = 'fixed inset-0 z-[700] flex items-center justify-center p-4';
+        overlay.className = 'fixed inset-0 z-[var(--z-admin-over)] flex items-center justify-center p-4';
 
         const bg = document.createElement('div');
         bg.className = 'absolute inset-0 bg-black/50';
@@ -3176,7 +3176,7 @@ function ensureAdminFeedPhotoViewerModal() {
     if (el) return el;
     el = document.createElement('div');
     el.id = 'adminFeedPhotoViewerModal';
-    el.className = 'fixed inset-0 z-[9999] hidden';
+    el.className = 'fixed inset-0 z-[var(--z-loading-overlay)] hidden';
     el.innerHTML = `
         <div class="admin-feed-photo-viewer-backdrop absolute inset-0 bg-black/80" data-close="1"></div>
         <div class="absolute inset-0 flex flex-col items-center justify-center p-4 pointer-events-none">

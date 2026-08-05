@@ -2026,7 +2026,7 @@ function getOverlay() {
     el = document.createElement('div');
     el.id = OVERLAY_ID;
     el.className =
-        'hidden fixed inset-0 z-[310] flex min-h-0 flex-col items-stretch overflow-visible';
+        'hidden fixed inset-0 z-[var(--z-meal-photos-popup)] flex min-h-0 flex-col items-stretch overflow-visible';
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-modal', 'true');
     el.setAttribute('aria-label', '기록 사진');

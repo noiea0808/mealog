@@ -208,7 +208,7 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
+    modal.className = 'fixed inset-0 z-[var(--z-onboarding)] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-labelledby', 'dailySharePreviewTitle');
@@ -655,7 +655,7 @@ window.openDailyCommentModal = (dateStr) => {
     // 모달 생성
     const modal = document.createElement('div');
     modal.id = 'dailyCommentModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    modal.className = 'fixed inset-0 z-[var(--z-onboarding)] flex items-center justify-center p-4 bg-black/50';
     
     modal.innerHTML = `
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">

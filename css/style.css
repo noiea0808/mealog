@@ -94,6 +94,77 @@ html.platform-native-app .bottom-nav button i.lucide {
     --ime-fixed-bottom: 0px;
     --ime-vv-height: 100dvh;
     --ime-vv-top: 0px;
+    /*
+     * z-index 레이어 사다리 (오름차순)
+     *
+     * 규칙: 새 레이어는 반드시 여기에 토큰으로 추가한다.
+     *   - CSS:     z-index: var(--z-토큰);
+     *   - HTML/JS: class="... z-[var(--z-토큰)]"   (숫자 직접 사용 금지)
+     * 숫자를 직접 쓰면 어느 층에 끼어드는지 알 수 없어, 지금까지 13개 파일에
+     * 295·310·405·406·458처럼 서로를 피하려는 값이 흩어지게 됐다.
+     *
+     * 값은 토큰화 시점의 동작을 그대로 보존한 것이라 중복이 남아 있다
+     * (120·200·400·10050이 각각 두 용도). 통합은 별도 단계에서 다룬다.
+     */
+    /* 피드·타임라인 내부 */
+    --z-feed-overlay-panel: 25;   /* 사진 오버레이 댓글 패널, 모먼트 캡션 푸터 */
+    --z-feed-comment-open: 30;    /* 모먼트 도킹 댓글 입력 열림 */
+    --z-photo-nav: 35;            /* 타임라인 사진 좌우 내비 */
+    --z-photo-nav-toggle: 36;     /* 사진 비율 토글 */
+    /* FAB */
+    --z-fab-under: 39;            /* 밀당 동기화 재전송 */
+    --z-fab: 40;                  /* 글쓰기·빠른입력·새로고침 */
+    --z-fab-stacked: 41;          /* 겹쳐 놓인 새로고침 FAB */
+    /* 앱 셸 */
+    --z-composer: 45;             /* 게시판 인라인 작성기 */
+    --z-caption-layer: 48;        /* 모먼트 고정 캡션 레이어 */
+    --z-app-chrome: 50;           /* #appTopChrome, .bottom-nav */
+    --z-comment-sheet: 56;        /* 모먼트 소셜 댓글 시트 */
+    --z-system-bar: 100;          /* 상태바·내비바 오버레이 */
+    --z-ime-composer: 120;        /* IME 열림 시 작성기 — 셸 위로 */
+    --z-demo-guide-backdrop: 120;
+    --z-demo-guide-panel: 125;
+    /* 랜딩 */
+    --z-landing-backdrop: 199;
+    --z-landing: 200;
+    --z-landing-bottom: 201;
+    /* 피드 버블 메뉴 */
+    --z-bubble-backdrop: 200;
+    --z-bubble-menu: 210;
+    /* 기록 모달 스택 */
+    --z-slot-picker: 295;
+    --z-record-modal: 300;        /* 기록·데일리저널·식단리포트 */
+    --z-meal-photos-popup: 310;
+    --z-detail-modal: 350;
+    /* 다이얼로그 */
+    --z-dialog: 400;              /* 확인·공유 모달 기본 */
+    --z-picker-sheet: 400;        /* 날짜 피커, 카카오 장소 시트 */
+    --z-avatar-modal: 405;
+    --z-profile-field-modal: 406;
+    --z-dialog-over: 410;         /* 모달 위 확인 — 비번재설정·기간안내·사진편집 */
+    --z-dialog-over-2: 420;       /* 비번재설정 성공 */
+    /* 팝업·시트 */
+    --z-content-popup: 450;
+    --z-action-menu: 451;         /* .mealog-action-wrap */
+    --z-search-sheet: 458;        /* 검색·알림·좋아요·달력 시트 */
+    --z-onboarding: 500;          /* 도메인오류·약관·프로필설정, 관리자 모달 */
+    --z-signup-wizard: 550;
+    --z-report-sheet: 580;
+    --z-toast: 600;               /* 토스트, 관리자 모달 */
+    --z-admin-over: 700;
+    --z-admin-loading: 999;
+    /* 최상위 */
+    --z-success-popup: 9500;
+    --z-boot-splash: 9998;
+    --z-loading-overlay: 9999;
+    --z-lightbox: 10001;          /* 게시판 피드 라이트박스 */
+    --z-lightbox-image: 10002;    /* 모먼트 이미지 라이트박스 */
+    --z-service-guide: 10040;
+    --z-comment-lightbox: 10050;
+    --z-attendance: 10050;
+    --z-install-guide: 10060;
+    --z-app-update-dim: 99998;    /* 앱 업데이트는 무엇보다 위 */
+    --z-app-update: 99999;
     /* 시안 v2 토큰 — Light Mint mid (#3CB889) */
     --green: #3cb889;
     --green-deep: #2d9f74;
@@ -1376,7 +1447,7 @@ header .mealog-title {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 25;
+    z-index: var(--z-feed-overlay-panel);
     width: var(--meal-wheel-caption-inner-w, 100%);
     max-width: 100%;
     box-sizing: border-box;
@@ -2672,7 +2743,7 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
 #appTopChrome {
     position: sticky;
     top: var(--safe-top);
-    z-index: 50;
+    z-index: var(--z-app-chrome);
     /* 스크롤 중 그라데이션 배경이 매 프레임 repaint되며 생기던 떨림(덜덜) 방지: 독립 GPU 레이어로 승격 */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
@@ -3365,7 +3436,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     align-items: stretch;
     justify-content: stretch;
     gap: 0;
-    z-index: 50;
+    z-index: var(--z-app-chrome);
     box-shadow: none;
     transition: transform 0.25s ease-out;
 }
@@ -5048,7 +5119,7 @@ body.daily-journal-modal-open #timelineRefreshFab.initial-records-load-fab {
     right: 0;
     top: auto;
     bottom: var(--moment-v2-wheel-footer-bottom, calc(20px + 66px + var(--safe-bottom)));
-    z-index: 25;
+    z-index: var(--z-feed-overlay-panel);
     width: 100%;
     max-width: min(28rem, calc(100% - 1rem));
     margin-left: auto;
@@ -5143,7 +5214,7 @@ html.mv2-social-comment-sheet-open {
 body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-in-body {
     position: fixed !important;
     inset: 0;
-    z-index: 56;
+    z-index: var(--z-comment-sheet);
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
@@ -5587,7 +5658,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     margin: 0;
     padding: 0;
     border: 0;
-    z-index: 48;
+    z-index: var(--z-caption-layer);
     overflow: visible;
     pointer-events: none;
     background: transparent;
@@ -5683,7 +5754,7 @@ html.mv2-feed-scrolling .moment-v2-v-unit-bg-img {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 30;
+    z-index: var(--z-feed-comment-open);
     margin: 0 !important;
     margin-top: 0 !important;
     padding: 0.5rem 0.75rem 0.75rem !important;
@@ -7220,7 +7291,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    z-index: 35;
+    z-index: var(--z-photo-nav);
     width: 2rem;
     height: 2rem;
     margin: 0;
@@ -7256,7 +7327,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     position: absolute;
     right: 8px;
     bottom: 8px;
-    z-index: 36;
+    z-index: var(--z-photo-nav-toggle);
     width: 2rem;
     height: 2rem;
     margin: 0;
@@ -10366,7 +10437,7 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     min-height: 100svh;
     box-sizing: border-box;
     padding-top: var(--safe-top);
-    z-index: 200;
+    z-index: var(--z-landing);
     /* 스플래시(아이콘만): 흰 배경 — 로그인은 딥민트 */
     background: #ffffff;
     display: flex;
@@ -12079,7 +12150,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     position: fixed;
     bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + var(--fab-above-nav-gap));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
-    z-index: 40;
+    z-index: var(--z-fab);
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -12206,7 +12277,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     position: fixed;
     bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + var(--fab-above-nav-gap));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
-    z-index: 40;
+    z-index: var(--z-fab);
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -12251,7 +12322,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     position: fixed;
     bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + var(--fab-above-nav-gap));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
-    z-index: 40;
+    z-index: var(--z-fab);
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -12284,7 +12355,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 #timelineRefreshFab.initial-records-load-fab {
     pointer-events: none;
     cursor: default;
-    z-index: 41;
+    z-index: var(--z-fab-stacked);
 }
 /* 밀톡에서 글쓰기 FAB와 겹침 방지 — 동기화 FAB와 동일 규칙 */
 #initialRecordsLoadFab.initial-records-load-fab.initial-records-load-fab--stacked {
@@ -12297,7 +12368,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     position: fixed;
     bottom: calc(var(--app-bottom-nav-h) + var(--safe-bottom) + var(--fab-above-nav-gap));
     right: calc(50% - min(46vw, 13rem) + 1.25rem);
-    z-index: 39;
+    z-index: var(--z-fab-under);
     width: 48px;
     height: 48px;
     border-radius: 50%;
@@ -12785,7 +12856,7 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
     bottom: calc(66px + var(--safe-bottom));
     width: var(--app-bottom-bar-width);
     box-sizing: border-box;
-    z-index: 45;
+    z-index: var(--z-composer);
     border: none;
     border-top: 1px solid var(--line, #d0c6ba);
     border-radius: 0;
@@ -12804,11 +12875,11 @@ body.ime-open:has(#mainAppHeader.header-scroll-hidden) #settingsView:not(.hidden
  */
 body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: var(--ime-fixed-bottom, 0px);
-    z-index: 120;
+    z-index: var(--z-ime-composer);
 }
 body:has(#boardInlineComposerInput:focus):not(.ime-open) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
     bottom: calc(66px + var(--safe-bottom));
-    z-index: 45;
+    z-index: var(--z-composer);
 }
 html.platform-web:not([data-ime-mode="resize"]) body:has(#boardInlineComposerInput:focus) #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible,
 html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible {
@@ -12817,7 +12888,7 @@ html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardInlineCompos
         var(--ime-fixed-bottom, 0px),
         env(safe-area-inset-bottom, 0px)
     );
-    z-index: 120;
+    z-index: var(--z-ime-composer);
 }
 #boardInlineComposer.board-feed-chat-composer.board-feed-composer-visible:focus-within {
     box-shadow: none;
@@ -13007,7 +13078,7 @@ html.platform-web:not([data-ime-mode="resize"]) body.ime-open #boardInlineCompos
 .detail-comment-lightbox {
     position: fixed;
     inset: 0;
-    z-index: 10050;
+    z-index: var(--z-comment-lightbox);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -13826,7 +13897,7 @@ body.ime-open:has(#boardDetailView:not(.hidden)) .board-detail-composer {
     bottom: var(--ime-fixed-bottom, 0px);
     width: var(--app-bottom-bar-width, min(100%, 28rem));
     max-width: 100%;
-    z-index: 120;
+    z-index: var(--z-ime-composer);
     margin: 0;
     padding: 10px 14px 12px;
     box-sizing: border-box;
@@ -15903,7 +15974,7 @@ body:has(#adminPage:not(.hidden)),
 .entry-header-date-picker {
     position: fixed;
     inset: 0;
-    z-index: 400;
+    z-index: var(--z-picker-sheet);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -16809,7 +16880,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     left: var(--shell-float-gutter, 1.25rem);
     right: var(--shell-float-gutter, 1.25rem);
     bottom: max(16px, env(safe-area-inset-bottom, 0px));
-    z-index: 451;
+    z-index: var(--z-action-menu);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -17583,7 +17654,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 .kakao-place-sheet {
     position: fixed;
     inset: 0;
-    z-index: 400;
+    z-index: var(--z-picker-sheet);
     display: flex;
     align-items: flex-end;
     justify-content: center;
@@ -17856,7 +17927,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 .service-guide-overlay {
     position: fixed;
     inset: 0;
-    z-index: 10040;
+    z-index: var(--z-service-guide);
     display: flex;
     align-items: stretch;
     justify-content: center;
@@ -18200,7 +18271,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 #pwaInstallGuideModal {
     position: fixed;
     inset: 0;
-    z-index: 10060;
+    z-index: var(--z-install-guide);
     display: flex;
     align-items: flex-end;
     justify-content: center;

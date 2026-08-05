@@ -297,7 +297,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
         _overlay = document.createElement('div');
         _overlay.id = 'momentImageLightbox';
         _overlay.className =
-            'hidden fixed inset-0 z-[10002] flex justify-center';
+            'hidden fixed inset-0 z-[var(--z-lightbox-image)] flex justify-center';
         _overlay.setAttribute('role', 'dialog');
         _overlay.setAttribute('aria-modal', 'true');
         _overlay.setAttribute('aria-labelledby', 'momentImageLightboxTitle');
