@@ -30,7 +30,7 @@ import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
 import { applyStreakTrustPatchesToDailyStats, stripGhostDailyStatsInQueryWindow, invalidateMealHistoryCountCache } from '../meal-record-count.js';
 import { markMealsRangeLoaded, replaceLoadedMealsRanges } from './loaded-meals-range.js';
-import { isMealogTransportOffline } from './mealog-offline-ui.js';
+import { isNetworkChannelDown } from './network-loop.js';
 /** 스냅샷에 실제로 포함된 날짜만으로 실시간 윈도우 start를 잡을 때 사용 */
 function minMealDateYmdInWindow(meals, cutoffDateStr) {
     if (!Array.isArray(meals) || !meals.length) return null;
@@ -45,9 +45,11 @@ function minMealDateYmdInWindow(meals, cutoffDateStr) {
 }
 
 /** 전송 계층 오프라인만 — 연결 오버레이 표시만으로는 서버 removed 를 막지 않음(복구 직후 고착 방지).
- * navigator.onLine=false 고착 무시 포함(isMealogTransportOffline 단일 판정) — 고착 시 삭제예정이 영구히 안 풀리던 문제 방지 */
+ * navigator.onLine=false 고착 무시 포함(즉시값 단일 판정) — 고착 시 삭제예정이 영구히 안 풀리던 문제 방지.
+ * 표시용(3초 유예) isMealogTransportOffline 이 아니라 즉시값을 쓴다 — 유예를 두면 그 3초 동안
+ * 실제 삭제된 문서가 removed 로 확정 처리돼 삭제예정 보류가 무력화된다. */
 function mealsSnapshotDeleteHoldWhileTransportOffline() {
-    return isMealogTransportOffline();
+    return isNetworkChannelDown();
 }
 
 function countDataImageInPhotos(recordOrDoc) {

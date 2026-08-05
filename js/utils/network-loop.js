@@ -43,12 +43,21 @@ const LADDER_STEP_TIMEOUT_MS = 8000;
 /** 루프가 멈춰 있을 때 채널을 점검하는 주기. */
 const WATCHDOG_MS = 30000;
 const LADDER_TOP = 2;
+/**
+ * 끊긴 것을 화면에 표시하기까지의 유예. 사다리 0단(kick)은 대개 1초 안에, 자연 회복은
+ * ACTIVITY_RESUME_WAIT_MS(3초) 안에 끝난다 — 그 안에 풀리는 끊김까지 사용자에게 보이면
+ * 금방 없어질 걱정을 만들 뿐이다. 복구 시도 자체는 지금처럼 즉시 시작한다. 이건 표시만 늦춘다.
+ * 복구(healthy 전환)는 지연 없이 바로 반영한다 — 비대칭.
+ */
+const UI_OFFLINE_GRACE_MS = 3000;
 
 let attemptTimer = 0;
 let attemptInFlight = false;
 let watchdogTimer = 0;
 let ladderStep = 0;
 let backoffIndex = 0;
+let downSince = 0;
+let uiGraceTimer = 0;
 
 function jitter(ms) {
     return Math.round(ms * (0.75 + Math.random() * 0.5));
@@ -80,9 +89,39 @@ function documentVisible() {
     }
 }
 
-/** 채널이 죽은 것으로 확인된 상태인지 — 오프라인 UI의 단일 판정 소스 */
+/** 채널이 죽은 것으로 확인된 상태인지 — 즉시값. 정합성이 걸린 판정(예: 스냅샷 removed 보류)에 쓴다. */
 export function isNetworkChannelDown() {
     return appState.localNetworkForcedOffline === true;
+}
+
+/**
+ * 화면에 표시할 때 쓰는 값 — 끊긴 지 UI_OFFLINE_GRACE_MS 가 지나야 true 가 된다.
+ * FAB·토스트 등 사용자에게 보이는 판정은 전부 이걸 쓴다.
+ */
+export function isNetworkChannelDownForDisplay() {
+    if (appState.localNetworkForcedOffline !== true) return false;
+    return downSince > 0 && Date.now() - downSince >= UI_OFFLINE_GRACE_MS;
+}
+
+/** 채널이 down 으로 확인된 지점 공통 처리 — 최초 진입 시에만 유예 타이머를 세운다 */
+function noteChannelDown() {
+    appState.localNetworkForcedOffline = true;
+    if (downSince) return; // 이미 down — 타이머 중복 예약 방지
+    downSince = Date.now();
+    uiGraceTimer = setTimeout(() => {
+        uiGraceTimer = 0;
+        // 유예가 지났는데도 여전히 끊겨 있으면 그때 FAB를 갱신한다. 그 사이 회복됐다면
+        // isNetworkChannelDownForDisplay 가 이미 false 를 주므로 별도 처리가 필요 없다.
+        if (appState.localNetworkForcedOffline === true) {
+            void import('../main/meal-sync-resend-header.js').then((m) => {
+                try {
+                    if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+                } catch (_) {
+                    /* ignore */
+                }
+            });
+        }
+    }, UI_OFFLINE_GRACE_MS);
 }
 
 function clearAttemptTimer() {
@@ -112,11 +151,16 @@ function markHealthy() {
     ladderStep = 0;
     backoffIndex = 0;
     appState.localNetworkForcedOffline = false;
+    downSince = 0;
+    if (uiGraceTimer) {
+        clearTimeout(uiGraceTimer);
+        uiGraceTimer = 0;
+    }
     clearAttemptTimer();
 }
 
 function markAttemptFailed(reason) {
-    appState.localNetworkForcedOffline = true;
+    noteChannelDown();
     ladderStep = Math.min(ladderStep + 1, LADDER_TOP);
     const delay = jitter(BACKOFF_MS[Math.min(backoffIndex, BACKOFF_MS.length - 1)]);
     backoffIndex += 1;
@@ -234,7 +278,7 @@ export function pokeNetworkLoop(reason = '') {
  * 사다리는 유지한다(연속 실패 중이면 계속 위 칸부터).
  */
 export function markNetworkChannelDown(reason = '') {
-    appState.localNetworkForcedOffline = true;
+    noteChannelDown();
     pokeNetworkLoop(reason);
 }
 
