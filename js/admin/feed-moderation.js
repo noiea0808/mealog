@@ -2083,7 +2083,7 @@ window.showReportDetailPopup = function(targetGroupKey) {
     
     const overlay = document.createElement('div');
     overlay.id = 'reportDetailModal';
-    overlay.className = 'fixed inset-0 z-[var(--z-toast)] flex items-center justify-center p-4';
+    overlay.className = 'fixed inset-0 z-[var(--z-admin-modal)] flex items-center justify-center p-4';
     
     const bg = document.createElement('div');
     bg.className = 'absolute inset-0 bg-black/50';

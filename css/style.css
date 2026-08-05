@@ -150,7 +150,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-onboarding: 500;          /* 도메인오류·약관·프로필설정, 관리자 모달 */
     --z-signup-wizard: 550;
     --z-report-sheet: 580;
-    --z-toast: 600;               /* 토스트, 관리자 모달 */
+    --z-admin-modal: 600;         /* 관리자 모달·알림 (admin.html 전용) */
     --z-admin-over: 700;
     --z-admin-loading: 999;
     /* 최상위 */
@@ -163,6 +163,14 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-comment-lightbox: 10050;
     --z-attendance: 10050;
     --z-install-guide: 10060;
+    /*
+     * 토스트는 모든 전면 오버레이보다 위 — 라이트박스·로딩·가이드 위에서 누른
+     * 동작의 피드백(특히 에러)이 오버레이 뒤에 가려지면 안 된다.
+     * #toastContainer는 pointer-events:none이라 위로 올려도 조작을 막지 않는다.
+     * 축하·출석 팝업과의 중복 피드백 억제는 z가 아니라 ui.js의
+     * isFullScreenMealogOverlayVisible()이 담당한다.
+     */
+    --z-toast: 10070;
     --z-app-update-dim: 99998;    /* 앱 업데이트는 무엇보다 위 */
     --z-app-update: 99999;
     /* 시안 v2 토큰 — Light Mint mid (#3CB889) */
