@@ -7,8 +7,10 @@
  *     false 로 고착돼, 값을 게이트로 쓰면 복구가 통째로 막힌다.
  *  2. OS·플러그인 이벤트(online / connection change / resume / Capacitor Network)는 아무것도 판단하지
  *     않는다. 백오프를 0으로 되돌리고 루프를 깨우는 힌트일 뿐이다. 시도를 막는 조건으로는 쓰지 않는다.
- *  3. 복구는 사다리다. kick → 토큰 갱신+리스너 재부착 → 인스턴스 재생성. 연속 실패마다 한 칸 오르고,
- *     성공하면 사다리와 백오프가 함께 리셋된다.
+ *  3. 복구는 사다리다. kick → 토큰 갱신+리스너 재부착. 연속 실패마다 한 칸 오르고, 성공하면
+ *     사다리와 백오프가 함께 리셋된다. 인스턴스 재생성(terminate)은 이 사다리에 없다 — 붙어 있는
+ *     리스너를 전부 죽이는 파괴적 수단이라, SDK 가 실제로 깨졌을 때(Watch 내부 assertion)만
+ *     firebase.js 의 전역 핸들러가 쓴다. 망 문제에 쓰면 살아나는 중인 채널을 스스로 끊는다.
  *
  * 복구 성공 판정에 별도 읽기 비용은 들지 않는다. meals 리스너가 includeMetadataChanges 로 붙어 있어
  * 채널이 살아나면 fromCache=false 스냅샷이 발화하고, 그 시점이 곧 활동 시각으로 기록되기 때문이다.
@@ -25,7 +27,6 @@ import {
     hasFirestoreListenersRegistered,
     kickFirestoreTransportReconnect,
     rebindFirestoreListenersIfRegistered,
-    recoverFirestoreAfterWatchAssertion,
     refreshAppCheckTokenBeforeFirestore
 } from '../firebase.js';
 import { probeMealogRemoteReachable } from './network-probe.js';
@@ -36,18 +37,22 @@ const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000, 60000];
 const ACTIVITY_FRESH_MS = 20000;
 /** 유휴 중 이만큼 서버 응답이 없으면 채널을 의심한다. */
 const ACTIVITY_STALE_MS = 90000;
-/** 복구 시도 후 서버 응답이 돌아오기를 기다리는 시간. */
-const ACTIVITY_RESUME_WAIT_MS = 3000;
+/**
+ * 복구 시도 후 서버 응답이 돌아오기를 기다리는 시간 — 이 안에 안 오면 실패로 보고 사다리를 올린다.
+ * 짧게 잡으면 회복 중인 셀룰러에서 아직 핸드셰이크 중인 채널을 실패로 오판해, 살아나는 연결을
+ * 계속 다시 두드리게 된다. 실패 판정이 늦는 것은 손해가 없지만(그 사이 응답이 오면 성공이다),
+ * 오판은 이미 진행 중인 복구를 되돌린다.
+ */
+const ACTIVITY_RESUME_WAIT_MS = 10000;
 /** 사다리 각 단계의 상한 — 초과하면 그 단계는 실패로 보고 다음 칸으로 올라간다. */
 const LADDER_STEP_TIMEOUT_MS = 8000;
 /** 루프가 멈춰 있을 때 채널을 점검하는 주기. */
 const WATCHDOG_MS = 30000;
-const LADDER_TOP = 2;
+const LADDER_TOP = 1;
 /**
- * 끊긴 것을 화면에 표시하기까지의 유예. 사다리 0단(kick)은 대개 1초 안에, 자연 회복은
- * ACTIVITY_RESUME_WAIT_MS(3초) 안에 끝난다 — 그 안에 풀리는 끊김까지 사용자에게 보이면
- * 금방 없어질 걱정을 만들 뿐이다. 복구 시도 자체는 지금처럼 즉시 시작한다. 이건 표시만 늦춘다.
- * 복구(healthy 전환)는 지연 없이 바로 반영한다 — 비대칭.
+ * 끊긴 것을 화면에 표시하기까지의 유예. 사다리 0단(kick)만으로 대개 1초 안에 풀리는데, 그렇게
+ * 금방 없어질 끊김까지 사용자에게 보이면 없어질 걱정을 만들 뿐이다. 복구 시도 자체는 즉시
+ * 시작한다 — 이건 표시만 늦춘다. 복구(healthy 전환)는 지연 없이 바로 반영한다(비대칭).
  */
 const UI_OFFLINE_GRACE_MS = 3000;
 
@@ -103,6 +108,17 @@ export function isNetworkChannelDownForDisplay() {
     return downSince > 0 && Date.now() - downSince >= UI_OFFLINE_GRACE_MS;
 }
 
+/** FAB 갱신 — 정적으로 부르면 순환 import 가 되므로 동적으로 가져온다 */
+function refreshOfflineFab() {
+    void import('../main/meal-sync-resend-header.js').then((m) => {
+        try {
+            if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
+        } catch (_) {
+            /* ignore */
+        }
+    });
+}
+
 /** 채널이 down 으로 확인된 지점 공통 처리 — 최초 진입 시에만 유예 타이머를 세운다 */
 function noteChannelDown() {
     appState.localNetworkForcedOffline = true;
@@ -112,15 +128,7 @@ function noteChannelDown() {
         uiGraceTimer = 0;
         // 유예가 지났는데도 여전히 끊겨 있으면 그때 FAB를 갱신한다. 그 사이 회복됐다면
         // isNetworkChannelDownForDisplay 가 이미 false 를 주므로 별도 처리가 필요 없다.
-        if (appState.localNetworkForcedOffline === true) {
-            void import('../main/meal-sync-resend-header.js').then((m) => {
-                try {
-                    if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-        }
+        if (appState.localNetworkForcedOffline === true) refreshOfflineFab();
     }, UI_OFFLINE_GRACE_MS);
 }
 
@@ -148,6 +156,7 @@ function scheduleAttempt(delayMs, reason) {
  * 역설이 있었다. 두 작업은 각자 남은 일을 보고 스스로 재시도한다.
  */
 function markHealthy() {
+    const wasDown = appState.localNetworkForcedOffline === true || downSince > 0;
     ladderStep = 0;
     backoffIndex = 0;
     appState.localNetworkForcedOffline = false;
@@ -157,6 +166,11 @@ function markHealthy() {
         uiGraceTimer = 0;
     }
     clearAttemptTimer();
+    // 표시 되돌리기는 여기가 맞다. 재전송처럼 「반드시 되어야 하는 일」은 전환이 없으면 실행되지
+    // 않아서 위 이유로 뺐지만, 오프라인 모습을 되돌리는 일은 애초에 전환이 있었을 때만 필요하다.
+    // 이 갱신이 없으면 채널이 살아나도 FAB 가 오프라인 모습으로 남는다 — 드레인은 남은 일이
+    // 있을 때만 UI 를 건드리므로, 대기 중인 기록이 없으면 아무도 FAB 를 되돌리지 않았다.
+    if (wasDown) refreshOfflineFab();
 }
 
 function markAttemptFailed(reason) {
@@ -195,17 +209,13 @@ async function refreshAuthTokens() {
  * 사다리 한 칸 실행.
  * 0: transport kick — 전환 직후 죽은 WebChannel은 대개 이것만으로 살아난다.
  * 1: 토큰 갱신 + kick + 리스너 재부착 — 만료된 토큰·고착된 리스너를 함께 턴다.
- * 2: 인스턴스 재생성 — Watch 내부 오류로 SDK가 깨진 경우.
+ *
+ * 인스턴스 재생성(terminate → createFirestore)은 여기 없다. 붙어 있는 리스너를 전부 죽이고 캐시까지
+ * 지울 수 있어, 아직 핸드셰이크 중인 채널에 걸리면 스스로 만든 연결을 스스로 끊는다. 사다리는
+ * 실패할수록 위 칸에 고착되므로 그 파괴가 매 백오프마다 반복됐다. SDK 가 실제로 깨진 경우는
+ * firebase.js 의 전역 assertion 핸들러가 관측해서 따로 복구한다.
  */
 async function climbLadder(reason) {
-    if (ladderStep >= LADDER_TOP) {
-        await withTimeout(
-            recoverFirestoreAfterWatchAssertion(reason, { force: true }),
-            LADDER_STEP_TIMEOUT_MS,
-            false
-        );
-        return;
-    }
     if (ladderStep >= 1) {
         await withTimeout(refreshAuthTokens(), LADDER_STEP_TIMEOUT_MS);
     }

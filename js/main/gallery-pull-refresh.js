@@ -3,7 +3,6 @@
  */
 import { appState } from '../state.js';
 import { loadSharedPhotosPageReliable } from '../db.js';
-import { recoverFirestoreAfterWatchAssertion } from '../firebase.js';
 import { prepareMomentFeedNetworkForReload } from './network.js';
 import { showToast } from '../ui.js';
 import { applyLoadingFoodIconDurationSeconds } from '../loading-spinner-config.js';
@@ -72,9 +71,11 @@ export function setupGalleryPullToRefresh() {
                 } catch (e) {
                     console.warn('갤러리 새로고침(프로필) 첫 로드 실패, Firestore 복구 후 재시도:', e?.message || e);
                     try {
-                        await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
+                        // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록
+                        // 리스너까지 죽여서, 새로고침 한 번이 앱 전체 데이터를 날린다.
+                        await prepareMomentFeedNetworkForReload();
                     } catch (recoverErr) {
-                        console.warn('갤러리 새로고침: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                        console.warn('갤러리 새로고침: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                     }
                     invalidateGalleryRenderSession();
                     await renderGallery({ forceReload: true });
@@ -87,9 +88,11 @@ export function setupGalleryPullToRefresh() {
                 } catch (firstErr) {
                     console.warn('갤러리 새로고침: 첫 로드 실패, Firestore 복구 후 재시도:', firstErr?.message || firstErr);
                     try {
-                        await recoverFirestoreAfterWatchAssertion('galleryPullRefresh', { force: true });
+                        // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록
+                        // 리스너까지 죽여서, 새로고침 한 번이 앱 전체 데이터를 날린다.
+                        await prepareMomentFeedNetworkForReload();
                     } catch (recoverErr) {
-                        console.warn('갤러리 새로고침: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                        console.warn('갤러리 새로고침: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                     }
                     loadResult = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2 });
                 }

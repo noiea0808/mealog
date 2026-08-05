@@ -16,6 +16,12 @@ import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js'
 
 const MEAL_SYNC_FAB_ARIA_IDLE = '동기화가 필요한 기록 재시도';
 const MEAL_SYNC_FAB_ARIA_OFFLINE = '오프라인 — 저장 대기 기록 보기';
+/**
+ * 오프라인 표시 중 탭했을 때 스피너를 유지하는 상한. 복구 루프는 이보다 오래 걸릴 수 있는데,
+ * 그때는 버튼을 먼저 돌려주고 루프는 뒤에서 계속 돌게 둔다 — 늦게 성공해도 markHealthy 가
+ * FAB 를 갱신하므로 결과는 화면에 반영된다.
+ */
+const OFFLINE_TAP_RECOVERY_UI_WAIT_MS = 6000;
 
 /** 클릭 직후 즉시 반응(스피너·비활성) — 동적 import 전에 호출 */
 function setMealSyncFabBusy(btn, busy) {
@@ -143,10 +149,41 @@ export function bindMealSyncResendNavButtonOnce() {
 
         if (btn.classList.contains('meal-sync-resend-fab--transport-offline')) {
             runChainRelinkAnimation(btn);
-            // 뱃지(오프라인 저장 대기 건수)가 없을 때만 — 탭으로 안내 토스트
-            if (countOfflineDraftMeals() === 0) {
-                showToast('잠시 오프라인 상태에요.', 'info');
-            }
+            // 오프라인 판정이 틀렸을 가능성이야말로 사용자가 이 버튼을 누르는 이유다. 판정을 게이트로
+            // 써서 시도 자체를 막으면, 그 값이 고착됐을 때 사용자에게 남는 수단이 하나도 없다.
+            // 그래서 여기서도 채널을 실제로 확인하고, 남은 기록이 있으면 드레인을 깨운다.
+            setMealSyncFabBusy(btn, true);
+            void (async () => {
+                let recovered = false;
+                try {
+                    const { runNetworkRecoveryNow } = await import('../utils/network-loop.js');
+                    recovered = await Promise.race([
+                        runNetworkRecoveryNow('manual-fab-offline'),
+                        new Promise((resolve) =>
+                            setTimeout(() => resolve(false), OFFLINE_TAP_RECOVERY_UI_WAIT_MS)
+                        )
+                    ]);
+                } catch (e) {
+                    console.warn('mealSyncResendFab 오프라인 복구 시도 실패:', e?.message || e);
+                }
+                try {
+                    const { pokeMealOutboxDrain, hasOutstandingMealWork } = await import(
+                        '../utils/meal-outbox-drain.js'
+                    );
+                    const pending = hasOutstandingMealWork();
+                    if (pending) pokeMealOutboxDrain('manual-fab-offline');
+                    if (recovered) {
+                        if (pending) showToast('연결됐어요. 서버에 반영 중입니다…', 'info');
+                    } else if (countOfflineDraftMeals() === 0) {
+                        showToast('잠시 오프라인 상태에요.', 'info');
+                    }
+                } catch (_) {
+                    /* ignore */
+                } finally {
+                    setMealSyncFabBusy(btn, false);
+                    refreshMealSyncResendNavButton();
+                }
+            })();
             return;
         }
 

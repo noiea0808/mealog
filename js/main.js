@@ -11,8 +11,7 @@ import {
     db,
     appId,
     refreshAppCheckTokenBeforeFirestore,
-    registerFirestoreListenersRebind,
-    recoverFirestoreAfterWatchAssertion
+    registerFirestoreListenersRebind
 } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, ensureMealsLoadedAroundDate, needsMealsLoadedAroundDate, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
@@ -172,9 +171,11 @@ window.reloadMomentFeed = async function reloadMomentFeed(options = {}) {
             } catch (e) {
                 console.warn('모먼트(프로필) 첫 로드 실패, Firestore 복구 후 재시도:', e?.message || e);
                 try {
-                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                    // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록 리스너까지
+                    // 죽이므로, 자동 재시도가 실패할 때마다 앱 전체의 데이터가 함께 사라진다.
+                    await prepareMomentFeedNetworkForReload();
                 } catch (recoverErr) {
-                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    console.warn('모먼트: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                 }
                 try {
                     invalidateGalleryRenderSession();
@@ -199,9 +200,11 @@ window.reloadMomentFeed = async function reloadMomentFeed(options = {}) {
             } catch (firstErr) {
                 console.warn('모먼트: 첫 로드 실패, Firestore 복구 후 재시도:', firstErr?.message || firstErr);
                 try {
-                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                    // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록 리스너까지
+                    // 죽이므로, 자동 재시도가 실패할 때마다 앱 전체의 데이터가 함께 사라진다.
+                    await prepareMomentFeedNetworkForReload();
                 } catch (recoverErr) {
-                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    console.warn('모먼트: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                 }
                 loadResult = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2 });
             }
