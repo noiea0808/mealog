@@ -167,10 +167,12 @@ export function bindMealSyncResendNavButtonOnce() {
                     showToast('오프라인 상태라 지금 등록할 수 없습니다. 네트워크 연결 후 다시 눌러 주세요.', 'info');
                     return;
                 }
-                // 프로브 성공 — 전환 직후 고착된 로컬 오프라인 플래그 해제 후 진행
+                // 프로브 성공 — 채널을 실제로 확인해 오프라인 표시를 내린다.
+                // 플래그를 직접 쓰지 않는다: 루프를 거치지 않으면 사다리·백오프가 리셋되지 않아
+                // 이후 복구 판정이 어긋난다.
                 try {
-                    const { clearLocalNetworkForcedOffline } = await import('../utils/network-reachability.js');
-                    clearLocalNetworkForcedOffline();
+                    const { runNetworkRecoveryNow } = await import('../utils/network-loop.js');
+                    await runNetworkRecoveryNow('manual-resend');
                 } catch (_) {
                     /* ignore */
                 }

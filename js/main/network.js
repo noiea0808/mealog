@@ -1,13 +1,16 @@
 /**
- * 네트워크 이벤트 배선 + 복구 후속 작업.
+ * 네트워크 이벤트 배선.
  *
- * 재연결 판단·재시도는 전부 utils/network-loop.js 의 단일 루프가 한다. 이 파일은 두 가지만 한다.
- *  1. OS·플러그인 이벤트를 루프를 깨우는 호출 하나로 연결한다 (무엇이 왔는지 구분하지 않는다).
- *  2. 루프가 복구에 성공했을 때 실행할 후속 작업(기록 동기화 재맞춤·모먼트 재로드)을 등록한다.
+ * 재연결 판단·재시도는 utils/network-loop.js 의 단일 루프가 한다. 이 파일은 OS·플러그인 이벤트를
+ * 루프를 깨우는 호출 하나로 연결하고, 단절이 확인됐을 때의 UI 전환만 담당한다.
+ *
+ * 복구 후속 작업은 여기에 없다. 「복구에 성공한 시점」에 훅을 걸던 방식은 끊김이 관측됐을 때만
+ * 동작해서, 조용히 half-open 된 경우 기록 재전송·모먼트 재로드가 통째로 누락됐다. 두 작업은
+ * 각자 남은 일이 있으면 스스로 재시도하는 구조로 옮겼다.
+ *   - 미전송 기록: utils/meal-outbox-drain.js
+ *   - 모먼트 피드: main/moment-feed-auto-retry.js
  */
-import { hideNetworkErrorOverlay } from '../ui.js';
-import { notifyTransportOfflineUi, clearOfflineDraftFlagsOnMeals } from '../utils/mealog-offline-ui.js';
-import { db } from '../firebase.js';
+import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
 import { applyMealSyncAbandonOnOffline } from '../utils/meal-entry-pending.js';
 import { installFetchFailureAppOfflineBridge } from '../utils/network-reachability.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
@@ -15,13 +18,8 @@ import {
     startNetworkLoop,
     pokeNetworkLoop,
     markNetworkChannelDown,
-    runNetworkRecoveryNow,
-    onNetworkRecovered
+    runNetworkRecoveryNow
 } from '../utils/network-loop.js';
-import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
-
-/** waitForPendingWrites 등 쓰기 큐 flush 상한 */
-const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
 
 function mealogMainAppVisible() {
     try {
@@ -30,17 +28,6 @@ function mealogMainAppVisible() {
     } catch (_) {
         return false;
     }
-}
-
-/** half-open 연결에서 멈춘 Promise가 후속 작업을 마비시키지 않도록 하는 상한 */
-function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
-    let timer = 0;
-    const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
-    });
-    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeout]).finally(() => {
-        if (timer) clearTimeout(timer);
-    });
 }
 
 /**
@@ -67,93 +54,6 @@ export async function prepareFirestoreNetworkForManualReload(reason = 'manual-re
  */
 export async function prepareMomentFeedNetworkForReload() {
     return runNetworkRecoveryNow('moment-reload');
-}
-
-/**
- * Firestore 로컬 쓰기 큐가 비면 식사 동기화 UI(초록 도트)·삭제 완료 처리를 `reconcile`로 맞춤.
- */
-async function flushMealWriteQueueAndRefreshSyncUi() {
-    // meals 실시간 리스너가 강등(1회 조회 폴백) 상태였다면 자동 재부착
-    retryDegradedMealsListener();
-    await withTimeout(waitForPendingWrites(db), WRITE_QUEUE_FLUSH_TIMEOUT_MS);
-    try {
-        const m = await import('../utils/meal-entry-pending.js');
-        if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
-            await m.reconcileMealSyncUiAfterWriteQueueFlush();
-        }
-        if (typeof m.reconcilePendingMealDeletesWithServer === 'function') {
-            await m.reconcilePendingMealDeletesWithServer();
-        }
-        if (typeof m.reconcileStaleMealSyncDotsAgainstServer === 'function') {
-            await m.reconcileStaleMealSyncDotsAgainstServer();
-        }
-        if (typeof m.clearStuckMealPendingFlags === 'function') {
-            m.clearStuckMealPendingFlags();
-        }
-    } catch (_) {
-        /* ignore */
-    }
-    void import('../render/timeline.js').then((tl) => {
-        try {
-            tl.updateTimelineMealEntryPendingIndicators();
-        } catch (_) {
-            /* ignore */
-        }
-    });
-    try {
-        refreshMealSyncResendNavButton();
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-function retryDegradedMealsListener() {
-    void import('../utils/meals-listener-degraded.js').then((dg) => {
-        try {
-            if (typeof dg.retryMealsListenerIfDegraded === 'function') dg.retryMealsListenerIfDegraded();
-        } catch (_) {
-            /* ignore */
-        }
-    });
-}
-
-let pendingRetryAfterRecoveryInFlight = false;
-
-/**
- * 연결 복구 직후 서버 미등록(실패·abandon·register_scheduled) 식사 기록을 자동 재전송.
- * Firestore 로컬 큐에 없는 항목은 waitForPendingWrites 만으로는 올라가지 않으므로 여기서 함께 밀어준다.
- */
-async function retryPendingMealEntriesAfterRecovery() {
-    if (pendingRetryAfterRecoveryInFlight) return;
-    if (!window.currentUser || window.currentUser.isAnonymous) return;
-    pendingRetryAfterRecoveryInFlight = true;
-    try {
-        const mod = await import('../modals/entry-and-core.js');
-        if (typeof mod.retryPendingMealEntriesOnAppReady === 'function') {
-            await mod.retryPendingMealEntriesOnAppReady();
-        }
-    } catch (_) {
-        /* ignore */
-    } finally {
-        pendingRetryAfterRecoveryInFlight = false;
-    }
-}
-
-/** 루프가 채널 복구에 성공했을 때 1회 실행 */
-async function handleNetworkRecovered() {
-    try {
-        clearOfflineDraftFlagsOnMeals();
-    } catch (_) {
-        /* ignore */
-    }
-    try {
-        hideNetworkErrorOverlay();
-    } catch (_) {
-        /* ignore */
-    }
-    retryDegradedMealsListener();
-    await flushMealWriteQueueAndRefreshSyncUi();
-    await retryPendingMealEntriesAfterRecovery();
 }
 
 /** 오프라인 진입 시 공통 UI 처리 */
@@ -192,7 +92,6 @@ function handleOfflineSignal(reason) {
 /** main.js 초기화 시 한 번 호출 */
 export function registerMainNetworkListeners() {
     installFetchFailureAppOfflineBridge();
-    onNetworkRecovered(handleNetworkRecovered);
 
     window.addEventListener('offline', () => handleOfflineSignal('offline-event'));
     window.addEventListener('online', () => pokeNetworkLoop('online-event'));

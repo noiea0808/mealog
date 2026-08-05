@@ -49,8 +49,6 @@ let attemptInFlight = false;
 let watchdogTimer = 0;
 let ladderStep = 0;
 let backoffIndex = 0;
-/** 복구 전환(down → healthy) 시 1회 실행할 후속 작업들 */
-const recoveredHooks = [];
 
 function jitter(ms) {
     return Math.round(ms * (0.75 + Math.random() * 0.5));
@@ -87,11 +85,6 @@ export function isNetworkChannelDown() {
     return appState.localNetworkForcedOffline === true;
 }
 
-/** 복구 전환 시 실행할 후속 작업 등록 (기록 동기화 재맞춤·모먼트 재로드 등) */
-export function onNetworkRecovered(fn) {
-    if (typeof fn === 'function') recoveredHooks.push(fn);
-}
-
 function clearAttemptTimer() {
     if (attemptTimer) {
         clearTimeout(attemptTimer);
@@ -108,23 +101,18 @@ function scheduleAttempt(delayMs, reason) {
 }
 
 /**
- * 채널이 살아났을 때 — 사다리·백오프를 리셋하고, 죽어 있던 상태였다면 후속 작업을 1회 실행한다.
+ * 채널이 살아났을 때 — 사다리·백오프를 리셋하고 오프라인 표시를 내린다.
+ *
+ * 복구 후속 작업(기록 재전송·모먼트 재로드)은 여기서 하지 않는다. 예전에는 down → healthy
+ * '전환'일 때만 훅을 돌렸는데, 조용히 half-open 된 경우에는 오프라인으로 표시된 적이 없어
+ * 전환이 성립하지 않았다. 그래서 복구가 1회 시도로 성공할수록 후속 작업이 누락되는
+ * 역설이 있었다. 두 작업은 각자 남은 일을 보고 스스로 재시도한다.
  */
 function markHealthy() {
-    const wasDown = isNetworkChannelDown();
     ladderStep = 0;
     backoffIndex = 0;
     appState.localNetworkForcedOffline = false;
     clearAttemptTimer();
-    if (!wasDown) return;
-    for (const hook of recoveredHooks) {
-        try {
-            const r = hook();
-            if (r && typeof r.catch === 'function') r.catch(() => {});
-        } catch (_) {
-            /* 후속 작업 실패가 복구 자체를 되돌리지는 않는다 */
-        }
-    }
 }
 
 function markAttemptFailed(reason) {

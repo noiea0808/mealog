@@ -2,7 +2,6 @@
  * navigator.onLine 과 불일치할 때를 대비한 앱 로컬 네트워크 상태.
  * fetch / Firestore 쓰기 등이 끊김 계열로 실패하면 즉시 offline 으로 본다.
  */
-import { appState } from '../state.js';
 import { isLikelyNetworkTransportFailure } from '../ui.js';
 import { markNetworkChannelDown, pokeNetworkLoop, isNetworkChannelDown } from './network-loop.js';
 import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
@@ -66,11 +65,6 @@ export function tryMarkAppOfflineFromNetworkFailure(err) {
         /* ignore */
     }
     return true;
-}
-
-/** 오프라인 표시를 직접 내린다 — 사용자가 명시적으로 재전송을 누른 경로 등. 이후 판정은 루프가 이어받는다. */
-export function clearLocalNetworkForcedOffline() {
-    appState.localNetworkForcedOffline = false;
 }
 
 /**
