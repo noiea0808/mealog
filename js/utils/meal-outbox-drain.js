@@ -15,10 +15,7 @@
  */
 import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
-import {
-    countMealPendingSyncAndDeleteQueue,
-    countMealCloudFabManualRetryEntries
-} from './meal-entry-pending.js';
+import { countUnsentMealWork } from './meal-entry-pending.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import { pokeNetworkLoop } from './network-loop.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
@@ -46,13 +43,14 @@ function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
     });
 }
 
-/** 서버로 올라가지 않은 것이 남아 있는지 — 로컬 판정, 서버 읽기 없음 */
+/**
+ * 서버로 올라가지 않은 것이 남아 있는지 — 로컬 판정, 서버 읽기 없음.
+ * FAB 배지와 반드시 같은 기준을 써야 한다. 다르면 배지에 N 이 뜬 채로 눌러도 여기서
+ * 즉시 반환해 아무 일도 일어나지 않는 버튼이 된다.
+ */
 export function hasOutstandingMealWork() {
     try {
-        return (
-            countMealPendingSyncAndDeleteQueue() > 0 ||
-            countMealCloudFabManualRetryEntries() > 0
-        );
+        return countUnsentMealWork() > 0;
     } catch (_) {
         return false;
     }
@@ -70,23 +68,19 @@ function retryDegradedMealsListener() {
 
 /** Firestore 큐가 비면 동기화 표시를 서버 기준으로 맞춘다 */
 async function reconcileSyncUiAgainstServer() {
-    await withTimeout(waitForPendingWrites(db), WRITE_QUEUE_FLUSH_TIMEOUT_MS);
+    // flush 가 상한 안에 확인됐는지를 그대로 넘긴다 — 타임아웃으로 빠져나온 경우까지
+    // 「큐가 비었다」로 취급하면 아직 보내는 중인 쓰기의 inFlight 를 지우게 된다.
+    const flushed = await withTimeout(
+        waitForPendingWrites(db).then(() => true),
+        WRITE_QUEUE_FLUSH_TIMEOUT_MS,
+        false
+    );
     try {
         const m = await import('./meal-entry-pending.js');
-        if (typeof m.reconcileMealSyncUiAfterWriteQueueFlush === 'function') {
-            await m.reconcileMealSyncUiAfterWriteQueueFlush();
-        }
-        if (typeof m.reconcilePendingMealDeletesWithServer === 'function') {
-            await m.reconcilePendingMealDeletesWithServer();
-        }
-        if (typeof m.reconcileStaleMealSyncDotsAgainstServer === 'function') {
-            await m.reconcileStaleMealSyncDotsAgainstServer();
-        }
-        if (typeof m.clearStuckMealPendingFlags === 'function') {
-            m.clearStuckMealPendingFlags();
-        }
-    } catch (_) {
-        /* ignore */
+        await m.reconcileMealSyncAgainstServer({ writeQueueFlushed: flushed === true });
+        m.clearStuckMealPendingFlags();
+    } catch (e) {
+        console.warn('[meal-outbox] 서버 정합 실패:', e?.message || e);
     }
     void import('../render/timeline.js').then((tl) => {
         try {

@@ -94,14 +94,9 @@ export function isMealEntrySaveFailed(record) {
 export function isMealEntrySyncRedoable(record) {
     return mgr().isRedoable(record);
 }
-export function countMealPendingSyncAndDeleteQueue() {
-    return mgr().countPendingSyncAndDeleteQueue();
-}
-export function countMealCloudFabManualRetryEntries() {
-    return mgr().countCloudFabManualRetryEntries();
-}
-export function countMealSyncFabScheduledChipEntries() {
-    return mgr().countMealSyncFabScheduledChipEntries();
+/** 아직 서버에 올라가지 않은 기록 수 — FAB 배지·아웃박스 드레인 공용 단일 기준 */
+export function countUnsentMealWork() {
+    return mgr().countUnsentMealWork();
 }
 export function markMealEntryDeletePending(entryId) {
     mgr().markDeletePending(entryId);
@@ -134,32 +129,23 @@ export function clearStuckMealPendingFlags() {
     return mgr().clearStuckMealPendingFlags();
 }
 
-/** waitForPendingWrites 성공 직후: 스냅샷 ack 누락 시 타임라인 동기화 표시 보정 */
-export function reconcileMealSyncUiAfterWriteQueueFlush() {
-    return mgr().reconcileSyncUiAfterClientWriteQueueFlush();
-}
-
-/** 삭제 예약 고착 시 서버에 문서 없음을 확인해 레드닷·행을 정리한다. @returns {Promise<void>} */
-export function reconcilePendingMealDeletesWithServer() {
-    return mgr().reconcilePendingDeletesWithServer();
-}
-
 /**
- * 레드닷·삭제 진행 표시가 스냅샷과 어긋날 때 서버 문서 존재 여부로 보정한다.
+ * 동기화 표시를 서버 실체와 맞춘다 (ack·삭제 확정·미전송 승격 단일 패스).
+ * @param {{ writeQueueFlushed?: boolean }} [opts]
  * @returns {Promise<void>}
  */
-export async function reconcileStaleMealSyncDotsAgainstServer() {
+export async function reconcileMealSyncAgainstServer(opts = {}) {
     if (typeof window !== 'undefined' && window.currentUser && isDemoUser(window.currentUser)) return;
-    return mgr().reconcileStaleMealSyncDotsAgainstServer();
+    return mgr().reconcileMealSyncAgainstServer(opts);
 }
 
 /** meals onSnapshot 직후 연속 호출을 묶어 getDoc 폭주를 줄인다. */
-export function scheduleReconcileStaleMealSyncDotsAfterSnapshot() {
+export function scheduleMealSyncServerReconcileAfterSnapshot() {
     if (typeof window === 'undefined') return;
     if (_scheduleStaleDotsTimer) clearTimeout(_scheduleStaleDotsTimer);
     _scheduleStaleDotsTimer = window.setTimeout(() => {
         _scheduleStaleDotsTimer = null;
-        void reconcileStaleMealSyncDotsAgainstServer();
+        void reconcileMealSyncAgainstServer();
     }, 500);
 }
 
