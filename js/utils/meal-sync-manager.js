@@ -9,6 +9,7 @@
 import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
+import { isDemoUser } from '../demo-account.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -582,6 +583,27 @@ export class MealSyncManager {
     }
 
     /**
+     * 이 문서가 지금 서버에 있는가 — 「기록별 서버 ack」의 단일 확인 지점.
+     * @param {string} id
+     * @returns {Promise<boolean|null>} true=있음, false=없음, null=확인 못 함(오프라인 등)
+     */
+    async _serverDocumentExists(id) {
+        if (typeof window === 'undefined') return null;
+        const user = window.currentUser;
+        const uid = user?.uid;
+        if (!uid || user?.isAnonymous) return null;
+        // 데모 계정은 서버 대조 대상이 아니다 — 확인 없이 통과시켜 기존 동작을 유지한다.
+        if (isDemoUser(user)) return true;
+        try {
+            const snap = await getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id)));
+            return snap.exists();
+        } catch (e) {
+            console.warn('[meal-sync] 서버 문서 확인 실패:', id, e?.message || e);
+            return null;
+        }
+    }
+
+    /**
      * 동기화 표시를 서버 실체와 맞추는 단일 정합 패스.
      *
      * 예전에는 ack 보정·삭제 보정·도트 보정 셋이 따로 있었고, 같은 문서를 각자 읽으면서 대상
@@ -939,18 +961,37 @@ export class MealSyncManager {
         // 쓰기가 서버에 닿는 즉시 초록 도트로 바뀐다. 그 사이에는 syncing 으로 표시된다.
         const self = this;
         return (async () => {
+            let existsOnServer = null;
             try {
                 await waitForPendingWrites(db);
+                // 리스너가 이미 서버 스냅샷으로 ack 했으면 그것이 곧 기록별 확인이다 — 서버 읽기 생략.
+                if (self.hasServerSynced(String(mealId))) {
+                    void refreshTimelineFull(dateStr, currentTabVal);
+                    return;
+                }
+                /**
+                 * 「클라이언트 큐가 비었다」는 「내 문서가 서버에 닿았다」와 다른 말이다.
+                 * setDoc 이 큐에 들어가기 전에 상위 await 가 끊겼거나(오프라인에서 저장 직전
+                 * getDoc 이 매달리는 경로 등), 큐가 다른 이유로 비워졌으면 이 문서는 서버에
+                 * 없는데도 여기에 도달한다. 그 상태로 ack 하면 초록으로 바뀌면서 보호 표식이
+                 * 전부 풀리고, 다음 리스너 재구독 병합에서 행이 조용히 사라진다 — 사용자에게는
+                 * 「올라가지도 않고 기록이 없어졌다」로 보인다. 그래서 문서 단위로 확인한다.
+                 */
+                existsOnServer = await self._serverDocumentExists(String(mealId));
+            } catch (e) {
+                console.warn('waitForPendingWrites(동기화 표시):', e?.message || e);
+            }
+            if (existsOnServer === true) {
                 self.onServerDocumentAcknowledged(String(mealId), optimisticTempId || null);
                 void refreshTimelineFull(dateStr, currentTabVal);
-            } catch (e) {
-                console.warn('waitForPendingWrites(동기화 도트):', e?.message || e);
-                self.promoteToRegisterScheduledChip(String(mealId), {
-                    optimisticTempId: optimisticTempId || null,
-                    dateStr,
-                    currentTab: currentTabVal
-                });
+                return;
             }
+            // 서버에 없거나 확인하지 못했다 — 아웃박스에 남겨 둔다. 다음 드레인·정합이 이어받는다.
+            self.promoteToRegisterScheduledChip(String(mealId), {
+                optimisticTempId: optimisticTempId || null,
+                dateStr,
+                currentTab: currentTabVal
+            });
         })();
     }
 }

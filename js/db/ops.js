@@ -222,16 +222,24 @@ export const dbOps = {
                 try {
                     if (docId) {
                         let preservedSharedPhotos;
-                        try {
-                            const existingSnap = await getDoc(doc(coll, docId));
-                            if (existingSnap.exists() && Array.isArray(existingSnap.data()?.sharedPhotos)) {
-                                preservedSharedPhotos = existingSnap.data().sharedPhotos;
-                            }
-                        } catch (_) {
-                            /* 오프라인 등 — 기존 mealHistory 미러로 폴백 */
-                            const fromHist = window.mealHistory?.find((m) => m && m.id === docId);
-                            if (fromHist && Array.isArray(fromHist.sharedPhotos)) {
-                                preservedSharedPhotos = fromHist.sharedPhotos;
+                        /**
+                         * 신규 기록은 방금 클라이언트가 ID 를 발급했으므로 서버에 있을 수 없다.
+                         * 그런데도 getDoc 을 걸면 저장 직전에 서버 왕복이 하나 끼어들고, 반쯤 끊긴
+                         * 연결에서는 여기서 매달려 setDoc 이 큐에 들어가기도 전에 상위 타임아웃이
+                         * 먼저 터진다 — 큐에 없으니 재연결돼도 저절로 올라가지 않는다.
+                         */
+                        if (opts.isNewRecord !== true) {
+                            try {
+                                const existingSnap = await getDoc(doc(coll, docId));
+                                if (existingSnap.exists() && Array.isArray(existingSnap.data()?.sharedPhotos)) {
+                                    preservedSharedPhotos = existingSnap.data().sharedPhotos;
+                                }
+                            } catch (_) {
+                                /* 오프라인 등 — 기존 mealHistory 미러로 폴백 */
+                                const fromHist = window.mealHistory?.find((m) => m && m.id === docId);
+                                if (fromHist && Array.isArray(fromHist.sharedPhotos)) {
+                                    preservedSharedPhotos = fromHist.sharedPhotos;
+                                }
                             }
                         }
                         if (preservedSharedPhotos !== undefined) {
