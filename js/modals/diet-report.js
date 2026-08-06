@@ -179,7 +179,10 @@ function formatReportGeneratedAt(value) {
 
 function setModalVisible(visible) {
     const modal = document.getElementById('dietReportModal');
-    if (!modal) return;
+    if (!modal) {
+        console.warn('[dietReport] #dietReportModal not found in DOM');
+        return;
+    }
     const wasVisible = !modal.classList.contains('hidden');
     modal.classList.toggle('hidden', !visible);
     document.body.classList.toggle('diet-report-modal-open', visible);
@@ -515,7 +518,11 @@ export async function openDietReportModal(dateStr) {
         showToast('로그인이 필요합니다.', 'error');
         return;
     }
-    if (!isAiDietReportDateVisible(dateStr)) return;
+    if (!isAiDietReportDateVisible(dateStr)) {
+        console.warn('[dietReport] date not visible for report', { dateStr, today: toLocalDateString(new Date()) });
+        showToast('이 날짜는 아직 리포트를 볼 수 없어요.', 'info');
+        return;
+    }
 
     _currentDate = dateStr;
     const title = document.getElementById('dietReportModalTitle');
@@ -898,12 +905,14 @@ document.getElementById('dietReportSnsShareBtn')?.addEventListener('click', () =
     void shareDietReportToSns();
 });
 
-const _dietReportTimelineBound = new WeakMap();
+let _dietReportTimelineBound = false;
+/** #timelineContainer 자체가 아닌 document에 위임 — 일간 스와이프 등으로 컨테이너 리스너가 무반응이 되는 케이스 대비 (timeline.js의 ensureTimelineOpenModalDelegation과 동일 패턴) */
 function bindDietReportTimelineDelegation() {
-    const root = document.getElementById('timelineContainer');
-    if (!root || _dietReportTimelineBound.has(root)) return;
-    _dietReportTimelineBound.set(root, true);
-    root.addEventListener('click', (e) => {
+    if (_dietReportTimelineBound) return;
+    _dietReportTimelineBound = true;
+    document.addEventListener('click', (e) => {
+        const root = document.getElementById('timelineContainer');
+        if (!root) return;
         const btn = e.target.closest('button[data-mealog-diet-report]');
         if (!btn || !root.contains(btn)) return;
         const dateStr = btn.getAttribute('data-mealog-date') || '';
