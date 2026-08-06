@@ -9,6 +9,7 @@
 import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
+import { isDemoUser } from '../demo-account.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -567,185 +568,136 @@ export class MealSyncManager {
         this._bump();
     }
 
-    /**
-     * 클라이언트 쓰기 큐가 비었는데도 스냅샷이 fromCache 등으로 ack를 놓치면 await_server_ack·pending이 남는다.
-     * waitForPendingWrites 직후에만 호출한다.
-     * 서버에 meal 문서가 실제로 있을 때만 ack — 로컬만 앞서 간 상태에서 초록으로 잘못 올라가는 것을 막는다.
-     * @returns {Promise<void>}
-     */
-    async reconcileSyncUiAfterClientWriteQueueFlush() {
-        if (typeof window === 'undefined') return;
-        // 연결 상태 boolean 으로 게이트하지 않는다. navigator.onLine 이 그랬듯,
-        // 값이 틀리면 정합이 통째로 막힌다. 실제로 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
-        const hist = window.mealHistory;
-        if (!Array.isArray(hist) || hist.length === 0) return;
-        // waitForPendingWrites 직후에도 inFlight 플래그만 남아 '등록 중' 레드닷이 고착되는 경우가 있음
-        // (오프라인 저장 직후 이벤트 순서로 등록예정 칩으로 승격되지 않은 경로 등). 큐는 비었으므로 정리 후 ack.
+    /** 쓰기 큐가 비었는데도 inFlight 만 남아 '보내는 중' 표시가 고착되는 경우 정리 */
+    _clearStuckInFlightFlags() {
+        const hist = Array.isArray(window.mealHistory) ? window.mealHistory : [];
         for (const m of hist) {
             if (!m?.id) continue;
             const id = String(m.id);
             if (id.startsWith('temp_')) continue;
             if (this.hasErrorId(id)) continue;
             if (m._localSaveFailed === true || m.is_sync_error === true) continue;
-            if (this.isDeleting(m)) continue;
-            if (this.isDeleteFailed(m)) continue;
-            if (this.hasInFlight(id) && !this._registerScheduledChip.has(id)) {
-                this.clearInFlight(id);
-            }
+            if (this.isDeleting(m) || this.isDeleteFailed(m)) continue;
+            if (this.hasInFlight(id) && !this._registerScheduledChip.has(id)) this.clearInFlight(id);
         }
-
-        const uid = window.currentUser?.uid;
-        const candidates = [];
-        const seenCand = new Set();
-        for (const m of hist) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_')) continue;
-            if (this.hasErrorId(id)) continue;
-            if (m._localSaveFailed === true || m.is_sync_error === true) continue;
-            if (this.isDeleting(m)) continue;
-            if (this.isDeleteFailed(m)) continue;
-            if (mealRecordHasBase64PendingPhotos(m)) continue;
-            const slotKey = `${m.date || ''}__${m.slotId || ''}`;
-            if (this.hasPendingPhotoEntry(id) || this.hasPendingPhotoSlot(slotKey)) continue;
-            // 서버 반영이 확인되지 않았고 지금 보내는 중도 아닌 것만 대조 대상
-            if (this.getRowSyncLeadKind(m) !== 'syncing') continue;
-            if (this.hasInFlight(id)) continue;
-            if (!seenCand.has(id)) {
-                seenCand.add(id);
-                candidates.push(id);
-            }
-        }
-
-        if (candidates.length === 0) return;
-        if (!uid) return;
-
-        await Promise.all(
-            candidates.map(async (id) => {
-                try {
-                    const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
-                    const snap = await getDocFromServer(ref);
-                    if (snap.exists()) {
-                        this.onServerDocumentAcknowledged(id, null);
-                    }
-                } catch (e) {
-                    console.warn('reconcileSyncUi server verify:', id, e?.message || e);
-                }
-            })
-        );
     }
 
     /**
-     * 삭제 예약/진행이 스냅샷 removed·메타 누락으로 고착될 때, 서버에 meal 문서가 없으면 삭제 완료로 맞춘다.
-     * `waitForPendingWrites` 직후에만 호출한다.
+     * 이 문서가 지금 서버에 있는가 — 「기록별 서버 ack」의 단일 확인 지점.
+     * @param {string} id
+     * @returns {Promise<boolean|null>} true=있음, false=없음, null=확인 못 함(오프라인 등)
+     */
+    async _serverDocumentExists(id) {
+        if (typeof window === 'undefined') return null;
+        const user = window.currentUser;
+        const uid = user?.uid;
+        if (!uid || user?.isAnonymous) return null;
+        // 데모 계정은 서버 대조 대상이 아니다 — 확인 없이 통과시켜 기존 동작을 유지한다.
+        if (isDemoUser(user)) return true;
+        try {
+            const snap = await getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id)));
+            return snap.exists();
+        } catch (e) {
+            console.warn('[meal-sync] 서버 문서 확인 실패:', id, e?.message || e);
+            return null;
+        }
+    }
+
+    /**
+     * 동기화 표시를 서버 실체와 맞추는 단일 정합 패스.
+     *
+     * 예전에는 ack 보정·삭제 보정·도트 보정 셋이 따로 있었고, 같은 문서를 각자 읽으면서 대상
+     * 선정 기준만 조금씩 달랐다. 표시를 3가지로 축약(2fb7cbb)할 때 그중 하나는 결과 적용 필터가
+     * 옛 이름('pending'·'await_server_ack'·'delete_scheduled')에 남아, 서버를 읽고도 아무것도
+     * 반영하지 않는 채 죽어 있었다. 기준이 다시 갈라질 수 없도록 하나로 합친다 — 문서당 서버
+     * 읽기도 3회에서 1회로 줄어든다.
+     *
+     * 연결 상태 boolean 으로 게이트하지 않는다. 실제로 오프라인이면 서버 읽기가 실패하고, 그
+     * 문서만 조용히 건너뛰어 다음 패스가 이어받는다.
+     *
+     * @param {{ writeQueueFlushed?: boolean }} [opts] 쓰기 큐 flush 가 확인된 직후인지.
+     *   확인됐을 때만 inFlight 고착을 정리한다 — 아직 보내는 중인 쓰기를 지우지 않기 위해.
      * @returns {Promise<void>}
      */
-    async reconcilePendingDeletesWithServer() {
+    async reconcileMealSyncAgainstServer(opts = {}) {
         if (typeof window === 'undefined') return;
-        // 연결 상태 boolean 으로 게이트하지 않는다 — 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
         const uid = window.currentUser?.uid;
         if (!uid || window.currentUser?.isAnonymous) return;
 
-        const idSet = new Set();
-        for (const k of this._deletePending.keys()) idSet.add(String(k));
-        for (const k of this._deleteInFlight.keys()) idSet.add(String(k));
-        if (Array.isArray(window.mealHistory)) {
-            for (const m of window.mealHistory) {
-                if (!m?.id) continue;
-                const sid = String(m.id);
-                if (sid.startsWith('temp_')) continue;
-                if (this._deletePending.has(sid) || this._deleteInFlight.has(sid)) idSet.add(sid);
-            }
-        }
-        if (idSet.size === 0) return;
+        if (opts.writeQueueFlushed === true) this._clearStuckInFlightFlags();
 
-        const { applyOptimisticMealDelete } = await import('./meal-delete-optimistic.js');
+        /** 서버 읽기 사이에 mealHistory 가 교체될 수 있으므로 매번 새로 읽는다 */
+        const rowById = (id) => {
+            const arr = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+            return arr.find((m) => m && String(m.id) === id) || null;
+        };
 
-        for (const id of idSet) {
+        /** @type {Map<string, { deleting: boolean, record: * }>} */
+        const targets = new Map();
+
+        // 삭제 예약·진행 — 행이 이미 화면에서 사라진 경우도 있으므로 맵에서 직접 모은다
+        for (const key of [...this._deletePending.keys(), ...this._deleteInFlight.keys()]) {
+            const id = String(key);
             if (!id || id.startsWith('temp_')) continue;
-            try {
-                const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
-                const snap = await getDocFromServer(ref);
-                if (snap.exists()) continue;
-            } catch (_) {
+            targets.set(id, { deleting: true, record: rowById(id) });
+        }
+
+        // 서버 반영이 확인되지 않은 행
+        const hist = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+        for (const m of hist) {
+            if (!m?.id) continue;
+            const id = String(m.id);
+            if (id.startsWith('temp_') || targets.has(id)) continue;
+            if (this.isDeleting(m)) {
+                targets.set(id, { deleting: true, record: m });
                 continue;
             }
-
-            const prev =
-                Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
-            this.markDeleteComplete(id);
-            this.clearDeleteFailed(id);
-            if (prev) applyOptimisticMealDelete(id, prev);
+            if (this.isDeleteFailed(m)) continue;
+            if (this.hasErrorId(id)) continue;
+            if (m._localSaveFailed === true || m.is_sync_error === true) continue;
+            if (this.hasInFlight(id)) continue; // 지금 보내는 중 — 결과를 기다린다
+            if (mealPhotosHaveBase64(m)) continue;
+            const slotKey = `${m.date || ''}__${m.slotId || ''}`;
+            if (this.hasPendingPhotoEntry(id) || this.hasPendingPhotoSlot(slotKey)) continue;
+            if (this.getRowSyncLeadKind(m) !== 'syncing') continue;
+            targets.set(id, { deleting: false, record: m });
         }
-    }
 
-    /**
-     * 스냅샷 메타(hasPendingWrites·fromCache)와 어긋나 레드닷·삭제 표시가 고착된 경우,
-     * getDocFromServer으로 서버 실체와 맞춘다.
-     * @returns {Promise<void>}
-     */
-    async reconcileStaleMealSyncDotsAgainstServer() {
-        if (typeof window === 'undefined') return;
-        // 연결 상태 boolean 으로 게이트하지 않는다 — 오프라인이면 아래 서버 읽기가 실패해 자연히 건너뛴다.
-        const uid = window.currentUser?.uid;
-        if (!uid || window.currentUser?.isAnonymous) return;
-        const hist = window.mealHistory;
-        if (!Array.isArray(hist) || hist.length === 0) return;
-
-        const tasks = [];
-        const seen = new Set();
-        for (const m of hist) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_') || seen.has(id)) continue;
-            const kind = this.getRowSyncLeadKind(m);
-            if (kind !== 'syncing') continue;
-            seen.add(id);
-            tasks.push({ id, kind, record: m });
-        }
-        if (tasks.length === 0) return;
-
-        const { applyOptimisticMealDelete } = await import('./meal-delete-optimistic.js');
+        if (targets.size === 0) return;
 
         const reads = await Promise.all(
-            tasks.map(async ({ id, kind, record }) => {
+            [...targets.entries()].map(async ([id, t]) => {
                 try {
                     const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
                     const snap = await getDocFromServer(ref);
-                    return { id, kind, record, exists: snap.exists() };
+                    return { id, deleting: t.deleting, record: t.record, exists: snap.exists() };
                 } catch (e) {
-                    console.warn('reconcileStaleMealSyncDotsAgainstServer read:', id, e?.message || e);
-                    return { id, kind, record, exists: null };
+                    console.warn('[meal-sync] 서버 정합 읽기 실패:', id, e?.message || e);
+                    return { id, deleting: t.deleting, record: t.record, exists: null };
                 }
             })
         );
 
-        const deletes = reads.filter(
-            (r) => r.exists === false && (r.kind === 'delete_scheduled' || r.kind === 'delete_inflight')
-        );
-        const acks = reads.filter(
-            (r) => r.exists === true && (r.kind === 'pending' || r.kind === 'await_server_ack')
-        );
-        const fallbacks = reads.filter(
-            (r) => r.exists === false && (r.kind === 'pending' || r.kind === 'await_server_ack')
-        );
+        const { applyOptimisticMealDelete } = await import('./meal-delete-optimistic.js');
 
-        for (const r of deletes) {
-            const prev = window.mealHistory?.find((m) => m && String(m.id) === r.id);
-            this.markDeleteComplete(r.id);
-            this.clearDeleteFailed(r.id);
-            if (prev) applyOptimisticMealDelete(r.id, prev);
-        }
-
-        for (const r of acks) {
-            this.onServerDocumentAcknowledged(r.id, null);
-        }
-
-        for (const r of fallbacks) {
-            this.promoteToRegisterScheduledChip(r.id, {
-                dateStr: r.record?.date,
-                currentTab: appState.currentTab
-            });
+        for (const r of reads) {
+            if (r.exists === null) continue; // 읽지 못함 — 다음 패스가 이어받는다
+            if (r.deleting) {
+                if (r.exists) continue; // 아직 서버에 있다 — 삭제가 나가지 않았다
+                const prev = rowById(r.id);
+                this.markDeleteComplete(r.id);
+                this.clearDeleteFailed(r.id);
+                if (prev) applyOptimisticMealDelete(r.id, prev);
+                continue;
+            }
+            if (r.exists) {
+                this.onServerDocumentAcknowledged(r.id, null);
+            } else {
+                this.promoteToRegisterScheduledChip(r.id, {
+                    dateStr: r.record?.date,
+                    currentTab: appState.currentTab
+                });
+            }
         }
     }
 
@@ -895,63 +847,41 @@ export class MealSyncManager {
         return this.isDeleting(record);
     }
 
-    countCloudFabManualRetryEntries() {
+    /**
+     * 아직 서버에 올라가지 않은 기록 수 — FAB 배지와 아웃박스 드레인이 같은 값을 본다.
+     *
+     * 예전에는 배지(등록예정 칩 기준)와 드레인 발동(칩·inFlight·실패 기준)이 서로 다른 집합을
+     * 세서, 배지에 N 이 떠 있는데 눌러도 드레인이 「남은 일 없음」으로 즉시 반환하는 조합이
+     * 생길 수 있었다. 사용자에게는 눌러도 아무 일도 안 일어나는 버튼으로 보인다.
+     *
+     * 기준은 행에 이미 그리고 있는 표시 그대로다 — synced 가 아니면 남은 일이다. 보내는 중
+     * (inFlight)도 뺄 수 없다: 그 표식이 고착되면 기록이 배지에서 사라져 사용자가 손쓸 방법이
+     * 없어진다. 실제로 다시 밀어 올릴지는 드레인이 기록별로 isRetryEligible 로 정한다.
+     */
+    countUnsentMealWork() {
         if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const seen = new Set();
-        let n = 0;
-        for (const m of window.mealHistory) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_')) continue;
-            if (seen.has(id)) continue;
-            if (this.isRedoable(m) || this.isDeleteFailed(m)) {
-                seen.add(id);
-                n++;
-            }
-        }
-        return n;
-    }
-
-    /** FAB 배지: 등록예정·삭제예정 칩 건수 */
-    countMealSyncFabScheduledChipEntries() {
-        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const seen = new Set();
-        let n = 0;
-        for (const m of window.mealHistory) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_')) continue;
-            if (seen.has(id)) continue;
-            if (this.getRowSyncLeadKind(m) === 'syncing') {
-                seen.add(id);
-                n++;
-            }
-        }
         const hist = window.mealHistory;
-        for (const id of this._deletePending.keys()) {
-            const sid = String(id);
-            if (!sid || sid.startsWith('temp_') || seen.has(sid)) continue;
-            if (hist.some((m) => m && String(m.id) === sid)) continue;
-            seen.add(sid);
+        const seen = new Set();
+        let n = 0;
+        for (const m of hist) {
+            if (!m?.id) continue;
+            const id = String(m.id);
+            if (id.startsWith('temp_') || seen.has(id)) continue;
+            const kind = this.getRowSyncLeadKind(m);
+            if (kind === 'syncing' || kind === 'failed') {
+                seen.add(id);
+                n++;
+            }
+        }
+        // 행이 화면에서 사라진 삭제 예약도 아직 남은 일이다
+        for (const key of this._deletePending.keys()) {
+            const id = String(key);
+            if (!id || id.startsWith('temp_') || seen.has(id)) continue;
+            if (hist.some((m) => m && String(m.id) === id)) continue;
+            seen.add(id);
             n++;
         }
         return n;
-    }
-
-    countPendingSyncAndDeleteQueue() {
-        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const seen = new Set();
-        let c = 0;
-        for (const m of window.mealHistory) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (seen.has(id)) continue;
-            if (this.isPendingSync(m) || this.isDeleting(m)) {
-                seen.add(id);
-                c++;
-            }
-        }
-        return c;
     }
 
     /**
@@ -1031,18 +961,37 @@ export class MealSyncManager {
         // 쓰기가 서버에 닿는 즉시 초록 도트로 바뀐다. 그 사이에는 syncing 으로 표시된다.
         const self = this;
         return (async () => {
+            let existsOnServer = null;
             try {
                 await waitForPendingWrites(db);
+                // 리스너가 이미 서버 스냅샷으로 ack 했으면 그것이 곧 기록별 확인이다 — 서버 읽기 생략.
+                if (self.hasServerSynced(String(mealId))) {
+                    void refreshTimelineFull(dateStr, currentTabVal);
+                    return;
+                }
+                /**
+                 * 「클라이언트 큐가 비었다」는 「내 문서가 서버에 닿았다」와 다른 말이다.
+                 * setDoc 이 큐에 들어가기 전에 상위 await 가 끊겼거나(오프라인에서 저장 직전
+                 * getDoc 이 매달리는 경로 등), 큐가 다른 이유로 비워졌으면 이 문서는 서버에
+                 * 없는데도 여기에 도달한다. 그 상태로 ack 하면 초록으로 바뀌면서 보호 표식이
+                 * 전부 풀리고, 다음 리스너 재구독 병합에서 행이 조용히 사라진다 — 사용자에게는
+                 * 「올라가지도 않고 기록이 없어졌다」로 보인다. 그래서 문서 단위로 확인한다.
+                 */
+                existsOnServer = await self._serverDocumentExists(String(mealId));
+            } catch (e) {
+                console.warn('waitForPendingWrites(동기화 표시):', e?.message || e);
+            }
+            if (existsOnServer === true) {
                 self.onServerDocumentAcknowledged(String(mealId), optimisticTempId || null);
                 void refreshTimelineFull(dateStr, currentTabVal);
-            } catch (e) {
-                console.warn('waitForPendingWrites(동기화 도트):', e?.message || e);
-                self.promoteToRegisterScheduledChip(String(mealId), {
-                    optimisticTempId: optimisticTempId || null,
-                    dateStr,
-                    currentTab: currentTabVal
-                });
+                return;
             }
+            // 서버에 없거나 확인하지 못했다 — 아웃박스에 남겨 둔다. 다음 드레인·정합이 이어받는다.
+            self.promoteToRegisterScheduledChip(String(mealId), {
+                optimisticTempId: optimisticTempId || null,
+                dateStr,
+                currentTab: currentTabVal
+            });
         })();
     }
 }

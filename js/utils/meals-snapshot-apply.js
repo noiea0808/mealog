@@ -24,7 +24,7 @@ import {
     markMealEntryServerSynced,
     markMealEntryDeleteComplete,
     onMealDocFirestoreServerAcknowledged,
-    scheduleReconcileStaleMealSyncDotsAfterSnapshot
+    scheduleMealSyncServerReconcileAfterSnapshot
 } from './meal-entry-pending.js';
 import { applyOptimisticMealDelete } from './meal-delete-optimistic.js';
 import { showToast } from '../ui.js';
@@ -264,7 +264,7 @@ export function applyMealsSnapshotPrimary(p) {
                  * 우리 큐에 남아 있는 우리 삭제이므로 행을 유지한다(삭제예정 칩). 앱 전역의 「오프라인
                  * 인가」를 따로 볼 필요가 없다. 이벤트별 출처는 고착되지도, 틀리지도 않는다.
                  * 큐가 서버에 닿으면 hasPendingWrites 가 내려가고, 그때 확정된다. 오프라인 중에 큐만
-                 * 비워진 경우는 meal-outbox-drain 의 reconcilePendingMealDeletesWithServer 가 맞춘다.
+                 * 비워진 경우는 reconcileMealSyncAgainstServer 가 서버 실체를 보고 맞춘다.
                  */
                 const serverAckedRemove = mealDocSnapshotAppearsServerAcked(meta, {
                     allowFromCacheAck: true
@@ -468,7 +468,7 @@ export function applyMealsSnapshotPrimary(p) {
         }
     }
     if (!demo) {
-        scheduleReconcileStaleMealSyncDotsAfterSnapshot();
+        scheduleMealSyncServerReconcileAfterSnapshot();
     }
     return { uidMismatch: false };
 }
@@ -532,7 +532,7 @@ export function applyMealsOneTimeFetchResult(p) {
     window.__mealogMealsWindowFullyLoaded = snap.docs.length < fetchLimit;
     mergeStatsIntoDaily();
     if (onDataUpdate) notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });
-    scheduleReconcileStaleMealSyncDotsAfterSnapshot();
+    scheduleMealSyncServerReconcileAfterSnapshot();
     return { uidMismatch: false };
 }
 

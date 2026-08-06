@@ -10,10 +10,7 @@
  * 아웃박스를 비운다. 다 올라가면 FAB 는 스스로 사라진다.
  */
 import { isDemoUser } from '../demo-account.js';
-import {
-    countMealCloudFabManualRetryEntries,
-    countMealSyncFabScheduledChipEntries
-} from '../utils/meal-entry-pending.js';
+import { countUnsentMealWork } from '../utils/meal-entry-pending.js';
 import { showToast } from '../ui.js';
 import { appState } from '../state.js';
 import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
@@ -50,18 +47,13 @@ function syncInitialRecordsLoadFabStacked() {
     }
 }
 
-/** 아직 서버에 올라가지 않은 기록 수 — 등록예정·삭제예정 칩과 실패 항목 */
-function unsentMealCount() {
-    const scheduled = countMealSyncFabScheduledChipEntries();
-    return scheduled > 0 ? scheduled : countMealCloudFabManualRetryEntries();
-}
-
 export function refreshMealSyncResendNavButton() {
     const btn = document.getElementById('mealSyncResendBtn');
     const badge = document.getElementById('mealSyncResendBadge');
     if (!btn) return;
     const u = window.currentUser;
-    const n = !u || u.isAnonymous || isDemoUser(u) ? 0 : unsentMealCount();
+    // 배지와 드레인은 반드시 같은 기준을 본다 (countUnsentMealWork 단일 소스)
+    const n = !u || u.isAnonymous || isDemoUser(u) ? 0 : countUnsentMealWork();
 
     btn.classList.remove('meal-sync-resend-fab--transport-offline');
     if (n <= 0) {
