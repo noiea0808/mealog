@@ -13,6 +13,7 @@
  *   2. 앱이 백그라운드에 있다가 돌아온 경우
  */
 import { appState } from '../state.js';
+import { pokeNetworkLoop } from '../utils/network-loop.js';
 
 /** 재시도 간격 — 마지막 값에서 고정. 화면에 계속 떠 있어도 부담되지 않는 수준으로 둔다. */
 const BACKOFF_MS = [5000, 10000, 20000, 40000, 60000];
@@ -50,6 +51,11 @@ async function attemptQuietReload() {
         retryInFlight = false;
     }
     if (appState.galleryFeedNetworkError === true) {
+        // 「읽고 싶은 것이 있는데 계속 실패한다」도 채널을 찔러야 할 이유다.
+        // 아웃박스는 보낼 것이 남았을 때만 찌르므로, 미전송 기록 없이 모먼트만 보던 사용자가
+        // 조용히 끊긴(half-open) 채널에 걸리면 아무도 채널을 되살리지 않아 끊김 화면에 갇힌다.
+        // pokeNetworkLoop 는 자체 간격 제한이 있어 매 재시도마다 불러도 비용이 없다.
+        pokeNetworkLoop('moment-retry-failed');
         const delay = BACKOFF_MS[Math.min(backoffIndex, BACKOFF_MS.length - 1)];
         backoffIndex += 1;
         nextAttemptAt = Date.now() + delay;
