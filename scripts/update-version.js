@@ -9,10 +9,25 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const VERSION_JSON = path.join(ROOT, 'version.json');
 const PRODUCTION_RELEASE_JSON = path.join(ROOT, 'production-release.json');
+
+// versionCode = git 커밋 수 + 오프셋. 여러 작업환경이 각자 로컬에서 +1씩 증가시키던
+// 방식은 같은 시점에 서로 다른 값으로 갈라져 병합 충돌을 유발했음.
+// 커밋 수는 같은 HEAD에서는 어느 환경에서 빌드하든 항상 같은 값이 나오므로 충돌이 사라짐.
+// 오프셋은 2026-08-06 전환 시점 값(커밋 725개 → versionCode 482)에 맞춰 연속성만 보정한 상수.
+const VERSION_CODE_OFFSET = -243;
+
+function getCommitCount() {
+    try {
+        return parseInt(execSync('git rev-list --count HEAD', { cwd: ROOT }).toString().trim(), 10);
+    } catch {
+        return null;
+    }
+}
 
 function loadJson(filePath, defaultVal = {}) {
     try {
@@ -66,12 +81,15 @@ function nextStagingVersion(current) {
 
 function run(mode) {
     const current = loadJson(VERSION_JSON, { version: '1.0.0', versionCode: 1, buildDate: nowISO() });
-    // INSTALL_FAILED_VERSION_DOWNGRADE: 기기에 더 큰 versionCode가 있으면 version.json versionCode를 그보다 크게 맞추거나 MEALOG_MIN_VERSION_CODE=185 형태로 한 번 빌드.
-    const bumped = Math.max(1, (current.versionCode || 0) + 1);
+    // INSTALL_FAILED_VERSION_DOWNGRADE: 기기에 더 큰 versionCode가 있으면 MEALOG_MIN_VERSION_CODE=185 형태로 한 번 빌드해 강제로 맞춘다.
+    const commitCount = getCommitCount();
+    const derivedCode = commitCount != null ? commitCount + VERSION_CODE_OFFSET : null;
     const envRaw = process.env.MEALOG_MIN_VERSION_CODE;
     const envParsed = envRaw != null && String(envRaw).trim() !== '' ? parseInt(envRaw, 10) : NaN;
     const envMin = Number.isFinite(envParsed) && envParsed > 0 ? envParsed : 0;
-    const nextCode = Math.max(bumped, envMin);
+    // git 커밋 수를 못 구하면(예: git 없는 CI 아카이브) 기존 방식으로 안전하게 +1 폴백.
+    const floor = Math.max(1, current.versionCode || 0, envMin);
+    const nextCode = derivedCode != null ? Math.max(derivedCode, floor) : floor + 1;
 
     if (mode === 'production') {
         const nextVer = nextProductionVersion(current.version);
