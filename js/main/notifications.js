@@ -76,6 +76,9 @@ window.pushMomentMentionNotification = (postId, actorNickname, atMs) => {
 let notificationReadStateCache = null;
 /** 캐시가 어떤 사용자 것인지 (사용자 전환 시 캐시 무효화) */
 let notificationReadStateCacheUid = null;
+/** true여야만 Firestore getDoc 성공으로 얻은 "완전한" 상태 — false인 동안은 setNotificationReadState가 서버에 쓰지 않음
+ *  (로드 실패로 비어있는/불완전한 캐시를 그대로 저장하면 merge:true라도 data 필드 전체가 덮어써져 기존 읽음 이력이 통째로 사라짐) */
+let notificationReadStateAuthoritative = false;
 
 /** localStorage 파싱만 (마이그레이션용). 반환: { "type:postId": { lastCommentAt, commentCount } } */
 function parseLocalNotificationReadState() {
@@ -99,11 +102,13 @@ async function ensureNotificationReadStateLoaded() {
     if (user && !user.isAnonymous && notificationReadStateCacheUid !== user.uid) {
         notificationReadStateCache = null;
         notificationReadStateCacheUid = null;
+        notificationReadStateAuthoritative = false;
     }
     if (notificationReadStateCache !== null) return;
     if (!user || user.isAnonymous) {
         notificationReadStateCache = {};
         notificationReadStateCacheUid = null;
+        notificationReadStateAuthoritative = false;
         return;
     }
     try {
@@ -130,10 +135,15 @@ async function ensureNotificationReadStateLoaded() {
         }
         notificationReadStateCache = state && typeof state === 'object' ? state : {};
         notificationReadStateCacheUid = user.uid;
+        notificationReadStateAuthoritative = true;
     } catch (e) {
-        console.warn('알림 읽음 상태 Firestore 로드 실패:', e);
+        console.warn('알림 읽음 상태 Firestore 로드 실패(이번 렌더링에만 임시 값 사용, 다음 조회 시 재시도):', e);
+        // uid를 확정하지 않아 다음 ensureNotificationReadStateLoaded() 호출 시 캐시가 무효화되어 재시도됨.
+        // authoritative=false인 동안 setNotificationReadState는 저장을 건너뛰므로, 이 불완전한 값으로
+        // Firestore의 기존 읽음 이력을 덮어쓰는 일이 없음.
         notificationReadStateCache = parseLocalNotificationReadState();
-        notificationReadStateCacheUid = user.uid;
+        notificationReadStateCacheUid = null;
+        notificationReadStateAuthoritative = false;
     }
 }
 
@@ -141,6 +151,7 @@ async function ensureNotificationReadStateLoaded() {
 window.clearNotificationReadStateCache = () => {
     notificationReadStateCache = null;
     notificationReadStateCacheUid = null;
+    notificationReadStateAuthoritative = false;
     _notificationMergedCache = null;
     notificationListActiveTab = 'unread';
 };
@@ -159,6 +170,12 @@ async function setNotificationReadState(state) {
     notificationReadStateCache = state;
     const user = window.currentUser;
     if (!user || user.isAnonymous) return;
+    if (!notificationReadStateAuthoritative) {
+        // Firestore 로드가 실패한 상태에서 저장하면 불완전한 값(예: 빈 객체)이 서버 문서의 data 필드를
+        // 통째로 덮어써 기존 읽음 이력이 사라진다. 이번 변경은 화면에만 반영하고 서버 저장은 건너뛴다.
+        console.warn('알림 읽음 상태가 서버와 동기화되지 않아 이번 변경은 저장하지 않습니다.');
+        return;
+    }
     let toSave;
     try {
         toSave = JSON.parse(JSON.stringify(state));
