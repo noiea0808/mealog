@@ -437,6 +437,10 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const photosWithUrl = (photoGroup || []).filter((p) => String(p?.photoUrl || '').trim());
     const n = photosWithUrl.length;
     const leadPhoto = photosWithUrl[0] || photoGroup[0];
+    /** 라이트박스(탭 확대)용 원본 URL 목록 — post-group-html의 `.gallery-photo-scroll[data-moment-urls]`와 동일 규칙 */
+    const momentUrlsEncoded = encodeURIComponent(
+        JSON.stringify(photosWithUrl.map((p) => p.photoUrl).filter(Boolean))
+    );
 
     const labelsPayload = buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, {
         mealHistoryMap,
@@ -466,7 +470,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             .map((p, idx) => {
                 const block = buildV2RawPhotoBlock(p, idx, normalizePhotoAspectForDisplay(p, ar));
                 if (!block) return '';
-                return `<div class="moment-v2-h-slide" data-moment-h-i="${idx}">${block}</div>`;
+                return `<div class="moment-v2-h-slide" data-moment-h-i="${idx}" data-moment-i="${idx}">${block}</div>`;
             })
             .filter(Boolean)
             .join('');
@@ -486,7 +490,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         </div>
     </div>
 </div>`;
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}" data-moment-urls="${momentUrlsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
@@ -522,7 +526,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 </div>`;
     }
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}" data-moment-urls="${momentUrlsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>

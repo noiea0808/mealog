@@ -1,7 +1,8 @@
 /**
  * 모먼트(갤러리) 공유 사진 — 사진 탭으로 전체 화면 확대
  * 다중 장: 좌우 스와이프로 전환 · 두 손가락 핀치로 확대/축소
- * post-group-html: .gallery-photo-scroll[data-moment-urls], 슬라이드 [data-moment-i]
+ * v1(post-group-html): .gallery-photo-scroll[data-moment-urls], 슬라이드 [data-moment-i]
+ * v2(휠, moment-feed-v2): .moment-feed-v2-scope[data-moment-urls], 슬라이드 [data-moment-i]
  */
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
@@ -369,10 +370,9 @@ export function ensureMomentImageLightbox() {
         if (e.target.closest?.('.feed-options-btn')) return;
         const imgHit = e.target.closest?.('.moment-feed-photo');
         if (!imgHit) return;
-        /* 화면2(모먼트 보기 2): 캐러셀·휠과 겹침 방지 — 탭 확대(라이트박스) 비활성 */
-        if (imgHit.closest?.('.moment-feed-v2-scope')) return;
 
-        const scroll = imgHit.closest?.('.gallery-photo-scroll');
+        /** v1: .gallery-photo-scroll[data-moment-urls] · v2(휠): .moment-feed-v2-scope[data-moment-urls] */
+        const scroll = imgHit.closest?.('[data-moment-urls]');
         if (!scroll || !root.contains(scroll)) return;
 
         const slide = imgHit.closest?.('[data-moment-i]');
