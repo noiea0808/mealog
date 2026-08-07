@@ -359,11 +359,11 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
             <div class="flex h-full w-full max-w-md min-h-0 flex-col">
                 <div class="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 pb-1 pt-[max(0.5rem,env(safe-area-inset-top))]">
                     <h2 id="momentImageLightboxTitle" class="sr-only">모먼트 사진</h2>
-                    <span class="text-xs font-medium text-white/80">모먼트</span>
-                    <span data-moment-lb-counter class="hidden min-w-[3rem] flex-1 text-center text-xs font-bold text-white/90 tabular-nums sm:flex-none"></span>
+                    <span class="text-sm font-bold text-white/80">모먼트</span>
+                    <span data-moment-lb-counter class="hidden min-w-[3rem] flex-1 text-center text-sm font-bold text-white/90 tabular-nums sm:flex-none"></span>
                     <div class="ml-auto flex flex-shrink-0 items-center">
-                        <button type="button" data-moment-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/50 bg-black/65 text-white shadow-lg backdrop-blur-sm transition-colors hover:bg-black/80 active:scale-95" aria-label="닫기">
-                            <i data-lucide="x" class="text-lg leading-none" aria-hidden="true"></i>
+                        <button type="button" data-moment-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center text-white transition-opacity hover:opacity-70 active:opacity-50" aria-label="닫기">
+                            <i data-lucide="x" class="drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] text-xl leading-none" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>

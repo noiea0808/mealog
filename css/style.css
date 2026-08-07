@@ -17542,12 +17542,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: var(--shell-ink) !important;
     backdrop-filter: none !important;
 }
-/* 사진 배경이 밝아도 묻히지 않도록 타임라인 사진 팝업의 닫기 버튼과 동일한 톤(불투명 어두운 원)으로 통일 */
+/* 원형 배경 없이 X만 노출 — 사진 배경이 밝아도 묻히지 않도록 아이콘에 그림자만 */
 #momentImageLightbox [data-moment-lb-close] {
-    background: rgba(0, 0, 0, 0.65) !important;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    border-radius: 9999px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    background: transparent !important;
+    border: none;
 }
 #feedImageLightbox button[aria-label="닫기"] {
     background: rgba(255, 255, 255, 0.14) !important;
