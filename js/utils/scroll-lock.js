@@ -12,6 +12,8 @@ const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#attendancePopup:not(.hidden)',
     '#timelineMealPhotosOverlay:not(.hidden)',
     '#momentImageLightbox:not(.hidden)',
+    '#signupWizard:not(.hidden)',
+    '#serviceGuideOverlay:not(.hidden)',
     '[id$="Modal"]:not(.hidden)',
     '[id$="Popup"]:not(.hidden)'
 ].join(', ');
@@ -167,4 +169,9 @@ export function unlockBodyScroll(owner = 'default') {
     lockOwners.delete(key);
     if (lockOwners.size > 0) return;
     clearDomScrollLock();
+}
+
+/** 현재 배경 스크롤이 잠긴 상태인지(모달/팝업이 하나라도 열려 있는지) */
+export function isScrollLocked() {
+    return lockOwners.size > 0;
 }

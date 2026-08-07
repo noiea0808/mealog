@@ -7,6 +7,7 @@ import {
     signInWithCustomToken,
     signOut
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 const INTRO_SEEN_KEY = 'mealog_demo_intro_seen';
 const AUTO_DEMO_OFF_KEY = 'mealog_auto_demo_off';
@@ -98,6 +99,7 @@ export function dismissDemoIntroModal() {
         localStorage.setItem(INTRO_SEEN_KEY, '1');
     } catch (_) {}
     modal.classList.add('hidden');
+    unlockBodyScroll('demoIntroModal');
 }
 
 export function maybeShowDemoIntroModal() {
@@ -116,6 +118,7 @@ export function maybeShowDemoIntroModal() {
         const el = document.getElementById('demoIntroModal');
         if (!el) return;
         el.classList.remove('hidden');
+        lockBodyScroll('demoIntroModal');
     } catch (_) {}
 }
 
@@ -125,7 +128,10 @@ export function registerDemoIntroModalHandlers() {
     const btnSignup = document.getElementById('demoIntroSignupBtn');
     if (!modal || !btnContinue || !btnSignup) return;
 
-    const close = () => modal.classList.add('hidden');
+    const close = () => {
+        modal.classList.add('hidden');
+        unlockBodyScroll('demoIntroModal');
+    };
 
     btnContinue.addEventListener('click', () => {
         try {

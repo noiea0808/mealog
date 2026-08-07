@@ -12,6 +12,7 @@ import { DEFAULT_USER_SETTINGS, CURRENT_TERMS_VERSION } from './constants.js';
 import { dbOps } from './db.js';
 import { parseRrnPartial, setRrnDigitGroupValue, mountRrnDigitGroup } from './utils.js';
 import { isDemoUser } from './demo-account.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 /**
  * Firebase 계정 생성 직후 첫 로그인으로 보이면 "기록" 대신 준비 멘트 (auth-flow `isLikelyFirstSessionAfterAccountCreate`와 동일 기준).
@@ -612,6 +613,7 @@ export async function handleGoogleLogin() {
                 domainTextEl.style.display = 'block';
             }
             document.getElementById('domainErrorModal').classList.remove('hidden');
+            lockBodyScroll('domainErrorModal');
             hideLoading();
         } else if (error?.code !== 'auth/cancelled-popup-request' && error?.message !== 'User cancelled flow') {
             const msg = error?.message || error?.error?.message || String(error);
@@ -653,12 +655,14 @@ export function openEmailModal(initialMode = 'login') {
     // 이메일 회원가입: 페이지 형식 4단계 위저드 열기
     if (initialMode === 'signup') {
         document.getElementById('emailAuthModal').classList.add('hidden');
+        unlockBodyScroll('emailAuthModal');
         import('./signup-wizard.js').then(({ openSignupWizard }) => {
             openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
         });
         return;
     }
     document.getElementById('emailAuthModal').classList.remove('hidden');
+    lockBodyScroll('emailAuthModal');
     window.setEmailAuthMode(initialMode);
     const savedEmail = localStorage.getItem('savedEmail');
     if (savedEmail) {
@@ -690,6 +694,7 @@ export function openEmailModal(initialMode = 'login') {
 
 export function closeEmailModal() {
     document.getElementById('emailAuthModal').classList.add('hidden');
+    unlockBodyScroll('emailAuthModal');
 }
 
 export function setEmailAuthMode(mode) {
@@ -724,6 +729,7 @@ export function toggleEmailAuthMode() {
     if (window.emailAuthMode === 'login') {
         // 회원가입으로 전환: 이메일 로그인 모달 닫고, 페이지 형식 위저드 열기
         document.getElementById('emailAuthModal').classList.add('hidden');
+        unlockBodyScroll('emailAuthModal');
         import('./signup-wizard.js').then(({ openSignupWizard }) => {
             openSignupWizard({ startStep: 1, totalSteps: 4, isEmailSignup: true });
         });
@@ -787,6 +793,7 @@ export async function handleEmailAuth() {
             }
         }
         document.getElementById('emailAuthModal').classList.add('hidden');
+        unlockBodyScroll('emailAuthModal');
         // 로그인 성공 후 로딩 오버레이는 onAuthStateChanged에서 인증 플로우가 완료될 때까지 유지
         // 인증 플로우가 완료되면 processState의 finally에서 hideLoading() 호출됨
     } catch (error) {
@@ -840,10 +847,12 @@ function getEmailAuthInputEmail() {
 
 export function closePasswordResetConfirmModal() {
     document.getElementById('passwordResetConfirmModal')?.classList.add('hidden');
+    unlockBodyScroll('passwordResetConfirmModal');
 }
 
 export function closePasswordResetSuccessModal() {
     document.getElementById('passwordResetSuccessModal')?.classList.add('hidden');
+    unlockBodyScroll('passwordResetSuccessModal');
 }
 
 /** 비밀번호 찾기 클릭: 이메일 검증 후 발송 확인 모달 */
@@ -861,6 +870,7 @@ export function requestPasswordReset() {
     const label = document.getElementById('passwordResetConfirmEmail');
     if (label) label.textContent = email;
     document.getElementById('passwordResetConfirmModal')?.classList.remove('hidden');
+    lockBodyScroll('passwordResetConfirmModal');
 }
 
 /** 확인 모달에서 발송 실행 */
@@ -878,6 +888,7 @@ export async function sendPasswordResetAfterConfirm() {
         await sendPasswordResetEmail(auth, email);
         closePasswordResetConfirmModal();
         document.getElementById('passwordResetSuccessModal')?.classList.remove('hidden');
+        lockBodyScroll('passwordResetSuccessModal');
     } catch (error) {
         console.error('비밀번호 재설정 메일 발송 실패:', error);
         let msg = error.message || '발송에 실패했습니다.';
@@ -907,12 +918,19 @@ export function confirmLogout() {
         return;
     }
     modal.classList.remove('hidden');
+    lockBodyScroll('logoutConfirmModal');
     console.log('✅ 로그아웃 모달 열림');
+}
+
+export function closeLogoutConfirmModal() {
+    document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+    unlockBodyScroll('logoutConfirmModal');
 }
 
 export async function confirmLogoutAction() {
     console.log('🔐 confirmLogoutAction 함수 시작');
     document.getElementById('logoutConfirmModal').classList.add('hidden');
+    unlockBodyScroll('logoutConfirmModal');
     if (typeof window.clearNotificationReadStateCache === 'function') {
         window.clearNotificationReadStateCache();
     }
@@ -991,10 +1009,12 @@ export async function confirmLogoutAction() {
 
 export function confirmDeleteAccount() {
     document.getElementById('deleteAccountConfirmModal').classList.remove('hidden');
+    lockBodyScroll('deleteAccountConfirmModal');
 }
 
 export function cancelDeleteAccount() {
     document.getElementById('deleteAccountConfirmModal').classList.add('hidden');
+    unlockBodyScroll('deleteAccountConfirmModal');
 }
 
 export async function confirmDeleteAccountAction() {
@@ -1006,6 +1026,7 @@ export async function confirmDeleteAccountAction() {
     if (isDemoUser(window.currentUser)) {
         showToast('샘플 계정에서는 탈퇴할 수 없습니다.', 'error');
         document.getElementById('deleteAccountConfirmModal')?.classList.add('hidden');
+        unlockBodyScroll('deleteAccountConfirmModal');
         return;
     }
     
@@ -1018,6 +1039,7 @@ export async function confirmDeleteAccountAction() {
     
     try {
         modal.classList.add('hidden');
+        unlockBodyScroll('deleteAccountConfirmModal');
         showLoading();
         
         // 1. 사용자 데이터 삭제
@@ -1055,6 +1077,7 @@ export function copyDomain() {
 
 export function closeDomainModal() {
     document.getElementById('domainErrorModal').classList.add('hidden');
+    unlockBodyScroll('domainErrorModal');
 }
 
 export async function switchToLogin() {
@@ -1378,7 +1401,8 @@ function _showProfileSetupModalCommon() {
     const modal = document.getElementById('profileSetupModal');
     if (modal) {
         modal.classList.remove('hidden');
-        
+        lockBodyScroll('profileSetupModal');
+
         // 닉네임 입력 초기화
         const nicknameInput = document.getElementById('setupNickname');
         if (nicknameInput) {
@@ -1406,6 +1430,7 @@ export function closeProfileSetupModal() {
     if (modal) {
         modal.classList.add('hidden');
     }
+    unlockBodyScroll('profileSetupModal');
     try {
         if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
             queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());

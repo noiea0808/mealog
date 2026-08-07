@@ -8,6 +8,7 @@ import { showRecordsPendingLoading } from './auth.js';
 import { showToast, showLoading, hideLoading } from './ui.js';
 import { DEFAULT_USER_SETTINGS } from './constants.js';
 import { parseRrnPartial, mountRrnDigitGroup, setRrnDigitGroupValue, focusRrnDigitGroup } from './utils.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 const WIZARD_STEPS = 4;
 
@@ -477,11 +478,13 @@ export function openSignupWizard(options = {}) {
     initWizardUI();
     updateBackButtonVisibility();
     wizard.classList.remove('hidden');
+    lockBodyScroll('signupWizard');
 }
 
 export function closeSignupWizard() {
     const wizard = getEl('signupWizard');
     if (wizard) wizard.classList.add('hidden');
+    unlockBodyScroll('signupWizard');
     try {
         if (typeof window.scheduleAttendanceCheckIfNeeded === 'function') {
             queueMicrotask(() => window.scheduleAttendanceCheckIfNeeded());

@@ -1330,6 +1330,7 @@ async function saveAvatarPhotoFromModal() {
         renderSettingsProfileAvatarPreview();
         syncAccountAvatarModalFooter(false);
         document.getElementById('accountAvatarModal')?.classList.add('hidden');
+        unlockBodyScroll('accountAvatarModal');
     } catch (e) {
         console.error('프로필 사진 저장 실패:', e);
         showToast('저장 중 오류가 발생했습니다: ' + (e.message || e), 'error');
@@ -1342,6 +1343,7 @@ export function openAccountAvatarModal() {
     refreshAccountAvatarModalPreview();
     syncAccountAvatarModalFooter(profileAvatarPickPending);
     modal.classList.remove('hidden');
+    lockBodyScroll('accountAvatarModal');
 }
 
 /** 아바타 팝업: 인라인 사진 편집 중이면 편집만 취소, 아니면 팝업 닫기 */
@@ -1358,6 +1360,7 @@ export function closeAccountAvatarModal() {
     const modal = document.getElementById('accountAvatarModal');
     if (!modal) return;
     modal.classList.add('hidden');
+    unlockBodyScroll('accountAvatarModal');
     if (profileAvatarPickPending) {
         discardPendingAvatarPhotoSelection();
     }

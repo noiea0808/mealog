@@ -5,6 +5,7 @@ import { postInteractions } from '../db.js';
 import { fetchUserProfiles } from '../render/user-profiles.js';
 import { escapeHtml } from '../render/index.js';
 import { getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 function avatarHtml(profile) {
     const av = getProfileAvatarDisplay(profile || {});
@@ -22,6 +23,7 @@ export function initPostLikesModal() {
 
 window.closePostLikesModal = () => {
     document.getElementById('postLikesModal')?.classList.add('hidden');
+    unlockBodyScroll('postLikesModal');
 };
 
 /** 좋아요 카운트 탭 시 호출 — 누른 사람 아바타·닉네임 목록 표시 */
@@ -32,6 +34,7 @@ window.openPostLikesModal = async (postId) => {
     const emptyEl = document.getElementById('postLikesEmpty');
     if (!pid || !modal || !listEl || !emptyEl) return;
     modal.classList.remove('hidden');
+    lockBodyScroll('postLikesModal');
     listEl.classList.remove('hidden');
     listEl.innerHTML = '<div class="post-likes-loading">불러오는 중…</div>';
     emptyEl.classList.add('hidden');

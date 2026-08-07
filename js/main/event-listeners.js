@@ -721,7 +721,7 @@ export function initEventListeners() {
     const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
     if (logoutConfirmCancelBtn) {
         logoutConfirmCancelBtn.addEventListener('click', () => {
-            document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+            window.closeLogoutConfirmModal?.();
         });
     }
 

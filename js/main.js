@@ -22,6 +22,7 @@ import { initTimelineSearchModal, openTimelineSearchModal, clearTimelineSearchRe
 import { initMomentSearchModal, openMomentSearchModal } from './moment-search.js';
 import { openBoardSearchModal } from './board-search.js';
 import { initAppUpdate } from './app-update.js';
+import { isScrollLocked } from './utils/scroll-lock.js';
 import {
     switchScreen,
     showToast,
@@ -42,7 +43,7 @@ import {
 } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
-    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
+    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction, closeLogoutConfirmModal,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, handleEmailSignupWithProfile, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
@@ -305,6 +306,8 @@ window.confirmLogout = confirmLogout;
 window.Mealog.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
 window.Mealog.confirmLogoutAction = confirmLogoutAction;
+window.closeLogoutConfirmModal = closeLogoutConfirmModal;
+window.Mealog.closeLogoutConfirmModal = closeLogoutConfirmModal;
 window.confirmDeleteAccount = confirmDeleteAccount;
 window.Mealog.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
@@ -2026,6 +2029,7 @@ function initDailySwipeGesture() {
     /** 밀로그 일간 + 빈 배경(카드 사이·아래)까지 스와이프 허용. 상단 크롬·다른 탭·모달은 제외 */
     const canStartDailySwipe = (node) => {
         if (!node || node.nodeType !== 1) return false;
+        if (isScrollLocked()) return false;
         if (document.body?.dataset?.mainTab !== 'timeline') return false;
         if (tv.classList.contains('hidden')) return false;
         if (isInteractiveSwipeTarget(node)) return false;

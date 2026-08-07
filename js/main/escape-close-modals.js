@@ -11,6 +11,7 @@ import {
     closePasswordResetSuccessModal,
     closeDomainModal,
     closeProfileSetupModal,
+    closeLogoutConfirmModal,
     cancelDeleteAccount
 } from '../auth.js';
 import { closeModal } from '../modals/entry-and-core.js';
@@ -118,7 +119,11 @@ function closeOverlayById(id) {
             closeDesktopShortcutGuideModal();
             break;
         case 'trackerMonthCalendarModal':
-            document.getElementById('trackerMonthCalendarModal')?.classList.add('hidden');
+            if (typeof window.closeTrackerMonthCalendar === 'function') {
+                window.closeTrackerMonthCalendar();
+            } else {
+                document.getElementById('trackerMonthCalendarModal')?.classList.add('hidden');
+            }
             break;
         case 'timelineSearchModal':
             if (typeof window.closeTimelineSearchModal === 'function') window.closeTimelineSearchModal();
@@ -152,7 +157,11 @@ function closeOverlayById(id) {
             closePasswordResetConfirmModal();
             break;
         case 'kakaoPlaceSearchModal':
-            document.getElementById('kakaoPlaceSearchModal')?.remove();
+            if (typeof window.closeKakaoPlaceSearchModal === 'function') {
+                window.closeKakaoPlaceSearchModal();
+            } else {
+                document.getElementById('kakaoPlaceSearchModal')?.remove();
+            }
             break;
         case 'characterSelectPopup':
         case 'characterSelectModal':
@@ -215,7 +224,7 @@ function closeOverlayById(id) {
             closeEmailModal();
             break;
         case 'logoutConfirmModal':
-            document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+            closeLogoutConfirmModal();
             break;
         case 'deleteAccountConfirmModal':
             cancelDeleteAccount();

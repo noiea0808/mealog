@@ -14,6 +14,7 @@ import {
 } from '../utils/daily-journal-data.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 let pickerBound = false;
 let pendingDateIso = '';
@@ -117,6 +118,7 @@ export function closeEntrySlotPicker() {
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
     pendingDateIso = '';
+    unlockBodyScroll('entrySlotPicker');
 }
 
 /**
@@ -139,6 +141,7 @@ export async function openEntrySlotPicker(dateIso) {
     renderPickerList(pendingDateIso);
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
+    lockBodyScroll('entrySlotPicker');
 }
 
 async function onPickSlot(slotId, slotType) {

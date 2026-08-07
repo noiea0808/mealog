@@ -4,8 +4,17 @@ import { callableFunctions } from '../firebase.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { ENTRY_DOM } from './entry-form-config.js';
 import { escapeHtml } from '../render/utils.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
+
+/** 검색 모달 닫기 — remove() 호출 지점 전부 이걸 거쳐야 배경 잠금이 풀림 */
+export function closeKakaoPlaceSearchModal() {
+    const modal = document.getElementById('kakaoPlaceSearchModal');
+    if (modal) modal.remove();
+    unlockBodyScroll('kakaoPlaceSearchModal');
+}
+window.closeKakaoPlaceSearchModal = closeKakaoPlaceSearchModal;
 
 export function openKakaoPlaceSearch(mode = 'meal') {
     const targetId =
@@ -38,7 +47,7 @@ function createKakaoSearchModal() {
             <div class="kakao-place-sheet__handle" aria-hidden="true"></div>
             <div class="kakao-place-sheet__header">
                 <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">음식점 검색</h2>
-                <button type="button" class="kakao-place-sheet__close" onclick="document.getElementById('kakaoPlaceSearchModal')?.remove()" aria-label="닫기">
+                <button type="button" class="kakao-place-sheet__close" onclick="window.closeKakaoPlaceSearchModal()" aria-label="닫기">
                     <i data-lucide="x" aria-hidden="true"></i>
                 </button>
             </div>
@@ -57,10 +66,11 @@ function createKakaoSearchModal() {
     `;
 
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
+        if (e.target === modal) closeKakaoPlaceSearchModal();
     });
 
     document.body.appendChild(modal);
+    lockBodyScroll('kakaoPlaceSearchModal');
     scheduleLucideIcons(modal);
 
     const searchInput = document.getElementById('kakaoSearchInput');
@@ -245,8 +255,7 @@ export function applyKakaoPlaceManualText() {
     placeInput.removeAttribute('data-kakao-place-address');
     placeInput.removeAttribute('data-kakao-place-data');
     placeInput.removeAttribute('data-kakao-place-name');
-    const modal = document.getElementById('kakaoPlaceSearchModal');
-    if (modal) modal.remove();
+    closeKakaoPlaceSearchModal();
     showToast('장소명이 입력되었습니다.', 'success');
 }
 
@@ -293,12 +302,9 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
     }
     
     // 모달 닫기
-    const modal = document.getElementById('kakaoPlaceSearchModal');
-    if (modal) {
-        modal.remove();
-    }
-    
-        showToast("장소가 선택되었습니다.", 'success');
+    closeKakaoPlaceSearchModal();
+
+    showToast("장소가 선택되었습니다.", 'success');
 }
 
 /** 카카오 장소 검색 모달이 열린 뒤 검색어를 넣고(선택) 검색을 실행. 모달이 없으면 no-op. */

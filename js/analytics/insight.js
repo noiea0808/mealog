@@ -402,7 +402,8 @@ export async function openCharacterSelectModal() {
     
     // 화면 가운데에 표시 (CSS로 처리되므로 위치 설정 불필요)
     popup.classList.remove('hidden');
-    
+    lockBodyScroll('characterSelectPopup');
+
     // 외부 클릭 시 닫기
     setTimeout(() => {
         document.addEventListener('click', handleOutsideClick, true);
@@ -427,6 +428,7 @@ export function closeCharacterSelectModal() {
     if (popup) {
         popup.classList.add('hidden');
     }
+    unlockBodyScroll('characterSelectPopup');
     document.removeEventListener('click', handleOutsideClick, true);
 }
 

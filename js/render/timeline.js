@@ -57,6 +57,7 @@ import {
     refreshAiDietReportFlagsForDates
 } from '../modals/diet-report.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 import { getSharedPhotos } from '../utils/moment-share-state.js';
 function mainMealSlotLucideIcon(slotId) {
@@ -2222,6 +2223,7 @@ let trackerMonthPopupMonth = null;
 function closeTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (modal) modal.classList.add('hidden');
+    unlockBodyScroll('trackerMonthCalendarModal');
 }
 window.closeTrackerMonthCalendar = closeTrackerMonthCalendar;
 
@@ -2278,6 +2280,7 @@ export function openTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (!modal) return;
     modal.classList.remove('hidden');
+    lockBodyScroll('trackerMonthCalendarModal');
     renderTrackerMonthCalendarPopup();
     scheduleLucideIcons(modal);
 }

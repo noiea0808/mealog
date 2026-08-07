@@ -39,6 +39,7 @@ import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     getDisplayProfile,
     getProfileAvatarDisplay,
@@ -243,6 +244,7 @@ window.openDailySharePreviewModal = (dateStr) => {
     `;
 
     document.body.appendChild(modal);
+    lockBodyScroll('dailySharePreviewModal');
     const panel = modal.firstElementChild;
     if (panel) {
         bindDialogGrabberPullClose({
@@ -325,6 +327,7 @@ window.cancelDailyShare = async (dateStr) => {
 window.closeDailySharePreviewModal = () => {
     const modal = document.getElementById('dailySharePreviewModal');
     if (modal) modal.remove();
+    unlockBodyScroll('dailySharePreviewModal');
 };
 
 // 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
@@ -681,7 +684,8 @@ window.openDailyCommentModal = (dateStr) => {
     `;
     
     document.body.appendChild(modal);
-    
+    lockBodyScroll('dailyCommentModal');
+
     // 배경 클릭 시 닫기
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -700,6 +704,7 @@ window.openDailyCommentModal = (dateStr) => {
 window.closeDailyCommentModal = () => {
     const modal = document.getElementById('dailyCommentModal');
     if (modal) modal.remove();
+    unlockBodyScroll('dailyCommentModal');
 };
 
 // 모달에서 일간보기 코멘트 저장

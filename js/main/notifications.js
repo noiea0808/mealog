@@ -17,6 +17,7 @@ import {
 import { showToast } from '../ui.js';
 import { escapeHtml, renderGallery } from '../render/index.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 const NOTIFICATION_LAST_OPENED_KEY = 'mealog_notification_last_opened';
 const NOTIFICATION_READ_POST_IDS_KEY = 'mealog_notification_read_post_ids';
@@ -184,6 +185,7 @@ window.openNotificationModal = () => {
     if (!modal.classList.contains('hidden')) return;
     notificationListActiveTab = 'unread';
     modal.classList.remove('hidden');
+    lockBodyScroll('notificationModal');
     try { localStorage.setItem(NOTIFICATION_LAST_OPENED_KEY, String(Date.now())); } catch (_) {}
     if (typeof window.updateNotificationDot === 'function') window.updateNotificationDot();
     window.loadNotificationList();
@@ -194,6 +196,7 @@ window.toggleNotificationPopup = window.openNotificationModal;
 
 window.closeNotificationPopup = () => {
     document.getElementById('notificationModal')?.classList.add('hidden');
+    unlockBodyScroll('notificationModal');
 };
 
 export function initNotificationModal() {
