@@ -1533,10 +1533,6 @@ header .mealog-title {
 #momentImageLightbox:not(.hidden) .moment-lb-main-img {
     transition: opacity 0.42s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
-#momentImageLightbox:not(.hidden) [data-moment-lb-counter] {
-    font-family: '나눔손글씨 가람연꽃', 'Nanum Garam Yeonkot', 'Nanum Pen Script', cursive;
-    font-weight: 400;
-}
 /* 가로 스트립 안 이미지: 일반 .timeline-meal-photo-img 규칙보다 우선 — 마우스 드래그·터치 가로 허용 */
 #timelineMealPhotosOverlay:not(.hidden) .timeline-meal-photos-hstrip .timeline-meal-photo-img {
     -webkit-user-drag: none;
@@ -17546,7 +17542,11 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     background: var(--shell-ink) !important;
     backdrop-filter: none !important;
 }
-#momentImageLightbox [data-moment-lb-close],
+/* 원형 배경 없이 X만 노출 — 사진 배경이 밝아도 묻히지 않도록 아이콘에 그림자만 */
+#momentImageLightbox [data-moment-lb-close] {
+    background: transparent !important;
+    border: none;
+}
 #feedImageLightbox button[aria-label="닫기"] {
     background: rgba(255, 255, 255, 0.14) !important;
     border-radius: 9999px;

@@ -1,9 +1,11 @@
 /**
  * 모먼트(갤러리) 공유 사진 — 사진 탭으로 전체 화면 확대
  * 다중 장: 좌우 스와이프로 전환 · 두 손가락 핀치로 확대/축소
- * post-group-html: .gallery-photo-scroll[data-moment-urls], 슬라이드 [data-moment-i]
+ * v1(post-group-html): .gallery-photo-scroll[data-moment-urls], 슬라이드 [data-moment-i]
+ * v2(휠, moment-feed-v2): .moment-feed-v2-scope[data-moment-urls], 슬라이드 [data-moment-i]
  */
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { scheduleLucideIcons } from '../icons.js';
 
 let _overlay = null;
 let _urls = [];
@@ -24,6 +26,7 @@ const SWIPE_MIN_DX = 56;
 const SWIPE_MAX_RATIO = 0.75;
 const SCALE_MIN = 1;
 const SCALE_MAX = 4;
+const DBLCLICK_ZOOM_SCALE = 2.4;
 
 /** 타임라인 사진 팝업 `MEAL_PHOTO_SRC_PENDING`과 동일 — 교체 시 빈 프레임 방지 */
 const MOMENT_LB_SRC_PENDING =
@@ -98,6 +101,11 @@ function resetLbTransform() {
 
 export function closeMomentImageLightbox() {
     if (!_overlay || _overlay.classList.contains('hidden')) return;
+    /** 닫기 버튼 등 오버레이 안쪽 요소가 포커스를 쥔 채로 aria-hidden을 걸면
+     * "포커스가 남아있는 조상에 aria-hidden" 경고가 뜬다 — 먼저 포커스를 밖으로 뺀다. */
+    if (document.activeElement && _overlay.contains(document.activeElement)) {
+        document.activeElement.blur();
+    }
     _overlay.classList.add('hidden');
     unlockBodyScroll('momentLightbox');
     _overlay.setAttribute('aria-hidden', 'true');
@@ -255,22 +263,68 @@ function bindMomentLbGestures() {
         { passive: false }
     );
 
-    /** 마우스 드래그로 좌우 전환(scale≈1) */
+    /** 데스크톱: 더블클릭으로 확대/축소 토글 */
+    viewport.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        if (_tf.scale > 1.02) {
+            resetLbTransform();
+        } else {
+            _tf.scale = DBLCLICK_ZOOM_SCALE;
+            applyLbTransform();
+        }
+    });
+
+    /**
+     * 마우스 드래그: scale≈1이면 좌우 전환, 확대 상태면 이미지 팬.
+     * 포인터 캡처는 실제로 일정 거리 이상 움직였을 때만 건다 — 클릭/더블클릭 시점에
+     * 바로 캡처하면 브라우저가 그 click을 캡처 대상(viewport)으로 재타깃해
+     * "배경 클릭 시 닫기" 로직이 사진을 눌러도 오작동(즉시 닫힘)한다.
+     */
+    const DRAG_CAPTURE_THRESHOLD = 4;
     let drag = null;
     viewport.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        if (_tf.scale > 1.02) return;
-        drag = { x0: e.clientX, y0: e.clientY, id: e.pointerId };
-        viewport.setPointerCapture(e.pointerId);
+        drag = {
+            x0: e.clientX,
+            y0: e.clientY,
+            id: e.pointerId,
+            panning: _tf.scale > 1.02,
+            lastX: e.clientX,
+            lastY: e.clientY,
+            captured: false
+        };
+    });
+    viewport.addEventListener('pointermove', (e) => {
+        if (!drag || drag.id !== e.pointerId) return;
+        if (!drag.captured) {
+            const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+            if (moved < DRAG_CAPTURE_THRESHOLD) return;
+            drag.captured = true;
+            try {
+                viewport.setPointerCapture(e.pointerId);
+            } catch (_) {}
+        }
+        if (!drag.panning) return;
+        e.preventDefault();
+        _tf.tx += e.clientX - drag.lastX;
+        _tf.ty += e.clientY - drag.lastY;
+        drag.lastX = e.clientX;
+        drag.lastY = e.clientY;
+        applyLbTransform();
     });
     viewport.addEventListener('pointerup', (e) => {
         if (!drag || drag.id !== e.pointerId) return;
         const dx = e.clientX - drag.x0;
         const dy = e.clientY - drag.y0;
+        const wasPanning = drag.panning;
+        const wasCaptured = drag.captured;
         drag = null;
-        try {
-            viewport.releasePointerCapture(e.pointerId);
-        } catch (_) {}
+        if (wasCaptured) {
+            try {
+                viewport.releasePointerCapture(e.pointerId);
+            } catch (_) {}
+        }
+        if (wasPanning) return;
         if (_urls.length < 2 || _tf.scale > 1.02) return;
         if (Math.abs(dx) >= SWIPE_MIN_DX && Math.abs(dx) > Math.abs(dy) / SWIPE_MAX_RATIO) {
             if (dx < 0) goNextImage();
@@ -305,11 +359,11 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
             <div class="flex h-full w-full max-w-md min-h-0 flex-col">
                 <div class="flex shrink-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 pb-1 pt-[max(0.5rem,env(safe-area-inset-top))]">
                     <h2 id="momentImageLightboxTitle" class="sr-only">모먼트 사진</h2>
-                    <span class="text-xs font-medium text-white/80">모먼트</span>
-                    <span data-moment-lb-counter class="hidden min-w-[3rem] flex-1 text-center text-xs font-bold text-white/90 tabular-nums sm:flex-none"></span>
+                    <span class="text-sm font-bold text-white/80">모먼트</span>
+                    <span data-moment-lb-counter class="hidden min-w-[3rem] flex-1 text-center text-sm font-bold text-white/90 tabular-nums sm:flex-none"></span>
                     <div class="ml-auto flex flex-shrink-0 items-center">
-                        <button type="button" data-moment-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25 active:bg-white/20" aria-label="닫기">
-                            <i data-lucide="x" class="text-lg leading-none" aria-hidden="true"></i>
+                        <button type="button" data-moment-lb-close class="inline-flex h-10 w-10 shrink-0 items-center justify-center text-white transition-opacity hover:opacity-70 active:opacity-50" aria-label="닫기">
+                            <i data-lucide="x" class="drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] text-xl leading-none" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -323,6 +377,7 @@ export function openMomentImageLightbox(urlList, startIndex = 0) {
             </div>
         `;
         document.body.appendChild(_overlay);
+        scheduleLucideIcons(_overlay);
         const stage = _overlay.querySelector('[data-moment-lb-stage]');
         stage?.addEventListener('click', (e) => {
             if (e.target === stage) closeMomentImageLightbox();
@@ -369,10 +424,9 @@ export function ensureMomentImageLightbox() {
         if (e.target.closest?.('.feed-options-btn')) return;
         const imgHit = e.target.closest?.('.moment-feed-photo');
         if (!imgHit) return;
-        /* 화면2(모먼트 보기 2): 캐러셀·휠과 겹침 방지 — 탭 확대(라이트박스) 비활성 */
-        if (imgHit.closest?.('.moment-feed-v2-scope')) return;
 
-        const scroll = imgHit.closest?.('.gallery-photo-scroll');
+        /** v1: .gallery-photo-scroll[data-moment-urls] · v2(휠): .moment-feed-v2-scope[data-moment-urls] */
+        const scroll = imgHit.closest?.('[data-moment-urls]');
         if (!scroll || !root.contains(scroll)) return;
 
         const slide = imgHit.closest?.('[data-moment-i]');
