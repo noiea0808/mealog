@@ -3,6 +3,7 @@ import { showToast } from '../ui.js';
 import { callableFunctions } from '../firebase.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { ENTRY_DOM } from './entry-form-config.js';
+import { escapeHtml } from '../render/utils.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
 
@@ -128,8 +129,8 @@ function renderKakaoSearchResults(restaurants) {
         return `
             <button type="button" onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')"
                 class="kakao-place-sheet__result">
-                <div class="kakao-place-sheet__result-name">${placeName}</div>
-                <div class="kakao-place-sheet__result-addr">${roadAddress || address}</div>
+                <div class="kakao-place-sheet__result-name">${escapeHtml(placeName)}</div>
+                <div class="kakao-place-sheet__result-addr">${escapeHtml(roadAddress || address)}</div>
             </button>
         `;
     }).join('');
