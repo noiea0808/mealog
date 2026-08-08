@@ -26,6 +26,8 @@ import {
     markAttempt,
     clearOriginals,
     expireInteractions,
+    hydrateOutboxIndex,
+    subscribeOutboxIndex,
     outboxKey
 } from './outbox-store.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
@@ -242,12 +244,40 @@ export async function pokeOutboxWorker(reason = '') {
     await runOutboxCycle(reason || 'poke');
 }
 
+/** 인덱스가 바뀌면 배지·타임라인 도트를 갱신한다 */
+async function notifyIndicators() {
+    try {
+        const tl = await import('../render/timeline.js');
+        tl.updateTimelineMealEntryPendingIndicators?.();
+    } catch (_) {
+        /* ignore */
+    }
+    try {
+        const h = await import('../main/meal-sync-resend-header.js');
+        h.refreshMealSyncResendNavButton?.();
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 let registered = false;
 
 /** main.js 초기화 시 1회 */
 export function registerOutboxWorker() {
     if (registered || typeof window === 'undefined') return;
     registered = true;
+
+    /**
+     * 동기 인덱스를 먼저 채운다. 렌더가 「아직 안 올라감」을 동기로 물어보므로,
+     * 채워지기 전에는 전부 synced 로 보인다 — hydrate 후 알림으로 바로잡는다.
+     */
+    void hydrateOutboxIndex().then(() => {
+        void notifyIndicators();
+    });
+
+    // 인덱스가 바뀌면 배지·타임라인 표시를 갱신한다 (표시의 단일 기준)
+    subscribeOutboxIndex(() => void notifyIndicators());
+
     try {
         setInterval(tick, TICK_MS);
     } catch (_) {

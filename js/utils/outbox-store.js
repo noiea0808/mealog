@@ -25,6 +25,78 @@ export const CLASS_INTERACTION = 'interaction';
 /** 상호작용 항목의 만료 (콘텐츠는 만료 없음) */
 const INTERACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * ── 동기 인덱스 ────────────────────────────────────────────────────────────────
+ * 타임라인 렌더와 배지는 **동기**로 「이 기록이 아직 안 올라갔나」를 물어야 하는데,
+ * IndexedDB 조회는 비동기다. 그래서 키 집합만 메모리에 미러링한다.
+ *
+ * 이 인덱스가 곧 표시의 단일 기준이다 — 예전에 배지(칩 기준)와 드레인(칩·inFlight·실패 기준)이
+ * 서로 다른 집합을 세다가 「N 이 떠 있는데 눌러도 아무 일 없는 버튼」이 생겼던 문제가,
+ * 기준이 하나뿐이면 원리적으로 생길 수 없다.
+ *
+ * @type {Map<string, { uid: string, permanent: boolean }>}
+ */
+const liveIndex = new Map();
+let indexHydrated = false;
+/** @type {Set<() => void>} 인덱스가 바뀌면 알린다 (배지·타임라인 갱신) */
+const indexListeners = new Set();
+
+function notifyIndexChanged() {
+    for (const fn of indexListeners) {
+        try {
+            fn();
+        } catch (_) {
+            /* ignore */
+        }
+    }
+}
+
+export function subscribeOutboxIndex(fn) {
+    if (typeof fn !== 'function') return () => {};
+    indexListeners.add(fn);
+    return () => indexListeners.delete(fn);
+}
+
+/** 동기 판정 — 렌더 경로에서 쓴다. 부팅 직후 hydrate 전에는 false 다(곧 이벤트로 갱신된다). */
+export function isPendingSync(target, id) {
+    if (id == null || id === '') return false;
+    return liveIndex.has(outboxKey(target, id));
+}
+
+/** 동기 판정 — 재시도해도 무의미한 상태인가 */
+export function isPermanentSync(target, id) {
+    if (id == null || id === '') return false;
+    return liveIndex.get(outboxKey(target, id))?.permanent === true;
+}
+
+/** 동기 개수 — 배지가 이 값을 그대로 쓴다 */
+export function pendingCountSync(uid) {
+    if (!uid) return liveIndex.size;
+    let n = 0;
+    for (const v of liveIndex.values()) if (v.uid === uid) n++;
+    return n;
+}
+
+export function isOutboxIndexReady() {
+    return indexHydrated;
+}
+
+/** 부팅 시 1회 — IndexedDB 의 키를 메모리로 올린다 */
+export async function hydrateOutboxIndex() {
+    const db = await ensureDb();
+    if (!db) {
+        indexHydrated = true;
+        return 0;
+    }
+    const rows = await getAll(db, STORE);
+    liveIndex.clear();
+    for (const r of rows) liveIndex.set(r.key, { uid: r.uid, permanent: r.permanent === true });
+    indexHydrated = true;
+    notifyIndexChanged();
+    diag('outbox.hydrate', { n: liveIndex.size });
+    return liveIndex.size;
+}
+
 let dbPromise = null;
 
 function ensureDb() {
@@ -95,6 +167,10 @@ export async function enqueue(entry) {
     };
 
     const ok = await idbPut(db, STORE, row);
+    if (ok) {
+        liveIndex.set(key, { uid: row.uid, permanent: false });
+        notifyIndexChanged();
+    }
     diag(ok ? 'outbox.enqueue' : 'outbox.enqueue.fail', {
         target: row.target,
         op: row.op,
@@ -167,8 +243,14 @@ export async function getEntry(key) {
 export async function remove(key) {
     const db = await ensureDb();
     if (!db) return false;
+    const wasPresent = liveIndex.has(key);
     const ok = await idbDel(db, STORE, key);
-    diag('outbox.remove', { key: String(key).slice(0, 60), ok });
+    if (ok && wasPresent) {
+        liveIndex.delete(key);
+        notifyIndexChanged();
+    }
+    // 없던 키를 지우는 호출은 정상 흐름(리스너 ack)이라 로그를 남기지 않는다 — 소음만 된다
+    if (wasPresent) diag('outbox.remove', { key: String(key).slice(0, 60), ok });
     return ok;
 }
 
@@ -178,7 +260,7 @@ export async function markAttempt(key, error, permanent = false) {
     if (!db) return false;
     const row = await idbGet(db, STORE, key);
     if (!row) return false;
-    return idbPut(db, STORE, {
+    const ok = await idbPut(db, STORE, {
         ...row,
         attempts: (row.attempts || 0) + 1,
         lastError: error
@@ -186,6 +268,11 @@ export async function markAttempt(key, error, permanent = false) {
             : null,
         permanent: permanent === true
     });
+    if (ok && liveIndex.has(key)) {
+        liveIndex.set(key, { uid: row.uid, permanent: permanent === true });
+        notifyIndexChanged(); // 영구 실패로 바뀌면 표시가 달라져야 한다
+    }
+    return ok;
 }
 
 /** 배지·표시용 — 아웃박스 크기가 곧 「아직 안 올라간 개수」다 (§4.3) */
@@ -216,9 +303,15 @@ export async function expireInteractions() {
     for (const r of rows) {
         if (r.class !== CLASS_INTERACTION) continue;
         if (new Date(r.createdAt).getTime() > cutoff) continue;
-        if (await idbDel(db, STORE, r.key)) n++;
+        if (await idbDel(db, STORE, r.key)) {
+            liveIndex.delete(r.key);
+            n++;
+        }
     }
-    if (n > 0) diag('outbox.expire', { n });
+    if (n > 0) {
+        notifyIndexChanged();
+        diag('outbox.expire', { n });
+    }
     return n;
 }
 
@@ -228,7 +321,13 @@ export async function purgeUser(uid) {
     if (!db || !uid) return 0;
     const rows = await listPending(uid);
     let n = 0;
-    for (const r of rows) if (await idbDel(db, STORE, r.key)) n++;
+    for (const r of rows) {
+        if (await idbDel(db, STORE, r.key)) {
+            liveIndex.delete(r.key);
+            n++;
+        }
+    }
+    if (n > 0) notifyIndexChanged();
     diag('outbox.purgeUser', { n });
     return n;
 }

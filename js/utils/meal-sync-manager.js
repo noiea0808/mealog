@@ -11,7 +11,22 @@ import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic
 import { appState } from '../state.js';
 import { isDemoUser } from '../demo-account.js';
 import { withDeadline, DEADLINE } from './with-deadline.js';
+import {
+    isPendingSync as isOutboxPendingSync,
+    isPermanentSync as isOutboxPermanentSync,
+    pendingCountSync as outboxPendingCountSync
+} from './outbox-store.js';
 
+/**
+ * localStorage ID 집합 3종(errorIds·abandoned·registerScheduled)은 폐기됐다.
+ * 그것들은 「아직 안 올라간 기록」의 **근사치**였고, 근사치가 여러 개라 서로 어긋나는
+ * 조합마다 버그가 났다. 이제 아웃박스가 그 사실 자체를 들고 있으므로 근사치가 필요 없다.
+ *
+ * 아래 맵들(_errorIds·_abandoned·_registerScheduledChip 등)도 표시 판정에서는 더 이상
+ * 쓰이지 않는다 — getRowSyncLeadKind 는 아웃박스만 본다. 남아 있는 것은 저장 실패 배지
+ * 병합(shouldPreserveMealSaveFailureOnMerge) 등 아직 정리되지 않은 호출부 때문이며,
+ * 4단계 나머지 경로를 붙일 때 함께 걷어낸다.
+ */
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
 const MEAL_REGISTER_SCHEDULED_IDS_KEY = 'mealog_mealSyncRegisterScheduledIds_v1';
@@ -879,29 +894,15 @@ export class MealSyncManager {
      * 없어진다. 실제로 다시 밀어 올릴지는 드레인이 기록별로 isRetryEligible 로 정한다.
      */
     countUnsentMealWork() {
-        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const hist = window.mealHistory;
-        const seen = new Set();
-        let n = 0;
-        for (const m of hist) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_') || seen.has(id)) continue;
-            const kind = this.getRowSyncLeadKind(m);
-            if (kind === 'syncing' || kind === 'failed') {
-                seen.add(id);
-                n++;
-            }
-        }
-        // 행이 화면에서 사라진 삭제 예약도 아직 남은 일이다
-        for (const key of this._deletePending.keys()) {
-            const id = String(key);
-            if (!id || id.startsWith('temp_') || seen.has(id)) continue;
-            if (hist.some((m) => m && String(m.id) === id)) continue;
-            seen.add(id);
-            n++;
-        }
-        return n;
+        if (typeof window === 'undefined') return 0;
+        /**
+         * 배지 = 아웃박스 크기. 워커와 **같은 집합**을 본다.
+         *
+         * 예전에는 mealHistory 를 훑어 세면서 화면에서 사라진 삭제 예약을 따로 더하는
+         * 보정이 필요했고, 그 기준이 드레인과 갈라져 「배지에 N 이 뜨는데 눌러도 아무 일도
+         * 안 하는 버튼」이 생길 수 있었다. 기준이 하나면 그 불일치가 원리적으로 없다.
+         */
+        return outboxPendingCountSync(window.currentUser?.uid);
     }
 
     /**
@@ -920,11 +921,21 @@ export class MealSyncManager {
      */
     getRowSyncLeadKind(record) {
         if (!record || record.id == null || record.id === '') return 'none';
-        if (this.isDeleteFailed(record) || this.isSaveFailed(record)) return 'failed';
-        if (this.isDeleting(record)) return 'syncing';
-        if (this.isPendingSync(record)) return 'syncing';
-        if (!this.isServerSynced(record)) return 'syncing';
-        return 'synced';
+        const id = String(record.id);
+        // 아웃박스 이전의 낙관 temp 행 — 아웃박스에 없으므로 별도 보호
+        if (id.startsWith('temp_')) return 'syncing';
+        /**
+         * 아웃박스가 유일한 기준이다 (§4.4).
+         *   없다              → synced  (워커는 서버 확인된 것만 지운다)
+         *   있다              → syncing (기다리면 된다)
+         *   있고 permanent    → failed  (재시도 무의미, 사용자 개입 필요)
+         *
+         * 예전에는 여섯 개의 병렬 플래그가 각자 표시를 주장했고, 표식이 재시도 과정에서
+         * 서로 옮겨 다녀 「표식이 하나도 없는 찰나」에 기록이 사라졌다. 기준이 하나면
+         * 그 레이스가 존재할 수 없다.
+         */
+        if (!isOutboxPendingSync('meal', id)) return 'synced';
+        return isOutboxPermanentSync('meal', id) ? 'failed' : 'syncing';
     }
 
     /**

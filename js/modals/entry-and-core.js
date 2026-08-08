@@ -43,7 +43,6 @@ import {
     markMealEntrySyncAbandonedById,
     clearMealEntrySyncAbandonedById,
     clearMealSyncGraceTimer,
-    scheduleMealSyncGraceAbandon,
     isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
     onMealDocFirestoreServerAcknowledged,
@@ -2250,16 +2249,14 @@ export async function saveEntry() {
                         });
                         if (!mid) return;
                         if (String(mid).startsWith('temp_')) {
-                            // ID 선발급 실패 폴백(temp): 큐 추적이 불가하므로 기존대로 실패 처리
+                            // ID 선발급 실패 폴백(temp): 아웃박스 추적이 불가하므로 기존대로 실패 처리
                             getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
-                        } else {
-                            // setDoc이 Firestore 로컬 큐에 남아 있을 가능성이 높음 — 실패가 아닌 '등록 예정'
-                            getMealSyncManager().promoteToRegisterScheduledChip(String(mid), {
-                                optimisticTempId,
-                                dateStr: record.date,
-                                currentTab
-                            });
                         }
+                        /**
+                         * 그 외에는 아무것도 하지 않는다. 이 기록은 이미 아웃박스에 있고,
+                         * 표시는 아웃박스 하나만 본다 — 타임아웃은 「아직 안 올라감」을 바꾸지
+                         * 않으므로 따로 승격시킬 상태가 없다. 워커가 계속 밀어 올린다.
+                         */
                     }
                 })
             );
@@ -3182,12 +3179,11 @@ export async function retryMealEntrySync(entryIdRaw) {
         if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
     } catch (e) {
         if (e?.__mealogSaveTimeout && !entryId.startsWith('temp_')) {
-            // 재시도 중 타임아웃(대개 아직 오프라인): setDoc은 로컬 큐에 남음 — 실패 대신 등록 예정 유지
-            console.warn('retryMealEntrySync 타임아웃 — 로컬 큐 대기(등록 예정):', entryId);
-            getMealSyncManager().promoteToRegisterScheduledChip(entryId, {
-                dateStr: record.date,
-                currentTab: appState.currentTab
-            });
+            /**
+             * 재시도 중 타임아웃 — 실패로 표시하지 않는다. 기록은 아웃박스에 그대로 있고
+             * 워커가 계속 밀어 올린다. 여기서 상태를 따로 세울 필요가 없다.
+             */
+            console.warn('retryMealEntrySync 타임아웃 — 아웃박스 유지:', entryId);
             showToast('연결되면 서버에 자동 등록돼요.', 'info');
             invalidateTimelineDateSection(record.date);
             updateTimelineMealEntryPendingIndicators();

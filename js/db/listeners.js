@@ -17,9 +17,6 @@ import {
 } from '../demo-date-shift.js';
 import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
-    hydrateMealSyncErrorIdsFromStorage,
-    hydrateMealSyncAbandonedIdsFromStorage,
-    hydrateMealSyncRegisterScheduledIdsFromStorage
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsOneTimeFetchResult } from '../utils/meals-snapshot-apply.js';
 import {
@@ -94,9 +91,8 @@ function mergeEntryModalGaugesIntoUserSettings() {
 }
 
 export function setupListeners(userId, callbacks) {
-    hydrateMealSyncErrorIdsFromStorage();
-    hydrateMealSyncAbandonedIdsFromStorage();
-    hydrateMealSyncRegisterScheduledIdsFromStorage();
+    // 표시 상태의 복원은 아웃박스 인덱스 hydrate 가 담당한다 (outbox-worker).
+    // 예전의 localStorage ID 집합 3종(errorIds·abandoned·registerScheduled)은 폐기됐다.
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
