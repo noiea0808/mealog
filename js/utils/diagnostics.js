@@ -45,6 +45,8 @@ let flushTimer = 0;
 let lastUploadAt = 0;
 let uploadInFlight = false;
 let enabled = true;
+/** 업로드 배치 순번 — 세션 내에서 결정적 문서 ID 를 만드는 데 쓴다 */
+let uploadSeq = 0;
 
 function ensureDb() {
     if (!dbPromise) {
@@ -210,10 +212,22 @@ export async function uploadDiagnostics(reason = '') {
         if (!rows.length) return;
 
         const { db: fs, appId } = await import('../firebase.js');
-        const { collection, addDoc } = await import(
+        const { collection, doc, setDoc } = await import(
             'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js'
         );
         const coll = collection(fs, 'artifacts', appId, 'users', user.uid, 'syncDiagnostics');
+        /**
+         * **결정적 문서 ID + setDoc** 이어야 한다.
+         *
+         * 실기기에서 addDoc 이 `Document already exists` 로 실패했다. addDoc 은 랜덤 ID 를
+         * 만드는데도 그런 이유는, 서버에는 반영됐지만 ack 를 못 받은 쓰기를 SDK 가 다시 보냈고
+         * addDoc 이 create 전용이라 두 번째가 거부됐기 때문이다 — 이 앱이 겪는 불안정 네트워크
+         * 시나리오 그 자체다. 그러면 업로드가 영영 성공하지 못해 버퍼가 안 비워진다.
+         *
+         * ID 를 결정적으로 만들면 재시도가 같은 문서에 대한 멱등 덮어쓰기가 되어 조용히 성공한다.
+         */
+        const batchId = `${sessionId}-${String(uploadSeq).padStart(3, '0')}`;
+        uploadSeq += 1;
 
         const payload = {
             sessionId,
@@ -225,7 +239,7 @@ export async function uploadDiagnostics(reason = '') {
             events: rows.map((r) => ({ t: r.t, ev: r.ev, sid: r.sid, d: r.d ?? null }))
         };
 
-        await withDeadline(addDoc(coll, payload), DEADLINE.DOC, 'diag-upload');
+        await withDeadline(setDoc(doc(coll, batchId), payload), DEADLINE.DOC, 'diag-upload');
 
         // 올린 것만 지운다 — 실패하면 다음 기회에 다시 올린다
         for (const r of rows) await del(db, STORE, r._k);

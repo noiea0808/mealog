@@ -107,13 +107,17 @@ service cloud.firestore {
       }
 
       // 동기화 진단 로그 (docs/sync-outbox-design.md §4.9)
-      // 본인만 생성, 읽기는 본인·관리자. 수정은 불가(append-only), 삭제는 탈퇴 정리용으로 본인만.
-      // errorLogs가 `allow write: if false`라 클라이언트 텔레메트리가 통째로 죽어 있던 문제를
-      // 반복하지 않도록, 사용자 하위 경로에 두고 본인 쓰기를 허용한다.
+      // 읽기는 본인·관리자, 쓰기는 본인만. errorLogs가 `allow write: if false`라 클라이언트
+      // 텔레메트리가 통째로 죽어 있던 문제를 반복하지 않도록 사용자 하위 경로에 둔다.
+      //
+      // update를 허용하는 이유: 불안정한 네트워크에서 Firestore SDK는 ack를 못 받은 쓰기를
+      // 다시 보낸다. append-only(update 금지)로 두면 그 재시도가 거부돼(Document already
+      // exists) 업로드가 영영 성공하지 못하고 로컬 버퍼가 안 비워진다 — 실기기에서 실제로
+      // 발생했다. 클라이언트가 결정적 문서 ID로 setDoc하므로, update 허용은 곧 재시도의
+      // 멱등성을 뜻한다. 본인 문서로 제한되므로 권한 경계는 그대로다.
       match /syncDiagnostics/{entryId} {
         allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
-        allow create: if request.auth != null && request.auth.uid == userId;
-        allow update: if false;
+        allow create, update: if request.auth != null && request.auth.uid == userId;
         allow delete: if isAdmin() || (request.auth != null && request.auth.uid == userId);
       }
     }
