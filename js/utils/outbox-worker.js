@@ -62,6 +62,10 @@ function isPermanentFailure(err, attempts) {
     const msg = String(err?.message || '');
     if (code === 'invalid-argument') return true;
     if (/exceeds the maximum allowed size|too large/i.test(msg)) return true;
+    // 닉네임 중복은 아무리 재시도해도 안 된다 — 사용자가 다른 닉네임을 골라야 한다
+    if (msg === 'NICKNAME_TAKEN' || /already-exists/.test(code)) return true;
+    // 온보딩 미완료도 사용자 행동이 필요하다
+    if (msg === 'ONBOARDING_INCOMPLETE') return true;
     if (code === 'not-found' && /project|database/i.test(msg)) return true;
     // 권한 거부는 대개 토큰·App Check 일시 문제라 바로 포기하면 안 된다.
     // 여러 번 연속으로 같은 이유라면 그때는 사용자 개입이 필요한 상태로 본다.
@@ -129,6 +133,22 @@ async function processEntry(entry) {
     diag('worker.entry.begin', { key: entry.key, op: entry.op, attempts: entry.attempts || 0 });
 
     try {
+        if (entry.target === 'settings') {
+            /**
+             * userSettings 단일 문서. Firestore 쓰기 프라미스는 **서버 커밋에서 resolve** 되고
+             * 오프라인이면 resolve 되지 않으므로, 정상 반환이 곧 서버 반영 확인이다.
+             * (ops.saveSettings 가 성공 지점에서 스스로 아웃박스를 비우므로 여기서는 호출만 한다)
+             */
+            const { dbOps } = await import('../db/ops.js');
+            await withDeadline(
+                dbOps.saveSettings(entry.payload?.settings || {}, { fromOutbox: true }),
+                DEADLINE.SAVE,
+                'worker-settings'
+            );
+            diag('worker.entry.done', { key: entry.key, op: 'settings', ms: Date.now() - startedAt });
+            return;
+        }
+
         if (entry.op === 'delete') {
             const { dbOps } = await import('../db/ops.js');
             try {

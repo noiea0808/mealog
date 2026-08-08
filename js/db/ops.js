@@ -9,6 +9,12 @@ import {
 } from '../firebase.js';
 import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
 import {
+    enqueueWithQuotaRelief,
+    remove as outboxRemove,
+    outboxKey,
+    CLASS_CONTENT
+} from '../utils/outbox-store.js';
+import {
     doc,
     getDoc,
     setDoc,
@@ -430,7 +436,11 @@ export const dbOps = {
             throw e;
         }
     },
-    async saveSettings(newSettings) {
+    /**
+     * @param {object} newSettings
+     * @param {{ fromOutbox?: boolean }} [opts] 아웃박스 워커의 재시도 호출이면 true — 재진입 방지
+     */
+    async saveSettings(newSettings, opts = {}) {
         const currentUser = auth.currentUser || window.currentUser;
         if (!currentUser || currentUser.isAnonymous) {
             showToast("설정 저장 실패: 로그인이 필요합니다.", 'error');
@@ -439,6 +449,34 @@ export const dbOps = {
         if (isDemoUser(currentUser)) {
             return;
         }
+        /**
+         * 설정 문서도 아웃박스에 먼저 내구화한다 (설계 §4.1.1 content 등급).
+         *
+         * 하루 소감·체중·혈당은 전부 userSettings 단일 문서에 들어와 이 경로를 탄다. 이 함수에는
+         * 바깥 타임아웃이 없고 아래에서 서버 왕복(getDoc)도 하므로, ops.save 와 똑같은 방식으로
+         * 유실될 수 있는 자리였다.
+         *
+         * mergePayload 가 필수다 — 단일 큰 문서를 여러 편집이 겨냥하므로 덮어쓰면 하루 소감과
+         * 프로필 수정이 서로를 지운다.
+         */
+        const settingsOutboxKey = outboxKey('settings', currentUser.uid);
+        /**
+         * 워커가 이 함수를 호출할 때는 다시 넣지 않는다. enqueue 는 attempts 를 0 으로
+         * 되돌리므로(새 사용자 편집은 재시도 시계를 리셋하는 게 맞다), 워커가 자기 호출로
+         * 재진입하면 백오프가 영영 진행되지 않는 뜨거운 루프가 된다.
+         */
+        if (opts.fromOutbox !== true) {
+            await enqueueWithQuotaRelief({
+                target: 'settings',
+                id: currentUser.uid,
+                uid: currentUser.uid,
+                op: 'upsert',
+                class: CLASS_CONTENT,
+                payload: { settings: newSettings, updatedAt: new Date().toISOString() },
+                mergePayload: true
+            });
+        }
+
         try {
             // OAuth·커스텀 토큰 직후: 재시도 경로에서만 강제 갱신(연속 저장 체감 개선)
             await preflightFirestoreAuth(currentUser);
@@ -644,6 +682,14 @@ export const dbOps = {
                     throw clientErr;
                 }
             }
+
+            /**
+             * 여기 도달했다는 것은 setDoc/트랜잭션이 **서버 커밋으로 resolve** 됐거나 Callable
+             * 프록시가 ok 를 돌려줬다는 뜻이다(Firestore 쓰기 프라미스는 서버 ack 에서 resolve
+             * 되고, 오프라인이면 resolve 되지 않는다). 서버 반영이 확인된 유일한 지점이므로
+             * 여기서만 아웃박스에서 뺀다.
+             */
+            await outboxRemove(settingsOutboxKey);
 
             if (!savedViaFunctionsProxy) {
                 console.log('✅ 설정 저장 성공:', {

@@ -117,6 +117,26 @@ export function outboxKey(target, id) {
     return `${target}:${id}`;
 }
 
+function isPlainObject(v) {
+    return v != null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Blob) && !(v instanceof Date);
+}
+
+/**
+ * 평범한 객체만 재귀 병합. 배열·Blob·Date 는 통째로 교체한다.
+ *
+ * 배열을 병합하지 않는 이유: photos 같은 목록은 「합집합」이 아니라 「마지막 상태」가 맞다.
+ * 사진 두 장을 지우고 저장했는데 병합으로 되살아나면 그것도 사고다.
+ */
+function deepMergePlain(base, patch) {
+    if (!isPlainObject(base)) return patch;
+    if (!isPlainObject(patch)) return patch;
+    const out = { ...base };
+    for (const [k, v] of Object.entries(patch)) {
+        out[k] = isPlainObject(v) && isPlainObject(base[k]) ? deepMergePlain(base[k], v) : v;
+    }
+    return out;
+}
+
 /**
  * 항목을 넣는다 (같은 key 가 있으면 대체하되, payload 병합이 필요한 대상은 병합).
  *
@@ -144,9 +164,12 @@ export async function enqueue(entry) {
     /**
      * userSettings 처럼 **단일 큰 문서**를 겨냥하는 대상은 덮어쓰면 안 된다.
      * 하루 소감 저장과 프로필 수정이 같은 문서를 두고 서로를 지우게 된다.
+     *
+     * 얕은 병합으로는 부족하다 — payload 가 { settings: {...} } 형태라, 얕게 합치면
+     * settings 가 통째로 교체돼 정확히 그 사고가 난다(실측으로 확인됨).
      */
     const payload = existing?.payload
-        ? { ...existing.payload, ...(entry.payload || {}) }
+        ? deepMergePlain(existing.payload, entry.payload || {})
         : entry.payload || {};
 
     const row = {
