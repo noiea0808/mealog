@@ -65,8 +65,16 @@ const RATE_LIMITS = {
   share: { perMinute: 5, perHour: 30 },       // 공유: 분당 5개, 시간당 30개
   report: { perMinute: 2, perHour: 10 },      // 신고: 분당 2개, 시간당 10개
   like: { perMinute: 30, perHour: 200 },      // 좋아요: 분당 30개, 시간당 200개
-  interaction: { perMinute: 20, perHour: 100 } // 상호작용: 분당 20개, 시간당 100개
+  interaction: { perMinute: 20, perHour: 100 }, // 상호작용: 분당 20개, 시간당 100개
+  gemini: { perMinute: 5, perHour: 30 },      // 밀당 AI(Gemini) 프록시: 분당 5개, 시간당 30개
+  kakaoSearch: { perMinute: 15, perHour: 100 } // 카카오 장소 검색 프록시: 분당 15개, 시간당 100개
 };
+
+// callGemini에서 허용하는 모델 (js/constants.js GEMINI_MEALDANG_MODEL과 동기화)
+const GEMINI_ALLOWED_MODELS = ['gemini-2.5-flash'];
+const GEMINI_ALLOWED_API_VERSION = 'v1beta';
+const GEMINI_MAX_REQUEST_BODY_BYTES = 32 * 1024; // 32KB — 프롬프트+페르소나 여유 포함
+const GEMINI_MAX_OUTPUT_TOKENS_CEILING = 1024; // 클라이언트 기본값(768)보다 여유만 둔 서버 상한
 
 // 금칙어 목록 (간단한 예시, 필요시 확장)
 const BANNED_WORDS = [
@@ -4244,16 +4252,27 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
-  const { requestBody, model, apiVersion } = request.data || {};
+  assertNotReadOnlyDemoAuth(request.auth);
+  const { requestBody, model } = request.data || {};
   if (!requestBody || !model) {
     throw new HttpsError('invalid-argument', 'requestBody와 model이 필요합니다.');
   }
+  if (!GEMINI_ALLOWED_MODELS.includes(model)) {
+    throw new HttpsError('invalid-argument', '지원하지 않는 모델입니다.');
+  }
+  if (Buffer.byteLength(JSON.stringify(requestBody), 'utf8') > GEMINI_MAX_REQUEST_BODY_BYTES) {
+    throw new HttpsError('invalid-argument', '요청 본문이 너무 큽니다.');
+  }
+  const maxOutputTokens = requestBody?.generationConfig?.maxOutputTokens;
+  if (typeof maxOutputTokens === 'number' && maxOutputTokens > GEMINI_MAX_OUTPUT_TOKENS_CEILING) {
+    throw new HttpsError('invalid-argument', 'maxOutputTokens가 허용 범위를 초과했습니다.');
+  }
+  await checkRateLimit(request.auth.uid, 'gemini', request);
   const apiKey = geminiApiKey.value();
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
     throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다. functions/.env 파일에 GEMINI_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
-  const version = apiVersion || 'v1beta';
-  const url = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/${GEMINI_ALLOWED_API_VERSION}/models/${model}:generateContent?key=${apiKey}`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -4290,6 +4309,7 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   if (trimmedKw.length < 2) {
     throw new HttpsError('invalid-argument', '검색어는 2글자 이상 입력해주세요.');
   }
+  await checkRateLimit(request.auth.uid, 'kakaoSearch', request);
   const apiKey = kakaoRestApiKey.value();
   if (!apiKey) {
     throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');

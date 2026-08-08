@@ -14,6 +14,29 @@
   },
   "hosting": {
     "public": ".",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**", "android/**", "scripts/**", "functions/**"]
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "android/**",
+      "scripts/**",
+      "functions/**",
+      "www/**",
+      "docs/*.md",
+      "*.md",
+      "*.ps1",
+      "*.bat",
+      "*.rules",
+      "firestore.indexes.json",
+      "storage-cors.json",
+      "capacitor.config*.json",
+      "production-release.json",
+      "package.json",
+      "package-lock.json",
+      "tailwind.config.js",
+      "eslint.config.mjs",
+      "test-error-reporting.js",
+      "generate-characters.html"
+    ]
   }
 }
