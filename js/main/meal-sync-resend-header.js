@@ -91,14 +91,14 @@ export function bindMealSyncResendNavButtonOnce() {
             try {
                 // 연결을 확인한 뒤 보낼지 말지 정하지 않는다. 확인은 틀릴 수 있고, 틀리면 사용자가
                 // 누른 시도가 통째로 막힌다. 채널을 찌르고 아웃박스를 비우는 일을 그냥 한다.
-                const [{ runNetworkRecoveryNow }, outbox] = await Promise.all([
+                const [{ runNetworkRecoveryNow }, worker] = await Promise.all([
                     import('../utils/network-loop.js'),
-                    import('../utils/meal-outbox-drain.js')
+                    import('../utils/outbox-worker.js')
                 ]);
                 await runNetworkRecoveryNow('manual-resend');
-                if (outbox.hasOutstandingMealWork()) showToast('서버에 반영 중입니다…', 'info');
-                await outbox.drainMealOutbox('manual-resend');
-                if (outbox.hasOutstandingMealWork()) {
+                if (countUnsentMealWork() > 0) showToast('서버에 반영 중입니다…', 'info');
+                await worker.pokeOutboxWorker('manual-resend');
+                if (countUnsentMealWork() > 0) {
                     showToast('아직 서버에 닿지 못했어요. 연결되면 자동으로 다시 보냅니다.', 'info');
                 }
             } catch (e) {

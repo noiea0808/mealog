@@ -87,7 +87,6 @@ import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
 import { registerMainTabSwitch } from './main/tabs.js';
 import { registerMomentFeedAutoRetry } from './main/moment-feed-auto-retry.js';
-import { registerMealOutboxDrain } from './utils/meal-outbox-drain.js';
 import { registerDiagnostics } from './utils/diagnostics.js';
 import { registerOutboxWorker } from './utils/outbox-worker.js';
 import { clearNavFeedUpdateDots, refreshNavFeedUpdateDots } from './main/nav-feed-update-dots.js';
@@ -108,8 +107,6 @@ registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
 registerMomentFeedAutoRetry();
-registerMealOutboxDrain();
-// 아웃박스 단일 워커. 6단계에서 위 registerMealOutboxDrain 을 흡수·삭제한다.
 registerOutboxWorker();
 initLucideIcons();
 registerContentPopup();
