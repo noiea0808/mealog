@@ -78,9 +78,24 @@ function backoffFor(attempts) {
     return BACKOFF_MS[Math.min(attempts, BACKOFF_MS.length - 1)];
 }
 
-function dueNow(entry) {
+/**
+ * 방금 만들어진 항목은 건드리지 않는다.
+ *
+ * 정상 경로(saveEntry → dbOps.save → 리스너 ack → 아웃박스 제거)는 보통 1초 안에 끝난다.
+ * 워커가 그 사이에 끼어들면 **같은 쓰기를 두 번 보내고**(setDoc 은 멱등이라 데이터는
+ * 안전하지만 쓰기 1회 + 서버 읽기 2회가 낭비된다), 사용자가 저장한 직후마다 그 낭비가 난다.
+ * 워커는 「정상 경로가 실패했을 때」만 필요하므로, 그 판정이 날 시간을 준다.
+ */
+const FRESH_ENTRY_GRACE_MS = 15000;
+
+function dueNow(entry, { ignoreGrace = false } = {}) {
     const attempts = entry.attempts || 0;
-    if (attempts === 0) return true;
+    if (attempts === 0) {
+        if (ignoreGrace) return true;
+        const created = entry.createdAt ? new Date(entry.createdAt).getTime() : 0;
+        if (created && Date.now() - created < FRESH_ENTRY_GRACE_MS) return false;
+        return true;
+    }
     const last = entry.lastError?.at ? new Date(entry.lastError.at).getTime() : 0;
     if (!last) return true;
     return Date.now() - last >= backoffFor(attempts);
@@ -199,7 +214,17 @@ async function processEntry(entry) {
 
         // ── upsert ──────────────────────────────────────────────────────────
         const ourUpdatedAt = entry.payload?.updatedAt || entry.updatedAt || '';
-        const cmp = await compareWithServer(uid, entry.id, ourUpdatedAt);
+        /**
+         * 충돌 사전 확인은 **묵은 항목에만** 한다.
+         *
+         * 이 확인의 목적은 「며칠 묵은 항목이 다른 기기의 최신 수정을 되돌리는 것」을 막는
+         * 것이다(§4.5). 아직 한 번도 못 보낸 신선한 항목은 사용자가 방금 만든 것이므로
+         * 되돌릴 최신본이 있을 수 없다 — 그 경우 이 서버 읽기는 순수 낭비다.
+         */
+        const needsConflictCheck = (entry.attempts || 0) > 0;
+        const cmp = needsConflictCheck
+            ? await compareWithServer(uid, entry.id, ourUpdatedAt)
+            : 'absent';
         if (cmp === 'server-newer') {
             /**
              * 다른 기기에서 더 최근에 고쳤다 — 묵은 항목이 그걸 되돌리면 안 된다(§4.5).
@@ -265,7 +290,11 @@ export async function runOutboxCycle(reason = '') {
     /** 리스를 못 잡으면 undefined — 호출부가 「이미 돌고 있음」을 구분할 수 있어야 한다 */
     return workerLease.run(async () => {
         const all = await listPending(uid);
-        const due = all.filter((e) => !e.permanent && dueNow(e)).slice(0, MAX_PER_CYCLE);
+        // 사용자가 재전송을 눌렀으면 신선도 유예를 무시한다 — 기다리라고 할 이유가 없다
+        const ignoreGrace = reason === 'poke' || reason === 'manual-resend';
+        const due = all
+            .filter((e) => !e.permanent && dueNow(e, { ignoreGrace }))
+            .slice(0, MAX_PER_CYCLE);
         if (due.length === 0) return { processed: 0, pending: all.length };
         diag('worker.cycle', { reason, pending: all.length, due: due.length });
         for (const entry of due) {

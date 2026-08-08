@@ -264,16 +264,22 @@ export async function getEntry(key) {
 
 /** 서버 존재가 확인됐을 때만 부른다 */
 export async function remove(key) {
+    /**
+     * 인덱스에 없으면 IndexedDB 를 건드리지 않는다.
+     *
+     * 이 함수는 리스너가 ack 한 **모든** 문서마다 불린다(onServerDocumentAcknowledged).
+     * 스냅샷에 50건이 오면 50번 불리는데, 그중 아웃박스에 실제로 있는 건 보통 0~1건이다.
+     * 인덱스가 메모리에 있으므로 그 판정은 공짜다 — 없으면 트랜잭션을 아예 열지 않는다.
+     */
+    if (!liveIndex.has(key)) return true;
     const db = await ensureDb();
     if (!db) return false;
-    const wasPresent = liveIndex.has(key);
     const ok = await idbDel(db, STORE, key);
-    if (ok && wasPresent) {
+    if (ok) {
         liveIndex.delete(key);
         notifyIndexChanged();
     }
-    // 없던 키를 지우는 호출은 정상 흐름(리스너 ack)이라 로그를 남기지 않는다 — 소음만 된다
-    if (wasPresent) diag('outbox.remove', { key: String(key).slice(0, 60), ok });
+    diag('outbox.remove', { key: String(key).slice(0, 60), ok });
     return ok;
 }
 
