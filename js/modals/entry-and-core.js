@@ -74,6 +74,7 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { diag, getSavePhase } from '../utils/diagnostics.js';
+import { withDeadline, Lease, DEADLINE } from '../utils/with-deadline.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
@@ -2810,6 +2811,29 @@ export async function deleteEntry() {
 
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
 
+/**
+ * 기록별 재시도 리스. 사진 업로드가 낀 재시도는 길어질 수 있어 넉넉하되 반드시 유한하다.
+ * @type {Map<string, Lease>}
+ */
+const mealRetryLeases = new Map();
+
+function getMealRetryLease(entryId) {
+    const key = String(entryId);
+    let l = mealRetryLeases.get(key);
+    if (!l) {
+        l = new Lease(`meal-retry:${key}`, 120000);
+        mealRetryLeases.set(key, l);
+        // 세션이 길어져도 무한히 쌓이지 않게 — 점유되지 않은 오래된 항목부터 정리
+        if (mealRetryLeases.size > 200) {
+            for (const [k, v] of mealRetryLeases) {
+                if (!v.held) mealRetryLeases.delete(k);
+                if (mealRetryLeases.size <= 100) break;
+            }
+        }
+    }
+    return l;
+}
+
 /** data:image 또는 blob: → Storage 업로드용 data URL */
 /**
  * meal 레코드에 남아 있는 로컬(data:image·blob:) 사진을 Storage에 올린 뒤 photos/sharedPhotos를 https URL 기준으로 맞춘다.
@@ -2847,8 +2871,15 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('샘플 계정에서는 사용할 수 없습니다.', 'error');
         return;
     }
-    if (!window._mealEntryRetryInFlight) window._mealEntryRetryInFlight = {};
-    if (window._mealEntryRetryInFlight[entryId]) return;
+    /**
+     * 기록별 재시도 점유 — 불린 맵이 아니라 만료 있는 리스다.
+     *
+     * 예전에는 `window._mealEntryRetryInFlight[entryId] = true` 를 세우고 finally 에서 지웠는데,
+     * 안쪽의 getDocFromServer·waitForPendingWrites 가 매달리면 finally 가 돌지 않아
+     * **그 기록은 세션 내내 재시도 대상에서 빠졌다.** 사용자가 재전송을 눌러도 조용히 무시된다.
+     */
+    const lease = getMealRetryLease(entryId);
+    if (lease.held) return;
     const record = window.mealHistory?.find((m) => m && String(m.id) === entryId);
     if (!record) {
         showToast('기록을 찾을 수 없습니다.', 'error');
@@ -2858,7 +2889,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         return;
     }
 
-    window._mealEntryRetryInFlight[entryId] = true;
+    if (!lease.acquire()) return;
     try {
         /**
          * 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지.
@@ -2878,8 +2909,10 @@ export async function retryMealEntrySync(entryIdRaw) {
             const uid = window.currentUser?.uid;
             if (uid) {
                 try {
+                    // 상한 필수 — 여기서 매달리면 _mealEntryRetryInFlight[entryId] 가 영구히 잠겨
+                    // 이 기록은 세션 내내 재시도 대상에서 빠지고, 드레인도 함께 죽는다.
                     const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', entryId);
-                    const snap = await getDocFromServer(ref);
+                    const snap = await withDeadline(getDocFromServer(ref), DEADLINE.DOC, 'retry-serverCheck');
                     if (snap.exists()) {
                         onMealDocFirestoreServerAcknowledged(entryId, null);
                         markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
@@ -3084,7 +3117,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         invalidateTimelineDateSection(record.date);
         updateTimelineMealEntryPendingIndicators();
     } finally {
-        delete window._mealEntryRetryInFlight[entryId];
+        lease.release();
     }
 }
 

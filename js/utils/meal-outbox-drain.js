@@ -17,6 +17,7 @@ import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { countUnsentMealWork } from './meal-entry-pending.js';
 import { diag } from './diagnostics.js';
+import { withDeadlineOr, Lease, DEADLINE } from './with-deadline.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import { pokeNetworkLoop } from './network-loop.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
@@ -27,24 +28,27 @@ const BACKOFF_MS = [5000, 10000, 20000, 40000, 60000];
 const TICK_MS = 5000;
 /** waitForPendingWrites 등 쓰기 큐 flush 상한 */
 const WRITE_QUEUE_FLUSH_TIMEOUT_MS = 8000;
+/** 미전송 기록 N건 순차 재시도 단계의 상한 — 건당 10초 + 여유 */
+const DRAIN_RETRY_PHASE_TIMEOUT_MS = 90000;
 
 let tickTimer = 0;
 let backoffIndex = 0;
 let nextAttemptAt = 0;
-let drainInFlight = false;
+/**
+ * 드레인 점유. 불린 가드가 아니라 **만료 있는 리스**다.
+ *
+ * 예전 `drainInFlight` 불린은 finally 로만 풀렸는데, try 안에 상한 없는 await 가 셋 있었다
+ * (reconcile 의 getDocFromServer, retryMealEntrySync 의 getDocFromServer,
+ * scheduleServerAckAfterPendingWrites 의 waitForPendingWrites). 하나라도 매달리면
+ * **세션이 끝날 때까지 아웃박스 드레인이 통째로 죽었다** — 사용자에게는 재전송 버튼을 눌러도
+ * 아무 일도 일어나지 않는 것으로 보였다.
+ *
+ * 위 셋에는 이제 개별 상한도 걸었지만, 리스는 「다음에 추가될 await」까지 막아 준다.
+ * 상한들의 합보다 넉넉하게 잡되 유한해야 한다.
+ */
+const drainLease = new Lease('meal-outbox-drain', 180000);
 /** 계측: 드레인이 얼마나 오래 잠겨 있는지 — 영구 교착 판정용 */
 let drainStartedAt = 0;
-
-/** half-open 연결에서 멈춘 Promise 가 드레인을 마비시키지 않도록 하는 상한 */
-function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
-    let timer = 0;
-    const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
-    });
-    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeout]).finally(() => {
-        if (timer) clearTimeout(timer);
-    });
-}
 
 /**
  * 서버로 올라가지 않은 것이 남아 있는지 — 로컬 판정, 서버 읽기 없음.
@@ -73,14 +77,21 @@ function retryDegradedMealsListener() {
 async function reconcileSyncUiAgainstServer() {
     // flush 가 상한 안에 확인됐는지를 그대로 넘긴다 — 타임아웃으로 빠져나온 경우까지
     // 「큐가 비었다」로 취급하면 아직 보내는 중인 쓰기의 inFlight 를 지우게 된다.
-    const flushed = await withTimeout(
+    const flushed = await withDeadlineOr(
         waitForPendingWrites(db).then(() => true),
         WRITE_QUEUE_FLUSH_TIMEOUT_MS,
-        false
+        false,
+        'drain-waitForPendingWrites'
     );
     try {
         const m = await import('./meal-entry-pending.js');
-        await m.reconcileMealSyncAgainstServer({ writeQueueFlushed: flushed === true });
+        // 정합 자체도 상한 안에서 — 내부의 서버 읽기들이 매달려도 드레인이 다음으로 넘어가게
+        await withDeadlineOr(
+            m.reconcileMealSyncAgainstServer({ writeQueueFlushed: flushed === true }),
+            DEADLINE.UPLOAD,
+            undefined,
+            'drain-reconcile'
+        );
         m.clearStuckMealPendingFlags();
     } catch (e) {
         console.warn('[meal-outbox] 서버 정합 실패:', e?.message || e);
@@ -105,7 +116,14 @@ async function retryPendingMealEntries() {
     try {
         const mod = await import('../modals/entry-and-core.js');
         if (typeof mod.retryPendingMealEntriesOnAppReady === 'function') {
-            await mod.retryPendingMealEntriesOnAppReady();
+            // 기록 N건을 순차 재시도하므로 넉넉하되, 상한은 반드시 있어야 한다 —
+            // 이것이 드레인의 finally 를 막던 세 경로 중 하나였다.
+            await withDeadlineOr(
+                mod.retryPendingMealEntriesOnAppReady(),
+                DRAIN_RETRY_PHASE_TIMEOUT_MS,
+                undefined,
+                'drain-retryPending'
+            );
         }
     } catch (_) {
         /* ignore */
@@ -117,37 +135,30 @@ async function retryPendingMealEntries() {
  * @param {string} [reason]
  */
 export async function drainMealOutbox(reason = '') {
-    if (drainInFlight) {
-        /**
-         * 계측(0단계) — 이것이 진단 C 를 판정한다.
-         *
-         * 이 가드는 finally 로만 풀린다. try 안에 상한 없는 await 가 셋 있어
-         * (reconcile 의 getDocFromServer, retryMealEntrySync 의 getDocFromServer,
-         * scheduleServerAckAfterPendingWrites 의 waitForPendingWrites) 하나라도 매달리면
-         * **세션이 끝날 때까지 아웃박스 드레인이 통째로 죽는다.** 사용자에게는 재전송 버튼을
-         * 눌러도 아무 일도 안 일어나는 것으로 보인다.
-         *
-         * heldMs 가 수십 초 이상으로 찍히면 그 교착이 실제로 일어난 것이다. (수정은 2단계)
-         */
+    if (!hasOutstandingMealWork()) return;
+    if (drainLease.held) {
         diag('drain.blocked', { reason, heldMs: drainStartedAt ? Date.now() - drainStartedAt : 0 });
         return;
     }
-    if (!hasOutstandingMealWork()) return;
-    drainInFlight = true;
-    drainStartedAt = Date.now();
+    const startedAt = Date.now();
+    drainStartedAt = startedAt;
     diag('drain.begin', { reason, outstanding: countUnsentMealWork() });
-    try {
-        retryDegradedMealsListener();
-        await reconcileSyncUiAgainstServer();
-        await retryPendingMealEntries();
-        diag('drain.done', { reason, ms: Date.now() - drainStartedAt, remaining: countUnsentMealWork() });
-    } catch (e) {
-        diag('drain.error', { reason, ms: Date.now() - drainStartedAt, message: String(e?.message || e).slice(0, 120) });
-        console.warn('[meal-outbox] 드레인 실패:', reason, e?.message || e);
-    } finally {
-        drainInFlight = false;
-        drainStartedAt = 0;
-    }
+    await drainLease.run(async () => {
+        try {
+            retryDegradedMealsListener();
+            await reconcileSyncUiAgainstServer();
+            await retryPendingMealEntries();
+            diag('drain.done', { reason, ms: Date.now() - startedAt, remaining: countUnsentMealWork() });
+        } catch (e) {
+            diag('drain.error', {
+                reason,
+                ms: Date.now() - startedAt,
+                message: String(e?.message || e).slice(0, 120)
+            });
+            console.warn('[meal-outbox] 드레인 실패:', reason, e?.message || e);
+        }
+    });
+    drainStartedAt = 0;
     if (hasOutstandingMealWork()) {
         const delay = BACKOFF_MS[Math.min(backoffIndex, BACKOFF_MS.length - 1)];
         backoffIndex += 1;

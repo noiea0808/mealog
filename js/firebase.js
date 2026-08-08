@@ -15,6 +15,7 @@ import {
     disableNetwork,
     enableNetwork
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { withDeadlineOr, DEADLINE } from './utils/with-deadline.js';
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
@@ -215,11 +216,39 @@ export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
         const now = Date.now();
         const force =
             opts.force === true || now - lastAppCheckForceRefreshAt >= APPCHECK_FORCE_MIN_INTERVAL_MS;
-        await getToken(firebaseAppCheck, force);
+        await withDeadlineOr(getToken(firebaseAppCheck, force), DEADLINE.PREFLIGHT, null, 'appcheck-token');
         if (force) lastAppCheckForceRefreshAt = now;
     } catch (_) {
         /* ignore */
     }
+}
+
+/**
+ * Firestore 쓰기 직전 준비 — 토큰·App Check 갱신을 **상한 안에서** 시도한다.
+ *
+ * 왜 상한이 필수인가 (docs/sync-outbox-design.md §2.1):
+ *   이 두 왕복은 원래 상한이 없었다. 반쯤 끊긴 연결(와이파이는 잡혔는데 인터넷 없음, LTE↔Wi-Fi
+ *   핸드오버, 캡티브 포털)에서 fetch 는 즉시 실패하지 않고 OS 타임아웃까지 매달린다. 그 사이
+ *   상위 10초 저장 타임아웃이 먼저 터지면 **setDoc 이 호출조차 되지 않는다** — Firestore 로컬
+ *   큐에 아무것도 없으니 재연결돼도 저절로 올라가지 않고, 앱이 죽는 순간 기록이 사라진다.
+ *
+ *   같은 실패 모드를 ops.js 에서 이미 한 번 발견해 저장 직전 getDoc 을 제거했지만, 바로 위의
+ *   이 두 왕복은 그대로 남아 있었다. 수정이 절반만 됐던 것이다.
+ *
+ * 실패해도 **던지지 않는다.** 오프라인 큐잉에는 토큰이 필요 없다 — 전송 시점에 SDK 가 붙인다.
+ * 여기서 예외를 던지면 호출부가 그걸 다시 중단 조건으로 쓰게 되고, 그게 없애려는 구조 그 자체다.
+ *
+ * @param {{ getIdToken?: (force?: boolean) => Promise<string> } | null} [user]
+ * @param {{ force?: boolean }} [opts]
+ */
+export async function preflightFirestoreAuth(user, opts = {}) {
+    const force = opts.force === true;
+    const u = user || auth.currentUser;
+    if (u && typeof u.getIdToken === 'function') {
+        await withDeadlineOr(u.getIdToken(force), DEADLINE.PREFLIGHT, null, 'preflight-idtoken');
+    }
+    await withDeadlineOr(appCheckInitPromise, DEADLINE.PREFLIGHT, undefined, 'preflight-appcheck-init');
+    await refreshAppCheckTokenBeforeFirestore({ force });
 }
 
 // 공식 가이드: App Check를 Firestore 등보다 먼저 초기화. 기존에는 getFirestore가 먼저라 강제 적용 시 쓰기에 토큰이 안 붙을 수 있음.
@@ -295,8 +324,13 @@ export async function kickFirestoreTransportReconnect(reason = '', opts = {}) {
     transportKickInFlight = (async () => {
         try {
             console.warn('[Firestore] transport kick:', reason || '(no reason)');
-            await disableNetwork(db);
-            await enableNetwork(db);
+            /**
+             * 상한이 필수다. 이 둘이 매달리면 transportKickInFlight 가 영구히 잠기고, 그러면
+             * **복구 넛지 자체가 죽는다** — 네트워크가 돌아와도 채널을 다시 찌를 방법이 없어진다.
+             * enableNetwork 는 disableNetwork 성공 여부와 무관하게 반드시 시도한다.
+             */
+            await withDeadlineOr(disableNetwork(db), DEADLINE.DOC, null, 'kick-disableNetwork');
+            await withDeadlineOr(enableNetwork(db), DEADLINE.DOC, null, 'kick-enableNetwork');
             lastTransportKickAt = Date.now();
             return true;
         } catch (e) {
@@ -375,15 +409,8 @@ export async function recoverFirestoreAfterWatchAssertion(reason = '', opts = {}
             try {
                 setLogLevel('error');
             } catch (_) {}
-            try {
-                await refreshAppCheckTokenBeforeFirestore({ force: true });
-            } catch (_) {}
-            try {
-                const u = auth.currentUser;
-                if (u && typeof u.getIdToken === 'function') {
-                    await u.getIdToken(true);
-                }
-            } catch (_) {}
+            // 복구 경로에서 토큰 갱신이 매달리면 리스너 재등록까지 못 간다 — 상한 안에서만 시도
+            await preflightFirestoreAuth(auth.currentUser, { force: true });
             if (firestoreListenersRebind) {
                 try {
                     firestoreListenersRebind();

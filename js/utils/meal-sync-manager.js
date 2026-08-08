@@ -10,6 +10,7 @@ import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
 import { isDemoUser } from '../demo-account.js';
+import { withDeadline, DEADLINE } from './with-deadline.js';
 
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
@@ -595,11 +596,17 @@ export class MealSyncManager {
         // 데모 계정은 서버 대조 대상이 아니다 — 확인 없이 통과시켜 기존 동작을 유지한다.
         if (isDemoUser(user)) return true;
         try {
-            const snap = await getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id)));
+            // 상한 필수: 반쯤 끊긴 연결에서 getDocFromServer 는 정착하지 않는다.
+            // 여기서 매달리면 이 함수를 await 하는 드레인 전체가 영구히 멈춘다.
+            const snap = await withDeadline(
+                getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id))),
+                DEADLINE.DOC,
+                'serverDocumentExists'
+            );
             return snap.exists();
         } catch (e) {
             console.warn('[meal-sync] 서버 문서 확인 실패:', id, e?.message || e);
-            return null;
+            return null; // 확인 못 함 — 다음 패스가 이어받는다
         }
     }
 
@@ -668,8 +675,10 @@ export class MealSyncManager {
         const reads = await Promise.all(
             [...targets.entries()].map(async ([id, t]) => {
                 try {
+                    // 상한 필수 — 이 Promise.all 이 매달리면 드레인이 통째로 죽는다.
+                    // 읽지 못한 건은 exists: null 로 두면 아래에서 건너뛰고 다음 패스가 이어받는다.
                     const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
-                    const snap = await getDocFromServer(ref);
+                    const snap = await withDeadline(getDocFromServer(ref), DEADLINE.DOC, 'reconcile-read');
                     return { id, deleting: t.deleting, record: t.record, exists: snap.exists() };
                 } catch (e) {
                     console.warn('[meal-sync] 서버 정합 읽기 실패:', id, e?.message || e);
@@ -963,7 +972,17 @@ export class MealSyncManager {
         return (async () => {
             let existsOnServer = null;
             try {
-                await waitForPendingWrites(db);
+                /**
+                 * 상한 필수. `waitForPendingWrites` 는 **오프라인이면 정의상 resolve 되지 않는다.**
+                 * 그런데 이 함수는 「아직 못 보낸 것을 보내자」는 재시도 경로에서 await 되므로,
+                 * 오프라인일 확률이 구조적으로 가장 높은 지점에서 영원히 매달렸다. 그 결과
+                 * retryMealEntrySync 의 finally 가 돌지 않아 해당 기록은 다시 시도할 수 없게 되고,
+                 * 그것을 await 하던 드레인의 drainInFlight 도 영구히 잠겼다.
+                 *
+                 * 타임아웃되면 아래에서 existsOnServer 가 null 로 남아 「등록예정」으로 되돌아간다 —
+                 * 아웃박스에 그대로 남으므로 다음 패스가 이어받는다. 유실이 아니다.
+                 */
+                await withDeadline(waitForPendingWrites(db), DEADLINE.SAVE, 'ack-waitForPendingWrites');
                 // 리스너가 이미 서버 스냅샷으로 ack 했으면 그것이 곧 기록별 확인이다 — 서버 읽기 생략.
                 if (self.hasServerSynced(String(mealId))) {
                     void refreshTimelineFull(dateStr, currentTabVal);

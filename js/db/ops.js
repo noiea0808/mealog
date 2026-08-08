@@ -4,9 +4,10 @@ import {
     appId,
     auth,
     callableFunctions,
-    appCheckInitPromise,
+    preflightFirestoreAuth,
     refreshAppCheckTokenBeforeFirestore
 } from '../firebase.js';
+import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
 import {
     doc,
     getDoc,
@@ -178,25 +179,25 @@ export const dbOps = {
         try {
             const runWrite = async () => {
                 /**
-                 * 계측(0단계): 아래 두 왕복은 상한이 없다. 반쯤 끊긴 연결에서 여기 매달리면
-                 * 상위 10초 타임아웃이 setDoc 전에 터지고, 큐에 아무것도 안 남아 기록이 유실된다.
-                 * 그 가설을 데이터로 확인하려고 단계 경계를 남긴다. (수정은 4단계에서)
+                 * 계측: 저장이 어디까지 갔는지 남긴다. `save.timeout` 이 이 단계를 실어
+                 * 「타임아웃이 setDoc 전에 터졌는가(= 큐에 없음 = 유실)」를 조인 없이 답한다.
+                 * 1단계에서 상한을 건 뒤 이 값이 실제로 개선됐는지가 수정의 검증이 된다.
                  */
                 const diagId = record?.id ? String(record.id) : '(new)';
                 const preflightStartedAt = Date.now();
                 markSavePhase(diagId, 'preflight');
                 diag('save.preflight.begin', { id: diagId });
 
-                // 오프라인에서 캐시 토큰이 만료돼 getIdToken이 실패해도 Firestore 로컬 큐잉은 가능해야 함 — 비치명 처리
-                try {
-                    if (typeof currentUser.getIdToken === 'function') {
-                        await currentUser.getIdToken(false);
-                    }
-                } catch (tokenErr) {
-                    console.warn('[dbOps] getIdToken 실패 (오프라인 큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
-                }
-                await appCheckInitPromise;
-                await refreshAppCheckTokenBeforeFirestore();
+                /**
+                 * 토큰·App Check 갱신은 **상한 안에서만** 시도한다 (설계 §2.1).
+                 * 예전에는 상한이 없어서, 반쯤 끊긴 연결에서 여기 매달린 채 상위 10초 타임아웃이
+                 * 터졌다. 그러면 아래 setDoc 이 호출조차 되지 않아 Firestore 로컬 큐가 비어 있고,
+                 * 기록은 RAM 에만 남아 앱이 죽는 순간 사라졌다.
+                 *
+                 * 실패해도 진행한다 — 오프라인 큐잉에는 토큰이 필요 없고, 전송 시점에 SDK 가 붙인다.
+                 * 중요한 것은 「무슨 일이 있어도 setDoc 까지 간다」이다.
+                 */
+                await preflightFirestoreAuth(currentUser);
 
                 markSavePhase(diagId, 'preflight-done');
                 diag('save.preflight.done', { id: diagId, ms: Date.now() - preflightStartedAt });
@@ -332,10 +333,7 @@ export const dbOps = {
                 if (e1?.code === 'permission-denied') {
                     logger.log('[dbOps] Firestore 직접 저장 재시도 1회 (토큰·App Check 갱신)');
                     currentUser = (await resolveUserForFirestoreWrite()) || currentUser;
-                    if (typeof currentUser?.getIdToken === 'function') {
-                        await currentUser.getIdToken(true);
-                    }
-                    await refreshAppCheckTokenBeforeFirestore({ force: true });
+                    await preflightFirestoreAuth(currentUser, { force: true });
                     return await runWrite();
                 }
                 throw e1;
@@ -384,16 +382,8 @@ export const dbOps = {
             logger.log('[dbOps] deleteArtifactUserMeal 폴백:', deleted ? '삭제됨' : '문서 없음');
         };
         try {
-            // 오프라인에서도 deleteDoc 로컬 큐잉이 가능하도록 토큰 갱신 실패는 비치명 처리
-            try {
-                if (typeof currentUser.getIdToken === 'function') {
-                    await currentUser.getIdToken(false);
-                }
-            } catch (tokenErr) {
-                console.warn('[dbOps] delete getIdToken 실패 (큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
-            }
-            await appCheckInitPromise;
-            await refreshAppCheckTokenBeforeFirestore();
+            // 오프라인에서도 deleteDoc 로컬 큐잉이 가능해야 한다 — 상한 안에서만 시도하고 실패해도 진행
+            await preflightFirestoreAuth(currentUser);
 
             let deletedViaCallable = false;
             try {
@@ -440,20 +430,24 @@ export const dbOps = {
         }
         try {
             // OAuth·커스텀 토큰 직후: 재시도 경로에서만 강제 갱신(연속 저장 체감 개선)
-            if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(false);
-            }
-            await appCheckInitPromise;
-            await refreshAppCheckTokenBeforeFirestore();
-            // 기존 설정을 먼저 읽어서 profile 정보 보존
+            await preflightFirestoreAuth(currentUser);
+            /**
+             * 기존 설정을 먼저 읽어서 profile 정보 보존.
+             *
+             * 이 읽기는 상한이 반드시 있어야 한다 — saveSettings 에는 바깥 타임아웃이 아예 없고,
+             * saveDailyJournal 이 이 함수를 await 하므로 여기서 매달리면 하루 소감 저장이
+             * 통째로 멈춘다(ops.save 에서 제거했던 「쓰기 직전 서버 왕복」과 같은 패턴).
+             * 실패하면 빈 값으로 진행한다 — 아래 병합이 새 값 우선이라 기존 동작과 같다.
+             */
             let existingSettings = {};
-            try {
-                const existingDoc = await getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings'));
-                if (existingDoc.exists()) {
-                    existingSettings = existingDoc.data();
-                }
-            } catch (e) {
-                console.warn('기존 설정 읽기 실패 (무시하고 계속):', e);
+            const existingDoc = await withDeadlineOr(
+                getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings')),
+                DEADLINE.DOC,
+                null,
+                'saveSettings-readExisting'
+            );
+            if (existingDoc && existingDoc.exists()) {
+                existingSettings = existingDoc.data();
             }
             
             // 새 설정과 기존 설정을 병합 (profile 정보 보존)
@@ -612,10 +606,7 @@ export const dbOps = {
                     errMsg.includes('insufficient permissions');
                 if (isPerm && callableFunctions?.saveArtifactUserSettings) {
                     try {
-                        if (typeof currentUser.getIdToken === 'function') {
-                            await currentUser.getIdToken(true);
-                        }
-                        await refreshAppCheckTokenBeforeFirestore({ force: true });
+                        await preflightFirestoreAuth(currentUser, { force: true });
                         const res = await callableFunctions.saveArtifactUserSettings({
                             settings: payloadForWrite
                         });
