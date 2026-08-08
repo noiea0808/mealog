@@ -10110,16 +10110,17 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 .attendance-welcome-chart-viewport:active {
     cursor: grabbing;
 }
-/* 식사·간식 도넛 좌우 스와이프 힌트 */
+/* 식사·간식 도넛/상세 좌우 스와이프 힌트 — 콘텐츠 폭을 줄이지 않도록 뷰포트 위에 오버레이 */
 .attendance-welcome-chart-nav {
-    flex: 0 0 auto;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
     z-index: 2;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1.75rem;
     height: 1.75rem;
-    margin: 0 0.1rem;
     padding: 0;
     border: 0;
     border-radius: 999px;
@@ -10129,6 +10130,12 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
     box-shadow: 0 0 0 1px var(--line, #d0c6ba);
     transition: color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
     -webkit-tap-highlight-color: transparent;
+}
+.attendance-welcome-chart-nav--prev {
+    left: 0.1rem;
+}
+.attendance-welcome-chart-nav--next {
+    right: 0.1rem;
 }
 .attendance-welcome-chart-nav [data-lucide],
 .attendance-welcome-chart-nav .lucide {
@@ -10148,6 +10155,51 @@ button.attendance-welcome-kind-btn:not(.attendance-welcome-kind--active):hover {
 }
 .attendance-welcome-chart-nav.hidden {
     display: none !important;
+}
+/* flex 아이템 기본 min-width:auto(콘텐츠 최소폭) 때문에 표 텍스트가 줄바꿈 대신 슬라이드를 밀어 넓히는 것 방지 */
+.attendance-welcome-detail-slide {
+    min-width: 0;
+}
+.attendance-welcome-detail-slide-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+.attendance-welcome-detail-slide-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted, #7a7268);
+}
+.attendance-welcome-detail-slide-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink, #241f1c);
+}
+.attendance-welcome-detail-slide-body {
+    min-width: 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+    -webkit-overflow-scrolling: touch;
+}
+/* 표가 좁은 슬라이드 폭보다 넓어지지 않도록 열 폭 고정 + 긴 텍스트 줄바꿈 (분석 > 상세 팝업 표와는 별개로 이 안에서만 적용) */
+.attendance-welcome-detail-slide-body table {
+    table-layout: fixed;
+}
+.attendance-welcome-detail-slide-body td {
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+.attendance-welcome-detail-slide-body::-webkit-scrollbar {
+    width: 2px;
+}
+.attendance-welcome-detail-slide-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+.attendance-welcome-detail-slide-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.22);
+    border-radius: 999px;
 }
 .attendance-welcome-legend-swatch {
     width: 0.45rem;

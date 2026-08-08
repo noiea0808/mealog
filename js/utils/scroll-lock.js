@@ -4,7 +4,7 @@ const lockOwners = new Set();
 let savedScrollY = 0;
 
 const SCROLL_ALLOW_SELECTOR =
-    '[data-scroll-lock-allow], .attendance-welcome-report-content, .attendance-welcome-chart-viewport';
+    '[data-scroll-lock-allow], .attendance-welcome-report-content, .attendance-welcome-detail-slide-body, .attendance-welcome-chart-viewport';
 
 /** 열린 오버레이 내부 — 팝업 안 터치·제스처는 허용, 배경만 차단 */
 const OPEN_OVERLAY_ROOT_SELECTOR = [
