@@ -526,6 +526,13 @@ export class MealSyncManager {
     onServerDocumentAcknowledged(docId, optimisticTempId) {
         if (typeof window === 'undefined' || docId == null || docId === '') return;
         const sid = String(docId);
+        /**
+         * 아웃박스에서 빼는 **유일한 지점**이다 (설계 §4.2).
+         * 서버 존재가 확인됐을 때만 지운다 — 그 외 어떤 이유로도 지우지 않는다.
+         */
+        void import('./outbox-store.js').then((ob) => {
+            void ob.remove(ob.outboxKey('meal', sid));
+        });
         this.clearGraceTimer(sid);
         if (optimisticTempId != null && optimisticTempId !== '') {
             this.clearGraceTimer(String(optimisticTempId));
@@ -696,6 +703,10 @@ export class MealSyncManager {
                 const prev = rowById(r.id);
                 this.markDeleteComplete(r.id);
                 this.clearDeleteFailed(r.id);
+                // 서버에서 사라진 것이 확인됐다 — 삭제 항목도 이때만 아웃박스에서 뺀다
+                void import('./outbox-store.js').then((ob) => {
+                    void ob.remove(ob.outboxKey('meal', r.id));
+                });
                 if (prev) applyOptimisticMealDelete(r.id, prev);
                 continue;
             }

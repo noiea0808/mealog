@@ -75,7 +75,8 @@ import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { diag, getSavePhase } from '../utils/diagnostics.js';
 import { withDeadline, Lease, DEADLINE } from '../utils/with-deadline.js';
-import { prepareIntakeImage } from '../utils/image-downscale.js';
+import { prepareIntakeImage, dataUrlToBlob } from '../utils/image-downscale.js';
+import { enqueueWithQuotaRelief, CLASS_CONTENT } from '../utils/outbox-store.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
@@ -2128,6 +2129,29 @@ export async function saveEntry() {
             photos: [...sourcePhotos],
             photoMeta: sourcePhotoMeta.map((e) => ({ takenAt: e?.takenAt ?? null }))
         };
+        /**
+         * ── 불변식 (docs/sync-outbox-design.md §1) ─────────────────────────────────
+         * 사용자가 저장을 누른 기록은, **어떤 fallible 한 단계도 시작하기 전에** 이미
+         * 내구 저장돼 있다. 이 enqueue 가 그 지점이다 — 낙관 반영·모달 닫힘·성공 팝업·
+         * dbOps.save 그 무엇보다 먼저다.
+         *
+         * 여기서 실패하면 저장했다고 말하면 안 된다(§4.2). 모달을 열어 둔 채 실패를
+         * 알려, 사용자가 입력을 잃지 않게 한다. 「저장했다고 말했는데 안 됐다」가 이
+         * 서브시스템의 원죄다.
+         */
+        if (record.id && !String(record.id).startsWith('temp_')) {
+            const durable = await persistMealToOutbox(record, sourcePhotos, sourcePhotoMeta);
+            if (!durable) {
+                diag('save.durability.fail', { id: String(record.id) });
+                setEntryModalSavingState(false);
+                showToast(
+                    '기기에 저장하지 못했습니다. 저장 공간을 확보한 뒤 다시 시도해 주세요.',
+                    'error'
+                );
+                return; // 모달을 닫지 않는다 — 입력이 남아 있어야 한다
+            }
+        }
+
         if (optimisticTempId) markMealOptimisticSavePending(optimisticTempId);
         if (record.id) {
             clearMealEntryServerSynced(record.id);
@@ -2713,6 +2737,26 @@ export async function deleteEntry() {
 
     const mealDate = mealForDelete.date;
 
+    /**
+     * 삭제도 아웃박스에 내구 저장한다 (§4.1 op:'delete').
+     * 삭제 역시 「사용자가 누른 것」이므로, 앱이 죽어도 되살아나지 않아야 한다. 예전에는
+     * _deletePending·_deleteInFlight·_deleteFailed 세 플래그가 RAM 에만 있어, 재시작하면
+     * 삭제 의사가 사라지고 지운 기록이 되돌아왔다.
+     *
+     * 여기서 실패해도 삭제 자체는 진행한다 — 등록과 달리 「사라진 것이 되살아나는」 쪽이
+     * 되돌리기 쉽고, 모달은 이미 닫혔다. 대신 계측에 남긴다.
+     */
+    void enqueueWithQuotaRelief({
+        target: 'meal',
+        id: String(entryIdToDelete),
+        uid: window.currentUser.uid,
+        op: 'delete',
+        class: CLASS_CONTENT,
+        payload: { date: mealDate, updatedAt: new Date().toISOString() }
+    }).then((ok) => {
+        if (!ok) diag('delete.durability.fail', { id: String(entryIdToDelete) });
+    });
+
     markMealEntryDeletePending(entryIdToDelete);
     /** 스냅샷 `removed` 이전에 로컬 반영 — 연속 일수·트래커가 삭제 직후 갱신되도록 */
     let deleteOptCtx = null;
@@ -2811,6 +2855,54 @@ export async function deleteEntry() {
 }
 
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
+
+/**
+ * 기록 하나를 아웃박스에 내구 저장한다 (설계 §4.1, §4.6).
+ *
+ * 사진은 Blob 으로 넣는다 — data URL 문자열보다 25% 작고 직렬화 비용도 없다.
+ * 원본은 Storage 업로드가 끝나면 워커가 버린다(§4.6).
+ *
+ * @returns {Promise<boolean>} 실제로 커밋됐는지. false 면 호출부는 저장 성공이라 말하면 안 된다.
+ */
+async function persistMealToOutbox(record, sourcePhotos, sourcePhotoMeta) {
+    try {
+        const uid = window.currentUser?.uid;
+        if (!uid) {
+            diag('outbox.persist.skip', { reason: 'no-uid' });
+            return false;
+        }
+        if (!record?.id) {
+            diag('outbox.persist.skip', { reason: 'no-record-id' });
+            return false;
+        }
+        const photos = [];
+        for (const p of Array.isArray(sourcePhotos) ? sourcePhotos : []) {
+            if (!isLocalPendingPhoto(p)) continue; // 이미 Storage URL 인 것은 다시 안 담는다
+            const blob = await dataUrlToBlob(p);
+            if (blob) photos.push(blob);
+        }
+        return await enqueueWithQuotaRelief({
+            target: 'meal',
+            id: String(record.id),
+            uid,
+            op: 'upsert',
+            class: CLASS_CONTENT,
+            payload: {
+                ...record,
+                // base64 는 payload 에 넣지 않는다 — 사진은 photos(Blob) 가 canonical
+                photos: (Array.isArray(sourcePhotos) ? sourcePhotos : []).filter(
+                    (p) => typeof p === 'string' && p && !isLocalPendingPhoto(p)
+                ),
+                photoMeta: sourcePhotoMeta
+            },
+            photos
+        });
+    } catch (e) {
+        diag('outbox.persist.error', { message: String(e?.message || e).slice(0, 160) });
+        console.error('[outbox] 식사 기록 내구 저장 실패:', e);
+        return false;
+    }
+}
 
 /**
  * 기록별 재시도 리스. 사진 업로드가 낀 재시도는 길어질 수 있어 넉넉하되 반드시 유한하다.

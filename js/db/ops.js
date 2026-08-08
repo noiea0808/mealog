@@ -223,12 +223,23 @@ export const dbOps = {
                         ? dataToSave.recordedAt
                         : null;
                 delete dataToSave.recordedAt;
+                /**
+                 * updatedAt 은 **호출자가 실은 값을 그대로** 쓴다 (§4.5).
+                 * 여기서 새로 찍으면 며칠 묵은 아웃박스 항목도 항상 「최신」으로 보여
+                 * 충돌 판정이 무력화된다 — 그 판정이 이 필드를 만든 이유다.
+                 */
+                const callerUpdatedAt =
+                    typeof dataToSave.updatedAt === 'string' && dataToSave.updatedAt
+                        ? dataToSave.updatedAt
+                        : null;
+                delete dataToSave.updatedAt;
                 const docId = dataToSave.id;
                 delete dataToSave.id;
                 // sharedPhotos: sharedPhotos 컬렉션이 canonical — 클라이언트 meal 저장은 미러를 덮어쓰지 않음
                 delete dataToSave.sharedPhotos;
                 const cleaned = stripUndefinedDeep(dataToSave);
                 cleaned.recordedAt = callerRecordedAt || new Date().toISOString();
+                cleaned.updatedAt = callerUpdatedAt || new Date().toISOString();
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
                 logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave: cleaned });
                 const mealPathHint = docId
