@@ -75,6 +75,7 @@ import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { diag, getSavePhase } from '../utils/diagnostics.js';
 import { withDeadline, Lease, DEADLINE } from '../utils/with-deadline.js';
+import { prepareIntakeImage } from '../utils/image-downscale.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
@@ -3579,18 +3580,21 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
         showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
 
-    const filePromises = filesToProcess.map((f, index) => {
-        return new Promise((resolve) => {
-            const r = new FileReader();
-            r.onload = (ev) => {
-                resolve({ index, dataUrl: ev.target.result });
-            };
-            r.onerror = () => {
-                console.error('파일 읽기 실패:', f.name);
-                resolve(null);
-            };
-            r.readAsDataURL(f);
-        });
+    /**
+     * 인테이크에서 다운스케일한다 (설계 §4.6). 예전에는 원본을 그대로 readAsDataURL 해서
+     * 기록 하나가 최대 ~80MB 문자열이 됐고, 그 무게가 백그라운드 저메모리 킬을 불러
+     * RAM 에만 있던 기록이 사라지는 원인이 됐다.
+     *
+     * EXIF 촬영시각은 아래 createPhotoMetaFromFile 이 **원본 File** 에서 따로 읽으므로
+     * 다운스케일과 무관하다. 회전은 image-downscale.js 가 디코드 단계에서 적용한다.
+     */
+    const filePromises = filesToProcess.map(async (f, index) => {
+        const prepared = await prepareIntakeImage(f);
+        if (!prepared) {
+            console.error('파일 읽기 실패:', f.name);
+            return null;
+        }
+        return { index, dataUrl: prepared.dataUrl, downscaled: prepared.downscaled, reason: prepared.reason };
     });
 
     Promise.all(filePromises)
@@ -3612,6 +3616,11 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
                 }
             });
             if (added > 0) {
+                diag('photo.intake', {
+                    n: added,
+                    downscaled: sortedResults.filter((r) => r.downscaled).length,
+                    reasons: [...new Set(sortedResults.map((r) => r.reason))]
+                });
                 state.recordPhotoHeroIndex = state.currentPhotos.length - 1;
             }
 
