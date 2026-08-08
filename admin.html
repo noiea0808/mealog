@@ -58,7 +58,7 @@
     </script>
 </head>
 <body class="bg-slate-50 min-h-screen">
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[999] flex items-center justify-center">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[var(--z-admin-loading)] flex items-center justify-center">
         <div class="text-center">
             <div class="w-12 h-12 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mx-auto mb-4"></div>
             <p class="text-slate-600 font-bold">로딩 중...</p>
@@ -1470,7 +1470,7 @@
                         </div>
                         
                         <!-- 로그인 배너 랜딩 공지 선택 모달 -->
-                        <div id="loginBannerLandingNoticeModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
+                        <div id="loginBannerLandingNoticeModal" class="hidden fixed inset-0 z-[var(--z-onboarding)] bg-slate-900/50 flex items-center justify-center p-4">
                             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
                                 <div class="p-4 border-b border-slate-100 flex justify-between items-center">
                                     <h3 class="text-lg font-bold text-slate-800">연결할 공지 선택</h3>
@@ -1483,7 +1483,7 @@
                         </div>
                         
                         <!-- 팝업 랜딩 공지 선택 모달 -->
-                        <div id="popupLandingNoticeModal" class="hidden fixed inset-0 z-[500] bg-slate-900/50 flex items-center justify-center p-4">
+                        <div id="popupLandingNoticeModal" class="hidden fixed inset-0 z-[var(--z-onboarding)] bg-slate-900/50 flex items-center justify-center p-4">
                             <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
                                 <div class="p-4 border-b border-slate-100 flex justify-between items-center">
                                     <h3 class="text-lg font-bold text-slate-800">라운지 공지 선택</h3>
@@ -2012,7 +2012,7 @@
                                                 </table>
                                             </div>
                                         </div>
-                                        <div id="adminWelcomeApiSummaryModal" class="hidden fixed inset-0 z-[600] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="adminWelcomeApiSummaryModalTitle">
+                                        <div id="adminWelcomeApiSummaryModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="adminWelcomeApiSummaryModalTitle">
                                             <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-slate-200">
                                                 <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
                                                     <h3 id="adminWelcomeApiSummaryModalTitle" class="text-sm font-black text-slate-800">기록 요약 전체</h3>
@@ -2159,7 +2159,7 @@
     <!-- 게시글 삭제 확인 모달 (기존 모달 재사용) -->
 
     <!-- 약관 버전 보기 모달 -->
-    <div id="termsVersionModal" class="hidden fixed inset-0 bg-slate-900/50 z-[600] flex items-center justify-center p-4">
+    <div id="termsVersionModal" class="hidden fixed inset-0 bg-slate-900/50 z-[var(--z-admin-modal)] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
                 <h3 class="text-lg font-bold text-slate-800">약관 버전 상세</h3>
@@ -2177,7 +2177,7 @@
     </div>
 
     <!-- 게시물 삭제 확인 모달 -->
-    <div id="deleteModal" class="hidden fixed inset-0 bg-slate-900/50 z-[500] flex items-center justify-center p-4">
+    <div id="deleteModal" class="hidden fixed inset-0 bg-slate-900/50 z-[var(--z-onboarding)] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
             <h3 class="text-lg font-bold text-slate-800 mb-2">게시물 삭제</h3>
             <p class="text-sm text-slate-600 mb-6">정말 이 게시물을 삭제하시겠습니까?</p>

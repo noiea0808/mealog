@@ -16,6 +16,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { updateTimelineShareIndicators, renderGallery, renderFeed } from '../render/index.js';
 
+import { getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 export function registerMomentSyncDevTools() {
     window.syncEntryToMoment = async function(entryId, opts = {}) {
         const { batch = false } = opts;
@@ -39,9 +40,8 @@ export function registerMomentSyncDevTools() {
             const urls = m.sharedPhotos.filter(validUrls);
             if (urls.length === 0) return false;
             await dbOps.sharePhotos(urls, m);
-            if (!window.sharedPhotos) window.sharedPhotos = [];
             const newEntries = urls.map(url => ({ entryId: m.id, photoUrl: url, userId: window.currentUser?.uid }));
-            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== m.id).concat(newEntries);
+            setSharedPhotos((getSharedPhotos() || []).filter(p => p.entryId !== m.id).concat(newEntries));
             updateTimelineShareIndicators();
             if (!batch) {
                 const { docs, lastDoc, hasMore } = await loadSharedPhotosPage(10);

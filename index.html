@@ -2,7 +2,9 @@
 <html lang="ko" class="mealog-landing-active mealog-boot-active">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <!-- interactive-widget=resizes-content: 키보드가 올라오면 layout viewport가 줄어듦.
+         overlays-content는 VV도 그대로 유지되어 ime-viewport.js의 VV 기반 보정이 전부 무력화됐다. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
     <meta name="description" content="우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인">
     <meta name="theme-color" content="#ffffff">
     <meta name="mobile-web-app-capable" content="yes">
@@ -37,40 +39,25 @@
     <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_192.png?v=20260725">
     <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_512.png?v=20260725">
     <link rel="manifest" href="./manifest.json">
-    
-    <!-- Tailwind CDN: 프로덕션에서는 PostCSS/CLI 사용 권장. 콘솔 경고는 무시해도 됨. -->
-    <script>
-      /* 시안 mid-mint 브랜드 → emerald 스케일 매핑 (앱 전역 emerald-* 일괄 반영) */
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              emerald: {
-                50: '#eaf8f2',
-                100: '#eaf8f2',
-                200: '#b4e2cd',
-                300: '#8fd4b5',
-                400: '#5fc49a',
-                500: '#3cb889',
-                600: '#3cb889',
-                700: '#2d9f74',
-                800: '#247a59',
-                900: '#1c5f45',
-                950: '#164a36'
-              }
-            }
-          }
-        }
-      };
-    </script>
-    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 외부 도메인 DNS/TLS 핸드셰이크를 병렬로 미리 시작 (부팅 지연 단축) -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+
+    <!-- Tailwind는 빌드타임 정적 CSS로 전환됨 → <head> 최하단의 css/tailwind.build.css 참고.
+         (기존 인라인 tailwind.config는 CDN보다 먼저 실행돼 ReferenceError로 죽고 있었다.
+          브랜드 emerald 팔레트 적용은 별도 커밋에서 다룬다 — tailwind.config.js 주석 참고) -->
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumsquareround.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/earlyaccess/nanumpenscript.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Yeon+Sung&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <!-- 통계/공유카드 화면에서만 쓰임 (첫 화면 무관) — defer로 초기 파싱 차단 해제 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <link rel="stylesheet" href="css/style.css">
     <style>
         /* === Tailwind FOUC 방지 (중요) ===
@@ -121,10 +108,12 @@
         html.mealog-landing-active body {
             background: #ffffff;
         }
-        /* style.css와 동일 — 첫 페인트부터 dvh·safe-top 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
+        /* style.css와 동일 — 첫 페인트부터 dvh·safe 확정 (늦게 적용되면 flex 중앙이 연속 재계산됨) */
         :root {
             --safe-top: max(env(safe-area-inset-top, 28px), 28px);
-            --safe-bottom: max(env(safe-area-inset-bottom, 48px), 48px);
+            --safe-bottom-gesture: env(safe-area-inset-bottom, 0px);
+            --safe-bottom-nav-slot: max(var(--safe-bottom-gesture), 48px);
+            --safe-bottom: var(--safe-bottom-nav-slot);
         }
         #landingPage {
             display: flex;
@@ -136,12 +125,22 @@
             box-sizing: border-box;
             padding-top: var(--safe-top);
             background: #ffffff;
+            overscroll-behavior: none;
+        }
+        html.mealog-landing-login #landingPage {
+            background: var(--green-deep, #2d9f74);
+            height: 100dvh;
+            height: 100svh;
+            max-height: 100dvh;
+            max-height: 100svh;
+            overflow: hidden;
+            overscroll-behavior: none;
         }
         /* 기동 스플래시: #landingPage flex·safe-area reflow와 완전 분리 (뷰포트 정중앙 flex) */
         #bootSplashOverlay {
             position: fixed;
             inset: 0;
-            z-index: 9998;
+            z-index: var(--z-boot-splash);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -328,7 +327,7 @@
             top: 0;
             bottom: 0;
             background: var(--green-deep, #2d9f74);
-            z-index: 199;
+            z-index: var(--z-landing-backdrop);
             pointer-events: none;
         }
         /* 랜딩 → 메인 전환: 아이콘 화면만 페이드 아웃, 메인은 즉시 표시 (스피너 후 추가 페이드 없음) */
@@ -343,7 +342,7 @@
             width: 100%;
             max-width: 28rem;
             box-sizing: border-box;
-            z-index: 201;
+            z-index: var(--z-landing-bottom);
             padding-bottom: 0;
             background-color: #ffffff;
         }
@@ -357,7 +356,7 @@
             box-sizing: border-box;
         }
         html.platform-native-app #landingBottomFixed {
-            padding-bottom: max(env(safe-area-inset-bottom), 48px);
+            padding-bottom: var(--safe-bottom-nav-slot);
         }
         html.platform-native-inset-padded #landingPage {
             padding-top: 0;
@@ -676,6 +675,14 @@
                         var m = ua.match(/Chrom(?:e|ium)\/(\d+)/);
                         return m ? parseInt(m[1], 10) : 0;
                     }
+                    function setSafeBottomTokens(gesturePx, navSlotPx) {
+                        var g = Math.max(0, Math.round(Number(gesturePx) || 0));
+                        var n = Math.max(0, Math.round(Number(navSlotPx) || 0));
+                        document.documentElement.style.setProperty('--safe-bottom-gesture', g + 'px');
+                        document.documentElement.style.setProperty('--safe-bottom-nav-slot', n + 'px');
+                        /* 하위 호환: 기존 var(--safe-bottom) 사용처 = nav-slot */
+                        document.documentElement.style.setProperty('--safe-bottom', n + 'px');
+                    }
                     function applyNativeSafeAreaMode() {
                         var top = readEnvSafeInset('top');
                         var bottom = readEnvSafeInset('bottom');
@@ -687,13 +694,15 @@
                         document.documentElement.classList.toggle('platform-native-inset-passthrough', !legacyPaddedWebView);
                         if (legacyPaddedWebView) {
                             document.documentElement.style.setProperty('--safe-top', '0px');
-                            document.documentElement.style.setProperty('--safe-bottom', '0px');
+                            setSafeBottomTokens(0, 0);
                         } else if (envHasInsets) {
                             document.documentElement.style.setProperty('--safe-top', Math.max(top, SAFE_TOP_MIN) + 'px');
-                            document.documentElement.style.setProperty('--safe-bottom', Math.max(bottom, SAFE_BOTTOM_MIN) + 'px');
+                            /* gesture=실제 inset, nav-slot=네비용 최소 48 */
+                            setSafeBottomTokens(bottom, Math.max(bottom, SAFE_BOTTOM_MIN));
                         } else {
                             document.documentElement.style.setProperty('--safe-top', SAFE_TOP_MIN + 'px');
-                            document.documentElement.style.setProperty('--safe-bottom', SAFE_BOTTOM_MIN + 'px');
+                            /* env 미보고 기기: 침범 방지용 추정값 — gesture·nav-slot 동일 */
+                            setSafeBottomTokens(SAFE_BOTTOM_MIN, SAFE_BOTTOM_MIN);
                         }
                     }
                     applyNativeSafeAreaMode();
@@ -880,6 +889,11 @@
             }
         });
     </script>
+
+    <!-- Tailwind 정적 빌드 (scripts/build-tailwind.js).
+         위치 주의: Play CDN이 <style>을 <head> 맨 끝에 주입해 css/style.css를 이기고 있었다.
+         캐스케이드를 그대로 재현하려면 반드시 여기(head 최하단)에 두어야 한다. -->
+    <link rel="stylesheet" href="css/tailwind.build.css?v=1">
 </head>
 <body class="max-w-md mx-auto min-h-screen relative">
     <!-- 기동 스플래시: body/max-w 컬럼·#landingPage flex와 무관하게 뷰포트 정중앙 (네이티브 스플래시 → 웹 전환 브릿지) -->
@@ -891,10 +905,10 @@
     <!-- IME 워밍업용 숨김 input: 앱 첫 기동 시 한글 입력 미표시 현상 완화 -->
     <input type="text" id="imeWarmupInput" aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] w-1 h-1 opacity-0 pointer-events-none" autocomplete="off">
 
-    <div id="toastContainer" class="fixed left-1/2 -translate-x-1/2 z-[600] flex flex-col items-center gap-2 pointer-events-none box-border"></div>
+    <div id="toastContainer" class="fixed left-1/2 -translate-x-1/2 z-[var(--z-toast)] flex flex-col items-center gap-2 pointer-events-none box-border"></div>
 
     <!-- 기록 완료: 중앙 팝업 (0.8초) -->
-    <div id="successPopup" class="hidden fixed inset-0 z-[9500] flex items-center justify-center">
+    <div id="successPopup" class="hidden fixed inset-0 z-[var(--z-success-popup)] flex items-center justify-center">
         <div id="successPopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
         <div id="successPopupConfetti" class="absolute inset-0 z-0" aria-hidden="true"></div>
         <div id="successPopupContent" class="relative z-10 w-[86%] max-w-[18rem] bg-transparent flex flex-col items-center gap-[0.1875rem] px-2 py-3">
@@ -973,7 +987,7 @@
 
     <!-- 출석/연속 기록: 중앙 팝업 (기록 완료와 동일 텍스트 스타일, 테스트 시 세션당 1회) -->
     <!-- 로딩 오버레이(z-9999)보다 위에 두어 웰컴·차트가 가려지지 않게 함 -->
-    <div id="attendancePopup" class="hidden fixed inset-0 z-[10050] flex items-center justify-center">
+    <div id="attendancePopup" class="hidden fixed inset-0 z-[var(--z-attendance)] flex items-center justify-center">
         <div id="attendancePopupBackdrop" class="absolute inset-0 bg-slate-900/25"></div>
         <div id="attendancePopupContent" class="relative z-10 w-[92%] max-w-[22rem] bg-transparent flex flex-col items-center gap-[0.15625rem] px-2 py-2">
             <div class="popup-celebrate-ring popup-celebrate-ring--check flex items-center justify-center min-h-[4.75rem]" aria-hidden="true">
@@ -1099,7 +1113,7 @@
         </div>
     </div>
 
-    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[9999] flex flex-col items-center justify-center p-4">
+    <div id="loadingOverlay" class="hidden fixed inset-0 bg-white/55 backdrop-blur-sm z-[var(--z-loading-overlay)] flex flex-col items-center justify-center p-4">
         <div id="loadingOverlayBox" class="flex w-[90%] max-w-[22rem] flex-col items-center rounded-2xl border border-slate-100 bg-white px-6 py-7 shadow-lg sm:px-7 sm:py-8">
             <div class="loading-food-icons loading-food-icons--overlay relative flex shrink-0 items-center justify-center overflow-hidden text-4xl">
                 <span class="loading-food-icon absolute" aria-hidden="true">🍴</span>
@@ -1116,7 +1130,7 @@
     </div>
 
     <!-- 샘플(더미) 계정 안내: 첫 진입·둘러보기 후 표시 -->
-    <div id="demoIntroModal" class="hidden fixed inset-0 z-[450] flex flex-col justify-center p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
+    <div id="demoIntroModal" class="hidden fixed inset-0 z-[var(--z-content-popup)] flex flex-col justify-center p-4 bg-slate-900/55 backdrop-blur-md" aria-modal="true" role="dialog" aria-labelledby="demoIntroTitle">
         <div class="bg-white rounded-2xl w-full max-w-[20rem] sm:max-w-[22rem] mx-auto shadow-2xl border border-slate-200/80 overflow-hidden max-h-[min(88vh,520px)] flex flex-col">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="shrink-0 px-4 pt-4 pb-3 sm:px-5 sm:pt-5 sm:pb-3.5">
@@ -1205,10 +1219,10 @@
         </div>
     </div>
 
-    <!-- OS별 설치/홈화면 가이드 (탭: Android · iPhone · PC) -->
-    <div id="pwaInstallGuideModal" class="hidden fixed inset-0 z-[10055] flex items-end sm:items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="pwaInstallGuideTitle">
-        <div id="pwaInstallGuideBackdrop" class="absolute inset-0" aria-hidden="true"></div>
-        <div class="os-install-guide-panel relative bg-white rounded-2xl w-full max-w-sm shadow-2xl border border-slate-200/80 overflow-hidden">
+    <!-- OS별 설치/홈화면 가이드 (탭: Android · iPhone · PC) — z-index는 css #pwaInstallGuideModal -->
+    <div id="pwaInstallGuideModal" class="hidden" aria-modal="true" role="dialog" aria-labelledby="pwaInstallGuideTitle">
+        <div id="pwaInstallGuideBackdrop" aria-hidden="true"></div>
+        <div class="pwa-install-guide-panel bg-white rounded-2xl shadow-2xl border border-slate-200/80">
             <div class="px-5 pt-5 pb-3 border-b border-slate-100">
                 <div class="flex items-center gap-3">
                     <div class="shrink-0 w-11 h-11 rounded-xl bg-emerald-600/90 overflow-hidden">
@@ -1300,7 +1314,7 @@
     <div id="desktopShortcutGuideModal" class="hidden" aria-hidden="true"></div>
 
     <!-- Email Auth Modal -->
-    <div id="emailAuthModal" class="hidden fixed inset-0 z-[400] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="emailAuthModal" class="hidden fixed inset-0 z-[var(--z-dialog)] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-[80%] max-w-[20rem] shadow-2xl overflow-hidden flex flex-col">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head !pb-0">
@@ -1334,7 +1348,7 @@
     </div>
 
     <!-- 비밀번호 재설정: 발송 확인 (이메일 로그인 모달 위에 표시) -->
-    <div id="passwordResetConfirmModal" class="hidden fixed inset-0 z-[410] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="passwordResetConfirmModal" class="hidden fixed inset-0 z-[var(--z-dialog-over)] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head flex-col items-stretch !pt-5 !pb-2">
@@ -1350,7 +1364,7 @@
     </div>
 
     <!-- 비밀번호 재설정: 발송 완료 안내 -->
-    <div id="passwordResetSuccessModal" class="hidden fixed inset-0 z-[420] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="passwordResetSuccessModal" class="hidden fixed inset-0 z-[var(--z-dialog-over-2)] bg-slate-900/50 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head flex-col items-stretch !pt-5 !pb-2">
@@ -1366,7 +1380,7 @@
     </div>
 
     <!-- Domain Error Modal -->
-    <div id="domainErrorModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="domainErrorModal" class="hidden fixed inset-0 z-[var(--z-onboarding)] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border-2 border-red-100 animate-fade">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="flex justify-center mb-4 text-red-500 text-3xl"><i data-lucide="triangle-alert"></i></div>
@@ -1391,7 +1405,7 @@
     </div>
 
     <!-- Terms Agreement Modal -->
-    <div id="termsModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="termsModal" class="hidden fixed inset-0 z-[var(--z-onboarding)] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <h3 class="text-lg font-bold text-slate-800 text-center mb-4">약관 동의</h3>
             <p id="termsModalDescription" class="text-xs text-slate-500 text-center mb-6">서비스 이용을 위해 아래 약관에 동의해주세요.</p>
@@ -1439,7 +1453,7 @@
     </div>
 
     <!-- Signup Wizard (페이지 형식 4단계 회원가입) -->
-    <div id="signupWizard" class="hidden fixed inset-0 z-[550] bg-white flex flex-col safe-area-inset">
+    <div id="signupWizard" class="hidden fixed inset-0 z-[var(--z-signup-wizard)] bg-white flex flex-col safe-area-inset">
         <header class="flex-shrink-0 flex justify-end items-center px-4 py-3 border-b border-slate-100">
             <span id="signupWizardProgress" class="text-sm font-bold text-slate-500">1/4</span>
         </header>
@@ -1532,7 +1546,7 @@
     </div>
 
     <!-- Profile Setup Modal (First Login / Email Signup) -->
-    <div id="profileSetupModal" class="hidden fixed inset-0 z-[500] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="profileSetupModal" class="hidden fixed inset-0 z-[var(--z-onboarding)] bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <h3 id="profileSetupModalTitle" class="text-lg font-bold text-slate-800 text-center mb-2">프로필 설정</h3>
@@ -1594,9 +1608,9 @@
     <!-- 2. Main Application -->
     <div id="mainApp" class="hidden">
         <!-- 상태바 영역 흰색 오버레이 (스크롤 시 콘텐츠 투과 방지) -->
-        <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[100] pointer-events-none" aria-hidden="true"></div>
+        <div id="statusBarOverlay" class="fixed top-0 left-0 right-0 h-[var(--safe-top)] bg-white z-[var(--z-system-bar)] pointer-events-none" aria-hidden="true"></div>
         <!-- 네비게이션 바 영역 오버레이 (Android 15+ edge-to-edge 시스템 제스처 영역만) -->
-        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] z-[100] pointer-events-none" style="background-color:var(--app-page-bg)" aria-hidden="true"></div>
+        <div id="navigationBarOverlay" class="fixed bottom-0 left-0 right-0 h-[var(--safe-bottom)] z-[var(--z-system-bar)] pointer-events-none" style="background-color:var(--app-page-bg)" aria-hidden="true"></div>
         <!-- 상단 chrome seam 채움: 헤더와 아래 영역(서브탭/기간탭) 사이 서브픽셀 틈을 녹색으로 메움 (콘텐츠 뒤, 컬럼폭) -->
         <div id="appTopChromeFill" aria-hidden="true"></div>
         <div id="appTopChrome" class="sticky z-50">
@@ -1828,7 +1842,7 @@
                             <button type="button" class="board-write-category-btn board-category-btn whitespace-nowrap" data-value="admin" onclick="window.setBoardWriteCategory('admin')">#치프에게</button>
                         </div>
                     </div>
-                    <div class="flex gap-2 pt-3 border-t">
+                    <div class="board-write-actions flex gap-2 pt-3 border-t">
                         <button onclick="window.backToBoardList()" class="flex-1 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold active:bg-slate-200 transition-colors">취소</button>
                         <button type="button" id="boardWriteSubmitBtn" class="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-sm font-bold active:bg-slate-800 shadow-md transition-all">등록</button>
                     </div>
@@ -2383,8 +2397,8 @@
             <i data-lucide="plus" class="text-lg" aria-hidden="true"></i>
         </button>
 
-        <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[120] pointer-events-none" aria-hidden="true"></div>
-        <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[125] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
+        <div id="demoNavGuideBackdrop" class="hidden fixed inset-0 z-[var(--z-demo-guide-backdrop)] pointer-events-none" aria-hidden="true"></div>
+        <div id="demoNavGuidePanel" class="demo-nav-guide-panel hidden fixed z-[var(--z-demo-guide-panel)] rounded-lg border border-amber-200 bg-amber-50 pl-4 pr-9 py-3 shadow-md" role="status" aria-labelledby="demoNavGuideTitle">
             <button type="button" id="demoNavGuideCloseBtn" class="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 active:text-slate-700 transition-colors" aria-label="닫기"><i data-lucide="x" class="text-sm"></i></button>
             <h3 id="demoNavGuideTitle" class="text-sm font-black text-slate-900 tracking-tight"></h3>
             <p id="demoNavGuideDesc" class="text-sm text-slate-700 mt-1 leading-relaxed"></p>
@@ -2392,9 +2406,9 @@
     </div>
 
     <!-- 모먼트 검색 (기간 + 흔적 + 키워드) -->
-    <div id="momentSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
+    <div id="momentSearchModal" class="search-filter-modal hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="momentSearchModalTitle">
         <button type="button" id="momentSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
-        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-full flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="momentSearchModalTitle" class="search-filter-modal__title">모먼트 검색</h2>
@@ -2433,18 +2447,18 @@
                     </div>
                     <p class="search-filter-modal__hint">선택하지 않으면 해당 기간의 전체 게시물을 보여줍니다.</p>
                 </section>
-            </div>
-            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
-                <button type="button" id="momentSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
-                <button type="button" id="momentSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                    <button type="button" id="momentSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                    <button type="button" id="momentSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 라운지 게시판·공지 검색 (기간 + 흔적 + 키워드) -->
-    <div id="boardSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
+    <div id="boardSearchModal" class="search-filter-modal hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="boardSearchModalTitle">
         <button type="button" id="boardSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
-        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-full flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="boardSearchModalTitle" class="search-filter-modal__title">게시판 검색</h2>
@@ -2484,18 +2498,18 @@
                     </div>
                     <p class="search-filter-modal__hint">선택하지 않으면 해당 기간의 전체 글을 보여줍니다.</p>
                 </section>
-            </div>
-            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
-                <button type="button" id="boardSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
-                <button type="button" id="boardSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                    <button type="button" id="boardSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                    <button type="button" id="boardSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 알림 (중앙 팝업 · Soft Mint Search/List) -->
-    <div id="notificationModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
+    <div id="notificationModal" class="search-filter-modal hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="notificationModalTitle">
         <button type="button" id="notificationBackdrop" class="search-filter-modal__backdrop mealog-dialog-backdrop" data-mealog-dialog-backdrop aria-label="닫기"></button>
-        <div class="notification-modal search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden" data-mealog-dialog-panel>
+        <div class="notification-modal search-filter-modal__panel relative z-10 flex w-full max-w-full flex-col overflow-hidden" data-mealog-dialog-panel>
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="notification-modal-head search-filter-modal__head mealog-dialog-head">
                 <h2 id="notificationModalTitle" class="notification-modal-title search-filter-modal__title">알림</h2>
@@ -2518,10 +2532,28 @@
         </div>
     </div>
 
+    <!-- 좋아요 누른 사람 목록 -->
+    <div id="postLikesModal" class="search-filter-modal hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="postLikesModalTitle">
+        <button type="button" id="postLikesBackdrop" class="search-filter-modal__backdrop mealog-dialog-backdrop" data-mealog-dialog-backdrop aria-label="닫기"></button>
+        <div class="post-likes-modal search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden" data-mealog-dialog-panel>
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="post-likes-modal-head mealog-dialog-head">
+                <h2 id="postLikesModalTitle" class="post-likes-modal-title">좋아요</h2>
+            </div>
+            <div class="post-likes-modal-body">
+                <div id="postLikesList" class="post-likes-list"></div>
+                <div id="postLikesEmpty" class="post-likes-empty hidden"></div>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+                <button type="button" id="postLikesDismissBtn" class="mealog-btn mealog-btn-secondary">닫기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 밀로그 기록 검색 (기간 + 키워드) -->
-    <div id="timelineSearchModal" class="search-filter-modal hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
+    <div id="timelineSearchModal" class="search-filter-modal hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="timelineSearchModalTitle">
         <button type="button" id="timelineSearchBackdrop" class="search-filter-modal__backdrop" aria-label="닫기"></button>
-        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-sm flex-col overflow-hidden">
+        <div class="search-filter-modal__panel relative z-10 flex w-full max-w-full flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="search-filter-modal__head mealog-dialog-head">
                 <h2 id="timelineSearchModalTitle" class="search-filter-modal__title">기록 검색</h2>
@@ -2551,16 +2583,16 @@
                     <label for="timelineSearchKeyword" class="search-filter-modal__label">검색어</label>
                     <input type="search" id="timelineSearchKeyword" placeholder="메뉴, 장소, 함께한 사람…" autocomplete="off" class="search-filter-modal__input search-filter-modal__input--search">
                 </section>
-            </div>
-            <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
-                <button type="button" id="timelineSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
-                <button type="button" id="timelineSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
+                    <button type="button" id="timelineSearchCancelBtn" class="mealog-btn mealog-btn-secondary">취소</button>
+                    <button type="button" id="timelineSearchSubmitBtn" class="mealog-btn mealog-btn-primary">검색</button>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 트래커 월 캘린더 (기록 여부 = 타임라인 트래커와 동일 로직) -->
-    <div id="trackerMonthCalendarModal" class="hidden fixed inset-0 z-[458] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="trackerMonthCalendarHeading">
+    <div id="trackerMonthCalendarModal" class="hidden fixed inset-0 z-[var(--z-search-sheet)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="trackerMonthCalendarHeading">
         <button type="button" id="trackerMonthCalendarBackdrop" class="absolute inset-0 z-0 cursor-default border-0 bg-slate-900/45 p-0 backdrop-blur-[2px]" aria-label="닫기"></button>
         <div class="tracker-month-calendar-panel relative z-10 w-full max-w-[19.5rem] p-4">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
@@ -2587,7 +2619,7 @@
     </div>
 
     <!-- 콘텐츠 팝업 모달: 밀로그 내용 폭 - 10px 고정, 이미지 좌우 꽉 참, 제목 미노출, 하단 영역 분할 -->
-    <div id="contentPopupModal" class="hidden fixed inset-0 z-[450] flex items-center justify-center p-4">
+    <div id="contentPopupModal" class="hidden fixed inset-0 z-[var(--z-content-popup)] flex items-center justify-center p-4">
         <div id="contentPopupModalInner" class="content-popup-inner relative bg-white flex flex-col max-h-[85vh] overflow-hidden" style="width: 0;">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="contentPopupCounterBar" class="content-popup-counter-bar flex-shrink-0 flex justify-end items-center pr-4 pt-1 min-h-[2rem]" style="padding-bottom: 3.33px;">
@@ -2626,7 +2658,7 @@
     </div>
 
     <!-- 설정: 프로필 사진 미리보기 -->
-    <div id="accountAvatarModal" class="hidden fixed inset-0 z-[405] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-label="프로필 사진">
+    <div id="accountAvatarModal" class="hidden fixed inset-0 z-[var(--z-avatar-modal)] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-label="프로필 사진">
         <div class="relative w-full max-w-none sm:max-w-xs rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,32rem)]">
             <div class="relative px-3 pt-2 pb-0 sm:px-4 sm:pt-3">
                 <button type="button" id="accountAvatarModalCloseBtn" class="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-10 p-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
@@ -2665,13 +2697,13 @@
     </div>
 
     <!-- 설정: 프로필 항목 편집 (닉네임/생년월일/소개/라이프스타일) -->
-    <div id="profileFieldEditModal" class="hidden fixed inset-0 z-[406] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="profileFieldEditTitle">
-        <div class="relative w-full max-w-none sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,36rem)]">
+    <div id="profileFieldEditModal" class="hidden fixed inset-0 z-[var(--z-profile-field-modal)] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="profileFieldEditTitle">
+        <div class="profile-field-edit-panel relative w-full max-w-none sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white shadow-2xl border border-slate-100 border-b-0 sm:border-b overflow-hidden flex flex-col max-h-[min(90vh,36rem)]">
             <div class="relative flex items-center justify-between gap-2 px-4 pt-3.5 pb-2 border-b border-slate-100">
                 <h3 id="profileFieldEditTitle" class="text-base font-bold text-slate-800">수정</h3>
                 <button type="button" id="profileFieldEditCloseBtn" class="p-2 -mr-1 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="닫기"><i data-lucide="x" class="text-lg"></i></button>
             </div>
-            <div class="px-4 py-4 overflow-y-auto min-h-0 flex-1">
+            <div class="profile-field-edit-body px-4 py-4 overflow-y-auto min-h-0 flex-1">
                 <div id="profileFieldEditPanelNickname" class="hidden space-y-5">
                     <div class="space-y-2">
                         <label class="block text-sm font-semibold text-slate-600" for="profileFieldEditNickname">닉네임</label>
@@ -2715,7 +2747,7 @@
     </div>
 
     <!-- Logout Confirm Modal -->
-    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[400] flex flex-col justify-center px-4 p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
+    <div id="logoutConfirmModal" class="hidden fixed inset-0 z-[var(--z-dialog)] flex flex-col justify-center px-4 p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="logoutConfirmTitle">
         <div class="bg-white rounded-2xl w-full max-w-[18.5rem] sm:max-w-xs mx-auto shadow-2xl overflow-hidden border border-slate-200/80">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head flex-col items-stretch !pb-2 !pt-5">
@@ -2730,7 +2762,7 @@
     </div>
 
     <!-- Delete Account Confirm Modal -->
-    <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[400] bg-slate-900/40 flex items-center justify-center p-4">
+    <div id="deleteAccountConfirmModal" class="hidden fixed inset-0 z-[var(--z-dialog)] bg-slate-900/40 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden transform transition-all scale-100">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head flex-col items-stretch !pb-2 !pt-5">
@@ -2745,7 +2777,7 @@
     </div>
 
     <!-- Entry Modal -->
-    <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[295] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
+    <div id="entrySlotPickerModal" class="hidden fixed inset-0 z-[var(--z-slot-picker)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="entrySlotPickerTitle" aria-hidden="true">
         <button type="button" id="entrySlotPickerBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
         <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
@@ -2759,7 +2791,7 @@
         </div>
     </div>
 
-    <div id="entryModal" class="hidden fixed inset-0 z-[300] overflow-hidden" aria-modal="true" role="dialog" aria-label="기록 시트">
+    <div id="entryModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] overflow-hidden" aria-modal="true" role="dialog" aria-label="기록 시트">
         <button type="button" id="entryModalBackdrop" class="mealog-dialog-backdrop absolute inset-0 z-0 cursor-default border-0 p-0" data-mealog-dialog-backdrop aria-label="닫기" style="background:var(--shell-dim, rgba(15,23,42,0.4))"></button>
         <div class="entry-modal-panel z-10 w-full max-w-md mx-auto flex flex-col min-h-0 overflow-hidden" data-mealog-dialog-panel>
             <div class="entry-modal-header shrink-0">
@@ -3202,7 +3234,7 @@
     </div>
 
     <!-- Daily Journal Modal (하루 소감) — 기록시트와 동일 센터 팝업 셸 -->
-    <div id="dailyJournalModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 overflow-hidden" aria-modal="true" role="dialog" aria-labelledby="dailyJournalModalTitle">
+    <div id="dailyJournalModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] flex items-center justify-center p-4 overflow-hidden" aria-modal="true" role="dialog" aria-labelledby="dailyJournalModalTitle">
         <button type="button" id="dailyJournalModalBackdrop" class="mealog-dialog-backdrop absolute inset-0 z-0 cursor-default border-0 p-0" data-mealog-dialog-backdrop aria-label="닫기" style="background:var(--shell-dim, rgba(15,23,42,0.4))"></button>
         <div class="daily-journal-modal-panel entry-modal-panel relative z-10 w-full max-w-md mx-auto flex flex-col min-h-0 max-h-[min(88vh,100%)] overflow-hidden" data-mealog-dialog-panel>
             <div class="entry-modal-header shrink-0">
@@ -3261,9 +3293,6 @@
                         <div id="dailyJournalWeightWrap">
                             <div id="dailyJournalWeightRecordsWrap" class="relative rounded-lg">
                                 <div id="dailyJournalWeightRecords" class="flex flex-col gap-1.5"></div>
-                                <div id="dailyJournalWeightOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
-                                </div>
                             </div>
                             <button type="button" id="dailyJournalWeightAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
                         </div>
@@ -3284,9 +3313,6 @@
                         <div id="dailyJournalBloodSugarWrap">
                             <div id="dailyJournalBloodSugarRecordsWrap" class="relative rounded-lg">
                                 <div id="dailyJournalBloodSugarRecords" class="flex flex-col gap-1.5"></div>
-                                <div id="dailyJournalBloodSugarOffLayer" class="entry-gauge-off-layer hidden absolute inset-0 z-[5] flex items-center justify-center rounded-lg border border-slate-200 bg-slate-100/92 px-1" aria-hidden="true" role="status">
-                                    <span class="entry-gauge-off-layer__label text-center text-xs font-bold text-slate-500">오프상태입니다</span>
-                                </div>
                             </div>
                             <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
                         </div>
@@ -3326,7 +3352,7 @@
     </div>
 
     <!-- AI 식단분석 리포트 (밀로그 날짜별) — Soft Mint Center Dialog -->
-    <div id="dietReportModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
+    <div id="dietReportModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="dietReportModalTitle">
         <button type="button" id="dietReportBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0" aria-label="닫기" style="background:var(--shell-dim)"></button>
         <div class="diet-report-modal relative z-10 flex w-full max-w-md flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
@@ -3353,7 +3379,7 @@
     </div>
 
     <!-- Detail Analysis Modal (공통 팝업 · 어떻게/무엇을/함께 등 탭) -->
-    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[350] flex items-center justify-center py-4 px-4">
+    <div id="detailModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-detail-modal)] flex items-center justify-center py-4 px-4">
         <div class="w-full max-w-[20rem] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[85vh]">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="detailModalHeader" class="mealog-dialog-head !pb-0 border-0">
@@ -3373,7 +3399,7 @@
     </div>
 
     <!-- Character Select Modal -->
-    <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-end">
+    <div id="characterSelectModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-dialog)] flex items-end">
         <div class="w-full max-w-md mx-auto bg-white rounded-t-[2rem] flex flex-col max-h-[60vh]">
             <div class="p-6 border-b flex justify-between items-center">
                 <h2 class="text-lg font-bold text-slate-800 tracking-tight">밀당(MEAL黨) 캐릭터 선택</h2>
@@ -3388,7 +3414,7 @@
     </div>
 
     <!-- Character Select Popup (Center Modal) -->
-    <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[9999] flex items-center justify-center p-4">
+    <div id="characterSelectPopup" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-loading-overlay)] flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 w-full max-w-md">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head !px-0 !pt-0 !pb-4">
@@ -3416,7 +3442,7 @@
     </div>
 
     <!-- Best Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal" aria-modal="true" role="dialog" aria-labelledby="bestShareModalTitle">
+    <div id="bestShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-dialog)] flex items-center justify-center py-4 capture-share-modal" aria-modal="true" role="dialog" aria-labelledby="bestShareModalTitle">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden border border-slate-200/80">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="bestShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
@@ -3443,7 +3469,7 @@
     </div>
 
     <!-- Insight Share Modal (팝업: 중앙 정렬, 포지션 간섭 최소화) -->
-    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[400] flex items-center justify-center py-4 capture-share-modal">
+    <div id="insightShareModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-dialog)] flex items-center justify-center py-4 capture-share-modal">
         <div class="relative w-full max-w-md mx-auto bg-white rounded-2xl flex flex-col max-h-[92vh] shadow-xl overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div id="insightShareLoadingOverlay" class="hidden absolute inset-0 bg-white/90 rounded-2xl flex flex-col items-center justify-center z-20">
@@ -3474,7 +3500,7 @@
     </div>
 
     <!-- 베스트 공유 기간 안내 팝업 (토스트 대신 확인 버튼으로 닫기) -->
-    <div id="bestSharePeriodNoticeModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4" onclick="if(event.target === this) window.closeBestSharePeriodNotice()">
+    <div id="bestSharePeriodNoticeModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-dialog-over)] flex items-center justify-center p-4" onclick="if(event.target === this) window.closeBestSharePeriodNotice()">
         <div class="w-full max-w-sm bg-white rounded-2xl shadow-xl p-6 flex flex-col items-stretch gap-4">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <h3 class="text-lg font-bold text-slate-800 text-left w-full">베스트 공유 안내</h3>
@@ -3486,7 +3512,7 @@
     </div>
 
     <!-- Photo Edit Modal -->
-    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[410] flex items-center justify-center p-4">
+    <div id="photoEditModal" class="hidden fixed inset-0 bg-slate-900/60 z-[var(--z-dialog-over)] flex items-center justify-center p-4">
         <div class="w-full max-w-md bg-white rounded-2xl flex flex-col max-h-[90vh] overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head border-b border-slate-200 shrink-0">

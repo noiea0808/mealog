@@ -5,6 +5,8 @@
  */
 import {
     getLandingAppPromoKind,
+    isAndroidDevice,
+    isIOSDevice,
     openOsInstallGuideModal,
 } from './pwa-install.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
@@ -100,10 +102,11 @@ export function clearLandingServiceGuideSeen() {
 
 function buildSlides() {
     const list = SLIDE_DEFS.map((s) => ({ ...s }));
-    const kind = getLandingAppPromoKind();
-    if (kind && INSTALL_SLIDES[kind]) {
-        list.push({ ...INSTALL_SLIDES[kind] });
-    }
+    // 네이티브 앱·설치된 PWA에서도 안내 슬라이드는 보여 주고,
+    // 「방법 보기」로 OS별 설치 팝업을 연다 (기본 탭은 기기 추정).
+    const kind = getLandingAppPromoKind() || (isAndroidDevice() ? 'android' : isIOSDevice() ? 'ios' : 'desktop');
+    const slide = INSTALL_SLIDES[kind] || INSTALL_SLIDES.android;
+    list.push({ ...slide });
     return list;
 }
 
@@ -176,8 +179,10 @@ async function finishGuide() {
     }
 }
 
-function onInstallCta() {
-    const kind = getLandingAppPromoKind() || 'desktop';
+function onInstallCta(e) {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const kind = getLandingAppPromoKind() || 'android';
     openOsInstallGuideModal(kind);
 }
 

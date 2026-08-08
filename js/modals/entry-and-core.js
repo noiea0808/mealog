@@ -1,5 +1,5 @@
 // 모달 및 입력 처리 관련 함수들
-import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
+import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
 import { renderEntryChips, renderPhotoPreviews, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
@@ -22,7 +22,7 @@ import { isDemoUser } from '../demo-account.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { applyDemoDateShiftToMealRecord } from '../demo-date-shift.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
-import { getSharedPhotoUrlsForEntry } from '../utils/moment-share-state.js';
+import { getSharedPhotoUrlsForEntry, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import {
     isMealEntryPendingSync,
@@ -44,9 +44,8 @@ import {
     clearMealEntrySyncAbandonedById,
     clearMealSyncGraceTimer,
     scheduleMealSyncGraceAbandon,
-    isMealEntrySyncAbandoned,
+    isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
-    applyOfflineAfterLocalSaveUi,
     onMealDocFirestoreServerAcknowledged,
     scheduleMealServerAckAfterPendingWrites,
     MEAL_SYNC_GRACE_MS_NO_PHOTO,
@@ -66,8 +65,7 @@ import {
 import {
     createPhotoMetaFromFile,
     normalizePhotoMetaFromRecord,
-    resolveFirstPhotoTakenAt,
-    syncPhotoMetaLength
+    resolveFirstPhotoTakenAt
 } from '../photo-meta.js';
 import {
     closeTimeSourceSheets,
@@ -76,13 +74,26 @@ import {
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { ENTRY_DOM, ENTRY_MODE_CONFIG, getEntryModeConfig } from './entry-form-config.js';
+import {
+    ensureFocusedInputVisible,
+    getImeMetrics,
+    getNativeImeHeight,
+    captureImeBaseline,
+    clearOverlayImePinStyles,
+    isMobileWebTouchUi,
+    pinElementToVisualViewport
+} from '../utils/ime-viewport.js';
+import { ENTRY_DOM, ENTRY_MODE_CONFIG, PHOTO_ASPECT_OPTIONS, getEntryModeConfig } from './entry-form-config.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
     validateEntryForm,
     resolveEntrySaveFields,
 } from './entry-form-state.js';
+import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
+import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
+import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
+import { syncMomentShareAfterSave } from './entry-save-share.js';
 import {
     bindEntryModalHeaderOnce,
     refreshEntryModalHeader,
@@ -114,45 +125,8 @@ import {
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
-function isMealActionEffectiveOffline() {
-    try {
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
-    } catch (_) {}
-    return !!appState.localNetworkForcedOffline;
-}
-
-// 설정 저장 디바운싱을 위한 타이머
-let settingsSaveTimeout = null;
+// 설정 저장 디바운싱을 위한 타이머 (기록 저장 쪽 디바운스는 entry-save-subtags.js가 소유)
 let entryGaugeSaveTimeout = null;
-
-const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
-
-/**
- * 입력란의 쉼표(, / ，) 구분 항목을 최근 서브태그로 각각 기억.
- * 이미 있으면 맨 뒤로 옮겨 최근 순서를 갱신한다.
- * @param {any[]} list
- * @param {string} rawValue
- * @param {string|null|undefined} parent
- * @returns {boolean} 변경 여부
- */
-function rememberCommaSeparatedSubTags(list, rawValue, parent) {
-    if (!Array.isArray(list)) return false;
-    const parts = String(rawValue || '')
-        .split(/[,，]/)
-        .map((v) => v.trim())
-        .filter(Boolean);
-    if (!parts.length) return false;
-    let changed = false;
-    for (const val of parts) {
-        const existingIdx = list.findIndex((t) => (t.text || t) === val);
-        if (existingIdx >= 0) {
-            list.splice(existingIdx, 1);
-        }
-        list.push({ text: val, parent: parent || null });
-        changed = true;
-    }
-    return changed;
-}
 
 /** 입력란이 비어 있을 때만 활성 서브칩을 쉼표로 합쳐 넣음 (태그만 선택한 저장 대비) */
 function mergeActiveSubChipsIntoInputs() {
@@ -777,62 +751,153 @@ function initEntryModalKeyboardHandling(entryModal) {
     let lastAppliedVtop = NaN;
     let viewportGeomRaf = null;
     let viewportCheckTimer = null;
+    let geomSettleTimer = null;
+    let chromePlaceRaf = null;
+    /** 키보드 열리기 직전 시트 top — 닫을 때 --entry-sheet-top 즉시 복원용 */
+    let sheetTopBeforeKeyboard = null;
+    /** VV 애니 중 미세 높이 변화에 따른 연속 리레이아웃(깜박임) 억제 */
+    const GEOM_SETTLE_MS = 120;
+    const GEOM_MIN_DELTA_PX = 12;
 
     const getViewportThreshold = () => (baselineHeight || window.innerHeight) * 0.85;
 
-    const applyViewportGeometry = (vh, vtop) => {
+    /** 네이티브: 키보드로 밀린 페이지 스크롤 원위치. 모바일 웹은 브라우저 팬을 되돌리면 입력이 키보드에 가림 */
+    const pinLayoutViewport = () => {
+        if (!window.Capacitor?.isNativePlatform?.()) return;
+        if (window.scrollX || window.scrollY) {
+            window.scrollTo(0, 0);
+        }
+        const de = document.documentElement;
+        const body = document.body;
+        if (de && de.scrollTop) de.scrollTop = 0;
+        if (body && body.scrollTop) body.scrollTop = 0;
+    };
+
+    /**
+     * 키보드 중 시트 top·가용 높이.
+     * overlay: 모달을 VV에 직접 핀한 뒤 패널은 pad만 (루트 시프트 대기 없음)
+     * resize: layoutH 기준
+     */
+    const getKeyboardSheetMetrics = () => {
+        const m = getImeMetrics();
+        const safeRaw = Number.parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--safe-top')
+        );
+        const safeTop = Number.isFinite(safeRaw) ? Math.max(0, Math.round(safeRaw)) : 0;
+        const pad = Math.max(12, Math.min(safeTop || 12, 28));
+        if (m.mode === 'overlay') {
+            const topPad = Math.min(pad, 10);
+            const frameH = Math.max(
+                0,
+                entryModal.clientHeight ||
+                    m.vvH ||
+                    window.visualViewport?.height ||
+                    window.innerHeight ||
+                    0
+            );
+            return {
+                topPx: topPad,
+                availPx: Math.max(160, Math.floor(frameH - topPad - 8)),
+                trackH: frameH,
+                overlay: true
+            };
+        }
+        const layoutH = Math.max(0, m.layoutH || window.innerHeight || 0);
+        return {
+            topPx: pad,
+            availPx: Math.max(160, Math.floor(layoutH - pad - 8)),
+            trackH: layoutH,
+            overlay: false
+        };
+    };
+
+    const scrollActiveEntryField = ({ force = false } = {}) => {
+        const scroll = document.getElementById('modalScrollArea');
+        // 사용자가 직접 스크롤 중이면 포커스 필드로 되감아 CTA 도달을 막지 않음
+        if (!force && scroll?.dataset?.entryUserScrolling === '1') return;
+        const active = document.activeElement;
+        if (!active || !entryModal.contains(active) || !active.matches?.('input, textarea')) return;
+        const isMemo = !!active.classList?.contains('entry-comment-textarea');
+        scrollEntryFieldIntoView(active, {
+            align: isMemo ? 'end' : 'nearest',
+            afterMs: 0,
+            once: true
+        });
+    };
+
+    /**
+     * @param {{ scroll?: boolean, force?: boolean }} [opts]
+     */
+    const applyViewportGeometry = (opts = {}) => {
         if (!entryModal.classList.contains('keyboard-open')) return;
-        const hRaw = Number.isFinite(vh) ? vh : (window.innerHeight || 0);
-        // 키보드 구간: 오버레이를 vv.offsetTop으로 들어 올리지 않음(시트가 위로 점프하던 원인).
-        // 레이아웃 상단에 고정한 채 보이는 높이만 줄이고, 패널은 top 유지 + max-height로 맞춤.
-        const h = Math.max(0, Math.min(hRaw, window.innerHeight || hRaw));
-        if (!Number.isNaN(lastAppliedVh) && Math.abs(lastAppliedVh - h) < 1) {
+        const m = getImeMetrics();
+        if (m.mode === 'overlay') {
+            // 기록시트: 모달을 VV에 직접 핀 (전역 루트 시프트에 의존하지 않음)
+            pinElementToVisualViewport(entryModal, { force: true });
+        } else {
+            clearOverlayImePinStyles(entryModal);
+            entryModal.style.top = '';
+            entryModal.style.height = '';
+            entryModal.style.left = '';
+            entryModal.style.width = '';
+            entryModal.style.right = '';
+            entryModal.style.bottom = '';
+            pinLayoutViewport();
+        }
+
+        const sheet = getKeyboardSheetMetrics();
+        const topPx = sheet.topPx;
+        const avail = sheet.availPx;
+        const minDelta = opts.force ? 0.5 : GEOM_MIN_DELTA_PX;
+        if (
+            !Number.isNaN(lastAppliedVh) &&
+            Math.abs(lastAppliedVh - avail) < minDelta &&
+            !Number.isNaN(lastAppliedVtop) &&
+            Math.abs(lastAppliedVtop - topPx) < 1
+        ) {
+            // settle 반복 시 스크롤 되감기 금지 — 사용자 스크롤로 CTA 도달 가능해야 함
             return;
         }
-        lastAppliedVh = h;
-        lastAppliedVtop = 0;
-        entryModal.style.top = '0px';
-        entryModal.style.height = `${h}px`;
+        lastAppliedVh = avail;
+        lastAppliedVtop = topPx;
 
         const panel = entryModal.querySelector('.entry-modal-panel');
         if (!panel) return;
-        const topPx = Number.parseFloat(getComputedStyle(panel).top) || 16;
-        const avail = Math.max(160, Math.floor(h - topPx - 8));
-        // 축소만 하면 vv 중간 프레임(작은 height)에 고착됨 → 키보드 구간은 항상 avail에 맞춤
+        // 세션 top(중앙 정렬값)은 entry-sheet-tabs가 보관. 여기는 CSS 변수만 임시 변경.
+        entryModal.style.setProperty('--entry-sheet-top', `${topPx}px`);
+        panel.style.top = `${topPx}px`;
         panel.style.maxHeight = `${avail}px`;
         panel.style.height = `${avail}px`;
         panel.style.minHeight = '0px';
         panel.style.setProperty('--entry-sheet-h', `${avail}px`);
-        const active = document.activeElement;
-        if (active && entryModal.contains(active) && active.matches?.('input, textarea')) {
-            scrollEntryFieldIntoView(active, { align: 'nearest' });
-        }
+        if (opts.scroll) scrollActiveEntryField({ force: !!opts.forceScroll });
     };
 
-    const scheduleViewportGeometryFromVv = () => {
-        if (viewportGeomRaf != null) return;
-        viewportGeomRaf = requestAnimationFrame(() => {
-            viewportGeomRaf = null;
+    /** VV 애니 중에는 settle 후 높이만 맞춤 — 스크롤은 포커스 시에만 */
+    const scheduleViewportGeometryFromVv = ({ immediate = false } = {}) => {
+        if (entryModal.classList.contains('hidden')) return;
+        if (!entryModal.classList.contains('keyboard-open')) return;
+        if (imeComposing) return;
+        if (immediate && Number.isNaN(lastAppliedVh)) {
+            applyViewportGeometry({ scroll: false, force: true });
+        }
+        if (geomSettleTimer != null) clearTimeout(geomSettleTimer);
+        geomSettleTimer = setTimeout(() => {
+            geomSettleTimer = null;
             if (entryModal.classList.contains('hidden')) return;
             if (!entryModal.classList.contains('keyboard-open')) return;
             if (imeComposing) return;
-            const vv = window.visualViewport;
-            if (!vv) return;
-            // offsetTop은 사용하지 않음 — 높이만 반영
-            applyViewportGeometry(vv.height, 0);
-        });
+            applyViewportGeometry({ scroll: false, force: true });
+        }, GEOM_SETTLE_MS);
     };
 
     entryModal.querySelectorAll('input, textarea').forEach(el => {
         el.addEventListener('compositionstart', () => { imeComposing = true; });
         el.addEventListener('compositionend', () => {
             imeComposing = false;
+            // input마다 selection 리셋하면 깜박임 — 조합 종료 시에만 리페인트
             nudgeEntryModalInputRepaint(entryModal);
             scheduleViewportGeometryFromVv();
-        });
-        el.addEventListener('input', () => {
-            if (imeComposing) return;
-            nudgeEntryModalInputRepaint(entryModal);
         });
     });
     const scheduleViewportCheck = () => {
@@ -848,12 +913,31 @@ function initEntryModalKeyboardHandling(entryModal) {
     const setKeyboardOpen = (open) => {
         if (open) {
             if (!entryModal.classList.contains('keyboard-open')) {
-                entryModal.classList.add('keyboard-open');
-                placeEntryModalChrome(true);
+                const panel = entryModal.querySelector('.entry-modal-panel');
+                const prevTop = Number.parseFloat(panel?.style?.top)
+                    || Number.parseFloat(panel ? getComputedStyle(panel).top : '')
+                    || Number.parseFloat(
+                        entryModal.style.getPropertyValue('--entry-sheet-top')
+                    )
+                    || 16;
+                sheetTopBeforeKeyboard = Number.isFinite(prevTop) ? prevTop : 16;
                 lastAppliedVh = NaN;
                 lastAppliedVtop = NaN;
+                entryModal.classList.add('keyboard-open');
+                const active = document.activeElement;
+                const isMemo = !!active?.classList?.contains('entry-comment-textarea');
+                // 높이·top 맞춤 후 CTA를 스크롤 끝으로. 자동 스크롤은 메모만(중간 필드는 사용자 스크롤 방해 금지)
+                applyViewportGeometry({ scroll: isMemo, force: true, forceScroll: isMemo });
+                if (chromePlaceRaf != null) cancelAnimationFrame(chromePlaceRaf);
+                chromePlaceRaf = requestAnimationFrame(() => {
+                    chromePlaceRaf = null;
+                    if (!entryModal.classList.contains('keyboard-open')) return;
+                    placeEntryModalChrome(true);
+                    scheduleViewportGeometryFromVv({ immediate: false });
+                });
+            } else {
+                scheduleViewportGeometryFromVv();
             }
-            scheduleViewportGeometryFromVv();
         } else if (entryModal.classList.contains('keyboard-open')) {
             entryModal.classList.remove('keyboard-open');
             placeEntryModalChrome(false);
@@ -863,16 +947,41 @@ function initEntryModalKeyboardHandling(entryModal) {
                 cancelAnimationFrame(viewportGeomRaf);
                 viewportGeomRaf = null;
             }
+            if (chromePlaceRaf != null) {
+                cancelAnimationFrame(chromePlaceRaf);
+                chromePlaceRaf = null;
+            }
+            if (geomSettleTimer != null) {
+                clearTimeout(geomSettleTimer);
+                geomSettleTimer = null;
+            }
             if (viewportCheckTimer != null) {
                 clearTimeout(viewportCheckTimer);
                 viewportCheckTimer = null;
             }
+            clearOverlayImePinStyles(entryModal);
             entryModal.style.height = '';
             entryModal.style.top = '';
+            entryModal.style.left = '';
+            entryModal.style.width = '';
+            entryModal.style.right = '';
+            entryModal.style.bottom = '';
+            pinLayoutViewport();
             const panel = entryModal.querySelector('.entry-modal-panel');
             if (panel) {
+                // 키보드 중 키운 인라인 높이를 비워 피크 잠금이 다시 먹게 함
                 panel.style.maxHeight = '';
+                panel.style.height = '';
+                panel.style.minHeight = '';
+                panel.style.removeProperty('--entry-sheet-h');
+                // sync rAF 전에 중앙 top이 잠깐 키보드 top으로 남지 않도록 즉시 복원
+                if (sheetTopBeforeKeyboard != null) {
+                    const t = `${sheetTopBeforeKeyboard}px`;
+                    entryModal.style.setProperty('--entry-sheet-top', t);
+                    panel.style.top = t;
+                }
             }
+            sheetTopBeforeKeyboard = null;
             // 키보드로 일시 축소했던 패널 높이를 피크 잠금으로 복원
             if (typeof window.syncEntrySheetHeightLock === 'function') {
                 window.syncEntrySheetHeightLock();
@@ -884,13 +993,40 @@ function initEntryModalKeyboardHandling(entryModal) {
         baselineHeight = Math.max(window.visualViewport?.height ?? window.innerHeight, window.innerHeight * 0.5);
     };
     entryModal.setKeyboardBaseline = saveBaseline;
+    const scrollAreaEl = document.getElementById('modalScrollArea');
+    let entryUserScrollClearTimer = null;
+    const markEntryUserScrolling = () => {
+        if (!scrollAreaEl) return;
+        scrollAreaEl.dataset.entryUserScrolling = '1';
+        if (entryUserScrollClearTimer != null) clearTimeout(entryUserScrollClearTimer);
+        entryUserScrollClearTimer = setTimeout(() => {
+            entryUserScrollClearTimer = null;
+            if (scrollAreaEl) delete scrollAreaEl.dataset.entryUserScrolling;
+        }, 2000);
+    };
+    if (scrollAreaEl && !scrollAreaEl._entryUserScrollBound) {
+        scrollAreaEl._entryUserScrollBound = true;
+        scrollAreaEl.addEventListener('touchstart', markEntryUserScrolling, { passive: true });
+        scrollAreaEl.addEventListener('wheel', markEntryUserScrolling, { passive: true });
+    }
+
     entryModal.addEventListener('focusin', (e) => {
         if (!e.target.matches?.('input, textarea')) return;
-        // 키보드가 실제로 올라오기 전에는 keyboard-open 하지 않음.
-        // (센터 정렬 → stretch 전환으로 팝업이 위로 튕겼다 돌아오는 현상 방지)
-        // 메모는 확장 후 syncEntryCommentExpandedState에서 스크롤. 그 외 필드는 여기서 보정.
-        if (!e.target.classList?.contains('entry-comment-textarea')) {
-            scrollEntryFieldIntoView(e.target, { align: 'nearest' });
+        captureImeBaseline();
+        const isMemo = !!e.target.classList?.contains('entry-comment-textarea');
+        const overlay = getImeMetrics().mode === 'overlay' || isMobileWebTouchUi();
+        // overlay: 포커스 직후 모달을 현재 VV에 바로 핀 (전역 ime-open 대기 없음)
+        if (overlay) {
+            pinElementToVisualViewport(entryModal, { force: true });
+        }
+        // 포커스 진입 시 한 번만 맞춤. 이후 VV settle/자동 스크롤로 되감지 않음 → CTA까지 수동 스크롤 가능
+        if (entryModal.classList.contains('keyboard-open') || isMemo || overlay) {
+            if (scrollAreaEl) delete scrollAreaEl.dataset.entryUserScrolling;
+            scrollEntryFieldIntoView(e.target, {
+                align: isMemo ? 'end' : 'nearest',
+                afterMs: 0,
+                once: true
+            });
         }
         scheduleViewportCheck();
     });
@@ -899,13 +1035,20 @@ function initEntryModalKeyboardHandling(entryModal) {
     });
     const checkViewport = () => {
         if (entryModal.classList.contains('hidden')) return;
-        const vh = window.visualViewport?.height ?? window.innerHeight;
+        const m = getImeMetrics();
+        const vh = m.mode === 'resize'
+            ? (m.layoutH || window.innerHeight || 0)
+            : (m.vvH || window.visualViewport?.height || window.innerHeight || 0);
         const threshold = getViewportThreshold();
-        if (vh >= threshold) {
+        // ime-viewport open 신호 우선 (웹 포커스-only 제거와 정합). threshold는 보조.
+        const open =
+            m.open ||
+            getNativeImeHeight() > 80 ||
+            (vh > 0 && vh < threshold);
+        if (!open) {
             setKeyboardOpen(false);
             return;
         }
-        // 키보드가 실제로 줄어든 뒤에만 keyboard-open (칩 탭 등 focusout 깜빡임 방지)
         setKeyboardOpen(true);
         if (imeComposing) return;
         scheduleViewportGeometryFromVv();
@@ -1334,12 +1477,25 @@ function activateSavedRecordTags(r, isS) {
 function ensureEntryWhatInputSnackCompositionInit() {
     const entryWhatInput = document.getElementById('entryWhatInput');
     if (!entryWhatInput || entryWhatInput._snackCompositionInit) return;
-    const updateSnackSuggestions = () => {
-        const subTags = window.userSettings.subTags.snack || [];
-        const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-        window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+    // 입력(스페이스 포함)마다 스테이지를 main↔sub로 뒤집지 않고, 선택된 메인태그 아래 칩 active만 갱신
+    const updateWhatSuggestionActives = () => {
+        const parentFilter = document.querySelector('#entryWhatChips button.active')?.innerText;
+        if (!parentFilter) return;
+        const isSnack = appState.entryFormMode === 'snack';
+        const subTagKey = isSnack ? 'snack' : 'menu';
+        const list = window.userSettings?.subTags?.[subTagKey] || [];
+        if (typeof window.renderSecondary === 'function') {
+            window.renderSecondary(
+                'entryWhatSuggestions',
+                list,
+                'entryWhatInput',
+                parentFilter,
+                subTagKey,
+                { preserveStage: true }
+            );
+        }
     };
-    addCompositionAwareInput(entryWhatInput, updateSnackSuggestions);
+    addCompositionAwareInput(entryWhatInput, updateWhatSuggestionActives);
     entryWhatInput._snackCompositionInit = true;
 }
 
@@ -1366,23 +1522,24 @@ function bindEntryWhatInputAutosizeOnce() {
 }
 
 /** 기록 시트 스크롤 영역 안에서 필드를 보이게 맞춤 (오버레이/센터 정렬은 건드리지 않음) */
-function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0 } = {}) {
+function scrollEntryFieldIntoView(el, { align = 'nearest', afterMs = 0, once = false } = {}) {
     const scroll = document.getElementById('modalScrollArea');
     if (!scroll || !el || !scroll.contains(el)) return;
-    const run = () => {
-        try {
-            const tRect = el.getBoundingClientRect();
-            const sRect = scroll.getBoundingClientRect();
-            const pad = 12;
-            if (align === 'end' || tRect.bottom > sRect.bottom - pad) {
-                scroll.scrollTop += tRect.bottom - sRect.bottom + pad;
-            } else if (tRect.top < sRect.top + pad) {
-                scroll.scrollTop -= sRect.top - tRect.top + pad;
-            }
-        } catch (_) { /* ignore */ }
-    };
-    requestAnimationFrame(run);
-    if (afterMs > 0) setTimeout(run, afterMs);
+    // 사용자 스크롤 중에는 포커스 필드로 되감지 않음 (무엇을 포커스→CTA 도달 방해 방지)
+    if (scroll.dataset?.entryUserScrolling === '1') return;
+    // once: 키보드 settle 후 단일 보정 — 다중 딜레이 버스트는 시트 깜박임·스크롤 고착 유발
+    const delays = once
+        ? [0]
+        : afterMs > 0
+          ? [0, afterMs, afterMs + 150]
+          : [0, 80, 200];
+    ensureFocusedInputVisible(el, {
+        align,
+        scrollParent: scroll,
+        pad: 12,
+        delays,
+        suppressDocumentScroll: true
+    });
 }
 
 /** 메모 textarea: 내용/포커스 시 높이만큼 키우고, 시트(#modalScrollArea)가 스크롤되게 함 */
@@ -1406,21 +1563,39 @@ function syncEntryCommentExpandedState(el, { fromFocus = false } = {}) {
     const hasContent = !!(el.value || '').length;
     const focused = document.activeElement === el;
     const keepOpen = focused || hasContent;
+    const prevHeight = el.offsetHeight || 0;
     const wasExpanded = el.classList.contains('entry-comment-textarea--expanded');
     el.classList.toggle('entry-comment-textarea--expanded', keepOpen);
-    el.rows = focused ? 3 : (hasContent ? 2 : 1);
+    // 여유 줄(rows=3)을 미리 비워두지 않음 — 내용만큼만 키우고 시트 높이를 올린다
+    el.rows = 1;
     if (!keepOpen) {
         el.style.height = '';
         return;
     }
     autosizeEntryCommentTextarea(el);
-    // 접힌 1줄 → 확장 시 시트 peak 높이를 키움 (키보드 중에는 sync가 no-op)
-    if ((!wasExpanded || fromFocus) && typeof window.syncEntrySheetHeightLock === 'function') {
-        window.syncEntrySheetHeightLock();
+    const nextHeight = el.offsetHeight || 0;
+    const grewBy = nextHeight - prevHeight;
+    const grew = grewBy > 1;
+    const modal = document.getElementById('entryModal');
+    const keyboardOpen = !!modal?.classList.contains('keyboard-open');
+    if (
+        (grew || !wasExpanded || fromFocus) &&
+        typeof window.syncEntrySheetHeightLock === 'function'
+    ) {
+        if (keyboardOpen && grew) {
+            window.syncEntrySheetHeightLock({ growthPx: grewBy });
+        } else {
+            window.syncEntrySheetHeightLock();
+        }
     }
-    // 포커스·입력으로 줄이 늘 때만 시트 스크롤 (초기 로드 확장은 점프 방지)
-    if (focused) {
-        scrollEntryFieldIntoView(el, { align: 'end', afterMs: fromFocus ? 200 : 0 });
+    // 메모: 키보드 전이라도 시트 스크롤 영역 안으로. 열린 뒤에는 end 정렬 버스트.
+    if (focused && (grew || fromFocus)) {
+        const overlay = getImeMetrics().mode === 'overlay' || isMobileWebTouchUi();
+        scrollEntryFieldIntoView(el, {
+            align: 'end',
+            afterMs: overlay || keyboardOpen ? 80 : 0,
+            once: !(overlay || keyboardOpen)
+        });
     }
 }
 
@@ -1451,8 +1626,13 @@ function revealEntryModalShell() {
     entryModal.classList.remove('hidden');
     entryModal.classList.remove('keyboard-open');
     placeEntryModalChrome(false);
+    clearOverlayImePinStyles(entryModal);
     entryModal.style.height = '';
     entryModal.style.top = '';
+    entryModal.style.left = '';
+    entryModal.style.width = '';
+    entryModal.style.right = '';
+    entryModal.style.bottom = '';
     resetEntryModalScrollTop();
     requestAnimationFrame(resetEntryModalScrollTop);
     setTimeout(resetEntryModalScrollTop, 60);
@@ -1651,8 +1831,13 @@ export function closeModal() {
         setEntryModalSavingState(false);
         entryModal.classList.remove('keyboard-open');
         placeEntryModalChrome(false);
+        clearOverlayImePinStyles(entryModal);
         entryModal.style.height = '';
         entryModal.style.top = '';
+        entryModal.style.left = '';
+        entryModal.style.width = '';
+        entryModal.style.right = '';
+        entryModal.style.bottom = '';
         if (typeof entryModal.resetGrabberPullTransform === 'function') {
             entryModal.resetGrabberPullTransform();
         }
@@ -1850,26 +2035,7 @@ export async function saveEntry() {
         const resolved = resolveEntrySaveFields(form, {
             selectedSnackPlaceMainTag: appState.selectedSnackPlaceMainTag,
         });
-        const {
-            isSkip: isSk,
-            mealTypeResolved,
-            categoryResolved,
-            withWhomResolved,
-            snackTypeResolved,
-            snackPlaceMainResolved,
-        } = resolved;
-
-        const entryWhereInputVal = form.placeInput;
-        const menuInputVal = form.whatInput;
-        const withInputVal = form.withInput;
-        const snackInputVal = form.whatInput;
-        const snackWithInputVal = form.withInput;
-        const mealType = form.axis1Chip;
-
-        const deliveryVendorEl = document.getElementById('deliveryVendorInput');
-        const deliveryVendorVal = (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl)
-            ? form.deliveryVendor
-            : '';
+        const { isSkip: isSk } = resolved;
 
         const rateOn = isS
             ? appState.entryGaugeRatingOnSnack === true
@@ -1896,240 +2062,38 @@ export async function saveEntry() {
             return;
         }
         
-        const newSettings = JSON.parse(JSON.stringify(window.userSettings));
-        if (!newSettings.subTags) newSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-        
-        // subTags의 각 배열이 정의되어 있는지 확인
-        if (!newSettings.subTags.place) newSettings.subTags.place = [];
-        if (!newSettings.subTags.menu) newSettings.subTags.menu = [];
-        if (!newSettings.subTags.people) newSettings.subTags.people = [];
-        if (!newSettings.subTags.snack) newSettings.subTags.snack = [];
-        
-        let tagsChanged = false;
-        // 장소·메뉴·누구와·간식: 쉼표로 구분된 항목을 최근 태그에 각각 기억
-        if (!isS && entryWhereInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.place, entryWhereInputVal, mealTypeResolved)) {
-                tagsChanged = true;
-            }
-        }
-        if (isS && entryWhereInputVal) {
-            if (rememberCommaSeparatedSubTags(
-                newSettings.subTags.place,
-                entryWhereInputVal,
-                snackPlaceMainResolved || entryWhereInputVal
-            )) {
-                tagsChanged = true;
-            }
-        }
-        if (menuInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.menu, menuInputVal, categoryResolved)) {
-                tagsChanged = true;
-            }
-        }
-        const withInputValToSave = isS ? snackWithInputVal : withInputVal;
-        if (withInputValToSave) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.people, withInputValToSave, withWhomResolved)) {
-                tagsChanged = true;
-            }
-        }
-        if (isS && snackInputVal) {
-            if (rememberCommaSeparatedSubTags(newSettings.subTags.snack, snackInputVal, snackTypeResolved)) {
-                tagsChanged = true;
-            }
-        }
-        
+        // 이번 입력을 다음 기록 시트의 서브칩 후보로 기억 (변경이 있을 때만 저장)
+        const { settings: nextSettings, changed: tagsChanged } = buildSettingsWithRememberedSubTags(
+            window.userSettings,
+            form,
+            resolved,
+            entryMode
+        );
         if (tagsChanged) {
-            window.userSettings = newSettings;
-            // 디바운싱: 1초 내 여러 태그 변경을 묶어서 한 번만 저장
-            clearTimeout(settingsSaveTimeout);
-            settingsSaveTimeout = setTimeout(async () => {
-                try {
-                    await dbOps.saveSettings(window.userSettings);
-                    console.log('디바운싱된 설정 저장 완료');
-                } catch (e) {
-                    console.error('설정 저장 실패:', e);
-                    // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 로그만
-                }
-            }, 1000);
-        }
-        
-        // main 끼니: 동일 (date, slotId)에 이미 기록이 있어도 신규 문서로 추가 (다건 표시)
-        let idToUse = state.currentEditingId;
-        // 기존 기록에서 shareBanned 필드 가져오기 (수정 시 유지)
-        const existingRecord = idToUse ? window.mealHistory.find(m => m.id === idToUse) : null;
-        const shareBanned = existingRecord?.shareBanned === true;
-        
-        // 카카오맵 API로 입력된 장소 정보 확인 (식사: entryWhereInput, 간식: entryWhereInput)
-        const kakaoSourceInput = document.getElementById('entryWhereInput');
-        const kakaoPlaceId = kakaoSourceInput?.getAttribute('data-kakao-place-id');
-        const kakaoPlaceAddress = kakaoSourceInput?.getAttribute('data-kakao-place-address');
-        const kakaoPlaceData = kakaoSourceInput?.getAttribute('data-kakao-place-data');
-        const kakaoPlaceName = kakaoSourceInput?.getAttribute('data-kakao-place-name') || '';
-        const placeValForKakao = entryWhereInputVal;
-        // 카카오에서 선택한 장소명을 수정한 경우: 주소·placeId를 저장하지 않음 (잘못된 주소 매칭 방지)
-        const nameMatches = !kakaoPlaceName || (String(placeValForKakao || '').trim() === String(kakaoPlaceName).trim());
-        const shouldUseKakaoFields = kakaoPlaceId && !isSk && nameMatches;
-
-        let shouldUseDeliveryKakao = false;
-        let deliveryKakaoPlaceId = '';
-        let deliveryKakaoPlaceAddress = '';
-        let deliveryKakaoPlaceDataStr = '';
-        if (!isS && !isSk && mealType === '배달/포장' && deliveryVendorEl) {
-            const dvId = deliveryVendorEl.getAttribute('data-kakao-place-id');
-            const dvName = deliveryVendorEl.getAttribute('data-kakao-place-name') || '';
-            const dvNameMatches = !dvName || (String(deliveryVendorVal || '').trim() === String(dvName).trim());
-            if (dvId && dvNameMatches) {
-                shouldUseDeliveryKakao = true;
-                deliveryKakaoPlaceId = dvId;
-                deliveryKakaoPlaceAddress = deliveryVendorEl.getAttribute('data-kakao-place-address') || '';
-                deliveryKakaoPlaceDataStr = deliveryVendorEl.getAttribute('data-kakao-place-data') || '';
-            }
+            window.userSettings = nextSettings;
+            scheduleEntrySettingsSave();
         }
 
-        const sourcePhotos = Array.isArray(state.currentPhotos) ? [...state.currentPhotos] : [];
-        const sourcePhotoMeta = syncPhotoMetaLength(state.currentPhotoMeta, sourcePhotos.length);
-        /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
-        const isLocalPendingPhoto = (photo) =>
-            typeof photo === 'string' &&
-            photo &&
-            (photo.startsWith('data:image') || photo.startsWith('blob:'));
-        const existingPhotoUrls = sourcePhotos.filter(
-            (photo) => typeof photo === 'string' && photo && !isLocalPendingPhoto(photo)
-        );
+        const { record, sourcePhotos, sourcePhotoMeta, existingPhotoUrls } = buildEntrySaveRecord({
+            state,
+            form,
+            resolved,
+            entryMode,
+            gauges: { rateOn, satOn, timeOn, normalizedClock },
+            mealHistory: window.mealHistory,
+        });
 
-        /** getMealClock24FromModal(isMain) — 간식이 아닐 때 본식 입력, 간식일 때 간식 입력을 읽음 */
-        const mealClockVal = !isSk && timeOn ? (normalizedClock || null) : null;
-        const nowLocaleTime = () =>
-            new Date().toLocaleTimeString('ko-KR', {
-                hour12: false,
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit'
-            });
-        let timeSortStr = nowLocaleTime();
-        if (!isSk && timeOn && normalizedClock) {
-            timeSortStr = `${normalizedClock}:00`;
-        }
-        const slotChanged = Boolean(
-            idToUse && existingRecord && existingRecord.slotId !== state.currentEditingSlotId
-        );
-        const dateChanged = Boolean(
-            idToUse && existingRecord && existingRecord.date !== state.currentEditingDate
-        );
+        // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
+        const shareSnapshot = buildEntryShareSnapshot({
+            state,
+            record,
+            existingPhotoUrls,
+            mealHistory: window.mealHistory,
+        });
+        const { isShareBanned, wantsToShare, originalShareList, hadSharedPhotos, photoAspectChanged } = shareSnapshot;
+        // 사진 업로드 단계에서 Storage URL로 교체되므로 let
+        let photosToShare = shareSnapshot.photosToShare;
 
-        const record = {
-            id: idToUse,
-            date: state.currentEditingDate,
-            slotId: state.currentEditingSlotId,
-            mealType: mealTypeResolved,
-            withWhom: withWhomResolved,
-            withWhomDetail: isSk ? '' : (isS ? snackWithInputVal : withInputVal),
-            category: categoryResolved,
-            placeType: '',
-            snackType: snackTypeResolved,
-            photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
-            // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
-            photos: existingPhotoUrls,
-            photoMeta: sourcePhotoMeta,
-            menuDetail: isSk ? '' : (isS ? snackInputVal : menuInputVal),
-            place: isSk ? '' : (isS ? (entryWhereInputVal || appState.selectedSnackPlaceMainTag || '') : entryWhereInputVal),
-            comment: isSk ? '' : (isS ? (document.getElementById('snackCommentInput')?.value || '') : (document.getElementById('generalCommentInput')?.value || '')),
-            rating: isSk ? null : (rateOn && state.currentRating != null && Number(state.currentRating) > 0 ? Number(state.currentRating) : null),
-            satiety: isSk ? null : (satOn && state.currentSatiety != null && Number(state.currentSatiety) > 0 ? Number(state.currentSatiety) : null),
-            mealClock: mealClockVal,
-            // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
-            time: timeSortStr,
-        };
-        if (!idToUse) {
-            record.recordedAt = new Date().toISOString();
-        } else if (slotChanged || dateChanged) {
-            // 슬롯·날짜 변경 시 해당 슬롯에서 뒷번호(맨 뒤)로 쌓이도록 기록 시각 갱신
-            record.recordedAt = new Date().toISOString();
-        } else if (existingRecord?.recordedAt) {
-            record.recordedAt = existingRecord.recordedAt;
-        }
-        if (isS && !isSk && snackPlaceMainResolved) {
-            record.snackPlaceMain = snackPlaceMainResolved;
-        }
-
-        if (!isS && !isSk && mealType === '배달/포장') {
-            record.deliveryVendor = deliveryVendorVal;
-            if (shouldUseDeliveryKakao) {
-                record.deliveryPlaceId = deliveryKakaoPlaceId;
-                record.deliveryPlaceAddress = deliveryKakaoPlaceAddress || '';
-                record.deliveryKakaoPlace = true;
-                if (deliveryKakaoPlaceDataStr) {
-                    try {
-                        record.deliveryPlaceData = JSON.parse(deliveryKakaoPlaceDataStr);
-                    } catch (_) {
-                        record.deliveryPlaceData = null;
-                    }
-                } else {
-                    record.deliveryPlaceData = null;
-                }
-            } else {
-                record.deliveryPlaceId = '';
-                record.deliveryPlaceAddress = '';
-                record.deliveryPlaceData = null;
-                record.deliveryKakaoPlace = false;
-            }
-        } else {
-            record.deliveryVendor = '';
-            record.deliveryPlaceId = '';
-            record.deliveryPlaceAddress = '';
-            record.deliveryPlaceData = null;
-            record.deliveryKakaoPlace = false;
-        }
-        
-        // 카카오맵 API로 입력된 식당인 경우 추가 정보 저장 (선택한 장소명을 수정한 경우는 제외 → 잘못된 주소 매칭 방지)
-        if (shouldUseKakaoFields) {
-            record.placeId = kakaoPlaceId;
-            record.kakaoPlaceId = kakaoPlaceId;
-            record.placeAddress = kakaoPlaceAddress || '';
-            if (kakaoPlaceData) {
-                try {
-                    record.placeData = JSON.parse(kakaoPlaceData);
-                } catch (e) {
-                    console.warn('카카오 장소 데이터 파싱 실패:', e);
-                }
-            }
-            record.kakaoPlace = true; // 카카오맵으로 입력된 식당임을 표시
-        }
-        
-        // shareBanned 필드 추가 (기존 값 유지)
-        if (shareBanned) {
-            record.shareBanned = true;
-        }
-        
-        // 디버깅: 저장될 record 확인
-        if (isS) {
-            console.log('저장될 간식 record:', record);
-        }
-        
-        // 공유 금지 체크
-        const isShareBanned = record.id ? (window.mealHistory.find(m => m.id === record.id)?.shareBanned === true) : false;
-        
-        // 상태 초기화 전에 공유 의사를 보존한다. (수정 저장 + 사진 업로드 시 필요)
-        const wantsToShare = Boolean(state.wantsToShare);
-        
-        // 공유할 사진 목록 결정 (단순화: wantsToShare와 currentPhotos만 사용)
-        let photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
-            ? [...existingPhotoUrls]    // 공유 활성화: 현재 URL 사진 전체
-            : [];                        // 공유 비활성화 또는 금지: 빈 배열
-        // sharedPhotos 필드는 sharedPhotos 컬렉션(서버 sharePhotos)이 canonical — meal save에 포함하지 않음
-        // closeModal()이 originalSharedPhotos를 비우므로, 공유 비교용 목록은 여기서 스냅샷으로 고정한다.
-        const originalShareList = Array.isArray(state.originalSharedPhotos) ? [...state.originalSharedPhotos] : [];
-        const hadSharedPhotos = originalShareList.length > 0;
-        const originalPhotoAspect =
-            state.originalPhotoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(state.originalPhotoAspectRatio)
-                ? state.originalPhotoAspectRatio
-                : '1:1';
-        const nextPhotoAspect =
-            record.photoAspectRatio && PHOTO_ASPECT_OPTIONS.includes(record.photoAspectRatio)
-                ? record.photoAspectRatio
-                : '1:1';
-        const photoAspectChanged = originalPhotoAspect !== nextPhotoAspect;
-        
         console.log('저장 시작:', record);
 
         // 진행 상태: 모달은 열린 채 저장 UI + 타임라인 슬롯 인라인 스피너
@@ -2180,16 +2144,15 @@ export async function saveEntry() {
         invalidateMealHistoryCountCache();
         // 공유 아이콘도 서버 반영 전에 즉시 낙관 반영
         if (optimisticRecord.id && !isShareBanned) {
-            if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
             if (wantsToShare) {
                 const optimisticShared = (sourcePhotos.length > 0 ? sourcePhotos : ['']).map(url => ({
                     entryId: optimisticRecord.id,
                     photoUrl: url || '',
                     userId: window.currentUser?.uid
                 }));
-                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared);
+                setSharedPhotos(getSharedPhotos().filter(p => p.entryId !== optimisticRecord.id).concat(optimisticShared));
             } else {
-                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== optimisticRecord.id);
+                setSharedPhotos(getSharedPhotos().filter(p => p.entryId !== optimisticRecord.id));
             }
             updateTimelineShareIndicators();
         }
@@ -2223,19 +2186,12 @@ export async function saveEntry() {
             }
         }
         
-        // 공유 상태 변경 여부 추적 (closeModal 전에 originalSharedPhotos 기준으로 캡처됨)
-        let sharedPhotosUpdated = false;
-
         // 로컬 낙관 반영 완료 → 시트는 즉시 닫는다 (오프라인 우선: 서버 동기화는 백그라운드 진행,
         // 진행 상태는 타임라인 도트·칩으로 표시). 서버 실패 시에도 입력 내용은 로컬에 남는다.
         finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen);
         if (wasNewRecord) {
             showSuccessPopup(resolveRecordCompletePopupMessage(wasNewRecord, record.date), 800);
         }
-        if (isMealActionEffectiveOffline()) {
-            showToast('오프라인 상태예요. 연결되면 서버에 자동 등록됩니다.', 'info');
-        }
-
         // 저장 실행 (백그라운드, 타임라인에 인라인 스피너 표시)
         // 새 레코드인 경우 ID를 먼저 확보해야 공유 시 entryId를 올바르게 설정할 수 있음
         const SAVE_FIRESTORE_TIMEOUT_MS = 10000;
@@ -2304,30 +2260,11 @@ export async function saveEntry() {
             if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
                 getMealSyncManager().movePendingPhotoTempToReal(optimisticTempId, savedId);
             }
-            if (wasNewRecord && optimisticTempId && savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                window.sharedPhotos = window.sharedPhotos.map(p => (
+            if (wasNewRecord && optimisticTempId && savedId) {
+                setSharedPhotos(getSharedPhotos().map(p => (
                     p.entryId === optimisticTempId ? { ...p, entryId: savedId } : p
-                ));
+                )));
                 updateTimelineShareIndicators();
-            }
-
-            if (isMealActionEffectiveOffline() && effectiveMealId) {
-                void import('../utils/mealog-offline-ui.js').then((m) => {
-                    try {
-                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
-                            m.markMealOfflineDraftForRecord(effectiveMealId);
-                        }
-                    } catch (_) {
-                        /* ignore */
-                    }
-                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                        try {
-                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
-                });
             }
 
             const base64Photos = sourcePhotos.filter(isLocalPendingPhoto);
@@ -2344,141 +2281,25 @@ export async function saveEntry() {
                     console.warn('저장 직후 타임라인 갱신:', e);
                 }
             }
-            /* DevTools/웹뷰에서 onLine 갱신이 한 틱 늦는 경우 보정 — 실제 오프라인·강제 오프라인이면 inFlight 유지(등록예정 칩) */
-            queueMicrotask(() => {
-                if (isMealActionEffectiveOffline()) return;
-                try {
-                    applyOfflineAfterLocalSaveUi(effectiveMealId, optimisticTempId, record.date, currentTab);
-                } catch (_) {
-                    /* ignore */
-                }
-            });
-
             // 새로 추가한 base64 사진은 문서 ID 확보 후 Storage 업로드 -> URL로 record.photos 치환
             // 오프라인 등으로 업로드·재저장이 끝없이 대기하면 스피너가 영구 유지되므로 1차 저장과 동일한 상한(ms)으로 감싼다.
             if (base64Photos.length > 0 && record.id && window.currentUser?.uid) {
-                const preloadImage = (url, timeoutMs = 1500) => new Promise((resolve) => {
-                    if (!url || typeof url !== 'string') {
-                        resolve(false);
-                        return;
-                    }
-                    const img = new Image();
-                    let done = false;
-                    const finish = (ok) => {
-                        if (done) return;
-                        done = true;
-                        resolve(ok);
-                    };
-                    const timer = setTimeout(() => finish(false), timeoutMs);
-                    img.onload = () => { clearTimeout(timer); finish(true); };
-                    img.onerror = () => { clearTimeout(timer); finish(false); };
-                    img.src = url;
-                });
                 let photoPhaseSavedViaCallable = false;
                 try {
-                    await saveWithTimeout(
+                    const photoPhase = await saveWithTimeout(
                         () =>
-                            (async () => {
-                                try {
-                                    const dataUrlsForUpload = await Promise.all(
-                                        base64Photos.map((photo) => ensureDataUrlForStorage(photo))
-                                    );
-                                    // 신규 업로드: 원본 + 표시용(800px) + 썸네일(200px) 파생본 동시 생성. 파생본은 best-effort.
-                                    const uploadedVariants = await Promise.all(
-                                        dataUrlsForUpload.map((photo) =>
-                                            uploadMealPhotoVariants(photo, window.currentUser.uid, record.id)
-                                        )
-                                    );
-                                    let uploadedIndex = 0;
-                                    let metaIndex = 0;
-                                    const finalPhotoUrls = [];
-                                    const finalPhotoMeta = [];
-                                    // photos와 index 정렬 유지. 기존 URL(수정 건)은 파생본 미상 → '' (원본 fallback)
-                                    const finalDisplayUrls = [];
-                                    const finalThumbUrls = [];
-                                    sourcePhotos.forEach((photo) => {
-                                        const meta = sourcePhotoMeta[metaIndex++] || { takenAt: null };
-                                        if (isLocalPendingPhoto(photo)) {
-                                            const variant = uploadedVariants[uploadedIndex++];
-                                            if (variant && variant.url) {
-                                                finalPhotoUrls.push(variant.url);
-                                                finalPhotoMeta.push(meta);
-                                                finalDisplayUrls.push(variant.displayUrl || '');
-                                                finalThumbUrls.push(variant.thumbUrl || '');
-                                            }
-                                            return;
-                                        }
-                                        if (typeof photo === 'string' && photo) {
-                                            finalPhotoUrls.push(photo);
-                                            finalPhotoMeta.push(meta);
-                                            finalDisplayUrls.push('');
-                                            finalThumbUrls.push('');
-                                        }
-                                    });
-
-                                    record.photos = finalPhotoUrls;
-                                    record.photoMeta = finalPhotoMeta;
-                                    // 파생본이 하나라도 있을 때만 신규 필드 저장(기존 데이터 스키마 오염 방지)
-                                    if (finalDisplayUrls.some(Boolean)) {
-                                        record.photoDisplayUrls = finalDisplayUrls;
-                                    }
-                                    if (finalThumbUrls.some(Boolean)) {
-                                        record.photoThumbUrls = finalThumbUrls;
-                                    }
-                                    photosToShare = (!isShareBanned && wantsToShare && finalPhotoUrls.length > 0)
-                                        ? [...finalPhotoUrls]
-                                        : [];
-
-                                    const photoSaveRes = unwrapMealSaveResult(await dbOps.save(record, true));
-                                    photoPhaseSavedViaCallable = photoSaveRes.savedViaCallableFallback;
-                                    if (photoSaveRes.savedViaCallableFallback && record.id) {
-                                        onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
-                                    }
-                                    await preloadImage(finalPhotoUrls[0]);
-                                    if (window.mealHistory && Array.isArray(window.mealHistory)) {
-                                        const localIdx = window.mealHistory.findIndex(m => m.id === record.id);
-                                        if (localIdx >= 0) {
-                                            window.mealHistory[localIdx] = {
-                                                ...window.mealHistory[localIdx],
-                                                photos: [...finalPhotoUrls],
-                                                photoMeta: record.photoMeta,
-                                                ...(record.photoDisplayUrls ? { photoDisplayUrls: [...record.photoDisplayUrls] } : {}),
-                                                ...(record.photoThumbUrls ? { photoThumbUrls: [...record.photoThumbUrls] } : {})
-                                            };
-                                        }
-                                    }
-                                } catch (uploadError) {
-                                    photoUploadPhaseFailed = true;
-                                    if (record.id) markMealEntrySaveFailedById(String(record.id));
-                                    console.error('사진 업로드 실패:', uploadError);
-                                    showToast(getUserFacingErrorMessage(uploadError, 'save'), 'error');
-                                    // 네트워크 복구 후 재전송할 수 있도록 base64 원본 유지(URL만 있던 수정 건은 기존 URL 유지)
-                                    const preserve = sourcePhotos.filter((p) => typeof p === 'string' && p);
-                                    record.photos = preserve.length ? preserve : existingPhotoUrls;
-                                    photosToShare = (!isShareBanned && wantsToShare && existingPhotoUrls.length > 0)
-                                        ? [...existingPhotoUrls]
-                                        : [];
-                                    if (window.mealHistory && record.id) {
-                                        const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
-                                        if (hi >= 0) {
-                                            window.mealHistory[hi] = {
-                                                ...window.mealHistory[hi],
-                                                photos: [...record.photos],
-                                                _localSaveFailed: true
-                                            };
-                                        }
-                                    }
-                                    try {
-                                        const recoverRes = unwrapMealSaveResult(await dbOps.save(record, true));
-                                        photoPhaseSavedViaCallable = recoverRes.savedViaCallableFallback;
-                                        if (recoverRes.savedViaCallableFallback && record.id) {
-                                            onMealDocFirestoreServerAcknowledged(String(record.id), optimisticTempId);
-                                        }
-                                    } catch (recoverErr) {
-                                        console.warn('사진 유지 상태 재저장 실패(로컬 보존):', recoverErr?.message || recoverErr);
-                                    }
-                                }
-                            })(),
+                            uploadEntryPhotosAndResave({
+                                record,
+                                base64Photos,
+                                sourcePhotos,
+                                sourcePhotoMeta,
+                                existingPhotoUrls,
+                                isShareBanned,
+                                wantsToShare,
+                                photosToShare,
+                                optimisticTempId,
+                                uid: window.currentUser.uid,
+                            }),
                         {
                             timeoutMs: MEAL_PHOTO_UPLOAD_PHASE_TIMEOUT_MS,
                             onTimeout: () => {
@@ -2486,6 +2307,9 @@ export async function saveEntry() {
                             }
                         }
                     );
+                    photoUploadPhaseFailed = photoPhase.photoUploadPhaseFailed;
+                    photoPhaseSavedViaCallable = photoPhase.photoPhaseSavedViaCallable;
+                    photosToShare = photoPhase.photosToShare;
                     if (record.date) invalidateTimelineDateSection(record.date);
                     /* 업로드 실패 시에도 내부 catch가 throw하지 않아 여기까지 옴 — 성공 시에만 대기 해제·ack 스케줄 */
                     if (!photoUploadPhaseFailed) {
@@ -2499,34 +2323,6 @@ export async function saveEntry() {
                                 MEAL_SYNC_GRACE_MS_WITH_PHOTO
                             );
                         }
-                        queueMicrotask(() => {
-                            if (isMealActionEffectiveOffline()) {
-                                void import('../utils/mealog-offline-ui.js').then((m) => {
-                                    try {
-                                        if (record?.id && typeof m.markMealOfflineDraftForRecord === 'function') {
-                                            m.markMealOfflineDraftForRecord(record.id);
-                                        }
-                                    } catch (_) {
-                                        /* ignore */
-                                    }
-                                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                                        try {
-                                            if (typeof h.refreshMealSyncResendNavButton === 'function') {
-                                                h.refreshMealSyncResendNavButton();
-                                            }
-                                        } catch (_) {
-                                            /* ignore */
-                                        }
-                                    });
-                                });
-                                return;
-                            }
-                            try {
-                                applyOfflineAfterLocalSaveUi(record.id, optimisticTempId, record.date, currentTab);
-                            } catch (_) {
-                                /* ignore */
-                            }
-                        });
                     }
                     refreshTimelineAfterMealSaveResult(record?.date || editingDate || undefined);
                 } catch (uploadPhaseError) {
@@ -2626,96 +2422,14 @@ export async function saveEntry() {
             // 저장 직후 잠깐 타임라인 전체 재렌더를 막아, jumpToDate·스크롤이 리스너 재렌더에 덮이지 않게 함
             window._timelineRerenderFreezeUntil = Date.now() + 800;
             
-            /** 모먼트(sharedPhotos 컬렉션) 동기화 실패 시 공유 성공 토스트를 막기 위함 */
-            let shareSyncFailed = false;
-            // 공유 처리 (ID 확보 후 실행, 비동기로 떼어 두어 체감 속도 개선)
-            // sharePhotos: sharedPhotos 컬렉션 쓰기 + 서버가 meals.sharedPhotos 미러링
-            // 공유 상태가 변경되었을 때만 호출 (공유 설정 또는 공유 해제)
-            if (record.id) {
-                // 현재 공유할 사진이 있는지 확인
-                const hasPhotosToShare = photosToShare && photosToShare.length > 0;
-
-                // 공유 목록이 바뀌거나, 이미 공유 중인데 사진 비율만 바뀐 경우 모먼트 재동기화.
-                // (originalShareList는 closeModal 전에 캡처한 스냅샷 — state.originalSharedPhotos는 닫힌 뒤 비어 있음)
-                // 코멘트·메뉴 등만 수정한 경우에는 재공유하지 않아 모먼트 정렬 시각(sharedAt)이 유지되고,
-                // 그 결과 피드 순서가 통째로 뒤섞이지 않는다. (공유 추가/해제·비율 변경 시 동기화; 비율만 변경이면 서버가 sharedAt 유지)
-                const shareListChanged =
-                    photosToShare.length !== originalShareList.length ||
-                    photosToShare.some((url, i) => url !== originalShareList[i]);
-                // 비율만 바꿔도 모먼트 프레임이 갱신되도록 — 공유 중(또는 공유할) 사진이 있으면 재동기화
-                const shouldResyncMomentShare =
-                    shareListChanged || (hasPhotosToShare && photoAspectChanged);
-
-                if (shouldResyncMomentShare) {
-                    sharedPhotosUpdated = true;
-                    // 공유 화살표는 먼저 낙관 반영하고, sharePhotos는 백그라운드로 보내서 체감 지연 감소
-                    if (record.id) {
-                        if (hasPhotosToShare && photosToShare?.length) {
-                            if (!window.sharedPhotos) window.sharedPhotos = [];
-                            const newEntries = photosToShare.map(url => ({ entryId: record.id, photoUrl: url, userId: window.currentUser?.uid }));
-                            window.sharedPhotos = (window.sharedPhotos || []).filter(p => p.entryId !== record.id).concat(newEntries);
-                        } else if (hadSharedPhotos && !hasPhotosToShare) {
-                            if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                                window.sharedPhotos = window.sharedPhotos.filter(p => p.entryId !== record.id);
-                            }
-                        }
-                        updateTimelineShareIndicators();
-                    }
-                    try {
-                        const { buildOptimisticMomentPostV2 } = await import('../utils/moment-post-v2.js');
-                        const { mergeMomentPostIntoFeed, removeMomentPostFromFeed } = await import('../utils/moment-feed-cache.js');
-                        const profile = window.userSettings?.profile || {};
-                        const uid = window.currentUser?.uid;
-
-                        await dbOps.sharePhotos(photosToShare, record);
-                        console.log('공유 처리 완료:', { recordId: record.id, 공유설정: hasPhotosToShare });
-
-                        if (record.id && window.mealHistory && Array.isArray(window.mealHistory)) {
-                            const hi = window.mealHistory.findIndex((m) => m && m.id === record.id);
-                            if (hi >= 0) {
-                                window.mealHistory[hi] = {
-                                    ...window.mealHistory[hi],
-                                    sharedPhotos: hasPhotosToShare ? [...photosToShare] : []
-                                };
-                            }
-                        }
-
-                        if (hasPhotosToShare && photosToShare?.length) {
-                            window.sharedPhotosFeed = mergeMomentPostIntoFeed(
-                                window.sharedPhotosFeed,
-                                buildOptimisticMomentPostV2(record, photosToShare, profile, uid)
-                            );
-                        } else if (record?.id) {
-                            window.sharedPhotosFeed = removeMomentPostFromFeed(window.sharedPhotosFeed, record.id, uid);
-                        }
-
-                        if (appState.currentTab === 'gallery') renderGallery();
-                        if (document.getElementById('feedContent')) renderFeed();
-
-                        import('../db.js').then(({ loadSharedPhotosPage }) =>
-                            loadSharedPhotosPage(10).then(({ docs, lastDoc, hasMore }) => {
-                                if (typeof appState !== 'undefined') {
-                                    appState.sharedPhotosFeedLastDoc = lastDoc;
-                                    appState.sharedPhotosFeedHasMore = hasMore;
-                                }
-                                if (!hasPhotosToShare || !record?.id) return;
-                                const serverPost = docs.find(
-                                    (d) => d.schemaVersion === 2 && d.entryId === record.id
-                                );
-                                if (serverPost) {
-                                    window.sharedPhotosFeed = mergeMomentPostIntoFeed(window.sharedPhotosFeed, serverPost);
-                                    if (appState.currentTab === 'gallery') renderGallery();
-                                    if (document.getElementById('feedContent')) renderFeed();
-                                }
-                            })
-                        ).catch(() => {});
-                    } catch (e) {
-                        shareSyncFailed = true;
-                        console.error("공유 처리 실패:", e);
-                        showToast(getUserFacingErrorMessage(e, 'share'), 'error');
-                    }
-                }
-            }
+            /** 모먼트 동기화 실패 시 공유 성공 토스트를 막기 위함 */
+            const { shareSyncFailed } = await syncMomentShareAfterSave({
+                record,
+                photosToShare,
+                originalShareList,
+                hadSharedPhotos,
+                photoAspectChanged,
+            });
 
             if (!wasNewRecord) {
                 const finalShare = !!(photosToShare && photosToShare.length > 0);
@@ -2748,21 +2462,12 @@ export async function saveEntry() {
                 } catch (_) {
                     /* ignore */
                 }
-                void import('../utils/mealog-offline-ui.js').then((m) => {
+                void import('../main/meal-sync-resend-header.js').then((h) => {
                     try {
-                        if (typeof m.markMealOfflineDraftForRecord === 'function') {
-                            m.markMealOfflineDraftForRecord(timedOutId);
-                        }
+                        if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
                     } catch (_) {
                         /* ignore */
                     }
-                    void import('../main/meal-sync-resend-header.js').then((h) => {
-                        try {
-                            if (typeof h.refreshMealSyncResendNavButton === 'function') h.refreshMealSyncResendNavButton();
-                        } catch (_) {
-                            /* ignore */
-                        }
-                    });
                 });
                 try {
                     if (record.date) {
@@ -2936,9 +2641,7 @@ export async function deleteEntry() {
         if (Array.isArray(window.mealHistory)) {
             window.mealHistory = window.mealHistory.filter((m) => m.id !== entryIdToDelete);
         }
-        if (Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryIdToDelete);
-        }
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== entryIdToDelete));
         invalidateMealHistoryCountCache();
         rerenderAfterMealDelete(tempRec?.date);
         showToast('기록이 삭제되었습니다.', 'success');
@@ -2990,10 +2693,6 @@ export async function deleteEntry() {
     }
 
     const mealDate = mealForDelete.date;
-
-    if (isMealActionEffectiveOffline()) {
-        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
-    }
 
     markMealEntryDeletePending(entryIdToDelete);
     /** 스냅샷 `removed` 이전에 로컬 반영 — 연속 일수·트래커가 삭제 직후 갱신되도록 */
@@ -3095,21 +2794,6 @@ export async function deleteEntry() {
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
 
 /** data:image 또는 blob: → Storage 업로드용 data URL */
-async function ensureDataUrlForStorage(photo) {
-    if (typeof photo !== 'string' || !photo) return photo;
-    if (photo.startsWith('data:image')) return photo;
-    if (photo.startsWith('blob:')) {
-        const blob = await (await fetch(photo)).blob();
-        return await new Promise((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(r.result);
-            r.onerror = () => reject(new Error('blob 이미지 읽기 실패'));
-            r.readAsDataURL(blob);
-        });
-    }
-    return photo;
-}
-
 /**
  * meal 레코드에 남아 있는 로컬(data:image·blob:) 사진을 Storage에 올린 뒤 photos/sharedPhotos를 https URL 기준으로 맞춘다.
  * dbOps.save는 data URL을 저장하지 않으므로 재시도 경로에서 반드시 선행해야 한다.
@@ -3153,18 +2837,27 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('기록을 찾을 수 없습니다.', 'error');
         return;
     }
-    if (
-        !isMealEntrySaveFailed(record) &&
-        !isMealEntrySyncAbandoned(record) &&
-        getMealRowSyncLeadKind(record) !== 'register_scheduled'
-    ) {
+    if (!isMealEntryRetryEligible(record)) {
         return;
     }
 
     window._mealEntryRetryInFlight[entryId] = true;
     try {
-        /** 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지 */
-        if (getMealRowSyncLeadKind(record) === 'register_scheduled' && !entryId.startsWith('temp_')) {
+        /**
+         * 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지.
+         * 단 아직 Storage에 안 올라간 로컬 사진이 남아 있으면 건너뛴다: 오프라인 저장은 photos를 비운 채
+         * 큐에 들어가므로, 문서 존재만 보고 완료 처리하면 사진이 영영 업로드되지 않는다.
+         * (markServerWorkComplete가 pendingPhoto 표식을 지워 스냅샷 병합의 base64 보존도 함께 끊긴다)
+         */
+        const hasUnuploadedPhotos =
+            mealRecordHasBase64PendingPhotos(record) ||
+            getMealSyncManager().hasPendingPhotoEntry(entryId) ||
+            getMealSyncManager().hasPendingPhotoSlot(`${record.date || ''}__${record.slotId || ''}`);
+        if (
+            getMealRowSyncLeadKind(record) === 'syncing' &&
+            !entryId.startsWith('temp_') &&
+            !hasUnuploadedPhotos
+        ) {
             const uid = window.currentUser?.uid;
             if (uid) {
                 try {
@@ -3217,10 +2910,10 @@ export async function retryMealEntrySync(entryIdRaw) {
                 const realId = String(existingRealForSlot.id);
                 getMealSyncManager().removeTempRowSideEffects(record);
                 window.mealHistory = histMerge.filter((m) => m && String(m.id) !== entryId);
-                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                if (getSharedPhotos()) {
+                    setSharedPhotos(getSharedPhotos().map((p) =>
                         p.entryId === entryId ? { ...p, entryId: realId } : p
-                    );
+                    ));
                 }
                 clearMealEntrySaveFailedById(entryId);
                 clearMealEntrySaveFailedById(realId);
@@ -3258,10 +2951,10 @@ export async function retryMealEntrySync(entryIdRaw) {
                         delete window.mealHistory[ix].is_sync_error;
                     }
                 }
-                if (savedId && window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    window.sharedPhotos = window.sharedPhotos.map((p) =>
+                if (savedId) {
+                    setSharedPhotos(getSharedPhotos().map((p) =>
                         p.entryId === entryId ? { ...p, entryId: savedId } : p
-                    );
+                    ));
                 }
                 clearMealEntrySaveFailedById(entryId);
                 clearMealEntrySaveFailedById(savedId);
@@ -3403,10 +3096,6 @@ export async function retryMealEntryDeleteSync(entryIdRaw) {
     const mealDate = mealForDelete.date;
     window._mealEntryDeleteRetryInFlight[entryId] = true;
 
-    if (isMealActionEffectiveOffline()) {
-        showToast('연결되면 서버에 삭제가 반영돼요. 삭제 예약으로 표시됩니다.', 'info');
-    }
-
     markMealEntryDeletePending(entryId);
     let deleteRetryOptCtx = null;
     try {
@@ -3508,10 +3197,7 @@ export async function retryPendingMealEntriesOnAppReady() {
     for (const m of hist) {
         if (!m?.id || seen.has(String(m.id))) continue;
         const deleteRedo = isMealEntryDeleteFailed(m);
-        const saveRedo =
-            isMealEntrySaveFailed(m) ||
-            isMealEntrySyncAbandoned(m) ||
-            getMealRowSyncLeadKind(m) === 'register_scheduled';
+        const saveRedo = !deleteRedo && isMealEntryRetryEligible(m);
         if (!deleteRedo && !saveRedo) continue;
         seen.add(String(m.id));
         try {

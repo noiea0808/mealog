@@ -8,6 +8,7 @@ import { showToast, updateHeaderUI } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 /** 프로필 아바타 모달: 파일 선택 후 저장 전까지 취소/저장 푸터 표시 */
 let profileAvatarPickPending = false;
@@ -976,6 +977,7 @@ function syncProfileFieldEditLifestyleUI() {
 function closeProfileFieldEditModal() {
     const modal = document.getElementById('profileFieldEditModal');
     if (modal) modal.classList.add('hidden');
+    unlockBodyScroll('profileFieldEditModal');
     if (appState.profileEditScope && appState.profileEditScope !== 'full') {
         setProfileSettingsEditMode(false);
     }
@@ -1039,6 +1041,7 @@ function openProfileFieldEditModal(field) {
     }
 
     modal.classList.remove('hidden');
+    lockBodyScroll('profileFieldEditModal');
     requestAnimationFrame(() => {
         if (field === 'nickname') document.getElementById('profileFieldEditNickname')?.focus();
         else if (field === 'bio') document.getElementById('profileFieldEditBio')?.focus();
@@ -1154,6 +1157,7 @@ export async function saveProfileSingleField(field) {
 
         const modal = document.getElementById('profileFieldEditModal');
         if (modal) modal.classList.add('hidden');
+        unlockBodyScroll('profileFieldEditModal');
         unmountNicknameInline();
         unmountBirthdateInline();
         resetAllProfileFieldActionButtons();
@@ -1191,6 +1195,7 @@ function handleProfileFieldPencilOrSave(field) {
         const modal = document.getElementById('profileFieldEditModal');
         if (modal && !modal.classList.contains('hidden')) {
             modal.classList.add('hidden');
+            unlockBodyScroll('profileFieldEditModal');
         }
         setProfileSettingsEditMode(false);
     }
@@ -1325,6 +1330,7 @@ async function saveAvatarPhotoFromModal() {
         renderSettingsProfileAvatarPreview();
         syncAccountAvatarModalFooter(false);
         document.getElementById('accountAvatarModal')?.classList.add('hidden');
+        unlockBodyScroll('accountAvatarModal');
     } catch (e) {
         console.error('프로필 사진 저장 실패:', e);
         showToast('저장 중 오류가 발생했습니다: ' + (e.message || e), 'error');
@@ -1337,6 +1343,7 @@ export function openAccountAvatarModal() {
     refreshAccountAvatarModalPreview();
     syncAccountAvatarModalFooter(profileAvatarPickPending);
     modal.classList.remove('hidden');
+    lockBodyScroll('accountAvatarModal');
 }
 
 /** 아바타 팝업: 인라인 사진 편집 중이면 편집만 취소, 아니면 팝업 닫기 */
@@ -1353,6 +1360,7 @@ export function closeAccountAvatarModal() {
     const modal = document.getElementById('accountAvatarModal');
     if (!modal) return;
     modal.classList.add('hidden');
+    unlockBodyScroll('accountAvatarModal');
     if (profileAvatarPickPending) {
         discardPendingAvatarPhotoSelection();
     }

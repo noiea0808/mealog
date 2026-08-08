@@ -793,41 +793,55 @@ function ensureMomentV2PrimaryCaptionGlobalListeners() {
 
 /**
  * 웹: 마우스로 hstrip `scrollLeft` 드래그(터치/트랙패드는 브라우저 기본).
+ * 캡처는 실제로 일정 거리 이상 움직였을 때만 건다 — pointerdown 즉시 캡처하면
+ * 브라우저가 뒤이은 click을 캡처 대상(strip)으로 재타깃해서, 사진을 그냥
+ * 클릭(탭)만 했을 때 라이트박스 오픈 델리게이션이 `.moment-feed-photo`를
+ * 못 찾아 아무 반응이 없어진다(데스크톱 마우스에서만 재현, 터치는 이 핸들러를 안 탐).
  */
 function bindMomentV2HstripPointerDragForWeb(strip) {
     if (!strip || strip._mv2HstripMouseDrag) return;
     strip._mv2HstripMouseDrag = true;
+    const DRAG_CAPTURE_THRESHOLD = 4;
     let drag = null;
     const onDown = (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
         if (strip.scrollWidth <= strip.clientWidth + 1) return;
-        drag = { s0: strip.scrollLeft, x0: e.clientX, id: e.pointerId };
-        try {
-            strip.setPointerCapture(e.pointerId);
-        } catch (_) {}
-        strip.classList.add('moment-v2-hstrip--dragging');
+        drag = { s0: strip.scrollLeft, x0: e.clientX, id: e.pointerId, captured: false };
     };
     const onMove = (e) => {
         if (!drag || e.pointerId !== drag.id) return;
         if (e.pointerType !== 'mouse') return;
+        if (!drag.captured) {
+            if (Math.abs(e.clientX - drag.x0) < DRAG_CAPTURE_THRESHOLD) return;
+            drag.captured = true;
+            try {
+                strip.setPointerCapture(e.pointerId);
+            } catch (_) {}
+            strip.classList.add('moment-v2-hstrip--dragging');
+        }
         const dx = e.clientX - drag.x0;
         strip.scrollLeft = drag.s0 - dx;
         e.preventDefault();
     };
     const end = (e) => {
         if (!drag || e.pointerId !== drag.id) return;
+        const wasCaptured = drag.captured;
+        drag = null;
+        if (!wasCaptured) return;
         try {
             strip.releasePointerCapture(e.pointerId);
         } catch (_) {}
-        drag = null;
         strip.classList.remove('moment-v2-hstrip--dragging');
         snapMomentV2HstripToNearestSlide(strip);
     };
     const onLost = (e) => {
         if (drag && e.pointerId === drag.id) {
+            const wasCaptured = drag.captured;
             drag = null;
-            strip.classList.remove('moment-v2-hstrip--dragging');
-            snapMomentV2HstripToNearestSlide(strip);
+            if (wasCaptured) {
+                strip.classList.remove('moment-v2-hstrip--dragging');
+                snapMomentV2HstripToNearestSlide(strip);
+            }
         }
     };
     strip.addEventListener('pointerdown', onDown);

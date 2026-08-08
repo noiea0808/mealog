@@ -4,20 +4,25 @@
   "description": "우리가 함께한, 맛있었던 이야기 - 스마트 식사 타임라인",
   "scripts": {
     "build": "node scripts/build-config.js && node scripts/verify-client-config.js",
-    "copy:www": "node scripts/copy-to-www.js",
+    "copy:www": "npm run build:css && node scripts/copy-to-www.js",
     "cap:sync": "node scripts/select-cap-config.js staging && npm run copy:www && npx @capacitor/cli sync android",
     "cap:sync:production": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production && npm run copy:www && npx @capacitor/cli sync android",
     "cap:sync:production:bundled": "node scripts/ensure-icons.js && node scripts/select-cap-config.js production.bundled && npm run copy:www && npx @capacitor/cli sync android",
     "cap:build:staging": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
     "cap:install:staging": "npm run cap:sync:bundled && node scripts/build-android.js installStagingDebug",
-    "cap:build:production": "npm run cap:sync:production:bundled && node scripts/build-android.js assembleProductionDebug",
+    "cap:build:production": "node scripts/run-with-config-restore.js \"npm run cap:sync:production:bundled && node scripts/build-android.js assembleProductionDebug\"",
     "cap:open": "npx @capacitor/cli open android",
     "cap:sync:bundled": "node scripts/update-version.js staging && node scripts/ensure-icons.js && node scripts/select-cap-config.js staging.bundled && npm run copy:www && npx @capacitor/cli sync android",
     "cap:build:bundled": "npm run cap:sync:bundled && node scripts/build-android.js assembleStagingDebug",
     "postinstall": "node scripts/patch-safe-area.js && node scripts/patch-push-notifications-npe.js",
-    "cap:build:production:release": "node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js assembleProductionRelease",
-    "cap:build:production:aab": "node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js bundleProductionRelease",
-    "icons:generate": "npx @capacitor/assets generate --android"
+    "cap:build:production:release": "node scripts/run-with-config-restore.js \"node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js assembleProductionRelease\"",
+    "cap:build:production:aab": "node scripts/run-with-config-restore.js \"node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js bundleProductionRelease\"",
+    "icons:generate": "npx @capacitor/assets generate --android",
+    "build:css": "node scripts/build-tailwind.js",
+    "dev:serve": "node scripts/dev-static-server.js",
+    "lint": "eslint .",
+    "lint:errors": "eslint . --quiet",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "@capacitor-community/safe-area": "^8.0.1",
@@ -28,6 +33,7 @@
     "@capacitor/core": "^8.0.2",
     "@capacitor/filesystem": "^8.0.0",
     "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.5",
     "@capacitor/network": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.0",
@@ -37,6 +43,9 @@
     "@capgo/capacitor-social-login": "^8.2.23"
   },
   "devDependencies": {
-    "@capacitor/assets": "^3.0.5"
+    "@capacitor/assets": "^3.0.5",
+    "eslint": "^9.39.5",
+    "globals": "^17.9.0",
+    "tailwindcss": "^3.4.17"
   }
 }

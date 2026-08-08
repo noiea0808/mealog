@@ -2,6 +2,7 @@
  * 모먼트 갤러리(공유 피드) 렌더링·필터·더보기
  */
 import { appState } from '../state.js';
+import { showToast } from '../ui.js';
 import { escapeHtml } from './utils.js';
 import { getThumbImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { normalizeUrl, getDisplayProfile, getProfileAvatarDisplay } from '../utils.js';
@@ -41,6 +42,7 @@ import {
 } from './moment-feed-skeleton.js';
 import { scheduleLucideIcons } from '../icons.js';
 
+import { getSharedPhotos } from '../utils/moment-share-state.js';
 ensureMomentFeedPinchDelegate();
 
 // 모먼트 네트워크 오류 화면「다시 연결하기」— innerHTML onclick 대신 위임(동적 삽입·WebView 호환)
@@ -579,7 +581,7 @@ export async function renderGallery(options = {}) {
     const mySession = galleryRenderSession;
     try {
         isRenderingGallery = true;
-        console.log('[renderGallery] 시작, window.sharedPhotos:', window.sharedPhotos?.length || 0);
+        console.log('[renderGallery] 시작, sharedPhotos:', getSharedPhotos().length || 0);
         
         const container = document.getElementById('galleryContainer');
         if (!container) {
@@ -1101,7 +1103,7 @@ export async function renderGallery(options = {}) {
                     } catch (err) {
                         console.error('모먼트(사용자) 추가 로드 실패:', err);
                         appState.galleryFeedNetworkError = true;
-                        if (typeof showToast === 'function') showToast('더 불러오지 못했습니다. 연결을 확인해 주세요.', 'error');
+                        showToast('더 불러오지 못했습니다. 연결을 확인해 주세요.', 'error');
                         lm.innerHTML = prev;
                         lm.disabled = false;
                         return;
@@ -1270,7 +1272,7 @@ export async function renderGallery(options = {}) {
                         document.getElementById('galleryLoadMoreWrap')?.remove();
                     }
                 } else if (res?.reason === 'error') {
-                    if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
+                    showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                     loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
                 } else {
                     loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>더보기';
@@ -1278,7 +1280,7 @@ export async function renderGallery(options = {}) {
             } catch (e) {
                 console.error('공유 사진 더보기 실패:', e);
                 appState.galleryFeedNetworkError = true;
-                if (typeof showToast === 'function') showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
+                showToast('네트워크가 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요.', 'error');
                 loadMoreBtn.disabled = false;
                 loadMoreBtn.innerHTML = '<i data-lucide="chevron-down" class="mr-1.5"></i>다시 시도';
             }
@@ -1624,7 +1626,7 @@ export async function renderGallery(options = {}) {
         }, 300); // 100ms에서 300ms로 증가 (초기 렌더링 완료 후 연결)
     }
     
-    console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', window.sharedPhotos?.length || 0);
+    console.log('[renderGallery] 완료, 렌더링된 그룹 수:', sortedGroups.length, '전체 sharedPhotos:', getSharedPhotos().length || 0);
     scheduleLucideIcons(container);
     if (filterUserId && window.syncBottomNavForGalleryFilter) window.syncBottomNavForGalleryFilter();
     } catch (error) {

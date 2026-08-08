@@ -7,6 +7,7 @@ import { initTimelineSearchModal } from '../timeline-search.js';
 import { initMomentSearchModal } from '../moment-search.js';
 import { initBoardSearchModal } from '../board-search.js';
 import { initNotificationModal } from './notifications.js';
+import { initPostLikesModal } from './post-likes-modal.js';
 import { addCompositionAwareInput, mountRrnDigitGroup } from '../utils.js';
 import {
     handleGoogleLogin,
@@ -41,6 +42,13 @@ import {
 } from '../pwa-install.js';
 import { registerEscapeCloseModals } from './escape-close-modals.js';
 import { initCenterDialogGrabbers } from './init-center-dialog-grabbers.js';
+import { initOverlayKeyboardPin } from '../utils/overlay-keyboard-pin.js';
+import {
+    initAppImeViewport,
+    ensureFocusedInputVisible,
+    isImeInputLike,
+    setAppImeOpen
+} from '../utils/ime-viewport.js';
 import { bindMealSyncResendNavButtonOnce } from './meal-sync-resend-header.js';
 import {
     CTA_FAB_SPIN_CLASS,
@@ -66,54 +74,12 @@ import {
     initPushPreferencesControlsOnce
 } from '../modals.js';
 
-/** 앱 전체: 키보드 열림 시 하단 네비 숨김 + 닫힘 시 복귀 (viewport 기반 keyboard-closed) */
+/** 앱 전체: IME 감지(body.ime-open) + 입력란 가시 스크롤. 레거시 keyboard-closed는 ime-viewport가 동기화 */
 function initMainAppKeyboardHandling() {
     const mainApp = document.getElementById('mainApp');
     if (!mainApp) return;
 
-    const setKeyboardClosed = (closed) => {
-        document.body.classList.toggle('keyboard-closed', closed);
-    };
-
-    const checkViewport = () => {
-        const vh = window.visualViewport?.height ?? window.innerHeight;
-        const threshold = window.innerHeight * 0.85;
-        setKeyboardClosed(vh >= threshold);
-    };
-
-    const isInputLike = (el) =>
-        el &&
-        (el.matches?.('input:not(.push-pref-toggle), textarea') || el.getAttribute?.('contenteditable') === 'true');
-
-    if (window.visualViewport) {
-        const run = () => {
-            [0, 100, 250, 400, 600, 1000].forEach(ms => setTimeout(checkViewport, ms));
-        };
-        window.visualViewport.addEventListener('resize', run);
-        window.visualViewport.addEventListener('scroll', run);
-    }
-    window.addEventListener('resize', checkViewport);
-    checkViewport();
-
-    let keyboardCheckInterval = null;
-    document.addEventListener('focusin', (e) => {
-        if (!isInputLike(e.target)) return;
-        if (keyboardCheckInterval) clearInterval(keyboardCheckInterval);
-        const start = Date.now();
-        keyboardCheckInterval = setInterval(() => {
-            checkViewport();
-            const vh = window.visualViewport?.height ?? window.innerHeight;
-            if (vh >= window.innerHeight * 0.85 || Date.now() - start > 10000) {
-                clearInterval(keyboardCheckInterval);
-                keyboardCheckInterval = null;
-            }
-        }, 150);
-    });
-    document.addEventListener('focusout', (e) => {
-        if (!isInputLike(e.target)) return;
-        if (keyboardCheckInterval) { clearInterval(keyboardCheckInterval); keyboardCheckInterval = null; }
-        [100, 300, 500, 800].forEach(ms => setTimeout(checkViewport, ms));
-    });
+    initAppImeViewport();
 
     if (window.Capacitor?.isNativePlatform?.()) {
         const App = window.Capacitor?.Plugins?.App;
@@ -131,9 +97,9 @@ function initMainAppKeyboardHandling() {
                     return;
                 }
                 const active = document.activeElement;
-                if (isInputLike(active)) {
+                if (isImeInputLike(active)) {
                     active.blur();
-                    setKeyboardClosed(true);
+                    setAppImeOpen(false);
                 } else if (canGoBack) {
                     window.history.back();
                 } else if (typeof App.exitApp === 'function') {
@@ -324,6 +290,7 @@ export function initEventListeners() {
     initMomentSearchModal();
     initBoardSearchModal();
     initNotificationModal();
+    initPostLikesModal();
 
     const boardSearchTriggerBtn = document.getElementById('boardSearchTriggerBtn');
     if (boardSearchTriggerBtn) {
@@ -374,6 +341,7 @@ export function initEventListeners() {
     // 전체/일간 토글 제거됨 — 일간(page)만 사용
 
     initMainAppKeyboardHandling();
+    initOverlayKeyboardPin();
 
     (function initSubmitButtonFirstTap() {
         const SUBMIT_DEBOUNCE_MS = 500;
@@ -666,6 +634,25 @@ export function initEventListeners() {
             const text = (e.clipboardData || window.clipboardData)?.getData('text/plain') || '';
             document.execCommand('insertText', false, text);
         });
+        // 키보드 중 본문·CTA가 보이도록 글쓰기 뷰 안에서 스크롤
+        boardWriteContentEl.addEventListener('focus', () => {
+            const view = document.getElementById('boardWriteView');
+            ensureFocusedInputVisible(boardWriteContentEl, {
+                align: 'nearest',
+                scrollParent: view,
+                pad: 24,
+                delays: [0, 80, 200, 400]
+            });
+            const actions = view?.querySelector?.('.board-write-actions');
+            if (!actions) return;
+            [120, 350].forEach((ms) => {
+                setTimeout(() => {
+                    try {
+                        actions.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+                    } catch (_) { /* ignore */ }
+                }, ms);
+            });
+        });
     }
     const boardWriteImagesInput = document.getElementById('boardWriteImages');
     const boardWriteAddPhotosBtn = document.getElementById('boardWriteAddPhotosBtn');
@@ -734,7 +721,7 @@ export function initEventListeners() {
     const logoutConfirmCancelBtn = document.getElementById('logoutConfirmCancelBtn');
     if (logoutConfirmCancelBtn) {
         logoutConfirmCancelBtn.addEventListener('click', () => {
-            document.getElementById('logoutConfirmModal')?.classList.add('hidden');
+            window.closeLogoutConfirmModal?.();
         });
     }
 

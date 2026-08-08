@@ -9,6 +9,7 @@ import { escapeHtml } from './render/utils.js';
 import { addCompositionAwareInput } from './utils.js';
 import { showToast } from './ui.js';
 import { scheduleLucideIcons } from './icons.js';
+import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 
 const PERIOD_PRESETS = {
     '7d': { label: '최근 1주', days: 7 },
@@ -206,6 +207,7 @@ export function openTimelineSearchModal() {
     const modal = document.getElementById('timelineSearchModal');
     if (!modal) return;
     modal.classList.remove('hidden');
+    lockBodyScroll('timelineSearchModal');
     updatePeriodButtonUI();
     scheduleLucideIcons(modal);
     requestAnimationFrame(() => {
@@ -215,6 +217,7 @@ export function openTimelineSearchModal() {
 
 export function closeTimelineSearchModal() {
     document.getElementById('timelineSearchModal')?.classList.add('hidden');
+    unlockBodyScroll('timelineSearchModal');
 }
 
 export function clearTimelineSearchResults() {

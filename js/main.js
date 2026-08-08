@@ -11,8 +11,7 @@ import {
     db,
     appId,
     refreshAppCheckTokenBeforeFirestore,
-    registerFirestoreListenersRebind,
-    recoverFirestoreAfterWatchAssertion
+    registerFirestoreListenersRebind
 } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 import { dbOps, setupListeners, loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares, loadMoreMeals, loadMealsForDateRange, ensureMealsLoadedAroundDate, needsMealsLoadedAroundDate, postInteractions, subscribeToMyPostComments, boardOperations, feedOperations, noticeOperations, submitReport, getUserReportForPost, withdrawReport } from './db.js';
@@ -23,6 +22,7 @@ import { initTimelineSearchModal, openTimelineSearchModal, clearTimelineSearchRe
 import { initMomentSearchModal, openMomentSearchModal } from './moment-search.js';
 import { openBoardSearchModal } from './board-search.js';
 import { initAppUpdate } from './app-update.js';
+import { isScrollLocked } from './utils/scroll-lock.js';
 import {
     switchScreen,
     showToast,
@@ -43,7 +43,7 @@ import {
 } from './utils.js';
 import { 
     initAuth, handleGoogleLogin, handleKakaoLogin, startGuest, openEmailModal, closeEmailModal,
-    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction,
+    setEmailAuthMode, toggleEmailAuthMode, handleEmailAuth, requestPasswordReset, confirmLogout, confirmLogoutAction, closeLogoutConfirmModal,
     copyDomain, closeDomainModal, switchToLogin, showTermsModal, closeTermsModal, cancelTermsAgreement, confirmTermsAgreement,
     showTermsDetail, updateTermsAgreeButton, selectSetupIcon, confirmProfileSetup, handleEmailSignupWithProfile, continueAsGuestFromProfileSetup, setProfileType, handleSetupPhotoUpload,
     confirmDeleteAccount, cancelDeleteAccount, confirmDeleteAccountAction
@@ -58,6 +58,7 @@ import { isUserSettingsReadyForContentWrites } from './utils/user-settings-write
 import { getAuthAccountCreatedTimestamp, getAuthAccountCreatedMillis } from './auth-created-at.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { showLandingAppPromo } from './pwa-install.js';
+import { maybeStartLandingServiceGuide } from './onboarding.js';
 import { initPushNotifications, syncPushRegistrationFromOs } from './push-notifications.js';
 import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrackerMiniCalendarRange, updateTimelineShareIndicators, updateTimelineMealEntryPendingIndicators, invalidateTimelineDateSection, renderTimelineDateSections, getOldestPendingPastTimelineDate, localTodayYmd, renderGallery, invalidateGalleryRenderSession, renderFeed, renderEntryChips, toggleComment, toggleFeedComment, createDailyShareCard, renderBoard, renderBoardDetail, renderNoticeDetail, escapeHtml, sanitizeFormattedText, stripDangerousTagsOnly, filterGalleryByUser, resetGalleryUserFilterState, clearGalleryFilter, switchGalleryFilterTab, fetchUserProfiles } from './render/index.js';
 import './render/timeline-meal-photos-popup.js';
@@ -85,6 +86,8 @@ import { registerMainCleanup } from './main/cleanup.js';
 import { syncOrphanedSharesToMoment } from './main/shares-sync.js';
 import { startNotificationListeners, stopNotificationListeners } from './main/notifications.js';
 import { registerMainTabSwitch } from './main/tabs.js';
+import { registerMomentFeedAutoRetry } from './main/moment-feed-auto-retry.js';
+import { registerMealOutboxDrain } from './utils/meal-outbox-drain.js';
 import { clearNavFeedUpdateDots, refreshNavFeedUpdateDots } from './main/nav-feed-update-dots.js';
 import { registerContentPopup, recordBannerView, recordBannerClick } from './main/content-popup.js';
 import { initEventListeners } from './main/event-listeners.js';
@@ -96,9 +99,12 @@ import { registerMainPostInteractions } from './main/post-interactions-daily.js'
 import './modals/diet-report.js';
 import { registerMainFeedOptionsReport } from './main/feed-options-report.js';
 import { registerMainBoardHandlers } from './main/board-handlers.js';
+import { setSharedPhotos } from './utils/moment-share-state.js';
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();
+registerMomentFeedAutoRetry();
+registerMealOutboxDrain();
 initLucideIcons();
 registerContentPopup();
 registerEventListenerManager();
@@ -142,12 +148,16 @@ window.switchGalleryFilterTab = switchGalleryFilterTab;
 window.Mealog.switchGalleryFilterTab = switchGalleryFilterTab;
 let reloadMomentFeedInFlight = false;
 
-/** 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리 */
-window.reloadMomentFeed = async function reloadMomentFeed() {
+/**
+ * 네트워크 오류 등으로 모먼트 피드 로드가 실패했을 때 '다시 불러오기'로 호출. 전체 피드/사용자 필터 모드 모두 처리.
+ * @param {{ quiet?: boolean }} [options] quiet: 로딩 오버레이 없이 조용히 재시도 (자동 재시도용 — 오버레이가 깜빡이면 안 된다)
+ */
+window.reloadMomentFeed = async function reloadMomentFeed(options = {}) {
     if (reloadMomentFeedInFlight) return;
     reloadMomentFeedInFlight = true;
+    const quiet = options && options.quiet === true;
     invalidateGalleryRenderSession();
-    showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
+    if (!quiet) showLoading('모먼트 불러오는 중...', { dimBackground: false, recordsFab: true });
     try {
         await prepareMomentFeedNetworkForReload();
         appState.galleryFeedNetworkError = false;
@@ -162,9 +172,11 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
             } catch (e) {
                 console.warn('모먼트(프로필) 첫 로드 실패, Firestore 복구 후 재시도:', e?.message || e);
                 try {
-                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                    // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록 리스너까지
+                    // 죽이므로, 자동 재시도가 실패할 때마다 앱 전체의 데이터가 함께 사라진다.
+                    await prepareMomentFeedNetworkForReload();
                 } catch (recoverErr) {
-                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    console.warn('모먼트: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                 }
                 try {
                     invalidateGalleryRenderSession();
@@ -189,9 +201,11 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
             } catch (firstErr) {
                 console.warn('모먼트: 첫 로드 실패, Firestore 복구 후 재시도:', firstErr?.message || firstErr);
                 try {
-                    await recoverFirestoreAfterWatchAssertion('reloadMomentFeed', { force: true });
+                    // 읽기 실패에 인스턴스를 재생성하지 않는다 — terminate 는 밀로그 기록 리스너까지
+                    // 죽이므로, 자동 재시도가 실패할 때마다 앱 전체의 데이터가 함께 사라진다.
+                    await prepareMomentFeedNetworkForReload();
                 } catch (recoverErr) {
-                    console.warn('모먼트: Firestore 복구 실패:', recoverErr?.message || recoverErr);
+                    console.warn('모먼트: 네트워크 복구 실패:', recoverErr?.message || recoverErr);
                 }
                 loadResult = await loadSharedPhotosPageReliable(10, null, { maxAttempts: 2 });
             }
@@ -212,7 +226,7 @@ window.reloadMomentFeed = async function reloadMomentFeed() {
         if (typeof renderFeed === 'function') renderFeed();
     } finally {
         reloadMomentFeedInFlight = false;
-        hideLoading();
+        if (!quiet) hideLoading();
     }
 };
 window.Mealog.reloadMomentFeed = window.reloadMomentFeed;
@@ -292,6 +306,8 @@ window.confirmLogout = confirmLogout;
 window.Mealog.confirmLogout = confirmLogout;
 window.confirmLogoutAction = confirmLogoutAction;
 window.Mealog.confirmLogoutAction = confirmLogoutAction;
+window.closeLogoutConfirmModal = closeLogoutConfirmModal;
+window.Mealog.closeLogoutConfirmModal = closeLogoutConfirmModal;
 window.confirmDeleteAccount = confirmDeleteAccount;
 window.Mealog.confirmDeleteAccount = confirmDeleteAccount;
 window.switchToLogin = switchToLogin;
@@ -927,7 +943,6 @@ window.ensureUserRegistered = async function () {
 
 // 인증 상태 변경 리스너 - 단순화된 버전
 let lastProcessedUserId = null; // 마지막으로 처리한 사용자 ID
-let authCheckShowOptionsTimeout = null; // 로그인 옵션 표시 지연 타이머 (자동 로그인 시 타이틀만 보이도록)
 
 // 로그인 상태 확인 중에는 스피너 표시하지 않음 (스피너는 로그인→메인 전환 시 기록 로드할 때만 표시)
 
@@ -1037,11 +1052,6 @@ initAuth(async (user) => {
     // 더미 계정 로그아웃 플래그도 나중에 제거 (shouldTryAutoDemoSignIn에서 사용)
     
     if (user) {
-        // 자동 로그인으로 전환될 때 로그인 옵션 표시 타이머 취소 (타이틀만 보다가 메인으로 이동)
-        if (authCheckShowOptionsTimeout) {
-            clearTimeout(authCheckShowOptionsTimeout);
-            authCheckShowOptionsTimeout = null;
-        }
         // 사용자 변경 감지: 다른 사용자로 로그인한 경우 이전 리스너 완전히 해제
         if (lastProcessedUserId && lastProcessedUserId !== user.uid) {
             console.log('⚠️ 사용자 변경 감지:', { 
@@ -1073,7 +1083,7 @@ initAuth(async (user) => {
             clearLoadedMealsRanges();
             resetTrackerMiniCalendarRange();
             window.dailyStats = null;
-            window.sharedPhotos = null;
+            setSharedPhotos(null);
             window.sharedPhotosFeed = [];
             window._duplicateCleanupDone = false;
             authFlowManager.hasCompleted = false;
@@ -1174,7 +1184,7 @@ initAuth(async (user) => {
                 appState.statsUnsubscribe = null;
             }
 
-            window.sharedPhotos = [];
+            setSharedPhotos([]);
             window.sharedPhotosFeed = [];
             stopNotificationListeners();
 
@@ -1189,6 +1199,15 @@ initAuth(async (user) => {
                 const cur = auth.currentUser;
                 if (!cur || cur.isAnonymous) return;
                 stopNotificationListeners();
+                // setupListeners는 settings/data만 해제하므로 stats는 여기서 해제 — 재구독마다 누적되는 리스너 누수 방지
+                if (appState.statsUnsubscribe) {
+                    try {
+                        appState.statsUnsubscribe();
+                    } catch (_) {
+                        /* ignore */
+                    }
+                    appState.statsUnsubscribe = null;
+                }
                 const { settingsUnsubscribe, dataUnsubscribe, statsUnsubscribe } = setupListeners(cur.uid, {
                 onSettingsUpdate: () => {
                     // 헤더 UI 업데이트 (디바운싱됨)
@@ -1371,7 +1390,7 @@ initAuth(async (user) => {
             registerFirestoreListenersRebind(attachMealDataListeners);
 
             // 공유 피드: sharedPhotos 실시간 리스너 없음 — loadSharedPhotosPage / loadMyShares로 필요 시 로드
-            window.sharedPhotos = [];
+            setSharedPhotos([]);
             window.sharedPhotosFeed = [];
             appState.sharedPhotosFeedLastDoc = null;
             appState.sharedPhotosFeedHasMore = false;
@@ -1626,30 +1645,24 @@ initAuth(async (user) => {
             setTimeout(runLandingTitleRise, LANDING_ICON_FADE_MS + LANDING_PAUSE_BEFORE_RISE_MS);
         };
 
-        const presentLandingOrGuide = () => {
-            import('./onboarding.js')
-                .then(async (m) => {
-                    const shown = await m.maybeStartLandingServiceGuide({
-                        onComplete: () => showLoginScreen(),
-                    });
-                    if (!shown) showLoginScreen();
-                })
-                .catch((e) => {
-                    console.warn('랜딩 서비스 가이드 로드 실패:', e);
-                    showLoginScreen();
+        // 자동 둘러보기 비활성: auth null 확정 즉시 가이드 → 로그인 (400ms 대기 제거)
+        // 명시적 로그아웃(둘러보기·체험 모드에서「로그인하기」등)은 가이드를 건너뛰고 바로 로그인 화면으로 이동
+        const presentLandingOrGuide = async () => {
+            if (wasExplicitLogout) {
+                showLoginScreen();
+                return;
+            }
+            try {
+                const shown = await maybeStartLandingServiceGuide({
+                    onComplete: () => showLoginScreen(),
                 });
+                if (!shown) showLoginScreen();
+            } catch (e) {
+                console.warn('랜딩 서비스 가이드 표시 실패:', e);
+                showLoginScreen();
+            }
         };
-
-        const showOptionsNow = wasExplicitLogout;
-        if (showOptionsNow) {
-            // 로그아웃 후에도 미로그인이면 가이드 → 로그인
-            presentLandingOrGuide();
-        } else {
-            authCheckShowOptionsTimeout = setTimeout(() => {
-                if (auth.currentUser === null) presentLandingOrGuide();
-                authCheckShowOptionsTimeout = null;
-            }, 400);
-        }
+        void presentLandingOrGuide();
         
         switchScreen(false);
         if (appState.settingsUnsubscribe) {
@@ -2016,6 +2029,7 @@ function initDailySwipeGesture() {
     /** 밀로그 일간 + 빈 배경(카드 사이·아래)까지 스와이프 허용. 상단 크롬·다른 탭·모달은 제외 */
     const canStartDailySwipe = (node) => {
         if (!node || node.nodeType !== 1) return false;
+        if (isScrollLocked()) return false;
         if (document.body?.dataset?.mainTab !== 'timeline') return false;
         if (tv.classList.contains('hidden')) return false;
         if (isInteractiveSwipeTarget(node)) return false;

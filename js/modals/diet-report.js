@@ -2,7 +2,6 @@
  * 밀로그 날짜별 AI 식단분석 리포트 팝업
  */
 import { db, appId, callableFunctions } from '../firebase.js';
-import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
@@ -23,6 +22,7 @@ import {
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 
 let _currentDate = '';
 let _loading = false;
@@ -179,7 +179,10 @@ function formatReportGeneratedAt(value) {
 
 function setModalVisible(visible) {
     const modal = document.getElementById('dietReportModal');
-    if (!modal) return;
+    if (!modal) {
+        console.warn('[dietReport] #dietReportModal not found in DOM');
+        return;
+    }
     const wasVisible = !modal.classList.contains('hidden');
     modal.classList.toggle('hidden', !visible);
     document.body.classList.toggle('diet-report-modal-open', visible);
@@ -437,7 +440,7 @@ function renderReport(data) {
     const momentShare = findDietReportMomentShare(
         reportDate,
         window.currentUser?.uid,
-        window.sharedPhotos
+        getSharedPhotos()
     );
 
     body.innerHTML = `
@@ -515,7 +518,11 @@ export async function openDietReportModal(dateStr) {
         showToast('로그인이 필요합니다.', 'error');
         return;
     }
-    if (!isAiDietReportDateVisible(dateStr)) return;
+    if (!isAiDietReportDateVisible(dateStr)) {
+        console.warn('[dietReport] date not visible for report', { dateStr, today: toLocalDateString(new Date()) });
+        showToast('이 날짜는 아직 리포트를 볼 수 없어요.', 'info');
+        return;
+    }
 
     _currentDate = dateStr;
     const title = document.getElementById('dietReportModalTitle');
@@ -717,25 +724,16 @@ async function unshareDietReportFromMoment(dateStr, existingShare) {
     if (!existingShare?.photoUrl) return;
     closeDietReportModal();
     const photoUrl = existingShare.photoUrl;
-    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        window.sharedPhotos = window.sharedPhotos.filter(
-            (p) =>
-                !(
-                    p &&
-                    isDietReportInsightShare(p) &&
-                    p.userId === window.currentUser?.uid &&
-                    (p.dateRangeText === existingShare.dateRangeText || p.photoUrl === photoUrl)
-                )
-        );
-    }
-    try {
-        await dbOps.unsharePhotos([photoUrl], null, false, false, true);
-        showToast('모먼트 공유를 취소했어요.', 'success');
-    } catch (e) {
-        console.error('unshareDietReportFromMoment failed', e);
-        if (window.sharedPhotos) window.sharedPhotos = prevShared;
-    }
+    const ok = await unshareWithOptimisticUpdate({
+        photos: [photoUrl],
+        shareType: 'insight',
+        matches: (p) =>
+            !!p &&
+            isDietReportInsightShare(p) &&
+            p.userId === window.currentUser?.uid &&
+            (p.dateRangeText === existingShare.dateRangeText || p.photoUrl === photoUrl)
+    });
+    if (ok) showToast('모먼트 공유를 취소했어요.', 'success');
 }
 
 async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
@@ -798,8 +796,7 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
         });
 
         if (res?.data) {
-            if (!Array.isArray(window.sharedPhotos)) window.sharedPhotos = [];
-            window.sharedPhotos = window.sharedPhotos.filter(
+            setSharedPhotos(getSharedPhotos().filter(
                 (p) =>
                     !(
                         p &&
@@ -807,8 +804,8 @@ async function performDietReportMomentShare(dateStr, report, reportDoc) {
                         p.userId === window.currentUser.uid &&
                         (p.dateRangeText === dateRangeText || p.date === dateStr)
                     )
-            );
-            window.sharedPhotos.push(res.data);
+            ));
+            getSharedPhotos().push(res.data);
         }
 
         showToast('AI 리포트를 모먼트에 공유했어요.', 'success');
@@ -874,7 +871,7 @@ async function shareDietReportToMoment() {
     const existingShare = findDietReportMomentShare(
         dateStr,
         window.currentUser.uid,
-        window.sharedPhotos
+        getSharedPhotos()
     );
 
     if (existingShare) {
@@ -908,12 +905,14 @@ document.getElementById('dietReportSnsShareBtn')?.addEventListener('click', () =
     void shareDietReportToSns();
 });
 
-const _dietReportTimelineBound = new WeakMap();
+let _dietReportTimelineBound = false;
+/** #timelineContainer 자체가 아닌 document에 위임 — 일간 스와이프 등으로 컨테이너 리스너가 무반응이 되는 케이스 대비 (timeline.js의 ensureTimelineOpenModalDelegation과 동일 패턴) */
 function bindDietReportTimelineDelegation() {
-    const root = document.getElementById('timelineContainer');
-    if (!root || _dietReportTimelineBound.has(root)) return;
-    _dietReportTimelineBound.set(root, true);
-    root.addEventListener('click', (e) => {
+    if (_dietReportTimelineBound) return;
+    _dietReportTimelineBound = true;
+    document.addEventListener('click', (e) => {
+        const root = document.getElementById('timelineContainer');
+        if (!root) return;
         const btn = e.target.closest('button[data-mealog-diet-report]');
         if (!btn || !root.contains(btn)) return;
         const dateStr = btn.getAttribute('data-mealog-date') || '';

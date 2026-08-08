@@ -37,7 +37,9 @@ import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/fire
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     getDisplayProfile,
     getProfileAvatarDisplay,
@@ -153,9 +155,9 @@ import { syncOrphanedSharesToMoment } from './shares-sync.js';
 // escapeHtml은 render/index.js에서 import됨
 
 function findExistingDailyShare(dateStr, uid) {
-    if (!dateStr || !uid || !Array.isArray(window.sharedPhotos)) return null;
+    if (!dateStr || !uid) return null;
     return (
-        window.sharedPhotos.find(
+        getSharedPhotos().find(
             (photo) => photo.type === 'daily' && photo.date === dateStr && photo.userId === uid
         ) || null
     );
@@ -207,7 +209,7 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     const modal = document.createElement('div');
     modal.id = 'dailySharePreviewModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
+    modal.className = 'fixed inset-0 z-[var(--z-onboarding)] flex items-center justify-center py-4 bg-slate-900/60 capture-share-modal';
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-labelledby', 'dailySharePreviewTitle');
@@ -242,6 +244,7 @@ window.openDailySharePreviewModal = (dateStr) => {
     `;
 
     document.body.appendChild(modal);
+    lockBodyScroll('dailySharePreviewModal');
     const panel = modal.firstElementChild;
     if (panel) {
         bindDialogGrabberPullClose({
@@ -307,31 +310,24 @@ window.cancelDailyShare = async (dateStr) => {
     }
 
     const photoUrlToRemove = existingShare.photoUrl;
-    const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-    try {
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(
-                (p) => !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-            );
+    window.closeDailySharePreviewModal();
+    showToast('공유가 취소되었습니다.', 'success');
+    await unshareWithOptimisticUpdate({
+        photos: [photoUrlToRemove],
+        shareType: 'daily',
+        matches: (p) => p.type === 'daily' && p.date === dateStr && p.userId === uid,
+        onChange: () => {
+            if (appState.currentTab === 'timeline') renderTimeline();
+            if (appState.currentTab === 'gallery') renderGallery();
         }
-        window.closeDailySharePreviewModal();
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-        showToast('공유가 취소되었습니다.', 'success');
-        await dbOps.unsharePhotos([photoUrlToRemove], null, false, true);
-    } catch (e) {
-        console.error('[cancelDailyShare]', e);
-        if (window.sharedPhotos) window.sharedPhotos = prevShared;
-        if (appState.currentTab === 'timeline') renderTimeline();
-        if (appState.currentTab === 'gallery') renderGallery();
-        showToast(getUserFacingErrorMessage(e, 'share') || '공유 취소에 실패했습니다.', 'error');
-    }
+    });
 };
 
 // 일간 공유 미리보기 모달 닫기
 window.closeDailySharePreviewModal = () => {
     const modal = document.getElementById('dailySharePreviewModal');
     if (modal) modal.remove();
+    unlockBodyScroll('dailySharePreviewModal');
 };
 
 // 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
@@ -498,12 +494,9 @@ window.confirmDailyShare = async (dateStr, ev) => {
             comment: dailyComment || ''
         };
 
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        window.sharedPhotos = window.sharedPhotos.filter(p =>
-            !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
+        upsertSharedPhoto(dailyShareData, (p) =>
+            p.type === 'daily' && p.date === dateStr && p.userId === uid
         );
-        window.sharedPhotos.push(dailyShareData);
-        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
         // 갤러리 피드에도 낙관 반영 (맨 앞에 추가)
         if (!window.sharedPhotosFeed) window.sharedPhotosFeed = [];
         const { sortSharedPhotosByTimestampDesc } = await import('../utils/shared-photo-timestamp.js');
@@ -521,18 +514,18 @@ window.confirmDailyShare = async (dateStr, ev) => {
             comment: dailyComment
         }).then((result) => {
             const serverData = result.data;
-            const idx = window.sharedPhotos?.findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === uid && p.photoUrl === photoUrl));
-            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
-                window.sharedPhotos[idx] = serverData;
+            const idx = getSharedPhotos().findIndex(p => p.id === dailyShareData.id || (p.type === 'daily' && p.date === dateStr && p.userId === uid && p.photoUrl === photoUrl));
+            if (idx !== -1) {
+                getSharedPhotos()[idx] = serverData;
                 if (appState.currentTab === 'timeline') renderTimeline();
                 if (appState.currentTab === 'gallery') renderGallery();
             }
         }).catch((e) => {
             console.error('일간보기 공유 서버 반영 실패:', e);
-            if (window.sharedPhotos) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
+            if (getSharedPhotos()) {
+                setSharedPhotos(getSharedPhotos().filter(p =>
                     !(p.type === 'daily' && p.date === dateStr && p.userId === uid)
-                );
+                ));
                 if (appState.currentTab === 'timeline') renderTimeline();
                 if (appState.currentTab === 'gallery') renderGallery();
             }
@@ -665,7 +658,7 @@ window.openDailyCommentModal = (dateStr) => {
     // 모달 생성
     const modal = document.createElement('div');
     modal.id = 'dailyCommentModal';
-    modal.className = 'fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/50';
+    modal.className = 'fixed inset-0 z-[var(--z-onboarding)] flex items-center justify-center p-4 bg-black/50';
     
     modal.innerHTML = `
         <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -691,7 +684,8 @@ window.openDailyCommentModal = (dateStr) => {
     `;
     
     document.body.appendChild(modal);
-    
+    lockBodyScroll('dailyCommentModal');
+
     // 배경 클릭 시 닫기
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -710,6 +704,7 @@ window.openDailyCommentModal = (dateStr) => {
 window.closeDailyCommentModal = () => {
     const modal = document.getElementById('dailyCommentModal');
     if (modal) modal.remove();
+    unlockBodyScroll('dailyCommentModal');
 };
 
 // 모달에서 일간보기 코멘트 저장
@@ -1498,55 +1493,42 @@ function syncMomentV2SocialCommentEmptyOverlay(postId) {
     syncMomentV2SocialCommentSheetCount(pid, 0);
 }
 
-/** 모먼트2 하단 시트: 핸들 아래로 드래그해 닫기 */
+/** 모먼트2 하단 시트: 핸들·헤더 아래로 드래그해 닫기 (센터 다이얼로그 grabber와 동일 pointer 경로) */
 function bindMomentV2SocialSheetHandlePullClose(commentSection) {
     const sheet = commentSection.querySelector('.moment-v2-social-comments-sheet');
     const handle = commentSection.querySelector('.moment-v2-social-comments-sheet-handle');
-    if (!sheet || !handle || handle.dataset.mv2PullBound === '1') return;
-    handle.dataset.mv2PullBound = '1';
+    const header = commentSection.querySelector('.moment-v2-social-comments-sheet-header');
+    if (!sheet || !handle) return;
+    if (commentSection.dataset.mv2PullBound === '1') return;
+    commentSection.dataset.mv2PullBound = '1';
+
     const postId = String(commentSection.id || '').replace(/^comment-section-/, '');
-    let startY = 0;
-    let tracking = false;
-    let dragY = 0;
-    const threshold = 80;
-    const resetSheetTransform = () => {
-        sheet.style.transform = '';
-        sheet.style.transition = '';
+    const onClose = () => {
+        if (postId) window.closeMomentV2SocialCommentSheet?.(postId);
     };
-    handle.addEventListener(
-        'touchstart',
-        (e) => {
-            if (!commentSection.classList.contains('comment-input-open')) return;
-            if (e.touches?.length !== 1) return;
-            tracking = true;
-            startY = e.touches[0].clientY;
-            dragY = 0;
-        },
-        { passive: true }
-    );
-    handle.addEventListener(
-        'touchmove',
-        (e) => {
-            if (!tracking || e.touches?.length !== 1) return;
-            dragY = Math.max(0, e.touches[0].clientY - startY);
-            sheet.style.transition = 'none';
-            sheet.style.transform = `translate3d(0, ${dragY}px, 0)`;
-            e.preventDefault();
-        },
-        { passive: false }
-    );
-    const end = () => {
-        if (!tracking) return;
-        tracking = false;
-        if (dragY >= threshold && postId) {
-            resetSheetTransform();
-            window.closeMomentV2SocialCommentSheet?.(postId);
-            return;
-        }
-        resetSheetTransform();
-    };
-    handle.addEventListener('touchend', end, { passive: true });
-    handle.addEventListener('touchcancel', end, { passive: true });
+    const isDisabled = () =>
+        commentSection.classList.contains('hidden') ||
+        !commentSection.classList.contains('comment-input-open');
+
+    bindDialogGrabberPullClose({
+        root: commentSection,
+        panel: sheet,
+        grabber: handle,
+        threshold: 72,
+        onClose,
+        isDisabled
+    });
+    // 얇은 핸들만으로는 터치가 거의 안 잡히므로 헤더도 동일 제스처 허용
+    if (header) {
+        bindDialogGrabberPullClose({
+            root: commentSection,
+            panel: sheet,
+            grabber: header,
+            threshold: 72,
+            onClose,
+            isDisabled
+        });
+    }
 }
 
 function mv2SetSocialSheetBodyScrollLock(on) {
@@ -2044,6 +2026,8 @@ window.submitComment = async (postId) => {
             document.querySelectorAll(`.post-comment-count[data-post-id="${postId}"]`).forEach((el) => {
                 if (el !== commentCountEl) el.textContent = n || '';
             });
+            /** 미선언 상태로 참조돼 롤백 경로가 ReferenceError로 중단되고 있었다 */
+            const viewCommentsBtn = document.getElementById(`view-comments-${postId}`);
             if (viewCommentsBtn && n <= 2) viewCommentsBtn.classList.add('hidden');
             else if (viewCommentsBtn && n > 2) viewCommentsBtn.textContent = `댓글 ${n}개 모두 보기`;
         }

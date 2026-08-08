@@ -26,7 +26,7 @@ function buildBestListItemHtml(meal, index) {
     const place = String(meal.place || meal.snackPlace || '').trim();
     const slotLine = place ? `${escapeHtml(slotLabel)} · ${escapeHtml(place)}` : escapeHtml(slotLabel);
     const rating = meal.rating ? parseInt(meal.rating, 10) : 0;
-    const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
+    const stars = rating > 0 ? `★ ${Math.min(5, rating)}` : '—';
     const rank = index + 1;
     const sz = BEST_SHARE_THUMB_SIZE;
 

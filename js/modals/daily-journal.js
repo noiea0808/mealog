@@ -22,6 +22,7 @@ import {
 import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
 import { scheduleLucideIcons } from '../icons.js';
 
+import { getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 const MAX_DAILY_JOURNAL_PHOTOS = 5;
 const MAX_DAILY_JOURNAL_METRIC_RECORDS = 3;
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
@@ -30,7 +31,7 @@ const METRIC_CONFIG = {
     weight: {
         containerId: 'dailyJournalWeightRecords',
         toggleId: 'dailyJournalWeightToggle',
-        offLayerId: 'dailyJournalWeightOffLayer',
+        recordsWrapId: 'dailyJournalWeightRecordsWrap',
         addBtnId: 'dailyJournalWeightAddBtn',
         unit: 'kg',
         placeholder: '62.5',
@@ -41,7 +42,7 @@ const METRIC_CONFIG = {
     bloodSugar: {
         containerId: 'dailyJournalBloodSugarRecords',
         toggleId: 'dailyJournalBloodSugarToggle',
-        offLayerId: 'dailyJournalBloodSugarOffLayer',
+        recordsWrapId: 'dailyJournalBloodSugarRecordsWrap',
         addBtnId: 'dailyJournalBloodSugarAddBtn',
         unit: 'mg/dL',
         placeholder: '105',
@@ -107,13 +108,14 @@ function syncMetricToggleUi(type) {
     const cfg = METRIC_CONFIG[type];
     const enabled = appState[metricEnabledKey(type)] === true;
     const toggle = document.getElementById(cfg.toggleId);
-    const offLayer = document.getElementById(cfg.offLayerId);
     const addBtn = document.getElementById(cfg.addBtnId);
     const container = document.getElementById(cfg.containerId);
+    const recordsWrap = document.getElementById(cfg.recordsWrapId);
     if (toggle) toggle.checked = enabled;
-    if (offLayer) {
-        offLayer.classList.toggle('hidden', enabled);
-        offLayer.setAttribute('aria-hidden', enabled ? 'true' : 'false');
+    // 오프: "오프상태입니다" 문구 없이 입력·추가 UI만 숨김 (토글 헤더만 남김)
+    if (recordsWrap) {
+        recordsWrap.classList.toggle('hidden', !enabled);
+        recordsWrap.setAttribute('aria-hidden', enabled ? 'false' : 'true');
     }
     const disabled = !enabled;
     const rowCount = (appState[metricStateKey(type)] || []).length;
@@ -418,16 +420,13 @@ export function toggleDailyJournalSharePhoto() {
 function syncDailyJournalSharedPhotosCache(entryId, photoUrls) {
     const uid = window.currentUser?.uid;
     if (!entryId || !uid) return;
-    if (!window.sharedPhotos || !Array.isArray(window.sharedPhotos)) {
-        window.sharedPhotos = [];
-    }
     if (photoUrls.length > 0) {
         const newEntries = photoUrls.map((url) => ({ entryId, photoUrl: url, userId: uid }));
-        window.sharedPhotos = window.sharedPhotos
+        setSharedPhotos(getSharedPhotos()
             .filter((p) => p.entryId !== entryId)
-            .concat(newEntries);
+            .concat(newEntries));
     } else {
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== entryId);
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== entryId));
     }
     updateTimelineShareIndicators();
 }

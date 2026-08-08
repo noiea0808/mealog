@@ -4,8 +4,7 @@ import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, whe
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
 import { hideLoading, isLikelyNetworkError } from '../ui.js';
-import { notifyTransportOfflineUi } from '../utils/mealog-offline-ui.js';
-import { tryMarkAppOfflineFromNetworkFailure } from '../utils/network-reachability.js';
+import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { markMealogFirestoreActivity } from '../utils/network-activity.js';
 import { isDemoUser } from '../demo-account.js';
 import {
@@ -19,7 +18,8 @@ import {
 import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
     hydrateMealSyncErrorIdsFromStorage,
-    hydrateMealSyncAbandonedIdsFromStorage
+    hydrateMealSyncAbandonedIdsFromStorage,
+    hydrateMealSyncRegisterScheduledIdsFromStorage
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsOneTimeFetchResult } from '../utils/meals-snapshot-apply.js';
 import {
@@ -96,6 +96,7 @@ function mergeEntryModalGaugesIntoUserSettings() {
 export function setupListeners(userId, callbacks) {
     hydrateMealSyncErrorIdsFromStorage();
     hydrateMealSyncAbandonedIdsFromStorage();
+    hydrateMealSyncRegisterScheduledIdsFromStorage();
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
@@ -548,8 +549,7 @@ export function setupListeners(userId, callbacks) {
 
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            tryMarkAppOfflineFromNetworkFailure(error);
-            notifyTransportOfflineUi();
+            noteNetworkTransportFailure(error);
             scheduleFirestoreListenersRebind(3500);
             return;
         }
@@ -744,8 +744,7 @@ export function setupListeners(userId, callbacks) {
         }
         if (isLikelyNetworkError(error)) {
             hideLoading();
-            tryMarkAppOfflineFromNetworkFailure(error);
-            notifyTransportOfflineUi();
+            noteNetworkTransportFailure(error);
             try {
                 if (mealsListenerUnsub) mealsListenerUnsub();
             } catch (_) {

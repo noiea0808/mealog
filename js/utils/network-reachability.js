@@ -1,94 +1,60 @@
 /**
- * navigator.onLine 과 불일치할 때를 대비한 앱 로컬 네트워크 상태.
- * fetch / Firestore 쓰기 등이 끊김 계열로 실패하면 즉시 offline 으로 본다.
+ * fetch·Firestore 실패를 전송 채널 넛지로 연결하는 브리지.
+ *
+ * 실패를 「오프라인」이라는 앱 상태로 승격하지 않는다. 실패는 「지금 채널이 의심스럽다」는 힌트일
+ * 뿐이고, 힌트는 찔러보는 데만 쓴다. 상태로 만들면 그 값이 틀렸을 때(특히 재연결 후에도 안 풀릴 때)
+ * 앱 전체가 그 오판을 따라간다 — 그게 없애려는 구조다.
  */
-import { appState } from '../state.js';
 import { isLikelyNetworkTransportFailure } from '../ui.js';
-import { notifyTransportOfflineUi } from './mealog-offline-ui.js';
-import { applyMealSyncAbandonOnOffline } from './meal-entry-pending.js';
-import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
+import { pokeNetworkLoop } from './network-loop.js';
 
 let fetchBridgeInstalled = false;
 
-function mealogMainAppVisible() {
+/**
+ * 끊김 계열 실패였다면 채널을 찔러 달라고 알린다.
+ * @param {unknown} err
+ * @returns {boolean} 끊김 계열로 보고 넛지했는지
+ */
+export function noteNetworkTransportFailure(err) {
+    if (!isLikelyNetworkTransportFailure(err)) return false;
+    pokeNetworkLoop('transport-failure');
+    return true;
+}
+
+/**
+ * 원격 호스트로 나간 요청인지. Capacitor 앱은 자산을 localhost 에서 서빙하고 Service Worker 캐시 응답도
+ * 성공으로 잡히므로, 자기 origin 요청의 성공은 인터넷 연결의 증거가 되지 못한다.
+ */
+function isRemoteRequestUrl(input) {
     try {
-        const main = document.getElementById('mainApp');
-        return !!(main && !main.classList.contains('hidden'));
+        const raw = typeof input === 'string' ? input : input?.url || String(input || '');
+        if (!raw) return false;
+        const url = new URL(raw, window.location.href);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+        return url.origin !== window.location.origin;
     } catch (_) {
         return false;
     }
 }
 
-/**
- * @param {unknown} err
- * @returns {boolean} 앱을 로컬 오프라인으로 맞췄는지
- */
-export function tryMarkAppOfflineFromNetworkFailure(err) {
-    if (!isLikelyNetworkTransportFailure(err)) return false;
-    const alreadyForced = appState.localNetworkForcedOffline === true;
-    appState.localNetworkForcedOffline = true;
-    // Firestore·fetch 등이 동시에 여러 번 실패하면 오버레이·abandon·타임라인 갱신이 연속 호출되어
-    // 팝업이 반복되고 UI가 멈춘 것처럼 보임 → 최초 1회만 무거운 처리 수행
-    if (alreadyForced) {
-        void import('../main/meal-sync-resend-header.js').then((m) => {
-            try {
-                if (typeof m.refreshMealSyncResendNavButton === 'function') m.refreshMealSyncResendNavButton();
-            } catch (_) {
-                /* ignore */
-            }
-        });
-        return true;
-    }
-    try {
-        applyMealSyncAbandonOnOffline();
-    } catch (_) {
-        /* ignore */
-    }
-    if (mealogMainAppVisible() && window.currentUser) {
-        try {
-            notifyTransportOfflineUi();
-        } catch (_) {
-            /* ignore */
-        }
-    }
-    void import('../render/timeline.js').then((m) => {
-        try {
-            m.updateTimelineMealEntryPendingIndicators();
-        } catch (_) {
-            /* ignore */
-        }
-    });
-    try {
-        refreshMealSyncResendNavButton();
-    } catch (_) {
-        /* ignore */
-    }
-    return true;
-}
-
-export function clearLocalNetworkForcedOffline() {
-    appState.localNetworkForcedOffline = false;
-}
-
-/** window.fetch 실패 시 로컬 오프라인 플래그 (한 번만 설치) */
+/** window.fetch 결과를 넛지로 전달 (한 번만 설치) */
 export function installFetchFailureAppOfflineBridge() {
     if (typeof window === 'undefined' || fetchBridgeInstalled) return;
     const w = window;
     const orig = w.fetch;
     if (typeof orig !== 'function') return;
     fetchBridgeInstalled = true;
-    w.fetch = function fetchWithOfflineBridge() {
+    w.fetch = function fetchWithOfflineBridge(input) {
+        const remote = isRemoteRequestUrl(input);
         return orig.apply(this, arguments).then(
             (res) => {
-                // HTTP 도달성 회복은 로컬 오프라인 플래그만 해제한다.
-                // Firestore 활동 시각(markMealogFirestoreActivity)은 여기서 갱신하지 않는다 —
-                // Wi-Fi↔LTE 전환 시 일반 fetch는 되는데 Firestore WebChannel만 죽은 경우,
-                // 이 갱신이 stale 감지를 무력화해 transport kick을 막았다.
-                clearLocalNetworkForcedOffline();
+                // 원격 요청 성공은 「무선이 살아났다」는 힌트일 뿐 Firestore 채널 생존의 증거가 아니다.
+                // 그래서 무엇을 해제하지 않고, 채널을 찔러보게만 한다(넛지 간격 안이면 무시된다).
+                if (remote) pokeNetworkLoop('remote-fetch-ok');
                 return res;
             },
             (err) => {
-                tryMarkAppOfflineFromNetworkFailure(err);
+                noteNetworkTransportFailure(err);
                 throw err;
             }
         );

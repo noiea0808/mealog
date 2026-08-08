@@ -16,6 +16,7 @@ import { buildBestShareCaptureHtml } from '../render/best-share-card.js';
 import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -384,14 +385,12 @@ export function renderBestMeals() {
                 periodText = `${year}년`;
             }
             
-            // window.sharedPhotos에서 해당 기간의 베스트 공유 찾기
-            const bestShare = window.sharedPhotos && Array.isArray(window.sharedPhotos)
-                ? window.sharedPhotos.find(photo => 
-                    photo.type === 'best' && 
-                    photo.periodType === periodType && 
-                    photo.periodText === periodText
-                )
-                : null;
+            // 공유 캐시에서 해당 기간의 베스트 공유 찾기
+            const bestShare = getSharedPhotos().find(photo =>
+                photo.type === 'best' &&
+                photo.periodType === periodType &&
+                photo.periodText === periodText
+            ) || null;
             
             const isShared = !!bestShare;
             
@@ -499,7 +498,7 @@ export function renderBestMeals() {
         const safeSlotId = (meal.slotId || '').replace(/'/g, "\\'");
         const safeMealId = (meal.id || '').replace(/'/g, "\\'");
         const slotLine = place ? `${escapeHtml(slotLabel)} · ${safePlace}` : escapeHtml(slotLabel);
-        const stars = rating > 0 ? '★'.repeat(Math.min(5, rating)) : '—';
+        const stars = rating > 0 ? `★ ${Math.min(5, rating)}` : '—';
         
         let thumbHtml = '';
         if (thumbUrl) {
@@ -657,10 +656,10 @@ function setupBestOrderControls() {
 
 // 베스트 공유 상태 확인
 async function checkBestShareStatus(periodType, periodText) {
-    if (!window.currentUser || !window.sharedPhotos) return null;
+    if (!window.currentUser) return null;
     
-    // window.sharedPhotos에서 해당 기간의 베스트 공유 찾기
-    const bestShare = window.sharedPhotos.find(photo => 
+    // 공유 캐시에서 해당 기간의 베스트 공유 찾기
+    const bestShare = getSharedPhotos().find(photo => 
         photo.type === 'best' && 
         photo.periodType === periodType && 
         photo.periodText === periodText
@@ -825,13 +824,13 @@ export function closeBestSharePeriodNotice() {
 
 // 베스트 공유 수정 모달 열기 (photoUrl로 찾기)
 export async function openEditBestShareModal(photoUrl) {
-    if (!photoUrl || !window.sharedPhotos) {
+    if (!photoUrl) {
         showToast('베스트 공유를 찾을 수 없습니다.', 'error');
         return;
     }
     
-    // window.sharedPhotos에서 해당 photoUrl의 베스트 공유 찾기
-    const bestShare = window.sharedPhotos.find(photo => 
+    // 공유 캐시에서 해당 photoUrl의 베스트 공유 찾기
+    const bestShare = getSharedPhotos().find(photo => 
         photo.type === 'best' && 
         (photo.photoUrl === photoUrl || photo.photoUrl?.includes(photoUrl) || photoUrl?.includes(photo.photoUrl))
     );
@@ -941,16 +940,16 @@ export async function shareBestToFeed() {
                     comment: comment
                 });
                 
-                // window.sharedPhotos도 업데이트
-                if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-                    const shareIndex = window.sharedPhotos.findIndex(photo => 
+                // getSharedPhotos()도 업데이트
+                if (getSharedPhotos()) {
+                    const shareIndex = getSharedPhotos().findIndex(photo => 
                         photo.type === 'best' && 
                         (photo.photoUrl === editPhotoUrl || 
                          photo.photoUrl?.includes(editPhotoUrl) || 
                          editPhotoUrl?.includes(photo.photoUrl))
                     );
                     if (shareIndex !== -1) {
-                        window.sharedPhotos[shareIndex].comment = comment;
+                        getSharedPhotos()[shareIndex].comment = comment;
                     }
                 }
                 
@@ -1012,20 +1011,20 @@ export async function shareBestToFeed() {
         const photoUrlToRemove = existingShare.photoUrl;
         const prevPeriodType = existingShare.periodType;
         const prevPeriodText = existingShare.periodText;
-        const prevShared = window.sharedPhotos ? [...window.sharedPhotos] : [];
-        if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-            window.sharedPhotos = window.sharedPhotos.filter(p =>
-                !(p.type === 'best' && p.periodType === prevPeriodType && p.periodText === prevPeriodText && p.userId === window.currentUser.uid)
-            );
-        }
         closeShareBestModal();
-        renderBestMeals();
-        if (appState.currentTab === 'gallery') renderGallery();
         showToast('공유가 취소되었습니다.', 'success');
-        dbOps.unsharePhotos([photoUrlToRemove], null, true).catch(() => {
-            if (window.sharedPhotos) window.sharedPhotos = prevShared;
-            renderBestMeals();
-            if (appState.currentTab === 'gallery') renderGallery();
+        unshareWithOptimisticUpdate({
+            photos: [photoUrlToRemove],
+            shareType: 'best',
+            matches: (p) =>
+                p.type === 'best' &&
+                p.periodType === prevPeriodType &&
+                p.periodText === prevPeriodText &&
+                p.userId === window.currentUser.uid,
+            onChange: () => {
+                renderBestMeals();
+                if (appState.currentTab === 'gallery') renderGallery();
+            }
         });
         return;
     }
@@ -1093,12 +1092,9 @@ export async function shareBestToFeed() {
             comment: comment || ''
         };
 
-        if (!window.sharedPhotos) window.sharedPhotos = [];
-        window.sharedPhotos = window.sharedPhotos.filter(p =>
-            !(p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid)
+        upsertSharedPhoto(bestShareData, (p) =>
+            p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid
         );
-        window.sharedPhotos.push(bestShareData);
-        window.sharedPhotos.sort((a, b) => (new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()));
 
         showToast('베스트가 피드에 공유되었습니다!', 'success');
         closeShareBestModal();
@@ -1113,17 +1109,17 @@ export async function shareBestToFeed() {
             comment
         }).then((result) => {
             const serverData = result.data;
-            const idx = window.sharedPhotos?.findIndex(p => p.id === bestShareData.id || (p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
-            if (idx !== undefined && idx !== -1 && window.sharedPhotos) {
-                window.sharedPhotos[idx] = serverData;
+            const idx = getSharedPhotos().findIndex(p => p.id === bestShareData.id || (p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid && p.photoUrl === photoUrl));
+            if (idx !== -1) {
+                getSharedPhotos()[idx] = serverData;
                 if (appState.currentTab === 'gallery') renderGallery();
             }
         }).catch((e) => {
             console.error('베스트 공유 서버 반영 실패:', e);
-            if (window.sharedPhotos) {
-                window.sharedPhotos = window.sharedPhotos.filter(p =>
+            if (getSharedPhotos()) {
+                setSharedPhotos(getSharedPhotos().filter(p =>
                     !(p.type === 'best' && p.periodType === periodType && p.periodText === periodText && p.userId === window.currentUser.uid)
-                );
+                ));
                 renderBestMeals();
                 if (appState.currentTab === 'gallery') renderGallery();
             }

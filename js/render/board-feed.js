@@ -201,7 +201,7 @@ function openFeedImageLightbox(imageUrl) {
         _feedImageLightboxOverlay.id = 'feedImageLightbox';
         /* 본문과 동일 max-w-md 폭 안에서만 표시(데스크톡 웹에서 뷰포트 전체로 퍼지지 않게) */
         _feedImageLightboxOverlay.className =
-            'hidden fixed inset-0 z-[10001] flex justify-center';
+            'hidden fixed inset-0 z-[var(--z-lightbox)] flex justify-center';
         _feedImageLightboxOverlay.setAttribute('role', 'dialog');
         _feedImageLightboxOverlay.setAttribute('aria-modal', 'true');
         _feedImageLightboxOverlay.setAttribute('aria-labelledby', 'feedImageLightboxTitle');

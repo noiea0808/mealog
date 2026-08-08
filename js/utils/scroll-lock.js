@@ -12,6 +12,8 @@ const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#attendancePopup:not(.hidden)',
     '#timelineMealPhotosOverlay:not(.hidden)',
     '#momentImageLightbox:not(.hidden)',
+    '#signupWizard:not(.hidden)',
+    '#serviceGuideOverlay:not(.hidden)',
     '[id$="Modal"]:not(.hidden)',
     '[id$="Popup"]:not(.hidden)'
 ].join(', ');
@@ -66,9 +68,31 @@ function canScrollEl(el, deltaX, deltaY) {
     return false;
 }
 
+let touchStartY = 0;
+let touchStartX = 0;
+
+function onTouchStart(e) {
+    if (lockOwners.size <= 0) return;
+    const t = e.touches?.[0];
+    if (!t) return;
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+}
+
 function onTouchMove(e) {
     if (lockOwners.size <= 0) return;
-    if (findScrollLockAllowEl(e.target) || isInsideOpenOverlay(e.target)) return;
+    if (findScrollLockAllowEl(e.target)) return;
+    if (!isInsideOpenOverlay(e.target)) {
+        e.preventDefault();
+        return;
+    }
+    // 팝업 안이어도 스크롤 가능한 영역이 없거나 끝에 닿으면 배경으로 제스처가 새지 않게 차단
+    const t = e.touches?.[0];
+    if (!t) return;
+    const deltaX = touchStartX - t.clientX;
+    const deltaY = touchStartY - t.clientY;
+    const scrollable = findScrollableInOverlay(e.target);
+    if (scrollable && canScrollEl(scrollable, deltaX, deltaY)) return;
     e.preventDefault();
 }
 
@@ -96,12 +120,14 @@ function onKeyDown(e) {
 }
 
 function attachScrollBlockListeners() {
+    document.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
     document.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
     document.addEventListener('wheel', onWheel, { passive: false, capture: true });
     document.addEventListener('keydown', onKeyDown, { capture: true });
 }
 
 function detachScrollBlockListeners() {
+    document.removeEventListener('touchstart', onTouchStart, { capture: true });
     document.removeEventListener('touchmove', onTouchMove, { capture: true });
     document.removeEventListener('wheel', onWheel, { capture: true });
     document.removeEventListener('keydown', onKeyDown, { capture: true });
@@ -143,4 +169,9 @@ export function unlockBodyScroll(owner = 'default') {
     lockOwners.delete(key);
     if (lockOwners.size > 0) return;
     clearDomScrollLock();
+}
+
+/** 현재 배경 스크롤이 잠긴 상태인지(모달/팝업이 하나라도 열려 있는지) */
+export function isScrollLocked() {
+    return lockOwners.size > 0;
 }

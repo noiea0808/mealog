@@ -21,6 +21,12 @@
 
 - **`modals.js`** — `modals/` 하위 모듈 re-export (진입점만 유지)
 - **`modals/entry-and-core.js`** — 기록 모달·사진·태그·`saveEntry` 등
+- **`modals/entry-form-config.js`** — 기록 시트 DOM id·entryMode별 메타, `PHOTO_ASPECT_OPTIONS`
+- **`modals/entry-form-state.js`** — 폼 DOM 읽기·검증·저장 필드 해석 (`readEntryFormFromDom`, `validateEntryForm`, `resolveEntrySaveFields`)
+- **`modals/entry-save-record.js`** — `saveEntry` payload 조립. `buildEntrySaveRecord`(Firestore record 객체) / `buildEntryShareSnapshot`(공유 비교 스냅샷) / `isLocalPendingPhoto`. 부수효과 없음
+- **`modals/entry-save-subtags.js`** — 저장 시 최근 서브태그 학습 + 설정 디바운스 저장 (`buildSettingsWithRememberedSubTags`, `scheduleEntrySettingsSave`)
+- **`modals/entry-save-photos.js`** — 로컬(base64/blob) 사진 Storage 업로드 + https URL 재저장 (`uploadEntryPhotosAndResave`, `ensureDataUrlForStorage`). 실패를 삼키고 플래그로 반환하며, 타임아웃·UI 복구는 `saveEntry`가 담당
+- **`modals/entry-save-share.js`** — 저장 후 모먼트 공유 동기화 (`syncMomentShareAfterSave`). 공유 목록·사진 비율이 바뀐 경우에만 재동기화해 `sharedAt` 정렬을 보존
 - **`modals/settings.js`** — 설정 모달·프로필·태그 관리
 - **`modals/kakao-place.js`** — 카카오 장소 검색
 
@@ -57,3 +63,11 @@
 ## 다음 리팩터링 후보
 
 - `render.js`: `toggleComment` 등 추가 분리 여지
+- `modals/entry-and-core.js`의 `saveEntry` — 1·2단계로 1,076줄 → 666줄. 남은 것:
+  - **낙관 반영 블록** (약 90줄) — `window.mealHistory`·`sharedPhotos`를 직접 mutate하고
+    탭별 렌더 분기가 섞여 있다. 분리하려면 전역 갱신을 한곳으로 모으는 설계가 먼저 필요
+  - **저장 후 렌더 분기** (`setTimeout(…, 0)` 안의 탭별 분기, 약 60줄)
+  - `shareBanned`(record 조립)와 `isShareBanned`(공유 스냅샷)는 같은 값을 두 번 계산한다 —
+    통합 가능하나 동작 보존을 우선해 남겨 뒀다
+  - 바깥 `catch(uploadPhaseError)`의 `return`은 `saveEntry`를 빠져나가야 하므로
+    사진 단계를 더 옮길 때 주의 (추출된 함수의 return은 saveEntry를 끝내지 않는다)

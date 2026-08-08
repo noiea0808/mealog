@@ -29,7 +29,6 @@ import {
     getMealRowSyncLeadKind,
     isMealEntryPendingSync,
     isMealEntrySaveFailed,
-    isMealEntrySyncAbandoned,
     isMealEntrySyncRedoable,
     isMealEntryDeleting,
     isMealEntryDeleteFailed,
@@ -37,7 +36,6 @@ import {
     clearStuckMealPendingFlags
 } from '../utils/meal-entry-pending.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
-import { isMealogTransportOffline } from '../utils/mealog-offline-ui.js';
 import { updateTrackerStreakLabel, collectRecordedDateSet } from '../attendance-check.js';
 import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
 import {
@@ -59,7 +57,9 @@ import {
     refreshAiDietReportFlagsForDates
 } from '../modals/diet-report.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
+import { getSharedPhotos } from '../utils/moment-share-state.js';
 function mainMealSlotLucideIcon(slotId) {
     return getSlotLucideIcon(slotId);
 }
@@ -100,30 +100,6 @@ function buildMainMealPhotoAreaHtml(slot, r, dateStr, iconTextClass) {
     return mainMealSlotIconHtml(slot.id, iconTextClass, 'lg');
 }
 
-/**
- * 기록 행 제목 왼쪽: 동기화 표시
- * — 삭제예정·등록예정: 밝은 칩 / 삭제 진행·등록 진행(온라인): 빨간 도트 / 동기화 필요: 재시도 도트
- */
-function mealLeadChip(text, title, variant = 'neutral') {
-    const styles = {
-        neutral: 'border-slate-400 text-slate-800 bg-white',
-        /* 예정·안내 칩 — 보더·글자 모두 한 톤 밝게 */
-        warn: 'border-amber-200 text-amber-700 bg-amber-50',
-        danger: 'border-red-500 text-red-800 bg-red-50'
-    };
-    const cls = styles[variant] || styles.neutral;
-    const t = escapeHtml(title);
-    const x = escapeHtml(text);
-    return `<span class="inline-flex shrink-0 items-center rounded px-1 py-0.5 text-[10px] font-semibold leading-tight border border-solid ${cls}" title="${t}" aria-label="${t}">${x}</span>`;
-}
-
-/**
- * 오프라인 UI 분기 — navigator.onLine 만으로는 부족함(끊겼는데도 true인 경우 다수).
- */
-function isMealSyncUiEffectiveOffline() {
-    return isMealogTransportOffline();
-}
-
 /** 동기화 진행(재시도 버튼 아님) — 빨간 도트 */
 function mealLeadSyncRedDot(srLabel, title) {
     const dot = (bg) =>
@@ -135,59 +111,29 @@ function mealLeadSyncRedDot(srLabel, title) {
     )}</span><span class="sr-only">${sr}</span>`;
 }
 
+/**
+ * 기록 행 동기화 표시 — syncing / failed / synced 세 가지뿐이다.
+ *
+ * 연결 상태를 읽지 않는다. 예전에는 오프라인일 때 「등록예정」 칩을 따로 그렸는데,
+ * 그러려면 렌더가 「지금 진짜 끊겼는지」를 알아야 했고 그 판정이 틀리면 표시도 틀렸다.
+ * 사용자가 할 수 있는 일은 어느 쪽이든 「기다린다」로 같으므로 구분을 없앴다.
+ */
 function mealEntrySyncLeadHtml(record) {
     if (!record || record.id == null || record.id === '') return '';
-    const eid = escapeHtml(String(record.id));
     const dot = (bg) =>
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
 
-    const kind = getMealRowSyncLeadKind(record);
-    const offline = isMealSyncUiEffectiveOffline();
-
-    if (offline) {
-        switch (kind) {
-            case 'delete_scheduled':
-            case 'delete_inflight':
-                return mealLeadChip(
-                    '삭제예정',
-                    '오프라인이라 서버로 삭제가 아직 진행되지 않았어요. 연결되면 반영돼요.',
-                    'warn'
-                );
-            case 'pending':
-            case 'await_server_ack':
-            case 'register_scheduled':
-                return mealLeadChip(
-                    '등록예정',
-                    '오프라인이라 서버에 등록·수정이 아직 반영되지 않았어요. 연결되면 반영돼요.',
-                    'warn'
-                );
-            default:
-                break;
+    switch (getMealRowSyncLeadKind(record)) {
+        case 'syncing': {
+            const deleting = isMealEntryDeleting(record);
+            const sr = deleting ? '삭제 중' : '등록 중';
+            const title = deleting
+                ? '삭제를 서버에 반영하는 중이에요.'
+                : '서버에 반영하는 중이에요. 연결이 불안정하면 조금 걸릴 수 있어요.';
+            return mealLeadSyncRedDot(sr, title);
         }
-    }
-
-    switch (kind) {
-        case 'delete_scheduled':
-            return mealLeadChip(
-                '삭제예정',
-                '삭제는 예약된 상태예요. 서버에 반영되면 목록에서 사라져요.',
-                'warn'
-            );
-        case 'delete_inflight':
-            return mealLeadSyncRedDot('삭제 중', '삭제를 서버에 보내는 중이에요.');
-        case 'register_scheduled':
-            return mealLeadChip(
-                '등록예정',
-                '서버에 아직 반영되지 않았어요. 연결이 안정되면 자동으로 반영되거나, 동기화 버튼으로 다시 보낼 수 있어요.',
-                'warn'
-            );
-        case 'pending':
-            return mealLeadSyncRedDot('등록 중', '등록·수정 내용을 서버에 보내는 중이에요.');
-        case 'await_server_ack':
-            return mealLeadSyncRedDot('서버 반영 대기', '서버 반영을 확인하는 중이에요.');
-        case 'delete_failed':
-        case 'redoable_failed':
-        case 'redoable_abandoned': {
+        case 'failed': {
+            const eid = escapeHtml(String(record.id));
             const title = '서버와 동기화되지 않았어요. 탭하면 다시 시도해요.';
             const sr = '동기화 필요';
             return `<span class="meal-sync-retry-btn inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none cursor-pointer" data-meal-sync-retry="${eid}" role="button" tabindex="0" title="${escapeHtml(title)}" aria-label="${escapeHtml(sr)}, 탭하여 재시도">${dot(
@@ -470,10 +416,7 @@ const SNACK_TIMELINE_FORCE_TAGS_MODE = false;
 // entryId가 모먼트(sharedPhotos 컬렉션)에 공유 중인지 — canonical 소스만 사용
 function isEntryShared(entryId, record) {
     if (!entryId) return false;
-    if (window.sharedPhotos && Array.isArray(window.sharedPhotos)) {
-        return window.sharedPhotos.some(photo => photo.entryId === entryId);
-    }
-    return false;
+    return getSharedPhotos().some(photo => photo.entryId === entryId);
 }
 
 function getSnackTimelineView() {
@@ -901,13 +844,10 @@ function buildSnackTimelineViewSelectHtml(current) {
 
 function getDailyShareButtonHtmlForDate(dateStr) {
     if (!window.currentUser || window.currentUser.isAnonymous) return '';
-    const dailyShare =
-        window.sharedPhotos && Array.isArray(window.sharedPhotos)
-            ? window.sharedPhotos.find(
-                  (photo) =>
-                      photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser?.uid
-              )
-            : null;
+    const dailyShare = getSharedPhotos().find(
+        (photo) =>
+            photo.type === 'daily' && photo.date === dateStr && photo.userId === window.currentUser?.uid
+    );
     const isShared = !!dailyShare;
     const styleCls = isShared
         ? 'date-section-header__share-btn--shared'
@@ -997,7 +937,7 @@ function buildShareCaptureStarsText(rating) {
     const n = Number.parseInt(rating, 10);
     const filled = Number.isFinite(n) ? Math.min(5, Math.max(0, n)) : 0;
     if (filled <= 0) return '—';
-    return '★'.repeat(filled);
+    return `★ ${filled}`;
 }
 
 /** 일간 공유 캡처용 — 좌측 1:1 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */
@@ -2283,6 +2223,7 @@ let trackerMonthPopupMonth = null;
 function closeTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (modal) modal.classList.add('hidden');
+    unlockBodyScroll('trackerMonthCalendarModal');
 }
 window.closeTrackerMonthCalendar = closeTrackerMonthCalendar;
 
@@ -2339,6 +2280,7 @@ export function openTrackerMonthCalendar() {
     const modal = document.getElementById('trackerMonthCalendarModal');
     if (!modal) return;
     modal.classList.remove('hidden');
+    lockBodyScroll('trackerMonthCalendarModal');
     renderTrackerMonthCalendarPopup();
     scheduleLucideIcons(modal);
 }

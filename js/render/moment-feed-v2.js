@@ -166,9 +166,9 @@ function buildV2InlineSocialBarHtml(postId, seedLikeCount = null, seedCommentCou
     return `<div class="moment-v2-social-below-photo pointer-events-auto flex items-center" data-meal-photo-social-bubble><div class="timeline-meal-photo-moment-social-row flex w-full items-center">
 <button type="button" class="post-like-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
-    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="heart" class="post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="heart" class="post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-like-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
+    )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleLike(${pidJson})' aria-label="좋아요"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="heart" class="post-like-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="heart" class="post-like-icon timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span onclick='event.stopPropagation();window.openPostLikesModal(${pidJson})' class="post-like-count timeline-meal-photo-moment-social-count tabular-nums" data-post-id="${escapeHtml(
         p
-    )}" aria-hidden="true">${likeTxt}</span></button>
+    )}">${likeTxt}</span></button>
 <button type="button" class="post-comment-btn timeline-meal-photo-moment-social-btn timeline-meal-photo-moment-social-hit inline-flex h-8 min-h-8 shrink-0 items-center justify-center gap-0 rounded-full" data-post-id="${escapeHtml(
         p
     )}" data-requires-login="true" onclick='event.stopPropagation();window.toggleCommentInput(${pidJson})' aria-label="댓글"><span class="timeline-meal-photo-moment-social-icon-slot inline-flex h-8 w-8 shrink-0 items-center justify-center relative" aria-hidden="true"><span class="timeline-meal-photo-moment-social-icon-stack w-full h-full min-h-0 min-w-0"><i data-lucide="message-circle" class="post-comment-fill timeline-meal-photo-moment-social-icon-fill" aria-hidden="true"></i><i data-lucide="message-circle" class="post-comment-icon text-white/95 timeline-meal-photo-moment-social-icon relative z-[1]" aria-hidden="true"></i></span></span><span class="post-comment-count timeline-meal-photo-moment-social-count pointer-events-none tabular-nums" data-post-id="${escapeHtml(
@@ -312,9 +312,11 @@ function buildMomentV2BodyCaptionHtml(photo, menuCaptionPlain, flags, entryId, m
         ? `<div class="moment-v2-meal-meta">${escapeHtml(place)}</div>`
         : '';
 
+    const { isBestShare, isDailyShare, isInsightShare } = flags || {};
     const menuFromFields = resolveMomentV2MenuTitle(photo, mealHistoryMap, groupEntryId, flags);
     let menu = menuFromFields;
-    if (!menu && menuCaptionPlain) {
+    /* best/daily/insight 공유는 menuCaptionPlain이 메뉴가 아니라 공유 코멘트이므로 폴백 제외(본문 note와 중복 방지) */
+    if (!menu && menuCaptionPlain && !isBestShare && !isDailyShare && !isInsightShare) {
         /* 레거시 captionText에 "메뉴 @ 장소"가 오면 메뉴만 사용 */
         const plain = String(menuCaptionPlain).trim();
         if (plain && plain !== '—' && plain !== '간식') {
@@ -435,6 +437,10 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
     const photosWithUrl = (photoGroup || []).filter((p) => String(p?.photoUrl || '').trim());
     const n = photosWithUrl.length;
     const leadPhoto = photosWithUrl[0] || photoGroup[0];
+    /** 라이트박스(탭 확대)용 원본 URL 목록 — post-group-html의 `.gallery-photo-scroll[data-moment-urls]`와 동일 규칙 */
+    const momentUrlsEncoded = encodeURIComponent(
+        JSON.stringify(photosWithUrl.map((p) => p.photoUrl).filter(Boolean))
+    );
 
     const labelsPayload = buildMomentV2LabelsPayload(photoGroup, captionTextPlain, flags, {
         mealHistoryMap,
@@ -464,7 +470,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
             .map((p, idx) => {
                 const block = buildV2RawPhotoBlock(p, idx, normalizePhotoAspectForDisplay(p, ar));
                 if (!block) return '';
-                return `<div class="moment-v2-h-slide" data-moment-h-i="${idx}">${block}</div>`;
+                return `<div class="moment-v2-h-slide" data-moment-h-i="${idx}" data-moment-i="${idx}">${block}</div>`;
             })
             .filter(Boolean)
             .join('');
@@ -484,7 +490,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
         </div>
     </div>
 </div>`;
-        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+        return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-swipe-photos-only="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}" data-moment-urls="${momentUrlsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>
@@ -520,7 +526,7 @@ export function buildMomentFeedV2PhotoAndLabelHtml(params) {
 </div>`;
     }
 
-    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}">
+    return `<div class="moment-feed-v2-scope flex min-w-0 flex-col" data-moment-v2-root${rootDailyAttr}${rootBestAttr} data-moment-v2-vscroll="1" data-moment-v2-skip-dock="1" data-moment-v2-labels="${labelsEncoded}" data-moment-urls="${momentUrlsEncoded}">
     <div class="moment-v2-wheel-stage moment-v2-wheel-stage--vscroll-photos moment-v2-wheel-stage--with-footer moment-v2-wheel-stage--split-caption relative box-border w-full min-w-0 flex flex-col items-stretch overflow-hidden px-0" data-moment-v2-wheel-stage>
         <div class="moment-v2-wheel-body flex w-full min-w-0 max-w-full flex-col items-stretch" data-moment-v2-wheel-body>
         <div class="moment-v2-wheel-center-stack w-full min-w-0 flex flex-col items-stretch" data-moment-v2-center-stack>

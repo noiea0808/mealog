@@ -35,6 +35,11 @@ export function initCenterDialogGrabbers() {
             onClose: () => window.closeNotificationPopup?.()
         },
         {
+            rootId: 'postLikesModal',
+            panelSelector: '.post-likes-modal',
+            onClose: () => window.closePostLikesModal?.()
+        },
+        {
             rootId: 'dietReportModal',
             panelSelector: '.diet-report-modal',
             onClose: () => window.closeDietReportModal?.()

@@ -1776,7 +1776,67 @@ async function bumpMomentPostV2LikeCount(postId, delta) {
   await ref.update({ likeCount: FieldValue.increment(delta) });
 }
 
-/** postLikes 생성 → 모먼트 v2 likeCount +1 */
+/** postId → 글 작성자 uid (댓글 알림과 동일한 방식: canonical postId의 `_uid` 접미사, 없으면 sharedPhotos 조회) */
+async function resolvePostOwnerId(postId) {
+  if (typeof postId === 'string' && postId.includes('_')) {
+    return postId.slice(postId.lastIndexOf('_') + 1).trim();
+  }
+  const sharedRef = db.collection('artifacts').doc(APP_ID).collection('sharedPhotos').doc(String(postId));
+  const sharedSnap = await sharedRef.get();
+  if (sharedSnap.exists && sharedSnap.data().userId) {
+    return String(sharedSnap.data().userId).trim();
+  }
+  return '';
+}
+
+async function getUserNickname(uid) {
+  const settingsRef = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(uid)
+    .collection('config').doc('settings');
+  const snap = await settingsRef.get();
+  const profile = snap.exists ? (snap.data().profile || {}) : {};
+  return profile.nickname || '익명';
+}
+
+/**
+ * 좋아요 알림(글 주인 기준, postId당 1건 집계): 최근 누른 사람 닉네임 + 총 개수만 저장.
+ * "누가 좋아요를 눌렀는지" 전체 명단은 노출하지 않는다는 정책에 따라 대표 1명만 기록.
+ */
+async function upsertLikeNotification(postId, likerUid) {
+  const postOwnerId = await resolvePostOwnerId(postId);
+  if (!postOwnerId || postOwnerId === likerUid) return;
+  const likerNickname = await getUserNickname(likerUid);
+  const docId = momentPostV2.sanitizeMomentPostDocId(String(postId));
+  const ref = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(postOwnerId)
+    .collection('likeNotifications').doc(docId);
+  await ref.set({
+    postId,
+    lastLikerUid: likerUid,
+    lastLikerNickname: likerNickname,
+    lastLikeAt: FieldValue.serverTimestamp(),
+    likeCount: FieldValue.increment(1)
+  }, { merge: true });
+}
+
+async function decrementLikeNotification(postId, likerUid) {
+  const postOwnerId = await resolvePostOwnerId(postId);
+  if (!postOwnerId || postOwnerId === likerUid) return;
+  const docId = momentPostV2.sanitizeMomentPostDocId(String(postId));
+  const ref = db.collection('artifacts').doc(APP_ID)
+    .collection('users').doc(postOwnerId)
+    .collection('likeNotifications').doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists) return;
+  const current = Number(snap.data().likeCount) || 0;
+  if (current <= 1) {
+    await ref.delete();
+  } else {
+    await ref.update({ likeCount: FieldValue.increment(-1) });
+  }
+}
+
+/** postLikes 생성 → 모먼트 v2 likeCount +1, 좋아요 알림 집계 갱신 */
 exports.onPostLikeCreated = onDocumentCreated(
   {
     document: `artifacts/${APP_ID}/postLikes/{likeId}`,
@@ -1785,16 +1845,23 @@ exports.onPostLikeCreated = onDocumentCreated(
   async (event) => {
     const data = event.data?.data();
     const postId = data?.postId ? String(data.postId) : '';
+    const likerUid = data?.userId ? String(data.userId) : '';
     if (!postId) return;
     try {
       await bumpMomentPostV2LikeCount(postId, 1);
     } catch (e) {
       logger.warn('onPostLikeCreated: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
     }
+    if (!likerUid) return;
+    try {
+      await upsertLikeNotification(postId, likerUid);
+    } catch (e) {
+      logger.warn('onPostLikeCreated: likeNotification skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
   }
 );
 
-/** postLikes 삭제 → 모먼트 v2 likeCount -1 */
+/** postLikes 삭제 → 모먼트 v2 likeCount -1, 좋아요 알림 집계 갱신 */
 exports.onPostLikeDeleted = onDocumentDeleted(
   {
     document: `artifacts/${APP_ID}/postLikes/{likeId}`,
@@ -1803,11 +1870,18 @@ exports.onPostLikeDeleted = onDocumentDeleted(
   async (event) => {
     const data = event.data?.data();
     const postId = data?.postId ? String(data.postId) : '';
+    const likerUid = data?.userId ? String(data.userId) : '';
     if (!postId) return;
     try {
       await bumpMomentPostV2LikeCount(postId, -1);
     } catch (e) {
       logger.warn('onPostLikeDeleted: likeCount bump skip', { postId: postId.slice(0, 80), err: e?.message });
+    }
+    if (!likerUid) return;
+    try {
+      await decrementLikeNotification(postId, likerUid);
+    } catch (e) {
+      logger.warn('onPostLikeDeleted: likeNotification skip', { postId: postId.slice(0, 80), err: e?.message });
     }
   }
 );

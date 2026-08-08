@@ -11,6 +11,7 @@ import {
     openTimeManualPanel,
     openTimeSourceSheet
 } from '../time-source-picker.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 // 사진 편집 관련 변수
 let editingPhotoIndex = null;
@@ -139,6 +140,7 @@ export function openProfilePhotoEdit(objectUrl) {
 function openAvatarInlinePhotoEdit(photoSrc) {
     photoEditSurface = 'avatar';
     document.getElementById('photoEditModal')?.classList.add('hidden');
+    unlockBodyScroll('photoEditModal');
     setAvatarModalInlineEditVisible(true);
     photoEditCanvas = getPhotoEditCanvasEl();
     if (!photoEditCanvas) return;
@@ -468,6 +470,7 @@ function openPhotoEditModalWithImage(photoSrc) {
     if (wrapper) wrapper.style.aspectRatio = getPhotoEditAspectRatioCss();
 
     modal.classList.remove('hidden');
+    lockBodyScroll('photoEditModal');
     updatePhotoEditNavUI();
 
     photoEditCanvas = getPhotoEditCanvasEl();
@@ -1140,6 +1143,7 @@ export function closePhotoEditModal() {
 
     if (modal && surface === 'modal') {
         modal.classList.add('hidden');
+        unlockBodyScroll('photoEditModal');
     }
 
     detachPhotoEditCanvasListeners();

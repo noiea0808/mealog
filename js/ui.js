@@ -629,13 +629,34 @@ function welcomeShowsReportTab() {
     return !!(window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser));
 }
 
+/** 요일별 웰컴 팝업 기본 노출: 월=AI리포트, 화~목=식사(어떻게→무엇을→함께), 금~일=간식(언제→어디서→무엇을) */
+function getWelcomeWeekdayDefault() {
+    const day = new Date().getDay(); // 0=일 1=월 ... 6=토
+    switch (day) {
+        case 1: return { kind: 'report', slideIdx: 0 };
+        case 2: return { kind: 'meal', slideIdx: 0 };
+        case 3: return { kind: 'meal', slideIdx: 1 };
+        case 4: return { kind: 'meal', slideIdx: 2 };
+        case 5: return { kind: 'snack', slideIdx: 0 };
+        case 6: return { kind: 'snack', slideIdx: 1 };
+        default: return { kind: 'snack', slideIdx: 2 }; // 일
+    }
+}
+
+/** 요일 기본값이 리포트인데 실제로 보여줄 리포트가 없으면(비로그인·데모·데이터 없음) 식사 첫 슬라이드로 대체 */
+function resolveWelcomeDefault(reportAvailable) {
+    const day = getWelcomeWeekdayDefault();
+    if (day.kind === 'report' && !reportAvailable) return { kind: 'meal', slideIdx: 0 };
+    return day;
+}
+
 function getWelcomeDefaultChartKind() {
-    return welcomeShowsReportTab() ? 'report' : 'meal';
+    return resolveWelcomeDefault(welcomeShowsReportTab()).kind;
 }
 
 /**
  * 웰컴 차트 표시 전 리포트 날짜·본문을 미리 로드.
- * 리포트 없으면 식사 분석 탭, 있으면 전체 리포트를 캐시한 뒤 팝업에서 즉시 렌더.
+ * 리포트 있으면 전체 리포트를 캐시한 뒤 팝업에서 즉시 렌더 (실제 기본 탭은 resolveWelcomeDefault가 요일별로 결정).
  * @returns {Promise<{ chartKind: 'report'|'meal', dates: string[], dataCache: Map<string, object> }>}
  */
 export async function prepareWelcomeReportState(uid) {
@@ -797,6 +818,7 @@ function bindAttendanceWelcomeKindSwitchOnce() {
         else if (snackHit) next = 'snack';
         if (!next || next === welcomeChartKind) return;
         welcomeChartKind = next;
+        attendanceWelcomeSlideIdx = 0;
         updateWelcomeKindSwitchUi();
         renderAttendanceWelcomeChartsArea();
     });
@@ -1065,7 +1087,7 @@ function renderAttendanceWelcomeChartsArea() {
             const n = slides.length;
             track.dataset.slideCount = String(n);
             vp.dataset.slideCount = String(n);
-            attendanceWelcomeSlideIdx = 0;
+            attendanceWelcomeSlideIdx = Math.min(Math.max(attendanceWelcomeSlideIdx, 0), Math.max(n - 1, 0));
 
             const wPct = 100 / n;
             track.style.width = `${n * 100}%`;
@@ -1079,11 +1101,11 @@ function renderAttendanceWelcomeChartsArea() {
             dots.innerHTML = slides
                 .map(
                     (_, i) =>
-                        `<span class="attendance-welcome-dot${i === 0 ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
+                        `<span class="attendance-welcome-dot${i === attendanceWelcomeSlideIdx ? ' attendance-welcome-dot--active' : ''}" role="presentation"></span>`
                 )
                 .join('');
 
-            track.style.transform = 'translateX(0)';
+            track.style.transform = `translateX(-${attendanceWelcomeSlideIdx * wPct}%)`;
             updateWelcomeKindSwitchUi();
             bindAttendanceWelcomeChartsOnce();
             bindAttendanceWelcomeChartNavOnce();
@@ -1246,9 +1268,10 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     textSvg.setAttribute('height', String(vbH));
 
     if (showWelcomeCharts) {
-        attendanceWelcomeSlideIdx = 0;
         if (welcomePrepared) {
-            welcomeChartKind = welcomePrepared.chartKind === 'report' ? 'report' : 'meal';
+            const wDefault = resolveWelcomeDefault(welcomePrepared.chartKind === 'report');
+            welcomeChartKind = wDefault.kind;
+            attendanceWelcomeSlideIdx = wDefault.slideIdx;
             welcomeReportDates = welcomePrepared.dates ? welcomePrepared.dates.slice() : [];
             welcomeReportIndex = 0;
             welcomeLatestReportDate = welcomeReportDates[0] || '';
@@ -1259,7 +1282,9 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
                 }
             }
         } else {
-            welcomeChartKind = getWelcomeDefaultChartKind();
+            const wDefault = resolveWelcomeDefault(welcomeShowsReportTab());
+            welcomeChartKind = wDefault.kind;
+            attendanceWelcomeSlideIdx = wDefault.slideIdx;
             resetWelcomeReportNavState();
             prefetchWelcomeLatestDietReport();
         }
@@ -1483,9 +1508,6 @@ export function showNetworkErrorOverlay(options = {}) {
     } catch (_) {
         /* ignore */
     }
-    void import('./utils/mealog-offline-ui.js').then((m) => {
-        if (typeof m.notifyTransportOfflineUi === 'function') m.notifyTransportOfflineUi();
-    });
 }
 
 export function hideNetworkErrorOverlay() {

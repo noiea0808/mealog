@@ -246,6 +246,11 @@ export function registerFirestoreListenersRebind(fn) {
     firestoreListenersRebind = typeof fn === 'function' ? fn : null;
 }
 
+/** 관찰 가능한 onSnapshot 리스너가 붙어 있는지 — 복구 성공을 활동 시각으로 판정할 수 있는지에 사용 */
+export function hasFirestoreListenersRegistered() {
+    return typeof firestoreListenersRebind === 'function';
+}
+
 /** 복구·전환 후 등록된 onSnapshot 리스너 재부착 */
 export function rebindFirestoreListenersIfRegistered() {
     if (!firestoreListenersRebind) return false;
@@ -337,26 +342,34 @@ export async function recoverFirestoreAfterWatchAssertion(reason = '', opts = {}
         try {
             console.warn('[Firestore] Watch 내부 오류 복구 시도:', reason || '(detail omitted)');
             // clearIndexedDbPersistence는 로컬 쓰기 큐도 지운다 — 미전송 쓰기 유실을 막기 위해
-            // 짧은 시간(4s) 안에 flush를 시도한 뒤 진행 (오프라인이면 타임아웃 후 그대로 진행)
+            // 짧은 시간(4s) 안에 flush를 시도하고, flush가 확인된 경우에만 캐시를 지운다.
+            // (오프라인 등으로 큐가 안 비었으면 캐시를 남겨 쓰기 유실 방지 — 재생성만으로도 대부분 복구됨)
+            let pendingWritesFlushed = false;
             try {
-                await Promise.race([
-                    waitForPendingWrites(db),
-                    new Promise((resolve) => setTimeout(resolve, 4000))
+                pendingWritesFlushed = await Promise.race([
+                    waitForPendingWrites(db).then(() => true),
+                    new Promise((resolve) => setTimeout(() => resolve(false), 4000))
                 ]);
             } catch (e) {
                 console.warn('[Firestore] recover 전 waitForPendingWrites:', e?.message || e);
             }
+            const dbToClear = db;
             try {
-                await terminate(db);
+                await terminate(dbToClear);
             } catch (e) {
                 console.warn('[Firestore] terminate:', e?.message || e);
             }
-            try {
-                await clearIndexedDbPersistence(app);
-            } catch (e) {
-                if (e?.code !== 'failed-precondition') {
-                    console.warn('[Firestore] clearIndexedDbPersistence:', e?.message || e);
+            if (pendingWritesFlushed) {
+                try {
+                    // terminate 된 인스턴스를 넘겨야 함 (app 아님)
+                    await clearIndexedDbPersistence(dbToClear);
+                } catch (e) {
+                    if (e?.code !== 'failed-precondition') {
+                        console.warn('[Firestore] clearIndexedDbPersistence:', e?.message || e);
+                    }
                 }
+            } else {
+                console.warn('[Firestore] 미전송 쓰기 잔존 — IndexedDB 캐시 유지 (쓰기 유실 방지)');
             }
             db = createFirestore();
             try {

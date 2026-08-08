@@ -1,17 +1,17 @@
 /**
  * 본인 모먼트 공유 목록 캐시 갱신 (canonical: sharedPhotos 컬렉션)
  */
-import { refreshMySharesCache } from '../utils/moment-share-state.js';
+import { refreshMySharesCache, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 
 /**
- * @returns {Promise<object[]>} 갱신된 window.sharedPhotos
+ * @returns {Promise<object[]>} 갱신된 getSharedPhotos()
  */
 export async function refreshMyMomentShares() {
     try {
         return await refreshMySharesCache();
     } catch (e) {
         console.warn('본인 공유 캐시 갱신 실패:', e);
-        window.sharedPhotos = [];
+        setSharedPhotos([]);
         return [];
     }
 }

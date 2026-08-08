@@ -22,6 +22,9 @@ export const ENTRY_DOM = {
     snackExtras: 'entrySnackExtras',
 };
 
+/** 기록 사진 비율 선택지 (히어로 프레임·모먼트 카드 공통) */
+export const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
+
 /** @typedef {'meal'|'snack'} EntryFormMode */
 
 /** @param {{ type?: string }|null|undefined} slot */

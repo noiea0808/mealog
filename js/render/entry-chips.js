@@ -26,6 +26,12 @@ export function setEntryTagStageView(suggestionsId, view) {
     const stage = suggestions?.closest?.('.entry-tag-stage');
     if (!stage) return;
     const toSub = view === 'sub';
+    // 이미 같은 뷰면 클래스·높이 잠금을 다시 돌리지 않음 (입력 중 깜빡임 방지)
+    if (stage.classList.contains('entry-tag-stage--sub') === toSub) {
+        const back = stage.querySelector('[data-entry-tag-back]');
+        if (back) back.setAttribute('aria-hidden', toSub ? 'false' : 'true');
+        return;
+    }
     stage.classList.toggle('entry-tag-stage--sub', toSub);
     const back = stage.querySelector('[data-entry-tag-back]');
     if (back) back.setAttribute('aria-hidden', toSub ? 'false' : 'true');
@@ -128,9 +134,10 @@ export function renderEntryChips() {
             .join('');
     };
 
-    window.renderSecondary = (id, list, inputId, parentFilter = null, subTagKey = null) => {
+    window.renderSecondary = (id, list, inputId, parentFilter = null, subTagKey = null, opts = {}) => {
         const el = document.getElementById(id);
         if (!el) return;
+        const preserveStage = opts?.preserveStage === true;
         let filteredList = list || [];
         if (parentFilter) {
             filteredList = filteredList.filter((item) => {
@@ -146,6 +153,7 @@ export function renderEntryChips() {
             : [currentInputVal];
 
         if (!parentFilter) {
+            if (preserveStage) return;
             el.innerHTML = '';
             setEntryTagStageView(id, 'main');
             if (typeof window.syncEntrySheetHeightLock === 'function') {
@@ -247,10 +255,12 @@ export function renderEntryChips() {
         `;
         if (myTagsList.length || recentList.length) refreshLucideIcons(el);
         syncEntrySubtagScrollHints(el);
-        setEntryTagStageView(id, 'sub');
+        if (!preserveStage) {
+            setEntryTagStageView(id, 'sub');
+        }
         const stage = el.closest('.entry-tag-stage');
         if (stage) refreshLucideIcons(stage);
-        if (typeof window.syncEntrySheetHeightLock === 'function') {
+        if (!preserveStage && typeof window.syncEntrySheetHeightLock === 'function') {
             window.syncEntrySheetHeightLock();
         }
     };

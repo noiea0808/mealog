@@ -453,7 +453,7 @@ export function renderPostGroupHtml(photoGroup, groupIdx, mealHistoryMap, option
                         <div class="flex items-center gap-4">
                             <button onclick='window.toggleLike(${postIdJs})' class="post-like-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i data-lucide="heart" class="text-2xl text-slate-800 post-like-icon social-action-icon-stroke"></i>
-                                <span class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">${likeCountTxt}</span>
+                                <span onclick='event.stopPropagation();window.openPostLikesModal(${postIdJs})' class="post-like-count text-sm font-bold text-slate-800" data-post-id="${postId}">${likeCountTxt}</span>
                             </button>
                             <button onclick='window.toggleCommentInput(${postIdJs})' class="post-comment-btn flex items-center gap-2 active:scale-95 transition-transform" data-post-id="${postId}" data-requires-login="true">
                                 <i data-lucide="message-circle" class="text-2xl text-slate-800 post-comment-icon social-action-icon-stroke"></i>

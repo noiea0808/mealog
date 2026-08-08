@@ -4,6 +4,7 @@
 import { updateTrackerStreakLabel } from '../attendance-check.js';
 import { trustStreakHistoryEmptyForDay, untrustStreakHistoryEmptyForDay } from '../meal-record-count.js';
 import { clearMealEntrySaveFailedById } from './meal-entry-pending.js';
+import { getSharedPhotos, setSharedPhotos } from './moment-share-state.js';
 
 const DELETE_OPT_MAIN = new Set(['morning', 'lunch', 'dinner']);
 const DELETE_OPT_SNACK = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
@@ -72,8 +73,8 @@ export function applyOptimisticMealDelete(mealId, preloadedMeal = null) {
     }
 
     const hadShared = Array.isArray(meal.sharedPhotos) && meal.sharedPhotos.length > 0;
-    if (hadShared && window.sharedPhotos) {
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== mealId);
+    if (hadShared) {
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== mealId));
     }
     if (window.sharedPhotosFeed) {
         window.sharedPhotosFeed = window.sharedPhotosFeed.filter((p) => p.entryId !== mealId);
@@ -93,10 +94,9 @@ export function rollbackOptimisticMealDelete(ctx) {
         window.dailyStats = { ...window.dailyStats, [ctx.dateIso]: ctx.prevDayStats };
     }
     if (ctx.hadShared && Array.isArray(m.sharedPhotos) && m.sharedPhotos.length && window.currentUser?.uid) {
-        if (!window.sharedPhotos) window.sharedPhotos = [];
         const uid = window.currentUser.uid;
         const entries = m.sharedPhotos.map((photoUrl) => ({ entryId: m.id, photoUrl, userId: uid }));
-        window.sharedPhotos = window.sharedPhotos.filter((p) => p.entryId !== m.id).concat(entries);
+        setSharedPhotos(getSharedPhotos().filter((p) => p.entryId !== m.id).concat(entries));
     }
     try {
         if (typeof window.fillProfileActivityStats === 'function') window.fillProfileActivityStats();

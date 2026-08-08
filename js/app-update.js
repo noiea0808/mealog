@@ -42,7 +42,7 @@ function showFlexibleRestartBanner(onRestart) {
     banner.setAttribute('role', 'status');
     banner.style.cssText = [
         'position:fixed',
-        'z-index:99999',
+        'z-index:var(--z-app-update)',
         'box-sizing:border-box',
         'line-height:1.4',
     ].join(';');
@@ -89,7 +89,7 @@ function showSimulatedUpdateConfirm({ version, onAccept, onDismiss }) {
     const overlay = document.createElement('div');
     overlay.id = 'appUpdateSimConfirm';
     overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'z-index:99998',
+        'position:fixed', 'inset:0', 'z-index:var(--z-app-update-dim)',
         'display:flex', 'align-items:center', 'justify-content:center',
         'padding:24px', 'background:rgba(0,0,0,0.45)',
     ].join(';');
@@ -160,7 +160,7 @@ function showSimulatedDownloadProgress(onDone) {
     bar.setAttribute('role', 'status');
     bar.style.cssText = [
         'position:fixed', 'left:50%', 'transform:translateX(-50%)',
-        'bottom:calc(env(safe-area-inset-bottom, 0px) + 84px)', 'z-index:99999',
+        'bottom:calc(env(safe-area-inset-bottom, 0px) + 84px)', 'z-index:var(--z-app-update)',
         'width:min(420px, calc(100vw - 24px))', 'box-sizing:border-box',
         'padding:14px 16px', 'border-radius:14px', 'background:#1f2937', 'color:#fff',
         'box-shadow:0 8px 24px rgba(0,0,0,0.28)', 'font-size:14px',

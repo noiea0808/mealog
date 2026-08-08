@@ -5,6 +5,123 @@ import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-writ
 import { showToast } from '../ui.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot, getCountFromServer, limit } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
+/** 라벨 텍스트 생성 (모먼트 종류별) */
+function momentLabelFor(data) {
+    const shareType = (data.type || '').trim();
+    if (shareType === 'daily' && data.date) {
+        const d = new Date(data.date + 'T00:00:00');
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        const day = d.getDate();
+        return `${y}년 ${m}월 ${day}일 하루 기록`;
+    }
+    if (shareType === 'best' && data.periodText) {
+        const pt = (data.periodType || '주간').trim();
+        return `${data.periodText} ${pt} Best`;
+    }
+    if (shareType === 'insight' && data.dateRangeText) {
+        return `${data.dateRangeText} 밀당 참견`;
+    }
+    const place = (data.place || '').trim();
+    const menuDetail = (data.menuDetail || '').trim();
+    const deliveryVendor = (data.deliveryVendor || '').trim();
+    const mealType = (data.mealType || '').trim();
+    let menuLine = menuDetail;
+    if (mealType === '배달/포장' && deliveryVendor && menuDetail) {
+        menuLine = `${deliveryVendor} | ${menuDetail}`;
+    } else if (mealType === '배달/포장' && deliveryVendor) {
+        menuLine = deliveryVendor;
+    }
+    if (menuLine && place) return `${menuLine} @ ${place}`;
+    if (place) return place;
+    if (menuLine) return menuLine;
+    if (mealType) return mealType;
+    return '해당 게시물';
+}
+
+/** 내 글(모먼트) postId → 썸네일/라벨/canonical postId 별칭 맵 (댓글·좋아요 알림 공용) */
+async function buildMomentAliasContext(uid) {
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const sharedQ = query(sharedColl, where('userId', '==', uid));
+    let sharedSnap;
+    try {
+        sharedSnap = await getDocsFromServer(sharedQ);
+    } catch (_) {
+        sharedSnap = await getDocs(sharedQ);
+    }
+    const byEntryUserId = {};
+    const byDocId = {};
+    const byEntryId = {};
+    const byGroupKey = {};
+    /** raw postId → 갤러리 canonical postId */
+    const rawToCanonical = {};
+    const registerAlias = (alias, canonical, meta) => {
+        if (!alias || !canonical) return;
+        rawToCanonical[alias] = canonical;
+        if (!byGroupKey[alias]) byGroupKey[alias] = meta;
+    };
+    for (const d of sharedSnap.docs) {
+        const data = d.data();
+        const docId = d.id;
+        const entryId = data.entryId;
+        const docUserId = String(data.userId || '').trim();
+        const photoUrl = data.photoUrl || null;
+        const photoIndex = typeof data.photoIndex === 'number' ? data.photoIndex : 999;
+        const label = momentLabelFor(data);
+        const meta = { photoUrl, photoIndex, label };
+        const shareType = (data.type || '').trim();
+        let canonical = docId;
+        if (shareType === 'daily' && data.date) {
+            canonical = `daily_${data.date}_${docUserId}`;
+        } else if (shareType === 'best') {
+            if (data.periodType && data.periodText) {
+                canonical = `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`;
+            } else {
+                canonical = `best_${docId}_${docUserId}`;
+            }
+        } else if (shareType === 'insight' && data.dateRangeText) {
+            canonical = `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`;
+        } else if (entryId) {
+            canonical = `${String(entryId).trim()}_${docUserId}`;
+        }
+        byDocId[docId] = meta;
+        registerAlias(docId, canonical, meta);
+        registerAlias(canonical, canonical, meta);
+        if (entryId) {
+            const eid = String(entryId).trim();
+            if (!byEntryId[eid] || (typeof byEntryId[eid].photoIndex === 'number' && photoIndex < byEntryId[eid].photoIndex))
+                byEntryId[eid] = meta;
+            registerAlias(eid, canonical, meta);
+            if (docUserId) {
+                const key = `${eid}_${docUserId}`;
+                if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
+                    byEntryUserId[key] = meta;
+                registerAlias(key, canonical, meta);
+            }
+        }
+        if (shareType === 'daily' && data.date) {
+            registerAlias(`daily_${data.date}_${docUserId}`, canonical, meta);
+        } else if (shareType === 'best') {
+            registerAlias(`best_${docId}_${docUserId}`, canonical, meta);
+            if (data.periodType && data.periodText) {
+                registerAlias(
+                    `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`,
+                    canonical,
+                    meta
+                );
+            }
+        } else if (shareType === 'insight' && data.dateRangeText) {
+            registerAlias(
+                `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`,
+                canonical,
+                meta
+            );
+        }
+        byGroupKey[canonical] = meta;
+    }
+    return { rawToCanonical, byEntryUserId, byDocId, byEntryId, byGroupKey };
+}
+
 // 좋아요, 댓글, 북마크 관련 함수들
 export const postInteractions = {
     // 좋아요 추가/제거
@@ -356,116 +473,7 @@ export const postInteractions = {
         const uid = String(ownerId || '').trim();
         if (!uid) return [];
         try {
-            const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-            const sharedQ = query(sharedColl, where('userId', '==', uid));
-            let sharedSnap;
-            try {
-                sharedSnap = await getDocsFromServer(sharedQ);
-            } catch (_) {
-                sharedSnap = await getDocs(sharedQ);
-            }
-            const byEntryUserId = {};
-            const byDocId = {};
-            const byEntryId = {};
-            const byGroupKey = {};
-            /** raw postId → 갤러리 canonical postId */
-            const rawToCanonical = {};
-            const momentLabel = (data) => {
-                const shareType = (data.type || '').trim();
-                if (shareType === 'daily' && data.date) {
-                    const d = new Date(data.date + 'T00:00:00');
-                    const y = d.getFullYear();
-                    const m = d.getMonth() + 1;
-                    const day = d.getDate();
-                    return `${y}년 ${m}월 ${day}일 하루 기록`;
-                }
-                if (shareType === 'best' && data.periodText) {
-                    const pt = (data.periodType || '주간').trim();
-                    return `${data.periodText} ${pt} Best`;
-                }
-                if (shareType === 'insight' && data.dateRangeText) {
-                    return `${data.dateRangeText} 밀당 참견`;
-                }
-                const place = (data.place || '').trim();
-                const menuDetail = (data.menuDetail || '').trim();
-                const deliveryVendor = (data.deliveryVendor || '').trim();
-                const mealType = (data.mealType || '').trim();
-                let menuLine = menuDetail;
-                if (mealType === '배달/포장' && deliveryVendor && menuDetail) {
-                    menuLine = `${deliveryVendor} | ${menuDetail}`;
-                } else if (mealType === '배달/포장' && deliveryVendor) {
-                    menuLine = deliveryVendor;
-                }
-                if (menuLine && place) return `${menuLine} @ ${place}`;
-                if (place) return place;
-                if (menuLine) return menuLine;
-                if (mealType) return mealType;
-                return '해당 게시물';
-            };
-            const registerAlias = (alias, canonical, meta) => {
-                if (!alias || !canonical) return;
-                rawToCanonical[alias] = canonical;
-                if (!byGroupKey[alias]) byGroupKey[alias] = meta;
-            };
-            for (const d of sharedSnap.docs) {
-                const data = d.data();
-                const docId = d.id;
-                const entryId = data.entryId;
-                const docUserId = String(data.userId || '').trim();
-                const photoUrl = data.photoUrl || null;
-                const photoIndex = typeof data.photoIndex === 'number' ? data.photoIndex : 999;
-                const label = momentLabel(data);
-                const meta = { photoUrl, photoIndex, label };
-                const shareType = (data.type || '').trim();
-                let canonical = docId;
-                if (shareType === 'daily' && data.date) {
-                    canonical = `daily_${data.date}_${docUserId}`;
-                } else if (shareType === 'best') {
-                    if (data.periodType && data.periodText) {
-                        canonical = `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`;
-                    } else {
-                        canonical = `best_${docId}_${docUserId}`;
-                    }
-                } else if (shareType === 'insight' && data.dateRangeText) {
-                    canonical = `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`;
-                } else if (entryId) {
-                    canonical = `${String(entryId).trim()}_${docUserId}`;
-                }
-                byDocId[docId] = meta;
-                registerAlias(docId, canonical, meta);
-                registerAlias(canonical, canonical, meta);
-                if (entryId) {
-                    const eid = String(entryId).trim();
-                    if (!byEntryId[eid] || (typeof byEntryId[eid].photoIndex === 'number' && photoIndex < byEntryId[eid].photoIndex))
-                        byEntryId[eid] = meta;
-                    registerAlias(eid, canonical, meta);
-                    if (docUserId) {
-                        const key = `${eid}_${docUserId}`;
-                        if (!byEntryUserId[key] || (typeof byEntryUserId[key].photoIndex === 'number' && photoIndex < byEntryUserId[key].photoIndex))
-                            byEntryUserId[key] = meta;
-                        registerAlias(key, canonical, meta);
-                    }
-                }
-                if (shareType === 'daily' && data.date) {
-                    registerAlias(`daily_${data.date}_${docUserId}`, canonical, meta);
-                } else if (shareType === 'best') {
-                    registerAlias(`best_${docId}_${docUserId}`, canonical, meta);
-                    if (data.periodType && data.periodText) {
-                        registerAlias(
-                            `best_${data.periodType}_${String(data.periodText).replace(/\s/g, '_')}_${docUserId}`,
-                            canonical,
-                            meta
-                        );
-                    }
-                } else if (shareType === 'insight' && data.dateRangeText) {
-                    registerAlias(
-                        `insight_${String(data.dateRangeText).replace(/\s/g, '_')}_${docUserId}`,
-                        canonical,
-                        meta
-                    );
-                }
-                byGroupKey[canonical] = meta;
-            }
+            const { rawToCanonical, byEntryUserId, byDocId, byEntryId, byGroupKey } = await buildMomentAliasContext(uid);
 
             const commentsColl = collection(db, 'artifacts', appId, 'postComments');
             const commentsQ = query(commentsColl, where('postOwnerId', '==', uid));
@@ -539,6 +547,70 @@ export const postInteractions = {
             console.error("Get Posts With Comments For User Error:", e);
             return [];
         }
+    },
+
+    /** 내 글(모먼트)에 달린 좋아요 요약 목록: postId별 개수·최근 누른 사람 닉네임 (알림용, 명단은 노출하지 않음) */
+    async getPostsWithLikesForUser(ownerId) {
+        const uid = String(ownerId || '').trim();
+        if (!uid) return [];
+        try {
+            const likeNotifsColl = collection(db, 'artifacts', appId, 'users', uid, 'likeNotifications');
+            let snapshot;
+            try {
+                snapshot = await getDocsFromServer(likeNotifsColl);
+            } catch (_) {
+                try {
+                    snapshot = await getDocs(likeNotifsColl);
+                } catch (__) {
+                    snapshot = { docs: [] };
+                }
+            }
+            if (!snapshot.docs.length) return [];
+            const { rawToCanonical, byEntryUserId, byDocId, byEntryId, byGroupKey } = await buildMomentAliasContext(uid);
+            const list = [];
+            for (const d of snapshot.docs) {
+                const data = d.data();
+                const likeCount = Number(data.likeCount) || 0;
+                if (likeCount <= 0) continue;
+                const rawPostId = String(data.postId ?? '').trim();
+                if (!rawPostId) continue;
+                const postId = rawToCanonical[rawPostId] || rawPostId;
+                let ts = 0;
+                try {
+                    const t = data.lastLikeAt;
+                    ts = t && (t.toDate ? t.toDate() : new Date(t)).getTime();
+                    if (Number.isNaN(ts)) ts = 0;
+                } catch (_) { ts = 0; }
+                const entry = byEntryUserId[postId];
+                const docEntry = byDocId[postId];
+                const entryOnly = byEntryId[postId];
+                const groupEntry = byGroupKey[postId];
+                list.push({
+                    postId,
+                    lastCommentAt: ts,
+                    commentCount: likeCount,
+                    type: 'momentLike',
+                    aliasPostIds: rawPostId !== postId ? [rawPostId] : [],
+                    actorNickname: String(data.lastLikerNickname || '').trim() || '누군가',
+                    thumbnailUrl:
+                        (entry && entry.photoUrl) ||
+                        (docEntry && docEntry.photoUrl) ||
+                        (groupEntry && groupEntry.photoUrl) ||
+                        (entryOnly && entryOnly.photoUrl) ||
+                        null,
+                    momentLabel:
+                        (entry && entry.label) ||
+                        (docEntry && docEntry.label) ||
+                        (groupEntry && groupEntry.label) ||
+                        (entryOnly && entryOnly.label) ||
+                        '해당 게시물'
+                });
+            }
+            return list.sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        } catch (e) {
+            console.error("Get Posts With Likes For User Error:", e);
+            return [];
+        }
     }
 };
 
@@ -554,6 +626,16 @@ export function subscribeToMyPostComments(uid, callback) {
     const commentsColl = collection(db, 'artifacts', appId, 'postComments');
     const q = query(commentsColl, where('postOwnerId', '==', id));
     return onSnapshot(q, (snap) => {
+        if (snap.docChanges().length > 0) callback();
+    });
+}
+
+/** 실시간: 내 글에 달린 좋아요 알림 집계 변경 시 콜백 (알림 빨간점 갱신용) */
+export function subscribeToMyLikeNotifications(uid, callback) {
+    const id = String(uid || '').trim();
+    if (!id || !callback) return () => {};
+    const coll = collection(db, 'artifacts', appId, 'users', id, 'likeNotifications');
+    return onSnapshot(coll, (snap) => {
         if (snap.docChanges().length > 0) callback();
     });
 }

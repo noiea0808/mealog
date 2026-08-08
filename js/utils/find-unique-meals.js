@@ -16,10 +16,27 @@ function isOrphanCandidate(m, serverIds) {
     const id = String(m.id);
     if (serverIds.has(id)) return false;
     const mgr = getMealSyncManager();
+    /**
+     * 서버가 이 기록을 안다는 증거(과거 서버 ack)가 없으면 지우지 않는다.
+     *
+     * 스냅샷에 없는 로컬 행을 지워도 되는 경우는 하나뿐이다 — 서버에 있었는데 빠진 것,
+     * 즉 다른 기기에서 지운 경우. 한 번도 서버에서 확인된 적이 없는 행은 「아직 못 올린
+     * 내 기록」이지 「지워진 기록」이 아니다.
+     *
+     * 아래 표식 목록만으로 보호하면 안 되는 이유: 표식은 재시도·정합 과정에서 서로 옮겨
+     * 다닌다(칩 → markInFlight 가 칩을 지움 → ack 나 실패로 다시 표식). 그 사이 표식이
+     * 하나도 없는 찰나에 리스너 재구독 병합이 겹치면 아직 서버에 없는 기록이 조용히
+     * 사라진다. 사용자에게는 「올라가지도 않았는데 기록이 없어졌다」로 보인다.
+     */
+    if (!mgr.hasServerSynced(id)) return true;
     if (id.startsWith('temp_')) return true;
     if (m._localSaveFailed === true || m.is_sync_error === true) return true;
     if (mgr.hasErrorId(id)) return true;
     if (mgr.hasAbandonedId(id)) return true;
+    // 등록예정 칩·저장 진행 중: Firestore 로컬 큐에 없는 행(Callable 폴백·setDoc 이전 타임아웃 등)은
+    // 스냅샷에 안 나타나므로, 여기서 보호하지 않으면 리스너 재구독 때 조용히 사라진다.
+    if (mgr.hasRegisterScheduledChip(id)) return true;
+    if (mgr.hasInFlight(id)) return true;
     if (mgr.hasPendingPhotoEntry(id)) return true;
     if (mgr.hasOptimisticTemp(id)) return true;
     if (mgr.isDeleting(m) || mgr.isDeleteInFlight(m) || mgr.isDeleteFailed(m)) return true;

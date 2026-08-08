@@ -639,35 +639,99 @@ async function backfillDailyJournalMealMirrors(rows, maxWrites = 150) {
     }
 }
 
-/** meals 미러가 있으면 pinned 중복 제외 (legacy settings만 유지) */
+/**
+ * meals 미러(dailyJournal_*)가 있으면 pinned 하루기록 행을 제외한다.
+ * — settings 슬롯뿐 아니라 모먼트 전용(sharedPhotos) 행도 함께 제외
+ * — 목록에는 meals 행만 남기고 ensureSharedKeys가 momentShared를 붙여 「슬롯+모먼트」 한 줄로 표시
+ */
 async function filterDailyJournalRowsWithoutMealMirror(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return [];
-    const slotRows = rows.filter((r) => r?.isDailyJournalSlot && r.userId && r.date);
-    const otherRows = rows.filter((r) => !r?.isDailyJournalSlot);
-    if (!slotRows.length) return rows;
-    const legacy = [];
+    const pinnedDj = rows.filter((r) => r?.isDailyJournal && r.userId && r.date);
+    const others = rows.filter((r) => !(r?.isDailyJournal && r.userId && r.date));
+    if (!pinnedDj.length) return rows;
+    const keep = [];
     const BATCH = 24;
-    for (let i = 0; i < slotRows.length; i += BATCH) {
-        const chunk = slotRows.slice(i, i + BATCH);
+    for (let i = 0; i < pinnedDj.length; i += BATCH) {
+        const chunk = pinnedDj.slice(i, i + BATCH);
         await Promise.all(
             chunk.map(async (r) => {
                 const mealId = getDailyJournalMealDocId(r.date);
                 if (!mealId) {
-                    legacy.push(r);
+                    keep.push(r);
                     return;
                 }
                 try {
                     const snap = await getDoc(
                         doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId)
                     );
-                    if (!snap.exists()) legacy.push(r);
+                    if (!snap.exists()) keep.push(r);
                 } catch (_) {
-                    legacy.push(r);
+                    keep.push(r);
                 }
             })
         );
     }
-    return [...legacy, ...otherRows];
+    return [...keep, ...others];
+}
+
+/**
+ * 같은 사용자·날짜의 하루기록 행이 페이지에 둘 이상이면 하나로 합친다
+ * (슬롯 meals + 모먼트 pinned 가 동시에 들어온 경우 → 슬롯+모먼트)
+ */
+function collapseDailyJournalDuplicateRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return rows;
+    const keyToIndex = new Map();
+    const out = [];
+    for (const r of rows) {
+        if (!r?.isDailyJournal || !r.userId || !r.date) {
+            out.push(r);
+            continue;
+        }
+        const key = dailyJournalModerationRowKey(r.userId, r.date);
+        if (!keyToIndex.has(key)) {
+            keyToIndex.set(key, out.length);
+            out.push(r);
+            continue;
+        }
+        const keep = out[keyToIndex.get(key)];
+        const preferMealDoc =
+            String(r.id || '').startsWith('dailyJournal_') &&
+            !String(r.id).includes(String(r.userId));
+        if (preferMealDoc) {
+            const merged = {
+                ...keep,
+                ...r,
+                momentShared: !!(keep.momentShared || r.momentShared),
+                isDailyJournalSlot: true,
+                isDailyJournal: true
+            };
+            if ((keep.photos?.length || 0) > (merged.photos?.length || 0)) {
+                merged.photos = keep.photos;
+            }
+            if ((keep.momentShareAtMillis || 0) > (merged.momentShareAtMillis || 0)) {
+                merged.momentShareAtMillis = keep.momentShareAtMillis;
+            }
+            if (keep.dailyJournalEntry && !merged.dailyJournalEntry) {
+                merged.dailyJournalEntry = keep.dailyJournalEntry;
+            }
+            out[keyToIndex.get(key)] = merged;
+        } else {
+            keep.momentShared = !!(keep.momentShared || r.momentShared);
+            keep.isDailyJournalSlot =
+                keep.isDailyJournalSlot === true || r.isDailyJournalSlot === true;
+            keep.isDailyJournal = true;
+            if ((r.photos?.length || 0) > (keep.photos?.length || 0)) {
+                keep.photos = r.photos;
+            }
+            if ((r.momentShareAtMillis || 0) > (keep.momentShareAtMillis || 0)) {
+                keep.momentShareAtMillis = r.momentShareAtMillis;
+            }
+            if (r.dailyJournalEntry && !keep.dailyJournalEntry) {
+                keep.dailyJournalEntry = r.dailyJournalEntry;
+            }
+        }
+    }
+    return out;
 }
 
 async function getDailyJournalsModerationRowsCached(authorUid = '') {
@@ -1440,8 +1504,9 @@ async function renderFeedManagement() {
     
     try {
         console.log('📋 피드 관리: 페이지', feedCurrentPage, '로드 중... (페이지 단위)');
-        const allRows = await getFeedPageWithCache(feedCurrentPage);
-        await ensureSharedKeysForFeedRows(allRows);
+        const pageRows = await getFeedPageWithCache(feedCurrentPage);
+        await ensureSharedKeysForFeedRows(pageRows);
+        const allRows = collapseDailyJournalDuplicateRows(pageRows);
 
         console.log('🔍 필터 적용:', feedFilters, feedAuthorFilter);
         const authorUid = getFeedAuthorUserId();
@@ -2018,7 +2083,7 @@ window.showReportDetailPopup = function(targetGroupKey) {
     
     const overlay = document.createElement('div');
     overlay.id = 'reportDetailModal';
-    overlay.className = 'fixed inset-0 z-[600] flex items-center justify-center p-4';
+    overlay.className = 'fixed inset-0 z-[var(--z-admin-modal)] flex items-center justify-center p-4';
     
     const bg = document.createElement('div');
     bg.className = 'absolute inset-0 bg-black/50';
@@ -2760,9 +2825,10 @@ async function collectMomentRowsForExport(range = {}) {
     }
 
     await ensureSharedKeysForFeedRows(allRows);
+    const collapsedRows = collapseDailyJournalDuplicateRows(allRows);
 
     const authorUid = getFeedAuthorUserId();
-    const filtered = allRows.filter((meal) => {
+    const filtered = collapsedRows.filter((meal) => {
         if (authorUid && meal.userId !== authorUid) return false;
         if (startMs !== null || endMs !== null) {
             const t = moderationRecordedAtMillis(meal);
@@ -2972,7 +3038,7 @@ function openMomentExportRangePopup() {
 
         const overlay = document.createElement('div');
         overlay.id = 'momentExportRangeModal';
-        overlay.className = 'fixed inset-0 z-[700] flex items-center justify-center p-4';
+        overlay.className = 'fixed inset-0 z-[var(--z-admin-over)] flex items-center justify-center p-4';
 
         const bg = document.createElement('div');
         bg.className = 'absolute inset-0 bg-black/50';
@@ -3110,7 +3176,7 @@ function ensureAdminFeedPhotoViewerModal() {
     if (el) return el;
     el = document.createElement('div');
     el.id = 'adminFeedPhotoViewerModal';
-    el.className = 'fixed inset-0 z-[9999] hidden';
+    el.className = 'fixed inset-0 z-[var(--z-loading-overlay)] hidden';
     el.innerHTML = `
         <div class="admin-feed-photo-viewer-backdrop absolute inset-0 bg-black/80" data-close="1"></div>
         <div class="absolute inset-0 flex flex-col items-center justify-center p-4 pointer-events-none">
