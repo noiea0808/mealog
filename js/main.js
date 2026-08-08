@@ -88,6 +88,7 @@ import { startNotificationListeners, stopNotificationListeners } from './main/no
 import { registerMainTabSwitch } from './main/tabs.js';
 import { registerMomentFeedAutoRetry } from './main/moment-feed-auto-retry.js';
 import { registerMealOutboxDrain } from './utils/meal-outbox-drain.js';
+import { registerDiagnostics } from './utils/diagnostics.js';
 import { clearNavFeedUpdateDots, refreshNavFeedUpdateDots } from './main/nav-feed-update-dots.js';
 import { registerContentPopup, recordBannerView, recordBannerClick } from './main/content-popup.js';
 import { initEventListeners } from './main/event-listeners.js';
@@ -100,6 +101,8 @@ import './modals/diet-report.js';
 import { registerMainFeedOptionsReport } from './main/feed-options-report.js';
 import { registerMainBoardHandlers } from './main/board-handlers.js';
 import { setSharedPhotos } from './utils/moment-share-state.js';
+// 계측을 가장 먼저 — 부팅 중 발생하는 관문 만료·저장 실패도 놓치지 않게
+registerDiagnostics();
 registerMainNetworkListeners();
 registerMainCleanup();
 registerMainTabSwitch();

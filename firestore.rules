@@ -105,6 +105,17 @@ service cloud.firestore {
         allow create, update: if false;
         allow delete: if request.auth != null && request.auth.uid == userId && !isReadOnlyDemoAccount();
       }
+
+      // 동기화 진단 로그 (docs/sync-outbox-design.md §4.9)
+      // 본인만 생성, 읽기는 본인·관리자. 수정은 불가(append-only), 삭제는 탈퇴 정리용으로 본인만.
+      // errorLogs가 `allow write: if false`라 클라이언트 텔레메트리가 통째로 죽어 있던 문제를
+      // 반복하지 않도록, 사용자 하위 경로에 두고 본인 쓰기를 허용한다.
+      match /syncDiagnostics/{entryId} {
+        allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+        allow create: if request.auth != null && request.auth.uid == userId;
+        allow update: if false;
+        allow delete: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      }
     }
     
     // ============================================

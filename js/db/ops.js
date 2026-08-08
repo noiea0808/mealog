@@ -28,6 +28,7 @@ import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { clearLoadedMealsRanges } from '../utils/loaded-meals-range.js';
+import { diag, markSavePhase, getSavePhase } from '../utils/diagnostics.js';
 
 /**
  * 식사 저장 결과 — Callable(Admin) 폴백 시 Firestore 로컬 큐가 비지 않아 waitForPendingWrites·리스너 ack와 무관함.
@@ -176,6 +177,16 @@ export const dbOps = {
         }
         try {
             const runWrite = async () => {
+                /**
+                 * 계측(0단계): 아래 두 왕복은 상한이 없다. 반쯤 끊긴 연결에서 여기 매달리면
+                 * 상위 10초 타임아웃이 setDoc 전에 터지고, 큐에 아무것도 안 남아 기록이 유실된다.
+                 * 그 가설을 데이터로 확인하려고 단계 경계를 남긴다. (수정은 4단계에서)
+                 */
+                const diagId = record?.id ? String(record.id) : '(new)';
+                const preflightStartedAt = Date.now();
+                markSavePhase(diagId, 'preflight');
+                diag('save.preflight.begin', { id: diagId });
+
                 // 오프라인에서 캐시 토큰이 만료돼 getIdToken이 실패해도 Firestore 로컬 큐잉은 가능해야 함 — 비치명 처리
                 try {
                     if (typeof currentUser.getIdToken === 'function') {
@@ -186,6 +197,9 @@ export const dbOps = {
                 }
                 await appCheckInitPromise;
                 await refreshAppCheckTokenBeforeFirestore();
+
+                markSavePhase(diagId, 'preflight-done');
+                diag('save.preflight.done', { id: diagId, ms: Date.now() - preflightStartedAt });
 
                 const dataToSave = { ...record };
                 const sanitizePhotoArray = (arr) => {
@@ -245,7 +259,13 @@ export const dbOps = {
                         if (preservedSharedPhotos !== undefined) {
                             cleaned.sharedPhotos = preservedSharedPhotos;
                         }
+                        // 계측: 이 지점을 지나야 Firestore 로컬 큐에 들어간다 = 유실되지 않는다
+                        markSavePhase(diagId, 'setdoc-called');
+                        diag('save.setdoc.begin', { id: diagId });
+                        const setDocStartedAt = Date.now();
                         await setDoc(doc(coll, docId), cleaned);
+                        markSavePhase(diagId, 'setdoc-resolved');
+                        diag('save.setdoc.done', { id: diagId, ms: Date.now() - setDocStartedAt });
                         // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
                         if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);
                         if (!silent) {
@@ -284,6 +304,9 @@ export const dbOps = {
                             });
                             const mid = res?.data?.mealId;
                             if (typeof mid === 'string' && mid) {
+                                // 계측: Callable 폴백은 Firestore 로컬 큐를 우회한다 — 실패하면 아무 데도 안 남는다
+                                markSavePhase(diagId, 'callable-ok');
+                                diag('save.callable.done', { id: diagId });
                                 logger.log('[dbOps] saveArtifactUserMeal 폴백 성공:', mid);
                                 if (!silent) {
                                     showToast(
@@ -294,6 +317,8 @@ export const dbOps = {
                                 return { mealId: mid, savedViaCallableFallback: true };
                             }
                         } catch (fbErr) {
+                            markSavePhase(diagId, 'callable-failed');
+                            diag('save.callable.error', { id: diagId, code: String(fbErr?.code || '') });
                             logger.error('[dbOps] saveArtifactUserMeal 폴백 실패:', fbErr?.code || fbErr?.message || fbErr);
                         }
                     }
@@ -317,12 +342,17 @@ export const dbOps = {
             }
         } catch (e) {
             noteNetworkTransportFailure(e);
+            diag('save.error', {
+                id: record?.id ? String(record.id) : '(new)',
+                code: String(e?.code || ''),
+                phase: getSavePhase(record?.id ? String(record.id) : '(new)')
+            });
             console.error("Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
-            console.error("저장 실패 상세:", { 
-                userId: currentUser?.uid, 
-                errorCode: e.code, 
-                errorMessage: e.message 
+            console.error("저장 실패 상세:", {
+                userId: currentUser?.uid,
+                errorCode: e.code,
+                errorMessage: e.message
             });
             if (!silent) {
                 showToast(getUserFacingErrorMessage(e, 'save'), 'error');

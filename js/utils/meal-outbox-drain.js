@@ -16,6 +16,7 @@
 import { db } from '../firebase.js';
 import { waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { countUnsentMealWork } from './meal-entry-pending.js';
+import { diag } from './diagnostics.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import { pokeNetworkLoop } from './network-loop.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
@@ -31,6 +32,8 @@ let tickTimer = 0;
 let backoffIndex = 0;
 let nextAttemptAt = 0;
 let drainInFlight = false;
+/** 계측: 드레인이 얼마나 오래 잠겨 있는지 — 영구 교착 판정용 */
+let drainStartedAt = 0;
 
 /** half-open 연결에서 멈춘 Promise 가 드레인을 마비시키지 않도록 하는 상한 */
 function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
@@ -114,17 +117,36 @@ async function retryPendingMealEntries() {
  * @param {string} [reason]
  */
 export async function drainMealOutbox(reason = '') {
-    if (drainInFlight) return;
+    if (drainInFlight) {
+        /**
+         * 계측(0단계) — 이것이 진단 C 를 판정한다.
+         *
+         * 이 가드는 finally 로만 풀린다. try 안에 상한 없는 await 가 셋 있어
+         * (reconcile 의 getDocFromServer, retryMealEntrySync 의 getDocFromServer,
+         * scheduleServerAckAfterPendingWrites 의 waitForPendingWrites) 하나라도 매달리면
+         * **세션이 끝날 때까지 아웃박스 드레인이 통째로 죽는다.** 사용자에게는 재전송 버튼을
+         * 눌러도 아무 일도 안 일어나는 것으로 보인다.
+         *
+         * heldMs 가 수십 초 이상으로 찍히면 그 교착이 실제로 일어난 것이다. (수정은 2단계)
+         */
+        diag('drain.blocked', { reason, heldMs: drainStartedAt ? Date.now() - drainStartedAt : 0 });
+        return;
+    }
     if (!hasOutstandingMealWork()) return;
     drainInFlight = true;
+    drainStartedAt = Date.now();
+    diag('drain.begin', { reason, outstanding: countUnsentMealWork() });
     try {
         retryDegradedMealsListener();
         await reconcileSyncUiAgainstServer();
         await retryPendingMealEntries();
+        diag('drain.done', { reason, ms: Date.now() - drainStartedAt, remaining: countUnsentMealWork() });
     } catch (e) {
+        diag('drain.error', { reason, ms: Date.now() - drainStartedAt, message: String(e?.message || e).slice(0, 120) });
         console.warn('[meal-outbox] 드레인 실패:', reason, e?.message || e);
     } finally {
         drainInFlight = false;
+        drainStartedAt = 0;
     }
     if (hasOutstandingMealWork()) {
         const delay = BACKOFF_MS[Math.min(backoffIndex, BACKOFF_MS.length - 1)];

@@ -73,6 +73,7 @@ import {
 } from '../time-source-picker.js';
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
+import { diag, getSavePhase } from '../utils/diagnostics.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
@@ -2205,6 +2206,22 @@ export async function saveEntry() {
                     timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
                     onTimeout: () => {
                         const mid = record.id || optimisticTempId;
+                        /**
+                         * 계측(0단계) — 이 한 줄이 진단 A 를 판정한다.
+                         *
+                         * phase 가 'preflight' 에서 멈춰 있으면 토큰·App Check 왕복에 매달린 채
+                         * 타임아웃이 터졌다는 뜻이고, 그러면 setDoc 이 호출되지 않아 **Firestore
+                         * 로컬 큐에 아무것도 없다** — 앱이 죽는 순간 기록이 사라진다.
+                         * 'setdoc-called' 이후면 큐에는 들어갔으므로 유실은 아니다.
+                         */
+                        const phase = getSavePhase(record.id ? String(record.id) : '(new)');
+                        diag('save.timeout', {
+                            id: mid ? String(mid) : null,
+                            phase,
+                            reachedSetDoc: phase === 'setdoc-called' || phase === 'setdoc-resolved',
+                            hasPhotos: hasPendingBase64Photos,
+                            isNew: wasNewRecord
+                        });
                         if (!mid) return;
                         if (String(mid).startsWith('temp_')) {
                             // ID 선발급 실패 폴백(temp): 큐 추적이 불가하므로 기존대로 실패 처리
