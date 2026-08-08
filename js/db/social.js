@@ -2,6 +2,7 @@
 import { db, appId, auth, callableFunctions } from '../firebase.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { runWithOutbox, registerOutboxHandler, newActionId } from '../utils/outbox-actions.js';
 import { showToast } from '../ui.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, addDoc, query, orderBy, where, getDocs, getDocsFromServer, onSnapshot, getCountFromServer, limit } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 
@@ -394,12 +395,22 @@ export const postInteractions = {
         }
         try {
             console.log('[postInteractions.addComment] 시작:', { postId, commentLength: commentText?.length });
-            const result = await callableFunctions.addPostComment({
+            const args = {
                 postId,
                 commentText,
                 userNickname: userProfile?.nickname ?? undefined,
                 userIcon: userProfile?.icon ?? undefined
-            });
+            };
+            /** Callable 은 로컬 큐를 타지 않는다 — 실패 시 사용자가 쓴 댓글이 사라졌다 */
+            const result = await runWithOutbox(
+                {
+                    target: 'postComment',
+                    id: newActionId('postComment'),
+                    uid: window.currentUser.uid,
+                    payload: args
+                },
+                () => callableFunctions.addPostComment(args)
+            );
             console.log('[postInteractions.addComment] 성공:', result.data);
             return result.data;
         } catch (e) {
@@ -708,3 +719,16 @@ export async function getReportsAggregateByGroupKeys() {
     });
     return byKey;
 }
+
+/** 아웃박스 재시도 핸들러 — 댓글 */
+registerOutboxHandler('postComment', async (payload) => {
+    if (!payload.postId) throw new Error('postComment: postId 없음');
+    const res = await callableFunctions.addPostComment({
+        postId: payload.postId,
+        commentText: payload.commentText,
+        userNickname: payload.userNickname ?? undefined,
+        userIcon: payload.userIcon ?? undefined
+    });
+    if (!res?.data) throw new Error('addPostComment: 서버 응답 없음');
+    return res.data;
+});

@@ -32,6 +32,7 @@ import {
 } from './outbox-store.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import { pokeNetworkLoop } from './network-loop.js';
+import { getOutboxHandler } from './outbox-actions.js';
 
 /** 한 사이클에서 처리할 최대 항목 수 — 한 번에 다 밀지 않고 나눠 보낸다 */
 const MAX_PER_CYCLE = 5;
@@ -133,6 +134,37 @@ async function processEntry(entry) {
     diag('worker.entry.begin', { key: entry.key, op: entry.op, attempts: entry.attempts || 0 });
 
     try {
+        /**
+         * 등록된 핸들러가 있으면 그것으로 다시 보낸다 (outbox-actions 레지스트리).
+         * 워커에 target 별 분기를 늘려 가면 그 분기가 또 하나의 상태기계가 되므로,
+         * 「어떻게 다시 보내는가」는 그 쓰기를 소유한 모듈이 등록한다.
+         */
+        /**
+         * 핸들러는 그 쓰기를 소유한 모듈 하단에서 등록되고, 그 모듈은 **지연 로드**된다.
+         * 아직 로드되지 않았으면 먼저 불러온다 — 없는 채로 아래로 흘리면 boardPost 같은
+         * 항목을 식사 기록으로 오처리해서(meals 경로의 compareWithServer) 지워 버린다.
+         */
+        await ensureHandlerLoaded(entry.target);
+        const handler = getOutboxHandler(entry.target);
+        if (!handler && !NATIVE_TARGETS.has(entry.target)) {
+            /**
+             * 어떻게 다시 보내야 하는지 모른다. **건너뛴다** — 추측해서 처리하면 유실이 된다.
+             * 항목은 아웃박스에 그대로 남으므로, 핸들러가 등록되는 세션에서 처리된다.
+             */
+            diag('worker.entry.noHandler', { key: entry.key, target: entry.target });
+            return;
+        }
+        if (handler) {
+            await withDeadline(handler(entry.payload || {}, entry), DEADLINE.SAVE, `worker-${entry.target}`);
+            await outboxRemove(entry.key); // 핸들러가 resolve 했다 = 서버가 받았다
+            diag('worker.entry.done', {
+                key: entry.key,
+                op: entry.target,
+                ms: Date.now() - startedAt
+            });
+            return;
+        }
+
         if (entry.target === 'settings') {
             /**
              * userSettings 단일 문서. Firestore 쓰기 프라미스는 **서버 커밋에서 resolve** 되고
@@ -262,6 +294,34 @@ function tick() {
 /** 사용자 조작·포그라운드 복귀 등 — 백오프를 무시하고 즉시 한 사이클 */
 export async function pokeOutboxWorker(reason = '') {
     await runOutboxCycle(reason || 'poke');
+}
+
+/**
+ * 이 워커가 직접 아는 target — 핸들러 없이도 처리 방법이 이 파일에 있다.
+ * 그 외 target 은 반드시 등록된 핸들러가 있어야 한다.
+ */
+const NATIVE_TARGETS = new Set(['meal', 'settings']);
+
+/**
+ * target → 핸들러를 등록하는 모듈. 지연 로드된 모듈의 핸들러를 필요할 때 불러온다.
+ * 부팅 시 전부 import 하면 쓰지도 않을 무거운 모듈까지 끌어오게 된다.
+ */
+const TARGET_OWNERS = {
+    boardPost: '../db/board.js',
+    boardComment: '../db/board.js',
+    feedPost: '../db/feed-posts.js',
+    postComment: '../db/social.js'
+};
+
+async function ensureHandlerLoaded(target) {
+    if (getOutboxHandler(target)) return;
+    const mod = TARGET_OWNERS[target];
+    if (!mod) return;
+    try {
+        await import(mod);
+    } catch (e) {
+        console.warn('[outbox-worker] 핸들러 모듈 로드 실패:', target, e?.message || e);
+    }
 }
 
 /** 인덱스가 바뀌면 배지·타임라인 도트를 갱신한다 */
