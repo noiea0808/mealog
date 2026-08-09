@@ -213,11 +213,9 @@ async function processEntry(entry) {
                 // 이미 없으면 목적은 달성된 것이다
                 if (String(e?.code || '') !== 'not-found') throw e;
             }
-            const state = await compareWithServer(uid, entry.id, null);
-            if (state === 'absent') {
-                await outboxRemove(entry.key);
-                diag('worker.entry.done', { key: entry.key, op: 'delete', ms: Date.now() - startedAt });
-            }
+            // 반환됐다 = 서버가 받았다 (아래 「확인이란 무엇인가」 참조). 확인 읽기가 따로 필요 없다.
+            await outboxRemove(entry.key);
+            diag('worker.entry.done', { key: entry.key, op: 'delete', ms: Date.now() - startedAt });
             return;
         }
 
@@ -244,8 +242,24 @@ async function processEntry(entry) {
             return;
         }
         if (cmp === 'unknown') {
-            await markAttempt(entry.key, { code: 'unavailable', message: 'server-compare-failed' });
-            return; // 채널이 죽어 있다 — 다음 사이클
+            /**
+             * 확인을 못 했다고 **밀기를 포기하지 않는다.**
+             *
+             * 예전에는 여기서 그냥 돌아갔다. 그런데 서버 읽기가 안 되는 상황이야말로 아웃박스가
+             * 존재하는 이유다 — 그걸 게이트로 걸면 정작 필요할 때 쓰기 시도 자체가 영영 일어나지
+             * 않는다. 실측(2026-08-09)에서 같은 문서의 `getDocFromServer` 가 8회 중 4회 실패했고,
+             * 그동안 항목은 백오프만 늘리며 아웃박스에 갇혀 있었다.
+             *
+             * 반대로 밀어 보는 쪽의 손해는 작다. setDoc 은 로컬 큐에 들어가 채널이 돌아오면
+             * 알아서 나가고, 그 뒤 리스너 ack 이 아웃박스를 비운다. §4.5 의 보호(묵은 항목이
+             * 최신본을 덮어쓰지 않기)는 확인이 **성공했을 때** 그대로 작동하고, 확인이 실패했을
+             * 때는 「모르니까 민다」가 된다.
+             *
+             * 이 선택의 근거는 불변식의 우선순위다. 「올라가지 않는다」는 관측된 확실한 실패이고,
+             * 「다른 기기의 더 최신 수정을 덮어쓴다」는 좁고 가설적인 위험이다. 둘 중 하나를
+             * 골라야 한다면 사용자가 쓴 것이 서버에 닿는 쪽이다.
+             */
+            diag('worker.entry.conflictUnknown', { key: entry.key });
         }
 
         const payload = { ...entry.payload, id: entry.id };
@@ -262,13 +276,28 @@ async function processEntry(entry) {
             'worker-save'
         );
 
-        // 서버에 실제로 있는지 확인된 뒤에만 제거한다 — 이것이 유일한 제거 조건이다
-        const after = await compareWithServer(uid, entry.id, ourUpdatedAt);
-        if (after === 'absent' || after === 'unknown') {
-            await markAttempt(entry.key, { code: 'unverified', message: 'server-not-confirmed' });
-            diag('worker.entry.unverified', { key: entry.key });
-            return;
-        }
+        /**
+         * ── 확인이란 무엇인가 ──────────────────────────────────────────────
+         *
+         * 「서버 존재가 확인됐을 때만 지운다」는 규칙은 그대로다. 바뀐 것은 **무엇이 확인인가**이다.
+         *
+         * 예전에는 저장 직후 `getDocFromServer` 를 한 번 더 해서 확인했다. 그 읽기가 오히려
+         * 사고를 냈다 — 쓰기는 성공했는데 확인이 실패해서 못 지우고, 사용자에게는 「아직 안
+         * 올라감」 배지가 계속 떠 있었다(실측 2026-08-09: 이미 서버에 있는 문서가 그 상태로 남음).
+         * **확인 수단이 확인 대상보다 불안정했던 것이다.** 쓰기는 로컬 큐에 들어가 채널이 돌아오면
+         * 나가지만, 읽기는 지금 당장 건강한 Watch 스트림을 요구한다.
+         *
+         * 쓰기 프라미스 자체가 이미 서버 확인이다. 실측으로 확정했다(실기기, 2026-08-09):
+         *
+         *   - 온라인 쓰기: 47~212ms 후 정착 (로컬 반영이면 1~3ms 여야 한다)
+         *   - `disableNetwork` 상태: 7초 동안 **정착하지 않음**
+         *   - `enableNetwork` 직후: 그제야 정착
+         *   - 정착 직후 `getDocFromServer`: `exists: true, fromCache: false`
+         *
+         * `dbOps.save` 는 `setDoc` 을 await 하고(ops.js), Callable 폴백도 서버 응답을 기다린
+         * 뒤에만 반환한다. 즉 **여기 도달했다는 것 자체가 서버가 받았다는 뜻**이다.
+         * (`ops.saveSettings` 는 원래부터 이 전제로 동작했고 — 같은 근거다.)
+         */
         await clearOriginals(entry.key); // 업로드가 끝났으니 원본은 버린다 (§4.6)
         await outboxRemove(entry.key);
         diag('worker.entry.done', {
