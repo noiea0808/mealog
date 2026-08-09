@@ -15,7 +15,8 @@ import {
     disableNetwork,
     enableNetwork
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { withDeadlineOr, DEADLINE } from './utils/with-deadline.js';
+import { withDeadline, withDeadlineOr, DEADLINE } from './utils/with-deadline.js';
+import { diag } from './utils/diagnostics.js';
 import { getStorage } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-storage.js";
 import { getFunctions, httpsCallable, connectFunctionsEmulator } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js";
 
@@ -156,6 +157,122 @@ async function resolveAppCheckDebugTokenForLocalhost() {
     return '';
 }
 
+/**
+ * App Check 제공자를 **상한 안에 가둔다.** 관문(§4.8) 바깥에 남아 있던 유일한 구멍이다.
+ *
+ * 2026-08-09 실기기 계측으로 확인한 것: reCAPTCHA v3 가 한 번 얼면 `getToken()` 이 영영
+ * 정착하지 않는데, 그 대기를 **두 곳이 각각 상한 없이** 기다린다.
+ *
+ *   1. `auth._getAppCheckToken()` — Auth 가 토큰 갱신 HTTP 요청을 **발사하기 전에** 기다린다.
+ *      그래서 ID 토큰이 만료된 채 굳고(실측 6시간), securetoken 요청이 0건이었다.
+ *   2. `db._appCheckCredentials.getToken()` — Firestore 가 스트림을 열기 전에 기다린다.
+ *      그래서 WebChannel 요청이 0건이었다.
+ *
+ * 둘 다 **앱이 부르는 호출이 아니라 SDK 내부**라, 호출부에 상한을 거는 방식으로는 원리적으로
+ * 못 막는다. `preflightFirestoreAuth` 의 2초 상한은 자기 호출부만 풀어 줄 뿐, 안쪽에 얼어붙은
+ * await 는 그대로 남아 그 위의 모든 것(Firestore·Storage·Callable)이 같이 굶었다.
+ * 게다가 `terminate()` + 인스턴스 재생성으로도 안 살아난다 — 자격증명 제공자가 앱 컨테이너에
+ * 남아 새 인스턴스가 같은 것을 물려받는다. 세션 안에서는 회복 불가였다.
+ *
+ * 그래서 SDK 가 기다리는 **바로 그 지점**을 상한 안에 넣는다. 여기가 반드시 정착하면
+ * 위의 둘도 따라서 정착한다.
+ *
+ * 상한을 넘기면 **거절한다.** 직접 더미 토큰을 만들어 돌려주면 안 된다 — App Check 내부가
+ * 이미 실패를 더미 토큰(문자열)으로 바꿔 주고, Firestore 는 그 자리에서
+ * `hardAssert(typeof token === 'string')` 을 돌리기 때문이다. `{ token: undefined }` 를
+ * 돌려주면 `INTERNAL ASSERTION FAILED (ID: ae0e)` 로 즉사한다(실측). 거절만 하면 SDK 가
+ * 알아서 올바른 모양을 만든다.
+ *
+ * 위임만 하므로 SDK 내부 구조에 기대지 않는다. `initializeAppCheck` 는 제공자를 덕 타이핑으로
+ * 다루고(`initialize`/`getToken`/`isEqual`), 그 셋이 이 클래스가 구현하는 전부다.
+ */
+class DeadlineBoundedAppCheckProvider {
+    /** @param {{ initialize: (app: any) => void, getToken: () => Promise<any>, isEqual?: (o: any) => boolean }} inner */
+    constructor(inner) {
+        this.inner = inner;
+    }
+
+    initialize(appInstance) {
+        return this.inner.initialize(appInstance);
+    }
+
+    getToken() {
+        // 함수 형태로 넘긴다 — 제공자가 동기로 던져도 관문 밖으로 새지 않게
+        return withDeadline(() => this.inner.getToken(), DEADLINE.APPCHECK, 'appcheck-provider').catch((e) => {
+            if (e?.__mealogDeadline) noteAppCheckStall();
+            throw e;
+        });
+    }
+
+    isEqual(other) {
+        return other instanceof DeadlineBoundedAppCheckProvider && this.inner === other.inner;
+    }
+}
+
+/**
+ * 「App Check 가 응답하지 않는다」를 관측 가능하게 (§4.9).
+ *
+ * 이번 사고를 알아내는 데 실기기에 CDP 로 붙어야 했다. 다음에는 링버퍼가 스스로 답해야 한다.
+ * 한 번의 실패는 흔하므로 시끄럽게 굴지 않고, **연속으로 막히는 것**만 사건으로 남긴다.
+ */
+let appCheckStallStreak = 0;
+let appCheckLastOkAt = Date.now();
+/** 이 횟수만큼 연속으로 못 받으면 「막혔다」로 본다 */
+const APPCHECK_STALL_STREAK = 3;
+
+function noteAppCheckStall() {
+    appCheckStallStreak += 1;
+    if (appCheckStallStreak === APPCHECK_STALL_STREAK || appCheckStallStreak % 10 === 0) {
+        diag('appcheck.stalled', {
+            streak: appCheckStallStreak,
+            sinceOkMs: Date.now() - appCheckLastOkAt
+        });
+    }
+}
+
+function noteAppCheckOk() {
+    if (appCheckStallStreak >= APPCHECK_STALL_STREAK) {
+        diag('appcheck.recovered', { afterStreak: appCheckStallStreak, sinceOkMs: Date.now() - appCheckLastOkAt });
+    }
+    appCheckStallStreak = 0;
+    appCheckLastOkAt = Date.now();
+}
+
+/**
+ * 「ID 토큰 갱신이 정착하지 않는다」를 관측 가능하게 (§4.9).
+ *
+ * 이 신호가 이 서브시스템에서 가장 치명적이다. `getIdToken(false)` 는 토큰이 살아 있으면
+ * 캐시에서 즉시 돌아오므로, **여기서 못 받는다는 것은 이미 만료됐는데 갱신도 안 된다는 뜻**이고,
+ * 그 상태에서는 Firestore·Storage·Callable 이 전부 굶는다. 이번 사고에서 실제로 6시간 동안
+ * 그랬는데 계측에는 「preflight-idtoken 데드라인」이라는 그림자만 남아 있었다 — 그것만으로는
+ * 「느렸다」와 「죽었다」를 못 가른다. 그래서 연속 실패와 마지막 성공 이후 경과를 같이 남긴다.
+ */
+let idTokenStallStreak = 0;
+let idTokenLastOkAt = Date.now();
+const IDTOKEN_STALL_STREAK = 3;
+
+function noteIdTokenResult(ok) {
+    if (ok) {
+        if (idTokenStallStreak >= IDTOKEN_STALL_STREAK) {
+            diag('auth.token.recovered', {
+                afterStreak: idTokenStallStreak,
+                sinceOkMs: Date.now() - idTokenLastOkAt
+            });
+        }
+        idTokenStallStreak = 0;
+        idTokenLastOkAt = Date.now();
+        return;
+    }
+    idTokenStallStreak += 1;
+    if (idTokenStallStreak === IDTOKEN_STALL_STREAK || idTokenStallStreak % 10 === 0) {
+        diag('auth.token.stalled', {
+            streak: idTokenStallStreak,
+            sinceOkMs: Date.now() - idTokenLastOkAt,
+            appCheckStreak: appCheckStallStreak
+        });
+    }
+}
+
 export const appCheckInitPromise = (async () => {
     try {
         if (typeof window === 'undefined') return;
@@ -189,11 +306,20 @@ export const appCheckInitPromise = (async () => {
             'https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js'
         );
         const appCheck = initializeAppCheck(app, {
-            provider: new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw'),
+            // 상한 없는 reCAPTCHA 대기가 Auth·Firestore 를 통째로 얼리지 않게 감싼다
+            provider: new DeadlineBoundedAppCheckProvider(
+                new ReCaptchaV3Provider('6LdjYVUsAAAAAP7RvrJgOEp-7wvDpmoC8Bll9-Kw')
+            ),
             isTokenAutoRefreshEnabled: true
         });
         firebaseAppCheck = appCheck;
-        await getToken(appCheck, false);
+        /**
+         * 초기 토큰 취득도 상한 안에서만 기다린다. 이 await 가 매달리면 이 모듈의 최상위
+         * `await appCheckInitPromise` 가 안 끝나고, **firebase.js 자체가 평가를 마치지 못해**
+         * 앱이 통째로 안 뜬다. 제공자에 상한이 걸렸으니 이론상 정착하지만, 부팅 경로에서만큼은
+         * 이론에 기대지 않는다.
+         */
+        await withDeadlineOr(getToken(appCheck, false), DEADLINE.APPCHECK, null, 'appcheck-init-token');
         console.log('✅ App Check 초기화 완료');
     } catch (e) {
         console.warn('⚠️ App Check 초기화 실패 (계속 진행):', e);
@@ -216,7 +342,13 @@ export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
         const now = Date.now();
         const force =
             opts.force === true || now - lastAppCheckForceRefreshAt >= APPCHECK_FORCE_MIN_INTERVAL_MS;
-        await withDeadlineOr(getToken(firebaseAppCheck, force), DEADLINE.PREFLIGHT, null, 'appcheck-token');
+        const result = await withDeadlineOr(
+            getToken(firebaseAppCheck, force),
+            DEADLINE.PREFLIGHT,
+            null,
+            'appcheck-token'
+        );
+        if (result?.token) noteAppCheckOk();
         if (force) lastAppCheckForceRefreshAt = now;
     } catch (_) {
         /* ignore */
@@ -245,7 +377,8 @@ export async function preflightFirestoreAuth(user, opts = {}) {
     const force = opts.force === true;
     const u = user || auth.currentUser;
     if (u && typeof u.getIdToken === 'function') {
-        await withDeadlineOr(u.getIdToken(force), DEADLINE.PREFLIGHT, null, 'preflight-idtoken');
+        const token = await withDeadlineOr(u.getIdToken(force), DEADLINE.PREFLIGHT, null, 'preflight-idtoken');
+        noteIdTokenResult(!!token);
     }
     await withDeadlineOr(appCheckInitPromise, DEADLINE.PREFLIGHT, undefined, 'preflight-appcheck-init');
     await refreshAppCheckTokenBeforeFirestore({ force });

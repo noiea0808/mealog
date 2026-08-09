@@ -88,7 +88,16 @@ function backoffFor(attempts) {
  */
 const FRESH_ENTRY_GRACE_MS = 15000;
 
-function dueNow(entry, { ignoreGrace = false } = {}) {
+function dueNow(entry, { ignoreGrace = false, ignoreBackoff = false } = {}) {
+    /**
+     * 사용자가 직접 재전송을 눌렀으면 백오프도 무시한다.
+     *
+     * 예전에는 유예(`ignoreGrace`)만 무시했는데, 그건 `attempts === 0` 인 항목에만 걸리는
+     * 조건이라 **정작 여러 번 실패해서 버튼이 떠 있는 항목은 눌러도 그냥 건너뛰었다.**
+     * 백오프가 최대 5분이므로 사용자는 눌렀는데 아무 시도도 일어나지 않고, 그 상태로
+     * 「아직 서버에 닿지 못했어요」 토스트가 떴다 — 닿아 보지도 않고 못 닿았다고 말한 것이다.
+     */
+    if (ignoreBackoff) return true;
     const attempts = entry.attempts || 0;
     if (attempts === 0) {
         if (ignoreGrace) return true;
@@ -290,10 +299,15 @@ export async function runOutboxCycle(reason = '') {
     /** 리스를 못 잡으면 undefined — 호출부가 「이미 돌고 있음」을 구분할 수 있어야 한다 */
     return workerLease.run(async () => {
         const all = await listPending(uid);
-        // 사용자가 재전송을 눌렀으면 신선도 유예를 무시한다 — 기다리라고 할 이유가 없다
-        const ignoreGrace = reason === 'poke' || reason === 'manual-resend';
+        /**
+         * 사용자가 재전송 버튼을 누른 것(`manual-resend`)만 백오프까지 무시한다.
+         * 포그라운드 복귀(`poke`)는 사용자의 의사 표시가 아니므로 유예만 무시한다 —
+         * 앱 전환을 반복할 때마다 큐 전체를 다시 밀면 그것대로 낭비다.
+         */
+        const userInitiated = reason === 'manual-resend';
+        const ignoreGrace = userInitiated || reason === 'poke';
         const due = all
-            .filter((e) => !e.permanent && dueNow(e, { ignoreGrace }))
+            .filter((e) => !e.permanent && dueNow(e, { ignoreGrace, ignoreBackoff: userInitiated }))
             .slice(0, MAX_PER_CYCLE);
         if (due.length === 0) return { processed: 0, pending: all.length };
         diag('worker.cycle', { reason, pending: all.length, due: due.length });

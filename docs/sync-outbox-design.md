@@ -68,6 +68,48 @@ WebView가 그만큼 부풀면 백그라운드 전환 시 안드로이드 저메
 즉 2.1~2.3이 만든 "RAM에만 있는 기록"과 2.4가 만든 "앱이 죽을 확률"이 곱해집니다. 이게
 "사진 있는 기록에서 더 자주 사라진다"의 정체입니다.
 
+### 2.5 상한 없는 대기가 SDK **안쪽**에도 있었다 ★★ (2026-08-09 실기기 확인)
+
+§4.8의 관문은 **앱이 직접 하는 호출**만 감쌉니다. 그런데 가장 치명적인 대기는 앱이 부르지
+않는 곳에 있었습니다.
+
+reCAPTCHA v3(App Check 제공자)가 한 번 얼면 `getToken()`이 영영 정착하지 않는데, 그 대기를
+**두 곳이 각각 상한 없이** 기다립니다.
+
+| 대기 지점 | 막히는 것 |
+|---|---|
+| `auth._getAppCheckToken()` | Auth가 토큰 갱신 HTTP 요청을 **발사하기 전에** 기다림 → ID 토큰이 만료된 채 굳음 |
+| `db._appCheckCredentials.getToken()` | Firestore가 스트림을 열기 전에 기다림 → WebChannel 요청 0건 |
+
+실측(1.0.42_5, 실기기): ID 토큰 만료 후 **6시간 8분** 경과, securetoken 요청 0건, Firestore
+채널 무활동 **7.4시간**. 같은 시점 raw fetch는 120ms 정상. **네트워크는 멀쩡한데 SDK만 얼어
+있는 상태**가 세션이 끝날 때까지 지속됩니다 — 이것이 "네트워크는 복구됐는데 업로드가 안 된다"의
+정체입니다.
+
+여기서 아웃박스 워커는 두 겹으로 막힙니다: 식사는 `compareWithServer` 게이트(§4.5)에서, 설정은
+`saveSettings`의 선행 `getDoc`이 바깥 10초 예산을 먹어 **setDoc에 도달조차 못 합니다**(§2.1의
+재현).
+
+> **회복 불가였습니다.** `terminate()` + 인스턴스 재생성으로도 안 살아납니다 — 자격증명 제공자가
+> 앱 컨테이너에 남아 새 인스턴스가 같은 것을 물려받습니다. 새로고침만이 유일한 탈출구였습니다.
+
+**대응**: App Check 제공자를 `DeadlineBoundedAppCheckProvider`로 감싸 `getToken()`을
+`DEADLINE.APPCHECK`(10초) 안에 가둡니다. SDK가 기다리는 **바로 그 지점**이 반드시 정착하면
+위의 둘도 따라서 정착합니다.
+
+두 가지 함정이 있습니다.
+
+1. **직접 더미 토큰을 만들어 돌려주면 안 됩니다.** 상한 초과 시 **거절**해야 합니다. App Check
+   내부가 실패를 문자열 더미 토큰으로 바꿔 주는데, Firestore는 그 자리에서
+   `hardAssert(typeof token === 'string')`을 돌립니다. `{ token: undefined }`를 돌려주면
+   `INTERNAL ASSERTION FAILED (ID: ae0e)`로 즉사합니다(실측).
+2. **상한을 인색하게 잡으면 안 됩니다.** 이건 호출부가 기다려 주는 시간이 아니라 SDK 내부 대기를
+   대신 끊어 주는 값이라, 짧으면 느리지만 멀쩡한 회선에서 정상 토큰을 버리게 됩니다.
+
+검증(제공자를 영구 교착시킨 상태): 앱 부팅 정상, `auth._getAppCheckToken()` 10.0초에 정착(더미
+토큰 문자열), Firestore 읽기는 첫 시도 실패 후 **2차부터 서버 도달**하고 이후 20~30ms로 안정.
+무한 정지가 "최대 10초 한 번의 비용"으로 바뀝니다.
+
 ---
 
 ## 3. 폐기된 접근과 그 이유
@@ -215,8 +257,16 @@ meal 문서에 **`updatedAt` 필드를 신설**합니다 (현재 없음. `record
 통과합니다. 그리고 관문 밖 직접 await를 **ESLint 규칙으로 금지**합니다:
 
 ```
-getDocFromServer / getDocsFromServer / waitForPendingWrites / getToken / getIdToken
+getDocFromServer / getDocsFromServer / waitForPendingWrites / disableNetwork / enableNetwork
+getToken / getIdToken
 ```
+
+> 규칙에는 처음부터 `getToken`이 적혀 있었지만 **셀렉터에는 빠져 있었습니다.** 그 빠진 호출이
+> §2.5의 사고를 냈습니다. 문서와 규칙이 어긋나면 규칙이 진실이 됩니다 — 목록을 고칠 때는
+> `eslint.config.mjs`의 셀렉터를 같이 고쳐야 합니다.
+>
+> 그리고 린트로는 §2.5를 못 잡습니다. 거기서 매달리는 것은 **앱이 쓴 `await`가 아니기** 때문입니다.
+> 관문 밖 대기를 없애는 유일한 방법은 SDK에 넘기는 **객체 자체를 상한 안에 가두는 것**입니다.
 
 이게 유일하게 **사람의 기억에 의존하지 않는** 항목입니다. 문서는 안 읽힐 수 있지만 린트는 돕니다.
 
@@ -291,12 +341,12 @@ getDocFromServer / getDocsFromServer / waitForPendingWrites / getToken / getIdTo
 0·1·2는 3~6과 독립이므로 먼저 넣어 리스크를 분산할 수 있습니다. 특히 2단계는 지금 발견된 영구
 교착(`drainInFlight` 고착)을 아웃박스 전환이 끝나기 전에 막아줍니다.
 
-### 진행 현황 (2026-08-08)
+### 진행 현황 (2026-08-10)
 
 | 단계 | 상태 |
 |---|---|
-| 0 계측 | ✅ |
-| 1 관문 + ESLint | 🔶 핵심 경로 error, **나머지 28곳 warn** (아래) |
+| 0 계측 | ✅ (§2.5 신호 추가: `appcheck.stalled` / `auth.token.stalled`) |
+| 1 관문 + ESLint | 🔶 핵심 경로 error + App Check 제공자 상한(§2.5) ✅ / **나머지 28곳 warn** (아래) |
 | 2 리스 가드 | ✅ |
 | 3 스토어 + 사진 | ✅ |
 | 4 쓰기 연결 | 🔶 식사·삭제·설정/하루기록·밀톡 글·댓글·모먼트 글·댓글 ✅ / **공유·상호작용 미연결** |
@@ -317,7 +367,15 @@ getDocFromServer / getDocsFromServer / waitForPendingWrites / getToken / getIdTo
 4. **`MealSyncManager` 잔여 맵 정리.** `_errorIds`·`_abandoned`·`_registerScheduledChip` 등은
    표시 판정에서는 더 이상 쓰이지 않지만, 저장 실패 배지 병합
    (`shouldPreserveMealSaveFailureOnMerge`) 같은 호출부가 아직 참조한다.
-5. **소킹 검증** — 아래 완료 기준을 실기기 계측 데이터로 판정.
+5. **워커의 「밀기 전 서버 읽기」 게이트 제거** (§4.5 재설계). 지금은 `attempts > 0`이면
+   `compareWithServer`가 성공해야만 쓰기를 시도한다. 그런데 **확인 수단(서버 읽기)이 쓰기보다
+   훨씬 불안정하다** — 쓰기는 로컬 큐에 들어가 채널이 돌아오면 알아서 나가지만, 읽기는 지금
+   당장 건강한 Watch 스트림을 요구한다. 실측(2026-08-09)에서 **이미 서버에 올라간 문서**가
+   확인 실패만으로 아웃박스에 계속 남아 사용자에게 거짓 배지를 보여줬다.
+   대안은 클라이언트 읽기를 없애고 **규칙에서 원자적으로 판정**하는 것이다:
+   `request.resource.data.updatedAt >= resource.data.updatedAt`. 기존 문서에 `updatedAt`이
+   없는 경우(`resource.data.get('updatedAt','')`)까지 다뤄야 하므로 별도 설계가 필요하다.
+6. **소킹 검증** — 아래 완료 기준을 실기기 계측 데이터로 판정.
 
 ### 완료 기준
 

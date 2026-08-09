@@ -72,7 +72,9 @@ export default [
              * (감싸면 직접 await 가 아니게 되므로 이 셀렉터에 걸리지 않는다)
              */
             'no-restricted-syntax': ['error', {
-                selector: 'AwaitExpression > CallExpression[callee.name=/^(getDocFromServer|getDocsFromServer|waitForPendingWrites|disableNetwork|enableNetwork)$/]',
+                // getToken 은 App Check 토큰 취득이다. 이게 매달리면 Auth 토큰 갱신과
+                // Firestore 스트림 개설이 SDK 내부에서 같이 멈춘다 (2026-08-09 실기기 확인).
+                selector: 'AwaitExpression > CallExpression[callee.name=/^(getDocFromServer|getDocsFromServer|waitForPendingWrites|disableNetwork|enableNetwork|getToken)$/]',
                 message: 'utils/with-deadline.js 의 withDeadline() / withDeadlineOr() 로 감싸세요. 상한 없는 네트워크 await 는 가드를 영구히 잠급니다 (docs/sync-outbox-design.md §4.8).'
             }, {
                 selector: 'AwaitExpression > CallExpression[callee.property.name="getIdToken"]',
