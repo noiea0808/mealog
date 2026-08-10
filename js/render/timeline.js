@@ -44,7 +44,6 @@ import {
     dailyJournalHasContent,
     dailyJournalHasPhotos,
     dailyJournalHasPendingPhotoUpload,
-    dailyJournalSlotFallbackLine,
     getDailyJournalShareEntryId,
     isDailyJournalShared,
     isDailyJournalMealRecord,
@@ -1491,10 +1490,6 @@ function dailyJournalSyncLeadHolderHtml(journal) {
     return `<span class="daily-journal-sync-lead" style="display:contents">${dailyJournalSyncLeadHtml(journal)}</span>`;
 }
 
-function wrapDailyJournalSlotTextWithSyncLead(journal, innerHtml) {
-    return `<div class="flex min-w-0 items-start gap-1.5">${dailyJournalSyncLeadHolderHtml(journal)}<div class="min-w-0 flex-1">${innerHtml}</div></div>`;
-}
-
 /** 아웃박스 인덱스가 바뀌었을 때 하루 소감 도트만 갈아 끼운다(날짜 섹션 재구성 없이) */
 function updateTimelineDailyJournalSyncLeads(container) {
     container.querySelectorAll('.daily-journal-slot').forEach((el) => {
@@ -1505,12 +1500,6 @@ function updateTimelineDailyJournalSyncLeads(container) {
         const next = dailyJournalSyncLeadHtml(getDailyJournalForTimeline(dateStr));
         if (holder.innerHTML !== next) holder.innerHTML = next;
     });
-}
-
-function dailyJournalCommentPreviewHtml(comment) {
-    const c = String(comment || '').trim();
-    if (!c) return '';
-    return `<p class="daily-journal-summary-text clear-both mt-1.5 mb-0 min-w-0 text-xs font-medium text-slate-400">"${escapeHtml(c)}"</p>`;
 }
 
 function dailyJournalMetricHashtagSpan(label, chain) {
@@ -1539,56 +1528,6 @@ function dailyJournalMetricsSlotPreviewHtml(journal) {
 function buildDailyJournalSlotHtml(dateStr) {
     const journal = getDailyJournalForTimeline(dateStr);
     return buildDailyJournalCardHtml(dateStr, journal);
-}
-
-function buildDailyJournalListEmptyHtml(dateStr) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
-    const slot = DAILY_JOURNAL_SLOT;
-    const safeLabel = escapeHtml(slot.label);
-    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    const listLeft = style.listLeft || '';
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
-        <div class="flex ${hThird}">
-            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
-                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
-            </div>
-            <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
-                <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
-                <span class="text-xs text-slate-400 font-normal">기록하기</span>
-            </div>
-        </div>
-    </div>`;
-}
-
-function buildDailyJournalListFilledHtml(dateStr, journal) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
-    const slot = DAILY_JOURNAL_SLOT;
-    const comment = String(journal.comment || '').trim();
-    const safeLabel = escapeHtml(slot.label);
-    const listLeft = style.listLeft || '';
-    const metricsHtml = dailyJournalMetricsSlotPreviewHtml(journal);
-    const commentHtml = dailyJournalCommentPreviewHtml(comment);
-    const fallback = dailyJournalSlotFallbackLine(journal);
-    const fallbackHtml = !commentHtml && fallback
-        ? `<p class="mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(fallback)}</p>`
-        : '';
-    const bodyInner =
-        commentHtml +
-        (metricsHtml || '') +
-        fallbackHtml +
-        (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
-    const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
-
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} cursor-pointer active:scale-[0.98] transition-all">
-        <div class="flex items-stretch">
-            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
-                <span class="text-sm font-bold leading-tight break-words inline-flex items-center justify-center gap-1">${safeLabel}${dailyJournalShareArrowHtml(dateStr, journal)}</span>
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-2">
-                ${bodyHtml}
-            </div>
-        </div>
-    </div>`;
 }
 
 function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
