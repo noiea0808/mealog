@@ -1,5 +1,5 @@
 // 게시판 및 공지 관련 함수들
-import { db, appId, callableFunctions } from '../firebase.js';
+import { db, appId, callableFunctions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
@@ -290,8 +290,11 @@ export const boardOperations = {
                 return null;
             }
             const newViews = (postData.views || 0) + 1;
-            
-            // 조회수 증가
+
+            // 조회수 증가 — firestore.rules 의 boardPosts update 는 hasValidAppCheckToken() 을 요구한다.
+            // 예전에는 firebase.js 의 최상위 await 가 「부팅이 끝났으면 토큰도 있다」를 암묵적으로
+            // 보장했지만 그 순서를 없앴으므로, 토큰이 필요한 이 자리에서 명시적으로 준비한다.
+            await refreshAppCheckTokenBeforeFirestore();
             await setDoc(postDoc, {
                 views: newViews
             }, { merge: true });

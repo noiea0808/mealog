@@ -5,7 +5,7 @@
  * 관리자 설정(adminSettings/config.attendancePopup)으로 기록 유무·환경별 문구·노출(끔 포함).
  */
 import { isDemoUser } from './demo-account.js';
-import { appCheckInitPromise, db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import { db, appId } from './firebase.js';
 import { getRecordCountForIso } from './meal-record-count.js';
 import { showAttendancePopup, prepareWelcomeReportState } from './ui.js';
 import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
@@ -742,8 +742,8 @@ async function fetchAttendancePopupRoot() {
     if (!attendancePopupConfigPromise) {
         attendancePopupConfigPromise = (async () => {
             try {
-                await appCheckInitPromise;
-                await refreshAppCheckTokenBeforeFirestore();
+                // App Check 대기 없음 — adminSettings 읽기는 규칙상 로그인만 요구한다.
+                // 부팅 직후 웰컴 팝업 경로라, 여기서 기다리면 첫 화면이 그만큼 늦어졌다.
                 const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
                 const snap = await getDoc(configRef);
                 const ap =

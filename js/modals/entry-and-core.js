@@ -1203,7 +1203,8 @@ async function fetchMealRecordForEdit(entryId) {
         }
     };
     try {
-        await refreshAppCheckTokenBeforeFirestore();
+        // meals 단건 읽기 — App Check 미요구 경로라 preflight 없이 바로 조회한다
+        // (모달 여는 속도에 그대로 얹히던 대기였다)
         mergeRec(await getDoc(ref));
     } catch (e) {
         const isPerm =
@@ -2692,7 +2693,7 @@ export async function deleteEntry() {
     let mealForDelete = window.mealHistory?.find((m) => m.id === entryIdToDelete);
     if (!mealForDelete && entryIdToDelete && window.currentUser?.uid) {
         try {
-            await refreshAppCheckTokenBeforeFirestore();
+            // meals 단건 읽기 — App Check 미요구 (위 openModal 경로와 같은 이유)
             const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryIdToDelete);
             const snap = await getDoc(ref);
             if (snap.exists()) {

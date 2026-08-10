@@ -1109,9 +1109,16 @@ export async function switchToLogin() {
     }
 }
 
+/**
+ * 여기서도 App Check 초기화를 기다리지 않는다 — firebase.js 의 최상위 await 를 없앤 것과 같은 이유로,
+ * 이 await 가 남아 있으면 부팅이 여전히 App Check 뒤에 직렬로 묶인다(실측 스택: initAuth 가
+ * App Check 토큰의 IndexedDB 읽기 아래에 매달려 있었다).
+ *
+ * 원래 목적이던 「카카오 커스텀 토큰 로그인 직후 첫 Firestore 쓰기가 permission-denied」 는
+ * 그 경로에서 직접 막는다 — signInWithCustomToken 직후의 force 갱신(이 파일 위쪽)이 그것이고,
+ * 그쪽이 시점상으로도 정확하다.
+ */
 export async function initAuth(onAuthStateChangedCallback) {
-    // 카카오 OAuth·로그인보다 먼저: 토큰 확보 전 Firestore 쓰기 시 permission-denied 방지
-    await appCheckInitPromise;
     if (isNativePlatform()) {
         registerNativeKakaoDeepLinkListeners();
         try {

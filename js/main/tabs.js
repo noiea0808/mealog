@@ -2,7 +2,7 @@
  * 메인 하단 탭 전환 (window.switchMainTab)
  */
 import { appState } from '../state.js';
-import { loadSharedPhotosPage, loadSharedPhotosPageReliable, loadMyShares } from '../db.js';
+import { loadSharedPhotosPage, loadSharedPhotosPageReliable } from '../db.js';
 import { showToast, showLoading, hideLoading } from '../ui.js';
 import {
     renderTimeline,
@@ -14,7 +14,7 @@ import {
     syncBoardSearchPanelVisibility
 } from '../render/index.js';
 import { ensureAnalytics } from '../analytics/ensure.js';
-import { syncOrphanedSharesToMoment } from './shares-sync.js';
+import { syncOrphanedSharesToMoment, refreshMyMomentShares } from './shares-sync.js';
 import { isDemoUser } from '../demo-account.js';
 import {
     markMomentFeedNavSeen,
@@ -28,7 +28,6 @@ import { logUsageMetric } from '../usage-metrics.js';
 import { refreshMealSyncResendNavButton } from './meal-sync-resend-header.js';
 import { syncEntryQuickInputFabVisibility } from '../modals/entry-quick-open.js';
 
-import { setSharedPhotos } from '../utils/moment-share-state.js';
 const HEADER_TITLE_BY_TAB = {
     dashboard: 'meal-dang',
     timeline: 'mealog',
@@ -378,18 +377,11 @@ export function registerMainTabSwitch() {
                 ) {
                     window.scheduleDailySwipeHint(0);
                 }
-                loadMyShares().then((myShares) => {
-                    setSharedPhotos(myShares);
+                // refreshMyMomentShares가 캐시 갱신까지 하고, 실패해도 직전 캐시를 유지한다.
+                // (예전엔 loadMyShares로 한 번 읽고 syncOrphanedSharesToMoment가 같은 조회를 또 했다)
+                refreshMyMomentShares().then(() => {
                     if (appState.currentTab !== 'timeline') return;
                     updateTimelineShareIndicators();
-                    syncOrphanedSharesToMoment().then(() => {
-                        if (appState.currentTab !== 'timeline') return;
-                        updateTimelineShareIndicators();
-                    }).catch(() => {});
-                }).catch(e => {
-                    console.error('본인 공유 로드 실패:', e);
-                    setSharedPhotos([]);
-                    if (appState.currentTab === 'timeline') updateTimelineShareIndicators();
                 });
             }
             if (typeof window.checkAndShowContentPopup === 'function') {

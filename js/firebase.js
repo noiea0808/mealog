@@ -384,8 +384,24 @@ export async function preflightFirestoreAuth(user, opts = {}) {
     await refreshAppCheckTokenBeforeFirestore({ force });
 }
 
-// 공식 가이드: App Check를 Firestore 등보다 먼저 초기화. 기존에는 getFirestore가 먼저라 강제 적용 시 쓰기에 토큰이 안 붙을 수 있음.
-await appCheckInitPromise;
+/**
+ * **여기서 App Check 를 기다리지 않는다.** (예전에는 `await appCheckInitPromise` 가 있었다)
+ *
+ * 이 파일은 ES 모듈이므로 최상위 await 는 곧 **모듈 평가 자체를 멈추는 것**이다. 즉 reCAPTCHA v3
+ * 로드와 토큰 교환이 끝나야 `db` 가 만들어지고, 그 뒤에야 auth·화면·조회가 시작됐다. 느리면 느린
+ * 만큼, 얼면 DEADLINE.APPCHECK(10초)만큼 앱 전체가 그 뒤에 줄을 섰다. 실측된 증상은 부팅 직후
+ * 서버 강제 조회가 한꺼번에 실패하는 것이었다(getDocsFromServer 실패 + "client is offline").
+ *
+ * 순서를 푸는 근거는 SDK 동작이다 — Firestore 의 App Check 자격증명 제공자는 생성 시점에 App Check
+ * 가 없으면 `onInit` 으로 등록해 두고, 나중에 초기화되면 그때부터 토큰을 붙인다. 따라서 늦게 초기화
+ * 돼도 이후 요청에는 정상적으로 토큰이 실린다.
+ *
+ * 남는 위험은 **초기화가 끝나기 전 창(window)에 나가는 App Check 필수 쓰기**뿐이다. firestore.rules
+ * 에서 `hasValidAppCheckToken()` 을 요구하는 경로(sharedPhotos·boardPosts·각종 댓글의 update/delete)
+ * 는 그 자체로 사용자 조작이 필요해 부팅 직후에 발생하지 않거나, 발생할 수 있는 자리
+ * (boardOperations.getPost 의 조회수 증가)에는 호출부에서 명시적으로 토큰을 준비한다.
+ * 부팅 순서라는 암묵적 보장 대신, 필요한 곳에서만 명시적으로 기다리는 쪽으로 바꾼 것이다.
+ */
 
 /** @type {import('firebase/firestore').Firestore} — Watch(ca9/b815) 등 내부 assertion 후 `recoverFirestoreAfterWatchAssertion`에서 재할당될 수 있음 */
 export let db = createFirestore();

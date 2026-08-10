@@ -748,7 +748,8 @@ export const dbOps = {
         if (!currentUser?.uid || currentUser.isAnonymous || isDemoUser(currentUser)) return;
         const mealId = getDailyJournalMealDocId(date);
         if (!mealId) return;
-        await refreshAppCheckTokenBeforeFirestore();
+        // App Check 준비 없음 — users/{uid}/meals 는 firestore.rules 에서 소유자 검사만 한다.
+        // 저장 핫패스에서 규칙이 요구하지도 않는 토큰을 기다리던 자리였다.
         const mealRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', mealId);
         const normalized = normalizeDailyJournalEntry(entry);
         if (!dailyJournalHasContent(normalized)) {

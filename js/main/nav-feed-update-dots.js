@@ -7,6 +7,7 @@
  * 실시간 리스너는 없음.
  */
 import { peekLatestSharedPhotoTimestampMs } from '../db/listeners.js';
+import { pokeNetworkLoop } from '../utils/network-loop.js';
 import { db, appId } from '../firebase.js';
 import {
     collection,
@@ -24,8 +25,38 @@ const LS_BOARD_NOTICE = 'mealog_nav_board_notice_seen_ms_';
 /** visibility + pageshow가 연달아 올 때 한 번만 합치기 */
 const FOREGROUND_DEBOUNCE_MS = 280;
 
+/**
+ * 조회 실패 후 재시도. 「지금 온라인인가」를 판정하지 않는다 — network-loop.js 와 같은 이유로,
+ * 그 지식은 모바일에서 정확할 수 없고 게이트로 쓰면 복구가 막힌다. 몇 번 더 찔러보고 그만둔다.
+ * 포그라운드 복귀 때 어차피 다시 도므로 여기서 무한히 매달릴 이유가 없다.
+ */
+const PEEK_RETRY_MAX = 3;
+const PEEK_RETRY_BASE_MS = 1500;
+
 let foregroundDebounceTimer = null;
+let peekRetryTimer = null;
+let peekRetryCount = 0;
 let _lastPeek = { moment: 0, feed: 0, board: 0, notice: 0 };
+
+function clearFailureRetry() {
+    if (peekRetryTimer) {
+        clearTimeout(peekRetryTimer);
+        peekRetryTimer = null;
+    }
+    peekRetryCount = 0;
+}
+
+function scheduleFailureRetry() {
+    if (peekRetryTimer || peekRetryCount >= PEEK_RETRY_MAX) return;
+    const delay = PEEK_RETRY_BASE_MS * Math.pow(2, peekRetryCount);
+    peekRetryCount += 1;
+    // 채널이 죽어 있을 수 있다는 힌트만 준다. 결과는 묻지 않는다.
+    pokeNetworkLoop('nav-peek-failed');
+    peekRetryTimer = setTimeout(() => {
+        peekRetryTimer = null;
+        refreshNavFeedUpdateDots().catch(() => {});
+    }, delay);
+}
 
 function storageUidKey() {
     const u = window.currentUser;
@@ -60,6 +91,7 @@ function getBoardPostTsMs(post) {
     return new Date(post.timestamp || 0).getTime();
 }
 
+/** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
 async function peekLatestNoticeTimestampMs() {
     try {
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
@@ -74,10 +106,11 @@ async function peekLatestNoticeTimestampMs() {
         return new Date(ts || 0).getTime();
     } catch (e) {
         console.warn('peekLatestNoticeTimestampMs:', e?.message || e);
-        return 0;
+        return null;
     }
 }
 
+/** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
 async function peekLatestBoardPostTimestampMs() {
     if (!window.boardOperations?.getPosts) return 0;
     try {
@@ -86,7 +119,7 @@ async function peekLatestBoardPostTimestampMs() {
         return getBoardPostTsMs(posts[0]);
     } catch (e) {
         console.warn('peekLatestBoardPostTimestampMs:', e?.message || e);
-        return 0;
+        return null;
     }
 }
 
@@ -98,6 +131,7 @@ function getFeedPostTsMs(post) {
     return new Date(post.timestamp || 0).getTime();
 }
 
+/** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
 async function peekLatestFeedPostTimestampMs() {
     if (!window.currentUser) return 0;
     try {
@@ -109,7 +143,7 @@ async function peekLatestFeedPostTimestampMs() {
         return getFeedPostTsMs(post);
     } catch (e) {
         console.warn('peekLatestFeedPostTimestampMs:', e?.message || e);
-        return 0;
+        return null;
     }
 }
 
@@ -138,79 +172,63 @@ export function clearNavFeedUpdateDots() {
     setBoardSubtabDotVisible('notice', false);
 }
 
+/** peek 결과 해석 — null/undefined 는 「조회 실패(모름)」, 숫자만 사실 */
+function isKnownPeek(v) {
+    return v !== null && v !== undefined && Number.isFinite(Number(v));
+}
+
+/**
+ * 기준선이 아직 없을 때만 세운다.
+ *
+ * peek 이 「모름」이면 세우지 않는다. 실패한 순간의 Date.now() 를 기준선으로 박으면 그보다
+ * 앞선 글은 전부 「이미 본 것」이 되어 점이 **영영** 안 뜬다 — 신규 사용자의 첫 실행이 앱 시작
+ * 직후의 서버 조회 실패와 겹치면 그대로 굳었다(실측: App Check 토큰 직후 peek 3개 동시 실패).
+ * 기준선은 한 번 쓰면 되돌릴 근거가 없으므로, 확실할 때만 쓴다.
+ *
+ * @returns {number|null} 확정된 기준선. null 이면 이번 회차는 비교하지 않는다.
+ */
+function ensureBaseline(key, seen, peek) {
+    if (seen !== null) return seen;
+    if (!isKnownPeek(peek)) return null;
+    const base = Number(peek) > 0 ? Number(peek) : Date.now();
+    writeSeen(key, base);
+    return base;
+}
+
+/** @returns {boolean|null} null 이면 판단 불가 — 점 상태를 그대로 둔다 */
+function compareDot(peek, seen) {
+    if (!isKnownPeek(peek) || seen === null) return null;
+    return Number(peek) > seen;
+}
+
+function applyDot(tab, hasNew) {
+    if (hasNew === null) return;
+    setDotVisible(tab, hasNew);
+}
+
+function applySubtabDot(subtab, hasNew) {
+    if (hasNew === null) return;
+    setBoardSubtabDotVisible(subtab, hasNew);
+}
+
 function applyBaselineAndCompare(uidKey, peekMoment, peekFeed, peekBoardPosts, peekNotice, peekBoardAny) {
     const mk = LS_MOMENT + uidKey;
     const bk = LS_BOARD + uidKey;
     const fk = LS_BOARD_FEED + uidKey;
     const pk = LS_BOARD_BOARD + uidKey;
     const nk = LS_BOARD_NOTICE + uidKey;
-    let mSeen = readSeen(mk);
-    let bSeen = readSeen(bk);
-    let fSeen = readSeen(fk);
-    let pSeen = readSeen(pk);
-    let nSeen = readSeen(nk);
 
-    if (mSeen === null) {
-        if (peekMoment > 0) {
-            writeSeen(mk, peekMoment);
-            mSeen = peekMoment;
-        } else {
-            const now = Date.now();
-            writeSeen(mk, now);
-            mSeen = now;
-        }
-    }
-    if (bSeen === null) {
-        if (peekBoardAny > 0) {
-            writeSeen(bk, peekBoardAny);
-            bSeen = peekBoardAny;
-        } else {
-            const now = Date.now();
-            writeSeen(bk, now);
-            bSeen = now;
-        }
-    }
-    if (fSeen === null) {
-        if (peekFeed > 0) {
-            writeSeen(fk, peekFeed);
-            fSeen = peekFeed;
-        } else {
-            const now = Date.now();
-            writeSeen(fk, now);
-            fSeen = now;
-        }
-    }
-    if (pSeen === null) {
-        if (peekBoardPosts > 0) {
-            writeSeen(pk, peekBoardPosts);
-            pSeen = peekBoardPosts;
-        } else {
-            const now = Date.now();
-            writeSeen(pk, now);
-            pSeen = now;
-        }
-    }
-    if (nSeen === null) {
-        if (peekNotice > 0) {
-            writeSeen(nk, peekNotice);
-            nSeen = peekNotice;
-        } else {
-            const now = Date.now();
-            writeSeen(nk, now);
-            nSeen = now;
-        }
-    }
+    const mSeen = ensureBaseline(mk, readSeen(mk), peekMoment);
+    const bSeen = ensureBaseline(bk, readSeen(bk), peekBoardAny);
+    const fSeen = ensureBaseline(fk, readSeen(fk), peekFeed);
+    const pSeen = ensureBaseline(pk, readSeen(pk), peekBoardPosts);
+    const nSeen = ensureBaseline(nk, readSeen(nk), peekNotice);
 
-    const momentHasNew = peekMoment > mSeen;
-    const boardHasNew = peekBoardAny > bSeen;
-    const feedHasNew = peekFeed > fSeen;
-    const boardPostsHasNew = peekBoardPosts > pSeen;
-    const noticeHasNew = peekNotice > nSeen;
-    setDotVisible('gallery', momentHasNew);
-    setDotVisible('board', boardHasNew);
-    setBoardSubtabDotVisible('feed', feedHasNew);
-    setBoardSubtabDotVisible('board', boardPostsHasNew);
-    setBoardSubtabDotVisible('notice', noticeHasNew);
+    applyDot('gallery', compareDot(peekMoment, mSeen));
+    applyDot('board', compareDot(peekBoardAny, bSeen));
+    applySubtabDot('feed', compareDot(peekFeed, fSeen));
+    applySubtabDot('board', compareDot(peekBoardPosts, pSeen));
+    applySubtabDot('notice', compareDot(peekNotice, nSeen));
 }
 
 export async function refreshNavFeedUpdateDots() {
@@ -225,22 +243,33 @@ export async function refreshNavFeedUpdateDots() {
         peekLatestBoardPostTimestampMs(),
         peekLatestNoticeTimestampMs()
     ]);
-    const peekBoardAny = Math.max(
-        Number(peekFeed) || 0,
-        Number(peekBoardPosts) || 0,
-        Number(peekNotice) || 0
-    );
+    // 셋 중 하나라도 모르면 라운지 전체 점은 판단하지 않는다 — 아는 것만으로 최댓값을 잡으면
+    // 실제보다 낮은 기준선이 굳어 나중에 헛 점이 뜬다.
+    const boardAllKnown = isKnownPeek(peekFeed) && isKnownPeek(peekBoardPosts) && isKnownPeek(peekNotice);
+    const peekBoardAny = boardAllKnown
+        ? Math.max(Number(peekFeed) || 0, Number(peekBoardPosts) || 0, Number(peekNotice) || 0)
+        : null;
+
+    // 직전에 알아낸 값은 유지한다 (실패를 0으로 덮어쓰지 않음)
     _lastPeek = {
-        moment: Number(peekMoment) || 0,
-        feed: Number(peekFeed) || 0,
-        board: Number(peekBoardPosts) || 0,
-        notice: Number(peekNotice) || 0
+        moment: isKnownPeek(peekMoment) ? Number(peekMoment) : _lastPeek.moment,
+        feed: isKnownPeek(peekFeed) ? Number(peekFeed) : _lastPeek.feed,
+        board: isKnownPeek(peekBoardPosts) ? Number(peekBoardPosts) : _lastPeek.board,
+        notice: isKnownPeek(peekNotice) ? Number(peekNotice) : _lastPeek.notice
     };
-    applyBaselineAndCompare(uk, _lastPeek.moment, _lastPeek.feed, _lastPeek.board, _lastPeek.notice, peekBoardAny);
+
+    applyBaselineAndCompare(uk, peekMoment, peekFeed, peekBoardPosts, peekNotice, peekBoardAny);
+
+    const anyFailed =
+        !isKnownPeek(peekMoment) || !isKnownPeek(peekFeed) || !isKnownPeek(peekBoardPosts) || !isKnownPeek(peekNotice);
+    if (anyFailed) scheduleFailureRetry();
+    else peekRetryCount = 0;
 }
 
 function scheduleForegroundPeekRefresh() {
     clearTimeout(foregroundDebounceTimer);
+    // 포그라운드 복귀는 새 기회다 — 지난 실패로 소진된 재시도 횟수를 되돌린다
+    clearFailureRetry();
     foregroundDebounceTimer = setTimeout(() => {
         foregroundDebounceTimer = null;
         refreshNavFeedUpdateDots().catch(() => {});

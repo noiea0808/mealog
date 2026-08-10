@@ -10,7 +10,6 @@ import {
     auth,
     db,
     appId,
-    refreshAppCheckTokenBeforeFirestore,
     registerFirestoreListenersRebind
 } from './firebase.js';
 import { signOut } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
@@ -764,10 +763,12 @@ async function updateUserDocument(user) {
     if (isDemoUser(user)) return;
 
     try {
-        await refreshAppCheckTokenBeforeFirestore();
+        // App Check 준비 없음 — firestore.rules 의 users/{uid} 는 소유자만 볼 뿐
+        // hasValidAppCheckToken() 을 요구하지 않는다. 로그인 직후 경로라 여기서 기다리면
+        // 규칙상 필요도 없는 토큰 때문에 첫 화면이 늦어진다.
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
-        
+
         const updateData = {
             lastLoginAt: serverTimestamp()
         };
@@ -890,7 +891,7 @@ window.ensureUserRegistered = async function () {
     const s = window.userSettings;
     if (!s || !isUserSettingsReadyForContentWrites(s)) return;
     try {
-        await refreshAppCheckTokenBeforeFirestore();
+        // users/{uid} 는 App Check 미요구 (위 updateUserDocument 와 같은 이유)
         const userDocRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userDocSnap = await getDoc(userDocRef);
         const data = userDocSnap.exists() ? userDocSnap.data() : {};

@@ -4,7 +4,7 @@
  *
  * 아이콘 한 칸 전환 주기는 앱에서 **0.5초 고정**. 관리자 숫자는 **순환 스크립트(문구) 전환 주기**만 제어.
  */
-import { db, appId, refreshAppCheckTokenBeforeFirestore } from './firebase.js';
+import { db, appId } from './firebase.js';
 import { doc, getDoc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
 /** 순환 스크립트(문구) 전환 주기 기본값(초) — 관리자 미설정 시 */
@@ -101,11 +101,9 @@ async function readRawDedicatedSpinner() {
 }
 
 export async function getLoadingSpinnerConfig() {
-    try {
-        await refreshAppCheckTokenBeforeFirestore({ force: true });
-    } catch (_) {
-        /* ignore */
-    }
+    // App Check 준비 없음 — config/loginBanner·config/loadingSpinner 는 `allow read: if true` 다.
+    // 인증조차 필요 없는 문서를 읽으면서 force 토큰 교환(왕복 1회)을 하던 자리였고,
+    // 하필 로딩 스피너 경로라 그 대기가 첫 화면에 그대로 보였다.
     const rawBanner = await readRawBannerSpinner();
     const rawDedicated = await readRawDedicatedSpinner();
 
