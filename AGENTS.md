@@ -59,7 +59,23 @@ Cloud Functions require **Node.js 20** (`functions/package.json` → `engines.no
 
 ### Lint / Test
 
-No ESLint config or test framework is configured in this project. There are no `lint` or `test` npm scripts.
+```
+npm run lint          # eslint . (경고 다수 — lint:errors 로 에러만 볼 수 있다)
+npm test              # node --test (외부 러너 없음)
+```
+
+테스트는 **동기화 아웃박스의 불변식**에만 걸려 있다 (`test/`). 코드베이스 전체 커버리지가 아니다 —
+목적은 `docs/sync-outbox-design.md` §1 이 코드로 검증되게 하는 것 하나다.
+
+- `test/outbox-store.test.mjs` — 내구화·병합·보존 정책·쿼터 완화 (실제 IndexedDB 위에서)
+- `test/outbox-store-no-idb.test.mjs` — 저장소가 죽었을 때 **false 로 시끄럽게 실패**하는가
+- `test/with-deadline.test.mjs` — 관문(§4.8)과 리스(§4.7)의 교착 방지 계약
+
+**동기화 코드를 고쳤으면 `npm test` 를 돌리고 통과를 확인한 뒤 보고한다.** 여기가 초록인데
+증상이 남아 있다면 문제는 이 세 모듈 바깥에 있다는 뜻이므로, 그 정보를 가지고 범위를 좁혀라.
+
+Firebase·DOM 에 붙은 코드(워커 `outbox-worker.js` 포함)는 아직 테스트가 없다. 새 테스트를
+붙일 때는 목으로 스토어를 대체하지 마라 — 「내구화가 실제로 됐는가」가 검증 대상에서 빠진다.
 
 ### Key Gotchas
 
