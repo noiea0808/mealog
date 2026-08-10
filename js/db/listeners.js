@@ -1,5 +1,5 @@
 // Firestore 리스너 설정 (읽기 비용 절감: user/tags 세션당 1회, meals 기간·limit 등)
-import { db, appId, refreshAppCheckTokenBeforeFirestore, scheduleFirestoreListenersRebind } from '../firebase.js';
+import { db, appId, scheduleFirestoreListenersRebind } from '../firebase.js';
 import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, where, startAfter, getDocs, getDocsFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { DEFAULT_SUB_TAGS, DEFAULT_USER_SETTINGS } from '../constants.js';
 import { dbOps } from './ops.js';
@@ -17,9 +17,6 @@ import {
 } from '../demo-date-shift.js';
 import { getSharedPhotoGroupKey, processPhotosToGroups } from '../render/post-group-utils.js';
 import {
-    hydrateMealSyncErrorIdsFromStorage,
-    hydrateMealSyncAbandonedIdsFromStorage,
-    hydrateMealSyncRegisterScheduledIdsFromStorage
 } from '../utils/meal-entry-pending.js';
 import { applyMealsSnapshotPrimary, applyMealsOneTimeFetchResult } from '../utils/meals-snapshot-apply.js';
 import {
@@ -94,9 +91,8 @@ function mergeEntryModalGaugesIntoUserSettings() {
 }
 
 export function setupListeners(userId, callbacks) {
-    hydrateMealSyncErrorIdsFromStorage();
-    hydrateMealSyncAbandonedIdsFromStorage();
-    hydrateMealSyncRegisterScheduledIdsFromStorage();
+    // 표시 상태의 복원은 아웃박스 인덱스 hydrate 가 담당한다 (outbox-worker).
+    // 예전의 localStorage ID 집합 3종(errorIds·abandoned·registerScheduled)은 폐기됐다.
     const { onSettingsUpdate, onDataUpdate, settingsUnsubscribe: oldSettingsUnsubscribe, dataUnsubscribe: oldDataUnsubscribe } = callbacks;
     
     // 사용자 ID 확인 및 로깅
@@ -674,7 +670,7 @@ export function setupListeners(userId, callbacks) {
     
     // 최근 N일 초기 로드 (일간 좌우 넘김 기준). 트래커 점은 dailyStats(별도 리스너)로 표시
     // 더 과거는 트래커/스와이프 이동 시 ensureMealsLoadedAroundDate(±3일)로 보강
-    void refreshAppCheckTokenBeforeFirestore();
+    // App Check 준비 없음 — meals 리스너는 규칙상 소유자 검사만 받는다
     const todayStr = todayLocalYmd();
     const cutoffDateStr = addDaysToYmd(todayStr, -7) || todayStr;
     
@@ -890,7 +886,11 @@ function toTimestampMs(photo) {
     return sharedPhotoTimestampMs(photo);
 }
 
-/** 모먼트 피드 최신 공유 1건의 시각(ms). 하단 네비 신규 공유 점 표시용 (1회 읽기) */
+/**
+ * 모먼트 피드 최신 공유 1건의 시각(ms). 하단 네비 신규 공유 점 표시용 (1회 읽기)
+ * @returns {Promise<number|null>} 0 = 공유 없음, null = 조회 실패(모름). 둘을 섞으면
+ *   기준선이 없는 신규 사용자에서 실패가 「글이 없다」로 굳어 점이 영영 안 뜬다.
+ */
 export async function peekLatestSharedPhotoTimestampMs() {
     if (!window.currentUser) return 0;
     try {
@@ -903,7 +903,7 @@ export async function peekLatestSharedPhotoTimestampMs() {
         return toTimestampMs(shifted || photo);
     } catch (e) {
         console.warn('peekLatestSharedPhotoTimestampMs:', e?.message || e);
-        return 0;
+        return null;
     }
 }
 
@@ -1039,6 +1039,35 @@ export async function loadMyShares() {
         }
         throw e;
     }
+}
+
+/**
+ * 본인 공유 조회 + 재시도 — 모먼트 피드의 loadSharedPhotosPageReliable과 같은 취급.
+ *
+ * 앱 시작 직후(App Check 토큰 취득 직후 auth 상태가 처음 확정되는 순간)에는 Firestore 채널이
+ * 아직 안 열려 있어 서버 강제 조회가 한꺼번에 실패한다. 그 한 번을 「공유 0건」으로 확정하면
+ * 타임라인 공유 표시가 통째로 사라지므로, 여기서 몇 번 더 시도한다.
+ *
+ * 끝내 실패하면 던진다 — 호출부가 「모른다」와 「없다」를 구분할 수 있어야 한다.
+ */
+export async function loadMySharesReliable(opts = {}) {
+    const maxAttempts = opts.maxAttempts ?? 3;
+    const baseDelayMs = opts.baseDelayMs ?? 320;
+    const timeoutMs = opts.timeoutMs ?? SHARED_PHOTOS_SERVER_FETCH_TIMEOUT_MS;
+    let lastErr;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            if (attempt > 0) {
+                await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+            }
+            const result = await withMomentFeedFetchTimeout(loadMyShares(), timeoutMs);
+            markMealogFirestoreActivity();
+            return result;
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr;
 }
 
 /**

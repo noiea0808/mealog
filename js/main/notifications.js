@@ -162,6 +162,24 @@ function getNotificationReadState() {
     return notificationReadStateCache;
 }
 
+/** 읽은 알림 복원에만 쓰이는 표시용 필드 — 보관기간이 지나면 떼어낸다 */
+const READ_STATE_DISPLAY_FIELDS = ['type', 'postId', 'title', 'momentLabel', 'thumbnailUrl', 'actorNickname', 'kind', 'aliasPostIds'];
+
+/**
+ * 보관기간(READ_NOTIFICATIONS_MAX_AGE_MS)이 지난 항목에서 표시용 메타만 제거.
+ * 읽음 판정 필드(lastCommentAt/commentCount/readAt)는 남기므로 읽은 알림이 미읽음으로 돌아가지 않는다.
+ * 읽음 상태 전체가 Firestore 문서 하나에 JSON으로 들어가므로 장기 누적을 이 선에서 끊는다.
+ */
+function pruneReadStateDisplayMeta(state, now = Date.now()) {
+    if (!state || typeof state !== 'object') return state;
+    Object.values(state).forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        if (isWithinReadRetention(notificationActivityAt(entry), now)) return;
+        READ_STATE_DISPLAY_FIELDS.forEach((f) => { delete entry[f]; });
+    });
+    return state;
+}
+
 /** 읽음 상태 저장 직렬화 — 동시 setDoc이 서로 덮어쓰지 않도록 */
 let _notificationReadWriteChain = Promise.resolve();
 
@@ -182,6 +200,7 @@ async function setNotificationReadState(state) {
     } catch (_) {
         toSave = { ...state };
     }
+    toSave = pruneReadStateDisplayMeta(toSave);
     const uid = user.uid;
     _notificationReadWriteChain = _notificationReadWriteChain
         .then(async () => {
@@ -246,16 +265,64 @@ function notificationKeysForItem(item) {
     return [...keys];
 }
 
+/** 읽음 판정에 쓰이는 최소 필드 — alias/레거시 키에는 이것만 저장해 문서 크기를 줄인다 */
+function buildReadCorePayload(item, readAt = Date.now()) {
+    return {
+        lastCommentAt: Number(item?.lastCommentAt) || 0,
+        commentCount: Number(item?.commentCount) || 0,
+        readAt: Number(readAt) || Date.now()
+    };
+}
+
+/** 표시용 문자열 저장 상한 — 읽음 상태는 Firestore 문서 한 개에 JSON으로 들어가므로 길이를 제한한다 */
+function sanitizeMetaText(value, maxLen = 120) {
+    const s = value == null ? '' : String(value).trim();
+    if (!s) return null;
+    return s.length > maxLen ? s.slice(0, maxLen) : s;
+}
+
+/** 썸네일은 http(s) URL만 보관 (data: URI는 base64 본문이 통째로 문서에 실림) */
+function sanitizeThumbUrl(value) {
+    const s = value == null ? '' : String(value).trim();
+    if (!s || !/^https?:\/\//i.test(s) || s.length > 512) return null;
+    return s;
+}
+
+/**
+ * 읽음 저장 페이로드 — 이후 라이브 집계에서 빠져도 읽은 알림 탭에 복원할 수 있게 표시 메타 포함.
+ * 대표 키(`type:postId`)에만 저장하고 alias/레거시 키는 buildReadCorePayload를 쓴다.
+ */
+function buildNotificationReadPayload(item, readAt = Date.now()) {
+    return {
+        ...buildReadCorePayload(item, readAt),
+        type: item?.type || 'moment',
+        postId: item?.postId != null ? String(item.postId) : '',
+        title: sanitizeMetaText(item?.title),
+        momentLabel: sanitizeMetaText(item?.momentLabel),
+        thumbnailUrl: sanitizeThumbUrl(item?.thumbnailUrl),
+        actorNickname: sanitizeMetaText(item?.actorNickname, 40),
+        kind: sanitizeMetaText(item?.kind, 20),
+        aliasPostIds: Array.isArray(item?.aliasPostIds)
+            ? item.aliasPostIds.map((id) => String(id || '').trim()).filter(Boolean).slice(0, 20)
+            : []
+    };
+}
+
+/** 한 항목의 읽음 표시를 state에 반영 (대표 키=메타 포함, 나머지 키=최소 필드) */
+function applyReadPayloadToState(state, item, readAt = Date.now()) {
+    const keys = notificationKeysForItem(item);
+    if (!keys.length) return;
+    const primaryKey = `${item?.type || 'moment'}:${item?.postId}`;
+    const full = buildNotificationReadPayload(item, readAt);
+    const core = buildReadCorePayload(item, readAt);
+    keys.forEach((key) => {
+        state[key] = key === primaryKey ? full : { ...core };
+    });
+}
+
 function markNotificationItemAsRead(item) {
     const state = getNotificationReadState();
-    const payload = {
-        lastCommentAt: Number(item.lastCommentAt) || 0,
-        commentCount: Number(item.commentCount) || 0,
-        readAt: Date.now()
-    };
-    notificationKeysForItem(item).forEach((key) => {
-        state[key] = { ...payload };
-    });
+    applyReadPayloadToState(state, item);
     setNotificationReadState(state);
 }
 
@@ -282,6 +349,61 @@ function isNotificationRead(item, readState) {
     if (item.lastCommentAt > lastAt) return false;
     if (!Number.isNaN(count) && item.commentCount > count) return false;
     return true;
+}
+
+/** 활동/읽음 시각 — lastCommentAt → readAt 순으로 폴백, 둘 다 없으면 0 */
+function notificationActivityAt(itemOrStored) {
+    const last = Number(itemOrStored?.lastCommentAt);
+    if (Number.isFinite(last) && last > 0) return last;
+    const readAt = Number(itemOrStored?.readAt);
+    if (Number.isFinite(readAt) && readAt > 0) return readAt;
+    return 0;
+}
+
+function isWithinReadRetention(atMs, now = Date.now()) {
+    // 시각이 없으면 드롭하지 않음 (예전엔 lastCommentAt=0 이 now-0 으로 계산돼 90일 필터에 걸려
+    // 방금 읽은 알림도 읽은 목록에서 곧바로 사라졌다)
+    if (!atMs || atMs <= 0) return true;
+    return now - atMs <= READ_NOTIFICATIONS_MAX_AGE_MS;
+}
+
+/**
+ * 모먼트 @언급(localStorage)을 목록에 합친다.
+ * 내 글 댓글 집계에 있으면 표시만 덮어쓰고, 없으면(타인 글에서 언급 등) 단독 항목으로 추가.
+ */
+function mergeMomentMentionsIntoItems(momentItems) {
+    const items = Array.isArray(momentItems) ? [...momentItems] : [];
+    loadMv2MentionNotifs().forEach((m) => {
+        const pid = String(m?.postId || '').trim();
+        if (!pid) return;
+        const actor = String(m?.actorNickname || '').trim() || '누군가';
+        const existing = items.find(
+            (x) =>
+                x &&
+                x.type === 'moment' &&
+                (String(x.postId) === pid || (x.aliasPostIds || []).map(String).includes(pid))
+        );
+        if (existing) {
+            // lastCommentAt은 읽음 판정용 — localStorage 시각으로 올리면 모두 읽음이 다시 미읽음으로 돌아옴
+            existing.kind = 'mention';
+            existing.actorNickname = actor;
+            return;
+        }
+        // 시각이 없으면 0 — Date.now()를 넣으면 매 로드마다 값이 커져 읽음 판정이 계속 풀린다
+        const at = Number(m?.at) > 0 ? Number(m.at) : 0;
+        items.push({
+            type: 'moment',
+            postId: pid,
+            lastCommentAt: at,
+            commentCount: 1,
+            kind: 'mention',
+            actorNickname: actor,
+            momentLabel: '언급된 게시물',
+            thumbnailUrl: null,
+            aliasPostIds: [pid]
+        });
+    });
+    return items;
 }
 
 function bindNotificationTabsOnce() {
@@ -323,22 +445,83 @@ function syncNotificationTabUi(unreadCount = 0) {
     }
 }
 
+/** 읽음 키에서 type/postId 복원 — 메타가 없는 예전 저장분 대비 (콜론 없는 키는 레거시 모먼트) */
+function parseReadStateKey(key) {
+    const m = String(key).match(/^(moment|momentLike|board|feed):(.+)$/);
+    if (m) return { type: m[1], postId: String(m[2] || '').trim() };
+    if (key && !String(key).includes(':')) return { type: 'moment', postId: String(key).trim() };
+    return { type: null, postId: '' };
+}
+
+/**
+ * 읽은 알림 탭 목록.
+ * 라이브 집계에 남아 있는 읽은 항목 + 집계에서 빠진(원글/댓글 삭제 등) 항목을 읽음 상태의 메타로 복원한 것.
+ */
 function buildReadNotificationsList(merged, readState) {
     const now = Date.now();
-    return merged
+    const liveItems = Array.isArray(merged) ? merged : [];
+    const liveRead = liveItems
         .filter((item) => isNotificationRead(item, readState))
-        .filter((item) => now - Number(item.lastCommentAt || 0) <= READ_NOTIFICATIONS_MAX_AGE_MS)
-        .sort((a, b) => b.lastCommentAt - a.lastCommentAt)
+        .filter((item) => isWithinReadRetention(notificationActivityAt(item), now));
+
+    // 라이브 집계에 있는 항목은 읽음/안읽음 상관없이 복원 대상에서 제외한다.
+    // (안읽음 항목까지 복원하면 같은 알림이 두 탭에 동시에 나온다)
+    const covered = new Set();
+    liveItems.forEach((item) => {
+        notificationKeysForItem(item).forEach((k) => covered.add(k));
+    });
+
+    const history = [];
+    const historySeen = new Set();
+    Object.entries(readState || {}).forEach(([key, stored]) => {
+        if (!stored || typeof stored !== 'object') return;
+        if (covered.has(key)) return;
+
+        const parsed = parseReadStateKey(key);
+        const type = stored.type || parsed.type;
+        const postId = stored.postId ? String(stored.postId).trim() : parsed.postId;
+        if (!type || !postId) return;
+
+        const primary = `${type}:${postId}`;
+        if (covered.has(primary) || historySeen.has(primary)) return;
+        if (!isWithinReadRetention(notificationActivityAt(stored), now)) return;
+
+        historySeen.add(primary);
+        const aliasPostIds = Array.isArray(stored.aliasPostIds) ? stored.aliasPostIds : [];
+        // 같은 글의 alias 키가 별도 항목으로 또 잡히지 않도록 미리 막는다
+        aliasPostIds.forEach((id) => {
+            const s = String(id || '').trim();
+            if (s) historySeen.add(`${type}:${s}`);
+        });
+        history.push({
+            type,
+            postId,
+            lastCommentAt: notificationActivityAt(stored),
+            commentCount: Number(stored.commentCount) || 0,
+            title: stored.title || null,
+            momentLabel: stored.momentLabel || stored.title || '해당 게시물',
+            thumbnailUrl: stored.thumbnailUrl || null,
+            actorNickname: stored.actorNickname || null,
+            kind: stored.kind || null,
+            aliasPostIds
+        });
+    });
+
+    return [...liveRead, ...history]
+        .sort((a, b) => (Number(b.lastCommentAt) || 0) - (Number(a.lastCommentAt) || 0))
         .slice(0, READ_NOTIFICATIONS_MAX_DISPLAY);
 }
 
 function appendNotificationRow(listEl, item, { dimmed }) {
     const { postId, type, lastCommentAt, commentCount, thumbnailUrl, title, momentLabel } = item;
-    const d = new Date(lastCommentAt);
-    const timeStr =
-        d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) +
-        ' ' +
-        d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const atMs = Number(lastCommentAt);
+    const d = Number.isFinite(atMs) && atMs > 0 ? new Date(atMs) : null;
+    // 시각이 없는 항목(복원된 옛 읽음 등)은 1970년으로 찍히지 않게 빈 문자열
+    const timeStr = d
+        ? d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) +
+          ' ' +
+          d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '';
     const row = document.createElement('button');
     row.type = 'button';
     row.className = `notification-row${dimmed ? ' notification-row--dimmed' : ''}`;
@@ -352,16 +535,17 @@ function appendNotificationRow(listEl, item, { dimmed }) {
               : momentLabel
                 ? escapeHtml(momentLabel)
                 : '해당 게시물';
+    const timeSuffix = timeStr ? ` · ${timeStr}` : '';
     const subText =
         type === 'feed'
-            ? `밀톡 알림 · ${timeStr}`
+            ? `밀톡 알림${timeSuffix}`
             : type === 'moment' && item.kind === 'mention'
-              ? `${escapeHtml(String(item.actorNickname || '누군가'))}님이 회원님을 언급했어요 · ${timeStr}`
+              ? `${escapeHtml(String(item.actorNickname || '누군가'))}님이 회원님을 언급했어요${timeSuffix}`
               : type === 'momentLike'
                 ? commentCount > 1
-                    ? `${escapeHtml(String(item.actorNickname || '누군가'))}님 외 ${commentCount - 1}명이 좋아합니다 · ${timeStr}`
-                    : `${escapeHtml(String(item.actorNickname || '누군가'))}님이 좋아합니다 · ${timeStr}`
-                : `댓글 ${commentCount}개 · ${timeStr}`;
+                    ? `${escapeHtml(String(item.actorNickname || '누군가'))}님 외 ${commentCount - 1}명이 좋아합니다${timeSuffix}`
+                    : `${escapeHtml(String(item.actorNickname || '누군가'))}님이 좋아합니다${timeSuffix}`
+                : `댓글 ${commentCount}개${timeSuffix}`;
     const thumbHtml =
         (type === 'moment' || type === 'momentLike') && thumbnailUrl
             ? `<div class="notification-row-thumb"><img src="${escapeHtml(thumbnailUrl)}" alt="" loading="lazy"></div>`
@@ -437,16 +621,7 @@ function renderNotificationPanelFromCache() {
         markAllReadBtn.onclick = () => {
             const state = getNotificationReadState();
             const readAt = Date.now();
-            unread.forEach((item) => {
-                const payload = {
-                    lastCommentAt: Number(item.lastCommentAt) || 0,
-                    commentCount: Number(item.commentCount) || 0,
-                    readAt
-                };
-                notificationKeysForItem(item).forEach((key) => {
-                    state[key] = { ...payload };
-                });
-            });
+            unread.forEach((item) => applyReadPayloadToState(state, item, readAt));
             setNotificationReadState(state);
             window.loadNotificationList();
             window.updateNotificationDot();
@@ -497,7 +672,7 @@ window.loadNotificationList = async () => {
     }
     try {
         await ensureNotificationReadStateLoaded();
-        const [momentItems, momentLikeItems, boardItems, feedItems] = await Promise.all([
+        const [momentRaw, momentLikeItems, boardItems, feedItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             postInteractions.getPostsWithLikesForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
@@ -505,23 +680,10 @@ window.loadNotificationList = async () => {
                 : Promise.resolve([]),
             getFeedNotificationsForUser(window.currentUser.uid)
         ]);
-        const mv2Mentions = loadMv2MentionNotifs();
-        // 모먼트(내 글 댓글) 항목에 @언급 정보를 오버레이 (subText를 바꾸기 위함)
-        mv2Mentions.forEach((m) => {
-            const pid = String(m?.postId || '').trim();
-            if (!pid) return;
-            const it = momentItems.find(
-                (x) =>
-                    x &&
-                    x.type === 'moment' &&
-                    (String(x.postId) === pid || (x.aliasPostIds || []).map(String).includes(pid))
-            );
-            if (!it) return;
-            it.kind = 'mention';
-            it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
-            // lastCommentAt은 읽음 판정용 — localStorage 시각으로 올리면 모두 읽음이 다시 미읽음으로 돌아옴
-        });
-        _notificationMergedCache = [...momentItems, ...momentLikeItems, ...boardItems, ...feedItems].sort((a, b) => b.lastCommentAt - a.lastCommentAt);
+        const momentItems = mergeMomentMentionsIntoItems(momentRaw);
+        _notificationMergedCache = [...momentItems, ...momentLikeItems, ...boardItems, ...feedItems].sort(
+            (a, b) => (Number(b.lastCommentAt) || 0) - (Number(a.lastCommentAt) || 0)
+        );
         renderNotificationPanelFromCache();
     } catch (e) {
         console.error('알림 목록 로드 실패:', e);
@@ -543,7 +705,7 @@ window.updateNotificationDot = async () => {
     }
     try {
         await ensureNotificationReadStateLoaded();
-        const [momentItems, momentLikeItems, boardItems, feedItems] = await Promise.all([
+        const [momentRaw, momentLikeItems, boardItems, feedItems] = await Promise.all([
             postInteractions.getPostsWithCommentsForUser(window.currentUser.uid),
             postInteractions.getPostsWithLikesForUser(window.currentUser.uid),
             window.boardOperations && typeof window.boardOperations.getBoardPostsWithCommentsForUser === 'function'
@@ -551,20 +713,7 @@ window.updateNotificationDot = async () => {
                 : Promise.resolve([]),
             getFeedNotificationsForUser(window.currentUser.uid)
         ]);
-        const mv2Mentions = loadMv2MentionNotifs();
-        mv2Mentions.forEach((m) => {
-            const pid = String(m?.postId || '').trim();
-            if (!pid) return;
-            const it = momentItems.find(
-                (x) =>
-                    x &&
-                    x.type === 'moment' &&
-                    (String(x.postId) === pid || (x.aliasPostIds || []).map(String).includes(pid))
-            );
-            if (!it) return;
-            it.kind = 'mention';
-            it.actorNickname = String(m.actorNickname || '').trim() || it.actorNickname || '누군가';
-        });
+        const momentItems = mergeMomentMentionsIntoItems(momentRaw);
         const merged = [...momentItems, ...momentLikeItems, ...boardItems, ...feedItems];
         const readState = getNotificationReadState();
         const unread = merged.filter(item => !isNotificationRead(item, readState));

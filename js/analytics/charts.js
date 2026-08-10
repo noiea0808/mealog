@@ -13,7 +13,7 @@ const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
 /** 식사 상세 공통 팝업 탭 */
 const MEAL_DETAIL_TABS = [
-    { key: 'mealType', label: '어떻게' },
+    { key: 'mealType', label: '어디서' },
     { key: 'category', label: '무엇을' },
     { key: 'withWhom', label: '함께' }
 ];
@@ -368,8 +368,10 @@ export function computeProportionSegmentsForAnalysis(data, key) {
 }
 
 /**
+ * 웰컴 팝업 슬라이드 — 도넛(비율) 슬라이드와 랭킹 상세(분석 > 상세와 동일 테이블) 슬라이드를 교대로 구성.
  * @param {number} [days=7] 오늘 포함 최근 N일(로컬)
  * @param {'meal'|'snack'} [kind='meal'] 식사(메인 슬롯) vs 간식 슬롯
+ * @returns {({ type: 'donut', title: string, key: string, total: number, segments: any[] } | { type: 'detail', title: string, key: string, html: string })[]}
  */
 export function getWelcomeWeekDonutSlides(days = 7, kind = 'meal') {
     const hist =
@@ -382,32 +384,39 @@ export function getWelcomeWeekDonutSlides(days = 7, kind = 'meal') {
     const end = toLocalDateString(today);
     const week = hist.filter(m => m && typeof m.date === 'string' && m.date >= start && m.date <= end);
 
-    let spec;
+    const donut = (title, key, data) => {
+        const { total, segments } = computeProportionSegmentsForAnalysis(data, key);
+        return { type: 'donut', title, key, total, segments };
+    };
+    // 상세 랭킹 슬라이드용 키는 분석 > 상세 팝업의 탭 키와 동일 — 슬롯 필터는 buildDetailRankTabHtml 내부에서 처리하므로 week 전체를 그대로 넘김
+    const detail = (title, key) => ({ type: 'detail', title, key, html: buildDetailRankTabHtml(week, key) });
+
     if (kind === 'snack') {
         const snackOnly = week.filter(m => SNACK_SLOTS.includes(m.slotId));
-        spec = [
-            { title: '언제', key: 'snackWhen', data: snackOnly },
-            { title: '어디서', key: 'snackPlace', data: snackOnly },
-            { title: '무엇을', key: 'snackType', data: snackOnly },
-            { title: '누구와', key: 'withWhom', data: snackOnly },
-            { title: '만족도', key: 'rating', data: snackOnly.filter(m => m.rating) },
-            { title: '포만감', key: 'satiety', data: snackOnly.filter(m => m.satiety) }
-        ];
-    } else {
-        const mainOnly = week.filter(m => MEAL_SLOTS.includes(m.slotId));
-        spec = [
-            { title: '어떻게', key: 'mealType', data: mainOnly },
-            { title: '무엇을', key: 'category', data: mainOnly },
-            { title: '함께', key: 'withWhom', data: mainOnly },
-            { title: '만족도', key: 'rating', data: mainOnly.filter(m => m.rating) },
-            { title: '포만감', key: 'satiety', data: week.filter(m => m.satiety) }
+        return [
+            donut('언제', 'snackWhen', snackOnly),
+            donut('어디서', 'snackPlace', snackOnly),
+            detail('어디서 상세', 'snackPlace'),
+            donut('무엇을', 'snackType', snackOnly),
+            detail('무엇을 상세', 'snackType'),
+            donut('누구와', 'withWhom', snackOnly),
+            detail('누구와 상세', 'snackWithWhom'),
+            donut('만족도', 'rating', snackOnly.filter(m => m.rating)),
+            donut('포만감', 'satiety', snackOnly.filter(m => m.satiety))
         ];
     }
 
-    return spec.map(({ title, key, data }) => {
-        const { total, segments } = computeProportionSegmentsForAnalysis(data, key);
-        return { title, key, total, segments };
-    });
+    const mainOnly = week.filter(m => MEAL_SLOTS.includes(m.slotId));
+    return [
+        donut('어떻게', 'mealType', mainOnly),
+        detail('어디서 상세', 'mealType'),
+        donut('무엇을', 'category', mainOnly),
+        detail('무엇을 상세', 'category'),
+        donut('함께', 'withWhom', mainOnly),
+        detail('함께 상세', 'withWhom'),
+        donut('만족도', 'rating', mainOnly.filter(m => m.rating)),
+        donut('포만감', 'satiety', week.filter(m => m.satiety))
+    ];
 }
 
 /**

@@ -19,11 +19,33 @@ import {
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { runWithOutbox, registerOutboxHandler, newActionId } from '../utils/outbox-actions.js';
 
 /** 라운지 밀톡 탭에서 한 번에 불러오는 메시지 수 (Firestore 문서 읽기·반응 서브조회 배수에 직결) */
 export const FEED_TIMELINE_BATCH_SIZE = 20;
 
 const EMPTY_REACTION_COUNTS = { like: 0, thumbs: 0, check: 0 };
+
+/**
+ * createFeedPost 전송 — App Check 일시 거부는 1회 재시도한다.
+ * 아웃박스 재시도 핸들러와 최초 전송이 **같은 함수**를 쓰도록 뽑아냈다. 두 곳에 같은 로직을
+ * 복붙하면 한쪽만 고쳐지는 종류의 버그가 난다.
+ */
+async function sendCreateFeedPostWithAppCheckRetry(payload) {
+    try {
+        return await callableFunctions.createFeedPost(payload);
+    } catch (e1) {
+        const m = String(e1?.message || e1?.details || '');
+        const isPerm =
+            e1?.code === 'permission-denied' ||
+            e1?.code === 'functions/permission-denied' ||
+            /permission|app check|forbidden/i.test(m);
+        if (!isPerm) throw e1;
+        await refreshAppCheckTokenBeforeFirestore();
+        await new Promise((r) => setTimeout(r, 400));
+        return callableFunctions.createFeedPost(payload);
+    }
+}
 
 export async function attachReactionCountsToPosts(posts) {
     const list = Array.isArray(posts) ? posts : [];
@@ -135,23 +157,19 @@ export const feedOperations = {
                 ...(rid ? { replyToPostId: rid } : {})
             };
             await refreshAppCheckTokenBeforeFirestore();
-            let result;
-            try {
-                result = await callableFunctions.createFeedPost(payload);
-            } catch (e1) {
-                const m = String(e1?.message || e1?.details || '');
-                if (
-                    e1?.code === 'permission-denied' ||
-                    e1?.code === 'functions/permission-denied' ||
-                    /permission|app check|forbidden/i.test(m)
-                ) {
-                    await refreshAppCheckTokenBeforeFirestore();
-                    await new Promise((r) => setTimeout(r, 400));
-                    result = await callableFunctions.createFeedPost(payload);
-                } else {
-                    throw e1;
-                }
-            }
+            /**
+             * Callable 은 Firestore 로컬 큐를 타지 않는다 — 실패하면 사용자가 쓴 글이
+             * 아무 데도 남지 않았다. 전송 전에 내구화하고 성공했을 때만 아웃박스에서 뺀다.
+             */
+            const result = await runWithOutbox(
+                {
+                    target: 'feedPost',
+                    id: newActionId('feedPost'),
+                    uid: window.currentUser.uid,
+                    payload
+                },
+                () => sendCreateFeedPostWithAppCheckRetry(payload)
+            );
             showToast('메시지를 보냈어요.', 'success');
             return result.data;
         } catch (e) {
@@ -311,3 +329,14 @@ export async function deleteFeedPostByAdmin(postId) {
     await deleteFeedPostReactionsClient(id);
     await deleteDoc(postRef);
 }
+
+/** 아웃박스 재시도 핸들러 — 최초 전송과 같은 경로를 쓴다 */
+registerOutboxHandler('feedPost', async (payload) => {
+    const res = await sendCreateFeedPostWithAppCheckRetry({
+        text: typeof payload.text === 'string' ? payload.text : '',
+        imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls : [],
+        ...(payload.replyToPostId ? { replyToPostId: payload.replyToPostId } : {})
+    });
+    if (!res?.data) throw new Error('createFeedPost: 서버 응답 없음');
+    return res.data;
+});

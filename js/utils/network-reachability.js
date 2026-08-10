@@ -7,8 +7,12 @@
  */
 import { isLikelyNetworkTransportFailure } from '../ui.js';
 import { pokeNetworkLoop } from './network-loop.js';
+import { isMealogFirestoreActivityStale } from './network-activity.js';
 
 let fetchBridgeInstalled = false;
+
+/** 성공한 원격 요청으로 넛지를 깨울 때 요구하는 「채널이 조용한」 시간 (outbox-worker 와 동일 기준) */
+const CHANNEL_QUIET_MS = 20000;
 
 /**
  * 끊김 계열 실패였다면 채널을 찔러 달라고 알린다.
@@ -48,9 +52,20 @@ export function installFetchFailureAppOfflineBridge() {
         const remote = isRemoteRequestUrl(input);
         return orig.apply(this, arguments).then(
             (res) => {
-                // 원격 요청 성공은 「무선이 살아났다」는 힌트일 뿐 Firestore 채널 생존의 증거가 아니다.
-                // 그래서 무엇을 해제하지 않고, 채널을 찔러보게만 한다(넛지 간격 안이면 무시된다).
-                if (remote) pokeNetworkLoop('remote-fetch-ok');
+                /**
+                 * 원격 요청 성공은 「무선이 살아났다」는 힌트일 뿐 Firestore 채널 생존의 증거가 아니다.
+                 * 그래서 무엇을 해제하지 않고, 채널을 찔러보게만 한다(넛지 간격 안이면 무시된다).
+                 *
+                 * 단, **채널이 조용할 때만** 찌른다. 넛지는 disableNetwork→enableNetwork 이므로
+                 * 멀쩡하거나 아직 핸드셰이크 중인 채널에 걸면 스스로 만든 연결을 스스로 끊는다.
+                 * 실측: 부팅 중 Analytics 의 fetchDynamicConfig 성공이 이 경로로 넛지를 깨웠고,
+                 * 그 disable 창에 걸린 첫 조회들이 한꺼번에 "client is offline" 로 실패했다.
+                 * 성공한 요청은 「고칠 것이 있다」는 증거가 아니므로 조용함을 조건으로 둔다.
+                 * (outbox-worker 의 `outbox-worker-quiet` 넛지가 쓰는 것과 같은 기준)
+                 */
+                if (remote && isMealogFirestoreActivityStale(CHANNEL_QUIET_MS)) {
+                    pokeNetworkLoop('remote-fetch-ok');
+                }
                 return res;
             },
             (err) => {

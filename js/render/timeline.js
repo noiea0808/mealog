@@ -35,6 +35,7 @@ import {
     isMealEntryRowBlocked,
     clearStuckMealPendingFlags
 } from '../utils/meal-entry-pending.js';
+import { isPendingSync as isOutboxPendingSync, isOutboxIndexReady } from '../utils/outbox-store.js';
 import { refreshMealSyncResendNavButton } from '../main/meal-sync-resend-header.js';
 import { updateTrackerStreakLabel, collectRecordedDateSet } from '../attendance-check.js';
 import { mealClockTagLabelFromRecord, normalizeMealClockInputValue } from '../meal-time-utils.js';
@@ -43,7 +44,6 @@ import {
     dailyJournalHasContent,
     dailyJournalHasPhotos,
     dailyJournalHasPendingPhotoUpload,
-    dailyJournalSlotFallbackLine,
     getDailyJournalShareEntryId,
     isDailyJournalShared,
     isDailyJournalMealRecord,
@@ -352,6 +352,7 @@ export function updateTimelineMealEntryPendingIndicators() {
         return;
     }
     clearStuckMealPendingFlags();
+    updateTimelineDailyJournalSyncLeads(container);
 
     container.querySelectorAll('[data-entry-id]').forEach((el) => {
         const entryId = el.getAttribute('data-entry-id');
@@ -1446,27 +1447,59 @@ function getDailyJournalForTimeline(dateStr) {
     return getDailyJournalFromSettings(window.userSettings, dateStr);
 }
 
-/** 하루 기록 사진이 있을 때 — 식사 행과 동일한 동기화 도트(업로드 중 빨강 / 반영 완료 초록) */
-function dailyJournalPhotoSyncLeadHtml(journal) {
-    if (!dailyJournalHasPhotos(journal)) return '';
+/**
+ * 하루 소감이 서버에 있는지 — 이 기록을 담고 있는 설정 문서 기준.
+ *
+ * ops.saveSettings 는 서버 커밋이 확인됐을 때만 아웃박스 항목을 뺀다. 항목이 없다는 것은
+ * dailyComments 가 통째로 서버에 있다는 뜻이다.
+ * 인덱스 하이드레이션 전에는 아웃박스가 비어 보이므로, 확인되기 전에는 없는 것으로 본다.
+ */
+function isDailyJournalSettingsSynced() {
+    const uid = window.currentUser?.uid;
+    if (!uid) return false;
+    if (!isOutboxIndexReady()) return false;
+    return !isOutboxPendingSync('settings', uid);
+}
+
+/**
+ * 하루 소감 동기화 도트 — 식사 행과 같은 자리, 같은 모양.
+ *
+ * 식사 행의 getMealRowSyncLeadKind 는 쓸 수 없다. 그건 아웃박스의 'meal:{id}' 키를 보는데
+ * 하루 소감은 meals 문서가 아니라 userSettings.dailyComments 안에 있어서 그 키가 애초에
+ * 없고, 없으면 무조건 synced 로 읽혀 저장 중에도 초록이 뜬다.
+ *
+ * 실패·저장 중(빨강)은 사진 업로드 대기에만 쓴다. 설정 아웃박스는 사용자당 한 건이라
+ * 어느 날짜 때문에 밀려 있는지 구분할 수 없어서, 확인되지 않았으면 도트를 그리지 않는다.
+ */
+function dailyJournalSyncLeadHtml(journal) {
+    if (!dailyJournalHasContent(journal)) return '';
     if (dailyJournalHasPendingPhotoUpload(journal)) {
         return mealLeadSyncRedDot('등록 중', '하루 소감 사진을 서버에 업로드하는 중이에요.');
     }
+    if (!isDailyJournalSettingsSynced()) return '';
     const dot = (bg) =>
         `<span class="inline-block h-[7.8px] w-[7.8px] shrink-0 rounded-full ${bg} ring-1 ring-white/90 ring-inset" aria-hidden="true"></span>`;
-    return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="사진 서버 반영 완료" aria-label="사진 서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">사진 서버 반영 완료</span>`;
+    return `<span class="inline-flex h-[1em] w-[13.8px] shrink-0 items-center justify-center leading-none" title="서버 반영 완료" aria-label="서버 반영 완료">${dot('bg-emerald-500')}</span><span class="sr-only">서버 반영 완료</span>`;
 }
 
-function wrapDailyJournalSlotTextWithSyncLead(journal, innerHtml) {
-    const lead = dailyJournalPhotoSyncLeadHtml(journal);
-    if (!lead) return innerHtml;
-    return `<div class="flex min-w-0 items-start gap-1.5">${lead}<div class="min-w-0 flex-1">${innerHtml}</div></div>`;
+/**
+ * 도트 자리를 항상 만들어 둔다 — 아웃박스가 드레인되면 이 자리만 갈아 끼운다.
+ * display:contents 라 도트가 없을 때는 flex 항목으로 세지 않는다(도트 유무로 레이아웃이 안 바뀐다).
+ */
+function dailyJournalSyncLeadHolderHtml(journal) {
+    return `<span class="daily-journal-sync-lead" style="display:contents">${dailyJournalSyncLeadHtml(journal)}</span>`;
 }
 
-function dailyJournalCommentPreviewHtml(comment) {
-    const c = String(comment || '').trim();
-    if (!c) return '';
-    return `<p class="daily-journal-summary-text clear-both mt-1.5 mb-0 min-w-0 text-xs font-medium text-slate-400">"${escapeHtml(c)}"</p>`;
+/** 아웃박스 인덱스가 바뀌었을 때 하루 소감 도트만 갈아 끼운다(날짜 섹션 재구성 없이) */
+function updateTimelineDailyJournalSyncLeads(container) {
+    container.querySelectorAll('.daily-journal-slot').forEach((el) => {
+        const holder = el.querySelector('.daily-journal-sync-lead');
+        if (!holder) return;
+        const dateStr = el.getAttribute('data-mealog-open-daily');
+        if (!dateStr) return;
+        const next = dailyJournalSyncLeadHtml(getDailyJournalForTimeline(dateStr));
+        if (holder.innerHTML !== next) holder.innerHTML = next;
+    });
 }
 
 function dailyJournalMetricHashtagSpan(label, chain) {
@@ -1495,56 +1528,6 @@ function dailyJournalMetricsSlotPreviewHtml(journal) {
 function buildDailyJournalSlotHtml(dateStr) {
     const journal = getDailyJournalForTimeline(dateStr);
     return buildDailyJournalCardHtml(dateStr, journal);
-}
-
-function buildDailyJournalListEmptyHtml(dateStr) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
-    const slot = DAILY_JOURNAL_SLOT;
-    const safeLabel = escapeHtml(slot.label);
-    const hThird = 'h-[calc(140px/3)] min-h-[calc(140px/3)]';
-    const listLeft = style.listLeft || '';
-    return `<div ${dailyJournalOpenDataAttrs(dateStr)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} opacity-80 cursor-pointer active:scale-[0.98] transition-all">
-        <div class="flex ${hThird}">
-            <div class="w-[140px] min-w-[140px] ${hThird} flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex items-center justify-center overflow-hidden border-r px-2 text-center">
-                <span class="text-sm font-bold leading-tight">${safeLabel}</span>
-            </div>
-            <div class="flex-1 min-w-0 flex items-center justify-center gap-1.5 px-4">
-                <span class="text-xl font-semibold text-slate-400 leading-none" aria-hidden="true">+</span>
-                <span class="text-xs text-slate-400 font-normal">기록하기</span>
-            </div>
-        </div>
-    </div>`;
-}
-
-function buildDailyJournalListFilledHtml(dateStr, journal) {
-    const style = DAILY_JOURNAL_SLOT_STYLE;
-    const slot = DAILY_JOURNAL_SLOT;
-    const comment = String(journal.comment || '').trim();
-    const safeLabel = escapeHtml(slot.label);
-    const listLeft = style.listLeft || '';
-    const metricsHtml = dailyJournalMetricsSlotPreviewHtml(journal);
-    const commentHtml = dailyJournalCommentPreviewHtml(comment);
-    const fallback = dailyJournalSlotFallbackLine(journal);
-    const fallbackHtml = !commentHtml && fallback
-        ? `<p class="mb-0 min-w-0 truncate text-xs text-slate-400">${escapeHtml(fallback)}</p>`
-        : '';
-    const bodyInner =
-        commentHtml +
-        (metricsHtml || '') +
-        fallbackHtml +
-        (!metricsHtml && !commentHtml && !fallbackHtml ? `<p class="mb-0 text-xs text-slate-400">—</p>` : '');
-    const bodyHtml = wrapDailyJournalSlotTextWithSyncLead(journal, bodyInner);
-
-    return `<div ${dailyJournalCardDataAttrs(dateStr, journal)} class="card timeline-entry-row daily-journal-slot mb-1.5 ${listLeft} cursor-pointer active:scale-[0.98] transition-all">
-        <div class="flex items-stretch">
-            <div class="w-[140px] min-w-[140px] flex-shrink-0 border-slate-200 ${style.iconText} bg-slate-50 flex flex-col items-center justify-center gap-1 py-3 px-2 text-center border-r">
-                <span class="text-sm font-bold leading-tight break-words inline-flex items-center justify-center gap-1">${safeLabel}${dailyJournalShareArrowHtml(dateStr, journal)}</span>
-            </div>
-            <div class="flex min-w-0 flex-1 flex-col justify-center py-2 pl-3 pr-2">
-                ${bodyHtml}
-            </div>
-        </div>
-    </div>`;
 }
 
 function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
@@ -1595,8 +1578,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     }
 
     const shareArrow = dailyJournalShareArrowHtml(dateStr, journal);
-    const syncLead = dailyJournalHasPhotos(journal) ? dailyJournalPhotoSyncLeadHtml(journal) : '';
-    const metaHtml = `${syncLead}${safeLabel}${shareArrow}`;
+    const metaHtml = `${dailyJournalSyncLeadHolderHtml(journal)}${safeLabel}${shareArrow}`;
     // 기록된 카드는 제목 없이 메모·지표만 (제목=메모 중복 방지). 빈 슬롯만 CTA 제목.
     const titleHtml = hasContent ? '' : '기록하기';
     const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);

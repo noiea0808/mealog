@@ -542,12 +542,33 @@ function buildAttendanceWelcomeDonutSvg(slide) {
 }
 
 /**
- * 슬라이드 한 장 — 도넛 SVG만 (외곽 박스·스위치·도트는 HTML 껍데기)
- * @param {{ title: string, total: number, segments: { color: string, count: number, displayName: string }[] }} slide
+ * 슬라이드 한 장 — 도넛 SVG 또는 랭킹 상세 테이블 (외곽 박스·스위치·도트는 HTML 껍데기)
+ * @param {{ type?: 'donut'|'detail', title: string, total?: number, segments?: any[], html?: string }} slide
  */
 function buildWelcomeChartSlideHtml(slide) {
+    if (slide && slide.type === 'detail') {
+        return buildWelcomeDetailSlideHtml(slide);
+    }
     const svg = buildAttendanceWelcomeDonutSvg(slide);
     return `<div class="attendance-welcome-slide-inner flex w-full justify-center px-1">${svg}</div>`;
+}
+
+/**
+ * 슬라이드 한 장 — 랭킹 상세 테이블 (분석 > 상세 팝업과 동일 테이블, 최근 7일 스코프)
+ * @param {{ title: string, html: string }} slide
+ */
+function buildWelcomeDetailSlideHtml(slide) {
+    const title = attendanceWelcomeEscapeXml(slide.title || '상세');
+    const body = slide.html || '<p class="text-slate-400 text-xs py-2">표시할 상세가 없습니다.</p>';
+    return `<div class="attendance-welcome-detail-slide w-full">
+<div class="attendance-welcome-detail-slide-head px-2">
+    <span class="attendance-welcome-detail-slide-eyebrow">최근 7일</span>
+    <span class="attendance-welcome-detail-slide-title">${title}</span>
+</div>
+<div class="attendance-welcome-detail-slide-body max-h-[15.5rem] overflow-y-auto">
+    <div class="px-2">${body}</div>
+</div>
+</div>`;
 }
 
 /** @type {'report'|'meal'|'snack'} */
@@ -629,17 +650,17 @@ function welcomeShowsReportTab() {
     return !!(window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser));
 }
 
-/** 요일별 웰컴 팝업 기본 노출: 월=AI리포트, 화~목=식사(어떻게→무엇을→함께), 금~일=간식(언제→어디서→무엇을) */
+/** 요일별 웰컴 팝업 기본 노출: 월=AI리포트, 화=식사 어떻게, 수=식사 함께 상세, 목=AI리포트, 금=식사 무엇을, 토=식사 무엇을 상세, 일=간식 무엇을 상세 */
 function getWelcomeWeekdayDefault() {
     const day = new Date().getDay(); // 0=일 1=월 ... 6=토
     switch (day) {
-        case 1: return { kind: 'report', slideIdx: 0 };
-        case 2: return { kind: 'meal', slideIdx: 0 };
-        case 3: return { kind: 'meal', slideIdx: 1 };
-        case 4: return { kind: 'meal', slideIdx: 2 };
-        case 5: return { kind: 'snack', slideIdx: 0 };
-        case 6: return { kind: 'snack', slideIdx: 1 };
-        default: return { kind: 'snack', slideIdx: 2 }; // 일
+        case 1: return { kind: 'report', slideIdx: 0 }; // 월 — AI리포트
+        case 2: return { kind: 'meal', slideIdx: 0 }; // 화 — 어떻게
+        case 3: return { kind: 'meal', slideIdx: 5 }; // 수 — 함께 상세
+        case 4: return { kind: 'report', slideIdx: 0 }; // 목 — AI리포트
+        case 5: return { kind: 'meal', slideIdx: 2 }; // 금 — 무엇을
+        case 6: return { kind: 'meal', slideIdx: 3 }; // 토 — 무엇을 상세
+        default: return { kind: 'snack', slideIdx: 4 }; // 일 — 간식 무엇을 상세
     }
 }
 

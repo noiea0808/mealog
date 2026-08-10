@@ -1,10 +1,11 @@
 // 게시판 및 공지 관련 함수들
-import { db, appId, callableFunctions } from '../firebase.js';
+import { db, appId, callableFunctions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc, query, orderBy, limit, where, getDocs, getDocsFromServer, onSnapshot, serverTimestamp, writeBatch, getCountFromServer } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { showToast } from '../ui.js';
 import { isDemoUser } from '../demo-account.js';
 import { getMealogClientEnv } from '../utils.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
+import { runWithOutbox, registerOutboxHandler, newActionId } from '../utils/outbox-actions.js';
 
 /** 알림 목록: 레거시 제목 우선, 없으면 본문(html) 첫 줄 평문, 길면 `...` (Cloud `boardPostPushTitlePreview` 와 동일 길이 규칙) */
 function boardPostTitleForNotification(data) {
@@ -62,12 +63,25 @@ export const boardOperations = {
         }
         try {
             console.log('[boardOperations.createPost] 시작:', { title: postData.title, category: postData.category });
-            const result = await callableFunctions.createBoardPost({
+            const args = {
                 title: postData.title,
                 content: postData.content,
                 category: postData.category || 'serious',
                 imageUrls: postData.imageUrls || []
-            });
+            };
+            /**
+             * Callable 은 Firestore 로컬 큐를 타지 않는다 — 실패하면 사용자가 쓴 글이 아무 데도
+             * 남지 않고 사라졌다. 전송 전에 내구화하고, 성공했을 때만 아웃박스에서 뺀다.
+             */
+            const result = await runWithOutbox(
+                {
+                    target: 'boardPost',
+                    id: postData.outboxActionId || newActionId('boardPost'),
+                    uid: window.currentUser.uid,
+                    payload: args
+                },
+                () => callableFunctions.createBoardPost(args)
+            );
             console.log('[boardOperations.createPost] 성공:', result.data);
             showToast("게시글이 등록되었습니다.", 'success');
             return result.data;
@@ -276,8 +290,11 @@ export const boardOperations = {
                 return null;
             }
             const newViews = (postData.views || 0) + 1;
-            
-            // 조회수 증가
+
+            // 조회수 증가 — firestore.rules 의 boardPosts update 는 hasValidAppCheckToken() 을 요구한다.
+            // 예전에는 firebase.js 의 최상위 await 가 「부팅이 끝났으면 토큰도 있다」를 암묵적으로
+            // 보장했지만 그 순서를 없앴으므로, 토큰이 필요한 이 자리에서 명시적으로 준비한다.
+            await refreshAppCheckTokenBeforeFirestore();
             await setDoc(postDoc, {
                 views: newViews
             }, { merge: true });
@@ -666,11 +683,20 @@ export const boardOperations = {
         }
         try {
             console.log('[boardOperations.addComment] 시작:', { postId, contentLength: content?.length, imageCount: Array.isArray(imageUrls) ? imageUrls.length : 0 });
-            const result = await callableFunctions.addBoardComment({
+            const args = {
                 postId,
                 content,
                 imageUrls: Array.isArray(imageUrls) ? imageUrls : []
-            });
+            };
+            const result = await runWithOutbox(
+                {
+                    target: 'boardComment',
+                    id: newActionId('boardComment'),
+                    uid: window.currentUser.uid,
+                    payload: args
+                },
+                () => callableFunctions.addBoardComment(args)
+            );
             console.log('[boardOperations.addComment] 성공:', result.data);
             return result.data;
         } catch (e) {
@@ -1115,3 +1141,32 @@ export async function setBoardPostHidden(postId, hidden) {
     if (!postSnap.exists()) throw new Error("게시글을 찾을 수 없습니다.");
     await updateDoc(postDoc, { isHidden: !!hidden });
 }
+
+/**
+ * 아웃박스 재시도 핸들러 등록.
+ *
+ * 「어떻게 다시 보내는가」를 워커의 target 분기로 옮기면 그 분기가 또 하나의 상태기계가 된다.
+ * 그래서 그 쓰기를 소유한 이 모듈이 등록한다. 성공하면 resolve, 실패하면 throw —
+ * 그 구분이 아웃박스 제거 여부를 정한다.
+ */
+registerOutboxHandler('boardPost', async (payload) => {
+    const res = await callableFunctions.createBoardPost({
+        title: payload.title,
+        content: payload.content,
+        category: payload.category || 'serious',
+        imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls : []
+    });
+    if (!res?.data) throw new Error('createBoardPost: 서버 응답 없음');
+    return res.data;
+});
+
+registerOutboxHandler('boardComment', async (payload) => {
+    if (!payload.postId) throw new Error('boardComment: postId 없음'); // 재시도 무의미 → 곧 permanent
+    const res = await callableFunctions.addBoardComment({
+        postId: payload.postId,
+        content: payload.content,
+        imageUrls: Array.isArray(payload.imageUrls) ? payload.imageUrls : []
+    });
+    if (!res?.data) throw new Error('addBoardComment: 서버 응답 없음');
+    return res.data;
+});

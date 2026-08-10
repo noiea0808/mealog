@@ -19,16 +19,24 @@ import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
 import {
     auth,
     kickFirestoreTransportReconnect,
-    rebindFirestoreListenersIfRegistered,
-    refreshAppCheckTokenBeforeFirestore
+    preflightFirestoreAuth,
+    rebindFirestoreListenersIfRegistered
 } from '../firebase.js';
+import { withDeadlineOr, Lease } from './with-deadline.js';
 
 /** 이만큼 조용하면 토큰 갱신·리스너 재부착까지 함께 한다. 가벼운 kick 으로 안 풀린 상황. */
 const DEEP_NUDGE_MS = 60000;
 /** 각 단계의 상한 — half-open 에서 영원히 resolve 되지 않는 Promise 가 넛지를 마비시키지 않게. */
 const STEP_TIMEOUT_MS = 8000;
 
-let nudgeInFlight = false;
+/**
+ * 넛지 점유. 불린이 아니라 **만료 있는 리스**다.
+ *
+ * 불린이면 안쪽에서 한 번이라도 매달릴 때 영구히 잠기고, 그러면 네트워크가 돌아와도 채널을
+ * 다시 찌를 방법이 사라진다 — 복구 수단 자체가 죽는 것이다. 리스는 시간으로 풀린다.
+ * 만료가 실제로 발생하면 `lease.expired` 이벤트로 계측에 남아 원인을 추적할 수 있다.
+ */
+const nudgeLease = new Lease('network-nudge', STEP_TIMEOUT_MS * 3);
 let lastNudgeAt = 0;
 
 /**
@@ -41,29 +49,11 @@ function minIntervalForQuiet(quietMs) {
     return 60000;
 }
 
-function withTimeout(promise, timeoutMs, fallbackValue = undefined) {
-    let timer = 0;
-    const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => resolve(fallbackValue), timeoutMs);
-    });
-    return Promise.race([Promise.resolve(promise).catch(() => fallbackValue), timeout]).finally(() => {
-        if (timer) clearTimeout(timer);
-    });
-}
-
-async function refreshAuthTokens() {
-    try {
-        await refreshAppCheckTokenBeforeFirestore({ force: true });
-    } catch (_) {
-        /* ignore */
-    }
-    try {
-        const u = auth.currentUser;
-        if (u && typeof u.getIdToken === 'function') await u.getIdToken(true);
-    } catch (_) {
-        /* ignore */
-    }
-}
+/**
+ * 토큰 갱신은 firebase.js 의 preflightFirestoreAuth 가 상한까지 포함해 담당한다.
+ * 예전에는 여기에 자체 withTimeout 복붙본이 있었는데, 같은 헬퍼가 meal-outbox-drain.js 에도
+ * 한 벌 더 있으면서 정작 필요한 호출부에는 안 걸려 있었다 — 관문이 없다는 증거였다.
+ */
 
 /**
  * 채널을 한 번 찌른다. 얼마나 세게 찌를지는 조용한 시간에서 파생한다 — 사다리도 실패 카운터도 없다.
@@ -73,23 +63,31 @@ async function refreshAuthTokens() {
  * firebase.js 의 전역 assertion 핸들러가 관측해서 따로 복구한다.
  */
 async function nudge(reason, deep) {
-    if (nudgeInFlight) return;
-    nudgeInFlight = true;
-    lastNudgeAt = Date.now();
-    try {
-        const hard = deep === true || getMealogFirestoreActivityAgeMs() >= DEEP_NUDGE_MS;
-        if (hard) await withTimeout(refreshAuthTokens(), STEP_TIMEOUT_MS);
-        await withTimeout(
-            kickFirestoreTransportReconnect(reason || 'nudge', { force: true }),
-            STEP_TIMEOUT_MS,
-            false
-        );
-        if (hard) rebindFirestoreListenersIfRegistered();
-    } catch (e) {
-        console.warn('[network] 넛지 실패:', reason, e?.message || e);
-    } finally {
-        nudgeInFlight = false;
-    }
+    const ran = await nudgeLease.run(async () => {
+        lastNudgeAt = Date.now();
+        try {
+            const hard = deep === true || getMealogFirestoreActivityAgeMs() >= DEEP_NUDGE_MS;
+            if (hard) {
+                await withDeadlineOr(
+                    preflightFirestoreAuth(auth.currentUser, { force: true }),
+                    STEP_TIMEOUT_MS,
+                    undefined,
+                    'nudge-auth'
+                );
+            }
+            await withDeadlineOr(
+                kickFirestoreTransportReconnect(reason || 'nudge', { force: true }),
+                STEP_TIMEOUT_MS,
+                false,
+                'nudge-kick'
+            );
+            if (hard) rebindFirestoreListenersIfRegistered();
+        } catch (e) {
+            console.warn('[network] 넛지 실패:', reason, e?.message || e);
+        }
+        return true;
+    });
+    return ran === true;
 }
 
 /**

@@ -10,7 +10,23 @@ import { db, appId } from '../firebase.js';
 import { waitForPendingWrites, doc, getDocFromServer } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { appState } from '../state.js';
 import { isDemoUser } from '../demo-account.js';
+import { withDeadline, DEADLINE } from './with-deadline.js';
+import {
+    isPendingSync as isOutboxPendingSync,
+    isPermanentSync as isOutboxPermanentSync,
+    pendingCountSync as outboxPendingCountSync
+} from './outbox-store.js';
 
+/**
+ * localStorage ID 집합 3종(errorIds·abandoned·registerScheduled)은 폐기됐다.
+ * 그것들은 「아직 안 올라간 기록」의 **근사치**였고, 근사치가 여러 개라 서로 어긋나는
+ * 조합마다 버그가 났다. 이제 아웃박스가 그 사실 자체를 들고 있으므로 근사치가 필요 없다.
+ *
+ * 아래 맵들(_errorIds·_abandoned·_registerScheduledChip 등)도 표시 판정에서는 더 이상
+ * 쓰이지 않는다 — getRowSyncLeadKind 는 아웃박스만 본다. 남아 있는 것은 저장 실패 배지
+ * 병합(shouldPreserveMealSaveFailureOnMerge) 등 아직 정리되지 않은 호출부 때문이며,
+ * 4단계 나머지 경로를 붙일 때 함께 걷어낸다.
+ */
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
 const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
 const MEAL_REGISTER_SCHEDULED_IDS_KEY = 'mealog_mealSyncRegisterScheduledIds_v1';
@@ -525,6 +541,13 @@ export class MealSyncManager {
     onServerDocumentAcknowledged(docId, optimisticTempId) {
         if (typeof window === 'undefined' || docId == null || docId === '') return;
         const sid = String(docId);
+        /**
+         * 아웃박스에서 빼는 **유일한 지점**이다 (설계 §4.2).
+         * 서버 존재가 확인됐을 때만 지운다 — 그 외 어떤 이유로도 지우지 않는다.
+         */
+        void import('./outbox-store.js').then((ob) => {
+            void ob.remove(ob.outboxKey('meal', sid));
+        });
         this.clearGraceTimer(sid);
         if (optimisticTempId != null && optimisticTempId !== '') {
             this.clearGraceTimer(String(optimisticTempId));
@@ -595,11 +618,17 @@ export class MealSyncManager {
         // 데모 계정은 서버 대조 대상이 아니다 — 확인 없이 통과시켜 기존 동작을 유지한다.
         if (isDemoUser(user)) return true;
         try {
-            const snap = await getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id)));
+            // 상한 필수: 반쯤 끊긴 연결에서 getDocFromServer 는 정착하지 않는다.
+            // 여기서 매달리면 이 함수를 await 하는 드레인 전체가 영구히 멈춘다.
+            const snap = await withDeadline(
+                getDocFromServer(doc(db, 'artifacts', appId, 'users', uid, 'meals', String(id))),
+                DEADLINE.DOC,
+                'serverDocumentExists'
+            );
             return snap.exists();
         } catch (e) {
             console.warn('[meal-sync] 서버 문서 확인 실패:', id, e?.message || e);
-            return null;
+            return null; // 확인 못 함 — 다음 패스가 이어받는다
         }
     }
 
@@ -668,8 +697,10 @@ export class MealSyncManager {
         const reads = await Promise.all(
             [...targets.entries()].map(async ([id, t]) => {
                 try {
+                    // 상한 필수 — 이 Promise.all 이 매달리면 드레인이 통째로 죽는다.
+                    // 읽지 못한 건은 exists: null 로 두면 아래에서 건너뛰고 다음 패스가 이어받는다.
                     const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', id);
-                    const snap = await getDocFromServer(ref);
+                    const snap = await withDeadline(getDocFromServer(ref), DEADLINE.DOC, 'reconcile-read');
                     return { id, deleting: t.deleting, record: t.record, exists: snap.exists() };
                 } catch (e) {
                     console.warn('[meal-sync] 서버 정합 읽기 실패:', id, e?.message || e);
@@ -687,6 +718,10 @@ export class MealSyncManager {
                 const prev = rowById(r.id);
                 this.markDeleteComplete(r.id);
                 this.clearDeleteFailed(r.id);
+                // 서버에서 사라진 것이 확인됐다 — 삭제 항목도 이때만 아웃박스에서 뺀다
+                void import('./outbox-store.js').then((ob) => {
+                    void ob.remove(ob.outboxKey('meal', r.id));
+                });
                 if (prev) applyOptimisticMealDelete(r.id, prev);
                 continue;
             }
@@ -859,29 +894,15 @@ export class MealSyncManager {
      * 없어진다. 실제로 다시 밀어 올릴지는 드레인이 기록별로 isRetryEligible 로 정한다.
      */
     countUnsentMealWork() {
-        if (typeof window === 'undefined' || !Array.isArray(window.mealHistory)) return 0;
-        const hist = window.mealHistory;
-        const seen = new Set();
-        let n = 0;
-        for (const m of hist) {
-            if (!m?.id) continue;
-            const id = String(m.id);
-            if (id.startsWith('temp_') || seen.has(id)) continue;
-            const kind = this.getRowSyncLeadKind(m);
-            if (kind === 'syncing' || kind === 'failed') {
-                seen.add(id);
-                n++;
-            }
-        }
-        // 행이 화면에서 사라진 삭제 예약도 아직 남은 일이다
-        for (const key of this._deletePending.keys()) {
-            const id = String(key);
-            if (!id || id.startsWith('temp_') || seen.has(id)) continue;
-            if (hist.some((m) => m && String(m.id) === id)) continue;
-            seen.add(id);
-            n++;
-        }
-        return n;
+        if (typeof window === 'undefined') return 0;
+        /**
+         * 배지 = 아웃박스 크기. 워커와 **같은 집합**을 본다.
+         *
+         * 예전에는 mealHistory 를 훑어 세면서 화면에서 사라진 삭제 예약을 따로 더하는
+         * 보정이 필요했고, 그 기준이 드레인과 갈라져 「배지에 N 이 뜨는데 눌러도 아무 일도
+         * 안 하는 버튼」이 생길 수 있었다. 기준이 하나면 그 불일치가 원리적으로 없다.
+         */
+        return outboxPendingCountSync(window.currentUser?.uid);
     }
 
     /**
@@ -900,11 +921,21 @@ export class MealSyncManager {
      */
     getRowSyncLeadKind(record) {
         if (!record || record.id == null || record.id === '') return 'none';
-        if (this.isDeleteFailed(record) || this.isSaveFailed(record)) return 'failed';
-        if (this.isDeleting(record)) return 'syncing';
-        if (this.isPendingSync(record)) return 'syncing';
-        if (!this.isServerSynced(record)) return 'syncing';
-        return 'synced';
+        const id = String(record.id);
+        // 아웃박스 이전의 낙관 temp 행 — 아웃박스에 없으므로 별도 보호
+        if (id.startsWith('temp_')) return 'syncing';
+        /**
+         * 아웃박스가 유일한 기준이다 (§4.4).
+         *   없다              → synced  (워커는 서버 확인된 것만 지운다)
+         *   있다              → syncing (기다리면 된다)
+         *   있고 permanent    → failed  (재시도 무의미, 사용자 개입 필요)
+         *
+         * 예전에는 여섯 개의 병렬 플래그가 각자 표시를 주장했고, 표식이 재시도 과정에서
+         * 서로 옮겨 다녀 「표식이 하나도 없는 찰나」에 기록이 사라졌다. 기준이 하나면
+         * 그 레이스가 존재할 수 없다.
+         */
+        if (!isOutboxPendingSync('meal', id)) return 'synced';
+        return isOutboxPermanentSync('meal', id) ? 'failed' : 'syncing';
     }
 
     /**
@@ -963,7 +994,17 @@ export class MealSyncManager {
         return (async () => {
             let existsOnServer = null;
             try {
-                await waitForPendingWrites(db);
+                /**
+                 * 상한 필수. `waitForPendingWrites` 는 **오프라인이면 정의상 resolve 되지 않는다.**
+                 * 그런데 이 함수는 「아직 못 보낸 것을 보내자」는 재시도 경로에서 await 되므로,
+                 * 오프라인일 확률이 구조적으로 가장 높은 지점에서 영원히 매달렸다. 그 결과
+                 * retryMealEntrySync 의 finally 가 돌지 않아 해당 기록은 다시 시도할 수 없게 되고,
+                 * 그것을 await 하던 드레인의 drainInFlight 도 영구히 잠겼다.
+                 *
+                 * 타임아웃되면 아래에서 existsOnServer 가 null 로 남아 「등록예정」으로 되돌아간다 —
+                 * 아웃박스에 그대로 남으므로 다음 패스가 이어받는다. 유실이 아니다.
+                 */
+                await withDeadline(waitForPendingWrites(db), DEADLINE.SAVE, 'ack-waitForPendingWrites');
                 // 리스너가 이미 서버 스냅샷으로 ack 했으면 그것이 곧 기록별 확인이다 — 서버 읽기 생략.
                 if (self.hasServerSynced(String(mealId))) {
                     void refreshTimelineFull(dateStr, currentTabVal);

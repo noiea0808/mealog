@@ -43,7 +43,6 @@ import {
     markMealEntrySyncAbandonedById,
     clearMealEntrySyncAbandonedById,
     clearMealSyncGraceTimer,
-    scheduleMealSyncGraceAbandon,
     isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
     onMealDocFirestoreServerAcknowledged,
@@ -73,6 +72,10 @@ import {
 } from '../time-source-picker.js';
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import { saveWithTimeout } from '../utils/save-with-timeout.js';
+import { diag, getSavePhase } from '../utils/diagnostics.js';
+import { withDeadline, Lease, DEADLINE } from '../utils/with-deadline.js';
+import { prepareIntakeImage, dataUrlToBlob } from '../utils/image-downscale.js';
+import { enqueueWithQuotaRelief, CLASS_CONTENT } from '../utils/outbox-store.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import {
     ensureFocusedInputVisible,
@@ -1200,7 +1203,8 @@ async function fetchMealRecordForEdit(entryId) {
         }
     };
     try {
-        await refreshAppCheckTokenBeforeFirestore();
+        // meals 단건 읽기 — App Check 미요구 경로라 preflight 없이 바로 조회한다
+        // (모달 여는 속도에 그대로 얹히던 대기였다)
         mergeRec(await getDoc(ref));
     } catch (e) {
         const isPerm =
@@ -2125,6 +2129,29 @@ export async function saveEntry() {
             photos: [...sourcePhotos],
             photoMeta: sourcePhotoMeta.map((e) => ({ takenAt: e?.takenAt ?? null }))
         };
+        /**
+         * ── 불변식 (docs/sync-outbox-design.md §1) ─────────────────────────────────
+         * 사용자가 저장을 누른 기록은, **어떤 fallible 한 단계도 시작하기 전에** 이미
+         * 내구 저장돼 있다. 이 enqueue 가 그 지점이다 — 낙관 반영·모달 닫힘·성공 팝업·
+         * dbOps.save 그 무엇보다 먼저다.
+         *
+         * 여기서 실패하면 저장했다고 말하면 안 된다(§4.2). 모달을 열어 둔 채 실패를
+         * 알려, 사용자가 입력을 잃지 않게 한다. 「저장했다고 말했는데 안 됐다」가 이
+         * 서브시스템의 원죄다.
+         */
+        if (record.id && !String(record.id).startsWith('temp_')) {
+            const durable = await persistMealToOutbox(record, sourcePhotos, sourcePhotoMeta);
+            if (!durable) {
+                diag('save.durability.fail', { id: String(record.id) });
+                setEntryModalSavingState(false);
+                showToast(
+                    '기기에 저장하지 못했습니다. 저장 공간을 확보한 뒤 다시 시도해 주세요.',
+                    'error'
+                );
+                return; // 모달을 닫지 않는다 — 입력이 남아 있어야 한다
+            }
+        }
+
         if (optimisticTempId) markMealOptimisticSavePending(optimisticTempId);
         if (record.id) {
             clearMealEntryServerSynced(record.id);
@@ -2205,18 +2232,32 @@ export async function saveEntry() {
                     timeoutMs: SAVE_FIRESTORE_TIMEOUT_MS,
                     onTimeout: () => {
                         const mid = record.id || optimisticTempId;
+                        /**
+                         * 계측(0단계) — 이 한 줄이 진단 A 를 판정한다.
+                         *
+                         * phase 가 'preflight' 에서 멈춰 있으면 토큰·App Check 왕복에 매달린 채
+                         * 타임아웃이 터졌다는 뜻이고, 그러면 setDoc 이 호출되지 않아 **Firestore
+                         * 로컬 큐에 아무것도 없다** — 앱이 죽는 순간 기록이 사라진다.
+                         * 'setdoc-called' 이후면 큐에는 들어갔으므로 유실은 아니다.
+                         */
+                        const phase = getSavePhase(record.id ? String(record.id) : '(new)');
+                        diag('save.timeout', {
+                            id: mid ? String(mid) : null,
+                            phase,
+                            reachedSetDoc: phase === 'setdoc-called' || phase === 'setdoc-resolved',
+                            hasPhotos: hasPendingBase64Photos,
+                            isNew: wasNewRecord
+                        });
                         if (!mid) return;
                         if (String(mid).startsWith('temp_')) {
-                            // ID 선발급 실패 폴백(temp): 큐 추적이 불가하므로 기존대로 실패 처리
+                            // ID 선발급 실패 폴백(temp): 아웃박스 추적이 불가하므로 기존대로 실패 처리
                             getMealSyncManager().onSaveUiTimedOut(String(mid), optimisticTempId);
-                        } else {
-                            // setDoc이 Firestore 로컬 큐에 남아 있을 가능성이 높음 — 실패가 아닌 '등록 예정'
-                            getMealSyncManager().promoteToRegisterScheduledChip(String(mid), {
-                                optimisticTempId,
-                                dateStr: record.date,
-                                currentTab
-                            });
                         }
+                        /**
+                         * 그 외에는 아무것도 하지 않는다. 이 기록은 이미 아웃박스에 있고,
+                         * 표시는 아웃박스 하나만 본다 — 타임아웃은 「아직 안 올라감」을 바꾸지
+                         * 않으므로 따로 승격시킬 상태가 없다. 워커가 계속 밀어 올린다.
+                         */
                     }
                 })
             );
@@ -2652,7 +2693,7 @@ export async function deleteEntry() {
     let mealForDelete = window.mealHistory?.find((m) => m.id === entryIdToDelete);
     if (!mealForDelete && entryIdToDelete && window.currentUser?.uid) {
         try {
-            await refreshAppCheckTokenBeforeFirestore();
+            // meals 단건 읽기 — App Check 미요구 (위 openModal 경로와 같은 이유)
             const ref = doc(db, 'artifacts', appId, 'users', window.currentUser.uid, 'meals', entryIdToDelete);
             const snap = await getDoc(ref);
             if (snap.exists()) {
@@ -2693,6 +2734,26 @@ export async function deleteEntry() {
     }
 
     const mealDate = mealForDelete.date;
+
+    /**
+     * 삭제도 아웃박스에 내구 저장한다 (§4.1 op:'delete').
+     * 삭제 역시 「사용자가 누른 것」이므로, 앱이 죽어도 되살아나지 않아야 한다. 예전에는
+     * _deletePending·_deleteInFlight·_deleteFailed 세 플래그가 RAM 에만 있어, 재시작하면
+     * 삭제 의사가 사라지고 지운 기록이 되돌아왔다.
+     *
+     * 여기서 실패해도 삭제 자체는 진행한다 — 등록과 달리 「사라진 것이 되살아나는」 쪽이
+     * 되돌리기 쉽고, 모달은 이미 닫혔다. 대신 계측에 남긴다.
+     */
+    void enqueueWithQuotaRelief({
+        target: 'meal',
+        id: String(entryIdToDelete),
+        uid: window.currentUser.uid,
+        op: 'delete',
+        class: CLASS_CONTENT,
+        payload: { date: mealDate, updatedAt: new Date().toISOString() }
+    }).then((ok) => {
+        if (!ok) diag('delete.durability.fail', { id: String(entryIdToDelete) });
+    });
 
     markMealEntryDeletePending(entryIdToDelete);
     /** 스냅샷 `removed` 이전에 로컬 반영 — 연속 일수·트래커가 삭제 직후 갱신되도록 */
@@ -2793,6 +2854,77 @@ export async function deleteEntry() {
 
 const MEAL_SYNC_RETRY_TIMEOUT_MS = 10000;
 
+/**
+ * 기록 하나를 아웃박스에 내구 저장한다 (설계 §4.1, §4.6).
+ *
+ * 사진은 Blob 으로 넣는다 — data URL 문자열보다 25% 작고 직렬화 비용도 없다.
+ * 원본은 Storage 업로드가 끝나면 워커가 버린다(§4.6).
+ *
+ * @returns {Promise<boolean>} 실제로 커밋됐는지. false 면 호출부는 저장 성공이라 말하면 안 된다.
+ */
+async function persistMealToOutbox(record, sourcePhotos, sourcePhotoMeta) {
+    try {
+        const uid = window.currentUser?.uid;
+        if (!uid) {
+            diag('outbox.persist.skip', { reason: 'no-uid' });
+            return false;
+        }
+        if (!record?.id) {
+            diag('outbox.persist.skip', { reason: 'no-record-id' });
+            return false;
+        }
+        const photos = [];
+        for (const p of Array.isArray(sourcePhotos) ? sourcePhotos : []) {
+            if (!isLocalPendingPhoto(p)) continue; // 이미 Storage URL 인 것은 다시 안 담는다
+            const blob = await dataUrlToBlob(p);
+            if (blob) photos.push(blob);
+        }
+        return await enqueueWithQuotaRelief({
+            target: 'meal',
+            id: String(record.id),
+            uid,
+            op: 'upsert',
+            class: CLASS_CONTENT,
+            payload: {
+                ...record,
+                // base64 는 payload 에 넣지 않는다 — 사진은 photos(Blob) 가 canonical
+                photos: (Array.isArray(sourcePhotos) ? sourcePhotos : []).filter(
+                    (p) => typeof p === 'string' && p && !isLocalPendingPhoto(p)
+                ),
+                photoMeta: sourcePhotoMeta
+            },
+            photos
+        });
+    } catch (e) {
+        diag('outbox.persist.error', { message: String(e?.message || e).slice(0, 160) });
+        console.error('[outbox] 식사 기록 내구 저장 실패:', e);
+        return false;
+    }
+}
+
+/**
+ * 기록별 재시도 리스. 사진 업로드가 낀 재시도는 길어질 수 있어 넉넉하되 반드시 유한하다.
+ * @type {Map<string, Lease>}
+ */
+const mealRetryLeases = new Map();
+
+function getMealRetryLease(entryId) {
+    const key = String(entryId);
+    let l = mealRetryLeases.get(key);
+    if (!l) {
+        l = new Lease(`meal-retry:${key}`, 120000);
+        mealRetryLeases.set(key, l);
+        // 세션이 길어져도 무한히 쌓이지 않게 — 점유되지 않은 오래된 항목부터 정리
+        if (mealRetryLeases.size > 200) {
+            for (const [k, v] of mealRetryLeases) {
+                if (!v.held) mealRetryLeases.delete(k);
+                if (mealRetryLeases.size <= 100) break;
+            }
+        }
+    }
+    return l;
+}
+
 /** data:image 또는 blob: → Storage 업로드용 data URL */
 /**
  * meal 레코드에 남아 있는 로컬(data:image·blob:) 사진을 Storage에 올린 뒤 photos/sharedPhotos를 https URL 기준으로 맞춘다.
@@ -2830,8 +2962,15 @@ export async function retryMealEntrySync(entryIdRaw) {
         showToast('샘플 계정에서는 사용할 수 없습니다.', 'error');
         return;
     }
-    if (!window._mealEntryRetryInFlight) window._mealEntryRetryInFlight = {};
-    if (window._mealEntryRetryInFlight[entryId]) return;
+    /**
+     * 기록별 재시도 점유 — 불린 맵이 아니라 만료 있는 리스다.
+     *
+     * 예전에는 `window._mealEntryRetryInFlight[entryId] = true` 를 세우고 finally 에서 지웠는데,
+     * 안쪽의 getDocFromServer·waitForPendingWrites 가 매달리면 finally 가 돌지 않아
+     * **그 기록은 세션 내내 재시도 대상에서 빠졌다.** 사용자가 재전송을 눌러도 조용히 무시된다.
+     */
+    const lease = getMealRetryLease(entryId);
+    if (lease.held) return;
     const record = window.mealHistory?.find((m) => m && String(m.id) === entryId);
     if (!record) {
         showToast('기록을 찾을 수 없습니다.', 'error');
@@ -2841,7 +2980,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         return;
     }
 
-    window._mealEntryRetryInFlight[entryId] = true;
+    if (!lease.acquire()) return;
     try {
         /**
          * 등록예정인데 서버 문서가 이미 있으면 재저장·inFlight 없이 ack만 — reconcile 직후 재시도에서 초록→레드 깜빡임 방지.
@@ -2861,8 +3000,10 @@ export async function retryMealEntrySync(entryIdRaw) {
             const uid = window.currentUser?.uid;
             if (uid) {
                 try {
+                    // 상한 필수 — 여기서 매달리면 _mealEntryRetryInFlight[entryId] 가 영구히 잠겨
+                    // 이 기록은 세션 내내 재시도 대상에서 빠지고, 드레인도 함께 죽는다.
                     const ref = doc(db, 'artifacts', appId, 'users', uid, 'meals', entryId);
-                    const snap = await getDocFromServer(ref);
+                    const snap = await withDeadline(getDocFromServer(ref), DEADLINE.DOC, 'retry-serverCheck');
                     if (snap.exists()) {
                         onMealDocFirestoreServerAcknowledged(entryId, null);
                         markMealEntryServerWorkComplete(entryId, null, `${record.date || ''}__${record.slotId || ''}`);
@@ -3039,12 +3180,11 @@ export async function retryMealEntrySync(entryIdRaw) {
         if (appState.currentTab === 'timeline' && record.date) renderTimelineDateSections([record.date]);
     } catch (e) {
         if (e?.__mealogSaveTimeout && !entryId.startsWith('temp_')) {
-            // 재시도 중 타임아웃(대개 아직 오프라인): setDoc은 로컬 큐에 남음 — 실패 대신 등록 예정 유지
-            console.warn('retryMealEntrySync 타임아웃 — 로컬 큐 대기(등록 예정):', entryId);
-            getMealSyncManager().promoteToRegisterScheduledChip(entryId, {
-                dateStr: record.date,
-                currentTab: appState.currentTab
-            });
+            /**
+             * 재시도 중 타임아웃 — 실패로 표시하지 않는다. 기록은 아웃박스에 그대로 있고
+             * 워커가 계속 밀어 올린다. 여기서 상태를 따로 세울 필요가 없다.
+             */
+            console.warn('retryMealEntrySync 타임아웃 — 아웃박스 유지:', entryId);
             showToast('연결되면 서버에 자동 등록돼요.', 'info');
             invalidateTimelineDateSection(record.date);
             updateTimelineMealEntryPendingIndicators();
@@ -3067,7 +3207,7 @@ export async function retryMealEntrySync(entryIdRaw) {
         invalidateTimelineDateSection(record.date);
         updateTimelineMealEntryPendingIndicators();
     } finally {
-        delete window._mealEntryRetryInFlight[entryId];
+        lease.release();
     }
 }
 
@@ -3529,18 +3669,21 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
         showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
 
-    const filePromises = filesToProcess.map((f, index) => {
-        return new Promise((resolve) => {
-            const r = new FileReader();
-            r.onload = (ev) => {
-                resolve({ index, dataUrl: ev.target.result });
-            };
-            r.onerror = () => {
-                console.error('파일 읽기 실패:', f.name);
-                resolve(null);
-            };
-            r.readAsDataURL(f);
-        });
+    /**
+     * 인테이크에서 다운스케일한다 (설계 §4.6). 예전에는 원본을 그대로 readAsDataURL 해서
+     * 기록 하나가 최대 ~80MB 문자열이 됐고, 그 무게가 백그라운드 저메모리 킬을 불러
+     * RAM 에만 있던 기록이 사라지는 원인이 됐다.
+     *
+     * EXIF 촬영시각은 아래 createPhotoMetaFromFile 이 **원본 File** 에서 따로 읽으므로
+     * 다운스케일과 무관하다. 회전은 image-downscale.js 가 디코드 단계에서 적용한다.
+     */
+    const filePromises = filesToProcess.map(async (f, index) => {
+        const prepared = await prepareIntakeImage(f);
+        if (!prepared) {
+            console.error('파일 읽기 실패:', f.name);
+            return null;
+        }
+        return { index, dataUrl: prepared.dataUrl, downscaled: prepared.downscaled, reason: prepared.reason };
     });
 
     Promise.all(filePromises)
@@ -3562,6 +3705,11 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
                 }
             });
             if (added > 0) {
+                diag('photo.intake', {
+                    n: added,
+                    downscaled: sortedResults.filter((r) => r.downscaled).length,
+                    reasons: [...new Set(sortedResults.map((r) => r.reason))]
+                });
                 state.recordPhotoHeroIndex = state.currentPhotos.length - 1;
             }
 

@@ -106,9 +106,9 @@ export async function unshareWithOptimisticUpdate({
     }
 }
 
-/** loadMyShares로 공유 캐시 갱신 */
+/** loadMyShares로 공유 캐시 갱신. 실패는 던진다 — 호출부가 캐시를 지울지 말지 정한다 */
 export async function refreshMySharesCache() {
-    const { loadMyShares } = await import('../db.js');
-    const myShares = await loadMyShares();
+    const { loadMySharesReliable } = await import('../db.js');
+    const myShares = await loadMySharesReliable();
     return setSharedPhotos(myShares);
 }

@@ -454,6 +454,16 @@ export function applyMealsSnapshotPrimary(p) {
     }
 
     clearStuckMealPendingFlags();
+    /**
+     * 구버전 미전송 기록을 아웃박스로 흡수한다 (1회). 여기서 부르는 이유는
+     * **행 본문이 있어야 흡수할 수 있기 때문**이다 — mealHistory 가 채워진 직후가 그 시점이다.
+     * 이미 했으면 즉시 반환하므로 스냅샷마다 불려도 비용이 없다.
+     */
+    if (!demo) {
+        void import('./outbox-migration.js').then((m) => {
+            void m.migrateLegacyPendingToOutbox();
+        });
+    }
     if (onDataUpdate) {
         if (wasInitialLoad) {
             notifyMealsDataUpdate(onDataUpdate, { source: 'meals', mode: 'initial' });

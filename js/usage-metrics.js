@@ -1,4 +1,5 @@
-import { db, appId, appCheckInitPromise, refreshAppCheckTokenBeforeFirestore, callableFunctions } from './firebase.js';
+import { db, appId, preflightFirestoreAuth, callableFunctions } from './firebase.js';
+import { withDeadlineOr, DEADLINE } from './utils/with-deadline.js';
 import {
     doc,
     setDoc,
@@ -38,19 +39,19 @@ function getUsageMetricSourcePayload() {
 }
 
 async function prepareUsageMetricWrite() {
-    await appCheckInitPromise;
-    const u = window.currentUser;
-    if (u && typeof u.getIdToken === 'function') {
-        await u.getIdToken(false);
-    }
-    await refreshAppCheckTokenBeforeFirestore();
+    await preflightFirestoreAuth(window.currentUser);
 }
 
 async function logUsageMetricDirect(key) {
     const ref = doc(db, 'artifacts', appId, 'usageDaily', localDateKeyYmd());
     const payload = { [key]: increment(1), updatedAt: serverTimestamp() };
     await setDoc(ref, payload, { merge: true });
-    await waitForPendingWrites(db);
+    /**
+     * 상한 필수 — 오프라인이면 `waitForPendingWrites` 는 정착하지 않는다.
+     * 집계는 텔레메트리라 확인되지 않아도 무방하다. 쓰기는 이미 로컬 큐에 들어갔으므로
+     * 재연결되면 SDK 가 알아서 보낸다. 여기서 기다리는 건 「보냈는지 확인」일 뿐이다.
+     */
+    await withDeadlineOr(waitForPendingWrites(db), DEADLINE.DOC, null, 'usage-flush');
 }
 
 async function logUsageMetricCallable(key) {

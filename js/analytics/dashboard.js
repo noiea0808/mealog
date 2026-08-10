@@ -191,8 +191,8 @@ function updatePeriodUI(state) {
             if (startInput && endInput) {
                 const startDate = state.customStartDate || new Date();
                 const endDate = state.customEndDate || new Date();
-                startInput.value = startDate.toISOString().split('T')[0];
-                endInput.value = endDate.toISOString().split('T')[0];
+                startInput.value = toLocalDateString(startDate);
+                endInput.value = toLocalDateString(endDate);
             }
             if (typeof syncCustomDatePlaceholder === 'function') syncCustomDatePlaceholder();
         }
@@ -251,7 +251,7 @@ export async function updateDashboard() {
         } else if (state.dashboardMode === 'month') {
             const [y, m] = state.selectedMonth.split('-').map(Number);
             const monthStart = `${y}-${String(m).padStart(2, '0')}-01`;
-            const monthEnd = new Date(y, m, 0).toISOString().split('T')[0];
+            const monthEnd = toLocalDateString(new Date(y, m, 0));
             loadPromises.push(loadMealsForDateRange(monthStart, monthEnd));
         } else if (state.dashboardMode === 'custom') {
             loadPromises.push(loadMealsForDateRange(toLocalDateString(state.customStartDate), toLocalDateString(state.customEndDate)));

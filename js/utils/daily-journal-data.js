@@ -161,17 +161,6 @@ export function formatMetricRecordChain(records, { isWeight = false } = {}) {
         .join(' > ');
 }
 
-/** 슬롯 미리보기용 — comment가 없을 때 대체 한 줄 (체중·혈당은 별도 표시) */
-export function dailyJournalSlotFallbackLine(entry) {
-    const n = normalizeDailyJournalEntry(entry);
-    const comment = String(n.comment || '').trim();
-    if (comment) return comment;
-    if (n.photos.length > 0) {
-        return n.photos.length === 1 ? '사진 1장' : `사진 ${n.photos.length}장`;
-    }
-    return '';
-}
-
 /** users/{uid}/meals 문서 ID — 식사·간식과 동일 컬렉션에 미러 */
 export function getDailyJournalMealDocId(dateStr) {
     return getDailyJournalShareEntryId(dateStr);

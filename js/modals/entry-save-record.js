@@ -130,6 +130,15 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         // 분 단위만 쓰면 같은 슬롯·같은 분 간식이 정렬·뒷번호(간식1,2…)에서 뒤섞일 수 있어 초 포함
         time: timeSortStr,
     };
+    /**
+     * 수정 시각. 아웃박스가 며칠씩 버틸 수 있게 되면서 새로 필요해졌다 —
+     * 오래된 큐 항목이 다른 기기의 최신 수정을 덮어쓰지 않도록, 워커가 밀어 올리기 직전
+     * 서버본과 이 값을 비교한다 (docs/sync-outbox-design.md §4.5).
+     *
+     * recordedAt 은 생성 시각이라 대용할 수 없다(슬롯·날짜 변경 시에만 갱신된다).
+     * 기존 문서에는 이 필드가 없으므로 워커가 recordedAt 으로 폴백한다.
+     */
+    record.updatedAt = new Date().toISOString();
     if (!idToUse) {
         record.recordedAt = new Date().toISOString();
     } else if (slotChanged || dateChanged) {

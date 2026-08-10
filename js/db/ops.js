@@ -4,9 +4,16 @@ import {
     appId,
     auth,
     callableFunctions,
-    appCheckInitPromise,
+    preflightFirestoreAuth,
     refreshAppCheckTokenBeforeFirestore
 } from '../firebase.js';
+import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
+import {
+    enqueueWithQuotaRelief,
+    remove as outboxRemove,
+    outboxKey,
+    CLASS_CONTENT
+} from '../utils/outbox-store.js';
 import {
     doc,
     getDoc,
@@ -28,6 +35,7 @@ import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { clearLoadedMealsRanges } from '../utils/loaded-meals-range.js';
+import { diag, markSavePhase, getSavePhase } from '../utils/diagnostics.js';
 
 /**
  * 식사 저장 결과 — Callable(Admin) 폴백 시 Firestore 로컬 큐가 비지 않아 waitForPendingWrites·리스너 ack와 무관함.
@@ -176,16 +184,29 @@ export const dbOps = {
         }
         try {
             const runWrite = async () => {
-                // 오프라인에서 캐시 토큰이 만료돼 getIdToken이 실패해도 Firestore 로컬 큐잉은 가능해야 함 — 비치명 처리
-                try {
-                    if (typeof currentUser.getIdToken === 'function') {
-                        await currentUser.getIdToken(false);
-                    }
-                } catch (tokenErr) {
-                    console.warn('[dbOps] getIdToken 실패 (오프라인 큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
-                }
-                await appCheckInitPromise;
-                await refreshAppCheckTokenBeforeFirestore();
+                /**
+                 * 계측: 저장이 어디까지 갔는지 남긴다. `save.timeout` 이 이 단계를 실어
+                 * 「타임아웃이 setDoc 전에 터졌는가(= 큐에 없음 = 유실)」를 조인 없이 답한다.
+                 * 1단계에서 상한을 건 뒤 이 값이 실제로 개선됐는지가 수정의 검증이 된다.
+                 */
+                const diagId = record?.id ? String(record.id) : '(new)';
+                const preflightStartedAt = Date.now();
+                markSavePhase(diagId, 'preflight');
+                diag('save.preflight.begin', { id: diagId });
+
+                /**
+                 * 토큰·App Check 갱신은 **상한 안에서만** 시도한다 (설계 §2.1).
+                 * 예전에는 상한이 없어서, 반쯤 끊긴 연결에서 여기 매달린 채 상위 10초 타임아웃이
+                 * 터졌다. 그러면 아래 setDoc 이 호출조차 되지 않아 Firestore 로컬 큐가 비어 있고,
+                 * 기록은 RAM 에만 남아 앱이 죽는 순간 사라졌다.
+                 *
+                 * 실패해도 진행한다 — 오프라인 큐잉에는 토큰이 필요 없고, 전송 시점에 SDK 가 붙인다.
+                 * 중요한 것은 「무슨 일이 있어도 setDoc 까지 간다」이다.
+                 */
+                await preflightFirestoreAuth(currentUser);
+
+                markSavePhase(diagId, 'preflight-done');
+                diag('save.preflight.done', { id: diagId, ms: Date.now() - preflightStartedAt });
 
                 const dataToSave = { ...record };
                 const sanitizePhotoArray = (arr) => {
@@ -208,12 +229,23 @@ export const dbOps = {
                         ? dataToSave.recordedAt
                         : null;
                 delete dataToSave.recordedAt;
+                /**
+                 * updatedAt 은 **호출자가 실은 값을 그대로** 쓴다 (§4.5).
+                 * 여기서 새로 찍으면 며칠 묵은 아웃박스 항목도 항상 「최신」으로 보여
+                 * 충돌 판정이 무력화된다 — 그 판정이 이 필드를 만든 이유다.
+                 */
+                const callerUpdatedAt =
+                    typeof dataToSave.updatedAt === 'string' && dataToSave.updatedAt
+                        ? dataToSave.updatedAt
+                        : null;
+                delete dataToSave.updatedAt;
                 const docId = dataToSave.id;
                 delete dataToSave.id;
                 // sharedPhotos: sharedPhotos 컬렉션이 canonical — 클라이언트 meal 저장은 미러를 덮어쓰지 않음
                 delete dataToSave.sharedPhotos;
                 const cleaned = stripUndefinedDeep(dataToSave);
                 cleaned.recordedAt = callerRecordedAt || new Date().toISOString();
+                cleaned.updatedAt = callerUpdatedAt || new Date().toISOString();
                 const coll = collection(db, 'artifacts', appId, 'users', currentUser.uid, 'meals');
                 logger.log('식사 기록 저장 시도:', { userId: currentUser.uid, docId, dataToSave: cleaned });
                 const mealPathHint = docId
@@ -245,7 +277,13 @@ export const dbOps = {
                         if (preservedSharedPhotos !== undefined) {
                             cleaned.sharedPhotos = preservedSharedPhotos;
                         }
+                        // 계측: 이 지점을 지나야 Firestore 로컬 큐에 들어간다 = 유실되지 않는다
+                        markSavePhase(diagId, 'setdoc-called');
+                        diag('save.setdoc.begin', { id: diagId });
+                        const setDocStartedAt = Date.now();
                         await setDoc(doc(coll, docId), cleaned);
+                        markSavePhase(diagId, 'setdoc-resolved');
+                        diag('save.setdoc.done', { id: diagId, ms: Date.now() - setDocStartedAt });
                         // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
                         if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);
                         if (!silent) {
@@ -284,6 +322,9 @@ export const dbOps = {
                             });
                             const mid = res?.data?.mealId;
                             if (typeof mid === 'string' && mid) {
+                                // 계측: Callable 폴백은 Firestore 로컬 큐를 우회한다 — 실패하면 아무 데도 안 남는다
+                                markSavePhase(diagId, 'callable-ok');
+                                diag('save.callable.done', { id: diagId });
                                 logger.log('[dbOps] saveArtifactUserMeal 폴백 성공:', mid);
                                 if (!silent) {
                                     showToast(
@@ -294,6 +335,8 @@ export const dbOps = {
                                 return { mealId: mid, savedViaCallableFallback: true };
                             }
                         } catch (fbErr) {
+                            markSavePhase(diagId, 'callable-failed');
+                            diag('save.callable.error', { id: diagId, code: String(fbErr?.code || '') });
                             logger.error('[dbOps] saveArtifactUserMeal 폴백 실패:', fbErr?.code || fbErr?.message || fbErr);
                         }
                     }
@@ -307,22 +350,24 @@ export const dbOps = {
                 if (e1?.code === 'permission-denied') {
                     logger.log('[dbOps] Firestore 직접 저장 재시도 1회 (토큰·App Check 갱신)');
                     currentUser = (await resolveUserForFirestoreWrite()) || currentUser;
-                    if (typeof currentUser?.getIdToken === 'function') {
-                        await currentUser.getIdToken(true);
-                    }
-                    await refreshAppCheckTokenBeforeFirestore({ force: true });
+                    await preflightFirestoreAuth(currentUser, { force: true });
                     return await runWrite();
                 }
                 throw e1;
             }
         } catch (e) {
             noteNetworkTransportFailure(e);
+            diag('save.error', {
+                id: record?.id ? String(record.id) : '(new)',
+                code: String(e?.code || ''),
+                phase: getSavePhase(record?.id ? String(record.id) : '(new)')
+            });
             console.error("Save Error:", e);
             const currentUser = auth.currentUser || window.currentUser;
-            console.error("저장 실패 상세:", { 
-                userId: currentUser?.uid, 
-                errorCode: e.code, 
-                errorMessage: e.message 
+            console.error("저장 실패 상세:", {
+                userId: currentUser?.uid,
+                errorCode: e.code,
+                errorMessage: e.message
             });
             if (!silent) {
                 showToast(getUserFacingErrorMessage(e, 'save'), 'error');
@@ -354,16 +399,8 @@ export const dbOps = {
             logger.log('[dbOps] deleteArtifactUserMeal 폴백:', deleted ? '삭제됨' : '문서 없음');
         };
         try {
-            // 오프라인에서도 deleteDoc 로컬 큐잉이 가능하도록 토큰 갱신 실패는 비치명 처리
-            try {
-                if (typeof currentUser.getIdToken === 'function') {
-                    await currentUser.getIdToken(false);
-                }
-            } catch (tokenErr) {
-                console.warn('[dbOps] delete getIdToken 실패 (큐잉 계속):', tokenErr?.code || tokenErr?.message || tokenErr);
-            }
-            await appCheckInitPromise;
-            await refreshAppCheckTokenBeforeFirestore();
+            // 오프라인에서도 deleteDoc 로컬 큐잉이 가능해야 한다 — 상한 안에서만 시도하고 실패해도 진행
+            await preflightFirestoreAuth(currentUser);
 
             let deletedViaCallable = false;
             try {
@@ -399,7 +436,11 @@ export const dbOps = {
             throw e;
         }
     },
-    async saveSettings(newSettings) {
+    /**
+     * @param {object} newSettings
+     * @param {{ fromOutbox?: boolean }} [opts] 아웃박스 워커의 재시도 호출이면 true — 재진입 방지
+     */
+    async saveSettings(newSettings, opts = {}) {
         const currentUser = auth.currentUser || window.currentUser;
         if (!currentUser || currentUser.isAnonymous) {
             showToast("설정 저장 실패: 로그인이 필요합니다.", 'error');
@@ -408,22 +449,54 @@ export const dbOps = {
         if (isDemoUser(currentUser)) {
             return;
         }
+        /**
+         * 설정 문서도 아웃박스에 먼저 내구화한다 (설계 §4.1.1 content 등급).
+         *
+         * 하루 소감·체중·혈당은 전부 userSettings 단일 문서에 들어와 이 경로를 탄다. 이 함수에는
+         * 바깥 타임아웃이 없고 아래에서 서버 왕복(getDoc)도 하므로, ops.save 와 똑같은 방식으로
+         * 유실될 수 있는 자리였다.
+         *
+         * mergePayload 가 필수다 — 단일 큰 문서를 여러 편집이 겨냥하므로 덮어쓰면 하루 소감과
+         * 프로필 수정이 서로를 지운다.
+         */
+        const settingsOutboxKey = outboxKey('settings', currentUser.uid);
+        /**
+         * 워커가 이 함수를 호출할 때는 다시 넣지 않는다. enqueue 는 attempts 를 0 으로
+         * 되돌리므로(새 사용자 편집은 재시도 시계를 리셋하는 게 맞다), 워커가 자기 호출로
+         * 재진입하면 백오프가 영영 진행되지 않는 뜨거운 루프가 된다.
+         */
+        if (opts.fromOutbox !== true) {
+            await enqueueWithQuotaRelief({
+                target: 'settings',
+                id: currentUser.uid,
+                uid: currentUser.uid,
+                op: 'upsert',
+                class: CLASS_CONTENT,
+                payload: { settings: newSettings, updatedAt: new Date().toISOString() },
+                mergePayload: true
+            });
+        }
+
         try {
             // OAuth·커스텀 토큰 직후: 재시도 경로에서만 강제 갱신(연속 저장 체감 개선)
-            if (typeof currentUser.getIdToken === 'function') {
-                await currentUser.getIdToken(false);
-            }
-            await appCheckInitPromise;
-            await refreshAppCheckTokenBeforeFirestore();
-            // 기존 설정을 먼저 읽어서 profile 정보 보존
+            await preflightFirestoreAuth(currentUser);
+            /**
+             * 기존 설정을 먼저 읽어서 profile 정보 보존.
+             *
+             * 이 읽기는 상한이 반드시 있어야 한다 — saveSettings 에는 바깥 타임아웃이 아예 없고,
+             * saveDailyJournal 이 이 함수를 await 하므로 여기서 매달리면 하루 소감 저장이
+             * 통째로 멈춘다(ops.save 에서 제거했던 「쓰기 직전 서버 왕복」과 같은 패턴).
+             * 실패하면 빈 값으로 진행한다 — 아래 병합이 새 값 우선이라 기존 동작과 같다.
+             */
             let existingSettings = {};
-            try {
-                const existingDoc = await getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings'));
-                if (existingDoc.exists()) {
-                    existingSettings = existingDoc.data();
-                }
-            } catch (e) {
-                console.warn('기존 설정 읽기 실패 (무시하고 계속):', e);
+            const existingDoc = await withDeadlineOr(
+                getDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'config', 'settings')),
+                DEADLINE.DOC,
+                null,
+                'saveSettings-readExisting'
+            );
+            if (existingDoc && existingDoc.exists()) {
+                existingSettings = existingDoc.data();
             }
             
             // 새 설정과 기존 설정을 병합 (profile 정보 보존)
@@ -582,10 +655,7 @@ export const dbOps = {
                     errMsg.includes('insufficient permissions');
                 if (isPerm && callableFunctions?.saveArtifactUserSettings) {
                     try {
-                        if (typeof currentUser.getIdToken === 'function') {
-                            await currentUser.getIdToken(true);
-                        }
-                        await refreshAppCheckTokenBeforeFirestore({ force: true });
+                        await preflightFirestoreAuth(currentUser, { force: true });
                         const res = await callableFunctions.saveArtifactUserSettings({
                             settings: payloadForWrite
                         });
@@ -612,6 +682,14 @@ export const dbOps = {
                     throw clientErr;
                 }
             }
+
+            /**
+             * 여기 도달했다는 것은 setDoc/트랜잭션이 **서버 커밋으로 resolve** 됐거나 Callable
+             * 프록시가 ok 를 돌려줬다는 뜻이다(Firestore 쓰기 프라미스는 서버 ack 에서 resolve
+             * 되고, 오프라인이면 resolve 되지 않는다). 서버 반영이 확인된 유일한 지점이므로
+             * 여기서만 아웃박스에서 뺀다.
+             */
+            await outboxRemove(settingsOutboxKey);
 
             if (!savedViaFunctionsProxy) {
                 console.log('✅ 설정 저장 성공:', {
@@ -670,7 +748,8 @@ export const dbOps = {
         if (!currentUser?.uid || currentUser.isAnonymous || isDemoUser(currentUser)) return;
         const mealId = getDailyJournalMealDocId(date);
         if (!mealId) return;
-        await refreshAppCheckTokenBeforeFirestore();
+        // App Check 준비 없음 — users/{uid}/meals 는 firestore.rules 에서 소유자 검사만 한다.
+        // 저장 핫패스에서 규칙이 요구하지도 않는 토큰을 기다리던 자리였다.
         const mealRef = doc(db, 'artifacts', appId, 'users', currentUser.uid, 'meals', mealId);
         const normalized = normalizeDailyJournalEntry(entry);
         if (!dailyJournalHasContent(normalized)) {

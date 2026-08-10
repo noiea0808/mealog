@@ -4,6 +4,18 @@
 
 MEALOG (밀로그) is a Korean meal diary and social sharing PWA built with vanilla JavaScript (no bundler/build framework). The frontend is static HTML/JS/CSS served directly; the backend is Firebase Cloud Functions (Node.js 20).
 
+### ⚠️ 식사 동기화 / 오프라인 / 네트워크 복구 코드를 만지기 전에
+
+**`docs/sync-outbox-design.md` 를 먼저 읽으세요.**
+
+이 서브시스템은 2026년 6~8월에 13차례 수정됐고, 매번 증상은 사라졌지만 같은 뿌리에서 새 구멍이
+났습니다. 불변식은 하나입니다 — **사용자가 저장을 누른 기록은, 어떤 fallible한 단계도 시작하기
+전에 이미 내구 저장돼 있다.**
+
+특히 설계 문서의 §3 "폐기된 접근과 그 이유"를 읽으세요. 거기 적힌 것을 다시 제안하지 않기
+위해서입니다. **이 영역에서 작은 패치가 그럴듯해 보이면 그게 경고 신호입니다** — 이미 12번
+그럴듯했습니다. 증상만 막기 전에 불변식이 깨진 지점을 먼저 찾으세요.
+
 ### Git workflow (local-first)
 
 - Default branch for development: **`staging`**
