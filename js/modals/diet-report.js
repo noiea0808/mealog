@@ -21,6 +21,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 
@@ -577,44 +578,9 @@ export function closeDietReportModal() {
     setModalVisible(false);
 }
 
-async function resolveCaptureImageDataUrl(img) {
-    if (img.src.includes('firebasestorage.googleapis.com')) {
-        const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
-        return result?.data?.dataUrl || null;
-    }
-    const res = await fetch(img.src, { mode: 'cors' });
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-    });
-}
-
-function applyDataUrlToCaptureImage(img, dataUrl) {
-    return new Promise((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('이미지 로드 실패'));
-        img.src = dataUrl;
-        if (img.complete && img.naturalWidth > 0) resolve();
-    });
-}
-
 /** Firebase Storage URL → base64 (html2canvas CORS taint 방지) — 사진 병렬 변환 */
 async function hydrateCaptureImagesAsBase64(root) {
-    if (!root) return;
-    const imgs = [...root.querySelectorAll('img[src^="http"]')];
-    await Promise.all(
-        imgs.map(async (img) => {
-            try {
-                const dataUrl = await resolveCaptureImageDataUrl(img);
-                if (!dataUrl) return;
-                await applyDataUrlToCaptureImage(img, dataUrl);
-            } catch (e) {
-                console.warn('diet report share image base64 failed:', e);
-            }
-        })
-    );
+    await inlineImagesForCapture(root, 'diet-report');
 }
 
 /** html2canvas 캡처 대상 — mood 외부 위치만 보정 (pill 내부는 패딩으로 처리) */

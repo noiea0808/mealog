@@ -24,6 +24,7 @@ import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-writ
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
+import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
@@ -1960,47 +1961,9 @@ export async function shareInsightToFeed() {
         const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
         const targetElement = screenshotContainer || preview;
 
-        // 외부 이미지(Firebase Storage)를 base64로 변환 (CORS 우회: Cloud Function 사용)
-        const imgs = targetElement.querySelectorAll('img[src^="http"]');
-        const loadPromises = [];
-        for (const img of imgs) {
-            try {
-                if (img.src.includes('firebasestorage.googleapis.com')) {
-                    const { callableFunctions } = await import('../firebase.js');
-                    const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
-                    const dataUrl = result?.data?.dataUrl;
-                    if (dataUrl) {
-                        const loadP = new Promise((resolve, reject) => {
-                            img.onload = () => resolve();
-                            img.onerror = () => reject(new Error('이미지 로드 실패'));
-                            img.src = dataUrl;
-                            if (img.complete && img.naturalWidth > 0) resolve();
-                        });
-                        loadPromises.push(loadP);
-                    } else {
-                        console.warn('getStorageImageAsBase64 반환값 없음:', result);
-                    }
-                } else {
-                    const res = await fetch(img.src, { mode: 'cors' });
-                    const blob = await res.blob();
-                    const dataUrl = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                    const loadP = new Promise((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('이미지 로드 실패'));
-                        img.src = dataUrl;
-                        if (img.complete && img.naturalWidth > 0) resolve();
-                    });
-                    loadPromises.push(loadP);
-                }
-            } catch (e) {
-                console.warn('캐릭터 이미지 base64 변환 실패:', e);
-            }
-        }
-        await Promise.all(loadPromises).catch(() => {});
+        // 외부 이미지를 data URL 로 인라인한다 (html2canvas 의 캔버스 오염 방지).
+        // 예전에는 이미지마다 직렬로 콜러블을 왕복했다 — 장수만큼 대기가 쌓였다.
+        await inlineImagesForCapture(targetElement, 'insight-share');
         await document.fonts.ready;
         await new Promise(r => setTimeout(r, 150)); // 페인트 대기
 
