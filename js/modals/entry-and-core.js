@@ -40,15 +40,10 @@ import {
     markMealEntrySaveInFlight,
     clearMealEntrySaveInFlight,
     clearMealEntryServerSynced,
-    markMealEntrySyncAbandonedById,
-    clearMealEntrySyncAbandonedById,
-    clearMealSyncGraceTimer,
     isMealEntryRetryEligible,
     isMealEntryDeleteFailed,
     onMealDocFirestoreServerAcknowledged,
     scheduleMealServerAckAfterPendingWrites,
-    MEAL_SYNC_GRACE_MS_NO_PHOTO,
-    MEAL_SYNC_GRACE_MS_WITH_PHOTO,
     mealRecordHasBase64PendingPhotos,
     getMealRowSyncLeadKind
 } from '../utils/meal-entry-pending.js';
@@ -2290,13 +2285,7 @@ export async function saveEntry() {
             }
             /* base64 업로드 후 재저장이 있으면 그때만 대기(1차만 기다리면 2차 쓰기와 순서가 어긋날 수 있음) */
             if (!savedViaCallableFallback && !hasPendingBase64Photos) {
-                scheduleMealServerAckAfterPendingWrites(
-                    effectiveMealId,
-                    optimisticTempId,
-                    record.date,
-                    currentTab,
-                    MEAL_SYNC_GRACE_MS_NO_PHOTO
-                );
+                scheduleMealServerAckAfterPendingWrites(effectiveMealId, optimisticTempId, record.date, currentTab);
             }
             if (hasPendingBase64Photos && wasNewRecord && optimisticTempId && savedId) {
                 getMealSyncManager().movePendingPhotoTempToReal(optimisticTempId, savedId);
@@ -2356,13 +2345,7 @@ export async function saveEntry() {
                     if (!photoUploadPhaseFailed) {
                         markMealEntryServerWorkComplete(record?.id, optimisticTempId, optimisticSlotKey);
                         if (record?.id && !photoPhaseSavedViaCallable) {
-                            scheduleMealServerAckAfterPendingWrites(
-                                record.id,
-                                optimisticTempId,
-                                record.date,
-                                currentTab,
-                                MEAL_SYNC_GRACE_MS_WITH_PHOTO
-                            );
+                            scheduleMealServerAckAfterPendingWrites(record.id, optimisticTempId, record.date, currentTab);
                         }
                     }
                     refreshTimelineAfterMealSaveResult(record?.date || editingDate || undefined);
@@ -3025,8 +3008,6 @@ export async function retryMealEntrySync(entryIdRaw) {
             }
         }
         clearMealEntryServerSynced(entryId);
-        clearMealEntrySyncAbandonedById(entryId);
-        clearMealSyncGraceTimer(entryId);
         markMealEntrySaveInFlight(entryId);
         const isTemp = entryId.startsWith('temp_');
         const payload = { ...record };
@@ -3113,16 +3094,7 @@ export async function retryMealEntrySync(entryIdRaw) {
                 }
                 markMealEntryServerWorkComplete(savedId, entryId, `${record.date || ''}__${record.slotId || ''}`);
                 if (savedId && !retryViaCallable) {
-                    const retryGraceMs = mealRecordHasBase64PendingPhotos(record)
-                        ? MEAL_SYNC_GRACE_MS_WITH_PHOTO
-                        : MEAL_SYNC_GRACE_MS_NO_PHOTO;
-                    await scheduleMealServerAckAfterPendingWrites(
-                        savedId,
-                        entryId,
-                        record.date,
-                        appState.currentTab,
-                        retryGraceMs
-                    );
+                    await scheduleMealServerAckAfterPendingWrites(savedId, entryId, record.date, appState.currentTab);
                 }
             }
         } else {
@@ -3162,16 +3134,7 @@ export async function retryMealEntrySync(entryIdRaw) {
             if (retryElseRes.savedViaCallableFallback && entryId) {
                 onMealDocFirestoreServerAcknowledged(String(entryId), null);
             } else {
-                const retryGraceMsElse = mealRecordHasBase64PendingPhotos(record)
-                    ? MEAL_SYNC_GRACE_MS_WITH_PHOTO
-                    : MEAL_SYNC_GRACE_MS_NO_PHOTO;
-                await scheduleMealServerAckAfterPendingWrites(
-                    entryId,
-                    null,
-                    record.date,
-                    appState.currentTab,
-                    retryGraceMsElse
-                );
+                await scheduleMealServerAckAfterPendingWrites(entryId, null, record.date, appState.currentTab);
             }
         }
         showToast('서버에 등록했습니다.', 'success');

@@ -2,21 +2,14 @@
  * 식사 동기화 UI — 상태는 meal-sync-manager 단일 소스.
  * 이 파일은 기존 import 경로 유지용 얇은 래퍼 + 도트 종류 헬퍼.
  */
-import {
-    getMealSyncManager,
-    MEAL_SYNC_GRACE_MS as _GRACE,
-    MEAL_SYNC_GRACE_MS_NO_PHOTO,
-    MEAL_SYNC_GRACE_MS_WITH_PHOTO,
-    mealRecordHasBase64PendingPhotos
-} from './meal-sync-manager.js';
+import { getMealSyncManager, mealRecordHasBase64PendingPhotos } from './meal-sync-manager.js';
 import { isDemoUser } from '../demo-account.js';
 
 const mgr = () => getMealSyncManager();
 
 let _scheduleStaleDotsTimer = null;
 
-export const MEAL_SYNC_GRACE_MS = _GRACE;
-export { MEAL_SYNC_GRACE_MS_NO_PHOTO, MEAL_SYNC_GRACE_MS_WITH_PHOTO, mealRecordHasBase64PendingPhotos };
+export { mealRecordHasBase64PendingPhotos };
 
 export function markMealOptimisticSavePending(tempId) {
     mgr().markOptimisticPending(tempId);
@@ -39,30 +32,9 @@ export function markMealEntryServerWorkComplete(recordId, optimisticTempId, opti
 export function hydrateMealSyncErrorIdsFromStorage() {
     mgr().hydrateErrorsFromStorage();
 }
-export function hydrateMealSyncAbandonedIdsFromStorage() {
-    mgr().hydrateAbandonedFromStorage();
-}
-export function hydrateMealSyncRegisterScheduledIdsFromStorage() {
-    mgr().hydrateRegisterScheduledFromStorage();
-}
-export function markMealEntrySyncAbandonedById(entryId) {
-    mgr().markAbandoned(entryId);
-}
-export function clearMealEntrySyncAbandonedById(entryId) {
-    mgr().clearAbandoned(entryId);
-}
-export function isMealEntrySyncAbandoned(record) {
-    return mgr().isAbandoned(record);
-}
-export function clearMealSyncGraceTimer(entryId) {
-    mgr().clearGraceTimer(entryId);
-}
-export function scheduleMealSyncGraceAbandon(entryId, opts = {}) {
-    mgr().scheduleGraceAbandon(entryId, opts);
-}
 /** 저장 직후 waitForPendingWrites·서버 ack UI — 로직은 meal-sync-manager 단일 소스 @returns {Promise<void>} */
-export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs) {
-    return mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs);
+export function scheduleMealServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
+    return mgr().scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal);
 }
 export function markMealEntryServerSynced(entryId) {
     mgr().markServerSynced(entryId);

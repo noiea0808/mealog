@@ -22,14 +22,11 @@ import {
  * 그것들은 「아직 안 올라간 기록」의 **근사치**였고, 근사치가 여러 개라 서로 어긋나는
  * 조합마다 버그가 났다. 이제 아웃박스가 그 사실 자체를 들고 있으므로 근사치가 필요 없다.
  *
- * 아래 맵들(_errorIds·_abandoned·_registerScheduledChip 등)도 표시 판정에서는 더 이상
- * 쓰이지 않는다 — getRowSyncLeadKind 는 아웃박스만 본다. 남아 있는 것은 저장 실패 배지
- * 병합(shouldPreserveMealSaveFailureOnMerge) 등 아직 정리되지 않은 호출부 때문이며,
- * 4단계 나머지 경로를 붙일 때 함께 걷어낸다.
+ * 2026-08-11 에 abandoned·registerScheduled 와 grace 타이머를 실제로 걷어냈다. 남은 것은
+ * `_errorIds` 하나뿐이며, 이것은 저장 실패 배지 병합(shouldPreserveMealSaveFailureOnMerge)이
+ * 아직 쓴다 — 아웃박스의 permanent 와 의미가 겹치므로 그 경로를 붙일 때 함께 정리한다.
  */
 const MEAL_SYNC_ERROR_IDS_KEY = 'mealog_mealSyncErrorIds_v1';
-const MEAL_ABANDONED_IDS_KEY = 'mealog_mealSyncAbandonedIds_v1';
-const MEAL_REGISTER_SCHEDULED_IDS_KEY = 'mealog_mealSyncRegisterScheduledIds_v1';
 
 function mealPhotosHaveBase64(record) {
     if (!record) return false;
@@ -41,7 +38,7 @@ function mealPhotosHaveBase64(record) {
     );
 }
 
-/** 저장 grace(30초) 분기용 — entry-and-core 등에서 사용 */
+/** 사진 업로드가 아직 안 끝난 행인지 — 스냅샷 병합 보호·저장 분기에서 사용 */
 export function mealRecordHasBase64PendingPhotos(record) {
     return mealPhotosHaveBase64(record);
 }
@@ -70,65 +67,6 @@ function unpersistErrorId(entryId) {
         if (!Array.isArray(arr)) return;
         const s = String(entryId);
         window.localStorage.setItem(MEAL_SYNC_ERROR_IDS_KEY, JSON.stringify(arr.filter((x) => x !== s)));
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-function persistAbandonedId(entryId) {
-    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
-    try {
-        const raw = window.localStorage.getItem(MEAL_ABANDONED_IDS_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
-        const s = String(entryId);
-        if (!Array.isArray(arr)) return;
-        if (!arr.includes(s)) {
-            arr.push(s);
-            window.localStorage.setItem(MEAL_ABANDONED_IDS_KEY, JSON.stringify(arr));
-        }
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-function persistRegisterScheduledId(entryId) {
-    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
-    const s = String(entryId);
-    if (s.startsWith('temp_')) return; // temp 행 데이터는 재시작 후 없으므로 영속화하지 않음
-    try {
-        const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(arr)) return;
-        if (!arr.includes(s)) {
-            arr.push(s);
-            window.localStorage.setItem(MEAL_REGISTER_SCHEDULED_IDS_KEY, JSON.stringify(arr));
-        }
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-function unpersistRegisterScheduledId(entryId) {
-    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
-    try {
-        const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(arr)) return;
-        const s = String(entryId);
-        window.localStorage.setItem(MEAL_REGISTER_SCHEDULED_IDS_KEY, JSON.stringify(arr.filter((x) => x !== s)));
-    } catch (_) {
-        /* ignore */
-    }
-}
-
-function unpersistAbandonedId(entryId) {
-    if (typeof window === 'undefined' || !window.localStorage || entryId == null || entryId === '') return;
-    try {
-        const raw = window.localStorage.getItem(MEAL_ABANDONED_IDS_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(arr)) return;
-        const s = String(entryId);
-        window.localStorage.setItem(MEAL_ABANDONED_IDS_KEY, JSON.stringify(arr.filter((x) => x !== s)));
     } catch (_) {
         /* ignore */
     }
@@ -198,13 +136,6 @@ export function mergePreserveLocalSaveFailed(docData, localRecord) {
     return { ...docData, _localSaveFailed: true, is_sync_error: true };
 }
 
-/** 사진 없음: 이 시간 지나면 등록예정 칩(레드닷 종료) */
-export const MEAL_SYNC_GRACE_MS_NO_PHOTO = 10000;
-/** base64·Storage 업로드 대기 중인 등록: 30초 후 등록예정 칩 */
-export const MEAL_SYNC_GRACE_MS_WITH_PHOTO = 30000;
-/** @deprecated NO_PHOTO와 동일 — 호환용 */
-export const MEAL_SYNC_GRACE_MS = MEAL_SYNC_GRACE_MS_NO_PHOTO;
-
 export class MealSyncManager {
     constructor() {
         /** @type {Set<(rev: number) => void>} */
@@ -214,7 +145,6 @@ export class MealSyncManager {
         this._optimisticPending = new Map();
         this._inFlight = new Map();
         this._serverSynced = new Map();
-        this._abandoned = new Map();
         this._errorIds = new Map();
         this._deletePending = new Map();
         /** deleteDoc await 직전까지 false → 삭제예정, 이후 true → 삭제중 */
@@ -222,9 +152,6 @@ export class MealSyncManager {
         this._deleteFailed = new Map();
         this._pendingPhotoByEntry = new Map();
         this._pendingPhotoBySlot = new Map();
-        this._graceTimers = new Map();
-        /** grace·오프라인 등: 서버 미확인이지만 재시도 도트가 아닌 등록예정 칩 */
-        this._registerScheduledChip = new Set();
     }
 
     subscribe(fn) {
@@ -251,27 +178,6 @@ export class MealSyncManager {
 
     hasErrorId(id) {
         return !!this._errorIds.get(String(id));
-    }
-
-    hasAbandonedId(id) {
-        return !!this._abandoned.get(String(id));
-    }
-
-    /** 등록예정 칩 상태 — 리스너 재구독 병합(find-unique-meals)에서 로컬 전용 행 보호에 사용 */
-    hasRegisterScheduledChip(id) {
-        return id != null && id !== '' && this._registerScheduledChip.has(String(id));
-    }
-
-    _addRegisterScheduledChip(id) {
-        const s = String(id);
-        this._registerScheduledChip.add(s);
-        persistRegisterScheduledId(s);
-    }
-
-    _deleteRegisterScheduledChip(id) {
-        const s = String(id);
-        this._registerScheduledChip.delete(s);
-        unpersistRegisterScheduledId(s);
     }
 
     hasPendingPhotoEntry(id) {
@@ -308,9 +214,7 @@ export class MealSyncManager {
 
     markInFlight(entryId) {
         if (entryId == null || entryId === '') return;
-        const s = String(entryId);
-        this._deleteRegisterScheduledChip(s);
-        this._inFlight.set(s, true);
+        this._inFlight.set(String(entryId), true);
         this._bump();
     }
 
@@ -332,33 +236,11 @@ export class MealSyncManager {
         this._bump();
     }
 
-    markAbandoned(entryId) {
-        if (entryId == null || entryId === '') return;
-        const s = String(entryId);
-        this._deleteRegisterScheduledChip(s);
-        this._serverSynced.delete(s);
-        this._abandoned.set(s, true);
-        persistAbandonedId(entryId);
-        this._bump();
-    }
-
-    clearAbandoned(entryId) {
-        if (entryId == null || entryId === '') return;
-        const s = String(entryId);
-        this._deleteRegisterScheduledChip(s);
-        this._abandoned.delete(s);
-        unpersistAbandonedId(entryId);
-        this._bump();
-    }
-
     /** UI 타임아웃·서버 실패 등 — errorIds(저장 실패) 단일 맵 */
     markError(entryId) {
         if (entryId == null || entryId === '') return;
         const s = String(entryId);
-        this._deleteRegisterScheduledChip(s);
         this._serverSynced.delete(s);
-        this._abandoned.delete(s);
-        unpersistAbandonedId(entryId);
         this._errorIds.set(s, true);
         persistErrorId(entryId);
         this._bump();
@@ -437,34 +319,26 @@ export class MealSyncManager {
         this._bump();
     }
 
-    clearGraceTimer(entryId) {
-        if (entryId == null || entryId === '') return;
-        const id = String(entryId);
-        const t = this._graceTimers.get(id);
-        if (t) {
-            clearTimeout(t);
-            this._graceTimers.delete(id);
-        }
-    }
-
     /**
-     * grace 만료·오프라인 전환 등: abandon 대신 등록예정 칩 상태(재시도 도트 아님).
+     * 서버 반영을 확인하지 못했다 — 「보내는 중」 표시를 풀고 아웃박스에 맡긴다.
+     *
+     * 예전에는 grace 타이머(10초/30초)가 만료되면 이 자리에서 「등록예정 칩」이라는 별도 표식을
+     * 붙였다. 그 표식은 사라졌다 — 표시는 `getRowSyncLeadKind` 가 아웃박스만 보고 판정하므로
+     * 여기서 할 일은 **낙관적 표식을 되돌리는 것뿐**이다. 항목 자체는 아웃박스에 남아 있어
+     * 다음 드레인·정합 패스가 이어받는다.
+     *
      * @param {string|number} entryId
      * @param {{ optimisticTempId?: string|null, dateStr?: string, currentTab?: string }} [opts]
      */
-    promoteToRegisterScheduledChip(entryId, opts = {}) {
+    resetToUnsent(entryId, opts = {}) {
         if (typeof window === 'undefined' || entryId == null || entryId === '') return;
         const id = String(entryId);
         if (!id) return;
         if (this.hasServerSynced(id)) return;
-        this.clearAbandoned(id);
-        this._addRegisterScheduledChip(id);
         this.clearInFlight(id);
         const ot = opts.optimisticTempId != null ? String(opts.optimisticTempId) : '';
         if (ot && ot.startsWith('temp_')) {
-            this.clearAbandoned(ot);
             this.clearOptimisticPending(ot);
-            this._addRegisterScheduledChip(ot);
         }
         const row =
             Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
@@ -476,31 +350,6 @@ export class MealSyncManager {
         this._bump();
         const { dateStr, currentTab } = opts;
         void refreshTimelineFull(dateStr, currentTab);
-    }
-
-    scheduleGraceAbandon(entryId, opts = {}) {
-        if (typeof window === 'undefined' || entryId == null || entryId === '') return;
-        const id = String(entryId);
-        this.clearGraceTimer(id);
-        const delayMs =
-            typeof opts.graceMs === 'number' && opts.graceMs > 0 ? opts.graceMs : MEAL_SYNC_GRACE_MS_NO_PHOTO;
-        this._graceTimers.set(
-            id,
-            setTimeout(() => {
-                this._graceTimers.delete(id);
-                if (this.hasServerSynced(id)) return;
-                const row =
-                    Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === id) : null;
-                if (row && (row._localSaveFailed === true || row.is_sync_error === true)) return;
-                if (this.hasErrorId(id)) return;
-
-                this.promoteToRegisterScheduledChip(id, {
-                    optimisticTempId: opts.optimisticTempId != null ? opts.optimisticTempId : null,
-                    dateStr: opts.dateStr,
-                    currentTab: opts.currentTab
-                });
-            }, delayMs)
-        );
     }
 
     clearPendingFlagsForRecord(record) {
@@ -526,8 +375,6 @@ export class MealSyncManager {
     /** find-unique-meals: 본식 실 id 중복 제거 시 */
     clearDuplicateRealIdSideEffects(id) {
         const sid = String(id);
-        this.clearGraceTimer(sid);
-        this._deleteRegisterScheduledChip(sid);
         this._inFlight.delete(sid);
         this._serverSynced.delete(sid);
         this._pendingPhotoByEntry.delete(sid);
@@ -548,12 +395,7 @@ export class MealSyncManager {
         void import('./outbox-store.js').then((ob) => {
             void ob.remove(ob.outboxKey('meal', sid));
         });
-        this.clearGraceTimer(sid);
-        if (optimisticTempId != null && optimisticTempId !== '') {
-            this.clearGraceTimer(String(optimisticTempId));
-        }
         this.clearInFlight(sid);
-        this._deleteRegisterScheduledChip(sid);
         const row =
             Array.isArray(window.mealHistory) ? window.mealHistory.find((m) => m && String(m.id) === sid) : null;
         const rowIndicatesFailure =
@@ -562,7 +404,6 @@ export class MealSyncManager {
         if (!rowIndicatesFailure && !this.hasErrorId(sid)) {
             this.clearError(sid);
         }
-        this.clearAbandoned(sid);
         if (optimisticTempId != null && optimisticTempId !== '') {
             this.clearOptimisticPending(String(optimisticTempId));
             const tid = String(optimisticTempId);
@@ -574,8 +415,6 @@ export class MealSyncManager {
             if (!tempRowFailed && !this.hasErrorId(tid)) {
                 this.clearError(tid);
             }
-            this.clearAbandoned(tid);
-            this._deleteRegisterScheduledChip(tid);
         }
         this.markServerSynced(sid);
         this._bump();
@@ -601,7 +440,7 @@ export class MealSyncManager {
             if (this.hasErrorId(id)) continue;
             if (m._localSaveFailed === true || m.is_sync_error === true) continue;
             if (this.isDeleting(m) || this.isDeleteFailed(m)) continue;
-            if (this.hasInFlight(id) && !this._registerScheduledChip.has(id)) this.clearInFlight(id);
+            if (this.hasInFlight(id)) this.clearInFlight(id);
         }
     }
 
@@ -728,7 +567,7 @@ export class MealSyncManager {
             if (r.exists) {
                 this.onServerDocumentAcknowledged(r.id, null);
             } else {
-                this.promoteToRegisterScheduledChip(r.id, {
+                this.resetToUnsent(r.id, {
                     dateStr: r.record?.date,
                     currentTab: appState.currentTab
                 });
@@ -783,43 +622,6 @@ export class MealSyncManager {
         this._bump();
     }
 
-    hydrateAbandonedFromStorage() {
-        if (typeof window === 'undefined' || !window.localStorage) return;
-        try {
-            const raw = window.localStorage.getItem(MEAL_ABANDONED_IDS_KEY);
-            const arr = raw ? JSON.parse(raw) : [];
-            if (!Array.isArray(arr)) return;
-            for (const id of arr) {
-                if (id != null && id !== '') {
-                    const s = String(id);
-                    this._abandoned.set(s, true);
-                    this._serverSynced.delete(s);
-                }
-            }
-        } catch (_) {
-            /* ignore */
-        }
-        this._bump();
-    }
-
-    /** 등록예정 칩 복원 — 재시작 후에도 서버 미확인 기록이 등록예정으로 남도록. 서버 ack 시 자동 해제됨 */
-    hydrateRegisterScheduledFromStorage() {
-        if (typeof window === 'undefined' || !window.localStorage) return;
-        try {
-            const raw = window.localStorage.getItem(MEAL_REGISTER_SCHEDULED_IDS_KEY);
-            const arr = raw ? JSON.parse(raw) : [];
-            if (!Array.isArray(arr)) return;
-            for (const id of arr) {
-                if (id != null && id !== '' && !String(id).startsWith('temp_')) {
-                    this._registerScheduledChip.add(String(id));
-                }
-            }
-        } catch (_) {
-            /* ignore */
-        }
-        this._bump();
-    }
-
     isDeleting(record) {
         return !!(record?.id && this._deletePending.get(String(record.id)));
     }
@@ -840,10 +642,6 @@ export class MealSyncManager {
         return this.hasErrorId(String(record.id));
     }
 
-    isAbandoned(record) {
-        return !!(record?.id && this.hasAbandonedId(String(record.id)));
-    }
-
     isServerSynced(record) {
         if (!record?.id) return false;
         const id = String(record.id);
@@ -856,8 +654,6 @@ export class MealSyncManager {
         if (record.id == null || record.id === '') return false;
         const id = String(record.id);
         if (this.hasErrorId(id)) return false;
-        if (this._registerScheduledChip.has(id)) return true;
-        if (this.hasAbandonedId(id)) return false;
         if (this.hasInFlight(id)) return true;
         if (id.startsWith('temp_')) return this.hasOptimisticTemp(id);
         if (this.hasPendingPhotoEntry(id)) {
@@ -872,7 +668,7 @@ export class MealSyncManager {
     }
 
     isRedoable(record) {
-        return this.isSaveFailed(record) || this.isAbandoned(record);
+        return this.isSaveFailed(record);
     }
 
     isRowBlocked(record) {
@@ -961,8 +757,6 @@ export class MealSyncManager {
         if (optimisticTempId) this.markError(String(optimisticTempId));
         this.clearInFlight(entryId);
         if (optimisticTempId) this.clearOptimisticPending(String(optimisticTempId));
-        this.clearGraceTimer(entryId);
-        if (optimisticTempId) this.clearGraceTimer(String(optimisticTempId));
         this._bump();
     }
 
@@ -978,16 +772,9 @@ export class MealSyncManager {
      * @param {string|null|undefined} optimisticTempId
      * @param {string} [dateStr]
      * @param {string} [currentTabVal]
-     * @param {number} [graceMs] 사진 유무에 따른 grace (기본 10초)
      */
-    scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal, graceMs) {
+    scheduleServerAckAfterPendingWrites(mealId, optimisticTempId, dateStr, currentTabVal) {
         if (!mealId) return Promise.resolve();
-        this.scheduleGraceAbandon(String(mealId), {
-            optimisticTempId: optimisticTempId || null,
-            dateStr,
-            currentTab: currentTabVal,
-            graceMs: typeof graceMs === 'number' && graceMs > 0 ? graceMs : undefined
-        });
         // 오프라인이어도 ack 대기를 건다. waitForPendingWrites 는 재연결 후 resolve 되므로
         // 쓰기가 서버에 닿는 즉시 초록 도트로 바뀐다. 그 사이에는 syncing 으로 표시된다.
         const self = this;
@@ -1028,7 +815,7 @@ export class MealSyncManager {
                 return;
             }
             // 서버에 없거나 확인하지 못했다 — 아웃박스에 남겨 둔다. 다음 드레인·정합이 이어받는다.
-            self.promoteToRegisterScheduledChip(String(mealId), {
+            self.resetToUnsent(String(mealId), {
                 optimisticTempId: optimisticTempId || null,
                 dateStr,
                 currentTab: currentTabVal
