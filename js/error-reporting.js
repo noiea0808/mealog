@@ -6,6 +6,31 @@ let errorQueue = [];
 const MAX_QUEUE_SIZE = 50;
 
 /**
+ * 개발 환경인가 — 리포팅을 끌 것인지의 판정.
+ *
+ * **hostname 만으로 판정하면 안 된다.** Capacitor 네이티브 빌드는 웹 자산을 앱에 번들해
+ * `https://localhost` 에서 서빙한다(`capacitor.config.json` 에 `server.url` 이 없는 형태).
+ * 그래서 기존의 `hostname === 'localhost'` 게이트가 **실기기 앱 전체에서** 전역 에러 핸들러
+ * 등록을 막고 있었다 — 정작 관측이 가장 필요한 환경에서 리포팅이 꺼져 있었다.
+ *
+ * 네이티브에서 개발 중인 경우(라이브 리로드)는 `server.url` 이 개발 서버를 가리켜 포트가 붙으므로,
+ * 포트 유무로 번들 빌드와 갈라낸다.
+ */
+function isLocalDevEnvironment() {
+    try {
+        const host = window.location.hostname;
+        const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host === '';
+        if (!isLoopback) return false;
+
+        const isNative = !!window.Capacitor?.isNativePlatform?.();
+        // 네이티브 번들 빌드(포트 없음) = 실기기 프로덕션이므로 리포팅을 켠다
+        return !(isNative && !window.location.port);
+    } catch (_) {
+        return false;
+    }
+}
+
+/**
  * 에러 리포팅 초기화
  */
 export async function initErrorReporting() {
@@ -14,13 +39,7 @@ export async function initErrorReporting() {
     }
 
     try {
-        // 로컬 개발 환경에서는 에러 리포팅 비활성화
-        const isLocalhost = window.location.hostname === 'localhost' || 
-                           window.location.hostname === '127.0.0.1' || 
-                           window.location.hostname === '0.0.0.0' ||
-                           window.location.hostname === '';
-        
-        if (isLocalhost) {
+        if (isLocalDevEnvironment()) {
             console.log('🔧 로컬 개발 환경: 에러 리포팅 비활성화');
             errorReportingInitialized = true;
             return;
@@ -139,69 +158,58 @@ export function reportError(errorInfo) {
         };
 
         // 콘솔에 로깅 (개발 환경)
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        if (isLocalDevEnvironment()) {
             console.error('📊 에러 리포팅:', enhancedError);
         }
 
-        // Firebase Firestore에 에러 로그 저장 (선택적)
-        // 주의: 너무 많은 에러가 발생하면 Firestore 비용이 증가할 수 있음
-        // 프로덕션에서는 외부 서비스(Sentry 등) 사용 권장
-        logErrorToFirestore(enhancedError).catch(e => {
-            console.warn('에러 로그 저장 실패:', e);
-        });
-
-        // 향후 Sentry나 다른 서비스로 전송 가능하도록 구조화
-        // sendToSentry(enhancedError);
+        sendErrorToDiagnostics(enhancedError);
     } catch (e) {
         console.error('에러 리포팅 실패:', e);
     }
 }
 
 /**
- * Firestore에 에러 로그 저장 (선택적, 비용 고려)
+ * 잡힌 에러를 진단 버퍼로 넘긴다.
+ *
+ * 예전에는 여기서 `artifacts/{appId}/errorLogs` 로 직접 addDoc 했지만, 그 컬렉션은 규칙이
+ * `allow write: if false` 라 클라이언트 쓰기가 **항상** permission-denied 로 실패했다 —
+ * catch 가 삼켜서 조용했을 뿐 단 한 건도 저장된 적이 없다.
+ *
+ * 게다가 Firestore 로 바로 보내는 방식 자체가 이 앱에는 맞지 않는다. 관측하려는 실패의 상당수가
+ * 네트워크가 반쯤 죽은 상황에서 나는데, 그때는 전송도 같이 실패해 정작 필요한 기록을 잃는다.
+ * `diagnostics.js` 는 로컬 링버퍼에 남기고 채널이 살아 있는 것이 관측된 뒤 묶어서 올리므로
+ * 그 문제가 없고, 쓰기 경로도 사용자 하위(`syncDiagnostics`)라 규칙이 허용한다.
  */
-async function logErrorToFirestore(errorInfo) {
-    // 프로덕션에서는 주석 처리하거나, 샘플링하여 저장
-    // 예: 10%만 저장하거나, 특정 에러 타입만 저장
-    
-    // 중복 에러 방지: 같은 에러는 1시간에 1번만 저장
+function sendErrorToDiagnostics(errorInfo) {
+    // 중복 에러 방지: 같은 에러는 1시간에 1번만. 링버퍼가 600건이라 폭주 한 건이
+    // 다른 진단을 통째로 밀어내는 것을 막아야 한다.
     const errorKey = `${errorInfo.type}_${errorInfo.message?.substring(0, 50)}`;
-    const lastReported = sessionStorage.getItem(`error_${errorKey}`);
-    const now = Date.now();
-    
-    if (lastReported && (now - parseInt(lastReported)) < 3600000) {
-        return; // 1시간 이내에 같은 에러는 무시
-    }
-    
-    sessionStorage.setItem(`error_${errorKey}`, now.toString());
-
     try {
-        const { db, appId } = await import('./firebase.js');
-        const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js");
-        
-        // 에러 로그 컬렉션 (관리자만 읽을 수 있도록 Rules 설정 필요)
-        const errorLogsColl = collection(db, 'artifacts', appId, 'errorLogs');
-        
-        // 민감 정보 제거
-        const sanitizedError = {
-            message: errorInfo.message?.substring(0, 500) || 'Unknown error',
-            type: errorInfo.type || 'unknown',
-            filename: errorInfo.filename || null,
-            lineno: errorInfo.lineno || null,
-            colno: errorInfo.colno || null,
-            stack: errorInfo.stack?.substring(0, 2000) || null,
-            url: errorInfo.url || window.location.href,
-            userAgent: errorInfo.userAgent || navigator.userAgent,
-            userId: errorInfo.userId || 'anonymous',
-            isAnonymous: errorInfo.isAnonymous || false,
-            timestamp: errorInfo.timestamp || new Date().toISOString()
-        };
-
-        await addDoc(errorLogsColl, sanitizedError);
-    } catch (e) {
-        // Firestore 저장 실패는 무시 (에러 리포팅 자체가 실패하면 안 됨)
-        console.warn('에러 로그 Firestore 저장 실패:', e);
+        const lastReported = sessionStorage.getItem(`error_${errorKey}`);
+        const now = Date.now();
+        if (lastReported && now - parseInt(lastReported) < 3600000) {
+            return;
+        }
+        sessionStorage.setItem(`error_${errorKey}`, now.toString());
+    } catch (_) {
+        // sessionStorage 를 못 쓰면 중복 억제만 포기하고 계속 진행한다
     }
+
+    import('./utils/diagnostics.js')
+        .then(({ diag }) => {
+            // detail 은 작게 — 링버퍼와 업로드 문서 크기가 걸려 있다
+            diag('js.error', {
+                type: errorInfo.type || 'unknown',
+                message: String(errorInfo.message || 'Unknown error').substring(0, 300),
+                at: errorInfo.filename
+                    ? `${errorInfo.filename}:${errorInfo.lineno ?? '?'}:${errorInfo.colno ?? '?'}`
+                    : undefined,
+                stack: errorInfo.stack ? String(errorInfo.stack).substring(0, 600) : undefined
+            });
+        })
+        .catch(() => {
+            /* 계측이 없어도 앱은 돌아야 한다 */
+        });
 }
 
 /**
