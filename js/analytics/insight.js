@@ -86,7 +86,7 @@ const DEFAULT_CHARACTERS = [
         id: 'trainer', 
         name: '엄격한 트레이너', 
         icon: '💪', 
-        image: 'persona/trainer.png', // 트레이너 캐릭터 이미지
+        image: 'assets/persona/trainer.png', // 트레이너 캐릭터 이미지 (assets 아래여야 www·앱 빌드에 복사됨)
         persona: '건강과 웰빙을 중시하는 트레이너',
         systemPrompt: '당신은 건강과 웰빙을 중시하는 트레이너입니다. 엄격하지만 따뜻한 톤으로, 식사 패턴을 날카롭게 분석하고 건강한 식습관을 위한 명확한 조언을 제공합니다. 격려와 함께 건설적인 피드백을 주며, 때로는 유머를 섞어 지루하지 않게 전달합니다. 전문적이지만 딱딱하지 않고, 사용자가 행동 변화를 일으킬 수 있도록 동기부여하는 당신만의 스타일을 유지하세요.'
     }
