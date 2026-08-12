@@ -6243,6 +6243,11 @@ exports.adminWelcomeGeminiComment = onCall(
 const DIET_REPORT_START_DATE = '2026-06-30';
 const DIET_REPORT_PROMPT_VERSION = 'diet-v1';
 const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/dietReportConfig`);
+/**
+ * 폴백 전용. 실제 운영 프롬프트는 adminSettings/dietReportConfig 의 promptTemplate 이며
+ * 관리자 화면에서 관리한다. 이 상수는 그 문서가 비어 있을 때만 쓰인다.
+ * (관리자 화면의 "기본값으로 되돌리기"가 이 값을 덮어쓰므로 함부로 바꾸지 말 것)
+ */
 const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
 
 [평가 기준 · 100점 만점]
@@ -6269,9 +6274,11 @@ const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 
 /** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
 const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
 const DIET_REPORT_MAX_PHOTOS_TOTAL = 3;
-/** gemini-2.5-flash: 사진+thinking 시 출력 JSON이 잘리지 않도록 thinking 0 · 출력 여유 */
-const DIET_REPORT_MAX_OUTPUT_TOKENS = 1024;
-const DIET_REPORT_THINKING_BUDGET = 0;
+/** gemini-2.5-flash: thinking 토큰도 maxOutputTokens 예산에서 함께 빠지므로 본문 몫을 남겨 둔다 */
+const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
+const DIET_REPORT_THINKING_BUDGET = 512;
+/** 수동 재분석(사용자 버튼) 하루 허용 횟수 — 관리자는 예외 */
+const DIET_REPORT_MANUAL_DAILY_LIMIT = 3;
 
 function dietReportDocId(uid, dateStr) {
   return `${uid}_${dateStr}`;
@@ -6452,14 +6459,15 @@ async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplat
 
   const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const generationConfig = {
-    temperature: 0.4,
-    topP: 0.9,
-    maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
-    thinkingConfig: { thinkingBudget: DIET_REPORT_THINKING_BUDGET }
-  };
 
-  const invoke = async (images) => {
+  const invoke = async (images, thinkingBudget) => {
+    const generationConfig = {
+      // 운영 프롬프트가 개성 있는 title·mood 문구를 요구하므로 표현 다양성 쪽으로 둔다.
+      temperature: 0.8,
+      topP: 0.9,
+      maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingBudget }
+    };
     const parts = [{ text: prompt }, ...images.map((p) => ({ inlineData: p }))];
     const res = await fetch(url, {
       method: 'POST',
@@ -6482,19 +6490,35 @@ async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplat
   };
 
   const images = Array.isArray(imageParts) ? imageParts : [];
+  const isRetriable = (msg) =>
+    /Unable to process input image|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) || /image/i.test(msg);
+
+  // thinking이 출력 예산을 잠식해 본문이 잘린 경우가 먼저이므로, 사진을 버리기 전에 thinking부터 끈다.
+  const fallbacks = [];
+  if (DIET_REPORT_THINKING_BUDGET > 0) fallbacks.push({ images, thinkingBudget: 0, label: 'no-thinking' });
+  if (images.length > 0) fallbacks.push({ images: [], thinkingBudget: 0, label: 'text-only' });
+
+  let lastError;
   try {
-    return await invoke(images);
+    return await invoke(images, DIET_REPORT_THINKING_BUDGET);
   } catch (e) {
-    const msg = String(e?.message || e);
-    const shouldRetryTextOnly =
-      images.length > 0 &&
-      (/Unable to process input image|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) || /image/i.test(msg));
-    if (shouldRetryTextOnly) {
-      logger.warn('callGeminiDietReport: retry text-only', { dateStr, imageCount: images.length, errMsg: msg });
-      return await invoke([]);
-    }
-    throw e;
+    lastError = e;
   }
+  for (const fb of fallbacks) {
+    const msg = String(lastError?.message || lastError);
+    if (!isRetriable(msg)) break;
+    logger.warn(`callGeminiDietReport: retry ${fb.label}`, {
+      dateStr,
+      imageCount: fb.images.length,
+      errMsg: msg
+    });
+    try {
+      return await invoke(fb.images, fb.thinkingBudget);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError;
 }
 
 /**
@@ -6518,7 +6542,7 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
 
   await archiveDietReportSnapshotIfAny(reportRef);
 
-  // 사진 수집: meal 문서당 최대 3장, 하루 전체 최대 12장
+  // 사진 수집: meal 문서당 DIET_REPORT_MAX_PHOTOS_PER_DOC 장, 하루 전체 DIET_REPORT_MAX_PHOTOS_TOTAL 장
   const imageParts = [];
   const inputMealsForAnalysis = [];
   for (const m of analyzable) {
@@ -6727,6 +6751,33 @@ exports.scheduledDailyDietAnalysis = onSchedule(
 );
 
 /**
+ * 수동 재분석 일일 한도. rateLimits/{uid} 의 dietReportRegenerate 카운터를 서울 날짜 기준으로 증가시킨다.
+ * 한도를 넘으면 HttpsError('resource-exhausted')를 던지고 카운터는 올리지 않는다.
+ */
+async function consumeDietReportManualQuota(uid, todaySeoul) {
+  const ref = db.collection('artifacts').doc(APP_ID).collection('rateLimits').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const prev = snap.exists ? snap.data()?.dietReportRegenerate : null;
+    const count = prev && String(prev.date || '') === todaySeoul ? Number(prev.count) || 0 : 0;
+    if (count >= DIET_REPORT_MANUAL_DAILY_LIMIT) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `AI 분석은 하루 ${DIET_REPORT_MANUAL_DAILY_LIMIT}번까지 요청할 수 있어요. 내일 다시 시도해 주세요.`
+      );
+    }
+    tx.set(
+      ref,
+      {
+        dietReportRegenerate: { date: todaySeoul, count: count + 1 },
+        lastUpdated: FieldValue.serverTimestamp()
+      },
+      { merge: true }
+    );
+  });
+}
+
+/**
  * 수동 재분석(사용자 AI 리포트 버튼 / 관리자). 배치 on/off 와 무관하게 항상 동작.
  * 요청: { date: 'YYYY-MM-DD', userId?: string }
  */
@@ -6747,9 +6798,10 @@ exports.regenerateDietReport = onCall(
       throw new HttpsError('failed-precondition', '오늘·미래 날짜는 분석할 수 없습니다.');
     }
 
+    const callerIsAdmin = await isAdminByUid(callerAuth.uid);
     let targetUid = callerAuth.uid;
     if (d.userId && String(d.userId) !== callerAuth.uid) {
-      if (!(await isAdminByUid(callerAuth.uid))) {
+      if (!callerIsAdmin) {
         throw new HttpsError('permission-denied', '다른 사용자의 리포트는 관리자만 재생성할 수 있습니다.');
       }
       targetUid = String(d.userId);
@@ -6769,6 +6821,11 @@ exports.regenerateDietReport = onCall(
     const analyzable = meals.filter(isDietAnalyzableMeal);
     if (analyzable.length < 2) {
       throw new HttpsError('failed-precondition', '해당 날짜에 식사/간식 기록이 2개 이상 있어야 분석할 수 있습니다.');
+    }
+
+    // 조건 검증을 통과한 요청만 한도를 소모한다.
+    if (!callerIsAdmin) {
+      await consumeDietReportManualQuota(callerAuth.uid, todaySeoul);
     }
 
     const r = await generateAndSaveDietReport(targetUid, dateStr, meals, 'manual');

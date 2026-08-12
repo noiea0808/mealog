@@ -494,10 +494,12 @@ async function runRegenerate(dateStr) {
     } catch (e) {
         console.error('regenerateDietReport failed', e);
         const msg = e?.message || String(e);
-        if (msg.includes('resource-exhausted')) {
-            showToast('방금 분석했어요. 잠시 후 다시 시도해 주세요.', 'info');
-        } else if (msg.includes('failed-precondition')) {
-            showToast('분석 조건을 확인해 주세요.', 'info');
+        // callable 에러는 코드가 e.code('functions/...'), 서버 안내문이 e.message 로 온다.
+        const code = `${e?.code || ''} ${msg}`;
+        if (code.includes('resource-exhausted')) {
+            showToast(msg || '방금 분석했어요. 잠시 후 다시 시도해 주세요.', 'info');
+        } else if (code.includes('failed-precondition')) {
+            showToast(msg || '분석 조건을 확인해 주세요.', 'info');
         } else {
             showToast('AI 분석에 실패했습니다.', 'error');
         }
