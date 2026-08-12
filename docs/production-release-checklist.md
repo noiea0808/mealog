@@ -18,7 +18,7 @@
 
 1. Vercel 프로젝트 → **Settings** → **Environment Variables**
 2. `GOOGLE_WEB_CLIENT_ID` 추가 (Value: Web client ID)
-3. **둘러보기(샘플 계정)**: Play 스토어 운영 앱은 `capacitor.config.production.json`의 `server.url`(예: `https://www.mealog.net`)로 웹을 불러오므로, 로컬 `js/config.js`가 아니라 **배포 시 생성되는** `config.js`에 데모 비밀번호가 들어가야 합니다. `DEMO_ACCOUNT_PASSWORD`를 Vercel 환경 변수로 넣으세요(값은 Firebase Auth에 등록된 샘플 계정 비밀번호와 동일). 선택적으로 `DEMO_ACCOUNT_EMAIL`(기본 `dummy@mealog.net`).
+3. **둘러보기(샘플 계정)**: Play 스토어 운영 앱은 `config/capacitor.config.production.json`의 `server.url`(예: `https://www.mealog.net`)로 웹을 불러오므로, 로컬 `js/config.js`가 아니라 **배포 시 생성되는** `config.js`에 데모 비밀번호가 들어가야 합니다. `DEMO_ACCOUNT_PASSWORD`를 Vercel 환경 변수로 넣으세요(값은 Firebase Auth에 등록된 샘플 계정 비밀번호와 동일). 선택적으로 `DEMO_ACCOUNT_EMAIL`(기본 `dummy@mealog.net`).
 4. 재배포 후 적용됩니다.
 5. **`GEMINI_API_KEY`는 Vercel 환경 변수에서 삭제하세요.** (예전에 넣었다면) 빌드 결과 `config.js`에 섞여 공개될 수 있습니다. Gemini는 **Firebase Functions**의 `GEMINI_API_KEY`만 사용합니다.
 
