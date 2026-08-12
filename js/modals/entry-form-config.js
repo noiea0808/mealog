@@ -42,7 +42,7 @@ export const ENTRY_MODE_CONFIG = {
         axis2FavoriteKey: 'category',
         axis2SubTagsKey: 'menu',
         axis2SubTagKey: 'menu',
-        whatPlaceholder: '무엇을 드셨나요?\n구분도 고르면 내 패턴을 알 수 있어요.',
+        whatPlaceholder: '무엇을 드셨나요?\n적으면 구분을 자동으로 붙여드려요.',
         supportsSkip: true,
         supportsDeliveryVendor: true,
     },

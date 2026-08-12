@@ -67,6 +67,18 @@ function migrateQuickInputPrefs(cur) {
     } else if (cur?.openedByDefaultV2) {
         out.openedByDefaultV2 = true;
     }
+    /**
+     * V3: 끼니 카테고리 칩 그리드 기본 접힘 (docs/entry-sheet-redesign.md §2 1층).
+     * 자동 분류 제안이 그리드를 대신하므로 1회만 접는다 — 이후 사용자가
+     * 셰브론으로 다시 열면 그 선택이 저장되어 유지된다. (실선택률 23% 근거)
+     */
+    if (!cur?.whatSuggestDefaultV3) {
+        out.meal = { ...out.meal, what: false };
+        out.whatSuggestDefaultV3 = true;
+        out._didOpenByDefaultUpgrade = true;
+    } else {
+        out.whatSuggestDefaultV3 = true;
+    }
     return out;
 }
 
