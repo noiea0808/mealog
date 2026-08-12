@@ -31,13 +31,16 @@
     
     <title>MEALOG-함께한, 맛있었던 이야기</title>
     
-    <!-- Favicon / PWA icons (iOS 홈 화면 추가 시 apple-touch-icon 자동 적용) -->
+    <!-- Favicon / PWA icons (iOS 홈 화면 추가 시 apple-touch-icon 자동 적용)
+         apple-touch-icon 은 iOS 가 투명 픽셀을 검게 채우고 자체 라운드 마스크를 씌우므로,
+         여백 없이 꽉 찬 불투명 이미지(icon_apple_*)를 따로 쓴다. icon_512 계열을 그대로
+         쓰면 이미지에 포함된 흰 여백이 코너에 그대로 남는다. -->
     <link rel="icon" href="/assets/icon_192.png?v=20260725" type="image/png" sizes="192x192">
     <link rel="shortcut icon" href="/assets/icon_32.png?v=20260725" type="image/png" sizes="32x32">
-    <link rel="apple-touch-icon" href="/assets/icon_180.png?v=20260725">
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon_180.png?v=20260725">
-    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_192.png?v=20260725">
-    <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_512.png?v=20260725">
+    <link rel="apple-touch-icon" href="/assets/icon_apple_180.png?v=20260812">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon_apple_180.png?v=20260812">
+    <link rel="apple-touch-icon" sizes="192x192" href="/assets/icon_apple_192.png?v=20260812">
+    <link rel="apple-touch-icon" sizes="512x512" href="/assets/icon_apple_512.png?v=20260812">
     <link rel="manifest" href="./manifest.json">
 
     <!-- 외부 도메인 DNS/TLS 핸드셰이크를 병렬로 미리 시작 (부팅 지연 단축) -->
