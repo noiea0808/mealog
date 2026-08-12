@@ -99,6 +99,7 @@ import {
     resetEntryContextPredict,
     setupEntryContextPredict,
 } from './entry-context-predict.js';
+import { applyEntryFieldPromotion, recordEntryFieldUsage } from './entry-field-promotion.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -1799,6 +1800,8 @@ export async function openModal(date, slotId, entryId = null) {
                 dateStr: state.currentEditingDate,
                 isSnack,
             });
+            // 3층 필드 승격 — 모드 확정 후 DOM 재배치
+            applyEntryFieldPromotion();
 
             if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -2156,6 +2159,9 @@ export async function saveEntry() {
             gauges: { rateOn, satOn, timeOn, normalizedClock },
             mealHistory: window.mealHistory,
         });
+
+        // 3층 필드 사용 이력(최근 10회) — 승격/강등 판단용, 서브태그 기억과 같은 시점
+        recordEntryFieldUsage(record, entryMode, isSk);
 
         // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
         const shareSnapshot = buildEntryShareSnapshot({
@@ -3678,7 +3684,12 @@ function toggleFieldsForSkip(isSkip) {
         optionalFields.classList.toggle('hidden', !!isSkip);
     }
     document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
-    if (isSkip) resetEntryContextPredict();
+    if (isSkip) {
+        resetEntryContextPredict();
+        document.getElementById('entryPromotedFields')?.classList.add('hidden');
+    } else {
+        applyEntryFieldPromotion();
+    }
 
     setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);

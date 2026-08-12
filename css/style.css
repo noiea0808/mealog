@@ -18621,3 +18621,8 @@ html.service-guide-active #landingPage {
     width: 13px;
     height: 13px;
 }
+
+/* 3층 필드 승격 컨테이너 (entry-field-promotion.js) — 기본 탭 하단 */
+#entryModal .entry-promoted-fields {
+    border-top: 1px solid var(--entry-border-row, #e2e8f0);
+}
