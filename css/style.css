@@ -18565,3 +18565,59 @@ html.service-guide-active #landingPage {
     width: 13px;
     height: 13px;
 }
+
+/* 어디서·누구와 예측 한 줄 (entry-context-predict.js) — 습관-추측, 탭 확인 필수 */
+.entry-context-predict {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 1rem 0;
+    font-size: 12px;
+}
+.entry-predict-lead {
+    color: #94a3b8;
+    font-weight: 700;
+}
+.entry-predict-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #475569;
+    font-weight: 700;
+}
+.entry-predict-value svg {
+    width: 13px;
+    height: 13px;
+    color: #94a3b8;
+}
+.entry-predict-sep {
+    color: #cbd5e1;
+}
+.entry-predict-apply {
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 700;
+    background: white;
+    border: 1px solid var(--color-primary);
+    color: var(--color-primary);
+    cursor: pointer;
+}
+.entry-predict-apply:active {
+    background: var(--color-primary);
+    color: white;
+}
+.entry-predict-dismiss {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+}
+.entry-predict-dismiss svg {
+    width: 13px;
+    height: 13px;
+}

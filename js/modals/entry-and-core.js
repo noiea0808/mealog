@@ -94,6 +94,11 @@ import {
     resetEntryCategorySuggest,
     recomputeEntryCategorySuggest,
 } from './entry-category-suggest.js';
+import {
+    initEntryContextPredict,
+    resetEntryContextPredict,
+    setupEntryContextPredict,
+} from './entry-context-predict.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -1227,6 +1232,7 @@ function resetEntryModalFormFields() {
     const entryModal = document.getElementById('entryModal');
     entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
     resetEntryCategorySuggest();
+    resetEntryContextPredict();
 
     document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
 
@@ -1742,6 +1748,7 @@ export async function openModal(date, slotId, entryId = null) {
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
         initEntryCategorySuggest();
+        initEntryContextPredict();
         bindEntryWhatInputAutosizeOnce();
         autosizeEntryWhatInput();
         bindEntryCommentExpandOnce();
@@ -1785,6 +1792,13 @@ export async function openModal(date, slotId, entryId = null) {
                 window.setRating(null);
                 window.setSatiety(null);
             }
+
+            // 어디서·누구와 예측 — 폼에 값이 채워진 뒤 호출해야 빈 필드만 제안한다
+            setupEntryContextPredict({
+                slotId: state.currentEditingSlotId,
+                dateStr: state.currentEditingDate,
+                isSnack,
+            });
 
             if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -3664,6 +3678,7 @@ function toggleFieldsForSkip(isSkip) {
         optionalFields.classList.toggle('hidden', !!isSkip);
     }
     document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
+    if (isSkip) resetEntryContextPredict();
 
     setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);

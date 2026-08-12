@@ -5,6 +5,7 @@
 import { syncPhotoMetaLength } from '../photo-meta.js';
 import { PHOTO_ASPECT_OPTIONS } from './entry-form-config.js';
 import { getEntryCategorySuggestResult } from './entry-category-suggest.js';
+import { getEntryContextPredictConfirm } from './entry-context-predict.js';
 
 /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
 export function isLocalPendingPhoto(photo) {
@@ -134,12 +135,24 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         }
     }
 
+    /**
+     * 어디서·누구와 예측 "맞아요" 병합 (docs/entry-sheet-redesign.md §2 2층).
+     * 확정값은 사용자가 명시적으로 탭한 것만 존재한다 — 탭 없이는 항상 빈 값.
+     * 칩이 렌더돼 있으면 apply 시 이미 chip.click()으로 반영됐고(withWhomResolved 채워짐),
+     * 칩이 접혀 있던 경우만 여기서 병합된다.
+     */
+    let withWhomFinal = withWhomResolved;
+    if (!isS && !isSk && !(withWhomFinal || '').trim()) {
+        const ctxConfirm = getEntryContextPredictConfirm();
+        if (ctxConfirm.withWhom) withWhomFinal = ctxConfirm.withWhom;
+    }
+
     const record = {
         id: idToUse,
         date: state.currentEditingDate,
         slotId: state.currentEditingSlotId,
         mealType: mealTypeResolved,
-        withWhom: withWhomResolved,
+        withWhom: withWhomFinal,
         withWhomDetail: isSk ? '' : withInputVal,
         category: categoryFinal,
         categoryAuto,
