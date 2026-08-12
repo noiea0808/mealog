@@ -566,12 +566,12 @@ function buildWelcomeDetailSlideHtml(slide) {
     const title = attendanceWelcomeEscapeXml(slide.title || '상세');
     const body = slide.html || '<p class="text-slate-400 text-xs py-2">표시할 상세가 없습니다.</p>';
     return `<div class="attendance-welcome-detail-slide w-full">
-<div class="attendance-welcome-detail-slide-head px-2">
+<div class="attendance-welcome-detail-slide-head px-8">
     <span class="attendance-welcome-detail-slide-eyebrow">최근 7일</span>
     <span class="attendance-welcome-detail-slide-title">${title}</span>
 </div>
 <div class="attendance-welcome-detail-slide-body max-h-[15.5rem] overflow-y-auto">
-    <div class="px-2">${body}</div>
+    <div class="px-8">${body}</div>
 </div>
 </div>`;
 }
