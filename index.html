@@ -60,6 +60,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Yeon+Sung&display=swap" rel="stylesheet">
     <!-- 통계/공유카드 화면에서만 쓰임 (첫 화면 무관) — defer로 초기 파싱 차단 해제 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <!-- 공유 캡처 기본 엔진 — foreignObject 방식이라 브라우저 렌더링과 동일하게 그림 (js/utils.js captureWithGhostStrategy) -->
+    <script src="https://cdn.jsdelivr.net/npm/@zumer/snapdom@2.24.1/dist/snapdom.min.js" defer></script>
+    <!-- snapdom 실패 시 폴백 전용 — 자체 CSS 렌더러라 정렬 오차가 있음(normalizeShareCaptureClone 보정 필요) -->
     <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" defer></script>
     <link rel="stylesheet" href="css/style.css">
     <style>

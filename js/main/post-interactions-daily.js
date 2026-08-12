@@ -437,6 +437,7 @@ window.confirmDailyShare = async (dateStr, ev) => {
             captureWidth: 420,
             allowTaint: false,
             foreignObjectRendering: false,
+            // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
             onclone: (clonedDoc) => {
                 const garamCss = MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
                 if (fredokaFontCSS) {

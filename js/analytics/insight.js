@@ -1977,14 +1977,18 @@ export async function shareInsightToFeed() {
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(targetElement, {
             captureWidth: 420,
+            // 공유 버튼은 캡처 이미지에서 빠져야 한다 — 엔진 무관하게 유령 노드에서 숨김
+            prepareGhost: (ghost) => {
+                const shareBtn = ghost.querySelector('.insight-share-button');
+                if (shareBtn) shareBtn.style.display = 'none';
+            },
+            // html2canvas 폴백 전용 — 클론 문서에 폰트 CSS 주입 (snapdom 은 embedFonts 로 처리)
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');
                     style.textContent = fontCSS;
                     clonedDoc.head.appendChild(style);
                 }
-                const shareBtn = clonedDoc.querySelector('.insight-share-button');
-                if (shareBtn) shareBtn.style.display = 'none';
             }
         });
         
