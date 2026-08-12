@@ -63,7 +63,7 @@ import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrack
 import './render/timeline-meal-photos-popup.js';
 import { ensureAnalytics, installAnalyticsLazyStubs } from './analytics/ensure.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
+    openModal, closeModal, requestCloseEntryModal, cancelDiscardEntryModal, confirmDiscardEntryModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     fillProfileActivityStats,
@@ -344,6 +344,12 @@ window.closeEntrySlotPicker = closeEntrySlotPicker;
 window.Mealog.closeEntrySlotPicker = closeEntrySlotPicker;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
+window.requestCloseEntryModal = requestCloseEntryModal;
+window.Mealog.requestCloseEntryModal = requestCloseEntryModal;
+window.cancelDiscardEntryModal = cancelDiscardEntryModal;
+window.Mealog.cancelDiscardEntryModal = cancelDiscardEntryModal;
+window.confirmDiscardEntryModal = confirmDiscardEntryModal;
+window.Mealog.confirmDiscardEntryModal = confirmDiscardEntryModal;
 window.openDailyJournalModal = openDailyJournalModal;
 window.Mealog.openDailyJournalModal = openDailyJournalModal;
 window.closeDailyJournalModal = closeDailyJournalModal;

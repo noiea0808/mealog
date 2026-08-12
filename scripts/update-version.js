@@ -13,7 +13,7 @@ const { execSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const VERSION_JSON = path.join(ROOT, 'version.json');
-const PRODUCTION_RELEASE_JSON = path.join(ROOT, 'production-release.json');
+const PRODUCTION_RELEASE_JSON = path.join(ROOT, 'config', 'production-release.json');
 
 // versionCode = git 커밋 수 + 오프셋. 여러 작업환경이 각자 로컬에서 +1씩 증가시키던
 // 방식은 같은 시점에 서로 다른 값으로 갈라져 병합 충돌을 유발했음.

@@ -369,6 +369,7 @@ export function computeProportionSegmentsForAnalysis(data, key) {
 
 /**
  * 웰컴 팝업 슬라이드 — 도넛(비율) 슬라이드와 랭킹 상세(분석 > 상세와 동일 테이블) 슬라이드를 교대로 구성.
+ * 순서·개수를 바꾸면 관리자 > 웰컴메시지 > 요일별 화면의 선택지(`js/welcome-weekday-config.js`의 WELCOME_SLIDE_LABELS)도 함께 맞춰야 한다.
  * @param {number} [days=7] 오늘 포함 최근 N일(로컬)
  * @param {'meal'|'snack'} [kind='meal'] 식사(메인 슬롯) vs 간식 슬롯
  * @returns {({ type: 'donut', title: string, key: string, total: number, segments: any[] } | { type: 'detail', title: string, key: string, html: string })[]}

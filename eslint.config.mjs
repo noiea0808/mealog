@@ -28,7 +28,7 @@ export default [
 
     // 프론트엔드: 브라우저 ES 모듈
     {
-        files: ['js/**/*.js', 'sw.js', 'test-error-reporting.js'],
+        files: ['js/**/*.js', 'sw.js', 'dev/test-error-reporting.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',

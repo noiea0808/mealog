@@ -6,6 +6,10 @@ import { db, appId, auth } from '../firebase.js';
 import { doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { runAdminRefreshAction } from './utils.js';
 
+/**
+ * 폴백 전용. 실제 운영 프롬프트는 Firestore(adminSettings/dietReportConfig)의 promptTemplate 이다.
+ * "기본값으로 되돌리기"를 누르면 편집창이 이 값으로 덮이므로, 운영 프롬프트보다 빈약한 채로 두면 위험하다.
+ */
 export const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
 
 [평가 기준 · 100점 만점]

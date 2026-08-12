@@ -7,7 +7,7 @@
 import { isDemoUser } from './demo-account.js';
 import { db, appId } from './firebase.js';
 import { getRecordCountForIso } from './meal-record-count.js';
-import { showAttendancePopup, prepareWelcomeReportState } from './ui.js';
+import { showAttendancePopup, prepareWelcomeReportState, setWelcomeWeekdayDefaults } from './ui.js';
 import { addCalendarDaysSeoulYmd, getMealogClientEnv, toLocalDateString, toSeoulDateString } from './utils.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -746,10 +746,13 @@ async function fetchAttendancePopupRoot() {
                 // 부팅 직후 웰컴 팝업 경로라, 여기서 기다리면 첫 화면이 그만큼 늦어졌다.
                 const configRef = doc(db, 'artifacts', appId, 'adminSettings', 'config');
                 const snap = await getDoc(configRef);
+                const data = snap.exists() ? snap.data() : {};
                 const ap =
-                    snap.exists() && snap.data().attendancePopup && typeof snap.data().attendancePopup === 'object'
-                        ? snap.data().attendancePopup
+                    data.attendancePopup && typeof data.attendancePopup === 'object'
+                        ? data.attendancePopup
                         : {};
+                // 웰컴 팝업이 열릴 때 쓰는 요일별 기본 화면 — 같은 문서라 여기서 함께 반영
+                setWelcomeWeekdayDefaults(data.welcomeWeekdayDefaults);
                 const normalized = normalizeAttendancePopup(ap);
                 lastResolvedAttendancePopupConfig = normalized;
                 return normalized;

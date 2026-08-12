@@ -26,10 +26,10 @@
 1. 프로젝트 루트에서 다음 명령 실행:
    ```bash
    # Windows
-   start.bat
+   tools\start.bat
    
    # 또는 PowerShell에서 직접
-   .\server.ps1
+   .\tools\server.ps1
    ```
 
 2. 브라우저에서 앱 접속:

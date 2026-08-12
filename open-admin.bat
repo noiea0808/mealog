@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-call "%~dp0ensure-server.bat"
+call "%~dp0tools\ensure-server.bat"
 
 REM Open admin page in incognito/private mode
 start chrome --incognito http://localhost:8000/admin.html 2>nul

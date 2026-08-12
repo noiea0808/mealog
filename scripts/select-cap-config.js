@@ -14,7 +14,7 @@ if (!valid.includes(env)) {
   );
   process.exit(1);
 }
-const srcFile = path.join(root, `capacitor.config.${env}.json`);
+const srcFile = path.join(root, 'config', `capacitor.config.${env}.json`);
 const destFile = path.join(root, 'capacitor.config.json');
 if (!fs.existsSync(srcFile)) {
   console.error(`❌ ${srcFile} not found`);

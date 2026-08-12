@@ -21,6 +21,21 @@ function getBoardLoungeScrollEl() {
     return document.getElementById('boardLoungeScrollArea');
 }
 
+/**
+ * 프로필을 미리 받아야 할 userId — 말풍선 작성자 + 답장 인용 대상 작성자.
+ * 인용 대상은 화면에 글이 없을 수 있어 따로 모으지 않으면 최신 닉네임으로 해소되지 않는다.
+ */
+function collectFeedProfileUserIds(posts) {
+    const ids = new Set();
+    (posts || []).forEach((p) => {
+        if (!p) return;
+        if (p.authorId) ids.add(p.authorId);
+        const replyAuthorId = p.replyTo?.authorId;
+        if (replyAuthorId) ids.add(replyAuthorId);
+    });
+    return [...ids];
+}
+
 /** quietRefresh 시 서버 최신 페이지와 이미 스크롤로 불러 둔 오래된 메시지 병합 */
 function mergeFeedQuietRefreshFirstPage(serverPosts, existingWithoutPending) {
     const server = (serverPosts || []).filter((p) => p && p.isHidden !== true);
@@ -99,7 +114,7 @@ async function loadMoreFeedOlderMessages() {
         });
         const merged = Array.from(byId.values()).sort((a, b) => getPostTimestampMs(a) - getPostTimestampMs(b));
 
-        const authorIds = [...new Set((posts || []).map((p) => p.authorId).filter(Boolean))];
+        const authorIds = collectFeedProfileUserIds(posts);
         if (authorIds.length) await fetchUserProfiles(authorIds);
 
         appState.feedTimelinePosts = merged;
@@ -332,7 +347,13 @@ function feedReactionRowHtml(post, alignEnd) {
 
 function feedReplyQuoteHtml(replyTo, variant = 'mine') {
     if (!replyTo || typeof replyTo !== 'object') return '';
-    const rawReplyNick = String(replyTo.authorNickname || '익명').trim();
+    /* authorId 가 있으면 최신 닉네임으로 해소 — 없는 옛 문서만 저장된 값을 그대로 쓴다 */
+    const storedReplyNick = String(replyTo.authorNickname || '').trim();
+    const replyAuthorId = String(replyTo.authorId || '').trim();
+    const rawReplyNick =
+        (replyAuthorId
+            ? getDisplayProfile(replyAuthorId, { nickname: storedReplyNick }).nickname
+            : storedReplyNick) || '익명';
     const nick = escapeHtml(rawReplyNick);
     const prev = escapeHtml(String(replyTo.textPreview || '').trim());
     if (!nick && !prev) return '';
@@ -608,7 +629,12 @@ export function buildPendingFeedMessage({ text, imagePreviewUrls = [], replyToPo
             if (prev.length > 80) prev = `${prev.slice(0, 79)}…`;
             if (!prev && Array.isArray(parent.imageUrls) && parent.imageUrls.length) prev = '(사진)';
             if (!prev) prev = '내용 없음';
-            replyTo = { authorNickname: parent.authorNickname || '익명', textPreview: prev };
+            replyTo = {
+                postId: rid,
+                authorId: parent.authorId || null,
+                authorNickname: parent.authorNickname || '익명',
+                textPreview: prev
+            };
         }
     }
     return {
@@ -793,7 +819,7 @@ export async function renderBoardFeedTab(options = {}) {
             const rc = op.reactionCounts || { like: 0, thumbs: 0, check: 0 };
             list = [...list, { ...op, reactionCounts: rc }];
         }
-        const authorIds = [...new Set(list.map((p) => p.authorId).filter(Boolean))];
+        const authorIds = collectFeedProfileUserIds(list);
         await fetchUserProfiles(authorIds);
         appState.feedTimelinePosts = list;
         paintFeedTimeline(root, list);

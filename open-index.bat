@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-call "%~dp0ensure-server.bat"
+call "%~dp0tools\ensure-server.bat"
 
 REM Open main app page in Naver Whale (fallback: default browser)
 set "URL=http://localhost:8000/index.html"

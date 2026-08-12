@@ -266,12 +266,7 @@ export function setupListeners(userId, callbacks) {
                 
                 // 마이그레이션은 백그라운드에서 처리
                 Promise.resolve().then(async () => {
-                    try {
-                        const { maybeSeedNicknameFromAuthDisplayName } = await import('../auth-nickname-seed.js');
-                        await maybeSeedNicknameFromAuthDisplayName();
-                    } catch (e) {
-                        console.warn('Auth 닉네임 시드(리스너) 스킵:', e?.message || e);
-                    }
+                    /* 소셜 계정 표시 이름(카카오 실명 등)을 닉네임으로 시드하지 않는다 — 닉네임은 가입 위저드에서만 정한다 */
                     let needsSave = false;
                     // 깊은 복사로 기존 설정 보존
                     const settingsToSave = JSON.parse(JSON.stringify(window.userSettings));

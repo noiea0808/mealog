@@ -165,7 +165,7 @@ export function initCenterDialogGrabbers() {
             panelSelector: '.entry-modal-panel',
             backdropSelector: '#entryModalBackdrop',
             onClose: () => {
-                if (typeof window.closeModal === 'function') window.closeModal();
+                if (typeof window.requestCloseEntryModal === 'function') window.requestCloseEntryModal();
             },
             isDisabled: () => {
                 const el = document.getElementById('entryModal');

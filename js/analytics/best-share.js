@@ -1058,6 +1058,7 @@ export async function shareBestToFeed() {
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(targetElement, {
             captureWidth: 420,
+            // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');
