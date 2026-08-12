@@ -2,6 +2,7 @@
 import { logUsageMetric } from '../usage-metrics.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
 import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
+import { normalizePlace } from '../utils/place-normalize.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
@@ -40,7 +41,8 @@ function getTop10RankingsFromMeals(mealRecords, options = {}) {
     const menuCounts = {};
     const peopleCounts = {};
     mealRecords.forEach(m => {
-        const place = (m.place || '').trim();
+        // 표기 정규화(우리집→집 등)로 같은 장소가 여러 줄로 쪼개지지 않게 — 원문은 저장에만 남는다
+        const place = normalizePlace(m.place);
         if (place) {
             placeCounts[place] = (placeCounts[place] || 0) + 1;
         }

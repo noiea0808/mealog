@@ -3,6 +3,7 @@
  * 저장 로직(entry-and-core)과 동일한 의도: 메인 칩이 비어 있고 상세만 있으면 → 기타.
  */
 import { SLOTS } from '../constants.js';
+import { normalizePlace } from '../utils/place-normalize.js';
 
 const MAIN_IDS = new Set(['morning', 'lunch', 'dinner']);
 const SNACK_IDS = new Set(SLOTS.filter((s) => s.type === 'snack').map((s) => s.id));
@@ -76,7 +77,8 @@ export function effectiveSnackPlaceForAnalytics(m, snackPlaceMainSet) {
     if (!m || slotKind(m.slotId) !== 'snack') return '';
     const sm = trim(m.snackPlaceMain);
     if (sm) return sm;
-    const p = trim(m.place);
+    // 표기 정규화(우리집→집)로 자유 텍스트가 메인 칩(집·사무실·카페)과 합쳐지게 한다
+    const p = normalizePlace(m.place);
     if (!p) return '';
     if (!snackPlaceMainSet || snackPlaceMainSet.size === 0) return p;
     if (snackPlaceMainSet.has(p)) return p;

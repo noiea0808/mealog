@@ -14,6 +14,7 @@ import { appState } from '../state.js';
 import { setVal } from '../utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { dominantPlaceGroup } from '../utils/place-normalize.js';
 
 const CONTAINER_ID = 'entryContextPredict';
 const MIN_SAMPLES = 3;
@@ -51,9 +52,19 @@ function isSkipRecord(r) {
     return r?.mealType === '건너뜀' || r?.mealType === 'Skip';
 }
 
-/** @param {string[]} values @returns {string|null} 최빈값 (문턱 충족 시) */
-function qualifiedMode(values) {
+/**
+ * @param {string[]} values
+ * @param {boolean} [groupPlaces] place 필드면 표기 정규화 그룹으로 투표
+ *   ('우리집' 40% + '집' 30%는 같은 그룹 70% — 표기가 갈려 예측이 침묵하는 걸 막는다).
+ *   대표값은 그 그룹의 최다 원문 표기 — 사용자의 습관 어휘를 보존한다.
+ * @returns {string|null} 최빈값 (문턱 충족 시)
+ */
+function qualifiedMode(values, groupPlaces = false) {
     if (!Array.isArray(values) || values.length < MIN_SAMPLES) return null;
+    if (groupPlaces) {
+        const g = dominantPlaceGroup(values);
+        return g && g.count / g.total >= MODE_SHARE ? g.representative : null;
+    }
     const counts = new Map();
     for (const v of values) counts.set(v, (counts.get(v) || 0) + 1);
     let top = null;
@@ -82,15 +93,16 @@ function predictField(history, field, slotId, weekend) {
     // 최근 우선 — date 문자열(YYYY-MM-DD) 내림차순
     const sorted = [...withValue].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
+    const groupPlaces = field === 'place';
     const slotSamples = sorted
         .filter((r) => r.slotId === slotId && isWeekendDate(String(r.date || '')) === weekend)
         .slice(0, RECENT_LIMIT)
         .map((r) => r[field].trim());
-    const bySlot = qualifiedMode(slotSamples);
+    const bySlot = qualifiedMode(slotSamples, groupPlaces);
     if (bySlot) return bySlot;
 
     const anySamples = sorted.slice(0, RECENT_LIMIT).map((r) => r[field].trim());
-    return qualifiedMode(anySamples);
+    return qualifiedMode(anySamples, groupPlaces);
 }
 
 /**
