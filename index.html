@@ -2807,10 +2807,12 @@
                         <input type="hidden" id="entryHeaderDate" value="">
                         <button type="button" id="entryHeaderDateBtn" aria-label="날짜" aria-haspopup="dialog" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800 outline-none transition-colors">날짜</button>
                         <select id="entryHeaderSlotSelect" aria-label="시간대" class="entry-header-slot shrink min-w-0 py-1.5 rounded-lg font-bold text-slate-800 outline-none transition-colors appearance-none"></select>
-                        <div id="entryFormModeSwitch" class="entry-form-mode-switch shrink-0" role="group" aria-label="식사·간식">
-                            <button type="button" id="entryFormModeBtnMeal" data-mode="meal" class="entry-form-mode-btn entry-form-mode-btn--active" aria-pressed="true">식사</button>
-                            <button type="button" id="entryFormModeBtnSnack" data-mode="snack" class="entry-form-mode-btn" aria-pressed="false">간식</button>
-                        </div>
+                        <!--
+                            식사/간식 토글 제거 (2026-08-13). 모드는 슬롯이 결정한다.
+                            실사용 4,042건 중 슬롯과 다른 모드로 기록한 건 2건(0.05%, 1명)뿐이라
+                            선택지로서 값을 못 하고 있었다. 슬롯을 바꾸면 모드가 따라간다
+                            (onHeaderSlotChange). 기존 기록 로드 시 추론도 그대로 유지된다.
+                        -->
                     </div>
                 </div>
             </div>
