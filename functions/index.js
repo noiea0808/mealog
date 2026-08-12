@@ -886,8 +886,10 @@ exports.createFeedPost = onCall({ region: REGION }, wrapFunction('createFeedPost
         let textPreview = feedOneLinePreview(pText, 80);
         if (!textPreview && pHasImg) textPreview = '(사진)';
         if (!textPreview) textPreview = '내용 없음';
+        /* authorId 를 함께 남겨야 인용 박스도 작성자의 최신 닉네임으로 표시할 수 있다 */
         replyTo = {
           postId: rid,
+          authorId: p.authorId || null,
           authorNickname: p.authorNickname || '익명',
           textPreview
         };
