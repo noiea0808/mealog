@@ -17,7 +17,7 @@
     "postinstall": "node scripts/patch-safe-area.js && node scripts/patch-push-notifications-npe.js",
     "cap:build:production:release": "node scripts/run-with-config-restore.js \"node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js assembleProductionRelease\"",
     "cap:build:production:aab": "node scripts/run-with-config-restore.js \"node scripts/update-version.js production && node scripts/ensure-keystore.js && npm run cap:sync:production:bundled && node scripts/build-android.js bundleProductionRelease\"",
-    "icons:generate": "npx @capacitor/assets generate --android",
+    "icons:generate": "node scripts/ensure-icons.js",
     "build:css": "node scripts/build-tailwind.js",
     "dev:serve": "node scripts/dev-static-server.js",
     "lint": "eslint .",
@@ -48,6 +48,7 @@
     "eslint": "^9.39.5",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.9.0",
+    "sharp": "^0.32.6",
     "tailwindcss": "^3.4.17"
   }
 }
