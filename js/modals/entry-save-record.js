@@ -118,14 +118,18 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
      * 분류기는 동기·no-throw — 이 블록은 저장 경로에 fallible한 단계를 더하지 않는다.
      */
     let categoryFinal = categoryResolved;
+    let snackTypeFinal = snackTypeResolved;
     let categoryAuto = '';
     let categorySource = null;
-    if (!isS && !isSk) {
+    if (!isSk) {
         const suggest = getEntryCategorySuggestResult();
-        if (categoryFinal) {
+        // 끼니는 category, 간식은 snackType — 같은 자동 분류 필드 쌍을 공유한다
+        const userPicked = isS ? snackTypeFinal : categoryFinal;
+        if (userPicked) {
             categorySource = 'user';
         } else if (suggest.confirmed) {
-            categoryFinal = suggest.confirmed;
+            if (isS) snackTypeFinal = suggest.confirmed;
+            else categoryFinal = suggest.confirmed;
             categorySource = 'user';
         } else if (suggest.dismissed) {
             categorySource = 'dismissed';
@@ -158,7 +162,7 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         categoryAuto,
         categorySource,
         placeType: '',
-        snackType: snackTypeResolved,
+        snackType: snackTypeFinal,
         photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
         // Firestore에는 URL만 저장하고, base64는 저장 직후 Storage로 업로드 후 치환한다.
         photos: existingPhotoUrls,

@@ -56,6 +56,9 @@ export function effectiveSnackTypeForAnalytics(m) {
     if (!m || slotKind(m.slotId) !== 'snack') return trim(m?.snackType);
     const st = trim(m.snackType);
     if (st) return st;
+    // 간식도 끼니와 같은 자동 분류 필드 쌍을 공유한다 (저장은 entry-save-record.js)
+    const auto = trim(m.categoryAuto);
+    if (auto) return auto;
     const detail = trim(m.menuDetail);
     const place = trim(m.place);
     const withD = trim(m.withWhomDetail);

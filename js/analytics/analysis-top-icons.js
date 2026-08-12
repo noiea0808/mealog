@@ -5,6 +5,7 @@
 import { SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
+import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
 import { ANALYSIS_ICON_ASSETS } from './analysis-icon-assets.js';
 
 const SNACK_WHEN_LABEL = {
@@ -129,7 +130,8 @@ function getAllowedTags(key) {
         return userTags.mealType;
     }
     if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
-        return userTags.category;
+        // 자동 분류 축은 사용자 태그에 없으므로 합집합 (charts.js aggregateProportionData와 동일)
+        return [...userTags.category, ...AUTO_CATEGORIES];
     }
     if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         return userTags.withWhom;
@@ -161,7 +163,8 @@ function pickTopAnalysisValue(data, key) {
         if (!m) continue;
         // 차트 데이터 범위와 맞춤
         if (key === 'mealType' && !String(m.mealType ?? '').trim()) continue;
-        if (key === 'category' && !String(m.category ?? '').trim()) continue;
+        // categoryAuto만 있는(사용자 확정 없는 자동 분류) 기록도 집계에 포함한다
+        if (key === 'category' && !String(m.category ?? '').trim() && !String(m.categoryAuto ?? '').trim()) continue;
         if (key === 'withWhom' && !String(m.withWhom ?? '').trim()) continue;
         if (key === 'snackType' && !String(m.snackType ?? '').trim() && !String(m.menuDetail ?? '').trim()) {
             // snackType 차트는 전체 snacksOnly 포함 — 빈 값은 effective가 기타/미입력 처리

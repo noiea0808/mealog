@@ -10,7 +10,7 @@
  * 이 모듈의 어떤 실패도 저장을 막아선 안 된다 — 렌더는 전부 best-effort.
  */
 import { appState } from '../state.js';
-import { classifyFoodText } from '../utils/food-classifier.js';
+import { classifyFoodText, classifySnackText } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 
@@ -64,14 +64,14 @@ export function recomputeEntryCategorySuggest() {
 
 function runClassify() {
     try {
-        if (!isMealMode()) {
-            state.suggestions = [];
-            render();
-            return;
-        }
         const input = document.getElementById(INPUT_ID);
         const text = (input?.value || '').trim();
-        const next = text ? classifyFoodText(text) : [];
+        let next = [];
+        if (text) {
+            next = isMealMode()
+                ? classifyFoodText(text)
+                : classifySnackText(text, window.userSettings?.tags?.snackType || null);
+        }
         // 제안이 그대로면 확정·거부 상태 유지, 바뀌면 리셋 (텍스트가 바뀌어 근거가 달라짐)
         const changed =
             next.length !== state.suggestions.length ||
@@ -95,11 +95,19 @@ function render() {
     const el = document.getElementById(CONTAINER_ID);
     if (!el) return;
 
-    if (!isMealMode() || state.dismissed || state.suggestions.length === 0) {
+    /**
+     * 빈 상태에서도 자리를 비워둔다(display:none 금지).
+     * 시트 높이는 열릴 때 한 번 재는데, 입력 중에는 키보드가 열려 있어 재측정이 막혀 있다
+     * (entry-sheet-tabs.js syncEntrySheetHeightLock의 keyboard-open 가드).
+     * 그래서 나중에 칩이 생기면 그만큼 아래로 밀려 스크롤해야 보였다.
+     * 자리를 미리 잡아두면 칩이 그 자리에 나타나므로 레이아웃이 흔들리지도 않는다.
+     */
+    if (state.dismissed || state.suggestions.length === 0) {
         el.innerHTML = '';
-        el.classList.add('hidden');
+        el.classList.add('entry-suggest-row--empty');
         return;
     }
+    el.classList.remove('entry-suggest-row--empty');
 
     const chips = state.suggestions
         .map((category) => {
@@ -121,7 +129,6 @@ function render() {
         <button type="button" class="entry-suggest-dismiss" data-suggest-dismiss aria-label="자동 분류 제안 닫기">
             <i data-lucide="x" aria-hidden="true"></i>
         </button>`;
-    el.classList.remove('hidden');
     refreshLucideIcons(el);
 }
 

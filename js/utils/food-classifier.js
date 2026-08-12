@@ -73,6 +73,33 @@ const FOOD_KEYWORDS = {
     ],
 };
 
+/**
+ * 간식 사전은 기존 snackType 축(커피·차/음료·술/주류·베이커리·과자/스낵·아이스크림·과일/견과)을
+ * 그대로 쓴다. 끼니와 달리 이 축은 실사용과 어긋나지 않아 바꿀 이유가 없다 —
+ * 사용자 태그 목록에 이미 있는 값이므로 분석 화이트리스트도 그대로 통과한다.
+ */
+const SNACK_KEYWORDS = {
+    '커피': ['아메리카노', '카페라떼', '라떼', '커피', '에스프레소', '콜드브루', '카페모카', '카푸치노'],
+    '차/음료': [
+        '녹차', '홍차', '보리차', '허브티', '캐모마일', '주스', '스무디', '에이드', '우유', '두유',
+        '요거트', '요구르트', '식혜', '착즙', '탄산수', '콜라', '사이다', '이온음료', '레모네이드',
+    ],
+    '술/주류': ['맥주', '소주', '와인', '막걸리', '하이볼', '위스키', '사케', '칵테일', '샴페인'],
+    '베이커리': [
+        '소금빵', '식빵', '단팥빵', '크림빵', '바게트', '베이글', '크루아상', '치아바타', '스콘',
+        '머핀', '마들렌', '휘낭시에', '케이크', '케익', '도넛', '크로플', '와플', '마카롱', '파이', '빵',
+    ],
+    '과자/스낵': [
+        '쿠키', '비스킷', '크래커', '과자', '스낵', '감자칩', '도리토스', '꼬북칩', '새우깡', '팝콘',
+        '젤리', '사탕', '초코', '초콜릿', '프레첼', '누룽지', '시리얼', '그래놀라', '에너지바',
+    ],
+    '아이스크림': ['아이스크림', '젤라또', '빙수', '소프트콘', '하드바', '샤베트'],
+    '과일/견과': [
+        '사과', '수박', '복숭아', '자두', '포도', '바나나', '딸기', '블루베리', '참외', '멜론',
+        '키위', '오렌지', '망고', '파인애플', '체리', '과일', '견과', '아몬드', '호두', '캐슈넛',
+    ],
+};
+
 /** 수량·단위 접미 제거: "닭다리살100", "계란 2알", "밥1/2공기" → 음식명만 남긴다 */
 const QUANTITY_SUFFIX_RE = /[\d./~]+(?:개|알|봉|장|조각|숟|스푼|공기|그람|그램|인분|쪽|모|통|번|잔|병|캔|g|kg|ml|cc|l)?$/i;
 
@@ -117,13 +144,42 @@ export function tokenizeFoodText(text) {
  * @returns {string[]} 제안 카테고리 0~2개, 득표순
  */
 export function classifyFoodText(text, personalKeywords = null) {
+    return classifyWithDictionary(text, FOOD_KEYWORDS, personalKeywords, ONE_CHAR_FOODS);
+}
+
+/**
+ * 간식 텍스트 → snackType 카테고리 추론.
+ * 끼니와 달리 기존 축을 그대로 쓰므로, 사용자 태그 목록에 없는 값은 제안하지 않는다
+ * (관리자가 축을 손댔을 때 분석 화이트리스트 밖 값을 제안하는 사고 방지).
+ *
+ * @param {string} text
+ * @param {string[]|null} [allowedTags] userSettings.tags.snackType
+ * @param {Record<string, string[]>|null} [personalKeywords]
+ * @returns {string[]} 제안 카테고리 0~2개
+ */
+export function classifySnackText(text, allowedTags = null, personalKeywords = null) {
+    const result = classifyWithDictionary(text, SNACK_KEYWORDS, personalKeywords, null);
+    if (!Array.isArray(allowedTags) || allowedTags.length === 0) return result;
+    const allowed = new Set(allowedTags);
+    return result.filter((c) => allowed.has(c));
+}
+
+/**
+ * 키워드 투표 공용 구현. 실패는 항상 빈 배열이다 — 예외를 호출부로 전파하지 않는다.
+ * @param {string} text
+ * @param {Record<string, string[]>} dictionary
+ * @param {Record<string, string[]>|null} personalKeywords 전역 사전보다 우선
+ * @param {Map<string, string>|null} oneCharMap 한 글자 예외 화이트리스트
+ * @returns {string[]}
+ */
+function classifyWithDictionary(text, dictionary, personalKeywords, oneCharMap) {
     try {
         const tokens = tokenizeFoodText(text);
         if (tokens.length === 0) return [];
 
         const votes = {};
         for (const token of tokens) {
-            const oneChar = ONE_CHAR_FOODS.get(token);
+            const oneChar = oneCharMap?.get(token);
             if (oneChar) {
                 votes[oneChar] = (votes[oneChar] || 0) + 1;
                 continue;
@@ -138,7 +194,7 @@ export function classifyFoodText(text, personalKeywords = null) {
                 }
             }
             if (matchedPersonal) continue;
-            for (const [category, keywords] of Object.entries(FOOD_KEYWORDS)) {
+            for (const [category, keywords] of Object.entries(dictionary)) {
                 if (keywords.some((k) => token.includes(k))) {
                     votes[category] = (votes[category] || 0) + 1;
                 }

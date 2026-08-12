@@ -18524,6 +18524,9 @@ html.service-guide-active #landingPage {
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 6px;
+    /* 빈 상태에서도 자리를 유지 — 칩이 생겨도 시트가 밀리지 않는다 (스크롤 없이 보이게).
+       칩 실측 높이(30px)와 같게 잡아 나타날 때 레이아웃 이동이 0이 되도록 한다. */
+    min-height: 30px;
 }
 .entry-suggest-chip {
     display: inline-flex;

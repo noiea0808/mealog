@@ -1,6 +1,7 @@
 // 차트 렌더링 관련 함수들
 import { logUsageMetric } from '../usage-metrics.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
+import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
@@ -196,7 +197,9 @@ function aggregateProportionData(data, key) {
     if (key === 'mealType' && Array.isArray(userTags.mealType) && userTags.mealType.length > 0) {
         allowedTags = new Set(userTags.mealType);
     } else if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
-        allowedTags = new Set(userTags.category);
+        // 자동 분류 축(밥/한상·단백질식…)은 사용자 태그 목록에 없다 — 합집합으로 허용해야
+        // 차트에서 '미입력'으로 접히지 않는다 (docs/food-category-auto-classification.md §3.3)
+        allowedTags = new Set([...userTags.category, ...AUTO_CATEGORIES]);
     } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
     } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {

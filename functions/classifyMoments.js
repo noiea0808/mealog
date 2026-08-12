@@ -29,23 +29,39 @@ const UNCLASSIFIED = '미분류';
 
 const GEMINI_TIMEOUT_MS = 30 * 1000;
 const MAIN_SLOT_IDS = new Set(['morning', 'lunch', 'dinner']);
+const SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
 
 /**
- * backfill 대상 판정.
- * - 끼니(main) 기록 + 상세 텍스트 있음
- * - category 비었거나 레거시 '기타'(과거 조용한 폴백의 산물)
+ * 간식 축 — js/utils/food-classifier.js SNACK_KEYWORDS 의 키와 동기화.
+ * 끼니와 달리 기존 snackType 태그를 그대로 쓴다.
+ */
+const SNACK_CATEGORIES = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과'];
+
+/**
+ * backfill 대상 판정 — 끼니는 category, 간식은 snackType 축.
+ * - 상세 텍스트 있음
+ * - 해당 축의 사용자 값이 비었거나 레거시 '기타'(과거 조용한 폴백의 산물)
  * - categoryAuto 없음, categorySource 미기록(null/undefined)
  *   ('user'·'local'·'dismissed'·'ai'는 각자의 종결 상태다)
+ * @returns {'meal'|'snack'|null} 대상이면 축 종류, 아니면 null
  */
+function classificationKind(d) {
+    if (!d) return null;
+    const slotId = String(d.slotId || '');
+    const isMeal = MAIN_SLOT_IDS.has(slotId);
+    const isSnack = SNACK_SLOT_IDS.has(slotId);
+    if (!isMeal && !isSnack) return null;
+    if (!String(d.menuDetail || '').trim()) return null;
+    const userValue = String((isMeal ? d.category : d.snackType) || '').trim();
+    if (userValue && userValue !== '기타') return null;
+    if (String(d.categoryAuto || '').trim()) return null;
+    if (d.categorySource != null) return null;
+    return isMeal ? 'meal' : 'snack';
+}
+
+/** @deprecated classificationKind를 쓰세요 — 하위 호환용 */
 function needsClassification(d) {
-    if (!d || !MAIN_SLOT_IDS.has(String(d.slotId || ''))) return false;
-    const menu = String(d.menuDetail || '').trim();
-    if (!menu) return false;
-    const category = String(d.category || '').trim();
-    if (category && category !== '기타') return false;
-    if (String(d.categoryAuto || '').trim()) return false;
-    if (d.categorySource != null) return false;
-    return true;
+    return classificationKind(d) === 'meal';
 }
 
 /**
@@ -55,11 +71,14 @@ function needsClassification(d) {
  * @param {{ apiKey: string, model: string, fetchImpl?: typeof fetch }} opts
  * @returns {Promise<string[]>} texts와 같은 길이의 카테고리 배열
  */
-async function classifyBatchWithGemini(texts, { apiKey, model, fetchImpl = fetch }) {
+async function classifyBatchWithGemini(texts, { apiKey, model, fetchImpl = fetch, kind = 'meal' }) {
+    const categories = kind === 'snack' ? SNACK_CATEGORIES : AUTO_CATEGORIES;
     const numbered = texts.map((t, i) => `${i + 1}. ${t.replace(/\n/g, ' ').slice(0, 200)}`).join('\n');
     const prompt = [
-        '아래는 식사 기록 앱 사용자들이 적은 "무엇을 먹었는지" 텍스트 목록이다.',
-        `각 항목을 다음 카테고리 중 정확히 하나로 분류하라: ${AUTO_CATEGORIES.join(', ')}.`,
+        kind === 'snack'
+            ? '아래는 식사 기록 앱 사용자들이 적은 "간식으로 무엇을 먹었는지" 텍스트 목록이다.'
+            : '아래는 식사 기록 앱 사용자들이 적은 "무엇을 먹었는지" 텍스트 목록이다.',
+        `각 항목을 다음 카테고리 중 정확히 하나로 분류하라: ${categories.join(', ')}.`,
         `음식이 아니거나 판단이 어려우면 "${UNCLASSIFIED}".`,
         '입력과 같은 개수·같은 순서의 JSON 배열로만 답하라.',
         '',
@@ -83,7 +102,7 @@ async function classifyBatchWithGemini(texts, { apiKey, model, fetchImpl = fetch
                     responseMimeType: 'application/json',
                     responseSchema: {
                         type: 'ARRAY',
-                        items: { type: 'STRING', enum: [...AUTO_CATEGORIES, UNCLASSIFIED] },
+                        items: { type: 'STRING', enum: [...categories, UNCLASSIFIED] },
                     },
                     thinkingConfig: { thinkingBudget: 0 },
                 },
@@ -102,7 +121,7 @@ async function classifyBatchWithGemini(texts, { apiKey, model, fetchImpl = fetch
     if (!Array.isArray(parsed) || parsed.length !== texts.length) {
         throw new Error(`응답 길이 불일치: 입력 ${texts.length} vs 응답 ${Array.isArray(parsed) ? parsed.length : 'not-array'}`);
     }
-    return parsed.map((c) => (AUTO_CATEGORIES.includes(c) ? c : UNCLASSIFIED));
+    return parsed.map((c) => (categories.includes(c) ? c : UNCLASSIFIED));
 }
 
 /**
@@ -124,45 +143,60 @@ async function runClassifyUncategorizedMeals({ db, logger, apiKey, model, startD
         .where('date', '<=', endDate)
         .get();
 
-    const targets = [];
+    // 끼니·간식은 분류 축이 달라 각각 별도 호출로 나눈다
+    const byKind = { meal: [], snack: [] };
     snap.forEach((docSnap) => {
-        if (targets.length >= maxDocs) return;
         const d = docSnap.data();
-        if (needsClassification(d)) {
-            targets.push({ ref: docSnap.ref, text: String(d.menuDetail || '').trim() });
-        }
+        const kind = classificationKind(d);
+        if (!kind) return;
+        if (byKind.meal.length + byKind.snack.length >= maxDocs) return;
+        byKind[kind].push({ ref: docSnap.ref, text: String(d.menuDetail || '').trim() });
     });
 
-    const result = { scanned: snap.size, targeted: targets.length, classified: 0, unclassified: 0 };
-    if (targets.length === 0) {
+    const targeted = byKind.meal.length + byKind.snack.length;
+    const result = { scanned: snap.size, targeted, classified: 0, unclassified: 0 };
+    if (targeted === 0) {
         logger.info('classifyUncategorizedMeals: 대상 없음', result);
         return result;
     }
 
-    const categories = await classifyBatchWithGemini(targets.map((t) => t.text), { apiKey, model });
-
     const batch = db.batch();
-    targets.forEach(({ ref }, i) => {
-        const category = categories[i];
-        const classified = category !== UNCLASSIFIED;
-        // 미분류 판정도 source:'ai'로 종결한다 — 같은 문서를 매 배치 재시도하는 루프 방지.
-        // category(사용자 필드)·updatedAt은 절대 쓰지 않는다.
-        batch.update(ref, {
-            categoryAuto: classified ? category : '',
-            categorySource: 'ai',
+    for (const kind of ['meal', 'snack']) {
+        const targets = byKind[kind];
+        if (targets.length === 0) continue;
+        const categories = await classifyBatchWithGemini(targets.map((t) => t.text), {
+            apiKey,
+            model,
+            kind,
         });
-        if (classified) result.classified += 1;
-        else result.unclassified += 1;
-    });
+        targets.forEach(({ ref }, i) => {
+            const category = categories[i];
+            const classified = category !== UNCLASSIFIED;
+            // 미분류 판정도 source:'ai'로 종결한다 — 같은 문서를 매 배치 재시도하는 루프 방지.
+            // category·snackType(사용자 필드)·updatedAt은 절대 쓰지 않는다.
+            batch.update(ref, {
+                categoryAuto: classified ? category : '',
+                categorySource: 'ai',
+            });
+            if (classified) result.classified += 1;
+            else result.unclassified += 1;
+        });
+    }
     await batch.commit();
 
-    logger.info('classifyUncategorizedMeals: 완료', result);
+    logger.info('classifyUncategorizedMeals: 완료', {
+        ...result,
+        mealTargets: byKind.meal.length,
+        snackTargets: byKind.snack.length,
+    });
     return result;
 }
 
 module.exports = {
     AUTO_CATEGORIES,
+    SNACK_CATEGORIES,
     UNCLASSIFIED,
+    classificationKind,
     needsClassification,
     classifyBatchWithGemini,
     runClassifyUncategorizedMeals,
