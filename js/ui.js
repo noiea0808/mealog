@@ -18,6 +18,11 @@ import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 import { getProfileAvatarDisplay } from './utils.js';
 import { scheduleLucideIcons } from './icons.js';
+import {
+    DEFAULT_WELCOME_WEEKDAY_DEFAULTS,
+    clampWelcomeSlideIdx,
+    normalizeWelcomeWeekdayDefaults
+} from './welcome-weekday-config.js';
 
 /** 출석 환영 차트만 charts 모듈을 지연 로드 (밀당 전체 그래프와 분리) */
 let _welcomeChartsModPromise = null;
@@ -650,18 +655,22 @@ function welcomeShowsReportTab() {
     return !!(window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser));
 }
 
-/** 요일별 웰컴 팝업 기본 노출: 월=AI리포트, 화=식사 어떻게, 수=식사 함께 상세, 목=AI리포트, 금=식사 무엇을, 토=식사 무엇을 상세, 일=간식 무엇을 상세 */
+/** 관리자 > 웰컴메시지 > 요일별 화면 설정 (미로드 시 기본값) */
+let welcomeWeekdayDefaults = normalizeWelcomeWeekdayDefaults(DEFAULT_WELCOME_WEEKDAY_DEFAULTS);
+
+/**
+ * adminSettings/config.welcomeWeekdayDefaults 주입 — 웰컴 설정을 읽는 attendance-check에서 호출.
+ * @param {unknown} raw
+ */
+export function setWelcomeWeekdayDefaults(raw) {
+    welcomeWeekdayDefaults = normalizeWelcomeWeekdayDefaults(raw);
+}
+
+/** 요일별 웰컴 팝업 기본 노출 (0=일 … 6=토) — 관리자 설정, 없으면 코드 기본값 */
 function getWelcomeWeekdayDefault() {
-    const day = new Date().getDay(); // 0=일 1=월 ... 6=토
-    switch (day) {
-        case 1: return { kind: 'report', slideIdx: 0 }; // 월 — AI리포트
-        case 2: return { kind: 'meal', slideIdx: 0 }; // 화 — 어떻게
-        case 3: return { kind: 'meal', slideIdx: 5 }; // 수 — 함께 상세
-        case 4: return { kind: 'report', slideIdx: 0 }; // 목 — AI리포트
-        case 5: return { kind: 'meal', slideIdx: 2 }; // 금 — 무엇을
-        case 6: return { kind: 'meal', slideIdx: 3 }; // 토 — 무엇을 상세
-        default: return { kind: 'snack', slideIdx: 4 }; // 일 — 간식 무엇을 상세
-    }
+    const day = new Date().getDay();
+    const row = welcomeWeekdayDefaults[day] || DEFAULT_WELCOME_WEEKDAY_DEFAULTS[day];
+    return { kind: row.kind, slideIdx: clampWelcomeSlideIdx(row.kind, row.slideIdx) };
 }
 
 /** 요일 기본값이 리포트인데 실제로 보여줄 리포트가 없으면(비로그인·데모·데이터 없음) 식사 첫 슬라이드로 대체 */

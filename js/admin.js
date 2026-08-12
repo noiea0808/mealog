@@ -47,6 +47,7 @@ import { runAdminStatsBackfillForUid } from './admin/stats-backfill.js';
 import { runAdminUserCreatedAtBackfill } from './admin/user-createdat-backfill.js';
 import { loadAdminLogTab } from './admin/ops-log.js';
 import { bindAdminWelcomeApiOnce } from './admin/welcome-api.js';
+import { fillWelcomeWeekdayForm } from './admin/welcome-weekday.js';
 import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from './attendance-check.js';
 import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './loading-spinner-config.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
@@ -814,7 +815,7 @@ function syncSettingsWelcomeTopTabs(sub) {
     on.forEach((c) => target.classList.add(c));
 }
 
-// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'spinner' | 'welcome_api' | 'displayName')
+// 사이드바 전환 (settings일 때 opts.sub: 'welcome' | 'spinner' | 'welcome_api' | 'welcome_weekday' | 'displayName')
 window.switchContentSidebar = function (section, opts) {
     if (ALERTS_SIDEBAR_SECTIONS.includes(section)) {
         window.switchAdminTab('alerts');
@@ -906,8 +907,10 @@ function bindAdminSettingsSubnavOnce() {
     });
 }
 
+const ADMIN_SETTINGS_SUBS = ['welcome', 'spinner', 'welcome_api', 'welcome_weekday', 'displayName'];
+
 window.switchAdminSettingsSub = function (sub) {
-    if (sub !== 'displayName' && sub !== 'welcome' && sub !== 'welcome_api' && sub !== 'spinner') return;
+    if (!ADMIN_SETTINGS_SUBS.includes(sub)) return;
     document.querySelectorAll('.admin-settings-subnav-btn').forEach((btn) => {
         const on = btn.dataset.settingsSub === sub;
         btn.classList.toggle('text-emerald-600', on);
@@ -1790,6 +1793,7 @@ async function loadAdminSettings() {
 
         const ap = data.attendancePopup && typeof data.attendancePopup === 'object' ? data.attendancePopup : {};
         fillAttendancePopupForm(ap);
+        fillWelcomeWeekdayForm(data.welcomeWeekdayDefaults);
 
         try {
             const lsRef = doc(db, 'artifacts', appId, 'config', 'loadingSpinner');
@@ -1802,6 +1806,8 @@ async function loadAdminSettings() {
     } catch (e) {
         console.warn('관리자 설정 로드 실패:', e);
         inputEl.value = cachedAdminDisplayName;
+        // 표가 빈 채로 남지 않도록 코드 기본값이라도 그린다(저장 전까지는 앱도 같은 값을 쓴다)
+        fillWelcomeWeekdayForm(null);
     } finally {
         if (gen === loadAdminSettingsGen && settingsShell) {
             settingsShell.classList.remove('pointer-events-none', 'opacity-90', 'cursor-wait');

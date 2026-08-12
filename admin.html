@@ -1819,6 +1819,9 @@
                                     <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
                                     </button>
+                                    <button type="button" data-settings-sub="welcome_weekday" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
+                                        요일별 화면
+                                    </button>
                                     <button type="button" data-settings-sub="spinner" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
                                         스피너
                                     </button>
@@ -2021,6 +2024,34 @@
                                                     </button>
                                                 </div>
                                                 <div id="adminWelcomeApiSummaryModalBody" class="px-4 py-3 overflow-y-auto text-xs text-slate-700 whitespace-pre-wrap break-words flex-1 min-h-0 leading-relaxed"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="adminSettingsSub-welcome_weekday" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">요일별 화면</h2>
+                                            <div class="flex gap-2">
+                                                <button type="button" onclick="window.resetWelcomeWeekdayDefaultsForm()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    기본값
+                                                </button>
+                                                <button type="button" onclick="window.saveWelcomeWeekdayDefaults()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    저장
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <p class="text-sm text-slate-600 leading-relaxed">웰컴메시지 팝업이 열릴 때 <strong class="font-semibold text-slate-700">요일별로 처음 보여줄 화면</strong>입니다(사용자 로컬 요일 기준). 스테이징·운영 공통이며, <strong class="font-semibold text-slate-700">AI리포트</strong>로 지정한 요일이라도 보여줄 리포트가 없으면(비로그인·체험 계정·리포트 미생성) 식사 <span class="text-slate-700">‘어떻게’</span> 화면으로 대체됩니다.</p>
+                                            <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <table class="w-full min-w-[34rem] text-sm border-collapse">
+                                                    <thead>
+                                                        <tr class="border-b border-slate-200 bg-slate-50/95 text-left text-sm font-black text-slate-600">
+                                                            <th scope="col" class="px-3 py-3 w-[12%] align-middle">요일</th>
+                                                            <th scope="col" class="px-3 py-3 w-[38%] align-middle">탭</th>
+                                                            <th scope="col" class="px-3 py-3 align-middle">페이지</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="adminWelcomeWeekdayTableBody" class="divide-y divide-slate-100 text-sm"></tbody>
+                                                </table>
                                             </div>
                                         </div>
                                     </div>
