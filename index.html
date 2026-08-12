@@ -3239,6 +3239,20 @@
         </div>
     </div>
 
+    <!-- 기록시트: 저장 없이 나가기 확인 -->
+    <div id="discardEntryConfirmModal" class="hidden fixed inset-0 z-[var(--z-dialog-over)] flex flex-col justify-center px-4 p-4 bg-slate-900/45 backdrop-blur-[2px]" aria-modal="true" role="dialog" aria-labelledby="discardEntryConfirmTitle" onclick="if(event.target === this) window.cancelDiscardEntryModal()">
+        <div class="bg-white rounded-2xl w-full max-w-[18.5rem] sm:max-w-xs mx-auto shadow-2xl overflow-hidden border border-slate-200/80">
+            <div class="mealog-dialog-head flex-col items-stretch !pb-2 !pt-5">
+                <h3 id="discardEntryConfirmTitle" class="text-lg font-bold text-slate-800">저장하지 않고 나가시겠어요?</h3>
+                <p class="text-sm text-slate-500 mt-1.5 leading-relaxed text-left">입력하신 내용이 저장되지 않고 사라져요.</p>
+            </div>
+            <div class="mealog-dialog-actions mealog-dialog-actions--pair">
+                <button type="button" id="discardEntryConfirmCancelBtn" class="mealog-btn mealog-btn-secondary" onclick="window.cancelDiscardEntryModal()">계속 작성</button>
+                <button type="button" id="discardEntryConfirmActionBtn" class="mealog-btn mealog-btn-danger" onclick="window.confirmDiscardEntryModal()">나가기</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Daily Journal Modal (하루 소감) — 기록시트와 동일 센터 팝업 셸 -->
     <div id="dailyJournalModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] flex items-center justify-center p-4 overflow-hidden" aria-modal="true" role="dialog" aria-labelledby="dailyJournalModalTitle">
         <button type="button" id="dailyJournalModalBackdrop" class="mealog-dialog-backdrop absolute inset-0 z-0 cursor-default border-0 p-0" data-mealog-dialog-backdrop aria-label="닫기" style="background:var(--shell-dim, rgba(15,23,42,0.4))"></button>

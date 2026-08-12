@@ -2,7 +2,7 @@
 import { SLOTS, SATIETY_DATA, DEFAULT_ICONS, DEFAULT_USER_SETTINGS, RECORD_MAX_PHOTOS } from '../constants.js';
 import { appState } from '../state.js';
 import { setVal, getInputIdFromContainer, normalizeUrl, addCompositionAwareInput, uploadBase64ToStorage, uploadMealPhotoVariants, normalizeBirthdateRaw } from '../utils.js';
-import { renderEntryChips, renderPhotoPreviews, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
+import { renderEntryChips, renderPhotoPreviews, renderPhotoProcessingPlaceholders, renderTagManager, clampRecordPhotoHeroIndex } from '../render/index.js';
 import { dbOps, unwrapMealSaveResult, generateMealDocId } from '../db.js';
 import { showToast, showSuccessPopup } from '../ui.js';
 import { resolveRecordCompletePopupMessage, updateTrackerStreakLabel } from '../attendance-check.js';
@@ -687,10 +687,7 @@ function initEntryModalGrabberPullClose(entryModal) {
         root: entryModal,
         panel,
         grabber,
-        onClose: () => {
-            if (typeof window.closeModal === 'function') window.closeModal();
-            else closeModal();
-        },
+        onClose: () => requestCloseEntryModal(),
         isDisabled: () =>
             entryModal.classList.contains('hidden') || entryModal.classList.contains('entry-modal-saving')
     });
@@ -1863,6 +1860,61 @@ export function closeModal() {
         state.originalPhotoAspectRatio = '1:1';
         state.wantsToShare = false;
     }
+}
+
+/** 저장 버튼 활성 조건과 동일한 기준으로 "지금 닫으면 사라질 내용"이 있는지 판단 */
+function entryModalHasUnsavedContent() {
+    const state = appState;
+    const entryMode = appState.entryFormMode === 'snack' ? 'snack' : 'meal';
+    const isS = entryMode === 'snack';
+    const form = readEntryFormFromDom(entryMode);
+    const resolved = resolveEntrySaveFields(form, {
+        selectedSnackPlaceMainTag: appState.selectedSnackPlaceMainTag,
+    });
+    const rateOn = isS
+        ? appState.entryGaugeRatingOnSnack === true
+        : appState.entryGaugeRatingOnMain === true;
+    const satOn = isS
+        ? appState.entryGaugeSatietyOnSnack === true
+        : appState.entryGaugeSatietyOnMain === true;
+    const timeOn = !resolved.isSkip && (isS ? appState.entryTimeOnSnack === true : appState.entryTimeOnMain === true);
+    const normalizedClock = timeOn ? getMealClock24FromModal(!isS) : '';
+
+    return validateEntryForm(form, {
+        isSkip: resolved.isSkip,
+        photos: state.currentPhotos,
+        ratingOn: !resolved.isSkip && rateOn,
+        satietyOn: !resolved.isSkip && satOn,
+        timeOn,
+        mealClock24: normalizedClock,
+        selectedSnackPlaceMainTag: appState.selectedSnackPlaceMainTag,
+    });
+}
+
+/** 백드롭 클릭·스와이프 닫기·ESC 등 "저장 없이 나가기" 시도 지점 — 기록 중인 내용이 있으면 확인 팝업을 먼저 띄운다 */
+export function requestCloseEntryModal() {
+    const entryModal = document.getElementById('entryModal');
+    if (!entryModal || entryModal.classList.contains('hidden') || entryModal.classList.contains('entry-modal-saving')) {
+        return;
+    }
+    if (entryModalHasUnsavedContent()) {
+        openDiscardEntryConfirmModal();
+        return;
+    }
+    closeModal();
+}
+
+function openDiscardEntryConfirmModal() {
+    document.getElementById('discardEntryConfirmModal')?.classList.remove('hidden');
+}
+
+export function cancelDiscardEntryModal() {
+    document.getElementById('discardEntryConfirmModal')?.classList.add('hidden');
+}
+
+export function confirmDiscardEntryModal() {
+    document.getElementById('discardEntryConfirmModal')?.classList.add('hidden');
+    closeModal();
 }
 
 /** Firestore/Storage 저장 실패·타임아웃 시 mealHistory·플래그에 실패 표시(스피너 → 느낌표) */
@@ -3632,6 +3684,9 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
         showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}개까지 가능합니다. ${remainingSlots}개만 추가됩니다.`, 'info');
     }
 
+    // 선택 직후 다운스케일 처리 중에도 "처리되고 있다"는 걸 바로 보여준다 (완료되면 renderPhotoPreviews가 교체)
+    renderPhotoProcessingPlaceholders(filesToProcess.length);
+
     /**
      * 인테이크에서 다운스케일한다 (설계 §4.6). 예전에는 원본을 그대로 readAsDataURL 해서
      * 기록 하나가 최대 ~80MB 문자열이 됐고, 그 무게가 백그라운드 저메모리 킬을 불러
@@ -3682,6 +3737,7 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
         .catch((err) => {
             console.error('파일 처리 중 오류 발생:', err);
             showToast('사진 처리 중 오류가 발생했습니다.', 'error');
+            renderPhotoPreviews(); // 처리 중 스피너 제거(실패 시에도 자리 정리)
         });
 }
 

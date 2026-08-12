@@ -48,6 +48,38 @@ function buildThumbPhotoHtml(src, idx, total, aspectCss) {
             </div>`;
 }
 
+/** 사진 처리 중(다운스케일 단계) 임시 스피너 썸네일 - 이후 renderPhotoPreviews가 실제 사진으로 교체 */
+function buildProcessingPlaceholderHtml(aspectCss) {
+    return `<div class="photo-preview-thumb-card photo-preview-thumb-card--processing" aria-hidden="true">
+                <div class="photo-preview-item photo-preview-item--thumb relative rounded-xl overflow-hidden bg-slate-100 border border-slate-300 flex items-center justify-center" style="aspect-ratio: ${aspectCss};">
+                    <i data-lucide="loader-circle" class="lucide-spin text-slate-400" style="width:28px;height:28px;" aria-hidden="true"></i>
+                </div>
+            </div>`;
+}
+
+/** 사진 선택 직후(업로드 전 다운스케일 중) 미리보기 자리에 스피너를 표시해 "선택이 처리되고 있음"을 알린다 */
+export function renderPhotoProcessingPlaceholders(count) {
+    if (!count || count <= 0) return;
+    const isSnackMode = appState.entryFormMode === 'snack';
+    const containerId = isSnackMode ? 'snackPhotoPreviewContainer' : 'photoPreviewContainer';
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const activeId = isSnackMode ? 'entrySnackPhoto' : 'entryMealPhoto';
+    document.getElementById(activeId)?.classList.add('entry-photo-section--has-photos');
+
+    const aspectCss = getRecordPhotoAspectRatioCss();
+    const placeholdersHtml = Array.from({ length: count }, () => buildProcessingPlaceholderHtml(aspectCss)).join('');
+
+    const strip = container.querySelector('.entry-photo-thumb-strip');
+    if (strip) {
+        strip.insertAdjacentHTML('beforeend', placeholdersHtml);
+    } else {
+        container.insertAdjacentHTML('beforeend', `<div class="entry-photo-thumb-strip" aria-label="등록된 사진">${placeholdersHtml}</div>`);
+    }
+    scheduleLucideIcons(container);
+}
+
 export function renderPhotoPreviews() {
     const isSnackMode = appState.entryFormMode === 'snack';
     const containerId = isSnackMode ? 'snackPhotoPreviewContainer' : 'photoPreviewContainer';
