@@ -108,6 +108,8 @@ function render() {
         return;
     }
     el.classList.remove('entry-suggest-row--empty');
+    // 구버전 캐시 HTML(hidden 클래스 시절)과 섞여도 제안이 숨은 채 남지 않게
+    el.classList.remove('hidden');
 
     const chips = state.suggestions
         .map((category) => {
