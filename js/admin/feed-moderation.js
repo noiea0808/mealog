@@ -1708,7 +1708,7 @@ async function renderFeedManagement() {
 
             const whereTag = isCapture || isDailyJournal ? '' : meal.place || meal.snackPlace || '';
             const whereSubTag = isCapture || isDailyJournal ? '' : meal.placeDetail || meal.placeMemo || '';
-            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.mealType || meal.snackType || '';
+            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
             const whatSubTag = isCapture || isDailyJournal ? '' : meal.menuDetail || meal.snackDetail || '';
             const withTag = isCapture || isDailyJournal ? '' : meal.withWhom || '';
             const withSubTag = isCapture || isDailyJournal ? '' : meal.withWhomDetail || '';
@@ -2940,7 +2940,7 @@ async function collectMomentRowsForExport(range = {}) {
         const noTags = isCapture || isDailyJournal;
         const whereTag = noTags ? '' : meal.place || meal.snackPlace || '';
         const whereSubTag = noTags ? '' : meal.placeDetail || meal.placeMemo || '';
-        const whatTag = noTags ? '' : meal.category || meal.mealType || meal.snackType || '';
+        const whatTag = noTags ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
         const whatSubTag = noTags ? '' : meal.menuDetail || meal.snackDetail || '';
         const withTag = noTags ? '' : meal.withWhom || '';
         const withSubTag = noTags ? '' : meal.withWhomDetail || '';

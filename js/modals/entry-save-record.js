@@ -4,6 +4,7 @@
  */
 import { syncPhotoMetaLength } from '../photo-meta.js';
 import { PHOTO_ASPECT_OPTIONS } from './entry-form-config.js';
+import { getEntryCategorySuggestResult } from './entry-category-suggest.js';
 
 /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
 export function isLocalPendingPhoto(photo) {
@@ -107,6 +108,32 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         idToUse && existingRecord && existingRecord.date !== state.currentEditingDate
     );
 
+    /**
+     * 카테고리 자동 분류 (docs/food-category-auto-classification.md §2)
+     * - 칩 직접 선택 or 제안 확정 → category, source='user'
+     * - 제안 무시하고 저장 → categoryAuto, source='local' (사실-유도라 자동 기록 OK)
+     * - 제안 거부(✕) → 모두 빈 값, source='dismissed' (서버 backfill도 건너뜀)
+     * - 제안 없음 → 모두 빈 값, source=null (서버 backfill 대상)
+     * 분류기는 동기·no-throw — 이 블록은 저장 경로에 fallible한 단계를 더하지 않는다.
+     */
+    let categoryFinal = categoryResolved;
+    let categoryAuto = '';
+    let categorySource = null;
+    if (!isS && !isSk) {
+        const suggest = getEntryCategorySuggestResult();
+        if (categoryFinal) {
+            categorySource = 'user';
+        } else if (suggest.confirmed) {
+            categoryFinal = suggest.confirmed;
+            categorySource = 'user';
+        } else if (suggest.dismissed) {
+            categorySource = 'dismissed';
+        } else if (suggest.top) {
+            categoryAuto = suggest.top;
+            categorySource = 'local';
+        }
+    }
+
     const record = {
         id: idToUse,
         date: state.currentEditingDate,
@@ -114,7 +141,9 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         mealType: mealTypeResolved,
         withWhom: withWhomResolved,
         withWhomDetail: isSk ? '' : withInputVal,
-        category: categoryResolved,
+        category: categoryFinal,
+        categoryAuto,
+        categorySource,
         placeType: '',
         snackType: snackTypeResolved,
         photoAspectRatio: state.recordPhotoAspectRatio || '1:1',

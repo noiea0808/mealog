@@ -89,6 +89,11 @@ import {
     resolveEntrySaveFields,
 } from './entry-form-state.js';
 import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
+import {
+    initEntryCategorySuggest,
+    resetEntryCategorySuggest,
+    recomputeEntryCategorySuggest,
+} from './entry-category-suggest.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -1221,6 +1226,7 @@ async function fetchMealRecordForEdit(entryId) {
 function resetEntryModalFormFields() {
     const entryModal = document.getElementById('entryModal');
     entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
+    resetEntryCategorySuggest();
 
     document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
 
@@ -1322,6 +1328,8 @@ function populateSavedRecordIntoForm(r, isS, state) {
     }
     setVal('entryWhatInput', r.menuDetail || '');
     autosizeEntryWhatInput();
+    // 프로그램적 setVal은 input 이벤트가 없어 제안이 안 뜬다 — 로드 후 1회 재계산
+    recomputeEntryCategorySuggest();
     setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
     const _dvi = document.getElementById('deliveryVendorInput');
     if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
@@ -1733,6 +1741,7 @@ export async function openModal(date, slotId, entryId = null) {
         setEntrySheetTabsForSkip(false);
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
+        initEntryCategorySuggest();
         bindEntryWhatInputAutosizeOnce();
         autosizeEntryWhatInput();
         bindEntryCommentExpandOnce();

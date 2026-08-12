@@ -102,10 +102,12 @@ export function resolveEntrySaveFields(form, ctx = {}) {
         if (hasAnyHowAxis) mealTypeResolved = '기타';
     }
 
-    let categoryResolved = isMeal ? form.axis2Chip : '';
-    if (isMeal && !isSkip && !(categoryResolved || '').trim() && ((form.whatInput || '').trim() || hasMenuSub)) {
-        categoryResolved = '기타';
-    }
+    /**
+     * 카테고리 '기타' 조용한 폴백 제거 (docs/food-category-auto-classification.md §2).
+     * 칩 미선택 = 빈 값 = "아직 분류 안 됨" — 자동 분류(categoryAuto)와 서버 backfill이
+     * 채울 자리다. 표시 계층의 기타 처리는 meal-analytics-tags.js가 담당한다.
+     */
+    const categoryResolved = isMeal ? form.axis2Chip : '';
 
     let withWhomResolved = form.withChip;
     if (!isSkip && !(withWhomResolved || '').trim() && (((form.withInput || '').trim()) || hasPeopleSub)) {

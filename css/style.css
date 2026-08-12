@@ -18516,3 +18516,52 @@ html.service-guide-active #landingPage {
     visibility: hidden;
 }
 
+
+/* 카테고리 자동 분류 제안 칩 (entry-category-suggest.js) — 점선+반짝이, 확정 시 실선 */
+.entry-suggest-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+.entry-suggest-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 700;
+    background: white;
+    border: 1px dashed var(--color-primary);
+    color: var(--color-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.entry-suggest-chip svg {
+    width: 13px;
+    height: 13px;
+}
+.entry-suggest-chip--confirmed {
+    background: var(--color-primary);
+    border-style: solid;
+    color: white;
+}
+.entry-suggest-hint {
+    font-size: 11px;
+    color: #94a3b8;
+}
+.entry-suggest-dismiss {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+}
+.entry-suggest-dismiss svg {
+    width: 13px;
+    height: 13px;
+}

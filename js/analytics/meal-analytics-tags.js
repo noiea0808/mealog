@@ -37,6 +37,9 @@ export function effectiveCategoryForAnalytics(m) {
     if (!m || slotKind(m.slotId) !== 'main') return trim(m?.category);
     const c = trim(m.category);
     if (c) return c;
+    // 자동 분류값 (사용자 확정 없이 저장된 제안 — source='local'/'ai')
+    const auto = trim(m.categoryAuto);
+    if (auto) return auto;
     if (trim(m.menuDetail)) return '기타';
     return '';
 }
