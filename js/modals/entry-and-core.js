@@ -100,6 +100,7 @@ import {
     setupEntryContextPredict,
 } from './entry-context-predict.js';
 import { applyEntryFieldPromotion, recordEntryFieldUsage } from './entry-field-promotion.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -2162,6 +2163,11 @@ export async function saveEntry() {
 
         // 3층 필드 사용 이력(최근 10회) — 승격/강등 판단용, 서브태그 기억과 같은 시점
         recordEntryFieldUsage(record, entryMode, isSk);
+
+        // 자동 분류 측정: 제안을 무시하고 저장 = 자동값 채택(적중으로 집계)
+        if (record.categorySource === 'local') {
+            logUsageMetric('category_suggest_auto_saved').catch(() => {});
+        }
 
         // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
         const shareSnapshot = buildEntryShareSnapshot({

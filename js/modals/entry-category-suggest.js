@@ -12,6 +12,7 @@
 import { appState } from '../state.js';
 import { classifyFoodText } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
+import { logUsageMetric } from '../usage-metrics.js';
 
 const CONTAINER_ID = 'entryCategorySuggest';
 const INPUT_ID = 'entryWhatInput';
@@ -21,6 +22,8 @@ const state = {
     suggestions: /** @type {string[]} */ ([]),
     confirmed: /** @type {string|null} */ (null),
     dismissed: false,
+    /** 이번 시트 세션에서 노출 집계를 이미 보냈는지 (키 입력마다 부풀지 않게) */
+    shownLogged: false,
 };
 
 let debounceTimer = null;
@@ -50,6 +53,7 @@ export function resetEntryCategorySuggest() {
     state.suggestions = [];
     state.confirmed = null;
     state.dismissed = false;
+    state.shownLogged = false;
     render();
 }
 
@@ -76,6 +80,10 @@ function runClassify() {
         if (changed) {
             if (state.confirmed && !next.includes(state.confirmed)) state.confirmed = null;
             if (next.length > 0) state.dismissed = false;
+        }
+        if (next.length > 0 && !state.shownLogged) {
+            state.shownLogged = true;
+            logUsageMetric('category_suggest_shown').catch(() => {});
         }
         render();
     } catch (_) {
@@ -122,6 +130,7 @@ function onContainerClick(e) {
     if (dismissBtn) {
         state.dismissed = true;
         state.confirmed = null;
+        logUsageMetric('category_suggest_dismissed').catch(() => {});
         render();
         return;
     }
@@ -129,6 +138,7 @@ function onContainerClick(e) {
     if (chip) {
         const category = chip.getAttribute('data-suggest-category') || '';
         state.confirmed = state.confirmed === category ? null : category;
+        if (state.confirmed) logUsageMetric('category_suggest_confirmed').catch(() => {});
         render();
     }
 }

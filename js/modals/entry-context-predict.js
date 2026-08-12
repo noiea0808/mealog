@@ -13,6 +13,7 @@
 import { appState } from '../state.js';
 import { setVal } from '../utils.js';
 import { refreshLucideIcons } from '../icons.js';
+import { logUsageMetric } from '../usage-metrics.js';
 
 const CONTAINER_ID = 'entryContextPredict';
 const MIN_SAMPLES = 3;
@@ -112,6 +113,9 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
+        if (state.predicted.place || state.predicted.withWhom) {
+            logUsageMetric('context_predict_shown').catch(() => {});
+        }
         render();
     } catch (_) {
         /* 예측 실패 = 줄 없음. 시트 열기에 영향 금지 */
@@ -176,11 +180,13 @@ function applyPrediction() {
 
 function onContainerClick(e) {
     if (e.target.closest('[data-predict-apply]')) {
+        logUsageMetric('context_predict_applied').catch(() => {});
         applyPrediction();
         return;
     }
     if (e.target.closest('[data-predict-dismiss]')) {
         state.dismissed = true;
+        logUsageMetric('context_predict_dismissed').catch(() => {});
         render();
     }
 }
