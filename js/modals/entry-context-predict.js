@@ -209,16 +209,76 @@ function recentPlaceChips(history) {
     }
 }
 
-/** 축별 피커에 올릴 선택지 */
+/**
+ * 어떻게(조달)별 콜드 스타트 장소 시드.
+ * **이력이 없을 때만** 쓰는 마중물이다 — 실제 선택지는 그 조달 방식으로 기록한
+ * 사용자 자신의 장소에서 나온다(어휘 보존 원칙). 외식·회식은 상호명이 답이라 시드가 없다.
+ */
+const PLACE_SEEDS_BY_MEALTYPE = {
+    '집밥': ['우리집', '본가', '처가', '친구집'],
+    '배달/포장': ['우리집', '본가', '사무실'],
+    '구내식당': ['구내식당'],
+    '외식': [],
+    '회식/술자리': [],
+};
+
+/**
+ * 어떻게별 누구와 우선순위. 장소와 달리 **거르지 않고 정렬만** 한다 —
+ * '혼자 외식'·'가족 회식'처럼 드물지만 정당한 조합을 막으면 안 된다.
+ */
+const WITH_PRIORITY_BY_MEALTYPE = {
+    '집밥': ['가족', '혼자'],
+    '배달/포장': ['혼자', '가족'],
+    '구내식당': ['직장동료', '혼자'],
+    '외식': ['가족', '친구', '연인'],
+    '회식/술자리': ['직장동료', '친구'],
+};
+
+/**
+ * 축별 피커에 올릴 선택지.
+ *
+ * **상위 축(어떻게)이 하위 축의 선택지를 좁힌다** — 집밥을 골랐는데 식당 이름이 뜨거나,
+ * 외식을 골랐는데 '우리집'이 먼저 뜨는 걸 막는다. 좁히는 기준은 하드코딩된 분류표가
+ * 아니라 **그 조달 방식으로 기록한 사용자 자신의 이력**이다. 이력이 없을 때만 시드가 나선다.
+ */
 function optionsForAxis(axisKey) {
     const tags = window.userSettings?.tags || {};
     if (axisKey === 'mealType') {
         return getAxis1TagList('meal', tags).filter((t) => t !== '건너뜀' && t !== 'Skip');
     }
+    const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+    const mealType = appState.entryFormMode === 'snack' ? '' : axisValue('mealType');
+    const scoped = mealType ? history.filter((r) => r && r.mealType === mealType) : history;
+
     if (axisKey === 'withWhom') {
-        return Array.isArray(tags.withWhom) ? tags.withWhom : [];
+        const all = Array.isArray(tags.withWhom) ? tags.withWhom : [];
+        if (!mealType || all.length === 0) return all;
+        // 이 조달 방식에서 실제로 쓴 값 → 시드 → 나머지 순. 값은 하나도 빼지 않는다
+        const used = frequentValues(scoped, 'withWhom').filter((v) => all.includes(v));
+        const seeds = (WITH_PRIORITY_BY_MEALTYPE[mealType] || []).filter((v) => all.includes(v));
+        const ordered = [...new Set([...used, ...seeds])];
+        return [...ordered, ...all.filter((v) => !ordered.includes(v))];
     }
-    return recentPlaceChips(Array.isArray(window.mealHistory) ? window.mealHistory : []);
+
+    // 어디서: 그 조달 방식으로 간 곳만. 이력이 없으면 시드, 그것도 없으면 전체 이력 폴백
+    if (!mealType) return recentPlaceChips(history);
+    const fromHistory = recentPlaceChips(scoped);
+    const seeds = PLACE_SEEDS_BY_MEALTYPE[mealType] || [];
+    const merged = [...new Set([...fromHistory, ...seeds])].slice(0, PLACE_CHIP_LIMIT);
+    return merged.length > 0 ? merged : recentPlaceChips(history);
+}
+
+/**
+ * 기록 목록에서 그 필드의 빈도순 값 (정규화 없이 원문 그대로).
+ * @param {any[]} records @param {string} field @returns {string[]}
+ */
+function frequentValues(records, field) {
+    const counts = new Map();
+    for (const r of records) {
+        const v = typeof r?.[field] === 'string' ? r[field].trim() : '';
+        if (v) counts.set(v, (counts.get(v) || 0) + 1);
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v);
 }
 
 /** 이 시트에서 보여줄 축 목록 (간식은 어떻게 없음) */

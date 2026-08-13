@@ -18637,8 +18637,10 @@ html.service-guide-active #landingPage {
     /* 폭 고정: 값이 바뀌어도 칸 크기가 흔들리지 않게 세 축이 행을 균등 분할한다 */
     flex: 1 1 0;
     min-width: 0;
-    padding: 7px 10px;
-    border: 1px dashed #cbd5e1;
+    padding: 6px 9px;
+    /* 테두리는 칩의 경계선이자 상태 신호라 또렷해야 한다 (1px #cbd5e1 은 배경에 묻혔고,
+       1.5px 는 1x 디스플레이에서 1px 로 반내림된다) */
+    border: 2px dashed #a3b0c2;
     /* 각진 모서리 — 피커의 알약형 선택지와 층위를 다르게 한다 */
     border-radius: 8px;
     /* 시트 배경과 같은 흰색이면 칩으로 안 읽힌다 — 옅은 회색 바탕을 기본으로 */
@@ -18686,6 +18688,7 @@ html.service-guide-active #landingPage {
 /* 값이 없는 트리거 — 채워진 칩보다 약해야 하므로 배경 없이 테두리만 */
 .entry-context-seg--empty {
     background: transparent;
+    border-color: #c2ccd9;
     color: #94a3b8;
 }
 /* 열린 세그먼트 = 아래 피커의 주인. 채움을 바꾸지 않고 링만 두른다 */
@@ -18814,7 +18817,7 @@ html.service-guide-active #landingPage {
  */
 .entry-context-seg--muted {
     background: #f1f5f9;
-    border-color: #cbd5e1;
+    border-color: #9aa7b8;
     color: #64748b;
 }
 .entry-context-seg--muted svg {
