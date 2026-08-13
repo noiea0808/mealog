@@ -328,7 +328,8 @@ function inferMealTypeFromFacts() {
 
         const norm = raw ? normalizePlace(raw) : '';
         if (norm.includes('구내식당')) return '구내식당';
-        if (norm === '집' && state.foodCategory === '밥류') return '집밥';
+        // 집에서 끓인 찌개·국은 가장 확실한 집밥 신호라 밥류와 함께 본다
+        if (norm === '집' && HOME_COOKED_FORMS.has(state.foodCategory)) return '집밥';
 
         /**
          * 요리 종류 신호 — 장소가 비어 있을 때 습관 예측보다 먼저 본다.
@@ -370,6 +371,9 @@ function refreshMealTypeGuess() {
  * 한식·양식·분식은 집에서도 흔히 만들므로 넣지 않는다(습관 예측에 맡긴다).
  * 이력이 쌓이면 개인 통계가 이 시드를 대체한다.
  */
+/** 집에서 차렸다는 신호가 되는 형태 — 장소가 '집'일 때 집밥 추측의 근거 */
+const HOME_COOKED_FORMS = new Set(['밥류', '국물요리']);
+
 const MEALTYPE_SEED_BY_CUISINE = {
     '중식': '외식',
     '일식': '외식',
