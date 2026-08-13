@@ -156,7 +156,15 @@ export function syncDeliveryVendorSectionVisibility() {
         const active = entryWhereChips.querySelector('button.chip.active');
         if (active) mealType = active.innerText.trim();
     }
-    const show = !skipOptional && mealType === '배달/포장' && appState.entryFormMode !== 'snack';
+    /**
+     * 배달 업체 입력란은 현재 노출하지 않는다 (2026-08-13, 시트 정리 중 보류).
+     * 조건식은 그대로 두고 스위치만 끈다 — 되살릴 때 이 상수만 true 로 바꾸면 된다.
+     * 노출이 꺼져 있으면 아래 !show 경로가 입력값·카카오 속성을 매번 비우므로
+     * record.deliveryVendor 는 빈 값으로 저장된다.
+     */
+    const DELIVERY_VENDOR_FIELD_ENABLED = false;
+    const show = DELIVERY_VENDOR_FIELD_ENABLED &&
+        !skipOptional && mealType === '배달/포장' && appState.entryFormMode !== 'snack';
     if (!show) {
         const dvi = document.getElementById('deliveryVendorInput');
         if (dvi) {

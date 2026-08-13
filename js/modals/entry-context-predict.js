@@ -375,12 +375,19 @@ function axisValue(key) {
 function renderSegment(axis) {
     const value = axisValue(axis.key);
     const isConfirmed = Boolean(state.confirmed[axis.key]);
-    // 토글 OFF일 때 추측 세그먼트는 값을 남긴 채 흐려진다 — 되돌릴 수 있으려면 보여야 한다
-    const isMutedGuess = !isConfirmed && Boolean(state.predicted[axis.key]) && !state.useGuess;
+    const isGuess = !isConfirmed && Boolean(state.predicted[axis.key]);
+    /**
+     * 세 상태를 색으로 구분한다:
+     *   확정(사용자가 고름) = 진한 초록 채움  ·  추천+사용 ON = 연한 초록 채움(점선 유지)
+     *   추천+사용 OFF       = 흐림 (값은 남겨 되돌릴 수 있게)
+     */
+    const isAutoOn = isGuess && state.useGuess;
+    const isMutedGuess = isGuess && !state.useGuess;
     const isOpen = state.openAxis === axis.key;
     const cls = [
         'entry-context-seg',
         isConfirmed ? 'entry-context-seg--confirmed' : '',
+        isAutoOn ? 'entry-context-seg--auto' : '',
         !value ? 'entry-context-seg--empty' : '',
         isMutedGuess ? 'entry-context-seg--muted' : '',
         isOpen ? 'entry-context-seg--open' : '',

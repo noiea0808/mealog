@@ -18618,7 +18618,8 @@ html.service-guide-active #landingPage {
     margin-top: 4px;
 }
 .entry-predict-lead {
-    color: #94a3b8;
+    color: #475569;
+    font-size: 13px;
     font-weight: 700;
 }
 /*
@@ -18659,6 +18660,7 @@ html.service-guide-active #landingPage {
     width: 13px !important;
     height: 13px !important;
 }
+/* 사용자가 직접 고름 — 진한 초록 채움 */
 .entry-context-seg--confirmed {
     border-style: solid;
     border-color: var(--color-primary);
@@ -18667,6 +18669,15 @@ html.service-guide-active #landingPage {
 }
 .entry-context-seg--confirmed svg {
     color: rgba(255, 255, 255, 0.85);
+}
+/* 추천 + 사용 ON — 연한 초록 채움. 점선을 유지해 "내가 고른 값은 아니다"를 남긴다 */
+.entry-context-seg--auto {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+.entry-context-seg--auto svg {
+    color: var(--color-primary);
 }
 .entry-context-seg--empty {
     color: #94a3b8;
