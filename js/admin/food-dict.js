@@ -1,84 +1,181 @@
-// ADMIN 콘텐츠 관리 > 분류사전 — '무엇을' 자동 분류 규칙·사전 열람 (읽기 전용)
+// ADMIN 콘텐츠 관리 > 분류사전
 //
-// 사전 원본은 js/utils/food-dictionary.js 코드에 있다. 여기서는 그대로 import해
-// 보여주기만 한다 — 화면과 실제 분류 로직이 어긋날 수 없는 구조.
-// 사전 수정은 코드 배포로만 한다 (docs/entry-axes-and-tags-direction.md §5 사전 관리 기준).
+// 두 가지를 담는다:
+//  1) 읽기 — 추론 흐름(메뉴 → 분류 → 어떻게 → 어디서 → 누구와)과 통상/개인 분류의 적용 규칙
+//  2) 편집 — 끼니 사전의 음식별 형태·요리 종류
+//
+// 기본 사전은 코드(js/utils/food-dictionary.js)에 있고, 여기서 고친 값은 Firestore
+// `content/foodDictionary` 에 **오버라이드**로 쌓인다. 코드 사전을 지우지 않으므로
+// 언제든 '기본값으로 되돌리기'가 가능하다.
+import { db, appId } from '../firebase.js';
+import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import {
     FORM_CATEGORIES,
     CUISINE_CATEGORIES,
     SNACK_KEYWORDS,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
+    FOOD_ENTRIES,
     classifyFoodDetail,
     classifySnackText,
     tokenizeFoodText,
+    setFoodDictionaryOverrides,
+    getFoodDictionaryOverrides,
+    isBaseFoodEntry,
 } from '../utils/food-classifier.js';
 import { escapeHtml } from './utils.js';
 
-/** 형태 → 요리종류 → 음식 목록 (사전 원본 구조 그대로) */
-function renderFormSection() {
-    const blocks = FORM_CATEGORIES
-        .filter((form) => DICTIONARY_SOURCE[form])
-        .map((form) => {
-            const byCuisine = DICTIONARY_SOURCE[form];
-            const total = Object.values(byCuisine).reduce((n, arr) => n + arr.length, 0);
-            const rows = CUISINE_CATEGORIES
-                .filter((c) => Array.isArray(byCuisine[c]) && byCuisine[c].length)
-                .map((cuisine) => {
-                    const chips = byCuisine[cuisine]
-                        .map((w) => `<span class="inline-block px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold">${escapeHtml(w)}</span>`)
-                        .join(' ');
-                    return `
-                        <div class="mb-2">
-                            <span class="inline-block mb-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-xs font-bold">${escapeHtml(cuisine)}</span>
-                            <div class="flex flex-wrap gap-1.5">${chips}</div>
-                        </div>`;
-                })
-                .join('');
-            return `
-                <div class="border border-slate-200 rounded-xl p-4 bg-white">
-                    <div class="flex items-center justify-between mb-2">
-                        <h4 class="text-sm font-black text-slate-800">${escapeHtml(form)}</h4>
-                        <span class="text-xs text-slate-400 font-bold">${total}개</span>
-                    </div>
-                    ${rows}
-                </div>`;
-        })
-        .join('');
+/** 편집 중 상태 — 저장 전까지 Firestore에 쓰지 않는다 */
+let draft = { entries: {}, removed: [] };
+let filterText = '';
+
+/** onclick="fn('...')" 안에 들어갈 문자열 — 따옴표·역슬래시가 속성을 깨지 않게 */
+function jsArg(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+/* ─────────────────────────── 1. 추론 흐름 설명 ─────────────────────────── */
+
+function renderFlowSection() {
+    const step = (n, title, body) => `
+        <div class="flex gap-3 mb-3">
+            <span class="shrink-0 w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center">${n}</span>
+            <div class="min-w-0">
+                <p class="text-sm font-black text-slate-800 mb-0.5">${title}</p>
+                <p class="text-xs text-slate-600 leading-relaxed">${body}</p>
+            </div>
+        </div>`;
     return `
-        <div class="mb-6">
-            <h3 class="text-base font-black text-slate-800 mb-1">끼니 사전 — 형태 × 요리 종류</h3>
-            <p class="text-xs text-slate-500 mb-3">음식 하나가 <b>형태</b>(사용자가 고르는 주 축)와 <b>요리 종류</b>(자동 저장, 입력받지 않음) 두 라벨을 함께 갖습니다. 매칭은 <b>최장 일치</b>라 '탕수육'이 '수육'보다 먼저 잡힙니다.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${blocks}</div>
+        <div class="mb-6 bg-white rounded-xl p-5 border border-slate-200">
+            <h3 class="text-base font-black text-slate-800 mb-1">추론 흐름</h3>
+            <p class="text-xs text-slate-500 mb-4">사용자가 '무엇을'에 적은 텍스트 하나에서 시작해 세 세그먼트까지 이어집니다. 앞 단계의 결과가 뒤 단계의 입력이 됩니다.</p>
+            ${step('1', '메뉴 (무엇을)', '사용자가 적은 원문. 예: "배민 치킨", "잡곡밥 + 김치찌개"')}
+            ${step('2', '분류 (형태 · 요리 종류)', '원문을 토큰으로 쪼개 사전에서 <b>최장 일치</b>로 찾습니다. 형태는 ✨제안 칩으로 보여주고, 요리 종류는 묻지 않고 <code class="bg-slate-100 rounded px-1">cuisineAuto</code>로 자동 저장합니다.')}
+            ${step('3', '세그먼트: 어떻게', '신뢰도 순으로 봅니다. ① 카카오 장소 픽(식당·술집·카페 → 외식) ② <b>원문의 조달 키워드</b>(배민·배달·구내식당·회식) ③ 장소 표기 \'구내식당\' ④ 장소=집 + 형태=밥류·국물요리 → 집밥 ⑤ <b>요리 종류</b>(개인 통계 → 시드) ⑥ 습관 예측. 앞 단계가 답을 내면 뒤는 보지 않습니다.')}
+            ${step('4', '세그먼트: 어디서', '슬롯 습관 예측이 먼저입니다. 비어 있으면 <b>어떻게에서 이어받습니다</b>(집밥·배달/포장 → 우리집, 구내식당 → 구내식당). 외식·회식은 상호명이라 추론하지 않고 검색으로 넘깁니다. 어떻게가 바뀌면 이어받았던 값은 함께 무효화됩니다.')}
+            ${step('5', '세그먼트: 누구와', '슬롯 습관 예측만 씁니다. 다만 <b>선택지 순서</b>는 어떻게에 따라 바뀝니다(회식이면 직장동료가 앞으로).')}
+            <div class="mt-4 pt-3 border-t border-slate-200 text-xs text-slate-500 space-y-1">
+                <p>· 모든 결과는 <b>점선 추천</b>일 뿐입니다. 시트의 '이대로 사용' 스위치는 <b>기본 꺼짐</b>이라, 켜지 않으면 저장되지 않습니다.</p>
+                <p>· 자동 적용된 축은 <code class="bg-slate-100 rounded px-1">autoContext</code>에 기록되고, <b>다음 예측의 표본에서 제외</b>됩니다 — 추측이 추측을 강화하는 순환을 막습니다.</p>
+            </div>
         </div>`;
 }
 
-/** 간식 사전 (기존 snackType 축) */
-function renderSnackSection() {
-    const blocks = Object.entries(SNACK_KEYWORDS)
-        .map(([cat, keywords]) => {
-            const chips = keywords
-                .map((k) => `<span class="inline-block px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold">${escapeHtml(k)}</span>`)
-                .join(' ');
-            return `
-                <div class="border border-slate-200 rounded-xl p-4 bg-white">
-                    <div class="flex items-center justify-between mb-2">
-                        <h4 class="text-sm font-black text-slate-800">${escapeHtml(cat)}</h4>
-                        <span class="text-xs text-slate-400 font-bold">${keywords.length}개</span>
-                    </div>
-                    <div class="flex flex-wrap gap-1.5">${chips}</div>
-                </div>`;
-        })
-        .join('');
+function renderScopeSection() {
+    const row = (name, scope, detail) => `
+        <tr class="border-b border-slate-100 last:border-0">
+            <td class="py-2 px-3 text-slate-800 font-bold whitespace-nowrap">${name}</td>
+            <td class="py-2 px-3 whitespace-nowrap">
+                <span class="px-2 py-0.5 rounded-md text-xs font-bold ${scope === '개인'
+                    ? 'bg-violet-50 text-violet-700 border border-violet-200'
+                    : scope === '개인 → 통상'
+                        ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'}">${scope}</span>
+            </td>
+            <td class="py-2 px-3 text-slate-600 text-xs">${detail}</td>
+        </tr>`;
     return `
-        <div class="mb-6">
-            <h3 class="text-base font-black text-slate-800 mb-1">간식 사전 (기존 snackType 축)</h3>
-            <p class="text-xs text-slate-500 mb-3">간식은 아직 기존 축을 씁니다. 형태 축으로의 통합은 실데이터 검증 뒤 예정입니다. 사용자 태그 목록에 없는 값은 제안하지 않습니다.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${blocks}</div>
+        <div class="mb-6 bg-white rounded-xl p-5 border border-slate-200">
+            <h3 class="text-base font-black text-slate-800 mb-1">통상적 분류 vs 개인적 분류</h3>
+            <p class="text-xs text-slate-500 mb-3"><b>통상</b>은 모든 사용자가 공유하는 사전·규칙이고, <b>개인</b>은 그 사용자의 기록 통계입니다. 둘 다 있는 항목은 <b>개인이 먼저</b>입니다 — 평균적으로 맞는 말보다 그 사람이 실제로 한 행동이 정확하기 때문입니다.</p>
+            <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead><tr class="bg-slate-50 text-xs text-slate-500">
+                    <th class="py-2 px-3 text-left font-bold">항목</th>
+                    <th class="py-2 px-3 text-left font-bold">적용</th>
+                    <th class="py-2 px-3 text-left font-bold">설명</th>
+                </tr></thead>
+                <tbody>
+                    ${row('형태 · 요리 종류', '통상', '아래 끼니 사전. 모든 사용자가 같은 사전을 씁니다.')}
+                    ${row('조달 키워드', '통상', '배민·배달·구내식당·회식 등 고정밀 단어만. 오탐이 나는 말(포장·맥주)은 넣지 않습니다.')}
+                    ${row('요리 종류 → 어떻게', '개인 → 통상', '“내가 중식을 먹을 때 뭐였나”(표본 3건+·점유 60%+)를 먼저 봅니다. 부족하면 시드(중식·일식·패스트푸드 → 외식)로 넘어갑니다.')}
+                    ${row('어떻게 → 어디서', '개인 → 통상', '“내가 집밥일 때 어디였나”를 먼저 봅니다. 부족하면 시드(집밥·배달/포장 → 우리집).')}
+                    ${row('습관 예측', '개인', '(슬롯 × 평일/주말) 최빈값. 표본 3건+·점유 60%+를 넘어야 발화합니다.')}
+                    ${row('선택지 목록', '개인 → 통상', '어디서는 그 조달 방식으로 간 내 장소만 보여주고, 없으면 시드. 누구와는 거르지 않고 순서만 바꿉니다.')}
+                </tbody>
+            </table>
+            </div>
         </div>`;
 }
 
-/** 한 글자 예외 표 */
+/* ─────────────────────────── 2. 끼니 사전 편집 ─────────────────────────── */
+
+/** 현재 편집 상태를 반영한 전체 목록 */
+function currentEntries() {
+    const map = new Map(FOOD_ENTRIES);
+    for (const w of draft.removed) map.delete(w);
+    for (const [w, v] of Object.entries(draft.entries)) map.set(w, v);
+    return [...map.entries()]
+        .map(([word, v]) => ({ word, ...v }))
+        .sort((a, b) => a.form.localeCompare(b.form) || a.word.localeCompare(b.word));
+}
+
+function renderEditorSection() {
+    const rows = currentEntries()
+        .filter((e) => !filterText || e.word.includes(filterText))
+        .map((e) => {
+            const edited = Object.prototype.hasOwnProperty.call(draft.entries, e.word);
+            const isBase = isBaseFoodEntry(e.word);
+            return `
+            <tr class="border-b border-slate-100 ${edited ? 'bg-amber-50' : ''}">
+                <td class="py-1.5 px-2 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(e.word)}${edited ? '<span class="ml-1 text-[10px] text-amber-600 font-black">수정됨</span>' : ''}${!isBase ? '<span class="ml-1 text-[10px] text-emerald-600 font-black">추가</span>' : ''}</td>
+                <td class="py-1.5 px-2">
+                    <select onchange="window.updateFoodDictEntry('${jsArg(e.word)}','form',this.value)" class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500">
+                        ${FORM_CATEGORIES.map((f) => `<option value="${escapeHtml(f)}"${f === e.form ? ' selected' : ''}>${escapeHtml(f)}</option>`).join('')}
+                    </select>
+                </td>
+                <td class="py-1.5 px-2">
+                    <select onchange="window.updateFoodDictEntry('${jsArg(e.word)}','cuisine',this.value)" class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500">
+                        ${CUISINE_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}"${c === e.cuisine ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
+                    </select>
+                </td>
+                <td class="py-1.5 px-2 text-right whitespace-nowrap">
+                    ${edited || !isBase ? `<button onclick="window.resetFoodDictEntry('${jsArg(e.word)}')" class="px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200">되돌리기</button>` : ''}
+                    <button onclick="window.removeFoodDictEntry('${jsArg(e.word)}')" class="ml-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100">삭제</button>
+                </td>
+            </tr>`;
+        })
+        .join('');
+    const total = currentEntries().length;
+    const changed = Object.keys(draft.entries).length + draft.removed.length;
+    return `
+        <div class="mb-6 bg-white rounded-xl p-5 border border-slate-200">
+            <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+                <h3 class="text-base font-black text-slate-800">끼니 사전 편집</h3>
+                <div class="flex items-center gap-2">
+                    ${changed > 0 ? `<span class="text-xs font-bold text-amber-600">저장 안 된 변경 ${changed}건</span>` : ''}
+                    <button onclick="window.saveFoodDict()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">저장</button>
+                </div>
+            </div>
+            <p class="text-xs text-slate-500 mb-3">기본 사전은 코드에 있고, 여기서 고친 값만 <b>오버라이드</b>로 저장됩니다. '되돌리기'를 누르면 코드 기본값으로 돌아갑니다. 매칭은 최장 일치라 긴 이름이 항상 이깁니다(예: '탕수육'이 '수육'보다 먼저).</p>
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                <input type="text" id="foodDictNewWord" placeholder="추가할 음식명" class="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500">
+                <select id="foodDictNewForm" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none">
+                    ${FORM_CATEGORIES.map((f) => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')}
+                </select>
+                <select id="foodDictNewCuisine" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none">
+                    ${CUISINE_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
+                </select>
+                <button onclick="window.addFoodDictEntry()" class="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300">추가</button>
+                <input type="text" id="foodDictFilter" value="${escapeHtml(filterText)}" placeholder="검색" class="ml-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500">
+            </div>
+            <p class="text-xs text-slate-400 mb-2">전체 ${total}개${filterText ? ` · '${escapeHtml(filterText)}' 검색 결과` : ''}</p>
+            <div class="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto" style="max-height: 32rem; overflow-y: auto;">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0"><tr class="bg-slate-50 text-xs text-slate-500">
+                        <th class="py-2 px-2 text-left font-bold">음식</th>
+                        <th class="py-2 px-2 text-left font-bold">형태</th>
+                        <th class="py-2 px-2 text-left font-bold">요리 종류</th>
+                        <th class="py-2 px-2"></th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+}
+
+/* ─────────────────────────── 3. 나머지 (읽기 전용) ─────────────────────────── */
+
 function renderOneCharSection() {
     const rows = Array.from(ONE_CHAR_FOODS.entries())
         .map(([token, v]) => `
@@ -90,7 +187,7 @@ function renderOneCharSection() {
         .join('');
     return `
         <div class="mb-6">
-            <h3 class="text-base font-black text-slate-800 mb-1">한 글자 예외</h3>
+            <h3 class="text-base font-black text-slate-800 mb-1">한 글자 예외 <span class="text-xs font-bold text-slate-400">(코드 전용)</span></h3>
             <p class="text-xs text-slate-500 mb-3">한 글자 토큰은 오탐이 많아 원칙적으로 버리지만, 실데이터 최빈 음식어는 예외로 인정합니다.</p>
             <div class="border border-slate-200 rounded-xl bg-white overflow-hidden inline-block">
                 <table class="text-sm">
@@ -105,36 +202,32 @@ function renderOneCharSection() {
         </div>`;
 }
 
-/** 분류 규칙 요약 */
-function renderRulesSection() {
+function renderSnackSection() {
+    const blocks = Object.entries(SNACK_KEYWORDS)
+        .map(([cat, keywords]) => `
+            <div class="border border-slate-200 rounded-xl p-4 bg-white">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-black text-slate-800">${escapeHtml(cat)}</h4>
+                    <span class="text-xs text-slate-400 font-bold">${keywords.length}개</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">${keywords.map((k) => `<span class="inline-block px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold">${escapeHtml(k)}</span>`).join(' ')}</div>
+            </div>`)
+        .join('');
     return `
-        <div class="mb-6 bg-slate-50 rounded-xl p-5 border border-slate-200">
-            <h3 class="text-base font-black text-slate-800 mb-3">분류 규칙</h3>
-            <ol class="list-decimal list-inside space-y-2 text-sm text-slate-700">
-                <li><b>토큰 분해</b> — 상세 텍스트를 <code class="text-xs bg-white border border-slate-200 rounded px-1">+ , ， · 공백 줄바꿈</code> 으로 나눕니다.</li>
-                <li><b>수량·단위 제거</b> — 토큰 끝의 수량 표기를 떼어냅니다. 예: "닭다리살100"→"닭다리살", "계란 2알"→"계란"</li>
-                <li><b>짧은 토큰 버림</b> — 2글자 미만은 버립니다. 단, '한 글자 예외' 표의 토큰은 예외.</li>
-                <li><b>최장 일치</b> — 토큰이 품은 사전 항목 중 <b>가장 긴 것 하나</b>만 채택합니다. 한 토큰이 여러 카테고리에 표를 뿌리지 않습니다.</li>
-                <li><b>집계</b> — 형태는 최다 득표, 2위가 1위의 절반 이상이면 복수 제안(최대 2개). 요리 종류는 최다 득표 하나만이며 '기타'는 구체적인 값이 있으면 양보합니다.</li>
-            </ol>
-            <div class="mt-4 pt-3 border-t border-slate-200 text-xs text-slate-500 space-y-1">
-                <p>· <b>형태</b>는 제안 칩(✨)으로 뜨고 사용자가 눌러야 기록에 반영됩니다.</p>
-                <p>· <b>요리 종류</b>는 묻지 않고 <code class="bg-white border border-slate-200 rounded px-1">cuisineAuto</code> 로 자동 저장됩니다(사실-유도).</p>
-                <p>· 분류 실패는 "제안 없음"일 뿐이며 저장 경로에 영향을 주지 않습니다.</p>
-                <p>· 사전 추가 기준: 실데이터 반복 관측 · 형태는 "주된 몸통이 무엇인가" · 요리 종류가 애매하면 '기타'로 두고 형태만 채웁니다.</p>
-            </div>
+        <div class="mb-6">
+            <h3 class="text-base font-black text-slate-800 mb-1">간식 사전 <span class="text-xs font-bold text-slate-400">(코드 전용)</span></h3>
+            <p class="text-xs text-slate-500 mb-3">간식은 아직 기존 snackType 축을 씁니다. 형태 축으로의 통합은 실데이터 검증 뒤 예정입니다.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${blocks}</div>
         </div>`;
 }
 
-/** 실시간 테스트 */
 function renderTesterSection() {
     return `
         <div class="mb-6 bg-emerald-50/60 rounded-xl p-5 border border-emerald-200">
             <h3 class="text-base font-black text-slate-800 mb-1">분류 테스트</h3>
-            <p class="text-xs text-slate-500 mb-3">'무엇을' 상세 텍스트를 넣으면 실제 분류기와 동일한 코드로 결과를 보여줍니다.</p>
-            <input type="text" id="foodDictTestInput"
-                   placeholder="예: 짜장면 + 탕수육"
-                   class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500 transition-colors">
+            <p class="text-xs text-slate-500 mb-3">실제 분류기와 같은 코드로 돌립니다. 위에서 편집한 내용이 <b>저장 후</b> 반영됩니다.</p>
+            <input type="text" id="foodDictTestInput" placeholder="예: 짜장면 + 탕수육"
+                   class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500">
             <div id="foodDictTestResult" class="mt-3 text-sm text-slate-400">입력하면 토큰·형태·요리 종류가 여기에 표시됩니다.</div>
         </div>`;
 }
@@ -151,7 +244,7 @@ function runTester() {
     }
     const tokens = tokenizeFoodText(text);
     const detail = classifyFoodDetail(text);
-    const snackResult = classifySnackText(text); // 태그 필터 없이 원제안 (실사용은 사용자 태그로 한 번 더 거름)
+    const snackResult = classifySnackText(text);
     const chip = (v, color) => `<span class="inline-block px-2 py-1 ${color} rounded-md text-xs font-bold">${escapeHtml(v)}</span>`;
     const none = '<span class="text-xs text-slate-400">없음</span>';
     out.className = 'mt-3 text-sm text-slate-700 space-y-2';
@@ -162,19 +255,110 @@ function runTester() {
         <div><span class="text-xs font-bold text-slate-500 mr-2">간식 제안</span>${snackResult.length ? snackResult.map((c) => chip(c, 'bg-amber-100 text-amber-700')).join(' ') : none}</div>`;
 }
 
-let foodDictRendered = false;
+/* ─────────────────────────── 편집 액션 ─────────────────────────── */
 
-/** 분류사전 섹션 렌더 (정적 데이터라 1회만) */
-export function loadFoodDictContent() {
+function currentValueOf(word) {
+    return draft.entries[word] || FOOD_ENTRIES.get(word) || null;
+}
+
+window.updateFoodDictEntry = function (word, field, value) {
+    const cur = currentValueOf(word);
+    if (!cur) return;
+    draft.entries[word] = { form: cur.form, cuisine: cur.cuisine, [field]: value };
+    draft.removed = draft.removed.filter((w) => w !== word);
+    rerender();
+};
+
+window.resetFoodDictEntry = function (word) {
+    delete draft.entries[word];
+    draft.removed = draft.removed.filter((w) => w !== word);
+    rerender();
+};
+
+window.removeFoodDictEntry = function (word) {
+    delete draft.entries[word];
+    if (!draft.removed.includes(word)) draft.removed.push(word);
+    rerender();
+};
+
+window.addFoodDictEntry = function () {
+    const word = (document.getElementById('foodDictNewWord')?.value || '').trim();
+    if (!word) {
+        alert('음식명을 입력해주세요.');
+        return;
+    }
+    draft.entries[word] = {
+        form: document.getElementById('foodDictNewForm')?.value || FORM_CATEGORIES[0],
+        cuisine: document.getElementById('foodDictNewCuisine')?.value || '기타',
+    };
+    draft.removed = draft.removed.filter((w) => w !== word);
+    filterText = word;
+    rerender();
+};
+
+window.saveFoodDict = async function () {
+    try {
+        const payload = { entries: draft.entries, removed: draft.removed, updatedAt: new Date().toISOString() };
+        await setDoc(doc(db, 'artifacts', appId, 'content', 'foodDictionary'), payload, { merge: false });
+        // 저장 즉시 이 화면의 분류 테스트에도 반영
+        setFoodDictionaryOverrides(payload);
+        rerender();
+        alert('사전이 저장되었습니다. 사용자 앱에는 다음 실행부터 반영됩니다.');
+    } catch (e) {
+        console.error('음식 사전 저장 실패:', e);
+        alert('저장 중 오류가 발생했습니다: ' + (e?.message || e));
+    }
+};
+
+/* ─────────────────────────── 렌더 ─────────────────────────── */
+
+function rerender() {
     const container = document.getElementById('foodDictContainer');
-    if (!container || foodDictRendered) return;
-    foodDictRendered = true;
+    if (!container) return;
+    const testValue = document.getElementById('foodDictTestInput')?.value || '';
     container.innerHTML = [
+        renderFlowSection(),
+        renderScopeSection(),
         renderTesterSection(),
-        renderRulesSection(),
-        renderFormSection(),
+        renderEditorSection(),
         renderOneCharSection(),
         renderSnackSection(),
     ].join('');
-    document.getElementById('foodDictTestInput')?.addEventListener('input', runTester);
+    const test = document.getElementById('foodDictTestInput');
+    if (test) {
+        test.value = testValue;
+        test.addEventListener('input', runTester);
+        if (testValue) runTester();
+    }
+    const filter = document.getElementById('foodDictFilter');
+    if (filter) {
+        filter.addEventListener('input', () => {
+            filterText = filter.value.trim();
+            rerender();
+            document.getElementById('foodDictFilter')?.focus();
+        });
+    }
+}
+
+let loaded = false;
+
+/** 분류사전 섹션 진입 — 저장된 오버라이드를 읽어 편집 상태로 올린다 */
+export async function loadFoodDictContent() {
+    if (!document.getElementById('foodDictContainer')) return;
+    if (!loaded) {
+        loaded = true;
+        try {
+            const snap = await getDoc(doc(db, 'artifacts', appId, 'content', 'foodDictionary'));
+            if (snap.exists()) {
+                const d = snap.data();
+                draft = { entries: d.entries || {}, removed: Array.isArray(d.removed) ? d.removed : [] };
+                setFoodDictionaryOverrides(draft);
+            } else {
+                draft = getFoodDictionaryOverrides();
+            }
+        } catch (e) {
+            console.warn('음식 사전 오버라이드 로드 실패:', e?.message || e);
+        }
+    }
+    rerender();
 }

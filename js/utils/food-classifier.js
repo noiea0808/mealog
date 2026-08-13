@@ -21,6 +21,12 @@ import {
 } from './food-dictionary.js';
 
 export { FORM_CATEGORIES, CUISINE_CATEGORIES, MIXED_CUISINE, ONE_CHAR_FOODS, DICTIONARY_SOURCE };
+export {
+    setFoodDictionaryOverrides,
+    getFoodDictionaryOverrides,
+    isBaseFoodEntry,
+    FOOD_ENTRIES,
+} from './food-dictionary.js';
 
 /**
  * @deprecated 형태 축의 옛 이름. 차트 화이트리스트 등 기존 호출부 호환용 별칭이다.

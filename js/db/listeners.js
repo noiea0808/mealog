@@ -7,6 +7,7 @@ import { hideLoading, isLikelyNetworkError } from '../ui.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { markMealogFirestoreActivity } from '../utils/network-activity.js';
 import { isDemoUser } from '../demo-account.js';
+import { setFoodDictionaryOverrides } from '../utils/food-dictionary.js';
 import {
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
@@ -249,8 +250,26 @@ export function setupListeners(userId, callbacks) {
                     }
                 };
 
+                /**
+                 * 음식 사전 관리자 오버라이드 — 코드 기본 사전 위에 덧쓴다.
+                 * 실패해도 기본 사전으로 계속 돌아가야 하므로 조용히 넘긴다.
+                 */
+                const loadFoodDictionaryOverrides = async () => {
+                    try {
+                        const ref = doc(db, 'artifacts', appId, 'content', 'foodDictionary');
+                        const snap = await getDoc(ref);
+                        if (snap.exists()) setFoodDictionaryOverrides(snap.data());
+                    } catch (e) {
+                        console.warn('⚠️ 음식 사전 오버라이드 로드 실패 (기본 사전 사용):', e?.message || e);
+                    }
+                };
+
                 try {
-                    await Promise.all([ensureUserDocIfNeeded(), loadAndMergeAdminTags()]);
+                    await Promise.all([
+                        ensureUserDocIfNeeded(),
+                        loadAndMergeAdminTags(),
+                        loadFoodDictionaryOverrides(),
+                    ]);
                     if (onSettingsUpdate) onSettingsUpdate();
                 } catch (e) {
                     console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);

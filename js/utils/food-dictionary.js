@@ -199,11 +199,8 @@ export const ONE_CHAR_FOODS = new Map([
     ['회', { form: '고기·생선', cuisine: '한식' }],
 ]);
 
-/**
- * 평면 사전: 음식명 → { form, cuisine }.
- * @type {Map<string, { form: string, cuisine: string }>}
- */
-export const FOOD_ENTRIES = (() => {
+/** 코드에 박힌 기본 사전 (평면화) — 관리자 오버라이드의 바탕이 된다 */
+function buildBaseEntries() {
     const map = new Map();
     for (const [form, byCuisine] of Object.entries(DICTIONARY_SOURCE)) {
         for (const [cuisine, words] of Object.entries(byCuisine)) {
@@ -214,16 +211,72 @@ export const FOOD_ENTRIES = (() => {
         }
     }
     return map;
-})();
+}
+
+/**
+ * 관리자 오버라이드 (Firestore `content/foodDictionary`).
+ * 코드 사전을 **대체하지 않고 덧쓴다** — 기본값은 버전 관리되는 코드에 남기고,
+ * 배포 없이 고치거나 항목을 늘릴 수 있는 여지만 연다.
+ * @type {{ entries: Record<string, {form: string, cuisine: string}>, removed: string[] }}
+ */
+let overrides = { entries: {}, removed: [] };
+
+/**
+ * 평면 사전: 음식명 → { form, cuisine }. 오버라이드가 반영된 최종 상태다.
+ * @type {Map<string, { form: string, cuisine: string }>}
+ */
+export let FOOD_ENTRIES = buildBaseEntries();
 
 /**
  * 최장 일치용 정렬 목록 (긴 이름 먼저).
  * '탕수육' 이 '수육' 보다 앞서므로 부분문자열 오탐이 구조적으로 막힌다.
  * @type {Array<{ word: string, form: string, cuisine: string }>}
  */
-export const FOOD_ENTRIES_BY_LENGTH = [...FOOD_ENTRIES.entries()]
-    .map(([word, v]) => ({ word, ...v }))
-    .sort((a, b) => b.word.length - a.word.length);
+export let FOOD_ENTRIES_BY_LENGTH = [];
+
+function rebuildEntries() {
+    const map = buildBaseEntries();
+    for (const w of overrides.removed) map.delete(w);
+    for (const [w, v] of Object.entries(overrides.entries)) {
+        if (v && v.form) map.set(w, { form: v.form, cuisine: v.cuisine || '기타' });
+    }
+    FOOD_ENTRIES = map;
+    FOOD_ENTRIES_BY_LENGTH = [...map.entries()]
+        .map(([word, v]) => ({ word, ...v }))
+        .sort((a, b) => b.word.length - a.word.length);
+}
+rebuildEntries();
+
+/**
+ * 관리자 사전 오버라이드 주입. 분류기는 재빌드된 목록을 즉시 쓴다.
+ * 잘못된 값이 들어와도 분류가 멈추면 안 되므로 형태·요리종류가 축에 없는 항목은 버린다.
+ * @param {{ entries?: Record<string, {form: string, cuisine: string}>, removed?: string[] }|null} next
+ */
+export function setFoodDictionaryOverrides(next) {
+    const forms = new Set(FORM_CATEGORIES);
+    const cuisines = new Set(CUISINE_CATEGORIES);
+    const entries = {};
+    for (const [w, v] of Object.entries(next?.entries || {})) {
+        const word = String(w || '').trim();
+        if (!word || !v || !forms.has(v.form)) continue;
+        entries[word] = { form: v.form, cuisine: cuisines.has(v.cuisine) ? v.cuisine : '기타' };
+    }
+    overrides = {
+        entries,
+        removed: (Array.isArray(next?.removed) ? next.removed : []).map((w) => String(w || '').trim()).filter(Boolean),
+    };
+    rebuildEntries();
+}
+
+/** 현재 적용 중인 오버라이드 (관리자 화면 편집용) */
+export function getFoodDictionaryOverrides() {
+    return { entries: { ...overrides.entries }, removed: [...overrides.removed] };
+}
+
+/** 코드 기본 사전에 그 음식이 있는지 — 관리자 화면에서 '기본값 수정'과 '신규 추가'를 구분 */
+export function isBaseFoodEntry(word) {
+    return buildBaseEntries().has(String(word || '').trim());
+}
 
 /** 관리자 분류사전 열람용 — 작성 원본 그대로 (형태 → 요리종류 → 음식) */
 export { DICTIONARY_SOURCE };

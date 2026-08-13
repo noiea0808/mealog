@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
-// v24: 형태 축에 '국물요리' 추가 — 부대찌개·곰탕이 밥류로 잡히던 문제.
+// v25: 음식 사전 관리자 오버라이드(Firestore) 계층 추가.
 // CSS·JS 조합이 갈리지 않도록 캐시 세대를 올린다.
-const CACHE_NAME = 'mealog-v24';
+const CACHE_NAME = 'mealog-v25';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
