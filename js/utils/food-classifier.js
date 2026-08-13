@@ -13,12 +13,14 @@
 import {
     FORM_CATEGORIES,
     CUISINE_CATEGORIES,
+    MIXED_CUISINE,
+    CUISINE_DOMINANCE_THRESHOLD,
     FOOD_ENTRIES_BY_LENGTH,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
 } from './food-dictionary.js';
 
-export { FORM_CATEGORIES, CUISINE_CATEGORIES, ONE_CHAR_FOODS, DICTIONARY_SOURCE };
+export { FORM_CATEGORIES, CUISINE_CATEGORIES, MIXED_CUISINE, ONE_CHAR_FOODS, DICTIONARY_SOURCE };
 
 /**
  * @deprecated 형태 축의 옛 이름. 차트 화이트리스트 등 기존 호출부 호환용 별칭이다.
@@ -131,12 +133,29 @@ export function classifyFoodDetail(text, personalKeywords = null) {
             if (rankedForms[1] && rankedForms[1][1] >= rankedForms[0][1] / 2) forms.push(rankedForms[1][0]);
         }
 
-        // '기타' 는 정보량이 없으므로 구체적인 요리종류가 하나라도 있으면 그쪽을 쓴다
-        const rankedCuisines = Object.entries(cuisineVotes).sort((a, b) => b[1] - a[1]);
-        const specific = rankedCuisines.filter(([c]) => c !== '기타');
-        const cuisine = (specific[0] || rankedCuisines[0] || [null])[0];
+        /**
+         * 요리 종류: 지배적인 것 하나, 없으면 '혼합'.
+         *
+         * '기타'는 정보량이 없으므로 **분모에서 뺀다** — "탕수육 + 계란"에서 계란(기타)이
+         * 중식의 지배율을 끌어내리면 안 된다. 구체적 종류가 하나도 없을 때만 '기타'다.
+         *
+         * 동점(김밥+떡볶이 = 한식1·분식1)을 먼저 등장한 토큰으로 찍던 임의 규칙을 없앤다.
+         * 문턱을 못 넘으면 '혼합' — 억지로 하나를 고르지 않는 것이 정직하다.
+         */
+        const specific = Object.entries(cuisineVotes)
+            .filter(([c]) => c !== '기타')
+            .sort((a, b) => b[1] - a[1]);
+        let cuisine = null;
+        if (specific.length === 0) {
+            cuisine = cuisineVotes['기타'] ? '기타' : null;
+        } else {
+            const specificTotal = specific.reduce((n, [, v]) => n + v, 0);
+            cuisine = specific[0][1] / specificTotal > CUISINE_DOMINANCE_THRESHOLD
+                ? specific[0][0]
+                : MIXED_CUISINE;
+        }
 
-        return { forms, cuisine: cuisine || null };
+        return { forms, cuisine };
     } catch (_) {
         // 분류 실패는 "제안 없음"일 뿐이다 — 어떤 경우에도 호출부(입력·저장)로 전파하지 않는다
         return { forms: [], cuisine: null };

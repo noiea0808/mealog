@@ -18576,6 +18576,17 @@ html.service-guide-active #landingPage {
     border-style: solid;
     color: white;
 }
+/* 요리 종류 꼬리표 — 고르는 값이 아니라 붙는 값이라 버튼이 아닌 라벨 모양으로 */
+.entry-suggest-cuisine {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #eef2f7;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+}
 .entry-suggest-hint {
     font-size: 11px;
     color: #94a3b8;

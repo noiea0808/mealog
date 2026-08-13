@@ -31,6 +31,13 @@ const state = {
 
 let debounceTimer = null;
 
+/** 사전에서 온 값이지만 innerHTML 로 들어가므로 이스케이프한다 */
+function escapeAttr(s) {
+    return String(s).replace(/[&<>"']/g, (c) => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+}
+
 function isMealMode() {
     return appState.entryFormMode !== 'snack';
 }
@@ -150,11 +157,21 @@ function render() {
         })
         .join('');
 
+    /**
+     * 요리 종류는 **읽기 전용 꼬리표**다 — 사용자가 고르는 값이 아니라 붙는 값이라
+     * 버튼이 아니라 라벨로 둔다. 축을 하나 더 묻지 않으면서 "이렇게 기록됩니다"만 보여준다.
+     * (교정 수요가 확인되면 그때 '세부' 영역에 넣는다)
+     */
+    // '기타'는 정보량이 없어 화면에는 띄우지 않는다 (저장은 그대로 — 집계에서 구분이 필요)
+    const cuisineTag = state.cuisine && state.cuisine !== '기타'
+        ? `<span class="entry-suggest-cuisine">${escapeAttr(state.cuisine)}</span>`
+        : '';
+
     const hint = state.confirmed
         ? '<span class="entry-suggest-hint">확정됨</span>'
         : '<span class="entry-suggest-hint">그냥 저장해도 자동으로 붙어요</span>';
 
-    el.innerHTML = `${chips}${hint}
+    el.innerHTML = `${chips}${cuisineTag}${hint}
         <button type="button" class="entry-suggest-dismiss" data-suggest-dismiss aria-label="자동 분류 제안 닫기">
             <i data-lucide="x" aria-hidden="true"></i>
         </button>`;
