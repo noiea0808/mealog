@@ -102,7 +102,7 @@ function runClassify() {
         render();
         // 맥락 줄의 어떻게 추론('집+밥/한상→집밥')에 분류 1순위를 공급 — best-effort
         try {
-            updateEntryContextFoodCategory(next.length > 0 ? next[0] : null);
+            updateEntryContextFoodCategory(next.length > 0 ? next[0] : null, state.cuisine);
         } catch (_) { /* 추론 실패가 제안 렌더를 막으면 안 된다 */ }
     } catch (_) {
         /* 제안 실패는 무시 — 입력·저장에 영향 금지 */

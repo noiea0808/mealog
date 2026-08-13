@@ -30,6 +30,7 @@ import { logUsageMetric } from '../usage-metrics.js';
 import { dominantPlaceGroup, normalizePlace } from '../utils/place-normalize.js';
 import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 import { procurementHintFromText } from '../utils/procurement-hint.js';
+import { classifyCuisineText } from '../utils/food-classifier.js';
 import { getAxis1TagList } from './entry-form-config.js';
 
 const CONTAINER_ID = 'entryContextPredict';
@@ -61,6 +62,8 @@ const state = {
     habitMealType: /** @type {string|null} */ (null),
     /** 무엇을 자동 분류의 현재 1순위 (entry-category-suggest가 밀어줌) */
     foodCategory: /** @type {string|null} */ (null),
+    /** 무엇을에서 파생한 요리 종류 — '중식→외식' 추론의 입력 */
+    foodCuisine: /** @type {string|null} */ (null),
     /** 인라인 피커가 열린 축 (null이면 닫힘) */
     openAxis: /** @type {string|null} */ (null),
     active: false,
@@ -90,6 +93,7 @@ export function resetEntryContextPredict() {
     state.useGuess = false;
     state.habitMealType = null;
     state.foodCategory = null;
+    state.foodCuisine = null;
     state.openAxis = null;
     state.active = false;
     render();
@@ -299,8 +303,10 @@ function visibleAxes() {
  *    음식 카테고리는 조달을 거의 못 알려주지만(면은 집·배달·식당 모두 가능) 원문에는
  *    조달어가 직접 들어 있다. 장소가 비어 있어도 발화하는 유일한 규칙이다.
  * 3. 장소 표기가 '구내식당' → '구내식당' (장소가 값 자체)
- * 4. 장소가 집 그룹 + 무엇을 분류가 밥/한상 → '집밥' (집에서 차린 한 상)
+ * 4. 장소가 집 그룹 + 무엇을 형태가 밥류 → '집밥' (집에서 차린 한 상)
  *    — 집에서 배달을 먹는 반례가 있어 확신은 아니지만, 점선 추측 + 토글이 받는다.
+ * 5. **요리 종류** (장소가 비었을 때만) → 개인 통계 우선, 없으면 시드(중식·일식→외식).
+ *    탕수육을 적었는데 슬롯 최빈값이라는 이유로 '집밥'이 뜨는 걸 막는다.
  *
  * @returns {string|null}
  */
@@ -320,10 +326,24 @@ function inferMealTypeFromFacts() {
         const byText = procurementHintFromText(whatText, window.userSettings?.tags?.mealType || null);
         if (byText) return byText;
 
-        if (!raw) return null;
-        const norm = normalizePlace(raw);
+        const norm = raw ? normalizePlace(raw) : '';
         if (norm.includes('구내식당')) return '구내식당';
-        if (norm === '집' && state.foodCategory === '밥/한상') return '집밥';
+        if (norm === '집' && state.foodCategory === '밥류') return '집밥';
+
+        /**
+         * 요리 종류 신호 — 장소가 비어 있을 때 습관 예측보다 먼저 본다.
+         * "탕수육"을 적었는데 그 슬롯 최빈값이 집밥이라 집밥이 뜨는 걸 막는다.
+         * 개인 통계 우선: 내가 중식을 먹을 때 실제로 뭐였는지(배달인지 외식인지)가
+         * 전역 시드보다 정확하다. 이력이 모자랄 때만 시드가 나선다.
+         */
+        if (!norm && state.foodCuisine) {
+            const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+            const personal = mealTypeForCuisine(history, state.foodCuisine);
+            if (personal) return personal;
+            const seed = MEALTYPE_SEED_BY_CUISINE[state.foodCuisine];
+            const allowed = window.userSettings?.tags?.mealType;
+            if (seed && (!Array.isArray(allowed) || allowed.includes(seed))) return seed;
+        }
         return null;
     } catch (_) {
         return null;
@@ -346,11 +366,61 @@ function refreshMealTypeGuess() {
 }
 
 /**
- * 무엇을 자동 분류의 1순위가 바뀔 때 entry-category-suggest가 호출.
- * '집+밥/한상→집밥' 추론의 입력이 된다.
- * @param {string|null} category
+ * 요리 종류별 조달 방식 시드 — **집에서 해 먹는 일이 드문 종류만** 담는다.
+ * 한식·양식·분식은 집에서도 흔히 만들므로 넣지 않는다(습관 예측에 맡긴다).
+ * 이력이 쌓이면 개인 통계가 이 시드를 대체한다.
  */
-export function updateEntryContextFoodCategory(category) {
+const MEALTYPE_SEED_BY_CUISINE = {
+    '중식': '외식',
+    '일식': '외식',
+};
+
+/** 기록 id → 파생 요리 종류 (시트 세션 동안 재사용 — 매번 재분류하지 않게) */
+const cuisineCache = new Map();
+
+/**
+ * 그 기록의 요리 종류. 과거 기록에는 cuisineAuto 가 없으므로 상세 텍스트에서 파생한다
+ * (마이그레이션 없이 옛 기록도 신호로 쓰기 위해).
+ * @param {any} r
+ * @returns {string|null}
+ */
+function recordCuisine(r) {
+    if (!r) return null;
+    if (r.cuisineAuto) return r.cuisineAuto;
+    // 텍스트를 키에 포함 — 기록을 수정하면 id가 같아도 파생값이 달라져야 한다
+    const key = `${r.id || `${r.date}|${r.slotId}`}|${r.menuDetail || ''}`;
+    if (cuisineCache.has(key)) return cuisineCache.get(key);
+    const derived = classifyCuisineText(r.menuDetail || '');
+    cuisineCache.set(key, derived);
+    return derived;
+}
+
+/**
+ * "내가 이 요리 종류를 먹을 때 어떻게였나" — 개인 통계.
+ * 같은 문턱(표본 3+·점유 60%+)을 쓴다. 최근 기록만 본다(전수 재분류는 비싸다).
+ * @param {any[]} history @param {string} cuisine
+ * @returns {string|null}
+ */
+function mealTypeForCuisine(history, cuisine) {
+    if (!cuisine) return null;
+    const recent = usableRecords(history, 'mealType')
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, 150);
+    const samples = recent
+        .filter((r) => recordCuisine(r) === cuisine)
+        .slice(0, RECENT_LIMIT)
+        .map((r) => r.mealType.trim());
+    return qualifiedMode(samples);
+}
+
+/**
+ * 무엇을 자동 분류 결과가 바뀔 때 entry-category-suggest가 호출.
+ * 형태는 '집+밥류→집밥' 추론에, 요리 종류는 '중식→외식' 추론에 쓰인다.
+ * @param {string|null} category 형태 1순위
+ * @param {string|null} [cuisine] 요리 종류
+ */
+export function updateEntryContextFoodCategory(category, cuisine = null) {
+    state.foodCuisine = cuisine || null;
     /**
      * 분류가 그대로여도 항상 재합성한다 — 조달 키워드는 **원문**에서 읽으므로
      * "라면" → "배민 라면" 처럼 카테고리가 안 변해도 추측은 바뀌어야 한다.
