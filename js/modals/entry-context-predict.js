@@ -312,13 +312,12 @@ function render() {
     const hasConfirmed = axes.some((a) => state.confirmed[a.key]);
     let actions = '';
     if (hasUnconfirmed) {
+        // "아니에요" = 추측만 지움 (✕ 아이콘은 의미가 안 읽혀 텍스트로)
         actions = `
             <button type="button" class="entry-predict-apply" data-predict-apply>맞아요</button>
-            <button type="button" class="entry-predict-dismiss" data-predict-dismiss aria-label="추측 지우기" title="추측 지우기">
-                <i data-lucide="x" aria-hidden="true"></i>
-            </button>`;
+            <button type="button" class="entry-predict-dismiss-text" data-predict-dismiss>아니에요</button>`;
     } else if (hasConfirmed) {
-        actions = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>확인됨</span>`;
+        actions = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>입력됨 · 탭해서 수정</span>`;
     }
     // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
     const lead = hasUnconfirmed ? '지난 기록처럼' : axes.map((a) => a.label).join(' · ');

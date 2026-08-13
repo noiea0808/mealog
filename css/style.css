@@ -18627,6 +18627,13 @@ html.service-guide-active #landingPage {
     color: #94a3b8;
     font-weight: 700;
 }
+/*
+ * 세그먼트 상태 문법 (구분되는 세 신호를 서로 다른 채널에 배정):
+ *   채움  = 확정 여부  (점선 흰 배경 = 추측/빈 · 프라이머리 채움+흰 글자 = 확정)
+ *   링    = 열림 여부  (바깥 링 + 캐럿 180° — 어느 상태에든 겹쳐지는 독립 신호)
+ *   캐럿  = 항상 표시  ("탭하면 바꿀 수 있다" — 확정돼도 사라지지 않는다)
+ * 피커(하위 선택지)는 회색 트레이 안의 흰 칩 — 세그먼트(상위 값)와 색 층위가 다르다.
+ */
 .entry-context-seg {
     display: inline-flex;
     align-items: center;
@@ -18640,7 +18647,7 @@ html.service-guide-active #landingPage {
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .entry-context-seg > span {
     overflow: hidden;
@@ -18660,21 +18667,20 @@ html.service-guide-active #landingPage {
 .entry-context-seg--confirmed {
     border-style: solid;
     border-color: var(--color-primary);
-    background: var(--green-soft, #eaf8f2);
-    color: #0f5132;
+    background: var(--color-primary);
+    color: white;
 }
 .entry-context-seg--confirmed svg {
-    color: var(--color-primary);
+    color: rgba(255, 255, 255, 0.85);
 }
 .entry-context-seg--empty {
     color: #94a3b8;
 }
-/* 열린 세그먼트 = 아래 피커의 주인. 라벨 대신 이 하이라이트가 어느 축인지 말한다 */
+/* 열린 세그먼트 = 아래 피커의 주인. 채움을 바꾸지 않고 링만 두른다 */
 .entry-context-seg--open {
+    box-shadow: 0 0 0 2px var(--green-mute, #b4e2cd);
     border-style: solid;
     border-color: var(--color-primary);
-    background: var(--green-soft, #eaf8f2);
-    box-shadow: 0 0 0 1px var(--color-primary) inset;
 }
 .entry-context-seg--open .entry-context-seg__caret {
     transform: rotate(180deg);
@@ -18684,15 +18690,16 @@ html.service-guide-active #landingPage {
     padding: 4px 8px;
     color: #94a3b8;
 }
-/* 인라인 피커 — 세그먼트 바로 아래, 그 축의 선택지만 */
+/* 인라인 피커 — 회색 트레이가 "하위 선택지" 층위를 만든다 (세그먼트와 색으로 구분) */
 .entry-context-picker {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin-top: 8px;
-    padding: 8px 0 2px;
-    border-top: 1px dashed #e2e8f0;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f1f5f9;
+    border-radius: 12px;
 }
 .entry-context-picker__chips {
     display: flex;
@@ -18723,9 +18730,9 @@ html.service-guide-active #landingPage {
     align-items: center;
     gap: 4px;
     padding: 4px 10px;
-    border: 1px solid #e2e8f0;
+    border: 1px dashed #cbd5e1;
     border-radius: 14px;
-    background: #f8fafc;
+    background: white;
     color: #64748b;
     font-size: 12px;
     font-weight: 700;
@@ -18761,18 +18768,18 @@ html.service-guide-active #landingPage {
     background: var(--color-primary);
     color: white;
 }
-.entry-predict-dismiss {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
+.entry-predict-dismiss-text {
+    padding: 4px 12px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 700;
+    background: white;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
     cursor: pointer;
 }
-.entry-predict-dismiss svg {
-    width: 13px;
-    height: 13px;
+.entry-predict-dismiss-text:active {
+    background: #f1f5f9;
 }
 
 /* 3층 필드 승격 컨테이너 (entry-field-promotion.js) — 기본 탭 하단 */
