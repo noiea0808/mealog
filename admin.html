@@ -1523,6 +1523,9 @@
                                     <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'displayName' })" id="content-sidebar-displayName" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                         <i class="fa-solid fa-user-tag mr-2"></i>관리자명
                                     </button>
+                                    <button type="button" onclick="window.switchContentSidebar('foodDict')" id="content-sidebar-foodDict" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-book-open mr-2"></i>분류사전
+                                    </button>
                                 </div>
                                 <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="shrink-0 w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
@@ -1761,6 +1764,26 @@
                             </div>
                         </div>
                         
+                        <!-- 분류사전: '무엇을' 자동 분류 규칙·사전 열람 (읽기 전용, js/admin/food-dict.js) -->
+                        <div id="content-main-foodDict" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div>
+                                        <h2 class="text-lg font-black text-slate-800">무엇을 분류사전</h2>
+                                        <p class="text-xs text-slate-500 mt-0.5">기록 시트의 '무엇을' 상세 텍스트가 어떤 규칙과 키워드로 카테고리 제안(✨)이 되는지 보여줍니다. 사전 원본은 코드(js/utils/food-classifier.js)에 있으며 여기서는 열람만 가능합니다.</p>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="foodDictContainer">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- APK 배포 -->
                         <div id="content-main-apk" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
