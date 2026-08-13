@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
-// v8: 어디서 섹션 재구성(어떻게 칩 → 어디서 입력 순서, 보조 라벨 추가) — index.html
-// 구조 변경이므로 캐시 세대를 올려 구 HTML + 신 JS 혼합을 막는다.
-const CACHE_NAME = 'mealog-v8';
+// v9: 맥락 한 줄을 1페이지 '무엇을' 아래로 이동 + 세그먼트/인라인 피커 도입.
+// index.html 구조 변경이므로 캐시 세대를 올려 구 HTML + 신 JS 혼합을 막는다.
+const CACHE_NAME = 'mealog-v9';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면

@@ -6,6 +6,7 @@ import { ENTRY_DOM } from './entry-form-config.js';
 import { escapeHtml } from '../render/utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { isFoodRelatedKakaoPlace } from '../utils/place-type.js';
+import { syncEntryContextPlaceFromInput } from './entry-context-predict.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
 
@@ -263,6 +264,8 @@ export function applyKakaoPlaceManualText() {
     placeInput.removeAttribute('data-kakao-place-data');
     placeInput.removeAttribute('data-kakao-place-name');
     closeKakaoPlaceSearchModal();
+    // 프로그램적 value 설정은 change 이벤트를 발화시키지 않으므로 맥락 줄에 직접 알린다
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast('장소명이 입력되었습니다.', 'success');
 }
 
@@ -311,6 +314,7 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
     // 모달 닫기
     closeKakaoPlaceSearchModal();
 
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast("장소가 선택되었습니다.", 'success');
 }
 

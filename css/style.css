@@ -18588,33 +18588,123 @@ html.service-guide-active #landingPage {
     height: 13px;
 }
 
-/* 어디서·누구와 예측 한 줄 (entry-context-predict.js) — 습관-추측, 탭 확인 필수 */
+/* 맥락 한 줄 (entry-context-predict.js) — 1페이지 '무엇을' 아래.
+   세그먼트 = 축 하나. 탭하면 아래 피커가 인라인으로 열린다(오버레이 없음).
+   점선 = 아직 추측(미확인), 실선 = 확인됨. 확인 없이는 저장되지 않는다. */
 .entry-context-predict {
+    padding: 8px 1rem 0;
+    font-size: 12px;
+}
+.entry-context-line {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
-    padding: 8px 1rem 0;
-    font-size: 12px;
 }
 .entry-predict-lead {
     color: #94a3b8;
     font-weight: 700;
 }
-.entry-predict-value {
+.entry-context-seg {
     display: inline-flex;
     align-items: center;
     gap: 3px;
+    max-width: 100%;
+    padding: 4px 9px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 14px;
+    background: white;
     color: #475569;
+    font-size: 12px;
     font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
 }
-.entry-predict-value svg {
+.entry-context-seg > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.entry-context-seg svg {
     width: 13px;
     height: 13px;
     color: #94a3b8;
+    flex-shrink: 0;
 }
-.entry-predict-sep {
-    color: #cbd5e1;
+.entry-context-seg__caret {
+    width: 11px !important;
+    height: 11px !important;
+}
+.entry-context-seg--confirmed {
+    border-style: solid;
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+.entry-context-seg--confirmed svg {
+    color: var(--color-primary);
+}
+.entry-context-seg--empty {
+    color: #94a3b8;
+}
+.entry-context-seg--open {
+    border-color: var(--color-primary);
+}
+/* 인라인 피커 — 세그먼트 바로 아래, 그 축의 선택지만 */
+.entry-context-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    padding: 8px 0 2px;
+    border-top: 1px dashed #e2e8f0;
+}
+.entry-context-picker__label {
+    color: #94a3b8;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.entry-context-picker__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+.entry-context-picker__empty {
+    color: #94a3b8;
+}
+.entry-context-opt {
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.entry-context-opt--on {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+.entry-context-free {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.entry-context-free svg {
+    width: 12px;
+    height: 12px;
 }
 .entry-predict-apply {
     padding: 4px 12px;
