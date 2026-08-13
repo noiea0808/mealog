@@ -1,13 +1,17 @@
 /**
  * 기록 시트 — 기본 / 추가 / 상세 탭
  */
-const TAB_IDS = /** @type {const} */ (['basic', 'more', 'detail']);
+/**
+ * 2단계 구성. 어디서·누구와 전용 페이지('more')는 제거했다 —
+ * 맥락 한 줄이 1페이지에서 세 축을 모두 처리하고, 전체 축 섹션은 같은 페이지의
+ * '자세히' 접힘으로 내려갔다 (docs/entry-axes-and-tags-direction.md §5).
+ */
+const TAB_IDS = /** @type {const} */ (['basic', 'detail']);
 
-/** @typedef {'basic'|'more'|'detail'} EntrySheetTabId */
+/** @typedef {'basic'|'detail'} EntrySheetTabId */
 
 const TAB_LABELS = /** @type {Record<EntrySheetTabId, string>} */ ({
     basic: '뭘 먹었어요?',
-    more: '어디서? 누구랑?',
     detail: '어땠어요?',
 });
 

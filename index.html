@@ -2820,8 +2820,7 @@
                 <p id="entrySheetStepLabel" class="entry-sheet-step-label">뭘 먹었어요?</p>
                 <div id="entrySheetTabs" class="entry-sheet-step-dots" role="tablist" aria-label="기록 단계">
                     <button type="button" class="entry-sheet-step-dot entry-sheet-step-dot--active" role="tab" id="entrySheetTabBasic" data-entry-sheet-tab="basic" aria-controls="entrySheetPanelBasic" aria-selected="true" aria-label="1단계 뭘 먹었어요?" title="뭘 먹었어요?"></button>
-                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabMore" data-entry-sheet-tab="more" aria-controls="entrySheetPanelMore" aria-selected="false" aria-label="2단계 어디서? 누구랑?" title="어디서? 누구랑?"></button>
-                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false" aria-label="3단계 어땠어요?" title="어땠어요?"></button>
+                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false" aria-label="2단계 어땠어요?" title="어땠어요?"></button>
                 </div>
             </div>
 
@@ -2929,13 +2928,16 @@
                 </div>
                 <!-- 맥락 한 줄: 1페이지 '무엇을' 바로 아래 (docs/entry-axes-and-tags-direction.md §5).
                      어떻게·어디서·누구와를 세그먼트로 보여주고, 조각을 탭하면 그 축의 칩이
-                     이 자리에서 인라인으로 열린다. 실제 저장 필드는 2페이지 섹션이 계속 보유. -->
+                     이 자리에서 인라인으로 열린다. 저장 필드의 소유자는 아래 전체 축 섹션. -->
                 <div id="entryContextPredict" class="entry-context-predict hidden" aria-live="polite"></div>
-                <div id="entryPromotedFields" class="entry-promoted-fields hidden"></div>
-                </div>
-
-                <div id="entrySheetPanelMore" class="entry-sheet-tabpanel hidden" role="tabpanel" aria-labelledby="entrySheetTabMore" data-entry-sheet-panel="more" hidden>
-                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
+                <!-- 전체 축 섹션: 맥락 줄이 대부분을 대신하므로 기본 접힘. 건너뜀 칩·서브태그·
+                     누구와 상세처럼 맥락 줄이 다루지 않는 입력이 여기 남는다. -->
+                <div class="entry-axis-detail">
+                    <button type="button" id="entryAxisDetailToggle" class="entry-axis-detail__toggle" onclick="window.toggleEntryAxisDetail()" aria-expanded="false" aria-controls="entryAxisFields">
+                        <i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>자세히</span>
+                        <i data-lucide="chevron-down" class="entry-axis-detail__caret" aria-hidden="true"></i>
+                    </button>
+                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core hidden">
 <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
                         <!-- 끼니: 칩(어떻게=조달) 먼저 → 장소 입력(어디서) 나중. 어떻게가 어디서의 라우터
                              (docs/entry-axes-and-tags-direction.md §5). 간식은 칩도 장소라 라벨만 '어디서'. -->
@@ -3009,6 +3011,8 @@
                             </div>
                         </div>
                 </div>
+                </div>
+                <div id="entryPromotedFields" class="entry-promoted-fields hidden"></div>
                 </div>
 
                 <div id="entrySheetPanelDetail" class="entry-sheet-tabpanel hidden" role="tabpanel" aria-labelledby="entrySheetTabDetail" data-entry-sheet-panel="detail" hidden>

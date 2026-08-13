@@ -306,7 +306,13 @@ function render() {
         ${renderPicker()}`;
     el.classList.remove('hidden');
     refreshLucideIcons(el);
+    // 피커가 열리면 시트를 그만큼 키우고(높이 잠금 재측정), 잘려 있으면 통째로 보이는 자리까지
+    // 끌어온다 — 선택지를 보려고 사용자가 직접 스크롤하지 않게 한다.
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
+    if (state.openAxis) {
+        const picker = el.querySelector('.entry-context-picker');
+        if (picker) requestAnimationFrame(() => picker.scrollIntoView({ block: 'nearest' }));
+    }
 }
 
 /**

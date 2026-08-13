@@ -18706,6 +18706,29 @@ html.service-guide-active #landingPage {
     width: 12px;
     height: 12px;
 }
+/* 1페이지 '자세히' 접힘 — 전체 축 섹션(구 2페이지) */
+#entryModal .entry-axis-detail {
+    padding: 4px 1rem 0;
+}
+#entryModal .entry-axis-detail__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 2px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+#entryModal .entry-axis-detail__toggle svg {
+    width: 13px;
+    height: 13px;
+}
+#entryModal .entry-axis-detail__toggle--open .entry-axis-detail__caret {
+    transform: rotate(180deg);
+}
 .entry-predict-apply {
     padding: 4px 12px;
     border-radius: 14px;

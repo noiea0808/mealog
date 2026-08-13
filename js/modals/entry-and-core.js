@@ -1752,6 +1752,7 @@ export async function openModal(date, slotId, entryId = null) {
         ensureEntryWhatInputSnackCompositionInit();
         initEntryCategorySuggest();
         initEntryContextPredict();
+        toggleEntryAxisDetail(false); // 시트 열 때는 항상 접힌 상태로 시작
         bindEntryWhatInputAutosizeOnce();
         autosizeEntryWhatInput();
         bindEntryCommentExpandOnce();
@@ -3693,6 +3694,25 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     }
     syncDeliveryVendorSectionVisibility();
 }
+
+/**
+ * 1페이지 '자세히' 접힘 — 전체 축 섹션(어디서·누구와)을 여닫는다.
+ * 어디서·누구와 전용 페이지를 없애면서 이 자리가 그 입력들의 집이 됐다
+ * (건너뜀 칩·서브태그·누구와 상세는 맥락 줄이 다루지 않는다).
+ * @param {boolean} [force] 지정하면 그 상태로 강제 (기록 수정 진입 시 펼침 등)
+ */
+export function toggleEntryAxisDetail(force) {
+    const btn = document.getElementById('entryAxisDetailToggle');
+    const fields = document.getElementById('entryAxisFields');
+    if (!btn || !fields) return;
+    const open = typeof force === 'boolean' ? force : fields.classList.contains('hidden');
+    fields.classList.toggle('hidden', !open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.classList.toggle('entry-axis-detail__toggle--open', open);
+    if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
+    if (open) fields.scrollIntoView({ block: 'nearest' });
+}
+window.toggleEntryAxisDetail = toggleEntryAxisDetail;
 
 function toggleFieldsForSkip(isSkip) {
     // Skip: 무엇을(기본 탭) · 누구와(추가 탭) · 상세 메트릭 숨김
