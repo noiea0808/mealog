@@ -4,6 +4,7 @@
  */
 import { SLOTS } from '../constants.js';
 import { normalizePlace } from '../utils/place-normalize.js';
+import { normalizeFoodForm } from '../utils/food-form-normalize.js';
 
 const MAIN_IDS = new Set(['morning', 'lunch', 'dinner']);
 const SNACK_IDS = new Set(SLOTS.filter((s) => s.type === 'snack').map((s) => s.id));
@@ -35,12 +36,17 @@ export function effectiveMealTypeForAnalytics(m) {
 }
 
 export function effectiveCategoryForAnalytics(m) {
-    if (!m || slotKind(m.slotId) !== 'main') return trim(m?.category);
+    /**
+     * 형태 축 이름이 바뀐 뒤로 옛 축(밥/한상·단백질식…)과 새 축(밥류·고기·생선…)이
+     * 한 필드에 섞여 있다. 읽을 때만 새 축으로 맞춘다 — 원문은 그대로 둔다
+     * (js/utils/food-form-normalize.js).
+     */
+    if (!m || slotKind(m.slotId) !== 'main') return normalizeFoodForm(m?.category);
     const c = trim(m.category);
-    if (c) return c;
+    if (c) return normalizeFoodForm(c);
     // 자동 분류값 (사용자 확정 없이 저장된 제안 — source='local'/'ai')
     const auto = trim(m.categoryAuto);
-    if (auto) return auto;
+    if (auto) return normalizeFoodForm(auto);
     if (trim(m.menuDetail)) return '기타';
     return '';
 }
