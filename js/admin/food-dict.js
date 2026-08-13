@@ -23,6 +23,7 @@ import {
     getFoodDictionaryOverrides,
     isBaseFoodEntry,
     getBaseFoodEntry,
+    formUsesCuisine,
 } from '../utils/food-classifier.js';
 import { escapeHtml } from './utils.js';
 
@@ -114,16 +115,21 @@ function currentEntries() {
 }
 
 /** (형태 → 요리종류 → 음식[]) 로 묶기 — 편집 상태 반영 */
+function cuisinesOf(form) {
+    // 요리 종류를 묻지 않는 형태는 칸을 하나만 둔다 (빈 문자열 = 해당 없음)
+    return formUsesCuisine(form) ? CUISINE_CATEGORIES : [''];
+}
+
 function groupedEntries() {
     const grouped = {};
     for (const form of FORM_CATEGORIES) {
         grouped[form] = {};
-        for (const cuisine of CUISINE_CATEGORIES) grouped[form][cuisine] = [];
+        for (const cuisine of cuisinesOf(form)) grouped[form][cuisine] = [];
     }
     for (const e of currentEntries()) {
         if (!grouped[e.form]) continue;
-        const cuisine = grouped[e.form][e.cuisine] ? e.cuisine : '기타';
-        grouped[e.form][cuisine].push(e.word);
+        const key = formUsesCuisine(e.form) ? (grouped[e.form][e.cuisine] ? e.cuisine : '기타') : '';
+        grouped[e.form][key].push(e.word);
     }
     return grouped;
 }
@@ -156,13 +162,14 @@ function renderEditorSection() {
     const cards = FORM_CATEGORIES.map((form) => {
         const byCuisine = grouped[form];
         const count = Object.values(byCuisine).reduce((n, a) => n + a.length, 0);
-        const groups = CUISINE_CATEGORIES.map((cuisine) => {
+        const groups = cuisinesOf(form).map((cuisine) => {
             const words = byCuisine[cuisine];
             const empty = words.length === 0;
+            const label = cuisine || '요리 종류 없음';
             return `
                 <div data-drop-form="${escapeHtml(form)}" data-drop-cuisine="${escapeHtml(cuisine)}"
                      class="food-drop rounded-lg border border-dashed border-slate-200 px-2 ${empty ? 'py-1' : 'py-1.5'} mb-1 transition-colors">
-                    <button type="button" data-drop-target class="text-[11px] font-black ${empty ? 'text-slate-300' : 'text-emerald-700'} mr-1 align-top">${escapeHtml(cuisine)}</button>
+                    <button type="button" data-drop-target class="text-[11px] font-black ${empty ? 'text-slate-300' : cuisine ? 'text-emerald-700' : 'text-slate-400'} mr-1 align-top">${escapeHtml(label)}</button>
                     ${empty ? '' : `<span class="inline-flex flex-wrap gap-1 align-top">${words.map(renderChip).join('')}</span>`}
                 </div>`;
         }).join('');
@@ -244,8 +251,8 @@ function renderSnackSection() {
         .join('');
     return `
         <div class="mb-6">
-            <h3 class="text-base font-black text-slate-800 mb-1">간식 사전 <span class="text-xs font-bold text-slate-400">(코드 전용)</span></h3>
-            <p class="text-xs text-slate-500 mb-3">간식은 아직 기존 snackType 축을 씁니다. 형태 축으로의 통합은 실데이터 검증 뒤 예정입니다.</p>
+            <h3 class="text-base font-black text-slate-800 mb-1">간식 축 <span class="text-xs font-bold text-slate-400">(끼니 사전에서 파생)</span></h3>
+            <p class="text-xs text-slate-500 mb-3">별도 사전이 아니라 <b>위 끼니 사전 음식에 붙은 주석</b>입니다 — 단어 목록은 한 곳에서만 관리합니다. 간식 축 값(커피·차/음료…)은 기존 snackType 그대로라 저장·차트에 변화가 없고, 축 자체의 통합은 새 형태 축 검증 뒤로 미뤄둔 과제입니다.</p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${blocks}</div>
         </div>`;
 }

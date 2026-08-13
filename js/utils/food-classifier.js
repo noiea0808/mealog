@@ -18,9 +18,21 @@ import {
     FOOD_ENTRIES_BY_LENGTH,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
+    SNACK_TYPE_BY_FOOD,
+    SNACK_ENTRIES_BY_LENGTH,
+    CUISINE_EXEMPT_FORMS,
+    formUsesCuisine,
 } from './food-dictionary.js';
 
-export { FORM_CATEGORIES, CUISINE_CATEGORIES, MIXED_CUISINE, ONE_CHAR_FOODS, DICTIONARY_SOURCE };
+export {
+    FORM_CATEGORIES,
+    CUISINE_CATEGORIES,
+    MIXED_CUISINE,
+    ONE_CHAR_FOODS,
+    DICTIONARY_SOURCE,
+    CUISINE_EXEMPT_FORMS,
+    formUsesCuisine,
+};
 export {
     setFoodDictionaryOverrides,
     getFoodDictionaryOverrides,
@@ -36,31 +48,11 @@ export {
 export const AUTO_CATEGORIES = FORM_CATEGORIES;
 
 /**
- * 간식 사전은 기존 snackType 축(커피·차/음료·술/주류·베이커리·과자/스낵·아이스크림·과일/견과)을
- * 그대로 쓴다. 형태 축으로의 통합은 categoryAuto 실데이터 검증 뒤로 미뤄둔 3단계 과제다
- * (docs/entry-axes-and-tags-direction.md §3).
+ * 간식 축(snackType) 목록 — **끼니 사전에서 파생**된다.
+ * 예전에는 같은 단어를 두 사전에서 따로 관리했는데(101단어 중 92개 중복),
+ * 이제 단어 목록은 하나뿐이고 여기서는 그 주석을 그룹으로 되뒤집어 보여줄 뿐이다.
  */
-export const SNACK_KEYWORDS = {
-    '커피': ['아메리카노', '카페라떼', '라떼', '커피', '에스프레소', '콜드브루', '카페모카', '카푸치노'],
-    '차/음료': [
-        '녹차', '홍차', '보리차', '허브티', '캐모마일', '주스', '스무디', '에이드', '우유', '두유',
-        '요거트', '요구르트', '식혜', '착즙', '탄산수', '콜라', '사이다', '이온음료', '레모네이드',
-    ],
-    '술/주류': ['맥주', '소주', '와인', '막걸리', '하이볼', '위스키', '사케', '칵테일', '샴페인'],
-    '베이커리': [
-        '소금빵', '식빵', '단팥빵', '크림빵', '바게트', '베이글', '크루아상', '치아바타', '스콘',
-        '머핀', '마들렌', '휘낭시에', '케이크', '케익', '도넛', '크로플', '와플', '마카롱', '파이', '빵',
-    ],
-    '과자/스낵': [
-        '쿠키', '비스킷', '크래커', '과자', '스낵', '감자칩', '도리토스', '꼬북칩', '새우깡', '팝콘',
-        '젤리', '사탕', '초코', '초콜릿', '프레첼', '누룽지', '시리얼', '그래놀라', '에너지바',
-    ],
-    '아이스크림': ['아이스크림', '젤라또', '빙수', '소프트콘', '하드바', '샤베트'],
-    '과일/견과': [
-        '사과', '수박', '복숭아', '자두', '포도', '바나나', '딸기', '블루베리', '참외', '멜론',
-        '키위', '오렌지', '망고', '파인애플', '체리', '과일', '견과', '아몬드', '호두', '캐슈넛',
-    ],
-};
+export const SNACK_KEYWORDS = SNACK_TYPE_BY_FOOD;
 
 /** 수량·단위 접미 제거: "닭다리살100", "계란 2알", "밥1/2공기" → 음식명만 남긴다 */
 const QUANTITY_SUFFIX_RE = /[\d./~]+(?:개|알|봉|장|조각|숟|스푼|공기|그람|그램|인분|쪽|모|통|번|잔|병|캔|g|kg|ml|cc|l)?$/i;
@@ -130,7 +122,9 @@ export function classifyFoodDetail(text, personalKeywords = null) {
             const hit = lookupToken(token);
             if (!hit) continue;
             formVotes[hit.form] = (formVotes[hit.form] || 0) + 1;
-            cuisineVotes[hit.cuisine] = (cuisineVotes[hit.cuisine] || 0) + 1;
+            // 요리 종류를 묻지 않는 형태(과일·음료·채소)는 투표에 참여하지 않는다 —
+            // "사과 + 짜장면"에서 사과가 중식의 지배율을 끌어내리면 안 된다
+            if (hit.cuisine) cuisineVotes[hit.cuisine] = (cuisineVotes[hit.cuisine] || 0) + 1;
         }
 
         const rankedForms = Object.entries(formVotes).sort((a, b) => b[1] - a[1]);
@@ -203,11 +197,9 @@ export function classifySnackText(text, allowedTags = null) {
         if (tokens.length === 0) return [];
         const votes = {};
         for (const token of tokens) {
-            for (const [category, keywords] of Object.entries(SNACK_KEYWORDS)) {
-                if (keywords.some((k) => token.includes(k))) {
-                    votes[category] = (votes[category] || 0) + 1;
-                }
-            }
+            // 끼니 축과 같은 **최장 일치** — 한 토큰이 여러 종류에 표를 뿌리지 않는다
+            const hit = SNACK_ENTRIES_BY_LENGTH.find((e) => token.includes(e.word));
+            if (hit) votes[hit.snackType] = (votes[hit.snackType] || 0) + 1;
         }
         const ranked = Object.entries(votes).sort((a, b) => b[1] - a[1]);
         if (ranked.length === 0) return [];
