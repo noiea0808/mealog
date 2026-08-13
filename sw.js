@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
-// v18: 추천 사용 ON 세그먼트 색상 구분, 리드 텍스트 강조, 배달 업체 입력란 보류.
+// v19: 세그먼트·토글 폭 고정, 추천 OFF 상태를 opacity 대신 무채색 채움으로.
 // CSS·JS 조합이 갈리지 않도록 캐시 세대를 올린다.
-const CACHE_NAME = 'mealog-v18';
+const CACHE_NAME = 'mealog-v19';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
