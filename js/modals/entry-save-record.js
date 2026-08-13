@@ -5,7 +5,7 @@
 import { syncPhotoMetaLength } from '../photo-meta.js';
 import { PHOTO_ASPECT_OPTIONS } from './entry-form-config.js';
 import { getEntryCategorySuggestResult } from './entry-category-suggest.js';
-import { getEntryContextPredictConfirm } from './entry-context-predict.js';
+import { getEntryContextPredictResult } from './entry-context-predict.js';
 import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 
 /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
@@ -146,20 +146,31 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
      * 칩이 렌더돼 있으면 apply 시 이미 chip.click()으로 반영됐고(resolved 값이 채워짐),
      * 칩이 접혀 있던 경우만 여기서 병합된다. (place는 input 값으로 흐르므로 병합 불필요)
      */
+    /**
+     * 맥락 줄 병합 — 자동 적용 모델 (docs/entry-axes-and-tags-direction.md §5).
+     * 추측(점선)도 저장 시 그대로 적용된다. 대신 자동 적용된 필드명을 autoContext에
+     * 남겨 사용자 입력과 구분한다 — 예측 표본 제외(자기강화 루프 차단)와
+     * 교정률 측정의 근거. categoryAuto/categorySource와 같은 원칙의 확장이다.
+     *
+     * '기타'도 덮어쓴다 — resolveEntrySaveFields는 칩이 비어 있는데 다른 축에 값이 있으면
+     * mealType·withWhom을 '기타'로 채우는데, 빠른입력이 꺼져 있으면 칩 자체가
+     * 렌더되지 않아(entry-chips.js) 맥락 줄 값이 그 폴백에 가려진다.
+     * withWhom은 간식에도 있는 필드라 두 모드 모두 병합하고, mealType(어떻게)은 끼니 전용.
+     */
     let withWhomFinal = withWhomResolved;
     let mealTypeFinal = mealTypeResolved;
-    if (!isSk) {
-        const ctxConfirm = getEntryContextPredictConfirm();
-        /**
-         * '기타'도 덮어쓴다 — resolveEntrySaveFields는 칩이 비어 있는데 다른 축에 값이 있으면
-         * mealType·withWhom을 '기타'로 채운다. 빠른입력이 꺼져 있으면 칩 자체가
-         * 렌더되지 않으므로(entry-chips.js), 맥락 줄에서 명시적으로 고른 값이 그 폴백에
-         * 가려진다. 사용자가 탭한 값이 조용한 폴백보다 우선이다.
-         * withWhom은 간식에도 있는 필드라 두 모드 모두 병합하고, mealType(어떻게)은 끼니 전용.
-         */
+    const autoContext = [];
+    const ctxResult = isSk ? null : getEntryContextPredictResult();
+    if (ctxResult) {
         const isFallback = (v) => !(v || '').trim() || v === '기타';
-        if (ctxConfirm.withWhom && isFallback(withWhomFinal)) withWhomFinal = ctxConfirm.withWhom;
-        if (!isS && ctxConfirm.mealType && isFallback(mealTypeFinal)) mealTypeFinal = ctxConfirm.mealType;
+        if (ctxResult.withWhom.value && isFallback(withWhomFinal)) {
+            withWhomFinal = ctxResult.withWhom.value;
+            if (ctxResult.withWhom.source === 'auto') autoContext.push('withWhom');
+        }
+        if (!isS && ctxResult.mealType.value && isFallback(mealTypeFinal)) {
+            mealTypeFinal = ctxResult.mealType.value;
+            if (ctxResult.mealType.source === 'auto') autoContext.push('mealType');
+        }
     }
 
     const record = {
@@ -195,6 +206,19 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
      * recordedAt 은 생성 시각이라 대용할 수 없다(슬롯·날짜 변경 시에만 갱신된다).
      * 기존 문서에는 이 필드가 없으므로 워커가 recordedAt 으로 폴백한다.
      */
+    /**
+     * 어디서 자동 적용 — 사용자가 피커에서 직접 고른 place는 입력란(writeThrough)을 거쳐
+     * 위에서 이미 record.place에 들어왔다. 여기 오는 것은 **적용만 되고 입력란에는
+     * 안 쓴 추측**뿐이다 (추측은 사용자 입력란을 건드리지 않는다는 원칙).
+     */
+    if (ctxResult && !record.place && ctxResult.place.value) {
+        record.place = ctxResult.place.value;
+        if (ctxResult.place.source === 'auto') autoContext.push('place');
+    }
+    if (autoContext.length > 0) {
+        record.autoContext = autoContext;
+    }
+
     record.updatedAt = new Date().toISOString();
     if (!idToUse) {
         record.recordedAt = new Date().toISOString();

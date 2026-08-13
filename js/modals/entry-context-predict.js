@@ -8,9 +8,13 @@
  *
  * 순서가 곧 라우팅이다: 어떻게(조달)가 어디서(장소)의 입력 방식을 결정하므로 앞에 선다.
  *
- * 습관-추측 원칙: 예측값은 "맞아요" 또는 조각 직접 선택이라는 명시적 확인 없이는
- * 절대 저장되지 않는다. 확인 없이 저장하면 세 필드 모두 빈 값이다.
- * 미확인 조각은 점선으로, 확인된 조각은 실선으로 구분한다.
+ * 적용 모델 (2026-08-13 사용자 결정 — 재설계 원칙 2의 무확인 저장 금지를 맥락 필드에
+ * 한해 대체한다): 추측은 **저장 시 그대로 적용**된다. 확인 버튼을 두지 않는 대신
+ * 데이터 정직성은 categoryAuto 패턴으로 지킨다 —
+ *   1) 자동 적용값은 record.autoContext에 출처가 남는다 (사용자 입력과 구분 가능)
+ *   2) 예측 표본에서 자동 적용값을 제외한다 (추측이 추측을 강화하는 루프 차단)
+ *   3) 교정률(피커 수정/자동 저장)이 품질 지표가 된다
+ * 점선 = 자동(추측), 실선 = 사용자가 직접 고름. 탭하면 언제든 수정·해제.
  *
  * 예측 키: (slotId × 평일/주말) 최빈값 — 슬롯 표본 3건+ · 점유 60%+.
  * 표본 부족 시 사용자 전체(슬롯 무관) 최빈값으로 폴백 (같은 문턱).
@@ -44,6 +48,10 @@ const AXES = [
 const state = {
     predicted: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
     confirmed: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
+    /** 사용자가 명시적으로 비운 축 — 추측이 다시 채우지 않는다 */
+    userCleared: /** @type {{ [key: string]: boolean }} */ ({}),
+    /** 추측을 이대로 쓸지 (기본 ON, 언제든 되돌릴 수 있는 토글) */
+    useGuess: true,
     /** 습관 예측 원본(이력 최빈값) — 사실-유도 추론과 합성할 때 참조 */
     habitMealType: /** @type {string|null} */ (null),
     /** 무엇을 자동 분류의 현재 1순위 (entry-category-suggest가 밀어줌) */
@@ -54,16 +62,27 @@ const state = {
 };
 
 /**
- * 저장 어댑터가 읽는 확정값. "맞아요" 또는 조각 선택으로 확인한 경우에만 값이 있다.
- * @returns {{ mealType: string|null, place: string|null, withWhom: string|null }}
+ * 저장 어댑터가 읽는 결과. 축마다 값과 출처를 함께 준다 —
+ * 'user' = 피커에서 직접 고름 / 'auto' = 추측이 그대로 적용됨 (record.autoContext 대상).
+ * @returns {{ mealType: {value: string|null, source: 'user'|'auto'|null},
+ *             place: {value: string|null, source: 'user'|'auto'|null},
+ *             withWhom: {value: string|null, source: 'user'|'auto'|null} }}
  */
-export function getEntryContextPredictConfirm() {
-    return { ...state.confirmed };
+export function getEntryContextPredictResult() {
+    const axis = (key) => {
+        // 직접 고른 값은 토글과 무관하게 항상 저장된다 — 토글이 지배하는 건 추측뿐이다
+        if (state.confirmed[key]) return { value: state.confirmed[key], source: 'user' };
+        if (state.useGuess && state.predicted[key]) return { value: state.predicted[key], source: 'auto' };
+        return { value: null, source: null };
+    };
+    return { mealType: axis('mealType'), place: axis('place'), withWhom: axis('withWhom') };
 }
 
 export function resetEntryContextPredict() {
     state.predicted = { mealType: null, place: null, withWhom: null };
     state.confirmed = { mealType: null, place: null, withWhom: null };
+    state.userCleared = {};
+    state.useGuess = true;
     state.habitMealType = null;
     state.foodCategory = null;
     state.openAxis = null;
@@ -114,7 +133,9 @@ function usableRecords(history, field) {
     return history.filter(
         (r) =>
             r && !isSkipRecord(r) && typeof r[field] === 'string' && r[field].trim() &&
-            !(field === 'mealType' && MEALTYPE_PREDICT_EXCLUDE.has(r[field].trim()))
+            !(field === 'mealType' && MEALTYPE_PREDICT_EXCLUDE.has(r[field].trim())) &&
+            // 자동 적용된 값은 표본에서 제외 — 추측이 추측을 강화하는 루프 차단
+            !(Array.isArray(r.autoContext) && r.autoContext.includes(field))
     );
 }
 
@@ -242,7 +263,7 @@ function inferMealTypeFromFacts() {
  */
 function refreshMealTypeGuess() {
     if (!state.active || appState.entryFormMode === 'snack') return;
-    if (state.confirmed.mealType) return;
+    if (state.confirmed.mealType || state.userCleared.mealType) return;
     if (document.querySelector('#entryWhereChips button.chip.active')) return;
     const next = inferMealTypeFromFacts() || state.habitMealType;
     if ((state.predicted.mealType || null) !== (next || null)) {
@@ -321,11 +342,14 @@ function axisValue(key) {
 function renderSegment(axis) {
     const value = axisValue(axis.key);
     const isConfirmed = Boolean(state.confirmed[axis.key]);
+    // 토글 OFF일 때 추측 세그먼트는 값을 남긴 채 흐려진다 — 되돌릴 수 있으려면 보여야 한다
+    const isMutedGuess = !isConfirmed && Boolean(state.predicted[axis.key]) && !state.useGuess;
     const isOpen = state.openAxis === axis.key;
     const cls = [
         'entry-context-seg',
         isConfirmed ? 'entry-context-seg--confirmed' : '',
         !value ? 'entry-context-seg--empty' : '',
+        isMutedGuess ? 'entry-context-seg--muted' : '',
         isOpen ? 'entry-context-seg--open' : '',
     ].filter(Boolean).join(' ');
     const text = value ? escapeHtml(value) : `+ ${axis.label}`;
@@ -364,38 +388,34 @@ function render() {
     const el = document.getElementById(CONTAINER_ID);
     if (!el) return;
     const axes = visibleAxes();
-    const hasAnything = axes.some((a) => axisValue(a.key)) || state.openAxis;
     if (!state.active) {
         el.innerHTML = '';
         el.classList.add('hidden');
         return;
     }
     /**
-     * 행 구조: [헤더: 리드 텍스트 ─ 액션(맞아요·✕)] / [세그먼트들 + ⋯자세히] / [피커].
-     * 값(세그먼트)과 행위(맞아요·✕)를 다른 행에 두어 섞여 보이지 않게 한다.
+     * 행 구조: [헤더: 리드 텍스트 ─ 사용 토글] / [세그먼트들 + ⋯자세히] / [피커].
      *
-     * "맞아요"·"✕"는 **추측을 처리하는 버튼**이므로 미확인 예측이 있을 때만 존재한다.
-     * 다 확정된 뒤에는 버튼이 그냥 사라지는 대신 '확인됨' 표시로 바뀐다 —
-     * 버튼이 흔적 없이 없어지면 눌린 게 맞는지 알 수 없다.
+     * 질문에 답하는 형태('맞아요/아니에요')가 아니라 **상태 토글**이다:
+     * '이대로 사용'(기본 ON) ↔ '사용 안함'. 어느 쪽이든 버튼은 사라지지 않고
+     * 언제든 되돌릴 수 있다 — 한 번 거부하면 되돌릴 수 없던 게 이전 방식의 문제였다.
+     * OFF여도 추측값은 흐리게 남아 다시 켤 수 있다.
+     * 개별 수정은 세그먼트 탭 → 피커에서 한다.
      */
-    const hasUnconfirmed = axes.some((a) => state.predicted[a.key] && !state.confirmed[a.key]);
-    const hasConfirmed = axes.some((a) => state.confirmed[a.key]);
-    let actions = '';
-    if (hasUnconfirmed) {
-        // "아니에요" = 추측만 지움 (✕ 아이콘은 의미가 안 읽혀 텍스트로)
-        actions = `
-            <button type="button" class="entry-predict-apply" data-predict-apply>맞아요</button>
-            <button type="button" class="entry-predict-dismiss-text" data-predict-dismiss>아니에요</button>`;
-    } else if (hasConfirmed) {
-        actions = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>입력됨 · 탭해서 수정</span>`;
-    }
-    // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
-    const lead = hasUnconfirmed ? '지난 기록처럼' : axes.map((a) => a.label).join(' · ');
+    const hasAuto = axes.some((a) => state.predicted[a.key] && !state.confirmed[a.key]);
     const axisDetailOpen = !document.getElementById('entryAxisFields')?.classList.contains('hidden');
+    const toggle = hasAuto
+        ? `<button type="button" class="entry-predict-toggle${state.useGuess ? ' entry-predict-toggle--on' : ''}"
+                data-predict-toggle role="switch" aria-checked="${state.useGuess}">
+               <i data-lucide="${state.useGuess ? 'check' : 'minus'}" aria-hidden="true"></i>${state.useGuess ? '이대로 사용' : '사용 안함'}
+           </button>`
+        : '';
+    // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
+    const lead = hasAuto ? '지난 기록처럼' : axes.map((a) => a.label).join(' · ');
     el.innerHTML = `
         <div class="entry-context-head">
             <span class="entry-predict-lead">${lead}</span>
-            <span class="entry-context-actions">${actions}</span>
+            ${toggle}
         </div>
         <div class="entry-context-segs">
             ${axes.map(renderSegment).join('')}
@@ -438,22 +458,28 @@ function confirmAxis(key, value) {
     if (!value) return;
     state.confirmed[key] = value;
     state.predicted[key] = null;
+    delete state.userCleared[key];
     writeThrough(key, value);
     // 장소 확정은 어떻게 추론의 입력 (피커에서 '집'을 고르면 집밥 추측이 뜰 수 있다)
     if (key === 'place') refreshMealTypeGuess();
 }
 
-function applyAllPredictions() {
-    /**
-     * 어떻게를 먼저 확정한다 — 칩 클릭이 어디서 기본값 라우팅(집밥→우리집 등)을
-     * 발화시키므로, 그 뒤에 예측 place를 써야 예측값이 기본값을 덮는 올바른 순서가 된다.
-     */
-    for (const axis of visibleAxes()) {
-        const predicted = state.predicted[axis.key];
-        if (predicted && !state.confirmed[axis.key]) confirmAxis(axis.key, predicted);
+/**
+ * 축 비우기 — 피커에서 현재 값을 다시 탭하면 해제된다.
+ * userCleared로 표시해 추측이 그 자리를 다시 채우지 않게 한다 (사용자의 거부는 존중).
+ * @param {string} key
+ */
+function clearAxis(key) {
+    state.confirmed[key] = null;
+    state.predicted[key] = null;
+    state.userCleared[key] = true;
+    if (key === 'place') {
+        setVal('entryWhereInput', '');
+    } else {
+        const containerId = key === 'mealType' ? 'entryWhereChips' : 'entryWithChips';
+        const active = document.querySelector(`#${containerId} button.chip.active`);
+        if (active) active.click(); // 토글 해제 — 기존 selectTag 경로로 입력값도 정리된다
     }
-    state.openAxis = null;
-    render();
 }
 
 function onContainerClick(e) {
@@ -468,10 +494,24 @@ function onContainerClick(e) {
     if (pick) {
         const key = state.openAxis;
         if (key) {
-            confirmAxis(key, pick.getAttribute('data-context-pick') || '');
-            logUsageMetric('context_predict_applied').catch(() => {});
+            const value = pick.getAttribute('data-context-pick') || '';
+            if (value && value === axisValue(key)) {
+                // 현재 값을 다시 탭 = 해제 (추측 거부 또는 선택 취소)
+                clearAxis(key);
+                logUsageMetric('context_predict_dismissed').catch(() => {});
+            } else {
+                confirmAxis(key, value);
+                logUsageMetric('context_predict_applied').catch(() => {});
+            }
         }
         state.openAxis = null;
+        render();
+        return;
+    }
+    if (e.target.closest('[data-predict-toggle]')) {
+        // 상태 토글 — 값은 지우지 않는다. OFF는 "저장에 쓰지 않음"일 뿐 되돌릴 수 있다
+        state.useGuess = !state.useGuess;
+        logUsageMetric(state.useGuess ? 'context_predict_applied' : 'context_predict_dismissed').catch(() => {});
         render();
         return;
     }
@@ -489,23 +529,6 @@ function onContainerClick(e) {
         if (typeof window.openKakaoPlaceSearch === 'function') window.openKakaoPlaceSearch();
         return;
     }
-    if (e.target.closest('[data-predict-apply]')) {
-        logUsageMetric('context_predict_applied').catch(() => {});
-        applyAllPredictions();
-        return;
-    }
-    if (e.target.closest('[data-predict-dismiss]')) {
-        /**
-         * ✕는 **추측만** 버린다 — 줄 자체를 없애지 않는다.
-         * 이 줄이 1페이지에서 세 축의 유일한 입력 경로라, 통째로 감추면 '자세히'를
-         * 펼치기 전까지 어디서·누구와를 넣을 방법이 사라진다.
-         * 확정된 값은 사용자가 고른 것이므로 그대로 남긴다.
-         */
-        state.predicted = { mealType: null, place: null, withWhom: null };
-        state.openAxis = null;
-        logUsageMetric('context_predict_dismissed').catch(() => {});
-        render();
-    }
 }
 
 /**
@@ -516,9 +539,11 @@ export function syncEntryContextPlaceFromInput() {
     if (!state.active) return;
     const v = (document.getElementById('entryWhereInput')?.value || '').trim();
     if (state.confirmed.place === (v || null)) return;
-    // 지운 경우: 확정 회수 + 그 장소에 기대던 어떻게 추측도 다시 계산
+    // 지운 경우: 확정 회수 + 사용자의 비움 존중(추측 재채움 금지) + 어떻게 추측 재계산
     state.confirmed.place = v || null;
     state.predicted.place = null;
+    if (v) delete state.userCleared.place;
+    else state.userCleared.place = true;
     render();
     // 장소가 바뀌면 어떻게 추론의 입력이 바뀐다 (카카오 픽→외식 등)
     refreshMealTypeGuess();

@@ -2170,6 +2170,10 @@ export async function saveEntry() {
         if (record.categorySource === 'local') {
             logUsageMetric('category_suggest_auto_saved').catch(() => {});
         }
+        // 맥락 추측 측정: 손대지 않고 저장 = 자동 적용 (교정률의 분모)
+        if (Array.isArray(record.autoContext) && record.autoContext.length > 0) {
+            logUsageMetric('context_predict_auto_saved').catch(() => {});
+        }
 
         // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
         const shareSnapshot = buildEntryShareSnapshot({

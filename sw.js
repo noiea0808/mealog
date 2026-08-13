@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
-// v13: 맥락 줄 상태 문법 정리(확정=채움·열림=링), 아니에요 텍스트 버튼, 피커 트레이.
+// v14: 맥락 추측 자동 적용 모델 — 맞아요/아니에요 제거, autoContext 출처 기록.
 // CSS·JS 조합이 갈리지 않도록 캐시 세대를 올린다.
-const CACHE_NAME = 'mealog-v13';
+const CACHE_NAME = 'mealog-v14';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
