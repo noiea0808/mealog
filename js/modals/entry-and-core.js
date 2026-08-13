@@ -1802,6 +1802,8 @@ export async function openModal(date, slotId, entryId = null) {
                 slotId: state.currentEditingSlotId,
                 dateStr: state.currentEditingDate,
                 isSnack,
+                // 자동 적용으로 저장됐던 축은 수정 화면에서도 추천(스위치 지배)으로 되살린다
+                autoContext: savedRecord?.autoContext,
             });
             // 3층 필드 승격 — 모드 확정 후 DOM 재배치
             applyEntryFieldPromotion();

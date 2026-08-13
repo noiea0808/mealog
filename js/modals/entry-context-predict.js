@@ -292,7 +292,7 @@ export function updateEntryContextFoodCategory(category) {
  * 시트 열림이 끝난 뒤 호출. 비어 있는 필드에 대해서만 예측한다.
  * @param {{ slotId: string, dateStr: string, isSnack: boolean }} args
  */
-export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
+export function setupEntryContextPredict({ slotId, dateStr, isSnack, autoContext }) {
     try {
         resetEntryContextPredict();
         if (!slotId || !dateStr) return;
@@ -303,15 +303,40 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
          * 데이터를 본 뒤 판단하기로 한 결정(place-axis-unification.md §3) 유지.
          * 빈 트리거(+ 어디서 · + 누구와)와 ⋯(자세히)만 제공해 입력 진입점을 통일한다.
          */
+        /**
+         * 이미 채워진 값(기록 수정 진입·시트 재열기)을 세그먼트에 싣는다.
+         * 이게 없으면 값이 있는 기록을 수정할 때 세그먼트가 '+ 어떻게'로 비어 보였다.
+         * 사용자가 저장했던 값이므로 확정(실선) 취급이다 — 추측이 아니다.
+         */
+        const activeChipLabel = (containerId) =>
+            document.querySelector(`#${containerId} button.chip.active`)?.innerText.trim() || '';
+        const existing = {
+            mealType: isSnack ? '' : activeChipLabel('entryWhereChips'),
+            place: (document.getElementById('entryWhereInput')?.value || '').trim(),
+            withWhom: activeChipLabel('entryWithChips'),
+        };
+        /**
+         * 이전에 **자동 적용으로 저장된 축**(record.autoContext)은 확정이 아니라 추천으로
+         * 되살린다 — 수정 화면에서도 스위치가 나타나 그때의 자동 적용을 끌 수 있어야 한다.
+         * 사용자가 직접 고른 축은 확정(실선)으로 남아 스위치의 지배를 받지 않는다.
+         */
+        const autoAxes = new Set(Array.isArray(autoContext) ? autoContext : []);
+        state.confirmed = {
+            mealType: (!autoAxes.has('mealType') && existing.mealType) || null,
+            place: (!autoAxes.has('place') && existing.place) || null,
+            withWhom: (!autoAxes.has('withWhom') && existing.withWhom) || null,
+        };
+        if (autoAxes.size > 0) state.useGuess = true;
+
         if (isSnack) {
             render();
             return;
         }
 
-        const mealTypeFilled = Boolean(document.querySelector('#entryWhereChips button.chip.active'));
-        const placeFilled = Boolean((document.getElementById('entryWhereInput')?.value || '').trim());
+        const mealTypeFilled = Boolean(existing.mealType);
+        const placeFilled = Boolean(existing.place);
         const withFilled =
-            Boolean(document.querySelector('#entryWithChips button.chip.active')) ||
+            Boolean(existing.withWhom) ||
             Boolean((document.getElementById('entryWithInput')?.value || '').trim());
 
         const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
@@ -323,6 +348,10 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
+        // 자동 적용으로 저장됐던 축은 그때 값을 추천으로 복원 (예측 계산보다 우선)
+        for (const key of autoAxes) {
+            if (existing[key]) state.predicted[key] = existing[key];
+        }
         if (state.predicted.mealType || state.predicted.place || state.predicted.withWhom) {
             logUsageMetric('context_predict_shown').catch(() => {});
         }
@@ -510,7 +539,8 @@ function onContainerClick(e) {
                 logUsageMetric('context_predict_applied').catch(() => {});
             }
         }
-        state.openAxis = null;
+        // 피커는 열어 둔다 — 닫는 건 해당 구분 세그먼트를 다시 누를 때뿐이다.
+        // (고르자마자 닫히면 연달아 고쳐보기가 어렵고 화면이 튀는 느낌을 준다)
         render();
         return;
     }
@@ -522,16 +552,14 @@ function onContainerClick(e) {
         return;
     }
     if (e.target.closest('[data-context-more]')) {
-        // ⋯ = 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 상태는 render가 다시 읽는다
-        state.openAxis = null;
+        // '세부' = 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 상태는 render가 다시 읽는다
         if (typeof window.toggleEntryAxisDetail === 'function') window.toggleEntryAxisDetail();
         render();
         return;
     }
     if (e.target.closest('[data-context-search]')) {
-        // 카카오 검색 시트는 entryWhereInput에 값을 넣는다 — 닫힌 뒤 그 값을 확정으로 승격
-        state.openAxis = null;
-        render();
+        // 카카오 검색 시트는 entryWhereInput에 값을 넣는다 — 닫힌 뒤 그 값을 확정으로 승격.
+        // 피커는 열어 둬서 검색을 취소해도 원래 자리로 돌아온다
         if (typeof window.openKakaoPlaceSearch === 'function') window.openKakaoPlaceSearch();
         return;
     }
