@@ -86,7 +86,23 @@ firebase functions:delete classifyUncategorizedMeals --region us-central1
   저장 병합에 mealType 포함.
 - **카카오 placeType 자동 분류**: 선택 시 place=상호명·placeType=식당/카페/편의점/술집
   (js/utils/place-type.js). 검색 필터 FD6 고정 해제(카페·편의점 포함).
-  ⚠️ **functions/searchKakaoPlaces 수정됨 — 재배포 필요** (배포 전엔 앱/스테이징 검색이 기존 FD6 결과만).
+- **음식 사전 재설계**: `음식 → { form, cuisine }` 단일 항목 + 최장 일치.
+  형태 9종(밥류·국물요리·면류·빵류·고기·생선·채소·샐러드·과일·음료·간식·디저트),
+  요리 종류 7종(한식·중식·일식·양식·분식·패스트푸드·기타 + 집계값 '혼합')은 묻지 않고
+  `cuisineAuto` 로 자동 저장. 미분류율 22% → 0%.
+
+### 배포 상태 (2026-08-13 갱신)
+
+- **Cloud Functions 배포 완료** (운영 `mealog-r0`, us-central1):
+  `searchKakaoPlaces` · `classifyUncategorizedMeals` · `adminClassifyLegacyMeals`.
+- ⚠️ **클라이언트는 여전히 미배포** — 위 UI/사전 변경은 test 브랜치에만 있다.
+- ⚠️ **categoryAuto 축이 시점에 따라 섞인다**: 이번 배포 이전에 서버가 채운 기록은
+  옛 축(밥/한상·단백질식…), 이후는 새 축(밥류·국물요리…)이다. `categorySource` 가
+  한 번 찍히면 재분류되지 않으므로 저절로 정리되지 않는다. 운영 클라이언트는
+  categoryAuto 를 읽지 않아 **지금은 사용자에게 보이는 변화가 없지만**, 새 클라이언트를
+  배포하기 전에 읽기 계층 매핑(밥/한상→밥류, 단백질식→고기·생선, 면→면류, 빵/샌드위치→빵류,
+  샐러드→채소·샐러드, 커피/음료→음료, 간식/디저트→간식·디저트)을 넣어야 차트에서
+  두 축이 따로 논다.
 - **사진 GPS 존재율 계측**: photo_gps_present/absent (usageDaily). 좌표는 읽지 않음.
 - **관리자 분류사전**: 콘텐츠 관리 > 분류사전 — 무엇을 분류 규칙·사전 열람 + 실시간 테스트.
 - **맥락 한 줄 → 1페이지**: '무엇을' 바로 아래에 어떻게·어디서·누구와 세그먼트.
