@@ -43,7 +43,6 @@ const AXES = [
 const state = {
     predicted: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
     confirmed: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
-    dismissed: false,
     /** 인라인 피커가 열린 축 (null이면 닫힘) */
     openAxis: /** @type {string|null} */ (null),
     active: false,
@@ -60,7 +59,6 @@ export function getEntryContextPredictConfirm() {
 export function resetEntryContextPredict() {
     state.predicted = { mealType: null, place: null, withWhom: null };
     state.confirmed = { mealType: null, place: null, withWhom: null };
-    state.dismissed = false;
     state.openAxis = null;
     state.active = false;
     render();
@@ -287,21 +285,33 @@ function render() {
     if (!el) return;
     const axes = visibleAxes();
     const hasAnything = axes.some((a) => axisValue(a.key)) || state.openAxis;
-    if (!state.active || state.dismissed) {
+    if (!state.active) {
         el.innerHTML = '';
         el.classList.add('hidden');
         return;
     }
-    // 미확인 예측이 하나라도 있을 때만 "맞아요" — 전부 확정됐으면 버튼은 사라진다
+    /**
+     * "맞아요"·"✕"는 **추측을 처리하는 버튼**이므로 미확인 예측이 있을 때만 존재한다.
+     * 다 확정된 뒤에는 버튼이 그냥 사라지는 대신 '확인됨' 표시로 바뀐다 —
+     * 버튼이 흔적 없이 없어지면 눌린 게 맞는지 알 수 없다.
+     */
     const hasUnconfirmed = axes.some((a) => state.predicted[a.key] && !state.confirmed[a.key]);
+    const hasConfirmed = axes.some((a) => state.confirmed[a.key]);
+    let tail = '';
+    if (hasUnconfirmed) {
+        tail = `
+            <button type="button" class="entry-predict-apply" data-predict-apply>맞아요</button>
+            <button type="button" class="entry-predict-dismiss" data-predict-dismiss aria-label="추측 지우기" title="추측 지우기">
+                <i data-lucide="x" aria-hidden="true"></i>
+            </button>`;
+    } else if (hasConfirmed) {
+        tail = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>확인됨</span>`;
+    }
     el.innerHTML = `
         <div class="entry-context-line">
-            <span class="entry-predict-lead">${hasAnything ? '지난 기록처럼' : '맥락'}</span>
+            <span class="entry-predict-lead">${hasUnconfirmed ? '지난 기록처럼' : '맥락'}</span>
             ${axes.map(renderSegment).join('')}
-            ${hasUnconfirmed ? '<button type="button" class="entry-predict-apply" data-predict-apply>맞아요</button>' : ''}
-            <button type="button" class="entry-predict-dismiss" data-predict-dismiss aria-label="맥락 줄 닫기">
-                <i data-lucide="x" aria-hidden="true"></i>
-            </button>
+            ${tail}
         </div>
         ${renderPicker()}`;
     el.classList.remove('hidden');
@@ -386,7 +396,13 @@ function onContainerClick(e) {
         return;
     }
     if (e.target.closest('[data-predict-dismiss]')) {
-        state.dismissed = true;
+        /**
+         * ✕는 **추측만** 버린다 — 줄 자체를 없애지 않는다.
+         * 이 줄이 1페이지에서 세 축의 유일한 입력 경로라, 통째로 감추면 '자세히'를
+         * 펼치기 전까지 어디서·누구와를 넣을 방법이 사라진다.
+         * 확정된 값은 사용자가 고른 것이므로 그대로 남긴다.
+         */
+        state.predicted = { mealType: null, place: null, withWhom: null };
         state.openAxis = null;
         logUsageMetric('context_predict_dismissed').catch(() => {});
         render();
@@ -398,7 +414,7 @@ function onContainerClick(e) {
  * 사용자가 직접 넣은 값이므로 확정 취급이다 — 추측이 아니다.
  */
 export function syncEntryContextPlaceFromInput() {
-    if (!state.active || state.dismissed) return;
+    if (!state.active) return;
     const v = (document.getElementById('entryWhereInput')?.value || '').trim();
     if (!v || state.confirmed.place === v) return;
     state.confirmed.place = v;

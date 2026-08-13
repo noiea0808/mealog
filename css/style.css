@@ -18543,9 +18543,15 @@ html.service-guide-active #landingPage {
     flex-wrap: wrap;
     gap: 4px;
     margin-top: 6px;
-    /* 빈 상태에서도 자리를 유지 — 칩이 생겨도 시트가 밀리지 않는다 (스크롤 없이 보이게).
-       칩 실측 높이(30px)와 같게 잡아 나타날 때 레이아웃 이동이 0이 되도록 한다. */
     min-height: 30px;
+}
+/* 빈 상태는 자리를 차지하지 않는다 — 텍스트를 넣어 제안이 뜰 때 그만큼 펼쳐진다.
+   자리를 미리 비워두면 늘 빈 띠가 보였다. 키보드가 열린 동안에는 시트 높이 재측정이
+   막혀 있으므로(entry-sheet-tabs.js), 칩이 생기는 순간 늘어난 높이를 growthPx로
+   따로 통지해 시트가 그만큼 커지게 한다. */
+.entry-suggest-row--empty {
+    min-height: 0;
+    margin-top: 0;
 }
 .entry-suggest-chip {
     display: inline-flex;
@@ -18705,6 +18711,18 @@ html.service-guide-active #landingPage {
 .entry-context-free svg {
     width: 12px;
     height: 12px;
+}
+/* 맞아요를 누른 뒤 자리 — 버튼이 흔적 없이 사라지지 않도록 */
+.entry-predict-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--color-primary);
+    font-weight: 700;
+}
+.entry-predict-done svg {
+    width: 13px;
+    height: 13px;
 }
 /* 1페이지 '자세히' 접힘 — 전체 축 섹션(구 2페이지) */
 #entryModal .entry-axis-detail {

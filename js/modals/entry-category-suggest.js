@@ -96,12 +96,21 @@ function render() {
     if (!el) return;
 
     /**
-     * 빈 상태에서도 자리를 비워둔다(display:none 금지).
-     * 시트 높이는 열릴 때 한 번 재는데, 입력 중에는 키보드가 열려 있어 재측정이 막혀 있다
-     * (entry-sheet-tabs.js syncEntrySheetHeightLock의 keyboard-open 가드).
-     * 그래서 나중에 칩이 생기면 그만큼 아래로 밀려 스크롤해야 보였다.
-     * 자리를 미리 잡아두면 칩이 그 자리에 나타나므로 레이아웃이 흔들리지도 않는다.
+     * 빈 상태는 높이 0 — 텍스트를 넣어 제안이 뜰 때 그만큼 펼쳐진다.
+     *
+     * 시트 높이는 열릴 때 한 번 재는데 입력 중에는 키보드가 열려 있어 재측정이 막혀 있다
+     * (entry-sheet-tabs.js syncEntrySheetHeightLock의 keyboard-open 가드). 그래서 늘어난
+     * 높이를 growthPx로 직접 통지해, 키보드가 열린 상태에서도 시트가 칩만큼 커지게 한다.
+     * (예전에는 이 문제를 빈 자리 예약으로 피했지만 늘 빈 띠가 보였다.)
      */
+    const heightBefore = el.offsetHeight;
+    const notifyGrowth = () => {
+        const grew = el.offsetHeight - heightBefore;
+        if (grew > 0 && typeof window.syncEntrySheetHeightLock === 'function') {
+            window.syncEntrySheetHeightLock({ growthPx: grew });
+        }
+    };
+
     if (state.dismissed || state.suggestions.length === 0) {
         el.innerHTML = '';
         el.classList.add('entry-suggest-row--empty');
@@ -132,6 +141,7 @@ function render() {
             <i data-lucide="x" aria-hidden="true"></i>
         </button>`;
     refreshLucideIcons(el);
+    notifyGrowth();
 }
 
 function onContainerClick(e) {

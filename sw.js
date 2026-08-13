@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
 // v10: 어디서·누구와 전용 페이지 제거(3단계 → 2단계). 전체 축 섹션은 1페이지
 // '자세히' 접힘으로 이동. index.html 구조 변경이라 캐시 세대를 올린다.
-const CACHE_NAME = 'mealog-v10';
+const CACHE_NAME = 'mealog-v11';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
