@@ -95,6 +95,9 @@ firebase functions:delete classifyUncategorizedMeals --region us-central1
 
 - **Cloud Functions 배포 완료** (운영 `mealog-r0`, us-central1):
   `searchKakaoPlaces` · `classifyUncategorizedMeals` · `adminClassifyLegacyMeals`.
+  후자 둘은 형태 축 14개(간식 축 흡수)로 한 번 더 재배포했다.
+  운영 클라이언트는 `categoryAuto` 를 어디서도 읽지 않아(staging 브랜치 참조 0건)
+  사용자에게 보이는 변화는 없다.
 - ⚠️ **클라이언트는 여전히 미배포** — 위 UI/사전 변경은 test 브랜치에만 있다.
 - **categoryAuto 축 혼재는 읽기 매핑으로 해결됨**: 배포 이전 기록은 옛 축(밥/한상·단백질식…),
   이후는 새 축(밥류·국물요리…)이고 `categorySource` 가 찍히면 재분류되지 않아 저절로
