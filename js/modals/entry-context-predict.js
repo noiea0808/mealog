@@ -24,6 +24,7 @@ import { setVal } from '../utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { dominantPlaceGroup, normalizePlace } from '../utils/place-normalize.js';
+import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 import { getAxis1TagList } from './entry-form-config.js';
 
 const CONTAINER_ID = 'entryContextPredict';
@@ -43,6 +44,10 @@ const AXES = [
 const state = {
     predicted: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
     confirmed: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
+    /** 습관 예측 원본(이력 최빈값) — 사실-유도 추론과 합성할 때 참조 */
+    habitMealType: /** @type {string|null} */ (null),
+    /** 무엇을 자동 분류의 현재 1순위 (entry-category-suggest가 밀어줌) */
+    foodCategory: /** @type {string|null} */ (null),
     /** 인라인 피커가 열린 축 (null이면 닫힘) */
     openAxis: /** @type {string|null} */ (null),
     active: false,
@@ -59,6 +64,8 @@ export function getEntryContextPredictConfirm() {
 export function resetEntryContextPredict() {
     state.predicted = { mealType: null, place: null, withWhom: null };
     state.confirmed = { mealType: null, place: null, withWhom: null };
+    state.habitMealType = null;
+    state.foodCategory = null;
     state.openAxis = null;
     state.active = false;
     render();
@@ -196,6 +203,67 @@ function visibleAxes() {
 }
 
 /**
+ * 어떻게(mealType) 사실-유도 추론 — **이 기록에 이미 입력된 것**에서 조달 방식을 읽는다
+ * (docs/entry-axes-and-tags-direction.md §5). 이력 통계(습관 예측)가 아니라 현재 기록의
+ * 사실에서 나오므로, 합성 시 습관 예측보다 우선한다.
+ *
+ * 1. 카카오 장소 픽 → placeType이 식당/술집/카페면 '외식' (사용자가 고른 장소의 객관 속성)
+ * 2. 장소 표기가 '구내식당' → '구내식당' (장소가 값 자체)
+ * 3. 장소가 집 그룹 + 무엇을 분류가 밥/한상 → '집밥' (집에서 차린 한 상)
+ *    — 집에서 배달을 먹는 반례가 있어 확신은 아니지만, 점선 추측 + 확인 장치가 받는다.
+ *
+ * @returns {string|null}
+ */
+function inferMealTypeFromFacts() {
+    try {
+        const input = document.getElementById('entryWhereInput');
+        const raw = (input?.value || '').trim();
+        const dataStr = input?.getAttribute('data-kakao-place-data');
+        const pickedName = (input?.getAttribute('data-kakao-place-name') || '').trim();
+        // 장소명을 수정했으면 카카오 속성도 무효 (저장 경로의 nameMatches와 같은 규칙)
+        if (dataStr && pickedName && raw === pickedName) {
+            const d = JSON.parse(dataStr);
+            const pt = placeTypeFromKakaoCategory(d?.categoryGroupCode, d?.category);
+            if (pt === '식당' || pt === '술집' || pt === '카페') return '외식';
+        }
+        if (!raw) return null;
+        const norm = normalizePlace(raw);
+        if (norm.includes('구내식당')) return '구내식당';
+        if (norm === '집' && state.foodCategory === '밥/한상') return '집밥';
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * 어떻게 추측 재합성: 사실-유도 추론 > 습관 예측. 확정됐거나 칩이 이미 선택돼 있으면 개입 금지.
+ * 무엇을 텍스트·어디서 입력이 바뀔 때마다 불린다 — 추측이 입력을 따라 실시간으로 갱신된다.
+ */
+function refreshMealTypeGuess() {
+    if (!state.active || appState.entryFormMode === 'snack') return;
+    if (state.confirmed.mealType) return;
+    if (document.querySelector('#entryWhereChips button.chip.active')) return;
+    const next = inferMealTypeFromFacts() || state.habitMealType;
+    if ((state.predicted.mealType || null) !== (next || null)) {
+        state.predicted.mealType = next;
+        render();
+    }
+}
+
+/**
+ * 무엇을 자동 분류의 1순위가 바뀔 때 entry-category-suggest가 호출.
+ * '집+밥/한상→집밥' 추론의 입력이 된다.
+ * @param {string|null} category
+ */
+export function updateEntryContextFoodCategory(category) {
+    const next = category || null;
+    if (state.foodCategory === next) return;
+    state.foodCategory = next;
+    refreshMealTypeGuess();
+}
+
+/**
  * 시트 열림이 끝난 뒤 호출. 비어 있는 필드에 대해서만 예측한다.
  * @param {{ slotId: string, dateStr: string, isSnack: boolean }} args
  */
@@ -223,8 +291,10 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
 
         const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
         const weekend = isWeekendDate(dateStr);
+        state.habitMealType = mealTypeFilled ? null : predictField(history, 'mealType', slotId, weekend);
         state.predicted = {
-            mealType: mealTypeFilled ? null : predictField(history, 'mealType', slotId, weekend),
+            // 어떻게는 습관 예측 + 사실-유도 추론(카카오 픽·장소 표기·음식 분류)의 합성
+            mealType: mealTypeFilled ? null : (inferMealTypeFromFacts() || state.habitMealType),
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
@@ -369,6 +439,8 @@ function confirmAxis(key, value) {
     state.confirmed[key] = value;
     state.predicted[key] = null;
     writeThrough(key, value);
+    // 장소 확정은 어떻게 추론의 입력 (피커에서 '집'을 고르면 집밥 추측이 뜰 수 있다)
+    if (key === 'place') refreshMealTypeGuess();
 }
 
 function applyAllPredictions() {
@@ -443,10 +515,13 @@ function onContainerClick(e) {
 export function syncEntryContextPlaceFromInput() {
     if (!state.active) return;
     const v = (document.getElementById('entryWhereInput')?.value || '').trim();
-    if (!v || state.confirmed.place === v) return;
-    state.confirmed.place = v;
+    if (state.confirmed.place === (v || null)) return;
+    // 지운 경우: 확정 회수 + 그 장소에 기대던 어떻게 추측도 다시 계산
+    state.confirmed.place = v || null;
     state.predicted.place = null;
     render();
+    // 장소가 바뀌면 어떻게 추론의 입력이 바뀐다 (카카오 픽→외식 등)
+    refreshMealTypeGuess();
 }
 
 /** 시트 초기화 시 1회 — 클릭 위임 바인딩 */

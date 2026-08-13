@@ -13,6 +13,7 @@ import { appState } from '../state.js';
 import { classifyFoodText, classifySnackText } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { updateEntryContextFoodCategory } from './entry-context-predict.js';
 
 const CONTAINER_ID = 'entryCategorySuggest';
 const INPUT_ID = 'entryWhatInput';
@@ -86,6 +87,10 @@ function runClassify() {
             logUsageMetric('category_suggest_shown').catch(() => {});
         }
         render();
+        // 맥락 줄의 어떻게 추론('집+밥/한상→집밥')에 분류 1순위를 공급 — best-effort
+        try {
+            updateEntryContextFoodCategory(next.length > 0 ? next[0] : null);
+        } catch (_) { /* 추론 실패가 제안 렌더를 막으면 안 된다 */ }
     } catch (_) {
         /* 제안 실패는 무시 — 입력·저장에 영향 금지 */
     }
