@@ -18631,14 +18631,15 @@ html.service-guide-active #landingPage {
 .entry-context-seg {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    gap: 5px;
     max-width: 100%;
-    padding: 4px 9px;
+    padding: 7px 12px;
     border: 1px dashed #cbd5e1;
-    border-radius: 14px;
+    /* 각진 모서리 — 피커의 알약형 선택지와 층위를 다르게 한다 */
+    border-radius: 8px;
     background: white;
     color: #475569;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
@@ -18649,14 +18650,14 @@ html.service-guide-active #landingPage {
     white-space: nowrap;
 }
 .entry-context-seg svg {
-    width: 13px;
-    height: 13px;
+    width: 17px;
+    height: 17px;
     color: #94a3b8;
     flex-shrink: 0;
 }
 .entry-context-seg__caret {
-    width: 11px !important;
-    height: 11px !important;
+    width: 13px !important;
+    height: 13px !important;
 }
 .entry-context-seg--confirmed {
     border-style: solid;
@@ -18680,10 +18681,9 @@ html.service-guide-active #landingPage {
     transform: rotate(180deg);
 }
 /* ⋯(자세히): 전체 축 섹션 여닫기 — 아이콘 전용 미니 칩 */
-/* '세부' 칩: 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 값이 아니라 도구라서
-   캐럿 없이 아이콘+라벨만, 회색 계열로 세그먼트와 구분한다 */
+/* '세부' 칩: 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기.
+   현재 렌더에서 빠져 있다 — 다시 붙일 때 쓰라고 스타일만 남긴다 */
 .entry-context-seg--more {
-    padding: 4px 9px;
     border-style: solid;
     border-color: #e2e8f0;
     background: #f8fafc;

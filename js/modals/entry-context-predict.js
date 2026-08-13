@@ -436,7 +436,6 @@ function render() {
      * 개별 수정은 세그먼트 탭 → 피커에서 한다.
      */
     const hasAuto = axes.some((a) => state.predicted[a.key] && !state.confirmed[a.key]);
-    const axisDetailOpen = !document.getElementById('entryAxisFields')?.classList.contains('hidden');
     const toggle = hasAuto
         ? `<button type="button" class="entry-predict-toggle${state.useGuess ? ' entry-predict-toggle--on' : ''}"
                 data-predict-toggle role="switch" aria-checked="${state.useGuess}"
@@ -454,9 +453,6 @@ function render() {
         </div>
         <div class="entry-context-segs">
             ${axes.map(renderSegment).join('')}
-            <button type="button" class="entry-context-seg entry-context-seg--more${axisDetailOpen ? ' entry-context-seg--open' : ''}" data-context-more title="세부 항목 직접 입력" aria-expanded="${axisDetailOpen}" aria-controls="entryAxisFields">
-                <i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>세부</span>
-            </button>
         </div>
         ${renderPicker()}`;
     el.classList.remove('hidden');
@@ -551,8 +547,12 @@ function onContainerClick(e) {
         render();
         return;
     }
+    /**
+     * '세부' 칩은 현재 렌더하지 않는다 (모양 검토 중 제외). 핸들러는 남겨둔다 —
+     * 다시 붙이면 바로 동작하고, window.toggleEntryAxisDetail 로도 열 수 있다.
+     * ⚠️ 칩이 없는 동안 전체 축 섹션(건너뜀 칩·서브태그·누구와 상세)에 UI 진입점이 없다.
+     */
     if (e.target.closest('[data-context-more]')) {
-        // '세부' = 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 상태는 render가 다시 읽는다
         if (typeof window.toggleEntryAxisDetail === 'function') window.toggleEntryAxisDetail();
         render();
         return;
