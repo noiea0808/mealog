@@ -64,6 +64,8 @@ const state = {
     foodCategory: /** @type {string|null} */ (null),
     /** 무엇을에서 파생한 요리 종류 — '중식→외식' 추론의 입력 */
     foodCuisine: /** @type {string|null} */ (null),
+    /** 현재 어디서 추측이 어떻게에서 파생된 것인지 (어떻게가 바뀌면 함께 무효화) */
+    placeFromMealTypeChain: false,
     /** 인라인 피커가 열린 축 (null이면 닫힘) */
     openAxis: /** @type {string|null} */ (null),
     active: false,
@@ -94,6 +96,7 @@ export function resetEntryContextPredict() {
     state.habitMealType = null;
     state.foodCategory = null;
     state.foodCuisine = null;
+    state.placeFromMealTypeChain = false;
     state.openAxis = null;
     state.active = false;
     render();
@@ -169,7 +172,14 @@ function predictField(history, field, slotId, weekend) {
     const bySlot = qualifiedMode(slotSamples, groupPlaces);
     if (bySlot) return bySlot;
 
-    const anySamples = sorted.slice(0, RECENT_LIMIT).map((r) => r[field].trim());
+    /**
+     * 슬롯 표본이 모자라면 넓히되 **같은 종류(끼니/간식)까지만** 본다.
+     * 예전엔 전체 이력으로 폴백했는데, 간식 예측이 켜지면서 끼니 장소('구내식당')가
+     * 간식 추측으로 새는 경로가 된다 — 카페에서 먹는 간식과 섞이면 안 된다.
+     */
+    const wantSnack = isSnackSlot(slotId);
+    const sameKind = sorted.filter((r) => isSnackSlot(r.slotId) === wantSnack);
+    const anySamples = sameKind.slice(0, RECENT_LIMIT).map((r) => r[field].trim());
     return qualifiedMode(anySamples, groupPlaces);
 }
 
@@ -362,8 +372,47 @@ function refreshMealTypeGuess() {
     const next = inferMealTypeFromFacts() || state.habitMealType;
     if ((state.predicted.mealType || null) !== (next || null)) {
         state.predicted.mealType = next;
+        /**
+         * 어떻게가 바뀌면 **그 어떻게 때문에 넣었던 어디서**는 근거를 잃는다.
+         * ("배민 치킨"→배달/포장·우리집 에서 "탕수육"으로 고치면 우리집이 남으면 안 된다)
+         * 습관 예측이 내놓은 어디서는 근거가 따로라 건드리지 않는다.
+         */
+        if (state.placeFromMealTypeChain) {
+            state.predicted.place = null;
+            state.placeFromMealTypeChain = false;
+        }
+        applyPlaceFromMealType();
         render();
     }
+}
+
+/**
+ * 어떻게 → 어디서 연쇄 추론.
+ *
+ * 어떻게가 '집밥'으로 추천됐는데 어디서가 비어 있으면 '우리집'이 따라오는 게 자연스럽다.
+ * 다만 **빈칸을 채울 때만** 개입한다 — 이미 슬롯 기반 습관 예측이 장소를 내놨다면
+ * 그쪽이 더 구체적이므로 덮지 않는다(추측 위에 추측을 얹어 오차가 곱해지는 걸 막는다).
+ *
+ * 값은 개인 통계 우선: "내가 집밥일 때 어디서였나"가 시드('우리집')보다 정확하다.
+ * 외식·회식은 상호명이라 추론하지 않는다.
+ */
+function applyPlaceFromMealType() {
+    if (state.confirmed.place || state.predicted.place || state.userCleared.place) return;
+    if ((document.getElementById('entryWhereInput')?.value || '').trim()) return;
+    const mealType = state.predicted.mealType || state.confirmed.mealType;
+    if (!mealType) return;
+
+    const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+    const samples = usableRecords(history, 'place')
+        .filter((r) => r.mealType === mealType)
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, RECENT_LIMIT)
+        .map((r) => r.place.trim());
+    const personal = qualifiedMode(samples, true);
+    const derived = personal || PLACE_SEED_BY_MEALTYPE[mealType] || null;
+    state.predicted.place = derived;
+    // 이 어디서가 어떻게에서 파생됐음을 표시 — 어떻게가 바뀌면 함께 무효화된다
+    state.placeFromMealTypeChain = Boolean(derived);
 }
 
 /**
@@ -373,6 +422,25 @@ function refreshMealTypeGuess() {
  */
 /** 집에서 차렸다는 신호가 되는 형태 — 장소가 '집'일 때 집밥 추측의 근거 */
 const HOME_COOKED_FORMS = new Set(['밥류', '국물요리']);
+
+/** 간식 슬롯 (js/analytics/charts.js SNACK_SLOTS 와 동기화) */
+const SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
+
+/** @param {string} slotId */
+function isSnackSlot(slotId) {
+    return SNACK_SLOT_IDS.has(String(slotId || ''));
+}
+
+/**
+ * 어떻게 → 어디서 콜드 스타트 시드.
+ * 이력이 없을 때만 쓴다 — 실제 값은 "내가 집밥일 때 어디서였나"라는 개인 통계에서 나온다.
+ * 외식·회식은 상호명이라 시드가 불가능하다.
+ */
+const PLACE_SEED_BY_MEALTYPE = {
+    '집밥': '우리집',
+    '배달/포장': '우리집',
+    '구내식당': '구내식당',
+};
 
 const MEALTYPE_SEED_BY_CUISINE = {
     '중식': '외식',
@@ -449,11 +517,6 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack, autoContext
         state.active = true;
 
         /**
-         * 간식도 줄은 활성화하되 **예측은 하지 않는다** — 간식 place 입력률·반복성
-         * 데이터를 본 뒤 판단하기로 한 결정(place-axis-unification.md §3) 유지.
-         * 빈 트리거(+ 어디서 · + 누구와)와 ⋯(자세히)만 제공해 입력 진입점을 통일한다.
-         */
-        /**
          * 이미 채워진 값(기록 수정 진입·시트 재열기)을 세그먼트에 싣는다.
          * 이게 없으면 값이 있는 기록을 수정할 때 세그먼트가 '+ 어떻게'로 비어 보였다.
          * 사용자가 저장했던 값이므로 확정(실선) 취급이다 — 추측이 아니다.
@@ -478,11 +541,6 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack, autoContext
         };
         if (autoAxes.size > 0) state.useGuess = true;
 
-        if (isSnack) {
-            render();
-            return;
-        }
-
         const mealTypeFilled = Boolean(existing.mealType);
         const placeFilled = Boolean(existing.place);
         const withFilled =
@@ -491,13 +549,22 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack, autoContext
 
         const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
         const weekend = isWeekendDate(dateStr);
-        state.habitMealType = mealTypeFilled ? null : predictField(history, 'mealType', slotId, weekend);
+        /**
+         * 간식도 끼니와 같은 예측을 탄다 (2026-08-13 결정 — 이전에는 데이터를 본 뒤
+         * 판단하기로 미뤄뒀다). 축은 어디서·누구와 둘뿐이라 어떻게 관련 계산은 건너뛴다.
+         * 표본은 predictField 가 같은 종류(간식 슬롯)로 좁혀 뽑는다.
+         */
+        state.habitMealType = (isSnack || mealTypeFilled)
+            ? null
+            : predictField(history, 'mealType', slotId, weekend);
         state.predicted = {
             // 어떻게는 습관 예측 + 사실-유도 추론(카카오 픽·장소 표기·음식 분류)의 합성
-            mealType: mealTypeFilled ? null : (inferMealTypeFromFacts() || state.habitMealType),
+            mealType: (isSnack || mealTypeFilled) ? null : (inferMealTypeFromFacts() || state.habitMealType),
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
+        // 어떻게가 추측됐는데 어디서가 비었으면 거기서 이어 받는다 (집밥 → 우리집)
+        if (!isSnack) applyPlaceFromMealType();
         // 자동 적용으로 저장됐던 축은 그때 값을 추천으로 복원 (예측 계산보다 우선)
         for (const key of autoAxes) {
             if (existing[key]) state.predicted[key] = existing[key];
