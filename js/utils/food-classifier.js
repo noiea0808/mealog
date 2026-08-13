@@ -25,6 +25,7 @@ export {
     setFoodDictionaryOverrides,
     getFoodDictionaryOverrides,
     isBaseFoodEntry,
+    getBaseFoodEntry,
     FOOD_ENTRIES,
 } from './food-dictionary.js';
 

@@ -278,5 +278,14 @@ export function isBaseFoodEntry(word) {
     return buildBaseEntries().has(String(word || '').trim());
 }
 
+/**
+ * 코드 기본값 (오버라이드 적용 **전**). 편집이 기본값과 같아지면 오버라이드를
+ * 남기지 않기 위해 관리자 화면이 참조한다.
+ * @returns {{ form: string, cuisine: string } | null}
+ */
+export function getBaseFoodEntry(word) {
+    return buildBaseEntries().get(String(word || '').trim()) || null;
+}
+
 /** 관리자 분류사전 열람용 — 작성 원본 그대로 (형태 → 요리종류 → 음식) */
 export { DICTIONARY_SOURCE };

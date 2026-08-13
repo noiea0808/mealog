@@ -22,12 +22,15 @@ import {
     setFoodDictionaryOverrides,
     getFoodDictionaryOverrides,
     isBaseFoodEntry,
+    getBaseFoodEntry,
 } from '../utils/food-classifier.js';
 import { escapeHtml } from './utils.js';
 
 /** 편집 중 상태 — 저장 전까지 Firestore에 쓰지 않는다 */
 let draft = { entries: {}, removed: [] };
 let filterText = '';
+/** 터치 기기용 2단계 이동: 칩을 눌러 고른 뒤 대상 칸의 종류 이름을 누른다 */
+let selectedWord = null;
 
 /** onclick="fn('...')" 안에 들어갈 문자열 — 따옴표·역슬래시가 속성을 깨지 않게 */
 function jsArg(s) {
@@ -110,34 +113,69 @@ function currentEntries() {
         .sort((a, b) => a.form.localeCompare(b.form) || a.word.localeCompare(b.word));
 }
 
+/** (형태 → 요리종류 → 음식[]) 로 묶기 — 편집 상태 반영 */
+function groupedEntries() {
+    const grouped = {};
+    for (const form of FORM_CATEGORIES) {
+        grouped[form] = {};
+        for (const cuisine of CUISINE_CATEGORIES) grouped[form][cuisine] = [];
+    }
+    for (const e of currentEntries()) {
+        if (!grouped[e.form]) continue;
+        const cuisine = grouped[e.form][e.cuisine] ? e.cuisine : '기타';
+        grouped[e.form][cuisine].push(e.word);
+    }
+    return grouped;
+}
+
+function renderChip(word) {
+    const edited = Object.prototype.hasOwnProperty.call(draft.entries, word);
+    const isBase = isBaseFoodEntry(word);
+    const dim = filterText && !word.includes(filterText);
+    const ring = !isBase
+        ? 'border-emerald-400 bg-emerald-50 text-emerald-800'
+        : edited
+            ? 'border-amber-400 bg-amber-50 text-amber-800'
+            : 'border-slate-200 bg-slate-50 text-slate-700';
+    const selected = selectedWord === word ? ' ring-2 ring-emerald-500' : '';
+    return `<span draggable="true" data-food-word="${escapeHtml(word)}"
+        class="food-chip inline-flex items-center gap-1 px-2 py-1 border rounded-md text-xs font-semibold cursor-grab ${ring}${selected}"
+        style="${dim ? 'opacity:.25;' : ''}" title="끌어서 옮기거나, 눌러서 선택 후 대상 그룹을 누르세요">
+        ${escapeHtml(word)}
+        ${edited || !isBase ? `<button type="button" data-food-reset="${escapeHtml(word)}" class="text-[10px] text-slate-400 hover:text-slate-700" title="기본값으로 되돌리기">↺</button>` : ''}
+        <button type="button" data-food-remove="${escapeHtml(word)}" class="text-[10px] text-slate-400 hover:text-red-600" title="사전에서 삭제">✕</button>
+    </span>`;
+}
+
 function renderEditorSection() {
-    const rows = currentEntries()
-        .filter((e) => !filterText || e.word.includes(filterText))
-        .map((e) => {
-            const edited = Object.prototype.hasOwnProperty.call(draft.entries, e.word);
-            const isBase = isBaseFoodEntry(e.word);
-            return `
-            <tr class="border-b border-slate-100 ${edited ? 'bg-amber-50' : ''}">
-                <td class="py-1.5 px-2 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(e.word)}${edited ? '<span class="ml-1 text-[10px] text-amber-600 font-black">수정됨</span>' : ''}${!isBase ? '<span class="ml-1 text-[10px] text-emerald-600 font-black">추가</span>' : ''}</td>
-                <td class="py-1.5 px-2">
-                    <select onchange="window.updateFoodDictEntry('${jsArg(e.word)}','form',this.value)" class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500">
-                        ${FORM_CATEGORIES.map((f) => `<option value="${escapeHtml(f)}"${f === e.form ? ' selected' : ''}>${escapeHtml(f)}</option>`).join('')}
-                    </select>
-                </td>
-                <td class="py-1.5 px-2">
-                    <select onchange="window.updateFoodDictEntry('${jsArg(e.word)}','cuisine',this.value)" class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-emerald-500">
-                        ${CUISINE_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}"${c === e.cuisine ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-                    </select>
-                </td>
-                <td class="py-1.5 px-2 text-right whitespace-nowrap">
-                    ${edited || !isBase ? `<button onclick="window.resetFoodDictEntry('${jsArg(e.word)}')" class="px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200">되돌리기</button>` : ''}
-                    <button onclick="window.removeFoodDictEntry('${jsArg(e.word)}')" class="ml-1 px-2 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100">삭제</button>
-                </td>
-            </tr>`;
-        })
-        .join('');
+    const grouped = groupedEntries();
     const total = currentEntries().length;
     const changed = Object.keys(draft.entries).length + draft.removed.length;
+    const matched = filterText ? currentEntries().filter((e) => e.word.includes(filterText)).length : 0;
+
+    const cards = FORM_CATEGORIES.map((form) => {
+        const byCuisine = grouped[form];
+        const count = Object.values(byCuisine).reduce((n, a) => n + a.length, 0);
+        const groups = CUISINE_CATEGORIES.map((cuisine) => {
+            const words = byCuisine[cuisine];
+            const empty = words.length === 0;
+            return `
+                <div data-drop-form="${escapeHtml(form)}" data-drop-cuisine="${escapeHtml(cuisine)}"
+                     class="food-drop rounded-lg border border-dashed border-slate-200 px-2 ${empty ? 'py-1' : 'py-1.5'} mb-1 transition-colors">
+                    <button type="button" data-drop-target class="text-[11px] font-black ${empty ? 'text-slate-300' : 'text-emerald-700'} mr-1 align-top">${escapeHtml(cuisine)}</button>
+                    ${empty ? '' : `<span class="inline-flex flex-wrap gap-1 align-top">${words.map(renderChip).join('')}</span>`}
+                </div>`;
+        }).join('');
+        return `
+            <div class="border border-slate-200 rounded-xl p-3 bg-white">
+                <div class="flex items-center justify-between mb-2">
+                    <h4 class="text-sm font-black text-slate-800">${escapeHtml(form)}</h4>
+                    <span class="text-xs text-slate-400 font-bold">${count}개</span>
+                </div>
+                ${groups}
+            </div>`;
+    }).join('');
+
     return `
         <div class="mb-6 bg-white rounded-xl p-5 border border-slate-200">
             <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
@@ -147,7 +185,8 @@ function renderEditorSection() {
                     <button onclick="window.saveFoodDict()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">저장</button>
                 </div>
             </div>
-            <p class="text-xs text-slate-500 mb-3">기본 사전은 코드에 있고, 여기서 고친 값만 <b>오버라이드</b>로 저장됩니다. '되돌리기'를 누르면 코드 기본값으로 돌아갑니다. 매칭은 최장 일치라 긴 이름이 항상 이깁니다(예: '탕수육'이 '수육'보다 먼저).</p>
+            <p class="text-xs text-slate-500 mb-1">음식을 <b>끌어서</b> 다른 형태·요리 종류 칸에 놓으면 분류가 바뀝니다. 터치 기기에서는 칩을 누른 뒤 옮길 칸의 <b>종류 이름</b>을 누르세요.</p>
+            <p class="text-xs text-slate-400 mb-3">기본값은 코드에 있고 고친 값만 오버라이드로 저장됩니다. <span class="text-amber-600 font-bold">노랑=수정됨</span> · <span class="text-emerald-600 font-bold">초록=추가됨</span> · ↺ 되돌리기 · ✕ 삭제</p>
             <div class="flex flex-wrap items-center gap-2 mb-3">
                 <input type="text" id="foodDictNewWord" placeholder="추가할 음식명" class="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500">
                 <select id="foodDictNewForm" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none">
@@ -157,20 +196,10 @@ function renderEditorSection() {
                     ${CUISINE_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                 </select>
                 <button onclick="window.addFoodDictEntry()" class="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300">추가</button>
-                <input type="text" id="foodDictFilter" value="${escapeHtml(filterText)}" placeholder="검색" class="ml-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500">
+                <input type="text" id="foodDictFilter" value="${escapeHtml(filterText)}" placeholder="검색 (일치하지 않는 항목은 흐리게)" class="ml-auto px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm outline-none focus:border-emerald-500" style="min-width:14rem">
             </div>
-            <p class="text-xs text-slate-400 mb-2">전체 ${total}개${filterText ? ` · '${escapeHtml(filterText)}' 검색 결과` : ''}</p>
-            <div class="border border-slate-200 rounded-xl overflow-hidden overflow-x-auto" style="max-height: 32rem; overflow-y: auto;">
-                <table class="w-full text-sm">
-                    <thead class="sticky top-0"><tr class="bg-slate-50 text-xs text-slate-500">
-                        <th class="py-2 px-2 text-left font-bold">음식</th>
-                        <th class="py-2 px-2 text-left font-bold">형태</th>
-                        <th class="py-2 px-2 text-left font-bold">요리 종류</th>
-                        <th class="py-2 px-2"></th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
+            <p class="text-xs text-slate-400 mb-2">전체 ${total}개${filterText ? ` · '${escapeHtml(filterText)}' 일치 ${matched}개` : ''}${selectedWord ? ` · <span class="text-emerald-600 font-bold">'${escapeHtml(selectedWord)}' 선택됨 — 옮길 칸의 종류 이름을 누르세요</span>` : ''}</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${cards}</div>
         </div>`;
 }
 
@@ -269,6 +298,22 @@ window.updateFoodDictEntry = function (word, field, value) {
     rerender();
 };
 
+/**
+ * 음식을 다른 (형태 × 요리 종류) 칸으로 옮긴다 — 드래그앤드롭·선택이동 공통 경로.
+ * 옮긴 값이 코드 기본값과 같아지면 오버라이드를 남기지 않는다(불필요한 저장 방지).
+ * @param {string} word @param {string} form @param {string} cuisine
+ */
+function moveFoodEntry(word, form, cuisine) {
+    const cur = currentValueOf(word);
+    if (!cur || (cur.form === form && cur.cuisine === cuisine)) return;
+    const base = getBaseFoodEntry(word);
+    draft.removed = draft.removed.filter((w) => w !== word);
+    if (base && base.form === form && base.cuisine === cuisine) delete draft.entries[word];
+    else draft.entries[word] = { form, cuisine };
+    selectedWord = null;
+    rerender();
+}
+
 window.resetFoodDictEntry = function (word) {
     delete draft.entries[word];
     draft.removed = draft.removed.filter((w) => w !== word);
@@ -310,6 +355,84 @@ window.saveFoodDict = async function () {
     }
 };
 
+/* ─────────────────────────── 드래그앤드롭 · 선택 이동 ─────────────────────────── */
+
+/**
+ * 컨테이너에 **한 번만** 위임 바인딩한다. rerender 가 innerHTML 을 갈아끼워도
+ * 컨테이너 자체는 유지되므로 칩 393개에 리스너를 각각 달 필요가 없다.
+ */
+let dndBound = false;
+function bindEditorInteractionsOnce() {
+    const container = document.getElementById('foodDictContainer');
+    if (!container || dndBound) return;
+    dndBound = true;
+
+    const dropZoneOf = (el) => el?.closest?.('[data-drop-form]') || null;
+    const clearHighlights = () => {
+        container.querySelectorAll('.food-drop').forEach((z) => {
+            z.classList.remove('border-emerald-500', 'bg-emerald-50');
+        });
+    };
+
+    container.addEventListener('dragstart', (e) => {
+        const chip = e.target.closest?.('[data-food-word]');
+        if (!chip) return;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', chip.getAttribute('data-food-word'));
+        chip.style.opacity = '0.4';
+    });
+
+    container.addEventListener('dragend', (e) => {
+        const chip = e.target.closest?.('[data-food-word]');
+        if (chip) chip.style.opacity = '';
+        clearHighlights();
+    });
+
+    container.addEventListener('dragover', (e) => {
+        const zone = dropZoneOf(e.target);
+        if (!zone) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        clearHighlights();
+        zone.classList.add('border-emerald-500', 'bg-emerald-50');
+    });
+
+    container.addEventListener('drop', (e) => {
+        const zone = dropZoneOf(e.target);
+        if (!zone) return;
+        e.preventDefault();
+        clearHighlights();
+        const word = e.dataTransfer.getData('text/plain');
+        if (word) moveFoodEntry(word, zone.getAttribute('data-drop-form'), zone.getAttribute('data-drop-cuisine'));
+    });
+
+    container.addEventListener('click', (e) => {
+        const resetBtn = e.target.closest?.('[data-food-reset]');
+        if (resetBtn) {
+            window.resetFoodDictEntry(resetBtn.getAttribute('data-food-reset'));
+            return;
+        }
+        const removeBtn = e.target.closest?.('[data-food-remove]');
+        if (removeBtn) {
+            window.removeFoodDictEntry(removeBtn.getAttribute('data-food-remove'));
+            return;
+        }
+        // 터치 기기 대체 경로: 칩 선택 → 대상 칸의 종류 이름 클릭
+        const chip = e.target.closest?.('[data-food-word]');
+        if (chip) {
+            const word = chip.getAttribute('data-food-word');
+            selectedWord = selectedWord === word ? null : word;
+            rerender();
+            return;
+        }
+        const target = e.target.closest?.('[data-drop-target]');
+        if (target && selectedWord) {
+            const zone = dropZoneOf(target);
+            if (zone) moveFoodEntry(selectedWord, zone.getAttribute('data-drop-form'), zone.getAttribute('data-drop-cuisine'));
+        }
+    });
+}
+
 /* ─────────────────────────── 렌더 ─────────────────────────── */
 
 function rerender() {
@@ -335,9 +458,14 @@ function rerender() {
         filter.addEventListener('input', () => {
             filterText = filter.value.trim();
             rerender();
-            document.getElementById('foodDictFilter')?.focus();
+            const next = document.getElementById('foodDictFilter');
+            if (next) {
+                next.focus();
+                next.setSelectionRange(next.value.length, next.value.length);
+            }
         });
     }
+    bindEditorInteractionsOnce();
 }
 
 let loaded = false;
