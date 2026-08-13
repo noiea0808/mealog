@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
 // v27: 형태 축이 간식 축 흡수 — 14개 단일 축.
 // CSS·JS 조합이 갈리지 않도록 캐시 세대를 올린다.
-const CACHE_NAME = 'mealog-v27';
+const CACHE_NAME = 'mealog-v28';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
