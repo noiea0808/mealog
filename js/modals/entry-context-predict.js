@@ -202,8 +202,18 @@ function visibleAxes() {
 export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
     try {
         resetEntryContextPredict();
-        if (isSnack || !slotId || !dateStr) return;
+        if (!slotId || !dateStr) return;
         state.active = true;
+
+        /**
+         * 간식도 줄은 활성화하되 **예측은 하지 않는다** — 간식 place 입력률·반복성
+         * 데이터를 본 뒤 판단하기로 한 결정(place-axis-unification.md §3) 유지.
+         * 빈 트리거(+ 어디서 · + 누구와)와 ⋯(자세히)만 제공해 입력 진입점을 통일한다.
+         */
+        if (isSnack) {
+            render();
+            return;
+        }
 
         const mealTypeFilled = Boolean(document.querySelector('#entryWhereChips button.chip.active'));
         const placeFilled = Boolean((document.getElementById('entryWhereInput')?.value || '').trim());
@@ -272,9 +282,9 @@ function renderPicker() {
                <i data-lucide="search" aria-hidden="true"></i>장소 검색 · 직접 입력
            </button>`
         : '';
+    // 어느 축의 피커인지는 텍스트 라벨 대신 **열린 세그먼트의 하이라이트**가 말한다
     return `
         <div class="entry-context-picker">
-            <span class="entry-context-picker__label">${axis.label}</span>
             <div class="entry-context-picker__chips">${chips}</div>
             ${free}
         </div>`;
@@ -291,27 +301,38 @@ function render() {
         return;
     }
     /**
+     * 행 구조: [헤더: 리드 텍스트 ─ 액션(맞아요·✕)] / [세그먼트들 + ⋯자세히] / [피커].
+     * 값(세그먼트)과 행위(맞아요·✕)를 다른 행에 두어 섞여 보이지 않게 한다.
+     *
      * "맞아요"·"✕"는 **추측을 처리하는 버튼**이므로 미확인 예측이 있을 때만 존재한다.
      * 다 확정된 뒤에는 버튼이 그냥 사라지는 대신 '확인됨' 표시로 바뀐다 —
      * 버튼이 흔적 없이 없어지면 눌린 게 맞는지 알 수 없다.
      */
     const hasUnconfirmed = axes.some((a) => state.predicted[a.key] && !state.confirmed[a.key]);
     const hasConfirmed = axes.some((a) => state.confirmed[a.key]);
-    let tail = '';
+    let actions = '';
     if (hasUnconfirmed) {
-        tail = `
+        actions = `
             <button type="button" class="entry-predict-apply" data-predict-apply>맞아요</button>
             <button type="button" class="entry-predict-dismiss" data-predict-dismiss aria-label="추측 지우기" title="추측 지우기">
                 <i data-lucide="x" aria-hidden="true"></i>
             </button>`;
     } else if (hasConfirmed) {
-        tail = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>확인됨</span>`;
+        actions = `<span class="entry-predict-done"><i data-lucide="check" aria-hidden="true"></i>확인됨</span>`;
     }
+    // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
+    const lead = hasUnconfirmed ? '지난 기록처럼' : axes.map((a) => a.label).join(' · ');
+    const axisDetailOpen = !document.getElementById('entryAxisFields')?.classList.contains('hidden');
     el.innerHTML = `
-        <div class="entry-context-line">
-            <span class="entry-predict-lead">${hasUnconfirmed ? '지난 기록처럼' : '맥락'}</span>
+        <div class="entry-context-head">
+            <span class="entry-predict-lead">${lead}</span>
+            <span class="entry-context-actions">${actions}</span>
+        </div>
+        <div class="entry-context-segs">
             ${axes.map(renderSegment).join('')}
-            ${tail}
+            <button type="button" class="entry-context-seg entry-context-seg--more${axisDetailOpen ? ' entry-context-seg--open' : ''}" data-context-more aria-label="전체 입력 펼치기" title="전체 입력 펼치기" aria-expanded="${axisDetailOpen}" aria-controls="entryAxisFields">
+                <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+            </button>
         </div>
         ${renderPicker()}`;
     el.classList.remove('hidden');
@@ -380,6 +401,13 @@ function onContainerClick(e) {
             logUsageMetric('context_predict_applied').catch(() => {});
         }
         state.openAxis = null;
+        render();
+        return;
+    }
+    if (e.target.closest('[data-context-more]')) {
+        // ⋯ = 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 상태는 render가 다시 읽는다
+        state.openAxis = null;
+        if (typeof window.toggleEntryAxisDetail === 'function') window.toggleEntryAxisDetail();
         render();
         return;
     }

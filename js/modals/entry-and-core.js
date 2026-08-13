@@ -3702,13 +3702,11 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
  * @param {boolean} [force] 지정하면 그 상태로 강제 (기록 수정 진입 시 펼침 등)
  */
 export function toggleEntryAxisDetail(force) {
-    const btn = document.getElementById('entryAxisDetailToggle');
     const fields = document.getElementById('entryAxisFields');
-    if (!btn || !fields) return;
+    if (!fields) return;
     const open = typeof force === 'boolean' ? force : fields.classList.contains('hidden');
     fields.classList.toggle('hidden', !open);
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    btn.classList.toggle('entry-axis-detail__toggle--open', open);
+    // 트리거(맥락 줄의 ⋯ 칩)는 entry-context-predict가 렌더할 때 hidden 상태를 다시 읽는다
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
     if (open) fields.scrollIntoView({ block: 'nearest' });
 }

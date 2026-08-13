@@ -18601,11 +18601,27 @@ html.service-guide-active #landingPage {
     padding: 8px 1rem 0;
     font-size: 12px;
 }
-.entry-context-line {
+/* 헤더 행: 리드 텍스트(좌) ↔ 액션 맞아요·✕(우) — 값 행과 행위를 분리 */
+.entry-context-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 26px;
+}
+.entry-context-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+/* 세그먼트 행: 축 값들만 */
+.entry-context-segs {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
+    margin-top: 4px;
 }
 .entry-predict-lead {
     color: #94a3b8;
@@ -18653,8 +18669,20 @@ html.service-guide-active #landingPage {
 .entry-context-seg--empty {
     color: #94a3b8;
 }
+/* 열린 세그먼트 = 아래 피커의 주인. 라벨 대신 이 하이라이트가 어느 축인지 말한다 */
 .entry-context-seg--open {
+    border-style: solid;
     border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    box-shadow: 0 0 0 1px var(--color-primary) inset;
+}
+.entry-context-seg--open .entry-context-seg__caret {
+    transform: rotate(180deg);
+}
+/* ⋯(자세히): 전체 축 섹션 여닫기 — 아이콘 전용 미니 칩 */
+.entry-context-seg--more {
+    padding: 4px 8px;
+    color: #94a3b8;
 }
 /* 인라인 피커 — 세그먼트 바로 아래, 그 축의 선택지만 */
 .entry-context-picker {
@@ -18665,11 +18693,6 @@ html.service-guide-active #landingPage {
     margin-top: 8px;
     padding: 8px 0 2px;
     border-top: 1px dashed #e2e8f0;
-}
-.entry-context-picker__label {
-    color: #94a3b8;
-    font-weight: 700;
-    flex-shrink: 0;
 }
 .entry-context-picker__chips {
     display: flex;
@@ -18723,29 +18746,6 @@ html.service-guide-active #landingPage {
 .entry-predict-done svg {
     width: 13px;
     height: 13px;
-}
-/* 1페이지 '자세히' 접힘 — 전체 축 섹션(구 2페이지) */
-#entryModal .entry-axis-detail {
-    padding: 4px 1rem 0;
-}
-#entryModal .entry-axis-detail__toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 2px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-}
-#entryModal .entry-axis-detail__toggle svg {
-    width: 13px;
-    height: 13px;
-}
-#entryModal .entry-axis-detail__toggle--open .entry-axis-detail__caret {
-    transform: rotate(180deg);
 }
 .entry-predict-apply {
     padding: 4px 12px;

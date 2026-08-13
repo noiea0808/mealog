@@ -148,17 +148,18 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
      */
     let withWhomFinal = withWhomResolved;
     let mealTypeFinal = mealTypeResolved;
-    if (!isS && !isSk) {
+    if (!isSk) {
         const ctxConfirm = getEntryContextPredictConfirm();
         /**
          * '기타'도 덮어쓴다 — resolveEntrySaveFields는 칩이 비어 있는데 다른 축에 값이 있으면
-         * mealType·withWhom을 '기타'로 채운다. 빠른입력이 꺼져 있으면 2페이지 칩 자체가
+         * mealType·withWhom을 '기타'로 채운다. 빠른입력이 꺼져 있으면 칩 자체가
          * 렌더되지 않으므로(entry-chips.js), 맥락 줄에서 명시적으로 고른 값이 그 폴백에
          * 가려진다. 사용자가 탭한 값이 조용한 폴백보다 우선이다.
+         * withWhom은 간식에도 있는 필드라 두 모드 모두 병합하고, mealType(어떻게)은 끼니 전용.
          */
         const isFallback = (v) => !(v || '').trim() || v === '기타';
         if (ctxConfirm.withWhom && isFallback(withWhomFinal)) withWhomFinal = ctxConfirm.withWhom;
-        if (ctxConfirm.mealType && isFallback(mealTypeFinal)) mealTypeFinal = ctxConfirm.mealType;
+        if (!isS && ctxConfirm.mealType && isFallback(mealTypeFinal)) mealTypeFinal = ctxConfirm.mealType;
     }
 
     const record = {

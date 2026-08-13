@@ -2931,12 +2931,8 @@
                      이 자리에서 인라인으로 열린다. 저장 필드의 소유자는 아래 전체 축 섹션. -->
                 <div id="entryContextPredict" class="entry-context-predict hidden" aria-live="polite"></div>
                 <!-- 전체 축 섹션: 맥락 줄이 대부분을 대신하므로 기본 접힘. 건너뜀 칩·서브태그·
-                     누구와 상세처럼 맥락 줄이 다루지 않는 입력이 여기 남는다. -->
-                <div class="entry-axis-detail">
-                    <button type="button" id="entryAxisDetailToggle" class="entry-axis-detail__toggle" onclick="window.toggleEntryAxisDetail()" aria-expanded="false" aria-controls="entryAxisFields">
-                        <i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>자세히</span>
-                        <i data-lucide="chevron-down" class="entry-axis-detail__caret" aria-hidden="true"></i>
-                    </button>
+                     누구와 상세처럼 맥락 줄이 다루지 않는 입력이 여기 남는다.
+                     여닫는 트리거는 맥락 줄 끝의 ⋯ 칩 (entry-context-predict.js). -->
                 <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core hidden">
 <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
                         <!-- 끼니: 칩(어떻게=조달) 먼저 → 장소 입력(어디서) 나중. 어떻게가 어디서의 라우터
@@ -3010,7 +3006,6 @@
                                 </div>
                             </div>
                         </div>
-                </div>
                 </div>
                 <div id="entryPromotedFields" class="entry-promoted-fields hidden"></div>
                 </div>
