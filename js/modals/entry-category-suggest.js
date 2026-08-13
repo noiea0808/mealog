@@ -10,7 +10,7 @@
  * 이 모듈의 어떤 실패도 저장을 막아선 안 된다 — 렌더는 전부 best-effort.
  */
 import { appState } from '../state.js';
-import { classifyFoodText, classifySnackText } from '../utils/food-classifier.js';
+import { classifyFoodDetail, classifySnackText, classifyCuisineText } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { updateEntryContextFoodCategory } from './entry-context-predict.js';
@@ -22,6 +22,8 @@ const DEBOUNCE_MS = 300;
 const state = {
     suggestions: /** @type {string[]} */ ([]),
     confirmed: /** @type {string|null} */ (null),
+    /** 텍스트에서 도출한 요리 종류 (한식·중식…) — 자동 저장 전용, UI에 안 나온다 */
+    cuisine: /** @type {string|null} */ (null),
     dismissed: false,
     /** 이번 시트 세션에서 노출 집계를 이미 보냈는지 (키 입력마다 부풀지 않게) */
     shownLogged: false,
@@ -35,13 +37,16 @@ function isMealMode() {
 
 /**
  * 저장 어댑터가 읽는 결과.
- * @returns {{ confirmed: string|null, top: string|null, dismissed: boolean }}
+ * cuisine(요리 종류)은 사용자에게 묻지 않고 텍스트에서 도출되는 사실이라
+ * 확정·거부와 무관하게 항상 값이 있다 (placeType 과 같은 사실-유도 패턴).
+ * @returns {{ confirmed: string|null, top: string|null, dismissed: boolean, cuisine: string|null }}
  */
 export function getEntryCategorySuggestResult() {
     return {
         confirmed: state.confirmed,
         top: state.suggestions.length > 0 ? state.suggestions[0] : null,
         dismissed: state.dismissed,
+        cuisine: state.cuisine,
     };
 }
 
@@ -53,6 +58,7 @@ export function resetEntryCategorySuggest() {
     }
     state.suggestions = [];
     state.confirmed = null;
+    state.cuisine = null;
     state.dismissed = false;
     state.shownLogged = false;
     render();
@@ -68,10 +74,17 @@ function runClassify() {
         const input = document.getElementById(INPUT_ID);
         const text = (input?.value || '').trim();
         let next = [];
+        state.cuisine = null;
         if (text) {
-            next = isMealMode()
-                ? classifyFoodText(text)
-                : classifySnackText(text, window.userSettings?.tags?.snackType || null);
+            if (isMealMode()) {
+                // 형태·요리종류를 한 번에 — 요리종류는 UI에 안 나오고 저장만 된다
+                const detail = classifyFoodDetail(text);
+                next = detail.forms;
+                state.cuisine = detail.cuisine;
+            } else {
+                next = classifySnackText(text, window.userSettings?.tags?.snackType || null);
+                state.cuisine = classifyCuisineText(text);
+            }
         }
         // 제안이 그대로면 확정·거부 상태 유지, 바뀌면 리셋 (텍스트가 바뀌어 근거가 달라짐)
         const changed =

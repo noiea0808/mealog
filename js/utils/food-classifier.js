@@ -1,82 +1,35 @@
 /**
- * 음식 텍스트 → 카테고리 로컬 분류기 (docs/food-category-auto-classification.md §3)
+ * 음식 텍스트 → 형태·요리종류 분류기 (docs/entry-axes-and-tags-direction.md §5)
  *
  * 순수 동기 함수만 제공한다. 네트워크·DOM·전역 상태에 의존하지 않으며,
  * 실패는 빈 결과일 뿐 예외를 던지지 않는다 — 저장 경로에 영향을 줄 수 없다.
  *
- * 카테고리 축은 새 축(식사 형태 기반)이다 (설계 문서 §3.3).
- * 기존 축(한식/양식/…)과의 호환은 읽기 계층에서 처리한다.
+ * 사전은 js/utils/food-dictionary.js 의 `음식 → { form, cuisine }` 단일 항목 구조다.
+ * 매칭은 **최장 일치** — '탕수육' 이 '수육' 보다 길므로 먼저 잡힌다(부분문자열 오탐 차단).
+ *
+ * 형태(form)는 사용자가 고르는 주 축, 요리종류(cuisine)는 이름에서 도출되는 사실이라
+ * 묻지 않고 자동으로 붙인다.
  */
+import {
+    FORM_CATEGORIES,
+    CUISINE_CATEGORIES,
+    FOOD_ENTRIES_BY_LENGTH,
+    ONE_CHAR_FOODS,
+    DICTIONARY_SOURCE,
+} from './food-dictionary.js';
 
-/** 자동 분류 제안 카테고리 (표시 순서 고정) */
-export const AUTO_CATEGORIES = [
-    '밥/한상',
-    '단백질식',
-    '면',
-    '빵/샌드위치',
-    '샐러드',
-    '과일',
-    '커피/음료',
-    '간식/디저트',
-];
+export { FORM_CATEGORIES, CUISINE_CATEGORIES, ONE_CHAR_FOODS, DICTIONARY_SOURCE };
 
 /**
- * 전역 키워드 사전. 토큰이 키워드를 "포함"하면 1표.
- * 2글자 이상 구체어 위주 — 한 글자 키워드는 오탐이 많아 금지.
- * 실데이터(2026-07~08 모먼트 4,177건) 상세 텍스트 패턴 기반.
+ * @deprecated 형태 축의 옛 이름. 차트 화이트리스트 등 기존 호출부 호환용 별칭이다.
+ * 새 코드는 FORM_CATEGORIES 를 쓴다.
  */
-export const FOOD_KEYWORDS = {
-    '밥/한상': [
-        '잡곡밥', '현미밥', '흰밥', '백미', '쌀밥', '볶음밥', '비빔밥', '덮밥', '국밥',
-        '김밥', '주먹밥', '김치', '깍두기', '나물', '반찬', '찌개', '된장', '국물',
-        '미역국', '곰탕', '설렁탕', '갈비탕', '삼계탕', '육개장', '제육', '불고기',
-        '갈비', '삼겹살', '고등어', '갈치', '조기', '생선구이', '계란말이', '계란찜',
-        '장조림', '멸치볶음', '콩자반', '무침', '조림', '쌈밥', '구내식당', '백반',
-        '우거지', '시래기', '순두부', '부대찌개', '김치볶음', '오므라이스', '카레',
-    ],
-    '단백질식': [
-        '닭가슴살', '닭다리살', '닭안심', '닭찌', '삶은계란', '반숙란', '훈제란',
-        '구운계란', '계란', '달걀', '쉐이크', '프로틴', '단백질', '프로틴바', '두부',
-        '연어', '훈제연어', '스테이크', '소고기', '돼지고기', '수육', '보쌈', '족발',
-        '오리고기', '훈제오리', '그릭요거트',
-    ],
-    '면': [
-        '라면', '국수', '칼국수', '잔치국수', '비빔국수', '막국수', '쫄면', '냉면',
-        '우동', '소바', '메밀', '파스타', '스파게티', '짜장', '짬뽕', '쌀국수',
-        '떡볶이', '라볶이', '수제비', '누들',
-    ],
-    '빵/샌드위치': [
-        '식빵', '소금빵', '모닝빵', '크림빵', '단팥빵', '바게트', '베이글', '크루아상',
-        '토스트', '샌드위치', '샌드', '버거', '햄버거', '핫도그', '와플', '팬케이크',
-        '프렌치토스트', '잠봉', '치아바타', '스콘', '머핀', '브런치', '피자',
-    ],
-    '샐러드': [
-        '샐러드', '샐러드볼', '포케', '야채', '채소', '생야채', '방울토마토', '방토',
-        '토마토', '오이', '양배추', '브로콜리', '아보카도', '당근', '파프리카',
-        '상추', '쌈채소', '단호박', '고구마', '감자',
-    ],
-    '과일': [
-        '사과', '수박', '복숭아', '자두', '포도', '바나나', '딸기', '블루베리',
-        '참외', '멜론', '키위', '오렌지', '귤', '망고', '파인애플', '체리',
-        '과일', '견과', '아몬드', '호두', '캐슈넛',
-    ],
-    '커피/음료': [
-        '아메리카노', '라떼', '카페라떼', '커피', '에스프레소', '콜드브루', '착즙',
-        '주스', '스무디', '우유', '두유', '요거트', '요구르트', '식혜', '차한잔',
-        '녹차', '홍차', '보리차', '이온음료', '제로콜라', '콜라', '사이다', '탄산수',
-    ],
-    '간식/디저트': [
-        '쿠키', '케이크', '케익', '아이스크림', '젤라또', '빙수', '과자', '스낵',
-        '초코', '초콜릿', '사탕', '젤리', '떡', '약과', '한과', '마카롱', '마들렌',
-        '휘낭시에', '모찌', '츄로스', '도넛', '크로플', '푸딩', '양갱', '꼬북칩',
-        '새우깡', '비스킷', '크래커', '시리얼', '그래놀라', '에너지바',
-    ],
-};
+export const AUTO_CATEGORIES = FORM_CATEGORIES;
 
 /**
  * 간식 사전은 기존 snackType 축(커피·차/음료·술/주류·베이커리·과자/스낵·아이스크림·과일/견과)을
- * 그대로 쓴다. 끼니와 달리 이 축은 실사용과 어긋나지 않아 바꿀 이유가 없다 —
- * 사용자 태그 목록에 이미 있는 값이므로 분석 화이트리스트도 그대로 통과한다.
+ * 그대로 쓴다. 형태 축으로의 통합은 categoryAuto 실데이터 검증 뒤로 미뤄둔 3단계 과제다
+ * (docs/entry-axes-and-tags-direction.md §3).
  */
 export const SNACK_KEYWORDS = {
     '커피': ['아메리카노', '카페라떼', '라떼', '커피', '에스프레소', '콜드브루', '카페모카', '카푸치노'],
@@ -104,20 +57,6 @@ export const SNACK_KEYWORDS = {
 const QUANTITY_SUFFIX_RE = /[\d./~]+(?:개|알|봉|장|조각|숟|스푼|공기|그람|그램|인분|쪽|모|통|번|잔|병|캔|g|kg|ml|cc|l)?$/i;
 
 /**
- * 한 글자 토큰은 오탐이 많아 원칙적으로 버리지만, 실데이터 최빈 음식어는 예외.
- * ("밥 100 + 김치 + 김" 류 — 밥·김·국이 버려지면 밥/한상이 투표에서 진다)
- */
-export const ONE_CHAR_FOODS = new Map([
-    ['밥', '밥/한상'],
-    ['국', '밥/한상'],
-    ['김', '밥/한상'],
-    ['죽', '밥/한상'],
-    ['면', '면'],
-    ['빵', '빵/샌드위치'],
-    ['떡', '간식/디저트'],
-]);
-
-/**
  * 무엇을_상세 텍스트를 음식 토큰으로 분해.
  * 실데이터 구분자: "+", ",", "，", 공백, 줄바꿈, "·"
  * @param {string} text
@@ -132,19 +71,95 @@ export function tokenizeFoodText(text) {
 }
 
 /**
- * 텍스트에서 카테고리를 추론한다.
+ * 토큰 하나를 사전에서 찾는다. **최장 일치** — 토큰이 품은 사전 항목 중 가장 긴 것.
+ * @param {string} token
+ * @returns {{ form: string, cuisine: string } | null}
+ */
+function lookupToken(token) {
+    const oneChar = ONE_CHAR_FOODS.get(token);
+    if (oneChar) return oneChar;
+    // FOOD_ENTRIES_BY_LENGTH 는 길이 내림차순이라 첫 일치가 곧 최장 일치다
+    for (const entry of FOOD_ENTRIES_BY_LENGTH) {
+        if (token.includes(entry.word)) return { form: entry.form, cuisine: entry.cuisine };
+    }
+    return null;
+}
+
+/**
+ * 텍스트에서 형태·요리종류를 함께 추론한다.
  *
- * 매칭: 토큰이 키워드를 포함하면 해당 카테고리에 1표.
- * 개인 사전(personalKeywords)이 전역 사전보다 우선 — 같은 토큰이 양쪽에 걸리면
- * 개인 사전의 표만 인정한다.
- * 집계: 최다 득표 채택, 2위가 1위의 절반 이상이면 복수 제안 (최대 2개).
+ * 집계: 토큰마다 최장 일치 1건씩만 투표한다(예전처럼 한 토큰이 여러 카테고리에
+ * 표를 뿌리지 않는다). 형태는 최다 득표를 채택하고, 2위가 1위의 절반 이상이면
+ * 복수 제안(최대 2개). 요리종류는 최다 득표 하나만, '기타' 는 다른 후보가 있으면 양보한다.
  *
  * @param {string} text 무엇을_상세 입력값
- * @param {Record<string, string[]>|null} [personalKeywords] 사용자 교정 학습 사전 (3단계에서 사용)
- * @returns {string[]} 제안 카테고리 0~2개, 득표순
+ * @param {Record<string, string[]>|null} [personalKeywords] 사용자 교정 학습 사전 (형태 축, 미연결)
+ * @returns {{ forms: string[], cuisine: string|null }}
+ */
+export function classifyFoodDetail(text, personalKeywords = null) {
+    try {
+        const tokens = tokenizeFoodText(text);
+        if (tokens.length === 0) return { forms: [], cuisine: null };
+
+        const formVotes = {};
+        const cuisineVotes = {};
+        for (const token of tokens) {
+            // 개인 사전이 전역 사전보다 우선 (형태 축에만 적용)
+            let personalForm = null;
+            if (personalKeywords) {
+                for (const [form, keywords] of Object.entries(personalKeywords)) {
+                    if (Array.isArray(keywords) && keywords.some((k) => k && token.includes(k))) {
+                        personalForm = form;
+                        break;
+                    }
+                }
+            }
+            if (personalForm) {
+                formVotes[personalForm] = (formVotes[personalForm] || 0) + 1;
+                continue;
+            }
+            const hit = lookupToken(token);
+            if (!hit) continue;
+            formVotes[hit.form] = (formVotes[hit.form] || 0) + 1;
+            cuisineVotes[hit.cuisine] = (cuisineVotes[hit.cuisine] || 0) + 1;
+        }
+
+        const rankedForms = Object.entries(formVotes).sort((a, b) => b[1] - a[1]);
+        const forms = [];
+        if (rankedForms.length > 0) {
+            forms.push(rankedForms[0][0]);
+            if (rankedForms[1] && rankedForms[1][1] >= rankedForms[0][1] / 2) forms.push(rankedForms[1][0]);
+        }
+
+        // '기타' 는 정보량이 없으므로 구체적인 요리종류가 하나라도 있으면 그쪽을 쓴다
+        const rankedCuisines = Object.entries(cuisineVotes).sort((a, b) => b[1] - a[1]);
+        const specific = rankedCuisines.filter(([c]) => c !== '기타');
+        const cuisine = (specific[0] || rankedCuisines[0] || [null])[0];
+
+        return { forms, cuisine: cuisine || null };
+    } catch (_) {
+        // 분류 실패는 "제안 없음"일 뿐이다 — 어떤 경우에도 호출부(입력·저장)로 전파하지 않는다
+        return { forms: [], cuisine: null };
+    }
+}
+
+/**
+ * 텍스트 → 형태 카테고리 제안 (0~2개, 득표순).
+ * @param {string} text
+ * @param {Record<string, string[]>|null} [personalKeywords]
+ * @returns {string[]}
  */
 export function classifyFoodText(text, personalKeywords = null) {
-    return classifyWithDictionary(text, FOOD_KEYWORDS, personalKeywords, ONE_CHAR_FOODS);
+    return classifyFoodDetail(text, personalKeywords).forms;
+}
+
+/**
+ * 텍스트 → 요리 종류 (한식·중식·…). 자동 파생 전용이라 사용자에게 묻지 않는다.
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function classifyCuisineText(text) {
+    return classifyFoodDetail(text).cuisine;
 }
 
 /**
@@ -154,60 +169,28 @@ export function classifyFoodText(text, personalKeywords = null) {
  *
  * @param {string} text
  * @param {string[]|null} [allowedTags] userSettings.tags.snackType
- * @param {Record<string, string[]>|null} [personalKeywords]
  * @returns {string[]} 제안 카테고리 0~2개
  */
-export function classifySnackText(text, allowedTags = null, personalKeywords = null) {
-    const result = classifyWithDictionary(text, SNACK_KEYWORDS, personalKeywords, null);
-    if (!Array.isArray(allowedTags) || allowedTags.length === 0) return result;
-    const allowed = new Set(allowedTags);
-    return result.filter((c) => allowed.has(c));
-}
-
-/**
- * 키워드 투표 공용 구현. 실패는 항상 빈 배열이다 — 예외를 호출부로 전파하지 않는다.
- * @param {string} text
- * @param {Record<string, string[]>} dictionary
- * @param {Record<string, string[]>|null} personalKeywords 전역 사전보다 우선
- * @param {Map<string, string>|null} oneCharMap 한 글자 예외 화이트리스트
- * @returns {string[]}
- */
-function classifyWithDictionary(text, dictionary, personalKeywords, oneCharMap) {
+export function classifySnackText(text, allowedTags = null) {
     try {
         const tokens = tokenizeFoodText(text);
         if (tokens.length === 0) return [];
-
         const votes = {};
         for (const token of tokens) {
-            const oneChar = oneCharMap?.get(token);
-            if (oneChar) {
-                votes[oneChar] = (votes[oneChar] || 0) + 1;
-                continue;
-            }
-            let matchedPersonal = false;
-            if (personalKeywords) {
-                for (const [category, keywords] of Object.entries(personalKeywords)) {
-                    if (Array.isArray(keywords) && keywords.some((k) => k && token.includes(k))) {
-                        votes[category] = (votes[category] || 0) + 1;
-                        matchedPersonal = true;
-                    }
-                }
-            }
-            if (matchedPersonal) continue;
-            for (const [category, keywords] of Object.entries(dictionary)) {
+            for (const [category, keywords] of Object.entries(SNACK_KEYWORDS)) {
                 if (keywords.some((k) => token.includes(k))) {
                     votes[category] = (votes[category] || 0) + 1;
                 }
             }
         }
-
         const ranked = Object.entries(votes).sort((a, b) => b[1] - a[1]);
         if (ranked.length === 0) return [];
         const result = [ranked[0][0]];
         if (ranked[1] && ranked[1][1] >= ranked[0][1] / 2) result.push(ranked[1][0]);
-        return result;
+        if (!Array.isArray(allowedTags) || allowedTags.length === 0) return result;
+        const allowed = new Set(allowedTags);
+        return result.filter((c) => allowed.has(c));
     } catch (_) {
-        // 분류 실패는 "제안 없음"일 뿐이다 — 어떤 경우에도 호출부(입력·저장)로 전파하지 않는다
         return [];
     }
 }

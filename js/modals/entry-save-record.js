@@ -122,8 +122,15 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
     let snackTypeFinal = snackTypeResolved;
     let categoryAuto = '';
     let categorySource = null;
+    /**
+     * 요리 종류(한식·중식…)는 음식 이름에서 도출되는 사실이라 사용자에게 묻지 않고
+     * 자동 저장한다 (placeType 과 같은 사실-유도). 형태 축(category)과 짝을 이뤄
+     * "면을 얼마나 먹나"와 "중식을 얼마나 먹나"를 둘 다 답할 수 있게 한다.
+     */
+    let cuisineAuto = '';
     if (!isSk) {
         const suggest = getEntryCategorySuggestResult();
+        cuisineAuto = suggest.cuisine || '';
         // 끼니는 category, 간식은 snackType — 같은 자동 분류 필드 쌍을 공유한다
         const userPicked = isS ? snackTypeFinal : categoryFinal;
         if (userPicked) {
@@ -183,6 +190,7 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         category: categoryFinal,
         categoryAuto,
         categorySource,
+        cuisineAuto,
         placeType: '',
         snackType: snackTypeFinal,
         photoAspectRatio: state.recordPhotoAspectRatio || '1:1',
