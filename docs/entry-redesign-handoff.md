@@ -75,6 +75,22 @@ firebase functions:delete classifyUncategorizedMeals --region us-central1
 
 `adminClassifyLegacyMeals`는 관리자가 직접 호출할 때만 도는 callable이라 방치해도 무해합니다.
 
+## 3.5. 2026-08-13 추가 작업 (두 번째 기기)
+
+설계 논의는 [entry-axes-and-tags-direction.md](entry-axes-and-tags-direction.md) (축 통일·태그 방향·입력 흐름 §5).
+
+- **어떻게·어디서 축 분리**: 끼니 어디서 섹션이 「어떻게 라벨+mealType 칩 → 어디서 보조 라벨+장소 입력」
+  순서로 재구성됨 (index.html 구조 변경 → **SW 캐시 v8**). 간식은 라벨만 '어디서' 유지.
+- **어떻게→어디서 라우팅**: 집밥·배달/포장→'우리집', 구내식당→'구내식당' 기본값 채움 (selectTag).
+- **예측 한 줄에 어떻게 추가**: 순서 어떻게→어디서→누구와, '기타'·'건너뜀' 표본 제외,
+  저장 병합에 mealType 포함.
+- **카카오 placeType 자동 분류**: 선택 시 place=상호명·placeType=식당/카페/편의점/술집
+  (js/utils/place-type.js). 검색 필터 FD6 고정 해제(카페·편의점 포함).
+  ⚠️ **functions/searchKakaoPlaces 수정됨 — 재배포 필요** (배포 전엔 앱/스테이징 검색이 기존 FD6 결과만).
+- **사진 GPS 존재율 계측**: photo_gps_present/absent (usageDaily). 좌표는 읽지 않음.
+- **관리자 분류사전**: 콘텐츠 관리 > 분류사전 — 무엇을 분류 규칙·사전 열람 + 실시간 테스트.
+- 로컬 검증은 데스크톱 DOM만 — 시트 레이아웃(칩 위·입력 아래) **실기기 확인 필요**.
+
 ## 4. 다음에 할 일
 
 ### 우선순위 높음

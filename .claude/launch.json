@@ -5,7 +5,8 @@
       "name": "mealog-static",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/dev-static-server.js"],
-      "port": 8777
+      "port": 8777,
+      "autoPort": true
     }
   ]
 }
