@@ -112,12 +112,12 @@ function isGateOff(s) {
 }
 
 /**
- * 실제로 써 온 흔적이 있는가.
- * 신규 가입자도 게이트는 꺼져 있으므로, 이 조건이 있어야 '손상'과 '아직 안 끝낸 가입'을 가른다.
+ * 사용자가 직접 만든 것만 센다.
+ * tags·subTags·favoriteSubTags 는 신규 계정에도 기본 골격이 들어가 있어 사용량 신호가 못 된다
+ * (그걸 세면 가입만 한 계정이 전부 '손상'으로 잡힌다). bestMeals 는 사용자가 고른 값이라 유효하다.
  */
-function usageWeight(s) {
-    const n = (o) => (o && typeof o === 'object' ? Object.keys(o).length : 0);
-    return n(s.bestMeals) + n(s.tags) + n(s.favoriteSubTags) + n(s.subTags);
+function selfMadeWeight(s) {
+    return s.bestMeals && typeof s.bestMeals === 'object' ? Object.keys(s.bestMeals).length : 0;
 }
 
 /**
@@ -151,17 +151,35 @@ async function runScan(db, limit) {
             healthy++;
             continue;
         }
-        const weight = usageWeight(s);
-        if (weight === 0) {
-            // 게이트도 꺼져 있고 쌓인 것도 없음 → 가입을 안 끝낸 사용자. 정상 상태다.
+
+        // 진짜 사용 흔적은 기록 문서 수다. 설정 문서만으로는 신규 계정과 구분되지 않는다.
+        const mealsCount = (await userDoc.ref.collection('meals').count().get()).data().count;
+        if (mealsCount === 0) {
+            // 게이트도 꺼져 있고 기록도 없음 → 가입을 안 끝낸 사용자. 정상 상태다.
             pendingSignup++;
             continue;
         }
+        // 한때 프로필을 끝냈다는 증거: nicknameClaims 에 본인 클레임이 남아 있는가.
+        // 있으면 '기본값으로 리셋됨', 없으면 '애초에 안 끝낸 가입'일 가능성이 높다.
+        const claims = await db
+            .collection('artifacts')
+            .doc(APP_ID)
+            .collection('nicknameClaims')
+            .where('userId', '==', userDoc.id)
+            .get();
+        const claimedNickname =
+            claims.size > 0 ? String(claims.docs[0].data().displayNickname ?? '').trim() : '';
+
         damaged.push({
             uid: userDoc.id,
-            usageWeight: weight,
+            mealsCount,
+            bestMeals: selfMadeWeight(s),
             profileCompleted: s.profileCompleted,
             termsAgreed: s.termsAgreed,
+            // 필드가 아예 없으면(undefined) 덮어쓴 게 아니라 처음부터 없던 것이다
+            profileCompletedAbsent: s.profileCompleted === undefined,
+            hasClaim: claims.size > 0,
+            claimedNickname,
             nicknameIsDefault:
                 !s.profile ||
                 s.profile.nickname == null ||
@@ -179,14 +197,29 @@ async function runScan(db, limit) {
 
     if (damaged.length > 0) {
         console.log('');
-        console.log('손상 의심 목록 (데이터는 쌓였는데 게이트가 꺼짐):');
-        for (const d of damaged) {
+        // 클레임이 남아 있으면 한때 프로필을 끝냈다는 뜻 → 리셋으로 본다
+        const reset = damaged.filter((d) => d.hasClaim);
+        const unclear = damaged.filter((d) => !d.hasClaim);
+
+        console.log('');
+        console.log(`▣ 리셋 확실 (nicknameClaims 있음 → 한때 완료했었음): ${reset.length}`);
+        for (const d of reset) {
             console.log(
-                `  ${d.uid}  usage=${d.usageWeight}  profileCompleted=${d.profileCompleted}  termsAgreed=${d.termsAgreed}  닉네임기본값=${d.nicknameIsDefault}`
+                `  ${d.uid}  기록=${d.mealsCount}  복구할닉네임="${d.claimedNickname}"  profileCompleted=${d.profileCompleted}  termsAgreed=${d.termsAgreed}`
             );
         }
+
+        console.log('');
+        console.log(`▣ 판단 보류 (클레임 없음 → 가입을 안 끝냈을 수 있음): ${unclear.length}`);
+        for (const d of unclear) {
+            console.log(
+                `  ${d.uid}  기록=${d.mealsCount}  profileCompleted=${d.profileCompleted}${d.profileCompletedAbsent ? '(필드없음)' : ''}  termsAgreed=${d.termsAgreed}  닉네임기본값=${d.nicknameIsDefault}`
+            );
+        }
+
         console.log('');
         console.log('복구는 uid 하나씩: node scripts/restore-profile-terms-gate.js --uid=<UID> --dry-run');
+        console.log('※ 클레임 없는 계정은 스크립트가 profileCompleted 를 세우지 않는다(닉네임 복구 불가 시 안전장치).');
     }
 }
 
