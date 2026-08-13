@@ -17,7 +17,8 @@
     "set-demo-password": "node scripts/set-demo-user-password.js",
     "migrate:fixTermsAndCreatedAt": "node scripts/fix-settings-terms-and-user-createdAt.js",
     "migrate:backfillCreatedAtFromAuth": "node scripts/backfill-user-root-createdAt-from-auth.js",
-    "backfill:mealPhotoVariants": "node scripts/backfill-meal-photo-variants.js"
+    "backfill:mealPhotoVariants": "node scripts/backfill-meal-photo-variants.js",
+    "restore:profileTermsGate": "node scripts/restore-profile-terms-gate.js"
   },
   "engines": {
     "node": "20"
