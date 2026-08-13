@@ -18,8 +18,8 @@ import {
     FOOD_ENTRIES_BY_LENGTH,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
-    SNACK_TYPE_BY_FOOD,
-    SNACK_ENTRIES_BY_LENGTH,
+    snackTypeOfForm,
+    snackKeywordsByType,
     CUISINE_EXEMPT_FORMS,
     formUsesCuisine,
 } from './food-dictionary.js';
@@ -48,11 +48,10 @@ export {
 export const AUTO_CATEGORIES = FORM_CATEGORIES;
 
 /**
- * 간식 축(snackType) 목록 — **끼니 사전에서 파생**된다.
- * 예전에는 같은 단어를 두 사전에서 따로 관리했는데(101단어 중 92개 중복),
- * 이제 단어 목록은 하나뿐이고 여기서는 그 주석을 그룹으로 되뒤집어 보여줄 뿐이다.
+ * 간식 축(snackType) 목록 — **형태 축에서 파생**된다.
+ * 형태 축이 간식 축을 흡수해 별도 사전이 없다. 관리자 열람용 그룹 뷰일 뿐이다.
  */
-export const SNACK_KEYWORDS = SNACK_TYPE_BY_FOOD;
+export const SNACK_KEYWORDS = snackKeywordsByType();
 
 /** 수량·단위 접미 제거: "닭다리살100", "계란 2알", "밥1/2공기" → 음식명만 남긴다 */
 const QUANTITY_SUFFIX_RE = /[\d./~]+(?:개|알|봉|장|조각|숟|스푼|공기|그람|그램|인분|쪽|모|통|번|잔|병|캔|g|kg|ml|cc|l)?$/i;
@@ -197,9 +196,10 @@ export function classifySnackText(text, allowedTags = null) {
         if (tokens.length === 0) return [];
         const votes = {};
         for (const token of tokens) {
-            // 끼니 축과 같은 **최장 일치** — 한 토큰이 여러 종류에 표를 뿌리지 않는다
-            const hit = SNACK_ENTRIES_BY_LENGTH.find((e) => token.includes(e.word));
-            if (hit) votes[hit.snackType] = (votes[hit.snackType] || 0) + 1;
+            // 형태 축을 그대로 타고, 간식 축에 대응되는 형태만 표로 센다
+            const hit = lookupToken(token);
+            const snackType = hit ? snackTypeOfForm(hit.form) : '';
+            if (snackType) votes[snackType] = (votes[snackType] || 0) + 1;
         }
         const ranked = Object.entries(votes).sort((a, b) => b[1] - a[1]);
         if (ranked.length === 0) return [];
