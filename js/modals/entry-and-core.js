@@ -100,7 +100,6 @@ import {
     resetEntryContextPredict,
     setupEntryContextPredict,
 } from './entry-context-predict.js';
-import { applyEntryFieldPromotion, recordEntryFieldUsage } from './entry-field-promotion.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
@@ -1813,8 +1812,6 @@ export async function openModal(date, slotId, entryId = null) {
                 // 자동 적용으로 저장됐던 축은 수정 화면에서도 추천(스위치 지배)으로 되살린다
                 autoContext: savedRecord?.autoContext,
             });
-            // 3층 필드 승격 — 모드 확정 후 DOM 재배치
-            applyEntryFieldPromotion();
 
             if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -2172,9 +2169,6 @@ export async function saveEntry() {
             gauges: { rateOn, satOn, timeOn, normalizedClock },
             mealHistory: window.mealHistory,
         });
-
-        // 3층 필드 사용 이력(최근 10회) — 승격/강등 판단용, 서브태그 기억과 같은 시점
-        recordEntryFieldUsage(record, entryMode, isSk);
 
         // 자동 분류 측정: 제안을 무시하고 저장 = 자동값 채택(적중으로 집계)
         if (record.categorySource === 'local') {
@@ -3738,12 +3732,7 @@ function toggleFieldsForSkip(isSkip) {
         optionalFields.classList.toggle('hidden', !!isSkip);
     }
     document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
-    if (isSkip) {
-        resetEntryContextPredict();
-        document.getElementById('entryPromotedFields')?.classList.add('hidden');
-    } else {
-        applyEntryFieldPromotion();
-    }
+    if (isSkip) resetEntryContextPredict();
 
     setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);
