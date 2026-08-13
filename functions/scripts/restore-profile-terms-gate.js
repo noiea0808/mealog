@@ -306,7 +306,11 @@ async function main() {
     const patch = {};
     const reconstructed = [];
 
-    if (recoveredNickname) patch['profile.nickname'] = recoveredNickname;
+    // 이미 같은 값이면 넣지 않는다 — 재실행 시 빈 패치가 나와야 복구 완료를 한눈에 안다
+    const currentNickname = s.profile && s.profile.nickname != null ? String(s.profile.nickname).trim() : '';
+    if (recoveredNickname && recoveredNickname !== currentNickname) {
+        patch['profile.nickname'] = recoveredNickname;
+    }
 
     if (s.termsAgreed !== true) {
         patch.termsAgreed = true;
