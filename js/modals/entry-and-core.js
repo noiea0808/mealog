@@ -3710,9 +3710,14 @@ export function toggleEntryAxisDetail(force) {
     if (!fields) return;
     const open = typeof force === 'boolean' ? force : fields.classList.contains('hidden');
     fields.classList.toggle('hidden', !open);
-    // 트리거(맥락 줄의 ⋯ 칩)는 entry-context-predict가 렌더할 때 hidden 상태를 다시 읽는다
+    /**
+     * 트리거(맥락 줄의 '세부' 칩)는 entry-context-predict가 렌더할 때 hidden 상태를 다시 읽는다.
+     *
+     * 여기서 scrollIntoView 를 부르지 않는다 — 섹션이 커서 화면이 확 튀고, 누른 버튼이
+     * 시야 밖으로 밀려 "UI가 통째로 바뀐" 느낌을 준다. 시트는 높이 잠금 재측정으로
+     * 자라고, 스크롤은 사용자에게 맡긴다.
+     */
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
-    if (open) fields.scrollIntoView({ block: 'nearest' });
 }
 window.toggleEntryAxisDetail = toggleEntryAxisDetail;
 

@@ -50,8 +50,12 @@ const state = {
     confirmed: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
     /** 사용자가 명시적으로 비운 축 — 추측이 다시 채우지 않는다 */
     userCleared: /** @type {{ [key: string]: boolean }} */ ({}),
-    /** 추측을 이대로 쓸지 (기본 ON, 언제든 되돌릴 수 있는 토글) */
-    useGuess: true,
+    /**
+     * 추측을 이대로 쓸지. **기본 OFF** — 맥락 축은 "쓴다/안 쓴다"가 먼저이고,
+     * 추천은 그 축을 쓰기로 했을 때 채워질 값으로 미리 들어가 있는 것이다.
+     * (원칙 2 "추측은 확인 없이 데이터가 되지 않는다"도 이 기본값에서 지켜진다)
+     */
+    useGuess: false,
     /** 습관 예측 원본(이력 최빈값) — 사실-유도 추론과 합성할 때 참조 */
     habitMealType: /** @type {string|null} */ (null),
     /** 무엇을 자동 분류의 현재 1순위 (entry-category-suggest가 밀어줌) */
@@ -82,7 +86,7 @@ export function resetEntryContextPredict() {
     state.predicted = { mealType: null, place: null, withWhom: null };
     state.confirmed = { mealType: null, place: null, withWhom: null };
     state.userCleared = {};
-    state.useGuess = true;
+    state.useGuess = false;
     state.habitMealType = null;
     state.foodCategory = null;
     state.openAxis = null;
@@ -406,8 +410,10 @@ function render() {
     const axisDetailOpen = !document.getElementById('entryAxisFields')?.classList.contains('hidden');
     const toggle = hasAuto
         ? `<button type="button" class="entry-predict-toggle${state.useGuess ? ' entry-predict-toggle--on' : ''}"
-                data-predict-toggle role="switch" aria-checked="${state.useGuess}">
-               <i data-lucide="${state.useGuess ? 'check' : 'minus'}" aria-hidden="true"></i>${state.useGuess ? '이대로 사용' : '사용 안함'}
+                data-predict-toggle role="switch" aria-checked="${state.useGuess}"
+                aria-label="추천값 사용 ${state.useGuess ? '켜짐' : '꺼짐'}">
+               <span class="entry-predict-toggle__track"><span class="entry-predict-toggle__knob"></span></span>
+               <span class="entry-predict-toggle__label">${state.useGuess ? '이대로 사용' : '사용 안함'}</span>
            </button>`
         : '';
     // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
@@ -419,8 +425,8 @@ function render() {
         </div>
         <div class="entry-context-segs">
             ${axes.map(renderSegment).join('')}
-            <button type="button" class="entry-context-seg entry-context-seg--more${axisDetailOpen ? ' entry-context-seg--open' : ''}" data-context-more aria-label="전체 입력 펼치기" title="전체 입력 펼치기" aria-expanded="${axisDetailOpen}" aria-controls="entryAxisFields">
-                <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+            <button type="button" class="entry-context-seg entry-context-seg--more${axisDetailOpen ? ' entry-context-seg--open' : ''}" data-context-more title="세부 항목 직접 입력" aria-expanded="${axisDetailOpen}" aria-controls="entryAxisFields">
+                <i data-lucide="sliders-horizontal" aria-hidden="true"></i><span>세부</span>
             </button>
         </div>
         ${renderPicker()}`;

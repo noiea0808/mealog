@@ -18680,9 +18680,18 @@ html.service-guide-active #landingPage {
     transform: rotate(180deg);
 }
 /* ⋯(자세히): 전체 축 섹션 여닫기 — 아이콘 전용 미니 칩 */
+/* '세부' 칩: 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기 — 값이 아니라 도구라서
+   캐럿 없이 아이콘+라벨만, 회색 계열로 세그먼트와 구분한다 */
 .entry-context-seg--more {
-    padding: 4px 8px;
+    padding: 4px 9px;
+    border-style: solid;
+    border-color: #e2e8f0;
+    background: #f8fafc;
     color: #94a3b8;
+}
+.entry-context-seg--more.entry-context-seg--open {
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
 }
 /* 인라인 피커 — 회색 트레이가 "하위 선택지" 층위를 만든다 (세그먼트와 색으로 구분) */
 .entry-context-picker {
@@ -18736,13 +18745,14 @@ html.service-guide-active #landingPage {
     width: 12px;
     height: 12px;
 }
-/* 사용 토글 — '이대로 사용'(ON) ↔ '사용 안함'(OFF). 어느 쪽이든 사라지지 않는다 */
+/* 사용 토글 — 스위치 모양(트랙+노브). '사용 안함'(기본 OFF) ↔ '이대로 사용'(ON).
+   어느 쪽이든 사라지지 않고 언제든 되돌릴 수 있다. */
 .entry-predict-toggle {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     flex-shrink: 0;
-    padding: 4px 12px;
+    padding: 4px 10px 4px 6px;
     border-radius: 14px;
     font-size: 12px;
     font-weight: 700;
@@ -18752,14 +18762,36 @@ html.service-guide-active #landingPage {
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.entry-predict-toggle svg {
-    width: 13px;
-    height: 13px;
+.entry-predict-toggle__track {
+    position: relative;
+    display: inline-block;
+    width: 26px;
+    height: 15px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.entry-predict-toggle__knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.15s;
 }
 .entry-predict-toggle--on {
     background: var(--green-soft, #eaf8f2);
     border-color: var(--color-primary);
     color: #0f5132;
+}
+.entry-predict-toggle--on .entry-predict-toggle__track {
+    background: var(--color-primary);
+}
+.entry-predict-toggle--on .entry-predict-toggle__knob {
+    transform: translateX(11px);
 }
 /* 토글 OFF일 때 추측 세그먼트 — 값은 남기고 흐리게 (다시 켤 수 있어야 하니까) */
 .entry-context-seg--muted {
