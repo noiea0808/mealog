@@ -29,6 +29,7 @@ import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { dominantPlaceGroup, normalizePlace } from '../utils/place-normalize.js';
 import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
+import { procurementHintFromText } from '../utils/procurement-hint.js';
 import { getAxis1TagList } from './entry-form-config.js';
 
 const CONTAINER_ID = 'entryContextPredict';
@@ -292,10 +293,14 @@ function visibleAxes() {
  * (docs/entry-axes-and-tags-direction.md §5). 이력 통계(습관 예측)가 아니라 현재 기록의
  * 사실에서 나오므로, 합성 시 습관 예측보다 우선한다.
  *
+ * 신뢰도 높은 순서:
  * 1. 카카오 장소 픽 → placeType이 식당/술집/카페면 '외식' (사용자가 고른 장소의 객관 속성)
- * 2. 장소 표기가 '구내식당' → '구내식당' (장소가 값 자체)
- * 3. 장소가 집 그룹 + 무엇을 분류가 밥/한상 → '집밥' (집에서 차린 한 상)
- *    — 집에서 배달을 먹는 반례가 있어 확신은 아니지만, 점선 추측 + 확인 장치가 받는다.
+ * 2. **무엇을 원문의 조달 키워드** ("배민 치킨"→배달/포장, "구내식당 백반"→구내식당).
+ *    음식 카테고리는 조달을 거의 못 알려주지만(면은 집·배달·식당 모두 가능) 원문에는
+ *    조달어가 직접 들어 있다. 장소가 비어 있어도 발화하는 유일한 규칙이다.
+ * 3. 장소 표기가 '구내식당' → '구내식당' (장소가 값 자체)
+ * 4. 장소가 집 그룹 + 무엇을 분류가 밥/한상 → '집밥' (집에서 차린 한 상)
+ *    — 집에서 배달을 먹는 반례가 있어 확신은 아니지만, 점선 추측 + 토글이 받는다.
  *
  * @returns {string|null}
  */
@@ -311,6 +316,10 @@ function inferMealTypeFromFacts() {
             const pt = placeTypeFromKakaoCategory(d?.categoryGroupCode, d?.category);
             if (pt === '식당' || pt === '술집' || pt === '카페') return '외식';
         }
+        const whatText = document.getElementById('entryWhatInput')?.value || '';
+        const byText = procurementHintFromText(whatText, window.userSettings?.tags?.mealType || null);
+        if (byText) return byText;
+
         if (!raw) return null;
         const norm = normalizePlace(raw);
         if (norm.includes('구내식당')) return '구내식당';
@@ -342,9 +351,12 @@ function refreshMealTypeGuess() {
  * @param {string|null} category
  */
 export function updateEntryContextFoodCategory(category) {
-    const next = category || null;
-    if (state.foodCategory === next) return;
-    state.foodCategory = next;
+    /**
+     * 분류가 그대로여도 항상 재합성한다 — 조달 키워드는 **원문**에서 읽으므로
+     * "라면" → "배민 라면" 처럼 카테고리가 안 변해도 추측은 바뀌어야 한다.
+     * refreshMealTypeGuess 는 값이 실제로 달라질 때만 render 하므로 헛일이 아니다.
+     */
+    state.foodCategory = category || null;
     refreshMealTypeGuess();
 }
 
