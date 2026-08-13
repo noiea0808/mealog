@@ -15,7 +15,7 @@ const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
 /** 식사 상세 공통 팝업 탭 */
 const MEAL_DETAIL_TABS = [
-    { key: 'mealType', label: '어디서' },
+    { key: 'mealType', label: '어떻게' },
     { key: 'category', label: '무엇을' },
     { key: 'withWhom', label: '함께' }
 ];

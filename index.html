@@ -2934,24 +2934,19 @@
                 <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
                 <div id="entryContextPredict" class="entry-context-predict hidden" aria-live="polite"></div>
 <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
+                        <!-- 끼니: 칩(어떻게=조달) 먼저 → 장소 입력(어디서) 나중. 어떻게가 어디서의 라우터
+                             (docs/entry-axes-and-tags-direction.md §5). 간식은 칩도 장소라 라벨만 '어디서'. -->
                         <div class="entry-axis-label-row">
                             <div class="entry-axis-label-group shrink-0">
                                 <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                    <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
+                                    <i data-lucide="map-pin" id="entryWhereLabelIconPlace" class="entry-axis-icon" aria-hidden="true"></i>
+                                    <i data-lucide="utensils" id="entryWhereLabelIconHow" class="entry-axis-icon hidden" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
                             </div>
                             <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
                                 <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                             </button>
-                        </div>
-                        <div class="entry-axis-input-area w-full min-w-0">
-                            <div class="relative min-w-0">
-                                <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
-                                    <i data-lucide="search" aria-hidden="true"></i>
-                                </button>
-                                <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
-                            </div>
                         </div>
                         <div class="entry-tag-stage" data-entry-tag-stage="where">
                             <div class="entry-tag-stage__viewport">
@@ -2964,6 +2959,20 @@
                                         <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions min-w-0 flex-1" data-input-id="entryWhereInput"></div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div id="entryWhereInputLabel" class="entry-axis-sublabel-row hidden" aria-hidden="true">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>어디서</span>
+                            </span>
+                        </div>
+                        <div class="entry-axis-input-area w-full min-w-0">
+                            <div class="relative min-w-0">
+                                <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
+                                    <i data-lucide="search" aria-hidden="true"></i>
+                                </button>
+                                <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
                         </div>
                     </div>

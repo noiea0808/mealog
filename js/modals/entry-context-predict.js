@@ -1,8 +1,11 @@
 /**
- * 기록 시트 — 어디서·누구와 예측 한 줄 (docs/entry-sheet-redesign.md §2 2층)
+ * 기록 시트 — 어떻게·어디서·누구와 예측 한 줄 (docs/entry-sheet-redesign.md §2 2층,
+ * 어떻게 축은 docs/entry-axes-and-tags-direction.md §5)
+ *
+ * 순서가 곧 라우팅이다: 어떻게(조달)가 어디서(장소)의 입력 방식을 결정하므로 앞에 선다.
  *
  * 습관-추측 원칙: 과거 패턴에서 예측한 값은 "맞아요" 탭이라는 명시적 확인 없이는
- * 절대 저장되지 않는다. 탭 없이 저장하면 두 필드 모두 빈 값이다.
+ * 절대 저장되지 않는다. 탭 없이 저장하면 세 필드 모두 빈 값이다.
  *
  * 예측 키: (slotId × 평일/주말) 최빈값 — 슬롯 표본 3건+ · 점유 60%+.
  * 표본 부족 시 사용자 전체(슬롯 무관) 최빈값으로 폴백 (같은 문턱).
@@ -22,22 +25,22 @@ const MODE_SHARE = 0.6;
 const RECENT_LIMIT = 30;
 
 const state = {
-    predicted: /** @type {{ place: string|null, withWhom: string|null }} */ ({ place: null, withWhom: null }),
-    confirmed: /** @type {{ place: string|null, withWhom: string|null }} */ ({ place: null, withWhom: null }),
+    predicted: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
+    confirmed: /** @type {{ mealType: string|null, place: string|null, withWhom: string|null }} */ ({ mealType: null, place: null, withWhom: null }),
     dismissed: false,
 };
 
 /**
  * 저장 어댑터가 읽는 확정값. "맞아요"를 탭한 경우에만 값이 있다.
- * @returns {{ place: string|null, withWhom: string|null }}
+ * @returns {{ mealType: string|null, place: string|null, withWhom: string|null }}
  */
 export function getEntryContextPredictConfirm() {
     return { ...state.confirmed };
 }
 
 export function resetEntryContextPredict() {
-    state.predicted = { place: null, withWhom: null };
-    state.confirmed = { place: null, withWhom: null };
+    state.predicted = { mealType: null, place: null, withWhom: null };
+    state.confirmed = { mealType: null, place: null, withWhom: null };
     state.dismissed = false;
     render();
 }
@@ -78,16 +81,21 @@ function qualifiedMode(values, groupPlaces = false) {
     return topN / values.length >= MODE_SHARE ? top : null;
 }
 
+/** 어떻게(mealType) 예측에서 제외하는 값 — 폴백·기록상태는 습관이 아니다 */
+const MEALTYPE_PREDICT_EXCLUDE = new Set(['기타', '건너뜀', 'Skip']);
+
 /**
  * @param {any[]} history window.mealHistory
- * @param {'place'|'withWhom'} field
+ * @param {'mealType'|'place'|'withWhom'} field
  * @param {string} slotId
  * @param {boolean} weekend
  * @returns {string|null}
  */
 function predictField(history, field, slotId, weekend) {
     const withValue = history.filter(
-        (r) => r && !isSkipRecord(r) && typeof r[field] === 'string' && r[field].trim()
+        (r) =>
+            r && !isSkipRecord(r) && typeof r[field] === 'string' && r[field].trim() &&
+            !(field === 'mealType' && MEALTYPE_PREDICT_EXCLUDE.has(r[field].trim()))
     );
     if (withValue.length === 0) return null;
     // 최근 우선 — date 문자열(YYYY-MM-DD) 내림차순
@@ -114,6 +122,7 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
         resetEntryContextPredict();
         if (isSnack || !slotId || !dateStr) return;
 
+        const mealTypeFilled = Boolean(document.querySelector('#entryWhereChips button.chip.active'));
         const placeFilled = Boolean((document.getElementById('entryWhereInput')?.value || '').trim());
         const withFilled =
             Boolean(document.querySelector('#entryWithChips button.chip.active')) ||
@@ -122,10 +131,11 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
         const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
         const weekend = isWeekendDate(dateStr);
         state.predicted = {
+            mealType: mealTypeFilled ? null : predictField(history, 'mealType', slotId, weekend),
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
-        if (state.predicted.place || state.predicted.withWhom) {
+        if (state.predicted.mealType || state.predicted.place || state.predicted.withWhom) {
             logUsageMetric('context_predict_shown').catch(() => {});
         }
         render();
@@ -137,13 +147,19 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack }) {
 function render() {
     const el = document.getElementById(CONTAINER_ID);
     if (!el) return;
-    const { place, withWhom } = state.predicted;
-    if (state.dismissed || (!place && !withWhom)) {
+    const { mealType, place, withWhom } = state.predicted;
+    if (state.dismissed || (!mealType && !place && !withWhom)) {
         el.innerHTML = '';
         el.classList.add('hidden');
         return;
     }
+    // 순서 = 라우팅 순서: 어떻게 → 어디서 → 누구와
     const parts = [];
+    if (mealType) {
+        parts.push(
+            `<span class="entry-predict-value"><i data-lucide="utensils" aria-hidden="true"></i>${escapeHtml(mealType)}</span>`
+        );
+    }
     if (place) {
         parts.push(
             `<span class="entry-predict-value"><i data-lucide="map-pin" aria-hidden="true"></i>${escapeHtml(place)}</span>`
@@ -172,7 +188,19 @@ function escapeHtml(s) {
 }
 
 function applyPrediction() {
-    const { place, withWhom } = state.predicted;
+    const { mealType, place, withWhom } = state.predicted;
+    /**
+     * 어떻게 칩을 먼저 적용한다 — 칩 클릭이 어디서 기본값 라우팅(집밥→우리집 등)을
+     * 발화시키므로, 그 뒤에 예측 place를 쓰면 예측값이 기본값을 덮는 올바른 순서가 된다.
+     */
+    if (mealType) {
+        const chip = [...document.querySelectorAll('#entryWhereChips button.chip')].find(
+            (b) => b.innerText.trim() === mealType && !b.classList.contains('active')
+        );
+        if (chip) chip.click();
+        // 칩이 없어도(빠른입력 꺼짐) 저장 시 병합되도록 확정값을 남긴다
+        state.confirmed.mealType = mealType;
+    }
     if (place) {
         setVal('entryWhereInput', place);
         state.confirmed.place = place;
@@ -183,10 +211,9 @@ function applyPrediction() {
             (b) => b.innerText.trim() === withWhom
         );
         if (chip) chip.click();
-        // 칩이 없어도(빠른입력 꺼짐) 저장 시 병합되도록 확정값을 남긴다
         state.confirmed.withWhom = withWhom;
     }
-    state.predicted = { place: null, withWhom: null };
+    state.predicted = { mealType: null, place: null, withWhom: null };
     render();
 }
 

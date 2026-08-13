@@ -6,6 +6,7 @@ import { syncPhotoMetaLength } from '../photo-meta.js';
 import { PHOTO_ASPECT_OPTIONS } from './entry-form-config.js';
 import { getEntryCategorySuggestResult } from './entry-category-suggest.js';
 import { getEntryContextPredictConfirm } from './entry-context-predict.js';
+import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 
 /** 아직 Storage에 없는 로컬 이미지(data URL 또는 일부 환경의 blob URL) */
 export function isLocalPendingPhoto(photo) {
@@ -140,22 +141,24 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
     }
 
     /**
-     * 어디서·누구와 예측 "맞아요" 병합 (docs/entry-sheet-redesign.md §2 2층).
+     * 어떻게·어디서·누구와 예측 "맞아요" 병합 (docs/entry-sheet-redesign.md §2 2층).
      * 확정값은 사용자가 명시적으로 탭한 것만 존재한다 — 탭 없이는 항상 빈 값.
-     * 칩이 렌더돼 있으면 apply 시 이미 chip.click()으로 반영됐고(withWhomResolved 채워짐),
-     * 칩이 접혀 있던 경우만 여기서 병합된다.
+     * 칩이 렌더돼 있으면 apply 시 이미 chip.click()으로 반영됐고(resolved 값이 채워짐),
+     * 칩이 접혀 있던 경우만 여기서 병합된다. (place는 input 값으로 흐르므로 병합 불필요)
      */
     let withWhomFinal = withWhomResolved;
-    if (!isS && !isSk && !(withWhomFinal || '').trim()) {
+    let mealTypeFinal = mealTypeResolved;
+    if (!isS && !isSk) {
         const ctxConfirm = getEntryContextPredictConfirm();
-        if (ctxConfirm.withWhom) withWhomFinal = ctxConfirm.withWhom;
+        if (!(withWhomFinal || '').trim() && ctxConfirm.withWhom) withWhomFinal = ctxConfirm.withWhom;
+        if (!(mealTypeFinal || '').trim() && ctxConfirm.mealType) mealTypeFinal = ctxConfirm.mealType;
     }
 
     const record = {
         id: idToUse,
         date: state.currentEditingDate,
         slotId: state.currentEditingSlotId,
-        mealType: mealTypeResolved,
+        mealType: mealTypeFinal,
         withWhom: withWhomFinal,
         withWhomDetail: isSk ? '' : withInputVal,
         category: categoryFinal,
@@ -234,6 +237,16 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         if (kakaoPlaceData) {
             try {
                 record.placeData = JSON.parse(kakaoPlaceData);
+                /**
+                 * placeType 파생 (식당/카페/편의점/술집) — 사용자가 고른 장소의 객관 속성이라
+                 * 사실-유도로 자동 저장한다. 어디서 통계의 집계 축이 상호명 파편 대신
+                 * 이 카테고리가 되는 것이 목적 (docs/entry-axes-and-tags-direction.md §5).
+                 * 판정 불가는 빈 문자열 그대로 — 기존 스키마의 예약 필드를 채우는 것뿐이다.
+                 */
+                record.placeType = placeTypeFromKakaoCategory(
+                    record.placeData?.categoryGroupCode,
+                    record.placeData?.category
+                );
             } catch (e) {
                 console.warn('카카오 장소 데이터 파싱 실패:', e);
             }

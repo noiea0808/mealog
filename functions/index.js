@@ -4317,7 +4317,9 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
     throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
   const query = encodeURIComponent(trimmedKw);
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=10`;
+  // category_group_code 필터 제거: FD6 고정이면 카페(CE7)·편의점(CS2)이 API 단계에서 잘려
+  // 어디서 축 통합(placeType 파생)이 막힌다. 식음 관련 판정은 아래 후처리 필터가 담당.
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&size=15`;
   // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
   const res = await fetch(url, {
     method: 'GET',
@@ -4336,14 +4338,15 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   }
   // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
   const documents = data?.documents || [];
+  // 클라이언트 SDK 경로(js/utils/place-type.js isFoodRelatedKakaoPlace)와 같은 기준 유지
   const restaurants = documents.filter((place) => {
     const cat = (place.category_name || '').toLowerCase();
     const code = place.category_group_code || '';
-    if (code === 'FD6') return true;
+    if (code === 'FD6' || code === 'CE7' || code === 'CS2') return true;
     return cat.includes('음식점') || cat.includes('식당') || cat.includes('카페') ||
       cat.includes('레스토랑') || cat.includes('맛집') || cat.includes('요리') ||
       cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
-      cat.includes('술집') || cat.includes('바');
+      cat.includes('술집') || cat.includes('바') || cat.includes('편의점');
   });
   return { documents: restaurants.slice(0, 10) };
 }));

@@ -15804,6 +15804,13 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-axis-stack .entry-axis-input-area {
     width: 100%;
 }
+/* 끼니 어디서 보조 라벨 (어떻게 칩 아래·장소 입력 위) — 본 라벨 행보다 낮게, 행 높이 강제 없음 */
+#entryModal .entry-axis-sublabel-row {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    margin-top: 0.125rem;
+}
 #entryModal #entryWhatSection .entry-what-textarea,
 #entryModal #entryWhatSection.entry-field-quick-off .entry-what-textarea,
 #entryModal #entryWhatSection:not(.entry-field-quick-off) .entry-what-textarea {
@@ -17919,6 +17926,18 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     font-size: 0.75rem;
     line-height: 1.35;
     color: #7a7167;
+}
+/* 결과 행 카테고리 꼬리표 ("냉면"·"카페"…) — 선택 전에 placeType 파생 근거를 보여준다 */
+.kakao-place-sheet__result-cat {
+    margin-left: 0.4rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #0f766e;
+    background: #f0fdf9;
+    border: 1px solid #ccfbf1;
+    border-radius: 0.375rem;
+    padding: 0.0625rem 0.375rem;
+    vertical-align: 1px;
 }
 .kakao-place-sheet__empty {
     padding: 2rem 0.5rem;

@@ -1,7 +1,7 @@
 // Service Worker for MEALOG
-// v7: 기록 시트 개편(자동 분류·예측·승격) — 구 index.html 캐시에는 제안 컨테이너가
-// 없어 신규 UI가 통째로 안 보인다. 캐시 세대를 올려 activate에서 구캐시를 폐기한다.
-const CACHE_NAME = 'mealog-v7';
+// v8: 어디서 섹션 재구성(어떻게 칩 → 어디서 입력 순서, 보조 라벨 추가) — index.html
+// 구조 변경이므로 캐시 세대를 올려 구 HTML + 신 JS 혼합을 막는다.
+const CACHE_NAME = 'mealog-v8';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면

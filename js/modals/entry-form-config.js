@@ -34,7 +34,9 @@ export function getEntryModeFromSlot(slot) {
 
 export const ENTRY_MODE_CONFIG = {
     meal: {
-        whereLabel: '어디서',
+        // 끼니 1축(mealType)은 장소가 아니라 조달 형태다 — 라벨이 축의 실제 의미를 말하게 한다.
+        // 실제 장소는 아래 자유입력(entryWhereInput)이 담당하고 보조 라벨 '어디서'가 붙는다.
+        whereLabel: '어떻게',
         axis1TagsKey: 'mealType',
         axis1FavoriteKey: 'mealType',
         axis1SubTagKey: 'place',

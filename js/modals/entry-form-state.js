@@ -171,6 +171,13 @@ export function applyEntryModeLabels(mode) {
     const whatInput = document.getElementById(ENTRY_DOM.whatInput);
     if (labelEl) labelEl.textContent = cfg.whereLabel;
     if (whatInput) whatInput.placeholder = cfg.whatPlaceholder;
+
+    // 끼니: 칩 라벨 '어떻게'(utensils) + 장소 입력 위 보조 라벨 '어디서' 노출.
+    // 간식: 칩도 장소이므로 본 라벨 '어디서'(map-pin) 하나로 충분 — 보조 라벨 숨김.
+    const isMeal = mode !== 'snack';
+    document.getElementById('entryWhereLabelIconPlace')?.classList.toggle('hidden', isMeal);
+    document.getElementById('entryWhereLabelIconHow')?.classList.toggle('hidden', !isMeal);
+    document.getElementById('entryWhereInputLabel')?.classList.toggle('hidden', !isMeal);
 }
 
 /** @param {EntryFormMode} mode */

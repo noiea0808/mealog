@@ -54,7 +54,8 @@ import {
     formatMealClock12TextWhileTyping,
     normalizeMealClock12InputValue,
     mealClock24FromAmPmClock,
-    mealClock24ToAmPmAndDisplay
+    mealClock24ToAmPmAndDisplay,
+    hasExifGpsInImageFile
 } from '../meal-time-utils.js';
 import {
     createPhotoMetaFromFile,
@@ -3657,14 +3658,24 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         toggleFieldsForSkip(isSkip);
     }
     
-    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && selectedValue && appState.entryFormMode === 'meal' && (selectedValue === '집밥' || selectedValue === '배달/포장')) {
-        const pi = document.getElementById('entryWhereInput');
-        if (pi) {
-            pi.value = '우리집';
-            pi.removeAttribute('data-kakao-place-id');
-            pi.removeAttribute('data-kakao-place-address');
-            pi.removeAttribute('data-kakao-place-data');
-            pi.removeAttribute('data-kakao-place-name');
+    /**
+     * 어떻게(조달) 선택 → 어디서(장소) 기본값 라우팅 (docs/entry-axes-and-tags-direction.md §5).
+     * 집밥·배달/포장은 먹는 곳이 거의 '우리집', 구내식당은 장소가 값 자체다.
+     * 기본값 채움일 뿐 입력란은 수정 가능 — 사실-유도 관성 유지.
+     * 외식·회식/술자리는 채우지 않는다 (카카오 검색이 주 입력 경로).
+     */
+    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && selectedValue && appState.entryFormMode === 'meal') {
+        const HOW_PLACE_DEFAULTS = { '집밥': '우리집', '배달/포장': '우리집', '구내식당': '구내식당' };
+        const defaultPlace = HOW_PLACE_DEFAULTS[selectedValue];
+        if (defaultPlace) {
+            const pi = document.getElementById('entryWhereInput');
+            if (pi) {
+                pi.value = defaultPlace;
+                pi.removeAttribute('data-kakao-place-id');
+                pi.removeAttribute('data-kakao-place-address');
+                pi.removeAttribute('data-kakao-place-data');
+                pi.removeAttribute('data-kakao-place-name');
+            }
         }
     }
 
@@ -3727,6 +3738,21 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
     // 선택 직후 다운스케일 처리 중에도 "처리되고 있다"는 걸 바로 보여준다 (완료되면 renderPhotoPreviews가 교체)
     renderPhotoProcessingPlaceholders(filesToProcess.length);
+
+    /**
+     * [계측] 사진 EXIF GPS 존재율 — 사진 GPS 기반 '어디서' 제안 투자 판단용.
+     * 좌표는 읽지 않고 유무만 센다 (hasExifGpsInImageFile 참고). 플랫폼 포토 피커가
+     * 위치 EXIF를 제거하는 비율이 관건이라 실기기 데이터가 나와야 다음 단계를 결정한다.
+     * 완전 비동기 — 인테이크·저장 경로를 기다리게 하지 않는다.
+     */
+    filesToProcess.forEach((file) => {
+        hasExifGpsInImageFile(file)
+            .then((has) => {
+                if (has === null) return; // 판정 불가는 분모에서 제외
+                logUsageMetric(has ? 'photo_gps_present' : 'photo_gps_absent').catch(() => {});
+            })
+            .catch(() => {});
+    });
 
     /**
      * 인테이크에서 다운스케일한다 (설계 §4.6). 예전에는 원본을 그대로 readAsDataURL 해서
