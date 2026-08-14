@@ -197,7 +197,8 @@ function renderEditorSection() {
                 <select id="foodDictNewForm" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none">
                     ${FORM_CATEGORIES.map((f) => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')}
                 </select>
-                <select id="foodDictNewCuisine" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none">
+                <select id="foodDictNewCuisine" class="px-2 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold outline-none disabled:bg-slate-100 disabled:text-slate-400">
+                    <option value="">해당 없음</option>
                     ${CUISINE_CATEGORIES.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')}
                 </select>
                 <button onclick="window.addFoodDictEntry()" class="px-3 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300">추가</button>
@@ -331,9 +332,17 @@ window.addFoodDictEntry = function () {
         alert('음식명을 입력해주세요.');
         return;
     }
+    const form = document.getElementById('foodDictNewForm')?.value || FORM_CATEGORIES[0];
+    const picked = document.getElementById('foodDictNewCuisine')?.value ?? '';
+    /**
+     * 요리 종류는 **형태가 정한다.** 드롭다운 값을 그대로 믿지 않는 이유는 두 가지 —
+     * 면제 형태(커피·과일…)에서는 어떤 값이 남아 있든 축이 해당되지 않고,
+     * 반대로 요리 종류를 쓰는 형태에서 '해당 없음'을 고른 건 '기타'라는 뜻이다.
+     * (저장 시 setFoodDictionaryOverrides 가 같은 규칙으로 한 번 더 강제한다)
+     */
     draft.entries[word] = {
-        form: document.getElementById('foodDictNewForm')?.value || FORM_CATEGORIES[0],
-        cuisine: document.getElementById('foodDictNewCuisine')?.value || '기타',
+        form,
+        cuisine: formUsesCuisine(form) ? (picked || '기타') : '',
     };
     draft.removed = draft.removed.filter((w) => w !== word);
     filterText = word;
@@ -432,6 +441,27 @@ function bindEditorInteractionsOnce() {
     });
 }
 
+/**
+ * 추가 폼의 요리 종류 드롭다운을 형태에 맞춘다.
+ *
+ * 면제 형태를 고르면 '해당 없음'으로 고정하고 잠근다 — 예전에는 드롭다운이 '한식' 같은
+ * 값을 물고 있는데 저장 시엔 빈 값으로 강제되어, 화면이 저장될 값과 다른 말을 하고 있었다.
+ * (판정 자체는 addFoodDictEntry 가 형태에서 다시 하므로 이 함수는 표시만 책임진다)
+ */
+function syncNewEntryCuisineSelect() {
+    const formSel = document.getElementById('foodDictNewForm');
+    const cuisineSel = document.getElementById('foodDictNewCuisine');
+    if (!formSel || !cuisineSel) return;
+    const exempt = !formUsesCuisine(formSel.value);
+    if (exempt) {
+        cuisineSel.value = '';
+    } else if (!cuisineSel.value) {
+        cuisineSel.value = '기타';
+    }
+    cuisineSel.disabled = exempt;
+    cuisineSel.title = exempt ? `'${formSel.value}'는 요리 종류를 묻지 않는 형태입니다` : '';
+}
+
 /* ─────────────────────────── 렌더 ─────────────────────────── */
 
 function rerender() {
@@ -452,6 +482,10 @@ function rerender() {
         test.addEventListener('input', runTester);
         if (testValue) runTester();
     }
+    const newForm = document.getElementById('foodDictNewForm');
+    if (newForm) newForm.addEventListener('change', syncNewEntryCuisineSelect);
+    syncNewEntryCuisineSelect();
+
     const filter = document.getElementById('foodDictFilter');
     if (filter) {
         filter.addEventListener('input', () => {
