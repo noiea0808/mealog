@@ -1818,7 +1818,8 @@ function syncBoardInlineComposerUi() {
 window.syncBoardInlineComposerUi = syncBoardInlineComposerUi;
 
 if (boardInlineInput) {
-    boardInlineInput.addEventListener('input', syncBoardInlineComposerUi);
+    /* 조합 중 height 재기입·리플로우가 IME 글자 렌더를 깨뜨림 — 모먼트 댓글과 동일 가드 */
+    addCompositionAwareInput(boardInlineInput, syncBoardInlineComposerUi);
     // Enter = 줄바꿈. Shift+Enter = 전송 (Ctrl/Cmd+Enter 도 전송)
     boardInlineInput.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;

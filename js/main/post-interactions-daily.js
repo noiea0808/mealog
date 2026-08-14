@@ -1753,7 +1753,12 @@ window.toggleCommentInput = (postId) => {
                 try {
                     if (!textInput.dataset.mv2SendBtnBound) {
                         textInput.dataset.mv2SendBtnBound = '1';
-                        textInput.addEventListener('input', () => {
+                        /*
+                         * 조합(한글 IME) 중 style.height 재기입 + scrollHeight 강제 리플로우가
+                         * WebView의 조합 글자 렌더를 깨뜨려, 단어가 끝나야 텍스트가 보였다.
+                         * 기록시트와 동일하게 조합 중에는 미루고 compositionend에 한 번 실행.
+                         */
+                        addCompositionAwareInput(textInput, () => {
                             syncMomentV2CommentTextareaHeight(textInput);
                             syncCommentSendButtonVisibility(postId, textInput);
                         });
