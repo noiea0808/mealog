@@ -1,5 +1,5 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v7';
+const CACHE_NAME = 'mealog-v8';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면

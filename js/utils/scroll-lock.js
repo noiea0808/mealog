@@ -137,6 +137,13 @@ function applyDomScrollLock() {
     savedScrollY = window.scrollY || window.pageYOffset || 0;
     document.documentElement.classList.add('mealog-scroll-locked');
     document.body.classList.add('mealog-scroll-locked');
+    /*
+     * --pinned(= body position:fixed 핵)는 되돌릴 스크롤이 있을 때만.
+     * Chromium 148: 로그인 화면(html.mealog-landing-login)에서 body가 fixed가 되면
+     * 렌더링이 마지막 프레임으로 동결된다("초록 화면"). scrollY=0이면 핵이 필요 없다.
+     * 자세한 사연은 css의 .mealog-scroll-locked--pinned 주석 참고.
+     */
+    document.body.classList.toggle('mealog-scroll-locked--pinned', savedScrollY > 0);
     document.body.style.top = `-${savedScrollY}px`;
     attachScrollBlockListeners();
 }
@@ -144,6 +151,7 @@ function applyDomScrollLock() {
 function clearDomScrollLock() {
     document.documentElement.classList.remove('mealog-scroll-locked');
     document.body.classList.remove('mealog-scroll-locked');
+    document.body.classList.remove('mealog-scroll-locked--pinned');
     document.body.style.top = '';
     detachScrollBlockListeners();
     window.scrollTo(0, savedScrollY);

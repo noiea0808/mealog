@@ -9635,11 +9635,20 @@ html.mealog-scroll-locked {
 }
 body.mealog-scroll-locked {
     overflow: hidden !important;
+    overscroll-behavior: none;
+}
+/*
+ * position:fixed 스크롤 고정 핵은 "스크롤을 되돌리며 잠글 때"(scrollY>0, iOS Safari 대응)만 쓴다.
+ * Chromium 148에서 html.mealog-landing-login(로그인 화면) 상태의 body에 position:fixed가 걸리면
+ * 컴포지터가 새 프레임 생산을 멈춰 화면이 마지막 프레임으로 동결된다 — 로그인 화면에서 어떤
+ * 팝업을 열어도 "초록 화면"만 남던 원인. scrollY=0이면 되돌릴 스크롤이 없어 핵 자체가 불필요하다.
+ * (트리거·해제 모두 스크린샷 이분탐색으로 실측 확인)
+ */
+body.mealog-scroll-locked.mealog-scroll-locked--pinned {
     position: fixed;
     width: 100%;
     left: 0;
     right: 0;
-    overscroll-behavior: none;
 }
 html.mealog-scroll-locked #mainApp,
 html.mealog-scroll-locked #landingPage {
