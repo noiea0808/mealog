@@ -25,11 +25,54 @@ import {
 } from '../utils/food-classifier.js';
 import { escapeHtml } from './utils.js';
 
-/** 편집 중 상태 — 저장 전까지 Firestore에 쓰지 않는다 */
+/**
+ * 편집 중 상태 — 저장 전까지 Firestore에 쓰지 않는다.
+ *
+ * **오버라이드 전체**이지 "이번에 고친 것"이 아니다. 화면 진입 시 저장된 문서를 통째로
+ * 여기 올리고(loadFoodDictContent), 저장은 이 값을 `merge:false` 로 덮어쓴다.
+ * 그래서 저장했다고 비우면 안 된다 — 다음 저장에서 오버라이드가 전부 날아간다.
+ */
 let draft = { entries: {}, removed: [] };
+/**
+ * 마지막으로 Firestore 와 일치했던 시점의 draft 지문.
+ *
+ * draft 크기를 "저장 안 된 변경"으로 표시하던 때가 있었는데, draft 는 오버라이드 전체라
+ * 저장 직후에도 숫자가 그대로 남아 저장이 실패한 것처럼 보였다. 미저장 여부는 크기가
+ * 아니라 **저장 시점과의 차이**로만 알 수 있다.
+ */
+let savedFingerprint = '';
 let filterText = '';
 /** 터치 기기용 2단계 이동: 칩을 눌러 고른 뒤 대상 칸의 종류 이름을 누른다 */
 let selectedWord = null;
+
+/** 키 순서에 흔들리지 않는 draft 지문 — 저장 시점과의 비교에만 쓴다 */
+function fingerprintOf(d) {
+    const entries = Object.keys(d.entries || {}).sort()
+        .map((k) => [k, d.entries[k]?.form || '', d.entries[k]?.cuisine || '']);
+    return JSON.stringify({ entries, removed: [...(d.removed || [])].sort() });
+}
+
+/** 저장 시점 이후 실제로 달라진 항목 수 (0이면 Firestore 와 같은 상태) */
+function unsavedChangeCount() {
+    let saved;
+    try {
+        saved = JSON.parse(savedFingerprint || '{"entries":[],"removed":[]}');
+    } catch (_) {
+        return Object.keys(draft.entries).length + draft.removed.length;
+    }
+    const savedEntries = new Map((saved.entries || []).map(([w, form, cuisine]) => [w, JSON.stringify([form, cuisine])]));
+    let n = 0;
+    const words = new Set([...Object.keys(draft.entries), ...savedEntries.keys()]);
+    for (const w of words) {
+        const cur = draft.entries[w] ? JSON.stringify([draft.entries[w].form, draft.entries[w].cuisine || '']) : null;
+        if (cur !== (savedEntries.get(w) ?? null)) n += 1;
+    }
+    const savedRemoved = new Set(saved.removed || []);
+    const draftRemoved = new Set(draft.removed);
+    for (const w of draftRemoved) if (!savedRemoved.has(w)) n += 1;
+    for (const w of savedRemoved) if (!draftRemoved.has(w)) n += 1;
+    return n;
+}
 
 /** onclick="fn('...')" 안에 들어갈 문자열 — 따옴표·역슬래시가 속성을 깨지 않게 */
 function jsArg(s) {
@@ -154,7 +197,8 @@ function renderChip(word) {
 function renderEditorSection() {
     const grouped = groupedEntries();
     const total = currentEntries().length;
-    const changed = Object.keys(draft.entries).length + draft.removed.length;
+    const unsaved = unsavedChangeCount();
+    const overrideCount = Object.keys(draft.entries).length + draft.removed.length;
     const matched = filterText ? currentEntries().filter((e) => e.word.includes(filterText)).length : 0;
 
     const cards = FORM_CATEGORIES.map((form) => {
@@ -186,7 +230,11 @@ function renderEditorSection() {
             <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
                 <h3 class="text-base font-black text-slate-800">끼니 사전 편집</h3>
                 <div class="flex items-center gap-2">
-                    ${changed > 0 ? `<span class="text-xs font-bold text-amber-600">저장 안 된 변경 ${changed}건</span>` : ''}
+                    ${unsaved > 0
+                        ? `<span class="text-xs font-bold text-amber-600">저장 안 된 변경 ${unsaved}건</span>`
+                        : overrideCount > 0
+                            ? `<span class="text-xs font-bold text-slate-400">저장됨 · 기본값과 다른 항목 ${overrideCount}건</span>`
+                            : ''}
                     <button onclick="window.saveFoodDict()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">저장</button>
                 </div>
             </div>
@@ -355,6 +403,8 @@ window.saveFoodDict = async function () {
         await setDoc(doc(db, 'artifacts', appId, 'content', 'foodDictionary'), payload, { merge: false });
         // 저장 즉시 이 화면의 분류 테스트에도 반영
         setFoodDictionaryOverrides(payload);
+        // draft 는 비우지 않는다(오버라이드 전체다) — 저장된 지점만 새로 찍는다
+        savedFingerprint = fingerprintOf(draft);
         rerender();
         alert('사전이 저장되었습니다. 사용자 앱에는 다음 실행부터 반영됩니다.');
     } catch (e) {
@@ -517,7 +567,14 @@ export async function loadFoodDictContent() {
             } else {
                 draft = getFoodDictionaryOverrides();
             }
+            // 방금 읽어온 상태 = Firestore 와 일치하는 지점
+            savedFingerprint = fingerprintOf(draft);
         } catch (e) {
+            /**
+             * 로드에 실패했으면 지문을 찍지 않는다. 빈 지문은 "저장된 적 없음"으로 읽혀
+             * 현재 draft 전부가 미저장으로 표시되는데, 서버 상태를 모르는 이 상황에서는
+             * 그쪽이 안전한 오해다 — 반대(저장됨으로 표시)면 편집분을 잃는다.
+             */
             console.warn('음식 사전 오버라이드 로드 실패:', e?.message || e);
         }
     }
