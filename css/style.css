@@ -8510,6 +8510,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .profile-v2-avatar-btn {
     display: block;
+    position: relative;
     padding: 0;
     border: 0;
     background: transparent;
@@ -8517,6 +8518,17 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     border-radius: 50%;
     /* 그림자는 버튼에 — 아바타 overflow:hidden에 잘리지 않음 */
     box-shadow: var(--avatar-shadow-profile, 0 1px 2px rgba(100, 116, 139, 0.38));
+}
+/*
+ * 카메라 배지(.profile-v2-avatar-edit)는 원형 버튼의 우하단 "밖"에 걸쳐 있고 pointer-events:none이라,
+ * 배지를 정확히 눌러도 border-radius:50% 원 바깥이면 클릭이 아무 데도 닿지 않고 버려졌다
+ * (배지 면적의 절반이 사각지대 — 손가락이 자연히 가는 바깥쪽 절반이 전부 죽어 있음).
+ * 배지까지 덮는 사각 히트영역을 버튼에 덧대 어디를 눌러도 버튼이 받게 한다.
+ */
+.profile-v2-avatar-btn::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
 }
 .profile-v2-avatar {
     width: 80px;
@@ -16910,6 +16922,15 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     border-top: 1px solid var(--line);
     background: var(--page);
 }
+/*
+ * 하단 밀착 시트(items-end): 시트 바닥이 뷰포트 끝에 붙어 기기 네비/제스처 바 밑으로 들어가
+ * CTA가 시스템 바에 가렸다. 배경은 끝까지 채우되 콘텐츠만 gesture inset 위로 올린다.
+ * (--safe-bottom-gesture: 실제 홈 인디케이터/네비 inset. nav-slot의 최소 48px 강제는 여기 쓰지 않음)
+ */
+#accountAvatarModal > div,
+#profileFieldEditModal > div {
+    padding-bottom: var(--safe-bottom-gesture);
+}
 @media (min-width: 640px) {
     #profileFieldEditModal > div,
     #accountAvatarModal > div,
@@ -16917,6 +16938,11 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     #reportModal > .relative {
         border-radius: var(--shell-r-dialog) !important;
         border: 1px solid var(--line);
+    }
+    /* 센터 다이얼로그로 전환 — 시스템 바와 겹치지 않으므로 inset 불필요 */
+    #accountAvatarModal > div,
+    #profileFieldEditModal > div {
+        padding-bottom: 0;
     }
 }
 #entryModal {
