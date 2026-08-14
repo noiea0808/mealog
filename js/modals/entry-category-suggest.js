@@ -9,8 +9,7 @@
  * 분류는 순수 동기(food-classifier)라 저장 경로와 상호작용이 없다.
  * 이 모듈의 어떤 실패도 저장을 막아선 안 된다 — 렌더는 전부 best-effort.
  */
-import { appState } from '../state.js';
-import { classifyFoodDetail, classifySnackText, classifyCuisineText } from '../utils/food-classifier.js';
+import { classifyFoodDetail } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { updateEntryContextFoodCategory } from './entry-context-predict.js';
@@ -36,10 +35,6 @@ function escapeAttr(s) {
     return String(s).replace(/[&<>"']/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
-}
-
-function isMealMode() {
-    return appState.entryFormMode !== 'snack';
 }
 
 /**
@@ -83,15 +78,14 @@ function runClassify() {
         let next = [];
         state.cuisine = null;
         if (text) {
-            if (isMealMode()) {
-                // 형태·요리종류를 한 번에 — 요리종류는 UI에 안 나오고 저장만 된다
-                const detail = classifyFoodDetail(text);
-                next = detail.forms;
-                state.cuisine = detail.cuisine;
-            } else {
-                next = classifySnackText(text, window.userSettings?.tags?.snackType || null);
-                state.cuisine = classifyCuisineText(text);
-            }
+            /**
+             * 끼니·간식이 같은 분류를 쓴다 — 슬롯이 끼니/간식을 가르고, '무엇을'은 한 축이다
+             * (docs/food-category-auto-classification.md §6.2).
+             * 요리종류는 UI에 안 나오고 저장만 된다.
+             */
+            const detail = classifyFoodDetail(text);
+            next = detail.forms;
+            state.cuisine = detail.cuisine;
         }
         // 제안이 그대로면 확정·거부 상태 유지, 바뀌면 리셋 (텍스트가 바뀌어 근거가 달라짐)
         const changed =

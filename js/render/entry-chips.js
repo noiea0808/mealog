@@ -138,11 +138,39 @@ export function renderEntryChips() {
         const el = document.getElementById(id);
         if (!el) return;
         const preserveStage = opts?.preserveStage === true;
+
+        const mainTagKeyMap = {
+            place: 'mealType',
+            menu: 'category',
+            people: 'withWhom',
+            snack: 'snackType',
+        };
+        let mainTagKey = mainTagKeyMap[subTagKey] || cfg.axis2FavoriteKey;
+        if (subTagKey === 'place' && id === d.whereSuggestions) {
+            mainTagKey = cfg.axis1FavoriteKey;
+        }
+
         let filteredList = list || [];
         if (parentFilter) {
+            /**
+             * 부모를 잃은 서브태그는 **어느 칩에서든** 보이게 한다.
+             *
+             * 서브태그의 parent 는 저장 시점의 메인 칩 텍스트다. 메인 축이 교체되면
+             * (한식·양식… → 밥류·면류…) 옛 parent 를 가진 항목은 어떤 칩과도 매칭되지 않아
+             * 사용자가 쌓아온 서브칩이 통째로 사라진다. 데이터는 멀쩡한데 화면에서만
+             * 증발하는 것이라, 축 교체의 실질 비용이 여기에 몰려 있었다.
+             *
+             * 그래서 "현재 메인 칩 목록에 없는 parent"는 고아로 보고 필터를 통과시킨다.
+             * 마이그레이션 없이 축을 바꿀 수 있게 하는 장치다 — 사용자가 그 칩을 다시
+             * 고르면 새 parent 로 갱신되면서 자연히 정리된다.
+             */
+            const mainTags = window.userSettings?.tags?.[mainTagKey];
+            const knownParents =
+                Array.isArray(mainTags) && mainTags.length > 0 ? new Set(mainTags) : null;
             filteredList = filteredList.filter((item) => {
                 const parent = typeof item === 'string' ? null : item.parent;
-                return parent === parentFilter;
+                if (parent === parentFilter) return true;
+                return Boolean(parent) && knownParents != null && !knownParents.has(parent);
             });
         }
 
@@ -162,16 +190,6 @@ export function renderEntryChips() {
             return;
         }
 
-        const mainTagKeyMap = {
-            place: 'mealType',
-            menu: 'category',
-            people: 'withWhom',
-            snack: 'snackType',
-        };
-        let mainTagKey = mainTagKeyMap[subTagKey] || cfg.axis2FavoriteKey;
-        if (subTagKey === 'place' && id === d.whereSuggestions) {
-            mainTagKey = cfg.axis1FavoriteKey;
-        }
         const favoriteSubTags = window.userSettings?.favoriteSubTags?.[mainTagKey] || {};
         const myTags = favoriteSubTags[parentFilter] || [];
 

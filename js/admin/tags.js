@@ -3,6 +3,7 @@ import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { FORM_CATEGORIES } from '../utils/food-dictionary.js';
 
 // 태그 콘텐츠 로드
 export async function loadTagsContent() {
@@ -15,41 +16,39 @@ export async function loadTagsContent() {
         let tagsData = {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
-            category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            // '무엇을'은 끼니·간식 공통 형태 축 (constants.js DEFAULT_USER_SETTINGS와 동일 소스)
+            category: [...FORM_CATEGORIES],
             subTagsPlaceSnack: ['집', '사무실', '카페']
         };
-        
+
         if (tagsSnap.exists()) {
             const data = tagsSnap.data();
             if (data.mealType) tagsData.mealType = data.mealType;
             if (data.withWhom) tagsData.withWhom = data.withWhom;
             if (data.category) tagsData.category = data.category;
-            if (data.snackType) tagsData.snackType = data.snackType;
             if (data.subTagsPlaceSnack && Array.isArray(data.subTagsPlaceSnack)) tagsData.subTagsPlaceSnack = data.subTagsPlaceSnack;
         }
         
         // 태그 렌더링
         renderTags('mealType', tagsData.mealType);
         renderTags('withWhom', tagsData.withWhom);
+        // '무엇을'은 편집란 하나 — snackType 은 저장 시 category 와 같은 값으로 기록된다
         renderTags('category', tagsData.category);
-        renderTags('snackType', tagsData.snackType);
         renderTags('subTagsPlaceSnack', tagsData.subTagsPlaceSnack);
-        
+
     } catch (e) {
         console.error('태그 콘텐츠 로드 실패:', e);
         // 기본값으로 렌더링
         const defaultTags = {
             mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
             withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
-            category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-            snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+            // '무엇을'은 끼니·간식 공통 형태 축 (constants.js DEFAULT_USER_SETTINGS와 동일 소스)
+            category: [...FORM_CATEGORIES],
             subTagsPlaceSnack: ['집', '사무실', '카페']
         };
         renderTags('mealType', defaultTags.mealType);
         renderTags('withWhom', defaultTags.withWhom);
         renderTags('category', defaultTags.category);
-        renderTags('snackType', defaultTags.snackType);
         renderTags('subTagsPlaceSnack', defaultTags.subTagsPlaceSnack);
     }
 }
@@ -186,6 +185,17 @@ window.removeTagItem = function(type, itemElement) {
     }
 };
 
+/**
+ * '무엇을' 목록을 코드의 형태 축으로 되돌린다 (편집란만 갱신 — 저장 버튼을 눌러야 반영).
+ *
+ * 저장된 값이 아직 옛 축(한식·양식… / 커피·베이커리…)인 환경에서 쓰는 버튼이다.
+ * 자동으로 치환하지 않는 이유는, 관리자 문서를 고치는 순간 전 사용자 칩이 바뀌기 때문 —
+ * 반영 시점은 관리자가 명시적으로 고르게 둔다.
+ */
+window.loadFormAxisTags = function() {
+    renderTags('category', [...FORM_CATEGORIES]);
+};
+
 // 태그 항목 업데이트
 window.updateTagItem = function(type, inputElement) {
     // DOM 순서에 따라 태그가 자동으로 업데이트되므로 별도 처리 불필요
@@ -216,12 +226,17 @@ window.saveTags = async function() {
     try {
         const mealType = getCurrentTags('mealType');
         const withWhom = getCurrentTags('withWhom');
+        /**
+         * '무엇을'은 편집란 하나로 관리하고 두 필드에 같은 값을 쓴다.
+         * 필드를 하나로 합치는 것은 과거 기록 마이그레이션이 따르는 별도 문제이고,
+         * 축을 통일하는 데 필요하지도 않다 (docs/food-category-auto-classification.md §6.2).
+         */
         const category = getCurrentTags('category');
-        const snackType = getCurrentTags('snackType');
+        const snackType = category;
         const subTagsPlaceSnack = getCurrentTags('subTagsPlaceSnack');
-        
+
         // 빈 태그가 있는지 확인
-        if (mealType.length === 0 || withWhom.length === 0 || category.length === 0 || snackType.length === 0) {
+        if (mealType.length === 0 || withWhom.length === 0 || category.length === 0) {
             alert('각 카테고리마다 최소 한 개의 태그가 필요합니다.');
             return;
         }

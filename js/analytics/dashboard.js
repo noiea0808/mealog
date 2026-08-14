@@ -14,6 +14,7 @@ import {
     computeMainMealKpiFromRecords,
     computeMainMealKpiDenominator,
 } from './meal-kpi-count.js';
+import { effectiveSnackTypeForAnalytics } from './meal-analytics-tags.js';
 
 /** 참견 탭 일시 비활성 — 선택 시 공사중 플로팅만 표시 */
 const MEALDANG_COMMENT_TAB_CLOSED = true;
@@ -437,9 +438,14 @@ export async function updateDashboard() {
     const totalRec = computeMainMealKpiDenominator(targetDays, extraMain, slotsPerDay);
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
+    /**
+     * snackType 원문이 아니라 해석값으로 센다 — 자동 분류로 저장된 간식은
+     * snackType이 비어 있고 categoryAuto에 값이 있다(저장 규칙: entry-save-record.js).
+     * 원문만 보면 그런 기록이 KPI에서 통째로 빠진다.
+     */
     const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
-        return slot && m.snackType;
+        return slot && effectiveSnackTypeForAnalytics(m);
     }).length;
     
     // 식사 기록 표시 (undefined 방지)

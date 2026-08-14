@@ -12,12 +12,10 @@ import { doc, getDoc, setDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/
 import {
     FORM_CATEGORIES,
     CUISINE_CATEGORIES,
-    SNACK_KEYWORDS,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
     FOOD_ENTRIES,
     classifyFoodDetail,
-    classifySnackText,
     tokenizeFoodText,
     setFoodDictionaryOverrides,
     getFoodDictionaryOverrides,
@@ -238,22 +236,18 @@ function renderOneCharSection() {
         </div>`;
 }
 
-function renderSnackSection() {
-    const blocks = Object.entries(SNACK_KEYWORDS)
-        .map(([cat, keywords]) => `
-            <div class="border border-slate-200 rounded-xl p-4 bg-white">
-                <div class="flex items-center justify-between mb-2">
-                    <h4 class="text-sm font-black text-slate-800">${escapeHtml(cat)}</h4>
-                    <span class="text-xs text-slate-400 font-bold">${keywords.length}개</span>
-                </div>
-                <div class="flex flex-wrap gap-1.5">${keywords.map((k) => `<span class="inline-block px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-xs font-semibold">${escapeHtml(k)}</span>`).join(' ')}</div>
-            </div>`)
-        .join('');
+/**
+ * 간식 축 전용 뷰는 없앴다 — 간식도 위 사전 전체를 그대로 쓴다.
+ * 끼니/간식은 슬롯이 가르고 '무엇을' 축은 하나다
+ * (docs/food-category-auto-classification.md §6.2).
+ */
+function renderAxisNoteSection() {
     return `
-        <div class="mb-6">
-            <h3 class="text-base font-black text-slate-800 mb-1">간식 축 <span class="text-xs font-bold text-slate-400">(끼니 사전에서 파생)</span></h3>
-            <p class="text-xs text-slate-500 mb-3">별도 사전이 아니라 <b>위 끼니 사전 음식에 붙은 주석</b>입니다 — 단어 목록은 한 곳에서만 관리합니다. 간식 축 값(커피·차/음료…)은 기존 snackType 그대로라 저장·차트에 변화가 없고, 축 자체의 통합은 새 형태 축 검증 뒤로 미뤄둔 과제입니다.</p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${blocks}</div>
+        <div class="mb-6 bg-slate-50 rounded-xl p-4 border border-slate-200">
+            <h3 class="text-sm font-black text-slate-800 mb-1">간식은 별도 사전이 없습니다</h3>
+            <p class="text-xs text-slate-500">끼니·간식은 <b>기록 슬롯</b>으로 갈리고, '무엇을' 축은 위 사전 하나뿐입니다.
+            간식에 방울토마토를 적으면 끼니와 똑같이 <b>채소·샐러드</b>로 분류됩니다.
+            옛 간식 축 값(커피·베이커리…)으로 저장된 과거 기록은 원문을 그대로 두고 차트에서만 새 축으로 맞춥니다.</p>
         </div>`;
 }
 
@@ -280,15 +274,13 @@ function runTester() {
     }
     const tokens = tokenizeFoodText(text);
     const detail = classifyFoodDetail(text);
-    const snackResult = classifySnackText(text);
     const chip = (v, color) => `<span class="inline-block px-2 py-1 ${color} rounded-md text-xs font-bold">${escapeHtml(v)}</span>`;
     const none = '<span class="text-xs text-slate-400">없음</span>';
     out.className = 'mt-3 text-sm text-slate-700 space-y-2';
     out.innerHTML = `
         <div><span class="text-xs font-bold text-slate-500 mr-2">토큰</span>${tokens.length ? tokens.map((t) => chip(t, 'bg-white border border-slate-200 text-slate-600')).join(' ') : none}</div>
         <div><span class="text-xs font-bold text-slate-500 mr-2">형태</span>${detail.forms.length ? detail.forms.map((c) => chip(c, 'bg-emerald-100 text-emerald-700')).join(' ') : none}</div>
-        <div><span class="text-xs font-bold text-slate-500 mr-2">요리 종류</span>${detail.cuisine ? chip(detail.cuisine, 'bg-sky-100 text-sky-700') : none}</div>
-        <div><span class="text-xs font-bold text-slate-500 mr-2">간식 제안</span>${snackResult.length ? snackResult.map((c) => chip(c, 'bg-amber-100 text-amber-700')).join(' ') : none}</div>`;
+        <div><span class="text-xs font-bold text-slate-500 mr-2">요리 종류</span>${detail.cuisine ? chip(detail.cuisine, 'bg-sky-100 text-sky-700') : none}</div>`;
 }
 
 /* ─────────────────────────── 편집 액션 ─────────────────────────── */
@@ -452,7 +444,7 @@ function rerender() {
         renderTesterSection(),
         renderEditorSection(),
         renderOneCharSection(),
-        renderSnackSection(),
+        renderAxisNoteSection(),
     ].join('');
     const test = document.getElementById('foodDictTestInput');
     if (test) {

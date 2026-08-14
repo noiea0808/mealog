@@ -1718,34 +1718,30 @@
                                         </button>
                                     </div>
                                     
-                                    <!-- 음식 카테고리 (category) -->
+                                    <!-- 무엇을 (category = snackType) — 끼니·간식 공통 형태 축 -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                                        <h3 class="text-base font-black text-slate-800 mb-1 flex items-center gap-2">
                                             <i class="fa-solid fa-bowl-food text-orange-600"></i>
-                                            음식 카테고리 (category)
+                                            무엇을 (category · snackType 공통)
                                         </h3>
+                                        <p class="text-xs text-slate-500 mb-3">
+                                            끼니와 간식은 <b>기록 슬롯</b>으로 갈리고 '무엇을' 축은 하나입니다 — 여기서 편집한 목록이 두 필드(category · snackType)에 함께 저장됩니다.
+                                            한식·양식 같은 <b>요리 종류</b>는 이제 사용자에게 묻지 않고 음식 이름에서 자동으로 붙습니다(cuisineAuto).
+                                            <br>아래 목록이 아직 옛 축(한식·양식… / 커피·베이커리…)이라면 <b>형태 축 불러오기</b>를 누른 뒤 저장하세요. 저장 전까지는 아무것도 반영되지 않습니다.
+                                        </p>
                                         <div id="tags-category" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                             <!-- 태그들이 동적으로 추가됩니다 -->
                                         </div>
-                                        <button onclick="window.addTagItem('category')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 무엇을 - 간식 (snackType) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-cookie text-purple-600"></i>
-                                            무엇을 (snackType)
-                                        </h3>
-                                        <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                        <div class="mt-4 flex flex-wrap gap-2">
+                                            <button onclick="window.addTagItem('category')" class="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
+                                                <i class="fa-solid fa-plus mr-2"></i>태그 추가
+                                            </button>
+                                            <button onclick="window.loadFormAxisTags()" class="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-200 transition-colors">
+                                                <i class="fa-solid fa-rotate mr-2"></i>형태 축 불러오기
+                                            </button>
                                         </div>
-                                        <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
                                     </div>
-                                    
+
                                     <!-- 간식 장소 (subTagsPlaceSnack) -->
                                     <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
                                         <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">

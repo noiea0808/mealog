@@ -44,7 +44,8 @@ function getMealDelta(meal, increment) {
     const mt = (meal.mealType || '').trim();
     const isSkip = mt === 'Skip' || mt === '건너뜀';
     if (mt && !isSkip) add(delta.main.mealType, mt, mt);
-    const cat = (meal.category || '').trim();
+    // 사용자 확정값이 없으면 자동 분류값을 센다 — 클라이언트 차트(effectiveCategoryForAnalytics)와 같은 규칙
+    const cat = ((meal.category || meal.categoryAuto) || '').trim();
     if (cat) add(delta.main.category, cat, cat);
     const whom = (meal.withWhom || '혼자').trim();
     if (!isSkip) add(delta.main.withWhom, whom || '혼자', whom || '혼자');
@@ -53,7 +54,8 @@ function getMealDelta(meal, increment) {
   } else if (isSnack) {
     const place = ((meal.snackPlaceMain || meal.place) || '').trim();
     if (place) add(delta.snack.place, place, place);
-    const st = (meal.snackType || '').trim();
+    // 간식도 같은 필드 쌍을 공유한다 — snackType이 비고 categoryAuto만 있는 기록이 정상 경로다
+    const st = ((meal.snackType || meal.categoryAuto) || '').trim();
     if (st) add(delta.snack.snackType, st, st);
     if (meal.rating != null) add(delta.snack.rating, String(meal.rating), String(meal.rating));
     if (meal.satiety != null) add(delta.snack.satiety, String(meal.satiety), String(meal.satiety));

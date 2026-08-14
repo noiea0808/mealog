@@ -114,19 +114,14 @@ export function resolveEntrySaveFields(form, ctx = {}) {
         withWhomResolved = '기타';
     }
 
-    let snackTypeResolved = isSnack ? form.axis2Chip : '';
-    if (isSnack) {
-        const hasSnackAnyAxis =
-            (form.whatInput || '').trim() ||
-            hasMenuSub ||
-            (form.withInput || '').trim() ||
-            hasPeopleSub ||
-            (form.placeInput || '').trim() ||
-            hasSnackPlaceSub;
-        if (!(snackTypeResolved || '').trim() && hasSnackAnyAxis) {
-            snackTypeResolved = '기타';
-        }
-    }
+    /**
+     * 간식도 끼니와 같은 규칙 — '기타' 조용한 폴백 없음.
+     *
+     * 폴백이 남아 있으면 buildEntrySaveRecord의 userPicked 판정이 항상 참이 되어,
+     * 자동 분류는 물론 **사용자가 직접 탭한 제안 확정까지** '기타'에 먹힌다.
+     * 빈 값 = "아직 분류 안 됨" = categoryAuto·서버 backfill이 채울 자리다.
+     */
+    const snackTypeResolved = isSnack ? form.axis2Chip : '';
 
     const selectedSnackPlaceMain = ctx.selectedSnackPlaceMainTag || null;
     let snackPlaceMainResolved = '';

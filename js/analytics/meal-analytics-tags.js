@@ -59,13 +59,20 @@ export function effectiveWithWhomForAnalytics(m) {
     return '';
 }
 
+/**
+ * 간식 '무엇을'.
+ *
+ * 끼니와 **같은 축**을 읽는다 (docs/food-category-auto-classification.md §6.2).
+ * 저장된 값은 시점에 따라 옛 간식 축('베이커리')일 수도, 형태 축('베이커리/떡',
+ * '채소·샐러드')일 수도 있다 — 원문은 그대로 두고 여기서만 새 축으로 맞춘다.
+ */
 export function effectiveSnackTypeForAnalytics(m) {
-    if (!m || slotKind(m.slotId) !== 'snack') return trim(m?.snackType);
+    if (!m || slotKind(m.slotId) !== 'snack') return normalizeFoodForm(m?.snackType);
     const st = trim(m.snackType);
-    if (st) return st;
+    if (st) return normalizeFoodForm(st);
     // 간식도 끼니와 같은 자동 분류 필드 쌍을 공유한다 (저장은 entry-save-record.js)
     const auto = trim(m.categoryAuto);
-    if (auto) return auto;
+    if (auto) return normalizeFoodForm(auto);
     const detail = trim(m.menuDetail);
     const place = trim(m.place);
     const withD = trim(m.withWhomDetail);

@@ -205,7 +205,9 @@ function aggregateProportionData(data, key) {
     } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
     } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
-        allowedTags = new Set(userTags.snackType);
+        // 간식도 끼니와 같은 사전을 쓴다 — 간식 축에 옛 이름이 없는 형태(채소·샐러드·밥류…)는
+        // 형태 축 값 그대로 저장되므로 합집합이 없으면 '미입력'으로 접힌다 (§6.3)
+        allowedTags = new Set([...userTags.snackType, ...AUTO_CATEGORIES]);
     } else if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         allowedTags = new Set(userTags.snackPlaceMain);
     }

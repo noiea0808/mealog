@@ -1,4 +1,6 @@
 // 상수 정의
+import { FORM_CATEGORIES } from './utils/food-dictionary.js';
+
 /** 스마트폰 앱 아이콘(assets/icon-only.png) - 밀당 참견 등에서 MEALOG 캐릭터 아이콘으로 사용 */
 export const MEALOG_ICON_URL = 'assets/icon-only.png';
 
@@ -126,8 +128,21 @@ export const DEFAULT_USER_SETTINGS = {
     tags: {
         mealType: ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'],
         withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
-        category: ['한식', '양식', '일식', '중식', '분식', '카페'],
-        snackType: ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과', '기타'],
+        /**
+         * '무엇을' — 끼니·간식이 **같은 형태 축**을 쓴다
+         * (docs/food-category-auto-classification.md §6.2).
+         *
+         * 필드는 둘로 남아 있지만(category / snackType) 담기는 어휘는 하나다. 끼니가 쓰던
+         * 한식·양식·일식…은 형태가 아니라 **요리 종류** 축이었고, 그건 이제 사용자에게 묻지
+         * 않고 cuisineAuto 가 자동으로 붙인다. 자동 분류가 채우므로 칩 개수는 고르는 부담이
+         * 아니라 확인용 어휘다.
+         *
+         * ⚠️ 운영 사용자는 관리자 태그 문서(content/defaultTags)가 이 기본값을 덮어쓴다
+         * (js/db/listeners.js loadAndMergeAdminTags). 실제 반영은 관리자 화면에서 태그를
+         * 갱신하는 시점이다 — 이 상수만 바꿔서는 기존 사용자에게 아무 변화가 없다.
+         */
+        category: [...FORM_CATEGORIES],
+        snackType: [...FORM_CATEGORIES],
         snackPlaceMain: ['집', '사무실', '카페']
     },
     subTags: {
@@ -136,13 +151,14 @@ export const DEFAULT_USER_SETTINGS = {
             { text: '우리집', parent: '배달/포장' },
             { text: '회사 식당', parent: '구내식당' }
         ],
-        menu: [{ text: '김치찌개', parent: '한식' }, { text: '아메리카노', parent: '카페' }, { text: '샌드위치', parent: '양식' }],
+        // parent 는 '무엇을' 메인 칩 = 형태 축 (위 tags.category 와 같은 어휘여야 한다)
+        menu: [{ text: '김치찌개', parent: '국물요리' }, { text: '아메리카노', parent: '커피' }, { text: '샌드위치', parent: '빵류' }],
         people: [{ text: '엄마', parent: '가족' }, { text: '팀장님', parent: '직장동료' }],
         snack: []
     },
     favoriteSubTags: {
         mealType: {}, // { '집밥': ['우리집', '할머니집', ...], '외식': [...], ... }
-        category: {}, // { '한식': ['김치찌개', '된장찌개', ...], '양식': [...], ... }
+        category: {}, // { '국물요리': ['김치찌개', '된장찌개', ...], '면류': [...], ... }
         withWhom: {}, // { '가족': ['엄마', '아빠', ...], '친구': [...], ... }
         snackType: {}, // { '커피': ['아메리카노', '라떼', ...], '베이커리': [...], ... }
         snackPlace: {} // { '집': [...], '사무실': [...], '카페': [...], ... }

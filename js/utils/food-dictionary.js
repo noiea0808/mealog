@@ -247,39 +247,17 @@ const DICTIONARY_SOURCE = {
     },
 };
 
-/**
- * 형태 → 레거시 snackType 매핑.
+/*
+ * 형태 → 옛 간식 축(커피·베이커리…) 번역표가 있던 자리.
  *
- * 형태 축이 간식 축을 흡수하면서 별도 간식 사전이 사라졌다. 다만 저장 필드(`snackType`)와
- * 차트·서버 backfill 은 아직 옛 축 값을 쓰므로, **표기 차이만** 여기서 흡수한다
- * (베이커리/떡 → 베이커리). 나머지는 이름이 같다.
+ * 표를 지운 이유는 그것이 관문으로 동작해, 대응 이름이 없는 형태(채소·샐러드·고기·생선…)의
+ * 분류 결과를 통째로 버렸기 때문이다 — "식사엔 방울토마토가 있는데 간식엔 없다".
+ * 끼니/간식은 기록 슬롯이 가르고 '무엇을' 축은 형태 축 하나다
+ * (docs/food-category-auto-classification.md §6.2).
  *
- * 저장 필드까지 형태 축으로 넘기는 것은 마이그레이션이 따르는 별도 단계다.
+ * 옛 어휘로 저장된 과거 기록은 원문을 고치지 않고 읽을 때만 맞춘다
+ * (js/utils/food-form-normalize.js).
  */
-const SNACK_TYPE_BY_FORM = new Map([
-    ['커피', '커피'],
-    ['차/음료', '차/음료'],
-    ['술/주류', '술/주류'],
-    ['베이커리/떡', '베이커리'],
-    ['과자/스낵', '과자/스낵'],
-    ['아이스크림', '아이스크림'],
-    ['과일/견과', '과일/견과'],
-]);
-
-/** 그 형태가 간식 축에 대응되는가 (대응 없으면 간식 제안을 하지 않는다) */
-export function snackTypeOfForm(form) {
-    return SNACK_TYPE_BY_FORM.get(form) || '';
-}
-
-/** 간식 축 종류 → 음식 목록 — 사전에서 **파생**된다 (관리자 열람용) */
-export function snackKeywordsByType() {
-    const out = {};
-    for (const [form, snackType] of SNACK_TYPE_BY_FORM) {
-        const byCuisine = DICTIONARY_SOURCE[form] || {};
-        out[snackType] = Object.values(byCuisine).flat();
-    }
-    return out;
-}
 
 /**
  * 한 글자 예외 — 원칙적으로 한 글자 토큰은 버리지만 실데이터 최빈 음식어는 살린다.

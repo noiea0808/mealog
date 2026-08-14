@@ -45,10 +45,15 @@ const MAIN_SLOT_IDS = new Set(['morning', 'lunch', 'dinner']);
 const SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
 
 /**
- * 간식 축 — js/utils/food-classifier.js SNACK_KEYWORDS 의 키와 동기화.
- * 끼니와 달리 기존 snackType 태그를 그대로 쓴다.
+ * 간식도 **같은 축**을 쓴다 (docs/food-category-auto-classification.md §6.2).
+ *
+ * 예전에는 여기만 옛 간식 축 7개(커피·베이커리…) enum 을 따로 강제했다. 클라이언트가
+ * 형태 축 값을 저장하기 시작한 뒤로는 그 배열이 한 필드에 두 축을 섞는 원인이 된다 —
+ * 클라이언트가 잡으면 새 축, 서버가 집으면 옛 축이 들어가고 `categorySource` 가 찍힌
+ * 기록은 다시 분류되지 않아 저절로 정리되지도 않는다.
+ *
+ * 저장된 옛 값은 그대로 두고(원문 불변), 읽기 계층의 normalizeFoodForm 이 흡수한다.
  */
-const SNACK_CATEGORIES = ['커피', '차/음료', '술/주류', '베이커리', '과자/스낵', '아이스크림', '과일/견과'];
 
 /**
  * backfill 대상 판정 — 끼니는 category, 간식은 snackType 축.
@@ -85,7 +90,8 @@ function needsClassification(d) {
  * @returns {Promise<string[]>} texts와 같은 길이의 카테고리 배열
  */
 async function classifyBatchWithGemini(texts, { apiKey, model, fetchImpl = fetch, kind = 'meal' }) {
-    const categories = kind === 'snack' ? SNACK_CATEGORIES : AUTO_CATEGORIES;
+    // 축은 끼니·간식이 같다 — kind 는 프롬프트 문구(무엇을 먹었나 / 간식으로 무엇을)에만 쓴다
+    const categories = AUTO_CATEGORIES;
     const numbered = texts.map((t, i) => `${i + 1}. ${t.replace(/\n/g, ' ').slice(0, 200)}`).join('\n');
     const prompt = [
         kind === 'snack'
@@ -207,7 +213,6 @@ async function runClassifyUncategorizedMeals({ db, logger, apiKey, model, startD
 
 module.exports = {
     AUTO_CATEGORIES,
-    SNACK_CATEGORIES,
     UNCLASSIFIED,
     classificationKind,
     needsClassification,

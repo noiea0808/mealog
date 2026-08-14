@@ -18,8 +18,6 @@ import {
     FOOD_ENTRIES_BY_LENGTH,
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
-    snackTypeOfForm,
-    snackKeywordsByType,
     CUISINE_EXEMPT_FORMS,
     formUsesCuisine,
 } from './food-dictionary.js';
@@ -46,12 +44,6 @@ export {
  * 새 코드는 FORM_CATEGORIES 를 쓴다.
  */
 export const AUTO_CATEGORIES = FORM_CATEGORIES;
-
-/**
- * 간식 축(snackType) 목록 — **형태 축에서 파생**된다.
- * 형태 축이 간식 축을 흡수해 별도 사전이 없다. 관리자 열람용 그룹 뷰일 뿐이다.
- */
-export const SNACK_KEYWORDS = snackKeywordsByType();
 
 /** 수량·단위 접미 제거: "닭다리살100", "계란 2알", "밥1/2공기" → 음식명만 남긴다 */
 const QUANTITY_SUFFIX_RE = /[\d./~]+(?:개|알|봉|장|조각|숟|스푼|공기|그람|그램|인분|쪽|모|통|번|잔|병|캔|g|kg|ml|cc|l)?$/i;
@@ -181,34 +173,8 @@ export function classifyCuisineText(text) {
     return classifyFoodDetail(text).cuisine;
 }
 
-/**
- * 간식 텍스트 → snackType 카테고리 추론.
- * 끼니와 달리 기존 축을 그대로 쓰므로, 사용자 태그 목록에 없는 값은 제안하지 않는다
- * (관리자가 축을 손댔을 때 분석 화이트리스트 밖 값을 제안하는 사고 방지).
- *
- * @param {string} text
- * @param {string[]|null} [allowedTags] userSettings.tags.snackType
- * @returns {string[]} 제안 카테고리 0~2개
+/*
+ * 간식 전용 분류 함수(classifySnackText)는 없다.
+ * 끼니/간식은 기록 슬롯이 가르고 '무엇을' 축은 하나다 — 간식도 classifyFoodText 를 쓴다
+ * (docs/food-category-auto-classification.md §6.2).
  */
-export function classifySnackText(text, allowedTags = null) {
-    try {
-        const tokens = tokenizeFoodText(text);
-        if (tokens.length === 0) return [];
-        const votes = {};
-        for (const token of tokens) {
-            // 형태 축을 그대로 타고, 간식 축에 대응되는 형태만 표로 센다
-            const hit = lookupToken(token);
-            const snackType = hit ? snackTypeOfForm(hit.form) : '';
-            if (snackType) votes[snackType] = (votes[snackType] || 0) + 1;
-        }
-        const ranked = Object.entries(votes).sort((a, b) => b[1] - a[1]);
-        if (ranked.length === 0) return [];
-        const result = [ranked[0][0]];
-        if (ranked[1] && ranked[1][1] >= ranked[0][1] / 2) result.push(ranked[1][0]);
-        if (!Array.isArray(allowedTags) || allowedTags.length === 0) return result;
-        const allowed = new Set(allowedTags);
-        return result.filter((c) => allowed.has(c));
-    } catch (_) {
-        return [];
-    }
-}

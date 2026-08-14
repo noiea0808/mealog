@@ -137,7 +137,8 @@ function getAllowedTags(key) {
         return userTags.withWhom;
     }
     if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
-        return userTags.snackType;
+        // 간식 축에 옛 이름이 없는 형태는 형태 축 값으로 저장된다 (charts.js와 동일 규칙)
+        return [...userTags.snackType, ...AUTO_CATEGORIES];
     }
     if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         return userTags.snackPlaceMain;
