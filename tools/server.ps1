@@ -93,7 +93,11 @@ try {
             $response.AddHeader("Access-Control-Allow-Origin", "*")
             $response.AddHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             $response.AddHeader("Access-Control-Allow-Headers", "Content-Type")
-            
+
+            # 개발 서버 — 캐시 금지. js/ 모듈에는 버전 쿼리가 없어서 브라우저가 휴리스틱으로
+            # 캐싱하면 방금 고친 모듈이 옛 파일로 돌아온다 (import 깨짐 → 리스너 미등록).
+            $response.AddHeader("Cache-Control", "no-store, must-revalidate")
+
             $contentType = switch ($ext) {
                 ".html" { "text/html; charset=utf-8" }
                 ".css"  { "text/css; charset=utf-8" }
