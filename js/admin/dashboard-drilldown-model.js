@@ -124,6 +124,96 @@ export function maxMarkCount(rows) {
 }
 
 // ============================================================
+// 코호트 리텐션
+//
+// 구간별 출석 표는 열이 「달력 주」라 3월 가입자와 8월 가입자가 같은 열에 섞인다.
+// 잔존율을 보려면 열이 「가입 후 N주차」여야 코호트끼리 비교가 된다.
+// ============================================================
+
+/**
+ * 가입 주차 × 경과 주차 삼각표.
+ *
+ * 코호트 소속은 「가입일이 속한 주」로 정한다. weekKeys 가 일요일 키의 오름차순이므로
+ * joinKey 이하인 마지막 키를 찾으면 된다 — 주차 계산을 여기서 다시 구현하지 않으려는 것이다.
+ *
+ * @param {object} p
+ * @param {string[]} p.weekKeys 일요일 키 오름차순 (표의 주차 순서와 동일)
+ * @param {Record<string,string>} p.joinKeyByUid uid → 가입일 'YYYY-MM-DD'
+ * @param {Array<Set<string>>} p.activeSetsByWeek weekKeys 와 같은 길이·순서
+ */
+export function buildCohortTable({ weekKeys, joinKeyByUid, activeSetsByWeek }) {
+    const keys = Array.isArray(weekKeys) ? weekKeys : [];
+    const sets = Array.isArray(activeSetsByWeek) ? activeSetsByWeek : [];
+    const empty = { rows: [], maxSpan: 0, excludedBefore: 0, excludedNoJoin: 0, totals: [] };
+    if (keys.length === 0) return empty;
+
+    /** 가입일 → 코호트 인덱스. 범위 이전 가입은 -1 */
+    const cohortIndexOf = (joinKey) => {
+        if (!joinKey) return -2; // 가입일 자체가 없음
+        if (joinKey < keys[0]) return -1;
+        let lo = 0;
+        let hi = keys.length - 1;
+        let found = -1;
+        while (lo <= hi) {
+            const mid = (lo + hi) >> 1;
+            if (keys[mid] <= joinKey) {
+                found = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        return found;
+    };
+
+    const members = keys.map(() => []);
+    let excludedBefore = 0;
+    let excludedNoJoin = 0;
+    for (const [uid, joinKey] of Object.entries(joinKeyByUid || {})) {
+        const ci = cohortIndexOf(String(joinKey || ''));
+        if (ci === -2) excludedNoJoin++;
+        else if (ci === -1) excludedBefore++;
+        else if (ci >= 0) members[ci].push(uid);
+    }
+
+    const rows = [];
+    for (let i = 0; i < keys.length; i++) {
+        if (members[i].length === 0) continue;
+        const cells = [];
+        for (let j = 0; i + j < keys.length; j++) {
+            const set = sets[i + j];
+            let active = 0;
+            if (set) {
+                for (const uid of members[i]) {
+                    if (set.has(uid)) active++;
+                }
+            }
+            cells.push({ active, rate: active / members[i].length });
+        }
+        rows.push({ weekKey: keys[i], weekIndex: i, size: members[i].length, cells });
+    }
+
+    const maxSpan = rows.reduce((m, r) => Math.max(m, r.cells.length), 0);
+
+    // 열별 가중 평균. 오른쪽 열일수록 참여 코호트가 적다는 점은 화면에서 함께 밝힌다.
+    const totals = [];
+    for (let j = 0; j < maxSpan; j++) {
+        let active = 0;
+        let size = 0;
+        let cohorts = 0;
+        for (const r of rows) {
+            if (j >= r.cells.length) continue;
+            active += r.cells[j].active;
+            size += r.size;
+            cohorts++;
+        }
+        totals.push({ active, size, cohorts, rate: size > 0 ? active / size : 0 });
+    }
+
+    return { rows, maxSpan, excludedBefore, excludedNoJoin, totals };
+}
+
+// ============================================================
 // 닉네임 캐시 직렬화
 //
 // 닉네임은 사용자당 문서 1건이라 팝업 읽기의 대부분을 차지한다. 세션을 넘겨 재사용하려고

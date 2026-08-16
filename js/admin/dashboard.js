@@ -37,7 +37,8 @@ import {
     markDashboardDrilldownCell,
     markDashboardDrilldownHeader,
     clearDashboardDrilldownCell,
-    ensureDashboardDrilldownBinding
+    ensureDashboardDrilldownBinding,
+    setDashboardDrilldownWeekKeys
 } from './dashboard-user-drilldown.js';
 
 /** 대시보드 주간 통계 시작일 (admin.js ADMIN_OPS_START 와 동일) */
@@ -939,6 +940,8 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
         Array.isArray(activeUsersMonthUnique) &&
         monthGroups &&
         activeUsersMonthUnique.length === monthGroups.length;
+    // 코호트 표는 클릭한 칸이 아니라 전 구간을 본다
+    setDashboardDrilldownWeekKeys((weeklyBreakdown?.weeks || []).map((w) => w.sundayKey));
     const columnDescriptors = buildTrendColumnDescriptors(weeklyBreakdown?.weeks, monthGroups);
     document.querySelectorAll('tr[data-dash-week-row]').forEach((tr) => {
         const key = tr.getAttribute('data-dash-week-row');

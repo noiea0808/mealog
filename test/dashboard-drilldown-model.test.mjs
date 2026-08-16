@@ -12,6 +12,7 @@ import {
     summarizeMatrix,
     heatLevel,
     maxMarkCount,
+    buildCohortTable,
     decodeProfileStore,
     encodeProfileStore
 } from '../js/admin/dashboard-drilldown-model.js';
@@ -203,6 +204,98 @@ test('maxMarkCount 는 표 전체의 최대 칸 값 (null 은 무시)', () => {
     assert.equal(maxMarkCount(rows), 9);
     assert.equal(maxMarkCount([buildMatrixRow('a', [P('w', ['a'])], null, '', false)]), 0);
     assert.equal(maxMarkCount([]), 0);
+});
+
+// ------------------------------------------------------------
+// 코호트 리텐션
+// ------------------------------------------------------------
+
+const WK = ['2026-03-08', '2026-03-15', '2026-03-22'];
+
+test('코호트: 가입 주차별 행, 경과 주차별 열로 삼각형이 된다', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-10', b: '2026-03-12', c: '2026-03-17' },
+        activeSetsByWeek: [new Set(['a', 'b']), new Set(['a', 'c']), new Set(['a'])]
+    });
+    assert.equal(t.rows.length, 2, '가입자가 없는 3/22 주는 행이 안 생긴다');
+    assert.equal(t.maxSpan, 3);
+
+    const [c1, c2] = t.rows;
+    assert.equal(c1.weekKey, '2026-03-08');
+    assert.equal(c1.size, 2, 'a·b 가 첫 주 코호트');
+    assert.deepEqual(
+        c1.cells.map((c) => c.active),
+        [2, 1, 1],
+        'W0=a,b / W1=a / W2=a'
+    );
+    assert.equal(c1.cells[0].rate, 1);
+    assert.equal(c1.cells[1].rate, 0.5);
+
+    assert.equal(c2.size, 1, 'c 만 둘째 주 코호트');
+    assert.equal(c2.cells.length, 2, '둘째 주 가입은 열이 2개까지만 (아직 안 온 주는 없다)');
+    assert.deepEqual(
+        c2.cells.map((c) => c.active),
+        [1, 0]
+    );
+});
+
+test('코호트: 가입일이 정확히 주 시작일이면 그 주 코호트', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { edge: '2026-03-15' },
+        activeSetsByWeek: [new Set(), new Set(['edge']), new Set()]
+    });
+    assert.equal(t.rows.length, 1);
+    assert.equal(t.rows[0].weekKey, '2026-03-15');
+    assert.equal(t.rows[0].cells[0].rate, 1, '가입 주에 활동 → W0 100%');
+});
+
+test('코호트: 집계 시작 이전 가입자와 가입일 없는 사용자는 따로 센다', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { before: '2026-01-01', nojoin: '', ok: '2026-03-09' },
+        activeSetsByWeek: [new Set(['before', 'ok']), new Set(), new Set()]
+    });
+    assert.equal(t.excludedBefore, 1);
+    assert.equal(t.excludedNoJoin, 1);
+    assert.equal(t.rows.length, 1);
+    assert.equal(t.rows[0].size, 1, '코호트 인원에 범위 밖 사용자가 섞이면 잔존율이 왜곡된다');
+});
+
+test('코호트: 열별 가중 평균과 참여 코호트 수', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-09', b: '2026-03-09', c: '2026-03-16' },
+        activeSetsByWeek: [new Set(['a', 'b']), new Set(['a', 'c']), new Set()]
+    });
+    // W0: (a,b 중 2) + (c 중 1) = 3 / 3
+    assert.equal(t.totals[0].rate, 1);
+    assert.equal(t.totals[0].cohorts, 2);
+    // W1: a 만 = 1 / (2 + 1) — 두 코호트 모두 W1 을 가진다
+    assert.equal(t.totals[1].active, 1);
+    assert.equal(t.totals[1].size, 3);
+    assert.equal(t.totals[1].cohorts, 2);
+    // W2: 첫 코호트만 참여
+    assert.equal(t.totals[2].cohorts, 1);
+});
+
+test('코호트: 주차 목록이 비면 빈 결과', () => {
+    const t = buildCohortTable({ weekKeys: [], joinKeyByUid: { a: '2026-03-09' }, activeSetsByWeek: [] });
+    assert.deepEqual(t.rows, []);
+    assert.equal(t.maxSpan, 0);
+});
+
+test('코호트: activeSets 가 모자라도 터지지 않는다 (0으로 본다)', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-09' },
+        activeSetsByWeek: [new Set(['a'])]
+    });
+    assert.deepEqual(
+        t.rows[0].cells.map((c) => c.active),
+        [1, 0, 0]
+    );
 });
 
 // ------------------------------------------------------------

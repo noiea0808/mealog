@@ -24,6 +24,7 @@ import {
     summarizeMatrix,
     heatLevel,
     maxMarkCount,
+    buildCohortTable,
     decodeProfileStore,
     encodeProfileStore
 } from './dashboard-drilldown-model.js';
@@ -111,11 +112,29 @@ let currentPeriods = [];
 let currentRows = [];
 let currentMatrixRows = [];
 let currentListSummary = '';
+/** 클릭한 칸의 제목 — 코호트를 보고 돌아왔을 때 되돌리려고 들고 있는다 */
+let currentCellTitle = '';
 let currentNewOnly = false;
 let currentDropoutOnly = false;
+/**
+ * 트렌드 표가 그리고 있는 전체 주차 키 (오름차순).
+ * 코호트는 클릭한 칸의 기간이 아니라 전 구간을 봐야 해서 따로 들고 있는다.
+ */
+let allWeekKeys = [];
+let cohortCache = null;
 
 export function invalidateDashboardUserDrilldownCache() {
     drilldownDocCache.clear();
+    cohortCache = null;
+}
+
+/** 트렌드 표가 렌더될 때 전체 주차 키를 알려 준다 (코호트 표의 가로축) */
+export function setDashboardDrilldownWeekKeys(keys) {
+    const next = (keys || []).filter(Boolean);
+    if (next.length !== allWeekKeys.length || next.some((k, i) => k !== allWeekKeys[i])) {
+        cohortCache = null;
+    }
+    allWeekKeys = next;
 }
 
 // ============================================================
@@ -289,6 +308,9 @@ export function ensureDashboardDrilldownBinding() {
         document
             .getElementById('dashboardUserListViewMatrix')
             ?.addEventListener('click', () => setDrilldownView('matrix'));
+        document
+            .getElementById('dashboardUserListViewCohort')
+            ?.addEventListener('click', () => setDrilldownView('cohort'));
     }
 }
 
@@ -474,7 +496,8 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
     currentDropoutOnly = false;
 
     const kindLabel = kind === 'newUsers' ? '신규 사용자' : '활성 사용자';
-    setModalText('dashboardUserListModalTitle', `${kindLabel} · ${label}`);
+    currentCellTitle = `${kindLabel} · ${label}`;
+    setModalText('dashboardUserListModalTitle', currentCellTitle);
     setModalText('dashboardUserListSummary', '불러오는 중…');
     const body = document.getElementById('dashboardUserListBody');
     if (body) {
@@ -558,13 +581,22 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
 /** 모드 토글·필터를 현재 상태에 맞춘다 */
 function syncDrilldownToolbar(periodCount) {
     const viewWrap = document.getElementById('dashboardUserListViewWrap');
-    if (viewWrap) viewWrap.classList.toggle('hidden', periodCount < 2);
+    // 코호트는 클릭한 칸과 무관하게 늘 볼 수 있으므로, 주차 정보만 있으면 토글을 띄운다
+    if (viewWrap) viewWrap.classList.toggle('hidden', periodCount < 2 && allWeekKeys.length < 2);
     const activeCls = 'px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white';
     const idleCls = 'px-2.5 py-1 text-xs font-bold rounded-lg text-slate-500 hover:bg-slate-200';
     const btnList = document.getElementById('dashboardUserListViewList');
     const btnMatrix = document.getElementById('dashboardUserListViewMatrix');
+    const btnCohort = document.getElementById('dashboardUserListViewCohort');
     if (btnList) btnList.className = currentView === 'list' ? activeCls : idleCls;
-    if (btnMatrix) btnMatrix.className = currentView === 'matrix' ? activeCls : idleCls;
+    if (btnMatrix) {
+        btnMatrix.className = currentView === 'matrix' ? activeCls : idleCls;
+        btnMatrix.classList.toggle('hidden', periodCount < 2);
+    }
+    if (btnCohort) {
+        btnCohort.className = currentView === 'cohort' ? activeCls : idleCls;
+        btnCohort.classList.toggle('hidden', allWeekKeys.length < 2);
+    }
 
     const newOnlyWrap = document.getElementById('dashboardUserListNewOnlyWrap');
     if (newOnlyWrap) {
@@ -579,12 +611,16 @@ function syncDrilldownToolbar(periodCount) {
 
     const legend = document.getElementById('dashboardUserListLegend');
     if (legend) {
-        legend.textContent =
-            currentView === 'matrix'
-                ? currentUnit === '주'
+        if (currentView === 'cohort') {
+            legend.textContent = '숫자 = 그 주에 기록을 남긴 비율 · 오른쪽으로 갈수록 표본 코호트가 줄어든다';
+        } else if (currentView === 'matrix') {
+            legend.textContent =
+                currentUnit === '주'
                     ? '숫자 = 그 주 기록 일수 (진할수록 많음) · 테두리 = 그 주에 가입'
-                    : '숫자 = 그날 기록 건수 (진할수록 많음) · 테두리 = 그날 가입'
-                : '초록 배경 = 같은 기간 가입한 신규 사용자';
+                    : '숫자 = 그날 기록 건수 (진할수록 많음) · 테두리 = 그날 가입';
+        } else {
+            legend.textContent = '초록 배경 = 같은 기간 가입한 신규 사용자';
+        }
     }
 }
 
@@ -596,8 +632,66 @@ function setDrilldownView(view) {
 }
 
 function renderDrilldownBody() {
+    if (currentView === 'cohort') {
+        void renderDrilldownCohort();
+        return;
+    }
+    // 코호트는 클릭한 칸과 무관한 화면이라 제목을 바꿔 두었다 — 돌아오면 되돌린다
+    if (currentCellTitle) setModalText('dashboardUserListModalTitle', currentCellTitle);
     if (currentView === 'matrix') renderDrilldownMatrix();
     else renderDrilldownRows();
+}
+
+/**
+ * 코호트는 클릭한 칸이 아니라 전 구간의 주차 문서를 본다 (주차 수만큼 읽기, 이후 캐시).
+ * 나머지 화면과 같은 명단 문서를 쓰므로 숫자가 갈라지지 않는다.
+ */
+async function loadCohortTable() {
+    if (cohortCache) return cohortCache;
+    const allDoc = await fetchDrilldownDoc(DOC_ID_ALL);
+    if (!allDoc) return null;
+    const docs = [];
+    for (const sk of allWeekKeys) {
+        docs.push(await fetchDrilldownDoc(sk));
+    }
+    cohortCache = buildCohortTable({
+        weekKeys: allWeekKeys,
+        joinKeyByUid: allDoc.joinKeys || {},
+        activeSetsByWeek: docs.map((d) => new Set(d?.active || []))
+    });
+    return cohortCache;
+}
+
+async function renderDrilldownCohort() {
+    const body = document.getElementById('dashboardUserListBody');
+    if (!body) return;
+    const seq = ++openSeq;
+    setModalText('dashboardUserListModalTitle', '코호트 리텐션 · 가입 주차별');
+    if (!cohortCache) {
+        setModalText('dashboardUserListSummary', '불러오는 중…');
+        body.innerHTML =
+            '<div class="py-10 text-center text-sm text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>주차별 명단을 모으는 중…</div>';
+    }
+    const t = await loadCohortTable();
+    if (seq !== openSeq) return;
+    if (!t || t.rows.length === 0) {
+        setModalText('dashboardUserListSummary', '코호트를 만들 데이터가 없습니다');
+        body.innerHTML =
+            '<div class="py-10 text-center text-sm text-slate-500">명단 캐시가 없거나 집계 구간 안에 가입자가 없습니다.<br class="my-1">상단 「새로고침」을 한 번 눌러 주세요.</div>';
+        return;
+    }
+    const total = t.rows.reduce((s, r) => s + r.size, 0);
+    const w1 = t.totals[1];
+    const headline = w1 && w1.size > 0 ? ` · 가입 다음 주 잔존 ${Math.round(w1.rate * 100)}%` : '';
+    const skipped = [];
+    if (t.excludedBefore > 0) skipped.push(`집계 시작 이전 가입 ${t.excludedBefore}명`);
+    if (t.excludedNoJoin > 0) skipped.push(`가입일 없음 ${t.excludedNoJoin}명`);
+    setModalText(
+        'dashboardUserListSummary',
+        `코호트 ${t.rows.length}개 · 대상 ${total.toLocaleString()}명${headline}` +
+            (skipped.length ? ` — 제외: ${skipped.join(', ')}` : '')
+    );
+    body.innerHTML = buildCohortTableHtml(t);
 }
 
 function renderDrilldownRows() {
@@ -734,6 +828,73 @@ export function buildMatrixTableHtml(periods, rows, unit) {
                     </tr>
                 </thead>
                 <tbody>${bodyRows}</tbody>
+            </table>
+        </div>`;
+}
+
+/** 잔존율 0~1 → 배경. 여기서는 표 최대값이 아니라 절대 비율로 나눈다 (100%가 기준선) */
+function retentionHeatClass(rate) {
+    if (rate >= 0.75) return 'bg-emerald-300 text-emerald-900';
+    if (rate >= 0.5) return 'bg-emerald-200 text-emerald-900';
+    if (rate >= 0.25) return 'bg-emerald-100 text-emerald-800';
+    if (rate > 0) return 'bg-emerald-50 text-emerald-700';
+    return 'text-slate-300';
+}
+
+/** 'YYYY-MM-DD'(일요일) → '3월 2주' */
+function cohortRowLabel(sundayKey) {
+    const p = String(sundayKey).split('-');
+    if (p.length !== 3) return sundayKey;
+    return `${parseInt(p[1], 10)}월 ${shortWeekLabel(sundayKey)}`;
+}
+
+/**
+ * 가입 주차 × 경과 주차 삼각표.
+ * 열이 「달력 주」가 아니라 「가입 후 N주차」라 코호트끼리 바로 비교된다.
+ */
+export function buildCohortTableHtml(t) {
+    const headCells = Array.from(
+        { length: t.maxSpan },
+        (_, j) =>
+            `<th class="px-1 py-1.5 text-center font-bold text-slate-600 text-[10px] min-w-[2.75rem] whitespace-nowrap">${j === 0 ? '가입주' : `+${j}주`}</th>`
+    ).join('');
+
+    const rowHtml = (label, size, cells, isTotal) => {
+        const tds = Array.from({ length: t.maxSpan }, (_, j) => {
+            const c = cells[j];
+            if (!c) return '<td class="px-1 py-1.5"></td>';
+            const pct = Math.round(c.rate * 100);
+            const tip = isTotal
+                ? `${c.active}/${c.size}명 · 코호트 ${c.cohorts}개`
+                : `${c.active}/${size}명`;
+            return `<td class="px-1 py-1.5 text-center font-black tabular-nums text-[11px] ${retentionHeatClass(c.rate)}" title="${tip}">${pct}%</td>`;
+        }).join('');
+        const rowCls = isTotal ? 'bg-slate-100 border-t-2 border-slate-300' : 'bg-white hover:bg-slate-50';
+        return `
+            <tr class="border-b border-slate-100 ${rowCls}">
+                <td class="px-2 py-1.5 sticky left-0 z-10 ${isTotal ? 'bg-slate-100' : 'bg-white'} font-bold text-xs text-slate-700 whitespace-nowrap">${escapeHtml(label)}</td>
+                <td class="px-2 py-1.5 text-center text-[10px] text-slate-500 tabular-nums">${size.toLocaleString()}</td>
+                ${tds}
+            </tr>`;
+    };
+
+    const body = t.rows
+        .map((r) => rowHtml(cohortRowLabel(r.weekKey), r.size, r.cells, false))
+        .join('');
+    const totalSize = t.rows.reduce((s, r) => s + r.size, 0);
+    const totalRow = rowHtml('가중 평균', totalSize, t.totals, true);
+
+    return `
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="bg-slate-50 sticky top-0 z-20">
+                    <tr class="border-b border-slate-200">
+                        <th class="px-2 py-1.5 text-left font-bold text-slate-600 text-[10px] sticky left-0 z-10 bg-slate-50 whitespace-nowrap">가입 주차</th>
+                        <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">인원</th>
+                        ${headCells}
+                    </tr>
+                </thead>
+                <tbody>${body}${totalRow}</tbody>
             </table>
         </div>`;
 }
