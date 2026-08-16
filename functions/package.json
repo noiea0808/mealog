@@ -18,7 +18,8 @@
     "migrate:fixTermsAndCreatedAt": "node scripts/fix-settings-terms-and-user-createdAt.js",
     "migrate:backfillCreatedAtFromAuth": "node scripts/backfill-user-root-createdAt-from-auth.js",
     "backfill:mealPhotoVariants": "node scripts/backfill-meal-photo-variants.js",
-    "restore:profileTermsGate": "node scripts/restore-profile-terms-gate.js"
+    "restore:profileTermsGate": "node scripts/restore-profile-terms-gate.js",
+    "set:dietPrompt": "node scripts/set-diet-report-prompt.js"
   },
   "engines": {
     "node": "20"
