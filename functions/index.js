@@ -6235,8 +6235,11 @@ exports.adminWelcomeGeminiComment = onCall(
 // AI 식단 분석 리포트 (날짜 단위)
 // - 매일 00:10 KST 배치로 "전날" 기록을 분석해 aiDietReports에 저장
 // - 대상: 식사/간식 meal 문서(하루 메모 제외)가 2개 이상인 날짜
-// - 사진: meal 문서당 최대 3장, 전체 안전 상한 12장
-// - 점수(0~100) + 한줄평 + 좋았던 점 + 아쉬운 점, sourceHash로 소급 수정 감지
+// - 기록·사진 모두 "시간순"(DIET_SLOT_ORDER)으로 정렬해 보낸다. 알파벳순으로 보내면
+//   모델이 저녁→점심→아침 순으로 하루를 읽게 되어 흐름·야식 판단이 무너진다.
+// - 사진은 슬롯 라벨 캡션과 짝지어 인터리브 전송(캡션 없이 보내면 사진↔기록 매칭 불가)
+// - 프롬프트 치환자: {{date}} {{weekday}} {{mealText}} {{profile}} {{slotCoverage}} {{recentTrend}}
+// - 응답은 JSON 모드로 강제하고 서버에서 파싱까지 검증한 뒤에만 status:'ready'
 // =========================================================================
 
 /** 분석 지원 시작일(서울). 배치 재개 시 사용 */
@@ -6248,7 +6251,10 @@ const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/d
  * 관리자 화면에서 관리한다. 이 상수는 그 문서가 비어 있을 때만 쓰인다.
  * (관리자 화면의 "기본값으로 되돌리기"가 이 값을 덮어쓰므로 함부로 바꾸지 말 것)
  */
-const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
+const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}} {{weekday}}) 식단을 평가한다.
+
+[사용자]
+{{profile}}
 
 [평가 기준 · 100점 만점]
 - 균형(주식·단백질·채소/과일의 고른 구성)
@@ -6261,27 +6267,89 @@ const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 
 [작성 원칙]
 - 한국어. 담백하고 따뜻한 어투. 캐릭터·이모지·과장 없이.
 - 의학적 진단·치료·질병 단정 표현 금지("~에 좋다/나쁘다" 수준의 일반적 조언까지만).
+- 사진은 각 사진 바로 앞의 캡션(슬롯·시각)이 어느 기록의 것인지 알려 준다. 캡션과 짝지어 읽을 것.
 - 사진에 음식이 보이면 실제로 반영하되, 데이터에 없는 사실은 지어내지 말 것.
+- [최근 흐름]이 있으면 어제·최근 며칠과 견주어 말하되, 없으면 그날만 보고 쓴다.
+- title은 그날을 한 마디로 부르는 이름(공백 포함 20자 내외), mood는 2~5자 분위기 라벨.
 - summary는 한 줄(공백 포함 60자 내외).
-- goodPoint(좋았던 점), improvePoint(아쉬운 점)은 각각 한 줄, 없으면 빈 문자열.
+- highlight(좋았던 흐름), nudge(내일의 힌트)는 각각 한 줄, 없으면 빈 문자열.
 
 [식단 데이터 · {{date}}]
 {{mealText}}
 
+[슬롯 기록 현황]
+{{slotCoverage}}
+
+[최근 흐름]
+{{recentTrend}}
+
 [출력 형식]
 아래 JSON만 출력한다. 다른 텍스트·설명·코드펜스 없이 JSON 객체 하나만.
-{"score": 0-100 정수, "summary": "한줄평", "goodPoint": "좋았던 점", "improvePoint": "아쉬운 점"}`;
+{"score": 0-100 정수, "mood": "분위기 라벨", "title": "그날의 이름", "summary": "한줄평", "highlight": "좋았던 흐름", "nudge": "내일의 힌트"}`;
 /** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
-const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
-const DIET_REPORT_MAX_PHOTOS_TOTAL = 3;
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 2;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 8;
 /** gemini-2.5-flash: thinking 토큰도 maxOutputTokens 예산에서 함께 빠지므로 본문 몫을 남겨 둔다 */
 const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
-const DIET_REPORT_THINKING_BUDGET = 512;
+const DIET_REPORT_THINKING_BUDGET = 1024;
+/** 채점 태스크라 재현성 우선. 표현 다양성은 프롬프트(title·mood 지시)로 확보한다 */
+const DIET_REPORT_TEMPERATURE = 0.35;
+/** {{recentTrend}} 에 실을 직전 리포트 일수 */
+const DIET_REPORT_TREND_DAYS = 7;
 /** 수동 재분석(사용자 버튼) 하루 허용 횟수 — 관리자는 예외 */
 const DIET_REPORT_MANUAL_DAILY_LIMIT = 3;
 
 function dietReportDocId(uid, dateStr) {
   return `${uid}_${dateStr}`;
+}
+
+/**
+ * 하루 슬롯의 시간순. js/constants.js 의 SLOTS 와 같은 순서를 유지할 것.
+ * slotId 알파벳순(dinner<lunch<morning…)으로 정렬하면 모델이 하루를 거꾸로 읽는다.
+ */
+const DIET_SLOT_ORDER = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
+
+function dietSlotRank(slotId) {
+  const i = DIET_SLOT_ORDER.indexOf(String(slotId || ''));
+  return i === -1 ? DIET_SLOT_ORDER.length : i;
+}
+
+/** 시간순 비교: 슬롯 순서 → 기록 시각 → 문서 id(동률 시 안정 정렬) */
+function compareDietMealsChronologically(a, b) {
+  const ra = dietSlotRank(a?.slotId);
+  const rb = dietSlotRank(b?.slotId);
+  if (ra !== rb) return ra - rb;
+  const ta = adminMealTimeText(a) || '';
+  const tb = adminMealTimeText(b) || '';
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return String(a?.id || '').localeCompare(String(b?.id || ''));
+}
+
+/** 사진 캡션·슬롯 현황용 라벨. adminSlotLabelKr 은 간식을 전부 '간식'으로 뭉개므로 여기선 구분한다 */
+const DIET_SLOT_LABELS_DETAILED = {
+  pre_morning: '아침 전 간식',
+  morning: '아침',
+  snack1: '오전 간식',
+  lunch: '점심',
+  snack2: '오후 간식',
+  dinner: '저녁',
+  night: '야식'
+};
+
+function dietSlotLabel(slotId) {
+  const key = String(slotId || '');
+  return DIET_SLOT_LABELS_DETAILED[key] || adminSlotLabelKr(key) || key || '슬롯';
+}
+
+const DIET_WEEKDAY_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** 'YYYY-MM-DD' → '(금)'. 파싱 실패 시 빈 문자열 */
+function dietWeekdayLabel(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  if (!m) return '';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (Number.isNaN(d.getTime())) return '';
+  return `(${DIET_WEEKDAY_KR[d.getUTCDay()]})`;
 }
 
 function normalizeDietBatchRunTime(raw) {
@@ -6333,10 +6401,22 @@ async function fetchDietReportConfig() {
   };
 }
 
-function buildDietReportPromptText(dateStr, mealText, promptTemplate) {
+/**
+ * 프롬프트 치환. 사용자 텍스트에 `$&` 같은 시퀀스가 있어도 깨지지 않도록 함수 replacer를 쓴다.
+ * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
+ *          slotCoverage?:string, recentTrend?:string}} ctx
+ */
+function buildDietReportPromptText(ctx, promptTemplate) {
   const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
-  const mealBlock = mealText || '(텍스트 기록 없음 — 사진 위주로 판단)';
-  return tpl.replace(/\{\{date\}\}/g, dateStr).replace(/\{\{mealText\}\}/g, mealBlock);
+  const values = {
+    date: ctx?.date || '',
+    weekday: ctx?.weekday || '',
+    mealText: ctx?.mealText || '(텍스트 기록 없음 — 사진 위주로 판단)',
+    profile: ctx?.profile || '(프로필 정보 없음)',
+    slotCoverage: ctx?.slotCoverage || '(정보 없음)',
+    recentTrend: ctx?.recentTrend || '(최근 분석 이력 없음 — 이날만 보고 평가)'
+  };
+  return tpl.replace(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend)\}\}/g, (_, key) => values[key]);
 }
 
 /** aiDietReports 문서에 완료된 분석(자동·수동)이 있는지 */
@@ -6375,8 +6455,7 @@ function isDietAnalyzableMeal(m) {
  */
 function buildDietReportSource(meals) {
   const analyzable = (meals || []).filter(isDietAnalyzableMeal);
-  const sortKey = (m) => `${String(m.slotId || '')}~${String(m.time || '')}~${String(m.id || '')}`;
-  analyzable.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  analyzable.sort(compareDietMealsChronologically);
   const parts = [];
   let maxRecordedAt = '';
   let photoCount = 0;
@@ -6408,6 +6487,17 @@ function buildDietReportSource(meals) {
   return { analyzable, hash, maxRecordedAt, photoCount };
 }
 
+/**
+ * 분석에 보낼 사진 URL — 800px 파생본 우선, 없으면 원본.
+ * (js/utils/image-variants.js 의 pickMealDisplayUrl 과 같은 우선순위)
+ */
+function dietPickPhotoUrlForAnalysis(meal, index) {
+  const disp = Array.isArray(meal?.photoDisplayUrls) ? meal.photoDisplayUrls[index] : '';
+  const orig = Array.isArray(meal?.photos) ? meal.photos[index] : '';
+  const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+  return pick(disp) || pick(orig);
+}
+
 /** Firebase Storage 다운로드 URL → Gemini inlineData({ mimeType, data(base64) }). 실패 시 null */
 async function dietFetchStorageImageInline(imageUrl) {
   if (!imageUrl || typeof imageUrl !== 'string') return null;
@@ -6429,46 +6519,175 @@ async function dietFetchStorageImageInline(imageUrl) {
   }
 }
 
-/** 분석 대상 meal → Gemini 텍스트 블록(슬롯별) */
+/** 분석 대상 meal → Gemini 텍스트 블록(시간순 슬롯별) */
 function formatMealsForDietPrompt(analyzable) {
-  const sorted = [...analyzable].sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+  const sorted = [...analyzable].sort(compareDietMealsChronologically);
   const lines = [];
   for (const m of sorted) {
-    const sl = adminSlotLabelKr(m.slotId) || '슬롯';
+    const sl = dietSlotLabel(m.slotId);
     const detail = adminMealSlotDetailForGemini(m);
     lines.push(`· ${sl}:\n    ${detail}`);
   }
   return lines.join('\n');
 }
 
-/** Gemini 응답 텍스트 정규화(코드펜스 제거). 출력 스키마 검증 없음 */
+/** 기록된 슬롯 / 기록 없는 슬롯 — "안 먹은 것"과 "기록 안 한 것"을 모델이 구분하도록 분모를 준다 */
+function formatDietSlotCoverage(analyzable) {
+  const present = new Map();
+  for (const m of analyzable || []) {
+    const key = String(m?.slotId || '');
+    if (!present.has(key)) present.set(key, []);
+    present.get(key).push(m);
+  }
+  const recorded = [];
+  const missing = [];
+  for (const slotId of DIET_SLOT_ORDER) {
+    const label = dietSlotLabel(slotId);
+    const rows = present.get(slotId);
+    if (!rows || rows.length === 0) {
+      missing.push(label);
+      continue;
+    }
+    const times = rows.map((m) => adminMealTimeText(m)).filter(Boolean);
+    recorded.push(times.length ? `${label}(${times.join(', ')})` : label);
+  }
+  const lines = [`기록됨: ${recorded.length ? recorded.join(' · ') : '없음'}`];
+  lines.push(`기록 없음: ${missing.length ? missing.join(' · ') : '없음'}`);
+  lines.push('※ "기록 없음"은 실제로 거르셨을 수도, 기록만 빠졌을 수도 있다. 단정하지 말 것.');
+  return lines.join('\n');
+}
+
+/** 사용자 프로필(성별·연령대·라이프스타일) — 없으면 빈 문자열 */
+async function buildDietProfileBlock(uid) {
+  try {
+    const snap = await db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`).get();
+    const profile = (snap.exists ? snap.data()?.profile : null) || {};
+    const bits = [];
+    const gender = String(profile.gender || '').trim();
+    if (gender) bits.push(`성별: ${gender}`);
+    const birthdate = String(profile.birthdate || '').trim();
+    const by = /^(\d{4})/.exec(birthdate);
+    if (by) {
+      const age = new Date().getFullYear() - Number(by[1]);
+      if (age > 0 && age < 120) bits.push(`연령대: ${Math.floor(age / 10) * 10}대`);
+    }
+    const lifestyle = String(profile.lifestyle || '').trim();
+    if (lifestyle) bits.push(`생활 패턴: ${lifestyle}`);
+    return bits.length ? bits.join(' · ') : '';
+  } catch (e) {
+    logger.warn('buildDietProfileBlock failed', { uid, errMsg: e?.message });
+    return '';
+  }
+}
+
+/** responseText → 파싱된 JSON 객체(코드펜스 허용). 객체가 아니거나 파싱 실패 시 null */
+function parseDietReportResponseJson(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  try {
+    const obj = JSON.parse(cleaned);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    return obj;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 직전 DIET_REPORT_TREND_DAYS일의 리포트 요약 — 문서 id가 {uid}_{date}라 getAll로 바로 집는다.
+ * (색인·쿼리 불필요. 없는 날짜는 그냥 빠진다)
+ */
+async function buildDietRecentTrendBlock(uid, dateStr) {
+  try {
+    const refs = [];
+    for (let i = 1; i <= DIET_REPORT_TREND_DAYS; i += 1) {
+      const d = adminYmdAddDays(dateStr, -i);
+      refs.push(db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, d)}`));
+    }
+    const snaps = await db.getAll(...refs);
+    const lines = [];
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const data = snap.data() || {};
+      if (data.status !== 'ready') continue;
+      const parsed = parseDietReportResponseJson(data.responseText);
+      if (!parsed) continue;
+      const score = Number(parsed.score);
+      const scoreTxt = Number.isFinite(score) ? `${Math.round(score)}점` : '점수 없음';
+      const gist = String(parsed.title || parsed.summary || '').replace(/\s+/g, ' ').trim();
+      const day = String(data.date || snap.id.split('_').pop() || '');
+      lines.push(`- ${day} ${dietWeekdayLabel(day)} ${scoreTxt}${gist ? ` · ${gist.slice(0, 60)}` : ''}`);
+    }
+    // 오래된 날짜가 위로 오도록(문서 순서는 최근 → 과거)
+    lines.reverse();
+    return lines.join('\n');
+  } catch (e) {
+    logger.warn('buildDietRecentTrendBlock failed', { uid, dateStr, errMsg: e?.message });
+    return '';
+  }
+}
+
+/**
+ * Gemini 응답 텍스트 정규화 + 검증.
+ * 클라이언트(js/utils/ai-meal-report.js)가 렌더할 수 있는 형태인지 여기서 확인한다.
+ * 통과 못 하면 던져서 재시도/에러 경로로 보낸다 — 깨진 JSON을 status:'ready'로 저장하면
+ * 사용자 화면에 원문이 그대로 노출된다.
+ */
 function normalizeDietReportResponseText(text) {
   let s = (text || '').trim();
   if (!s) throw new Error('빈 응답');
   s = s.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-  return s.slice(0, 16000);
+  s = s.slice(0, 16000);
+
+  const parsed = parseDietReportResponseJson(s);
+  if (!parsed) throw new Error('응답 JSON 파싱 실패');
+
+  const hasText = ['summary', 'title', 'highlight', 'nudge', 'goodPoint', 'improvePoint'].some(
+    (k) => typeof parsed[k] === 'string' && parsed[k].trim()
+  );
+  const hasScore = Number.isFinite(Number(parsed.score));
+  if (!hasText && !hasScore) throw new Error('응답에 표시할 필드가 없음');
+
+  return s;
 }
 
-/** Gemini 멀티모달 호출 — 프롬프트에 따른 응답 텍스트를 그대로 반환 */
-async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplate) {
+/**
+ * Gemini 멀티모달 호출.
+ * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
+ *          slotCoverage?:string, recentTrend?:string}} ctx 프롬프트 치환 컨텍스트
+ * @param {Array<{inlineData:{mimeType:string,data:string}, caption:string}>} imageParts
+ * @returns {Promise<{responseText:string, tokenUsage:object|null, model:string,
+ *                    sentImageCount:number, fallbackUsed:string|null}>}
+ */
+async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
   const apiKey = geminiApiKey.value();
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
     throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
   }
-  const prompt = buildDietReportPromptText(dateStr, mealText, promptTemplate);
+  const prompt = buildDietReportPromptText(ctx, promptTemplate);
+  const dateStr = ctx?.date || '';
 
   const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const invoke = async (images, thinkingBudget) => {
     const generationConfig = {
-      // 운영 프롬프트가 개성 있는 title·mood 문구를 요구하므로 표현 다양성 쪽으로 둔다.
-      temperature: 0.8,
+      temperature: DIET_REPORT_TEMPERATURE,
       topP: 0.9,
       maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
+      // 스키마는 고정하지 않는다 — 운영 프롬프트가 관리자에서 자유롭게 바뀌므로
+      // responseSchema로 필드를 못 박으면 새 필드가 조용히 잘려 나간다. JSON 유효성만 강제.
+      responseMimeType: 'application/json',
       thinkingConfig: { thinkingBudget }
     };
-    const parts = [{ text: prompt }, ...images.map((p) => ({ inlineData: p }))];
+    // 사진마다 바로 앞에 슬롯 캡션을 둔다. 캡션 없이 뒤에 몰아 붙이면
+    // 모델이 어느 사진이 어느 끼니인지 알 수 없어 사진을 사실상 무시한다.
+    const parts = [{ text: prompt }];
+    for (const img of images) {
+      if (img.caption) parts.push({ text: img.caption });
+      parts.push({ inlineData: img.inlineData });
+    }
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
@@ -6490,30 +6709,36 @@ async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplat
   };
 
   const images = Array.isArray(imageParts) ? imageParts : [];
+  // 사진을 버리는 건 마지막 수단이므로, 이미지 관련 오류로만 text-only 강등을 허용한다.
+  const isImageError = (msg) => /Unable to process input image|inlineData|image/i.test(msg);
   const isRetriable = (msg) =>
-    /Unable to process input image|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) || /image/i.test(msg);
+    /Gemini 응답 텍스트 없음|MAX_TOKENS|응답 JSON 파싱 실패|응답에 표시할 필드가 없음/i.test(msg) ||
+    isImageError(msg);
 
   // thinking이 출력 예산을 잠식해 본문이 잘린 경우가 먼저이므로, 사진을 버리기 전에 thinking부터 끈다.
   const fallbacks = [];
   if (DIET_REPORT_THINKING_BUDGET > 0) fallbacks.push({ images, thinkingBudget: 0, label: 'no-thinking' });
-  if (images.length > 0) fallbacks.push({ images: [], thinkingBudget: 0, label: 'text-only' });
+  if (images.length > 0) fallbacks.push({ images: [], thinkingBudget: 0, label: 'text-only', imageOnly: true });
 
   let lastError;
   try {
-    return await invoke(images, DIET_REPORT_THINKING_BUDGET);
+    const r = await invoke(images, DIET_REPORT_THINKING_BUDGET);
+    return { ...r, sentImageCount: images.length, fallbackUsed: null };
   } catch (e) {
     lastError = e;
   }
   for (const fb of fallbacks) {
     const msg = String(lastError?.message || lastError);
     if (!isRetriable(msg)) break;
+    if (fb.imageOnly && !isImageError(msg)) break;
     logger.warn(`callGeminiDietReport: retry ${fb.label}`, {
       dateStr,
       imageCount: fb.images.length,
       errMsg: msg
     });
     try {
-      return await invoke(fb.images, fb.thinkingBudget);
+      const r = await invoke(fb.images, fb.thinkingBudget);
+      return { ...r, sentImageCount: fb.images.length, fallbackUsed: fb.label };
     } catch (e) {
       lastError = e;
     }
@@ -6542,45 +6767,36 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
 
   await archiveDietReportSnapshotIfAny(reportRef);
 
-  // 사진 수집: meal 문서당 DIET_REPORT_MAX_PHOTOS_PER_DOC 장, 하루 전체 DIET_REPORT_MAX_PHOTOS_TOTAL 장
+  // 사진 수집(시간순): meal 문서당 DIET_REPORT_MAX_PHOTOS_PER_DOC 장, 하루 전체 DIET_REPORT_MAX_PHOTOS_TOTAL 장.
+  // 각 사진에는 "몇 번째 사진 · 어느 슬롯 · 몇 시"인지 캡션을 붙여 프롬프트와 짝지어 보낸다.
   const imageParts = [];
   const inputMealsForAnalysis = [];
   for (const m of analyzable) {
-    if (imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) {
-      const photosOnly = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
-      inputMealsForAnalysis.push({
-        slotId: String(m.slotId || ''),
-        slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
-        mealId: String(m.id || ''),
-        detailText: adminMealSlotDetailForGemini(m),
-        comment: adminMealCommentText(m) || null,
-        time: adminMealTimeText(m) || null,
-        rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
-        satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
-        photoCount: photosOnly.length,
-        analyzedPhotoUrls: []
-      });
-      continue;
-    }
     const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    const slotLabel = dietSlotLabel(m.slotId);
+    const timeTxt = adminMealTimeText(m);
     const analyzedPhotoUrls = [];
     let usedForDoc = 0;
-    for (const purl of photos) {
+    for (let i = 0; i < photos.length; i += 1) {
       if (usedForDoc >= DIET_REPORT_MAX_PHOTOS_PER_DOC || imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) break;
-      const inline = await dietFetchStorageImageInline(purl);
+      // 원본 대신 800px 파생본을 보낸다 — Gemini가 어차피 다운샘플하므로 화질 손해 없이
+      // 다운로드·입력 토큰만 줄어든다. 파생본이 없는 구버전 기록은 원본으로 폴백.
+      const sourceUrl = dietPickPhotoUrlForAnalysis(m, i);
+      const inline = await dietFetchStorageImageInline(sourceUrl);
       if (inline) {
-        imageParts.push(inline);
-        analyzedPhotoUrls.push(purl);
+        const caption = `[사진 ${imageParts.length + 1} · ${slotLabel}${timeTxt ? ` ${timeTxt}` : ''}]`;
+        imageParts.push({ inlineData: inline, caption });
+        analyzedPhotoUrls.push(sourceUrl);
         usedForDoc += 1;
       }
     }
     inputMealsForAnalysis.push({
       slotId: String(m.slotId || ''),
-      slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+      slotLabel,
       mealId: String(m.id || ''),
       detailText: adminMealSlotDetailForGemini(m),
       comment: adminMealCommentText(m) || null,
-      time: adminMealTimeText(m) || null,
+      time: timeTxt || null,
       rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
       satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
       photoCount: photos.length,
@@ -6589,6 +6805,19 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
   }
 
   const mealText = formatMealsForDietPrompt(analyzable) + dailyJournalBlock;
+  const [profileBlock, recentTrendBlock] = await Promise.all([
+    buildDietProfileBlock(uid),
+    buildDietRecentTrendBlock(uid, dateStr)
+  ]);
+  const slotCoverageBlock = formatDietSlotCoverage(analyzable);
+  const promptCtx = {
+    date: dateStr,
+    weekday: dietWeekdayLabel(dateStr),
+    mealText,
+    profile: profileBlock,
+    slotCoverage: slotCoverageBlock,
+    recentTrend: recentTrendBlock
+  };
   const inputSnapshot = {
     inputMealText: String(mealText || '').slice(0, 12000),
     inputMeals: inputMealsForAnalysis,
@@ -6599,31 +6828,45 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
     date: dateStr,
     mealCount: analyzable.length,
     photoCount,
+    // 실제로 모델에 보낸 장수는 폴백 결과를 안 뒤에 덮어쓴다(아래). 여기 값은 에러 경로용 상한.
+    preparedPhotoCount: imageParts.length,
     analyzedPhotoCount: imageParts.length,
     sourceHash: hash,
     sourceUpdatedAtMax: maxRecordedAt || null,
     promptVersion: config.promptVersion,
+    hasProfileContext: !!profileBlock,
+    hasRecentTrendContext: !!recentTrendBlock,
     trigger,
     generatedAt: FieldValue.serverTimestamp(),
     ...inputSnapshot
   };
 
   try {
-    const { responseText, tokenUsage, model } = await callGeminiDietReport(
-      dateStr,
-      mealText,
+    const { responseText, tokenUsage, model, sentImageCount, fallbackUsed } = await callGeminiDietReport(
+      promptCtx,
       imageParts,
       config.promptTemplate
     );
+    // text-only 폴백으로 성공했다면 "분석된 사진"도 없는 게 맞다 — 관리자 카드가
+    // 실제로 안 쓰인 사진을 분석 사진으로 보여 주면 안 된다.
+    const inputMealsFinal =
+      sentImageCount === 0 && imageParts.length > 0
+        ? inputMealsForAnalysis.map((m) => ({ ...m, analyzedPhotoUrls: [] }))
+        : inputMealsForAnalysis;
     await reportRef.set(
       {
         ...base,
+        inputMeals: inputMealsFinal,
         status: 'ready',
         isLatest: true,
         isHistory: false,
         responseText,
         modelVersion: model,
         tokensUsed: tokenUsage,
+        // 사진을 버린 폴백으로 성공했다면 그 사실을 그대로 남긴다.
+        // (예전에는 준비 장수를 그대로 저장해 "사진 3장 분석"으로 보였다)
+        analyzedPhotoCount: sentImageCount,
+        fallbackUsed: fallbackUsed || FieldValue.delete(),
         score: FieldValue.delete(),
         summary: FieldValue.delete(),
         goodPoint: FieldValue.delete(),
@@ -6643,6 +6886,8 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         status: 'error',
         isLatest: true,
         isHistory: false,
+        analyzedPhotoCount: 0,
+        fallbackUsed: FieldValue.delete(),
         modelVersion: GEMINI_MEALDANG_MODEL,
         errorMessage: String(e?.message || e).slice(0, 500),
         historyOf: FieldValue.delete(),

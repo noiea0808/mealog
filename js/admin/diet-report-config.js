@@ -10,7 +10,10 @@ import { runAdminRefreshAction } from './utils.js';
  * 폴백 전용. 실제 운영 프롬프트는 Firestore(adminSettings/dietReportConfig)의 promptTemplate 이다.
  * "기본값으로 되돌리기"를 누르면 편집창이 이 값으로 덮이므로, 운영 프롬프트보다 빈약한 채로 두면 위험하다.
  */
-export const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
+export const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}} {{weekday}}) 식단을 평가한다.
+
+[사용자]
+{{profile}}
 
 [평가 기준 · 100점 만점]
 - 균형(주식·단백질·채소/과일의 고른 구성)
@@ -23,16 +26,35 @@ export const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 
 [작성 원칙]
 - 한국어. 담백하고 따뜻한 어투. 캐릭터·이모지·과장 없이.
 - 의학적 진단·치료·질병 단정 표현 금지("~에 좋다/나쁘다" 수준의 일반적 조언까지만).
+- 사진은 각 사진 바로 앞의 캡션(슬롯·시각)이 어느 기록의 것인지 알려 준다. 캡션과 짝지어 읽을 것.
 - 사진에 음식이 보이면 실제로 반영하되, 데이터에 없는 사실은 지어내지 말 것.
+- [최근 흐름]이 있으면 어제·최근 며칠과 견주어 말하되, 없으면 그날만 보고 쓴다.
+- title은 그날을 한 마디로 부르는 이름(공백 포함 20자 내외), mood는 2~5자 분위기 라벨.
 - summary는 한 줄(공백 포함 60자 내외).
-- goodPoint(좋았던 점), improvePoint(아쉬운 점)은 각각 한 줄, 없으면 빈 문자열.
+- highlight(좋았던 흐름), nudge(내일의 힌트)는 각각 한 줄, 없으면 빈 문자열.
 
 [식단 데이터 · {{date}}]
 {{mealText}}
 
+[슬롯 기록 현황]
+{{slotCoverage}}
+
+[최근 흐름]
+{{recentTrend}}
+
 [출력 형식]
 아래 JSON만 출력한다. 다른 텍스트·설명·코드펜스 없이 JSON 객체 하나만.
-{"score": 0-100 정수, "summary": "한줄평", "goodPoint": "좋았던 점", "improvePoint": "아쉬운 점"}`;
+{"score": 0-100 정수, "mood": "분위기 라벨", "title": "그날의 이름", "summary": "한줄평", "highlight": "좋았던 흐름", "nudge": "내일의 힌트"}`;
+
+/** functions/index.js buildDietReportPromptText 가 실제로 치환하는 목록과 일치시킬 것 */
+export const SUPPORTED_PROMPT_PLACEHOLDERS = [
+    '{{date}}',
+    '{{weekday}}',
+    '{{mealText}}',
+    '{{profile}}',
+    '{{slotCoverage}}',
+    '{{recentTrend}}'
+];
 
 const CONFIG_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'dietReportConfig');
 
@@ -111,6 +133,19 @@ export async function saveDietReportPrompt(buttonEl) {
     }
     if (!promptTemplate.includes('{{date}}') || !promptTemplate.includes('{{mealText}}')) {
         const ok = confirm('{{date}} 또는 {{mealText}} 치환자가 없습니다. 그대로 저장할까요?');
+        if (!ok) return;
+    }
+    // 오타 난 치환자는 그대로 모델에 전달되어 조용히 품질을 깎으므로 저장 전에 잡는다.
+    const unknown = [...new Set(
+        (promptTemplate.match(/\{\{\s*[^}]*\}\}/g) || []).filter(
+            (t) => !SUPPORTED_PROMPT_PLACEHOLDERS.includes(t)
+        )
+    )];
+    if (unknown.length) {
+        const ok = confirm(
+            `지원하지 않는 치환자가 있습니다: ${unknown.join(', ')}\n` +
+            `치환되지 않고 그대로 전달됩니다. 사용 가능: ${SUPPORTED_PROMPT_PLACEHOLDERS.join(', ')}\n\n그대로 저장할까요?`
+        );
         if (!ok) return;
     }
     await runAdminRefreshAction(buttonEl || null, async () => {

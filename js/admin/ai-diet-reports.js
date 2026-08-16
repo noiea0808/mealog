@@ -178,6 +178,35 @@ function reportKindBadge(data) {
     return '<span class="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[11px] font-bold">최신</span>';
 }
 
+/**
+ * 사진을 버린 폴백으로 성공한 경우를 드러낸다. 예전에는 준비한 장수를 그대로 저장해
+ * 텍스트 전용으로 나온 결과도 "사진 N장 분석"으로 보였다.
+ */
+function fallbackNote(data) {
+    const fb = String(data?.fallbackUsed || '').trim();
+    if (!fb) return '';
+    const prepared = Number(data?.preparedPhotoCount) || 0;
+    const label = fb === 'text-only'
+        ? `사진 제외 재시도${prepared ? ` (준비 ${prepared}장)` : ''}`
+        : fb === 'no-thinking'
+            ? 'thinking 없이 재시도'
+            : fb;
+    return ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+}
+
+/** 프롬프트에 실제로 실린 부가 컨텍스트 */
+function contextBadges(data) {
+    const on = (label) =>
+        `<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+    const off = (label) =>
+        `<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+    const bits = [
+        data?.hasProfileContext === true ? on('프로필') : off('프로필 없음'),
+        data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음')
+    ];
+    return `<div class="flex flex-wrap gap-1">${bits.join('')}</div>`;
+}
+
 function renderInputMealsSection(data) {
     const meals = Array.isArray(data?.inputMeals) ? data.inputMeals : [];
     const mealText = typeof data?.inputMealText === 'string' ? data.inputMealText.trim() : '';
@@ -300,7 +329,9 @@ function renderDetailPanel(data, id) {
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">사용자</dt>
                     <dd class="text-slate-800 font-mono text-xs min-w-0 break-all">${escapeHtml(data._email || data.userId || '—')}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">기록</dt>
-                    <dd class="text-slate-800 min-w-0">식사/간식 ${Number(data.mealCount) || 0}건 · 사진 ${Number(data.photoCount) || 0}장(분석 ${Number(data.analyzedPhotoCount) || 0}장)</dd>
+                    <dd class="text-slate-800 min-w-0">식사/간식 ${Number(data.mealCount) || 0}건 · 사진 ${Number(data.photoCount) || 0}장(분석 ${Number(data.analyzedPhotoCount) || 0}장)${fallbackNote(data)}</dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">컨텍스트</dt>
+                    <dd class="min-w-0">${contextBadges(data)}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">모델</dt>
                     <dd class="text-slate-800 font-mono text-xs min-w-0 break-all">${escapeHtml(data.modelVersion || '—')} · ${escapeHtml(data.promptVersion || '—')}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">토큰</dt>

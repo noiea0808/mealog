@@ -818,7 +818,16 @@
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
                                 <div>
                                     <h3 class="text-base font-black text-slate-800">식단분석 프롬프트</h3>
-                                    <p class="text-sm text-slate-600 mt-1">Gemini에 전달할 지시문입니다. <code class="text-xs bg-slate-100 px-1 rounded">{{date}}</code>(분석 날짜), <code class="text-xs bg-slate-100 px-1 rounded">{{mealText}}</code>(슬롯별 식단 텍스트) 치환자를 사용할 수 있습니다.</p>
+                                    <p class="text-sm text-slate-600 mt-1">Gemini에 전달할 지시문입니다. 아래 치환자를 사용할 수 있습니다.</p>
+                                    <ul class="mt-2 space-y-1 text-xs text-slate-600">
+                                        <li><code class="bg-slate-100 px-1 rounded">{{date}}</code> 분석 날짜 (2026-08-15)</li>
+                                        <li><code class="bg-slate-100 px-1 rounded">{{weekday}}</code> 요일 (금)</li>
+                                        <li><code class="bg-slate-100 px-1 rounded">{{mealText}}</code> 슬롯별 식단 텍스트 <strong class="font-semibold text-slate-700">(시간순)</strong> + 하루소감</li>
+                                        <li><code class="bg-slate-100 px-1 rounded">{{profile}}</code> 성별 · 연령대 · 생활 패턴</li>
+                                        <li><code class="bg-slate-100 px-1 rounded">{{slotCoverage}}</code> 기록된 슬롯 / 기록 없는 슬롯</li>
+                                        <li><code class="bg-slate-100 px-1 rounded">{{recentTrend}}</code> 직전 7일 리포트 점수 · 한줄평</li>
+                                    </ul>
+                                    <p class="mt-2 text-xs text-slate-500">사진은 각 사진 바로 앞에 <code class="bg-slate-100 px-1 rounded">[사진 1 · 점심 12:30]</code> 형태의 캡션과 함께 전달됩니다(기록당 최대 2장, 하루 8장). 응답은 JSON 모드로 강제되며, 서버가 파싱에 실패하면 <strong class="font-semibold text-slate-700">실패로 기록</strong>됩니다.</p>
                                 </div>
                                 <textarea id="dietReportPromptInput" rows="22" spellcheck="false" class="w-full font-mono text-sm leading-relaxed px-4 py-3 border border-slate-200 rounded-xl bg-slate-50 text-slate-800 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 resize-y min-h-[20rem]" placeholder="프롬프트를 입력하세요…"></textarea>
                                 <div class="flex flex-wrap gap-2 items-center">
