@@ -6628,6 +6628,36 @@ async function fetchDietReportConfig() {
   };
 }
 
+/** 고정부를 systemInstruction 으로 분리할 최소 길이. 이보다 짧으면 분리 이득이 없다 */
+const DIET_PROMPT_MIN_STATIC_CHARS = 500;
+
+/**
+ * 프롬프트를 "요청마다 동일한 고정부"와 "요청마다 달라지는 꼬리"로 가른다.
+ *
+ * 고정부를 systemInstruction 으로 올리는 이유: 프롬프트 전체를 하나의 text part 에 담으면
+ * 토큰 시퀀스상 앞부분이 같아도 캐시가 걸리지 않았다(실측 cachedContentTokenCount = 0).
+ * systemInstruction 은 캐싱이 겨냥하는 자리라 경계가 명확하다.
+ *
+ * 자르는 지점은 첫 치환자다. 치환자를 전부 꼬리로 몰아 둔 덕에 깔끔하게 갈리고,
+ * 관리자가 치환자를 앞쪽에 두면 고정부가 짧아질 뿐 동작은 그대로다(이득만 줄어든다).
+ */
+function splitDietPromptForCaching(ctx, promptTemplate) {
+  const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+  const idx = tpl.search(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend)\}\}/);
+  if (idx < DIET_PROMPT_MIN_STATIC_CHARS) {
+    return { staticPart: '', variablePart: buildDietReportPromptText(ctx, tpl) };
+  }
+  // 치환자 자리에서 그냥 자르면 "날짜:" 같은 라벨만 고정부에 남고 값은 가변부로 가 어색해진다.
+  // 치환자를 품은 [섹션] 통째로 가변부에 넘긴다.
+  const candidates = [tpl.lastIndexOf('\n\n[', idx), tpl.lastIndexOf('\n\n', idx), tpl.lastIndexOf('\n', idx)];
+  const cut = candidates.find((c) => c >= DIET_PROMPT_MIN_STATIC_CHARS);
+  const at = cut == null ? idx : cut;
+  return {
+    staticPart: tpl.slice(0, at).trimEnd(),
+    variablePart: buildDietReportPromptText(ctx, tpl.slice(at).trimStart())
+  };
+}
+
 /**
  * 프롬프트 치환. 사용자 텍스트에 `$&` 같은 시퀀스가 있어도 깨지지 않도록 함수 replacer를 쓴다.
  * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
@@ -6998,7 +7028,7 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
     throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
   }
-  const prompt = buildDietReportPromptText(ctx, promptTemplate);
+  const { staticPart, variablePart } = splitDietPromptForCaching(ctx, promptTemplate);
   const dateStr = ctx?.date || '';
 
   const model = GEMINI_MEALDANG_MODEL;
@@ -7016,17 +7046,20 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
     };
     // 사진마다 바로 앞에 슬롯 캡션을 둔다. 캡션 없이 뒤에 몰아 붙이면
     // 모델이 어느 사진이 어느 끼니인지 알 수 없어 사진을 사실상 무시한다.
-    const parts = [{ text: prompt }];
+    const parts = [{ text: variablePart }];
     for (const img of images) {
       if (img.caption) parts.push({ text: img.caption });
       parts.push({ inlineData: img.inlineData });
     }
     // 교정 지시는 맨 뒤에 — 가장 최근 지시가 가장 강하게 먹는다.
     if (extraInstruction) parts.push({ text: extraInstruction });
+    const body = { contents: [{ parts }], generationConfig };
+    // 고정 지시문은 systemInstruction 으로 — 캐시 경계를 명확히 하고 규칙 준수도 강해진다.
+    if (staticPart) body.systemInstruction = { parts: [{ text: staticPart }] };
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
-      body: JSON.stringify({ contents: [{ parts }], generationConfig })
+      body: JSON.stringify(body)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
