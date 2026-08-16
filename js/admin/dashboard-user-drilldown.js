@@ -14,8 +14,15 @@ import {
     writeBatch,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { escapeHtml } from './utils.js';
+import { escapeHtml, weekLabelKoreanFromSunday } from './utils.js';
 import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
+import {
+    unionOfPeriods,
+    buildMatrixRow,
+    sortMatrixRows,
+    sortListRows,
+    summarizeMatrix
+} from './dashboard-drilldown-model.js';
 
 const DRILLDOWN_DOC = (id) =>
     doc(db, 'artifacts', appId, 'adminSettings', 'dashboardStats', 'drilldown', id);
@@ -36,9 +43,17 @@ let modalBound = false;
 let tableBound = false;
 /** 팝업 열기 요청 순번 — 늦게 도착한 이전 요청이 화면을 덮어쓰지 않도록 */
 let openSeq = 0;
-/** 현재 팝업에 그려진 행 데이터 (신규만 보기 토글용) */
+/** 현재 팝업 상태 — 토글로 다시 그릴 때 재조회 없이 쓰려고 들고 있는다 */
+let currentView = 'list';
+let currentKind = 'activeUsers';
+/** 하위 구간 단위 표기 ('주' | '일') */
+let currentUnit = '주';
+let currentPeriods = [];
 let currentRows = [];
+let currentMatrixRows = [];
+let currentListSummary = '';
 let currentNewOnly = false;
+let currentDropoutOnly = false;
 
 export function invalidateDashboardUserDrilldownCache() {
     drilldownDocCache.clear();
@@ -125,6 +140,25 @@ export function markDashboardDrilldownCell(td, spec) {
     td.title = base && !base.startsWith('클릭: ') ? `${base}\n${hint}` : hint;
 }
 
+/**
+ * 표 상단의 기간 헤더(7월·8월·최근 7일)를 클릭 대상으로 만든다.
+ * 숫자 칸과 달리 「그 기간의 하위 구간별 출석 표」로 바로 연다 —
+ * 누가 계속 썼고 누가 중간에 끊겼는지는 합계 숫자로는 보이지 않는다.
+ * @param {HTMLElement} th
+ * @param {{ scope: 'month'|'last7', keys: string[], label: string }} spec
+ */
+export function markDashboardDrilldownHeader(th, spec) {
+    if (!th || !spec?.keys?.length) return;
+    th.dataset.drillKind = 'activeUsers';
+    th.dataset.drillScope = spec.scope;
+    th.dataset.drillKeys = spec.keys.join(',');
+    th.dataset.drillLabel = spec.label;
+    th.dataset.drillView = 'matrix';
+    th.classList.add(...DRILL_CELL_CLASSES);
+    const unit = spec.scope === 'last7' ? '일자' : '주차';
+    th.title = `클릭: ${spec.label} ${unit}별 사용자 출석 표 (지속·이탈 확인)`;
+}
+
 export function clearDashboardDrilldownCell(td) {
     if (!td) return;
     if (!td.dataset.drillKind) return;
@@ -133,6 +167,7 @@ export function clearDashboardDrilldownCell(td) {
     delete td.dataset.drillKeys;
     delete td.dataset.drillLabel;
     delete td.dataset.drillCount;
+    delete td.dataset.drillView;
     td.classList.remove(...DRILL_CELL_CLASSES);
 }
 
@@ -149,7 +184,8 @@ export function ensureDashboardDrilldownBinding() {
                     scope: cell.dataset.drillScope,
                     keys: String(cell.dataset.drillKeys || '').split(',').filter(Boolean),
                     label: cell.dataset.drillLabel || '',
-                    shownCount: Number(cell.dataset.drillCount) || 0
+                    shownCount: Number(cell.dataset.drillCount) || 0,
+                    view: cell.dataset.drillView || 'list'
                 });
             });
             tableBound = true;
@@ -175,6 +211,19 @@ export function ensureDashboardDrilldownBinding() {
                 renderDrilldownRows();
             });
         }
+        const dropoutOnly = document.getElementById('dashboardUserListDropoutOnly');
+        if (dropoutOnly) {
+            dropoutOnly.addEventListener('change', () => {
+                currentDropoutOnly = dropoutOnly.checked;
+                renderDrilldownMatrix();
+            });
+        }
+        document
+            .getElementById('dashboardUserListViewList')
+            ?.addEventListener('click', () => setDrilldownView('list'));
+        document
+            .getElementById('dashboardUserListViewMatrix')
+            ?.addEventListener('click', () => setDrilldownView('matrix'));
     }
 }
 
@@ -209,45 +258,76 @@ async function fetchDrilldownDoc(id) {
     return data;
 }
 
-/** 칸 하나가 가리키는 (활성 UID 합집합, 신규 UID 합집합) */
-async function collectUidsForCell({ scope, keys }) {
-    const active = new Set();
-    const fresh = new Set();
-    let missing = 0;
+/** 'YYYY-MM-DD'(일요일) → '2주' 같은 짧은 열 제목 (전체 라벨의 첫 줄) */
+function shortWeekLabel(sundayKey) {
+    const p = String(sundayKey).split('-');
+    if (p.length !== 3) return sundayKey;
+    const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    if (Number.isNaN(d.getTime())) return sundayKey;
+    return String(weekLabelKoreanFromSunday(d)).split('\n')[0];
+}
 
+/** 'YYYY-MM-DD' → 'M/D' */
+function shortDayLabel(dateKey) {
+    const p = String(dateKey).split('-');
+    return p.length === 3 ? `${parseInt(p[1], 10)}/${parseInt(p[2], 10)}` : String(dateKey);
+}
+
+/**
+ * 칸이 가리키는 기간을 하위 구간 단위로 펼쳐서 돌려준다.
+ * 명단 보기는 이걸 합집합으로 쓰고, 기간별 표는 열 하나씩으로 쓴다 —
+ * 두 화면이 같은 원본을 보므로 서로 어긋날 수 없다.
+ * @returns {Promise<{ periods: Array<{key:string,label:string,active:Set,new:Set}>, missing:number }>}
+ */
+async function collectPeriodsForCell({ scope, keys }) {
     if (scope === 'all') {
         const d = await fetchDrilldownDoc(DOC_ID_ALL);
-        if (!d) return { active, fresh, missing: 1 };
-        (d.active || []).forEach((u) => active.add(u));
-        (d.new || []).forEach((u) => fresh.add(u));
-        return { active, fresh, missing: 0 };
+        if (!d) return { periods: [], missing: 1 };
+        return {
+            periods: [
+                { key: 'all', label: '전체', active: new Set(d.active || []), new: new Set(d.new || []) }
+            ],
+            missing: 0
+        };
     }
 
     if (scope === 'day' || scope === 'last7') {
         const d = await fetchDrilldownDoc(DOC_ID_LAST7);
-        if (!d?.byDate) return { active, fresh, missing: 1 };
-        const dates = scope === 'last7' ? (d.dates || []) : keys;
-        for (const dk of dates) {
-            const e = d.byDate[dk];
-            if (!e) continue;
-            (e.active || []).forEach((u) => active.add(u));
-            (e.new || []).forEach((u) => fresh.add(u));
-        }
-        return { active, fresh, missing: 0 };
+        if (!d?.byDate) return { periods: [], missing: 1 };
+        const dates = scope === 'last7' ? d.dates || [] : keys;
+        const periods = dates.map((dk) => {
+            const e = d.byDate[dk] || {};
+            return {
+                key: dk,
+                label: shortDayLabel(dk),
+                active: new Set(e.active || []),
+                new: new Set(e.new || [])
+            };
+        });
+        return { periods, missing: 0 };
     }
 
-    // week / month — 주차 문서(들)의 합집합
+    // week / month — 주차 문서 하나가 곧 열 하나
+    const periods = [];
+    let missing = 0;
     for (const sk of keys) {
         const d = await fetchDrilldownDoc(sk);
         if (!d) {
             missing++;
+            // 문서가 없는 주는 「그 주에 아무도 없었다」로 그린다 (열 자체는 유지해야 이탈이 보인다)
+            periods.push({ key: sk, label: shortWeekLabel(sk), active: new Set(), new: new Set() });
             continue;
         }
-        (d.active || []).forEach((u) => active.add(u));
-        (d.new || []).forEach((u) => fresh.add(u));
+        periods.push({
+            key: sk,
+            label: shortWeekLabel(sk),
+            active: new Set(d.active || []),
+            new: new Set(d.new || [])
+        });
     }
-    return { active, fresh, missing: missing === keys.length ? 1 : 0 };
+    return { periods, missing: missing === keys.length ? 1 : 0 };
 }
+
 
 /** users/{uid}/config/settings에서 닉네임·아이콘 (세션 캐시). users.js의 표시 규칙과 동일 */
 async function resolveProfiles(uids) {
@@ -296,19 +376,20 @@ function formatJoinKey(joinKey) {
     return p.length === 3 ? `${p[0].slice(2)}.${p[1]}.${p[2]} 가입` : String(joinKey);
 }
 
-export async function openDashboardUserDrilldown({ kind, scope, keys, label, shownCount = 0 }) {
+export async function openDashboardUserDrilldown({ kind, scope, keys, label, shownCount = 0, view = 'list' }) {
     const modal = document.getElementById('dashboardUserListModal');
     if (!modal) return;
     const seq = ++openSeq;
 
-    const kindLabel = kind === 'newUsers' ? '신규 사용자' : '활성 사용자';
+    currentKind = kind;
+    currentUnit = scope === 'last7' || scope === 'day' ? '일' : '주';
     currentRows = [];
+    currentMatrixRows = [];
+    currentPeriods = [];
     currentNewOnly = false;
-    const newOnlyEl = document.getElementById('dashboardUserListNewOnly');
-    if (newOnlyEl) newOnlyEl.checked = false;
-    const newOnlyWrap = document.getElementById('dashboardUserListNewOnlyWrap');
-    if (newOnlyWrap) newOnlyWrap.classList.toggle('hidden', kind !== 'activeUsers');
+    currentDropoutOnly = false;
 
+    const kindLabel = kind === 'newUsers' ? '신규 사용자' : '활성 사용자';
     setModalText('dashboardUserListModalTitle', `${kindLabel} · ${label}`);
     setModalText('dashboardUserListSummary', '불러오는 중…');
     const body = document.getElementById('dashboardUserListBody');
@@ -319,14 +400,15 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
 
-    const [{ active, fresh, missing }, allDoc] = await Promise.all([
-        collectUidsForCell({ scope, keys }),
+    const [{ periods, missing }, allDoc] = await Promise.all([
+        collectPeriodsForCell({ scope, keys }),
         fetchDrilldownDoc(DOC_ID_ALL)
     ]);
     if (seq !== openSeq) return;
 
     if (missing) {
         setModalText('dashboardUserListSummary', '명단 캐시 없음');
+        syncDrilldownToolbar(0);
         if (body) {
             body.innerHTML =
                 '<div class="py-10 text-center text-sm text-slate-500">이 기간의 명단 캐시가 아직 없습니다.<br class="my-1">상단 「새로고침」을 한 번 눌러 주세요.</div>';
@@ -334,15 +416,20 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
         return;
     }
 
+    currentPeriods = periods;
+    const { active, fresh } = unionOfPeriods(periods);
     const joinKeys = allDoc?.joinKeys || {};
-    const targetUids = kind === 'newUsers' ? [...fresh] : [...active];
 
-    const failedProfiles = await resolveProfiles(targetUids);
+    // 명단 보기 대상과 표 보기 대상(가입만 하고 한 번도 안 쓴 사람 포함)을 한 번에 조회한다
+    const listUids = kind === 'newUsers' ? [...fresh] : [...active];
+    const matrixUids = [...new Set([...active, ...fresh])];
+    const failedProfiles = await resolveProfiles([...new Set([...listUids, ...matrixUids])]);
     if (seq !== openSeq) return;
+    const profileOf = (uid) => profileCache.get(uid) || failedProfiles.get(uid);
 
-    currentRows = targetUids
-        .map((uid) => {
-            const p = profileCache.get(uid) || failedProfiles.get(uid);
+    currentRows = sortListRows(
+        listUids.map((uid) => {
+            const p = profileOf(uid);
             return {
                 uid,
                 joinKey: joinKeys[uid] || '',
@@ -351,11 +438,13 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
                 icon: p?.icon || '🐻'
             };
         })
-        // 신규를 위로, 그다음 가입일 최신순
-        .sort((a, b) => {
-            if (a.isNew !== b.isNew) return a.isNew ? -1 : 1;
-            return String(b.joinKey).localeCompare(String(a.joinKey));
-        });
+    );
+
+    currentMatrixRows = sortMatrixRows(
+        matrixUids.map((uid) =>
+            buildMatrixRow(uid, periods, profileOf(uid), joinKeys[uid] || '', fresh.has(uid))
+        )
+    );
 
     const activeCount = active.size;
     const newCount = fresh.size;
@@ -369,22 +458,64 @@ export async function openDashboardUserDrilldown({ kind, scope, keys, label, sho
             : '';
     if (kind === 'activeUsers') {
         const rate = newCount > 0 ? ` · 신규 활성화율 ${((newActiveCount / newCount) * 100).toFixed(1)}%` : '';
-        setModalText(
-            'dashboardUserListSummary',
+        currentListSummary =
             `활성 ${activeCount.toLocaleString()}명 · 이 중 신규 ${newActiveCount.toLocaleString()}명 ` +
-                `(같은 기간 신규 ${newCount.toLocaleString()}명 중)${rate}${staleNote}`
-        );
+            `(같은 기간 신규 ${newCount.toLocaleString()}명 중)${rate}${staleNote}`;
     } else {
-        setModalText(
-            'dashboardUserListSummary',
-            `신규 ${newCount.toLocaleString()}명 · 이 중 같은 기간에 기록을 남긴 사용자 ${newActiveCount.toLocaleString()}명${staleNote}`
-        );
+        currentListSummary = `신규 ${newCount.toLocaleString()}명 · 이 중 같은 기간에 기록을 남긴 사용자 ${newActiveCount.toLocaleString()}명${staleNote}`;
     }
 
-    renderDrilldownRows();
+    // 하위 구간이 2개 이상일 때만 「기간별 표」가 의미 있다
+    currentView = periods.length >= 2 && view === 'matrix' ? 'matrix' : 'list';
+    syncDrilldownToolbar(periods.length);
+    renderDrilldownBody();
+}
+
+/** 모드 토글·필터를 현재 상태에 맞춘다 */
+function syncDrilldownToolbar(periodCount) {
+    const viewWrap = document.getElementById('dashboardUserListViewWrap');
+    if (viewWrap) viewWrap.classList.toggle('hidden', periodCount < 2);
+    const activeCls = 'px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white';
+    const idleCls = 'px-2.5 py-1 text-xs font-bold rounded-lg text-slate-500 hover:bg-slate-200';
+    const btnList = document.getElementById('dashboardUserListViewList');
+    const btnMatrix = document.getElementById('dashboardUserListViewMatrix');
+    if (btnList) btnList.className = currentView === 'list' ? activeCls : idleCls;
+    if (btnMatrix) btnMatrix.className = currentView === 'matrix' ? activeCls : idleCls;
+
+    const newOnlyWrap = document.getElementById('dashboardUserListNewOnlyWrap');
+    if (newOnlyWrap) {
+        newOnlyWrap.classList.toggle('hidden', currentView !== 'list' || currentKind !== 'activeUsers');
+    }
+    const dropoutWrap = document.getElementById('dashboardUserListDropoutWrap');
+    if (dropoutWrap) dropoutWrap.classList.toggle('hidden', currentView !== 'matrix');
+    const newOnlyEl = document.getElementById('dashboardUserListNewOnly');
+    if (newOnlyEl) newOnlyEl.checked = currentNewOnly;
+    const dropoutEl = document.getElementById('dashboardUserListDropoutOnly');
+    if (dropoutEl) dropoutEl.checked = currentDropoutOnly;
+
+    const legend = document.getElementById('dashboardUserListLegend');
+    if (legend) {
+        legend.textContent =
+            currentView === 'matrix'
+                ? `● 기록 있음 · 빈칸 없음 · 초록 = 그 ${currentUnit}에 가입`
+                : '초록 배경 = 같은 기간 가입한 신규 사용자';
+    }
+}
+
+function setDrilldownView(view) {
+    if (currentView === view) return;
+    currentView = view;
+    syncDrilldownToolbar(currentPeriods.length);
+    renderDrilldownBody();
+}
+
+function renderDrilldownBody() {
+    if (currentView === 'matrix') renderDrilldownMatrix();
+    else renderDrilldownRows();
 }
 
 function renderDrilldownRows() {
+    setModalText('dashboardUserListSummary', currentListSummary);
     const body = document.getElementById('dashboardUserListBody');
     if (!body) return;
     const rows = currentNewOnly ? currentRows.filter((r) => r.isNew) : currentRows;
@@ -413,4 +544,98 @@ function renderDrilldownRows() {
                 </div>`;
         })
         .join('');
+}
+
+function statusCellHtml(r, unit) {
+    if (r.status === 'kept') {
+        return '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded whitespace-nowrap">계속</span>';
+    }
+    if (r.status === 'none') {
+        return '<span class="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-black rounded whitespace-nowrap">기록 없음</span>';
+    }
+    return `<span class="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black rounded whitespace-nowrap">${r.gap}${unit}째 없음</span>`;
+}
+
+/**
+ * 구간별 출석 표의 HTML. DOM·Firestore를 만지지 않아 가짜 데이터로 그대로 확인할 수 있다.
+ * @param {Array<{key:string,label:string}>} periods
+ * @param {Array<object>} rows buildMatrixRow 결과
+ * @param {'주'|'일'} unit
+ */
+export function buildMatrixTableHtml(periods, rows, unit) {
+    if (!rows?.length) {
+        return '<div class="py-10 text-center text-sm text-slate-400">표시할 사용자가 없습니다.</div>';
+    }
+    const headCells = periods
+        .map(
+            (p) =>
+                `<th class="px-1 py-1.5 text-center font-bold text-slate-600 text-[10px] min-w-[2.5rem] whitespace-nowrap" title="${escapeHtml(p.key)}">${escapeHtml(p.label)}</th>`
+        )
+        .join('');
+
+    const bodyRows = rows
+        .map((r, i) => {
+            const cells = r.marks
+                .map((m) => {
+                    if (!m.active) return '<td class="px-1 py-1.5 text-center text-slate-200">·</td>';
+                    const cls = m.joined ? 'text-emerald-600' : 'text-slate-700';
+                    const t = m.joined ? ' title="이 구간에 가입"' : '';
+                    return `<td class="px-1 py-1.5 text-center ${cls} font-black"${t}>●</td>`;
+                })
+                .join('');
+            const rowCls =
+                r.status === 'kept'
+                    ? 'bg-white hover:bg-slate-50'
+                    : r.status === 'gap'
+                      ? 'bg-amber-50/50 hover:bg-amber-50'
+                      : 'bg-slate-50 hover:bg-slate-100';
+            const badge = r.isNew
+                ? '<span class="px-1 py-0.5 bg-emerald-600 text-white text-[9px] font-black rounded shrink-0">신규</span>'
+                : '';
+            return `
+                <tr class="border-b border-slate-100 ${rowCls}">
+                    <td class="px-2 py-1.5 text-[11px] text-slate-400 tabular-nums text-right">${i + 1}</td>
+                    <td class="px-2 py-1.5 sticky left-0 z-10 ${r.status === 'kept' ? 'bg-white' : r.status === 'gap' ? 'bg-amber-50/50' : 'bg-slate-50'}">
+                        <span class="flex items-center gap-1.5 min-w-0">
+                            <span class="text-sm shrink-0">${escapeHtml(r.icon)}</span>
+                            <span class="font-bold text-xs text-slate-800 truncate max-w-[8rem]" title="${escapeHtml(r.uid)}">${escapeHtml(r.nickname)}</span>
+                            ${badge}
+                        </span>
+                    </td>
+                    ${cells}
+                    <td class="px-2 py-1.5 text-center text-[10px] text-slate-500 tabular-nums">${r.activeCount}/${periods.length}</td>
+                    <td class="px-2 py-1.5 text-center">${statusCellHtml(r, unit)}</td>
+                </tr>`;
+        })
+        .join('');
+
+    return `
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="bg-slate-50 sticky top-0 z-20">
+                    <tr class="border-b border-slate-200">
+                        <th class="px-2 py-1.5"></th>
+                        <th class="px-2 py-1.5 text-left font-bold text-slate-600 text-[10px] sticky left-0 z-10 bg-slate-50">사용자</th>
+                        ${headCells}
+                        <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">활동</th>
+                        <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">상태</th>
+                    </tr>
+                </thead>
+                <tbody>${bodyRows}</tbody>
+            </table>
+        </div>`;
+}
+
+function renderDrilldownMatrix() {
+    const body = document.getElementById('dashboardUserListBody');
+    if (!body) return;
+    const all = currentMatrixRows;
+    const s = summarizeMatrix(all);
+    setModalText(
+        'dashboardUserListSummary',
+        `${currentPeriods.length}개 ${currentUnit} 구간 · 대상 ${s.total.toLocaleString()}명 — ` +
+            `계속 ${s.kept.toLocaleString()} · 중단 ${s.gap.toLocaleString()} · 기록 없음 ${s.none.toLocaleString()}`
+    );
+    const rows = currentDropoutOnly ? all.filter((r) => r.status !== 'kept') : all;
+    body.innerHTML = buildMatrixTableHtml(currentPeriods, rows, currentUnit);
 }

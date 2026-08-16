@@ -35,6 +35,7 @@ import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excl
 import {
     writeDashboardUserDrilldown,
     markDashboardDrilldownCell,
+    markDashboardDrilldownHeader,
     clearDashboardDrilldownCell,
     ensureDashboardDrilldownBinding
 } from './dashboard-user-drilldown.js';
@@ -870,6 +871,14 @@ function syncAdminDashboardWeekLayout(weeklyBreakdown) {
             'js-dash-month-th px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs tracking-wide border-b border-slate-200 bg-slate-50';
         th.colSpan = g.span + 1;
         th.textContent = g.label;
+        // 월 헤더 클릭 → 그 달의 주차별 출석 표 (지속·이탈 확인용)
+        markDashboardDrilldownHeader(th, {
+            scope: 'month',
+            keys: Array.from({ length: g.span }, (_, k) => weeks[g.startWeekIndex + k]?.sundayKey).filter(
+                Boolean
+            ),
+            label: `${weeks[g.startWeekIndex]?.year ?? ''} ${g.label}`.trim()
+        });
         row1.insertBefore(th, head7d);
     }
 
@@ -1604,6 +1613,13 @@ function markFixedUserDrilldownCells(stats, bd) {
                 count: Number(dailyVals?.[i]) || 0
             });
         }
+    }
+    // 「최근 7일」 헤더 클릭 → 일자별 출석 표
+    const head7d = document.getElementById('dashboardHead7dTop');
+    if (head7d && bd?.dates?.length === 7) {
+        markDashboardDrilldownHeader(head7d, { scope: 'last7', keys: bd.dates, label: '최근 7일' });
+    } else if (head7d) {
+        clearDashboardDrilldownCell(head7d);
     }
 }
 
