@@ -300,15 +300,69 @@ function batchRunTimeForInput(hm) {
     return n;
 }
 
+/** 마지막으로 불러온(=저장돼 있는) 버전. 편집창 실시간 표시에서 비교용 */
+let _savedPromptVersion = '';
+let _liveMetaTimer = 0;
+
+/**
+ * 편집창 내용의 버전을 입력 즉시 보여 준다.
+ * 버전은 본문 SHA-1 앞 10자라, 붙여넣다 한 글자만 잘려도 값이 통째로 바뀐다.
+ * 저장 후에야 알 수 있으면 잘린 프롬프트가 그대로 운영에 올라간다.
+ */
+async function refreshDietReportPromptLiveMeta() {
+    const textarea = document.getElementById('dietReportPromptInput');
+    const live = document.getElementById('dietReportPromptLiveMeta');
+    if (!textarea || !live) return;
+    const text = String(textarea.value || '').trim();
+    if (!text) {
+        live.textContent = '편집창이 비어 있습니다.';
+        return;
+    }
+    // 편집 중 표시는 편의 기능이라, 해싱이 안 되는 환경에서도 글자 수는 계속 보여 준다.
+    let version = '';
+    try {
+        version = await promptVersionFromText(text);
+    } catch (e) {
+        console.warn('promptVersionFromText 실패 — 글자 수만 표시합니다', e);
+        live.textContent = `편집 중 · ${text.length.toLocaleString('ko-KR')}자`;
+        return;
+    }
+    const marks = [];
+    if (version === (await promptVersionFromText(DEFAULT_DIET_REPORT_PROMPT_TEMPLATE.trim()))) {
+        marks.push('기본 프롬프트와 동일');
+    }
+    if (_savedPromptVersion && version === _savedPromptVersion) marks.push('저장본과 동일');
+    live.textContent = `편집 중 · ${text.length.toLocaleString('ko-KR')}자 · ${version}${
+        marks.length ? ` · ${marks.join(' · ')}` : ''
+    }`;
+}
+
+function attachDietReportPromptLiveMeta(textarea) {
+    if (!textarea || textarea.dataset.liveMetaBound === '1') return;
+    textarea.dataset.liveMetaBound = '1';
+    const schedule = () => {
+        if (_liveMetaTimer) clearTimeout(_liveMetaTimer);
+        // 6천 자짜리를 매 타건마다 해싱하지 않도록 살짝 미룬다
+        _liveMetaTimer = setTimeout(() => {
+            _liveMetaTimer = 0;
+            void refreshDietReportPromptLiveMeta();
+        }, 200);
+    };
+    textarea.addEventListener('input', schedule);
+    textarea.addEventListener('paste', schedule);
+}
+
 export async function loadDietReportPromptEditor() {
     const textarea = document.getElementById('dietReportPromptInput');
     const meta = document.getElementById('dietReportPromptMeta');
     if (!textarea) return;
+    attachDietReportPromptLiveMeta(textarea);
     try {
         const snap = await getDoc(CONFIG_REF());
         const data = snap.exists() ? snap.data() : {};
         const tpl = (data.promptTemplate && String(data.promptTemplate).trim()) || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
         textarea.value = tpl;
+        _savedPromptVersion = data.promptVersion ? String(data.promptVersion) : '';
         if (meta) {
             const at = formatConfigUpdatedAt(data.promptUpdatedAt);
             const ver = data.promptVersion ? String(data.promptVersion) : '—';
@@ -317,13 +371,16 @@ export async function loadDietReportPromptEditor() {
     } catch (e) {
         console.error('dietReportConfig prompt load failed', e);
         textarea.value = DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+        _savedPromptVersion = '';
         if (meta) meta.textContent = '불러오기 실패 — 기본 프롬프트를 표시합니다.';
     }
+    void refreshDietReportPromptLiveMeta();
 }
 
 export function resetDietReportPromptToDefault() {
     const textarea = document.getElementById('dietReportPromptInput');
     if (textarea) textarea.value = DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+    void refreshDietReportPromptLiveMeta();
 }
 
 export async function saveDietReportPrompt(buttonEl) {
@@ -365,7 +422,9 @@ export async function saveDietReportPrompt(buttonEl) {
             },
             { merge: true }
         );
+        _savedPromptVersion = promptVersion;
         if (meta) meta.textContent = `저장됨 · 버전 ${promptVersion}`;
+        void refreshDietReportPromptLiveMeta();
     }, { loadingLabel: '저장 중…' });
 }
 
