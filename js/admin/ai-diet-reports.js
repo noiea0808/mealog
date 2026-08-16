@@ -87,8 +87,21 @@ function formatTokensDetail(tokensUsed) {
 }
 
 function aggregateUsageRows(rows) {
-    const totals = { prompt: 0, candidates: 0, thoughts: 0, total: 0, reports: 0, withTokens: 0 };
+    const totals = { prompt: 0, candidates: 0, thoughts: 0, cached: 0, total: 0, reports: 0, withTokens: 0 };
     const modelMap = new Map();
+    // 사진이 실제로 얼마나 쓰이는지 / 렌즈가 실제로 도는지 — 추측 대신 숫자로 보기 위한 집계
+    const health = {
+        ready: 0,
+        photoTotal: 0,
+        photoAnalyzed: 0,
+        reportsWithPhoto: 0,
+        reportsPhotoLeftOver: 0,
+        fallbackTextOnly: 0,
+        fallbackNoThinking: 0,
+        policyRetried: 0,
+        policyViolation: 0
+    };
+    const lensMap = new Map();
 
     for (const row of rows) {
         const data = row?.data || row;
@@ -102,7 +115,29 @@ function aggregateUsageRows(rows) {
             totals.prompt += t.prompt;
             totals.candidates += t.candidates;
             totals.thoughts += t.thoughts;
+            totals.cached += t.cached;
             totals.total += t.total || rowTotal;
+        }
+
+        if (data?.status === 'ready') {
+            health.ready += 1;
+            const photos = Number(data.photoCount) || 0;
+            const analyzed = Number(data.analyzedPhotoCount) || 0;
+            health.photoTotal += photos;
+            health.photoAnalyzed += analyzed;
+            if (photos > 0) health.reportsWithPhoto += 1;
+            // 상한이나 가져오기 실패로 남은 사진 — 상한을 조일지 풀지 판단하는 근거
+            if (photos > analyzed) health.reportsPhotoLeftOver += 1;
+
+            const fb = String(data.fallbackUsed || '').trim();
+            if (fb === 'text-only') health.fallbackTextOnly += 1;
+            else if (fb === 'no-thinking') health.fallbackNoThinking += 1;
+
+            if (data.policyRetried === true) health.policyRetried += 1;
+            if (Array.isArray(data.policyViolation) && data.policyViolation.length) health.policyViolation += 1;
+
+            const lens = String(data.lens || '').trim() || '(없음)';
+            lensMap.set(lens, (lensMap.get(lens) || 0) + 1);
         }
 
         if (!modelMap.has(model)) {
@@ -116,8 +151,11 @@ function aggregateUsageRows(rows) {
     const models = [...modelMap.entries()]
         .sort((a, b) => b[1].tokens - a[1].tokens || b[1].count - a[1].count)
         .map(([name, stats]) => ({ name, ...stats }));
+    const lenses = [...lensMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
 
-    return { totals, models };
+    return { totals, models, health, lenses };
 }
 
 async function fetchSevenDayUsageStats() {
@@ -150,14 +188,51 @@ function renderUsageStatsPanel(stats) {
         })
         .join(' ');
 
+    const { health, lenses } = stats;
+    const pct = (n, d) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
+
+    const cachePart = totals.prompt
+        ? ` · 캐시 ${totals.cached.toLocaleString('ko-KR')} (${pct(totals.cached, totals.prompt)})`
+        : '';
+
+    // 사진 활용 실태: 남은 사진이 잦으면 상한을 푸는 쪽, 0에 가까우면 상한이 무의미하다는 뜻
+    const photoLine = health.ready
+        ? `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black text-slate-700">사진</span>
+                기록 ${health.photoTotal.toLocaleString('ko-KR')}장 중 분석 ${health.photoAnalyzed.toLocaleString('ko-KR')}장 (${pct(health.photoAnalyzed, health.photoTotal)})
+                · 사진 있는 리포트 ${health.reportsWithPhoto}/${health.ready}건
+                · <span class="${health.reportsPhotoLeftOver ? 'text-amber-700 font-bold' : ''}">미사용 사진 발생 ${health.reportsPhotoLeftOver}건</span>
+            </p>`
+        : '';
+
+    const lensParts = lenses
+        .map((l) => `${escapeHtml(LENS_LABELS_KR[l.name] || l.name)} ${l.count}`)
+        .join(' · ');
+    const lensLine = lenses.length
+        ? `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black text-slate-700">렌즈</span> ${lensParts}
+            </p>`
+        : '';
+
+    const flags = [];
+    if (health.fallbackTextOnly) flags.push(`사진 제외 재시도 ${health.fallbackTextOnly}건`);
+    if (health.fallbackNoThinking) flags.push(`thinking 없이 재시도 ${health.fallbackNoThinking}건`);
+    if (health.policyRetried) flags.push(`금지 주제 재생성 ${health.policyRetried}건`);
+    if (health.policyViolation) flags.push(`금지 주제 잔존 ${health.policyViolation}건`);
+    const flagLine = flags.length
+        ? `<p class="text-[11px] text-amber-700 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black">주의</span> ${escapeHtml(flags.join(' · '))}
+            </p>`
+        : '';
+
     el.innerHTML = `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal">
         <span class="font-black text-slate-700">최근 7일 Gemini 사용량</span>
         ${totals.reports}건 분석 · 토큰 기록 ${totals.withTokens}건
         ${modelParts ? ` ${modelParts}` : ''}
-        입력 ${totals.prompt.toLocaleString('ko-KR')} · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
+        입력 ${totals.prompt.toLocaleString('ko-KR')}${cachePart} · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
             totals.thoughts ? ` · thinking ${totals.thoughts.toLocaleString('ko-KR')}` : ''
         } · <strong class="text-emerald-700">총 ${totals.total.toLocaleString('ko-KR')}</strong>
-    </p>`;
+    </p>${photoLine}${lensLine}${flagLine}`;
     el.classList.remove('hidden');
 }
 
