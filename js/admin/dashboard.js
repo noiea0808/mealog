@@ -1211,6 +1211,15 @@ export async function getUserStatistics() {
         const newUserSetAll = new Set();
         /** uid → 가입일(YYYY-MM-DD). createdAt이 없는 사용자는 '' */
         const joinKeyByUid = new Map();
+        /**
+         * 출석 표 칸에 넣을 「얼마나 썼나」. 활성 여부(●)만으로는 주 1회와 매일 쓰는 사람이
+         * 똑같이 보여서, 강도가 줄어드는 이탈 전조가 안 보인다.
+         * - 주차: 기록 일수 (uid → 그 주에 기록이 있던 날짜 Set → 크기)
+         * - 일자: 기록 건수 (하루는 0/1뿐이라 일수가 의미 없다)
+         * 활성 사용자 정의와 같게 끼니 기록(meals)만 센다 — 하루기록은 activeSets에도 안 들어간다.
+         */
+        const weekDaySetsByUid = Array.from({ length: nWeeks }, () => new Map());
+        const dayRecordCountsByUid = Array.from({ length: 7 }, () => new Map());
 
         const inPeriod = (dateOnly, period) => {
             if (!dateOnly) return false;
@@ -1296,6 +1305,12 @@ export async function getUserStatistics() {
             if (wi >= 0) {
                 recordsByWeek[wi]++;
                 activeSetsByWeek[wi].add(uid);
+                let days = weekDaySetsByUid[wi].get(uid);
+                if (!days) {
+                    days = new Set();
+                    weekDaySetsByUid[wi].set(uid, days);
+                }
+                days.add(dateStr);
             }
 
             if (dateStr === todayStr) {
@@ -1308,6 +1323,7 @@ export async function getUserStatistics() {
                 if (rdi != null && rdi >= 0) {
                     recordsByDay[rdi]++;
                     activeSetsByDay[rdi].add(uid);
+                    dayRecordCountsByUid[rdi].set(uid, (dayRecordCountsByUid[rdi].get(uid) || 0) + 1);
                 }
                 activeUserSets.last7.add(uid);
             }
@@ -1531,14 +1547,21 @@ export async function getUserStatistics() {
             weeks: weekMetas.map((w, i) => ({
                 sundayKey: w.sundayKey,
                 active: [...activeSetsByWeek[i]],
-                new: [...newUserSetsByWeek[i]]
+                new: [...newUserSetsByWeek[i]],
+                // uid → 그 주 기록 일수
+                dayCounts: Object.fromEntries([...weekDaySetsByUid[i]].map(([u, s]) => [u, s.size]))
             })),
             last7: {
                 dates: last7DateKeys,
                 byDate: Object.fromEntries(
                     last7DateKeys.map((k, i) => [
                         k,
-                        { active: [...activeSetsByDay[i]], new: [...newUserSetsByDay[i]] }
+                        {
+                            active: [...activeSetsByDay[i]],
+                            new: [...newUserSetsByDay[i]],
+                            // uid → 그날 기록 건수 (하루는 0/1뿐이라 일수 대신 건수)
+                            counts: Object.fromEntries(dayRecordCountsByUid[i])
+                        }
                     ])
                 )
             },

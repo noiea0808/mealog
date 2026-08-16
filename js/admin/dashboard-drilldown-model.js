@@ -5,7 +5,8 @@
  * 하나 잘못 세면 이탈자가 지속 사용자로 둔갑하고, 표는 아무 경고 없이 그럴듯하게 그려진다.
  * 여기에는 import 가 없어야 `node --test` 로 그대로 검증할 수 있다.
  *
- * @typedef {{ key: string, label: string, active: Set<string>, new: Set<string> }} Period
+ * @typedef {{ key: string, label: string, active: Set<string>, new: Set<string>,
+ *   counts?: Record<string, number>|null }} Period
  */
 
 /** 구간들의 활성·신규 합집합 (월 칸의 「유니크」와 같은 정의) */
@@ -29,10 +30,17 @@ export function unionOfPeriods(periods) {
  */
 export function buildMatrixRow(uid, periods, profile, joinKey, isNew) {
     const list = periods || [];
-    const marks = list.map((p) => ({
-        active: !!p.active?.has(uid),
-        joined: !!p.new?.has(uid)
-    }));
+    const marks = list.map((p) => {
+        const active = !!p.active?.has(uid);
+        // counts 가 없는 구간(이 기능 이전에 저장된 문서)은 null → 화면이 ● 로 되돌아간다.
+        // 0 으로 채우면 「그 주에 안 썼다」로 읽혀 활성 사용자가 결번처럼 보인다.
+        const raw = p.counts ? Number(p.counts[uid]) : NaN;
+        return {
+            active,
+            joined: !!p.new?.has(uid),
+            count: p.counts ? (Number.isFinite(raw) ? raw : 0) : null
+        };
+    });
     const activeCount = marks.filter((m) => m.active).length;
     let gap = 0;
     for (let i = marks.length - 1; i >= 0 && !marks[i].active; i--) gap++;
@@ -82,6 +90,37 @@ export function summarizeMatrix(rows) {
         if (r.status in out) out[r.status]++;
     }
     return out;
+}
+
+/**
+ * 칸 배경 농도(0~4). 숫자만 늘어놓으면 점 격자가 주던 「한눈에 보이는 패턴」이 사라지므로
+ * 값에 비례해 진하게 칠한다. 절대값이 아니라 표 안 최대값 대비 비율로 나눈다 —
+ * 주차(기록 일수, 최대 7)와 일자(기록 건수, 상한 없음)가 같은 함수를 써야 하기 때문.
+ * @param {number|null} count
+ * @param {number} max 표 전체에서 가장 큰 값
+ */
+export function heatLevel(count, max) {
+    const n = Number(count);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    const m = Number(max);
+    if (!Number.isFinite(m) || m <= 0) return 1;
+    const ratio = n / m;
+    if (ratio > 0.75) return 4;
+    if (ratio > 0.5) return 3;
+    if (ratio > 0.25) return 2;
+    return 1;
+}
+
+/** 표 안에서 가장 큰 칸 값 (농도 기준). 값이 하나도 없으면 0 */
+export function maxMarkCount(rows) {
+    let max = 0;
+    for (const r of rows || []) {
+        for (const m of r.marks || []) {
+            const n = Number(m.count);
+            if (Number.isFinite(n) && n > max) max = n;
+        }
+    }
+    return max;
 }
 
 // ============================================================

@@ -22,6 +22,8 @@ import {
     sortMatrixRows,
     sortListRows,
     summarizeMatrix,
+    heatLevel,
+    maxMarkCount,
     decodeProfileStore,
     encodeProfileStore
 } from './dashboard-drilldown-model.js';
@@ -134,7 +136,13 @@ export async function writeDashboardUserDrilldown(userSets) {
         if ((w.active?.length || 0) === 0 && (w.new?.length || 0) === 0) continue;
         writes.push([
             DRILLDOWN_DOC(w.sundayKey),
-            { kind: 'week', sundayKey: w.sundayKey, active: w.active || [], new: w.new || [] }
+            {
+                kind: 'week',
+                sundayKey: w.sundayKey,
+                active: w.active || [],
+                new: w.new || [],
+                dayCounts: w.dayCounts || {}
+            }
         ]);
     }
 
@@ -358,7 +366,9 @@ async function collectPeriodsForCell({ scope, keys }) {
                 key: dk,
                 label: shortDayLabel(dk),
                 active: new Set(e.active || []),
-                new: new Set(e.new || [])
+                new: new Set(e.new || []),
+                // 이 기능 이전에 저장된 문서에는 없다 → null 이면 화면이 ● 로 되돌아간다
+                counts: e.counts && typeof e.counts === 'object' ? e.counts : null
             };
         });
         return { periods, missing: 0 };
@@ -372,14 +382,22 @@ async function collectPeriodsForCell({ scope, keys }) {
         if (!d) {
             missing++;
             // 문서가 없는 주는 「그 주에 아무도 없었다」로 그린다 (열 자체는 유지해야 이탈이 보인다)
-            periods.push({ key: sk, label: shortWeekLabel(sk), active: new Set(), new: new Set() });
+            periods.push({
+                key: sk,
+                label: shortWeekLabel(sk),
+                active: new Set(),
+                new: new Set(),
+                counts: {}
+            });
             continue;
         }
         periods.push({
             key: sk,
             label: shortWeekLabel(sk),
             active: new Set(d.active || []),
-            new: new Set(d.new || [])
+            new: new Set(d.new || []),
+            // 이 기능 이전에 저장된 문서에는 없다 → null 이면 화면이 ● 로 되돌아간다
+            counts: d.dayCounts && typeof d.dayCounts === 'object' ? d.dayCounts : null
         });
     }
     return { periods, missing: missing === keys.length ? 1 : 0 };
@@ -563,7 +581,9 @@ function syncDrilldownToolbar(periodCount) {
     if (legend) {
         legend.textContent =
             currentView === 'matrix'
-                ? `● 기록 있음 · 빈칸 없음 · 초록 = 그 ${currentUnit}에 가입`
+                ? currentUnit === '주'
+                    ? '숫자 = 그 주 기록 일수 (진할수록 많음) · 테두리 = 그 주에 가입'
+                    : '숫자 = 그날 기록 건수 (진할수록 많음) · 테두리 = 그날 가입'
                 : '초록 배경 = 같은 기간 가입한 신규 사용자';
     }
 }
@@ -628,10 +648,41 @@ function statusCellHtml(r, unit) {
  * @param {Array<object>} rows buildMatrixRow 결과
  * @param {'주'|'일'} unit
  */
+/** heatLevel 0~4 → 칸 배경. Tailwind 가 훑을 수 있도록 문자열을 통째로 둔다 */
+const HEAT_CLASSES = [
+    'text-slate-200',
+    'bg-emerald-50 text-emerald-700',
+    'bg-emerald-100 text-emerald-800',
+    'bg-emerald-200 text-emerald-900',
+    'bg-emerald-300 text-emerald-900'
+];
+
+/**
+ * 출석 표의 칸 하나.
+ * - count 가 null: 이 기능 이전에 저장된 문서 → 예전처럼 ● 로 (0 으로 칠하면 결번처럼 보인다)
+ * - 그 구간에 가입: 테두리로 표시 (배경은 이미 농도에 쓰고 있다)
+ */
+function markCellHtml(m, max, unit) {
+    // 가입한 구간은 기록이 없어도 테두리를 남긴다 — 「가입은 했는데 그 구간에 한 번도 안 썼다」가
+    // 이탈 분석에서 제일 보고 싶은 칸이다
+    const ring = m.joined ? ' ring-1 ring-inset ring-emerald-500' : '';
+    const joinPrefix = m.joined ? '이 구간에 가입 · ' : '';
+    const emptyCell = `<td class="px-1 py-1.5 text-center text-slate-200${ring}"${m.joined ? ' title="이 구간에 가입 · 기록 없음"' : ''}>·</td>`;
+
+    if (m.count == null) {
+        if (!m.active) return emptyCell;
+        return `<td class="px-1 py-1.5 text-center text-slate-700 font-black${ring}" title="${joinPrefix}기록 수는 「새로고침」 후부터 표시됩니다">●</td>`;
+    }
+    if (!m.active || m.count <= 0) return emptyCell;
+    const unitWord = unit === '주' ? '일 기록' : '건 기록';
+    return `<td class="px-1 py-1.5 text-center font-black tabular-nums ${HEAT_CLASSES[heatLevel(m.count, max)]}${ring}" title="${joinPrefix}${m.count}${unitWord}">${m.count}</td>`;
+}
+
 export function buildMatrixTableHtml(periods, rows, unit) {
     if (!rows?.length) {
         return '<div class="py-10 text-center text-sm text-slate-400">표시할 사용자가 없습니다.</div>';
     }
+    const max = maxMarkCount(rows);
     const headCells = periods
         .map(
             (p) =>
@@ -641,14 +692,7 @@ export function buildMatrixTableHtml(periods, rows, unit) {
 
     const bodyRows = rows
         .map((r, i) => {
-            const cells = r.marks
-                .map((m) => {
-                    if (!m.active) return '<td class="px-1 py-1.5 text-center text-slate-200">·</td>';
-                    const cls = m.joined ? 'text-emerald-600' : 'text-slate-700';
-                    const t = m.joined ? ' title="이 구간에 가입"' : '';
-                    return `<td class="px-1 py-1.5 text-center ${cls} font-black"${t}>●</td>`;
-                })
-                .join('');
+            const cells = r.marks.map((m) => markCellHtml(m, max, unit)).join('');
             const rowCls =
                 r.status === 'kept'
                     ? 'bg-white hover:bg-slate-50'

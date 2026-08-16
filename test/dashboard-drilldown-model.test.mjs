@@ -10,16 +10,28 @@ import {
     sortMatrixRows,
     sortListRows,
     summarizeMatrix,
+    heatLevel,
+    maxMarkCount,
     decodeProfileStore,
     encodeProfileStore
 } from '../js/admin/dashboard-drilldown-model.js';
 
-/** @param {string} key @param {string[]} active @param {string[]} fresh */
+/** counts 없는 구간 (이 기능 이전에 저장된 문서) */
 const P = (key, active, fresh = []) => ({
     key,
     label: key,
     active: new Set(active),
-    new: new Set(fresh)
+    new: new Set(fresh),
+    counts: null
+});
+
+/** counts 있는 구간 — counts 로 active 를 유도한다 */
+const PC = (key, counts, fresh = []) => ({
+    key,
+    label: key,
+    active: new Set(Object.keys(counts).filter((u) => counts[u] > 0)),
+    new: new Set(fresh),
+    counts
 });
 
 test('unionOfPeriods 는 구간을 가로질러 유니크로 합친다 (주간 합이 아니다)', () => {
@@ -131,6 +143,66 @@ test('명단 정렬: 신규 먼저, 그다음 가입일 최신순', () => {
         sortListRows(rows).map((r) => r.uid),
         ['new-recent', 'new-old', 'old-recent', 'old']
     );
+});
+
+// ------------------------------------------------------------
+// 칸 수치와 농도
+// ------------------------------------------------------------
+
+test('marks.count 는 그 구간의 기록 수를 담는다', () => {
+    const periods = [PC('w1', { a: 5, b: 1 }), PC('w2', { a: 7 })];
+    const r = buildMatrixRow('a', periods, null, '2026-08-01', false);
+    assert.deepEqual(
+        r.marks.map((m) => m.count),
+        [5, 7]
+    );
+    assert.equal(r.activeCount, 2);
+});
+
+test('그 구간에 기록이 없으면 count 는 0', () => {
+    const periods = [PC('w1', { a: 3 }), PC('w2', { b: 2 })];
+    const r = buildMatrixRow('a', periods, null, '', false);
+    assert.deepEqual(
+        r.marks.map((m) => m.count),
+        [3, 0]
+    );
+    assert.equal(r.status, 'gap');
+});
+
+test('예전 문서(counts 없음)는 count 가 null — 0 으로 채우면 활성자가 결번처럼 보인다', () => {
+    const periods = [P('w1', ['a']), P('w2', ['a'])];
+    const r = buildMatrixRow('a', periods, null, '', false);
+    assert.deepEqual(
+        r.marks.map((m) => m.count),
+        [null, null]
+    );
+    assert.equal(r.activeCount, 2, 'count 가 없어도 활성 여부와 지속 판정은 그대로다');
+    assert.equal(r.status, 'kept');
+});
+
+test('counts 가 있어도 숫자가 깨졌으면 0 으로 (null 과 구분)', () => {
+    const periods = [{ key: 'w', label: 'w', active: new Set(['a']), new: new Set(), counts: { a: 'x' } }];
+    assert.equal(buildMatrixRow('a', periods, null, '', false).marks[0].count, 0);
+});
+
+test('heatLevel: 표 최대값 대비 비율로 4단계 (주차 7일·일자 건수 공용)', () => {
+    assert.equal(heatLevel(7, 7), 4);
+    assert.equal(heatLevel(6, 7), 4, '6/7 = 0.86 — 상위 구간');
+    assert.equal(heatLevel(4, 7), 3, '4/7 = 0.57');
+    assert.equal(heatLevel(3, 7), 2, '3/7 = 0.43');
+    assert.equal(heatLevel(1, 7), 1, '1/7 = 0.14 — 하한도 0 이 아니라 1');
+    assert.equal(heatLevel(0, 7), 0, '0 은 칠하지 않는다');
+    assert.equal(heatLevel(null, 7), 0);
+    assert.equal(heatLevel(2, 2), 4, '최대값이 작아도 최상위 단계가 나온다');
+    assert.equal(heatLevel(3, 0), 1, '최대값이 0이면(있을 수 없지만) 최하위로 안전하게');
+});
+
+test('maxMarkCount 는 표 전체의 최대 칸 값 (null 은 무시)', () => {
+    const periods = [PC('w1', { a: 2, b: 9 }), PC('w2', { a: 4 })];
+    const rows = ['a', 'b'].map((u) => buildMatrixRow(u, periods, null, '', false));
+    assert.equal(maxMarkCount(rows), 9);
+    assert.equal(maxMarkCount([buildMatrixRow('a', [P('w', ['a'])], null, '', false)]), 0);
+    assert.equal(maxMarkCount([]), 0);
 });
 
 // ------------------------------------------------------------
