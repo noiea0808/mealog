@@ -51,6 +51,8 @@ function parseTokensUsed(tokensUsed) {
         prompt: Number(t.promptTokenCount) || 0,
         candidates: Number(t.candidatesTokenCount) || 0,
         thoughts: Number(t.thoughtsTokenCount) || 0,
+        // 입력 중 캐시로 재사용된 몫. 프롬프트 고정 접두부가 실제로 캐시에 걸렸는지 여기서만 보인다.
+        cached: Number(t.cachedContentTokenCount) || 0,
         total: Number(t.totalTokenCount) || 0
     };
 }
@@ -71,7 +73,12 @@ function formatTokensDetail(tokensUsed) {
     const total = resolveTokenTotal(tokensUsed);
     if (!total) return '—';
     const parts = [];
-    if (t.prompt) parts.push(`입력 ${t.prompt.toLocaleString('ko-KR')}`);
+    if (t.prompt) {
+        const cachedNote = t.cached
+            ? ` (캐시 ${t.cached.toLocaleString('ko-KR')} · ${Math.round((t.cached / t.prompt) * 100)}%)`
+            : '';
+        parts.push(`입력 ${t.prompt.toLocaleString('ko-KR')}${cachedNote}`);
+    }
     if (t.candidates) parts.push(`출력 ${t.candidates.toLocaleString('ko-KR')}`);
     if (t.thoughts) parts.push(`thinking ${t.thoughts.toLocaleString('ko-KR')}`);
     if (t.total) parts.push(`합계 ${t.total.toLocaleString('ko-KR')}`);
