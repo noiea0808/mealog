@@ -14,7 +14,12 @@ import {
     writeBatch,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { escapeHtml, weekLabelKoreanFromSunday } from './utils.js';
+import {
+    escapeHtml,
+    weekLabelKoreanFromSunday,
+    dateKeyFromLocalDate,
+    getTodayDateString
+} from './utils.js';
 import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
 import {
     unionOfPeriods,
@@ -360,6 +365,24 @@ function shortDayLabel(dateKey) {
     return p.length === 3 ? `${parseInt(p[1], 10)}/${parseInt(p[2], 10)}` : String(dateKey);
 }
 
+function dateFromKey(key) {
+    const p = String(key).split('-');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * 오늘이 그 주 안에 있으면 아직 진행 중이다.
+ * 이걸 안 보면 주가 막 시작된 일요일 아침에 아직 안 찍은 전원이 「1주째 없음」이 된다.
+ */
+function weekIsInProgress(sundayKey, todayKey) {
+    const sun = dateFromKey(sundayKey);
+    if (!sun) return false;
+    const satKey = dateKeyFromLocalDate(new Date(sun.getFullYear(), sun.getMonth(), sun.getDate() + 6));
+    return todayKey >= sundayKey && todayKey <= satKey;
+}
+
 /**
  * 칸이 가리키는 기간을 하위 구간 단위로 펼쳐서 돌려준다.
  * 명단 보기는 이걸 합집합으로 쓰고, 기간별 표는 열 하나씩으로 쓴다 —
@@ -367,6 +390,7 @@ function shortDayLabel(dateKey) {
  * @returns {Promise<{ periods: Array<{key:string,label:string,active:Set,new:Set}>, missing:number }>}
  */
 async function collectPeriodsForCell({ scope, keys }) {
+    const todayKey = getTodayDateString();
     if (scope === 'all') {
         const d = await fetchDrilldownDoc(DOC_ID_ALL);
         if (!d) return { periods: [], missing: 1 };
@@ -390,7 +414,8 @@ async function collectPeriodsForCell({ scope, keys }) {
                 active: new Set(e.active || []),
                 new: new Set(e.new || []),
                 // 이 기능 이전에 저장된 문서에는 없다 → null 이면 화면이 ● 로 되돌아간다
-                counts: e.counts && typeof e.counts === 'object' ? e.counts : null
+                counts: e.counts && typeof e.counts === 'object' ? e.counts : null,
+                inProgress: dk === todayKey
             };
         });
         return { periods, missing: 0 };
@@ -409,7 +434,8 @@ async function collectPeriodsForCell({ scope, keys }) {
                 label: shortWeekLabel(sk),
                 active: new Set(),
                 new: new Set(),
-                counts: {}
+                counts: {},
+                inProgress: weekIsInProgress(sk, todayKey)
             });
             continue;
         }
@@ -419,7 +445,8 @@ async function collectPeriodsForCell({ scope, keys }) {
             active: new Set(d.active || []),
             new: new Set(d.new || []),
             // 이 기능 이전에 저장된 문서에는 없다 → null 이면 화면이 ● 로 되돌아간다
-            counts: d.dayCounts && typeof d.dayCounts === 'object' ? d.dayCounts : null
+            counts: d.dayCounts && typeof d.dayCounts === 'object' ? d.dayCounts : null,
+            inProgress: weekIsInProgress(sk, todayKey)
         });
     }
     return { periods, missing: missing === keys.length ? 1 : 0 };
@@ -612,12 +639,15 @@ function syncDrilldownToolbar(periodCount) {
     const legend = document.getElementById('dashboardUserListLegend');
     if (legend) {
         if (currentView === 'cohort') {
-            legend.textContent = '숫자 = 그 주에 기록을 남긴 비율 · 오른쪽으로 갈수록 표본 코호트가 줄어든다';
-        } else if (currentView === 'matrix') {
             legend.textContent =
+                '숫자 = 그 주에 기록을 남긴 비율 · 빗금 칸 = 진행 중인 주(평균에서 제외) · 오른쪽일수록 표본 코호트가 적다';
+        } else if (currentView === 'matrix') {
+            const base =
                 currentUnit === '주'
                     ? '숫자 = 그 주 기록 일수 (진할수록 많음) · 테두리 = 그 주에 가입'
                     : '숫자 = 그날 기록 건수 (진할수록 많음) · 테두리 = 그날 가입';
+            const hasInProgress = currentPeriods.some((p) => p.inProgress);
+            legend.textContent = hasInProgress ? `${base} · * = 진행 중 (이탈 판정 제외)` : base;
         } else {
             legend.textContent = '초록 배경 = 같은 기간 가입한 신규 사용자';
         }
@@ -654,10 +684,12 @@ async function loadCohortTable() {
     for (const sk of allWeekKeys) {
         docs.push(await fetchDrilldownDoc(sk));
     }
+    const lastKey = allWeekKeys[allWeekKeys.length - 1];
     cohortCache = buildCohortTable({
         weekKeys: allWeekKeys,
         joinKeyByUid: allDoc.joinKeys || {},
-        activeSetsByWeek: docs.map((d) => new Set(d?.active || []))
+        activeSetsByWeek: docs.map((d) => new Set(d?.active || [])),
+        lastWeekInProgress: weekIsInProgress(lastKey, getTodayDateString())
     });
     return cohortCache;
 }
@@ -778,10 +810,13 @@ export function buildMatrixTableHtml(periods, rows, unit) {
     }
     const max = maxMarkCount(rows);
     const headCells = periods
-        .map(
-            (p) =>
-                `<th class="px-1 py-1.5 text-center font-bold text-slate-600 text-[10px] min-w-[2.5rem] whitespace-nowrap" title="${escapeHtml(p.key)}">${escapeHtml(p.label)}</th>`
-        )
+        .map((p) => {
+            // 진행 중인 구간은 아직 채워질 시간이 남았다. 확정 구간과 섞어 보면 이탈로 오독한다
+            const cls = p.inProgress ? 'text-amber-600 italic' : 'text-slate-600';
+            const mark = p.inProgress ? '*' : '';
+            const tip = p.inProgress ? `${p.key} · 진행 중 (이탈 판정에서 제외)` : p.key;
+            return `<th class="px-1 py-1.5 text-center font-bold ${cls} text-[10px] min-w-[2.5rem] whitespace-nowrap" title="${escapeHtml(tip)}">${escapeHtml(p.label)}${mark}</th>`;
+        })
         .join('');
 
     const bodyRows = rows
@@ -863,11 +898,18 @@ export function buildCohortTableHtml(t) {
         const tds = Array.from({ length: t.maxSpan }, (_, j) => {
             const c = cells[j];
             if (!c) return '<td class="px-1 py-1.5"></td>';
+            // 확정 칸이 하나도 없는 평균 열(최신 코호트의 진행 중 칸만 있던 열)은 숫자를 만들지 않는다
+            if (isTotal && c.size === 0) {
+                return '<td class="px-1 py-1.5 text-center text-slate-300 text-[11px]" title="아직 확정된 코호트가 없습니다">—</td>';
+            }
             const pct = Math.round(c.rate * 100);
             const tip = isTotal
                 ? `${c.active}/${c.size}명 · 코호트 ${c.cohorts}개`
-                : `${c.active}/${size}명`;
-            return `<td class="px-1 py-1.5 text-center font-black tabular-nums text-[11px] ${retentionHeatClass(c.rate)}" title="${tip}">${pct}%</td>`;
+                : `${c.active}/${size}명${c.provisional ? ' · 진행 중인 주 (평균에서 제외)' : ''}`;
+            const cls = c.provisional
+                ? 'text-amber-700 italic opacity-70 bg-amber-50'
+                : retentionHeatClass(c.rate);
+            return `<td class="px-1 py-1.5 text-center font-black tabular-nums text-[11px] ${cls}" title="${tip}">${pct}%${c.provisional ? '*' : ''}</td>`;
         }).join('');
         const rowCls = isTotal ? 'bg-slate-100 border-t-2 border-slate-300' : 'bg-white hover:bg-slate-50';
         return `

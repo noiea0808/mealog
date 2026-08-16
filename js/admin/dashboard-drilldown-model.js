@@ -6,7 +6,7 @@
  * 여기에는 import 가 없어야 `node --test` 로 그대로 검증할 수 있다.
  *
  * @typedef {{ key: string, label: string, active: Set<string>, new: Set<string>,
- *   counts?: Record<string, number>|null }} Period
+ *   counts?: Record<string, number>|null, inProgress?: boolean }} Period
  */
 
 /** 구간들의 활성·신규 합집합 (월 칸의 「유니크」와 같은 정의) */
@@ -25,6 +25,11 @@ export function unionOfPeriods(periods) {
  *
  * `gap` 은 마지막 구간부터 연속으로 비어 있는 칸 수다. 지속/이탈을 임의 기준(예: 2주 이상)
  * 으로 판정하지 않고 이 숫자를 그대로 보여 주기 위한 것 — 기준은 보는 사람이 정한다.
+ *
+ * 단, 아직 진행 중인 구간(`inProgress`)이 비어 있는 것은 이탈이 아니다. 주가 막 시작된
+ * 일요일 아침에 표를 열면 아직 안 찍은 전원에게 「1주째 없음」이 붙는다. 그래서 끝에서부터
+ * 「진행 중이면서 비어 있는」 구간은 건너뛰고 센다. 진행 중인 구간에 기록이 있으면 그건
+ * 당연히 활동으로 치므로 gap 은 0 이 된다.
  * @param {string} uid
  * @param {Period[]} periods
  */
@@ -42,8 +47,11 @@ export function buildMatrixRow(uid, periods, profile, joinKey, isNew) {
         };
     });
     const activeCount = marks.filter((m) => m.active).length;
+    // 아직 채워질 시간이 남은 구간은 이탈 판정에서 뺀다
+    let last = marks.length - 1;
+    while (last >= 0 && list[last]?.inProgress && !marks[last].active) last--;
     let gap = 0;
-    for (let i = marks.length - 1; i >= 0 && !marks[i].active; i--) gap++;
+    for (let i = last; i >= 0 && !marks[i].active; i--) gap++;
     // 한 번도 활동이 없으면 gap 은 전체 길이가 되지만, 그건 「끊겼다」가 아니라 「시작을 안 했다」다
     const status = activeCount === 0 ? 'none' : gap === 0 ? 'kept' : 'gap';
     return {
@@ -140,8 +148,12 @@ export function maxMarkCount(rows) {
  * @param {string[]} p.weekKeys 일요일 키 오름차순 (표의 주차 순서와 동일)
  * @param {Record<string,string>} p.joinKeyByUid uid → 가입일 'YYYY-MM-DD'
  * @param {Array<Set<string>>} p.activeSetsByWeek weekKeys 와 같은 길이·순서
+ * @param {boolean} [p.lastWeekInProgress] 마지막 주가 아직 진행 중인가.
+ *   삼각표에서 마지막 주는 **모든 행의 마지막 칸**에 걸린다(행 i 의 열 j 는 주 i+j 이므로
+ *   j 가 최대일 때 i+j = 마지막 주). 그 대각선을 확정값처럼 평균에 넣으면 최신 코호트가
+ *   급락한 것처럼 보인다. 그래서 provisional 로 표시하고 가중 평균에서 뺀다.
  */
-export function buildCohortTable({ weekKeys, joinKeyByUid, activeSetsByWeek }) {
+export function buildCohortTable({ weekKeys, joinKeyByUid, activeSetsByWeek, lastWeekInProgress = false }) {
     const keys = Array.isArray(weekKeys) ? weekKeys : [];
     const sets = Array.isArray(activeSetsByWeek) ? activeSetsByWeek : [];
     const empty = { rows: [], maxSpan: 0, excludedBefore: 0, excludedNoJoin: 0, totals: [] };
@@ -188,7 +200,11 @@ export function buildCohortTable({ weekKeys, joinKeyByUid, activeSetsByWeek }) {
                     if (set.has(uid)) active++;
                 }
             }
-            cells.push({ active, rate: active / members[i].length });
+            cells.push({
+                active,
+                rate: active / members[i].length,
+                provisional: lastWeekInProgress && i + j === keys.length - 1
+            });
         }
         rows.push({ weekKey: keys[i], weekIndex: i, size: members[i].length, cells });
     }
@@ -203,6 +219,8 @@ export function buildCohortTable({ weekKeys, joinKeyByUid, activeSetsByWeek }) {
         let cohorts = 0;
         for (const r of rows) {
             if (j >= r.cells.length) continue;
+            // 아직 진행 중인 주의 칸은 확정값이 아니다 — 평균에 넣으면 최신 코호트가 급락해 보인다
+            if (r.cells[j].provisional) continue;
             active += r.cells[j].active;
             size += r.size;
             cohorts++;

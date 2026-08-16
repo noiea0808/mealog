@@ -147,6 +147,46 @@ test('명단 정렬: 신규 먼저, 그다음 가입일 최신순', () => {
 });
 
 // ------------------------------------------------------------
+// 진행 중인 구간
+// ------------------------------------------------------------
+
+/** 진행 중 구간 */
+const PIP = (key, active, fresh = []) => ({ ...P(key, active, fresh), inProgress: true });
+
+test('진행 중인 마지막 구간이 비어 있어도 이탈로 세지 않는다', () => {
+    // 주가 막 시작된 일요일 아침: 아직 안 찍었다고 「1주째 없음」이 붙으면 안 된다
+    const periods = [P('w1', ['a']), P('w2', ['a']), PIP('w3', [])];
+    const r = buildMatrixRow('a', periods, null, '', false);
+    assert.equal(r.status, 'kept');
+    assert.equal(r.gap, 0);
+    assert.equal(r.activeCount, 2);
+});
+
+test('진행 중인 구간에 이미 기록이 있으면 그대로 활동으로 친다', () => {
+    const periods = [P('w1', []), P('w2', []), PIP('w3', ['a'])];
+    const r = buildMatrixRow('a', periods, null, '', false);
+    assert.equal(r.status, 'kept');
+    assert.equal(r.gap, 0);
+});
+
+test('진행 중 구간을 건너뛴 뒤의 공백은 그대로 센다', () => {
+    const periods = [P('w1', ['a']), P('w2', []), P('w3', []), PIP('w4', [])];
+    const r = buildMatrixRow('a', periods, null, '', false);
+    assert.equal(r.status, 'gap');
+    assert.equal(r.gap, 2, '진행 중인 w4 는 빼고 w2·w3 만 센다');
+});
+
+test('진행 중 구간이 연달아 있어도 전부 건너뛴다', () => {
+    const periods = [P('d1', ['a']), PIP('d2', []), PIP('d3', [])];
+    assert.equal(buildMatrixRow('a', periods, null, '', false).gap, 0);
+});
+
+test('inProgress 가 없는 기존 호출은 동작이 그대로다', () => {
+    const periods = [P('w1', ['a']), P('w2', [])];
+    assert.equal(buildMatrixRow('a', periods, null, '', false).gap, 1);
+});
+
+// ------------------------------------------------------------
 // 칸 수치와 농도
 // ------------------------------------------------------------
 
@@ -277,6 +317,54 @@ test('코호트: 열별 가중 평균과 참여 코호트 수', () => {
     assert.equal(t.totals[1].size, 3);
     assert.equal(t.totals[1].cohorts, 2);
     // W2: 첫 코호트만 참여
+    assert.equal(t.totals[2].cohorts, 1);
+});
+
+test('코호트: 진행 중인 마지막 주는 모든 행의 마지막 칸에 걸린다 (삼각형의 대각선)', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-09', b: '2026-03-16', c: '2026-03-23' },
+        activeSetsByWeek: [new Set(['a']), new Set(['a', 'b']), new Set(['a'])],
+        lastWeekInProgress: true
+    });
+    // 행 i 의 마지막 칸은 열 j = (마지막주 - i) → 언제나 마지막 주
+    assert.deepEqual(
+        t.rows.map((r) => r.cells.map((c) => c.provisional)),
+        [
+            [false, false, true],
+            [false, true],
+            [true]
+        ]
+    );
+});
+
+test('코호트: 진행 중인 칸은 가중 평균에서 빠진다', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-09', b: '2026-03-16' },
+        activeSetsByWeek: [new Set(['a']), new Set(['a', 'b']), new Set()],
+        lastWeekInProgress: true
+    });
+    // W0: a(확정) + b 의 W0 은 주 index 1 이라 확정 → 둘 다 참여
+    assert.equal(t.totals[0].cohorts, 2);
+    // W1: a 의 W1(주1, 확정)만. b 의 W1 은 주2 = 진행 중이라 제외
+    assert.equal(t.totals[1].cohorts, 1);
+    assert.equal(t.totals[1].size, 1);
+    // W2: a 의 W2 가 주2 = 진행 중 → 확정 칸이 하나도 없다
+    assert.equal(t.totals[2].cohorts, 0);
+    assert.equal(t.totals[2].size, 0, '화면은 이 열을 —로 그려야 한다');
+});
+
+test('코호트: lastWeekInProgress 를 안 주면 예전처럼 전부 확정으로 본다', () => {
+    const t = buildCohortTable({
+        weekKeys: WK,
+        joinKeyByUid: { a: '2026-03-09' },
+        activeSetsByWeek: [new Set(['a']), new Set(), new Set()]
+    });
+    assert.equal(
+        t.rows[0].cells.some((c) => c.provisional),
+        false
+    );
     assert.equal(t.totals[2].cohorts, 1);
 });
 
