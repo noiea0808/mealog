@@ -6493,11 +6493,15 @@ mood, title, summary, highlight, nudge에서 아래 주제는 어떤 표현으�
 * 출력하기 전에 mood, title, summary, highlight, nudge를 다시 읽고 [금지 주제]에 걸리는 문장이 있는지 확인한다. 특히 nudge에 제안형 문장이 섞이지 않았는지 본다. 있으면 그날 기록의 다른 사실을 근거로 새로 써서 바꾼 뒤 출력한다.`;
 /**
  * meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한.
- * 사진은 입력 토큰의 지배적 비중이라 끼니당 1장으로 제한한다. 같은 끼니의 두 번째 사진은
- * 대개 같은 상을 다른 각도로 찍은 것이라 얻는 정보에 비해 비싸다.
+ *
+ * 한때 "사진이 토큰을 과하게 먹는다"고 보고 끼니당 1장까지 조였으나 실측으로 뒤집혔다:
+ * 사진 0장 리포트(입력 4,105)와 2장 리포트(평균 4,709)를 비교하면 장당 약 302토큰이고,
+ * 이는 입력의 13%에 불과하다(나머지 87%가 프롬프트). 반면 끼니당 1장 제한 때문에
+ * 사진 있는 리포트의 41%에서 사진이 버려지고 있었다.
+ * 비용은 미미하고 정보 손실은 컸으므로 끼니당 2장으로 되돌린다.
  */
-const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
-const DIET_REPORT_MAX_PHOTOS_TOTAL = 5;
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 2;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 8;
 /** gemini-2.5-flash: thinking 토큰도 maxOutputTokens 예산에서 함께 빠지므로 본문 몫을 남겨 둔다 */
 const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
 /**
@@ -6634,12 +6638,17 @@ const DIET_PROMPT_MIN_STATIC_CHARS = 500;
 /**
  * 프롬프트를 "요청마다 동일한 고정부"와 "요청마다 달라지는 꼬리"로 가른다.
  *
- * 고정부를 systemInstruction 으로 올리는 이유: 프롬프트 전체를 하나의 text part 에 담으면
- * 토큰 시퀀스상 앞부분이 같아도 캐시가 걸리지 않았다(실측 cachedContentTokenCount = 0).
- * systemInstruction 은 캐싱이 겨냥하는 자리라 경계가 명확하다.
+ * 원래 의도는 암시적 캐시 적중이었으나 실패했다. 변수를 전부 꼬리로 몰아 앞 83%를
+ * 동일하게 만들어도, 그 고정부를 systemInstruction 으로 분리해도
+ * cachedContentTokenCount 는 0이었다(연속 호출 2회로 확인). 암시적 캐시는 이 조건에서
+ * 걸리지 않는다. 명시적 캐시(cachedContents)는 저장이 시간당 과금이라
+ * 하루 100건 이상에서만 이득인데 현재는 25건 수준이라 손해다.
+ *
+ * 그럼에도 이 분리를 유지하는 이유는 캐시가 아니라, 지시문과 데이터의 경계가 명확해지고
+ * systemInstruction 쪽 규칙 준수가 더 강하기 때문이다. 캐시 절감을 기대하지 말 것.
  *
  * 자르는 지점은 첫 치환자다. 치환자를 전부 꼬리로 몰아 둔 덕에 깔끔하게 갈리고,
- * 관리자가 치환자를 앞쪽에 두면 고정부가 짧아질 뿐 동작은 그대로다(이득만 줄어든다).
+ * 관리자가 치환자를 앞쪽에 두면 고정부가 짧아질 뿐 동작은 그대로다.
  */
 function splitDietPromptForCaching(ctx, promptTemplate) {
   const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
