@@ -6252,15 +6252,14 @@ const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/d
  * (관리자 화면의 "기본값으로 되돌리기"가 이 값을 덮어쓰므로 함부로 바꾸지 말 것)
  */
 const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그의 AI 식사 리포터야.
-아래 [식단 데이터]와 함께 제공되는 사진, 만족도, 포만감, 코멘트, 하루소감을 종합해 그날 하루({{date}} {{weekday}})의 식사 기록을 읽는다.
+아래 [식단 데이터]와 함께 제공되는 사진, 만족도, 포만감, 코멘트, 하루소감을 종합해 그날 하루의 식사 기록을 읽는다.
+분석 대상 날짜와 사용자 정보는 이 지시문 뒤쪽 [분석 대상] 절에 있다.
 
 이 리포트의 목적은 식단을 채점하는 것이 아니다.
 사용자가 "누군가 내 하루를 봐주고 있구나" 하고 느끼게 하는 것, 그래서 내일도 기록할 마음이 들게 하는 것이다.
 무엇을 먹었는지만 보지 말고, 어떤 하루를 보냈는지를 본다.
 
-[사용자]
-
-{{profile}}
+[사용자 정보 사용 규칙]
 
 * 프로필 정보가 있으면 표현의 결을 맞추는 참고로만 쓴다.
 * 성별, 연령대, 생활 패턴을 근거로 영양 기준이나 필요 열량을 단정하지 않는다.
@@ -6439,7 +6438,12 @@ mood, title, summary, highlight, nudge에서 아래 주제는 어떤 표현으�
 "nudge": "이런 날은 메뉴보다 함께 앉은 시간이 오래 남죠. 내일 기록도 기다릴게요."
 }
 
-[식단 데이터 · {{date}}]
+[분석 대상]
+
+날짜: {{date}} {{weekday}}
+사용자: {{profile}}
+
+[식단 데이터]
 
 {{mealText}}
 
@@ -6484,12 +6488,22 @@ mood, title, summary, highlight, nudge에서 아래 주제는 어떤 표현으�
 * lens, mood, title, summary, highlight, nudge는 모두 문자열로 출력한다.
 * 모든 문자열 값에는 줄바꿈을 넣지 않는다.
 * 출력하기 전에 mood, title, summary, highlight, nudge를 다시 읽고 [금지 주제]에 걸리는 문장이 있는지 확인한다. 특히 nudge에 제안형 문장이 섞이지 않았는지 본다. 있으면 그날 기록의 다른 사실을 근거로 새로 써서 바꾼 뒤 출력한다.`;
-/** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
-const DIET_REPORT_MAX_PHOTOS_PER_DOC = 2;
-const DIET_REPORT_MAX_PHOTOS_TOTAL = 8;
+/**
+ * meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한.
+ * 사진은 입력 토큰의 지배적 비중이라 끼니당 1장으로 제한한다. 같은 끼니의 두 번째 사진은
+ * 대개 같은 상을 다른 각도로 찍은 것이라 얻는 정보에 비해 비싸다.
+ */
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 5;
 /** gemini-2.5-flash: thinking 토큰도 maxOutputTokens 예산에서 함께 빠지므로 본문 몫을 남겨 둔다 */
 const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
-const DIET_REPORT_THINKING_BUDGET = 1024;
+/**
+ * thinking 토큰은 출력 토큰으로 과금되고 출력 단가가 입력보다 훨씬 높아, 개수는 적어도 비용 비중이 크다.
+ * 실측(구 프롬프트)에서 509로 512 예산에 맞춰 들어갔으므로 512로 되돌린다.
+ * 너무 낮추면 본문이 잘려 no-thinking 재시도가 돌아 오히려 호출이 늘어난다 —
+ * 관리자 리포트 상세의 fallbackUsed 배지와 thinking 토큰 수치로 감시할 것.
+ */
+const DIET_REPORT_THINKING_BUDGET = 512;
 /** 채점 태스크라 재현성 우선. 표현 다양성은 프롬프트(title·mood 지시)로 확보한다 */
 const DIET_REPORT_TEMPERATURE = 0.35;
 /** {{recentTrend}} 에 실을 직전 리포트 일수 */
