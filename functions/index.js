@@ -12,6 +12,7 @@ const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
+const sharp = require('sharp');
 
 // Firebase Admin 초기화
 initializeApp();
@@ -6722,6 +6723,15 @@ function dietPickPhotoUrlForAnalysis(meal, index) {
   return pick(disp) || pick(orig);
 }
 
+/**
+ * Gemini 는 큰 이미지를 타일로 쪼개 타일마다 토큰을 매긴다. 타일 한 변이 768px 이므로
+ * 긴 변을 768 로 맞추면 화질을 최대한 지키면서 타일 수를 최소로 가져갈 수 있다.
+ * (파생본이 800px 라 픽셀 손실은 거의 없고, 재인코딩으로 전송 바이트도 준다)
+ * 실제 절감폭은 재분석 전후 관리자 화면의 "입력 토큰"으로 확인할 것.
+ */
+const DIET_REPORT_PHOTO_MAX_EDGE = 768;
+const DIET_REPORT_PHOTO_JPEG_QUALITY = 80;
+
 /** Firebase Storage 다운로드 URL → Gemini inlineData({ mimeType, data(base64) }). 실패 시 null */
 async function dietFetchStorageImageInline(imageUrl) {
   if (!imageUrl || typeof imageUrl !== 'string') return null;
@@ -6734,9 +6744,29 @@ async function dietFetchStorageImageInline(imageUrl) {
     const bucket = getStorage().bucket('mealog-r0.firebasestorage.app');
     const file = bucket.file(storagePath);
     const [contents] = await file.download();
-    const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    return { mimeType, data: contents.toString('base64') };
+
+    try {
+      const resized = await sharp(contents)
+        .rotate() // EXIF 방향 반영 — 안 하면 눕거나 뒤집힌 채로 전달된다
+        .resize({
+          width: DIET_REPORT_PHOTO_MAX_EDGE,
+          height: DIET_REPORT_PHOTO_MAX_EDGE,
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ quality: DIET_REPORT_PHOTO_JPEG_QUALITY })
+        .toBuffer();
+      return { mimeType: 'image/jpeg', data: resized.toString('base64') };
+    } catch (resizeErr) {
+      // 리사이즈 실패는 분석을 막을 이유가 못 된다. 원본 그대로 보낸다.
+      logger.warn('dietFetchStorageImageInline: 리사이즈 실패, 원본 전송', {
+        storagePath,
+        message: resizeErr?.message
+      });
+      const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      return { mimeType, data: contents.toString('base64') };
+    }
   } catch (e) {
     logger.warn('dietFetchStorageImageInline failed', { message: e?.message });
     return null;
