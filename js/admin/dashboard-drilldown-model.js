@@ -83,3 +83,55 @@ export function summarizeMatrix(rows) {
     }
     return out;
 }
+
+// ============================================================
+// 닉네임 캐시 직렬화
+//
+// 닉네임은 사용자당 문서 1건이라 팝업 읽기의 대부분을 차지한다. 세션을 넘겨 재사용하려고
+// localStorage 에 담는데, 만료·용량 처리를 틀리면 조용히 옛날 닉네임을 보여 주거나
+// 저장이 영영 실패한다. 그래서 순수 함수로 떼어 검증한다.
+// ============================================================
+
+/** 저장 형식: { [uid]: { n: 닉네임, i: 아이콘, t: 저장시각ms } } */
+
+/**
+ * 저장본 → Map. 만료·형식 불량 항목은 버린다.
+ * @param {string|null} raw localStorage 문자열
+ * @param {number} nowMs
+ * @param {number} ttlMs
+ */
+export function decodeProfileStore(raw, nowMs, ttlMs) {
+    const out = new Map();
+    if (!raw) return out;
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return out;
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
+    for (const [uid, v] of Object.entries(parsed)) {
+        if (!uid || !v || typeof v !== 'object') continue;
+        const t = Number(v.t);
+        if (!Number.isFinite(t) || t > nowMs || nowMs - t > ttlMs) continue;
+        if (typeof v.n !== 'string' || v.n === '') continue;
+        out.set(uid, { nickname: v.n, icon: typeof v.i === 'string' && v.i ? v.i : '🐻', t });
+    }
+    return out;
+}
+
+/**
+ * Map → 저장할 평범한 객체. 최근에 담은 것부터 cap 개까지만 남긴다
+ * (용량 초과로 저장 자체가 실패하는 것보다 오래된 항목을 버리는 편이 낫다).
+ * @param {Map<string,{nickname:string,icon:string,t:number}>} cache
+ * @param {number} cap
+ */
+export function encodeProfileStore(cache, cap) {
+    const entries = [...(cache?.entries?.() || [])]
+        .filter(([uid, v]) => uid && v && typeof v.nickname === 'string' && Number.isFinite(v.t))
+        .sort((a, b) => b[1].t - a[1].t)
+        .slice(0, Math.max(0, cap));
+    const obj = {};
+    for (const [uid, v] of entries) obj[uid] = { n: v.nickname, i: v.icon || '🐻', t: v.t };
+    return obj;
+}

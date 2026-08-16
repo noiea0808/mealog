@@ -21,7 +21,9 @@ import {
     buildMatrixRow,
     sortMatrixRows,
     sortListRows,
-    summarizeMatrix
+    summarizeMatrix,
+    decodeProfileStore,
+    encodeProfileStore
 } from './dashboard-drilldown-model.js';
 
 const DRILLDOWN_DOC = (id) =>
@@ -36,8 +38,63 @@ const WRITE_BATCH_SIZE = 400;
 
 /** 팝업을 여러 번 열어도 같은 문서를 다시 읽지 않도록 하는 세션 캐시 */
 const drilldownDocCache = new Map();
-/** uid → { nickname, icon } — 세션 동안 유지 */
+/** uid → { nickname, icon, t } — 세션 동안 유지, localStorage 로 세션을 넘겨서도 재사용 */
 const profileCache = new Map();
+
+/**
+ * 닉네임 캐시를 localStorage 에 남기는 이유:
+ * 팝업 읽기의 대부분이 사용자당 1건인 닉네임 조회다. 세션 안에서만 캐시하면 새로고침(F5)
+ * 한 번에 전부 다시 읽는다. 사용자가 수천 명이 되면 「전체 기간」 칸 한 번이 수천 읽기가 된다.
+ *
+ * 대신 닉네임을 바꾼 사용자는 만료 전까지 옛 이름으로 보인다. 식별용 UID 는 행 툴팁에
+ * 그대로 있고, 정확한 최신 값이 필요하면 「사용자 관리」 탭이 실시간이다.
+ */
+const PROFILE_STORE_KEY = `mealog:admin:drilldown-profiles:v1:${appId}`;
+/** 이름이 바뀐 사용자를 언제까지 옛 이름으로 보여 줄지 — 3일 */
+const PROFILE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+/** localStorage 용량을 지키기 위한 상한 (초과 시 오래된 것부터 버린다) */
+const PROFILE_STORE_MAX = 5000;
+
+let profileStoreHydrated = false;
+
+function readLocalStorage(key) {
+    try {
+        return typeof localStorage === 'undefined' ? null : localStorage.getItem(key);
+    } catch (e) {
+        console.warn('[대시보드] 닉네임 캐시 읽기 불가:', e?.message || e);
+        return null;
+    }
+}
+
+/** 첫 조회 직전 1회 — 지난 세션에서 담아 둔 닉네임을 되살린다 */
+function hydrateProfileCache() {
+    if (profileStoreHydrated) return;
+    profileStoreHydrated = true;
+    const restored = decodeProfileStore(readLocalStorage(PROFILE_STORE_KEY), Date.now(), PROFILE_TTL_MS);
+    for (const [uid, v] of restored) {
+        if (!profileCache.has(uid)) profileCache.set(uid, v);
+    }
+}
+
+/** 용량 초과면 상한을 줄여 가며 재시도하고, 끝내 안 되면 캐시를 비운다 (있으면 좋은 것이지 필수가 아니다) */
+function persistProfileCache() {
+    if (typeof localStorage === 'undefined') return;
+    let lastErr = null;
+    for (const cap of [PROFILE_STORE_MAX, 1000, 200]) {
+        try {
+            localStorage.setItem(PROFILE_STORE_KEY, JSON.stringify(encodeProfileStore(profileCache, cap)));
+            return;
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    try {
+        localStorage.removeItem(PROFILE_STORE_KEY);
+    } catch (e) {
+        lastErr = e;
+    }
+    console.warn('[대시보드] 닉네임 캐시를 저장하지 못했습니다:', lastErr?.message || lastErr);
+}
 
 let modalBound = false;
 let tableBound = false;
@@ -329,8 +386,9 @@ async function collectPeriodsForCell({ scope, keys }) {
 }
 
 
-/** users/{uid}/config/settings에서 닉네임·아이콘 (세션 캐시). users.js의 표시 규칙과 동일 */
+/** users/{uid}/config/settings에서 닉네임·아이콘. users.js의 표시 규칙과 동일 */
 async function resolveProfiles(uids) {
+    hydrateProfileCache();
     const need = uids.filter((u) => !profileCache.has(u));
     /** 이번 조회에서 실패한 uid만 담는다 (세션 캐시를 오염시키지 않기 위해) */
     const failedThisRun = new Map();
@@ -357,11 +415,12 @@ async function resolveProfiles(uids) {
                     'dashboard-drilldown:nickname'
                 );
                 // 실패는 캐시에 남기지 않는다 — 다음에 팝업을 열면 다시 시도한다
-                if (p) profileCache.set(uid, p);
+                if (p) profileCache.set(uid, { ...p, t: Date.now() });
                 else failedThisRun.set(uid, { nickname: '조회 실패', icon: '👤' });
             })
         );
     }
+    if (need.length > 0) persistProfileCache();
     return failedThisRun;
 }
 

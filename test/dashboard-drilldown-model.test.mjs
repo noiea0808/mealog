@@ -9,7 +9,9 @@ import {
     buildMatrixRow,
     sortMatrixRows,
     sortListRows,
-    summarizeMatrix
+    summarizeMatrix,
+    decodeProfileStore,
+    encodeProfileStore
 } from '../js/admin/dashboard-drilldown-model.js';
 
 /** @param {string} key @param {string[]} active @param {string[]} fresh */
@@ -129,6 +131,70 @@ test('명단 정렬: 신규 먼저, 그다음 가입일 최신순', () => {
         sortListRows(rows).map((r) => r.uid),
         ['new-recent', 'new-old', 'old-recent', 'old']
     );
+});
+
+// ------------------------------------------------------------
+// 닉네임 캐시 직렬화
+// ------------------------------------------------------------
+
+const NOW = 1_800_000_000_000;
+const TTL = 3 * 24 * 60 * 60 * 1000;
+
+test('decodeProfileStore: 만료 안 된 항목만 되살린다', () => {
+    const raw = JSON.stringify({
+        fresh: { n: '최근', i: '🐻', t: NOW - 1000 },
+        stale: { n: '오래됨', i: '🐰', t: NOW - TTL - 1 }
+    });
+    const m = decodeProfileStore(raw, NOW, TTL);
+    assert.deepEqual([...m.keys()], ['fresh']);
+    assert.equal(m.get('fresh').nickname, '최근');
+});
+
+test('decodeProfileStore: 경계값(정확히 TTL)은 살린다', () => {
+    const raw = JSON.stringify({ edge: { n: '경계', i: '🐻', t: NOW - TTL } });
+    assert.equal(decodeProfileStore(raw, NOW, TTL).size, 1);
+});
+
+test('decodeProfileStore: 미래 시각 항목은 버린다 (시계가 되감긴 기기)', () => {
+    const raw = JSON.stringify({ future: { n: '미래', i: '🐻', t: NOW + 60_000 } });
+    assert.equal(decodeProfileStore(raw, NOW, TTL).size, 0);
+});
+
+test('decodeProfileStore: 깨진 입력에도 빈 Map 을 준다', () => {
+    for (const raw of [null, '', '{', '[]', 'null', '"x"']) {
+        assert.equal(decodeProfileStore(raw, NOW, TTL).size, 0, `입력: ${raw}`);
+    }
+    const junk = JSON.stringify({ a: null, b: 3, c: { n: '', t: NOW }, d: { n: '이름' } });
+    assert.equal(decodeProfileStore(junk, NOW, TTL).size, 0);
+});
+
+test('decodeProfileStore: 아이콘이 없으면 기본값으로 채운다', () => {
+    const raw = JSON.stringify({ u: { n: '이름', t: NOW } });
+    assert.equal(decodeProfileStore(raw, NOW, TTL).get('u').icon, '🐻');
+});
+
+test('encodeProfileStore: 최근 것부터 cap 개까지만 남긴다', () => {
+    const cache = new Map([
+        ['old', { nickname: 'A', icon: '🐻', t: 1 }],
+        ['mid', { nickname: 'B', icon: '🐰', t: 2 }],
+        ['new', { nickname: 'C', icon: '🐱', t: 3 }]
+    ]);
+    assert.deepEqual(Object.keys(encodeProfileStore(cache, 2)).sort(), ['mid', 'new']);
+    assert.deepEqual(encodeProfileStore(cache, 0), {});
+});
+
+test('encodeProfileStore: t 가 없는 항목(조회 실패 등)은 저장하지 않는다', () => {
+    const cache = new Map([
+        ['ok', { nickname: 'A', icon: '🐻', t: 5 }],
+        ['nots', { nickname: '조회 실패', icon: '👤' }]
+    ]);
+    assert.deepEqual(Object.keys(encodeProfileStore(cache, 10)), ['ok']);
+});
+
+test('encode → decode 왕복에서 값이 보존된다', () => {
+    const cache = new Map([['u1', { nickname: '홍길동', icon: '🐰', t: NOW }]]);
+    const back = decodeProfileStore(JSON.stringify(encodeProfileStore(cache, 10)), NOW, TTL);
+    assert.deepEqual(back.get('u1'), { nickname: '홍길동', icon: '🐰', t: NOW });
 });
 
 test('빈 구간 목록에서도 터지지 않는다', () => {
