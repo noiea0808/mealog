@@ -22,7 +22,7 @@ https://console.firebase.google.com/project/mealog-r0/firestore/indexes
 2. 또는 PowerShell에서:
    ```powershell
    cd c:\100_Dev\mealog
-   .\server.ps1
+   .\tools\server.ps1
    ```
 
 **앱 접속:**
@@ -36,7 +36,7 @@ https://console.firebase.google.com/project/mealog-r0/firestore/indexes
 **방법 1: 테스트 스크립트 사용 (권장)**
 
 1. 브라우저 콘솔에서 다음 파일 내용을 복사하여 실행:
-   - `test-error-reporting.js` 파일 내용을 콘솔에 붙여넣기
+   - `dev/test-error-reporting.js` 파일 내용을 콘솔에 붙여넣기
 
 2. 또는 직접 명령어 실행:
    ```javascript

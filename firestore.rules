@@ -156,6 +156,12 @@ service cloud.firestore {
     match /artifacts/{appId}/adminSettings/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+
+      // 대시보드 트렌드 드릴다운(dashboardStats/drilldown/*): 신규·활성 사용자 UID 명단.
+      // 부모와 달리 읽기도 관리자만 — 사용자 UID 목록이 담긴다.
+      match /drilldown/{periodKey} {
+        allow read, write: if isAdmin();
+      }
     }
 
     // AI 식단 분석 리포트 (날짜 단위) - 문서 ID: {userId}_{YYYY-MM-DD}

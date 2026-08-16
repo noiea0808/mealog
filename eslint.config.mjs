@@ -28,7 +28,7 @@ export default [
 
     // 프론트엔드: 브라우저 ES 모듈
     {
-        files: ['js/**/*.js', 'sw.js', 'test-error-reporting.js'],
+        files: ['js/**/*.js', 'sw.js', 'dev/test-error-reporting.js'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',
@@ -145,6 +145,27 @@ export default [
         ],
         rules: {
             'no-restricted-syntax': 'error'
+        }
+    },
+
+    /**
+     * 테스트: Node ES 모듈 (`node --test`).
+     *
+     * 검사 대상 코드가 아니라 **검사 도구**이므로 관문 규칙(no-restricted-syntax)은 걸지 않는다 —
+     * 테스트는 일부러 상한을 넘기고 일부러 매달리는 작업을 만든다.
+     */
+    {
+        files: ['test/**/*.mjs'],
+        languageOptions: {
+            ecmaVersion: 2023,
+            sourceType: 'module',
+            globals: { ...globals.node, ...globals.browser }
+        },
+        rules: {
+            'no-undef': 'error',
+            'no-unused-vars': ['warn', { args: 'none', varsIgnorePattern: '^_', caughtErrors: 'none' }],
+            'no-dupe-keys': 'error',
+            'no-restricted-syntax': 'off'
         }
     },
 

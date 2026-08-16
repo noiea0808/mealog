@@ -1,7 +1,11 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v6';
-// 상대 경로 사용 (서브디렉토리 배포 대응)
-const basePath = self.location.pathname.replace(/\/sw\.js$/, '') || '/';
+const CACHE_NAME = 'mealog-v9';
+/*
+ * 상대 경로 사용 (서브디렉토리 배포 대응)
+ * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
+ * '//index.html' 이 되어 프로토콜 상대 URL(다른 호스트)로 해석된다.
+ */
+const basePath = self.location.pathname.replace(/\/sw\.js$/, '');
 const urlsToCache = [
   basePath + '/',
   basePath + '/index.html',

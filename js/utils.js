@@ -572,34 +572,127 @@ export function normalizeShareCaptureClone(root) {
 }
 
 /**
+ * 캔버스를 흰 배경 위에 합성한다.
+ *
+ * snapdom 출력은 알파를 보존하므로 둥근 모서리 바깥이 투명하다. 이후 파이프라인
+ * (compressBase64ToBlob 의 JPEG 변환 등)에서 투명 영역이 검게 뭉개질 수 있어,
+ * html2canvas 시절의 `backgroundColor: '#ffffff'` 와 동일한 결과로 맞춘다.
+ */
+function flattenCanvasOnWhite(canvas) {
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const ctx = out.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(canvas, 0, 0);
+    return out;
+}
+
+/**
+ * 유령 노드용 조상 컨텍스트 래퍼 체인.
+ *
+ * 시트만 복제하면 `#dailyShareCardContainer .main-slot-card-group` 같은 조상 스코프
+ * CSS 규칙이 유령에서 빠져 프리뷰와 간격이 달라진다(행마다 어긋남이 누적된다).
+ * 그래서 body 까지의 조상 id/class 를 그대로 단 래퍼를 만들어 셀렉터 매칭은 살리되,
+ * 인라인 오버라이드로 레이아웃 영향(모달 position/transform/스크롤 등)은 전부 죽인다 —
+ * 유령 전략의 목적인 "부모 간섭 없는 캡처"는 유지된다.
+ *
+ * @param {HTMLElement} originalElement
+ * @returns {HTMLElement[]} 바깥쪽부터 안쪽 순서의 래퍼 배열 (조상이 없으면 빈 배열)
+ */
+function buildGhostAncestorWrappers(originalElement) {
+    const NEUTRALIZE =
+        ';display:block;position:static;transform:none;margin:0;padding:0;border:0;' +
+        'width:auto;height:auto;max-width:none;max-height:none;min-width:0;min-height:0;' +
+        'inset:auto;flex:none;overflow:visible;visibility:visible;opacity:1;';
+    const wrappers = [];
+    let node = originalElement.parentElement;
+    while (node && node !== document.body && node !== document.documentElement) {
+        const w = document.createElement('div');
+        if (node.id) w.id = node.id;
+        if (typeof node.className === 'string' && node.className) w.className = node.className;
+        // 인라인 스타일은 유지(폰트 등 상속값 보존)하되, 레이아웃 속성은 뒤의 선언이 덮는다
+        w.style.cssText = (node.getAttribute('style') || '') + NEUTRALIZE;
+        wrappers.unshift(w);
+        node = node.parentElement;
+    }
+    return wrappers;
+}
+
+/**
  * 유령 캡처(Ghost Capture): 화면 밖에 복제본을 만들어 부모 간섭(모달, transform, Flex/Grid) 없이 캡처
+ *
+ * ── 엔진 이원화 (2026-08) ─────────────────────────────────────────────────────
+ * 기본 엔진은 snapdom(SVG foreignObject) — 프리뷰를 그린 것과 **같은 브라우저 엔진**이
+ * 캡처도 그리므로 텍스트 잘림·정렬 밀림이 원천적으로 없다. 따라서 snapdom 경로에서는
+ * 순수 클론을 그대로 캡처하고 어떤 보정도 하지 않는다(보정하면 오히려 틀어진다).
+ *
+ * html2canvas 는 CSS 를 자체 해석해 그리는 별도 렌더러라 오차가 있고, 그 오차를 상쇄하는
+ * 층이 `normalizeShareCaptureClone` + 호출부 `onclone` 보정이다. 이 보정 일체는
+ * **폴백 경로에서만** 적용한다. snapdom 이 없거나(CDN 차단 등) 실패했을 때 공유 기능이
+ * 통째로 죽는 것보다 약간 어긋난 캡처가 낫다는 판단으로 폴백을 유지한다.
+ *
  * @param {HTMLElement} originalElement - 캡처할 원본 요소
- * @param {Object} options - html2canvas 옵션 + captureWidth
+ * @param {Object} options - 캡처 옵션 (+ html2canvas 폴백용 추가 옵션)
  * @param {number} [options.captureWidth=420] - 캡처 가로 크기 (정사이즈 고정)
+ * @param {number} [options.scale=3] - 출력 배율 (양 엔진 공통)
+ * @param {Function} [options.prepareGhost] - 유령 노드 DOM 조정(버튼 숨김 등). 엔진 무관하게 항상 적용
+ * @param {Function} [options.onclone] - html2canvas 폴백 전용 보정 (snapdom 경로에서는 호출되지 않음)
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function captureWithGhostStrategy(originalElement, options = {}) {
-    const { captureWidth = 420, onclone: userOnClone, ...html2canvasOptions } = options;
-    const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
-    if (!html2canvasFunc) throw new Error('html2canvas를 찾을 수 없습니다. HTML에 html2canvas 라이브러리가 로드되었는지 확인하세요.');
+    const { captureWidth = 420, scale = 3, prepareGhost, onclone: userOnClone, ...html2canvasOptions } = options;
 
     const ghostNode = originalElement.cloneNode(true);
-    ghostNode.style.position = 'fixed';
-    ghostNode.style.top = '-10000px';
-    ghostNode.style.left = '-10000px';
     ghostNode.style.width = `${captureWidth}px`;
     ghostNode.style.height = 'auto';
-    ghostNode.style.zIndex = '-1';
     ghostNode.style.transform = 'none';
     ghostNode.style.margin = '0';
 
-    document.body.appendChild(ghostNode);
-    normalizeShareCaptureClone(ghostNode);
+    // 조상 id/class 컨텍스트를 보존한 래퍼 체인 안에 유령을 넣는다 (없으면 유령이 곧 루트)
+    const wrappers = buildGhostAncestorWrappers(originalElement);
+    let ghostRoot = ghostNode;
+    if (wrappers.length > 0) {
+        for (let i = 0; i < wrappers.length - 1; i++) wrappers[i].appendChild(wrappers[i + 1]);
+        wrappers[wrappers.length - 1].appendChild(ghostNode);
+        ghostRoot = wrappers[0];
+    }
+    ghostRoot.style.position = 'fixed';
+    ghostRoot.style.top = '-10000px';
+    ghostRoot.style.left = '-10000px';
+    ghostRoot.style.zIndex = '-1';
+
+    document.body.appendChild(ghostRoot);
+    if (typeof prepareGhost === 'function') prepareGhost(ghostNode);
 
     try {
         await document.fonts.ready;
+
+        // 1) snapdom — 브라우저 엔진 렌더링. 보정 없이 프리뷰와 동일하게 나온다.
+        const snapdomFunc = typeof window !== 'undefined' ? window.snapdom : null;
+        if (snapdomFunc?.toCanvas) {
+            try {
+                const canvas = await snapdomFunc.toCanvas(ghostNode, {
+                    scale,
+                    dpr: 1, // 기기 DPR 과 무관하게 출력 크기를 captureWidth×scale 로 고정
+                    embedFonts: true,
+                });
+                return flattenCanvasOnWhite(canvas);
+            } catch (e) {
+                console.warn('[capture] snapdom 실패 — html2canvas 폴백:', e?.message || e);
+            }
+        } else {
+            console.warn('[capture] snapdom 미로드 — html2canvas 폴백');
+        }
+
+        // 2) html2canvas 폴백 — 자체 렌더러 오차를 legacy 보정으로 상쇄한다.
+        const html2canvasFunc = (typeof window !== 'undefined' && window.html2canvas) || (typeof html2canvas !== 'undefined' ? html2canvas : null);
+        if (!html2canvasFunc) throw new Error('캡처 엔진을 찾을 수 없습니다 (snapdom·html2canvas 모두 미로드).');
+
+        normalizeShareCaptureClone(ghostNode);
         const canvas = await html2canvasFunc(ghostNode, {
-            scale: 3,
+            scale,
             useCORS: true,
             backgroundColor: '#ffffff',
             logging: false,
@@ -614,7 +707,7 @@ export async function captureWithGhostStrategy(originalElement, options = {}) {
         });
         return canvas;
     } finally {
-        document.body.removeChild(ghostNode);
+        document.body.removeChild(ghostRoot);
     }
 }
 

@@ -44,7 +44,7 @@
                                     <p class="text-sm text-slate-700 mb-4">파일을 직접 열면 오류가 발생합니다.</p>
                                     <p class="text-xs text-slate-500 mb-2">다음 방법으로 실행하세요:</p>
                                     <ol class="text-xs text-slate-600 text-left mb-4 space-y-1">
-                                        <li>1. PowerShell에서 <code class="bg-slate-100 px-1 rounded">.\server.ps1</code> 실행</li>
+                                        <li>1. PowerShell에서 <code class="bg-slate-100 px-1 rounded">.\tools\server.ps1</code> 실행</li>
                                         <li>2. 브라우저에서 <code class="bg-slate-100 px-1 rounded">http://localhost:8000/admin.html</code> 접속</li>
                                     </ol>
                                     <button onclick="location.reload()" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold">새로고침</button>
@@ -1819,6 +1819,9 @@
                                     <button type="button" data-settings-sub="welcome" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-emerald-600 bg-emerald-50 border-emerald-200">
                                         웰컴메시지
                                     </button>
+                                    <button type="button" data-settings-sub="welcome_weekday" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
+                                        요일별 화면
+                                    </button>
                                     <button type="button" data-settings-sub="spinner" class="admin-settings-subnav-btn w-full text-left px-4 py-2 rounded-xl text-sm font-bold border transition-colors text-slate-500 bg-white border-slate-200 hover:bg-slate-50">
                                         스피너
                                     </button>
@@ -2024,6 +2027,34 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <div id="adminSettingsSub-welcome_weekday" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
+                                        <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                                            <h2 class="text-lg font-black text-slate-800">요일별 화면</h2>
+                                            <div class="flex gap-2">
+                                                <button type="button" onclick="window.resetWelcomeWeekdayDefaultsForm()" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
+                                                    기본값
+                                                </button>
+                                                <button type="button" onclick="window.saveWelcomeWeekdayDefaults()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                    저장
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="p-6 space-y-4">
+                                            <p class="text-sm text-slate-600 leading-relaxed">웰컴메시지 팝업이 열릴 때 <strong class="font-semibold text-slate-700">요일별로 처음 보여줄 화면</strong>입니다(사용자 로컬 요일 기준). 스테이징·운영 공통이며, <strong class="font-semibold text-slate-700">AI리포트</strong>로 지정한 요일이라도 보여줄 리포트가 없으면(비로그인·체험 계정·리포트 미생성) 식사 <span class="text-slate-700">‘어떻게’</span> 화면으로 대체됩니다.</p>
+                                            <div class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                                                <table class="w-full min-w-[34rem] text-sm border-collapse">
+                                                    <thead>
+                                                        <tr class="border-b border-slate-200 bg-slate-50/95 text-left text-sm font-black text-slate-600">
+                                                            <th scope="col" class="px-3 py-3 w-[12%] align-middle">요일</th>
+                                                            <th scope="col" class="px-3 py-3 w-[38%] align-middle">탭</th>
+                                                            <th scope="col" class="px-3 py-3 align-middle">페이지</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="adminWelcomeWeekdayTableBody" class="divide-y divide-slate-100 text-sm"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div id="adminSettingsSub-displayName" class="admin-settings-subpanel hidden bg-white rounded-2xl shadow-sm border border-slate-100">
                                         <div class="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
                                             <h2 class="text-lg font-black text-slate-800">관리자명</h2>
@@ -2185,6 +2216,38 @@
                 <button onclick="window.closeDeleteModal()" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold text-sm">취소</button>
                 <button id="confirmDeleteBtn" onclick="window.confirmDeletePhoto()" class="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-sm hover:bg-red-600">삭제</button>
             </div>
+        </div>
+    </div>
+
+    <!-- 대시보드 트렌드: 신규·활성 사용자 명단 (표의 칸 클릭 시) -->
+    <div id="dashboardUserListModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="dashboardUserListModalTitle">
+        <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
+                <div class="min-w-0">
+                    <h3 id="dashboardUserListModalTitle" class="text-sm font-black text-slate-800 truncate">사용자 명단</h3>
+                    <p id="dashboardUserListSummary" class="text-xs text-slate-500 mt-0.5">—</p>
+                </div>
+                <button type="button" id="dashboardUserListModalClose" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 shrink-0" aria-label="닫기">
+                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 bg-slate-50 border-b border-slate-200 shrink-0">
+                <div id="dashboardUserListViewWrap" class="hidden inline-flex items-center gap-1 bg-slate-200/70 rounded-xl p-0.5 shrink-0">
+                    <button type="button" id="dashboardUserListViewList" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white">명단</button>
+                    <button type="button" id="dashboardUserListViewMatrix" class="px-2.5 py-1 text-xs font-bold rounded-lg text-slate-500 hover:bg-slate-200">기간별 표</button>
+                    <button type="button" id="dashboardUserListViewCohort" class="px-2.5 py-1 text-xs font-bold rounded-lg text-slate-500 hover:bg-slate-200">코호트</button>
+                </div>
+                <label id="dashboardUserListNewOnlyWrap" class="hidden inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                    <input type="checkbox" id="dashboardUserListNewOnly" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                    신규 사용자만 보기
+                </label>
+                <label id="dashboardUserListDropoutWrap" class="hidden inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer">
+                    <input type="checkbox" id="dashboardUserListDropoutOnly" class="rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                    중단·미사용만 보기
+                </label>
+                <span id="dashboardUserListLegend" class="ml-auto text-[11px] text-slate-400">초록 배경 = 같은 기간 가입한 신규 사용자</span>
+            </div>
+            <div id="dashboardUserListBody" class="overflow-y-auto flex-1 min-h-0"></div>
         </div>
     </div>
 </body>

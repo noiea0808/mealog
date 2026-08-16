@@ -10,7 +10,6 @@ import { showTermsModal, closeTermsModal } from './auth.js';
 import { isDemoUser, maybeShowDemoIntroModal } from './demo-account.js';
 import { syncDemoNavGuideDots } from './demo-nav-guide.js';
 import { isProfileWizardCompleted } from './profile-readiness.js';
-import { maybeSeedNicknameFromAuthDisplayName } from './auth-nickname-seed.js';
 import { appState } from './state.js';
 
 /**
@@ -524,11 +523,6 @@ export class AuthFlowManager {
 
             for (let i = 0; i < 40 && !window.userSettings; i++) {
                 await new Promise((r) => setTimeout(r, 50));
-            }
-            try {
-                await maybeSeedNicknameFromAuthDisplayName();
-            } catch (e) {
-                console.warn('Auth 닉네임 시드(백그라운드) 스킵:', e?.message || e);
             }
             try {
                 await maybeBackfillTermsVersionFromAgreement(user.uid);

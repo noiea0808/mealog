@@ -24,6 +24,7 @@ import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-writ
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
+import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
@@ -85,7 +86,7 @@ const DEFAULT_CHARACTERS = [
         id: 'trainer', 
         name: '엄격한 트레이너', 
         icon: '💪', 
-        image: 'persona/trainer.png', // 트레이너 캐릭터 이미지
+        image: 'assets/persona/trainer.png', // 트레이너 캐릭터 이미지 (assets 아래여야 www·앱 빌드에 복사됨)
         persona: '건강과 웰빙을 중시하는 트레이너',
         systemPrompt: '당신은 건강과 웰빙을 중시하는 트레이너입니다. 엄격하지만 따뜻한 톤으로, 식사 패턴을 날카롭게 분석하고 건강한 식습관을 위한 명확한 조언을 제공합니다. 격려와 함께 건설적인 피드백을 주며, 때로는 유머를 섞어 지루하지 않게 전달합니다. 전문적이지만 딱딱하지 않고, 사용자가 행동 변화를 일으킬 수 있도록 동기부여하는 당신만의 스타일을 유지하세요.'
     }
@@ -1960,47 +1961,9 @@ export async function shareInsightToFeed() {
         const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
         const targetElement = screenshotContainer || preview;
 
-        // 외부 이미지(Firebase Storage)를 base64로 변환 (CORS 우회: Cloud Function 사용)
-        const imgs = targetElement.querySelectorAll('img[src^="http"]');
-        const loadPromises = [];
-        for (const img of imgs) {
-            try {
-                if (img.src.includes('firebasestorage.googleapis.com')) {
-                    const { callableFunctions } = await import('../firebase.js');
-                    const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
-                    const dataUrl = result?.data?.dataUrl;
-                    if (dataUrl) {
-                        const loadP = new Promise((resolve, reject) => {
-                            img.onload = () => resolve();
-                            img.onerror = () => reject(new Error('이미지 로드 실패'));
-                            img.src = dataUrl;
-                            if (img.complete && img.naturalWidth > 0) resolve();
-                        });
-                        loadPromises.push(loadP);
-                    } else {
-                        console.warn('getStorageImageAsBase64 반환값 없음:', result);
-                    }
-                } else {
-                    const res = await fetch(img.src, { mode: 'cors' });
-                    const blob = await res.blob();
-                    const dataUrl = await new Promise((resolve) => {
-                        const reader = new FileReader();
-                        reader.onloadend = () => resolve(reader.result);
-                        reader.readAsDataURL(blob);
-                    });
-                    const loadP = new Promise((resolve, reject) => {
-                        img.onload = () => resolve();
-                        img.onerror = () => reject(new Error('이미지 로드 실패'));
-                        img.src = dataUrl;
-                        if (img.complete && img.naturalWidth > 0) resolve();
-                    });
-                    loadPromises.push(loadP);
-                }
-            } catch (e) {
-                console.warn('캐릭터 이미지 base64 변환 실패:', e);
-            }
-        }
-        await Promise.all(loadPromises).catch(() => {});
+        // 외부 이미지를 data URL 로 인라인한다 (html2canvas 의 캔버스 오염 방지).
+        // 예전에는 이미지마다 직렬로 콜러블을 왕복했다 — 장수만큼 대기가 쌓였다.
+        await inlineImagesForCapture(targetElement, 'insight-share');
         await document.fonts.ready;
         await new Promise(r => setTimeout(r, 150)); // 페인트 대기
 
@@ -2014,14 +1977,18 @@ export async function shareInsightToFeed() {
         // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(targetElement, {
             captureWidth: 420,
+            // 공유 버튼은 캡처 이미지에서 빠져야 한다 — 엔진 무관하게 유령 노드에서 숨김
+            prepareGhost: (ghost) => {
+                const shareBtn = ghost.querySelector('.insight-share-button');
+                if (shareBtn) shareBtn.style.display = 'none';
+            },
+            // html2canvas 폴백 전용 — 클론 문서에 폰트 CSS 주입 (snapdom 은 embedFonts 로 처리)
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');
                     style.textContent = fontCSS;
                     clonedDoc.head.appendChild(style);
                 }
-                const shareBtn = clonedDoc.querySelector('.insight-share-button');
-                if (shareBtn) shareBtn.style.display = 'none';
             }
         });
         

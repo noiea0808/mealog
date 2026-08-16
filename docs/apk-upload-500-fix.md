@@ -61,16 +61,16 @@ Signed URL까지 성공했는데 **브라우저에서 CORS 에러**가 나면, S
 
 ```bash
 # CORS 설정 적용 (버킷 이름 확인: Firebase Storage 기본은 project.appspot.com)
-gcloud storage buckets update gs://mealog-r0.firebasestorage.app --cors-file=storage-cors.json
+gcloud storage buckets update gs://mealog-r0.firebasestorage.app --cors-file=config/storage-cors.json
 ```
 
 또는 `gsutil` 사용 시:
 
 ```bash
-gsutil cors set storage-cors.json gs://mealog-r0.firebasestorage.app
+gsutil cors set config/storage-cors.json gs://mealog-r0.firebasestorage.app
 ```
 
-`storage-cors.json` 내용은 프로젝트 루트의 `storage-cors.json`을 참고하세요.
+`storage-cors.json` 내용은 `config/storage-cors.json`을 참고하세요.
 
 ---
 

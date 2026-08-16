@@ -251,6 +251,12 @@ IndexedDB는 실패합니다 — 쿼터 초과, 시크릿 모드, DB 손상, iOS
 `_errorIds`, localStorage 키 3개(`mealog_mealSyncErrorIds_v1`, `…AbandonedIds_v1`,
 `…RegisterScheduledIds_v1`).
 
+**2026-08-11 진행 상황**: grace 타이머·`_registerScheduledChip`·`_abandoned` 와 그 localStorage
+키 2개를 실제로 걷어냈다. `promoteToRegisterScheduledChip` 은 `resetToUnsent` 로 바뀌었다 —
+하는 일이 「등록예정 칩을 붙인다」에서 「낙관적 표식을 되돌리고 아웃박스에 맡긴다」로 줄었기
+때문이다. 남은 것은 `_errorIds` 와 `mealog_mealSyncErrorIds_v1` 하나뿐이며, 아래 §7 4번 참조.
+구버전 기기에 남은 localStorage 잔재는 `outbox-migration.js` 의 `LEGACY_KEYS` 가 계속 처리한다.
+
 ### 4.5 충돌 — 오래된 항목이 최신본을 덮어쓰지 않게
 
 meal 문서에 **`updatedAt` 필드를 신설**합니다 (현재 없음. `recordedAt`은 생성 시각이라 대용 불가).
@@ -408,15 +414,35 @@ getToken / getIdToken
    핸들러 등록으로 끝난다. 공유 취소는 멱등성 확인이 필요하다.
 3. **상호작용 등급 연결** (좋아요·북마크·신고·알림읽음·조회수). 유실이 데이터 손실은 아니지만
    낙관 UI 가 되돌아가는 「앱이 거짓말한」 문제가 남는다. `CLASS_INTERACTION` + TTL 만료로.
-4. **`MealSyncManager` 잔여 맵 정리.** `_errorIds`·`_abandoned`·`_registerScheduledChip` 등은
-   표시 판정에서는 더 이상 쓰이지 않지만, 저장 실패 배지 병합
-   (`shouldPreserveMealSaveFailureOnMerge`) 같은 호출부가 아직 참조한다.
+4. **`MealSyncManager` 잔여 맵 정리.** `_abandoned`·`_registerScheduledChip` 과 grace 타이머는
+   2026-08-11 에 제거했다(§4.4). 남은 것은 `_errorIds` 하나로, 저장 실패 배지 병합
+   (`shouldPreserveMealSaveFailureOnMerge`)이 아직 참조한다. 아웃박스의 `permanent` 와 의미가
+   겹치므로 그쪽으로 합쳐야 한다.
 5. **충돌 확인을 규칙의 원자 판정으로 이관** (§4.5). 확인 읽기가 밀기를 막던 문제는
    해결됐지만(§4.2 「무엇이 확인인가」, §4.5 하단), 확인이 실패하면 여전히 「모르니까 민다」로
    떨어진다. 클라이언트 읽기를 아예 없애려면 규칙에서
    `request.resource.data.updatedAt >= resource.data.updatedAt`으로 판정해야 한다.
    기존 문서에 `updatedAt`이 없는 경우까지 다뤄야 하므로 별도 설계가 필요하다.
 6. **소킹 검증** — 아래 완료 기준을 실기기 계측 데이터로 판정.
+
+### 자동 검증 (2026-08-10 추가)
+
+`npm test` — `node --test`, 외부 러너 없음. 지금까지 이 서브시스템의 판정은 전부 실기기 관찰에
+의존했고, 그것이 「고쳤다고 믿었는데 같은 뿌리에서 다시 났다」를 13번 반복한 이유 중 하나다.
+아래 항목은 이제 **기억이 아니라 기계가** 지킨다.
+
+| 파일 | 검증하는 절 |
+|---|---|
+| `test/outbox-store.test.mjs` | §1 내구화(반환값과 실제 커밋의 일치), §4.1 병합, §4.1.1 보존 정책, §4.2 쿼터 완화, §4.3 큐 순서·표시 단일 기준, §4.4 permanent |
+| `test/outbox-store-no-idb.test.mjs` | §4.2 「아웃박스 쓰기가 실패하면」 — 저장소가 죽으면 반드시 `false` |
+| `test/with-deadline.test.mjs` | §4.7 리스 자가 회복, §4.8 관문의 정착 보장, §4.9 싱크 통지 |
+
+테스트가 실제로 회귀를 잡는지는 소스를 일부러 깨뜨려 확인했다(깊은 병합 → 얕은 병합,
+content 만료 가드 제거, 저장 실패를 `true` 로 보고, 리스를 불린 가드로, 텍스트 폴백 제거 —
+전부 해당 테스트만 빨개졌다).
+
+**범위 밖**: `outbox-worker.js` 는 `firebase.js` 와 CDN import 에 묶여 있어 아직 테스트가 없다.
+백오프·permanent 판정·충돌 처리는 여전히 실기기 계측으로만 검증된다.
 
 ### 완료 기준
 

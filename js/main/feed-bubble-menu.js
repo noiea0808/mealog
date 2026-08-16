@@ -5,7 +5,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { feedOperations } from '../db.js';
 import { renderBoardFeedTab } from '../render/board-feed.js';
-import { getDisplayProfile, lightUiHaptic } from '../utils.js';
+import { getDisplayProfile, lightUiHaptic, addCompositionAwareInput } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { updateFeedCharRemainingUi } from '../feed-char-count.js';
 
@@ -183,7 +183,8 @@ function openEditFeedModal(postId) {
         updateFeedCharRemainingUi(countEl, (ta.value || '').length);
     };
     updCount();
-    ta.addEventListener('input', () => {
+    /* 조합 중 height 재기입·리플로우가 IME 글자 렌더를 깨뜨림 — 모먼트 댓글과 동일 가드 */
+    addCompositionAwareInput(ta, () => {
         updCount();
         autoResizeTa();
     });

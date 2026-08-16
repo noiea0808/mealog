@@ -63,7 +63,7 @@ import { renderTimeline, renderMiniCalendar, refreshMiniCalendarDots, resetTrack
 import './render/timeline-meal-photos-popup.js';
 import { ensureAnalytics, installAnalyticsLazyStubs } from './analytics/ensure.js';
 import { 
-    openModal, closeModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
+    openModal, closeModal, requestCloseEntryModal, cancelDiscardEntryModal, confirmDiscardEntryModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
     openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
     fillProfileActivityStats,
@@ -344,6 +344,12 @@ window.closeEntrySlotPicker = closeEntrySlotPicker;
 window.Mealog.closeEntrySlotPicker = closeEntrySlotPicker;
 window.closeModal = closeModal;
 window.Mealog.closeModal = closeModal;
+window.requestCloseEntryModal = requestCloseEntryModal;
+window.Mealog.requestCloseEntryModal = requestCloseEntryModal;
+window.cancelDiscardEntryModal = cancelDiscardEntryModal;
+window.Mealog.cancelDiscardEntryModal = cancelDiscardEntryModal;
+window.confirmDiscardEntryModal = confirmDiscardEntryModal;
+window.Mealog.confirmDiscardEntryModal = confirmDiscardEntryModal;
 window.openDailyJournalModal = openDailyJournalModal;
 window.Mealog.openDailyJournalModal = openDailyJournalModal;
 window.closeDailyJournalModal = closeDailyJournalModal;
@@ -1574,6 +1580,8 @@ initAuth(async (user) => {
             const LANDING_ICON_FADE_MS = 400;
             const LANDING_PAUSE_BEFORE_RISE_MS = 280;
             const LANDING_RISE_MS = 1050;
+            /* 연출 총예산(400+280+1050+120)보다 넉넉히 — 이 시각엔 무조건 버튼이 있어야 한다 */
+            const LANDING_REVEAL_DEADLINE_MS = 2200;
 
             const showLoginButtons = () => {
                 if (landingLoginOptions) {
@@ -1581,27 +1589,61 @@ initAuth(async (user) => {
                     requestAnimationFrame(() => {
                         landingLoginOptions.classList.add('landing-options-visible');
                     });
+                    /*
+                     * 페이드(opacity 0→1)는 rAF와 transition이 살아 있을 때만 진행된다.
+                     * 그 사슬이 끊기면 landing-options-visible을 붙여도 계산값이 0에 멈춰
+                     * 버튼이 "있지만 안 보이는" 상태가 된다. Tailwind opacity-0 자체를
+                     * 걷어내 최종값 1을 확정한다 — transition이 살아 있으면 페이드는 그대로.
+                     */
+                    setTimeout(() => {
+                        landingLoginOptions.classList.add('landing-options-visible');
+                        landingLoginOptions.classList.remove('opacity-0');
+                    }, 60);
+                    /*
+                     * 클래스를 다 정리해도 transition 자체가 진행되지 않는 환경이면
+                     * 계산값이 0에 멈춘 채로 남는다. 페이드 시간이 충분히 지난 뒤에도
+                     * 0이면 그때만 transition을 끊고 최종값을 못박는다(정상 경로는 무개입).
+                     */
+                    setTimeout(() => {
+                        if (getComputedStyle(landingLoginOptions).opacity !== '0') return;
+                        landingLoginOptions.style.transition = 'none';
+                        landingLoginOptions.style.opacity = '1';
+                    }, 1200);
                 }
                 showLandingAppPromo();
                 loadAndShowLoginBanner();
             };
 
-            const runLandingTitleRise = () => {
+            /*
+             * 로그인 버튼 노출은 rAF 2단 + transitionend에 걸려 있었다. 백그라운드 탭·
+             * 저사양 기기·transition 미발화 등으로 그 사슬이 한 번만 끊겨도 버튼이 영영
+             * 안 뜨고 딥민트 배경만 남는다("초록 화면"). 어떤 경로로 끝나든 최종 상태로
+             * 수렴하도록, 연출과 무관한 데드라인을 따로 건다.
+             */
+            let landingRevealed = false;
+            const revealLoginNow = () => {
+                if (landingRevealed) return;
+                landingRevealed = true;
                 const titleEl = document.getElementById('landingSplashTitleAndTagline');
-                if (!landingPage || !titleEl) {
-                    landingPage?.classList.add('landing-buttons-visible');
-                    showLoginButtons();
-                    return;
-                }
-
-                const applyFinalLandingLayout = () => {
+                if (titleEl) {
                     titleEl.style.transition = 'none';
-                    landingPage.classList.add('landing-buttons-visible');
-                    landingPage.classList.remove('landing-rising');
                     titleEl.classList.remove('landing-title-rising');
                     titleEl.style.transform = '';
                     titleEl.style.willChange = '';
-                };
+                }
+                landingPage?.classList.add('landing-buttons-visible');
+                landingPage?.classList.remove('landing-rising');
+                showLoginButtons();
+            };
+            setTimeout(revealLoginNow, LANDING_REVEAL_DEADLINE_MS);
+
+            const runLandingTitleRise = () => {
+                const titleEl = document.getElementById('landingSplashTitleAndTagline');
+                if (!landingPage || !titleEl) {
+                    revealLoginNow();
+                    return;
+                }
+                if (landingRevealed) return; /* 데드라인이 이미 최종 상태로 끝냈다 */
 
                 requestAnimationFrame(() => {
                     const fromTop = titleEl.getBoundingClientRect().top;
@@ -1614,8 +1656,7 @@ initAuth(async (user) => {
                     if (shiftY > 0) shiftY = 0;
 
                     if (!Number.isFinite(shiftY) || Math.abs(shiftY) < 2) {
-                        applyFinalLandingLayout();
-                        showLoginButtons();
+                        revealLoginNow();
                         return;
                     }
 
@@ -1628,13 +1669,9 @@ initAuth(async (user) => {
                         titleEl.style.transition = `transform ${LANDING_RISE_MS}ms cubic-bezier(0.25, 0.85, 0.35, 1)`;
                         titleEl.style.transform = `translate3d(0, ${shiftY}px, 0)`;
 
-                        let done = false;
                         const finish = () => {
-                            if (done) return;
-                            done = true;
                             titleEl.removeEventListener('transitionend', onTransitionEnd);
-                            applyFinalLandingLayout();
-                            showLoginButtons();
+                            revealLoginNow();
                         };
                         const onTransitionEnd = (e) => {
                             if (e.target !== titleEl || e.propertyName !== 'transform') return;

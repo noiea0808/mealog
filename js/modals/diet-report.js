@@ -21,6 +21,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 
@@ -46,15 +47,13 @@ const DIET_REPORT_SHARE_PHOTO_THUMB_PX = 118;
 const DIET_REPORT_SHARE_PHOTO_GAP_PX = 8;
 /**
  * html2canvas는 flex/vertical-align 중앙 정렬을 LIVE DOM과 다르게 그림.
- * 인라인 style + 캡처 직전 DOM + onclone 삼중 보정(일간 공유 Ghost Hack과 동일 계열).
+ * 이 오프셋들은 그 오차를 상쇄하는 값이라 **html2canvas 폴백 경로에서만** 적용한다
+ * (applyDietReportCaptureAlignFix, onclone 시점). 기본 엔진(snapdom)은 브라우저가
+ * 직접 그리므로 보정 없이 정렬이 맞는다 — 정적 HTML 에는 오프셋을 넣지 않는다.
  */
 const DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX = 4;
 const DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX = 12;
 const DIET_REPORT_CAPTURE_MOOD_GAP_PX = 8;
-
-function dietReportCaptureYOffsetStyle(px) {
-    return `position:relative;top:${px}px;`;
-}
 
 /** pill — 고정 height/inner-flex 금지(html2canvas에서 텍스트가 박스 밖으로 사라짐). 패딩+line-height:1만 사용 */
 function buildDietReportCapturePillStyle(padding, colors) {
@@ -495,10 +494,12 @@ async function runRegenerate(dateStr) {
     } catch (e) {
         console.error('regenerateDietReport failed', e);
         const msg = e?.message || String(e);
-        if (msg.includes('resource-exhausted')) {
-            showToast('방금 분석했어요. 잠시 후 다시 시도해 주세요.', 'info');
-        } else if (msg.includes('failed-precondition')) {
-            showToast('분석 조건을 확인해 주세요.', 'info');
+        // callable 에러는 코드가 e.code('functions/...'), 서버 안내문이 e.message 로 온다.
+        const code = `${e?.code || ''} ${msg}`;
+        if (code.includes('resource-exhausted')) {
+            showToast(msg || '방금 분석했어요. 잠시 후 다시 시도해 주세요.', 'info');
+        } else if (code.includes('failed-precondition')) {
+            showToast(msg || '분석 조건을 확인해 주세요.', 'info');
         } else {
             showToast('AI 분석에 실패했습니다.', 'error');
         }
@@ -577,47 +578,12 @@ export function closeDietReportModal() {
     setModalVisible(false);
 }
 
-async function resolveCaptureImageDataUrl(img) {
-    if (img.src.includes('firebasestorage.googleapis.com')) {
-        const result = await callableFunctions.getStorageImageAsBase64({ imageUrl: img.src });
-        return result?.data?.dataUrl || null;
-    }
-    const res = await fetch(img.src, { mode: 'cors' });
-    const blob = await res.blob();
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-    });
-}
-
-function applyDataUrlToCaptureImage(img, dataUrl) {
-    return new Promise((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('이미지 로드 실패'));
-        img.src = dataUrl;
-        if (img.complete && img.naturalWidth > 0) resolve();
-    });
-}
-
 /** Firebase Storage URL → base64 (html2canvas CORS taint 방지) — 사진 병렬 변환 */
 async function hydrateCaptureImagesAsBase64(root) {
-    if (!root) return;
-    const imgs = [...root.querySelectorAll('img[src^="http"]')];
-    await Promise.all(
-        imgs.map(async (img) => {
-            try {
-                const dataUrl = await resolveCaptureImageDataUrl(img);
-                if (!dataUrl) return;
-                await applyDataUrlToCaptureImage(img, dataUrl);
-            } catch (e) {
-                console.warn('diet report share image base64 failed:', e);
-            }
-        })
-    );
+    await inlineImagesForCapture(root, 'diet-report');
 }
 
-/** html2canvas 캡처 대상 — mood 외부 위치만 보정 (pill 내부는 패딩으로 처리) */
+/** html2canvas **폴백 전용** 정렬 보정 — snapdom 경로에서는 호출하면 안 된다(역방향으로 틀어짐) */
 function applyDietReportCaptureAlignFix(root) {
     if (!root?.querySelector) return;
 
@@ -626,6 +592,8 @@ function applyDietReportCaptureAlignFix(root) {
         badge.style.display = 'inline-block';
         badge.style.lineHeight = '1';
         badge.style.padding = '4px 12px';
+        const badgeCell = badge.closest('td');
+        if (badgeCell) badgeCell.style.padding = `${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px`;
     }
 
     const mood = root.querySelector('[data-diet-report-capture-mood]');
@@ -660,7 +628,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const moodColors =
         'font-size:12px;font-weight:700;background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;';
     const moodPill = mood
-        ? `<span data-diet-report-capture-mood="1" style="${dietReportCaptureYOffsetStyle(DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX)}margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
+        ? `<span data-diet-report-capture-mood="1" style="margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
         : '';
     const scoreSpan = hasScore
         ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
@@ -704,7 +672,7 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
             <div style="min-width:0;white-space:nowrap;line-height:1;overflow:visible;">
                 <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border-spacing:0;width:auto;display:inline-table;"><tr>
                     <td style="vertical-align:middle;padding:0;line-height:1;"><span style="display:inline-block;font-size:26px;font-weight:600;color:#3cb889;font-family:'Fredoka',sans-serif;letter-spacing:-0.5px;line-height:1.15;">mealog</span></td>
-                    <td style="vertical-align:middle;padding:${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px;line-height:1;">${buildDietReportShareCaptureBadgeHtml()}</td>
+                    <td style="vertical-align:middle;padding:0 0 0 10px;line-height:1;">${buildDietReportShareCaptureBadgeHtml()}</td>
                 </tr></table>
             </div>
             <span style="font-size:12px;color:#64748b;line-height:1.35;flex-shrink:0;text-align:right;">${e(dateLabel)}</span>
@@ -754,11 +722,10 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
             document.fonts.ready
         ]);
 
-        applyDietReportCaptureAlignFix(target);
-
         return await captureWithGhostStrategy(target, {
             captureWidth: 420,
             scale: DIET_REPORT_SHARE_CAPTURE_SCALE,
+            // html2canvas 폴백 전용 — 폰트 주입 + 정렬 오차 상쇄 (snapdom 경로에서는 미호출)
             onclone: (clonedDoc) => {
                 if (fontCSS) {
                     const style = clonedDoc.createElement('style');

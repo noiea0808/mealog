@@ -335,7 +335,14 @@ const APPCHECK_FORCE_MIN_INTERVAL_MS = 4000;
  * @param {{ force?: boolean }} [opts] — permission-denied 재시도 시 `force: true` 권장
  */
 export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
-    await appCheckInitPromise;
+    /**
+     * 초기화 대기에도 상한이 필요하다. 예전에는 여기가 무제한 `await` 였고, 호출부인
+     * `preflightFirestoreAuth` 가 같은 프라미스에 2초 상한을 따로 걸어 두고 있었다 —
+     * 그 상한은 **아무것도 보호하지 못했다.** 바로 다음 줄에서 이 함수가 같은 것을 상한 없이
+     * 다시 기다렸기 때문이다. 게다가 이 함수는 저장 경로 밖에서도 20곳 가까이 직접 await 되므로,
+     * 보호는 호출부가 아니라 여기 있어야 한다.
+     */
+    await withDeadlineOr(appCheckInitPromise, DEADLINE.PREFLIGHT, undefined, 'appcheck-init-wait');
     if (!firebaseAppCheck || typeof window === 'undefined') return;
     try {
         const { getToken } = await import('https://www.gstatic.com/firebasejs/11.10.0/firebase-app-check.js');
@@ -376,12 +383,24 @@ export async function refreshAppCheckTokenBeforeFirestore(opts = {}) {
 export async function preflightFirestoreAuth(user, opts = {}) {
     const force = opts.force === true;
     const u = user || auth.currentUser;
-    if (u && typeof u.getIdToken === 'function') {
-        const token = await withDeadlineOr(u.getIdToken(force), DEADLINE.PREFLIGHT, null, 'preflight-idtoken');
-        noteIdTokenResult(!!token);
-    }
-    await withDeadlineOr(appCheckInitPromise, DEADLINE.PREFLIGHT, undefined, 'preflight-appcheck-init');
-    await refreshAppCheckTokenBeforeFirestore({ force });
+
+    /**
+     * **두 갱신을 나란히 돌린다.** 서로 의존하지 않는데 직렬로 두면 각자의 2초 상한이 그대로
+     * 더해져, 둘 다 상한을 채우는 콜드 스타트에서 사용자가 4초를 기다린다. 실측이 정확히 그랬다 —
+     * 첫 저장의 `save.preflight.done` 이 4003ms 였고, 그 사이 `preflight-idtoken`(2000ms)과
+     * `appcheck-token`(2000ms) 이 2.000초 간격으로 차례로 발화했다.
+     *
+     * `appCheckInitPromise` 대기는 여기서 따로 걸지 않는다. 아래 함수가 첫 줄에서 같은 프라미스를
+     * 상한과 함께 기다리므로, 여기서 한 번 더 기다리면 중복일 뿐이다.
+     */
+    await Promise.all([
+        (async () => {
+            if (!u || typeof u.getIdToken !== 'function') return;
+            const token = await withDeadlineOr(u.getIdToken(force), DEADLINE.PREFLIGHT, null, 'preflight-idtoken');
+            noteIdTokenResult(!!token);
+        })(),
+        refreshAppCheckTokenBeforeFirestore({ force })
+    ]);
 }
 
 /**

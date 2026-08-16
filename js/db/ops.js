@@ -35,6 +35,7 @@ import { logger } from '../utils.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { clearLoadedMealsRanges } from '../utils/loaded-meals-range.js';
+import { stripGateRegressions } from '../utils/settings-gate-guard.js';
 import { diag, markSavePhase, getSavePhase } from '../utils/diagnostics.js';
 
 /**
@@ -548,7 +549,24 @@ export const dbOps = {
             if (existingSettings.email && !newSettings.email) {
                 settingsToSave.email = existingSettings.email;
             }
-            
+
+            /**
+             * 게이트 필드 되돌림 방지 — 완료 상태를 기본값 스냅샷이 덮지 못하게 한다.
+             * 판정 근거와 배경은 settings-gate-guard.js 주석에 있다.
+             */
+            const existingReadFailed = !existingDoc;
+            const strippedGateKeys = stripGateRegressions(settingsToSave, existingSettings, existingReadFailed);
+            if (strippedGateKeys.length > 0) {
+                console.warn('⚠️ 설정 저장: 게이트 필드 되돌림을 막았습니다', {
+                    stripped: strippedGateKeys,
+                    existingReadFailed
+                });
+                diag('settings.gateRegressionBlocked', {
+                    keys: strippedGateKeys.join(','),
+                    readFailed: existingReadFailed
+                });
+            }
+
             const settingsPath = `artifacts/${appId}/users/${currentUser.uid}/config/settings`;
             console.log('💾 설정 저장 시도:', { 
                 userId: currentUser.uid, 

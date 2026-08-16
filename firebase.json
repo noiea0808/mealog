@@ -13,6 +13,9 @@
     "rules": "storage.rules"
   },
   "hosting": {
+    "predeploy": [
+      "node scripts/verify-deploy-config.js"
+    ],
     "public": ".",
     "ignore": [
       "firebase.json",
@@ -21,6 +24,10 @@
       "android/**",
       "scripts/**",
       "functions/**",
+      "tools/**",
+      "config/**",
+      "dev/**",
+      "test/**",
       "www/**",
       "docs/*.md",
       "*.md",
@@ -28,15 +35,11 @@
       "*.bat",
       "*.rules",
       "firestore.indexes.json",
-      "storage-cors.json",
       "capacitor.config*.json",
-      "production-release.json",
       "package.json",
       "package-lock.json",
       "tailwind.config.js",
-      "eslint.config.mjs",
-      "test-error-reporting.js",
-      "generate-characters.html"
+      "eslint.config.mjs"
     ]
   }
 }

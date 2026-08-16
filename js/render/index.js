@@ -59,6 +59,7 @@ export { renderFeed, toggleFeedComment } from './feed.js';
 // 나머지 함수들은 render.js에서 re-export
 export {
     renderPhotoPreviews,
+    renderPhotoProcessingPlaceholders,
     clampRecordPhotoHeroIndex,
     toggleComment,
     renderTagManager

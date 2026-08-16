@@ -32,6 +32,14 @@ import {
 } from './utils.js';
 import { SLOTS } from '../constants.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
+import {
+    writeDashboardUserDrilldown,
+    markDashboardDrilldownCell,
+    markDashboardDrilldownHeader,
+    clearDashboardDrilldownCell,
+    ensureDashboardDrilldownBinding,
+    setDashboardDrilldownWeekKeys
+} from './dashboard-user-drilldown.js';
 
 /** 대시보드 주간 통계 시작일 (admin.js ADMIN_OPS_START 와 동일) */
 const DASHBOARD_STATS_RANGE_START = new Date(2026, 2, 8);
@@ -780,6 +788,32 @@ function expandWeeklyValuesForTrend(vals, monthGroups, rowKey, activeUsersMonthU
     return out;
 }
 
+/**
+ * expandWeeklyValuesForTrend 결과와 같은 순서로 각 칸이 가리키는 기간 서술
+ * (월 선두 칸 = 그 달의 주차 전부, 나머지 = 주차 1개)
+ */
+function buildTrendColumnDescriptors(weeks, monthGroups) {
+    const out = [];
+    if (!weeks?.length || !monthGroups?.length) return out;
+    for (const g of monthGroups) {
+        const keys = [];
+        for (let k = 0; k < g.span; k++) {
+            const sk = weeks[g.startWeekIndex + k]?.sundayKey;
+            if (sk) keys.push(sk);
+        }
+        out.push({ scope: 'month', keys, label: `${weeks[g.startWeekIndex]?.year ?? ''} ${g.label}`.trim() });
+        for (let k = 0; k < g.span; k++) {
+            const w = weeks[g.startWeekIndex + k];
+            out.push({
+                scope: 'week',
+                keys: w?.sundayKey ? [w.sundayKey] : [],
+                label: String(w?.label || '').replace(/\n/g, ' ')
+            });
+        }
+    }
+    return out;
+}
+
 /** expandWeeklyValuesForTrend 결과에서 월 선두 칸(합계/유니크) 인덱스 */
 function monthLeadColumnFlags(monthGroups, expandedLength) {
     if (!monthGroups?.length || !Number.isFinite(expandedLength)) return null;
@@ -838,6 +872,14 @@ function syncAdminDashboardWeekLayout(weeklyBreakdown) {
             'js-dash-month-th px-2 py-1.5 font-black text-slate-700 uppercase text-center text-xs tracking-wide border-b border-slate-200 bg-slate-50';
         th.colSpan = g.span + 1;
         th.textContent = g.label;
+        // 월 헤더 클릭 → 그 달의 주차별 출석 표 (지속·이탈 확인용)
+        markDashboardDrilldownHeader(th, {
+            scope: 'month',
+            keys: Array.from({ length: g.span }, (_, k) => weeks[g.startWeekIndex + k]?.sundayKey).filter(
+                Boolean
+            ),
+            label: `${weeks[g.startWeekIndex]?.year ?? ''} ${g.label}`.trim()
+        });
         row1.insertBefore(th, head7d);
     }
 
@@ -898,8 +940,12 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
         Array.isArray(activeUsersMonthUnique) &&
         monthGroups &&
         activeUsersMonthUnique.length === monthGroups.length;
+    // 코호트 표는 클릭한 칸이 아니라 전 구간을 본다
+    setDashboardDrilldownWeekKeys((weeklyBreakdown?.weeks || []).map((w) => w.sundayKey));
+    const columnDescriptors = buildTrendColumnDescriptors(weeklyBreakdown?.weeks, monthGroups);
     document.querySelectorAll('tr[data-dash-week-row]').forEach((tr) => {
         const key = tr.getAttribute('data-dash-week-row');
+        const drillable = key === 'newUsers' || key === 'activeUsers';
         const vals = weeklyValuesForRow(key, weeklyBreakdown);
         const expanded =
             monthGroups && monthGroups.length
@@ -932,6 +978,18 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
             } else {
                 td.textContent = '—';
                 td.title = '「새로고침」으로 주간 집계';
+            }
+            const desc = drillable ? columnDescriptors[i] : null;
+            if (desc) {
+                markDashboardDrilldownCell(td, {
+                    kind: key,
+                    scope: desc.scope,
+                    keys: desc.keys,
+                    label: desc.label,
+                    count: Number(v) || 0
+                });
+            } else {
+                clearDashboardDrilldownCell(td);
             }
         });
     });
@@ -1150,6 +1208,22 @@ export async function getUserStatistics() {
         const activeSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
         const sharedSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
 
+        // 트렌드 표 드릴다운(명단 팝업)용 — 숫자와 같은 집합에서 뽑아야 표와 명단이 어긋나지 않는다
+        const newUserSetsByDay = Array.from({ length: 7 }, () => new Set());
+        const newUserSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
+        const newUserSetAll = new Set();
+        /** uid → 가입일(YYYY-MM-DD). createdAt이 없는 사용자는 '' */
+        const joinKeyByUid = new Map();
+        /**
+         * 출석 표 칸에 넣을 「얼마나 썼나」. 활성 여부(●)만으로는 주 1회와 매일 쓰는 사람이
+         * 똑같이 보여서, 강도가 줄어드는 이탈 전조가 안 보인다.
+         * - 주차: 기록 일수 (uid → 그 주에 기록이 있던 날짜 Set → 크기)
+         * - 일자: 기록 건수 (하루는 0/1뿐이라 일수가 의미 없다)
+         * 활성 사용자 정의와 같게 끼니 기록(meals)만 센다 — 하루기록은 activeSets에도 안 들어간다.
+         */
+        const weekDaySetsByUid = Array.from({ length: nWeeks }, () => new Map());
+        const dayRecordCountsByUid = Array.from({ length: 7 }, () => new Map());
+
         const inPeriod = (dateOnly, period) => {
             if (!dateOnly) return false;
             if (period === 'today') return dateOnly.getTime() >= todayStart.getTime();
@@ -1234,6 +1308,12 @@ export async function getUserStatistics() {
             if (wi >= 0) {
                 recordsByWeek[wi]++;
                 activeSetsByWeek[wi].add(uid);
+                let days = weekDaySetsByUid[wi].get(uid);
+                if (!days) {
+                    days = new Set();
+                    weekDaySetsByUid[wi].set(uid, days);
+                }
+                days.add(dateStr);
             }
 
             if (dateStr === todayStr) {
@@ -1246,6 +1326,7 @@ export async function getUserStatistics() {
                 if (rdi != null && rdi >= 0) {
                     recordsByDay[rdi]++;
                     activeSetsByDay[rdi].add(uid);
+                    dayRecordCountsByUid[rdi].set(uid, (dayRecordCountsByUid[rdi].get(uid) || 0) + 1);
                 }
                 activeUserSets.last7.add(uid);
             }
@@ -1338,14 +1419,24 @@ export async function getUserStatistics() {
             }
             if (createdAt) {
                 const createdDateOnly = new Date(createdAt.getFullYear(), createdAt.getMonth(), createdAt.getDate());
+                const ck = dateKeyFromLocalDate(createdDateOnly);
+                joinKeyByUid.set(userDoc.id, ck || '');
+                newUserSetAll.add(userDoc.id);
                 stats.newUsers.all++;
                 if (inPeriod(createdDateOnly, 'today')) stats.newUsers.today++;
                 if (inPeriod(createdDateOnly, 'last7')) stats.newUsers.last7++;
                 const ndi = last7DayIndex(createdDateOnly);
-                if (ndi >= 0) newUsersByDay[ndi]++;
-                const ck = dateKeyFromLocalDate(createdDateOnly);
+                if (ndi >= 0) {
+                    newUsersByDay[ndi]++;
+                    newUserSetsByDay[ndi].add(userDoc.id);
+                }
                 const wi = ck ? weekIndexForDateKeyStr(ck, sundayKeyToIndex) : -1;
-                if (wi >= 0) newUsersByWeek[wi]++;
+                if (wi >= 0) {
+                    newUsersByWeek[wi]++;
+                    newUserSetsByWeek[wi].add(userDoc.id);
+                }
+            } else {
+                joinKeyByUid.set(userDoc.id, '');
             }
         });
         stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
@@ -1454,6 +1545,36 @@ export async function getUserStatistics() {
                   })()
                 : null;
 
+        // 드릴다운 명단(UID) — 캐시 본문(payload)에는 넣지 않고 drilldown 하위 문서로만 저장한다
+        stats.userSets = {
+            weeks: weekMetas.map((w, i) => ({
+                sundayKey: w.sundayKey,
+                active: [...activeSetsByWeek[i]],
+                new: [...newUserSetsByWeek[i]],
+                // uid → 그 주 기록 일수
+                dayCounts: Object.fromEntries([...weekDaySetsByUid[i]].map(([u, s]) => [u, s.size]))
+            })),
+            last7: {
+                dates: last7DateKeys,
+                byDate: Object.fromEntries(
+                    last7DateKeys.map((k, i) => [
+                        k,
+                        {
+                            active: [...activeSetsByDay[i]],
+                            new: [...newUserSetsByDay[i]],
+                            // uid → 그날 기록 건수 (하루는 0/1뿐이라 일수 대신 건수)
+                            counts: Object.fromEntries(dayRecordCountsByUid[i])
+                        }
+                    ])
+                )
+            },
+            all: {
+                active: [...activeUserSets.all],
+                new: [...newUserSetAll],
+                joinKeys: Object.fromEntries(joinKeyByUid)
+            }
+        };
+
         console.log('📊 대시보드 통계(최적화 집계):', stats);
         return stats;
     } catch (e) {
@@ -1478,6 +1599,53 @@ export async function getSharedPhotos(pageSize = 100) {
     } catch (e) {
         console.error("Get shared photos error:", e);
         throw e;
+    }
+}
+
+/**
+ * 주차 칸 밖의 고정 칸(전체·7일 합·7일 일별)에도 명단 드릴다운을 단다.
+ * 주차 칸은 fillAdminDashboardWeeklyCells에서 처리한다.
+ */
+function markFixedUserDrilldownCells(stats, bd) {
+    const rows = [
+        { kind: 'newUsers', allId: 'statNewUsersAll', sumId: 'statNewUsers7Sum', dayPrefix: 'statNewUsers7d' },
+        { kind: 'activeUsers', allId: 'statActiveUsersAll', sumId: 'statActiveUsers7Sum', dayPrefix: 'statActiveUsers7d' }
+    ];
+    for (const r of rows) {
+        const stat = r.kind === 'newUsers' ? stats?.newUsers : stats?.activeUsers;
+        markDashboardDrilldownCell(document.getElementById(r.allId), {
+            kind: r.kind,
+            scope: 'all',
+            keys: ['all'],
+            label: '전체 기간',
+            count: Number(stat?.all) || 0
+        });
+        markDashboardDrilldownCell(document.getElementById(r.sumId), {
+            kind: r.kind,
+            scope: 'last7',
+            keys: ['last7'],
+            label: '최근 7일',
+            count: Number(stat?.last7) || 0
+        });
+        const dailyVals = r.kind === 'newUsers' ? bd?.newUsers : bd?.activeUsers;
+        for (let i = 0; i < 7; i++) {
+            const td = document.getElementById(`${r.dayPrefix}${i}`);
+            const dk = bd?.dates?.[i];
+            markDashboardDrilldownCell(td, {
+                kind: r.kind,
+                scope: 'day',
+                keys: dk ? [dk] : [],
+                label: dk || '',
+                count: Number(dailyVals?.[i]) || 0
+            });
+        }
+    }
+    // 「최근 7일」 헤더 클릭 → 일자별 출석 표
+    const head7d = document.getElementById('dashboardHead7dTop');
+    if (head7d && bd?.dates?.length === 7) {
+        markDashboardDrilldownHeader(head7d, { scope: 'last7', keys: bd.dates, label: '최근 7일' });
+    } else if (head7d) {
+        clearDashboardDrilldownCell(head7d);
     }
 }
 
@@ -1538,6 +1706,9 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
             }
         });
     }
+    markFixedUserDrilldownCells(stats, bd);
+    ensureDashboardDrilldownBinding();
+
     const label = document.getElementById('dashboardStatsUpdatedAt');
     if (label) {
         if (updatedAt) {
@@ -1669,6 +1840,13 @@ export async function refreshDashboardStats() {
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
+                // 명단(UID)은 본문 문서가 1MB 한계로 커지지 않도록 drilldown 하위 문서에 나눠 저장.
+                // 실패해도 숫자 통계는 이미 저장됐으므로 새로고침 전체를 실패로 만들지 않는다.
+                try {
+                    await writeDashboardUserDrilldown(stats.userSets);
+                } catch (drillErr) {
+                    console.warn('[대시보드] 사용자 명단 캐시 저장 실패:', drillErr?.message || drillErr);
+                }
                 let pageUsageToShow = pageUsage;
                 try {
                     const verified = await getDocFromServer(DASHBOARD_STATS_REF());
