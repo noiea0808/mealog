@@ -21,6 +21,7 @@ export function normalizeAiMealReportFields(obj) {
     }
     return {
         score: normalizeScore(obj.score),
+        lens: clipField(obj.lens),
         mood: clipField(obj.mood),
         title: clipField(obj.title),
         summary: clipField(obj.summary),
@@ -172,16 +173,18 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
             </div>`
         : '';
 
+    // highlight는 "잘한 점"이 아니라 그날 고른 렌즈로 본 관찰,
+    // nudge는 조언이 아니라 알아봐 주는 한마디다. 라벨·색이 평가처럼 읽히지 않게 한다.
     const highlightBlock = highlight
         ? `<div class="rounded-lg bg-emerald-50/90 border border-emerald-100/90 px-3 py-2.5">
-                <p class="text-[11px] font-bold text-emerald-800 mb-1">좋았던 흐름</p>
+                <p class="text-[11px] font-bold text-emerald-800 mb-1">오늘 눈에 띈 것</p>
                 <p class="text-sm text-slate-800 leading-normal">${esc(highlight)}</p>
             </div>`
         : '';
 
     const nudgeBlock = nudge
-        ? `<div class="rounded-lg bg-amber-50/90 border border-amber-100/90 px-3 py-2.5">
-                <p class="text-[11px] font-bold text-amber-900 mb-1">내일의 힌트</p>
+        ? `<div class="rounded-lg bg-violet-50/90 border border-violet-100/90 px-3 py-2.5">
+                <p class="text-[11px] font-bold text-violet-900 mb-1">밀로그의 한마디</p>
                 <p class="text-sm text-slate-800 leading-normal">${esc(nudge)}</p>
             </div>`
         : '';

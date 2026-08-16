@@ -654,10 +654,10 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         ? `<div><div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">오늘의 식사 흐름</div><div style="font-size:13.5px;color:#334155;line-height:1.5;">${e(summary)}</div></div>`
         : '';
     const highlightHtml = highlight
-        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
+        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">오늘 눈에 띈 것</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
         : '';
     const nudgeHtml = nudge
-        ? `<div style="border-radius:12px;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:3px;">내일의 힌트</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
+        ? `<div style="border-radius:12px;background:#f5f3ff;border:1px solid #ede9fe;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#5b21b6;margin-bottom:3px;">밀로그의 한마디</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
         : '';
 
     const urls = (photoUrls || []).filter(Boolean).slice(0, 3);

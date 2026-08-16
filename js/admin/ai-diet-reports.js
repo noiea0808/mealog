@@ -194,6 +194,28 @@ function fallbackNote(data) {
     return ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
 }
 
+/** 키 목록은 functions/index.js DIET_REPORT_LENSES · 프롬프트 [관찰 렌즈] 와 일치시킬 것 */
+const LENS_LABELS_KR = {
+    diet: '식단 구성',
+    company: '함께한 사람',
+    place: '장소',
+    rhythm: '시간 리듬',
+    feeling: '만족·포만',
+    words: '남긴 말',
+    habit: '기록 습관',
+    pattern: '이어지는 패턴'
+};
+
+/** 그날 어떤 축으로 봐 줬는지. 같은 렌즈만 반복되면 회전이 안 도는 것 */
+function lensBadge(data) {
+    const lens = String(data?.lens || '').trim();
+    if (!lens) {
+        return '<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">렌즈 없음</span>';
+    }
+    const label = LENS_LABELS_KR[lens] || lens;
+    return `<span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-[11px] font-bold" title="관찰 렌즈: ${escapeHtml(lens)}">${escapeHtml(label)}</span>`;
+}
+
 /**
  * 금지 주제(야채·과일·단백질 권유) 가드 결과.
  * 재생성으로 막았으면 회색, 재생성 후에도 남았으면 빨강 — 후자는 프롬프트를 손봐야 한다.
@@ -217,6 +239,7 @@ function contextBadges(data) {
     const off = (label) =>
         `<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">${escapeHtml(label)}</span>`;
     const bits = [
+        lensBadge(data),
         data?.hasProfileContext === true ? on('프로필') : off('프로필 없음'),
         data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음'),
         policyBadge(data)
