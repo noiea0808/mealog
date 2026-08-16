@@ -73,15 +73,42 @@ test('가입 구간은 marks.joined 로 표시된다', () => {
     );
 });
 
-test('정렬: 지속 → 중단(최근에 끊긴 순) → 기록 없음', () => {
-    const periods = [P('w1', ['keep', 'gap1', 'gap2']), P('w2', ['keep', 'gap2']), P('w3', ['keep'])];
-    const rows = ['keep', 'gap1', 'gap2', 'never'].map((u) =>
-        buildMatrixRow(u, periods, null, '2026-08-01', false)
-    );
+test('정렬: 가입이 오래된 사람부터 (상태와 무관)', () => {
+    const periods = [P('w1', ['old', 'mid']), P('w2', ['new'])];
+    const rows = [
+        buildMatrixRow('new', periods, null, '2026-08-09', true),
+        buildMatrixRow('old', periods, null, '2026-03-10', false),
+        buildMatrixRow('mid', periods, null, '2026-06-01', false)
+    ];
     assert.deepEqual(
         sortMatrixRows(rows).map((r) => r.uid),
-        ['keep', 'gap2', 'gap1', 'never'],
-        'gap2(1주째 없음)가 gap1(2주째 없음)보다 위 — 최근 이탈을 먼저 보여 준다'
+        ['old', 'mid', 'new'],
+        '「계속」인 new 가 위로 올라오면 안 된다 — 정렬 기준은 가입일뿐이다'
+    );
+});
+
+test('정렬: 가입일이 없는 사용자는 맨 아래 (빈 문자열이 최고참 행세를 못하게)', () => {
+    const periods = [P('w1', ['a', 'b'])];
+    const rows = [
+        buildMatrixRow('nojoin', periods, null, '', false),
+        buildMatrixRow('a', periods, null, '2026-05-01', false),
+        buildMatrixRow('b', periods, null, '2026-04-01', false)
+    ];
+    assert.deepEqual(
+        sortMatrixRows(rows).map((r) => r.uid),
+        ['b', 'a', 'nojoin']
+    );
+});
+
+test('정렬: 같은 날 가입은 닉네임순으로 안정되게', () => {
+    const periods = [P('w1', ['x', 'y'])];
+    const rows = [
+        buildMatrixRow('y', periods, { nickname: '나' }, '2026-08-01', false),
+        buildMatrixRow('x', periods, { nickname: '가' }, '2026-08-01', false)
+    ];
+    assert.deepEqual(
+        sortMatrixRows(rows).map((r) => r.uid),
+        ['x', 'y']
     );
 });
 

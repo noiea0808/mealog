@@ -376,6 +376,13 @@ function formatJoinKey(joinKey) {
     return p.length === 3 ? `${p[0].slice(2)}.${p[1]}.${p[2]} 가입` : String(joinKey);
 }
 
+/** 표의 좁은 열용 — '26.08.03' */
+function formatJoinKeyCompact(joinKey) {
+    if (!joinKey) return '—';
+    const p = String(joinKey).split('-');
+    return p.length === 3 ? `${p[0].slice(2)}.${p[1]}.${p[2]}` : String(joinKey);
+}
+
 export async function openDashboardUserDrilldown({ kind, scope, keys, label, shownCount = 0, view = 'list' }) {
     const modal = document.getElementById('dashboardUserListModal');
     if (!modal) return;
@@ -602,6 +609,7 @@ export function buildMatrixTableHtml(periods, rows, unit) {
                             ${badge}
                         </span>
                     </td>
+                    <td class="px-2 py-1.5 text-center text-[10px] text-slate-500 tabular-nums whitespace-nowrap" title="${escapeHtml(formatJoinKey(r.joinKey))}">${escapeHtml(formatJoinKeyCompact(r.joinKey))}</td>
                     ${cells}
                     <td class="px-2 py-1.5 text-center text-[10px] text-slate-500 tabular-nums">${r.activeCount}/${periods.length}</td>
                     <td class="px-2 py-1.5 text-center">${statusCellHtml(r, unit)}</td>
@@ -616,6 +624,7 @@ export function buildMatrixTableHtml(periods, rows, unit) {
                     <tr class="border-b border-slate-200">
                         <th class="px-2 py-1.5"></th>
                         <th class="px-2 py-1.5 text-left font-bold text-slate-600 text-[10px] sticky left-0 z-10 bg-slate-50">사용자</th>
+                        <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">가입일</th>
                         ${headCells}
                         <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">활동</th>
                         <th class="px-2 py-1.5 text-center font-bold text-slate-600 text-[10px] whitespace-nowrap">상태</th>

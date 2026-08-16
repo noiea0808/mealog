@@ -51,14 +51,19 @@ export function buildMatrixRow(uid, periods, profile, joinKey, isNew) {
     };
 }
 
-/** 계속 쓰는 사람 → 끊긴 사람(최근에 끊긴 순) → 한 번도 안 쓴 사람 */
+/**
+ * 가입 순서(오래된 사람부터). 위에서부터 읽으면 「초기 사용자 중 몇 명이나 남았나」가 보인다.
+ *
+ * 가입일이 없는 사용자(createdAt 누락)는 맨 아래로 보낸다 — 빈 문자열은 어떤 날짜보다도
+ * 앞서 정렬되므로, 그대로 두면 정보가 없는 행이 제일 오래된 사용자인 척 맨 위를 차지한다.
+ */
 export function sortMatrixRows(rows) {
-    const rank = { kept: 0, gap: 1, none: 2 };
     return [...(rows || [])].sort((a, b) => {
-        if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
-        if (a.status === 'kept') return b.activeCount - a.activeCount;
-        if (a.status === 'gap') return a.gap - b.gap || b.activeCount - a.activeCount;
-        return String(b.joinKey).localeCompare(String(a.joinKey));
+        const ak = String(a.joinKey || '');
+        const bk = String(b.joinKey || '');
+        if (!ak !== !bk) return ak ? -1 : 1;
+        if (ak !== bk) return ak.localeCompare(bk);
+        return String(a.nickname || '').localeCompare(String(b.nickname || ''), 'ko');
     });
 }
 
