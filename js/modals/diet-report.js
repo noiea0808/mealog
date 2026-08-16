@@ -353,11 +353,17 @@ function setFooterButtons({ regen = false, share = false, regenLabel = '다시 �
 function renderLoading(mode = 'fetch') {
     const body = document.getElementById('dietReportModalBody');
     if (!body) return;
-    const label = mode === 'writing' ? '리포트 작성중' : '리포트 불러오는 중…';
+    const writing = mode === 'writing';
+    const label = writing ? '리포트 작성중' : '리포트 불러오는 중…';
+    // 사진까지 함께 분석하므로 재생성은 10~20초쯤 걸린다. 빈 화면처럼 보이지 않게 안내를 둔다.
+    const hint = writing
+        ? '<p class="text-xs text-slate-400 mt-1.5">사진까지 함께 살펴보는 중이라 조금 걸려요</p>'
+        : '';
     body.innerHTML = `
-        <div class="flex flex-col items-center justify-center py-10 text-slate-400">
-            <i data-lucide="loader-circle" class="text-2xl mb-3 lucide-spin" aria-hidden="true"></i>
+        <div class="flex flex-col items-center justify-center py-10" role="status" aria-live="polite">
+            <span class="mealog-spinner mb-3" aria-hidden="true"></span>
             <p class="text-sm font-bold text-slate-500">${label}</p>
+            ${hint}
         </div>`;
     _currentReport = null;
     _currentReportDoc = null;
@@ -397,6 +403,8 @@ function renderEmpty(dateStr, mealCount) {
     document.getElementById('dietReportAnalyzeNowBtn')?.addEventListener('click', () => {
         void runRegenerate(dateStr);
     });
+    // 전역 옵저버가 없어서 이 호출을 빼면 sparkles 아이콘이 그려지지 않는다.
+    scheduleLucideIcons(body);
     _currentReport = null;
     _currentReportDoc = null;
     clearSnsShareBlobCache();

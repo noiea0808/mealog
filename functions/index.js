@@ -6628,6 +6628,55 @@ async function buildDietRecentTrendBlock(uid, dateStr) {
   }
 }
 
+// -------------------------------------------------------------------------
+// 금지 주제 가드 — "야채·과일 얘기 하지 마라"는 프롬프트만으로는 새어 나온다.
+// 프롬프트가 막는 건 표현이고, 모델은 완곡하게 바꿔서 같은 말을 한다.
+// 여기서 잡아 1회 재생성시키고, 그래도 새면 policyViolation 으로 남긴다.
+// -------------------------------------------------------------------------
+
+/** 검사 대상 필드 — 사용자에게 문장으로 보이는 것만 */
+const DIET_POLICY_FIELDS = ['mood', 'title', 'summary', 'highlight', 'nudge'];
+
+/** 영양소 소재. 이 자체는 위반이 아니다(먹은 걸 사실로 말할 수 있어야 한다) */
+const DIET_POLICY_NUTRIENT_RE = /채소|야채|샐러드|과일|단백질|비타민|식이섬유|영양소|영양\s*균형|칼로리/;
+
+/**
+ * "더 먹어라" 신호. 소재 + 이 신호가 같은 필드에 있을 때만 위반으로 본다.
+ * (먹은 것을 서술하는 "샐러드로 점심을 챙긴 건 좋았어요"를 오탐하지 않기 위함)
+ */
+const DIET_POLICY_STRONG_RE = /부족|보충|늘리|늘려|채워|섭취|신경\s*써|의식적|보완/;
+/** nudge는 조언 필드라 제안형 어미까지 넓게 잡는다 */
+const DIET_POLICY_NUDGE_RE = /곁들|더하|더해|추가|챙기|챙겨|드셔|먹어\s*보|넣어\s*보/;
+
+/** 위반 필드명 배열. 없으면 빈 배열 */
+function detectDietPolicyViolation(responseText) {
+  const parsed = parseDietReportResponseJson(responseText);
+  if (!parsed) return [];
+  const hits = [];
+  for (const field of DIET_POLICY_FIELDS) {
+    const v = typeof parsed[field] === 'string' ? parsed[field] : '';
+    if (!v || !DIET_POLICY_NUTRIENT_RE.test(v)) continue;
+    const suggestive =
+      DIET_POLICY_STRONG_RE.test(v) || (field === 'nudge' && DIET_POLICY_NUDGE_RE.test(v));
+    if (suggestive) hits.push(field);
+  }
+  return hits;
+}
+
+/** 재생성 시 프롬프트 뒤에 덧붙일 교정 지시 */
+function buildDietPolicyCorrection(violatedFields) {
+  return [
+    '[재작성 지시]',
+    `방금 생성한 응답의 ${violatedFields.join(', ')} 필드가 [금지 주제]를 위반했다.`,
+    '채소·야채·샐러드·과일·단백질·비타민·식이섬유·영양소·영양 균형·칼로리를 더 챙기라는 취지의 문장은',
+    '완곡한 표현이나 은유를 포함해 어떤 형태로도 쓸 수 없다.',
+    '해당 필드를 그날 기록에 실제로 있는 다른 사실(코멘트, 하루소감, 메뉴 이름, 장소, 함께 먹은 사람,',
+    '만족도 점수, 포만감 점수, 끼니 사이 간격, 외식·배달·집밥 비중)을 근거로 완전히 새로 써라.',
+    '근거로 삼을 사실이 없으면 조언하지 말고 다음 기록을 가볍게 기다리는 담백한 문장으로 대신한다.',
+    '나머지 필드는 유지해도 된다. 동일한 JSON 형식으로 전체를 다시 출력한다.'
+  ].join('\n');
+}
+
 /**
  * Gemini 응답 텍스트 정규화 + 검증.
  * 클라이언트(js/utils/ai-meal-report.js)가 렌더할 수 있는 형태인지 여기서 확인한다.
@@ -6658,7 +6707,8 @@ function normalizeDietReportResponseText(text) {
  *          slotCoverage?:string, recentTrend?:string}} ctx 프롬프트 치환 컨텍스트
  * @param {Array<{inlineData:{mimeType:string,data:string}, caption:string}>} imageParts
  * @returns {Promise<{responseText:string, tokenUsage:object|null, model:string,
- *                    sentImageCount:number, fallbackUsed:string|null}>}
+ *                    sentImageCount:number, fallbackUsed:string|null,
+ *                    policyViolation:string[]|null, policyRetried:boolean}>}
  */
 async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
   const apiKey = geminiApiKey.value();
@@ -6671,7 +6721,7 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
   const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const invoke = async (images, thinkingBudget) => {
+  const invoke = async (images, thinkingBudget, extraInstruction) => {
     const generationConfig = {
       temperature: DIET_REPORT_TEMPERATURE,
       topP: 0.9,
@@ -6688,6 +6738,8 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
       if (img.caption) parts.push({ text: img.caption });
       parts.push({ inlineData: img.inlineData });
     }
+    // 교정 지시는 맨 뒤에 — 가장 최근 지시가 가장 강하게 먹는다.
+    if (extraInstruction) parts.push({ text: extraInstruction });
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
@@ -6708,6 +6760,33 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
     return { responseText, tokenUsage: data?.usageMetadata || null, model };
   };
 
+  /**
+   * invoke + 금지 주제 가드. 걸리면 교정 지시를 붙여 1회만 다시 부른다.
+   * 재시도가 실패하거나 또 걸리면 첫 응답을 쓰되 policyViolation 으로 남겨 관리자가 보게 한다.
+   */
+  const invokeGuarded = async (images, thinkingBudget) => {
+    const first = await invoke(images, thinkingBudget);
+    const violated = detectDietPolicyViolation(first.responseText);
+    if (violated.length === 0) return { ...first, policyViolation: null, policyRetried: false };
+
+    logger.warn('callGeminiDietReport: 금지 주제 위반, 재생성', { dateStr, fields: violated });
+    try {
+      const second = await invoke(images, thinkingBudget, buildDietPolicyCorrection(violated));
+      const stillViolated = detectDietPolicyViolation(second.responseText);
+      if (stillViolated.length) {
+        logger.warn('callGeminiDietReport: 재생성 후에도 위반', { dateStr, fields: stillViolated });
+      }
+      return {
+        ...second,
+        policyViolation: stillViolated.length ? stillViolated : null,
+        policyRetried: true
+      };
+    } catch (e) {
+      logger.warn('callGeminiDietReport: 교정 재생성 실패, 첫 응답 사용', { dateStr, errMsg: e?.message });
+      return { ...first, policyViolation: violated, policyRetried: true };
+    }
+  };
+
   const images = Array.isArray(imageParts) ? imageParts : [];
   // 사진을 버리는 건 마지막 수단이므로, 이미지 관련 오류로만 text-only 강등을 허용한다.
   const isImageError = (msg) => /Unable to process input image|inlineData|image/i.test(msg);
@@ -6722,7 +6801,7 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
 
   let lastError;
   try {
-    const r = await invoke(images, DIET_REPORT_THINKING_BUDGET);
+    const r = await invokeGuarded(images, DIET_REPORT_THINKING_BUDGET);
     return { ...r, sentImageCount: images.length, fallbackUsed: null };
   } catch (e) {
     lastError = e;
@@ -6737,7 +6816,7 @@ async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
       errMsg: msg
     });
     try {
-      const r = await invoke(fb.images, fb.thinkingBudget);
+      const r = await invokeGuarded(fb.images, fb.thinkingBudget);
       return { ...r, sentImageCount: fb.images.length, fallbackUsed: fb.label };
     } catch (e) {
       lastError = e;
@@ -6842,11 +6921,8 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
   };
 
   try {
-    const { responseText, tokenUsage, model, sentImageCount, fallbackUsed } = await callGeminiDietReport(
-      promptCtx,
-      imageParts,
-      config.promptTemplate
-    );
+    const { responseText, tokenUsage, model, sentImageCount, fallbackUsed, policyViolation, policyRetried } =
+      await callGeminiDietReport(promptCtx, imageParts, config.promptTemplate);
     // text-only 폴백으로 성공했다면 "분석된 사진"도 없는 게 맞다 — 관리자 카드가
     // 실제로 안 쓰인 사진을 분석 사진으로 보여 주면 안 된다.
     const inputMealsFinal =
@@ -6867,6 +6943,9 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         // (예전에는 준비 장수를 그대로 저장해 "사진 3장 분석"으로 보였다)
         analyzedPhotoCount: sentImageCount,
         fallbackUsed: fallbackUsed || FieldValue.delete(),
+        // 재생성으로도 못 막은 금지 주제 — 프롬프트를 손봐야 한다는 신호
+        policyViolation: policyViolation && policyViolation.length ? policyViolation : FieldValue.delete(),
+        policyRetried: policyRetried === true ? true : FieldValue.delete(),
         score: FieldValue.delete(),
         summary: FieldValue.delete(),
         goodPoint: FieldValue.delete(),
@@ -6888,6 +6967,8 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         isHistory: false,
         analyzedPhotoCount: 0,
         fallbackUsed: FieldValue.delete(),
+        policyViolation: FieldValue.delete(),
+        policyRetried: FieldValue.delete(),
         modelVersion: GEMINI_MEALDANG_MODEL,
         errorMessage: String(e?.message || e).slice(0, 500),
         historyOf: FieldValue.delete(),

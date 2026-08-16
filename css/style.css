@@ -35,6 +35,23 @@ html.platform-native-app .bottom-nav button i.lucide {
 @keyframes lucide-spin {
     to { transform: rotate(360deg); }
 }
+/*
+ * 순수 CSS 스피너 — 로딩 표시는 lucide 로딩 여부에 걸리면 안 된다.
+ * (i[data-lucide]는 scheduleLucideIcons가 돌아야 SVG가 되고, 전역 옵저버가 없어
+ *  호출을 빠뜨리면 아무것도 안 보인다)
+ */
+.mealog-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgba(16, 185, 129, 0.18);
+    border-top-color: #10b981;
+    border-radius: 9999px;
+    animation: lucide-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .mealog-spinner { animation-duration: 2.4s; }
+}
 /* 좋아요·북마크 활성: 라인 아이콘 채움 */
 .liked [data-lucide],
 .liked .lucide,

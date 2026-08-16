@@ -194,6 +194,22 @@ function fallbackNote(data) {
     return ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
 }
 
+/**
+ * 금지 주제(야채·과일·단백질 권유) 가드 결과.
+ * 재생성으로 막았으면 회색, 재생성 후에도 남았으면 빨강 — 후자는 프롬프트를 손봐야 한다.
+ */
+function policyBadge(data) {
+    const violated = Array.isArray(data?.policyViolation) ? data.policyViolation.filter(Boolean) : [];
+    if (violated.length) {
+        const fields = violated.join(', ');
+        return `<span class="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[11px] font-bold" title="재생성 후에도 금지 주제가 남았습니다">금지 주제 잔존 · ${escapeHtml(fields)}</span>`;
+    }
+    if (data?.policyRetried === true) {
+        return '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold" title="금지 주제가 감지되어 1회 재생성했고, 재생성본은 통과했습니다">금지 주제 재생성됨</span>';
+    }
+    return '<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">금지 주제 없음</span>';
+}
+
 /** 프롬프트에 실제로 실린 부가 컨텍스트 */
 function contextBadges(data) {
     const on = (label) =>
@@ -202,7 +218,8 @@ function contextBadges(data) {
         `<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">${escapeHtml(label)}</span>`;
     const bits = [
         data?.hasProfileContext === true ? on('프로필') : off('프로필 없음'),
-        data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음')
+        data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음'),
+        policyBadge(data)
     ];
     return `<div class="flex flex-wrap gap-1">${bits.join('')}</div>`;
 }
