@@ -18568,3 +18568,15 @@ html.service-guide-active #landingPage {
     visibility: hidden;
 }
 
+
+/*
+ * AI 리포트 점수 내역 — summary 를 점수 줄 자체로 쓰므로 기본 디스클로저 삼각형을 지운다.
+ * Tailwind list-none 은 Chromium 에서만 먹고, iOS Safari 는 ::-webkit-details-marker 를
+ * 따로 꺼야 한다. 앱이 iOS PWA 로도 돌아가므로 두 경로를 모두 막는다.
+ */
+.ai-meal-report-score-detail > summary {
+    list-style: none;
+}
+.ai-meal-report-score-detail > summary::-webkit-details-marker {
+    display: none;
+}

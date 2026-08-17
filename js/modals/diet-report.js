@@ -625,8 +625,9 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], r
     const highlight = (report?.highlight || '').trim();
     const nudge = (report?.nudge || '').trim();
 
+    // 공유 카드에는 내역을 펼칠 수단이 없다. 설명 못 할 라벨을 붙이느니 숫자만 내보낸다.
     const scoreSpan = hasScore
-        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span><span style="display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#94a3b8;">오늘의 점수</span>`
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
         : '';
     // 1행: 점수 — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =

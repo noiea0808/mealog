@@ -121,20 +121,31 @@ function renderAiMealReportPhotosHtml(photoUrls, esc) {
  */
 function renderDietRecordScoreDetailHtml(recordScore, esc) {
     if (!recordScore?.sections?.length) return '';
+    const score = recordScore.total;
+    // 항목당 두 줄 — 이름·배점을 위에, 근거를 아래에 둔다.
+    // 한 줄에 몰아넣으면 balanceNote 나 깊이 내역처럼 긴 근거가 잘려 나간다.
     const rows = recordScore.sections
         .map(
             (s) =>
-                `<div class="flex items-baseline justify-between gap-2 py-1">
-                    <span class="text-[12px] font-semibold text-slate-600 shrink-0">${esc(s.label)}</span>
-                    <span class="text-[11px] text-slate-400 truncate flex-1 text-right">${esc(s.detail)}</span>
-                    <span class="text-[12px] font-bold text-slate-700 tabular-nums shrink-0 w-12 text-right">${esc(String(s.got))}<span class="text-slate-400 font-medium">/${esc(String(s.max))}</span></span>
+                `<div class="py-1.5">
+                    <div class="flex items-baseline justify-between gap-2">
+                        <span class="text-[12px] font-semibold text-slate-600">${esc(s.label)}</span>
+                        <span class="text-[12px] font-bold text-slate-700 tabular-nums shrink-0">${esc(String(s.got))}<span class="text-slate-400 font-medium">/${esc(String(s.max))}</span></span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-snug mt-0.5">${esc(s.detail)}</p>
                 </div>`
         )
         .join('');
-    return `<details class="ai-meal-report-score-detail rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1.5">
-        <summary class="cursor-pointer list-none text-[11px] font-bold text-slate-500 select-none">점수 내역 보기</summary>
-        <div class="mt-1 divide-y divide-slate-200/70">${rows}</div>
-        <p class="mt-1.5 pt-1.5 border-t border-slate-200/70 text-[9px] leading-tight text-slate-400">구성 균형과 그날 기록을 얼마나 남겼는지로 매긴 점수예요.</p>
+    // 점수 자체를 summary 안에 둬서 줄 전체가 열림 토글이 된다 — 탭 영역이 넓어진다.
+    return `<details class="ai-meal-report-score-detail">
+        <summary class="flex items-baseline gap-2 cursor-pointer list-none select-none">
+            <span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>
+            <span class="text-[11px] font-semibold text-slate-400 leading-none">점수 내역 보기</span>
+        </summary>
+        <div class="mt-2 rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1">
+            <div class="divide-y divide-slate-200/70">${rows}</div>
+            <p class="mt-1 mb-1.5 pt-1.5 border-t border-slate-200/70 text-[9px] leading-tight text-slate-400">구성 균형과 그날 기록을 얼마나 남겼는지로 매긴 점수예요.</p>
+        </div>
     </details>`;
 }
 
@@ -162,13 +173,9 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
         ? options.photoUrls.filter(Boolean).slice(0, 3)
         : [];
 
+    // 점수와 "점수 내역 보기"는 한 덩어리다 — renderDietRecordScoreDetailHtml 이 함께 그린다.
     // mood 뱃지는 뺐다 — title 과 역할이 겹쳐 같은 하루에 이름을 두 번 붙이고 있었다.
-    const topRow = hasScore
-        ? `<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>
-                <span class="text-[11px] font-semibold text-slate-400 leading-none">오늘의 점수</span>
-            </div>`
-        : '';
+    const topRow = hasScore ? renderDietRecordScoreDetailHtml(recordScore, esc) : '';
 
     const photosBlock = photoUrls.length ? renderAiMealReportPhotosHtml(photoUrls, esc) : '';
 
@@ -202,7 +209,6 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
     return `<article class="ai-meal-report-card rounded-xl border border-slate-200/90 bg-gradient-to-br from-white via-emerald-50/25 to-slate-50/40 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.07)] overflow-hidden">
         <div class="p-4 space-y-2.5">
             ${topRow}
-            ${hasScore ? renderDietRecordScoreDetailHtml(recordScore, esc) : ''}
             ${photosBlock}
             ${titleBlock}
             ${summaryBlock}
