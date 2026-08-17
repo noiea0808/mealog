@@ -12,6 +12,7 @@ import {
     renderAiMealReportCardHtml,
     extractAnalyzedPhotoUrlsForDisplay
 } from '../utils/ai-meal-report.js';
+import { computeDietRecordScore } from '../utils/diet-record-score.js';
 import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage, shareBlobsToExternal } from '../utils.js';
 import { MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
 import {
@@ -256,7 +257,8 @@ async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
         clearSnsShareBlobCache();
         return;
     }
-    const cacheKey = `${dateStr}:${report.title || ''}:${report.score ?? ''}:${reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc).join('|') : ''}`;
+    const cacheScore = reportDoc ? computeDietRecordScore(reportDoc)?.total : null;
+    const cacheKey = `${dateStr}:${report.title || ''}:${cacheScore ?? ''}:${reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc).join('|') : ''}`;
     if (_snsShareBlob && _snsShareBlobKey === cacheKey) return;
 
     if (_snsShareCachePromise && _snsShareCachePromiseKey === cacheKey) {
@@ -439,7 +441,8 @@ function renderReport(data) {
     _currentReportDoc = data;
     const cardHtml = report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
-              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+              recordScore: computeDietRecordScore(data)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
     const generatedLabel = formatReportGeneratedAt(data?.generatedAt);
@@ -622,11 +625,11 @@ function buildDietReportShareCaptureBadgeHtml() {
 }
 
 /** 리포트 카드 → 캡처용 인라인 스타일 HTML */
-function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
+function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], recordScore = null) {
     const e = typeof esc === 'function' ? esc : (s) => s;
     const dateLabel = formatMealogDateLabel(dateStr);
-    const score = report?.score;
-    const hasScore = score != null && Number.isFinite(Number(score));
+    const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
+    const score = hasScore ? recordScore.total : null;
     const mood = (report?.mood || '').trim();
     const title = (report?.title || '').trim();
     const summary = (report?.summary || '').trim();
@@ -638,8 +641,9 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
     const moodPill = mood
         ? `<span data-diet-report-capture-mood="1" style="margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
         : '';
+    // 공유 카드에도 "기록 점수"라고 못박는다. 숫자만 나가면 받는 쪽은 식단 채점으로 읽는다.
     const scoreSpan = hasScore
-        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span><span style="display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#94a3b8;">기록 점수</span>`
         : '';
     // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
@@ -719,7 +723,13 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
     holder.style.left = '-10000px';
     holder.style.top = '0';
     holder.style.zIndex = '-1';
-    holder.innerHTML = buildDietReportShareCaptureHtml(report, dateStr, escapeHtml, photoUrls);
+    holder.innerHTML = buildDietReportShareCaptureHtml(
+        report,
+        dateStr,
+        escapeHtml,
+        photoUrls,
+        reportDoc ? computeDietRecordScore(reportDoc) : null
+    );
     const target = holder.firstElementChild;
     document.body.appendChild(holder);
 

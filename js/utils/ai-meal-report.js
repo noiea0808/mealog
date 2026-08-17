@@ -7,20 +7,18 @@ function clipField(value) {
     return String(value).trim();
 }
 
-function normalizeScore(value) {
-    if (value == null || value === '') return null;
-    const n = Number(value);
-    if (!Number.isFinite(n)) return null;
-    return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-/** 파싱된 객체 → 표준 필드 (legacy goodPoint/improvePoint 호환) */
+/**
+ * 파싱된 객체 → 표준 필드 (legacy goodPoint/improvePoint 호환)
+ *
+ * score 는 더 이상 여기서 오지 않는다. 화면에 뜨는 점수는 기록 충실도이고
+ * diet-record-score.js 가 리포트 문서의 입력 스냅샷으로 직접 계산한다.
+ * 구버전 문서의 responseText 에 남아 있는 score 는 의미가 다르므로 무시한다.
+ */
 export function normalizeAiMealReportFields(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
         return null;
     }
     return {
-        score: normalizeScore(obj.score),
         lens: clipField(obj.lens),
         mood: clipField(obj.mood),
         title: clipField(obj.title),
@@ -57,7 +55,6 @@ export function parseAiMealReport(aiResponse) {
         console.warn('AI meal report parse failed:', error);
         const raw = typeof aiResponse === 'string' ? aiResponse.trim() : '';
         return {
-            score: null,
             mood: '분석 완료',
             title: '오늘의 식사 리포트',
             summary: raw || '분석 결과를 불러왔어요.',
@@ -82,7 +79,6 @@ export function extractAiMealReportSource(data) {
     if (!hasLegacy) return null;
 
     return {
-        score: data.score ?? null,
         mood: '',
         title: '',
         summary: clipField(data.summary),
@@ -117,6 +113,29 @@ function renderAiMealReportPhotosHtml(photoUrls, esc) {
 }
 
 /**
+ * 기록 점수 내역 — 평소엔 접혀 있고 펼치면 그날의 실제 내역을 보여준다.
+ * 점수를 띄우면서 근거를 감추면 모호해진다. 근거를 밝힐 수 있는 점수로 바꾼 이유가 이것이다.
+ */
+function renderDietRecordScoreDetailHtml(recordScore, esc) {
+    if (!recordScore?.sections?.length) return '';
+    const rows = recordScore.sections
+        .map(
+            (s) =>
+                `<div class="flex items-baseline justify-between gap-2 py-1">
+                    <span class="text-[12px] font-semibold text-slate-600 shrink-0">${esc(s.label)}</span>
+                    <span class="text-[11px] text-slate-400 truncate flex-1 text-right">${esc(s.detail)}</span>
+                    <span class="text-[12px] font-bold text-slate-700 tabular-nums shrink-0 w-12 text-right">${esc(String(s.got))}<span class="text-slate-400 font-medium">/${esc(String(s.max))}</span></span>
+                </div>`
+        )
+        .join('');
+    return `<details class="ai-meal-report-score-detail rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1.5">
+        <summary class="cursor-pointer list-none text-[11px] font-bold text-slate-500 select-none">점수 내역 보기</summary>
+        <div class="mt-1 divide-y divide-slate-200/70">${rows}</div>
+        <p class="mt-1.5 pt-1.5 border-t border-slate-200/70 text-[10.5px] leading-snug text-slate-400">먹은 것을 채점한 점수가 아니라, 그날 기록을 얼마나 남겼는지의 점수예요.</p>
+    </details>`;
+}
+
+/**
  * 공유카드형 HTML (escapeHtml은 호출 측에서 주입)
  * @param {ReturnType<parseAiMealReport>} report
  * @param {(s: string) => string} escapeHtml
@@ -128,8 +147,10 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
     }
 
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
-    const score = report.score;
-    const hasScore = score != null && Number.isFinite(Number(score));
+    // 점수는 AI가 아니라 그날 기록에서 계산된다. 근거를 펼쳐 보일 수 있는 숫자만 띄운다.
+    const recordScore = options.recordScore || null;
+    const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
+    const score = hasScore ? recordScore.total : null;
     const mood = clipField(report.mood);
     const title = clipField(report.title);
     const summary = clipField(report.summary);
@@ -147,6 +168,7 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
                         ? `<span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>`
                         : ''
                 }
+                ${hasScore ? `<span class="text-[11px] font-semibold text-slate-400 leading-none">기록 점수</span>` : ''}
                 ${
                     hasScore && mood
                         ? `<span class="text-slate-300 font-light select-none" aria-hidden="true">·</span>`
@@ -192,6 +214,7 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
     return `<article class="ai-meal-report-card rounded-xl border border-slate-200/90 bg-gradient-to-br from-white via-emerald-50/25 to-slate-50/40 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.07)] overflow-hidden">
         <div class="p-4 space-y-2.5">
             ${topRow}
+            ${hasScore ? renderDietRecordScoreDetailHtml(recordScore, esc) : ''}
             ${photosBlock}
             ${titleBlock}
             ${summaryBlock}
@@ -207,12 +230,7 @@ export function aiMealReportPreviewLine(report) {
     const title = clipField(report.title);
     const summary = clipField(report.summary);
     const text = title || summary;
-    if (!text) {
-        if (report.score != null && Number.isFinite(Number(report.score))) {
-            return `${report.score}점`;
-        }
-        return '—';
-    }
+    if (!text) return '—';
     const flat = text.replace(/\s+/g, ' ').trim();
     return flat.length > 48 ? `${flat.slice(0, 47)}…` : flat;
 }

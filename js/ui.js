@@ -13,6 +13,7 @@ import {
     renderAiMealReportCardHtml,
     extractAnalyzedPhotoUrlsForDisplay
 } from './utils/ai-meal-report.js';
+import { computeDietRecordScore } from './utils/diet-record-score.js';
 import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
@@ -605,7 +606,8 @@ function renderWelcomeReportCardHtml(data) {
     const report = parseAiMealReport(source);
     return report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
-              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+              recordScore: computeDietRecordScore(data)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
 }

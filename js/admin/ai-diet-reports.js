@@ -11,6 +11,7 @@ import {
     extractAnalyzedPhotoUrlsForDisplay,
     aiMealReportPreviewLine
 } from '../utils/ai-meal-report.js';
+import { computeDietRecordScore } from '../utils/diet-record-score.js';
 import {
     collection,
     doc,
@@ -428,7 +429,8 @@ function renderDetailPanel(data, id) {
         data.status === 'error'
             ? `<pre class="whitespace-pre-wrap break-words text-xs text-red-800 bg-red-50/60 border border-red-100 rounded-lg p-2 font-sans leading-snug m-0">${escapeHtml(data.errorMessage || '(오류 메시지 없음)')}</pre>`
             : `${renderAiMealReportCardHtml(parsedReport, escapeHtml, {
-                  photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+                  photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+                  recordScore: computeDietRecordScore(data)
               })}${
                   rawResponse
                       ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
