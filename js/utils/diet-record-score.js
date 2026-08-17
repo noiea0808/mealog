@@ -17,9 +17,9 @@
 const MAIN_SLOT_IDS = ['morning', 'lunch', 'dinner'];
 const MAIN_SLOT_LABELS = { morning: '아침', lunch: '점심', dinner: '저녁' };
 
-const BALANCE_MAX = 40;
-const MAIN_MAX = 25;
-const DEPTH_MAX = 25;
+const BALANCE_MAX = 30;
+const MAIN_MAX = 30;
+const DEPTH_MAX = 30;
 const JOURNAL_MAX = 10;
 
 /**

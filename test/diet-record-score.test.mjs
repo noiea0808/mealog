@@ -54,18 +54,19 @@ describe('computeDietRecordScore', () => {
         assert.equal(result.total, 100);
     });
 
-    it('balance 가 있으면 균형 칸이 맨 앞에 붙고 가장 큰 배점을 갖는다', () => {
+    it('balance 가 있으면 균형 칸이 맨 앞에 붙고 배점은 30/30/30/10 이다', () => {
         const doc = {
             inputMeals: [fullMeal('morning'), fullMeal('lunch'), fullMeal('dinner')],
             inputDailyJournalComment: '기록함'
         };
         const result = computeDietRecordScore(doc, { balance: 100, balanceNote: '고기와 채소가 반반' });
         assert.deepEqual(sectionKeys(result), ['balance', 'main', 'depth', 'journal']);
-        const balance = result.sections[0];
-        assert.equal(balance.got, 40);
-        assert.equal(balance.max, 40);
-        assert.ok(balance.max > result.sections[1].max, '균형이 가장 큰 배점이어야 한다');
-        assert.equal(balance.detail, '고기와 채소가 반반');
+        assert.deepEqual(
+            result.sections.map((s) => s.max),
+            [30, 30, 30, 10]
+        );
+        assert.equal(result.sections[0].got, 30);
+        assert.equal(result.sections[0].detail, '고기와 채소가 반반');
         assert.equal(result.total, 100);
     });
 
@@ -75,8 +76,8 @@ describe('computeDietRecordScore', () => {
             inputDailyJournalComment: '기록함'
         };
         const result = computeDietRecordScore(doc, { balance: 50, balanceNote: '밥·면 위주' });
-        assert.equal(sectionGot(result, 'balance'), 20);
-        assert.equal(result.total, 80);
+        assert.equal(sectionGot(result, 'balance'), 15);
+        assert.equal(result.total, 85);
     });
 
     it('balanceNote 가 비어 있어도 균형 칸은 설명을 갖는다', () => {
@@ -106,15 +107,15 @@ describe('computeDietRecordScore', () => {
             sectionGot(withContext, 'depth') > sectionGot(withoutContext, 'depth'),
             '장소·함께를 적으면 깊이 점수가 올라야 한다'
         );
-        assert.equal(sectionGot(withContext, 'depth'), 25);
+        assert.equal(sectionGot(withContext, 'depth'), 30);
     });
 
     it('간식은 본식 점수에 영향을 주지 않는다 (감점도 가점도 없음)', () => {
         const mains = [fullMeal('morning'), fullMeal('lunch'), fullMeal('dinner')];
-        assert.equal(sectionGot(computeDietRecordScore({ inputMeals: mains }), 'main'), 25);
+        assert.equal(sectionGot(computeDietRecordScore({ inputMeals: mains }), 'main'), 30);
         assert.equal(
             sectionGot(computeDietRecordScore({ inputMeals: [...mains, fullMeal('snack1')] }), 'main'),
-            25
+            30
         );
     });
 
@@ -124,8 +125,8 @@ describe('computeDietRecordScore', () => {
             inputMeals: [skipped, fullMeal('lunch'), fullMeal('dinner')],
             inputDailyJournalComment: '바빴다'
         });
-        assert.equal(sectionGot(result, 'main'), 25);
-        assert.equal(sectionGot(result, 'depth'), 25);
+        assert.equal(sectionGot(result, 'main'), 30);
+        assert.equal(sectionGot(result, 'depth'), 30);
         assert.equal(result.total, 100);
     });
 
@@ -134,9 +135,9 @@ describe('computeDietRecordScore', () => {
             inputMeals: [bareMeal('morning'), bareMeal('lunch'), bareMeal('dinner')],
             inputDailyJournalComment: ''
         });
-        assert.equal(sectionGot(result, 'main'), 25);
+        assert.equal(sectionGot(result, 'main'), 30);
         assert.equal(sectionGot(result, 'depth'), 0);
-        assert.equal(result.total, Math.round((25 / 60) * 100));
+        assert.equal(result.total, Math.round((30 / 70) * 100));
     });
 
     it('같은 입력이면 항상 같은 점수', () => {
@@ -162,6 +163,6 @@ describe('computeDietRecordScore', () => {
     it('하루소감만 있고 끼니 기록이 없으면 소감 배점만 얻는다', () => {
         const result = computeDietRecordScore({ inputMeals: [], inputDailyJournalComment: '오늘은 못 먹었다' });
         assert.equal(sectionGot(result, 'journal'), 10);
-        assert.equal(result.total, Math.round((10 / 60) * 100));
+        assert.equal(result.total, Math.round((10 / 70) * 100));
     });
 });
