@@ -607,7 +607,7 @@ function renderWelcomeReportCardHtml(data) {
     return report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
               photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
-              recordScore: computeDietRecordScore(data)
+              recordScore: computeDietRecordScore(data, report)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
 }

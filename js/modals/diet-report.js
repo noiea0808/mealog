@@ -53,8 +53,6 @@ const DIET_REPORT_SHARE_PHOTO_GAP_PX = 8;
  * 직접 그리므로 보정 없이 정렬이 맞는다 — 정적 HTML 에는 오프셋을 넣지 않는다.
  */
 const DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX = 4;
-const DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX = 12;
-const DIET_REPORT_CAPTURE_MOOD_GAP_PX = 8;
 
 /** pill — 고정 height/inner-flex 금지(html2canvas에서 텍스트가 박스 밖으로 사라짐). 패딩+line-height:1만 사용 */
 function buildDietReportCapturePillStyle(padding, colors) {
@@ -442,7 +440,7 @@ function renderReport(data) {
     const cardHtml = report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
               photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
-              recordScore: computeDietRecordScore(data)
+              recordScore: computeDietRecordScore(data, report)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
     const generatedLabel = formatReportGeneratedAt(data?.generatedAt);
@@ -607,14 +605,6 @@ function applyDietReportCaptureAlignFix(root) {
         if (badgeCell) badgeCell.style.padding = `${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px`;
     }
 
-    const mood = root.querySelector('[data-diet-report-capture-mood]');
-    if (mood) {
-        mood.style.position = 'relative';
-        mood.style.top = `${DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX}px`;
-        mood.style.display = 'inline-block';
-        mood.style.lineHeight = '1';
-        mood.style.padding = '4px 10px';
-    }
 }
 
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
@@ -630,25 +620,18 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], r
     const dateLabel = formatMealogDateLabel(dateStr);
     const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
     const score = hasScore ? recordScore.total : null;
-    const mood = (report?.mood || '').trim();
     const title = (report?.title || '').trim();
     const summary = (report?.summary || '').trim();
     const highlight = (report?.highlight || '').trim();
     const nudge = (report?.nudge || '').trim();
 
-    const moodColors =
-        'font-size:12px;font-weight:700;background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;';
-    const moodPill = mood
-        ? `<span data-diet-report-capture-mood="1" style="margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
-        : '';
-    // 공유 카드에도 "기록 점수"라고 못박는다. 숫자만 나가면 받는 쪽은 식단 채점으로 읽는다.
     const scoreSpan = hasScore
-        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span><span style="display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#94a3b8;">기록 점수</span>`
+        ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span><span style="display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#94a3b8;">오늘의 점수</span>`
         : '';
-    // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
+    // 1행: 점수 — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
-        scoreSpan || moodPill
-            ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}${moodPill}</div>`
+        scoreSpan
+            ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}</div>`
             : '';
     // 2행: 제목(report.title)
     const subjectHtml = title

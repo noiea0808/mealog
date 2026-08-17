@@ -10,9 +10,12 @@ function clipField(value) {
 /**
  * 파싱된 객체 → 표준 필드 (legacy goodPoint/improvePoint 호환)
  *
- * score 는 더 이상 여기서 오지 않는다. 화면에 뜨는 점수는 기록 충실도이고
- * diet-record-score.js 가 리포트 문서의 입력 스냅샷으로 직접 계산한다.
+ * score 는 더 이상 여기서 오지 않는다. 화면에 뜨는 점수는 diet-record-score.js 가
+ * 리포트 문서의 입력 스냅샷과 balance 로 계산한다.
  * 구버전 문서의 responseText 에 남아 있는 score 는 의미가 다르므로 무시한다.
+ *
+ * mood 도 뺐다. title 과 역할이 겹쳐 같은 하루를 두 번 이름 붙이고 있었다.
+ * 구버전 문서에 남아 있어도 읽지 않는다.
  */
 export function normalizeAiMealReportFields(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
@@ -20,7 +23,9 @@ export function normalizeAiMealReportFields(obj) {
     }
     return {
         lens: clipField(obj.lens),
-        mood: clipField(obj.mood),
+        // 점수 내역의 "구성 균형" 칸으로만 나간다. 리포트 문장에는 쓰이지 않는다.
+        balance: obj.balance,
+        balanceNote: clipField(obj.balanceNote),
         title: clipField(obj.title),
         summary: clipField(obj.summary),
         highlight: clipField(obj.highlight || obj.goodPoint),
@@ -55,7 +60,6 @@ export function parseAiMealReport(aiResponse) {
         console.warn('AI meal report parse failed:', error);
         const raw = typeof aiResponse === 'string' ? aiResponse.trim() : '';
         return {
-            mood: '분석 완료',
             title: '오늘의 식사 리포트',
             summary: raw || '분석 결과를 불러왔어요.',
             highlight: '',
@@ -79,7 +83,6 @@ export function extractAiMealReportSource(data) {
     if (!hasLegacy) return null;
 
     return {
-        mood: '',
         title: '',
         summary: clipField(data.summary),
         highlight: clipField(data.goodPoint),
@@ -131,7 +134,7 @@ function renderDietRecordScoreDetailHtml(recordScore, esc) {
     return `<details class="ai-meal-report-score-detail rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1.5">
         <summary class="cursor-pointer list-none text-[11px] font-bold text-slate-500 select-none">점수 내역 보기</summary>
         <div class="mt-1 divide-y divide-slate-200/70">${rows}</div>
-        <p class="mt-1.5 pt-1.5 border-t border-slate-200/70 text-[10.5px] leading-snug text-slate-400">먹은 것을 채점한 점수가 아니라, 그날 기록을 얼마나 남겼는지의 점수예요.</p>
+        <p class="mt-1.5 pt-1.5 border-t border-slate-200/70 text-[9px] leading-tight text-slate-400">구성 균형과 그날 기록을 얼마나 남겼는지로 매긴 점수예요.</p>
     </details>`;
 }
 
@@ -151,7 +154,6 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
     const recordScore = options.recordScore || null;
     const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
     const score = hasScore ? recordScore.total : null;
-    const mood = clipField(report.mood);
     const title = clipField(report.title);
     const summary = clipField(report.summary);
     const highlight = clipField(report.highlight);
@@ -160,27 +162,13 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
         ? options.photoUrls.filter(Boolean).slice(0, 3)
         : [];
 
-    const topRow =
-        hasScore || mood
-            ? `<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                ${
-                    hasScore
-                        ? `<span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>`
-                        : ''
-                }
-                ${hasScore ? `<span class="text-[11px] font-semibold text-slate-400 leading-none">기록 점수</span>` : ''}
-                ${
-                    hasScore && mood
-                        ? `<span class="text-slate-300 font-light select-none" aria-hidden="true">·</span>`
-                        : ''
-                }
-                ${
-                    mood
-                        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-violet-100 text-violet-800 border border-violet-200/60">${esc(mood)}</span>`
-                        : ''
-                }
+    // mood 뱃지는 뺐다 — title 과 역할이 겹쳐 같은 하루에 이름을 두 번 붙이고 있었다.
+    const topRow = hasScore
+        ? `<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>
+                <span class="text-[11px] font-semibold text-slate-400 leading-none">오늘의 점수</span>
             </div>`
-            : '';
+        : '';
 
     const photosBlock = photoUrls.length ? renderAiMealReportPhotosHtml(photoUrls, esc) : '';
 
