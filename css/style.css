@@ -2426,10 +2426,10 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-right: 4px; 
     margin-bottom: 4px; 
 }
-.chip.active { 
-    background: var(--color-primary); 
-    color: white; 
-    border-color: var(--color-primary); 
+.chip.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
 }
 /* 기록 모달(끼니·간식 입력): 메인/서브 칩 간격 절반 — flex gap-1과 맞춤 */
 #entryModal .chip {
@@ -16173,6 +16173,23 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-accent-dark);
     color: #fff;
 }
+/* 위 제안 줄이 밀고 있는 값 — 그리드에서도 같은 생김새(녹색 점선 테두리 + 녹색 글자)로 둔다.
+   14개 중 어디인지 보여야 비교가 된다.
+
+   **`.active` 를 쓰면 안 된다**: active 는 "사용자가 골랐다"는 뜻이고 저장 시
+   `categorySource='user'` 로 이어진다(entry-save-record.js). 제안은 아직 선택이 아니다.
+   `#entryModal .chip` 이 id 를 끼고 색을 정하므로 여기서도 같은 범위로 덮어야 한다. */
+#entryModal .chip--suggested {
+    border-style: dashed;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+/* 사용자가 실제로 고르면 선택 표시가 이긴다 (동시에 걸릴 일은 없지만 못 박아 둔다) */
+#entryModal .chip.active.chip--suggested {
+    border-style: solid;
+    border-color: var(--entry-accent-dark);
+    color: #fff;
+}
 /* 기록 시트: 선택 상태 즉시 반영 (transition all 0.2s 지연감 제거) */
 #entryModal .chip,
 #entryModal .sub-chip,
@@ -18536,6 +18553,68 @@ html.service-guide-active #landingPage {
 }
 
 
+/* '무엇을' 회상 줄 (entry-what-recall.js) — 자주 먹는 것 · 타이핑 자동완성.
+   분류 제안 칩과 일부러 다르게 생겼다: 점선+프라이머리는 "시스템의 추측"이라는 뜻이고,
+   이 칩은 사용자가 전에 직접 적은 자기 어휘라 중립 회색 실선으로 둔다. */
+/* 입력 중에 잠깐 뜨는 줄이라 **한 줄을 넘기지 않는다** — 두 줄이 되면 시트가 출렁인다.
+   칩은 아래 스크롤 영역 안에서 가로로 흐르고, 아이콘과 닫기는 양 끝에 고정된다. */
+.entry-recall-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-top: 6px;
+    min-height: 30px;
+}
+.entry-recall-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+/* 스크롤바는 숨긴다 — 잘린 칩 자체가 "옆으로 더 있다"는 신호다 */
+.entry-recall-scroll::-webkit-scrollbar {
+    display: none;
+}
+/* 분류 제안과 같은 규칙 — 빈 상태는 자리를 차지하지 않고, 생길 때 growthPx 로 통지한다 */
+.entry-recall-row--empty {
+    min-height: 0;
+    margin-top: 0;
+}
+/* 아이콘만 — '자주' 글자는 뺐다. 시계 아이콘이 이미 그 뜻이고, 한 줄 폭이 아깝다 */
+.entry-recall-label {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    color: #94a3b8;
+}
+.entry-recall-label svg {
+    width: 13px;
+    height: 13px;
+}
+.entry-recall-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.entry-recall-chip:active {
+    background: #e2e8f0;
+}
+
 /* 카테고리 자동 분류 제안 칩 (entry-category-suggest.js) — 점선+반짝이, 확정 시 실선 */
 .entry-suggest-row {
     display: flex;
@@ -18591,18 +18670,45 @@ html.service-guide-active #landingPage {
     font-size: 11px;
     color: #94a3b8;
 }
-.entry-suggest-dismiss {
+/* 행동 버튼 묶음('다른 구분' · '분류 안 함' · '되돌리기') — 오른쪽 끝에 붙인다.
+   왼쪽은 값(칩·요리 종류), 오른쪽은 조작. 같은 줄에서 둘이 섞이면 뭘 고르는 건지 흐려진다. */
+.entry-suggest-actions {
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
-    padding: 4px;
-    border: none;
-    background: transparent;
-    color: #94a3b8;
-    cursor: pointer;
+    gap: 4px;
 }
-.entry-suggest-dismiss svg {
-    width: 13px;
-    height: 13px;
+/* 셋 다 같은 생김새 — 값이 아니라 조작이라는 표시라, 칩과도 서로와도 구분이 명확해야 한다 */
+.entry-suggest-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: white;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.entry-suggest-action:active {
+    background: #f1f5f9;
+}
+.entry-suggest-action svg {
+    width: 12px;
+    height: 12px;
+}
+/* 분류 안 함이 적용된 뒤의 표시 — 결정이 화면에 남아야 되돌릴 수 있다 */
+.entry-suggest-hint--off {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.entry-suggest-hint--off svg {
+    width: 12px;
+    height: 12px;
 }
 
 /* 맥락 한 줄 (entry-context-predict.js) — 1페이지 '무엇을' 아래.
@@ -18758,6 +18864,101 @@ html.service-guide-active #landingPage {
     border-color: var(--color-primary);
     background: var(--green-soft, #eaf8f2);
     color: #0f5132;
+}
+/* 3단 뎁스 — 2단계에서 고른 값에 종속된 상세('친구' → 친구 이름들).
+   같은 패널 안에서 한 단 들여 붙여, 위 칩을 고르면 아래가 따라 바뀐다는 걸 위치로 보여준다. */
+.entry-context-sub {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #e2e8f0;
+}
+.entry-context-sub__label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.entry-context-sub__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+/* 3단 뎁스 알약 — 2단계(구분)와 **일부러 다르게** 생겼다.
+   2단계는 각진 흰 칩(값을 고르는 자리), 3단계는 완전히 둥근 회색 알약(이름을 담는 자리).
+   같은 패널에 두 층이 함께 있으므로 모양이 겹치면 어느 층을 고르는지 헷갈린다. */
+.entry-context-sub-opt {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+.entry-context-sub-opt__label {
+    padding: 4px 4px 4px 10px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.entry-context-sub-opt__del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    align-self: stretch;
+    padding-right: 2px;
+    color: #cbd5e1;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+.entry-context-sub-opt__del:hover {
+    color: #ef4444;
+}
+.entry-context-sub-opt--on {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+}
+.entry-context-sub-opt--on .entry-context-sub-opt__label {
+    color: #0f5132;
+    font-weight: 700;
+}
+.entry-context-sub-opt--on .entry-context-sub-opt__del {
+    color: #7bbfa2;
+}
+/* 목록에 없는 새 이름 — 이 자리에서 바로 받는다(축 섹션을 통째로 열지 않는다) */
+/* 입력칸도 알약 — 옆의 이름 알약들과 같은 줄·같은 높이로 흐른다(점선으로 "아직 안 굳음") */
+.entry-context-sub-input {
+    flex: 0 1 110px;
+    min-width: 80px;
+    padding: 4px 10px;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+}
+.entry-context-sub-input::placeholder {
+    color: #cbd5e1;
+    font-weight: 500;
+}
+.entry-context-sub-more {
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
 }
 .entry-context-free {
     display: inline-flex;

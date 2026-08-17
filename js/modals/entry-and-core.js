@@ -94,12 +94,20 @@ import {
     initEntryCategorySuggest,
     resetEntryCategorySuggest,
     recomputeEntryCategorySuggest,
+    syncEntryCategorySuggestFromChips,
+    setEntryCategorySuggestConfirmed,
 } from './entry-category-suggest.js';
 import {
     initEntryContextPredict,
     resetEntryContextPredict,
     setupEntryContextPredict,
+    syncEntryContextMealTypeFromChips,
 } from './entry-context-predict.js';
+import {
+    initEntryWhatRecall,
+    resetEntryWhatRecall,
+    setupEntryWhatRecall,
+} from './entry-what-recall.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
@@ -1243,6 +1251,7 @@ function resetEntryModalFormFields() {
     entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
     resetEntryCategorySuggest();
     resetEntryContextPredict();
+    resetEntryWhatRecall();
 
     document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
 
@@ -1759,6 +1768,7 @@ export async function openModal(date, slotId, entryId = null) {
         ensureEntryWhatInputSnackCompositionInit();
         initEntryCategorySuggest();
         initEntryContextPredict();
+        initEntryWhatRecall();
         toggleEntryAxisDetail(false); // 시트 열 때는 항상 접힌 상태로 시작
         bindEntryWhatInputAutosizeOnce();
         autosizeEntryWhatInput();
@@ -1812,6 +1822,17 @@ export async function openModal(date, slotId, entryId = null) {
                 // 자동 적용으로 저장됐던 축은 수정 화면에서도 추천(스위치 지배)으로 되살린다
                 autoContext: savedRecord?.autoContext,
             });
+
+            // '무엇을' 회상 칩 — 슬롯이 정해진 뒤여야 "이 시간에 자주 적은 것"을 뽑을 수 있다
+            setupEntryWhatRecall({ slotId: state.currentEditingSlotId });
+
+            /**
+             * 저장된 기록의 형태 값을 제안 줄에 세운다 (칩 활성화 뒤라야 순서가 맞다).
+             * 이미 정해진 값이 있는데 줄이 추천을 띄우고 있으면 사용자가 다시 고르게 된다.
+             */
+            if (entryId && savedRecord) {
+                setEntryCategorySuggestConfirmed(savedRecord.category || savedRecord.snackType || '');
+            }
 
             if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
                 document.getElementById('btnDelete')?.classList.remove('hidden');
@@ -3514,7 +3535,7 @@ function initEntryModalTagStageBackOnce() {
 }
 setTimeout(initEntryModalTagStageBackOnce, 0);
 
-const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
+const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips, .entry-recall-scroll';
 
 /**
  * 기록 모달 가로 스크롤 줄(서브태그·상세보기 칩): 드래그로 좌우 스크롤 (탭/클릭과 구분).
@@ -3668,27 +3689,25 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
     }
     
     /**
-     * 어떻게(조달) 선택 → 어디서(장소) 기본값 라우팅 (docs/entry-axes-and-tags-direction.md §5).
-     * 집밥·배달/포장은 먹는 곳이 거의 '우리집', 구내식당은 장소가 값 자체다.
-     * 기본값 채움일 뿐 입력란은 수정 가능 — 사실-유도 관성 유지.
-     * 외식·회식/술자리는 채우지 않는다 (카카오 검색이 주 입력 경로).
+     * 어떻게(조달) 선택 → 맥락 모듈에 위임한다 (docs/entry-axes-and-tags-direction.md §5).
+     *
+     * 예전에는 여기서 장소 기본값(집밥→우리집)만 직접 채웠는데, 그러면 **어떻게를 바꿨을 때
+     * 이전 값이 남는** 문제가 있었다(집밥→우리집 에서 외식으로 바꿔도 우리집이 남음).
+     * 어디서·누구와 재추론과 같은 규칙이라 맥락 모듈이 한 곳에서 소유하는 편이 맞다.
      */
-    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && selectedValue && appState.entryFormMode === 'meal') {
-        const HOW_PLACE_DEFAULTS = { '집밥': '우리집', '배달/포장': '우리집', '구내식당': '구내식당' };
-        const defaultPlace = HOW_PLACE_DEFAULTS[selectedValue];
-        if (defaultPlace) {
-            const pi = document.getElementById('entryWhereInput');
-            if (pi) {
-                pi.value = defaultPlace;
-                pi.removeAttribute('data-kakao-place-id');
-                pi.removeAttribute('data-kakao-place-address');
-                pi.removeAttribute('data-kakao-place-data');
-                pi.removeAttribute('data-kakao-place-name');
-            }
-        }
+    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && appState.entryFormMode === 'meal') {
+        syncEntryContextMealTypeFromChips();
     }
 
-    if (isPrimary && subTagKey && subContainerId) {
+    /**
+     * '무엇을'은 형태 칩을 골라도 서브태그(사용자·최근) 패널로 넘어가지 않는다.
+     *
+     * 그 패널이 하던 일 — 내가 전에 적은 음식 텍스트를 다시 꺼내기 — 은 이제 회상 줄이
+     * 입력란 바로 아래에서 한다(entry-what-recall.js). 칩을 고를 때마다 화면이 그쪽으로
+     * 넘어가면 방금 펼친 그리드가 사라져 다른 값을 고르기도 어려워진다.
+     */
+    const skipSubTagStage = subContainerId === ENTRY_DOM.whatSuggestions;
+    if (isPrimary && subTagKey && subContainerId && !skipSubTagStage) {
         if (subContainerId === 'entryWhereSuggestions' && appState.entryFormMode === 'snack') {
             appState.selectedSnackPlaceMainTag = selectedValue;
         }
@@ -3699,6 +3718,13 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         if (typeof window.setEntryTagStageView === 'function') {
             window.setEntryTagStageView(subContainerId, selectedValue ? 'sub' : 'main');
         }
+    }
+    /**
+     * 형태 칩 그리드에서 고른 값은 상단 제안 줄이 표시자다 — 안 알리면 저장은 이 값으로
+     * 되는데 줄은 "그냥 저장해도 자동으로 붙어요"를 계속 띄운다.
+     */
+    if (isPrimary && subContainerId === ENTRY_DOM.whatSuggestions) {
+        syncEntryCategorySuggestFromChips();
     }
     syncDeliveryVendorSectionVisibility();
 }
