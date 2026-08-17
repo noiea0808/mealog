@@ -32,6 +32,7 @@ import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 import { procurementHintFromText } from '../utils/procurement-hint.js';
 import { classifyCuisineText } from '../utils/food-classifier.js';
 import { getAxis1TagList } from './entry-form-config.js';
+import { scheduleEntrySettingsSave } from './entry-save-subtags.js';
 
 const CONTAINER_ID = 'entryContextPredict';
 const MIN_SAMPLES = 3;
@@ -60,14 +61,31 @@ const state = {
     useGuess: false,
     /** 습관 예측 원본(이력 최빈값) — 사실-유도 추론과 합성할 때 참조 */
     habitMealType: /** @type {string|null} */ (null),
+    /**
+     * 슬롯 기반 누구와 습관 예측 원본.
+     * 어떻게가 바뀌어 연쇄 추론을 다시 돌릴 때, 그 어떻게로 좁힌 표본이 문턱을 못 넘으면
+     * 여기로 되돌아온다 — 누구와는 값 공간이 작아 슬롯 습관도 여전히 쓸모가 있다.
+     */
+    habitWithWhom: /** @type {string|null} */ (null),
     /** 무엇을 자동 분류의 현재 1순위 (entry-category-suggest가 밀어줌) */
     foodCategory: /** @type {string|null} */ (null),
     /** 무엇을에서 파생한 요리 종류 — '중식→외식' 추론의 입력 */
     foodCuisine: /** @type {string|null} */ (null),
     /** 현재 어디서 추측이 어떻게에서 파생된 것인지 (어떻게가 바뀌면 함께 무효화) */
     placeFromMealTypeChain: false,
+    /** 누구와도 같은 표시 — 어떻게가 바뀌면 다시 뽑는다 */
+    withFromMealTypeChain: false,
     /** 인라인 피커가 열린 축 (null이면 닫힘) */
     openAxis: /** @type {string|null} */ (null),
+    /** 누구와 3단 뎁스의 '직접 입력' 칸이 열려 있는지 */
+    subFreeOpen: false,
+    /**
+     * 이번 시트에서 직접 적어 만든 이름 (부모별).
+     * 해제(재탭)해도 알약은 남아야 하므로 입력란 값과 별개로 들고 있는다 —
+     * 입력란만 보면 해제하는 순간 알약이 사라져 다시 못 고른다.
+     * @type {Record<string, string[]>}
+     */
+    subAdded: {},
     active: false,
 };
 
@@ -94,10 +112,15 @@ export function resetEntryContextPredict() {
     state.userCleared = {};
     state.useGuess = false;
     state.habitMealType = null;
+    state.habitWithWhom = null;
     state.foodCategory = null;
     state.foodCuisine = null;
     state.placeFromMealTypeChain = false;
+    state.withFromMealTypeChain = false;
     state.openAxis = null;
+    state.subFreeOpen = false;
+    state.subAdded = {};
+    clearTimeout(subFreeCommitTimer);
     state.active = false;
     render();
 }
@@ -108,7 +131,7 @@ function isWeekendDate(dateStr) {
     return w === 0 || w === 6;
 }
 
-function isSkipRecord(r) {
+export function isSkipRecord(r) {
     return r?.mealType === '건너뜀' || r?.mealType === 'Skip';
 }
 
@@ -140,6 +163,16 @@ function qualifiedMode(values, groupPlaces = false) {
 
 /** 어떻게(mealType) 예측에서 제외하는 값 — 폴백·기록상태는 습관이 아니다 */
 const MEALTYPE_PREDICT_EXCLUDE = new Set(['기타', '건너뜀', 'Skip']);
+
+/** 맥락 줄 → 칩 반영 중에 칩 → 맥락 줄 훅이 되돌아오는 것을 막는다 */
+let syncingMealTypeChips = false;
+
+/** '직접 입력'을 막 열었을 때만 커서를 옮긴다 (칩 탭마다 포커스를 뺏지 않게) */
+let pendingSubFreeFocus = false;
+
+/** blur 로 굳히기 전에 두는 여유 — 옆 알약 클릭이 먼저 처리되게 한다 */
+const SUB_FREE_COMMIT_DELAY_MS = 150;
+let subFreeCommitTimer = null;
 
 function usableRecords(history, field) {
     return history.filter(
@@ -233,6 +266,8 @@ const PLACE_SEEDS_BY_MEALTYPE = {
     '집밥': ['우리집', '본가', '처가', '친구집'],
     '배달/포장': ['우리집', '본가', '사무실'],
     '구내식당': ['구내식당'],
+    // 편의점은 사서 어디서든 먹는다 — 산 곳이 아니라 먹은 곳이 장소다
+    '편의점': ['편의점', '사무실', '우리집'],
     '외식': [],
     '회식/술자리': [],
 };
@@ -245,6 +280,7 @@ const WITH_PRIORITY_BY_MEALTYPE = {
     '집밥': ['가족', '혼자'],
     '배달/포장': ['혼자', '가족'],
     '구내식당': ['직장동료', '혼자'],
+    '편의점': ['혼자'],
     '외식': ['가족', '친구', '연인'],
     '회식/술자리': ['직장동료', '친구'],
 };
@@ -416,6 +452,109 @@ function applyPlaceFromMealType() {
 }
 
 /**
+ * 어떻게 → 누구와 연쇄 추론. 어디서와 같은 규칙(개인 통계·같은 문턱)이다.
+ *
+ * 다만 **폴백이 다르다**: 어디서는 표본이 모자라면 빈칸으로 둔다(외식의 상호명은 추론이
+ * 불가능하다). 누구와는 값 공간이 작아 슬롯 습관('아침엔 혼자')이 여전히 쓸모 있으므로
+ * 그쪽으로 되돌아간다. 시드를 쓰지 않는 이유는 WITH_PRIORITY_BY_MEALTYPE 가 피커 정렬용이라
+ * "회식이면 직장동료일 것"이라고 값까지 단정하기엔 근거가 약하기 때문이다.
+ */
+function applyWithWhomFromMealType() {
+    if (state.confirmed.withWhom || state.userCleared.withWhom) return;
+    if ((document.getElementById('entryWithInput')?.value || '').trim()) return;
+    const mealType = state.confirmed.mealType || state.predicted.mealType;
+    if (!mealType) return;
+
+    const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
+    const samples = usableRecords(history, 'withWhom')
+        .filter((r) => r.mealType === mealType)
+        .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+        .slice(0, RECENT_LIMIT)
+        .map((r) => r.withWhom.trim());
+    const scoped = qualifiedMode(samples);
+    state.predicted.withWhom = scoped || state.habitWithWhom;
+    state.withFromMealTypeChain = Boolean(scoped);
+}
+
+/**
+ * 어떻게가 바뀌었을 때 어디서·누구와를 다시 뽑는다.
+ *
+ * 사용자가 어떻게를 **직접 고른** 순간, 그 값으로 좁힌 통계가 슬롯 기반 습관 예측보다
+ * 정보가 많다. 그래서 추측은 통째로 버리고 다시 계산한다 — 확정값과 사용자가 비운 축은
+ * 건드리지 않는다.
+ *
+ * 외식·회식/술자리는 어디서가 상호명이라 추론할 근거가 없다 → **빈칸으로 남는다.**
+ * (집밥일 때 채워둔 '우리집'이 외식으로 바꾼 뒤에도 남아 있으면 그게 곧 오기록이다)
+ */
+function rederiveContextFromMealType() {
+    if (appState.entryFormMode === 'snack') return;
+    if (!state.confirmed.place && !state.userCleared.place) {
+        state.predicted.place = null;
+        state.placeFromMealTypeChain = false;
+    }
+    if (!state.confirmed.withWhom && !state.userCleared.withWhom) {
+        state.predicted.withWhom = null;
+        state.withFromMealTypeChain = false;
+    }
+    // 이전 어떻게가 넣었던 입력값을 먼저 치운다 — 남아 있으면 재추론이 "이미 값 있음"으로 막힌다
+    clearHowFilledPlaceInput();
+    applyPlaceFromMealType();
+    applyWithWhomFromMealType();
+    writeDerivedPlaceToInput();
+}
+
+/**
+ * 이전 어떻게가 자동으로 넣었던 어디서만 비운다.
+ *
+ * 표시(`data-how-filled`)에는 **넣은 값 자체**를 담는다. 플래그('1')만 두면 사용자가 그 위에
+ * 다른 장소를 타이핑했을 때 표시가 그대로 남아 사람이 넣은 값을 지워버린다 —
+ * 값을 담아 두면 현재 입력과 대조해서 "아직 자동값 그대로인가"를 알 수 있다.
+ */
+function clearHowFilledPlaceInput() {
+    const pi = document.getElementById('entryWhereInput');
+    if (!pi) return;
+    const marked = pi.getAttribute('data-how-filled');
+    if (!marked) return;
+    if (pi.value.trim() !== marked) {
+        // 사용자가 손댔다 — 자동값이 아니므로 표시만 떼고 값은 남긴다
+        pi.removeAttribute('data-how-filled');
+        return;
+    }
+    pi.value = '';
+    pi.removeAttribute('data-how-filled');
+}
+
+/**
+ * 어떻게에서 파생된 어디서를 입력란에도 반영한다(집밥 → 우리집).
+ * 파생값이 없으면(외식·회식) 아무것도 쓰지 않으므로 **빈칸으로 남는다.**
+ */
+function writeDerivedPlaceToInput() {
+    if (!state.placeFromMealTypeChain || !state.predicted.place) return;
+    const pi = document.getElementById('entryWhereInput');
+    if (!pi || pi.value.trim()) return;
+    pi.value = state.predicted.place;
+    pi.setAttribute('data-how-filled', state.predicted.place);
+    ['id', 'address', 'data', 'name'].forEach((k) => pi.removeAttribute(`data-kakao-place-${k}`));
+}
+
+/**
+ * 어떻게 칩 그리드('자세히' 안)에서 고른 값을 맥락 줄에 반영한다.
+ * entry-and-core.js selectTag 가 호출한다 — 알리지 않으면 그리드와 줄이 서로 다른 값을 보인다.
+ */
+export function syncEntryContextMealTypeFromChips() {
+    if (!state.active || syncingMealTypeChips || appState.entryFormMode === 'snack') return;
+    const active = document.querySelector('#entryWhereChips button.chip.active');
+    const picked = active ? active.innerText.trim() : '';
+    if ((state.confirmed.mealType || null) === (picked || null)) return;
+    state.confirmed.mealType = picked || null;
+    state.predicted.mealType = null;
+    if (picked) delete state.userCleared.mealType;
+    else state.userCleared.mealType = true;
+    rederiveContextFromMealType();
+    render();
+}
+
+/**
  * 요리 종류별 조달 방식 시드 — **집에서 해 먹는 일이 드문 종류만** 담는다.
  * 한식·양식·분식은 집에서도 흔히 만들므로 넣지 않는다(습관 예측에 맡긴다).
  * 이력이 쌓이면 개인 통계가 이 시드를 대체한다.
@@ -427,7 +566,7 @@ const HOME_COOKED_FORMS = new Set(['밥류', '국물요리']);
 const SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
 
 /** @param {string} slotId */
-function isSnackSlot(slotId) {
+export function isSnackSlot(slotId) {
     return SNACK_SLOT_IDS.has(String(slotId || ''));
 }
 
@@ -440,6 +579,7 @@ const PLACE_SEED_BY_MEALTYPE = {
     '집밥': '우리집',
     '배달/포장': '우리집',
     '구내식당': '구내식당',
+    '편의점': '편의점',
 };
 
 const MEALTYPE_SEED_BY_CUISINE = {
@@ -563,8 +703,13 @@ export function setupEntryContextPredict({ slotId, dateStr, isSnack, autoContext
             place: placeFilled ? null : predictField(history, 'place', slotId, weekend),
             withWhom: withFilled ? null : predictField(history, 'withWhom', slotId, weekend),
         };
-        // 어떻게가 추측됐는데 어디서가 비었으면 거기서 이어 받는다 (집밥 → 우리집)
-        if (!isSnack) applyPlaceFromMealType();
+        // 어떻게가 바뀔 때 되돌아갈 슬롯 기반 원본을 남겨 둔다
+        state.habitWithWhom = state.predicted.withWhom;
+        // 어떻게가 추측됐는데 어디서·누구와가 비었으면 거기서 이어 받는다 (집밥 → 우리집)
+        if (!isSnack) {
+            applyPlaceFromMealType();
+            applyWithWhomFromMealType();
+        }
         // 자동 적용으로 저장됐던 축은 그때 값을 추천으로 복원 (예측 계산보다 우선)
         for (const key of autoAxes) {
             if (existing[key]) state.predicted[key] = existing[key];
@@ -618,6 +763,47 @@ function renderSegment(axis) {
         </button>`;
 }
 
+/** 3단 뎁스 상한 — 피커가 두 줄을 넘기면 시트가 출렁인다 */
+const SUB_OPTION_LIMIT = 8;
+
+/**
+ * 3단 뎁스 선택지 — **2단계에 종속된다.** '친구'를 골랐으면 친구 이름들만 나온다.
+ *
+ * 누구와만 이 뎁스를 쓴다. 어디서_상세는 실측 입력률이 0%이고 장소는 카카오 검색이
+ * 주 경로다(docs/entry-sheet-redesign.md §4). 어떻게는 서브태그 개념 자체가 없다.
+ *
+ * 사용자 등록(favoriteSubTags) 먼저, 그다음 최근(subTags.people). 부모가 지금 목록에 없는
+ * 고아 항목도 통과시킨다 — 축이 개편되면 쌓아둔 이름이 통째로 사라지는 걸 막는 규칙
+ * (js/render/entry-chips.js renderSecondary 와 같은 판단).
+ */
+function subOptionsForAxis(axisKey, parent) {
+    if (axisKey !== 'withWhom' || !parent) return [];
+    const settings = window.userSettings || {};
+    const favorites = settings.favoriteSubTags?.withWhom?.[parent] || [];
+    const known = Array.isArray(settings.tags?.withWhom) ? new Set(settings.tags.withWhom) : null;
+    const recent = (settings.subTags?.people || [])
+        .filter((item) => {
+            const p = typeof item === 'string' ? null : item?.parent;
+            if (p === parent) return true;
+            return Boolean(p) && known != null && !known.has(p);
+        })
+        .map((item) => (typeof item === 'string' ? item : item?.text))
+        .filter(Boolean)
+        .reverse(); // subTags 는 오래된 것이 앞 — 최근을 먼저 보여준다
+    // 이번에 직접 적은 이름과 이미 입력란에 든 이름도 알약으로 세운다
+    const added = state.subAdded[parent] || [];
+    return [...new Set([...added, ...favorites, ...recent, ...currentWithDetailValues()])]
+        .slice(0, SUB_OPTION_LIMIT);
+}
+
+/** 누구와 상세 입력란에 이미 들어 있는 이름들 (쉼표 다중값) */
+function currentWithDetailValues() {
+    return (document.getElementById('entryWithInput')?.value || '')
+        .split(/[,，]/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+}
+
 function renderPicker() {
     const axis = AXES.find((a) => a.key === state.openAxis);
     if (!axis) return '';
@@ -633,11 +819,53 @@ function renderPicker() {
                <i data-lucide="search" aria-hidden="true"></i>장소 검색 · 직접 입력
            </button>`
         : '';
+    /**
+     * 3단 뎁스 — 2단계에서 값을 고른 상태면 **같은 패널 아래에 이어서** 펼친다.
+     * 예전에는 이걸 '자세히' 접힘 안에서만 할 수 있었는데, 거기까지 가는 사람이 거의 없었다
+     * (누구와_상세 입력률 5%). 2·3단계를 한 번에 보여 주면 탭 하나로 끝난다.
+     */
+    const subs = subOptionsForAxis(axis.key, current);
+    const picked = axis.key === 'withWhom' ? currentWithDetailValues() : [];
+    /**
+     * 목록에 없는 이름은 **이 자리에서 바로** 받는다.
+     * 처음에는 '자세히'를 펼쳐 그쪽 입력란으로 보냈는데, 이름 하나 적자고 축 섹션이
+     * 통째로 열려 과했다. 값의 주인은 여전히 entryWithInput 하나이고 이 칸은 그 거울이다.
+     */
+    /**
+     * 입력칸도 알약 모양이다 — 옆의 이름 알약들과 같은 줄에서 같은 높이로 흐른다.
+     * 엔터를 치거나 포커스를 옮기면 적은 이름이 알약이 되어 선택된 상태로 들어간다.
+     */
+    const freeInput = state.subFreeOpen
+        ? `<input type="text" class="entry-context-sub-input" data-context-sub-input
+                  placeholder="이름 추가" aria-label="누구와 상세 추가" enterkeyhint="done">`
+        : '<button type="button" class="entry-context-sub-more" data-context-sub-free>+ 직접 입력</button>';
+    /**
+     * 알약 하나 = [이름][×]. 이름을 누르면 선택/해제, ×는 목록에서 아예 지운다.
+     * 삭제를 button 안의 button 으로 넣으면 HTML 이 깨지므로 span 에 역할을 준다.
+     */
+    const subChips = subs.map((s) => {
+        const on = picked.includes(s);
+        const safe = escapeHtml(s);
+        return `<span class="entry-context-sub-opt${on ? ' entry-context-sub-opt--on' : ''}">
+                    <button type="button" class="entry-context-sub-opt__label" data-context-sub="${safe}"
+                            aria-pressed="${on}">${safe}</button>
+                    <span class="entry-context-sub-opt__del" role="button" tabindex="0"
+                          data-context-sub-del="${safe}" aria-label="${safe} 삭제">×</span>
+                </span>`;
+    }).join('');
+    const subBlock = axis.key === 'withWhom' && current
+        ? `<div class="entry-context-sub">
+               <span class="entry-context-sub__label">${escapeHtml(current)} 중에</span>
+               <div class="entry-context-sub__chips">${subChips}${freeInput}</div>
+           </div>`
+        : '';
+
     // 어느 축의 피커인지는 텍스트 라벨 대신 **열린 세그먼트의 하이라이트**가 말한다
     return `
         <div class="entry-context-picker">
             <div class="entry-context-picker__chips">${chips}</div>
             ${free}
+            ${subBlock}
         </div>`;
 }
 
@@ -668,8 +896,8 @@ function render() {
                <span class="entry-predict-toggle__label">${state.useGuess ? '이대로 사용' : '사용 안함'}</span>
            </button>`
         : '';
-    // 추측이 있으면 근거("지난 기록처럼")를, 없으면 이 줄이 받는 질문들을 리드로 쓴다
-    const lead = hasAuto ? '지난 기록처럼' : axes.map((a) => a.label).join(' · ');
+    // 추측이 있으면 그 사실을, 없으면 이 줄이 받는 질문들을 리드로 쓴다
+    const lead = hasAuto ? '추천 분류' : axes.map((a) => a.label).join(' · ');
     el.innerHTML = `
         <div class="entry-context-head">
             <span class="entry-predict-lead">${lead}</span>
@@ -681,6 +909,24 @@ function render() {
         ${renderPicker()}`;
     el.classList.remove('hidden');
     refreshLucideIcons(el);
+    // '직접 입력'을 연 직후에만 커서를 넣는다 — 칩을 탭할 때마다 뺏으면 성가시다
+    if (pendingSubFreeFocus) {
+        pendingSubFreeFocus = false;
+        const free = el.querySelector('[data-context-sub-input]');
+        if (free) {
+            try {
+                free.focus({ preventScroll: true });
+            } catch (_) {
+                free.focus();
+            }
+            const end = free.value.length;
+            try {
+                free.setSelectionRange(end, end);
+            } catch (_) {
+                /* 커서 위치는 부수적이다 */
+            }
+        }
+    }
     // 피커가 열리면 시트를 그만큼 키우고(높이 잠금 재측정), 잘려 있으면 통째로 보이는 자리까지
     // 끌어온다 — 선택지를 보려고 사용자가 직접 스크롤하지 않게 한다.
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
@@ -705,7 +951,14 @@ function writeThrough(key, value) {
     const chip = [...document.querySelectorAll(`#${containerId} button.chip`)].find(
         (b) => b.innerText.trim() === value
     );
-    if (chip && !chip.classList.contains('active')) chip.click();
+    if (!chip || chip.classList.contains('active')) return;
+    // 칩 클릭이 selectTag → 칩→줄 동기화를 다시 부르므로 그 왕복을 끊는다
+    syncingMealTypeChips = key === 'mealType';
+    try {
+        chip.click();
+    } finally {
+        syncingMealTypeChips = false;
+    }
 }
 
 /** @param {string} key @param {string} value */
@@ -717,6 +970,8 @@ function confirmAxis(key, value) {
     writeThrough(key, value);
     // 장소 확정은 어떻게 추론의 입력 (피커에서 '집'을 고르면 집밥 추측이 뜰 수 있다)
     if (key === 'place') refreshMealTypeGuess();
+    // 어떻게를 직접 골랐으면 어디서·누구와 추측은 근거가 바뀐다 — 그 자리에서 다시 뽑는다
+    if (key === 'mealType') rederiveContextFromMealType();
 }
 
 /**
@@ -737,11 +992,121 @@ function clearAxis(key) {
     }
 }
 
+/**
+ * 3단 뎁스 칩 탭 — 누구와 상세 입력란에 이름을 넣거나 뺀다(쉼표 다중값).
+ * 값의 주인은 계속 `entryWithInput`(= withWhomDetail)이다. 여기서 별도 상태를 들지 않는 이유는
+ * '자세히' 안의 입력란과 두 곳이 같은 값을 들고 어긋나는 걸 막기 위해서다.
+ */
+function toggleWithDetail(name) {
+    const input = document.getElementById('entryWithInput');
+    if (!input || !name) return;
+    const values = currentWithDetailValues();
+    const idx = values.indexOf(name);
+    if (idx >= 0) values.splice(idx, 1);
+    else values.push(name);
+    input.value = values.join(', ');
+    // 기존 리스너(서브칩 활성 표시 등)를 그대로 태운다
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * 입력칸의 이름을 알약으로 굳힌다 (엔터 · 포커스 이동).
+ * 쉼표로 여러 개를 한 번에 적어도 각각 알약이 된다.
+ * @returns {boolean} 실제로 만든 게 있으면 true
+ */
+function commitSubFreeInput() {
+    const el = document.getElementById(CONTAINER_ID);
+    const free = el?.querySelector('[data-context-sub-input]');
+    const parent = axisValue('withWhom');
+    if (!free || !parent) return false;
+    const names = free.value.split(/[,，]/).map((v) => v.trim()).filter(Boolean);
+    free.value = '';
+    if (names.length === 0) return false;
+    if (!Array.isArray(state.subAdded[parent])) state.subAdded[parent] = [];
+    const bag = state.subAdded[parent];
+    const values = currentWithDetailValues();
+    for (const name of names) {
+        if (!bag.includes(name)) bag.push(name);
+        if (!values.includes(name)) values.push(name);
+    }
+    const input = document.getElementById('entryWithInput');
+    if (input) {
+        input.value = values.join(', ');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    logUsageMetric('context_sub_added').catch(() => {});
+    return true;
+}
+
+/**
+ * 알약을 목록에서 지운다 — 선택 해제(재탭)와 다르다.
+ * 이번에 적은 이름·최근 목록·사용자 등록 어디에 있든 함께 뺀다. 셋을 갈라 두면
+ * "지웠는데 다시 뜬다"가 된다. 되살리려면 다시 적거나 마이 → 태그에서 등록하면 된다.
+ */
+function deleteSubOption(name, parent) {
+    if (!name || !parent) return;
+    const bag = state.subAdded[parent];
+    if (Array.isArray(bag)) state.subAdded[parent] = bag.filter((v) => v !== name);
+
+    const settings = window.userSettings;
+    let changed = false;
+    if (settings) {
+        const favs = settings.favoriteSubTags?.withWhom?.[parent];
+        if (Array.isArray(favs) && favs.includes(name)) {
+            settings.favoriteSubTags.withWhom[parent] = favs.filter((v) => v !== name);
+            changed = true;
+        }
+        const people = settings.subTags?.people;
+        if (Array.isArray(people)) {
+            const next = people.filter((item) => {
+                const text = typeof item === 'string' ? item : item?.text;
+                return text !== name;
+            });
+            if (next.length !== people.length) {
+                settings.subTags.people = next;
+                changed = true;
+            }
+        }
+    }
+    if (changed) scheduleEntrySettingsSave();
+
+    // 입력란에 들어 있었다면 함께 뺀다 — 목록에 없는 값이 저장되면 안 된다
+    const values = currentWithDetailValues().filter((v) => v !== name);
+    const input = document.getElementById('entryWithInput');
+    if (input) {
+        input.value = values.join(', ');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    logUsageMetric('context_sub_deleted').catch(() => {});
+}
+
 function onContainerClick(e) {
+    const del = e.target.closest('[data-context-sub-del]');
+    if (del) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteSubOption(del.getAttribute('data-context-sub-del') || '', axisValue('withWhom'));
+        render();
+        return;
+    }
+    const subOpt = e.target.closest('[data-context-sub]');
+    if (subOpt) {
+        toggleWithDetail(subOpt.getAttribute('data-context-sub') || '');
+        logUsageMetric('context_sub_picked').catch(() => {});
+        render();
+        return;
+    }
+    if (e.target.closest('[data-context-sub-free]')) {
+        state.subFreeOpen = true;
+        pendingSubFreeFocus = true;
+        render();
+        return;
+    }
     const seg = e.target.closest('[data-context-seg]');
     if (seg) {
         const key = seg.getAttribute('data-context-seg');
         state.openAxis = state.openAxis === key ? null : key;
+        state.subFreeOpen = false; // 축을 옮기면 직접 입력 칸은 접는다
         render();
         return;
     }
@@ -813,6 +1178,31 @@ export function initEntryContextPredict() {
     if (el && !el._contextPredictBound) {
         el._contextPredictBound = true;
         el.addEventListener('click', onContainerClick);
+        // 엔터 = 지금 적은 이름을 알약으로 굳히고 계속 적을 수 있게 커서를 남긴다
+        el.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            if (!e.target.closest?.('[data-context-sub-input]')) return;
+            e.preventDefault();
+            if (commitSubFreeInput()) {
+                pendingSubFreeFocus = true;
+                render();
+            }
+        });
+        /**
+         * 포커스를 옮겨도 굳힌다. 곧바로 하지 않고 한 박자 늦추는 이유는,
+         * 옆 알약을 누르려던 경우 blur → (여기서 재렌더) → click 순서가 되면 그 클릭이
+         * 사라진 노드를 치기 때문이다. 늦추면 click 이 먼저 처리된다.
+         */
+        el.addEventListener('focusout', (e) => {
+            if (!e.target.closest?.('[data-context-sub-input]')) return;
+            clearTimeout(subFreeCommitTimer);
+            subFreeCommitTimer = setTimeout(() => {
+                if (commitSubFreeInput()) render();
+            }, SUB_FREE_COMMIT_DELAY_MS);
+        });
+        el.addEventListener('focusin', (e) => {
+            if (e.target.closest?.('[data-context-sub-input]')) clearTimeout(subFreeCommitTimer);
+        });
     }
     const placeInput = document.getElementById('entryWhereInput');
     if (placeInput && !placeInput._contextPredictSync) {

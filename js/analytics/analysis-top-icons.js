@@ -22,6 +22,7 @@ const MEAL_TYPE_ICON = {
     '회식/술자리': 'how-wine',
     '배달/포장': 'how-motorcycle',
     구내식당: 'how-building',
+    // 편의점 전용 아이콘 에셋이 아직 없다 — 생기면 여기에 붙인다(지금은 how-ellipsis 폴백)
     기타: 'how-ellipsis',
     건너뜀: 'how-skip',
     Skip: 'how-skip'
