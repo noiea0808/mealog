@@ -18580,3 +18580,10 @@ html.service-guide-active #landingPage {
 .ai-meal-report-score-detail > summary::-webkit-details-marker {
     display: none;
 }
+/* 펼침 여부를 캐럿 방향으로 알린다 — 라벨은 그대로 두고 방향만 뒤집는다 */
+.ai-meal-report-score-caret {
+    transition: transform 0.15s ease;
+}
+.ai-meal-report-score-detail[open] > summary .ai-meal-report-score-caret {
+    transform: rotate(180deg);
+}

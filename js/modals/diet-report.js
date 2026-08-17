@@ -629,14 +629,14 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], r
     const scoreSpan = hasScore
         ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
         : '';
-    // 1행: 점수 — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
+    // 점수 — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
         scoreSpan
             ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}</div>`
             : '';
-    // 2행: 제목(report.title)
+    // 제목이 헤드라인이다. 모달 카드와 같은 순서·위계로 맞춘다(제목 → 점수).
     const subjectHtml = title
-        ? `<div style="font-size:17px;font-weight:800;color:#1e293b;line-height:1.35;">${e(title)}</div>`
+        ? `<div style="font-size:21px;font-weight:900;color:#0f172a;line-height:1.3;letter-spacing:-0.02em;word-break:keep-all;">${e(title)}</div>`
         : '';
     const summaryHtml = summary
         ? `<div><div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">오늘의 식사 흐름</div><div style="font-size:13.5px;color:#334155;line-height:1.5;">${e(summary)}</div></div>`
@@ -675,8 +675,8 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], r
         </div>
         ${photosHtml}
         <div style="padding:10px 18px 18px;display:flex;flex-direction:column;gap:10px;background:#ffffff;">
-            ${scoreRow}
             ${subjectHtml}
+            ${scoreRow}
             ${summaryHtml}
             ${highlightHtml}
             ${nudgeHtml}

@@ -138,9 +138,12 @@ function renderDietRecordScoreDetailHtml(recordScore, esc) {
         .join('');
     // 점수 자체를 summary 안에 둬서 줄 전체가 열림 토글이 된다 — 탭 영역이 넓어진다.
     return `<details class="ai-meal-report-score-detail">
-        <summary class="flex items-baseline gap-2 cursor-pointer list-none select-none">
+        <summary class="flex items-center gap-2 cursor-pointer list-none select-none">
             <span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>
-            <span class="text-[11px] font-semibold text-slate-400 leading-none">점수 내역 보기</span>
+            <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 shadow-sm active:bg-slate-50">
+                점수 내역 보기
+                <svg class="ai-meal-report-score-caret w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
         </summary>
         <div class="mt-2 rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1">
             <div class="divide-y divide-slate-200/70">${rows}</div>
@@ -179,8 +182,10 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
 
     const photosBlock = photoUrls.length ? renderAiMealReportPhotosHtml(photoUrls, esc) : '';
 
+    // mood 가 빠진 뒤로 title 이 그날을 이름 붙이는 유일한 칸이다. 카드의 헤드라인답게
+    // 점수보다 크게, 맨 위에 둔다. 숫자가 첫인상이 되면 "채점이 아니다"라는 전제와 어긋난다.
     const titleBlock = title
-        ? `<h3 class="text-base font-black text-slate-800 leading-snug tracking-tight">${esc(title)}</h3>`
+        ? `<h3 class="text-[19px] font-black text-slate-900 leading-tight tracking-tight break-keep">${esc(title)}</h3>`
         : '';
 
     const summaryBlock = summary
@@ -208,9 +213,9 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
 
     return `<article class="ai-meal-report-card rounded-xl border border-slate-200/90 bg-gradient-to-br from-white via-emerald-50/25 to-slate-50/40 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.07)] overflow-hidden">
         <div class="p-4 space-y-2.5">
+            ${titleBlock}
             ${topRow}
             ${photosBlock}
-            ${titleBlock}
             ${summaryBlock}
             ${highlightBlock}
             ${nudgeBlock}
