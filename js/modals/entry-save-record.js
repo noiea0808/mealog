@@ -123,6 +123,17 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
     let categoryAuto = '';
     let categorySource = null;
     /**
+     * 분류기가 뭐라고 했는지 — **사용자가 다른 값으로 고쳤어도** 남긴다.
+     *
+     * 예전에는 확정하는 순간 categoryAuto 가 비어서 "제안이 틀렸다"는 사실이 흔적 없이
+     * 사라졌다. 맞힌 경우(source='local')만 데이터에 남으니 교정률을 계산할 방법이 없었다.
+     * category ≠ categorySuggested 인 기록 수가 곧 오분류다.
+     *
+     * 읽기 계층은 category/snackType 을 먼저 보므로(js/analytics/meal-analytics-tags.js)
+     * 이 필드가 채워져도 집계에는 영향이 없다.
+     */
+    let categorySuggested = '';
+    /**
      * 요리 종류(한식·중식…)는 음식 이름에서 도출되는 사실이라 사용자에게 묻지 않고
      * 자동 저장한다 (placeType 과 같은 사실-유도). 형태 축(category)과 짝을 이뤄
      * "면을 얼마나 먹나"와 "중식을 얼마나 먹나"를 둘 다 답할 수 있게 한다.
@@ -131,6 +142,7 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
     if (!isSk) {
         const suggest = getEntryCategorySuggestResult();
         cuisineAuto = suggest.cuisine || '';
+        categorySuggested = suggest.top || '';
         // 끼니는 category, 간식은 snackType — 같은 자동 분류 필드 쌍을 공유한다
         const userPicked = isS ? snackTypeFinal : categoryFinal;
         if (userPicked) {
@@ -189,6 +201,7 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         withWhomDetail: isSk ? '' : withInputVal,
         category: categoryFinal,
         categoryAuto,
+        categorySuggested,
         categorySource,
         cuisineAuto,
         placeType: '',
