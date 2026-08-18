@@ -151,6 +151,9 @@
                             <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
                                 <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
                             </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('record')" id="dashboard-subtab-record" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-pen-to-square mr-2" aria-hidden="true"></i>기록
+                            </button>
                             <button type="button" onclick="window.switchDashboardSubtab('excluded')" id="dashboard-subtab-excluded" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
                                 <i class="fa-solid fa-user-slash mr-2" aria-hidden="true"></i>통계 제외 UID
                             </button>
@@ -342,8 +345,10 @@
                     </div>
                 </div>
                 <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
+                <!-- 페이지별·기록: 같은 표를 그룹 필터로 나눠 본다 (js/admin/dashboard.js applyUsageTableGroupFilter) -->
                 <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
-                    <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 열 구성은 트렌드 탭과 같습니다. 「전체」는 운영 시작일(일별 사용량 집계 시작일)부터 오늘까지 누적이며, 그 오른쪽은 월별 합계와 일요일 시작 주차별 열입니다. 맨 오른쪽 「최근 7일」은 금일 포함 7일 일별입니다.</p>
+                    <p id="dashboardPageUsageHelp" class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 열 구성은 트렌드 탭과 같습니다. 「전체」는 운영 시작일(일별 사용량 집계 시작일)부터 오늘까지 누적이며, 그 오른쪽은 월별 합계와 일요일 시작 주차별 열입니다. 맨 오른쪽 「최근 7일」은 금일 포함 7일 일별입니다.</p>
+                    <p id="dashboardRecordUsageHelp" class="hidden px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed">기록 시트 안에서 일어난 <span class="font-bold text-slate-600">조작 횟수</span>입니다. 페이지 방문 수와 달리 <span class="font-bold text-slate-600">행 하나만 보면 뜻이 없고 짝으로 읽어야</span> 합니다 — 「표시」 대비 「선택·확정·그대로 저장」이 <span class="font-bold text-slate-600">채택률</span>, 「다른 구분 열기」·「분류 안 함」·「거부」가 <span class="font-bold text-slate-600">교정·거부 신호</span>입니다. 분류 추천의 채택은 사용자가 탭한 「추천 확정」과 손대지 않고 넘어간 「추천 그대로 저장」을 <span class="font-bold text-slate-600">합쳐야</span> 합니다. 열 구성과 기간 기준은 페이지별 탭과 같습니다.</p>
                     <div class="overflow-x-auto" id="dashboardPageTableScroll">
                         <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
                             <thead>
