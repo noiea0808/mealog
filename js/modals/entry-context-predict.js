@@ -54,11 +54,11 @@ const state = {
     /** 사용자가 명시적으로 비운 축 — 추측이 다시 채우지 않는다 */
     userCleared: /** @type {{ [key: string]: boolean }} */ ({}),
     /**
-     * 추측을 이대로 쓸지. **기본 OFF** — 맥락 축은 "쓴다/안 쓴다"가 먼저이고,
-     * 추천은 그 축을 쓰기로 했을 때 채워질 값으로 미리 들어가 있는 것이다.
-     * (원칙 2 "추측은 확인 없이 데이터가 되지 않는다"도 이 기본값에서 지켜진다)
+     * 추측을 이대로 쓸지. **기본 ON** — 맞는 추천을 켜려고 매번 손대게 하는 쪽이
+     * 틀린 추천을 끄는 쪽보다 비용이 컸다. 추천값은 흐린 점선으로 "아직 추측"임을
+     * 계속 말하고 스위치는 사라지지 않으므로, 한 번의 탭으로 언제든 되돌릴 수 있다.
      */
-    useGuess: false,
+    useGuess: true,
     /** 습관 예측 원본(이력 최빈값) — 사실-유도 추론과 합성할 때 참조 */
     habitMealType: /** @type {string|null} */ (null),
     /**
@@ -110,7 +110,7 @@ export function resetEntryContextPredict() {
     state.predicted = { mealType: null, place: null, withWhom: null };
     state.confirmed = { mealType: null, place: null, withWhom: null };
     state.userCleared = {};
-    state.useGuess = false;
+    state.useGuess = true;
     state.habitMealType = null;
     state.habitWithWhom = null;
     state.foodCategory = null;
@@ -169,6 +169,9 @@ let syncingMealTypeChips = false;
 
 /** '직접 입력'을 막 열었을 때만 커서를 옮긴다 (칩 탭마다 포커스를 뺏지 않게) */
 let pendingSubFreeFocus = false;
+
+/** 장소 직접 입력 칸도 엔터로 굳힌 뒤 커서를 그대로 둔다 */
+let pendingPlaceFreeFocus = false;
 
 /** blur 로 굳히기 전에 두는 여유 — 옆 알약 클릭이 먼저 처리되게 한다 */
 const SUB_FREE_COMMIT_DELAY_MS = 150;
@@ -418,6 +421,18 @@ function refreshMealTypeGuess() {
             state.placeFromMealTypeChain = false;
         }
         applyPlaceFromMealType();
+        /**
+         * 누구와도 같은 이유로 다시 뽑는다.
+         *
+         * 예전에는 이 경로에서 어디서만 갱신했다 — 사용자가 어떻게를 **직접 고른** 경우
+         * (rederiveContextFromMealType)만 누구와까지 이어지고, 무엇을·어디서 입력으로
+         * 어떻게 **추측이 바뀐** 경우에는 이전 어떻게로 뽑은 누구와가 그대로 남았다.
+         * 두 경로 모두 "어떻게가 달라졌다"는 같은 사건이므로 연쇄도 같아야 한다.
+         *
+         * 어디서와 달리 무효화 플래그를 먼저 끌 필요가 없다 — applyWithWhomFromMealType 은
+         * 매번 처음부터 다시 계산하고, 표본이 모자라면 슬롯 습관으로 되돌아간다.
+         */
+        applyWithWhomFromMealType();
         render();
     }
 }
@@ -454,10 +469,9 @@ function applyPlaceFromMealType() {
 /**
  * 어떻게 → 누구와 연쇄 추론. 어디서와 같은 규칙(개인 통계·같은 문턱)이다.
  *
- * 다만 **폴백이 다르다**: 어디서는 표본이 모자라면 빈칸으로 둔다(외식의 상호명은 추론이
- * 불가능하다). 누구와는 값 공간이 작아 슬롯 습관('아침엔 혼자')이 여전히 쓸모 있으므로
- * 그쪽으로 되돌아간다. 시드를 쓰지 않는 이유는 WITH_PRIORITY_BY_MEALTYPE 가 피커 정렬용이라
- * "회식이면 직장동료일 것"이라고 값까지 단정하기엔 근거가 약하기 때문이다.
+ * 다만 **폴백이 한 단 더 있다**: 어디서는 표본이 모자라면 시드로 넘어가는데, 누구와는
+ * 값 공간이 작아 슬롯 습관('아침엔 혼자')이 여전히 쓸모 있으므로 그쪽을 먼저 거친다.
+ * 개인 통계 > 슬롯 습관 > 시드(WITH_SEED_BY_MEALTYPE) 순.
  */
 function applyWithWhomFromMealType() {
     if (state.confirmed.withWhom || state.userCleared.withWhom) return;
@@ -472,8 +486,11 @@ function applyWithWhomFromMealType() {
         .slice(0, RECENT_LIMIT)
         .map((r) => r.withWhom.trim());
     const scoped = qualifiedMode(samples);
-    state.predicted.withWhom = scoped || state.habitWithWhom;
-    state.withFromMealTypeChain = Boolean(scoped);
+    const seed = WITH_SEED_BY_MEALTYPE[mealType] || null;
+    // 시드는 슬롯 습관이 침묵할 때만 나선다 — 개인 이력이 일반론을 이긴다
+    const fromHow = scoped || (state.habitWithWhom ? null : seed);
+    state.predicted.withWhom = scoped || state.habitWithWhom || seed;
+    state.withFromMealTypeChain = Boolean(fromHow);
 }
 
 /**
@@ -580,6 +597,28 @@ const PLACE_SEED_BY_MEALTYPE = {
     '배달/포장': '우리집',
     '구내식당': '구내식당',
     '편의점': '편의점',
+};
+
+/**
+ * 어떻게 → 누구와 시드 (2026-08-18 추가).
+ *
+ * 원래는 두지 않았다 — "회식이면 직장동료일 것"이라고 값까지 단정하기엔 근거가 약하다는
+ * 이유였다. 그런데 실제로는 그 결정 때문에 **이력이 얕은 축이 영영 안 뜨는** 증상이 났다:
+ * 구내식당 기록 3건 중 누구와가 채워진 건 2건, 문턱(3건)에 한 건 모자라 침묵.
+ * 어디서는 PLACE_SEED_BY_MEALTYPE 가 같은 문제를 이미 시드로 풀고 있었다.
+ *
+ * 다만 시드는 **조달 방식이 곧 동석자를 정하는 경우로만** 좁힌다.
+ * 집밥·외식·배달은 사람마다 갈리므로(혼자 사는 사람의 집밥, 가족 외식, 혼밥 배달)
+ * 넣지 않는다 — 거기까지 단정하면 원래의 우려가 그대로 현실이 된다.
+ * WITH_PRIORITY_BY_MEALTYPE 를 그대로 쓰지 않는 것도 같은 이유다(그건 피커 정렬용이라
+ * 확신이 약한 값까지 1순위를 갖는다).
+ *
+ * 개인 통계 > 슬롯 습관 > 이 시드 순이고, 한 번 고치면 그 뒤로는 개인 통계가 이긴다.
+ */
+const WITH_SEED_BY_MEALTYPE = {
+    '구내식당': '직장동료',
+    '회식/술자리': '직장동료',
+    '편의점': '혼자',
 };
 
 const MEALTYPE_SEED_BY_CUISINE = {
@@ -813,11 +852,31 @@ function renderPicker() {
         ? options.map((opt) => `
             <button type="button" class="entry-context-opt${opt === current ? ' entry-context-opt--on' : ''}" data-context-pick="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('')
         : '<span class="entry-context-picker__empty">아직 쓸 만한 값이 없어요. 직접 입력해 주세요.</span>';
-    // 어디서만 자유 입력 — 카테고리로 안 잡히는 장소는 검색·직접 입력으로 (설계 §5)
+    /**
+     * 어디서만 자유 입력 — 카테고리로 안 잡히는 장소는 직접 적거나 검색으로 (설계 §5).
+     *
+     * 추천 칩과 같은 흐름에 두면 "칩 하나 더"로 읽힌다 — 고르는 자리와 새로 적는 자리는
+     * 층이 다르다. 패널 **바닥의 별도 칸**으로 내려 자리와 구분선으로 그 층을 말한다.
+     *
+     * **기본은 직접 입력**이다. 버튼 하나로 카카오 검색 시트를 띄우던 때는, 이름만 적으면
+     * 되는 '집'·'회사' 같은 자리에도 지도 검색이 통째로 열려 과했다. 검색은 돋보기를
+     * 눌렀을 때만 — 옆의 작은 버튼 하나로 좁힌다.
+     *
+     * 값의 주인은 여전히 entryWhereInput 하나이고 이 칸은 그 거울이다 — 그래서 현재
+     * 확정값을 그대로 담고, 엔터·포커스 이동에서 굳힌다(누구와 상세 칸과 같은 규칙).
+     */
     const free = axis.key === 'place'
-        ? `<button type="button" class="entry-context-free" data-context-search>
-               <i data-lucide="search" aria-hidden="true"></i>장소 검색 · 직접 입력
-           </button>`
+        ? `<div class="entry-context-picker__foot">
+               <div class="entry-context-place-free">
+                   <button type="button" class="entry-context-place-free__search" data-context-search
+                           aria-label="장소 검색" title="장소 검색">
+                       <i data-lucide="search" aria-hidden="true"></i>
+                   </button>
+                   <input type="text" class="entry-context-place-free__input" data-context-place-input
+                          value="${escapeHtml(current || '')}" placeholder="장소를 직접 적어요"
+                          aria-label="어디서 직접 입력" enterkeyhint="done">
+               </div>
+           </div>`
         : '';
     /**
      * 3단 뎁스 — 2단계에서 값을 고른 상태면 **같은 패널 아래에 이어서** 펼친다.
@@ -882,7 +941,7 @@ function render() {
      * 행 구조: [헤더: 리드 텍스트 ─ 사용 토글] / [세그먼트들 + ⋯자세히] / [피커].
      *
      * 질문에 답하는 형태('맞아요/아니에요')가 아니라 **상태 토글**이다:
-     * '이대로 사용'(기본 ON) ↔ '사용 안함'. 어느 쪽이든 버튼은 사라지지 않고
+     * '사용'(기본 ON) ↔ '사용 안함'. 어느 쪽이든 버튼은 사라지지 않고
      * 언제든 되돌릴 수 있다 — 한 번 거부하면 되돌릴 수 없던 게 이전 방식의 문제였다.
      * OFF여도 추측값은 흐리게 남아 다시 켤 수 있다.
      * 개별 수정은 세그먼트 탭 → 피커에서 한다.
@@ -892,8 +951,8 @@ function render() {
         ? `<button type="button" class="entry-predict-toggle${state.useGuess ? ' entry-predict-toggle--on' : ''}"
                 data-predict-toggle role="switch" aria-checked="${state.useGuess}"
                 aria-label="추천값 사용 ${state.useGuess ? '켜짐' : '꺼짐'}">
+               <span class="entry-predict-toggle__label">${state.useGuess ? '사용' : '사용 안함'}</span>
                <span class="entry-predict-toggle__track"><span class="entry-predict-toggle__knob"></span></span>
-               <span class="entry-predict-toggle__label">${state.useGuess ? '이대로 사용' : '사용 안함'}</span>
            </button>`
         : '';
     // 추측이 있으면 그 사실을, 없으면 이 줄이 받는 질문들을 리드로 쓴다
@@ -927,6 +986,24 @@ function render() {
             }
         }
     }
+    // 엔터로 굳힌 직후에는 장소 칸에 커서를 남긴다 — 이어서 고쳐 적을 수 있게
+    if (pendingPlaceFreeFocus) {
+        pendingPlaceFreeFocus = false;
+        const place = el.querySelector('[data-context-place-input]');
+        if (place) {
+            try {
+                place.focus({ preventScroll: true });
+            } catch (_) {
+                place.focus();
+            }
+            const end = place.value.length;
+            try {
+                place.setSelectionRange(end, end);
+            } catch (_) {
+                /* 커서 위치는 부수적이다 */
+            }
+        }
+    }
     // 피커가 열리면 시트를 그만큼 키우고(높이 잠금 재측정), 잘려 있으면 통째로 보이는 자리까지
     // 끌어온다 — 선택지를 보려고 사용자가 직접 스크롤하지 않게 한다.
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
@@ -934,6 +1011,46 @@ function render() {
         const picker = el.querySelector('.entry-context-picker');
         if (picker) requestAnimationFrame(() => picker.scrollIntoView({ block: 'nearest' }));
     }
+}
+
+/**
+ * 추천 분류 줄이 스크롤 밖으로 밀려나지 않게 시트를 굴린다.
+ *
+ * 이 줄 **위**에 뜨는 것들(✨분류 제안 · 회상 줄)은 '무엇을' 포커스와 함께 나타나 아래를
+ * 통째로 밀어낸다. 시트가 커질 수 있는 폭은 정해져 있어(80vh · 레이아웃 상한) 상한에
+ * 닿으면 늘어난 분이 스크롤로 흐르고, 그러면 이 줄의 아래가 스크롤 경계 밑으로 내려간다.
+ * 모자란 만큼만 아래로 굴려 되돌린다. 두 가지는 지킨다:
+ *   - 사용자가 직접 스크롤 중이면 손대지 않는다 (CTA 로 내려가는 걸 되감지 않기 위해)
+ *   - 지금 치고 있는 '무엇을' 입력란이 위로 사라질 만큼은 굴리지 않는다
+ */
+export function keepEntryContextPredictVisible() {
+    const modal = document.getElementById('entryModal');
+    const el = document.getElementById(CONTAINER_ID);
+    const area = modal?.querySelector('#modalScrollArea');
+    if (!modal || !el || !area || el.classList.contains('hidden')) return;
+    if (area.dataset?.entryUserScrolling === '1') return;
+    /**
+     * '무엇을'을 치고 있는 동안에만 보정한다. 시트를 막 열었을 때는 이 줄이 접힌 아래에
+     * 있는 게 정상이고, 그때까지 끌어올리면 사진·날짜 머리가 위로 사라진다.
+     */
+    if (document.activeElement !== document.getElementById('entryWhatInput')) return;
+    // 줄이 방금 렌더된 직후에도 불리므로 레이아웃이 굳은 다음 프레임에 잰다
+    requestAnimationFrame(() => {
+        if (!document.contains(el) || el.classList.contains('hidden')) return;
+        if (area.dataset?.entryUserScrolling === '1') return;
+        // 이미 끝까지 내려가 있으면 더 굴려도 달라지는 게 없다
+        if (area.scrollTop >= area.scrollHeight - area.clientHeight - 1) return;
+        const pad = 8;
+        const areaRect = area.getBoundingClientRect();
+        const need = el.getBoundingClientRect().bottom + pad - areaRect.bottom;
+        if (need <= 1) return;
+        const input = document.getElementById('entryWhatInput');
+        const room = input
+            ? input.getBoundingClientRect().top - (areaRect.top + pad)
+            : Number.POSITIVE_INFINITY;
+        const delta = Math.min(need, room);
+        if (delta > 1) area.scrollTop += delta;
+    });
 }
 
 /**
@@ -1014,6 +1131,27 @@ function toggleWithDetail(name) {
  * 쉼표로 여러 개를 한 번에 적어도 각각 알약이 된다.
  * @returns {boolean} 실제로 만든 게 있으면 true
  */
+/**
+ * 장소 직접 입력 칸을 굳힌다 — 엔터 / 포커스 이동에서 불린다.
+ * 값의 주인은 entryWhereInput 이므로 confirmAxis 를 그대로 태운다(어떻게 추론도 함께 갱신).
+ * 비우면 축을 비운 것으로 본다 — 사용자가 지운 것이니 추측이 다시 채우지 않는다.
+ * @returns {boolean} 값이 바뀌어 다시 그려야 하면 true
+ */
+function commitPlaceFreeInput() {
+    const el = document.getElementById(CONTAINER_ID);
+    const input = el?.querySelector('[data-context-place-input]');
+    if (!input) return false;
+    const value = (input.value || '').trim();
+    if (value === (axisValue('place') || '')) return false;
+    if (value) {
+        confirmAxis('place', value);
+        logUsageMetric('context_place_typed').catch(() => {});
+    } else {
+        clearAxis('place');
+    }
+    return true;
+}
+
 function commitSubFreeInput() {
     const el = document.getElementById(CONTAINER_ID);
     const free = el?.querySelector('[data-context-sub-input]');
@@ -1147,6 +1285,7 @@ function onContainerClick(e) {
         return;
     }
     if (e.target.closest('[data-context-search]')) {
+        // 검색은 **돋보기를 눌렀을 때만** — 옆 입력칸은 직접 적는 자리다.
         // 카카오 검색 시트는 entryWhereInput에 값을 넣는다 — 닫힌 뒤 그 값을 확정으로 승격.
         // 피커는 열어 둬서 검색을 취소해도 원래 자리로 돌아온다
         if (typeof window.openKakaoPlaceSearch === 'function') window.openKakaoPlaceSearch();
@@ -1181,6 +1320,14 @@ export function initEntryContextPredict() {
         // 엔터 = 지금 적은 이름을 알약으로 굳히고 계속 적을 수 있게 커서를 남긴다
         el.addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
+            if (e.target.closest?.('[data-context-place-input]')) {
+                e.preventDefault();
+                if (commitPlaceFreeInput()) {
+                    pendingPlaceFreeFocus = true;
+                    render();
+                }
+                return;
+            }
             if (!e.target.closest?.('[data-context-sub-input]')) return;
             e.preventDefault();
             if (commitSubFreeInput()) {
@@ -1194,6 +1341,13 @@ export function initEntryContextPredict() {
          * 사라진 노드를 치기 때문이다. 늦추면 click 이 먼저 처리된다.
          */
         el.addEventListener('focusout', (e) => {
+            if (e.target.closest?.('[data-context-place-input]')) {
+                clearTimeout(subFreeCommitTimer);
+                subFreeCommitTimer = setTimeout(() => {
+                    if (commitPlaceFreeInput()) render();
+                }, SUB_FREE_COMMIT_DELAY_MS);
+                return;
+            }
             if (!e.target.closest?.('[data-context-sub-input]')) return;
             clearTimeout(subFreeCommitTimer);
             subFreeCommitTimer = setTimeout(() => {
@@ -1201,7 +1355,9 @@ export function initEntryContextPredict() {
             }, SUB_FREE_COMMIT_DELAY_MS);
         });
         el.addEventListener('focusin', (e) => {
-            if (e.target.closest?.('[data-context-sub-input]')) clearTimeout(subFreeCommitTimer);
+            if (e.target.closest?.('[data-context-sub-input], [data-context-place-input]')) {
+                clearTimeout(subFreeCommitTimer);
+            }
         });
     }
     const placeInput = document.getElementById('entryWhereInput');

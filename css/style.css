@@ -14975,9 +14975,9 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal.entry-sheet-height-probe #entryCommentSectionMeal:not(.hidden) .entry-comment-textarea,
 #entryModal.entry-sheet-height-probe #entryCommentSectionSnack:not(.hidden) .entry-comment-textarea {
-    min-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
-    max-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
-    height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    min-height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    max-height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
     padding-top: 0.45rem !important;
     padding-bottom: 0.45rem !important;
     overflow: hidden !important;
@@ -15894,10 +15894,12 @@ body:has(#adminPage:not(.hidden)),
     max-width: 100%;
     min-width: 0;
     line-height: var(--entry-comment-line);
-    /* 빈 칸: 1줄. 내용/포커스 시 확장 — 넘치는 분은 #modalScrollArea 세로 스크롤 */
-    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
-    max-height: calc(1em * var(--entry-comment-line) + 0.9rem);
-    height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    /* 빈 칸: 2줄. 내용/포커스 시 확장 — 넘치는 분은 #modalScrollArea 세로 스크롤.
+       한 줄로 접었더니 "여기에 적는 칸"이라는 게 눈에 덜 들어와, 비어 있을 때도
+       두 줄만큼 자리를 잡아 둔다. 접힘 상태의 한 줄 표시(nowrap+말줄임)는 그대로다. */
+    min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
+    max-height: calc(2em * var(--entry-comment-line) + 0.9rem);
+    height: calc(2em * var(--entry-comment-line) + 0.9rem);
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
     overflow-x: hidden;
@@ -15910,7 +15912,7 @@ body:has(#adminPage:not(.hidden)),
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
     max-height: none;
     height: auto;
-    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
     overflow-x: hidden;
@@ -18850,9 +18852,21 @@ html.service-guide-active #landingPage {
 .entry-context-picker__empty {
     color: #94a3b8;
 }
+/* 패널 바닥의 별도 칸 — 칩 목록(고르는 자리)과 자유 입력(새로 적는 자리)을 갈라놓는다.
+   flex-basis 100% 로 반드시 제 줄을 차지해, 칩이 적을 때도 칩 옆에 붙어 흐르지 않는다. */
+.entry-context-picker__foot {
+    flex: 1 0 100%;
+    min-width: 0;
+    /* 패널의 flex gap(6px)이 이미 위쪽 여백이다 — margin 을 더하면 알약 아래가 뜬다.
+       구분선 위 6px(gap) · 아래 6px 로 맞춰 대칭으로 둔다. */
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+}
 .entry-context-opt {
     padding: 4px 10px;
-    border: 1px solid #e2e8f0;
+    /* 회색 트레이(#f1f5f9) 위의 흰 칩이라 slate-200 은 경계가 묻혔다 — 한 단 진하게 */
+    border: 1px solid #cbd5e1;
     border-radius: 14px;
     background: white;
     color: #475569;
@@ -18868,9 +18882,14 @@ html.service-guide-active #landingPage {
 /* 3단 뎁스 — 2단계에서 고른 값에 종속된 상세('친구' → 친구 이름들).
    같은 패널 안에서 한 단 들여 붙여, 위 칩을 고르면 아래가 따라 바뀐다는 걸 위치로 보여준다. */
 .entry-context-sub {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed #e2e8f0;
+    /* 자유 입력 칸과 같은 이유로 제 줄을 차지한다 — 칩이 몇 개 없으면 칩 옆에 나란히
+       붙어 구분선이 반 토막 난 채 "칩 하나 더"처럼 보였다. */
+    flex: 1 0 100%;
+    min-width: 0;
+    /* 자유 입력 칸과 같은 간격 규칙 (위 6px = 패널 gap · 아래 6px) */
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
 }
 .entry-context-sub__label {
     display: block;
@@ -18891,7 +18910,7 @@ html.service-guide-active #landingPage {
 .entry-context-sub-opt {
     display: inline-flex;
     align-items: center;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #cbd5e1;
     border-radius: 999px;
     background: #f1f5f9;
     overflow: hidden;
@@ -18912,7 +18931,7 @@ html.service-guide-active #landingPage {
     width: 18px;
     align-self: stretch;
     padding-right: 2px;
-    color: #cbd5e1;
+    color: #94a3b8;
     font-size: 13px;
     line-height: 1;
     cursor: pointer;
@@ -18929,7 +18948,7 @@ html.service-guide-active #landingPage {
     font-weight: 700;
 }
 .entry-context-sub-opt--on .entry-context-sub-opt__del {
-    color: #7bbfa2;
+    color: #4c9c7d;
 }
 /* 목록에 없는 새 이름 — 이 자리에서 바로 받는다(축 섹션을 통째로 열지 않는다) */
 /* 입력칸도 알약 — 옆의 이름 알약들과 같은 줄·같은 높이로 흐른다(점선으로 "아직 안 굳음") */
@@ -18949,56 +18968,101 @@ html.service-guide-active #landingPage {
     color: #cbd5e1;
     font-weight: 500;
 }
+/* 눌렀을 때 바뀌는 입력칸과 **같은 생김새의 알약**이다 — 밑줄 텍스트였을 때는 옆의
+   이름 알약들과 층이 달라 보여 "여기도 누르는 자리"라는 게 읽히지 않았다.
+   점선은 이름 알약(실선)과 달리 "아직 값이 아니다"를 말한다. */
 .entry-context-sub-more {
-    padding: 4px 8px;
-    border: none;
-    background: transparent;
-    color: #64748b;
-    font-size: 11px;
-    font-weight: 700;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    cursor: pointer;
-}
-.entry-context-free {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
     padding: 4px 10px;
-    border: 1px dashed #cbd5e1;
-    border-radius: 14px;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
     background: white;
     color: #64748b;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
 }
-.entry-context-free svg {
-    width: 12px;
-    height: 12px;
+/* 어디서 자유 입력 — [돋보기][직접 입력칸].
+   기본은 오른쪽 입력칸에 직접 적는 것이고, 카카오 검색은 왼쪽 돋보기를 눌렀을 때만 열린다.
+   위 추천 칩보다 한 치수 크다 — 고르는 자리가 아니라 **적는 자리**라 손이 먼저 가야 한다. */
+.entry-context-place-free {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
 }
-/* 사용 토글 — 스위치 모양(트랙+노브). '사용 안함'(기본 OFF) ↔ '이대로 사용'(ON).
-   어느 쪽이든 사라지지 않고 언제든 되돌릴 수 있다. */
+.entry-context-place-free__search {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    padding: 0;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #64748b;
+    cursor: pointer;
+}
+.entry-context-place-free__search svg {
+    width: 15px;
+    height: 15px;
+}
+.entry-context-place-free__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 7px 14px;
+    /* 누구와 상세 칸(.entry-context-sub-input)과 같은 알약 꼴 — 완전히 둥근 점선 테두리.
+       점선은 두 곳 모두 "아직 굳지 않은 값"을 뜻한다. 크기만 한 치수 크다(적는 자리라서). */
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+}
+.entry-context-place-free__input::placeholder {
+    color: #94a3b8;
+    font-weight: 500;
+}
+.entry-context-place-free__input:focus {
+    border-style: solid;
+}
+/* 사용 토글 — 라벨(좌) + 스위치(우). '사용'(기본 ON) ↔ '사용 안함'.
+   어느 쪽이든 사라지지 않고 언제든 되돌릴 수 있다.
+   상자(배경·테두리)는 두지 않는다 — 헤더 줄 안에서 리드 텍스트와 같은 층위로 읽히고,
+   켜짐/꺼짐은 오직 스위치가 말한다. */
 .entry-predict-toggle {
     display: inline-flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
     flex-shrink: 0;
-    /* 폭 고정 — 라벨('사용 안함'↔'이대로 사용') 길이가 달라도 헤더가 흔들리지 않게 */
-    width: 7.25rem;
-    padding: 4px 10px 4px 6px;
-    border-radius: 14px;
+    /* 폭 고정 — 라벨('사용'↔'사용 안함') 길이가 달라도 헤더가 흔들리지 않게 */
+    width: 5.5rem;
+    /* 오른쪽 끝에 딱 붙으면 시트 가장자리와 부딪힌다 — 손가락 자리만큼만 띄운다 */
+    padding: 4px 4px 4px 0;
     font-size: 12px;
     font-weight: 700;
-    /* 상자는 항상 흰색·같은 테두리 — 켜짐/꺼짐은 안쪽 스위치만 말한다 */
-    background: white;
-    border: 1px solid #e2e8f0;
+    background: none;
+    border: 0;
     color: #475569;
     cursor: pointer;
+}
+/* 라벨이 남는 폭을 다 먹고 스위치는 오른쪽 끝에 못박힌다 —
+   '사용'↔'사용 안함'으로 글자 수가 바뀌어도 스위치가 움직이지 않게 */
+.entry-predict-toggle__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    white-space: nowrap;
 }
 .entry-predict-toggle__track {
     position: relative;
     display: inline-block;
+    margin-left: auto;
     width: 26px;
     height: 15px;
     border-radius: 999px;

@@ -25,7 +25,7 @@
  */
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
-import { isSnackSlot, isSkipRecord } from './entry-context-predict.js';
+import { isSnackSlot, isSkipRecord, keepEntryContextPredictVisible } from './entry-context-predict.js';
 import {
     buildRecallIndex,
     normKey,
@@ -89,6 +89,11 @@ function notifyGrowth(el, heightBefore) {
     if (grew > 0 && typeof window.syncEntrySheetHeightLock === 'function') {
         window.syncEntrySheetHeightLock({ growthPx: grew });
     }
+    /**
+     * 시트가 상한에 걸려 더 못 커지면 늘어난 분은 스크롤로 흐른다 —
+     * 그때 아래로 밀려난 맥락 줄을 다시 보이는 자리로 되돌린다.
+     */
+    keepEntryContextPredictVisible();
 }
 
 function render() {

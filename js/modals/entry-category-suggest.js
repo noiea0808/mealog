@@ -19,7 +19,7 @@
 import { classifyFoodDetail } from '../utils/food-classifier.js';
 import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
-import { updateEntryContextFoodCategory } from './entry-context-predict.js';
+import { updateEntryContextFoodCategory, keepEntryContextPredictVisible } from './entry-context-predict.js';
 import { ENTRY_DOM } from './entry-form-config.js';
 import { isEntryFieldQuickInputOn, setEntryFieldQuickInputEnabled } from './entry-quick-input.js';
 
@@ -245,6 +245,8 @@ function render() {
         if (grew > 0 && typeof window.syncEntrySheetHeightLock === 'function') {
             window.syncEntrySheetHeightLock({ growthPx: grew });
         }
+        // 시트가 상한에 걸리면 늘어난 분이 스크롤로 흐른다 — 맥락 줄을 다시 보이게 되돌린다
+        keepEntryContextPredictVisible();
     };
 
     /**

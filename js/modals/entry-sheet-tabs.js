@@ -144,6 +144,14 @@ export function syncEntrySheetHeightLock(opts = {}) {
                 entrySheetBaseMinHeightPx,
                 entrySheetPeakHeightPx + growth
             );
+            /**
+             * 늘어난 만큼을 **그 자리에서** 잠금 높이에 반영한다.
+             * peak 에만 쌓아 두고 키보드가 닫힐 때까지 미뤘더니, 포커스로 회상 줄·분류
+             * 제안이 뜨는 동안 그 아래 맥락 줄이 패널 밖으로 밀려 아래가 잘렸다.
+             * 위 가드가 막으려는 건 자연 높이 **재측정**과 top ratchet 이고, 여기서는
+             * 이미 아는 증가분으로 잠금 높이만 키우므로 그 둘은 일어나지 않는다.
+             */
+            applyEntrySheetHeightLock();
         }
         return;
     }
