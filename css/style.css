@@ -12560,7 +12560,13 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     grid-template-columns: repeat(3, 1fr);
 }
 #settingsView .settings-subtab-row {
-    grid-template-columns: repeat(4, 1fr);
+    /*
+     * 탭 수가 바뀌어도 폭이 균등하게 나뉜다.
+     * repeat(4, 1fr) 로 고정돼 있어서 '태그' 탭을 걷어낸 뒤 넷째 칸이 빈 채로 남았다
+     * — 셋이 왼쪽 3/4 를 나눠 갖고 오른쪽이 비는 모양이었다.
+     */
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
 }
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab,
 #settingsView .settings-subtab-row .app-chrome-subtab {
