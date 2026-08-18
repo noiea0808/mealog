@@ -156,6 +156,12 @@
         #bootSplashOverlay.boot-splash-done {
             display: none;
         }
+        /*
+         * 이 오버레이는 네이티브 스플래시를 이어받는 다리라(아래 hideNativeSplash 주석)
+         * **네이티브 아이콘과 크기가 같아야** 넘어올 때 튀지 않는다. 기준은 이쪽 80px 이고,
+         * 네이티브를 여기 맞췄다 — res/drawable/splash_icon.xml 의 inset 으로 축소한다.
+         * 한쪽만 바꾸면 그 순간 아이콘이 커지거나 작아진다. 둘은 같이 움직여야 한다.
+         */
         .boot-splash-icon-wrap {
             width: 5rem;
             height: 5rem;
@@ -163,9 +169,6 @@
             border-radius: 35%;
             flex-shrink: 0;
             background-color: rgba(5, 150, 105, 0.9);
-        }
-        @media (min-width: 640px) {
-            .boot-splash-icon-wrap { width: 6rem; height: 6rem; }
         }
         .boot-splash-icon-wrap img {
             width: 100%;

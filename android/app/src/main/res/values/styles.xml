@@ -31,6 +31,12 @@
         <item name="android:background">@drawable/splash</item>
         <!-- 배경이 흰색이므로 코너 라운드 마스크 애니메이션 비활성화 -->
         <item name="windowSplashScreenAnimationDuration">0</item>
+        <!--
+          지정하지 않으면 런처 아이콘이 규격대로 크게(약 160dp) 그려지고, 네이티브 스플래시가
+          걷히며 웹 오버레이(80px)가 이어받는 순간 아이콘이 절반으로 줄어 보인다.
+          splash_icon 은 같은 아이콘에 투명 여백만 둘러 80dp 로 맞춘 것이다.
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
         <item name="android:navigationBarColor">#faf6f2</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
