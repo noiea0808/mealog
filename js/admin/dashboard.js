@@ -44,6 +44,7 @@ export const PAGE_USAGE_METRIC_DEFS = [
     { field: 'tab_mealdang', section: '밀당', label: '탭 방문' },
     { field: 'mealdang_comment_click', section: '밀당', label: '코멘트 클릭' },
     { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
+    { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },

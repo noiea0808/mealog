@@ -1984,11 +1984,20 @@
                             <div id="propChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
+                            <!-- '무엇을'은 절단면이 둘이다: 사용자가 고른 형태 축 / 음식 이름에서 자동으로 붙는 요리 종류.
+                                 별도 카드로 늘리지 않고 같은 자리에서 갈아 끼운다 (js/analytics/meal-analytics-tags.js). -->
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">무엇을</h3>
+                                <div class="analysis-axis-head">
+                                    <h3 class="ui-section-label">무엇을</h3>
+                                    <div class="analysis-axis-switch" role="group" aria-label="무엇을 축 전환">
+                                        <button type="button" class="analysis-axis-switch__btn is-active" data-what-axis="category" aria-pressed="true">형태</button>
+                                        <button type="button" class="analysis-axis-switch__btn" data-what-axis="cuisine" aria-pressed="false">종류</button>
+                                    </div>
+                                </div>
                                 <button type="button" onclick="window.openDetailModal('category')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="categoryChartContainer"></div>
+                            <p id="categoryChartNote" class="analysis-axis-note hidden"></p>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">

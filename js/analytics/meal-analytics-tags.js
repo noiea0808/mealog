@@ -5,7 +5,7 @@
 import { SLOTS } from '../constants.js';
 import { normalizePlace } from '../utils/place-normalize.js';
 import { normalizeFoodForm } from '../utils/food-form-normalize.js';
-import { classifyFoodText } from '../utils/food-classifier.js';
+import { classifyFoodText, classifyCuisineText } from '../utils/food-classifier.js';
 import { isFormAxisPilot } from '../utils/form-axis-pilot.js';
 
 const MAIN_IDS = new Set(['morning', 'lunch', 'dinner']);
@@ -152,9 +152,48 @@ export function effectiveSnackPlaceForAnalytics(m, snackPlaceMainSet) {
     return '기타';
 }
 
+/** 기록 id+텍스트 → 파생 요리 종류 (차트가 여러 개라 같은 기록을 여러 번 읽는다) */
+const cuisineCache = new Map();
+
+/**
+ * 요리 종류 축 — **사용자가 고르는 값이 아니라 붙는 값이다.**
+ *
+ * 형태 축('무엇을')과 같은 자리를 두고 경쟁하지 않는다. 같은 끼니를 다른 절단면으로
+ * 보는 것이라 분석에서 토글로 갈아 끼운다 (index.html '무엇을' 카드).
+ *
+ * 우선순위:
+ *   1. `cuisineAuto` — 저장 시점에 분류기가 붙인 값 (js/modals/entry-save-record.js)
+ *   2. 옛 '무엇을' 값이 요리 종류 축이면 그대로 — 그때는 **사용자가 직접 고른** 종류다
+ *   3. 상세 텍스트 재분류 — 마이그레이션 없이 옛 기록도 집계에 넣기 위해
+ *
+ * 근거가 없으면 빈 문자열이고, 호출부가 '미입력'으로 접는다. 저장된 값은 건드리지 않는다.
+ *
+ * @param {object} m meal 문서
+ * @returns {string} 차트용 (빈 문자열이면 호출부에서 미입력 처리)
+ */
+export function effectiveCuisineForAnalytics(m) {
+    if (!m) return '';
+    const auto = trim(m.cuisineAuto);
+    if (auto) return auto;
+    /**
+     * '카페'는 옛 기본 태그에만 있던 값이라 요리 종류 어휘에 없다 — 종류로 인정하면
+     * 범례에 없는 칸이 생긴다. 텍스트 재분류로 넘긴다.
+     */
+    const legacy = trim(m.category) || trim(m.snackType);
+    if (legacy && legacy !== '카페' && LEGACY_CUISINE_AXIS.has(legacy)) return legacy;
+    const text = trim(m.menuDetail);
+    if (!text) return '';
+    // 텍스트를 키에 포함 — 기록을 수정하면 id가 같아도 파생값이 달라져야 한다
+    const key = `${m.id || `${m.date}|${m.slotId}`}|${text}`;
+    if (cuisineCache.has(key)) return cuisineCache.get(key);
+    const derived = classifyCuisineText(text) || '';
+    cuisineCache.set(key, derived);
+    return derived;
+}
+
 /**
  * @param {object} m
- * @param {'mealType'|'category'|'withWhom'|'snackType'|'snackPlace'} key
+ * @param {'mealType'|'category'|'withWhom'|'snackType'|'snackPlace'|'cuisine'} key
  */
 export function effectiveChartTag(m, key) {
     const snackMains = window.userSettings?.tags?.snackPlaceMain;
@@ -165,6 +204,7 @@ export function effectiveChartTag(m, key) {
     if (key === 'category') return effectiveCategoryForAnalytics(m);
     if (key === 'withWhom') return effectiveWithWhomForAnalytics(m);
     if (key === 'snackType') return effectiveSnackTypeForAnalytics(m);
+    if (key === 'cuisine') return effectiveCuisineForAnalytics(m);
     if (key === 'snackPlace') return effectiveSnackPlaceForAnalytics(m, snackSet);
     return trim(m?.[key]);
 }

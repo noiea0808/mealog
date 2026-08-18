@@ -2,13 +2,14 @@
 import { logUsageMetric } from '../usage-metrics.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
 import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
+import { CUISINE_CATEGORIES } from '../utils/food-dictionary.js';
 import { normalizePlace } from '../utils/place-normalize.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getDayName } from './date-utils.js';
 
-const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
+const CUMULATIVE_KEYS = ['mealType', 'category', 'cuisine', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
 const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWithWhom']; // 상세보기 시 통계 + 세부 통계 탭 (간식 누구와 포함)
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
@@ -202,6 +203,12 @@ function aggregateProportionData(data, key) {
         // 자동 분류 축(밥/한상·단백질식…)은 사용자 태그 목록에 없다 — 합집합으로 허용해야
         // 차트에서 '미입력'으로 접히지 않는다 (docs/food-category-auto-classification.md §3.3)
         allowedTags = new Set([...userTags.category, ...AUTO_CATEGORIES]);
+    } else if (key === 'cuisine') {
+        /**
+         * 요리 종류는 사용자 태그 문서에 없다 — 사전이 정한 고정 어휘다
+         * (js/utils/food-dictionary.js CUISINE_CATEGORIES).
+         */
+        allowedTags = new Set(CUISINE_CATEGORIES);
     } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
     } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
@@ -227,7 +234,7 @@ function aggregateProportionData(data, key) {
             const v = effectiveChartTag(m, 'snackPlace');
             return v || '미입력';
         }
-        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+        if (key === 'mealType' || key === 'category' || key === 'cuisine' || key === 'withWhom' || key === 'snackType') {
             const v = effectiveChartTag(m, key);
             return v || '미입력';
         }

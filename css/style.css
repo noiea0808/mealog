@@ -11312,6 +11312,48 @@ body[data-main-tab='dashboard'] #dashboardView {
     padding-top: 0.75rem;
 }
 
+/* 분석 '무엇을' 카드의 축 전환 (형태 ↔ 종류) — 라벨과 한 덩어리로 왼쪽에 붙는다.
+   ui-card-head 가 space-between 이라 라벨·스위치를 감싸지 않으면 스위치가 가운데로 뜬다. */
+#dashboardView.dashboard-view-v2 .analysis-axis-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--bg-soft, #f1efe9);
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch__btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted, #7a7268);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch__btn.is-active {
+    background: #fff;
+    color: var(--green, #3cb889);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+/* 자동 분류라는 사실은 종류 모드에서만 말한다 — 형태 축은 사용자가 고른 값이다 */
+#dashboardView.dashboard-view-v2 .analysis-axis-note {
+    margin-top: 6px;
+    padding-left: 12px;
+    padding-right: 22px;
+    font-size: 11px;
+    color: var(--muted, #7a7268);
+}
+
 #dashboardView.dashboard-view-v2 .dashboard-detail-link {
     border: 0;
     background: transparent;
