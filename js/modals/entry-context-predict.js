@@ -579,8 +579,12 @@ export function syncEntryContextMealTypeFromChips() {
  * 한식·양식·분식은 집에서도 흔히 만들므로 넣지 않는다(습관 예측에 맡긴다).
  * 이력이 쌓이면 개인 통계가 이 시드를 대체한다.
  */
-/** 집에서 차렸다는 신호가 되는 형태 — 장소가 '집'일 때 집밥 추측의 근거 */
-const HOME_COOKED_FORMS = new Set(['밥류', '국물요리']);
+/**
+ * 집에서 차렸다는 신호가 되는 형태 — 장소가 '집'일 때 집밥 추측의 근거.
+ * 반찬류가 함께 있는 것은 반찬만 적은 기록("김치, 나물") 때문이다 — 밥상을 차렸다는
+ * 뜻이지 사 먹었다는 뜻이 아니다. 밥·국이 함께 적힌 기록은 어차피 그쪽으로 분류된다.
+ */
+const HOME_COOKED_FORMS = new Set(['밥류', '국물요리', '반찬류']);
 
 /** 간식 슬롯 (js/analytics/charts.js SNACK_SLOTS 와 동기화) */
 const SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);

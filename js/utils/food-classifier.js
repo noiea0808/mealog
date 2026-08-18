@@ -19,6 +19,8 @@ import {
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
     CUISINE_EXEMPT_FORMS,
+    SIDE_DISH_FORM,
+    MAIN_DISH_FORMS,
     formUsesCuisine,
 } from './food-dictionary.js';
 
@@ -29,6 +31,8 @@ export {
     ONE_CHAR_FOODS,
     DICTIONARY_SOURCE,
     CUISINE_EXEMPT_FORMS,
+    SIDE_DISH_FORM,
+    MAIN_DISH_FORMS,
     formUsesCuisine,
 };
 export {
@@ -78,11 +82,40 @@ function lookupToken(token) {
 }
 
 /**
+ * 부식 강등 — 상차림에서 반찬은 주인공이 아니다.
+ *
+ * "잡곡밥 + 김치 + 나물 + 계란말이"를 그대로 세면 반찬이 3표라 밥상이 '반찬류'가 된다.
+ * 식약처 음식 대분류가 반찬을 독립 그룹으로 두면서도 그 위에 **주식/부식** 층을 따로 두는
+ * 이유가 이것이다 — 한 상의 대표는 몸통이 정한다.
+ *
+ * 규칙은 하나: **끼니 몸통 형태가 하나라도 표를 받으면 반찬류를 순위에서 뺀다.**
+ *
+ * 표를 지우는 게 아니라 대표 자리만 양보하는 것이라 요리 종류 투표에는 그대로 남는다.
+ * 한식 밥상이 '한식'으로 잡히는 건 사실상 반찬이 내는 표라, 여기서까지 빼면 밥 한 공기가
+ * 상 전체의 종류를 정하게 된다.
+ *
+ * "삼겹살 + 김치"는 고기·생선이, "김치 + 나물"만 적은 기록은 반찬류가 대표다 — 몸통이
+ * 없으면 강등도 없다. 그리고 몸통이 아닌 간식·기호품은 강등을 일으키지 않는다(MAIN_DISH_FORMS).
+ *
+ * @param {Record<string, number>} formVotes
+ * @returns {Record<string, number>}
+ */
+function demoteSideDishForm(formVotes) {
+    if (!formVotes[SIDE_DISH_FORM]) return formVotes;
+    const hasMainDish = Object.keys(formVotes).some((form) => MAIN_DISH_FORMS.has(form));
+    if (!hasMainDish) return formVotes;
+    const rest = { ...formVotes };
+    delete rest[SIDE_DISH_FORM];
+    return rest;
+}
+
+/**
  * 텍스트에서 형태·요리종류를 함께 추론한다.
  *
  * 집계: 토큰마다 최장 일치 1건씩만 투표한다(예전처럼 한 토큰이 여러 카테고리에
  * 표를 뿌리지 않는다). 형태는 최다 득표를 채택하고, 2위가 1위의 절반 이상이면
  * 복수 제안(최대 2개). 요리종류는 최다 득표 하나만, '기타' 는 다른 후보가 있으면 양보한다.
+ * 형태 순위를 매기기 전에 부식(반찬류)을 강등한다 — demoteSideDishForm 참고.
  *
  * @param {string} text 무엇을_상세 입력값
  * @param {Record<string, string[]>|null} [personalKeywords] 사용자 교정 학습 사전 (형태 축, 미연결)
@@ -118,7 +151,7 @@ export function classifyFoodDetail(text, personalKeywords = null) {
             if (hit.cuisine) cuisineVotes[hit.cuisine] = (cuisineVotes[hit.cuisine] || 0) + 1;
         }
 
-        const rankedForms = Object.entries(formVotes).sort((a, b) => b[1] - a[1]);
+        const rankedForms = Object.entries(demoteSideDishForm(formVotes)).sort((a, b) => b[1] - a[1]);
         const forms = [];
         if (rankedForms.length > 0) {
             forms.push(rankedForms[0][0]);
