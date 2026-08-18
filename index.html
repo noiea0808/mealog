@@ -2707,7 +2707,9 @@
                 <div id="accountAvatarModalStaticView">
                     <div class="mx-auto mt-0.5 flex h-40 w-40 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
                         <img id="accountAvatarModalImg" class="hidden h-full w-full object-cover" alt="" />
-                        <i data-lucide="user" class="text-6xl text-slate-300" id="accountAvatarModalIcon"></i>
+                        <!-- 이 자리는 항상 닉네임 이니셜로 덮인다(settings.js refreshAccountAvatarModalPreview) — data-lucide 를 달면
+                             lucide 가 <svg> 로 갈아치우고, SVGElement 의 className 은 읽기 전용이라 대입 순간 모달이 통째로 죽는다. -->
+                        <span id="accountAvatarModalIcon" class="text-6xl font-bold text-slate-400"></span>
                     </div>
                 </div>
                 <div id="accountAvatarModalEditView" class="hidden w-full">
@@ -2717,14 +2719,14 @@
                         </div>
                     </div>
                     <div class="mt-2 flex gap-1.5">
-                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-out" class="text-[10px]"></i> 축소</button>
-                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-in" class="text-[10px]"></i> 확대</button>
-                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 py-1.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="rotate-cw" class="text-[10px]"></i> 회전</button>
+                        <button type="button" onclick="window.zoomOutPhotoEdit()" class="flex-1 min-w-0 min-h-[44px] py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-out" class="text-xs"></i> 축소</button>
+                        <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 min-h-[44px] py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-in" class="text-xs"></i> 확대</button>
+                        <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 min-h-[44px] py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="rotate-cw" class="text-xs"></i> 회전</button>
                     </div>
                     <div class="mt-2 -mx-3 sm:-mx-4 grid grid-cols-3 border-t border-slate-200">
-                        <button type="button" onclick="window.resetPhotoEdit()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
-                        <button type="button" onclick="window.closePhotoEditModal()" class="py-2.5 bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold border-r border-slate-200 active:bg-slate-200">취소</button>
-                        <button type="button" onclick="window.savePhotoEdit()" class="py-2.5 bg-emerald-600 text-white text-xs sm:text-sm font-bold active:bg-emerald-700">편집적용</button>
+                        <button type="button" onclick="window.resetPhotoEdit()" class="min-h-[48px] py-3.5 bg-slate-100 text-slate-800 text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
+                        <button type="button" onclick="window.closePhotoEditModal()" class="min-h-[48px] py-3.5 bg-slate-100 text-slate-800 text-sm font-semibold border-r border-slate-200 active:bg-slate-200">취소</button>
+                        <button type="button" onclick="window.savePhotoEdit()" class="min-h-[48px] py-3.5 bg-emerald-600 text-white text-sm font-bold active:bg-emerald-700">편집적용</button>
                     </div>
                 </div>
             </div>

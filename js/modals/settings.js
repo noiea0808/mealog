@@ -181,6 +181,41 @@ function syncProfileLogoutFooterButton() {
     }
 }
 
+/** 계정 카드 클릭 위임을 한 번만 건다 */
+let accountSectionDelegated = false;
+
+/**
+ * 계정 카드(#accountSection)는 openSettings 가 innerHTML 로 **통째로 다시 그린다.**
+ * 그때마다 아바타 버튼이 새 노드로 바뀌므로, 개별 onclick 은 그 렌더와 짝이 맞을 때만
+ * 살아 있다 — 한 번이라도 어긋나면 버튼이 조용히 죽는다(눌러도 아무 일도 안 일어난다).
+ *
+ * 컨테이너는 index.html 에 고정된 노드라 교체되지 않는다. 여기 한 번 위임해 두면
+ * 카드를 몇 번을 다시 그려도 클릭이 닿는다.
+ */
+function bindAccountSectionDelegation() {
+    const host = document.getElementById('accountSection');
+    if (!host || accountSectionDelegated) return;
+    accountSectionDelegated = true;
+    host.addEventListener('click', (e) => {
+        const avatarBtn = e.target?.closest?.('#accountProfileAvatarBtn');
+        if (avatarBtn) {
+            e.preventDefault();
+            if (!window.currentUser || window.currentUser.isAnonymous) return;
+            if (isDemoUser(window.currentUser)) {
+                showToast('샘플 계정은 읽기 전용입니다.', 'info');
+                return;
+            }
+            openAccountAvatarModal();
+            return;
+        }
+        const deleteBtn = e.target?.closest?.('#photoDeleteBtn');
+        if (deleteBtn) {
+            e.preventDefault();
+            handlePhotoDelete();
+        }
+    });
+}
+
 export function openSettings() {
     const state = appState;
     if (!window.currentUser) return;
@@ -466,21 +501,12 @@ export function openSettings() {
         }
 
         if (window.currentUser && !window.currentUser.isAnonymous) {
-            const accountAvatarBtn = document.getElementById('accountProfileAvatarBtn');
             const photoInputEl = document.getElementById('photoInput');
             const accountAvatarModalChangeBtn = document.getElementById('accountAvatarModalChangeBtn');
             const accountAvatarModalCloseBtn = document.getElementById('accountAvatarModalCloseBtn');
             const accountAvatarModal = document.getElementById('accountAvatarModal');
-            if (accountAvatarBtn) {
-                accountAvatarBtn.onclick = (e) => {
-                    e.preventDefault();
-                    if (window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser)) {
-                        showToast('샘플 계정은 읽기 전용입니다.', 'info');
-                        return;
-                    }
-                    openAccountAvatarModal();
-                };
-            }
+            // 아바타·사진 삭제는 계정 카드가 다시 그려져도 살아남게 컨테이너에 위임한다
+            bindAccountSectionDelegation();
             if (accountAvatarModalChangeBtn && photoInputEl) {
                 accountAvatarModalChangeBtn.onclick = (e) => {
                     e.preventDefault();
@@ -488,7 +514,12 @@ export function openSettings() {
                         showToast('샘플 계정은 읽기 전용입니다.', 'info');
                         return;
                     }
-                    requestAnimationFrame(() => photoInputEl.click());
+                    /**
+                     * rAF 로 미루지 않는다. 파일 선택기는 **사용자 제스처가 살아 있는 동안에만**
+                     * 열 수 있는데(transient activation), rAF 콜백은 다음 프레임의 새 태스크라
+                     * 그 활성화가 이미 소멸해 있다. 안드로이드 WebView 는 이 경우 조용히 무시한다.
+                     */
+                    photoInputEl.click();
                 };
             }
             const accountAvatarModalDiscardBtn = document.getElementById('accountAvatarModalDiscardBtn');
@@ -521,10 +552,6 @@ export function openSettings() {
                 myPostsInAccount.onclick = () => {
                     if (typeof window.openMyPostsFromSettings === 'function') window.openMyPostsFromSettings();
                 };
-            }
-            const photoDeleteBtnEl = document.getElementById('photoDeleteBtn');
-            if (photoDeleteBtnEl) {
-                photoDeleteBtnEl.onclick = () => handlePhotoDelete();
             }
             setProfileSettingsEditMode(false);
             syncAccountCardDisplayFields();
@@ -1203,7 +1230,8 @@ function refreshAccountAvatarModalPreview() {
             window.userSettings?.profile?.nickname ||
             '';
         const firstChar = nicknameVal ? [...String(nicknameVal).trim()][0] : '?';
-        icon.className = 'text-6xl font-bold text-slate-400';
+        // setAttribute 로 쓴다 — 이 자리에 <svg> 가 오면 className 대입이 TypeError 로 죽는다
+        icon.setAttribute('class', 'text-6xl font-bold text-slate-400');
         icon.textContent = firstChar;
     }
 }
