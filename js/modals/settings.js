@@ -522,6 +522,32 @@ export function openSettings() {
                     photoInputEl.click();
                 };
             }
+            /**
+             * '사진 편집' — 새로 고르지 않고 지금 사진을 그대로 편집 화면으로 넘긴다.
+             * 사진 선택을 거치지 않으므로 handlePhotoUpload 가 세우던 플래그를 여기서 세운다
+             * (그래야 별도 모달이 아니라 이 팝업 안에서 인라인으로 열린다 — photo-edit.js
+             * openProfilePhotoEdit).
+             */
+            const accountAvatarModalEditBtn = document.getElementById('accountAvatarModalEditBtn');
+            if (accountAvatarModalEditBtn) {
+                accountAvatarModalEditBtn.onclick = (e) => {
+                    e.preventDefault();
+                    if (window.currentUser && !window.currentUser.isAnonymous && isDemoUser(window.currentUser)) {
+                        showToast('샘플 계정은 읽기 전용입니다.', 'info');
+                        return;
+                    }
+                    const url =
+                        appState?.tempSettings?.profile?.photoUrl ||
+                        window.settingsPhotoUrl ||
+                        window.userSettings?.profile?.photoUrl;
+                    if (!url) {
+                        showToast('편집할 사진이 없습니다. 먼저 사진을 등록해 주세요.', 'info');
+                        return;
+                    }
+                    window.profilePhotoEditFromAvatarModal = true;
+                    if (typeof window.openProfilePhotoEdit === 'function') window.openProfilePhotoEdit(url);
+                };
+            }
             const accountAvatarModalDiscardBtn = document.getElementById('accountAvatarModalDiscardBtn');
             const accountAvatarModalApplyBtn = document.getElementById('accountAvatarModalApplyBtn');
             if (accountAvatarModalDiscardBtn) {
@@ -1217,6 +1243,8 @@ function refreshAccountAvatarModalPreview() {
         window.userSettings?.profile?.photoUrl;
     const type = window.settingsProfileType === 'photo' ? 'photo' : 'text';
     const showImg = type === 'photo' && photoUrl;
+    // 편집은 사진이 있을 때만 성립한다 — 이니셜 상태에서는 자를 대상이 없다
+    document.getElementById('accountAvatarModalEditBtn')?.classList.toggle('hidden', !showImg);
     if (showImg) {
         img.src = photoUrl;
         img.classList.remove('hidden');

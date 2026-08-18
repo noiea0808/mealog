@@ -2723,14 +2723,18 @@
                         <button type="button" onclick="window.zoomInPhotoEdit()" class="flex-1 min-w-0 min-h-[44px] py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="zoom-in" class="text-xs"></i> 확대</button>
                         <button type="button" onclick="window.rotatePhotoEdit()" class="flex-1 min-w-0 min-h-[44px] py-2.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold leading-none active:bg-slate-200 whitespace-nowrap"><i data-lucide="rotate-cw" class="text-xs"></i> 회전</button>
                     </div>
-                    <div class="mt-2 -mx-3 sm:-mx-4 grid grid-cols-3 border-t border-slate-200">
-                        <button type="button" onclick="window.resetPhotoEdit()" class="min-h-[48px] py-3.5 bg-slate-100 text-slate-800 text-sm font-semibold border-r border-slate-200 active:bg-slate-200">초기화</button>
-                        <button type="button" onclick="window.closePhotoEditModal()" class="min-h-[48px] py-3.5 bg-slate-100 text-slate-800 text-sm font-semibold border-r border-slate-200 active:bg-slate-200">취소</button>
-                        <button type="button" onclick="window.savePhotoEdit()" class="min-h-[48px] py-3.5 bg-emerald-600 text-white text-sm font-bold active:bg-emerald-700">편집적용</button>
+                    <!-- 사진 편집 모달(#photoEditModal)과 같은 CTA 포맷 — 같은 일을 하는 버튼이 화면마다 다르게 생길 이유가 없다 -->
+                    <div class="mt-2 -mx-3 sm:-mx-4 mealog-dialog-actions mealog-dialog-actions--border">
+                        <button type="button" onclick="window.resetPhotoEdit()" class="mealog-btn mealog-btn-secondary">초기화</button>
+                        <button type="button" onclick="window.closePhotoEditModal()" class="mealog-btn mealog-btn-secondary">취소</button>
+                        <button type="button" onclick="window.savePhotoEdit()" class="mealog-btn mealog-btn-primary">편집적용</button>
                     </div>
                 </div>
             </div>
-            <div id="accountAvatarModalFooterPick" class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
+            <div id="accountAvatarModalFooterPick" class="mealog-dialog-actions mealog-dialog-actions--border">
+                <!-- 이미 등록된 사진을 다시 고르지 않고 자르기·회전만 하려는 경로. 사진이 없으면
+                     편집할 대상이 없으므로 refreshAccountAvatarModalPreview 가 숨긴다. -->
+                <button type="button" id="accountAvatarModalEditBtn" class="mealog-btn mealog-btn-secondary hidden">사진 편집</button>
                 <button type="button" id="accountAvatarModalChangeBtn" class="mealog-btn mealog-btn-primary">사진 변경</button>
             </div>
             <div id="accountAvatarModalFooterConfirm" class="hidden mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
