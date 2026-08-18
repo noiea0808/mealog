@@ -67,22 +67,22 @@ function renderTags(type, tags) {
     if (!container) return;
     
     // 컨테이너에 반응형 그리드 레이아웃 클래스 추가
-    container.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2';
+    // 축마다 한 줄에 하나씩 — 순서를 눈으로 따라가고 드래그로 옮기기 좋게 폭을 묶는다
+    container.className = 'flex flex-col gap-1.5';
     
     container.innerHTML = tags.map((tag, index) => `
-        <div class="tag-item flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200 min-w-0 cursor-move hover:border-emerald-300 transition-colors" 
-             draggable="true" 
+        <div class="tag-item flex items-center gap-1 bg-white rounded-lg pl-1.5 pr-1 py-1 border border-slate-200 min-w-0 cursor-move hover:border-emerald-300 transition-colors"
+             draggable="true"
              data-tag-index="${index}"
-             data-tag-type="${type}">
-            <div class="flex items-center justify-center w-6 h-6 text-slate-400 flex-shrink-0">
-                <i data-lucide="grip-vertical" class="text-xs"></i>
-            </div>
-            <input type="text" value="${escapeHtml(tag || '')}" 
+             data-tag-type="${type}"
+             title="드래그해서 순서 변경">
+            <span class="w-3.5 text-center text-[11px] font-bold text-slate-400 tabular-nums flex-shrink-0 select-none">${index + 1}</span>
+            <input type="text" value="${escapeHtml(tag || '')}"
                    onchange="window.updateTagItem('${type}', this)"
-                   class="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
+                   class="flex-1 min-w-0 px-1.5 py-1 bg-slate-50 border border-slate-200 rounded text-sm font-bold text-slate-800 outline-none focus:border-emerald-500"
                    placeholder="태그 이름">
-            <button onclick="window.removeTagItem('${type}', this.closest('.tag-item'))" class="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-sm font-bold hover:bg-red-200 transition-colors flex-shrink-0">
-                <i data-lucide="trash-2"></i>
+            <button onclick="window.removeTagItem('${type}', this.closest('.tag-item'))" class="w-6 h-6 flex items-center justify-center text-slate-400 rounded hover:bg-red-50 hover:text-red-600 transition-colors flex-shrink-0" title="삭제">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
             </button>
         </div>
     `).join('');
