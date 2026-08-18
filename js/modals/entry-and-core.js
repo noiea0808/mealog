@@ -83,6 +83,7 @@ import {
     pinElementToVisualViewport
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, PHOTO_ASPECT_OPTIONS, getEntryModeConfig } from './entry-form-config.js';
+import { advanceEntryWhatHint } from './entry-what-hints.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
@@ -1651,6 +1652,8 @@ function revealEntryModalShell() {
     bindEntryModalHeaderOnce();
     refreshEntryModalHeader();
     lockBodyScroll('entryModal');
+    // 이 시트 1회에 쓸 '무엇을' 힌트를 다음 것으로 넘긴다 (entry-what-hints.js)
+    advanceEntryWhatHint();
     const openGen = (window.__entryModalOpenGeneration || 0) + 1;
     window.__entryModalOpenGeneration = openGen;
     entryModal.classList.remove('hidden');
