@@ -8912,182 +8912,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .profile-v2-push-list {
     box-shadow: none;
 }
-.profile-v2-tag-group {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px;
-    background: var(--page);
-}
-.profile-v2-tag-group--meal {
-    background: var(--green-soft);
-    border-color: var(--green-mute);
-}
-.profile-v2-tag-group--snack {
-    background: #fff8e8;
-    border-color: #f0d9a8;
-}
-.profile-v2-tag-group__head {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-.profile-v2-tag-group__kind {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: var(--muted);
-}
-.profile-v2-tag-group__title {
-    margin: 0;
-    font-size: 13.5px;
-    font-weight: 700;
-    color: var(--ink);
-}
-.profile-v2-tag-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-.profile-v2-tag-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid var(--line);
-    background: var(--card);
-    color: var(--ink-2);
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    padding: 7px 11px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-    -webkit-tap-highlight-color: transparent;
-}
-.profile-v2-tag-pill:hover {
-    border-color: var(--green-mute);
-    background: #fff;
-}
-.profile-v2-tag-pill.is-on,
-.profile-v2-tag-pill[aria-pressed="true"] {
-    background: var(--green);
-    border-color: var(--green);
-    color: #fff;
-}
-.profile-v2-tag-pill__count {
-    font-size: 10.5px;
-    font-weight: 700;
-    opacity: 0.72;
-}
-.profile-v2-tag-compose {
-    display: flex;
-    gap: 6px;
-    align-items: stretch;
-}
-.profile-v2-tag-input {
-    flex: 1 1 auto;
-    min-width: 0;
-    border: 1px solid var(--line);
-    background: var(--card);
-    border-radius: 12px;
-    padding: 9px 12px;
-    font: inherit;
-    font-size: 13px;
-    color: var(--ink);
-    outline: none;
-}
-.profile-v2-tag-input:focus {
-    border-color: var(--green-mute);
-    box-shadow: 0 0 0 3px rgba(60, 184, 137, 0.14);
-}
-.profile-v2-tag-input:disabled {
-    opacity: 0.55;
-    background: rgba(255, 255, 255, 0.55);
-}
-.profile-v2-tag-add-btn {
-    flex: 0 0 auto;
-    border: 0;
-    border-radius: 12px;
-    padding: 0 14px;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 700;
-    color: #fff;
-    background: var(--green);
-    cursor: pointer;
-    transition: background 0.14s ease, opacity 0.14s ease;
-}
-.profile-v2-tag-add-btn:hover:not(:disabled) {
-    background: var(--green-deep);
-}
-.profile-v2-tag-add-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-.profile-v2-tag-favs {
-    margin-top: 10px;
-}
-.profile-v2-tag-favs__label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-    font-size: 11.5px;
-    font-weight: 700;
-    color: var(--ink-2);
-}
-.profile-v2-tag-favs__meta {
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-}
-.profile-v2-tag-favs__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-.profile-v2-tag-fav {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 8px 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--green-mute);
-    background: var(--card);
-    color: var(--green-deep);
-    font-size: 12px;
-    font-weight: 700;
-}
-.profile-v2-tag-fav__remove {
-    display: grid;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    padding: 0;
-}
-.profile-v2-tag-fav__remove:hover {
-    background: var(--green-soft);
-    color: var(--ink);
-}
-.profile-v2-tag-fav__remove i,
-.profile-v2-tag-fav__remove svg {
-    width: 0.7rem;
-    height: 0.7rem;
-}
-.profile-v2-tag-hint {
-    margin: 8px 0 0;
-    font-size: 11.5px;
-    font-weight: 500;
-    color: var(--muted);
-    line-height: 1.4;
-}
+
 .profile-v2-memo-input {
     width: 100%;
     min-height: 140px;
@@ -9467,7 +9292,6 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     filter: none;
     transform: none;
 }
-
 
 /* 하루 기록: 체중·혈당 토글 오프 — 뒤 입력 영역을 더 흐리게 */
 .daily-journal-metrics {
@@ -15769,7 +15593,6 @@ body:has(#adminPage:not(.hidden)),
 /* 무엇을 textarea는 태그 on/off와 무관하게 아래 .entry-what-textarea 패딩으로만 세로 유지
    (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
 
-
 /* 어디서·무엇을·누구와: 라벨 위 · 입력란 아래 */
 #entryModal .entry-form-field-section.entry-axis-stack {
     display: flex;
@@ -18553,7 +18376,6 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 html.service-guide-active #landingPage {
     visibility: hidden;
 }
-
 
 /* '무엇을' 회상 줄 (entry-what-recall.js) — 자주 먹는 것 · 타이핑 자동완성.
    분류 제안 칩과 일부러 다르게 생겼다: 점선+프라이머리는 "시스템의 추측"이라는 뜻이고,

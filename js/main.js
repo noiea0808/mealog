@@ -65,7 +65,7 @@ import { ensureAnalytics, installAnalyticsLazyStubs } from './analytics/ensure.j
 import { 
     openModal, closeModal, requestCloseEntryModal, cancelDiscardEntryModal, confirmDiscardEntryModal, saveEntry, deleteEntry, retryMealEntrySync, retryMealEntryDeleteSync, retryPendingMealEntriesOnAppReady, setRating, resetRating, setSatiety, resetSatiety, selectTag,
     handleMultipleImages, removePhoto, movePhotoOrder, selectRecordPhotoPreview, navigateRecordPhotoPreview, updateShareIndicator, toggleSharePhoto,
-    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag, deleteSubTag, addFavoriteTag, removeFavoriteTag, selectFavoriteMainTag,
+    openSettings, closeSettings, switchSettingsTab, saveSettings, saveProfileSettings, selectIcon, setSettingsProfileType, handlePhotoUpload, addTag, removeTag,
     fillProfileActivityStats,
     syncPushPreferencesFormFromUserSettings,
     setRecordPhotoAspectRatio,
@@ -436,14 +436,6 @@ window.addTag = addTag;
 window.Mealog.addTag = addTag;
 window.removeTag = removeTag;
 window.Mealog.removeTag = removeTag;
-window.deleteSubTag = deleteSubTag;
-window.Mealog.deleteSubTag = deleteSubTag;
-window.addFavoriteTag = addFavoriteTag;
-window.Mealog.addFavoriteTag = addFavoriteTag;
-window.removeFavoriteTag = removeFavoriteTag;
-window.Mealog.removeFavoriteTag = removeFavoriteTag;
-window.selectFavoriteMainTag = selectFavoriteMainTag;
-window.Mealog.selectFavoriteMainTag = selectFavoriteMainTag;
 /* 밀당(analytics): 첫 진입·onclick 시 ensureAnalytics로 지연 로드 */
 installAnalyticsLazyStubs();
 window.Mealog.ensureAnalytics = ensureAnalytics;

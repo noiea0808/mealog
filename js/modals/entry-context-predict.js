@@ -32,7 +32,7 @@ import { placeTypeFromKakaoCategory } from '../utils/place-type.js';
 import { procurementHintFromText } from '../utils/procurement-hint.js';
 import { classifyCuisineText } from '../utils/food-classifier.js';
 import { getAxis1TagList } from './entry-form-config.js';
-import { scheduleEntrySettingsSave } from './entry-save-subtags.js';
+import { frequentSubTagValues } from '../utils/frequent-subtags.js';
 
 const CONTAINER_ID = 'entryContextPredict';
 const MIN_SAMPLES = 3;
@@ -86,6 +86,8 @@ const state = {
      * @type {Record<string, string[]>}
      */
     subAdded: {},
+    /** 이번 시트에서만 감춘 3단 알약 — 이력에서 나오는 값은 지울 수 없다 (deleteSubOption) */
+    subHidden: {},
     active: false,
 };
 
@@ -120,6 +122,7 @@ export function resetEntryContextPredict() {
     state.openAxis = null;
     state.subFreeOpen = false;
     state.subAdded = {};
+    state.subHidden = {};
     clearTimeout(subFreeCommitTimer);
     state.active = false;
     render();
@@ -811,27 +814,24 @@ const SUB_OPTION_LIMIT = 8;
  * 누구와만 이 뎁스를 쓴다. 어디서_상세는 실측 입력률이 0%이고 장소는 카카오 검색이
  * 주 경로다(docs/entry-sheet-redesign.md §4). 어떻게는 서브태그 개념 자체가 없다.
  *
- * 사용자 등록(favoriteSubTags) 먼저, 그다음 최근(subTags.people). 부모가 지금 목록에 없는
- * 고아 항목도 통과시킨다 — 축이 개편되면 쌓아둔 이름이 통째로 사라지는 걸 막는 규칙
- * (js/render/entry-chips.js renderSecondary 와 같은 판단).
+ * **나만의 태그는 더 이상 보지 않는다** (2026-08-18). 미리 등록해 두는 목록 대신 그 부모로
+ * 기록한 내 이력의 빈도를 쓴다 (js/utils/frequent-subtags.js) — 이 축이 favoriteSubTags 를
+ * 읽던 마지막 자리였다. 이번에 적은 이름과 입력란에 이미 든 이름은 그대로 앞에 선다.
  */
 function subOptionsForAxis(axisKey, parent) {
     if (axisKey !== 'withWhom' || !parent) return [];
-    const settings = window.userSettings || {};
-    const favorites = settings.favoriteSubTags?.withWhom?.[parent] || [];
-    const known = Array.isArray(settings.tags?.withWhom) ? new Set(settings.tags.withWhom) : null;
-    const recent = (settings.subTags?.people || [])
-        .filter((item) => {
-            const p = typeof item === 'string' ? null : item?.parent;
-            if (p === parent) return true;
-            return Boolean(p) && known != null && !known.has(p);
-        })
-        .map((item) => (typeof item === 'string' ? item : item?.text))
-        .filter(Boolean)
-        .reverse(); // subTags 는 오래된 것이 앞 — 최근을 먼저 보여준다
+    const frequent = frequentSubTagValues(window.mealHistory, {
+        field: 'withWhomDetail',
+        parentField: 'withWhom',
+        parent,
+        splitCommas: true,
+        limit: SUB_OPTION_LIMIT,
+    });
     // 이번에 직접 적은 이름과 이미 입력란에 든 이름도 알약으로 세운다
     const added = state.subAdded[parent] || [];
-    return [...new Set([...added, ...favorites, ...recent, ...currentWithDetailValues()])]
+    const hidden = new Set(state.subHidden[parent] || []);
+    return [...new Set([...added, ...frequent, ...currentWithDetailValues()])]
+        .filter((v) => !hidden.has(v))
         .slice(0, SUB_OPTION_LIMIT);
 }
 
@@ -1178,35 +1178,18 @@ function commitSubFreeInput() {
 
 /**
  * 알약을 목록에서 지운다 — 선택 해제(재탭)와 다르다.
- * 이번에 적은 이름·최근 목록·사용자 등록 어디에 있든 함께 뺀다. 셋을 갈라 두면
- * "지웠는데 다시 뜬다"가 된다. 되살리려면 다시 적거나 마이 → 태그에서 등록하면 된다.
+ *
+ * **이번 시트에서만 감춘다.** 목록이 내 이력의 빈도에서 나오므로(js/utils/frequent-subtags.js)
+ * 저장된 값을 지울 방법이 없다 — 지운 척하고 다음 기록에서 되살아나느니, 감추는 것이
+ * 실제로 하는 일이라고 말하는 편이 낫다. 그 이름이 계속 뜨는 게 싫다면 그렇게 저장된
+ * 기록을 고치면 된다. 이번에 직접 적은 이름은 아직 저장 전이라 완전히 사라진다.
  */
 function deleteSubOption(name, parent) {
     if (!name || !parent) return;
     const bag = state.subAdded[parent];
     if (Array.isArray(bag)) state.subAdded[parent] = bag.filter((v) => v !== name);
-
-    const settings = window.userSettings;
-    let changed = false;
-    if (settings) {
-        const favs = settings.favoriteSubTags?.withWhom?.[parent];
-        if (Array.isArray(favs) && favs.includes(name)) {
-            settings.favoriteSubTags.withWhom[parent] = favs.filter((v) => v !== name);
-            changed = true;
-        }
-        const people = settings.subTags?.people;
-        if (Array.isArray(people)) {
-            const next = people.filter((item) => {
-                const text = typeof item === 'string' ? item : item?.text;
-                return text !== name;
-            });
-            if (next.length !== people.length) {
-                settings.subTags.people = next;
-                changed = true;
-            }
-        }
-    }
-    if (changed) scheduleEntrySettingsSave();
+    if (!Array.isArray(state.subHidden[parent])) state.subHidden[parent] = [];
+    if (!state.subHidden[parent].includes(name)) state.subHidden[parent].push(name);
 
     // 입력란에 들어 있었다면 함께 뺀다 — 목록에 없는 값이 저장되면 안 된다
     const values = currentWithDetailValues().filter((v) => v !== name);
@@ -1215,7 +1198,7 @@ function deleteSubOption(name, parent) {
         input.value = values.join(', ');
         input.dispatchEvent(new Event('input', { bubbles: true }));
     }
-    logUsageMetric('context_sub_deleted').catch(() => {});
+        logUsageMetric('context_sub_deleted').catch(() => {});
 }
 
 function onContainerClick(e) {

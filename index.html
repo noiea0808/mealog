@@ -2151,9 +2151,8 @@
 
             <!-- 사용자 설정 뷰 (프로필 시안 v2) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="app-chrome-subtabs settings-subtab-row w-full flex-shrink-0" role="tablist" aria-label="마이 — 프로필·태그·메모·알림">
+                <div class="app-chrome-subtabs settings-subtab-row w-full flex-shrink-0" role="tablist" aria-label="마이 — 프로필·메모·알림">
                     <button id="settingsTabProfile" type="button" role="tab" aria-selected="true" class="app-chrome-subtab settings-tab active">프로필</button>
-                    <button id="settingsTabTags" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">태그</button>
                     <button id="settingsTabShortcuts" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">메모</button>
                     <button id="settingsTabNotifications" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">알림</button>
                 </div>
@@ -2238,13 +2237,6 @@
                                 <p class="profile-v2-danger-zone__hint">계정을 더 이상 사용하지 않을 때만</p>
                                 <button type="button" id="profileDeleteAccountBtn" onclick="window.confirmDeleteAccount()" class="profile-v2-danger-link">계정 탈퇴</button>
                             </div>
-                        </div>
-                    </div>
-                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
-                        <div class="profile-v2-panel-card profile-v2-tags-card">
-                            <h3 class="profile-v2-panel-title">나만의 태그</h3>
-                            <p class="profile-v2-panel-desc">메인 태그를 고른 뒤, 자주 쓰는 서브 태그를 최대 5개까지 등록해 두세요.</p>
-                            <div id="favoriteTagsSection" class="profile-v2-tags-section"></div>
                         </div>
                     </div>
                     <div id="settingsTabContentNotifications" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">

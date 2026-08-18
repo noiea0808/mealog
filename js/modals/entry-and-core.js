@@ -1409,7 +1409,6 @@ function activateSubChipsByTexts(containerId, texts) {
 function activateSavedRecordTags(r, isS) {
     if (!r) return;
 
-    const subTags = window.userSettings?.subTags || {};
     const cfg = getEntryModeConfig(isS ? 'snack' : 'meal');
 
     if (r.mealType) activateChipByText(ENTRY_DOM.whereChips, r.mealType);
@@ -1422,7 +1421,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.mealType) {
             window.renderSecondary(
                 ENTRY_DOM.whereSuggestions,
-                subTags.place || [],
                 ENTRY_DOM.whereInput,
                 r.mealType.trim(),
                 cfg.axis1SubTagKey
@@ -1431,7 +1429,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.category) {
             window.renderSecondary(
                 ENTRY_DOM.whatSuggestions,
-                subTags[cfg.axis2SubTagsKey] || [],
                 ENTRY_DOM.whatInput,
                 r.category.trim(),
                 cfg.axis2SubTagKey
@@ -1440,7 +1437,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.withWhom) {
             window.renderSecondary(
                 ENTRY_DOM.withSuggestions,
-                subTags.people || [],
                 ENTRY_DOM.withInput,
                 r.withWhom.trim(),
                 ENTRY_MODE_CONFIG.withSubTagKey
@@ -1457,7 +1453,6 @@ function activateSavedRecordTags(r, isS) {
             activateChipByText(ENTRY_DOM.whereChips, snackMainTag);
             window.renderSecondary(
                 ENTRY_DOM.whereSuggestions,
-                subTags.place || [],
                 ENTRY_DOM.whereInput,
                 snackMainTag,
                 cfg.axis1SubTagKey
@@ -1466,7 +1461,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.snackType) {
             window.renderSecondary(
                 ENTRY_DOM.whatSuggestions,
-                subTags[cfg.axis2SubTagsKey] || [],
                 ENTRY_DOM.whatInput,
                 r.snackType,
                 cfg.axis2SubTagKey
@@ -1839,9 +1833,8 @@ export async function openModal(date, slotId, entryId = null) {
             }
 
             if (isSnack && !(entryId && savedRecord)) {
-                const subTags = window.userSettings.subTags.snack || [];
                 const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-                window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+                window.renderSecondary('entryWhatSuggestions', 'entryWhatInput', snackType || null, 'snack');
             } else if (!isSnack && !(entryId && savedRecord)) {
                 syncDeliveryVendorSectionVisibility();
             }
@@ -3488,36 +3481,6 @@ export function setSatiety(s) {
     renderSatietyButtons('snackSatietyContainer', toggled);
 }
 
-/** 서브 칩 오른쪽 × — data-chip-delete(JSON) 위임 (특수문자·따옴표 안전) */
-function initEntryModalSubChipDeleteDelegation() {
-    const root = document.getElementById('entryModal');
-    if (!root || root._subChipDeleteDelegationBound) return;
-    root._subChipDeleteDelegationBound = true;
-    root.addEventListener('click', (e) => {
-        const delBtn = e.target.closest('[data-chip-delete]');
-        if (!delBtn || !root.contains(delBtn)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        let payload;
-        try {
-            payload = JSON.parse(decodeURIComponent(delBtn.getAttribute('data-chip-delete')));
-        } catch (err) {
-            console.warn('sub-chip delete: invalid payload', err);
-            return;
-        }
-        if (payload.kind === 'recent' && typeof window.deleteSubTag === 'function') {
-            window.deleteSubTag(
-                payload.subTagKey,
-                payload.text,
-                payload.containerId,
-                payload.inputId,
-                payload.parentFilter,
-                payload.fullSubTagText || null
-            );
-        }
-    });
-}
-setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
 function initEntryModalTagStageBackOnce() {
     const modal = document.getElementById('entryModal');
@@ -3711,10 +3674,9 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         if (subContainerId === 'entryWhereSuggestions' && appState.entryFormMode === 'snack') {
             appState.selectedSnackPlaceMainTag = selectedValue;
         }
-        const subTags = window.userSettings.subTags[subTagKey] || [];
         const inputIdForSecondary = (subTagKey === 'people') ? 'entryWithInput' : 
             (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
-        window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
+        window.renderSecondary(subContainerId, inputIdForSecondary, selectedValue, subTagKey);
         if (typeof window.setEntryTagStageView === 'function') {
             window.setEntryTagStageView(subContainerId, selectedValue ? 'sub' : 'main');
         }

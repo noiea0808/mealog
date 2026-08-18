@@ -291,17 +291,6 @@ export function openSettings() {
     }
     
     // 자주 사용하는 태그 초기화 (없으면 빈 객체로)
-    if (!state.tempSettings.favoriteSubTags) {
-        state.tempSettings.favoriteSubTags = {
-            mealType: {},
-            category: {},
-            withWhom: {},
-            snackType: {}
-        };
-    }
-    
-    // 자주 사용하는 태그 편집 UI 렌더링
-    renderFavoriteTagsEditor();
     
     // 사진 선택 및 삭제 버튼 이벤트 리스너 설정 (이미 선언된 photoDeleteBtn 재사용)
     const photoSelectBtn = document.getElementById('photoSelectBtn');
@@ -333,21 +322,18 @@ export function openSettings() {
     // 버전 정보 로드 및 표시
     loadVersionInfo();
     
-    // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
-    const tagsTab = document.getElementById('settingsTabTags');
+    // 게스트 모드일 때 밀당 메모 탭 숨기기
     const shortcutsTab = document.getElementById('settingsTabShortcuts');
     const profileSettingsSection = document.querySelector('#settingsTabContentProfile .space-y-3');
     
     if (window.currentUser && window.currentUser.isAnonymous) {
-        // 게스트 모드일 때 태그 관리 및 밀당 메모 탭 숨기기
-        if (tagsTab) tagsTab.classList.add('hidden');
+        // 게스트 모드일 때 밀당 메모 탭 숨기기
         if (shortcutsTab) shortcutsTab.classList.add('hidden');
         // 게스트 모드일 때 프로필 설정 폼만 숨기기 (계정/로그인하기는 프로필 탭에 표시)
         if (profileSettingsSection) profileSettingsSection.classList.add('hidden');
         switchSettingsTab('profile'); // 프로필 탭으로 이동해 '로그인하기' 노출
     } else {
         // 일반 사용자일 때 모든 탭 표시
-        if (tagsTab) tagsTab.classList.remove('hidden');
         if (shortcutsTab) shortcutsTab.classList.remove('hidden');
         if (profileSettingsSection) profileSettingsSection.classList.remove('hidden');
         switchSettingsTab('profile');
@@ -659,15 +645,13 @@ export function closeSettings() {
 // 설정 페이지 탭 전환 함수 (바 타입)
 export function switchSettingsTab(tab) {
     const profileTab = document.getElementById('settingsTabProfile');
-    const tagsTab = document.getElementById('settingsTabTags');
     const shortcutsTab = document.getElementById('settingsTabShortcuts');
     const notificationsTab = document.getElementById('settingsTabNotifications');
     const profileContent = document.getElementById('settingsTabContentProfile');
-    const tagsContent = document.getElementById('settingsTabContentTags');
     const shortcutsContent = document.getElementById('settingsTabContentShortcuts');
     const notificationsContent = document.getElementById('settingsTabContentNotifications');
-    
-    const settingsTabs = [profileTab, tagsTab, shortcutsTab, notificationsTab];
+
+    const settingsTabs = [profileTab, shortcutsTab, notificationsTab];
 
     settingsTabs.forEach((t) => {
         if (!t) return;
@@ -676,7 +660,7 @@ export function switchSettingsTab(tab) {
     });
     
     // 모든 콘텐츠 숨기기
-    [profileContent, tagsContent, shortcutsContent, notificationsContent].forEach(c => {
+    [profileContent, shortcutsContent, notificationsContent].forEach(c => {
         if (c) c.classList.add('hidden');
     });
     
@@ -690,17 +674,6 @@ export function switchSettingsTab(tab) {
         if (profileContent) profileContent.classList.remove('hidden');
         logUsageMetric('settings_profile').catch(() => {});
         scheduleLucideIcons(profileContent || document.getElementById('settingsView'));
-    } else if (tab === 'tags') {
-        // 태그 관리 탭 활성화
-        if (tagsTab) {
-            tagsTab.classList.add('active');
-            tagsTab.setAttribute('aria-selected', 'true');
-            tagsTab.textContent = '태그';
-        }
-        if (tagsContent) tagsContent.classList.remove('hidden');
-        logUsageMetric('settings_tags').catch(() => {});
-        renderFavoriteTagsEditor();
-        scheduleLucideIcons(tagsContent || document.getElementById('settingsView'));
     } else if (tab === 'shortcuts') {
         // 밀당 메모 탭 활성화
         if (shortcutsTab) {
@@ -1901,228 +1874,6 @@ export function removeTag(k, idx, isSub) {
     renderTagManager(k, isSub, state.tempSettings);
 }
 
-function escapeSettingsTagText(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-function renderFavoriteTagsEditor() {
-    const state = appState;
-    const container = document.getElementById('favoriteTagsSection');
-    if (!container) return;
-
-    if (!state.selectedFavoriteMainTag) {
-        state.selectedFavoriteMainTag = {};
-    }
-    window.selectedFavoriteMainTag = state.selectedFavoriteMainTag;
-
-    const tagConfigs = {
-        mealType: { prefix: '본식', label: '어떻게', mainTags: state.tempSettings.tags?.mealType || [] },
-        category: { prefix: '본식', label: '무엇을', mainTags: state.tempSettings.tags?.category || [] },
-        withWhom: { prefix: '본식', label: '누구와', mainTags: state.tempSettings.tags?.withWhom || [] },
-        snackType: { prefix: '간식', label: '무엇을', mainTags: state.tempSettings.tags?.snackType || [] },
-        snackPlace: { prefix: '간식', label: '어디서', mainTags: state.tempSettings.tags?.snackPlaceMain || ['집', '사무실', '카페'] }
-    };
-
-    let html = '';
-    Object.entries(tagConfigs).forEach(([sectionId, config]) => {
-        const sectionKey = sectionId;
-        const storageKey = sectionId;
-        const favoritesByMainTag = state.tempSettings.favoriteSubTags?.[storageKey] || {};
-        const selectedMainTag = state.selectedFavoriteMainTag[sectionKey] || null;
-        const selectedFavorites = selectedMainTag ? (favoritesByMainTag[selectedMainTag] || []) : [];
-        const isSnack = sectionId === 'snackType' || sectionId === 'snackPlace';
-        const bandClass = isSnack ? 'profile-v2-tag-group--snack' : 'profile-v2-tag-group--meal';
-        const inputId = `newFavoriteTag-${sectionKey}-${selectedMainTag || 'none'}`;
-        const selectedMainJs = selectedMainTag ? selectedMainTag.replace(/\\/g, '\\\\').replace(/'/g, "\\'") : '';
-
-        html += `<section class="profile-v2-tag-group ${bandClass}">
-            <div class="profile-v2-tag-group__head">
-                <span class="profile-v2-tag-group__kind">${escapeSettingsTagText(config.prefix)}</span>
-                <h4 class="profile-v2-tag-group__title">${escapeSettingsTagText(config.label)}</h4>
-            </div>
-            <div id="favoriteMainTags-${sectionKey}" class="profile-v2-tag-pills" role="group" aria-label="${escapeSettingsTagText(config.prefix)} ${escapeSettingsTagText(config.label)}">
-                ${config.mainTags
-                    .map((mainTag) => {
-                        const isSelected = selectedMainTag === mainTag;
-                        const favorites = favoritesByMainTag[mainTag] || [];
-                        const mainJs = String(mainTag).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                        return `<button type="button" onclick="window.selectFavoriteMainTag('${sectionKey}', '${mainJs}')"
-                        class="profile-v2-tag-pill${isSelected ? ' is-on' : ''}" aria-pressed="${isSelected ? 'true' : 'false'}">
-                        <span class="profile-v2-tag-pill__label">${escapeSettingsTagText(mainTag)}</span>
-                        <span class="profile-v2-tag-pill__count">${favorites.length}/5</span>
-                    </button>`;
-                    })
-                    .join('')}
-            </div>
-            <div class="profile-v2-tag-compose">
-                <input type="text" id="${inputId}" class="profile-v2-tag-input" placeholder="${selectedMainTag ? '서브 태그 입력' : '메인 태그를 먼저 선택'}" ${selectedMainTag ? '' : 'disabled'}
-                    onkeydown="if(event.key==='Enter'){event.preventDefault();if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}']);}">
-                <button type="button"
-                    ontouchstart="event.preventDefault()"
-                    ontouchend="event.preventDefault();if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}'])"
-                    onclick="if(window.selectedFavoriteMainTag&&window.selectedFavoriteMainTag['${sectionKey}'])window.addFavoriteTag('${storageKey}',window.selectedFavoriteMainTag['${sectionKey}'])"
-                    class="profile-v2-tag-add-btn"
-                    ${selectedMainTag ? '' : 'disabled'}>추가</button>
-            </div>
-            ${
-                selectedMainTag
-                    ? `<div class="profile-v2-tag-favs">
-                    <div class="profile-v2-tag-favs__label">
-                        <span>${escapeSettingsTagText(selectedMainTag)} · 나만의 태그</span>
-                        <span class="profile-v2-tag-favs__meta">${selectedFavorites.length}/5</span>
-                    </div>
-                    ${
-                        selectedFavorites.length >= 5
-                            ? '<p class="profile-v2-tag-hint">최대 5개까지 등록할 수 있어요.</p>'
-                            : ''
-                    }
-                    <div class="profile-v2-tag-favs__list" id="favoriteTags-${sectionKey}">
-                        ${
-                            selectedFavorites.length
-                                ? selectedFavorites
-                                      .map(
-                                          (text, idx) => `
-                            <span class="profile-v2-tag-fav">
-                                <span class="profile-v2-tag-fav__text">${escapeSettingsTagText(text)}</span>
-                                <button type="button" class="profile-v2-tag-fav__remove" aria-label="${escapeSettingsTagText(text)} 삭제"
-                                    onclick="window.removeFavoriteTag('${storageKey}', '${selectedMainJs}', ${idx})">
-                                    <i data-lucide="x" aria-hidden="true"></i>
-                                </button>
-                            </span>`
-                                      )
-                                      .join('')
-                                : '<p class="profile-v2-tag-hint">아직 등록된 태그가 없어요.</p>'
-                        }
-                    </div>
-                </div>`
-                    : '<p class="profile-v2-tag-hint">메인 태그를 선택하면 서브 태그를 추가할 수 있어요.</p>'
-            }
-        </section>`;
-    });
-
-    container.innerHTML = html;
-    scheduleLucideIcons(container);
-}
-
-export function selectFavoriteMainTag(mainTagKey, mainTag) {
-    const state = appState;
-    if (!state.selectedFavoriteMainTag) {
-        state.selectedFavoriteMainTag = {};
-    }
-    
-    // 같은 태그를 다시 클릭하면 선택 해제, 다른 태그를 클릭하면 선택 변경
-    if (state.selectedFavoriteMainTag[mainTagKey] === mainTag) {
-        state.selectedFavoriteMainTag[mainTagKey] = null;
-    } else {
-        state.selectedFavoriteMainTag[mainTagKey] = mainTag;
-    }
-    
-    // 전역 변수로도 저장 (입력창에서 접근 가능하도록)
-    if (!window.selectedFavoriteMainTag) {
-        window.selectedFavoriteMainTag = {};
-    }
-    window.selectedFavoriteMainTag[mainTagKey] = state.selectedFavoriteMainTag[mainTagKey];
-    
-    renderFavoriteTagsEditor();
-}
-
-export async function addFavoriteTag(mainTagKey, mainTag) {
-    const state = appState;
-    if (!state.tempSettings.favoriteSubTags) {
-        state.tempSettings.favoriteSubTags = {
-            mealType: {},
-            category: {},
-            withWhom: {},
-            snackType: {}
-        };
-    }
-    
-    if (!state.tempSettings.favoriteSubTags[mainTagKey]) {
-        state.tempSettings.favoriteSubTags[mainTagKey] = {};
-    }
-    
-    // 메인 태그가 선택되지 않았으면 입력 불가
-    if (!mainTag || mainTag === 'none') {
-        showToast("메인 태그를 먼저 선택해주세요.", 'info');
-        return;
-    }
-    
-    const input = document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`);
-    if (!input) return;
-    
-    const text = input.value.trim();
-    if (!text) {
-        showToast("태그를 입력해주세요.", 'info');
-        return;
-    }
-    
-    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
-        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
-    }
-    
-    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
-    
-    if (favorites.includes(text)) {
-        showToast("이미 추가된 태그입니다.", 'info');
-        input.value = '';
-        return;
-    }
-    
-    if (favorites.length >= 5) {
-        showToast("나만의 태그는 최대 5개까지 입력할 수 있습니다.", 'info');
-        return;
-    }
-    
-    favorites.push(text);
-    input.value = '';
-    renderFavoriteTagsEditor();
-    requestAnimationFrame(() => {
-        document.getElementById(`newFavoriteTag-${mainTagKey}-${mainTag}`)?.focus();
-    });
-    
-    // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
-    try {
-        await dbOps.saveSettings(state.tempSettings);
-        if (!window.userSettings) window.userSettings = {};
-        window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
-        showToast("태그가 저장되었습니다.", 'success');
-    } catch (e) {
-        console.error('태그 저장 실패:', e);
-        // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
-    }
-}
-
-export async function removeFavoriteTag(mainTagKey, mainTag, index) {
-    const state = appState;
-    if (!state.tempSettings.favoriteSubTags || !state.tempSettings.favoriteSubTags[mainTagKey]) return;
-    
-    if (!state.tempSettings.favoriteSubTags[mainTagKey][mainTag]) {
-        state.tempSettings.favoriteSubTags[mainTagKey][mainTag] = [];
-    }
-    
-    const favorites = state.tempSettings.favoriteSubTags[mainTagKey][mainTag];
-    if (index >= 0 && index < favorites.length) {
-        favorites.splice(index, 1);
-        renderFavoriteTagsEditor();
-        
-        // 즉시 저장 후 화면(기록 모달 등)에서 쓰는 userSettings에도 반영
-        try {
-            await dbOps.saveSettings(state.tempSettings);
-            if (!window.userSettings) window.userSettings = {};
-            window.userSettings.favoriteSubTags = JSON.parse(JSON.stringify(state.tempSettings.favoriteSubTags || {}));
-            showToast("태그가 삭제되었습니다.", 'success');
-        } catch (e) {
-            console.error('태그 삭제 저장 실패:', e);
-            // dbOps.saveSettings에서 이미 에러 토스트를 표시하므로 여기서는 추가 처리 불필요
-        }
-    }
-}
-
 const PUSH_PREF_FIELD_IDS = {
     master: 'pushPrefMaster',
     momentComment: 'pushPrefMomentComment',
@@ -2205,70 +1956,6 @@ export function initPushPreferencesControlsOnce() {
             void persist({ [key]: e.target.checked });
         });
     });
-}
-
-function getSubTagEntryText(t) {
-    return typeof t === 'string' ? t : (t && t.text != null ? String(t.text) : '');
-}
-
-export async function deleteSubTag(key, text, containerId, inputId, parentFilter, fullSubTagText) {
-    const newSettings = JSON.parse(JSON.stringify(window.userSettings));
-    if (!newSettings.subTags || !newSettings.subTags[key]) return;
-
-    const list = newSettings.subTags[key];
-    const matchText = (entryText, want) => entryText === want;
-
-    let idx = -1;
-    if (fullSubTagText) {
-        idx = list.findIndex((t) => matchText(getSubTagEntryText(t), fullSubTagText));
-    }
-    if (idx === -1) {
-        idx = list.findIndex((t) => matchText(getSubTagEntryText(t), text));
-    }
-    if (idx === -1) {
-        idx = list.findIndex((t) => {
-            const tx = getSubTagEntryText(t);
-            if (!tx || !tx.includes(',')) return false;
-            return tx
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean)
-                .includes(text);
-        });
-    }
-
-    if (idx > -1) {
-        const entry = list[idx];
-        const full = getSubTagEntryText(entry);
-        if (!full.includes(',') || full === text) {
-            list.splice(idx, 1);
-        } else {
-            const parts = full.split(',').map((s) => s.trim()).filter(Boolean);
-            const next = parts.filter((p) => p !== text);
-            if (next.length === 0) {
-                list.splice(idx, 1);
-            } else {
-                const joined = next.join(',');
-                if (typeof entry === 'string') {
-                    list[idx] = joined;
-                } else {
-                    list[idx] = { ...entry, text: joined };
-                }
-            }
-        }
-        window.userSettings = newSettings;
-        try {
-            await dbOps.saveSettings(newSettings);
-            showToast("태그가 삭제되었습니다.", 'success');
-            if (containerId) {
-                const realParentFilter = (parentFilter === 'null' || !parentFilter) ? null : parentFilter;
-                window.renderSecondary(containerId, newSettings.subTags[key], inputId, realParentFilter, key);
-            }
-        } catch (e) {
-            console.error(e);
-            showToast("삭제 실패", 'error');
-        }
-    }
 }
 
 // 카카오 장소 검색 함수 (백엔드 프록시 사용 - SDK 불필요)

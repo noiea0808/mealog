@@ -42,6 +42,8 @@
 - '무엇을' 칩이 코드의 형태 축 14개(밥류·국물요리…)로 뜬다.
 - 분석에서 옛 요리 종류 값(한식·양식·일식·중식·분식·카페)을 **무시하고** 그 기록의
   `categoryAuto` → 없으면 `menuDetail` 재분류 결과로 대체한다.
+- 마이 > 태그의 '무엇을' 카드가 **하나**다(본식·간식 두 장이 아니라). 나만의 태그와 최근
+  서브태그도 끼니·간식 양쪽을 합쳐 보여준다 — §6.
 
 파일럿이 아닌 사용자는 **모든 경로에서 이전과 완전히 동일**하다.
 
@@ -82,6 +84,15 @@
   → **재분류 자체는 남긴다.** 전환 후에는 전 사용자에게 필요한 동작이다
 - [js/admin/tags.js](../js/admin/tags.js) 의 '형태 축 파일럿' 블록과
   [admin.html](../admin.html) 의 편집란, 저장 데이터의 `formAxisPilotUids`
+- [js/utils/food-axis-subtags.js](../js/utils/food-axis-subtags.js) — 파일 통째로.
+  전환 후에는 **저장 키 자체를 하나로 줄이는 것이 맞다**(§6). 이 모듈은 그때까지
+  읽기에서만 두 키를 합쳐 주는 임시 장치다. 부르는 곳은 네 군데:
+  [settings.js](../js/modals/settings.js)(`deleteSubTag`),
+  [entry-chips.js](../js/render/entry-chips.js)('무엇을' 서브태그 목록·'사용자' 블록 제외),
+  [entry-and-core.js](../js/modals/entry-and-core.js)(수정 모드 복원 2곳·간식 신규 오픈),
+  [entry-save-subtags.js](../js/modals/entry-save-subtags.js)(최근 서브태그 기억을
+  `menu` 한 곳으로)
+- [test/food-axis-subtags.test.mjs](../test/food-axis-subtags.test.mjs) — 위 모듈과 함께
 
 ## 5. 아직 정하지 않은 것
 
@@ -93,3 +104,25 @@
   생기고, 전체 전환 후에는 클라이언트 차트와 서버 집계 숫자가 갈릴 수 있다.
 - **사전 데이터**: 떡볶이가 `면류`에 있다(`튀김·분식`이 따로 있는데도), 아이스크림 제품명
   계열이 얇다.
+
+## 6. 서브태그 층의 축 통합 (2026-08-18)
+
+축은 합쳤는데 최근 서브태그 저장 키가 `subTags.menu` 와 `subTags.snack` 으로 갈린 채
+남아 있다. 파일럿 계정은 두 키에 **같은 칩 목록**이 들어가므로(§2) 같은 '면류' 칩인데
+끼니에서 적은 항목과 간식에서 적은 항목이 서로 보이지 않았다.
+
+읽기 병합으로 메웠다가, 기록 시트의 서브 칩이 `subTags` 대신 **이력 빈도**를 보게 되면서
+([entry-axes-and-tags-direction.md](entry-axes-and-tags-direction.md) §5) 병합할 대상
+자체가 없어졌다. 지금 남은 것은 **새로 기억할 때 `menu` 한쪽으로 모으는 판정** 하나다:
+
+- [js/utils/food-axis-subtags.js](../js/utils/food-axis-subtags.js) `isWhatAxisUnified()`
+- 부르는 곳은 [entry-save-subtags.js](../js/modals/entry-save-subtags.js) 하나
+
+**판정은 파일럿 여부만 보지 않는다.** 그러면 §3에서 파일럿 목록을 비우는 순간 통합이
+되돌아간다. `tags.category` 와 `tags.snackType` 목록이 실제로 같은지도 함께 보므로,
+관리자 저장이 두 필드에 같은 값을 쓰는 전환 이후에는 저절로 참이 된다.
+
+나만의 태그(`favoriteSubTags`) 병합은 **제거로 끝났다.** 그 기능 자체가 사라졌다.
+
+전환일에는 이 모듈을 지우면서 저장 키를 실제로 하나로 줄이는 편이 맞다(§4). 그때
+`subTags.snack` 잔여 값과 쓰이지 않는 `favoriteSubTags` 를 함께 정리한다.

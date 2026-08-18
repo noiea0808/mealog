@@ -168,15 +168,6 @@ export function setupListeners(userId, callbacks) {
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
-            if (!window.userSettings.favoriteSubTags) {
-                window.userSettings.favoriteSubTags = {
-                    mealType: {},
-                    category: {},
-                    withWhom: {},
-                    snackType: {},
-                    snackPlace: {}
-                };
-            }
             if (!window.userSettings.tags) {
                 window.userSettings.tags = {};
             }
@@ -535,7 +526,6 @@ export function setupListeners(userId, callbacks) {
                 if (serverSnap.exists()) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
                     mergePushPreferencesIntoUserSettings();
                     mergeEntryModalGaugesIntoUserSettings();
                     if (demo) {

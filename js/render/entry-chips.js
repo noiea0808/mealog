@@ -12,9 +12,10 @@ import {
 } from '../modals/entry-form-config.js';
 import { isEntryFieldQuickInputOn } from '../modals/entry-quick-input.js';
 import { refreshLucideIcons } from '../icons.js';
+import { frequentSubTagValues } from '../utils/frequent-subtags.js';
 
-/** 최근 서브태그 칩 상한 */
-const RECENT_SUBTAG_CHIP_LIMIT = 10;
+/** 서브 칩 상한 */
+const SUBTAG_CHIP_LIMIT = 10;
 
 /**
  * 메인 칩 ↔ 사용자/최근 패널 전환.
@@ -52,30 +53,6 @@ function valueExprForOnclick(str) {
     return `decodeURIComponent('${encodeURIComponent(str ?? '')}')`;
 }
 
-function getSubTagItemText(item) {
-    if (item == null) return '';
-    return typeof item === 'string' ? String(item) : (item.text != null ? String(item.text) : '');
-}
-
-/**
- * subTags 항목에 쉼표로 묶인 문자열이 있으면(예: "맥주,새우깡") 최근 태그 칩을 나누기 위한 배열로 펼침.
- * parent는 유지, 펼친 항목에만 `_sourceFull`로 원문을 남겨 × 삭제 시 갱신에 사용.
- */
-function expandCommaSeparatedSubTagItem(item) {
-    if (item == null) return [];
-    const parent = typeof item === 'string' ? null : item.parent;
-    const full = getSubTagItemText(item).trim();
-    if (!full) return [];
-    if (!/[,，]/.test(full)) {
-        return [typeof item === 'string' ? { text: full, parent } : { ...item, text: full }];
-    }
-    const parts = full.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
-    if (parts.length <= 1) {
-        return [typeof item === 'string' ? { text: full, parent } : { ...item, text: full }];
-    }
-    return parts.map((text) => ({ text, parent, _sourceFull: full }));
-}
-
 function getEntryFormMode() {
     return appState.entryFormMode === 'snack' ? 'snack' : 'meal';
 }
@@ -105,7 +82,6 @@ function syncEntrySubtagScrollHints(root) {
 
 export function renderEntryChips() {
     const tags = window.userSettings?.tags;
-    const subTags = window.userSettings?.subTags;
     const mode = getEntryFormMode();
     const cfg = getEntryModeConfig(mode);
     const d = ENTRY_DOM;
@@ -134,51 +110,31 @@ export function renderEntryChips() {
             .join('');
     };
 
-    window.renderSecondary = (id, list, inputId, parentFilter = null, subTagKey = null, opts = {}) => {
+    /**
+     * 서브 칩 축별 표본 정의 — 어느 기록 필드를 어느 부모로 좁혀 세는가.
+     * (js/utils/frequent-subtags.js)
+     */
+    const SUBTAG_SOURCE = {
+        place: { field: 'place', splitCommas: false },
+        people: { field: 'withWhomDetail', parentField: 'withWhom', splitCommas: true },
+        menu: { field: 'menuDetail', parentField: 'category', splitCommas: true },
+        snack: { field: 'menuDetail', parentField: 'snackType', splitCommas: true },
+    };
+
+    /**
+     * 부모 칩 하나에 딸린 서브 칩 목록.
+     *
+     * **나만의 태그는 없다** (2026-08-18). 사용자가 마이 > 태그에 미리 등록해 두던 '사용자'
+     * 블록을 걷어내고, 그 자리를 내 이력의 빈도 추천으로 갈음했다 — 목록을 손으로 관리하지
+     * 않아도 자주 쓰는 값은 이력이 안다 (docs/entry-axes-and-tags-direction.md §4).
+     *
+     * 그래서 이 함수는 이제 `userSettings.subTags` 를 읽지 않는다. 표본은 `mealHistory`
+     * 하나뿐이라 추가 저장도 네트워크도 0이다.
+     */
+    window.renderSecondary = (id, inputId, parentFilter = null, subTagKey = null, opts = {}) => {
         const el = document.getElementById(id);
         if (!el) return;
         const preserveStage = opts?.preserveStage === true;
-
-        const mainTagKeyMap = {
-            place: 'mealType',
-            menu: 'category',
-            people: 'withWhom',
-            snack: 'snackType',
-        };
-        let mainTagKey = mainTagKeyMap[subTagKey] || cfg.axis2FavoriteKey;
-        if (subTagKey === 'place' && id === d.whereSuggestions) {
-            mainTagKey = cfg.axis1FavoriteKey;
-        }
-
-        let filteredList = list || [];
-        if (parentFilter) {
-            /**
-             * 부모를 잃은 서브태그는 **어느 칩에서든** 보이게 한다.
-             *
-             * 서브태그의 parent 는 저장 시점의 메인 칩 텍스트다. 메인 축이 교체되면
-             * (한식·양식… → 밥류·면류…) 옛 parent 를 가진 항목은 어떤 칩과도 매칭되지 않아
-             * 사용자가 쌓아온 서브칩이 통째로 사라진다. 데이터는 멀쩡한데 화면에서만
-             * 증발하는 것이라, 축 교체의 실질 비용이 여기에 몰려 있었다.
-             *
-             * 그래서 "현재 메인 칩 목록에 없는 parent"는 고아로 보고 필터를 통과시킨다.
-             * 마이그레이션 없이 축을 바꿀 수 있게 하는 장치다 — 사용자가 그 칩을 다시
-             * 고르면 새 parent 로 갱신되면서 자연히 정리된다.
-             */
-            const mainTags = window.userSettings?.tags?.[mainTagKey];
-            const knownParents =
-                Array.isArray(mainTags) && mainTags.length > 0 ? new Set(mainTags) : null;
-            filteredList = filteredList.filter((item) => {
-                const parent = typeof item === 'string' ? null : item.parent;
-                if (parent === parentFilter) return true;
-                return Boolean(parent) && knownParents != null && !knownParents.has(parent);
-            });
-        }
-
-        const currentInputVal = document.getElementById(inputId)?.value || '';
-        const isMultiSelect = id === d.whatSuggestions || id === d.withSuggestions;
-        const currentValues = isMultiSelect
-            ? currentInputVal.split(/[,，]/).map((v) => v.trim()).filter(Boolean)
-            : [currentInputVal];
 
         if (!parentFilter) {
             if (preserveStage) return;
@@ -190,88 +146,54 @@ export function renderEntryChips() {
             return;
         }
 
-        const favoriteSubTags = window.userSettings?.favoriteSubTags?.[mainTagKey] || {};
-        const myTags = favoriteSubTags[parentFilter] || [];
+        const source = SUBTAG_SOURCE[subTagKey];
+        /**
+         * '어디서'의 부모는 모드에 따라 다르다 — 끼니는 조달 형태(어떻게), 간식은 장소
+         * 대분류다. 간식은 `snackPlaceMain` 이 비고 `place` 에만 값이 남은 옛 기록이 있어
+         * 그쪽도 함께 본다.
+         */
+        const placeParent =
+            mode === 'snack'
+                ? { parentField: 'snackPlaceMain', parentFallbackFields: ['place'] }
+                : { parentField: 'mealType' };
+        const query =
+            source && subTagKey === 'place' ? { ...source, ...placeParent } : source;
 
-        const myTagsSet = new Set(myTags);
-        const myTagsList = [];
-        const myTagPartSeen = new Set();
+        const chipValues = query
+            ? frequentSubTagValues(window.mealHistory, {
+                  ...query,
+                  parent: parentFilter,
+                  limit: SUBTAG_CHIP_LIMIT,
+              })
+            : [];
 
-        filteredList.forEach((item) => {
-            for (const part of expandCommaSeparatedSubTagItem(item)) {
-                const text = getSubTagItemText(part);
-                if (!text) continue;
-                if (myTagsSet.has(text) && !myTagPartSeen.has(text)) {
-                    myTagPartSeen.add(text);
-                    myTagsList.push(part);
-                }
-            }
-        });
-        myTags.forEach((text) => {
-            const alreadyIn = filteredList.some((item) =>
-                expandCommaSeparatedSubTagItem(item).some((p) => getSubTagItemText(p) === text)
-            );
-            if (!alreadyIn) myTagsList.push({ text });
-        });
+        const currentInputVal = document.getElementById(inputId)?.value || '';
+        const isMultiSelect = id === d.whatSuggestions || id === d.withSuggestions;
+        const currentValues = isMultiSelect
+            ? currentInputVal.split(/[,，]/).map((v) => v.trim()).filter(Boolean)
+            : [currentInputVal];
 
-        myTagsList.sort((a, b) => {
-            const textA = getSubTagItemText(a);
-            const textB = getSubTagItemText(b);
-            return myTags.indexOf(textA) - myTags.indexOf(textB);
-        });
-
-        const recentByText = new Map();
-        filteredList.forEach((item, idx) => {
-            for (const part of expandCommaSeparatedSubTagItem(item)) {
-                const text = getSubTagItemText(part);
-                if (!text) continue;
-                if (myTagsSet.has(text)) continue;
-                const prev = recentByText.get(text);
-                if (!prev || idx > prev.idx) recentByText.set(text, { part, idx });
-            }
-        });
-        const recentList = [...recentByText.values()]
-            .sort((a, b) => b.idx - a.idx)
-            .slice(0, RECENT_SUBTAG_CHIP_LIMIT)
-            .map((x) => x.part);
-
-        const renderChip = (item, isFavorite) => {
-            const text = getSubTagItemText(item);
-            if (!text) return '';
+        const renderChip = (text) => {
             const active = currentValues.includes(text);
-            const star = isFavorite
-                ? ' <i data-lucide="star" class="sub-chip-favorite-star" aria-hidden="true"></i>'
-                : '';
-            const sourceFull = item._sourceFull ? String(item._sourceFull) : '';
-            const sourceAttr = sourceFull
-                ? ` data-source-full="${sourceFull.replace(/"/g, '&quot;')}"`
-                : '';
-            return `<button type="button" class="sub-chip${active ? ' active' : ''}"${sourceAttr} onclick="window.selectTag('${inputId}', ${valueExprForOnclick(text)}, this, false, '${subTagKey}', '${id}')">${text}${star}</button>`;
+            return `<button type="button" class="sub-chip${active ? ' active' : ''}" onclick="window.selectTag('${inputId}', ${valueExprForOnclick(text)}, this, false, '${subTagKey}', '${id}')">${text}</button>`;
         };
 
-        const userChipsHtml = myTagsList.length
-            ? myTagsList.map((item) => renderChip(item, true)).join('')
-            : `<p class="entry-subtag-empty">마이 → 태그에 등록하면 바로 고를 수 있어요.</p>`;
-        const recentChipsHtml = recentList.length
-            ? recentList.map((item) => renderChip(item, false)).join('')
-            : `<p class="entry-subtag-empty entry-subtag-empty--muted">최근 사용한 항목이 아직 없어요.</p>`;
-
         el.innerHTML = `
-            <div class="entry-subtag-block entry-subtag-block--user">
-                <span class="entry-subtag-label">사용자</span>
-                <div class="entry-subtag-chips${myTagsList.length ? '' : ' entry-subtag-chips--empty'}">${userChipsHtml}</div>
-            </div>
             <div class="entry-subtag-block entry-subtag-block--recent">
-                <span class="entry-subtag-label">최근</span>
-                <div class="entry-subtag-chips-shell${recentList.length ? '' : ' entry-subtag-chips-shell--empty'}">
-                    <div class="entry-subtag-chips${recentList.length ? '' : ' entry-subtag-chips--empty'}">${recentChipsHtml}</div>
+                <span class="entry-subtag-label">자주</span>
+                <div class="entry-subtag-chips-shell${chipValues.length ? '' : ' entry-subtag-chips-shell--empty'}">
+                    <div class="entry-subtag-chips${chipValues.length ? '' : ' entry-subtag-chips--empty'}">${
+                        chipValues.length
+                            ? chipValues.map(renderChip).join('')
+                            : `<p class="entry-subtag-empty entry-subtag-empty--muted">기록이 쌓이면 자주 쓰는 항목을 여기 올려드려요.</p>`
+                    }</div>
                     <span class="entry-subtag-scroll-hint" hidden aria-hidden="true" title="옆으로 밀어 더 보기">
                         <i data-lucide="chevrons-right" aria-hidden="true"></i>
                     </span>
                 </div>
             </div>
         `;
-        if (myTagsList.length || recentList.length) refreshLucideIcons(el);
+        if (chipValues.length) refreshLucideIcons(el);
         syncEntrySubtagScrollHints(el);
         if (!preserveStage) {
             setEntryTagStageView(id, 'sub');
@@ -306,21 +228,7 @@ export function renderEntryChips() {
         if (el) el.innerHTML = '';
     }
 
-    window.renderSecondary(d.whereSuggestions, subTags?.place || [], d.whereInput, null, cfg.axis1SubTagKey);
-
-    window.renderSecondary(
-        d.whatSuggestions,
-        subTags?.[cfg.axis2SubTagsKey] || [],
-        d.whatInput,
-        null,
-        cfg.axis2SubTagKey
-    );
-
-    window.renderSecondary(
-        d.withSuggestions,
-        subTags?.people || [],
-        d.withInput,
-        null,
-        ENTRY_MODE_CONFIG.withSubTagKey
-    );
+    window.renderSecondary(d.whereSuggestions, d.whereInput, null, cfg.axis1SubTagKey);
+    window.renderSecondary(d.whatSuggestions, d.whatInput, null, cfg.axis2SubTagKey);
+    window.renderSecondary(d.withSuggestions, d.withInput, null, ENTRY_MODE_CONFIG.withSubTagKey);
 }

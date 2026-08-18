@@ -40,15 +40,6 @@ async function hydrateUserSettingsFromServer(uid) {
         if (!window.userSettings.subTags) {
             window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
         }
-        if (!window.userSettings.favoriteSubTags) {
-            window.userSettings.favoriteSubTags = {
-                mealType: {},
-                category: {},
-                withWhom: {},
-                snackType: {},
-                snackPlace: {}
-            };
-        }
         if (!window.userSettings.tags) {
             window.userSettings.tags = {};
         }

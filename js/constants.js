@@ -165,13 +165,6 @@ export const DEFAULT_USER_SETTINGS = {
         people: [{ text: '엄마', parent: '가족' }, { text: '팀장님', parent: '직장동료' }],
         snack: []
     },
-    favoriteSubTags: {
-        mealType: {}, // { '집밥': ['우리집', '할머니집', ...], '외식': [...], ... }
-        category: {}, // { '국물요리': ['김치찌개', '된장찌개', ...], '면류': [...], ... }
-        withWhom: {}, // { '가족': ['엄마', '아빠', ...], '친구': [...], ... }
-        snackType: {}, // { '커피': ['아메리카노', '라떼', ...], '베이커리': [...], ... }
-        snackPlace: {} // { '집': [...], '사무실': [...], '카페': [...], ... }
-    },
     // 약관 동의 및 첫 로그인 관련
     termsAgreed: false,
     termsAgreedAt: null,
