@@ -17913,10 +17913,41 @@ body.ime-open #profileFieldEditModal > div {
     width: 100%;
     min-width: 0;
 }
-.rrn-digit {
-    flex: 1 1 0;
+/* 앞자리(생년월일)는 칸을 쪼개지 않고 한 입력란으로 받는다 (js/utils.js mountRrnDigitGroup) */
+.rrn-front {
+    flex: 1 1 auto;
     min-width: 0;
-    width: 2.25rem;
+    height: 2.75rem;
+    padding: 0 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+    color: #1e293b;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.16em;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.rrn-front::placeholder {
+    color: #cbd5e1;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+.rrn-front:focus {
+    border-color: #34d399;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+/* 뒤 한 자리만 남았으므로 늘어나지 않고 고정 폭 */
+.rrn-digit {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 2.75rem;
     max-width: 2.75rem;
     height: 2.75rem;
     padding: 0;
@@ -17956,7 +17987,8 @@ body.ime-open #profileFieldEditModal > div {
     letter-spacing: 0.12em;
     user-select: none;
 }
-#profileFieldEditPanelBirthdate .rrn-digit {
+#profileFieldEditPanelBirthdate .rrn-digit,
+#profileFieldEditPanelBirthdate .rrn-front {
     background: #fff;
     height: 2.9rem;
 }

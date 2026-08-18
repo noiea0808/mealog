@@ -1314,14 +1314,16 @@ export function setupBirthdateInputFormatting(el) {
     if (!el || el.dataset.birthdateFormatted === 'true') return;
     el.dataset.birthdateFormatted = 'true';
 
-    el.addEventListener('input', function () {
-        const digits = this.value.replace(/\D/g, '').slice(0, 8);
+    // 조합 중 value 재대입은 IME 를 깨뜨린다 — 숫자 칸이라도 한글 자판 상태로 들어올 수 있다
+    // 헬퍼는 handler() 로 부르므로 this 가 없다 — el 을 직접 쓴다
+    addCompositionAwareInput(el, () => {
+        const digits = el.value.replace(/\D/g, '').slice(0, 8);
         if (digits.length <= 4) {
-            this.value = digits;
+            el.value = digits;
         } else if (digits.length <= 6) {
-            this.value = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+            el.value = `${digits.slice(0, 4)}-${digits.slice(4)}`;
         } else {
-            this.value = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+            el.value = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
         }
     });
 }
@@ -1496,12 +1498,15 @@ export function formatProfileRrnDisplay(birthdate, gender) {
 export function setupRrnPartialInputFormatting(el) {
     if (!el || el.dataset.rrnPartialFormatted === 'true') return;
     el.dataset.rrnPartialFormatted = 'true';
-    el.addEventListener('input', function () {
-        this.value = formatRrnPartialInput(this.value);
+    // 조합 중 value 재대입 금지 (setupBirthdateInputFormatting 와 같은 이유)
+    addCompositionAwareInput(el, () => {
+        el.value = formatRrnPartialInput(el.value);
     });
 }
 
 const RRN_DIGIT_COUNT = 7;
+/** 앞자리(생년월일) 길이 — 나머지 한 자리가 성별 코드다 */
+const RRN_FRONT_LEN = 6;
 const RRN_DIGIT_LABELS = [
     '생년 십의 자리',
     '생년 일의 자리',
@@ -1527,12 +1532,15 @@ function syncRrnDigitHidden(root) {
 export function getRrnDigitGroupValue(rootOrId) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return '';
-    const cells = root.querySelectorAll('.rrn-digit');
-    let digits = '';
-    cells.forEach((el) => {
-        digits += String(el.value || '').replace(/\D/g, '').slice(0, 1);
-    });
-    return formatRrnPartialInput(digits);
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    const f = String(front?.value || '').replace(/\D/g, '').slice(0, RRN_FRONT_LEN);
+    const b = String(back?.value || '').replace(/\D/g, '').slice(0, 1);
+    /**
+     * 앞자리가 덜 찼는데 뒷자리만 있는 상태는 값으로 치지 않는다 — 이어 붙이면
+     * '9' 한 글자가 생년 십의 자리로 읽혀 formatRrnPartialInput 이 엉뚱한 날짜를 만든다.
+     */
+    return formatRrnPartialInput(f.length === RRN_FRONT_LEN ? f + b : f);
 }
 
 /**
@@ -1544,10 +1552,10 @@ export function setRrnDigitGroupValue(rootOrId, raw) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const digits = String(raw || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
-    const cells = root.querySelectorAll('.rrn-digit');
-    cells.forEach((el, i) => {
-        el.value = digits[i] || '';
-    });
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    if (front) front.value = digits.slice(0, RRN_FRONT_LEN);
+    if (back) back.value = digits.slice(RRN_FRONT_LEN, RRN_DIGIT_COUNT);
     syncRrnDigitHidden(root);
 }
 
@@ -1558,9 +1566,11 @@ export function setRrnDigitGroupValue(rootOrId, raw) {
 export function focusRrnDigitGroup(rootOrId) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
-    const cells = [...root.querySelectorAll('.rrn-digit')];
-    const empty = cells.find((el) => !el.value);
-    (empty || cells[0])?.focus();
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    // 앞자리가 아직 덜 찼으면 거기부터 — 다 찼으면 뒤 한 자리로
+    const target = front && front.value.length < RRN_FRONT_LEN ? front : back || front;
+    target?.focus();
 }
 
 /**
@@ -1581,26 +1591,40 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
             root.setAttribute('aria-label', '주민등록번호 앞 6자리와 뒤 첫 자리');
         }
         const frag = document.createDocumentFragment();
-        for (let i = 0; i < RRN_DIGIT_COUNT; i++) {
-            if (i === 6) {
-                const hyphen = document.createElement('span');
-                hyphen.className = 'rrn-digits__hyphen';
-                hyphen.setAttribute('aria-hidden', 'true');
-                hyphen.textContent = '-';
-                frag.appendChild(hyphen);
-            }
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'rrn-digit';
-            input.inputMode = 'numeric';
-            input.autocomplete = 'one-time-code';
-            input.maxLength = 1;
-            input.pattern = '[0-9]*';
-            input.setAttribute('data-rrn-i', String(i));
-            input.setAttribute('aria-label', RRN_DIGIT_LABELS[i] || `자리 ${i + 1}`);
-            input.setAttribute('enterkeyhint', i === RRN_DIGIT_COUNT - 1 ? 'done' : 'next');
-            frag.appendChild(input);
-        }
+        /**
+         * 앞 6자리는 **칸을 쪼개지 않는다.** 생년월일은 한 덩어리로 외우고 한 번에 적는
+         * 값이라, 칸마다 포커스가 튀면 오히려 손이 걸린다. 뒤 한 자리는 성격이 다른
+         * 값(성별 코드)이라 칸으로 남겨 경계를 보이게 둔다.
+         */
+        const front = document.createElement('input');
+        front.type = 'text';
+        front.className = 'rrn-front';
+        front.inputMode = 'numeric';
+        front.autocomplete = 'off';
+        front.maxLength = RRN_FRONT_LEN;
+        front.pattern = '[0-9]*';
+        front.placeholder = 'YYMMDD';
+        front.setAttribute('aria-label', '주민등록번호 앞 6자리(생년월일)');
+        front.setAttribute('enterkeyhint', 'next');
+        frag.appendChild(front);
+
+        const hyphen = document.createElement('span');
+        hyphen.className = 'rrn-digits__hyphen';
+        hyphen.setAttribute('aria-hidden', 'true');
+        hyphen.textContent = '-';
+        frag.appendChild(hyphen);
+
+        const back = document.createElement('input');
+        back.type = 'text';
+        back.className = 'rrn-digit';
+        back.inputMode = 'numeric';
+        back.autocomplete = 'one-time-code';
+        back.maxLength = 1;
+        back.pattern = '[0-9]*';
+        back.setAttribute('data-rrn-i', String(RRN_FRONT_LEN));
+        back.setAttribute('aria-label', RRN_DIGIT_LABELS[RRN_FRONT_LEN] || '성별 코드');
+        back.setAttribute('enterkeyhint', 'done');
+        frag.appendChild(back);
         const mask = document.createElement('span');
         mask.className = 'rrn-digits__mask';
         mask.setAttribute('aria-hidden', 'true');
@@ -1616,73 +1640,105 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
     }
     root.dataset.rrnDigitsBound = 'true';
 
-    const cells = () => [...root.querySelectorAll('.rrn-digit')];
+    const frontEl = () => root.querySelector('.rrn-front');
+    const backEl = () => root.querySelector('.rrn-digit');
 
-    const fillFromDigits = (digitStr, startIndex = 0) => {
-        const list = cells();
-        const digits = String(digitStr || '').replace(/\D/g, '');
-        let i = startIndex;
-        for (const ch of digits) {
-            if (i >= list.length) break;
-            list[i].value = ch;
-            i += 1;
-        }
+    /** 숫자 문자열을 앞·뒤로 갈라 채운다 (7자리를 한 번에 적거나 붙여넣은 경우) */
+    const fillFromDigits = (digitStr) => {
+        const digits = String(digitStr || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
+        const front = frontEl();
+        const back = backEl();
+        if (front) front.value = digits.slice(0, RRN_FRONT_LEN);
+        if (back && digits.length > RRN_FRONT_LEN) back.value = digits.slice(RRN_FRONT_LEN);
         syncRrnDigitHidden(root);
-        const next = list[Math.min(i, list.length - 1)];
-        next?.focus();
-        if (next && i < list.length) next.select();
+        if (digits.length >= RRN_FRONT_LEN && back) {
+            back.focus();
+            back.select();
+        }
     };
 
+    /**
+     * 숫자만 남기려고 value 를 다시 쓰는데, **조합 중에는 그러면 안 된다** — IME 상태가
+     * 깨져 글자가 안 보인다(커밋 e7acc4e). 위임이라 요소별 가드 대신 표식으로 거르고,
+     * 조합이 끝나면 compositionend 가 같은 정리를 한 번 돌린다.
+     */
+    root.addEventListener('compositionstart', (e) => {
+        if (e.target instanceof HTMLElement) e.target.dataset.imeComposing = '1';
+    });
+    root.addEventListener('compositionend', (e) => {
+        if (!(e.target instanceof HTMLElement)) return;
+        delete e.target.dataset.imeComposing;
+        e.target.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     root.addEventListener('input', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        const list = cells();
-        const idx = list.indexOf(t);
-        if (idx < 0) return;
-        const raw = t.value.replace(/\D/g, '');
-        if (raw.length > 1) {
-            fillFromDigits(raw, idx);
+        if (!(t instanceof HTMLInputElement)) return;
+        if (t.dataset.imeComposing === '1') return;
+        if (t.classList.contains('rrn-front')) {
+            const raw = t.value.replace(/\D/g, '');
+            // maxlength 를 넘겨 들어오는 경로(IME·자동완성)도 있어 길이를 다시 본다
+            if (raw.length > RRN_FRONT_LEN) {
+                fillFromDigits(raw);
+                return;
+            }
+            t.value = raw;
+            syncRrnDigitHidden(root);
+            // 여섯 자리를 채우면 뒤 한 자리로 넘긴다 — 하이픈을 손으로 건널 이유가 없다
+            if (raw.length === RRN_FRONT_LEN) {
+                const b = backEl();
+                b?.focus();
+                b?.select();
+            }
             return;
         }
-        t.value = raw.slice(0, 1);
-        syncRrnDigitHidden(root);
-        if (t.value && idx < list.length - 1) {
-            list[idx + 1].focus();
-            list[idx + 1].select();
+        if (t.classList.contains('rrn-digit')) {
+            t.value = t.value.replace(/\D/g, '').slice(0, 1);
+            syncRrnDigitHidden(root);
         }
     });
 
     root.addEventListener('keydown', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        const list = cells();
-        const idx = list.indexOf(t);
-        if (idx < 0) return;
-        if (e.key === 'Backspace') {
-            if (t.value) {
-                t.value = '';
+        if (!(t instanceof HTMLInputElement)) return;
+        const isBack = t.classList.contains('rrn-digit');
+        const isFront = t.classList.contains('rrn-front');
+        if (!isBack && !isFront) return;
+
+        if (e.key === 'Backspace' && isBack && !t.value) {
+            /**
+             * 뒤 칸이 이미 비었는데 지우려 한다면 앞자리를 고치려는 것이다.
+             * 마지막 글자를 지우고 커서를 그 자리에 둔다 — 전체가 선택되면 다시 다 쳐야 한다.
+             */
+            e.preventDefault();
+            const f = frontEl();
+            if (f) {
+                f.value = f.value.slice(0, -1);
                 syncRrnDigitHidden(root);
-                e.preventDefault();
-                return;
-            }
-            if (idx > 0) {
-                e.preventDefault();
-                list[idx - 1].focus();
-                list[idx - 1].value = '';
-                syncRrnDigitHidden(root);
+                f.focus();
+                const n = f.value.length;
+                try {
+                    f.setSelectionRange(n, n);
+                } catch (_) { /* 일부 브라우저에서 type=text 외 미지원 */ }
             }
             return;
         }
-        if (e.key === 'ArrowLeft' && idx > 0) {
+        if (e.key === 'ArrowLeft' && isBack) {
             e.preventDefault();
-            list[idx - 1].focus();
-            list[idx - 1].select();
+            const f = frontEl();
+            if (f) {
+                f.focus();
+                const n = f.value.length;
+                try {
+                    f.setSelectionRange(n, n);
+                } catch (_) { /* ignore */ }
+            }
             return;
         }
-        if (e.key === 'ArrowRight' && idx < list.length - 1) {
+        if (e.key === 'ArrowRight' && isFront && t.selectionStart === t.value.length) {
             e.preventDefault();
-            list[idx + 1].focus();
-            list[idx + 1].select();
+            const b = backEl();
+            b?.focus();
+            b?.select();
             return;
         }
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/\d/.test(e.key)) {
@@ -1692,16 +1748,24 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
 
     root.addEventListener('paste', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        e.preventDefault();
-        const list = cells();
-        const idx = list.indexOf(t);
+        if (!(t instanceof HTMLInputElement)) return;
+        if (!t.classList.contains('rrn-front') && !t.classList.contains('rrn-digit')) return;
         const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-        fillFromDigits(text, idx >= 0 ? idx : 0);
+        const digits = text.replace(/\D/g, '');
+        if (!digits) return;
+        e.preventDefault();
+        // 뒤 칸에 한 자리만 붙여넣는 경우가 아니면 앞자리부터 다시 배분한다
+        if (t.classList.contains('rrn-digit') && digits.length === 1) {
+            t.value = digits;
+            syncRrnDigitHidden(root);
+            return;
+        }
+        fillFromDigits(digits);
     });
 
     root.addEventListener('focusin', (e) => {
         const t = e.target;
+        // 앞자리는 전체 선택하지 않는다 — 한 글자 고치려다 통째로 날아간다
         if (t instanceof HTMLInputElement && t.classList.contains('rrn-digit')) {
             requestAnimationFrame(() => t.select());
         }

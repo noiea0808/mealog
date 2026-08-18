@@ -585,7 +585,8 @@ function initMealTimeTextInputsOnce() {
             requestAnimationFrame(selectAllMealClockText);
         });
 
-        text.addEventListener('input', () => {
+        // value 재대입은 조합 중이면 IME 상태를 깨뜨린다 — 숫자 칸이라도 한글 자판일 수 있다
+        addCompositionAwareInput(text, () => {
             const next = formatMealClock12TextWhileTyping(text.value);
             if (text.value !== next) text.value = next;
             const raw = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', text.value);
@@ -1540,7 +1541,12 @@ function bindEntryWhatInputAutosizeOnce() {
     if (!el || el._whatAutosizeBound || el.tagName !== 'TEXTAREA') return;
     el._whatAutosizeBound = true;
     const resize = () => autosizeEntryWhatInput();
-    el.addEventListener('input', resize);
+    /**
+     * 조합 가드 필수 — 매 키마다 style.height='auto' → scrollHeight → 재기입은 **조합 중인
+     * 요소에 강제 리플로우를 거는 것**이라, WebView 가 조합 중 글자를 그리지 못하고 단어가
+     * 끝나야 나타난다. 댓글·컴포저에서 같은 증상을 고친 적이 있다(커밋 e7acc4e).
+     */
+    addCompositionAwareInput(el, resize);
     el.addEventListener('change', resize);
 }
 
@@ -1629,7 +1635,8 @@ function bindEntryCommentExpandOnce() {
         el._commentExpandBound = true;
         el.addEventListener('focus', () => syncEntryCommentExpandedState(el, { fromFocus: true }));
         el.addEventListener('blur', () => syncEntryCommentExpandedState(el));
-        el.addEventListener('input', () => syncEntryCommentExpandedState(el));
+        // 위와 같은 이유 — rows 재설정·offsetHeight 측정·height 재기입이 전부 리플로우다
+        addCompositionAwareInput(el, () => syncEntryCommentExpandedState(el));
         syncEntryCommentExpandedState(el);
     });
 }

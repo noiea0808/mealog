@@ -602,7 +602,10 @@ export function openSettings() {
             if (bdInput && !bdInput._accountCardSync) {
                 bdInput._accountCardSync = true;
                 const syncBd = () => syncAccountCardDisplayFields();
-                bdInput.addEventListener('input', syncBd);
+                /**
+                 * 가드만 건다. 예전에는 raw input 리스너를 **함께** 달고 있어서, 조합 중에도
+                 * 가드 없는 쪽이 그대로 실행돼 가드가 무의미했다.
+                 */
                 addCompositionAwareInput(bdInput, syncBd);
             }
             initProfileFieldEditModalOnce();
