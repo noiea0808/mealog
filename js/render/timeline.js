@@ -941,7 +941,7 @@ function buildShareCaptureStarsText(rating) {
     return `★ ${filled}`;
 }
 
-/** 일간 공유 캡처용 — 좌측 1:1 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */
+/** 일간 공유 캡처용 — 좌측 3:2 썸네일 (width/height 고정 → 캡처 시 intrinsic 크기 붕괴 방지) */
 function buildShareCaptureThumbHtml(urls) {
     const first = urls?.[0];
     if (!first) return '';
@@ -952,7 +952,7 @@ function buildShareCaptureThumbHtml(urls) {
             : '';
     const src = escapeHtml(first);
     return `<div class="share-cap-thumb">
-        <img src="${src}" alt="" class="share-cap-thumb__img" width="92" height="92" data-photo-url="${src}" draggable="false" loading="eager">
+        <img src="${src}" alt="" class="share-cap-thumb__img" width="138" height="92" data-photo-url="${src}" draggable="false" loading="eager">
         ${badge}
     </div>`;
 }
@@ -1612,7 +1612,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
 /**
  * 일간 공유 캡처용 본문
  * — 기록 있는 슬롯만 / 하루 기록 포함 / 코멘트·태그 제외
- * — table 행 + 1:1 썸네일 + 아이콘 (캡처 정렬 안정화)
+ * — table 행 + 3:2 썸네일 + 아이콘 (캡처 정렬 안정화)
  */
 export function buildDailyShareHomeFeedBodyHtml(dateStr) {
     let html = '';

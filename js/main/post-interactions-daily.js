@@ -105,6 +105,7 @@ import {
     toggleComment,
     toggleFeedComment,
     createDailyShareCard,
+    DAILY_SHARE_CARD_WIDTH,
     renderBoard,
     renderBoardDetail,
     renderNoticeDetail,
@@ -178,6 +179,49 @@ window.shareDailySummary = async (dateStr) => {
         showToast('공유를 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.', 'error');
     }
 };
+
+/**
+ * 미리보기 축소 — 카드는 캡처 출력 폭(DAILY_SHARE_CARD_WIDTH)에 묶여 있는데 모달은 그보다 좁다.
+ * (모달 폭은 min(448px, 100vw-24px) 이라 375px 기기에서 쓸 수 있는 폭이 351px 뿐이다.)
+ *
+ * **transform 으로만 줄인다.** 유령 캡처가 클론과 조상 래퍼 양쪽에 inline `transform:none` 을
+ * 덮어쓰므로(utils.js 의 captureWithGhostStrategy·buildGhostAncestorWrappers) 이 축소는 출력
+ * 이미지로 새지 않는다. zoom 은 그 방어 목록에 없어 캡처까지 같이 작아진다 — 쓰면 안 된다.
+ *
+ * transform 은 레이아웃 상자를 줄이지 않으므로, 줄어든 만큼을 음수 마진으로 회수해야
+ * 가로 잘림(overflow-x:hidden)과 아래 빈 띠가 생기지 않는다.
+ */
+function fitDailySharePreviewCard(scrollEl, card) {
+    if (!scrollEl || !card) return;
+    const apply = () => {
+        const natural = card.offsetWidth || DAILY_SHARE_CARD_WIDTH;
+        // clientWidth 는 padding 을 포함한다 — 그대로 쓰면 padding 만큼 가로로 넘친다
+        const pad = getComputedStyle(scrollEl);
+        const avail =
+            scrollEl.clientWidth - (parseFloat(pad.paddingLeft) || 0) - (parseFloat(pad.paddingRight) || 0);
+        if (!natural || avail <= 0) return;
+        const ratio = Math.min(1, avail / natural);
+        if (ratio >= 1) {
+            card.style.transform = '';
+            card.style.transformOrigin = '';
+            card.style.marginRight = '';
+            card.style.marginBottom = '';
+            return;
+        }
+        card.style.transformOrigin = 'top left';
+        card.style.transform = `scale(${ratio})`;
+        card.style.marginRight = `${-Math.round(natural * (1 - ratio))}px`;
+        card.style.marginBottom = `${-Math.round(card.offsetHeight * (1 - ratio))}px`;
+    };
+    apply();
+    // 사진·아이콘이 늦게 그려지며 높이가 변하면 아래 음수 마진이 어긋난다 → 다시 맞춘다
+    if (typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(() => apply());
+        ro.observe(card);
+        ro.observe(scrollEl);
+        card._dailySharePreviewFitObserver = ro;
+    }
+}
 
 // 하루 기록 공유 미리보기 모달 열기
 window.openDailySharePreviewModal = (dateStr) => {
@@ -265,6 +309,7 @@ window.openDailySharePreviewModal = (dateStr) => {
     const scrollEl = document.getElementById('dailySharePreviewScroll');
     if (scrollEl && previewCard) {
         scrollEl.appendChild(previewCard);
+        fitDailySharePreviewCard(scrollEl, previewCard);
         setTimeout(() => {
             scrollEl.scrollTop = 0;
         }, 0);
@@ -322,6 +367,8 @@ window.cancelDailyShare = async (dateStr) => {
 // 일간 공유 미리보기 모달 닫기
 window.closeDailySharePreviewModal = () => {
     const modal = document.getElementById('dailySharePreviewModal');
+    const fitted = modal?.querySelector('#dailyShareCardContainer');
+    fitted?._dailySharePreviewFitObserver?.disconnect();
     if (modal) modal.remove();
     unlockBodyScroll('dailySharePreviewModal');
 };
@@ -425,12 +472,12 @@ window.confirmDailyShare = async (dateStr, ev) => {
 
         const innerContent =
             previewCard.querySelector('.daily-share-capture__sheet') ||
-            previewCard.querySelector('div[style*="width: 420px"]') ||
+            previewCard.querySelector(`div[style*="width: ${DAILY_SHARE_CARD_WIDTH}px"]`) ||
             previewCard;
 
         // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
         const canvas = await captureWithGhostStrategy(innerContent, {
-            captureWidth: 420,
+            captureWidth: DAILY_SHARE_CARD_WIDTH,
             allowTaint: false,
             foreignObjectRendering: false,
             // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)

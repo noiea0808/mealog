@@ -64,4 +64,4 @@ export {
     toggleComment,
     renderTagManager
 } from '../render.js';
-export { createDailyShareCard } from './daily-share-card.js';
+export { createDailyShareCard, DAILY_SHARE_CARD_WIDTH } from './daily-share-card.js';

@@ -7049,9 +7049,11 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .best-share-capture__sheet .share-cap-cell {
     height: 101px;
 }
-/* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움 */
+/* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움.
+   너비는 행 높이의 1.5배(3:2) — 세로는 행 높이에 묶여 있으므로 넓힌 만큼 비율이 눕는다.
+   2배(184px)까지 넓히면 제목 칸이 98px 로 눌려 두 줄로도 대부분 잘린다. */
 .daily-share-capture__sheet .share-cap-cell--thumb {
-    width: 92px;
+    width: 138px;
     padding: 0;
     height: 92px;
     vertical-align: top;
@@ -7112,7 +7114,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .daily-share-capture__sheet .share-cap-thumb {
     position: relative;
     display: block;
-    width: 92px;
+    width: 138px;
     height: 92px;
     /* 카드 좌측 모서리와 맞춤 (border-radius 14px − 1px border) */
     border-radius: 13px 0 0 13px;
@@ -7132,7 +7134,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .daily-share-capture__sheet .share-cap-thumb__img {
     display: block;
-    width: 92px;
+    width: 138px;
     height: 92px;
     object-fit: cover;
     border: 0;
@@ -7266,6 +7268,19 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/* 하루기록: 썸네일이 넓어져 제목 칸이 좁다 — 한 줄 말줄임 대신 두 줄로 흘린다.
+   max-height 는 두 줄(22px×2) + 제목 자신의 padding-bottom 5px = 49px.
+   line-clamp 대신 max-height 로 자른다 — html2canvas 폴백이 -webkit-box 를 제대로 못 그린다. */
+.daily-share-capture__sheet .share-cap-title {
+    white-space: normal;
+    word-break: break-word;
+    max-height: 49px;
+}
+/* 두 줄을 92px 행 안에 넣기 위한 세로 예산: meta 21px + 여백 3px + 제목 49px + 위아래 19px = 92px.
+   (베스트는 바로 아래 자체 padding 으로 덮으므로 영향 없다) */
+.daily-share-capture__sheet .share-cap-cell--text {
+    padding: 11px 8px 8px;
 }
 
 .home-feed-card__photo {
