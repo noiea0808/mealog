@@ -3514,9 +3514,14 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     left: calc(50% + 0.45rem);
     transform: none;
 }
+/*
+ * 사진을 등록하면 이 원이 곧 프로필이라 다른 탭의 선 아이콘(1.375rem)보다 커야 읽힌다.
+ * 슬롯(.nav-item__icon-wrap)이 36px 로 고정이고 flex-shrink:0 이라, 그 안에 들어가는
+ * 34px 까지는 **네비 높이도 세로 리듬도 변하지 않는다.** 더 키우려면 슬롯을 함께 봐야 한다.
+ */
 .bottom-nav .nav-item .nav-item__avatar {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2.125rem;
+    height: 2.125rem;
     border-radius: 9999px;
     /* overflow:hidden 이면 box-shadow가 잘림 — 배경은 border-radius로 원형 유지 */
     overflow: visible;
@@ -3529,7 +3534,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     background-repeat: no-repeat;
     border: 1px solid var(--green-mute, #b4e2cd);
     font-family: var(--avatar-fallback-font);
-    font-size: 0.9375rem;
+    font-size: 1.0625rem;
     font-weight: 700;
     color: var(--avatar-fallback-fg, var(--green-deep));
     flex-shrink: 0;
@@ -3539,7 +3544,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 }
 .bottom-nav .nav-item .nav-item__avatar--initial {
     font-family: var(--avatar-fallback-font);
-    font-size: 1rem;
+    font-size: 1.125rem;
     font-weight: 700;
 }
 .bottom-nav .nav-item.active .nav-item__avatar {
