@@ -10,6 +10,7 @@ import {
     getReportsAggregateByGroupKeys
 } from '../db.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { refreshLucideIcons } from '../icons.js';
 import { uploadBoardImages, getDisplayProfile } from '../utils.js';
 import { renderFormattedContent } from '../render/utils.js';
 import { fetchUserProfiles } from '../render/user-profiles.js';
@@ -86,6 +87,8 @@ function _adminOpenDetailCommentLightbox(src) {
             </div>
         `;
         document.body.appendChild(_adminDetailCommentLightboxEl);
+        /* body 직속이라 탭 단위 아이콘 갱신 범위 밖 — 닫기 X 를 여기서 직접 그린다 */
+        refreshLucideIcons(_adminDetailCommentLightboxEl);
         _adminDetailCommentLightboxEl.addEventListener('click', (e) => {
             const close = e.target?.closest?.('[data-dclb-close="1"]');
             if (close) {

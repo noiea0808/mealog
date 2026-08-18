@@ -5,6 +5,7 @@ import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
+import { refreshLucideIcons } from '../icons.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
 import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
@@ -3206,6 +3207,13 @@ function ensureAdminFeedPhotoViewerModal() {
         adminFeedPhotoViewerStep(1);
     });
     document.addEventListener('keydown', adminFeedPhotoViewerKeydown);
+    /**
+     * 이 모달은 body 직속이라 admin.js 의 탭 단위 아이콘 갱신 범위 밖이다.
+     * 여기서 직접 그리지 않으면 좌우 화살표가 <i data-lucide> 인 채로 남아
+     * "넘기는 버튼이 안 보인다"가 된다. scheduleLucideIcons 는 전역 타이머
+     * 하나를 공유해 뒤따르는 렌더에 취소될 수 있으므로 동기 호출을 쓴다.
+     */
+    refreshLucideIcons(el);
     return el;
 }
 
