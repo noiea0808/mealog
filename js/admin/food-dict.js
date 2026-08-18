@@ -158,7 +158,13 @@ function currentEntries() {
 /** (형태 → 요리종류 → 음식[]) 로 묶기 — 편집 상태 반영 */
 function cuisinesOf(form) {
     // 요리 종류를 묻지 않는 형태는 칸을 하나만 둔다 (빈 문자열 = 해당 없음)
-    return formUsesCuisine(form) ? CUISINE_CATEGORIES : [''];
+    if (!formUsesCuisine(form)) return [''];
+    /**
+     * 요리 종류를 쓰는 형태에도 '해당 없음' 칸을 함께 둔다.
+     * 고기·생선 안의 재료(닭가슴살·계란·두부…)가 갈 자리다 — 이 칸이 없으면 그것들이
+     * '기타'로 접혀, 축이 해당 없는 것과 축이 못 받아낸 것이 한 칸에 섞인다.
+     */
+    return [...CUISINE_CATEGORIES, ''];
 }
 
 function groupedEntries() {
@@ -383,14 +389,14 @@ window.addFoodDictEntry = function () {
     const form = document.getElementById('foodDictNewForm')?.value || FORM_CATEGORIES[0];
     const picked = document.getElementById('foodDictNewCuisine')?.value ?? '';
     /**
-     * 요리 종류는 **형태가 정한다.** 드롭다운 값을 그대로 믿지 않는 이유는 두 가지 —
-     * 면제 형태(커피·과일…)에서는 어떤 값이 남아 있든 축이 해당되지 않고,
-     * 반대로 요리 종류를 쓰는 형태에서 '해당 없음'을 고른 건 '기타'라는 뜻이다.
+     * 면제 형태(커피·과일…)에서는 드롭다운에 무엇이 남아 있든 축이 해당되지 않는다.
+     * 그 밖에는 고른 값을 그대로 쓴다 — '해당 없음'도 정식 값이다. 재료(닭가슴살·계란…)를
+     * 넣을 때 쓰는 값이라 '기타'로 접으면 안 된다.
      * (저장 시 setFoodDictionaryOverrides 가 같은 규칙으로 한 번 더 강제한다)
      */
     draft.entries[word] = {
         form,
-        cuisine: formUsesCuisine(form) ? (picked || '기타') : '',
+        cuisine: formUsesCuisine(form) ? picked : '',
     };
     draft.removed = draft.removed.filter((w) => w !== word);
     filterText = word;

@@ -15,7 +15,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { classifyFoodDetail, classifyFoodText } from '../js/utils/food-classifier.js';
-import { FOOD_ENTRIES, DICTIONARY_SOURCE } from '../js/utils/food-dictionary.js';
+import { FOOD_ENTRIES, DICTIONARY_SOURCE, CUISINE_EXEMPT_WORDS } from '../js/utils/food-dictionary.js';
 
 /** @param {string} text */
 const formOf = (text) => classifyFoodText(text)[0] ?? null;
@@ -140,6 +140,52 @@ describe('반찬류 신설이 비한식 끼니를 건드리지 않는다', () =>
 
     it('주식이 없는 양식 한 상도 그대로다', () => {
         assert.deepEqual(classifyFoodText('스테이크 + 샐러드'), ['고기·생선', '채소·샐러드']);
+    });
+});
+
+/**
+ * 요리 종류 축은 한국표준산업분류 10차의 외국식 음식점업(중식·일식·서양식·기타 외국식)에
+ * 한식·분식·패스트푸드를 얹은 형태다. 여기서 지키는 것은 **'기타'가 쓰레기통이 되지 않는 것**이다 —
+ * 축이 해당 없는 재료와 축이 못 받아낸 외국식이 같은 값이면 통계에서 둘을 갈라낼 수 없다.
+ */
+describe('요리 종류 축이 통상 분류와 맞는다', () => {
+    it('기타 외국식은 아시안으로 잡힌다 — 예전엔 전부 기타였다', () => {
+        for (const [text, form] of [
+            ['쌀국수', '면류'],
+            ['팟타이', '면류'],
+            ['똠양꿍', '국물요리'],
+            ['나시고랭', '밥류'],
+            ['카레라이스', '밥류'],
+            ['케밥', '빵류'],
+            ['짜조', '튀김·분식'],
+            ['탄두리치킨', '고기·생선'],
+        ]) {
+            const r = classifyFoodDetail(text);
+            assert.equal(r.cuisine, '아시안', `${text} 의 요리 종류`);
+            assert.equal(r.forms[0], form, `${text} 의 형태`);
+        }
+    });
+
+    it('재료는 요리 종류가 없다 — "기타"가 아니라 빈 값이다', () => {
+        for (const w of CUISINE_EXEMPT_WORDS) {
+            assert.equal(FOOD_ENTRIES.get(w)?.cuisine, '', `${w} 는 요리 종류가 없어야 한다`);
+        }
+        // 재료만 적은 기록은 "종류 없음"이지 "기타"가 아니다
+        assert.equal(classifyFoodDetail('닭가슴살 + 계란 + 두부').cuisine, null);
+    });
+
+    it('재료가 섞여도 진짜 요리의 종류를 흐리지 않는다', () => {
+        assert.equal(classifyFoodDetail('탕수육 + 계란').cuisine, '중식');
+        assert.equal(classifyFoodDetail('쌀국수 + 새우').cuisine, '아시안');
+        assert.equal(classifyFoodDetail('스테이크 + 계란').cuisine, '양식');
+    });
+
+    /** 남은 '기타'가 없어야 한다 — 있으면 축이 못 받아내는 종류가 또 생겼다는 신호다 */
+    it('끼니 사전에 요리 종류가 "기타"인 항목이 남아 있지 않다', () => {
+        const leftovers = [...FOOD_ENTRIES.entries()]
+            .filter(([, v]) => v.cuisine === '기타')
+            .map(([w]) => w);
+        assert.deepEqual(leftovers, []);
     });
 });
 
