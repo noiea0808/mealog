@@ -4318,7 +4318,9 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
     throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
   const query = encodeURIComponent(trimmedKw);
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=10`;
+  // category_group_code 필터 제거: FD6 고정이면 카페(CE7)·편의점(CS2)이 API 단계에서 잘려
+  // 어디서 축 통합(placeType 파생)이 막힌다. 식음 관련 판정은 아래 후처리 필터가 담당.
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&size=15`;
   // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
   const res = await fetch(url, {
     method: 'GET',
@@ -4337,14 +4339,15 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   }
   // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
   const documents = data?.documents || [];
+  // 클라이언트 SDK 경로(js/utils/place-type.js isFoodRelatedKakaoPlace)와 같은 기준 유지
   const restaurants = documents.filter((place) => {
     const cat = (place.category_name || '').toLowerCase();
     const code = place.category_group_code || '';
-    if (code === 'FD6') return true;
+    if (code === 'FD6' || code === 'CE7' || code === 'CS2') return true;
     return cat.includes('음식점') || cat.includes('식당') || cat.includes('카페') ||
       cat.includes('레스토랑') || cat.includes('맛집') || cat.includes('요리') ||
       cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
-      cat.includes('술집') || cat.includes('바');
+      cat.includes('술집') || cat.includes('바') || cat.includes('편의점');
   });
   return { documents: restaurants.slice(0, 10) };
 }));
@@ -7537,3 +7540,73 @@ exports.regenerateDietReport = onCall(
     };
   })
 );
+
+// ═══════════════════════════════════════════════════════════════
+// 미분류 식사 기록 카테고리 backfill (docs/food-category-auto-classification.md §6)
+// ═══════════════════════════════════════════════════════════════
+const classifyMoments = require('./classifyMoments.js');
+
+/** 6시간마다: 최근 7일 미분류 기록을 최대 100건 배치 분류 */
+exports.classifyUncategorizedMeals = onSchedule(
+  {
+    schedule: '0 */6 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  },
+  async () => {
+    const apiKey = geminiApiKey.value();
+    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+      logger.warn('classifyUncategorizedMeals: GEMINI_API_KEY 미설정, skip');
+      return;
+    }
+    const today = adminSeoulYmdFromDate(new Date());
+    try {
+      await classifyMoments.runClassifyUncategorizedMeals({
+        db,
+        logger,
+        apiKey,
+        model: GEMINI_MEALDANG_MODEL,
+        startDate: adminYmdAddDays(today, -7),
+        endDate: today,
+        maxDocs: 100
+      });
+    } catch (e) {
+      // best-effort — 실패한 건은 다음 배치가 다시 집는다
+      logger.error('classifyUncategorizedMeals 실패', { errMsg: String(e?.message || e) });
+    }
+  }
+);
+
+/**
+ * 과거 데이터 1회성 마이그레이션 (관리자 전용) — 기간을 지정해 레거시 '기타' 기록을 분류.
+ * 예: { startDate: '2026-07-01', endDate: '2026-08-12', maxDocs: 100 }
+ * 100건씩 나눠 호출한다 (Gemini 배치 1회 = 호출 1회).
+ */
+exports.adminClassifyLegacyMeals = onCall({ region: REGION }, wrapFunction('adminClassifyLegacyMeals', async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(request.auth.uid))) {
+    throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+  }
+  const { startDate, endDate, maxDocs } = request.data || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate || ''))) {
+    throw new HttpsError('invalid-argument', 'startDate/endDate는 YYYY-MM-DD 형식이어야 합니다.');
+  }
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다.');
+  }
+  const result = await classifyMoments.runClassifyUncategorizedMeals({
+    db,
+    logger,
+    apiKey,
+    model: GEMINI_MEALDANG_MODEL,
+    startDate: String(startDate),
+    endDate: String(endDate),
+    maxDocs: Math.min(Number(maxDocs) || 100, 100)
+  });
+  return { ok: true, ...result };
+}));

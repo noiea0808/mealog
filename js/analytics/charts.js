@@ -1,19 +1,22 @@
 // 차트 렌더링 관련 함수들
 import { logUsageMetric } from '../usage-metrics.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
+import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
+import { CUISINE_CATEGORIES } from '../utils/food-dictionary.js';
+import { normalizePlace } from '../utils/place-normalize.js';
 import { VIBRANT_COLORS, CUMULATIVE_BAR_GRADIENT, RATING_GRADIENT, SATIETY_DATA } from '../constants.js';
 import { generateColorMap, toLocalDateString } from '../utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getDayName } from './date-utils.js';
 
-const CUMULATIVE_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
+const CUMULATIVE_KEYS = ['mealType', 'category', 'cuisine', 'withWhom', 'snackType', 'snackPlace', 'snackWhen']; // 식사·간식 바차트 동일 색구성(빈도순 그라데이션)
 const DETAIL_MODAL_TAB_KEYS = ['mealType', 'category', 'withWhom', 'snackType', 'snackPlace', 'snackWithWhom']; // 상세보기 시 통계 + 세부 통계 탭 (간식 누구와 포함)
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
 
 /** 식사 상세 공통 팝업 탭 */
 const MEAL_DETAIL_TABS = [
-    { key: 'mealType', label: '어디서' },
+    { key: 'mealType', label: '어떻게' },
     { key: 'category', label: '무엇을' },
     { key: 'withWhom', label: '함께' }
 ];
@@ -39,7 +42,8 @@ function getTop10RankingsFromMeals(mealRecords, options = {}) {
     const menuCounts = {};
     const peopleCounts = {};
     mealRecords.forEach(m => {
-        const place = (m.place || '').trim();
+        // 표기 정규화(우리집→집 등)로 같은 장소가 여러 줄로 쪼개지지 않게 — 원문은 저장에만 남는다
+        const place = normalizePlace(m.place);
         if (place) {
             placeCounts[place] = (placeCounts[place] || 0) + 1;
         }
@@ -196,11 +200,21 @@ function aggregateProportionData(data, key) {
     if (key === 'mealType' && Array.isArray(userTags.mealType) && userTags.mealType.length > 0) {
         allowedTags = new Set(userTags.mealType);
     } else if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
-        allowedTags = new Set(userTags.category);
+        // 자동 분류 축(밥/한상·단백질식…)은 사용자 태그 목록에 없다 — 합집합으로 허용해야
+        // 차트에서 '미입력'으로 접히지 않는다 (docs/food-category-auto-classification.md §3.3)
+        allowedTags = new Set([...userTags.category, ...AUTO_CATEGORIES]);
+    } else if (key === 'cuisine') {
+        /**
+         * 요리 종류는 사용자 태그 문서에 없다 — 사전이 정한 고정 어휘다
+         * (js/utils/food-dictionary.js CUISINE_CATEGORIES).
+         */
+        allowedTags = new Set(CUISINE_CATEGORIES);
     } else if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         allowedTags = new Set(userTags.withWhom);
     } else if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
-        allowedTags = new Set(userTags.snackType);
+        // 간식도 끼니와 같은 사전을 쓴다 — 간식 축에 옛 이름이 없는 형태(채소·샐러드·밥류…)는
+        // 형태 축 값 그대로 저장되므로 합집합이 없으면 '미입력'으로 접힌다 (§6.3)
+        allowedTags = new Set([...userTags.snackType, ...AUTO_CATEGORIES]);
     } else if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         allowedTags = new Set(userTags.snackPlaceMain);
     }
@@ -220,7 +234,7 @@ function aggregateProportionData(data, key) {
             const v = effectiveChartTag(m, 'snackPlace');
             return v || '미입력';
         }
-        if (key === 'mealType' || key === 'category' || key === 'withWhom' || key === 'snackType') {
+        if (key === 'mealType' || key === 'category' || key === 'cuisine' || key === 'withWhom' || key === 'snackType') {
             const v = effectiveChartTag(m, key);
             return v || '미입력';
         }

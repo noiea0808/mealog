@@ -1,13 +1,17 @@
 /**
  * 기록 시트 — 기본 / 추가 / 상세 탭
  */
-const TAB_IDS = /** @type {const} */ (['basic', 'more', 'detail']);
+/**
+ * 2단계 구성. 어디서·누구와 전용 페이지('more')는 제거했다 —
+ * 맥락 한 줄이 1페이지에서 세 축을 모두 처리하고, 전체 축 섹션은 같은 페이지의
+ * '자세히' 접힘으로 내려갔다 (docs/entry-axes-and-tags-direction.md §5).
+ */
+const TAB_IDS = /** @type {const} */ (['basic', 'detail']);
 
-/** @typedef {'basic'|'more'|'detail'} EntrySheetTabId */
+/** @typedef {'basic'|'detail'} EntrySheetTabId */
 
 const TAB_LABELS = /** @type {Record<EntrySheetTabId, string>} */ ({
     basic: '뭘 먹었어요?',
-    more: '어디서? 누구랑?',
     detail: '어땠어요?',
 });
 
@@ -140,6 +144,14 @@ export function syncEntrySheetHeightLock(opts = {}) {
                 entrySheetBaseMinHeightPx,
                 entrySheetPeakHeightPx + growth
             );
+            /**
+             * 늘어난 만큼을 **그 자리에서** 잠금 높이에 반영한다.
+             * peak 에만 쌓아 두고 키보드가 닫힐 때까지 미뤘더니, 포커스로 회상 줄·분류
+             * 제안이 뜨는 동안 그 아래 맥락 줄이 패널 밖으로 밀려 아래가 잘렸다.
+             * 위 가드가 막으려는 건 자연 높이 **재측정**과 top ratchet 이고, 여기서는
+             * 이미 아는 증가분으로 잠금 높이만 키우므로 그 둘은 일어나지 않는다.
+             */
+            applyEntrySheetHeightLock();
         }
         return;
     }

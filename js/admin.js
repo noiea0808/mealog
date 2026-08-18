@@ -40,6 +40,7 @@ import { loadAdminPushMessagesPage } from './admin/push-broadcast.js';
 import { renderPopups, renderPopupImagePreviews } from './admin/popups.js';
 import { loadLoginBannerConfig } from './admin/login-banner.js';
 import { loadTagsContent } from './admin/tags.js';
+import { loadFoodDictContent } from './admin/food-dict.js';
 import { registerRestaurantStats } from './admin/restaurant-stats.js';
 import { loadMealogComments, showCharacterListView } from './admin/persona.js';
 import { loadDietReportPromptEditor, loadDietReportBatchSettings } from './admin/diet-report-config.js';
@@ -876,6 +877,8 @@ window.switchContentSidebar = function (section, opts) {
         loadDemoGuideContent();
     } else if (section === 'tags') {
         loadTagsContent();
+    } else if (section === 'foodDict') {
+        loadFoodDictContent();
     } else if (section === 'apk') {
         bindApkFileInput();
         loadApkContent();

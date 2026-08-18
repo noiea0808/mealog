@@ -151,6 +151,9 @@
                             <button type="button" onclick="window.switchDashboardSubtab('page')" id="dashboard-subtab-page" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
                                 <i class="fa-solid fa-table-columns mr-2" aria-hidden="true"></i>페이지별
                             </button>
+                            <button type="button" onclick="window.switchDashboardSubtab('record')" id="dashboard-subtab-record" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
+                                <i class="fa-solid fa-pen-to-square mr-2" aria-hidden="true"></i>기록
+                            </button>
                             <button type="button" onclick="window.switchDashboardSubtab('excluded')" id="dashboard-subtab-excluded" class="px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0">
                                 <i class="fa-solid fa-user-slash mr-2" aria-hidden="true"></i>통계 제외 UID
                             </button>
@@ -342,8 +345,10 @@
                     </div>
                 </div>
                 <!-- 페이지별: 화면·클릭 수 (usageDaily) -->
+                <!-- 페이지별·기록: 같은 표를 그룹 필터로 나눠 본다 (js/admin/dashboard.js applyUsageTableGroupFilter) -->
                 <div id="dashboard-panel-page" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
-                    <p class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 열 구성은 트렌드 탭과 같습니다. 「전체」는 운영 시작일(일별 사용량 집계 시작일)부터 오늘까지 누적이며, 그 오른쪽은 월별 합계와 일요일 시작 주차별 열입니다. 맨 오른쪽 「최근 7일」은 금일 포함 7일 일별입니다.</p>
+                    <p id="dashboardPageUsageHelp" class="px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed"><span class="font-bold text-slate-600">탭 방문</span> 행은 하단 네비로 해당 메인 화면에 들어올 때마다 1회씩 올라가는 <span class="font-bold text-slate-600">페이지 방문 수</span>입니다. <span class="font-bold text-slate-600">그 외 행</span>은 코멘트·상세 모달·설정 하위 탭·라운지 서브탭 등 <span class="font-bold text-slate-600">조작(클릭) 횟수</span>입니다. 열 구성은 트렌드 탭과 같습니다. 「전체」는 운영 시작일(일별 사용량 집계 시작일)부터 오늘까지 누적이며, 그 오른쪽은 월별 합계와 일요일 시작 주차별 열입니다. 맨 오른쪽 「최근 7일」은 금일 포함 7일 일별입니다.</p>
+                    <p id="dashboardRecordUsageHelp" class="hidden px-4 pt-4 pb-2 text-xs text-slate-500 leading-relaxed">기록 시트 안에서 일어난 <span class="font-bold text-slate-600">조작 횟수</span>입니다. 페이지 방문 수와 달리 <span class="font-bold text-slate-600">행 하나만 보면 뜻이 없고 짝으로 읽어야</span> 합니다 — 「표시」 대비 「선택·확정·그대로 저장」이 <span class="font-bold text-slate-600">채택률</span>, 「다른 구분 열기」·「분류 안 함」·「거부」가 <span class="font-bold text-slate-600">교정·거부 신호</span>입니다. 분류 추천의 채택은 사용자가 탭한 「추천 확정」과 손대지 않고 넘어간 「추천 그대로 저장」을 <span class="font-bold text-slate-600">합쳐야</span> 합니다. 열 구성과 기간 기준은 페이지별 탭과 같습니다.</p>
                     <div class="overflow-x-auto" id="dashboardPageTableScroll">
                         <table class="min-w-max w-full text-left text-sm border-separate border-spacing-0" id="adminDashboardPageUsageTable">
                             <thead>
@@ -1534,6 +1539,9 @@
                                     <button type="button" onclick="window.switchContentSidebar('settings', { sub: 'displayName' })" id="content-sidebar-displayName" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                         <i class="fa-solid fa-user-tag mr-2"></i>관리자명
                                     </button>
+                                    <button type="button" onclick="window.switchContentSidebar('foodDict')" id="content-sidebar-foodDict" class="w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                        <i class="fa-solid fa-book-open mr-2"></i>분류사전
+                                    </button>
                                 </div>
                                 <button onclick="window.switchContentSidebar('apk')" id="content-sidebar-apk" class="shrink-0 w-auto px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                     <i class="fa-solid fa-mobile-screen mr-2"></i>APK 배포
@@ -1697,81 +1705,135 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="p-6 space-y-6">
-                                    <!-- 식사 유형 (mealType) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-utensils text-emerald-600"></i>
-                                            식사 유형 (mealType)
-                                        </h3>
-                                        <div id="tags-mealType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
+                                <div class="p-6 space-y-4">
+                                    <!-- 축 4개를 나란히 둔다 — 태그 이름이 짧아 좁은 칸으로 충분하고, 전체가 한 화면에 들어온다 -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
+                                        <!-- 식사 유형 (mealType) -->
+                                        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                            <h3 class="text-sm font-black text-slate-800 mb-2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-utensils text-emerald-600"></i>
+                                                식사 유형
+                                                <span class="text-[10px] font-mono font-bold text-slate-400">mealType</span>
+                                            </h3>
+                                            <div id="tags-mealType" class="flex flex-col gap-1.5">
+                                                <!-- 태그들이 동적으로 추가됩니다 -->
+                                            </div>
+                                            <button onclick="window.addTagItem('mealType')" class="mt-2 w-full px-2 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors">
+                                                <i class="fa-solid fa-plus mr-1"></i>추가
+                                            </button>
                                         </div>
-                                        <button onclick="window.addTagItem('mealType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
+
+                                        <!-- 누구와 (withWhom) -->
+                                        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                            <h3 class="text-sm font-black text-slate-800 mb-2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-users text-blue-600"></i>
+                                                누구와
+                                                <span class="text-[10px] font-mono font-bold text-slate-400">withWhom</span>
+                                            </h3>
+                                            <div id="tags-withWhom" class="flex flex-col gap-1.5">
+                                                <!-- 태그들이 동적으로 추가됩니다 -->
+                                            </div>
+                                            <button onclick="window.addTagItem('withWhom')" class="mt-2 w-full px-2 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors">
+                                                <i class="fa-solid fa-plus mr-1"></i>추가
+                                            </button>
+                                        </div>
+
+                                        <!-- 무엇을 (category = snackType) — 끼니·간식 공통 형태 축 -->
+                                        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                            <h3 class="text-sm font-black text-slate-800 mb-2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-bowl-food text-orange-600"></i>
+                                                무엇을
+                                                <span class="text-[10px] font-mono font-bold text-slate-400">category · snackType</span>
+                                            </h3>
+                                            <!-- 4열 칸에서 긴 설명은 목록을 아래로 밀어낸다 — 접어두고 필요할 때 편다 -->
+                                            <details class="mb-2">
+                                                <summary class="text-[11px] font-bold text-slate-500 cursor-pointer hover:text-slate-700">이 축이 무엇인지</summary>
+                                                <p class="text-[11px] leading-relaxed text-slate-500 mt-1">
+                                                    끼니와 간식은 <b>기록 슬롯</b>으로 갈리고 '무엇을' 축은 하나입니다 — 여기서 편집한 목록이 두 필드(category · snackType)에 함께 저장됩니다.
+                                                    한식·양식 같은 <b>요리 종류</b>는 이제 사용자에게 묻지 않고 음식 이름에서 자동으로 붙습니다(cuisineAuto).
+                                                    <br>아래 목록이 아직 옛 축(한식·양식… / 커피·베이커리…)이라면 <b>형태 축 불러오기</b>를 누른 뒤 저장하세요. 저장 전까지는 아무것도 반영되지 않습니다.
+                                                </p>
+                                            </details>
+                                            <div id="tags-category" class="flex flex-col gap-1.5">
+                                                <!-- 태그들이 동적으로 추가됩니다 -->
+                                            </div>
+                                            <div class="mt-2 flex flex-col gap-1.5">
+                                                <button onclick="window.addTagItem('category')" class="w-full px-2 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors">
+                                                    <i class="fa-solid fa-plus mr-1"></i>추가
+                                                </button>
+                                                <button onclick="window.loadFormAxisTags()" class="w-full px-2 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
+                                                    <i class="fa-solid fa-rotate mr-1"></i>형태 축 불러오기
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- 간식 장소 (subTagsPlaceSnack) -->
+                                        <div class="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                            <h3 class="text-sm font-black text-slate-800 mb-2 flex items-center gap-1.5">
+                                                <i class="fa-solid fa-location-dot text-rose-600"></i>
+                                                간식 장소
+                                                <span class="text-[10px] font-mono font-bold text-slate-400">subTagsPlaceSnack</span>
+                                            </h3>
+                                            <p class="text-[11px] leading-relaxed text-slate-500 mb-2">간식 입력 시 장소 추천 칩(집/사무실/카페 등)으로 쓰입니다.</p>
+                                            <div id="tags-subTagsPlaceSnack" class="flex flex-col gap-1.5">
+                                                <!-- 태그들이 동적으로 추가됩니다 -->
+                                            </div>
+                                            <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-2 w-full px-2 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors">
+                                                <i class="fa-solid fa-plus mr-1"></i>추가
+                                            </button>
+                                        </div>
                                     </div>
-                                    
-                                    <!-- 누구와 (withWhom) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-users text-blue-600"></i>
-                                            누구와 (withWhom)
-                                        </h3>
-                                        <div id="tags-withWhom" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
+
+                                    <!-- 형태 축 파일럿 (임시 — 전환일에 이 블록과 js/utils/form-axis-pilot.js 를 함께 제거)
+                                         '무엇을' 카드 안에 두면 그 칸만 길어져 4열이 어긋난다 — 목록 아래 전체 폭으로 뺀다 -->
+                                    <div class="bg-indigo-50/40 rounded-xl p-4 border border-indigo-100">
+                                        <h4 class="text-sm font-black text-slate-700 mb-1 flex items-center gap-2">
+                                            <i class="fa-solid fa-flask text-indigo-600"></i>
+                                            형태 축 파일럿 계정 <span class="text-[11px] font-bold text-indigo-600 bg-indigo-100 rounded px-1.5 py-0.5">임시</span>
+                                        </h4>
+                                        <p class="text-xs text-slate-500 mb-3">
+                                            여기 적은 uid <b>만</b> '무엇을' 칩과 분석이 새 형태 축으로 동작합니다(위 목록을 무시하고 코드 기본값 사용 + 옛 요리 종류 기록은 상세 텍스트로 재분류).
+                                            다른 사용자에게는 아무 변화가 없습니다. 쉼표로 여러 개를 넣을 수 있고, 비우면 전원 옛 축입니다.
+                                            <br><b>운영 전환일에는 이 칸을 비우고</b> 위 '무엇을' 카드에서 '형태 축 불러오기' → 저장하세요 (docs/food-axis-rollout.md).
+                                        </p>
+                                        <div class="flex flex-wrap gap-2">
+                                            <input id="formAxisPilotUids" type="text" placeholder="uid1, uid2"
+                                                   class="flex-1 min-w-[240px] px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-mono text-slate-800 outline-none focus:border-indigo-500">
+                                            <button onclick="window.addMyUidToFormAxisPilot()" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-200 transition-colors">
+                                                <i class="fa-solid fa-user-plus mr-2"></i>내 uid 추가
+                                            </button>
+                                            <!-- 파일럿 필드만 저장한다 — 위 [저장]은 '무엇을' 목록까지 함께 써서 전체 전환 위험이 있다 -->
+                                            <button onclick="window.saveFormAxisPilotUids()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors">
+                                                <i class="fa-solid fa-save mr-2"></i>파일럿 저장
+                                            </button>
                                         </div>
-                                        <button onclick="window.addTagItem('withWhom')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 음식 카테고리 (category) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-bowl-food text-orange-600"></i>
-                                            음식 카테고리 (category)
-                                        </h3>
-                                        <div id="tags-category" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('category')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 무엇을 - 간식 (snackType) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-cookie text-purple-600"></i>
-                                            무엇을 (snackType)
-                                        </h3>
-                                        <div id="tags-snackType" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('snackType')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
-                                    </div>
-                                    
-                                    <!-- 간식 장소 (subTagsPlaceSnack) -->
-                                    <div class="bg-slate-50 rounded-xl p-6 border border-slate-200">
-                                        <h3 class="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
-                                            <i class="fa-solid fa-location-dot text-rose-600"></i>
-                                            간식 장소 (subTagsPlaceSnack)
-                                        </h3>
-                                        <p class="text-xs text-slate-500 mb-3">밀로그 간식 입력 시 장소 추천 칩(집/사무실/카페 등)으로 사용됩니다.</p>
-                                        <div id="tags-subTagsPlaceSnack" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                                            <!-- 태그들이 동적으로 추가됩니다 -->
-                                        </div>
-                                        <button onclick="window.addTagItem('subTagsPlaceSnack')" class="mt-4 px-4 py-2 bg-slate-200 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-300 transition-colors">
-                                            <i class="fa-solid fa-plus mr-2"></i>태그 추가
-                                        </button>
+                                        <!-- 저장된 목록 · 내 uid 대조 (js/admin/tags.js renderFormAxisPilotStatus) -->
+                                        <div id="formAxisPilotStatus"></div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        
+
+                        <!-- 분류사전: '무엇을' 자동 분류 규칙·사전 열람 (읽기 전용, js/admin/food-dict.js) -->
+                        <div id="content-main-foodDict" class="content-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <div>
+                                        <h2 class="text-lg font-black text-slate-800">무엇을 분류사전</h2>
+                                        <p class="text-xs text-slate-500 mt-0.5">'무엇을' 텍스트가 형태·요리 종류로 분류되고, 그것이 어떻게·어디서·누구와 세그먼트까지 이어지는 흐름을 보여줍니다. 끼니 사전은 여기서 직접 편집할 수 있습니다 — 기본값은 코드에 있고 고친 값만 오버라이드로 저장됩니다.</p>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="foodDictContainer">
+                                        <div class="text-center py-8 text-slate-400">
+                                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                                            <p>로딩 중...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- APK 배포 -->
                         <div id="content-main-apk" class="content-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">

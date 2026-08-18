@@ -47,20 +47,73 @@ const DASHBOARD_STATS_RANGE_START = new Date(2026, 2, 8);
 /** usageDaily 문서 ID 하한 (YYYY-MM-DD, 운영 시작일과 맞춤) */
 const USAGE_DAILY_MIN_ID = dateKeyFromLocalDate(DASHBOARD_STATS_RANGE_START) || '2026-03-08';
 
-/** 관리자 「페이지별」표 행 정의 (usageDaily 필드명과 동일) */
-export const PAGE_USAGE_METRIC_DEFS = [
+/**
+ * 「페이지별」탭 행 — 화면 방문·조작 수.
+ * @type {{field: string, section: string, label: string}[]}
+ */
+const PAGE_VIEW_METRIC_DEFS = [
     { field: 'tab_mealdang', section: '밀당', label: '탭 방문' },
     { field: 'mealdang_comment_click', section: '밀당', label: '코멘트 클릭' },
     { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
+    { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
     { field: 'lounge_notice', section: '라운지', label: '공지' },
     { field: 'settings_profile', section: '사용자', label: '프로필' },
-    { field: 'settings_tags', section: '사용자', label: '태그 관리' },
+    // 마이 > 태그 탭은 없어졌다(나만의 태그 제거) — 호출부가 없어 더 오르지 않지만 과거 이력이 남아 있다
+    { field: 'settings_tags', section: '사용자', label: '태그 관리(폐지)' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
     { field: 'settings_push', section: '사용자', label: '푸시 알림' }
+];
+
+/**
+ * 「기록」탭 행 — 기록 시트 안에서 벌어지는 일.
+ *
+ * 페이지 방문 수와 성격이 다르다. 이쪽은 **제안이 맞았는지**를 재는 지표라 행 하나만
+ * 보면 뜻이 없고 짝을 이뤄야 읽힌다 (표시 대비 채택, 표시 대비 교정). 그래서 표를
+ * 나눴다 — 페이지별 표에 섞어 두면 두 종류의 숫자가 같은 축으로 읽힌다.
+ *
+ * @type {{field: string, section: string, label: string}[]}
+ */
+const RECORD_USAGE_METRIC_DEFS = [
+    { field: 'what_recall_shown', section: '무엇을', label: '자주 먹는 것 표시' },
+    { field: 'what_recall_picked', section: '무엇을', label: '자주 먹는 것 선택' },
+    { field: 'what_typeahead_shown', section: '무엇을', label: '자동완성 표시' },
+    { field: 'what_typeahead_picked', section: '무엇을', label: '자동완성 선택' },
+    { field: 'category_suggest_shown', section: '분류 추천', label: '추천 표시' },
+    { field: 'category_suggest_confirmed', section: '분류 추천', label: '추천 확정(탭)' },
+    // 제안을 손대지 않고 저장 = 자동값 채택 (entry-and-core.js) — 확정과 합쳐야 채택률이 된다
+    { field: 'category_suggest_auto_saved', section: '분류 추천', label: '추천 그대로 저장' },
+    { field: 'category_suggest_grid_opened', section: '분류 추천', label: '다른 구분 열기' },
+    { field: 'category_suggest_dismissed', section: '분류 추천', label: '분류 안 함' },
+    { field: 'category_suggest_undismissed', section: '분류 추천', label: '분류 안 함 취소' },
+    { field: 'context_predict_shown', section: '맥락 줄', label: '맥락 줄 표시' },
+    { field: 'context_predict_applied', section: '맥락 줄', label: '맞아요(적용)' },
+    { field: 'context_predict_dismissed', section: '맥락 줄', label: '거부' },
+    // 손대지 않고 저장 = 추측이 그대로 적용된 기록 — 교정률의 분모
+    { field: 'context_predict_auto_saved', section: '맥락 줄', label: '그대로 저장' },
+    { field: 'context_place_typed', section: '맥락 줄', label: '어디서 직접 입력' },
+    { field: 'context_sub_picked', section: '맥락 줄', label: '누구와 세부 선택' },
+    { field: 'context_sub_added', section: '맥락 줄', label: '누구와 세부 추가' },
+    { field: 'context_sub_deleted', section: '맥락 줄', label: '누구와 세부 삭제' },
+    { field: 'photo_gps_present', section: '사진', label: '위치정보 있음' },
+    { field: 'photo_gps_absent', section: '사진', label: '위치정보 없음' }
+];
+
+/**
+ * 두 탭의 행 정의를 이어 붙인 것 — **집계·캐시는 하나로 돈다.**
+ *
+ * usageDaily 문서는 필드가 한 벌이고 읽기도 한 번이라, 표만 갈라 두고 데이터 경로는
+ * 건드리지 않는다. 표시는 `group` 으로 거른다 (applyUsageTableGroupFilter).
+ *
+ * ⚠️ 같은 `section` 은 **반드시 연속**이어야 한다 — 구분 셀이 rowspan 으로 묶이므로
+ * 흩어지면 표가 어긋난다 (computePageUsageSectionRowspans).
+ */
+export const PAGE_USAGE_METRIC_DEFS = [
+    ...PAGE_VIEW_METRIC_DEFS.map((d) => ({ ...d, group: 'page' })),
+    ...RECORD_USAGE_METRIC_DEFS.map((d) => ({ ...d, group: 'record' }))
 ];
 
 function zeroPageUsageTotals() {
@@ -143,6 +196,27 @@ function normalizePageUsageWeeklyForRender(raw) {
 /** 행 정의·레이아웃이 바뀌면 tbody를 다시 생성 */
 let _pageUsageTableBuildKey = '';
 
+/** 지금 보고 있는 탭 — tbody 재생성 시 숨김을 복원하는 데 쓴다 */
+let _usageTableGroup = 'page';
+
+/**
+ * 페이지별·기록 탭은 **같은 표를 나눠 본다.** 집계가 한 벌이라 행을 거르는 편이
+ * 표를 둘로 만드는 것보다 단순하다 — 주차 열 삽입·가로 스크롤 로직이 그대로 산다.
+ *
+ * 구분 셀이 rowspan 으로 여러 행을 덮지만, 섹션은 그룹 경계를 넘지 않으므로
+ * 블록이 통째로 숨겨진다 (PAGE_USAGE_METRIC_DEFS 주석).
+ *
+ * @param {'page'|'record'} group
+ */
+function applyUsageTableGroupFilter(group) {
+    _usageTableGroup = group === 'record' ? 'record' : 'page';
+    document.querySelectorAll('tr[data-usage-group]').forEach((tr) => {
+        tr.classList.toggle('hidden', tr.getAttribute('data-usage-group') !== _usageTableGroup);
+    });
+    document.getElementById('dashboardPageUsageHelp')?.classList.toggle('hidden', _usageTableGroup !== 'page');
+    document.getElementById('dashboardRecordUsageHelp')?.classList.toggle('hidden', _usageTableGroup !== 'record');
+}
+
 function computePageUsageSectionRowspans() {
     const n = PAGE_USAGE_METRIC_DEFS.length;
     /** @type {number[]} rowspan > 0 = 첫 행에 출력, -1 = 구분 셀 생략(위 행 rowspan) */
@@ -164,7 +238,7 @@ function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v6-page-week-darker-sums`;
+    const buildKey = `${n}-v7-page-record-split`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
@@ -198,9 +272,11 @@ function ensurePageUsageTableBody() {
                 `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
             );
         }
-        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}">${cells.join('')}</tr>`;
+        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
     }).join('');
     _pageUsageTableBuildKey = buildKey;
+    // tbody를 다시 만들면 숨김이 풀린다 — 지금 보고 있는 탭으로 되돌린다
+    applyUsageTableGroupFilter(_usageTableGroup);
 }
 
 function renderPageUsage7dHeaders(dates) {
@@ -544,17 +620,21 @@ export function switchDashboardSubtab(which) {
     const excludedPanel = document.getElementById('dashboard-panel-excluded');
     const btnTrend = document.getElementById('dashboard-subtab-trend');
     const btnPage = document.getElementById('dashboard-subtab-page');
+    const btnRecord = document.getElementById('dashboard-subtab-record');
     const btnExcluded = document.getElementById('dashboard-subtab-excluded');
     const active =
         'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
     const idle =
         'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
-    const w = which === 'page' ? 'page' : which === 'excluded' ? 'excluded' : 'trend';
+    const w = which === 'page' || which === 'record' || which === 'excluded' ? which : 'trend';
+    // 페이지별·기록은 같은 패널을 그룹 필터로 나눠 쓴다 (applyUsageTableGroupFilter)
+    const usesUsagePanel = w === 'page' || w === 'record';
     if (trendPanel) trendPanel.classList.toggle('hidden', w !== 'trend');
-    if (pagePanel) pagePanel.classList.toggle('hidden', w !== 'page');
+    if (pagePanel) pagePanel.classList.toggle('hidden', !usesUsagePanel);
     if (excludedPanel) excludedPanel.classList.toggle('hidden', w !== 'excluded');
     if (btnTrend) btnTrend.className = w === 'trend' ? active : idle;
     if (btnPage) btnPage.className = w === 'page' ? active : idle;
+    if (btnRecord) btnRecord.className = w === 'record' ? active : idle;
     if (btnExcluded) btnExcluded.className = w === 'excluded' ? active : idle;
     if (w === 'excluded') {
         import('./excluded-analytics-admin.js').then((m) => m.loadExcludedAnalyticsAdminPanel());
@@ -562,7 +642,8 @@ export function switchDashboardSubtab(which) {
     if (w === 'trend') {
         scrollDashboardTrendTableToRight();
     }
-    if (w === 'page') {
+    if (usesUsagePanel) {
+        applyUsageTableGroupFilter(w);
         scrollDashboardPageTableToRight();
     }
 }

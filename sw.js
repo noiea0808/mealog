@@ -1,5 +1,9 @@
 // Service Worker for MEALOG
-const CACHE_NAME = 'mealog-v12';
+// v32: 기록 시트 개편(test)을 staging 으로 합치면서 세대를 올린다.
+//      '무엇을' 회상 줄·추천 분류 기본 사용·나만의 태그 제거·분석 '무엇을' 축 전환까지
+//      index.html 구조가 여러 번 바뀌었다. 두 갈래가 각자 번호를 올려와(staging v12,
+//      test v31) 여기서 더 큰 쪽 위로 잇는다 — 양쪽 사용자 모두에게 새 세대여야 한다.
+const CACHE_NAME = 'mealog-v32';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면

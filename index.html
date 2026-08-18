@@ -2019,11 +2019,20 @@
                             <div id="propChartContainer"></div>
                         </div>
                         <div class="card ui-card-pad">
+                            <!-- '무엇을'은 절단면이 둘이다: 사용자가 고른 형태 축 / 음식 이름에서 자동으로 붙는 요리 종류.
+                                 별도 카드로 늘리지 않고 같은 자리에서 갈아 끼운다 (js/analytics/meal-analytics-tags.js). -->
                             <div class="ui-card-head analytics-card-head">
-                                <h3 class="ui-section-label">무엇을</h3>
+                                <div class="analysis-axis-head">
+                                    <h3 class="ui-section-label">무엇을</h3>
+                                    <div class="analysis-axis-switch" role="group" aria-label="무엇을 축 전환">
+                                        <button type="button" class="analysis-axis-switch__btn is-active" data-what-axis="category" aria-pressed="true">형태</button>
+                                        <button type="button" class="analysis-axis-switch__btn" data-what-axis="cuisine" aria-pressed="false">종류</button>
+                                    </div>
+                                </div>
                                 <button type="button" onclick="window.openDetailModal('category')" class="dashboard-detail-link">상세</button>
                             </div>
                             <div id="categoryChartContainer"></div>
+                            <p id="categoryChartNote" class="analysis-axis-note hidden"></p>
                         </div>
                         <div class="card ui-card-pad">
                             <div class="ui-card-head analytics-card-head">
@@ -2186,9 +2195,8 @@
 
             <!-- 사용자 설정 뷰 (프로필 시안 v2) -->
             <div id="settingsView" class="hidden flex flex-col overflow-hidden min-h-0">
-                <div class="app-chrome-subtabs settings-subtab-row w-full flex-shrink-0" role="tablist" aria-label="마이 — 프로필·태그·메모·알림">
+                <div class="app-chrome-subtabs settings-subtab-row w-full flex-shrink-0" role="tablist" aria-label="마이 — 프로필·메모·알림">
                     <button id="settingsTabProfile" type="button" role="tab" aria-selected="true" class="app-chrome-subtab settings-tab active">프로필</button>
-                    <button id="settingsTabTags" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">태그</button>
                     <button id="settingsTabShortcuts" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">메모</button>
                     <button id="settingsTabNotifications" type="button" role="tab" aria-selected="false" class="app-chrome-subtab settings-tab">알림</button>
                 </div>
@@ -2273,13 +2281,6 @@
                                 <p class="profile-v2-danger-zone__hint">계정을 더 이상 사용하지 않을 때만</p>
                                 <button type="button" id="profileDeleteAccountBtn" onclick="window.confirmDeleteAccount()" class="profile-v2-danger-link">계정 탈퇴</button>
                             </div>
-                        </div>
-                    </div>
-                    <div id="settingsTabContentTags" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
-                        <div class="profile-v2-panel-card profile-v2-tags-card">
-                            <h3 class="profile-v2-panel-title">나만의 태그</h3>
-                            <p class="profile-v2-panel-desc">메인 태그를 고른 뒤, 자주 쓰는 서브 태그를 최대 5개까지 등록해 두세요.</p>
-                            <div id="favoriteTagsSection" class="profile-v2-tags-section"></div>
                         </div>
                     </div>
                     <div id="settingsTabContentNotifications" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
@@ -2842,10 +2843,12 @@
                         <input type="hidden" id="entryHeaderDate" value="">
                         <button type="button" id="entryHeaderDateBtn" aria-label="날짜" aria-haspopup="dialog" class="entry-header-date shrink-0 min-w-0 py-1.5 px-2 rounded-lg font-bold text-slate-800 outline-none transition-colors">날짜</button>
                         <select id="entryHeaderSlotSelect" aria-label="시간대" class="entry-header-slot shrink min-w-0 py-1.5 rounded-lg font-bold text-slate-800 outline-none transition-colors appearance-none"></select>
-                        <div id="entryFormModeSwitch" class="entry-form-mode-switch shrink-0" role="group" aria-label="식사·간식">
-                            <button type="button" id="entryFormModeBtnMeal" data-mode="meal" class="entry-form-mode-btn entry-form-mode-btn--active" aria-pressed="true">식사</button>
-                            <button type="button" id="entryFormModeBtnSnack" data-mode="snack" class="entry-form-mode-btn" aria-pressed="false">간식</button>
-                        </div>
+                        <!--
+                            식사/간식 토글 제거 (2026-08-13). 모드는 슬롯이 결정한다.
+                            실사용 4,042건 중 슬롯과 다른 모드로 기록한 건 2건(0.05%, 1명)뿐이라
+                            선택지로서 값을 못 하고 있었다. 슬롯을 바꾸면 모드가 따라간다
+                            (onHeaderSlotChange). 기존 기록 로드 시 추론도 그대로 유지된다.
+                        -->
                     </div>
                 </div>
             </div>
@@ -2853,8 +2856,7 @@
                 <p id="entrySheetStepLabel" class="entry-sheet-step-label">뭘 먹었어요?</p>
                 <div id="entrySheetTabs" class="entry-sheet-step-dots" role="tablist" aria-label="기록 단계">
                     <button type="button" class="entry-sheet-step-dot entry-sheet-step-dot--active" role="tab" id="entrySheetTabBasic" data-entry-sheet-tab="basic" aria-controls="entrySheetPanelBasic" aria-selected="true" aria-label="1단계 뭘 먹었어요?" title="뭘 먹었어요?"></button>
-                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabMore" data-entry-sheet-tab="more" aria-controls="entrySheetPanelMore" aria-selected="false" aria-label="2단계 어디서? 누구랑?" title="어디서? 누구랑?"></button>
-                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false" aria-label="3단계 어땠어요?" title="어땠어요?"></button>
+                    <button type="button" class="entry-sheet-step-dot" role="tab" id="entrySheetTabDetail" data-entry-sheet-tab="detail" aria-controls="entrySheetPanelDetail" aria-selected="false" aria-label="2단계 어땠어요?" title="어땠어요?"></button>
                 </div>
             </div>
 
@@ -2940,8 +2942,12 @@
                                     </div>
                                 </div>
                                 <div id="menuDetailInputRow" class="w-full">
-                                    <textarea id="entryWhatInput" rows="2" placeholder="무엇을 드셨나요?&#10;구분도 고르면 내 패턴을 알 수 있어요." aria-label="무엇을" class="entry-what-textarea w-full px-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 resize-none overflow-hidden"></textarea>
+                                    <textarea id="entryWhatInput" rows="2" placeholder="무엇을 드셨나요?&#10;적으면 구분을 자동으로 붙여드려요." aria-label="무엇을" class="entry-what-textarea w-full px-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 resize-none overflow-hidden"></textarea>
                                 </div>
+                                <!-- 분류행이 위 · 회상행이 아래. 회상행은 입력 중에만 잠깐 뜨는 줄이라,
+                                     위에 두면 뜰 때마다 분류행을 아래로 밀어 값이 눈에서 달아난다. -->
+                                <div id="entryCategorySuggest" class="entry-suggest-row entry-suggest-row--empty" aria-live="polite"></div>
+                                <div id="entryWhatRecall" class="entry-recall-row entry-recall-row--empty" aria-live="polite"></div>
                             </div>
                             <div class="entry-tag-stage" data-entry-tag-stage="what">
                                 <div class="entry-tag-stage__viewport">
@@ -2959,45 +2965,28 @@
                         </div>
                     </div>
                 </div>
-                <div id="entryCommentDetailFooter" class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo -mx-0">
-<div id="entryCommentSectionMeal" class="entry-comment-section">
-                        <span class="entry-comment-heading entry-comment-heading-with-icon">
-                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
-                            <span>메모</span>
-                        </span>
-                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="1" aria-label="Comment" class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-[min-height,padding] duration-200 appearance-none"></textarea>
-                    </div>
-<div id="entryCommentSectionSnack" class="entry-comment-section hidden">
-                        <span class="entry-comment-heading entry-comment-heading-with-icon">
-                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
-                            <span>메모</span>
-                        </span>
-                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="1" aria-label="Comment" class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-[min-height,padding] duration-200 appearance-none"></textarea>
-                    </div>
-                </div>
-                </div>
-
-                <div id="entrySheetPanelMore" class="entry-sheet-tabpanel hidden" role="tabpanel" aria-labelledby="entrySheetTabMore" data-entry-sheet-panel="more" hidden>
-                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core">
+                <!-- 맥락 한 줄: 1페이지 '무엇을' 바로 아래 (docs/entry-axes-and-tags-direction.md §5).
+                     어떻게·어디서·누구와를 세그먼트로 보여주고, 조각을 탭하면 그 축의 칩이
+                     이 자리에서 인라인으로 열린다. 저장 필드의 소유자는 아래 전체 축 섹션. -->
+                <div id="entryContextPredict" class="entry-context-predict hidden" aria-live="polite"></div>
+                <!-- 전체 축 섹션: 맥락 줄이 대부분을 대신하므로 기본 접힘. 건너뜀 칩·서브태그·
+                     누구와 상세처럼 맥락 줄이 다루지 않는 입력이 여기 남는다.
+                     여닫는 트리거는 맥락 줄 끝의 ⋯ 칩 (entry-context-predict.js). -->
+                <div id="entryAxisFields" class="entry-sheet-zone entry-sheet-zone--core hidden">
 <div id="entryWhereSection" class="entry-form-field-section entry-field-quick-off entry-axis-stack">
+                        <!-- 끼니: 칩(어떻게=조달) 먼저 → 장소 입력(어디서) 나중. 어떻게가 어디서의 라우터
+                             (docs/entry-axes-and-tags-direction.md §5). 간식은 칩도 장소라 라벨만 '어디서'. -->
                         <div class="entry-axis-label-row">
                             <div class="entry-axis-label-group shrink-0">
                                 <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
-                                    <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
+                                    <i data-lucide="map-pin" id="entryWhereLabelIconPlace" class="entry-axis-icon" aria-hidden="true"></i>
+                                    <i data-lucide="utensils" id="entryWhereLabelIconHow" class="entry-axis-icon hidden" aria-hidden="true"></i>
                                     <span id="entryWhereLabel">어디서</span>
                                 </span>
                             </div>
                             <button type="button" class="entry-field-quick-toggle shrink-0" data-entry-quick-field="where" aria-expanded="false" aria-label="어디서 빠른 입력" title="어디서 빠른 입력">
                                 <i data-lucide="chevron-right" class="entry-field-quick-toggle__icon" aria-hidden="true"></i>
                             </button>
-                        </div>
-                        <div class="entry-axis-input-area w-full min-w-0">
-                            <div class="relative min-w-0">
-                                <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
-                                    <i data-lucide="search" aria-hidden="true"></i>
-                                </button>
-                                <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
-                            </div>
                         </div>
                         <div class="entry-tag-stage" data-entry-tag-stage="where">
                             <div class="entry-tag-stage__viewport">
@@ -3010,6 +2999,20 @@
                                         <div id="entryWhereSuggestions" class="entry-form-field-subtags entry-subtag-suggestions min-w-0 flex-1" data-input-id="entryWhereInput"></div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                        <div id="entryWhereInputLabel" class="entry-axis-sublabel-row hidden" aria-hidden="true">
+                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase">
+                                <i data-lucide="map-pin" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>어디서</span>
+                            </span>
+                        </div>
+                        <div class="entry-axis-input-area w-full min-w-0">
+                            <div class="relative min-w-0">
+                                <button type="button" id="entryWhereKakaoBtn" onclick="window.openKakaoPlaceSearch()" class="entry-inline-action-btn absolute left-2 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center" aria-label="장소 검색">
+                                    <i data-lucide="search" aria-hidden="true"></i>
+                                </button>
+                                <input id="entryWhereInput" type="text" placeholder="돋보기 버튼으로 장소 검색 또는 직접 입력" class="w-full py-[0.6rem] pl-[46px] pr-3 bg-white rounded-2xl outline-none text-sm border border-slate-200 focus:border-slate-400 transition-all">
                             </div>
                         </div>
                     </div>
@@ -3217,6 +3220,22 @@
                     </div>
                     </div>
                 </div>
+                </div>
+                <div id="entryCommentDetailFooter" class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo -mx-0">
+<div id="entryCommentSectionMeal" class="entry-comment-section">
+                        <span class="entry-comment-heading entry-comment-heading-with-icon">
+                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
+                            <span>메모</span>
+                        </span>
+                        <textarea id="generalCommentInput" placeholder="오늘 식사는 어떠셨나요?" rows="1" aria-label="Comment" class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-[min-height,padding] duration-200 appearance-none"></textarea>
+                    </div>
+<div id="entryCommentSectionSnack" class="entry-comment-section hidden">
+                        <span class="entry-comment-heading entry-comment-heading-with-icon">
+                            <i data-lucide="message-circle-more" class="entry-comment-icon" aria-hidden="true"></i>
+                            <span>메모</span>
+                        </span>
+                        <textarea id="snackCommentInput" placeholder="오늘 간식은 어떠셨나요?" rows="1" aria-label="Comment" class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-slate-400 transition-[min-height,padding] duration-200 appearance-none"></textarea>
+                    </div>
                 </div>
                 </div>
             </div>

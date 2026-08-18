@@ -5,6 +5,8 @@ import { scheduleLucideIcons } from '../icons.js';
 import { ENTRY_DOM } from './entry-form-config.js';
 import { escapeHtml } from '../render/utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { isFoodRelatedKakaoPlace } from '../utils/place-type.js';
+import { syncEntryContextPlaceFromInput } from './entry-context-predict.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
 
@@ -46,7 +48,7 @@ function createKakaoSearchModal() {
         <div class="kakao-place-sheet__panel">
             <div class="kakao-place-sheet__handle" aria-hidden="true"></div>
             <div class="kakao-place-sheet__header">
-                <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">음식점 검색</h2>
+                <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">장소 검색</h2>
                 <button type="button" class="kakao-place-sheet__close" onclick="window.closeKakaoPlaceSearchModal()" aria-label="닫기">
                     <i data-lucide="x" aria-hidden="true"></i>
                 </button>
@@ -56,7 +58,7 @@ function createKakaoSearchModal() {
                     <button type="button" class="kakao-place-sheet__search-btn" onclick="window.searchKakaoPlaces()" aria-label="검색">
                         <i data-lucide="search" aria-hidden="true"></i>
                     </button>
-                    <input type="text" id="kakaoSearchInput" class="kakao-place-sheet__input" placeholder="음식점 이름을 2글자 이상 입력하세요" autocomplete="off">
+                    <input type="text" id="kakaoSearchInput" class="kakao-place-sheet__input" placeholder="식당·카페 등 장소를 2글자 이상 입력하세요" autocomplete="off">
                     <button type="button" class="kakao-place-sheet__apply-btn" onclick="window.applyKakaoPlaceManualText()" aria-label="검색어를 그대로 장소로 입력">입력</button>
                 </div>
                 <p class="kakao-place-sheet__hint">목록에서 고르거나, 오른쪽 <strong>입력</strong>으로 그대로 넣을 수 있어요.</p>
@@ -130,16 +132,20 @@ function renderKakaoSearchResults(restaurants) {
         const safeAddress = escapeForAttr(roadAddress || address);
         const safePlaceId = escapeForAttr(placeId);
 
-        const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category };
+        // categoryGroupCode: placeType(식당/카페/편의점/술집) 파생용 — 저장 시 place-type.js가 읽는다
+        const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category, categoryGroupCode: place.category_group_code || '' };
         let placeDataB64 = '';
         try {
             placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         } catch (e) {}
 
+        // "음식점 > 한식 > 냉면" → 마지막 마디만 결과 행에 표시 (선택 전 카테고리 확인용)
+        const categoryTail = category ? category.split('>').pop().trim() : '';
+
         return `
             <button type="button" onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')"
                 class="kakao-place-sheet__result">
-                <div class="kakao-place-sheet__result-name">${escapeHtml(placeName)}</div>
+                <div class="kakao-place-sheet__result-name">${escapeHtml(placeName)}${categoryTail ? `<span class="kakao-place-sheet__result-cat">${escapeHtml(categoryTail)}</span>` : ''}</div>
                 <div class="kakao-place-sheet__result-addr">${escapeHtml(roadAddress || address)}</div>
             </button>
         `;
@@ -204,14 +210,16 @@ export async function searchKakaoPlaces() {
         // 2) 웹 + SDK 로드됨: SDK 사용
         else if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
             const ps = new kakao.maps.services.Places();
+            // 카테고리 무필터 검색 후 식음 관련만 남긴다 — FD6 고정이면 카페(CE7)·편의점(CS2)이
+            // 아예 안 와서 어디서 축 통합(장소 카테고리화)이 막힌다
             restaurants = await new Promise((resolve) => {
                 ps.keywordSearch(keyword, (data, status) => {
                     if (status === kakao.maps.services.Status.OK) {
-                        resolve(data || []);
+                        resolve((data || []).filter(isFoodRelatedKakaoPlace).slice(0, 10));
                     } else {
                         resolve([]);
                     }
-                }, { category_group_code: 'FD6', size: 10 });
+                }, { size: 15 });
             });
         }
         // 3) 웹 + SDK 없음: Callable fallback
@@ -256,6 +264,8 @@ export function applyKakaoPlaceManualText() {
     placeInput.removeAttribute('data-kakao-place-data');
     placeInput.removeAttribute('data-kakao-place-name');
     closeKakaoPlaceSearchModal();
+    // 프로그램적 value 설정은 change 이벤트를 발화시키지 않으므로 맥락 줄에 직접 알린다
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast('장소명이 입력되었습니다.', 'success');
 }
 
@@ -304,6 +314,7 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
     // 모달 닫기
     closeKakaoPlaceSearchModal();
 
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast("장소가 선택되었습니다.", 'success');
 }
 
