@@ -1817,201 +1817,23 @@ export function addCalendarDaysSeoulYmd(ymd, deltaDays) {
 }
 
 /**
- * 공유 로고 카드 태그라인 — 웰컴(출석) 팝업과 동일 Yeon Sung
- * Google Fonts Yeon Sung은 Regular(400)만 제공(별도 Bold 없음). 캔버스에서 600이면 가짜 볼드가 음절마다 달라질 수 있어 normal(400)만 사용.
- * 폴백 글꼴을 섞지 않음(Noto 등) — 한 줄 안에서 티 나는 이질감 방지.
- */
-async function drawShareLogoTagline(ctx, cx, centerY, maxW, splitLines) {
-    ctx.fillStyle = '#3cb889';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    if ('fontKerning' in ctx) ctx.fontKerning = 'normal';
-    const fontAt = (size) => `normal ${size}px "Yeon Sung", serif`;
-
-    let size = 58;
-    while (size >= 34) {
-        try {
-            if (document.fonts?.load) {
-                await document.fonts.load(fontAt(size));
-            }
-        } catch (_) {}
-        ctx.font = fontAt(size);
-        const lsPx = Math.max(0, Math.round(size * 0.04));
-        if ('letterSpacing' in ctx) {
-            ctx.letterSpacing = `${lsPx}px`;
-        }
-        const w1 = ctx.measureText(splitLines[0]).width;
-        const w2 = ctx.measureText(splitLines[1]).width;
-        if (Math.max(w1, w2) <= maxW) {
-            drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, size);
-            if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-            return;
-        }
-        size -= 2;
-    }
-    try {
-        if (document.fonts?.load) await document.fonts.load(fontAt(32));
-    } catch (_) {}
-    ctx.font = fontAt(32);
-    if ('letterSpacing' in ctx) {
-        ctx.letterSpacing = `${Math.round(32 * 0.04)}px`;
-    }
-    drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, 32);
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-}
-
-/** alphabetic 두 줄 — baseline 간격은 line-height(≈1.42em), 블록 세로 중앙은 actualBoundingBox로 맞춤 */
-function drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, size) {
-    const [line1, line2] = splitLines;
-    const m1 = ctx.measureText(line1);
-    const m2 = ctx.measureText(line2);
-    const a1 = m1.actualBoundingBoxAscent ?? size * 0.74;
-    const d2 = m2.actualBoundingBoxDescent ?? size * 0.26;
-    const lineHeightPx = Math.round(size * 1.42);
-    const y1 = centerY + (a1 - lineHeightPx - d2) / 2;
-    const y2 = y1 + lineHeightPx;
-    ctx.fillText(line1, cx, y1);
-    ctx.fillText(line2, cx, y2);
-}
-
-/**
- * 앱 로고 + 서브타이틀 이미지 생성 (공유 시 마지막에 추가)
+ * 공유 마지막 장에 붙는 로고 카드 (assets/share-logo-card.jpg)
+ *
+ * 예전에는 아이콘·mealog·태그라인을 공유할 때마다 캔버스에 그렸다. 그런데 두 서체가
+ * Google Fonts 원격이라(Fredoka·Yeon Sung) 네트워크가 늦거나 끊기면 각자 다른 폴백으로
+ * — mealog 는 sans, 태그라인은 serif 로 — 떨어져 한 장 안에서 계통이 어긋났고, 같은
+ * 기기에서도 공유 시점에 따라 글꼴이 달라졌다. 폰트가 제대로 물린 상태에서 한 번 구워
+ * 자산으로 굳혀 두면 오프라인에서도 언제나 같은 그림이 나간다.
+ *
+ * 이 파일은 1080x1080 JPEG 다 — 공유 파이프라인이 .jpg 이름으로 내보내므로 형식을 맞춘다.
+ * 문구나 로고를 바꿀 때는 이 이미지를 다시 만들어 교체한다.
  * @returns {Promise<Blob>}
  */
 async function createMealogLogoImage() {
-    const TAGLINE_SPLIT = ['우리가 함께한,', '맛있었던 이야기'];
-    const cw = 1080;
-    const ch = 1080;
-    const maxTextW = cw - 160;
-    const canvas = document.createElement('canvas');
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
-
-    const iconUrl = document.querySelector('#landingMealogIcon')?.src || new URL('assets/icon-only.png', window.location.href).href;
-
-    try {
-        if (document.fonts?.ready) await document.fonts.ready;
-        if (document.fonts?.load) await document.fonts.load('normal 60px "Yeon Sung"').catch(() => {});
-    } catch (_) {}
-
-    let imgEl = null;
-    try {
-        imgEl = await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('icon'));
-            img.src = iconUrl;
-        });
-    } catch (_) {
-        imgEl = null;
-    }
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const drawRoundedIconClip = (iconX, iconY, iconSize) => {
-        const radius = iconSize * 0.35;
-        ctx.beginPath();
-        if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(iconX, iconY, iconSize, iconSize, radius);
-        } else {
-            const r = Math.min(radius, iconSize / 2);
-            ctx.moveTo(iconX + r, iconY);
-            ctx.lineTo(iconX + iconSize - r, iconY);
-            ctx.quadraticCurveTo(iconX + iconSize, iconY, iconX + iconSize, iconY + r);
-            ctx.lineTo(iconX + iconSize, iconY + iconSize - r);
-            ctx.quadraticCurveTo(iconX + iconSize, iconY + iconSize, iconX + iconSize - r, iconY + iconSize);
-            ctx.lineTo(iconX + r, iconY + iconSize);
-            ctx.quadraticCurveTo(iconX, iconY + iconSize, iconX, iconY + iconSize - r);
-            ctx.lineTo(iconX, iconY + r);
-            ctx.quadraticCurveTo(iconX, iconY, iconX + r, iconY);
-        }
-    };
-
-    if (imgEl) {
-        try {
-            const iconSize = 280;
-            const iconX = (cw - iconSize) / 2;
-            const iconY = ch * 0.28;
-            ctx.save();
-            drawRoundedIconClip(iconX, iconY, iconSize);
-            ctx.clip();
-            ctx.drawImage(imgEl, iconX, iconY, iconSize, iconSize);
-            ctx.restore();
-            ctx.fillStyle = '#3cb889';
-            ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
-            ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
-            await drawShareLogoTagline(ctx, cw / 2, iconY + iconSize + 200, maxTextW, TAGLINE_SPLIT);
-        } catch (_) {
-            imgEl = null;
-        }
-    }
-    if (!imgEl) {
-        ctx.fillStyle = '#3cb889';
-        ctx.font = 'bold 72px "Fredoka", sans-serif';
-        ctx.fillText('mealog', cw / 2, ch / 2 - 60);
-        await drawShareLogoTagline(ctx, cw / 2, ch / 2 + 72, maxTextW, TAGLINE_SPLIT);
-    }
-
-    return new Promise((resolve) => {
-        canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
-    });
-}
-
-/**
- * 이미지에 메뉴@장소 캡션을 하단에 오버레이하여 Blob 반환
- * @param {Blob} imageBlob - 원본 이미지 Blob
- * @param {string} caption - 캡션 텍스트 (메뉴 @ 장소)
- * @returns {Promise<Blob>}
- */
-async function addCaptionToImage(imageBlob, caption) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(imageBlob);
-        img.onload = () => {
-            try {
-                const cw = img.width;
-                const ch = img.height;
-                const barH = Math.max(44, Math.min(56, Math.floor(cw * 0.1)));
-                const canvas = document.createElement('canvas');
-                canvas.width = cw;
-                canvas.height = ch + barH;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                ctx.fillStyle = '#2d9f74';
-                ctx.fillRect(0, ch, cw, barH);
-                ctx.fillStyle = '#ffffff';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                const fontSize = Math.round(barH * 0.65);
-                ctx.font = `${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
-                const padding = 12;
-                const maxW = cw - padding * 2;
-                let text = caption;
-                if (ctx.measureText(text).width > maxW) {
-                    while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
-                    text = text + '…';
-                }
-                ctx.fillText(text, padding, ch + barH / 2);
-                canvas.toBlob((blob) => {
-                    URL.revokeObjectURL(url);
-                    resolve(blob || imageBlob);
-                }, imageBlob.type || 'image/jpeg', 0.92);
-            } catch (err) {
-                URL.revokeObjectURL(url);
-                resolve(imageBlob);
-            }
-        };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve(imageBlob);
-        };
-        img.src = url;
-    });
+    const url = new URL('assets/share-logo-card.jpg', window.location.href).href;
+    const res = await fetch(url, { cache: 'force-cache' });
+    if (!res.ok) throw new Error(`share logo card ${res.status}`);
+    return res.blob();
 }
 
 /** Blob을 base64 문자열로 변환 (Capacitor Filesystem 공유용) */
@@ -2282,13 +2104,13 @@ export async function shareBlobsToExternal(blobs, options = {}) {
 /**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
  * 웹: Web Share API(navigator.share). 네이티브 앱: Capacitor Share만 사용(웹뷰 공유와 수신 앱 호환).
- * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
+ * 사진에는 아무것도 덧그리지 않는다 — 예전에는 하단에 '메뉴 @ 장소'를 녹색 바로 구워
+ * 넣었지만 받는 쪽에는 원본 사진 그대로가 낫다. caption 은 공유 텍스트로만 쓴다.
  * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
- * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
- * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
+ * @param {string} [caption] - 공유 텍스트 (이미지에는 그리지 않는다)
  * @returns {Promise<boolean>} - 공유 성공 여부
  */
-export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
+export async function sharePhotosToExternal(photoUrls, caption = '') {
     const urls = typeof photoUrls === 'string'
         ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
@@ -2296,7 +2118,7 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
 
     const captionText = (caption || '').trim();
 
-    // 공통: 이미지 fetch → blob (캡션·리사이즈 적용)
+    // 공통: 이미지 fetch → blob (리사이즈만 적용)
     const blobs = [];
     for (let i = 0; i < Math.min(urls.length, 5); i++) {
         const url = urls[i];
@@ -2305,9 +2127,6 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             if (!res.ok) continue;
             let blob = await res.blob();
             if (!blob.type || !blob.type.startsWith('image/')) continue;
-            if (!skipCaptionBar && captionText) {
-                blob = await addCaptionToImage(blob, captionText);
-            }
             blob = await resizeBlobForShare(blob);
             blobs.push(blob);
         } catch (imgErr) {
