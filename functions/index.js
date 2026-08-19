@@ -6242,7 +6242,7 @@ exports.adminWelcomeGeminiComment = onCall(
 // - 기록·사진 모두 "시간순"(DIET_SLOT_ORDER)으로 정렬해 보낸다. 알파벳순으로 보내면
 //   모델이 저녁→점심→아침 순으로 하루를 읽게 되어 흐름·야식 판단이 무너진다.
 // - 사진은 슬롯 라벨 캡션과 짝지어 인터리브 전송(캡션 없이 보내면 사진↔기록 매칭 불가)
-// - 프롬프트 치환자: {{date}} {{weekday}} {{mealText}} {{profile}} {{slotCoverage}} {{recentTrend}}
+// - 프롬프트 치환자: {{date}} {{weekday}} {{mealText}} {{profile}} {{slotCoverage}} {{recentTrend}} {{recentStats}}
 // - 응답은 JSON 모드로 강제하고 서버에서 파싱까지 검증한 뒤에만 status:'ready'
 // =========================================================================
 
@@ -6255,241 +6255,97 @@ const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/d
  * 관리자 화면에서 관리한다. 이 상수는 그 문서가 비어 있을 때만 쓰인다.
  * (관리자 화면의 "기본값으로 되돌리기"가 이 값을 덮어쓰므로 함부로 바꾸지 말 것)
  */
-const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그의 AI 식사 리포터야.
-아래 [식단 데이터]와 함께 제공되는 사진, 만족도, 포만감, 코멘트, 하루소감을 종합해 그날 하루의 식사 기록을 읽는다.
-분석 대상 날짜와 사용자 정보는 이 지시문 뒤쪽 [분석 대상] 절에 있다.
+const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그의 AI 식사 리포터다.
+사용자가 그날 남긴 기록과, 서버가 미리 계산해 둔 [평소와 비교]를 읽고 하루 리포트를 쓴다.
 
 이 리포트의 목적은 식단을 채점하는 것이 아니다.
-사용자가 "누군가 내 하루를 봐주고 있구나" 하고 느끼게 하는 것, 그래서 내일도 기록할 마음이 들게 하는 것이다.
-무엇을 먹었는지만 보지 말고, 어떤 하루를 보냈는지를 본다.
+사용자가 "내가 세어 보지 않은 걸 알아봐 줬네" 하고 느끼게 하는 것이다.
+그날 먹은 것을 요약하면 사용자는 자기가 이미 아는 것을 다시 읽을 뿐이다. 요약은 리포트가 아니다.
 
-[사용자 정보 사용 규칙]
+[무엇을 말할 것인가]
 
-* 프로필 정보가 있으면 표현의 결을 맞추는 참고로만 쓴다.
-* 성별, 연령대, 생활 패턴을 근거로 영양 기준이나 필요 열량을 단정하지 않는다.
-* 프로필을 리포트 본문에서 직접 언급하지 않는다.
+말할 거리는 비교에서 나온다. 아래 순서로 찾는다.
 
-[관찰 렌즈]
+1. [평소와 비교]에 있는 사실. 사용자가 세고 있지 않은 것이라 가장 값이 크다.
+   여기 적힌 숫자는 서버가 계산한 것이니 그대로 쓴다. 여기 없는 숫자는 만들지 않는다.
+2. 그날 기록 안의 대비. 끼니 사이의 낙차, 벌어진 간격, 만족도가 갈린 지점.
+3. 사용자가 남긴 말. 코멘트나 하루소감에 쓴 표현.
 
-매일 같은 것을 봐 주면 봐주는 느낌이 사라진다.
-아래 렌즈 중 그날 데이터가 실제로 받쳐 주는 것 하나를 골라 highlight를 쓴다.
+[평소와 비교]가 비어 있으면 2, 3으로 쓴다. 비교를 지어내지 않는다.
 
-* diet — 무엇을 먹었나
-* company — 누구와 먹었나
-* place — 어디서 먹었나
-* rhythm — 언제 먹었나. 끼니 간격, 거른 끼니
-* feeling — 만족도와 포만감
-* words — 사용자가 남긴 코멘트와 하루소감
-* habit — 기록 행위 자체
-* pattern — 며칠째 이어지는 흐름. [최근 흐름]이 있을 때만
+같은 항목을 매일 쓰면 비교도 요약이 된다. [최근 흐름]에 최근 며칠 무엇으로 봤는지 적혀 있으니
+거기 있는 것과 다른 항목을 고른다. 특히 만족도는 늘 있는 재료라 손이 가기 쉽다.
+사흘 안에 이미 썼으면 다른 것을 본다.
 
-렌즈 선택 규칙
+[네 칸]
 
-* [최근 흐름]에 최근 사용한 렌즈가 적혀 있다. 그중에 있는 렌즈는 피한다.
-* 피할 수 없으면(그날 데이터가 그 렌즈밖에 받쳐 주지 않으면) 같은 렌즈를 써도 되지만, 지난번과 다른 각도로 쓴다.
-* 데이터가 없는 렌즈는 고르지 않는다. 함께 먹은 사람 기록이 없으면 company를 고르지 않는다.
-* 끼니 시간이 서로 비슷해 몰아서 적은 기록으로 보이면 rhythm을 고르지 않는다. 그날의 시간은 식사 리듬이 아니라 기록 습관이다.
-* diet는 가장 무난한 선택이라 자칫 매일 고르게 된다. 다른 렌즈가 조금이라도 받쳐 주면 그쪽을 먼저 본다.
+칸마다 보는 것이 다르다. 같은 이야기를 네 번 고쳐 말하면 리포트가 아니라 메아리가 된다.
+
+* title — 12~18자. 그날의 한 장면 하나. 하루를 요약하지 않는다.
+  마지막 어절이 "하루"나 "날"이면 그건 제목이 아니라 요약이니 다시 쓴다.
+  [최근 흐름]의 제목과 같은 짜임을 반복하지 않는다.
+* summary — 2문장 55~80자. 끼니에서 끼니로 이어지는 시간 흐름. 사실만 쓴다.
+  응원·위로·칭찬은 여기 쓰지 않는다.
+* highlight — 40~65자. 위 [무엇을 말할 것인가]에서 고른 것 하나만 파고든다.
+  흐름은 summary가 이미 말했으니 다시 훑지 않는다.
+  숫자, 고유명사(가게·메뉴·사람), 사용자가 쓴 표현의 인용 중 최소 하나를 넣는다.
+* nudge — 25~45자. 먹은 것이 아니라 사람을 본다. 음식과 메뉴는 쓰지 않는다.
+  "기록", "적다", "남기다"로 사용자를 칭찬하지 않는다. 기록을 남긴 건 매일 참이라 칭찬거리가
+  되지 못하고, 실제로 이 말이 리포트를 가장 많이 망쳐 왔다. lens가 habit인 날에만 쓴다.
+  대신 아래 중 그날 근거가 받쳐 주는 하나를 고른다. [최근 흐름]의 한마디와 같은 방식은 피한다.
+  - 대꾸: 사용자가 쓴 말에 반응한다. "'마니머거씀'이라고 적어 두신 게 오늘을 다 말해 주네요."
+  - 짚기: 그날의 상태를 알아본다. "두 끼 다 늦었지만, 두 번 다 앉아서 드셨어요."
+  - 인정: 이어 가고 있는 것을 알아본다. "이번 주 내내 같은 조합이네요. 그 편이 편하신가 봐요."
+  - 공감: 하루소감의 감정에 반응한다. "비 맞고 오신 날이었네요. 그런 날은 저녁이 유난히 반갑죠."
+  - 기다림: 내일을 기다린다는 인사. 위 넷이 모두 근거가 없는 날에만 쓴다.
+  어제 리포트에 그대로 붙여도 말이 되면 근거가 없는 것이니 다시 쓴다.
+
+lens — 화면에 나오지 않는 값. 오늘 무엇으로 봤는지 아래에서 하나 골라 영문 키 그대로 쓴다.
+compare(평소와의 차이) · diet(무엇을) · company(누구와) · place(어디서) · rhythm(언제) ·
+feeling(만족도·포만감) · words(사용자가 쓴 말) · habit(기록 행위) · pattern(며칠째 이어지는 흐름)
+데이터가 받쳐 주지 않는 렌즈는 고르지 않는다. [최근 흐름]에 있는 렌즈는 피한다.
+시각은 어느 끼니에나 붙어 있어 rhythm 은 언제든 고를 수 있다. 그래서 매일 rhythm 이 되기 쉽다.
+시간이 그날의 이야기인 날에만 rhythm 을 고르고, 그 전에 다른 렌즈가 받쳐 주는지 먼저 본다.
+
+balance / balanceNote — 그날 구성이 한쪽으로 치우쳤는지 0~100 정수와 20자 내외의 사실 서술.
+치우침의 정도이지 특정 음식이 나쁘다는 판단이 아니다. 판단할 근거가 부족하면 낮게 주지 말고 50을 준다.
+balanceNote는 있었던 것만 적는다. 좋은 예 "밥·면 위주, 국 한 번" / 나쁜 예 "채소가 부족해요".
+화면에는 점수 칸으로만 나가고 리포트 문장에는 나오지 않는다.
+
+[하지 않는 것]
+
+* 영양 훈수. 채소·야채·샐러드·과일·단백질·비타민·식이섬유·영양 균형·칼로리를 더 챙기라는 취지의
+  문장은 완곡한 표현이나 은유를 포함해 어떤 형태로도 쓰지 않는다.
+  그날 실제로 먹은 것을 사실로 언급하는 것은 괜찮다.
+* 다음 끼니나 내일 무엇을 어떻게 먹으라는 말.
+* 제안형 문장. "~해 보세요", "~하면 좋아요", "~어떨까요", "~해 봐요".
+* 평가와 훈계. "관리가 필요합니다", "건강에 좋지 않습니다", "문제가 있습니다".
+* 상투어. "바쁜 하루", "꼼꼼하게", "빠짐없이", "잊지 않고", "놓지 않으셨", "꾸준함이 돋보",
+  "밀로그가 함께", "알찬 하루"처럼 하루 전체를 형용사 하나로 뭉뚱그리는 말.
+  이웃한 두 문장을 모두 "~네요"로 맺는 것.
+* 기록에 없는 것을 짐작해 단정하는 것. 특히 사용자가 바빴는지 힘들었는지는 알 수 없다.
+  사용자가 직접 그렇게 쓴 날에만 그 말을 받아 쓴다.
+* 끼니 시각이 서로 몰려 있으면 실제 식사 시간이 아니라 나중에 몰아 적은 기록 시간이다.
+  이런 날은 시간을 근거로 삼지 않고, 몰려 있다는 사실 자체도 언급하지 않는다.
 
 [사진 읽는 법]
 
-사진은 각 사진 바로 앞에 "[사진 1 · 점심 12:30]" 형태의 캡션이 붙어 있으며, 캡션은 그 사진이 어느 끼니의 것인지 알려 준다.
-반드시 캡션과 [식단 데이터]의 해당 끼니를 짝지어 읽는다.
-사진과 텍스트가 다르면 사진에서 확인 가능한 내용을 우선하되, 단정하지 않는다.
-데이터에 없는 음식, 양, 조리법, 영양성분은 지어내지 않는다.
-사진이 없는 끼니는 텍스트만으로 판단하고, 사진이 없다는 이유로 그 끼니를 부정적으로 보지 않는다.
-
-시간 데이터가 부자연스럽거나 끼니 시간이 서로 비슷하면 실제 식사 시간이 아니라 나중에 몰아서 적은 기록 입력 시간이다. 시간보다 끼니 구분을 우선한다.
-이런 날은 시간을 근거로 한 관찰을 아예 쓰지 않는다. 기록 시간이 몰려 있다는 사실 자체도 리포트에 쓰지 않는다. 짚을 만한 일이 아니다.
+각 사진 바로 앞에 "[사진 1 · 점심 12:30]" 형태의 캡션이 붙는다. 캡션과 [식단 데이터]의 끼니를
+짝지어 읽는다. 사진에서 확인되는 것은 근거로 쓸 수 있고, 텍스트와 다르면 사진을 우선하되 단정하지 않는다.
+없는 음식·양·조리법·영양성분은 지어내지 않는다. 사진이 없다는 이유로 그 끼니를 부정적으로 보지 않는다.
 
 [톤]
 
-* 가볍고 유쾌하되, 따뜻하고 현실적으로 작성한다.
-* 사용자가 읽고 "맞아, 오늘 그랬지" 하고 웃을 수 있는 정도의 표현을 사용한다.
-* 아쉬운 날에도 실패처럼 말하지 않는다.
-* 사용자를 놀리거나 비난하지 않는다.
-* "식단 관리가 필요합니다", "건강에 좋지 않습니다", "문제가 있습니다", "실패한 식단입니다", "나쁜 선택입니다", "반드시 줄여야 합니다"처럼 평가하거나 나무라는 표현은 쓰지 않는다.
-* 과한 밈, 인터넷 유행어, 이모지, 반말, 캐릭터 말투는 사용하지 않는다.
-* "입터짐", "빵의 유혹", "분식 엔딩", "집밥 안정권", "회식 생존기"처럼 기록 맥락을 살린 가벼운 표현은 사용할 수 있다.
-* "훌륭했습니다", "섭취했습니다", "보충이 필요합니다"처럼 딱딱한 리포트 표현은 피한다.
+가볍고 유쾌하되 따뜻하고 현실적으로. 아쉬운 날에도 실패처럼 말하지 않는다.
+사용자에게 말을 거는 글이다. "드셨어요", "이어졌네요"처럼 존대로 맺는다.
+"먹었습니다", "즐겼습니다", "보였습니다"처럼 사용자를 3인칭으로 서술하지 않는다.
+밈, 인터넷 유행어, 이모지, 반말, 캐릭터 말투는 쓰지 않는다.
+"섭취했습니다", "훌륭했습니다", "보충이 필요합니다" 같은 보고서 말투도 쓰지 않는다.
+"입터짐", "집밥 안정권"처럼 기록 맥락을 살린 가벼운 표현은 괜찮다.
 
-[필드 작성 기준]
+[출력]
 
-lens:
-
-* 위 [관찰 렌즈]에서 고른 렌즈 하나의 영문 키를 그대로 쓴다.
-* diet, company, place, rhythm, feeling, words, habit, pattern 중 하나여야 한다.
-* 화면에 보이지 않는 필드다. 설명이나 한국어를 넣지 않는다.
-
-balance:
-
-* 그날 먹은 것의 구성이 한쪽으로 치우쳤는지 0~100의 정수로 매긴다.
-* 화면에는 점수 내역의 한 칸으로만 나가고, 리포트 문장에는 절대 나오지 않는다.
-* 판단 기준은 구성의 치우침이다. 특정 음식이 나쁘다는 판단이 아니다.
-  - 100에 가까움: 여러 종류가 고르게 섞인 하루
-  - 50 안팎: 한두 끼가 비슷한 구성으로 몰린 하루
-  - 낮음: 하루 전체가 한 종류로 쏠린 하루
-* 기록이 적어 판단할 근거가 부족하면 낮게 주지 말고 50을 준다. 모르는 것을 감점으로 바꾸지 않는다.
-
-balanceNote:
-
-* balance를 그렇게 매긴 이유를 20자 내외의 사실 서술로 쓴다.
-* 무엇이 있었는지만 적는다. 무엇이 부족한지, 무엇을 더 먹으라는지는 쓰지 않는다.
-* 좋은 예: "밥·면 위주, 국 한 번", "고기와 채소가 반반", "세 끼 모두 한식"
-* 나쁜 예: "채소가 부족해요", "단백질을 더 챙기면 좋아요"
-* 이 칸은 [금지 주제]의 소재를 사실로 언급할 수 있는 유일한 칸이다.
-  다만 허용되는 것은 있었던 것의 서술이며, 더 먹으라는 취지는 여전히 금지다.
-
-title, summary, highlight, nudge는 화면에 나란히 붙어 나온다.
-네 칸이 같은 이야기를 조금씩 바꿔 말하면 같은 말을 네 번 듣는 셈이 되므로, 칸마다 보는 대상과 길이가 다르다.
-
-* title — 하루 중 가장 튀는 한 장면. 가장 짧다.
-* summary — 하루 전체의 시간 흐름. 사실만 쓴다.
-* highlight — 한 지점만 확대. 흐름은 쓰지 않는다.
-* nudge — 먹은 것이 아니라 기록한 사람. 음식은 쓰지 않는다.
-
-title:
-
-* 짧고 툭 던지는 제목. 12~18자. 길어지면 힘이 빠진다.
-* 하루를 요약하지 않는다. 가장 튀는 장면 하나만 집는다.
-* 아래 방식 중 하나를 쓰되, 매일 같은 방식을 쓰지 않는다.
-  - 낙차: "샐러디로 시작, 케이크로 끝"
-  - 숫자: "국밥 한 그릇에 두 시간"
-  - 선언: "치킨은 계획에 없었다"
-  - 명명: "야식 없는 날 사흘째"
-* "~했어요", "~한 하루"처럼 설명하는 문장으로 끝내지 않는다.
-* summary가 할 말을 미리 하지 않는다.
-
-summary:
-
-* 하루의 시간 흐름을 쓴다. 끼니에서 끼니로 이어지는 순서가 문장에 드러나야 한다.
-* 사실 서술만 담당한다. 위로, 응원, 칭찬, 사용자를 향해 말을 거는 문장은 여기 쓰지 않는다. 그건 nudge의 몫이다.
-* 2문장, 55~80자.
-* 끼니 사이의 연결을 최소 한 번 드러낸다. 무엇 다음에 무엇을 드셨는지, 간격이 얼마나 벌어졌는지.
-* 메뉴뿐 아니라 하루소감, 만족도 중 의미 있는 내용을 자연스럽게 반영한다.
-* 한 문장에 정보를 너무 많이 넣지 않는다.
-* 기록이 부족해 하루 흐름을 판단하기 어려운 날에는 무리하게 흐름을 만들지 않는다.
-
-highlight:
-
-* 고른 lens로 그날을 본 관찰을 쓴다. 잘한 점을 칭찬하는 칸이 아니다.
-* 하루의 흐름을 다시 훑지 않는다. 흐름은 summary가 이미 말했다. 여기서는 한 지점이나 한 사실만 파고든다.
-  - 나쁜 예(흐름 반복): "김밥으로 시작해 파스타로 마무리한 하루였어요."
-  - 좋은 예(한 사실): "세 끼 모두 집에서 드신 하루였어요. 요즘 보기 드문 날이네요."
-* 40~65자. summary보다 반드시 짧다.
-* 숫자(시각·점수·개수), 고유명사(가게·메뉴·사람), 사용자가 쓴 표현의 직접 인용 중 최소 하나를 넣는다.
-* title이나 summary에서 이미 쓴 메뉴 이름은 다시 쓰지 않는다. 겹치면 그날의 다른 사실로 바꾼다.
-* 사진에 눈에 띄는 것이 있으면 그것을 근거로 삼아도 좋다. 다만 사진 이야기를 매번 넣을 필요는 없고, 볼 것이 없는 날에는 넣지 않는다.
-* 좋은 관찰은 사용자가 "이걸 봤네" 하고 느끼는 것이다. 평가하지 말고 알아본다.
-* 렌즈별 예시
-  - company: "오랜만에 아버지와 점심을 드셨네요. 국밥집에서 두 시간 가까이 앉아 계셨어요."
-  - rhythm: "점심이 두 시 반, 저녁이 아홉 시였어요. 오늘은 하루가 통째로 밀렸네요."
-  - words: "'입맛이 없다'고 적어 두셨는데, 그래도 저녁은 챙겨 드셨어요."
-  - habit: "다섯 끼를 하나도 빠뜨리지 않고, 사진까지 다섯 장 남기셨어요."
-  - place: "오늘 두 끼를 회사 근처에서 해결하셨네요. 같은 골목만 세 번째예요."
-  - pattern: "사흘째 아침을 거르고 계세요. 점심이 그만큼 든든해지고 있고요."
-  - feeling: "만족도 5점을 준 건 오늘 저녁 하나였어요. 그 한 끼가 하루를 붙잡아 준 셈이네요."
-  - diet: "저녁으로 파스타를 드셨네요. 사진 보니 면이 그릇을 꽉 채우고 있었어요."
-  - diet(사진 근거): "점심 사진에 김밥 옆으로 튀김이 한 접시 같이 놓여 있었네요. 메뉴에는 안 적으셨던 것이고요."
-
-nudge:
-
-* 조언이 아니다. 어떤 종류의 제안, 힌트, 권유도 쓰지 않는다.
-* 음식과 메뉴 이야기를 하지 않는다. 오늘 먹은 것을 다시 언급하지 않는다. 먹은 것이 아니라 기록한 사람을 본다.
-* 사용자에게 직접 말을 거는 짧은 한마디. 25~45자. 네 칸 중 가장 짧다.
-* 오늘의 수고, 하루소감에 대한 반응, 꾸준히 적고 있다는 사실, 내일도 기다린다는 뉘앙스 중에서 고른다.
-* "~해 보세요", "~하면 좋아요", "~어떨까요" 같은 제안형 문장은 쓰지 않는다.
-* 예
-  - "바쁜 날이었을 텐데 다 남기셨네요. 내일 기록도 기다릴게요."
-  - "입맛 없는 날이었는데도 기록은 놓지 않으셨어요. 그거면 충분해요."
-  - "혼자인 날이 이어지네요. 그래도 매번 적어 두시는 게 대단해요."
-
-[금지 주제]
-
-title, summary, highlight, nudge에서 아래 주제는 어떤 표현으로도 다루지 않는다.
-완곡하게 바꾸거나 돌려 말하는 것, 은유로 감싸는 것도 모두 금지한다.
-
-* 채소, 야채, 샐러드를 더 먹으라는 취지의 모든 문장
-* 과일을 곁들이라는 취지의 모든 문장
-* 단백질을 챙기라는 취지의 모든 문장
-* 비타민, 식이섬유, 영양소, 영양 균형, 칼로리를 언급하는 모든 문장
-* 다음 끼니나 내일 무엇을 어떻게 먹으라는 모든 문장
-
-아래는 전부 금지에 해당한다. 이런 식의 변형도 쓰지 않는다.
-
-* "단백질과 채소가 부족합니다"
-* "채소와 과일 섭취를 늘리세요"
-* "채소가 조금 아쉬웠어요"
-* "샐러드 한 접시 곁들이면 좋겠어요"
-* "과일 한 조각 어떠세요"
-* "다음 끼니엔 초록색을 조금 더해 보세요"
-* "영양 균형을 조금만 신경 써 보세요"
-* "내일은 조금 담백하게 가져가도 좋아요"
-* "다음 끼니는 조금 이르게 드셔 보세요"
-
-다만 사용자가 그날 실제로 먹은 채소·과일 메뉴를 사실로 언급하는 것은 허용한다.
-예: 기록에 샐러디가 있을 때 "샐러디로 점심을 챙기셨네요"는 괜찮다.
-허용되는 것은 먹은 것에 대한 서술이며, 더 먹으라는 제안은 어떤 형태로도 허용되지 않는다.
-
-[이어 가는 노력을 알아보기]
-
-위 금지가 강하다고 해서 사용자가 하고 있는 일까지 못 본 척하지는 않는다.
-사용자가 스스로 무언가를 이어 가고 있는 것이 기록에 드러나면 그 노력을 알아봐 준다.
-다만 근거는 짐작이 아니라 기록이어야 한다.
-
-* 근거로 쓸 수 있는 것
-  - 사용자가 코멘트나 하루소감에 직접 쓴 말. "다이어트 중", "줄여 보는 중", "관리 중" 같은 표현
-  - 며칠째 이어지는 행동. 집밥, 도시락, 야식 없는 날 ([최근 흐름]이 받쳐 줄 때)
-* 알아봐 주는 대상은 그것을 이어 가고 있다는 사실이지, 그 식단이 영양적으로 옳다는 판단이 아니다.
-  - 좋은 예: "사흘째 도시락을 싸 오셨네요. 아침에 그만큼 시간을 내신다는 뜻이고요."
-  - 좋은 예: "'이번 주는 줄여 보는 중'이라고 적어 두셨는데, 오늘까지 이어 가셨어요."
-  - 나쁜 예: "채소를 잘 챙기고 계세요." 영양을 칭찬하는 순간 다음 날 치킨이 감점이 된다.
-* 사용자가 쓰지 않은 의도를 짐작해 "식단 조절 중이시군요"라고 단정하지 않는다.
-  기록에 근거가 없으면 이 절은 없는 셈 치고 다른 렌즈로 그날을 본다.
-* 이 관찰은 highlight 에 쓴다. nudge 는 여전히 음식과 메뉴 이야기를 하지 않는다.
-
-[좋은 출력 예시]
-
-{
-"lens": "company",
-"balance": 72,
-"balanceNote": "국밥과 집밥, 한식 위주",
-"title": "국밥 한 그릇에 두 시간",
-"summary": "아침을 건너뛰고 점심에 아버지와 오래 앉아 계셨어요. 저녁은 집에서 가볍게 마무리하셨습니다.",
-"highlight": "만족도 5점을 준 건 오늘 그 점심 하나였어요. 다른 끼니는 3점에서 멈췄고요.",
-"nudge": "이런 날은 오래 남죠. 내일 기록도 기다릴게요."
-}
-
-[분석 대상]
-
-날짜: {{date}} {{weekday}}
-사용자: {{profile}}
-
-[식단 데이터]
-
-{{mealText}}
-
-[슬롯 기록 현황]
-
-{{slotCoverage}}
-
-* "기록 없음"은 실제로 그 끼니를 거른 것일 수도, 기록만 빠진 것일 수도 있으므로 결식으로 단정하지 않는다.
-* 하루 전체에서 기록 없는 끼니가 많으면 흐름을 무리하게 해석하지 않는다.
-* 기록 없는 끼니를 지적하지 않는다.
-
-[최근 흐름]
-
-{{recentTrend}}
-
-* 최근 며칠의 한줄평과 그날 사용한 렌즈다.
-* 여기 적힌 렌즈는 이번에 피한다. 매일 같은 것을 봐 주지 않기 위함이다.
-* pattern 렌즈를 고를 때만 최근 흐름의 내용을 직접 활용한다. 그 외에는 렌즈 회피용으로만 참고한다.
-* 최근 흐름을 요약하거나 지난 리포트를 언급하지 않는다. 오늘 하루가 리포트의 중심이다.
-* 최근 분석 이력이 없으면 이날 기록만 보고 작성한다.
-
-[출력 규칙]
-
-반드시 아래 key를 가진 유효한 JSON 객체 하나만 출력한다.
+아래 형식의 JSON 객체 하나만 출력한다.
 
 {
 "lens": "",
@@ -6501,17 +6357,52 @@ title, summary, highlight, nudge에서 아래 주제는 어떤 표현으로도 �
 "nudge": ""
 }
 
-* JSON 객체 외의 텍스트는 절대 출력하지 않는다.
-* markdown, 코드펜스, 설명문, 주석을 출력하지 않는다.
-* key 이름은 반드시 lens, balance, balanceNote, title, summary, highlight, nudge만 사용한다.
-* key 이름을 한국어로 바꾸지 않는다.
-* 누락되는 key 없이 7개 key를 모두 출력한다.
-* balance는 숫자 정수로, 나머지 여섯 값은 모두 문자열로 출력한다.
-* 모든 문자열 값에는 줄바꿈을 넣지 않는다.
-* 출력하기 전에 title, summary, highlight, nudge를 다시 읽고 [금지 주제]에 걸리는 문장이 있는지 확인한다. 특히 nudge에 제안형 문장이 섞이지 않았는지 본다. 있으면 그날 기록의 다른 사실을 근거로 새로 써서 바꾼 뒤 출력한다.
-* 같은 메뉴나 가게 이름이 title, summary, highlight 중 두 곳 이상에 나오면 highlight를 그날의 다른 사실로 바꾼다.
-* nudge에 음식이나 메뉴 이름이 들어 있으면 지우고 다시 쓴다.
-* summary의 두 번째 문장이 응원, 칭찬, 위로면 사실을 서술하는 문장으로 바꾼다.
+* 객체는 하나만 출력한다. 두 개를 이어 붙이거나 뒤에 다른 텍스트를 덧붙이지 않는다.
+* 코드펜스, 설명문, 주석을 출력하지 않는다.
+* key 이름을 바꾸거나 한국어로 옮기지 않고, 일곱 개를 빠짐없이 채운다.
+* balance는 정수, 나머지 여섯은 문자열. 문자열 값에 줄바꿈을 넣지 않는다.
+
+출력 전에 네 칸을 다시 읽고 확인한다.
+- 네 칸이 같은 소재를 돌고 있으면 highlight를 다른 사실로 바꾼다.
+- [하지 않는 것]에 걸리는 말이 있으면 그 문장을 새로 쓴다.
+- nudge를 어제 리포트에 붙여도 말이 되면 그날의 근거를 딛고 새로 쓴다.
+- lens가 habit이 아닌데 nudge에 "기록", "적다", "남기다"가 들어 있으면 다른 근거로 새로 쓴다.
+
+[분석 대상]
+
+날짜: {{date}} {{weekday}}
+사용자: {{profile}}
+
+프로필은 표현의 결을 맞추는 참고로만 쓴다. 성별·연령대·생활 패턴으로 영양 기준이나 필요 열량을
+단정하지 않고, 프로필을 리포트 본문에 언급하지 않는다.
+
+[식단 데이터]
+
+{{mealText}}
+
+[슬롯 기록 현황]
+
+{{slotCoverage}}
+
+"기록 없음"은 실제로 거른 것일 수도, 기록만 빠진 것일 수도 있으니 결식으로 단정하지 않는다.
+기록 없는 끼니를 지적하지 않는다.
+
+[평소와 비교]
+
+{{recentStats}}
+
+서버가 최근 기록에서 계산한 값이다. 여기 있는 숫자만 쓰고, 여기 없는 숫자는 만들지 않는다.
+"평소"는 이 사용자 자신의 최근 기록이지 일반적인 기준이 아니다. 평소와 다르다는 것이
+잘못했다는 뜻은 아니므로, 차이를 지적이 아니라 관찰로 쓴다.
+
+[최근 흐름]
+
+{{recentTrend}}
+
+최근 며칠의 제목·한마디와 그날 사용한 렌즈다. 사용자는 이미 읽은 것들이다.
+같은 렌즈, 같은 제목 짜임, 같은 소재의 한마디를 반복하지 않는다.
+pattern 렌즈를 고를 때만 내용을 직접 활용하고, 그 외에는 반복 회피용으로만 참고한다.
+지난 리포트를 요약하거나 언급하지 않는다. 오늘 하루가 리포트의 중심이다.
 `;
 /**
  * meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한.
@@ -6533,16 +6424,48 @@ const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
  * 관리자 리포트 상세의 fallbackUsed 배지와 thinking 토큰 수치로 감시할 것.
  */
 const DIET_REPORT_THINKING_BUDGET = 512;
-/** 채점 태스크라 재현성 우선. 표현 다양성은 프롬프트(title·mood 지시)로 확보한다 */
-const DIET_REPORT_TEMPERATURE = 0.35;
+/**
+ * 한때 "채점 태스크라 재현성 우선"으로 0.35였으나, score 는 이제 모델이 내지 않는다
+ * (화면 점수는 기록 충실도로 클라이언트가 계산). 채점이 빠진 뒤로는 낮은 온도가
+ * 재현성이 아니라 상투어 고착으로만 작동했다 — 실측(8/16~18, 51건)에서 nudge 의 96%가
+ * "기록"을 언급했고 65%가 "기록 칭찬 + 내일 인사" 한 형태로 수렴했다.
+ * 표현 다양성이 이 리포트의 값어치이므로 온도를 올린다. 사실 왜곡은 프롬프트의
+ * 근거 강제와 [상투 표현 금지]로 막는다.
+ *
+ * 0.7 과 0.85 를 같은 입력 8건으로 비교했다(2026-08-19, 8/18 기록, 사진 제외).
+ * 렌즈 다양성은 5개 대 6개로 비슷했으나 규칙 위반은 5건 대 7건이었고, 0.85 는 기록 입력
+ * 시간을 실제 식사 시간으로 읽는 오독이 눈에 띄었다. 다양성의 이득이 얇아지는 지점이라 0.7.
+ */
+const DIET_REPORT_TEMPERATURE = 0.7;
 /** {{recentTrend}} 에 실을 직전 리포트 일수 */
 const DIET_REPORT_TREND_DAYS = 7;
+/**
+ * {{recentStats}} 의 "평소"를 만들 기간. 7일이면 요일 편향이 그대로 남고(주말 두 번뿐),
+ * 30일이면 오래전 습관이 지금의 평소로 섞인다. 기록이 매일 있지는 않다는 점까지 감안해 14일.
+ */
+const DIET_REPORT_STATS_DAYS = 14;
+/** 이보다 적게 쌓였으면 "평소"라고 부를 수 없다 — 블록을 아예 내보내지 않는다 */
+const DIET_REPORT_STATS_MIN_MEALS = 15;
+/** 끼니 시각 편차가 이보다 크면 그 슬롯엔 평소 시각이라 할 게 없다(분) */
+const DIET_REPORT_STATS_TIME_SD_MAX = 90;
+/** 하루 끼니 시각이 이 폭 안에 다 들어오면 식사 시각이 아니라 몰아 적은 입력 시각으로 본다(분) */
+const DIET_REPORT_STATS_CLUSTER_RANGE = 90;
 /**
  * 관찰 렌즈 — 매일 같은 축으로 봐 주면 "봐주는 느낌"이 사라지므로 그날 데이터가
  * 받쳐 주는 렌즈를 골라 쓰게 하고, 최근에 쓴 렌즈는 {{recentTrend}} 로 되먹여 회피시킨다.
  * 프롬프트 [관찰 렌즈] 목록과 반드시 일치시킬 것.
  */
-const DIET_REPORT_LENSES = ['diet', 'company', 'place', 'rhythm', 'feeling', 'words', 'habit', 'pattern'];
+const DIET_REPORT_LENSES = [
+  'compare',
+  'diet',
+  'company',
+  'place',
+  'rhythm',
+  'feeling',
+  'words',
+  'habit',
+  'pattern'
+];
 
 /** 응답의 lens 값 정규화. 목록에 없으면 null */
 function normalizeDietLens(raw) {
@@ -6674,7 +6597,7 @@ const DIET_PROMPT_MIN_STATIC_CHARS = 500;
  */
 function splitDietPromptForCaching(ctx, promptTemplate) {
   const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
-  const idx = tpl.search(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend)\}\}/);
+  const idx = tpl.search(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend|recentStats)\}\}/);
   if (idx < DIET_PROMPT_MIN_STATIC_CHARS) {
     return { staticPart: '', variablePart: buildDietReportPromptText(ctx, tpl) };
   }
@@ -6692,7 +6615,7 @@ function splitDietPromptForCaching(ctx, promptTemplate) {
 /**
  * 프롬프트 치환. 사용자 텍스트에 `$&` 같은 시퀀스가 있어도 깨지지 않도록 함수 replacer를 쓴다.
  * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
- *          slotCoverage?:string, recentTrend?:string}} ctx
+ *          slotCoverage?:string, recentTrend?:string, recentStats?:string}} ctx
  */
 function buildDietReportPromptText(ctx, promptTemplate) {
   const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
@@ -6702,9 +6625,11 @@ function buildDietReportPromptText(ctx, promptTemplate) {
     mealText: ctx?.mealText || '(텍스트 기록 없음 — 사진 위주로 판단)',
     profile: ctx?.profile || '(프로필 정보 없음)',
     slotCoverage: ctx?.slotCoverage || '(정보 없음)',
-    recentTrend: ctx?.recentTrend || '(최근 분석 이력 없음 — 이날만 보고 평가)'
+    recentTrend: ctx?.recentTrend || '(최근 분석 이력 없음 — 이날만 보고 평가)',
+    // 기록이 얕으면 비교할 평소가 없다. 없는 걸 있는 척하지 말고 그렇다고 알린다.
+    recentStats: ctx?.recentStats || '(비교할 만큼 쌓인 기록이 없음 — 오늘 기록만으로 쓴다)'
   };
-  return tpl.replace(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend)\}\}/g, (_, key) => values[key]);
+  return tpl.replace(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend|recentStats)\}\}/g, (_, key) => values[key]);
 }
 
 /** aiDietReports 문서에 완료된 분석(자동·수동)이 있는지 */
@@ -6912,38 +6837,204 @@ function parseDietReportResponseJson(text) {
 }
 
 /**
- * 직전 DIET_REPORT_TREND_DAYS일의 리포트 요약 — 문서 id가 {uid}_{date}라 getAll로 바로 집는다.
- * (색인·쿼리 불필요. 없는 날짜는 그냥 빠진다)
+ * 직전 DIET_REPORT_STATS_DAYS일의 리포트 문서를 한 번에 읽어 두 가지를 만든다.
+ * - trendBlock: 최근 DIET_REPORT_TREND_DAYS일의 제목·한마디·렌즈 (반복 회피용)
+ * - pastMeals:  최근 전체 기간의 끼니 스냅샷 (평소를 계산할 재료)
+ *
+ * 문서 id가 {uid}_{date}라 getAll로 바로 집는다(색인·쿼리 불필요, 없는 날짜는 빠진다).
+ * 두 블록이 같은 문서를 보므로 읽기는 한 번으로 끝낸다 — 따로 읽으면 21건이 된다.
  */
-async function buildDietRecentTrendBlock(uid, dateStr) {
+async function buildDietRecentContext(uid, dateStr) {
   try {
     const refs = [];
-    for (let i = 1; i <= DIET_REPORT_TREND_DAYS; i += 1) {
+    for (let i = 1; i <= DIET_REPORT_STATS_DAYS; i += 1) {
       const d = adminYmdAddDays(dateStr, -i);
       refs.push(db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, d)}`));
     }
     const snaps = await db.getAll(...refs);
     const lines = [];
+    const pastMeals = [];
     for (const snap of snaps) {
       if (!snap.exists) continue;
       const data = snap.data() || {};
       if (data.status !== 'ready') continue;
+      const day = String(data.date || snap.id.split('_').pop() || '');
+      for (const m of Array.isArray(data.inputMeals) ? data.inputMeals : []) {
+        pastMeals.push({ ...m, date: day });
+      }
+      // 제목·한마디는 최근 며칠만 되먹인다. 그보다 오래된 건 사용자도 기억하지 않는다.
+      if (lines.length >= DIET_REPORT_TREND_DAYS) continue;
       const parsed = parseDietReportResponseJson(data.responseText);
       if (!parsed) continue;
       const gist = String(parsed.title || parsed.summary || '').replace(/\s+/g, ' ').trim();
-      const day = String(data.date || snap.id.split('_').pop() || '');
       // 렌즈를 함께 실어야 모델이 "최근에 쓴 축"을 피할 수 있다. 이게 회전의 실질 장치다.
       const lens = normalizeDietLens(data.lens) || normalizeDietLens(parsed.lens);
       const lensTxt = lens ? ` · 렌즈: ${lens}` : '';
-      lines.push(`- ${day} ${dietWeekdayLabel(day)}${lensTxt}${gist ? ` · ${gist.slice(0, 60)}` : ''}`);
+      // nudge 원문까지 실어야 한마디의 반복을 모델이 볼 수 있다. 렌즈만 되먹이면 highlight 만
+      // 회전하고 nudge 는 "기록 칭찬 + 내일 인사"로 고착된다(8/16~18 실측 96%).
+      const nudge = String(parsed.nudge || '').replace(/\s+/g, ' ').trim();
+      const nudgeTxt = nudge ? ` · 한마디: "${nudge.slice(0, 50)}"` : '';
+      lines.push(
+        `- ${day} ${dietWeekdayLabel(day)}${lensTxt}${gist ? ` · ${gist.slice(0, 60)}` : ''}${nudgeTxt}`
+      );
     }
     // 오래된 날짜가 위로 오도록(문서 순서는 최근 → 과거)
     lines.reverse();
-    return lines.join('\n');
+    return { trendBlock: lines.join('\n'), pastMeals };
   } catch (e) {
-    logger.warn('buildDietRecentTrendBlock failed', { uid, dateStr, errMsg: e?.message });
-    return '';
+    logger.warn('buildDietRecentContext failed', { uid, dateStr, errMsg: e?.message });
+    return { trendBlock: '', pastMeals: [] };
   }
+}
+
+/**
+ * detailText 한 덩이에서 집계에 쓸 값만 뽑는다.
+ * (formatMealsForDietPrompt 가 만든 형식이라 라벨이 고정이다)
+ */
+function parseDietMealDetail(detailText) {
+  const s = String(detailText || '');
+  const pick = (label) => {
+    const m = s.match(new RegExp(`${label}: *(.+)`));
+    return m ? m[1].trim() : '';
+  };
+  return { menu: pick('메뉴'), place: pick('장소'), withWho: pick('함께') };
+}
+
+/** "HH:MM" → 분. 실패하면 null */
+function dietTimeToMinutes(t) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 분 → "HH:MM" */
+function dietMinutesToTime(v) {
+  const h = Math.floor(v / 60);
+  const mm = Math.round(v % 60);
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/** 메뉴 문자열에서 비교용 토큰. 2글자 미만은 버린다(조각 매칭 방지) */
+function dietMenuTokens(menu) {
+  return String(menu || '')
+    .split(/[,·/]/)
+    .map((s) => s.trim())
+    // 사용자는 메뉴 칸에 수량과 메모를 함께 적는다("반숙란2개", "물만두5", "맘모스 사진에서1").
+    // 그대로 토큰으로 쓰면 매일 새 토큰이 생겨 "오늘 처음 나온 것"이 늘 참이 된다 —
+    // 신호가 아니라 노이즈다. 괄호와 수량을 떼고, 한글이 남은 짧은 덩이만 인정한다.
+    // (한글 조건이 없으면 몸무게 "43.9kg" 이 ". kg" 라는 토큰으로 살아남는다)
+    .map((s) =>
+      s
+        .replace(/[()[\]{}]/g, ' ')
+        .replace(/[0-9]+(\.[0-9]+)?\s*(개|봉|쪽|잔|병|인분|kg|g|ml|cc)?/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter((s) => s.length <= 8 && (s.match(/ /g) || []).length <= 1 && /[가-힣]{2,}/.test(s));
+}
+
+/**
+ * "평소와 오늘" 비교 블록.
+ *
+ * 하루치만 보면 모델은 사용자가 이미 아는 것을 요약하는 수밖에 없다 — 그날 안에는 비교 대상이
+ * 없기 때문이다. 실측 기준선(2026-08-19)에서 네 칸이 전부 같은 축을 돌던 것도 이 때문이었다.
+ * 그래서 비교 가능한 사실을 서버가 미리 계산해 넣는다. 모델은 문장만 만들고 숫자는 만들지 않는다.
+ *
+ * 재료 편중도 여기서 교정된다: 실측 652끼니에서 만족도·포만감·시간은 기록률 100%인데
+ * feeling 렌즈는 2%만 뽑혔고, 기록률 5%인 코멘트를 쓰는 words 렌즈가 12% 뽑혔다.
+ */
+function formatDietRecentStatsBlock(pastMeals, todayMeals) {
+  const past = Array.isArray(pastMeals) ? pastMeals : [];
+  const today = Array.isArray(todayMeals) ? todayMeals : [];
+
+  // 서로 다른 슬롯인데 시각이 한 덩이로 모여 있으면 그건 식사 시각이 아니라 몰아 적은 입력 시각이다.
+  // 프롬프트에 "그런 날은 시간을 근거로 쓰지 말라"고 적어 두는 것만으로는 막히지 않았다 —
+  // 검증에서 네 끼가 모두 19:34인 날의 리포트가 title·summary·highlight 전부 그 얘기만 했다.
+  // 이 판정은 오늘 기록만 있으면 되므로 "평소"가 없는 사용자에게도 내보낸다.
+  const todayTimes = today.map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
+  const clustered =
+    todayTimes.length >= 3 &&
+    new Set(today.map((m) => m.slotLabel)).size >= 2 &&
+    Math.max(...todayTimes) - Math.min(...todayTimes) <= DIET_REPORT_STATS_CLUSTER_RANGE;
+  const lines = clustered
+    ? [
+        '* 오늘은 끼니 시각이 한 덩이로 몰려 있다. 실제 식사 시각이 아니라 나중에 몰아서 적은 입력 시각이므로,',
+        '  시간을 근거로 삼지 말고 시각이 몰려 있다는 사실 자체도 리포트에 쓰지 않는다.'
+      ]
+    : [];
+  if (past.length < DIET_REPORT_STATS_MIN_MEALS) return lines.join('\n');
+
+  const pastDays = new Set(past.map((m) => m.date).filter(Boolean)).size;
+  const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const fmt = (v) => (Math.round(v * 10) / 10).toFixed(1);
+  /**
+   * 점수 필드 추출. null 을 Number() 에 넣으면 0 이 되고 Number.isFinite(0) 은 true 라,
+   * 미기록 끼니가 0점으로 평균에 섞인다. 검증에서 "만족도 평소 0.0점"이 나온 원인이었다.
+   */
+  const scores = (arr, key) =>
+    arr.map((m) => (m?.[key] == null ? NaN : Number(m[key]))).filter((v) => Number.isFinite(v) && v > 0);
+
+  lines.push(`* 최근 ${pastDays}일 ${past.length}끼가 쌓여 있고, 오늘은 ${today.length}끼다.`);
+  const perDay = past.length / Math.max(1, pastDays);
+  if (Math.abs(today.length - perDay) >= 1.5) {
+    lines.push(`* 하루 끼니 수 평소 ${fmt(perDay)}끼 · 오늘 ${today.length}끼`);
+  }
+
+  // 만족도 — 유일하게 100% 있는 숫자 재료
+  const pr = scores(past, 'rating');
+  const tr = scores(today, 'rating');
+  if (pr.length >= 5 && tr.length) {
+    lines.push(`* 만족도 평소 ${fmt(avg(pr))}점 · 오늘 ${fmt(avg(tr))}점`);
+  }
+  const ps = scores(past, 'satiety');
+  const ts = scores(today, 'satiety');
+  if (ps.length >= 5 && ts.length && Math.abs(avg(ts) - avg(ps)) >= 0.5) {
+    lines.push(`* 포만감 평소 ${fmt(avg(ps))}점 · 오늘 ${fmt(avg(ts))}점`);
+  }
+
+  // 끼니 시각 — 평소 시각에서 얼마나 밀렸는지. 편차가 큰 슬롯은 애초에 "평소"가 없으므로 뺀다.
+  for (const slot of clustered ? [] : ['아침', '점심', '저녁']) {
+    const pt = past.filter((m) => m.slotLabel === slot).map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
+    const tt = today.filter((m) => m.slotLabel === slot).map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
+    if (pt.length < 4 || !tt.length) continue;
+    const mean = avg(pt);
+    const sd = Math.sqrt(avg(pt.map((v) => (v - mean) ** 2)));
+    if (sd > DIET_REPORT_STATS_TIME_SD_MAX) continue;
+    const diff = Math.round(avg(tt) - mean);
+    if (Math.abs(diff) < 45) continue;
+    lines.push(
+      `* ${slot} 평소 ${dietMinutesToTime(mean)} · 오늘 ${dietMinutesToTime(avg(tt))} (${diff > 0 ? '+' : ''}${diff}분)`
+    );
+  }
+
+  // 혼자 / 함께 — 기록률이 낮아(실측 13%) 양쪽이 다 모일 때만 말이 된다
+  const withRating = past.filter((m) => m.rating != null && Number(m.rating) > 0 && parseDietMealDetail(m.detailText).withWho);
+  const alone = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho === '혼자').map((m) => Number(m.rating));
+  const together = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho !== '혼자').map((m) => Number(m.rating));
+  if (alone.length >= 5 && together.length >= 5 && Math.abs(avg(together) - avg(alone)) >= 0.3) {
+    lines.push(`* 만족도 혼자 ${fmt(avg(alone))}점 · 함께 ${fmt(avg(together))}점`);
+  }
+
+  // 반복 메뉴와 오늘 처음 보는 메뉴 — "몇 번째인지"는 사용자가 세고 있지 않은 사실이다
+  const pastTokens = new Map();
+  past.forEach((m) => {
+    dietMenuTokens(parseDietMealDetail(m.detailText).menu).forEach((t) => pastTokens.set(t, (pastTokens.get(t) || 0) + 1));
+  });
+  const todayTokens = [...new Set(today.flatMap((m) => dietMenuTokens(parseDietMealDetail(m.detailText).menu)))];
+  const repeated = todayTokens
+    .map((t) => [t, pastTokens.get(t) || 0])
+    .filter(([, c]) => c >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  if (repeated.length) {
+    lines.push(`* 오늘 메뉴 중 최근에도 나온 것: ${repeated.map(([t, c]) => `${t} ${c}회`).join(' · ')}`);
+  }
+  const fresh = todayTokens.filter((t) => !pastTokens.has(t)).slice(0, 4);
+  if (fresh.length && pastDays >= 5) {
+    lines.push(`* 최근 ${pastDays}일 동안 없다가 오늘 처음 나온 것: ${fresh.join(' · ')}`);
+  }
+
+  return lines.join('\n');
 }
 
 // -------------------------------------------------------------------------
@@ -6980,7 +7071,17 @@ const DIET_POLICY_NUDGE_RE = /곁들|더하|더해|추가|챙기|챙겨|드셔|�
  * "내일 기록도 기다릴게요" 같은 관계적 표현은 걸리지 않도록 어미를 좁게 잡는다.
  */
 const DIET_POLICY_ADVICE_RE =
-  /보세요|보시는 것도|보셔도|어떨까요|어때요|하면 좋|해도 좋|가져가도|가져가|추천|권해|드셔 ?보|챙겨 ?보/;
+  /보세요|보시는 것도|보셔도|보아요|봐요|어떨까요|어때요|하면 좋|해도 좋|가져가도|가져가|추천|권해|드셔 ?보|챙겨 ?보/;
+
+/**
+ * nudge 에서 기록 행위를 칭찬하는 말.
+ *
+ * "기록을 남기셨네요"는 매일 참이라 매일 같은 한마디가 된다. 실측(8/16~18)에서 nudge 의 96%가
+ * 여기 걸렸다. 프롬프트로 세 번 막아 봤지만(축 5종 제시 → 한 줄 금지 → 예시 복원) 매번 새어
+ * 나왔고, 재작성 지시를 붙인 재생성은 실제로 들었다. 그래서 프롬프트가 아니라 여기서 막는다.
+ * lens 가 habit 인 날은 기록 행위가 그날의 관찰 축이므로 예외다.
+ */
+const DIET_NUDGE_RECORD_RE = /기록|적어|적으|남기|남겨/;
 
 /** 위반 필드명 배열. 없으면 빈 배열 */
 function detectDietPolicyViolation(responseText) {
@@ -6997,12 +7098,39 @@ function detectDietPolicyViolation(responseText) {
       hits.push(field);
       continue;
     }
+    // habit 인 날 말고는 기록 칭찬도 위반이다 — 매일 참인 말이라 한마디가 매일 같아진다.
+    if (field === 'nudge' && normalizeDietLens(parsed.lens) !== 'habit' && DIET_NUDGE_RECORD_RE.test(v)) {
+      hits.push(field);
+      continue;
+    }
     if (!DIET_POLICY_NUTRIENT_RE.test(v)) continue;
     const suggestive =
       DIET_POLICY_STRONG_RE.test(v) || (field === 'nudge' && DIET_POLICY_NUDGE_RE.test(v));
     if (suggestive) hits.push(field);
   }
   return hits;
+}
+
+/**
+ * 상투 표현 — 프롬프트 [상투 표현 금지] 가 실제로 먹히는지 보는 눈이다.
+ * 금지 주제와 달리 재생성시키지 않는다: 위험한 게 아니라 지루한 것이고,
+ * 개정 직전 실측(8/16~18, 51건)에서 "바쁜 하루" 39% · "꼼꼼하게" 33% 였으므로
+ * 전부 재호출하면 호출이 1.4배가 된다. 문서에 남겨 추이를 보고, 온도 인상과
+ * 프롬프트로도 줄지 않는 항목만 나중에 재생성 가드로 승격한다.
+ */
+const DIET_CLICHE_RES = [
+  ['바쁜하루', /바쁜 (하루|날|와중|아침|저녁|월요일|한 주)/],
+  ['기록칭찬', /꼼꼼|빠짐없이|잊지 않|놓지 않|꾸준함이 돋보|성실함/],
+  ['앱이름', /밀로그/],
+  ['하루뭉뚱', /(특별한|알찬|든든한|다채로운|즐거운|소중한) 하루/]
+];
+
+/** 걸린 라벨 배열. 없으면 빈 배열 */
+function detectDietClicheHits(responseText) {
+  const parsed = parseDietReportResponseJson(responseText);
+  if (!parsed) return [];
+  const text = DIET_POLICY_FIELDS.map((f) => (typeof parsed[f] === 'string' ? parsed[f] : '')).join(' ');
+  return DIET_CLICHE_RES.filter(([, re]) => re.test(text)).map(([label]) => label);
 }
 
 /** 재생성 시 프롬프트 뒤에 덧붙일 교정 지시 */
@@ -7023,8 +7151,10 @@ function buildDietPolicyCorrection(violatedFields) {
     lines.push(
       'nudge 는 조언 필드가 아니다. "~해 보세요", "~하면 좋아요", "~어떨까요" 같은 제안형 문장과',
       '다음 끼니·내일의 식사를 어떻게 하라는 말은 어떤 형태로도 쓸 수 없다.',
-      'nudge 는 사용자를 알아봐 주는 한마디로만 쓴다 — 오늘의 수고를 알아주는 말, 남긴 코멘트에 대한 반응,',
-      '꾸준히 적고 있다는 사실을 짚어 주는 말, 내일 기록을 기다린다는 뉘앙스.'
+      '"기록", "적다", "남기다"로 사용자를 칭찬하는 문장도 쓸 수 없다. 기록을 남긴 것은 어느 날에나',
+      '참이라 그 말을 쓰는 순간 오늘의 한마디가 아니게 된다.',
+      'nudge 는 그날에만 있는 근거를 딛고 쓴다 — 사용자가 남긴 말에 대한 대꾸, 그날 상태를 짚어 주는 말,',
+      '며칠째 이어 가고 있는 것에 대한 인정, 하루소감의 감정에 대한 공감 중 하나를 고른다.'
     );
   }
   lines.push(
@@ -7063,7 +7193,7 @@ function normalizeDietReportResponseText(text) {
 /**
  * Gemini 멀티모달 호출.
  * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
- *          slotCoverage?:string, recentTrend?:string}} ctx 프롬프트 치환 컨텍스트
+ *          slotCoverage?:string, recentTrend?:string, recentStats?:string}} ctx 프롬프트 치환 컨텍스트
  * @param {Array<{inlineData:{mimeType:string,data:string}, caption:string}>} imageParts
  * @returns {Promise<{responseText:string, tokenUsage:object|null, model:string,
  *                    sentImageCount:number, fallbackUsed:string|null,
@@ -7246,10 +7376,12 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
   }
 
   const mealText = formatMealsForDietPrompt(analyzable) + dailyJournalBlock;
-  const [profileBlock, recentTrendBlock] = await Promise.all([
+  const [profileBlock, recentContext] = await Promise.all([
     buildDietProfileBlock(uid),
-    buildDietRecentTrendBlock(uid, dateStr)
+    buildDietRecentContext(uid, dateStr)
   ]);
+  const recentTrendBlock = recentContext.trendBlock;
+  const recentStatsBlock = formatDietRecentStatsBlock(recentContext.pastMeals, inputMealsForAnalysis);
   const slotCoverageBlock = formatDietSlotCoverage(analyzable);
   const promptCtx = {
     date: dateStr,
@@ -7257,7 +7389,8 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
     mealText,
     profile: profileBlock,
     slotCoverage: slotCoverageBlock,
-    recentTrend: recentTrendBlock
+    recentTrend: recentTrendBlock,
+    recentStats: recentStatsBlock
   };
   const inputSnapshot = {
     inputMealText: String(mealText || '').slice(0, 12000),
@@ -7277,6 +7410,7 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
     promptVersion: config.promptVersion,
     hasProfileContext: !!profileBlock,
     hasRecentTrendContext: !!recentTrendBlock,
+    hasRecentStatsContext: !!recentStatsBlock,
     trigger,
     generatedAt: FieldValue.serverTimestamp(),
     ...inputSnapshot
@@ -7311,6 +7445,11 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         // 재생성으로도 못 막은 금지 주제 — 프롬프트를 손봐야 한다는 신호
         policyViolation: policyViolation && policyViolation.length ? policyViolation : FieldValue.delete(),
         policyRetried: policyRetried === true ? true : FieldValue.delete(),
+        // 재생성은 시키지 않고 계측만 한다. 이 값이 안 줄면 프롬프트가 아니라 가드로 막아야 한다.
+        clicheHits: (() => {
+          const h = detectDietClicheHits(responseText);
+          return h.length ? h : FieldValue.delete();
+        })(),
         score: FieldValue.delete(),
         summary: FieldValue.delete(),
         goodPoint: FieldValue.delete(),
@@ -7335,6 +7474,7 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         fallbackUsed: FieldValue.delete(),
         policyViolation: FieldValue.delete(),
         policyRetried: FieldValue.delete(),
+        clicheHits: FieldValue.delete(),
         modelVersion: GEMINI_MEALDANG_MODEL,
         errorMessage: String(e?.message || e).slice(0, 500),
         historyOf: FieldValue.delete(),

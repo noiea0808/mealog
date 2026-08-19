@@ -100,7 +100,8 @@ function aggregateUsageRows(rows) {
         fallbackTextOnly: 0,
         fallbackNoThinking: 0,
         policyRetried: 0,
-        policyViolation: 0
+        policyViolation: 0,
+        cliche: 0
     };
     const lensMap = new Map();
 
@@ -136,6 +137,8 @@ function aggregateUsageRows(rows) {
 
             if (data.policyRetried === true) health.policyRetried += 1;
             if (Array.isArray(data.policyViolation) && data.policyViolation.length) health.policyViolation += 1;
+            // 재생성 없이 계측만 하는 값이라, 줄고 있는지는 여기 숫자로만 보인다
+            if (Array.isArray(data.clicheHits) && data.clicheHits.length) health.cliche += 1;
 
             const lens = String(data.lens || '').trim() || '(없음)';
             lensMap.set(lens, (lensMap.get(lens) || 0) + 1);
@@ -220,6 +223,7 @@ function renderUsageStatsPanel(stats) {
     if (health.fallbackNoThinking) flags.push(`thinking 없이 재시도 ${health.fallbackNoThinking}건`);
     if (health.policyRetried) flags.push(`금지 주제 재생성 ${health.policyRetried}건`);
     if (health.policyViolation) flags.push(`금지 주제 잔존 ${health.policyViolation}건`);
+    if (health.cliche) flags.push(`상투 표현 ${health.cliche}건`);
     const flagLine = flags.length
         ? `<p class="text-[11px] text-amber-700 tabular-nums leading-snug whitespace-normal mt-1">
                 <span class="font-black">주의</span> ${escapeHtml(flags.join(' · '))}
@@ -279,6 +283,7 @@ function fallbackNote(data) {
 
 /** 키 목록은 functions/index.js DIET_REPORT_LENSES · 프롬프트 [관찰 렌즈] 와 일치시킬 것 */
 const LENS_LABELS_KR = {
+    compare: '평소와 비교',
     diet: '식단 구성',
     company: '함께한 사람',
     place: '장소',
@@ -315,6 +320,16 @@ function policyBadge(data) {
     return '<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">금지 주제 없음</span>';
 }
 
+/**
+ * 상투 표현 계측. 위반이 아니라 지루함의 신호라 재생성시키지 않고 표시만 한다.
+ * 이 배지가 계속 뜨면 프롬프트 [상투 표현 금지] 로는 부족하다는 뜻이다.
+ */
+function clicheBadge(data) {
+    const hits = Array.isArray(data?.clicheHits) ? data.clicheHits.filter(Boolean) : [];
+    if (!hits.length) return '';
+    return `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[11px] font-bold" title="반복되는 상투 표현이 감지됐습니다(재생성하지 않고 계측만 합니다)">상투 표현 · ${escapeHtml(hits.join(', '))}</span>`;
+}
+
 /** 프롬프트에 실제로 실린 부가 컨텍스트 */
 function contextBadges(data) {
     const on = (label) =>
@@ -325,8 +340,11 @@ function contextBadges(data) {
         lensBadge(data),
         data?.hasProfileContext === true ? on('프로필') : off('프로필 없음'),
         data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음'),
-        policyBadge(data)
-    ];
+        // 이 배지가 꺼져 있으면 리포트는 그날 요약밖에 할 수 없다 — 지루함의 첫 번째 용의자다
+        data?.hasRecentStatsContext === true ? on('평소와 비교') : off('평소와 비교 없음'),
+        policyBadge(data),
+        clicheBadge(data)
+    ].filter(Boolean);
     return `<div class="flex flex-wrap gap-1">${bits.join('')}</div>`;
 }
 
