@@ -353,6 +353,7 @@ function renderInputMealsSection(data) {
     const mealText = typeof data?.inputMealText === 'string' ? data.inputMealText.trim() : '';
     const dailyJournalComment =
         typeof data?.inputDailyJournalComment === 'string' ? data.inputDailyJournalComment.trim() : '';
+    const recentStats = typeof data?.inputRecentStats === 'string' ? data.inputRecentStats.trim() : '';
 
     if (!meals.length && !mealText && !dailyJournalComment) {
         return `
@@ -402,6 +403,14 @@ function renderInputMealsSection(data) {
            </div>`
         : '';
 
+    // 리포트 문장이 이상할 때 모델 탓인지 계산 탓인지 여기서 갈린다 — 접지 않고 펼쳐 둔다.
+    const statsBlock = recentStats
+        ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
+                <p class="text-[11px] font-black text-emerald-800 mb-1">평소와 비교 (서버 계산값)</p>
+                <pre class="whitespace-pre-wrap break-words text-[11px] text-slate-700 leading-snug m-0 font-sans">${escapeHtml(recentStats)}</pre>
+           </div>`
+        : '';
+
     const promptBlock = mealText
         ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
                 <summary class="cursor-pointer select-none px-2 py-1 text-[11px] font-bold text-slate-600">Gemini 전송 텍스트 블록</summary>
@@ -409,7 +418,7 @@ function renderInputMealsSection(data) {
            </details>`
         : '';
 
-    return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${promptBlock}</div>`;
+    return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${statsBlock}${promptBlock}</div>`;
 }
 
 function renderListInitial() {

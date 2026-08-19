@@ -6281,14 +6281,29 @@ const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그�
 
 칸마다 보는 것이 다르다. 같은 이야기를 네 번 고쳐 말하면 리포트가 아니라 메아리가 된다.
 
-* title — 12~18자. 그날의 한 장면 하나. 하루를 요약하지 않는다.
-  마지막 어절이 "하루"나 "날"이면 그건 제목이 아니라 요약이니 다시 쓴다.
-  [최근 흐름]의 제목과 같은 짜임을 반복하지 않는다.
-* summary — 2문장 55~80자. 끼니에서 끼니로 이어지는 시간 흐름. 사실만 쓴다.
+* title — 12~18자. 화면에서 가장 먼저, 때로는 유일하게 읽히는 자리다. 무난하면 아무도 읽지 않는다.
+  하루를 요약하지 말고 그날에만 있던 구체적인 것 하나를 집는다 — 메뉴 이름, 가게 이름,
+  함께한 사람 이름, 사용자가 쓴 말. 고유명사가 들어가면 대개 제목이 산다.
+  아래 방식 중 하나를 골라 쓰되, [최근 흐름]의 제목과 같은 방식은 피한다.
+  - 낙차: 하루의 양 끝을 붙인다. "샐러디로 시작, 케이크로 끝"
+  - 인용: 사용자가 쓴 말을 그대로 쓴다. "'한판 말고 반판'이라니"
+  - 선언: 툭 던지고 끝낸다. "치킨은 계획에 없었다"
+  - 명명: 그날에 이름을 붙인다. "야식 없는 날 사흘째"
+  - 장면: 한 장면만 클로즈업한다. "접시 절반은 오이였다"
+  예시는 방식을 보이는 것이지 문형이 아니다. 예시의 표현을 그대로 가져다 메뉴 이름만 바꾸지 않는다.
+  아래는 제목이 아니라 설명이다. 쓰지 않는다.
+  - "~한 하루", "~한 날", "~한 식사", "~한 한 끼"로 끝나는 것
+  - "가족과 함께한 저녁", "집에서 만난 주말의 맛"처럼 그날이 아닌 어느 날에 갖다 붙여도 말이 되는 것
+  - "즐거운", "든든한", "다양한", "특별한", "따뜻한" 같은 형용사로 감싸 뭉뚱그리는 것
+  쓰고 나서 어제 리포트에 붙여 본다. 그래도 말이 되면 그날의 제목이 아니니 다시 쓴다.
+  18자를 넘으면 넘긴 채로 내보내지 않는다. 반드시 줄여서 18자 안에 넣는다.
+* summary — 2문장 55~80자. 끼니에서 끼니로 이어지는 순서. 사실만 쓴다.
+  순서를 보이되 끼니 사이에 몇 시간이 흘렀는지는 쓰지 않는다.
   응원·위로·칭찬은 여기 쓰지 않는다.
 * highlight — 40~65자. 위 [무엇을 말할 것인가]에서 고른 것 하나만 파고든다.
   흐름은 summary가 이미 말했으니 다시 훑지 않는다.
-  숫자, 고유명사(가게·메뉴·사람), 사용자가 쓴 표현의 인용 중 최소 하나를 넣는다.
+  구체적인 것 하나는 반드시 넣는다 — 고유명사(가게·메뉴·사람), 끼니 수, 며칠째인지,
+  사용자가 쓴 표현의 인용 중에서 고른다. 만족도·포만감 점수는 여기 해당하지 않는다.
 * nudge — 25~45자. 먹은 것이 아니라 사람을 본다. 음식과 메뉴는 쓰지 않는다.
   "기록", "적다", "남기다"로 사용자를 칭찬하지 않는다. 기록을 남긴 건 매일 참이라 칭찬거리가
   되지 못하고, 실제로 이 말이 리포트를 가장 많이 망쳐 왔다. lens가 habit인 날에만 쓴다.
@@ -6301,11 +6316,14 @@ const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그�
   어제 리포트에 그대로 붙여도 말이 되면 근거가 없는 것이니 다시 쓴다.
 
 lens — 화면에 나오지 않는 값. 오늘 무엇으로 봤는지 아래에서 하나 골라 영문 키 그대로 쓴다.
-compare(평소와의 차이) · diet(무엇을) · company(누구와) · place(어디서) · rhythm(언제) ·
-feeling(만족도·포만감) · words(사용자가 쓴 말) · habit(기록 행위) · pattern(며칠째 이어지는 흐름)
+compare(평소와의 차이) · diet(무엇을) · company(누구와) · place(어디서) ·
+rhythm(끼니 구성 — 세 끼를 채웠는지, 사이 간식이 몇 번인지) · feeling(만족도·포만감) ·
+words(사용자가 쓴 말) · habit(기록 행위) · pattern(며칠째 이어지는 흐름)
 데이터가 받쳐 주지 않는 렌즈는 고르지 않는다. [최근 흐름]에 있는 렌즈는 피한다.
-시각은 어느 끼니에나 붙어 있어 rhythm 은 언제든 고를 수 있다. 그래서 매일 rhythm 이 되기 쉽다.
-시간이 그날의 이야기인 날에만 rhythm 을 고르고, 그 전에 다른 렌즈가 받쳐 주는지 먼저 본다.
+
+rhythm 은 시각을 보는 렌즈가 아니라 하루의 짜임을 보는 렌즈다. 아침·점심·저녁 중 무엇을 채우고
+무엇을 건너뛰었는지, 그 사이에 간식이 몇 번 들어왔는지를 본다. [평소와 비교]의 '오늘 끼니 구성'과
+'세 끼를 다 기록한 날'이 그 재료다. 몇 시에 먹었는지는 rhythm 의 소재가 아니다.
 
 balance / balanceNote — 그날 구성이 한쪽으로 치우쳤는지 0~100 정수와 20자 내외의 사실 서술.
 치우침의 정도이지 특정 음식이 나쁘다는 판단이 아니다. 판단할 근거가 부족하면 낮게 주지 말고 50을 준다.
@@ -6320,6 +6338,14 @@ balanceNote는 있었던 것만 적는다. 좋은 예 "밥·면 위주, 국 한 
 * 다음 끼니나 내일 무엇을 어떻게 먹으라는 말.
 * 제안형 문장. "~해 보세요", "~하면 좋아요", "~어떨까요", "~해 봐요".
 * 평가와 훈계. "관리가 필요합니다", "건강에 좋지 않습니다", "문제가 있습니다".
+* 만족도와 포만감을 점수로 쓰는 것. "3.3점", "만족도 4점", "5점 만점에" 처럼 쓰지 않는다.
+  사용자가 매긴 점수를 되돌려 읽어 주면 리포트가 성적표가 된다. [평소와 비교]에 "조금 높은 편"
+  처럼 정도로 적혀 있으니 그 말결을 그대로 쓴다.
+* 끼니 사이의 간격. "몇 시간 만에", "간격이 벌어져", "이어서 바로"처럼 끼니와 끼니 사이에 흐른
+  시간을 말하지 않는다.
+* 시각을 그날의 이야기로 삼는 것. 사용자는 끼니 시각을 잘못 넣거나 나중에 몰아 적는 일이 잦아
+  믿을 수 있는 값이 아니다. "몇 시 몇 분에", "늦은 시간까지"처럼 시각을 근거로 관찰하지 않는다.
+  하루의 짜임은 시각이 아니라 무엇을 채우고 건너뛰었는지로 본다.
 * 상투어. "바쁜 하루", "꼼꼼하게", "빠짐없이", "잊지 않고", "놓지 않으셨", "꾸준함이 돋보",
   "밀로그가 함께", "알찬 하루"처럼 하루 전체를 형용사 하나로 뭉뚱그리는 말.
   이웃한 두 문장을 모두 "~네요"로 맺는 것.
@@ -6365,6 +6391,8 @@ balanceNote는 있었던 것만 적는다. 좋은 예 "밥·면 위주, 국 한 
 출력 전에 네 칸을 다시 읽고 확인한다.
 - 네 칸이 같은 소재를 돌고 있으면 highlight를 다른 사실로 바꾼다.
 - [하지 않는 것]에 걸리는 말이 있으면 그 문장을 새로 쓴다.
+- title이 "~한 하루/날/식사"로 끝나거나 어제 리포트에 붙여도 말이 되면, 그날의 고유명사를 넣어 새로 쓴다.
+- title 글자 수를 세어 본다. 18자를 넘으면 뜻을 유지한 채 줄여서 다시 쓴다.
 - nudge를 어제 리포트에 붙여도 말이 되면 그날의 근거를 딛고 새로 쓴다.
 - lens가 habit이 아닌데 nudge에 "기록", "적다", "남기다"가 들어 있으면 다른 근거로 새로 쓴다.
 
@@ -6446,10 +6474,10 @@ const DIET_REPORT_TREND_DAYS = 7;
 const DIET_REPORT_STATS_DAYS = 14;
 /** 이보다 적게 쌓였으면 "평소"라고 부를 수 없다 — 블록을 아예 내보내지 않는다 */
 const DIET_REPORT_STATS_MIN_MEALS = 15;
-/** 끼니 시각 편차가 이보다 크면 그 슬롯엔 평소 시각이라 할 게 없다(분) */
-const DIET_REPORT_STATS_TIME_SD_MAX = 90;
 /** 하루 끼니 시각이 이 폭 안에 다 들어오면 식사 시각이 아니라 몰아 적은 입력 시각으로 본다(분) */
 const DIET_REPORT_STATS_CLUSTER_RANGE = 90;
+/** 뒤 슬롯이 앞 슬롯보다 이 정도까지 이른 건 오차로 넘긴다. 넘어서면 잘못 입력된 시각으로 본다(분) */
+const DIET_REPORT_STATS_ORDER_SLACK = 30;
 /**
  * 관찰 렌즈 — 매일 같은 축으로 봐 주면 "봐주는 느낌"이 사라지므로 그날 데이터가
  * 받쳐 주는 렌즈를 골라 쓰게 하고, 최근에 쓴 렌즈는 {{recentTrend}} 로 되먹여 회피시킨다.
@@ -6907,11 +6935,31 @@ function dietTimeToMinutes(t) {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-/** 분 → "HH:MM" */
-function dietMinutesToTime(v) {
-  const h = Math.floor(v / 60);
-  const mm = Math.round(v % 60);
-  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+/** 세 끼로 치는 슬롯. 나머지(아침 전·오전·오후 간식·야식)는 전부 간식으로 센다 */
+const DIET_MAIN_SLOTS = ['morning', 'lunch', 'dinner'];
+const DIET_MAIN_SLOT_LABELS = ['아침', '점심', '저녁'];
+
+/**
+ * 끼니인지 간식인지. slotId 가 있으면 그걸 쓰고, 없으면 라벨로 폴백한다
+ * (inputMeals 에 slotId 를 담기 전에 만들어진 문서가 최근 흐름에 섞여 들어온다).
+ */
+function dietSlotKind(meal) {
+  const id = String(meal?.slotId || '');
+  if (id) return DIET_MAIN_SLOTS.includes(id) ? 'main' : 'snack';
+  return DIET_MAIN_SLOT_LABELS.includes(String(meal?.slotLabel || '')) ? 'main' : 'snack';
+}
+
+/**
+ * 5점 척도 평균의 차이를 정도 말로 바꾼다. 말할 만한 차이가 아니면 null.
+ *
+ * 만족도·포만감을 "3.3점 · 평소 3.1점"처럼 내보내면 리포트가 성적표가 된다. 사용자가 매긴
+ * 점수를 되돌려 말하는 것이기도 해서, 숫자 대신 정도로만 준다.
+ */
+function dietGapWord(diff) {
+  const d = Math.abs(diff);
+  if (d < 0.3) return null;
+  const degree = d < 0.6 ? '조금' : d < 1.2 ? '뚜렷하게' : '많이';
+  return `${degree} ${diff > 0 ? '높은' : '낮은'}`;
 }
 
 /** 메뉴 문자열에서 비교용 토큰. 2글자 미만은 버린다(조각 매칭 방지) */
@@ -6934,6 +6982,47 @@ function dietMenuTokens(menu) {
 }
 
 /**
+ * 오늘 기록의 시각을 근거로 써도 되는지. 못 쓰면 이유를 돌려준다.
+ *
+ * - clustered: 서로 다른 슬롯이 한 덩이 시각에 모여 있다. 식사 시각이 아니라 몰아 적은 입력 시각이다.
+ * - inverted: 슬롯 순서와 시각 순서가 어긋난다. 실측에서 "아침 10:22 · 점심 08:32 · 저녁 20:29"
+ *   같은 날이 드물지 않았고(잘못 넣었다가 나중에 고치는 흔적), 그대로 두면 모델은 데이터를 정확히
+ *   읽은 결과로 "아침보다 이른 점심" 같은 제목을 낸다. 사람이 보면 틀린 문장인데 모델 잘못이 아니다.
+ *
+ * night(야식)은 자정을 넘겨 적히는 게 정상이라 순서 검사에서 뺀다.
+ * 같은 슬롯에 여러 기록이 있을 수 있으므로 슬롯별 평균끼리 비교한다.
+ */
+function detectDietTimeUnreliable(todayMeals) {
+  const timed = (todayMeals || []).filter((m) => dietTimeToMinutes(m.time) != null);
+  if (timed.length < 2) return null;
+
+  const times = timed.map((m) => dietTimeToMinutes(m.time));
+  if (
+    timed.length >= 3 &&
+    new Set(timed.map((m) => m.slotLabel)).size >= 2 &&
+    Math.max(...times) - Math.min(...times) <= DIET_REPORT_STATS_CLUSTER_RANGE
+  ) {
+    return 'clustered';
+  }
+
+  const bySlot = new Map();
+  for (const m of timed) {
+    if (String(m.slotId || '') === 'night') continue;
+    const rank = dietSlotRank(m.slotId);
+    if (!bySlot.has(rank)) bySlot.set(rank, []);
+    bySlot.get(rank).push(dietTimeToMinutes(m.time));
+  }
+  const ranks = [...bySlot.keys()].sort((a, b) => a - b);
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  for (let i = 1; i < ranks.length; i += 1) {
+    if (mean(bySlot.get(ranks[i])) < mean(bySlot.get(ranks[i - 1])) - DIET_REPORT_STATS_ORDER_SLACK) {
+      return 'inverted';
+    }
+  }
+  return null;
+}
+
+/**
  * "평소와 오늘" 비교 블록.
  *
  * 하루치만 보면 모델은 사용자가 이미 아는 것을 요약하는 수밖에 없다 — 그날 안에는 비교 대상이
@@ -6947,19 +7036,15 @@ function formatDietRecentStatsBlock(pastMeals, todayMeals) {
   const past = Array.isArray(pastMeals) ? pastMeals : [];
   const today = Array.isArray(todayMeals) ? todayMeals : [];
 
-  // 서로 다른 슬롯인데 시각이 한 덩이로 모여 있으면 그건 식사 시각이 아니라 몰아 적은 입력 시각이다.
-  // 프롬프트에 "그런 날은 시간을 근거로 쓰지 말라"고 적어 두는 것만으로는 막히지 않았다 —
-  // 검증에서 네 끼가 모두 19:34인 날의 리포트가 title·summary·highlight 전부 그 얘기만 했다.
   // 이 판정은 오늘 기록만 있으면 되므로 "평소"가 없는 사용자에게도 내보낸다.
-  const todayTimes = today.map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
-  const clustered =
-    todayTimes.length >= 3 &&
-    new Set(today.map((m) => m.slotLabel)).size >= 2 &&
-    Math.max(...todayTimes) - Math.min(...todayTimes) <= DIET_REPORT_STATS_CLUSTER_RANGE;
-  const lines = clustered
+  const unreliable = detectDietTimeUnreliable(today);
+  const lines = unreliable
     ? [
-        '* 오늘은 끼니 시각이 한 덩이로 몰려 있다. 실제 식사 시각이 아니라 나중에 몰아서 적은 입력 시각이므로,',
-        '  시간을 근거로 삼지 말고 시각이 몰려 있다는 사실 자체도 리포트에 쓰지 않는다.'
+        unreliable === 'clustered'
+          ? '* 오늘은 끼니 시각이 한 덩이로 몰려 있다. 실제 식사 시각이 아니라 나중에 몰아서 적은 입력 시각이다.'
+          : '* 오늘은 끼니 시각이 슬롯 순서와 어긋나 있다(예: 점심이 아침보다 이르다). 잘못 입력된 시각이다.',
+        '  시간을 근거로 삼지 말고, 시각이 이상하다는 사실 자체도 리포트에 쓰지 않는다.',
+        '  시각을 뺀 나머지(무엇을, 누구와, 어디서, 만족도)로 그날을 본다.'
       ]
     : [];
   if (past.length < DIET_REPORT_STATS_MIN_MEALS) return lines.join('\n');
@@ -6977,33 +7062,52 @@ function formatDietRecentStatsBlock(pastMeals, todayMeals) {
   lines.push(`* 최근 ${pastDays}일 ${past.length}끼가 쌓여 있고, 오늘은 ${today.length}끼다.`);
   const perDay = past.length / Math.max(1, pastDays);
   if (Math.abs(today.length - perDay) >= 1.5) {
-    lines.push(`* 하루 끼니 수 평소 ${fmt(perDay)}끼 · 오늘 ${today.length}끼`);
+    lines.push(`* 끼니 수: 오늘 ${today.length}끼 — 최근 ${pastDays}일 하루 평균 ${fmt(perDay)}끼`);
   }
 
-  // 만족도 — 유일하게 100% 있는 숫자 재료
+  // 만족도·포만감 — 기록률 100%인 유일한 비교 재료지만, 점수로 내보내면 리포트가 성적표처럼 읽힌다.
+  // 그래서 숫자를 주지 않고 정도로 바꿔 넣는다. 모델에게 없는 숫자는 모델도 쓸 수 없다.
   const pr = scores(past, 'rating');
   const tr = scores(today, 'rating');
   if (pr.length >= 5 && tr.length) {
-    lines.push(`* 만족도 평소 ${fmt(avg(pr))}점 · 오늘 ${fmt(avg(tr))}점`);
+    const word = dietGapWord(avg(tr) - avg(pr));
+    if (word) lines.push(`* 만족도: 오늘은 최근 ${pastDays}일보다 ${word} 편이다`);
   }
   const ps = scores(past, 'satiety');
   const ts = scores(today, 'satiety');
-  if (ps.length >= 5 && ts.length && Math.abs(avg(ts) - avg(ps)) >= 0.5) {
-    lines.push(`* 포만감 평소 ${fmt(avg(ps))}점 · 오늘 ${fmt(avg(ts))}점`);
+  if (ps.length >= 5 && ts.length) {
+    const word = dietGapWord(avg(ts) - avg(ps));
+    if (word) lines.push(`* 포만감: 오늘은 최근 ${pastDays}일보다 ${word} 편이다`);
   }
 
-  // 끼니 시각 — 평소 시각에서 얼마나 밀렸는지. 편차가 큰 슬롯은 애초에 "평소"가 없으므로 뺀다.
-  for (const slot of clustered ? [] : ['아침', '점심', '저녁']) {
-    const pt = past.filter((m) => m.slotLabel === slot).map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
-    const tt = today.filter((m) => m.slotLabel === slot).map((m) => dietTimeToMinutes(m.time)).filter((v) => v != null);
-    if (pt.length < 4 || !tt.length) continue;
-    const mean = avg(pt);
-    const sd = Math.sqrt(avg(pt.map((v) => (v - mean) ** 2)));
-    if (sd > DIET_REPORT_STATS_TIME_SD_MAX) continue;
-    const diff = Math.round(avg(tt) - mean);
-    if (Math.abs(diff) < 45) continue;
+  // 끼니 구성 — rhythm 이 볼 자리다. 시각은 이 앱에서 신뢰할 수 있는 값이 아니다(잘못 넣거나
+  // 몰아 적는다). 반면 "무엇을 채웠나"는 기록 자체라 언제나 정확하다.
+  const todayMainSet = new Set(
+    today.filter((m) => dietSlotKind(m) === 'main').map((m) => String(m.slotLabel || ''))
+  );
+  const todaySnacks = today.filter((m) => dietSlotKind(m) === 'snack').length;
+  const had = DIET_MAIN_SLOT_LABELS.filter((s) => todayMainSet.has(s));
+  const missed = DIET_MAIN_SLOT_LABELS.filter((s) => !todayMainSet.has(s));
+  lines.push(
+    `* 오늘 끼니 구성: ${
+      missed.length ? `${had.join('·') || '세 끼 모두'} 기록, ${missed.join('·')} 기록 없음` : '아침·점심·저녁 모두 기록'
+    } · 간식 ${todaySnacks}회`
+  );
+
+  const byDate = new Map();
+  for (const m of past) {
+    if (!m.date) continue;
+    if (!byDate.has(m.date)) byDate.set(m.date, []);
+    byDate.get(m.date).push(m);
+  }
+  if (byDate.size >= 3) {
+    const fullDays = [...byDate.values()].filter((ms) => {
+      const s = new Set(ms.filter((m) => dietSlotKind(m) === 'main').map((m) => String(m.slotLabel || '')));
+      return DIET_MAIN_SLOT_LABELS.every((x) => s.has(x));
+    }).length;
+    const snackPerDay = past.filter((m) => dietSlotKind(m) === 'snack').length / byDate.size;
     lines.push(
-      `* ${slot} 평소 ${dietMinutesToTime(mean)} · 오늘 ${dietMinutesToTime(avg(tt))} (${diff > 0 ? '+' : ''}${diff}분)`
+      `* 최근 ${byDate.size}일 중 세 끼를 다 기록한 날 ${fullDays}일 · 하루 간식 평균 ${fmt(snackPerDay)}회`
     );
   }
 
@@ -7011,8 +7115,14 @@ function formatDietRecentStatsBlock(pastMeals, todayMeals) {
   const withRating = past.filter((m) => m.rating != null && Number(m.rating) > 0 && parseDietMealDetail(m.detailText).withWho);
   const alone = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho === '혼자').map((m) => Number(m.rating));
   const together = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho !== '혼자').map((m) => Number(m.rating));
-  if (alone.length >= 5 && together.length >= 5 && Math.abs(avg(together) - avg(alone)) >= 0.3) {
-    lines.push(`* 만족도 혼자 ${fmt(avg(alone))}점 · 함께 ${fmt(avg(together))}점`);
+  if (alone.length >= 5 && together.length >= 5) {
+    const gap = avg(together) - avg(alone);
+    const word = dietGapWord(gap);
+    if (word) {
+      lines.push(
+        `* 최근 ${pastDays}일 만족도: 누군가와 함께 드신 끼니가 혼자 드신 끼니보다 ${word} 편이다`
+      );
+    }
   }
 
   // 반복 메뉴와 오늘 처음 보는 메뉴 — "몇 번째인지"는 사용자가 세고 있지 않은 사실이다
@@ -7027,12 +7137,14 @@ function formatDietRecentStatsBlock(pastMeals, todayMeals) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
   if (repeated.length) {
-    lines.push(`* 오늘 메뉴 중 최근에도 나온 것: ${repeated.map(([t, c]) => `${t} ${c}회`).join(' · ')}`);
+    lines.push(
+      `* 오늘 메뉴 중 최근 ${pastDays}일에도 나온 것: ${repeated.map(([t, c]) => `${t} ${c}회`).join(' · ')}`
+    );
   }
-  const fresh = todayTokens.filter((t) => !pastTokens.has(t)).slice(0, 4);
-  if (fresh.length && pastDays >= 5) {
-    lines.push(`* 최근 ${pastDays}일 동안 없다가 오늘 처음 나온 것: ${fresh.join(' · ')}`);
-  }
+  // "오늘 처음 나온 것"은 뺐다. 메뉴 칸은 자유 입력이라 같은 음식이 날마다 다르게 적힌다 —
+  // 과거에 "캡슐커피"·"빽다방 IA"로 적힌 사용자가 오늘 "커피"라고 적으면 처음 보는 메뉴가 된다.
+  // 실제로 "평소 기록에 없던 '커피'가 처음 등장했어요"가 나갔다. 정확 일치로는 판단할 수 없는 값이고,
+  // 반복(3회 이상 같은 토큰)은 그 자체로 참이라 그것만 남긴다.
 
   return lines.join('\n');
 }
@@ -7083,6 +7195,16 @@ const DIET_POLICY_ADVICE_RE =
  */
 const DIET_NUDGE_RECORD_RE = /기록|적어|적으|남기|남겨/;
 
+/**
+ * 제목을 요약으로 끝내는 말.
+ *
+ * title 은 화면에서 가장 먼저, 때로는 유일하게 읽히는 자리다. "~한 하루"로 맺으면 그날의 제목이
+ * 아니라 아무 날에나 붙는 설명이 된다. 프롬프트에서 방식·예시·점검 항목으로 네 번 막았지만
+ * 검증에서 12건 중 4건이 그대로 나왔다(막을수록 다른 자리로 옮겨 갈 뿐이었다).
+ * 판정이 단순하고 예외가 거의 없으므로 가드로 잡아 다시 쓰게 한다.
+ */
+const DIET_TITLE_BLAND_RE = /(하루|날|식사|한 끼|시간)$/;
+
 /** 위반 필드명 배열. 없으면 빈 배열 */
 function detectDietPolicyViolation(responseText) {
   const parsed = parseDietReportResponseJson(responseText);
@@ -7093,6 +7215,11 @@ function detectDietPolicyViolation(responseText) {
   for (const field of DIET_POLICY_FIELDS) {
     const v = typeof parsed[field] === 'string' ? parsed[field] : '';
     if (!v) continue;
+    // 제목이 "~한 하루"로 끝나면 그날의 제목이 아니라 아무 날에나 붙는 설명이다.
+    if (field === 'title' && DIET_TITLE_BLAND_RE.test(v.trim())) {
+      hits.push(field);
+      continue;
+    }
     // nudge 는 조언 자체가 금지라 영양소 소재 없이도 제안형이면 걸린다.
     if (field === 'nudge' && DIET_POLICY_ADVICE_RE.test(v)) {
       hits.push(field);
@@ -7145,6 +7272,13 @@ function buildDietPolicyCorrection(violatedFields) {
     lines.push(
       'balanceNote 는 무엇이 있었는지만 적는 칸이다. 부족·보충·아쉬움·권유를 뜻하는 표현은 쓸 수 없다.',
       '"밥·면 위주, 국 한 번", "고기와 채소가 반반"처럼 그날 구성을 사실로만 서술한다.'
+    );
+  }
+  if (violatedFields.includes('title')) {
+    lines.push(
+      'title 이 "하루", "날", "식사", "한 끼"로 끝났다. 그렇게 맺으면 그날의 제목이 아니라',
+      '아무 날에나 붙는 설명이 된다. 그날에만 있던 구체적인 것(메뉴 이름, 가게 이름, 함께한 사람,',
+      '사용자가 쓴 말) 하나를 집어 12~18자로 다시 쓴다. 어제 리포트에 붙여도 말이 되면 또 다시 쓴다.'
     );
   }
   if (violatedFields.includes('nudge')) {
@@ -7395,7 +7529,10 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
   const inputSnapshot = {
     inputMealText: String(mealText || '').slice(0, 12000),
     inputMeals: inputMealsForAnalysis,
-    inputDailyJournalComment: adminNormalizeDailyJournalEntry(dailyJournalEntry).comment.slice(0, 4000) || null
+    inputDailyJournalComment: adminNormalizeDailyJournalEntry(dailyJournalEntry).comment.slice(0, 4000) || null,
+    // 이상한 문장이 나왔을 때 모델 탓인지 계산 탓인지는 이 블록을 봐야 갈린다.
+    // ("평소 기록에 없던 '커피'" 가 왜 나왔는지 추적하려다 이게 없어 다시 계산해 봐야 했다)
+    inputRecentStats: String(recentStatsBlock || '').slice(0, 2000) || null
   };
   const base = {
     userId: uid,
