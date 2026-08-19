@@ -37,6 +37,17 @@ import { collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/momen
 let userDocEnsureDoneForUid = null;
 let cachedDefaultTags = null;
 let lastListenersUserId = null;
+/**
+ * 설정 마이그레이션(구형 태그 백필)은 uid 당 1회.
+ *
+ * migrationInProgress 는 「동시 실행」만 막고 「재실행」은 못 막는다 — 마이그레이션이
+ * 저장을 하면 그 저장이 이 리스너를 다시 깨우고, 스냅샷마다 마이그레이션이 또 돈다.
+ * needsSave 가 참이 되는 조건이 하나라도 남아 있으면 「저장 → 스냅샷 → 저장」이
+ * 피드백 루프가 된다 (2026-08-19 실기기에서 0.8초 주기로 실측 — 설정 문서를 초당
+ * 수 회 쓰면서 동기화 FAB 이 부팅마다 떠 보였다). 백필은 전부 일회성이므로
+ * 세션당 1회면 목적을 다한다.
+ */
+let migrationDoneForUid = null;
 
 function mergePushPreferencesIntoUserSettings() {
     if (!window.userSettings) return;
@@ -282,8 +293,10 @@ export function setupListeners(userId, callbacks) {
             });
             
             // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
-            if (!migrationInProgress) {
+            if (!migrationInProgress && migrationDoneForUid !== userId) {
                 migrationInProgress = true;
+                // 진입 즉시 표시한다 — 실패해도 이 세션에서는 다시 돌지 않는다(다음 부팅이 재시도).
+                migrationDoneForUid = userId;
                 console.log('📞 onSettingsUpdate 콜백 호출');
                 if (onSettingsUpdate) onSettingsUpdate();
                 

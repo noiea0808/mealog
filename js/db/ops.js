@@ -585,6 +585,22 @@ export const dbOps = {
 
             const userRootRef = doc(db, 'artifacts', appId, 'users', currentUser.uid);
             const payloadForWrite = stripUndefinedDeep(settingsToSave);
+            /**
+             * entryModalGauges 구형 잔재 청소 — 서버 문서에는 신형(main/snack)과 구형 평평한
+             * 키(ratingEnabled 등)가 섞인 하이브리드가 있다. 저장이 merge 라 그냥 두면 영영
+             * 안 지워지고, 정규화가 어느 분기를 타느냐에 따라 값이 요동친다(2026-08-19 실측).
+             * 신형을 쓸 때 구형 키를 명시적으로 지운다 — 이미 없는 문서에서는 no-op.
+             * deleteField 는 Firestore 쓰기 전용 센티널이라 Functions 프록시 payload 에는 넣지 않는다.
+             */
+            const firestoreWritePayload = (() => {
+                const g = payloadForWrite.entryModalGauges;
+                if (!g || typeof g !== 'object' || !g.main || !g.snack) return payloadForWrite;
+                const cleaned = { ...g };
+                for (const k of ['ratingEnabled', 'satietyEnabled', 'timeEnabled']) {
+                    cleaned[k] = deleteField();
+                }
+                return { ...payloadForWrite, entryModalGauges: cleaned };
+            })();
             let savedViaFunctionsProxy = false;
 
             const doClientFirestoreWrite = async () => {
@@ -595,7 +611,7 @@ export const dbOps = {
                 }
 
                 if (nicknameNormalizedUnchanged) {
-                    await setDoc(settingsRef, payloadForWrite, { merge: true });
+                    await setDoc(settingsRef, firestoreWritePayload, { merge: true });
                     return;
                 }
 
@@ -649,7 +665,7 @@ export const dbOps = {
                         transaction.delete(oldClaimRef);
                     }
 
-                    transaction.set(settingsRef, payloadForWrite, { merge: true });
+                    transaction.set(settingsRef, firestoreWritePayload, { merge: true });
 
                     if (normNew && newClaimRef) {
                         transaction.set(newClaimRef, {
