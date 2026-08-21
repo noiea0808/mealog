@@ -805,7 +805,6 @@ function renderSegment(axis) {
     return `
         <button type="button" class="${cls}" data-context-seg="${axis.key}" title="${title}" aria-expanded="${isOpen}">
             <i data-lucide="${axis.icon}" aria-hidden="true"></i><span>${text}</span>
-            <i data-lucide="chevron-down" class="entry-context-seg__caret" aria-hidden="true"></i>
         </button>`;
 }
 

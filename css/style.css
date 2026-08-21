@@ -18749,8 +18749,9 @@ html.service-guide-active #landingPage {
 /*
  * 세그먼트 상태 문법 (구분되는 세 신호를 서로 다른 채널에 배정):
  *   채움  = 확정 여부  (점선 흰 배경 = 추측/빈 · 프라이머리 채움+흰 글자 = 확정)
- *   링    = 열림 여부  (바깥 링 + 캐럿 180° — 어느 상태에든 겹쳐지는 독립 신호)
- *   캐럿  = 항상 표시  ("탭하면 바꿀 수 있다" — 확정돼도 사라지지 않는다)
+ *   링    = 열림 여부  (바깥 링 + 실선 테두리 — 어느 상태에든 겹쳐지는 독립 신호)
+ * 캐럿은 뺐다 (2026-08-21): 좁은 폭에서 값 텍스트를 (…)로 잘라먹었고, 열림 신호는
+ * 링과 바로 아래 열리는 피커가 이미 하고 있어 중복이었다.
  * 피커(하위 선택지)는 회색 트레이 안의 흰 칩 — 세그먼트(상위 값)와 색 층위가 다르다.
  */
 .entry-context-seg {
@@ -18786,10 +18787,6 @@ html.service-guide-active #landingPage {
     color: #94a3b8;
     flex-shrink: 0;
 }
-.entry-context-seg__caret {
-    width: 13px !important;
-    height: 13px !important;
-}
 /* 사용자가 직접 고름 — 진한 초록 채움 */
 .entry-context-seg--confirmed {
     border-style: solid;
@@ -18820,9 +18817,6 @@ html.service-guide-active #landingPage {
     box-shadow: 0 0 0 2px var(--green-mute, #b4e2cd);
     border-style: solid;
     border-color: var(--color-primary);
-}
-.entry-context-seg--open .entry-context-seg__caret {
-    transform: rotate(180deg);
 }
 /* ⋯(자세히): 전체 축 섹션 여닫기 — 아이콘 전용 미니 칩 */
 /* '세부' 칩: 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기.
