@@ -91,19 +91,47 @@ function getBoardPostTsMs(post) {
     return new Date(post.timestamp || 0).getTime();
 }
 
+/**
+ * 공지 컬렉션은 작고(현재 5건) `timestamp` 가 전부 문자열이다. 여기에 Timestamp 타입
+ * 공지가 하나라도 섞이면 `orderBy` 만으로는 **새 공지를 영영 못 본다** — 아래 참조.
+ */
+const NOTICE_PEEK_LIMIT = 20;
+
+/**
+ * 타임스탬프 타입이 섞인 컬렉션에서 진짜 최신 시각.
+ *
+ * Firestore 는 값을 비교하기 전에 **타입으로 먼저** 정렬한다 (… < Timestamp < String < …).
+ * 그래서 한 컬렉션에 두 타입이 섞이면 `orderBy('timestamp','desc').limit(1)` 은 「가장 최근」이
+ * 아니라 「문자열 중 가장 큰 것」을 돌려준다. 실측(2026-08-21) 결과 boardPosts 25건 중
+ * 문자열 1건이 섞여 있었고, desc 첫 문서가 **다섯 중 가장 오래된 2026-01-24 글**이었다.
+ *
+ * 그래서 창을 넓게 받아 **클라이언트에서** 최댓값을 고른다. 목록 로더(loadSharedPhotosPage,
+ * boardOperations.getPosts)가 이미 같은 이유로 클라이언트 정렬을 하고 있는데, peek 만
+ * 그 보호 밖에 있었다.
+ */
+function maxTimestampMs(docs, toMs) {
+    let best = 0;
+    for (const d of docs) {
+        const ms = toMs(d);
+        if (Number.isFinite(ms) && ms > best) best = ms;
+    }
+    return best;
+}
+
 /** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
 async function peekLatestNoticeTimestampMs() {
     try {
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
-        const q = query(noticesColl, orderBy('timestamp', 'desc'), limit(1));
+        const q = query(noticesColl, orderBy('timestamp', 'desc'), limit(NOTICE_PEEK_LIMIT));
         const snap = await getDocsFromServer(q);
         if (!snap.docs.length) return 0;
-        const data = snap.docs[0].data();
-        const ts = data?.timestamp;
-        if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
-        if (typeof ts === 'string') return new Date(ts).getTime();
-        if (ts instanceof Date) return ts.getTime();
-        return new Date(ts || 0).getTime();
+        return maxTimestampMs(snap.docs, (d) => {
+            const ts = d.data()?.timestamp;
+            if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
+            if (typeof ts === 'string') return new Date(ts).getTime();
+            if (ts instanceof Date) return ts.getTime();
+            return new Date(ts || 0).getTime();
+        });
     } catch (e) {
         console.warn('peekLatestNoticeTimestampMs:', e?.message || e);
         return null;
@@ -114,9 +142,15 @@ async function peekLatestNoticeTimestampMs() {
 async function peekLatestBoardPostTimestampMs() {
     if (!window.boardOperations?.getPosts) return 0;
     try {
-        const posts = await window.boardOperations.getPosts('all', 'latest', 1);
+        /**
+         * 1건이 아니라 10건을 받는다. `getPosts` 는 `limitCount * 2` 만큼 서버에서 받아
+         * 클라이언트 정렬을 하는데, 1건을 요청하면 그 창이 **2건**이라 문자열 타임스탬프
+         * 문서가 두 개만 돼도 진짜 최신 글이 창 밖으로 밀려난다 (위 maxTimestampMs 참조).
+         * 게시판은 25건짜리 컬렉션이라 창을 넓혀도 비용이 무의미하다.
+         */
+        const posts = await window.boardOperations.getPosts('all', 'latest', 10);
         if (!posts?.length) return 0;
-        return getBoardPostTsMs(posts[0]);
+        return maxTimestampMs(posts, getBoardPostTsMs);
     } catch (e) {
         console.warn('peekLatestBoardPostTimestampMs:', e?.message || e);
         return null;
