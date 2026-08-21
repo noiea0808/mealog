@@ -211,6 +211,30 @@ describe('실패 기록 — 재시도가 무의미한 것만 permanent (§4.4)',
         assert.equal(store.isPendingSync('meal', 'm1'), true, 'permanent 여도 아웃박스에는 남아 있다');
     });
 
+    it('clearPermanent 는 표식만 풀고 attempts·lastError 는 남긴다', async () => {
+        // 사용자가 재전송을 직접 누른 것이 §4.4 가 말하는 「개입」이다. 이 수단이 없던 동안
+        // permanent 는 빠져나올 길이 없는 종착 상태였다 — 워커는 거르고, 배지는 세고,
+        // content 등급은 만료도 없어서 항목이 영원히 갇혔다.
+        await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
+        await store.markAttempt('meal:m1', Object.assign(new Error('nope'), { code: 'invalid-argument' }), true);
+
+        assert.equal(await store.clearPermanent('meal:m1'), true);
+
+        const row = await readRaw('meal:m1');
+        assert.equal(row.permanent, false);
+        assert.equal(row.attempts, 1, 'attempts 를 리셋하면 백오프가 0 으로 돌아가 6초마다 재시도하는 뜨거운 루프가 된다');
+        assert.ok(row.lastError, '무엇 때문에 막혔는지는 남아 있어야 한다');
+        assert.equal(store.isPermanentSync('meal', 'm1'), false);
+        assert.equal(store.isPendingSync('meal', 'm1'), true, '표식만 풀렸을 뿐 항목은 그대로다');
+    });
+
+    it('clearPermanent 는 permanent 가 아니던 항목에는 false 를 돌려준다', async () => {
+        await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
+
+        assert.equal(await store.clearPermanent('meal:m1'), false);
+        assert.equal(await store.clearPermanent('meal:없는키'), false);
+    });
+
     it('다시 저장하면 attempts·permanent 가 초기화된다', async () => {
         // 사용자가 고쳐서 다시 눌렀다면 백오프도 영구실패 판정도 처음부터다.
         await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
@@ -364,5 +388,65 @@ describe('쿼터 초과 — 사진보다 본문이 먼저다 (§4.2)', () => {
 
         assert.equal(ok, false, '내구화 실패를 true 로 덮으면 §1 이 소리 없이 깨진다');
         assert.equal(store.isPendingSync('meal', 'z'), false, '커밋되지 않은 것이 인덱스에 남았다');
+    });
+});
+
+describe('읽기 실패 — 「못 읽었다」와 「비었다」는 다르다', () => {
+    /**
+     * 이 구분이 없어서 난 사고(실측 2026-08-21, 프로덕션):
+     *
+     * `getAll` 이 3초 데드라인에 걸리면 예전에는 `[]` 로 뭉개졌고, 워커는 그걸 「보낼 게
+     * 없다」로 읽고 그대로 쉬었다. 배지는 부팅 때 채운 메모리 인덱스를 보므로 N 이 그대로
+     * 떠 있었고, 사용자가 FAB 을 눌러도 같은 빈 배열이 나와 **아무 시도도 일어나지 않았다.**
+     * 항목은 앱을 다시 깔아도 IndexedDB 에 남아 영영 갇혔다.
+     *
+     * 그때 실제로 남은 계측: `deadline {"label":"idb-tx:getAll:entries","ms":3000}` 6회.
+     */
+    function breakReads() {
+        const orig = IDBDatabase.prototype.transaction;
+        IDBDatabase.prototype.transaction = function () {
+            throw new Error('idb-busy');
+        };
+        return () => {
+            IDBDatabase.prototype.transaction = orig;
+        };
+    }
+
+    it('listPending 은 읽기에 실패하면 null 이다 — 빈 배열이 아니다', async () => {
+        await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
+        const restore = breakReads();
+        try {
+            assert.equal(await store.listPending(UID), null, '읽기 실패가 「큐가 비었음」으로 둔갑하면 항목이 갇힌다');
+        } finally {
+            restore();
+        }
+        assert.deepEqual((await store.listPending(UID)).map((r) => r.key), ['meal:m1'], '복구되면 다시 읽힌다');
+    });
+
+    it('hydrate 는 실패해도 이미 아는 인덱스를 지우지 않는다', async () => {
+        await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
+        assert.equal(store.pendingCountSync(UID), 1);
+
+        const restore = breakReads();
+        try {
+            assert.equal(await store.hydrateOutboxIndex(), -1, '실패는 0 건이 아니라 -1 로 구분된다');
+            // 여기서 인덱스를 비우면 아직 안 올라간 기록이 화면에서 「반영됨」으로 보인다.
+            assert.equal(store.pendingCountSync(UID), 1, '읽기 한 번 실패한 것을 데이터 없음으로 단정하면 안 된다');
+            assert.equal(await store.pendingCount(UID), 1, '못 읽었으면 0 이 아니라 인덱스가 아는 값을 쓴다');
+        } finally {
+            restore();
+        }
+    });
+
+    it('purgeUser 는 못 읽었으면 아무것도 지우지 않는다', async () => {
+        await store.enqueue({ target: 'meal', id: 'm1', uid: UID, payload: {} });
+
+        const restore = breakReads();
+        try {
+            assert.equal(await store.purgeUser(UID), 0);
+        } finally {
+            restore();
+        }
+        assert.ok(await readRaw('meal:m1'), '읽기 실패를 「지울 게 없음」으로 읽으면 안 된다');
     });
 });

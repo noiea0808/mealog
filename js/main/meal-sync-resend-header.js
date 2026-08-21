@@ -140,9 +140,19 @@ export function bindMealSyncResendNavButtonOnce() {
                 ]);
                 await runNetworkRecoveryNow('manual-resend');
                 if (countUnsentMealWork() > 0) showToast('서버에 반영 중입니다…', 'info');
-                await worker.pokeOutboxWorker('manual-resend');
+                const r = await worker.pokeOutboxWorker('manual-resend');
                 if (countUnsentMealWork() > 0) {
-                    showToast('아직 서버에 닿지 못했어요. 연결되면 자동으로 다시 보냅니다.', 'info');
+                    /**
+                     * 큐를 못 읽었으면 「닿지 못했다」고 말하지 않는다 — 보내 보지도 않았기
+                     * 때문이다. 예전에는 이 둘이 같은 문구로 수렴해서, 아무 시도도 일어나지
+                     * 않은 경우까지 「연결되면 자동으로 다시 보냅니다」로 안내됐다.
+                     */
+                    showToast(
+                        r?.listFailed
+                            ? '기기 저장소가 바빠 확인하지 못했어요. 잠시 후 자동으로 다시 시도합니다.'
+                            : '아직 서버에 닿지 못했어요. 연결되면 자동으로 다시 보냅니다.',
+                        'info'
+                    );
                 }
             } catch (e) {
                 console.warn('mealSyncResendFab 재전송 실패:', e?.message || e);
