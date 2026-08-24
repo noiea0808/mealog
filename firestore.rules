@@ -406,7 +406,16 @@ service cloud.firestore {
         && request.resource.data.scheduledAt is timestamp;
       allow update, delete: if isAdmin();
     }
-    
+
+    // ============================================
+    // 푸시 메시지 풀 (adminPushMessages) — 관리자만 조회, 쓰기는 Functions(Admin SDK) 전용
+    // ============================================
+    // useCount·lastUsedAt 등 집계 필드를 클라이언트가 임의로 손대지 못하게 쓰기를 막는다.
+    match /artifacts/{appId}/adminPushMessages/{messageId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // ============================================
     // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기, 조회/클릭 수는 로그인 사용자 업데이트 허용
     // ============================================

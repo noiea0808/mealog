@@ -1218,6 +1218,7 @@
                                             <div class="inline-flex rounded-lg border border-slate-200 bg-slate-100/90 p-0.5 gap-0.5">
                                                 <button type="button" id="adminPushHistoryTabUpcoming" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors bg-white text-violet-700 shadow-sm ring-1 ring-violet-200/80" data-tab="upcoming" aria-selected="true">발송예정 <span id="adminPushHistoryCountUpcoming" class="tabular-nums text-violet-600/90 font-extrabold">0</span></button>
                                                 <button type="button" id="adminPushHistoryTabDone" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white/70" data-tab="done" aria-selected="false">발송완료 <span id="adminPushHistoryCountDone" class="tabular-nums text-slate-500 font-extrabold">0</span></button>
+                                                <button type="button" id="adminPushHistoryTabPool" class="admin-push-history-tab px-3 py-1.5 text-xs font-bold rounded-md transition-colors text-slate-500 hover:text-slate-700 hover:bg-white/70" data-tab="pool" aria-selected="false">메시지 풀 <span id="adminPushHistoryCountPool" class="tabular-nums text-slate-500 font-extrabold">—</span></button>
                                             </div>
                                             <button type="button" id="adminRefreshScheduledPushesBtn" onclick="window.refreshAdminScheduledPushes()" class="inline-flex shrink-0 items-center justify-center gap-1 text-xs font-bold text-slate-500 hover:text-violet-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
                                                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>새로고침</span>
@@ -1228,6 +1229,8 @@
                                             <div id="adminScheduledPushesContainer" class="min-h-[100px]">
                                                 <p class="text-center py-8 text-slate-400 text-sm">목록을 불러오는 중…</p>
                                             </div>
+                                            <div id="adminPushPoolToolbar" class="hidden"></div>
+                                            <div id="adminPushPoolContainer" class="hidden min-h-[100px]"></div>
                                         </div>
                                     </div>
                                 </div>

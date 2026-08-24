@@ -5103,6 +5103,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   if (ms < minLead) {
     throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
   }
+  // 풀에서 만든 예약이면 출처를 남긴다 (발송 성공 시 사용 횟수 집계)
+  const sourceMessageId = String(data.messageId || '').trim();
   const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
     scheduleType: 'once',
     title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
@@ -5111,6 +5113,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     targetEnv: target,
     scheduledAt: Timestamp.fromMillis(ms),
     status: 'pending',
+    ...(sourceMessageId ? { messageId: sourceMessageId } : {}),
     createdByUid: callerUid,
     createdAt: FieldValue.serverTimestamp()
   });
@@ -5246,6 +5249,197 @@ exports.deleteAdminBroadcastHistory = onCall({ region: REGION }, async (request)
   }
   await ref.delete();
   return { ok: true, id: jobId };
+});
+
+// ============================================
+// 푸시 메시지 풀 (adminPushMessages)
+// ============================================
+
+const ADMIN_PUSH_MESSAGE_MAX = 2000;
+
+function adminPushMessagesColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminPushMessages');
+}
+
+/** 제목+내용이 같으면 같은 메시지로 본다 (중복 담기 방지) */
+function adminPushMessageDedupeKey(title, body) {
+  const raw = `${String(title || '').trim()}\n${String(body || '').trim()}`;
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 40);
+}
+
+/** 풀에 저장할 형태로 정규화 — 유효하지 않으면 null */
+function normalizeAdminPushMessageInput(raw) {
+  const title = String(raw?.title || '').trim().slice(0, ADMIN_BROADCAST_TITLE_MAX);
+  const body = String(raw?.body || '').trim().slice(0, ADMIN_BROADCAST_BODY_MAX);
+  if (!title || !body) return null;
+  const tab = String(raw?.landingTab || '').trim();
+  const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  return { title, body, landingTab, dedupeKey: adminPushMessageDedupeKey(title, body) };
+}
+
+/** 관리자 확인 + 풀 크기 상한 안내를 공유 */
+async function assertAdminForPushPool(request, action) {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', `관리자만 ${action} 수 있습니다.`);
+  }
+  return callerUid;
+}
+
+/** 관리자: 풀 메시지 생성·수정 */
+exports.upsertAdminPushMessage = onCall({ region: REGION }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '등록할');
+  const data = request.data || {};
+  const normalized = normalizeAdminPushMessageInput(data);
+  if (!normalized) {
+    throw new HttpsError('invalid-argument', '제목과 내용을 모두 입력해 주세요.');
+  }
+  const active = data.active === false ? false : true;
+  const messageId = String(data.messageId || '').trim();
+
+  if (messageId) {
+    const ref = adminPushMessagesColl().doc(messageId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new HttpsError('not-found', '메시지를 찾을 수 없습니다.');
+    }
+    await ref.update({
+      ...normalized,
+      active,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: callerUid
+    });
+    return { ok: true, id: messageId, created: false };
+  }
+
+  // 같은 제목·내용이 이미 있으면 새로 만들지 않는다
+  const dup = await adminPushMessagesColl().where('dedupeKey', '==', normalized.dedupeKey).limit(1).get();
+  if (!dup.empty) {
+    return { ok: true, id: dup.docs[0].id, created: false, duplicated: true };
+  }
+  const total = await adminPushMessagesColl().count().get();
+  if ((total.data().count || 0) >= ADMIN_PUSH_MESSAGE_MAX) {
+    throw new HttpsError('resource-exhausted', `메시지 풀은 최대 ${ADMIN_PUSH_MESSAGE_MAX}개까지 등록할 수 있습니다.`);
+  }
+  const ref = await adminPushMessagesColl().add({
+    ...normalized,
+    active,
+    useCount: 0,
+    lastUsedAt: null,
+    createdByUid: callerUid,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+  return { ok: true, id: ref.id, created: true };
+});
+
+/** 관리자: 풀 메시지 삭제 */
+exports.deleteAdminPushMessage = onCall({ region: REGION }, async (request) => {
+  await assertAdminForPushPool(request, '삭제할');
+  const ids = Array.isArray(request.data?.messageIds)
+    ? request.data.messageIds
+    : [request.data?.messageId];
+  const targets = [...new Set(ids.map((v) => String(v || '').trim()).filter(Boolean))];
+  if (targets.length === 0) {
+    throw new HttpsError('invalid-argument', '삭제할 메시지 ID가 필요합니다.');
+  }
+  let batch = db.batch();
+  let ops = 0;
+  for (const id of targets) {
+    batch.delete(adminPushMessagesColl().doc(id));
+    ops++;
+    if (ops >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  }
+  if (ops > 0) await batch.commit();
+  return { ok: true, deleted: targets.length };
+});
+
+/**
+ * 관리자: 발송예정·발송완료 기록에서 선택한 건을 풀에 담기
+ * 제목+내용이 같은 메시지는 건너뛴다.
+ */
+exports.importAdminPushMessagesFromHistory = onCall({ region: REGION }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '가져올');
+  const rawIds = Array.isArray(request.data?.jobIds) ? request.data.jobIds : [];
+  const jobIds = [...new Set(rawIds.map((v) => String(v || '').trim()).filter(Boolean))].slice(0, 350);
+  if (jobIds.length === 0) {
+    throw new HttpsError('invalid-argument', '가져올 기록을 선택해 주세요.');
+  }
+
+  const historyColl = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+  const snaps = await db.getAll(...jobIds.map((id) => historyColl.doc(id)));
+
+  // 이미 풀에 있는 제목+내용 (풀은 최대 2000건이라 전량 조회해도 부담이 적다)
+  const poolSnap = await adminPushMessagesColl().select('dedupeKey').get();
+  const seen = new Set(poolSnap.docs.map((d) => String(d.data().dedupeKey || '')).filter(Boolean));
+
+  const toCreate = [];
+  let skippedDuplicate = 0;
+  let skippedInvalid = 0;
+  for (const snap of snaps) {
+    if (!snap.exists) {
+      skippedInvalid++;
+      continue;
+    }
+    const normalized = normalizeAdminPushMessageInput(snap.data());
+    if (!normalized) {
+      skippedInvalid++;
+      continue;
+    }
+    if (seen.has(normalized.dedupeKey)) {
+      // 선택 목록 안의 중복도 여기서 걸러진다
+      skippedDuplicate++;
+      continue;
+    }
+    seen.add(normalized.dedupeKey);
+    toCreate.push(normalized);
+  }
+
+  if (toCreate.length > 0) {
+    const room = ADMIN_PUSH_MESSAGE_MAX - (poolSnap.size || 0);
+    if (toCreate.length > room) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `메시지 풀은 최대 ${ADMIN_PUSH_MESSAGE_MAX}개까지 등록할 수 있습니다. (현재 ${poolSnap.size}개, 담으려는 ${toCreate.length}개)`
+      );
+    }
+    let batch = db.batch();
+    let ops = 0;
+    for (const item of toCreate) {
+      batch.set(adminPushMessagesColl().doc(), {
+        ...item,
+        active: true,
+        useCount: 0,
+        lastUsedAt: null,
+        importedFrom: 'history',
+        createdByUid: callerUid,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      ops++;
+      if (ops >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    }
+    if (ops > 0) await batch.commit();
+  }
+
+  return {
+    ok: true,
+    imported: toCreate.length,
+    skippedDuplicate,
+    skippedInvalid,
+    requested: jobIds.length
+  };
 });
 
 /**
@@ -5395,6 +5589,22 @@ exports.processScheduledAdminPushes = onSchedule(
             recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
           });
           logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
+        }
+
+        // 풀에서 온 메시지면 사용 횟수 집계 (실패해도 발송에는 영향 없음)
+        const sourceMessageId = String(d.messageId || '').trim();
+        if (sourceMessageId) {
+          try {
+            await adminPushMessagesColl().doc(sourceMessageId).update({
+              useCount: FieldValue.increment(1),
+              lastUsedAt: FieldValue.serverTimestamp()
+            });
+          } catch (useErr) {
+            logger.warn('processScheduledAdminPushes: useCount update failed', {
+              messageId: sourceMessageId,
+              message: useErr?.message
+            });
+          }
         }
       } catch (e) {
         logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
