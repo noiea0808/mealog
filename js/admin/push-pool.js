@@ -39,6 +39,8 @@ let poolPage = 0;
 /** 인라인 작성/수정 초안 — 저장 전까지 Firestore 미반영 */
 let poolDrafts = [];
 let poolDraftSeq = 0;
+/** 선택된 메시지 id — 선택 예약·선택 삭제용 */
+const poolSelectedIds = new Set();
 
 function nextPoolDraftKey() {
     poolDraftSeq += 1;
@@ -189,6 +191,7 @@ function buildPoolThead() {
     return `
             <thead>
                 <tr class="bg-slate-100/90 text-center text-[11px] font-bold text-slate-600 uppercase tracking-wide border-b border-slate-200">
+                    <th class="px-3 py-2.5 whitespace-nowrap w-8 text-center"><input type="checkbox" id="adminPushPoolSelectAll" onchange="window.adminPushPoolToggleAll(this.checked)" class="align-middle cursor-pointer" title="이 페이지 전체 선택"></th>
                     <th class="px-3 py-2.5 whitespace-nowrap">상태</th>
                     <th class="px-3 py-2.5 whitespace-nowrap">랜딩</th>
                     <th class="px-3 py-2.5 min-w-[8rem]">제목</th>
@@ -216,6 +219,13 @@ function buildPoolRowHtml(r) {
         : '<span class="text-xs font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-500">중지</span>';
     return `
             <tr class="border-b border-slate-100 align-top text-center hover:bg-slate-50/60 ${active ? '' : 'opacity-60'}">
+                <td class="px-3 py-2 align-top text-center">
+                    <input type="checkbox" class="admin-push-pool-select-item align-middle cursor-pointer mt-0.5" data-message-id="${escapeAttr(
+                        r.id
+                    )}" ${
+                        poolSelectedIds.has(r.id) ? 'checked' : ''
+                    } onchange="window.adminPushPoolRowSelect(this.dataset.messageId, this.checked)">
+                </td>
                 <td class="px-3 py-2 whitespace-nowrap">
                     <button type="button" onclick='window.adminPushPoolToggleActive(${idJson})' title="${active ? '순환에서 제외' : '다시 활성화'}" class="cursor-pointer">${statusCell}</button>
                 </td>
@@ -240,6 +250,7 @@ function buildPoolEditorRowHtml(draft) {
     const active = draft.active !== false;
     return `
             <tr id="adminPoolDraftRow-${keyAttr}" class="border-b border-violet-200 bg-violet-50/40 align-top text-center">
+                <td class="px-3 py-2 align-top text-center"></td>
                 <td class="px-3 py-2 whitespace-nowrap">
                     <label class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer">
                         <input type="checkbox" id="${poolFieldId(key, 'active')}" ${active ? 'checked' : ''} class="cursor-pointer">활성
@@ -263,6 +274,33 @@ function buildPoolEditorRowHtml(draft) {
                     </div>
                 </td>
             </tr>`;
+}
+
+function poolActionBtnClass(disabled, enabledClass) {
+    return `inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+        disabled ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed' : enabledClass
+    }`;
+}
+
+/** 선택 관련 UI만 갱신 — 툴바를 다시 그리면 검색 입력 포커스가 날아간다 */
+function syncPoolSelectionUi(pageRows) {
+    const cnt = document.getElementById('adminPushPoolSelectedCount');
+    if (cnt) cnt.textContent = String(poolSelectedIds.size);
+    const disabled = poolSelectedIds.size === 0;
+    const apply = (id, enabledClass) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = disabled;
+        btn.className = poolActionBtnClass(disabled, enabledClass);
+    };
+    apply('adminPushPoolScheduleSelectedBtn', 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200');
+    apply('adminPushPoolDeleteSelectedBtn', 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100');
+    const all = document.getElementById('adminPushPoolSelectAll');
+    if (all) {
+        const rows = pageRows || currentPoolPageRows();
+        all.disabled = rows.length === 0;
+        all.checked = rows.length > 0 && rows.every((r) => poolSelectedIds.has(r.id));
+    }
 }
 
 function buildPoolToolbarHtml() {
@@ -289,6 +327,17 @@ function buildPoolToolbarHtml() {
                 <select id="adminPushPoolSort" onchange="window.adminPushPoolSetSort(this.value)" class="p-1.5 border border-slate-200 rounded-lg text-xs bg-white">${buildPoolOptions(POOL_SORT_OPTIONS, poolSort)}</select>
             </div>
             <div class="flex flex-wrap items-center gap-2">
+                <span class="text-xs text-slate-600">선택 <span id="adminPushPoolSelectedCount" class="font-extrabold text-violet-700 tabular-nums">${poolSelectedIds.size}</span></span>
+                <button type="button" id="adminPushPoolScheduleSelectedBtn" onclick="window.adminPushPoolScheduleSelected()" ${
+                    poolSelectedIds.size === 0 ? 'disabled' : ''
+                } class="${poolActionBtnClass(poolSelectedIds.size === 0, 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200')}">
+                    <i class="fa-solid fa-clock mr-1" aria-hidden="true"></i>선택 예약
+                </button>
+                <button type="button" id="adminPushPoolDeleteSelectedBtn" onclick="window.adminPushPoolDeleteSelected()" ${
+                    poolSelectedIds.size === 0 ? 'disabled' : ''
+                } class="${poolActionBtnClass(poolSelectedIds.size === 0, 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100')}">
+                    <i class="fa-solid fa-trash mr-1" aria-hidden="true"></i>선택 삭제
+                </button>
                 <button type="button" onclick="window.adminPushPoolAddDraft()" class="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-200 transition-colors">
                     <i class="fa-solid fa-plus mr-1" aria-hidden="true"></i>메시지 추가
                 </button>
@@ -317,36 +366,56 @@ function buildPoolPagerHtml(total, pageCount) {
         </div>`;
 }
 
-export function renderAdminPushPoolFromCache() {
-    const toolbar = document.getElementById('adminPushPoolToolbar');
+/** 현재 페이지에 그려지는 행 (전체 선택 판정용) */
+function currentPoolPageRows() {
+    const rows = visiblePoolRows();
+    const pageCount = Math.max(1, Math.ceil(rows.length / POOL_PAGE_SIZE));
+    const page = Math.min(Math.max(poolPage, 0), pageCount - 1);
+    return rows.slice(page * POOL_PAGE_SIZE, (page + 1) * POOL_PAGE_SIZE);
+}
+
+/** 표 영역만 다시 그린다 — 툴바를 건드리지 않아 검색 입력 포커스가 유지된다 */
+function renderPoolTableOnly() {
     const container = document.getElementById('adminPushPoolContainer');
     if (!container) return;
-    syncPoolCountBadge();
-    if (toolbar) toolbar.innerHTML = buildPoolToolbarHtml();
-
     const rows = visiblePoolRows();
     const pageCount = Math.max(1, Math.ceil(rows.length / POOL_PAGE_SIZE));
     if (poolPage > pageCount - 1) poolPage = pageCount - 1;
     if (poolPage < 0) poolPage = 0;
     const pageRows = rows.slice(poolPage * POOL_PAGE_SIZE, (poolPage + 1) * POOL_PAGE_SIZE);
 
-    // 목록에서 사라진 대상의 수정 초안은 정리
-    const visibleIds = new Set(poolRows.map((r) => r.id));
-    poolDrafts = poolDrafts.filter((d) => d.mode !== 'edit' || visibleIds.has(d.messageId));
+    // 목록에서 사라진 대상의 수정 초안·선택은 정리 (새로고침·삭제 후 잔존 방지)
+    const knownIds = new Set(poolRows.map((r) => r.id));
+    poolDrafts = poolDrafts.filter((d) => d.mode !== 'edit' || knownIds.has(d.messageId));
+    for (const id of [...poolSelectedIds]) {
+        if (!knownIds.has(id)) poolSelectedIds.delete(id);
+    }
     const createDrafts = poolDrafts.filter((d) => d.mode === 'create');
 
     if (rows.length === 0 && createDrafts.length === 0) {
-        const msg = poolRows.length === 0
-            ? '풀에 담긴 메시지가 없습니다. 발송예정·발송완료 목록에서 골라 담거나, 메시지 추가로 직접 등록해 주세요.'
-            : '검색·필터 조건에 맞는 메시지가 없습니다.';
+        const msg =
+            poolRows.length === 0
+                ? '풀에 담긴 메시지가 없습니다. 발송예정·발송완료 목록에서 골라 담거나, 메시지 추가로 직접 등록해 주세요.'
+                : '검색·필터 조건에 맞는 메시지가 없습니다.';
         container.innerHTML = `<p class="text-center py-10 text-slate-400 text-sm px-4">${msg}</p>`;
+        syncPoolSelectionUi([]);
         return;
     }
 
     const tbody = pageRows.map(buildPoolRowHtml).join('') + createDrafts.map(buildPoolEditorRowHtml).join('');
     container.innerHTML = `<div class="overflow-x-auto">
-                <table class="w-full min-w-[820px] text-center border-collapse">${buildPoolThead()}<tbody>${tbody}</tbody></table>
+                <table class="w-full min-w-[860px] text-center border-collapse">${buildPoolThead()}<tbody>${tbody}</tbody></table>
             </div>${buildPoolPagerHtml(rows.length, pageCount)}`;
+    syncPoolSelectionUi(pageRows);
+}
+
+export function renderAdminPushPoolFromCache() {
+    const toolbar = document.getElementById('adminPushPoolToolbar');
+    const container = document.getElementById('adminPushPoolContainer');
+    if (!container) return;
+    syncPoolCountBadge();
+    if (toolbar) toolbar.innerHTML = buildPoolToolbarHtml();
+    renderPoolTableOnly();
 }
 
 /** 풀 탭 진입 — 이미 불러왔으면 캐시로 그린다 */
@@ -357,6 +426,9 @@ export async function loadAdminPushPool({ force = false } = {}) {
         renderAdminPushPoolFromCache();
         return;
     }
+    // 조회가 실패해도 새로고침·추가 버튼은 남아 있어야 다시 시도할 수 있다
+    const toolbar = document.getElementById('adminPushPoolToolbar');
+    if (toolbar) toolbar.innerHTML = buildPoolToolbarHtml();
     container.innerHTML =
         '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>불러오는 중…</p>';
     try {
@@ -379,22 +451,7 @@ window.adminPushPoolSearchInput = function (value) {
     poolSearch = String(value || '');
     poolPage = 0;
     capturePoolDraftsFromDom();
-    // 입력 중 포커스를 잃지 않도록 표만 다시 그린다
-    const rows = visiblePoolRows();
-    const pageCount = Math.max(1, Math.ceil(rows.length / POOL_PAGE_SIZE));
-    const pageRows = rows.slice(0, POOL_PAGE_SIZE);
-    const container = document.getElementById('adminPushPoolContainer');
-    if (!container) return;
-    const createDrafts = poolDrafts.filter((d) => d.mode === 'create');
-    if (rows.length === 0 && createDrafts.length === 0) {
-        container.innerHTML =
-            '<p class="text-center py-10 text-slate-400 text-sm px-4">검색·필터 조건에 맞는 메시지가 없습니다.</p>';
-        return;
-    }
-    const tbody = pageRows.map(buildPoolRowHtml).join('') + createDrafts.map(buildPoolEditorRowHtml).join('');
-    container.innerHTML = `<div class="overflow-x-auto">
-                <table class="w-full min-w-[820px] text-center border-collapse">${buildPoolThead()}<tbody>${tbody}</tbody></table>
-            </div>${buildPoolPagerHtml(rows.length, pageCount)}`;
+    renderPoolTableOnly();
 };
 
 window.adminPushPoolSetFilter = function (value) {
@@ -557,20 +614,86 @@ window.adminPushPoolDelete = async function (messageId) {
     }
 };
 
-/** 풀 메시지를 발송예정 탭의 작성 행으로 옮긴다 (등록은 그쪽에서) */
-window.adminPushPoolUseAsSchedule = function (messageId) {
-    const r = findPoolRow(messageId);
-    if (!r) return;
-    if (typeof window.createAdminPushDraftFromPoolMessage !== 'function') {
+// ========== 선택 ==========
+
+window.adminPushPoolRowSelect = function (messageId, checked) {
+    if (!messageId) return;
+    if (checked) poolSelectedIds.add(messageId);
+    else poolSelectedIds.delete(messageId);
+    syncPoolSelectionUi();
+};
+
+/** 현재 페이지의 행만 전체 선택/해제 (다른 페이지 선택은 건드리지 않는다) */
+window.adminPushPoolToggleAll = function (checked) {
+    const pageRows = currentPoolPageRows();
+    pageRows.forEach((r) => {
+        if (checked) poolSelectedIds.add(r.id);
+        else poolSelectedIds.delete(r.id);
+    });
+    document.querySelectorAll('.admin-push-pool-select-item').forEach((cb) => {
+        const id = cb.dataset.messageId;
+        cb.checked = !!id && poolSelectedIds.has(id);
+    });
+    syncPoolSelectionUi(pageRows);
+};
+
+/** 선택한 메시지들을 예약 작성 행으로 한 번에 옮긴다 */
+function poolMessagesToScheduleDraft(ids) {
+    return ids
+        .map((id) => findPoolRow(id))
+        .filter(Boolean)
+        .map((r) => ({
+            messageId: r.id,
+            title: String(r.title || ''),
+            body: String(r.body || ''),
+            landingTab: r.landingTab || 'dashboard'
+        }));
+}
+
+window.adminPushPoolScheduleSelected = function () {
+    const msgs = poolMessagesToScheduleDraft([...poolSelectedIds]);
+    if (msgs.length === 0) {
+        alert('예약할 메시지를 선택해 주세요.');
+        return;
+    }
+    if (typeof window.createAdminPushDraftsFromPoolMessages !== 'function') {
         alert('예약 작성 화면을 열 수 없습니다. 새로고침 후 다시 시도해 주세요.');
         return;
     }
-    window.createAdminPushDraftFromPoolMessage({
-        messageId,
-        title: String(r.title || ''),
-        body: String(r.body || ''),
-        landingTab: r.landingTab || 'dashboard'
-    });
+    poolSelectedIds.clear();
+    window.createAdminPushDraftsFromPoolMessages(msgs);
+};
+
+window.adminPushPoolDeleteSelected = async function () {
+    const ids = [...poolSelectedIds];
+    if (ids.length === 0) {
+        alert('삭제할 메시지를 선택해 주세요.');
+        return;
+    }
+    if (!confirm(`선택한 ${ids.length}건을 풀에서 삭제할까요?
+이미 등록된 예약에는 영향이 없습니다.`)) return;
+    const btn = document.getElementById('adminPushPoolDeleteSelectedBtn');
+    if (btn) btn.disabled = true;
+    try {
+        await deleteAdminPushMessageFn({ messageIds: ids });
+        poolSelectedIds.clear();
+        await loadAdminPushPool({ force: true });
+    } catch (e) {
+        console.error('선택 삭제 실패:', e);
+        alert('삭제 실패: ' + (e?.message || e));
+        syncPoolSelectionUi();
+    }
+};
+
+/** 풀 메시지를 발송예정 탭의 작성 행으로 옮긴다 (등록은 그쪽에서) */
+window.adminPushPoolUseAsSchedule = function (messageId) {
+    const msgs = poolMessagesToScheduleDraft([messageId]);
+    if (msgs.length === 0) return;
+    if (typeof window.createAdminPushDraftsFromPoolMessages !== 'function') {
+        alert('예약 작성 화면을 열 수 없습니다. 새로고침 후 다시 시도해 주세요.');
+        return;
+    }
+    window.createAdminPushDraftsFromPoolMessages(msgs);
 };
 
 /**

@@ -632,7 +632,7 @@ function buildAdminPushBulkBarHtml(rows, tab) {
     const selectableCount = rows.filter((r) => isAdminPushRowSelectable(r, tab)).length;
     const selectedCount = adminPushSelectedIds.size;
     const draftCount = adminPushInlineDrafts.length;
-    const selectableLabel = isUpcoming ? `취소가능 ${selectableCount}건` : `담기가능 ${selectableCount}건`;
+    const selectableLabel = `선택가능 ${selectableCount}건`;
     const upcomingBtns = isUpcoming
         ? `
                 <button type="button" id="adminPushNewBtn" onclick="window.createAdminPushNewNotification()" class="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-200 transition-colors">
@@ -991,26 +991,32 @@ window.bulkAddAdminPushToPool = async function() {
 };
 
 /**
- * 메시지 풀에서 고른 메시지로 발송예정 탭에 작성 행을 연다.
- * 등록 자체는 기존 인라인 저장 흐름을 그대로 탄다.
+ * 메시지 풀에서 고른 메시지들로 발송예정 탭에 작성 행을 연다.
+ * 여러 건이면 앞 행 기준으로 하루씩 밀어 채운다. 등록 자체는 기존 인라인 저장 흐름을 그대로 탄다.
  */
-window.createAdminPushDraftFromPoolMessage = function(msg) {
-    if (!msg) return;
+window.createAdminPushDraftsFromPoolMessages = function(msgs) {
+    const list = (Array.isArray(msgs) ? msgs : [msgs]).filter(Boolean);
+    if (list.length === 0) return;
     switchAdminPushHistoryTabUi('upcoming');
-    const base = buildNextCreateDraftFields();
-    const draftKey = nextAdminPushDraftKey();
-    adminPushInlineDrafts.push({
-        mode: 'create',
-        draftKey,
-        ...base,
-        title: String(msg.title || ''),
-        body: String(msg.body || ''),
-        landingTab: msg.landingTab || base.landingTab,
-        messageId: msg.messageId || null
-    });
+    let firstKey = null;
+    for (const msg of list) {
+        // 방금 넣은 행까지 포함해 다음 날짜를 계산하므로 순서대로 하루씩 밀린다
+        const base = buildNextCreateDraftFields();
+        const draftKey = nextAdminPushDraftKey();
+        if (!firstKey) firstKey = draftKey;
+        adminPushInlineDrafts.push({
+            mode: 'create',
+            draftKey,
+            ...base,
+            title: String(msg.title || ''),
+            body: String(msg.body || ''),
+            landingTab: msg.landingTab || base.landingTab,
+            messageId: msg.messageId || null
+        });
+    }
     afterAdminClick(() => {
         renderAdminPushHistoryTableFromCache();
-        focusAdminPushInlineDraftRow(draftKey);
+        focusAdminPushInlineDraftRow(firstKey);
     });
 };
 
