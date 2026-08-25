@@ -561,16 +561,34 @@ window.adminPushPoolSaveDraft = async function (draftKey) {
         btn.textContent = '저장 중…';
     }
     try {
+        const landingTab = draft.landingTab || 'dashboard';
+        const active = draft.active !== false;
         const res = await upsertAdminPushMessageFn({
             ...(draft.mode === 'edit' ? { messageId: draft.messageId } : {}),
             title,
             body,
-            landingTab: draft.landingTab || 'dashboard',
-            active: draft.active !== false
+            landingTab,
+            active
         });
         poolDrafts = poolDrafts.filter((d) => d.draftKey !== draftKey);
-        await loadAdminPushPool({ force: true });
-        if (res?.data?.duplicated) {
+        const newId = String(res?.data?.id || '');
+        const duplicated = res?.data?.duplicated === true;
+        // 전량을 다시 읽지 않고 바뀐 행만 반영한다 — 풀이 커질수록 재조회 비용이 그대로 과금된다
+        if (draft.mode === 'edit') {
+            const row = findPoolRow(draft.messageId);
+            if (row) Object.assign(row, { title, body, landingTab, active });
+            renderAdminPushPoolFromCache();
+        } else if (duplicated || !newId) {
+            await loadAdminPushPool({ force: true });
+        } else {
+            poolRows = [
+                { id: newId, title, body, landingTab, active, useCount: 0, lastUsedAt: null, createdAt: Date.now() },
+                ...poolRows
+            ];
+            invalidateAdminPushRotationCache();
+            renderAdminPushPoolFromCache();
+        }
+        if (duplicated) {
             alert('같은 제목·내용의 메시지가 이미 풀에 있어 새로 담지 않았습니다.');
         }
     } catch (e) {
@@ -610,7 +628,10 @@ window.adminPushPoolDelete = async function (messageId) {
     if (!confirm(`"${label}" 메시지를 풀에서 삭제할까요?\n이미 등록된 예약에는 영향이 없습니다.`)) return;
     try {
         await deleteAdminPushMessageFn({ messageId });
-        await loadAdminPushPool({ force: true });
+        poolRows = poolRows.filter((x) => x.id !== messageId);
+        poolSelectedIds.delete(messageId);
+        invalidateAdminPushRotationCache();
+        renderAdminPushPoolFromCache();
     } catch (e) {
         console.error('메시지 삭제 실패:', e);
         alert('삭제 실패: ' + (e?.message || e));
@@ -679,8 +700,11 @@ window.adminPushPoolDeleteSelected = async function () {
     if (btn) btn.disabled = true;
     try {
         await deleteAdminPushMessageFn({ messageIds: ids });
+        const removed = new Set(ids);
+        poolRows = poolRows.filter((x) => !removed.has(x.id));
         poolSelectedIds.clear();
-        await loadAdminPushPool({ force: true });
+        invalidateAdminPushRotationCache();
+        renderAdminPushPoolFromCache();
     } catch (e) {
         console.error('선택 삭제 실패:', e);
         alert('삭제 실패: ' + (e?.message || e));
