@@ -242,11 +242,14 @@ deckRemaining.splice(insertAt, 0, newId)
 
 ### 7.2 순환 설정 탭
 
+슬롯은 화면에서 **요일 × 시각의 곱**으로 다룬다. 실제 운영이 "월·수·금 09:00·20:00" 형태라
+쌍을 하나씩 찍는 것보다 빠르고, 서버에는 펼쳐진 `[{weekday,time}]` 로 저장된다.
+
 ```
 순환 발송           [ ●─ 켜짐 ]
 대상 환경           ( 전체 / 운영 / 스테이징 )
-발송 슬롯           월 화 수 목 금 토 일   ← 요일 칩
-                    09:00  ✕     20:00  ✕     + 시각 추가
+발송 요일           월 화 수 목 금 토 일   ← 요일 칩
+발송 시각           09:00  ✕     20:00  ✕     + 시각 추가
 미리 배정 기간       [ 14 ] 일치
 새 메시지 우선       [ ●─ 켜짐 ]  다음 [ 10 ] 회 안에 배정
 
@@ -296,11 +299,13 @@ deckRemaining.splice(insertAt, 0, newId)
 ### Firestore 규칙
 
 ```
-match /artifacts/{appId}/adminPushMessages/{id}   { allow read, write: if isAdmin(); }
+match /artifacts/{appId}/adminPushMessages/{id}   { allow read: if isAdmin(); allow write: if false; }
 match /artifacts/{appId}/adminPushRotations/{id}  { allow read: if isAdmin(); allow write: if false; }
 ```
 
-실제 쓰기는 전부 Admin SDK로 처리한다. 덱 상태는 클라이언트가 직접 못 건드리게 막는다.
+실제 쓰기는 둘 다 Admin SDK로만 처리한다. 덱 상태는 "한 바퀴 안 중복 없음"을 담보하는
+상태이므로 클라이언트가 직접 건드릴 수 있으면 그 보장이 무너진다. 메시지 쪽도 `useCount`
+같은 집계 필드가 있어 같은 이유로 막았다.
 
 ## 9. 엣지 케이스
 
@@ -322,9 +327,21 @@ match /artifacts/{appId}/adminPushRotations/{id}  { allow read: if isAdmin(); al
 풀 메시지로 예약 만들기(`messageId` 출처 기록 → 발송 시 `useCount` 집계).
 여기까지만 해도 "예전 메시지 골라서 재사용"이 가능하다. 기록에서 담기가 이 단계의 핵심이다.
 
-**Phase 2 — 순환 엔진**
-`adminPushRotations`, 덱 알고리즘, `planAdminPushRotations` 크론, 순환 설정 탭,
-발송예정 목록의 순환 뱃지. 이 시점에 요구사항이 전부 충족된다.
+**Phase 2 — 순환 엔진** — 2026-08-25 구현 완료
+`adminPushRotations`, 덱 알고리즘, `planAdminPushRotations` 크론(매일 03:10 KST), 순환 설정 탭,
+발송예정 목록의 순환 뱃지, 개별 재추첨. 이 시점에 요구사항이 전부 충족된다.
+
+구현하며 설계에서 달라진 것 셋:
+
+- **덱 로직은 `functions/pushRotationDeck.js` 로 분리했다.** 조용히 깨지면 실사용자에게 같은
+  푸시가 두 번 나가는 자리라, Firestore 를 참조하지 않는 순수 함수로 떼어내 단위 테스트로
+  못박았다 (`test/push-rotation-deck.test.mjs`). 바퀴 경계 스왑을 빼면 테스트가 실제로 깨진다.
+- **`rotationSkipped` 플래그는 두지 않았다.** 취소된 예약은 문서가 `cancelled` 상태로 남고,
+  배정은 "문서가 없는 슬롯만 채운다"라서 취소된 슬롯이 자동으로 다시 채워지지 않는다.
+  결정론적 문서 ID 하나가 중복 방지와 취소 존중을 동시에 해준다.
+- **미래 배정을 되돌릴 때는 문서를 지운다.** 쓰였던 메시지를 덱 앞쪽으로 돌려놓고 문서를
+  삭제하면, 그 슬롯은 다음 배정에서 자연히 다시 채워진다. 교체 로직을 따로 쓰지 않아도 된다.
+  메시지 비활성·삭제, 슬롯 변경, 재셔플이 모두 이 한 경로를 쓴다.
 
 **Phase 3 — 운영 편의**
 개별 재추첨, 잔여 재셔플, 메시지 수정 시 미래 예약 동기화, 사용 통계(메시지별 수신자수·바퀴별 이력).

@@ -3,6 +3,7 @@ import { db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { collection, query, orderBy, getDocs, limit } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml, afterAdminClick } from './utils.js';
+import { invalidateAdminPushRotationCache } from './push-rotation.js';
 
 const upsertAdminPushMessageFn = httpsCallable(functions, 'upsertAdminPushMessage');
 const deleteAdminPushMessageFn = httpsCallable(functions, 'deleteAdminPushMessage');
@@ -103,6 +104,8 @@ function syncPoolCountBadge() {
 // ========== 목록 조회 ==========
 
 async function fetchAdminPushPool() {
+    // 풀 크기가 바뀌면 순환 상태 표시도 다시 읽어야 한다
+    invalidateAdminPushRotationCache();
     const coll = collection(db, 'artifacts', appId, 'adminPushMessages');
     const snap = await getDocs(query(coll, orderBy('createdAt', 'desc'), limit(2000)));
     poolRows = snap.docs.map((d) => ({ ...d.data(), id: d.id }));

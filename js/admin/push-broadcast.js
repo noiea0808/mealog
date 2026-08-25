@@ -4,12 +4,14 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/fireba
 import { collection, query, orderBy, where, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml, runAdminRefreshAction, afterAdminClick } from './utils.js';
 import { loadAdminPushPool, importAdminPushHistoryToPool } from './push-pool.js';
+import { loadAdminPushRotation } from './push-rotation.js';
 
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
 const scheduleAdminBroadcastPushFn = httpsCallable(functions, 'scheduleAdminBroadcastPush');
 const cancelAdminScheduledPushFn = httpsCallable(functions, 'cancelAdminScheduledPush');
 const deleteAdminBroadcastHistoryFn = httpsCallable(functions, 'deleteAdminBroadcastHistory');
 const updateAdminScheduledPushFn = httpsCallable(functions, 'updateAdminScheduledPush');
+const rerollAdminScheduledPushFn = httpsCallable(functions, 'rerollAdminScheduledPush');
 /** Cloud Functions `ADMIN_BROADCAST_*_MAX` 와 동일 */
 const ADMIN_BROADCAST_TITLE_MAX = 120;
 const ADMIN_BROADCAST_BODY_MAX = 240;
@@ -325,6 +327,7 @@ function ensureAdminPushHistoryTabHandlers() {
     bind('adminPushHistoryTabUpcoming', 'upcoming');
     bind('adminPushHistoryTabDone', 'done');
     bind('adminPushHistoryTabPool', 'pool');
+    bind('adminPushHistoryTabRotation', 'rotation');
 }
 
 function escapeAttr(s) {
@@ -431,19 +434,23 @@ function adminPushUnsavedEnvBadgeHtml() {
     return `<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-400" title="미저장"><i class="fa-solid fa-circle text-[6px]" aria-hidden="true"></i></span>`;
 }
 
-/** 예약 목록 영역과 메시지 풀 영역은 한 번에 하나만 보인다 */
+/** 예약 목록 · 메시지 풀 · 순환 설정 — 한 번에 하나만 보인다 */
 function syncAdminPushPaneVisibility() {
-    const isPool = adminPushHistoryActiveTab === 'pool';
+    const tab = adminPushHistoryActiveTab;
+    const isPool = tab === 'pool';
+    const isRotation = tab === 'rotation';
+    const isSchedule = !isPool && !isRotation;
     const toggle = (id, hidden) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('hidden', hidden);
     };
-    toggle('adminScheduledPushesContainer', isPool);
-    toggle('adminPushBulkBar', isPool);
-    // 풀 탭은 자체 툴바에 새로고침이 있어 상단 버튼을 감춘다
-    toggle('adminRefreshScheduledPushesBtn', isPool);
+    toggle('adminScheduledPushesContainer', !isSchedule);
+    toggle('adminPushBulkBar', !isSchedule);
+    // 풀·순환 탭은 자체 버튼을 갖고 있어 상단 새로고침을 감춘다
+    toggle('adminRefreshScheduledPushesBtn', !isSchedule);
     toggle('adminPushPoolToolbar', !isPool);
     toggle('adminPushPoolContainer', !isPool);
+    toggle('adminPushRotationContainer', !isRotation);
 }
 
 function switchAdminPushHistoryTabUi(tab) {
@@ -516,10 +523,15 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
         ? summarizeWeeklyTargetEnvs(ws)
         : (ADMIN_PUSH_TARGET_ENV_LABELS[targetEnv] || ADMIN_PUSH_TARGET_ENV_LABELS.all);
     const canEdit = isAdminPushRowEditable(r);
+    const isRotation = String(r.scheduleSource || '') === 'rotation';
+    const canReroll = isRotation && canCancel;
     const rc = typeof r.recipientCount === 'number' && !Number.isNaN(r.recipientCount) ? String(r.recipientCount) : '—';
     const actionBtns = [
         canEdit
             ? `<button type="button" onclick='window.editAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded border border-violet-100">수정</button>`
+            : '',
+        canReroll
+            ? `<button type="button" onclick='window.rerollAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-100" title="덱에서 다른 메시지로 다시 뽑기">재추첨</button>`
             : '',
         canCancel
             ? `<button type="button" onclick='window.cancelAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100">취소</button>`
@@ -548,7 +560,14 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
               .join(' · ')
               .slice(0, 400)
         : rawTitle;
-    const titleCell = `<span class="line-clamp-2 text-slate-800 font-medium" title="${escapeAttr(titleAttr)}">${titleText}</span>`;
+    const deckIdx = Number(r.deckIndex);
+    const deckSize = Number(r.deckSize);
+    const rotationBadge = isRotation
+        ? `<span class="inline-flex items-center gap-1 mb-0.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-bold whitespace-nowrap" title="순환 발송에서 자동 배정된 예약"><i class="fa-solid fa-rotate text-[9px]" aria-hidden="true"></i>순환${
+              Number.isFinite(deckIdx) && Number.isFinite(deckSize) ? ` ${deckIdx}/${deckSize}` : ''
+          }</span>`
+        : '';
+    const titleCell = `${rotationBadge}<span class="line-clamp-2 text-slate-800 font-medium" title="${escapeAttr(titleAttr)}">${titleText}</span>`;
     const envCellInner = `<span class="inline-flex items-center justify-center gap-1.5">${adminPushSavedEnvBadgeHtml()}<span>${escapeHtml(targetEnvLabel)}</span></span>`;
     const actionCell = actionBtns
         ? `<div class="inline-flex flex-wrap justify-center gap-1">${actionBtns}</div>`
@@ -700,7 +719,7 @@ function syncAdminPushBulkBar(rowsArg) {
     const bar = document.getElementById('adminPushBulkBar');
     if (!bar) return;
     const tab = adminPushHistoryActiveTab;
-    if (tab === 'pool') {
+    if (tab === 'pool' || tab === 'rotation') {
         bar.classList.add('hidden');
         bar.innerHTML = '';
         return;
@@ -756,6 +775,10 @@ function renderAdminPushHistoryTableFromCache() {
     syncAdminPushPaneVisibility();
     if (adminPushHistoryActiveTab === 'pool') {
         loadAdminPushPool();
+        return;
+    }
+    if (adminPushHistoryActiveTab === 'rotation') {
+        loadAdminPushRotation();
         return;
     }
     const isUpcoming = adminPushHistoryActiveTab === 'upcoming';
@@ -959,6 +982,34 @@ window.bulkCancelAdminScheduledPushes = async function() {
     }
     await refreshAdminScheduledPushesCore();
     alert(`발송 취소 완료: ${ok}건${failed.length ? `, 실패: ${failed.length}건` : ''}`);
+};
+
+/** 순환 예약 1건을 덱에서 다시 뽑아 교체 */
+window.rerollAdminScheduledPush = async function(jobId) {
+    if (!jobId) return;
+    if (!auth.currentUser?.uid) {
+        alert('로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const res = await rerollAdminScheduledPushFn({ jobId });
+        await refreshAdminScheduledPushesCore();
+        const t = String(res?.data?.title || '').trim();
+        alert(t ? `"${t}" 으로 교체했습니다.` : '다른 메시지로 교체했습니다.');
+    } catch (e) {
+        console.error('재추첨 실패:', e);
+        alert('재추첨 실패: ' + (e?.message || e));
+    }
+};
+
+/** 순환 설정 화면이 '다음 발송'을 계산할 때 쓴다 (중복 조회 방지) */
+window.getAdminPushUpcomingRows = function() {
+    return adminPushHistoryRows.upcoming;
+};
+
+/** 다른 탭에서 목록만 조용히 다시 읽을 때 */
+window.refreshAdminScheduledPushesQuiet = async function() {
+    await refreshAdminScheduledPushesCore();
 };
 
 /** 선택한 발송예정·발송완료 기록을 메시지 풀에 담기 */

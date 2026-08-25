@@ -12,6 +12,12 @@ const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
+const {
+  shuffleIds,
+  drawFromDeck,
+  insertIntoDeckRemaining,
+  rotationSlotDocId
+} = require('./pushRotationDeck');
 const sharp = require('sharp');
 
 // Firebase Admin 초기화
@@ -5290,7 +5296,7 @@ async function assertAdminForPushPool(request, action) {
 }
 
 /** 관리자: 풀 메시지 생성·수정 */
-exports.upsertAdminPushMessage = onCall({ region: REGION }, async (request) => {
+exports.upsertAdminPushMessage = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
   const callerUid = await assertAdminForPushPool(request, '등록할');
   const data = request.data || {};
   const normalized = normalizeAdminPushMessageInput(data);
@@ -5306,12 +5312,23 @@ exports.upsertAdminPushMessage = onCall({ region: REGION }, async (request) => {
     if (!snap.exists) {
       throw new HttpsError('not-found', '메시지를 찾을 수 없습니다.');
     }
+    const wasActive = snap.data()?.active !== false;
     await ref.update({
       ...normalized,
       active,
       updatedAt: FieldValue.serverTimestamp(),
       updatedByUid: callerUid
     });
+    if (wasActive && !active) {
+      // 순환에서 뺐으면 이미 깔린 미래 배정도 비워 다른 메시지로 다시 채운다
+      await replanRotationsForMessages([messageId]).catch((e) =>
+        logger.warn('upsertAdminPushMessage: replan failed', { message: e?.message })
+      );
+    } else if (!wasActive && active) {
+      await insertMessageIntoRotationDecks(messageId).catch((e) =>
+        logger.warn('upsertAdminPushMessage: deck insert failed', { message: e?.message })
+      );
+    }
     return { ok: true, id: messageId, created: false };
   }
 
@@ -5333,11 +5350,17 @@ exports.upsertAdminPushMessage = onCall({ region: REGION }, async (request) => {
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   });
+  if (active) {
+    // 다음 바퀴까지 기다리지 않고 이번 바퀴 안에서 나가도록
+    await insertMessageIntoRotationDecks(ref.id).catch((e) =>
+      logger.warn('upsertAdminPushMessage: deck insert failed', { message: e?.message })
+    );
+  }
   return { ok: true, id: ref.id, created: true };
 });
 
 /** 관리자: 풀 메시지 삭제 */
-exports.deleteAdminPushMessage = onCall({ region: REGION }, async (request) => {
+exports.deleteAdminPushMessage = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
   await assertAdminForPushPool(request, '삭제할');
   const ids = Array.isArray(request.data?.messageIds)
     ? request.data.messageIds
@@ -5358,6 +5381,9 @@ exports.deleteAdminPushMessage = onCall({ region: REGION }, async (request) => {
     }
   }
   if (ops > 0) await batch.commit();
+  await replanRotationsForMessages(targets).catch((e) =>
+    logger.warn('deleteAdminPushMessage: replan failed', { message: e?.message })
+  );
   return { ok: true, deleted: targets.length };
 });
 
@@ -5441,6 +5467,405 @@ exports.importAdminPushMessagesFromHistory = onCall({ region: REGION }, async (r
     requested: jobIds.length
   };
 });
+
+// ============================================
+// 푸시 메시지 순환 발송 (adminPushRotations)
+// ============================================
+
+const ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS = 60;
+const ADMIN_PUSH_ROTATION_MAX_SLOTS = 28;
+/** 한 번의 배정에서 만들 수 있는 최대 예약 — 슬롯 설정 실수로 폭주하는 것을 막는다 */
+const ADMIN_PUSH_ROTATION_MAX_CREATE = 200;
+const ADMIN_PUSH_ROTATION_MAX_OCCURRENCES = 400;
+
+function adminPushRotationsColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminPushRotations');
+}
+
+function adminScheduledPushesColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+}
+
+/** 순환 슬롯 [{weekday:1~7, time:'HH:mm'}] — 중복 제거 후 요일·시각 순 */
+function normalizeRotationSlots(rows) {
+  if (!Array.isArray(rows)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const weekday = Number(row?.weekday);
+    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) continue;
+    const time = normalizeHm(row?.time);
+    if (!/^\d{2}:\d{2}$/.test(time)) continue;
+    const key = `${weekday}_${time}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ weekday, time });
+  }
+  out.sort((a, b) => a.weekday - b.weekday || a.time.localeCompare(b.time));
+  return out.slice(0, ADMIN_PUSH_ROTATION_MAX_SLOTS);
+}
+
+function clampInt(v, min, max, fallback) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
+function normalizeRotationDoc(d) {
+  return {
+    name: String(d?.name || '기본 순환').slice(0, 60),
+    enabled: d?.enabled === true,
+    targetEnv: ADMIN_PUSH_TARGET_ENVS.has(String(d?.targetEnv || '')) ? String(d.targetEnv) : 'all',
+    slots: normalizeRotationSlots(d?.slots),
+    horizonDays: clampInt(d?.horizonDays, 1, ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS, 14),
+    cycleNo: clampInt(d?.cycleNo, 0, 1e9, 0),
+    deckRemaining: Array.isArray(d?.deckRemaining) ? d.deckRemaining.map(String) : [],
+    deckServed: Array.isArray(d?.deckServed) ? d.deckServed.map(String) : [],
+    lastAssignedMessageId: d?.lastAssignedMessageId ? String(d.lastAssignedMessageId) : null,
+    newMessagePriority: d?.newMessagePriority !== false,
+    priorityWindow: clampInt(d?.priorityWindow, 1, 100, 10),
+    plannedUntilYmd: String(d?.plannedUntilYmd || '')
+  };
+}
+
+/** 오늘부터 horizonDays 뒤까지, 슬롯 요일·시각에 걸리는 발송 시각 (KST) */
+function enumerateRotationOccurrences(slots, horizonDays, minFromMs) {
+  if (!slots.length) return [];
+  const out = [];
+  let ymd = kstYmdFromMillis(minFromMs);
+  for (let day = 0; day <= horizonDays && out.length < ADMIN_PUSH_ROTATION_MAX_OCCURRENCES; day++) {
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ms = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ms) || ms < minFromMs) continue;
+      out.push({ ms, ymd, time: slot.time });
+    }
+    ymd = addOneKstYmd(ymd);
+  }
+  out.sort((a, b) => a.ms - b.ms);
+  return out;
+}
+
+/** 활성 메시지 전량 — 덱 보충과 내용 스냅샷에 모두 쓴다 */
+async function fetchActiveAdminPushMessages() {
+  const snap = await adminPushMessagesColl().where('active', '==', true).limit(ADMIN_PUSH_MESSAGE_MAX).get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    const tab = String(data.landingTab || '').trim();
+    return {
+      id: d.id,
+      title: String(data.title || ''),
+      body: String(data.body || ''),
+      landingTab: ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard'
+    };
+  });
+}
+
+/**
+ * 호라이즌 안의 빈 슬롯을 덱에서 뽑아 채운다.
+ * 슬롯 나열 → 문서 생성 → 덱 갱신을 한 트랜잭션으로 묶어, 실패해도 덱만 앞서나가지 않게 한다.
+ * 이미 문서가 있는 슬롯은 건너뛴다 — 취소된 슬롯도 문서가 남아 다시 채워지지 않는다.
+ */
+async function planAdminPushRotationCore(rotationId) {
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  // 풀 스냅샷은 트랜잭션 밖에서 — 자주 바뀌지 않고, 재시도마다 다시 읽을 이유가 없다
+  const messages = await fetchActiveAdminPushMessages();
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const activeIds = messages.map((m) => m.id);
+
+  return db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (!rotSnap.exists) return { created: 0, reason: 'not-found' };
+    const rot = normalizeRotationDoc(rotSnap.data());
+    if (!rot.enabled) return { created: 0, reason: 'disabled' };
+    if (rot.slots.length === 0) return { created: 0, reason: 'no-slots' };
+    if (activeIds.length === 0) return { created: 0, reason: 'empty-pool' };
+
+    const minFromMs = Date.now() + 60 * 1000;
+    const occurrences = enumerateRotationOccurrences(rot.slots, rot.horizonDays, minFromMs);
+    if (occurrences.length === 0) return { created: 0, reason: 'no-occurrence' };
+
+    const refs = occurrences.map((o) =>
+      adminScheduledPushesColl().doc(rotationSlotDocId(rotationId, o.ymd, o.time))
+    );
+    const snaps = await tx.getAll(...refs);
+
+    const deck = {
+      remaining: [...rot.deckRemaining],
+      served: [...rot.deckServed],
+      cycleNo: rot.cycleNo,
+      lastAssignedMessageId: rot.lastAssignedMessageId
+    };
+
+    let created = 0;
+    for (let i = 0; i < occurrences.length; i++) {
+      if (created >= ADMIN_PUSH_ROTATION_MAX_CREATE) break;
+      if (snaps[i].exists) continue;
+      const messageId = drawFromDeck(deck, activeIds);
+      if (!messageId) break;
+      const msg = byId.get(messageId);
+      if (!msg) continue;
+      tx.set(refs[i], {
+        scheduleType: 'once',
+        scheduleSource: 'rotation',
+        rotationId,
+        messageId,
+        cycleNo: deck.cycleNo,
+        deckIndex: deck.served.length,
+        deckSize: activeIds.length,
+        title: msg.title,
+        body: msg.body,
+        landingTab: msg.landingTab,
+        targetEnv: rot.targetEnv,
+        scheduledAt: Timestamp.fromMillis(occurrences[i].ms),
+        status: 'pending',
+        createdByUid: null,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      created++;
+    }
+
+    tx.update(rotRef, {
+      deckRemaining: deck.remaining,
+      deckServed: deck.served,
+      cycleNo: deck.cycleNo,
+      lastAssignedMessageId: deck.lastAssignedMessageId,
+      plannedUntilYmd: occurrences[occurrences.length - 1].ymd,
+      lastPlannedAt: FieldValue.serverTimestamp()
+    });
+    return { created, cycleNo: deck.cycleNo, remaining: deck.remaining.length, poolSize: activeIds.length };
+  });
+}
+
+/**
+ * 미래 pending 순환 예약을 되돌린다 — 문서를 지우고 쓰였던 메시지를 덱 앞쪽으로 돌려놓는다.
+ * 지운 슬롯은 문서가 사라지므로 다음 배정에서 다시 채워진다.
+ * @param {(data:object)=>boolean} [filterFn] 되돌릴 대상 (기본: 전부)
+ */
+async function rewindRotationAssignments(rotationId, filterFn) {
+  const nowMs = Date.now();
+  const snap = await adminScheduledPushesColl()
+    .where('rotationId', '==', rotationId)
+    .where('status', '==', 'pending')
+    .limit(500)
+    .get();
+  const targets = snap.docs
+    .filter((d) => {
+      const data = d.data();
+      const ms =
+        data.scheduledAt && typeof data.scheduledAt.toMillis === 'function' ? data.scheduledAt.toMillis() : 0;
+      if (!ms || ms <= nowMs) return false;
+      return filterFn ? filterFn(data) : true;
+    })
+    // 원래 배정 순서대로 되돌려야 다시 채울 때 같은 순서가 나온다
+    .sort((a, b) => a.data().scheduledAt.toMillis() - b.data().scheduledAt.toMillis());
+  if (targets.length === 0) return { rewound: 0 };
+
+  const returnedIds = targets.map((d) => String(d.data().messageId || '')).filter(Boolean);
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  await db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (rotSnap.exists) {
+      const rot = normalizeRotationDoc(rotSnap.data());
+      const returned = new Set(returnedIds);
+      tx.update(rotRef, {
+        deckRemaining: [...returnedIds, ...rot.deckRemaining.filter((id) => !returned.has(id))],
+        deckServed: rot.deckServed.filter((id) => !returned.has(id))
+      });
+    }
+    for (const d of targets) tx.delete(d.ref);
+  });
+  return { rewound: targets.length };
+}
+
+/** 풀이 바뀌어 영향을 받는 미래 배정을 되돌리고 다시 채운다 (비활성·삭제 시) */
+async function replanRotationsForMessages(messageIds) {
+  const ids = new Set(messageIds.map(String).filter(Boolean));
+  if (ids.size === 0) return;
+  const snap = await adminPushRotationsColl().limit(10).get();
+  for (const d of snap.docs) {
+    try {
+      await rewindRotationAssignments(d.id, (data) => ids.has(String(data.messageId || '')));
+      await planAdminPushRotationCore(d.id);
+    } catch (e) {
+      logger.warn('replanRotationsForMessages: failed', { rotationId: d.id, message: e?.message });
+    }
+  }
+}
+
+/** 새로 담은 메시지를 이번 바퀴 잔여 구간에 끼워 넣는다 (우선 배정이 켜져 있으면 앞쪽에) */
+async function insertMessageIntoRotationDecks(messageId) {
+  const snap = await adminPushRotationsColl().where('enabled', '==', true).limit(10).get();
+  for (const docSnap of snap.docs) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(docSnap.ref);
+        if (!s.exists) return;
+        const rot = normalizeRotationDoc(s.data());
+        if (rot.deckServed.includes(messageId)) return;
+        const next = insertIntoDeckRemaining(rot.deckRemaining, messageId, {
+          newMessagePriority: rot.newMessagePriority,
+          priorityWindow: rot.priorityWindow
+        });
+        if (next.length === rot.deckRemaining.length) return;
+        tx.update(docSnap.ref, { deckRemaining: next });
+      });
+    } catch (e) {
+      logger.warn('insertMessageIntoRotationDecks: failed', { rotationId: docSnap.id, message: e?.message });
+    }
+  }
+}
+
+/** 관리자: 순환 설정 저장 — 슬롯·환경이 바뀌면 미래 배정을 다시 깐다 */
+exports.saveAdminPushRotation = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '저장할');
+  const data = request.data || {};
+  const rotationId = String(data.rotationId || 'default').trim() || 'default';
+  const slots = normalizeRotationSlots(data.slots);
+  const enabled = data.enabled === true;
+  if (enabled && slots.length === 0) {
+    throw new HttpsError('invalid-argument', '순환을 켜려면 발송 요일·시각을 하나 이상 지정해 주세요.');
+  }
+  const targetEnv = ADMIN_PUSH_TARGET_ENVS.has(String(data.targetEnv || '')) ? String(data.targetEnv) : 'all';
+  const ref = adminPushRotationsColl().doc(rotationId);
+  const before = await ref.get();
+  const prev = before.exists ? normalizeRotationDoc(before.data()) : null;
+
+  await ref.set(
+    {
+      name: String(data.name || '기본 순환').slice(0, 60),
+      enabled,
+      targetEnv,
+      slots,
+      horizonDays: clampInt(data.horizonDays, 1, ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS, 14),
+      newMessagePriority: data.newMessagePriority !== false,
+      priorityWindow: clampInt(data.priorityWindow, 1, 100, 10),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: callerUid
+    },
+    { merge: true }
+  );
+
+  // 발송 조건이 달라졌으면 이미 깔린 미래 배정은 지금 설정과 맞지 않는다
+  const scheduleChanged =
+    !prev || prev.targetEnv !== targetEnv || JSON.stringify(prev.slots) !== JSON.stringify(slots);
+  if (scheduleChanged) {
+    await rewindRotationAssignments(rotationId);
+  }
+  const planned = enabled ? await planAdminPushRotationCore(rotationId) : { created: 0, reason: 'disabled' };
+  return { ok: true, id: rotationId, planned };
+});
+
+/** 관리자: 지금 다시 채우기 */
+exports.planAdminPushRotationNow = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  await assertAdminForPushPool(request, '배정할');
+  const rotationId = String(request.data?.rotationId || 'default').trim() || 'default';
+  const planned = await planAdminPushRotationCore(rotationId);
+  return { ok: true, planned };
+});
+
+/** 관리자: 남은 바퀴 다시 섞기 — 미래 배정을 되돌리고 잔여 덱을 재셔플한 뒤 다시 깐다 */
+exports.reshuffleAdminPushRotation = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  await assertAdminForPushPool(request, '재배정할');
+  const rotationId = String(request.data?.rotationId || 'default').trim() || 'default';
+  const rewound = await rewindRotationAssignments(rotationId);
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(rotRef);
+    if (!s.exists) return;
+    const rot = normalizeRotationDoc(s.data());
+    tx.update(rotRef, { deckRemaining: shuffleIds(rot.deckRemaining) });
+  });
+  const planned = await planAdminPushRotationCore(rotationId);
+  return { ok: true, rewound: rewound.rewound, planned };
+});
+
+/** 관리자: 예약 1건만 다른 메시지로 재추첨 */
+exports.rerollAdminScheduledPush = onCall({ region: REGION }, async (request) => {
+  await assertAdminForPushPool(request, '재추첨할');
+  const jobId = String(request.data?.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '예약 ID(jobId)가 필요합니다.');
+  }
+  const jobRef = adminScheduledPushesColl().doc(jobId);
+  const jobSnap = await jobRef.get();
+  if (!jobSnap.exists) {
+    throw new HttpsError('not-found', '예약을 찾을 수 없습니다.');
+  }
+  const job = jobSnap.data();
+  if (String(job.scheduleSource || '') !== 'rotation') {
+    throw new HttpsError('failed-precondition', '순환에서 만든 예약만 재추첨할 수 있습니다.');
+  }
+  if (String(job.status || '') !== 'pending') {
+    throw new HttpsError('failed-precondition', '대기 중인 예약만 재추첨할 수 있습니다.');
+  }
+  const rotationId = String(job.rotationId || 'default');
+  const messages = await fetchActiveAdminPushMessages();
+  if (messages.length === 0) {
+    throw new HttpsError('failed-precondition', '풀에 활성 메시지가 없습니다.');
+  }
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const activeIds = messages.map((m) => m.id);
+  const oldId = String(job.messageId || '');
+
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  const picked = await db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (!rotSnap.exists) throw new HttpsError('not-found', '순환 설정을 찾을 수 없습니다.');
+    const rot = normalizeRotationDoc(rotSnap.data());
+    const deck = {
+      // 쓰던 메시지는 잔여 덱 맨 뒤로 — 바로 다시 뽑히지 않게
+      remaining: [...rot.deckRemaining.filter((id) => id !== oldId), ...(oldId ? [oldId] : [])],
+      served: rot.deckServed.filter((id) => id !== oldId),
+      cycleNo: rot.cycleNo,
+      lastAssignedMessageId: rot.lastAssignedMessageId
+    };
+    const messageId = drawFromDeck(deck, activeIds);
+    if (!messageId) throw new HttpsError('failed-precondition', '뽑을 메시지가 없습니다.');
+    const msg = byId.get(messageId);
+    tx.update(rotRef, {
+      deckRemaining: deck.remaining,
+      deckServed: deck.served,
+      cycleNo: deck.cycleNo,
+      lastAssignedMessageId: deck.lastAssignedMessageId
+    });
+    tx.update(jobRef, {
+      messageId,
+      title: msg.title,
+      body: msg.body,
+      landingTab: msg.landingTab,
+      cycleNo: deck.cycleNo,
+      deckIndex: deck.served.length,
+      rerolledAt: FieldValue.serverTimestamp()
+    });
+    return { messageId, title: msg.title };
+  });
+  return { ok: true, ...picked };
+});
+
+/**
+ * 순환 배정: 매일 호라이즌을 한 칸씩 민다
+ */
+exports.planAdminPushRotations = onSchedule(
+  {
+    schedule: '10 3 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const snap = await adminPushRotationsColl().where('enabled', '==', true).limit(10).get();
+    for (const d of snap.docs) {
+      try {
+        const res = await planAdminPushRotationCore(d.id);
+        logger.info('planAdminPushRotations: planned', { rotationId: d.id, ...res });
+      } catch (e) {
+        logger.error('planAdminPushRotations: failed', { rotationId: d.id, message: e?.message });
+      }
+    }
+  }
+);
 
 /**
  * 예약 푸시: 매분 pending 중 예정 시각 도래 건 처리
