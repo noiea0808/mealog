@@ -536,9 +536,9 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
               selectable
                   ? `<input type="checkbox" class="admin-push-select-item align-middle cursor-pointer mt-0.5" data-job-id="${escapeAttr(
                         r.id
-                    )}" ${adminPushSelectedIds.has(r.id) ? 'checked' : ''} onchange="window.onAdminPushRowSelect(${JSON.stringify(
-                        r.id
-                    )}, this.checked)">`
+                    )}" ${
+                        adminPushSelectedIds.has(r.id) ? 'checked' : ''
+                    } onchange="window.onAdminPushRowSelect(this.dataset.jobId, this.checked)">`
                   : ''
           }</td>`
         : '';
