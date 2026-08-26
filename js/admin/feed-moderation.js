@@ -138,7 +138,6 @@ const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 
 /** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
-const ADMIN_DAILY_JOURNAL_UID_BATCH = 30;
 
 let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
 let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
@@ -436,6 +435,65 @@ function mergeDailyJournalSlotRowsIntoMap(byKey, rows) {
 /**
  * config collectionGroup — users/{uid} 루트 문서 없이 settings 만 있는 계정도 포함
  */
+/**
+ * 하루 기록 목록의 정본 — meals 미러(`slotId === 'daily_journal'`).
+ *
+ * 예전에는 users/{uid}/config/settings 를 전부 훑었다. dailyComments 가 문서 **안의 맵**이라
+ * 목록을 만들려면 사용자 수만큼 읽어야 했고, 화면을 열 때마다 900건 가까이 나갔다.
+ * 미러는 기록 하나가 문서 하나라 최근 것부터 필요한 만큼만 끊어 읽을 수 있다.
+ *
+ * 미러가 없던 시절(2026-06-10 이전)의 소감은 여기서 안 잡힌다. 목록이 최근 것부터
+ * 상한까지만 보여주는 화면이라 실질적인 손실은 없다.
+ */
+async function fetchDailyJournalSlotsFromMealMirrors(excluded, rowLimit) {
+    const mealsGroup = collectionGroup(db, 'meals');
+    const slotFilter = where('slotId', '==', 'daily_journal');
+    let snap;
+    try {
+        snap = await getDocs(query(mealsGroup, slotFilter, orderBy('date', 'desc'), limit(rowLimit)));
+    } catch (e) {
+        if (e?.code !== 'failed-precondition') throw e;
+        // slotId+date 복합 인덱스가 아직 만들어지는 중 — 순서 없이 받아 아래에서 정렬한다
+        console.warn(
+            '[관리자 모먼트] 하루기록 정렬 인덱스 준비 중 — 정렬 없이 조회합니다.',
+            '배포: firebase deploy --only firestore:indexes'
+        );
+        snap = await getDocs(query(mealsGroup, slotFilter));
+    }
+
+    const prefix = `artifacts/${appId}/`;
+    const rows = [];
+    snap.forEach((docSnap) => {
+        if (!docSnap.ref.path.startsWith(prefix)) return;
+        const userId = userIdFromSettingsDocRef(docSnap.ref);
+        if (!userId || excluded.has(userId)) return;
+        const data = docSnap.data() || {};
+        const dk = String(data.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return;
+        const entry = normalizeDailyJournalEntry(data);
+        if (!dailyJournalHasContent(entry)) return;
+        const recordedAt = entry.recordedAt || '';
+        rows.push({
+            id: docSnap.id,
+            userId,
+            date: dk,
+            time: typeof data.time === 'string' && data.time ? data.time : recordedAtIsoToMealTime(recordedAt),
+            slotId: 'daily_journal',
+            recordedAt: recordedAt || undefined,
+            isDailyJournal: true,
+            isDailyJournalSlot: true,
+            comment: entry.comment,
+            photos: entry.photos,
+            sharedPhotos: entry.sharedPhotos,
+            dailyJournalEntry: entry,
+            slotDisplayDate: formatKoDateLabelFromYmd(dk),
+            slotDisplayLabel: '하루소감'
+        });
+    });
+    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return rows.length > rowLimit ? rows.slice(0, rowLimit) : rows;
+}
+
 async function fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded) {
     const slotByKey = new Map();
     let settingsDocs = 0;
@@ -517,55 +575,12 @@ async function fetchDailyJournalsForModeration(authorUid = '') {
 
     await refreshAppCheckTokenBeforeFirestore();
     const slotByKey = new Map();
-    let cgSettingsDocs = 0;
-    let perUserUsers = 0;
-    let cgFailed = false;
-    let cgPaginationComplete = true;
-    let runPerUserFallback = true;
+    let mirrorRows = 0;
     try {
         const excluded = await getExcludedAnalyticsUidSet();
-        try {
-            const cg = await fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded);
-            cgSettingsDocs = cg.settingsDocs;
-            cgPaginationComplete = cg.paginationComplete !== false;
-            for (const [k, v] of cg.slotByKey) slotByKey.set(k, v);
-        } catch (cgErr) {
-            cgFailed = true;
-            console.warn(
-                '[관리자 모먼트] 하루기록 collectionGroup 조회 실패 — 사용자별 조회만 시도',
-                cgErr?.code || cgErr?.message || cgErr
-            );
-        }
-
-        runPerUserFallback = cgFailed || !cgPaginationComplete;
-        if (runPerUserFallback) {
-            const usersSnap = await getDocs(collection(db, 'artifacts', appId, 'users'));
-            const userIds = usersSnap.docs.map((d) => d.id).filter((id) => !excluded.has(id));
-            perUserUsers = userIds.length;
-            const perUserRows = [];
-            for (let i = 0; i < userIds.length; i += ADMIN_DAILY_JOURNAL_UID_BATCH) {
-                const chunk = userIds.slice(i, i + ADMIN_DAILY_JOURNAL_UID_BATCH);
-                await Promise.all(
-                    chunk.map(async (uid) => {
-                        try {
-                            const snap = await getDoc(
-                                doc(db, 'artifacts', appId, 'users', uid, 'config', 'settings')
-                            );
-                            if (snap.exists()) perUserRows.push(...settingsDocToDailyJournalRows(snap));
-                        } catch (e) {
-                            console.warn(
-                                '[관리자 모먼트] 하루 기록 settings 조회 실패:',
-                                uid,
-                                e?.code || e?.message || e
-                            );
-                        }
-                    })
-                );
-            }
-            mergeDailyJournalSlotRowsIntoMap(slotByKey, perUserRows);
-        } else {
-            console.log('[관리자 모먼트] 하루기록 collectionGroup 완료 — per-user settings 조회 생략');
-        }
+        const rows = await fetchDailyJournalSlotsFromMealMirrors(excluded, ADMIN_DAILY_JOURNAL_ROWS_CAP);
+        mirrorRows = rows.length;
+        mergeDailyJournalSlotRowsIntoMap(slotByKey, rows);
     } catch (err) {
         console.warn(
             '[관리자 모먼트] 하루 기록(dailyComments) 조회 실패 — 목록에서 제외합니다.',
@@ -598,8 +613,7 @@ async function fetchDailyJournalsForModeration(authorUid = '') {
                 (dates ? ` · 날짜: ${dates}` : '') +
                 (latest ? ` · 최신슬롯일: ${latest}` : '') +
                 (merged.length > capped.length ? ` · 상한 ${ADMIN_DAILY_JOURNAL_ROWS_CAP}` : '') +
-                ` · settings문서 ${cgSettingsDocs} / users컬렉션 ${perUserUsers}` +
-                (runPerUserFallback ? ' · fallback:per-user' : ' · cg-only')
+                ` · meals 미러 ${mirrorRows}건`
         );
     }
     return capped;
@@ -2069,7 +2083,14 @@ window.refreshFeedManagement = async function () {
 
 /** 하루기록 meals 미러 백필 — 조회 경로와 분리된 수동 액션 (콘솔·스크립트용) */
 window.adminBackfillDailyJournalMealMirrors = async function () {
-    const rows = await fetchDailyJournalsForModeration();
+    /**
+     * 목록은 미러만 보므로 여기에 쓸 수 없다 — 미러가 **없는** 소감을 찾는 일이라
+     * settings 를 직접 훑어야 한다. 수동 액션이라 느려도 괜찮다.
+     */
+    const excluded = await getExcludedAnalyticsUidSet();
+    const cg = await fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded);
+    const rows = [...cg.slotByKey.values()];
+    console.log(`[관리자 모먼트] 미러 백필 대상 검사 ${rows.length}건 (settings 문서 ${cg.settingsDocs}개)`);
     await backfillDailyJournalMealMirrors(rows);
 };
 

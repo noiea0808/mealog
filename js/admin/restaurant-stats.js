@@ -6,13 +6,15 @@ import {
     doc,
     getDoc,
     setDoc,
-    collection,
     query,
     where,
     getDocs,
     collectionGroup
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
+
+/** 캐시가 없을 때 거슬러 올라갈 하한 (admin.js ADMIN_OPS_START·대시보드 집계 시작일과 같음) */
+const RESTAURANT_SCAN_MIN_DATE = '2026-03-08';
 
 const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');
 
@@ -23,9 +25,6 @@ let adminRestaurantMonitoringRendered = false;
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
-
-/** 사용자 meals 병렬 조회 시 동시성 (읽기 건수는 동일, 완료 시간 단축) */
-const USER_MEAL_FETCH_CONCURRENCY = 14;
 
 function cacheHasSlotBreakdown(cachedList) {
     return (
@@ -100,13 +99,17 @@ function finalizeRestaurantMapForSlot(restaurantMap, slotFilter) {
     return out;
 }
 
-async function getTodayMealsForRestaurants() {
-    const todayStr = getTodayDateString();
-    const mealsGroup = collectionGroup(db, 'meals');
-    const q = query(mealsGroup, where('date', '==', todayStr));
-    const snap = await getDocs(q);
-    const prefix = `artifacts/${appId}/`;
-    return snap.docs.filter((d) => d.ref.path.startsWith(prefix)).map((d) => d.data());
+/** 'YYYY-MM-DD' 다음 날. 못 읽으면 '' */
+function nextDateKey(dateKey) {
+    const p = String(dateKey || '').split('-');
+    if (p.length !== 3) return '';
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
 }
 
 function restaurantArrayToMap(arr) {
@@ -115,30 +118,39 @@ function restaurantArrayToMap(arr) {
     return map;
 }
 
-/** 전체 사용자 meals 스캔 → 원시 집계 Map (슬롯 필터 전) */
+/**
+ * 지정 구간의 meals 를 훑어 식당 집계에 반영한다.
+ *
+ * 예전에는 users 를 전부 읽고 사용자마다 meals 를 통째로 가져왔다(1만 건 넘음).
+ * collectionGroup 에 날짜 범위를 걸면 필요한 구간만 한 번에 읽는다.
+ *
+ * @param {Map} restaurantMap 여기에 더한다
+ * @param {string} fromDateKey 포함
+ * @param {string} toDateKey 포함
+ * @returns {Promise<number>} 읽은 문서 수
+ */
+async function accumulateRestaurantsFromMeals(restaurantMap, fromDateKey, toDateKey) {
+    if (!fromDateKey || !toDateKey || fromDateKey > toDateKey) return 0;
+    const mealsGroup = collectionGroup(db, 'meals');
+    const snap = await getDocs(
+        query(mealsGroup, where('date', '>=', fromDateKey), where('date', '<=', toDateKey))
+    );
+    const prefix = `artifacts/${appId}/`;
+    let n = 0;
+    snap.forEach((docSnap) => {
+        if (!docSnap.ref.path.startsWith(prefix)) return;
+        applyMealToRestaurantAggregate(restaurantMap, docSnap.data());
+        n++;
+    });
+    return n;
+}
+
+/** 운영 시작일부터 오늘까지 전량 집계 (캐시가 없거나 못 믿을 때만) */
 async function fetchRestaurantAggregateMap() {
-    const usersColl = collection(db, 'artifacts', appId, 'users');
-    const usersSnapshot = await getDocs(usersColl);
-    const userDocs = usersSnapshot.docs;
     const restaurantMap = new Map();
-
-    let cursor = 0;
-    async function worker() {
-        while (cursor < userDocs.length) {
-            const myIndex = cursor++;
-            const userDoc = userDocs[myIndex];
-            try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userDoc.id, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                mealsSnapshot.docs.forEach((mealDoc) => applyMealToRestaurantAggregate(restaurantMap, mealDoc.data()));
-            } catch (e) {
-                console.warn(`사용자 ${userDoc.id} meals 조회 실패:`, e);
-            }
-        }
-    }
-
-    const nWorkers = Math.min(USER_MEAL_FETCH_CONCURRENCY, userDocs.length || 1);
-    await Promise.all(Array.from({ length: nWorkers }, () => worker()));
+    const todayStr = getTodayDateString();
+    const n = await accumulateRestaurantsFromMeals(restaurantMap, RESTAURANT_SCAN_MIN_DATE, todayStr);
+    console.log('🍽️ 식당 통계 전량 집계:', { from: RESTAURANT_SCAN_MIN_DATE, to: todayStr, meals: n });
     return restaurantMap;
 }
 
@@ -175,12 +187,20 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         if (cacheExists && (slotFilter === 'all' || breakdownOk)) {
             restaurantMap = restaurantArrayToMap(cachedList);
             if (asOfDate !== todayStr) {
-                const todayMeals = await getTodayMealsForRestaurants();
-                todayMeals.forEach((mealData) => applyMealToRestaurantAggregate(restaurantMap, mealData));
-                if (slotFilter === 'all') {
-                    const mergedList = Array.from(restaurantMap.values());
-                    await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: mergedList }, { merge: true });
-                }
+                /**
+                 * 예전에는 **오늘 하루치만** 더했다. 캐시 저장은 slotFilter==='all' 일 때만 일어나서,
+                 * 다른 필터로만 열다 보면 asOfDate 가 몇 달씩 멈춰 있었고 그 사이 기록이 통째로 빠졌다.
+                 * 이제 캐시 날짜 다음날부터 오늘까지를 메우고, 필터와 무관하게 저장한다.
+                 */
+                const fromKey = nextDateKey(asOfDate) || todayStr;
+                const filled = await accumulateRestaurantsFromMeals(restaurantMap, fromKey, todayStr);
+                console.log('🍽️ 식당 통계 증분:', { from: fromKey, to: todayStr, meals: filled });
+                const mergedList = Array.from(restaurantMap.values());
+                await setDoc(
+                    RESTAURANT_STATS_REF(),
+                    { asOfDate: todayStr, restaurants: mergedList },
+                    { merge: true }
+                );
             }
             restaurantMap = finalizeRestaurantMapForSlot(restaurantMap, slotFilter);
         } else if (slotFilter === 'all') {
