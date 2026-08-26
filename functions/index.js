@@ -4109,20 +4109,56 @@ exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('delete
   return { deleted: true };
 }));
 
-/** 관리자 대시보드「페이지별」usageDaily 필드 — js/admin/dashboard.js PAGE_USAGE_METRIC_DEFS 와 동기화 */
+/**
+ * usageDaily 에 받아 줄 필드 — js/admin/dashboard.js 의
+ * PAGE_VIEW_METRIC_DEFS · RECORD_USAGE_METRIC_DEFS 와 **양쪽 다** 동기화한다.
+ *
+ * 여기 없는 키는 invalid-argument 로 거절된다. 클라이언트는 Firestore 직접 쓰기로
+ * 폴백하지만 그 경로는 로컬 캐시에만 앉는 경우가 있어(js/usage-metrics.js) 서버에는
+ * 아무것도 남지 않는다. 즉 **키를 빠뜨리면 조용히 유실된다** — 대시보드에 행은
+ * 보이는데 값만 0 으로 남아서, 기능이 안 쓰이는 것과 구분되지 않는다.
+ * 실제로 기록 시트 개편 계측 21종이 그렇게 통째로 날아갔다 (2026-08-12~26).
+ *
+ * 행을 추가할 때는 dashboard.js 와 이 목록을 한 커밋에서 같이 고칠 것.
+ */
 const USAGE_DAILY_METRIC_KEYS = new Set([
+  // --- 페이지 방문·조작 (PAGE_VIEW_METRIC_DEFS) ---
   'tab_mealdang',
   'mealdang_comment_click',
   'mealdang_analysis_detail_click',
+  'mealdang_analysis_cuisine_axis',
   'tab_moment',
   'tab_mealog',
   'lounge_mealtalk',
   'lounge_board',
   'lounge_notice',
   'settings_profile',
+  // 나만의 태그 제거로 호출부는 없어졌지만 과거 이력이 남아 있어 목록에 둔다
   'settings_tags',
   'settings_mealdang_memo',
-  'settings_push'
+  'settings_push',
+
+  // --- 기록 시트 안에서 벌어지는 일 (RECORD_USAGE_METRIC_DEFS) ---
+  'what_recall_shown',
+  'what_recall_picked',
+  'what_typeahead_shown',
+  'what_typeahead_picked',
+  'category_suggest_shown',
+  'category_suggest_confirmed',
+  'category_suggest_auto_saved',
+  'category_suggest_grid_opened',
+  'category_suggest_dismissed',
+  'category_suggest_undismissed',
+  'context_predict_shown',
+  'context_predict_applied',
+  'context_predict_dismissed',
+  'context_predict_auto_saved',
+  'context_place_typed',
+  'context_sub_picked',
+  'context_sub_added',
+  'context_sub_deleted',
+  'photo_gps_present',
+  'photo_gps_absent'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */
