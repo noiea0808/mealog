@@ -31,6 +31,11 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
+import {
+    HOUR_BUCKETS,
+    hourSlotForMealDoc,
+    hourSlotForJournalEntry
+} from './dashboard-hour-buckets.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
     writeDashboardUserDrilldown,
@@ -651,10 +656,14 @@ export function switchDashboardSubtab(which) {
 const RECORD_SLOT_7D_PREFIXES = SLOTS.map((s) => `statRecSlot_${s.id}_7d`);
 const RECORD_SLOT_7_SUM_IDS = SLOTS.map((s) => `statRecSlot_${s.id}_7Sum`);
 
+const RECORD_HOUR_7D_PREFIXES = ['statRecHourTotal_7d', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_7d`)];
+const RECORD_HOUR_7_SUM_IDS = ['statRecHourTotal_7Sum', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_7Sum`)];
+
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
     'statDailyJournal7d',
+    ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
 ];
 
@@ -662,11 +671,27 @@ const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
     'statDailyJournal7Sum',
+    ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
 ];
 
 /** config/settings dailyComments 스캔 상한 (관리자 새로고침 시 1회) */
 const DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP = 10000;
+
+/**
+ * 시간대 버킷 배열들을 칸마다 더한 「기록 시각 기준 합계」.
+ * 별도로 저장하지 않고 파생시켜야 합계와 내역이 어긋날 일이 없다.
+ */
+function sumHourBucketArrays(byBucket, length) {
+    if (!byBucket) return null;
+    const total = Array.from({ length }, () => 0);
+    for (const b of HOUR_BUCKETS) {
+        const arr = byBucket[b.id];
+        if (!Array.isArray(arr)) continue;
+        for (let i = 0; i < length; i++) total[i] += Number(arr[i]) || 0;
+    }
+    return total;
+}
 
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
@@ -731,12 +756,19 @@ function cloneLast7Breakdown(raw) {
     for (const s of SLOTS) {
         recordsBySlot[s.id] = pick(rbs[s.id]);
     }
+    const rbh = raw.recordsByHour && typeof raw.recordsByHour === 'object' ? raw.recordsByHour : null;
+    const recordsByHour = {};
+    for (const b of HOUR_BUCKETS) {
+        recordsByHour[b.id] = pick(rbh?.[b.id]);
+    }
     return {
         dates: [...raw.dates],
         newUsers: pick(raw.newUsers),
         activeUsers: pick(raw.activeUsers),
         records: pick(raw.records),
         recordsBySlot,
+        // 시간대는 나중에 추가된 필드라 옛 캐시엔 없다 — 없으면 '—'로 두려고 통째로 뺀다
+        ...(rbh ? { recordsByHour } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
         dailyJournal: pick(raw.dailyJournal)
     };
@@ -770,6 +802,13 @@ function cloneWeeklyBreakdown(raw) {
     for (const s of SLOTS) {
         recordsBySlot[s.id] = pickWeekArr(rbs[s.id], n);
     }
+    const rbh = raw.recordsByHour && typeof raw.recordsByHour === 'object' ? raw.recordsByHour : null;
+    const recordsByHour = {};
+    if (rbh) {
+        for (const b of HOUR_BUCKETS) {
+            recordsByHour[b.id] = pickWeekArr(rbh[b.id], n);
+        }
+    }
     const monthGroups = buildMonthHeaderGroupsWithStarts(weeks);
     const rawMonthU = raw.activeUsersMonthUnique;
     let activeUsersMonthUnique;
@@ -783,6 +822,8 @@ function cloneWeeklyBreakdown(raw) {
         activeUsers: pickWeekArr(raw.activeUsers, n),
         records: pickWeekArr(raw.records, n),
         recordsBySlot,
+        // 옛 캐시(시간대 필드 이전)에는 없다 — 없으면 행이 '—'로 남는다
+        ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
@@ -1011,6 +1052,11 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
         const id = key.slice(5);
         return weeklyBreakdown.recordsBySlot?.[id] || [];
     }
+    if (key === 'hourTotal') return weeklyBreakdown.recordsByHourTotal || [];
+    if (key.startsWith('hour:')) {
+        const id = key.slice(5);
+        return weeklyBreakdown.recordsByHour?.[id] || [];
+    }
     return [];
 }
 
@@ -1192,11 +1238,20 @@ function resolveWeeklyLayoutForPagePanel(pageUsage, fallbackWeekly) {
 const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'dashboardStats');
 
 /**
+ * 「전체」열을 세는 slotId 목록.
+ * 뒤에 붙은 'daily_journal'은 슬롯 행이 아니라 **하루 소감 meals 미러**의 건수다 —
+ * 하루 소감은 config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서,
+ * 미러 수를 알아야 「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ */
+const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal'];
+const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.length - 1;
+
+/**
  * 컬렉션 그룹 `slotId` 인덱스가 없을 때(aggregation failed-precondition):
  * 각 사용자 `users/{uid}/meals`에서 슬롯별 count를 더해 전체 건수 산출 (새로고침 1회당 읽기 다량).
  */
 async function countMealsSlotAllViaUserSubcollections(userIds, countQFn) {
-    const totals = SLOTS.map(() => 0);
+    const totals = MEAL_COUNT_SLOT_IDS.map(() => 0);
     const UID_BATCH = 8;
     for (let i = 0; i < userIds.length; i += UID_BATCH) {
         const chunk = userIds.slice(i, i + UID_BATCH);
@@ -1204,9 +1259,9 @@ async function countMealsSlotAllViaUserSubcollections(userIds, countQFn) {
             chunk.map(async (uid) => {
                 const mc = collection(db, 'artifacts', appId, 'users', uid, 'meals');
                 const counts = await Promise.all(
-                    SLOTS.map(async (s) => {
+                    MEAL_COUNT_SLOT_IDS.map(async (sid) => {
                         try {
-                            return await countQFn(query(mc, where('slotId', '==', s.id)));
+                            return await countQFn(query(mc, where('slotId', '==', sid)));
                         } catch {
                             return 0;
                         }
@@ -1321,11 +1376,43 @@ export async function getUserStatistics() {
         const slotAgg = {};
         for (const s of SLOTS) slotAgg[s.id] = emptySlotAgg();
 
+        /**
+         * 시간대 집계. 슬롯과 달리 「전체」를 count 쿼리로 못 센다 —
+         * 문서에 시간대 필드가 없어 where를 걸 수 없다. 그래서 rangeAll(스캔 구간 합계)로 채운다.
+         *
+         * 날짜 칸은 식사 날짜가 아니라 **기록한 날짜**로 잡는다. 그래서 끼니·간식 행과
+         * 열별 합계가 다를 수 있다 — 어제 끼니를 오늘 적으면 저쪽은 어제 칸, 이쪽은 오늘 칸이다.
+         */
+        const hourAgg = {};
+        for (const b of HOUR_BUCKETS) hourAgg[b.id] = { rangeAll: 0, last7: 0, today: 0, byDay: z7(), byWeek: zW() };
+        /**
+         * @param {{dateKey: string, bucketId: string}|null} slot 기록 시점(hourSlotFor* 산출)
+         *
+         * meals 스캔은 식사 날짜로 범위를 걸었으므로, 기록 날짜는 구간 밖으로 나갈 수 있다
+         * (운영 시작 전에 적어 둔 기록, 기기 시계가 앞선 기록). 그런 건 넣을 칸이 없어 버린다.
+         */
+        const addHourRecord = (slot) => {
+            if (!slot) return;
+            const { dateKey } = slot;
+            if (dateKey < firstSundayKey || dateKey > todayStr) return;
+            const a = hourAgg[slot.bucketId] || hourAgg.unknown;
+            a.rangeAll++;
+            const wi = weekIndexForDateKeyStr(dateKey, sundayKeyToIndex);
+            if (wi >= 0) a.byWeek[wi]++;
+            if (dateKey === todayStr) a.today++;
+            if (dateKey >= last7FirstStr) {
+                a.last7++;
+                const di = last7IndexMap.get(dateKey);
+                if (di != null && di >= 0) a.byDay[di]++;
+            }
+        };
+
         const stats = {
             newUsers: { all: 0, last7: 0, today: 0 },
             activeUsers: { all: 0, last7: 0, today: 0 },
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
+            recordsByHour: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
             dailyJournal: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
@@ -1353,7 +1440,7 @@ export async function getUserStatistics() {
         let slotAllArr;
         try {
             slotAllArr = await Promise.all(
-                SLOTS.map((s) => countQ(query(mealsCg, where('slotId', '==', s.id))))
+                MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
             );
         } catch (e) {
             if (e?.code === 'failed-precondition') {
@@ -1370,13 +1457,15 @@ export async function getUserStatistics() {
         for (const exUid of excluded) {
             const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
             recordsAllCount -= await countQ(query(mcEx));
-            for (let si = 0; si < SLOTS.length; si++) {
-                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', SLOTS[si].id)));
+            for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
+                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
             }
         }
 
         let recordsToday = 0;
         let recordsLast7 = 0;
+        /** meals 에 미러 문서가 있는 하루 소감 `${uid}|${date}` — 이중 계산 방지 */
+        const mirroredJournalKeys = new Set();
 
         mealsRangeSnap.forEach((docSnap) => {
             const mealData = docSnap.data();
@@ -1413,6 +1502,11 @@ export async function getUserStatistics() {
             }
 
             const sid = mealData.slotId;
+            // 하루 소감 미러는 아래 dailyComments 스캔에서 또 세지 않도록 표시해 둔다.
+            if (sid === 'daily_journal') mirroredJournalKeys.add(`${uid}|${dateStr}`);
+            addHourRecord(hourSlotForMealDoc(mealData));
+
+
             if (sid && slotAgg[sid]) {
                 if (wi >= 0) slotAgg[sid].byWeek[wi]++;
                 if (dateStr === todayStr) slotAgg[sid].today++;
@@ -1427,6 +1521,14 @@ export async function getUserStatistics() {
         let dailyJournalAll = 0;
         let dailyJournalToday = 0;
         let dailyJournalLast7 = 0;
+        /**
+         * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
+         * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
+         */
+        let dailyJournalUnmirroredToday = 0;
+        let dailyJournalUnmirroredLast7 = 0;
+        const dailyJournalUnmirroredByDay = z7();
+        const dailyJournalUnmirroredByWeek = zW();
         try {
             const configGroup = collectionGroup(db, 'config');
             const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
@@ -1438,15 +1540,29 @@ export async function getUserStatistics() {
                 if (!dc || typeof dc !== 'object') return;
                 for (const [dateStr, raw] of Object.entries(dc)) {
                     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
-                    if (!dailyJournalHasContent(normalizeDailyJournalEntry(raw))) continue;
+                    const entry = normalizeDailyJournalEntry(raw);
+                    if (!dailyJournalHasContent(entry)) continue;
                     dailyJournalAll++;
                     const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
+                    const mirrored = mirroredJournalKeys.has(`${uid}|${dateStr}`);
+                    if (!mirrored) {
+                        if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
+                        // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
+                        addHourRecord(hourSlotForJournalEntry(dateStr, entry));
+                    }
                     if (wi >= 0) dailyJournalByWeek[wi]++;
-                    if (dateStr === todayStr) dailyJournalToday++;
+                    if (dateStr === todayStr) {
+                        dailyJournalToday++;
+                        if (!mirrored) dailyJournalUnmirroredToday++;
+                    }
                     if (dateStr >= last7FirstStr && dateStr <= todayStr) {
                         dailyJournalLast7++;
                         const rdi = last7IndexMap.get(dateStr);
                         if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
+                        if (!mirrored) {
+                            dailyJournalUnmirroredLast7++;
+                            if (rdi != null && rdi >= 0) dailyJournalUnmirroredByDay[rdi]++;
+                        }
                     }
                 }
             });
@@ -1457,20 +1573,35 @@ export async function getUserStatistics() {
         stats.dailyJournal.today = dailyJournalToday;
         stats.dailyJournal.last7 = dailyJournalLast7;
 
-        stats.records.all = recordsAllCount + dailyJournalAll;
-        stats.records.today = recordsToday + dailyJournalToday;
-        stats.records.last7 = recordsLast7 + dailyJournalLast7;
+        /**
+         * 「전체」는 스캔 구간 밖 날짜도 포함해야 해서 미러 키 집합(구간 내)만으로는 못 뺀다.
+         * meals 전량 count 에 섞여 있는 미러 문서 수를 통째로 덜어내고 dailyComments 전량을 얹는다.
+         */
+        const journalMirrorAll = Math.max(0, slotAllArr[JOURNAL_MIRROR_COUNT_INDEX] ?? 0);
+        stats.records.all = Math.max(0, recordsAllCount - journalMirrorAll) + dailyJournalAll;
+        stats.records.today = recordsToday + dailyJournalUnmirroredToday;
+        stats.records.last7 = recordsLast7 + dailyJournalUnmirroredLast7;
         for (let di = 0; di < 7; di++) {
-            recordsByDay[di] += dailyJournalByDay[di];
+            recordsByDay[di] += dailyJournalUnmirroredByDay[di];
         }
         for (let wi = 0; wi < nWeeks; wi++) {
-            recordsByWeek[wi] += dailyJournalByWeek[wi];
+            recordsByWeek[wi] += dailyJournalUnmirroredByWeek[wi];
         }
 
         SLOTS.forEach((s, i) => {
             const a = slotAgg[s.id];
             stats.recordsBySlot[s.id] = {
                 all: slotAllArr[i] ?? 0,
+                last7: a.last7,
+                today: a.today
+            };
+        });
+
+        HOUR_BUCKETS.forEach((b) => {
+            const a = hourAgg[b.id];
+            stats.recordsByHour[b.id] = {
+                // 슬롯의 all과 달리 「운영 시작일 이후」 합계다 (표에 각주로 밝힌다)
+                all: a.rangeAll,
                 last7: a.last7,
                 today: a.today
             };
@@ -1599,6 +1730,7 @@ export async function getUserStatistics() {
             activeUsers: activeSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
+            recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
             sharedPhotos: [...sharedByDayCounts],
             dailyJournal: [...dailyJournalByDay]
         };
@@ -1620,6 +1752,7 @@ export async function getUserStatistics() {
                           activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
                           records: [...recordsByWeek],
                           recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
+                          recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
                           sharedPhotos: sharedSetsByWeek.map((s) => s.size),
                           dailyJournal: [...dailyJournalByWeek]
                       };
@@ -1773,9 +1906,36 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
             fillDashboard7dNumericRow(`statRecSlot_${s.id}_7d`, bdSlot, d.last7);
             set(`statRecSlot_${s.id}_7Sum`, sumSevenDaily(bdSlot) ?? d.last7);
         });
+
+        const hasHour = stats.recordsByHour && Object.keys(stats.recordsByHour).length > 0;
+        const hourTotals = hasHour
+            ? HOUR_BUCKETS.reduce(
+                  (acc, b) => {
+                      const d = stats.recordsByHour[b.id];
+                      acc.all += Number(d?.all) || 0;
+                      acc.last7 += Number(d?.last7) || 0;
+                      return acc;
+                  },
+                  { all: 0, last7: 0 }
+              )
+            : null;
+        // 새로고침 직후에는 캐시를 거치지 않은 breakdown 이 들어와 파생 합계가 없다 — 여기서 만든다
+        const hourTotalByDay = sumHourBucketArrays(bd?.recordsByHour, 7);
+        set('statRecHourTotal_all', hourTotals ? hourTotals.all : null);
+        fillDashboard7dNumericRow('statRecHourTotal_7d', hourTotalByDay, hourTotals?.last7);
+        set('statRecHourTotal_7Sum', sumSevenDaily(hourTotalByDay) ?? hourTotals?.last7);
+
+        HOUR_BUCKETS.forEach((b) => {
+            const d = hasHour ? (stats.recordsByHour[b.id] || { all: 0, last7: 0, today: 0 }) : null;
+            set(`statRecHour_${b.id}_all`, d ? d.all : null);
+            const bdHour = bd?.recordsByHour?.[b.id];
+            fillDashboard7dNumericRow(`statRecHour_${b.id}_7d`, bdHour, d?.last7);
+            set(`statRecHour_${b.id}_7Sum`, sumSevenDaily(bdHour) ?? d?.last7);
+        });
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll].forEach(
+        const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -1854,6 +2014,7 @@ export async function updateStatistics() {
             activeUsers: data.activeUsers || { all: 0, last7: 0, today: 0 },
             records: data.records || { all: 0, last7: 0, today: 0 },
             recordsBySlot: data.recordsBySlot && typeof data.recordsBySlot === 'object' ? data.recordsBySlot : {},
+            recordsByHour: data.recordsByHour && typeof data.recordsByHour === 'object' ? data.recordsByHour : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
             dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
@@ -1912,6 +2073,7 @@ export async function refreshDashboardStats() {
                     activeUsers: stats.activeUsers,
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
+                    recordsByHour: stats.recordsByHour,
                     sharedPhotos: stats.sharedPhotos,
                     dailyJournal: stats.dailyJournal,
                     last7Breakdown: stats.last7Breakdown || null,
