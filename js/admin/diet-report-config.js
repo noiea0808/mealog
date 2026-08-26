@@ -225,20 +225,6 @@ async function promptVersionFromText(text) {
     return `diet-${hex.slice(0, 10)}`;
 }
 
-function normalizeBatchRunTime(raw) {
-    const s = String(raw || '').trim();
-    const m = /^(\d{1,2}):(\d{2})$/.exec(s);
-    if (!m) return '00:10';
-    const h = Math.min(23, Math.max(0, Number(m[1])));
-    const min = Math.min(59, Math.max(0, Number(m[2])));
-    return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-}
-
-function batchRunTimeForInput(hm) {
-    const n = normalizeBatchRunTime(hm);
-    return n;
-}
-
 /** 마지막으로 불러온(=저장돼 있는) 버전. 편집창 실시간 표시에서 비교용 */
 let _savedPromptVersion = '';
 let _liveMetaTimer = 0;
@@ -389,16 +375,18 @@ export async function saveDietReportPrompt(buttonEl) {
     }, { loadingLabel: '저장 중…' });
 }
 
+/**
+ * 실행 시각은 여기서 다루지 않는다 — functions 스케줄(하루 1회)에 고정돼 있고
+ * 화면에는 고정 문구로만 보인다. 이 화면이 관여하는 건 켜고 끄기뿐이다.
+ */
 export async function loadDietReportBatchSettings() {
     const enabledEl = document.getElementById('dietReportBatchEnabled');
-    const timeEl = document.getElementById('dietReportBatchRunTime');
     const meta = document.getElementById('dietReportBatchMeta');
-    if (!enabledEl || !timeEl) return;
+    if (!enabledEl) return;
     try {
         const snap = await getDoc(CONFIG_REF());
         const data = snap.exists() ? snap.data() : {};
         enabledEl.checked = data.batchEnabled === true;
-        timeEl.value = batchRunTimeForInput(data.batchRunTime || '00:10');
         if (meta) {
             const parts = [];
             if (data.lastBatchRunDate) parts.push(`마지막 배치 실행일: ${data.lastBatchRunDate}`);
@@ -408,7 +396,7 @@ export async function loadDietReportBatchSettings() {
             }
             const at = formatConfigUpdatedAt(data.batchSettingsUpdatedAt);
             if (at) parts.push(`설정 저장: ${at}`);
-            meta.textContent = parts.length ? parts.join(' · ') : '배치 설정을 저장하면 자동 분석 스케줄에 반영됩니다.';
+            meta.textContent = parts.length ? parts.join(' · ') : '배치를 켜면 다음 실행 시각부터 자동 분석이 돕니다.';
         }
     } catch (e) {
         console.error('dietReportConfig batch load failed', e);
@@ -418,18 +406,14 @@ export async function loadDietReportBatchSettings() {
 
 export async function saveDietReportBatchSettings(buttonEl) {
     const enabledEl = document.getElementById('dietReportBatchEnabled');
-    const timeEl = document.getElementById('dietReportBatchRunTime');
-    if (!enabledEl || !timeEl) return;
+    if (!enabledEl) return;
     const batchEnabled = enabledEl.checked === true;
-    const batchRunTime = normalizeBatchRunTime(timeEl.value || '00:10');
-    timeEl.value = batchRunTime;
     await runAdminRefreshAction(buttonEl || null, async () => {
         const uid = auth.currentUser?.uid || null;
         await setDoc(
             CONFIG_REF(),
             {
                 batchEnabled,
-                batchRunTime,
                 batchSettingsUpdatedAt: serverTimestamp(),
                 batchSettingsUpdatedBy: uid
             },

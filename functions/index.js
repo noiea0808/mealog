@@ -7191,40 +7191,16 @@ function dietWeekdayLabel(dateStr) {
   return `(${DIET_WEEKDAY_KR[d.getUTCDay()]})`;
 }
 
-function normalizeDietBatchRunTime(raw) {
-  const s = String(raw || '').trim();
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
-  if (!m) return '00:10';
-  const h = Math.min(23, Math.max(0, Number(m[1])));
-  const min = Math.min(59, Math.max(0, Number(m[2])));
-  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-}
-
-function adminSeoulHmFromDate(date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Seoul',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(date);
-  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
-  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${hour}:${minute}`;
-}
-
-function parseHmToMinutes(hm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
-}
-
-/** 15분 주기 스케줄에서 설정 시각(HH:mm) 구간에 들어왔는지 */
-function isWithinDietBatchRunWindow(now, runTimeHm, windowMinutes = 15) {
-  const runMins = parseHmToMinutes(runTimeHm);
-  const nowMins = parseHmToMinutes(adminSeoulHmFromDate(now));
-  if (runMins == null || nowMins == null) return false;
-  return nowMins >= runMins && nowMins < runMins + windowMinutes;
-}
+/**
+ * 배치 실행 시각 — **cron(scheduledDailyDietAnalysis)이 정본이고 이 값은 표시용이다.**
+ * 바꾸려면 두 곳을 같이 고치고 재배포해야 한다. 관리자 화면 문구도 함께
+ * (admin.html 「자동 배치 설정」, js/admin/diet-report-config.js).
+ *
+ * 예전에는 이 시각을 Firestore 설정에 두고 15분마다 깨어나 "지금인가?"를 물었다.
+ * 하루 96번 깨어나 95번을 헛돌았고, 그 헛걸음마다 1GiB 인스턴스가 떴다.
+ * 시각을 바꾸는 일은 거의 없는데 대가가 너무 컸다.
+ */
+const DIET_REPORT_BATCH_RUN_TIME = '04:00';
 
 async function fetchDietReportConfig() {
   const snap = await DIET_REPORT_CONFIG_REF().get();
@@ -7235,7 +7211,6 @@ async function fetchDietReportConfig() {
     promptTemplate,
     promptVersion: d.promptVersion || DIET_REPORT_PROMPT_VERSION,
     batchEnabled: d.batchEnabled === true,
-    batchRunTime: normalizeDietBatchRunTime(d.batchRunTime),
     lastBatchRunDate: d.lastBatchRunDate ? String(d.lastBatchRunDate) : null
   };
 }
@@ -8259,13 +8234,14 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
 }
 
 /**
- * 15분마다 실행 — adminSettings/dietReportConfig 의 batchEnabled·batchRunTime 에 맞춰 하루 1회 배치.
+ * 하루 1회 실행(DIET_REPORT_BATCH_RUN_TIME). adminSettings/dietReportConfig 의 batchEnabled 로만 켜고 끈다.
  * 대상: 최근 7일(배치 실행일 제외) 기록이 있는 사용자 → 각 사용자의 가장 최근 기록일 분석.
  * 해당 날짜에 분석 이력(자동·수동)이 있으면 skip.
  */
 exports.scheduledDailyDietAnalysis = onSchedule(
   {
-    schedule: '*/15 * * * *',
+    // DIET_REPORT_BATCH_RUN_TIME 과 같은 시각이어야 한다 — 상수는 표시용, 이 cron 이 정본이다
+    schedule: '0 4 * * *',
     timeZone: 'Asia/Seoul',
     region: REGION,
     timeoutSeconds: 540,
@@ -8278,9 +8254,6 @@ exports.scheduledDailyDietAnalysis = onSchedule(
       return;
     }
     const now = new Date();
-    if (!isWithinDietBatchRunWindow(now, config.batchRunTime, 15)) {
-      return;
-    }
     const todaySeoul = adminSeoulYmdFromDate(now);
     if (config.lastBatchRunDate === todaySeoul) {
       logger.info('scheduledDailyDietAnalysis: already ran today', { todaySeoul });
@@ -8320,7 +8293,7 @@ exports.scheduledDailyDietAnalysis = onSchedule(
       todaySeoul,
       windowStart,
       candidates: candidates.length,
-      batchRunTime: config.batchRunTime
+      batchRunTime: DIET_REPORT_BATCH_RUN_TIME
     });
 
     let ok = 0;
