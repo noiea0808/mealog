@@ -4375,6 +4375,61 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
  * 들고 있어** us-central1 을 계속 부른다 — 그쪽을 지우면 스토어의 기존 앱에서 검색이 깨진다.
  * 앱이 새 버전으로 갈린 뒤 us-central1 을 뺀다.
  */
+/**
+ * 카카오 장소 검색 결과를 상호명 일치 순으로 세운다.
+ *
+ * 카카오 로컬 API 는 상호명뿐 아니라 **업종·메뉴 분류까지** 매칭한다. 「돈까스」로 찾으면
+ * 카테고리가 `돈까스,우동` 인 가게가 전부 걸려서, 실측 15건 중 상호명이 맞는 건 3건뿐이었다.
+ * API 에 「상호명만」 옵션이 없어 받아온 뒤 순서를 바로잡는다. **거르지는 않는다** —
+ * 가게 이름을 모른 채 업종으로 찾는 경우도 있다.
+ *
+ * js/utils/place-type.js 의 같은 이름 함수들과 규칙을 맞출 것 (ESM/CJS 라 코드를 공유할 수 없다).
+ */
+const CHOSEONG_TENSE_TO_PLAIN = { 1: 0, 4: 3, 8: 7, 10: 9, 13: 12 };
+
+function softenKoreanTenseConsonants(text) {
+  let out = '';
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      const idx = code - 0xac00;
+      const plain = CHOSEONG_TENSE_TO_PLAIN[Math.floor(idx / 588)];
+      if (plain !== undefined) {
+        out += String.fromCharCode(0xac00 + plain * 588 + (idx % 588));
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function normalizePlaceSearchText(value) {
+  return softenKoreanTenseConsonants(String(value || '').toLowerCase()).replace(
+    /[\s·・()[\]{}\-_,./'"]/g,
+    ''
+  );
+}
+
+function kakaoPlaceNameMatchScore(placeName, keyword) {
+  const name = normalizePlaceSearchText(placeName);
+  const query = normalizePlaceSearchText(keyword);
+  if (!name || !query) return 0;
+  if (name.includes(query)) return 2;
+  const tokens = String(keyword || '')
+    .split(/\s+/)
+    .map(normalizePlaceSearchText)
+    .filter((t) => t.length >= 2);
+  return tokens.some((t) => name.includes(t)) ? 1 : 0;
+}
+
+function sortKakaoPlacesByNameMatch(places, keyword) {
+  return (places || [])
+    .map((place, index) => ({ place, index, score: kakaoPlaceNameMatchScore(place?.place_name, keyword) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((x) => x.place);
+}
+
 exports.searchKakaoPlaces = onCall({ region: [REGION_SEOUL, REGION] }, wrapFunction('searchKakaoPlaces', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
@@ -4424,7 +4479,8 @@ exports.searchKakaoPlaces = onCall({ region: [REGION_SEOUL, REGION] }, wrapFunct
       cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
       cat.includes('술집') || cat.includes('바') || cat.includes('편의점');
   });
-  return { documents: restaurants.slice(0, 10) };
+  // 상호명이 맞는 가게를 위로 올린 뒤 자른다 — 자르고 정렬하면 뒤쪽의 일치가 잘려 나간다
+  return { documents: sortKakaoPlacesByNameMatch(restaurants, trimmedKw).slice(0, 10) };
 }));
 
 /**

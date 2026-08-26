@@ -5,7 +5,7 @@ import { scheduleLucideIcons } from '../icons.js';
 import { ENTRY_DOM } from './entry-form-config.js';
 import { escapeHtml } from '../render/utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
-import { isFoodRelatedKakaoPlace } from '../utils/place-type.js';
+import { isFoodRelatedKakaoPlace, sortKakaoPlacesByNameMatch } from '../utils/place-type.js';
 import { syncEntryContextPlaceFromInput } from './entry-context-predict.js';
 import { withDeadline, DeadlineError } from '../utils/with-deadline.js';
 
@@ -132,7 +132,9 @@ async function fetchKakaoPlaces(keyword) {
         return await new Promise((resolve) => {
             ps.keywordSearch(keyword, (data, status) => {
                 if (status === kakao.maps.services.Status.OK) {
-                    resolve((data || []).filter(isFoodRelatedKakaoPlace).slice(0, 10));
+                    // 상호명이 맞는 가게를 위로 올린 뒤 자른다 — 자르고 정렬하면 뒤쪽의 일치가 잘려 나간다
+                    const food = (data || []).filter(isFoodRelatedKakaoPlace);
+                    resolve(sortKakaoPlacesByNameMatch(food, keyword).slice(0, 10));
                 } else {
                     resolve([]);
                 }
