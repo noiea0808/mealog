@@ -19,8 +19,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const JS_ROOT = new URL('../js/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+// pathname 을 그대로 쓰면 경로의 공백이 %20 으로 남아 저장소 위치에 따라 통째로 못 읽는다
+const JS_ROOT = fileURLToPath(new URL('../js/', import.meta.url));
 
 /** 앞에 공백이 있는 on* 속성만 — data-meal-feed-optio(ns)= 같은 우연한 일치를 걸러낸다 */
 const BROKEN_ATTR = /\son[a-z]+\s*=\s*"[^"]*JSON\.stringify/g;
