@@ -49,8 +49,28 @@ describe('시간대 행의 읽기 축 (2026-08-27)', () => {
     it('그 스냅숏이 실제로 시간대 집계를 채운다', () => {
         const feed = /mealsRecordedSnap\.forEach\(\([\s\S]*?\n {8}\}\);/.exec(src);
         assert.ok(feed, 'mealsRecordedSnap 을 순회하는 블록을 찾지 못했습니다');
-        assert.match(feed[0], /addHourRecord\(hourSlotForMealDoc\(/, '시간대 집계를 채우지 않습니다');
+        // 슬롯을 지역 변수로 받든 인라인으로 넘기든 상관없다 — 이 축에서 뽑아 이 집계에 넣기만 하면 된다
+        assert.match(feed[0], /hourSlotForMealDoc\(/, '기록 시각 슬롯을 뽑지 않습니다');
+        assert.match(feed[0], /addHourRecord\(/, '시간대 집계를 채우지 않습니다');
         assert.match(feed[0], /excluded\.has\(uid\)/, '제외 UID 를 거르지 않습니다');
+    });
+
+    /**
+     * 「기록한 사람」 행도 같은 계약을 탄다. 사람 수 역시 recordedAt 축이라,
+     * 식사 날짜 스캔에 얹으면 시간대 행이 겪은 증발을 그대로 겪는다.
+     */
+    it('「기록한 사람」도 같은 스냅숏에서만 채운다', () => {
+        const feed = /mealsRecordedSnap\.forEach\(\([\s\S]*?\n {8}\}\);/.exec(src);
+        assert.ok(feed, 'mealsRecordedSnap 을 순회하는 블록을 찾지 못했습니다');
+        assert.match(feed[0], /addRecordedUser\(/, '기록한 사람 집계를 채우지 않습니다');
+
+        const scan = SCAN_MEAL_DOC.exec(src);
+        assert.ok(scan, 'scanMealDoc 을 찾지 못했습니다');
+        assert.doesNotMatch(
+            scan[0],
+            /addRecordedUser\(/,
+            'scanMealDoc 이 기록한 사람을 셉니다 — 식사 날짜 축이라 소급 입력이 누락됩니다'
+        );
     });
 
     it('식사 날짜 축 스캔은 시간대를 건드리지 않는다 — 이게 원래 버그였다', () => {

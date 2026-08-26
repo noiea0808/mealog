@@ -681,6 +681,7 @@ const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
     'statDailyJournal7d',
+    'statRecordedUsers7d',
     ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
 ];
@@ -689,6 +690,7 @@ const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
     'statDailyJournal7Sum',
+    'statRecordedUsers7Sum',
     ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
 ];
@@ -787,6 +789,8 @@ function cloneLast7Breakdown(raw) {
         recordsBySlot,
         // 시간대는 나중에 추가된 필드라 옛 캐시엔 없다 — 없으면 '—'로 두려고 통째로 뺀다
         ...(rbh ? { recordsByHour } : {}),
+        // 기록한 사람도 마찬가지 (시간대와 같은 recordedAt 축)
+        ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pick(raw.recordedUsers) } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
         dailyJournal: pick(raw.dailyJournal)
     };
@@ -828,11 +832,11 @@ function cloneWeeklyBreakdown(raw) {
         }
     }
     const monthGroups = buildMonthHeaderGroupsWithStarts(weeks);
-    const rawMonthU = raw.activeUsersMonthUnique;
-    let activeUsersMonthUnique;
-    if (Array.isArray(rawMonthU) && rawMonthU.length === monthGroups.length) {
-        activeUsersMonthUnique = rawMonthU.map((x) => Number(x) || 0);
-    }
+    /** 유니크 지표의 월 칸은 주간 합이 아니다 — 길이가 맞을 때만 쓴다 */
+    const pickMonthUnique = (arr) =>
+        Array.isArray(arr) && arr.length === monthGroups.length ? arr.map((x) => Number(x) || 0) : undefined;
+    const activeUsersMonthUnique = pickMonthUnique(raw.activeUsersMonthUnique);
+    const recordedUsersMonthUnique = pickMonthUnique(raw.recordedUsersMonthUnique);
     return {
         weeks,
         monthGroups,
@@ -844,7 +848,10 @@ function cloneWeeklyBreakdown(raw) {
         ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
-        ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
+        // 옛 캐시엔 없다 — 없으면 행이 '—'로 남는다
+        ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pickWeekArr(raw.recordedUsers, n) } : {}),
+        ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {}),
+        ...(recordedUsersMonthUnique ? { recordedUsersMonthUnique } : {})
     };
 }
 
@@ -883,14 +890,14 @@ function expandWeeklyValuesWithMonthSums(vals, monthGroups) {
     return out;
 }
 
-/** 같은 달(헤더 구간)에 속한 주들의 활성 사용자 Set을 합쳐 월간 유니크 수 (주간 합과 다름) */
-function computeActiveUsersMonthUnique(activeSetsByWeek, monthGroups) {
+/** 같은 달(헤더 구간)에 속한 주들의 uid Set을 합쳐 월간 유니크 수 (주간 합과 다름) */
+function computeMonthUniqueFromWeekSets(setsByWeek, monthGroups) {
     const out = [];
     for (const g of monthGroups) {
         const union = new Set();
         for (let k = 0; k < g.span; k++) {
             const wi = g.startWeekIndex + k;
-            const s = activeSetsByWeek[wi];
+            const s = setsByWeek[wi];
             if (s && typeof s.forEach === 'function') s.forEach((uid) => union.add(uid));
         }
         out.push(union.size);
@@ -899,20 +906,34 @@ function computeActiveUsersMonthUnique(activeSetsByWeek, monthGroups) {
 }
 
 /**
- * 트렌드 표 펼침: 대부분 지표는 월 칸 = 주간 합, 활성 사용자는 월 칸 = 유니크(activeUsersMonthUnique).
- * activeUsersMonthUnique가 없거나 길이가 맞지 않으면 활성 사용자도 기존처럼 주간 합(참고용).
+ * 월 칸을 주간 합으로 낼 수 없는 행 — 사람 수는 더하면 같은 사람을 여러 번 센다.
+ * 값: weeklyBreakdown 에 든 월간 유니크 배열의 키.
  */
-function expandWeeklyValuesForTrend(vals, monthGroups, rowKey, activeUsersMonthUnique) {
+const TREND_MONTH_UNIQUE_ROWS = {
+    activeUsers: 'activeUsersMonthUnique',
+    recordedUsers: 'recordedUsersMonthUnique'
+};
+
+/** 이 행의 월 칸에 쓸 유니크 배열. 없거나 길이가 안 맞으면 null(→ 주간 합으로 폴백) */
+function monthUniqueArrayForRow(rowKey, weeklyBreakdown, monthGroups) {
+    const field = TREND_MONTH_UNIQUE_ROWS[rowKey];
+    if (!field) return null;
+    const arr = weeklyBreakdown?.[field];
+    return Array.isArray(arr) && monthGroups && arr.length === monthGroups.length ? arr : null;
+}
+
+/**
+ * 트렌드 표 펼침: 대부분 지표는 월 칸 = 주간 합, 사람 수 행은 월 칸 = 유니크.
+ * monthUnique 가 없으면(옛 캐시) 그 행도 기존처럼 주간 합으로 떨어진다 — 참고용.
+ */
+function expandWeeklyValuesForTrend(vals, monthGroups, monthUnique) {
     const v = Array.isArray(vals) ? vals.map((x) => Number(x) || 0) : [];
-    const useActiveMonthUnique =
-        rowKey === 'activeUsers' &&
-        Array.isArray(activeUsersMonthUnique) &&
-        activeUsersMonthUnique.length === monthGroups?.length;
+    const useMonthUnique = Array.isArray(monthUnique) && monthUnique.length === monthGroups?.length;
     const out = [];
     let u = 0;
     for (const g of monthGroups) {
-        if (useActiveMonthUnique) {
-            out.push(Number(activeUsersMonthUnique[u]) || 0);
+        if (useMonthUnique) {
+            out.push(Number(monthUnique[u]) || 0);
         } else {
             let sum = 0;
             for (let k = 0; k < g.span; k++) {
@@ -1063,6 +1084,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (!weeklyBreakdown) return [];
     if (key === 'newUsers') return weeklyBreakdown.newUsers || [];
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
+    if (key === 'recordedUsers') return weeklyBreakdown.recordedUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
     if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
     if (key === 'records') return weeklyBreakdown.records || [];
@@ -1080,11 +1102,6 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
 
 function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
     const monthGroups = weeklyBreakdown?.monthGroups;
-    const activeUsersMonthUnique = weeklyBreakdown?.activeUsersMonthUnique;
-    const activeUsersMonthUniqueOk =
-        Array.isArray(activeUsersMonthUnique) &&
-        monthGroups &&
-        activeUsersMonthUnique.length === monthGroups.length;
     // 코호트 표는 클릭한 칸이 아니라 전 구간을 본다
     setDashboardDrilldownWeekKeys((weeklyBreakdown?.weeks || []).map((w) => w.sundayKey));
     const columnDescriptors = buildTrendColumnDescriptors(weeklyBreakdown?.weeks, monthGroups);
@@ -1092,29 +1109,30 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
         const key = tr.getAttribute('data-dash-week-row');
         const drillable = key === 'newUsers' || key === 'activeUsers';
         const vals = weeklyValuesForRow(key, weeklyBreakdown);
-        const expanded =
-            monthGroups && monthGroups.length
-                ? expandWeeklyValuesForTrend(vals, monthGroups, key, activeUsersMonthUnique)
-                : vals;
+        const monthUnique = monthUniqueArrayForRow(key, weeklyBreakdown, monthGroups);
+        /**
+         * 배열이 통째로 없으면(그 필드가 생기기 전의 옛 캐시) 0 으로 펴지 않는다.
+         * 0 은 「아무도 안 했다」로 읽히는데 실제로는 「모른다」다 — 그 자리는 '—' 여야 한다.
+         */
+        const missing = !Array.isArray(vals) || vals.length === 0;
+        const expanded = missing
+            ? []
+            : monthGroups && monthGroups.length
+              ? expandWeeklyValuesForTrend(vals, monthGroups, monthUnique)
+              : vals;
         const monthLeads = monthLeadColumnFlags(monthGroups, expanded.length);
         const tds = tr.querySelectorAll(':scope > td.js-dash-week-td');
         tds.forEach((td, i) => {
             const v = expanded[i];
             if (v != null && Number.isFinite(Number(v))) {
                 td.textContent = Number(v).toLocaleString();
-                if (
-                    key === 'activeUsers' &&
-                    monthLeads &&
-                    monthLeads[i] &&
-                    activeUsersMonthUniqueOk
-                ) {
-                    td.title = '해당 월(표시 주차 구간) 동안 기록이 있었던 유니크 사용자 수';
-                } else if (
-                    key === 'activeUsers' &&
-                    monthLeads &&
-                    monthLeads[i] &&
-                    !activeUsersMonthUniqueOk
-                ) {
+                const uniqueMonthLead = Boolean(TREND_MONTH_UNIQUE_ROWS[key] && monthLeads && monthLeads[i]);
+                if (uniqueMonthLead && monthUnique) {
+                    td.title =
+                        key === 'recordedUsers'
+                            ? '해당 월(표시 주차 구간)에 한 번이라도 기록을 남긴 유니크 사용자 수'
+                            : '해당 월(표시 주차 구간) 동안 기록이 있었던 유니크 사용자 수';
+                } else if (uniqueMonthLead) {
                     td.title =
                         '캐시에 월간 유니크가 없어 주간 숫자의 합으로 표시됩니다. 「통계 새로고침」으로 갱신하세요.';
                 } else {
@@ -1416,6 +1434,37 @@ export async function getUserStatistics(options = {}) {
          * meals 스캔은 식사 날짜로 범위를 걸었으므로, 기록 날짜는 구간 밖으로 나갈 수 있다
          * (운영 시작 전에 적어 둔 기록, 기기 시계가 앞선 기록). 그런 건 넣을 칸이 없어 버린다.
          */
+        /**
+         * 「기록한 사람」 — 시간대 행과 **같은 축(recordedAt)** 의 유니크 사용자.
+         *
+         * 활성 사용자와 다르다. 저쪽은 식사 날짜라 「그 날짜의 끼니를 가진 사람」이고,
+         * 이쪽은 「그 날 실제로 앱을 켜서 적은 사람」이다. 어제 끼니를 오늘 몰아 적으면
+         * 활성 사용자는 어제 칸, 이쪽은 오늘 칸에 선다.
+         *
+         * 더할 수 없는 값이라 주차·월 칸은 Set 을 그대로 들고 있다가 크기로 낸다.
+         */
+        const recordedUserSetsByDay = Array.from({ length: 7 }, () => new Set());
+        const recordedUserSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
+        const recordedUserSetsToday = new Set();
+        const recordedUserSetsLast7 = new Set();
+        /**
+         * @param {{dateKey: string}|null} slot addHourRecord 와 같은 슬롯
+         * @param {string} uid
+         */
+        const addRecordedUser = (slot, uid) => {
+            if (!slot || !uid) return;
+            const { dateKey } = slot;
+            if (dateKey < firstSundayKey || dateKey > todayStr) return;
+            const wi = weekIndexForDateKeyStr(dateKey, sundayKeyToIndex);
+            if (wi >= 0) recordedUserSetsByWeek[wi].add(uid);
+            if (dateKey === todayStr) recordedUserSetsToday.add(uid);
+            if (dateKey >= last7FirstStr) {
+                recordedUserSetsLast7.add(uid);
+                const di = last7IndexMap.get(dateKey);
+                if (di != null && di >= 0) recordedUserSetsByDay[di].add(uid);
+            }
+        };
+
         const addHourRecord = (slot) => {
             if (!slot) return;
             const { dateKey } = slot;
@@ -1435,6 +1484,7 @@ export async function getUserStatistics(options = {}) {
         const stats = {
             newUsers: { all: 0, last7: 0, today: 0 },
             activeUsers: { all: 0, last7: 0, today: 0 },
+            recordedUsers: { all: 0, last7: 0, today: 0 },
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
             recordsByHour: {},
@@ -1676,7 +1726,9 @@ export async function getUserStatistics(options = {}) {
         mealsRecordedSnap.forEach((docSnap) => {
             const uid = userIdFromMealDocRef(docSnap.ref);
             if (!uid || excluded.has(uid)) return;
-            addHourRecord(hourSlotForMealDoc(docSnap.data()));
+            const slot = hourSlotForMealDoc(docSnap.data());
+            addHourRecord(slot);
+            addRecordedUser(slot, uid);
         });
 
         if (useIncremental) {
@@ -1720,7 +1772,9 @@ export async function getUserStatistics(options = {}) {
                     if (!mirrored && inRescanWindow) {
                         if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
                         // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
-                        addHourRecord(hourSlotForJournalEntry(dateStr, entry));
+                        const jSlot = hourSlotForJournalEntry(dateStr, entry);
+                        addHourRecord(jSlot);
+                        addRecordedUser(jSlot, uid);
                     }
                     if (wi >= 0 && inRescanWindow) dailyJournalByWeek[wi]++;
                     if (dateStr === todayStr) {
@@ -1904,6 +1958,14 @@ export async function getUserStatistics(options = {}) {
         stats.activeUsers.all = activeUserSets.all.size;
         stats.activeUsers.last7 = activeUserSets.last7.size;
         stats.activeUsers.today = activeUserSets.today.size;
+        /**
+         * 「전체」는 누적이라 축과 무관하다 — 어느 날 적었든 「기록이 하나라도 있는 사람」은
+         * 같은 집합이다. 그래서 활성 사용자의 전체를 그대로 쓴다(추가 읽기 0).
+         * 축이 갈리는 것은 날짜 칸뿐이고, 그건 아래 recordedUserSets 가 센다.
+         */
+        stats.recordedUsers.all = activeUserSets.all.size;
+        stats.recordedUsers.last7 = recordedUserSetsLast7.size;
+        stats.recordedUsers.today = recordedUserSetsToday.size;
         stats.totalMeals = stats.records.all;
 
         const recordsBySlotBreakdown = {};
@@ -1914,6 +1976,7 @@ export async function getUserStatistics(options = {}) {
             dates: last7DateKeys,
             newUsers: [...newUsersByDay],
             activeUsers: activeSetsByDay.map((s) => s.size),
+            recordedUsers: recordedUserSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
             recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
@@ -1932,7 +1995,9 @@ export async function getUserStatistics(options = {}) {
                       }));
                       const mg = buildMonthHeaderGroupsWithStarts(weeksPayload);
                       const computedActive = activeSetsByWeek.map((x) => x.size);
-                      const computedMonthUnique = computeActiveUsersMonthUnique(activeSetsByWeek, mg);
+                      const computedMonthUnique = computeMonthUniqueFromWeekSets(activeSetsByWeek, mg);
+                      const computedRecorded = recordedUserSetsByWeek.map((x) => x.size);
+                      const computedRecordedMonthUnique = computeMonthUniqueFromWeekSets(recordedUserSetsByWeek, mg);
 
                       if (!useIncremental) {
                           return {
@@ -1940,6 +2005,8 @@ export async function getUserStatistics(options = {}) {
                               newUsers: [...newUsersByWeek],
                               activeUsers: computedActive,
                               activeUsersMonthUnique: computedMonthUnique,
+                              recordedUsers: computedRecorded,
+                              recordedUsersMonthUnique: computedRecordedMonthUnique,
                               records: [...recordsByWeek],
                               recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
                               recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
@@ -1974,6 +2041,14 @@ export async function getUserStatistics(options = {}) {
                           activeUsersMonthUnique: mergeUnique(
                               cw.activeUsersMonthUnique,
                               computedMonthUnique,
+                              monthFromIdx,
+                              mg.length
+                          ),
+                          // 다시 세는 구간은 recordedAt 축으로 통째로 다시 읽으므로 그대로 신뢰한다
+                          recordedUsers: mergeUnique(cw.recordedUsers, computedRecorded, rescanFromIdx, nWeeks),
+                          recordedUsersMonthUnique: mergeUnique(
+                              cw.recordedUsersMonthUnique,
+                              computedRecordedMonthUnique,
                               monthFromIdx,
                               mg.length
                           ),
@@ -2176,6 +2251,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     if (stats) {
         set('statNewUsersAll', stats.newUsers?.all);
         set('statActiveUsersAll', stats.activeUsers?.all);
+        set('statRecordedUsersAll', stats.recordedUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
         set('statDailyJournalAll', stats.dailyJournal?.all);
@@ -2183,12 +2259,14 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
         fillDashboard7dNumericRow('statActiveUsers7d', bd?.activeUsers, stats.activeUsers?.last7);
+        fillDashboard7dNumericRow('statRecordedUsers7d', bd?.recordedUsers, stats.recordedUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
         fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
+        set('statRecordedUsers7Sum', stats.recordedUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
         set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
@@ -2229,7 +2307,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
         const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -2392,6 +2470,7 @@ export async function refreshDashboardStats(options = {}) {
                 const payload = {
                     newUsers: stats.newUsers,
                     activeUsers: stats.activeUsers,
+                    recordedUsers: stats.recordedUsers,
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
                     recordsByHour: stats.recordsByHour,
