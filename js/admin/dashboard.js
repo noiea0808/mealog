@@ -1474,7 +1474,25 @@ export async function getUserStatistics(options = {}) {
         const rescanFromIdx = useIncremental ? rescanFromWeekIndex(weekMetas, rescanStartKey) : 0;
         const lastAggregatedAt = useIncremental ? String(cachedForIncremental.lastAggregatedAt) : '';
 
-        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap] = await Promise.all([
+        /**
+         * 시간대 행이 읽을 구간의 시작 — **기록 시각(recordedAt) 축**의 하한.
+         *
+         * 시간대 행은 「며칟날 몇 시에 앱을 켰나」라서 recordedAt 으로 칸을 잡는데,
+         * 문서를 가져오는 쿼리는 식사 날짜(date)로 범위를 건다. 두 축이 어긋나는 문서
+         * (= 과거 끼니를 오늘 몰아 적은 소급 입력)는 그 쿼리에 아예 안 걸린다.
+         * 그래서 같은 축으로 한 번 더 읽는다.
+         *
+         * recordedAt 은 ISO(UTC) 문자열이라 로컬 자정을 ISO 로 바꿔 비교한다.
+         */
+        const hourScanStartIso = (() => {
+            const parts = String(rescanStartKey || '').split('-');
+            if (parts.length !== 3) return new Date(0).toISOString();
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            d.setHours(0, 0, 0, 0);
+            return Number.isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
+        })();
+
+        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap, mealsRecordedSnap] = await Promise.all([
             countQ(query(mealsCg)),
             nWeeks > 0
                 ? getDocs(query(mealsCg, where('date', '>=', rescanStartKey), where('date', '<=', todayStr)))
@@ -1482,6 +1500,10 @@ export async function getUserStatistics(options = {}) {
             // 소급 입력분: 지난 집계 뒤에 적혔지만 과거 날짜를 가리키는 기록
             useIncremental
                 ? getDocs(query(mealsCg, where('recordedAt', '>', lastAggregatedAt)))
+                : Promise.resolve(emptyMealsSnap),
+            // 시간대 행 전용 — 기록 시각으로 구간을 건다 (위 두 스냅숏과 축이 다르다)
+            nWeeks > 0
+                ? getDocs(query(mealsCg, where('recordedAt', '>=', hourScanStartIso)))
                 : Promise.resolve(emptyMealsSnap)
         ]);
         let recordsAllCount = recordsAllCountRaw;
@@ -1625,9 +1647,6 @@ export async function getUserStatistics(options = {}) {
                     }
                 }
             }
-            addHourRecord(hourSlotForMealDoc(mealData));
-
-
             if (sid && slotAgg[sid]) {
                 if (wi >= 0) slotAgg[sid].byWeek[wi]++;
                 if (dateStr === todayStr) slotAgg[sid].today++;
@@ -1642,13 +1661,32 @@ export async function getUserStatistics(options = {}) {
         mealsRangeSnap.forEach((d) => scanMealDoc(d, false));
         mealsRetroSnap.forEach((d) => scanMealDoc(d, true));
 
+        /**
+         * 시간대 행은 여기서만 채운다.
+         *
+         * 예전에는 위 두 스캔에 얹어 셌는데, 소급 입력이 **집계 한 번 분량만 보였다가
+         * 영구히 사라졌다.** 식사 날짜 범위 쿼리에는 안 걸리고, 소급 델타 쿼리는
+         * `recordedAt > lastAggregatedAt` 이라 한 번 집계가 돌고 나면 같은 문서를 다시
+         * 잡지 않기 때문이다. 게다가 「최근 7일」 시각 칸은 캐시에 남기지 않고 매번 새로
+         * 세므로, 사라진 자리를 메워 줄 것도 없었다.
+         * (2026-08-26 관측: 8/26 시각별 135 → 이튿날 91, 18–21시 67 → 19)
+         *
+         * 이제 기록 시각 축으로 직접 읽으므로 **언제 집계를 돌리든 같은 칸에 들어간다.**
+         */
+        mealsRecordedSnap.forEach((docSnap) => {
+            const uid = userIdFromMealDocRef(docSnap.ref);
+            if (!uid || excluded.has(uid)) return;
+            addHourRecord(hourSlotForMealDoc(docSnap.data()));
+        });
+
         if (useIncremental) {
             console.log('[대시보드] 증분 집계:', {
                 rescanFrom: rescanStartKey,
                 rescanFromWeekIndex: rescanFromIdx,
                 since: lastAggregatedAt,
                 rescanDocs: mealsRangeSnap.size ?? 0,
-                retroDocs: mealsRetroSnap.size ?? 0
+                retroDocs: mealsRetroSnap.size ?? 0,
+                hourDocs: mealsRecordedSnap.size ?? 0
             });
         }
 
