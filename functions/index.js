@@ -4139,6 +4139,10 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'settings_push',
 
   // --- 기록 시트 안에서 벌어지는 일 (RECORD_USAGE_METRIC_DEFS) ---
+  'entry_sheet_opened',
+  'entry_sheet_saved',
+  'entry_sheet_abandoned',
+  'entry_sheet_discarded',
   'what_recall_shown',
   'what_recall_picked',
   'what_typeahead_shown',

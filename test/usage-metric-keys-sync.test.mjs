@@ -36,7 +36,13 @@ function collectJsFiles(dir) {
     return out;
 }
 
-/** logUsageMetric(...) 인자에 등장하는 문자열 리터럴 — 삼항(a ? 'x' : 'y')도 잡는다 */
+/**
+ * 앱이 실제로 올릴 수 있는 키.
+ *
+ * 두 갈래를 본다. 대부분은 logUsageMetric('...') 리터럴이지만, 키를 표로 들고 발행하는
+ * 모듈(entry-sheet-session.js)도 있어서 그쪽은 리터럴로 안 잡힌다. 그런 모듈은
+ * `export const ..._METRIC_KEYS = [...]` 로 발행 목록을 내보내기로 하고, 여기서 함께 읽는다.
+ */
 function calledKeys() {
     const keys = new Set();
     for (const file of collectJsFiles(join(ROOT, 'js'))) {
@@ -46,6 +52,10 @@ function calledKeys() {
             // 삼항의 조건절에 있는 비교 문자열(mode === 'typeahead')은 키가 아니다
             const withoutConditions = arg.replace(/[=!]==?\s*'[^']*'/g, '');
             for (const lit of withoutConditions.matchAll(/'([a-z0-9_]+)'/g)) keys.add(lit[1]);
+        }
+        // 선언형 발행 목록 — export const XXX_METRIC_KEYS = Object.freeze([...]) / [...]
+        for (const m of src.matchAll(/export const [A-Z0-9_]*METRIC_KEYS?\s*=\s*(?:Object\.freeze\()?\[([\s\S]*?)\]/g)) {
+            for (const lit of m[1].matchAll(/'([a-z0-9_]+)'/g)) keys.add(lit[1]);
         }
     }
     return keys;

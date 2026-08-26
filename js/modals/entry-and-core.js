@@ -110,6 +110,7 @@ import {
     setupEntryWhatRecall,
 } from './entry-what-recall.js';
 import { logUsageMetric } from '../usage-metrics.js';
+import { createEntrySheetSessionTracker } from './entry-sheet-session.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -141,6 +142,11 @@ import {
     resetEntrySheetBaseHeight,
     captureEntrySheetBaseHeight,
 } from './entry-sheet-tabs.js';
+
+/** 시트 완주율(저장/열기)의 분모를 만드는 세션 추적기 — entry-sheet-session.js 참조 */
+const entrySheetSession = createEntrySheetSessionTracker((key) => {
+    logUsageMetric(key).catch(() => {});
+});
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
@@ -728,6 +734,7 @@ function finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen) {
     const gen = window.__entryModalOpenGeneration || 0;
     if (saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen) return;
     setEntryModalSavingState(false);
+    entrySheetSession.mark('saved');
     closeModal();
 }
 
@@ -1780,6 +1787,7 @@ export async function openModal(date, slotId, entryId = null) {
 
         const openGen = revealEntryModalShell();
         if (!openGen) return;
+        entrySheetSession.begin({ isEdit: Boolean(entryId) });
         const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -1879,6 +1887,7 @@ export async function openModal(date, slotId, entryId = null) {
 
 export function closeModal() {
     if (document.getElementById('entryModal')?.classList.contains('entry-modal-saving')) return;
+    entrySheetSession.end();
     closeTimeSourceSheets();
     closeEntrySlotPicker();
     closeEntryHeaderDatePicker();
@@ -1974,6 +1983,7 @@ export function cancelDiscardEntryModal() {
 
 export function confirmDiscardEntryModal() {
     document.getElementById('discardEntryConfirmModal')?.classList.add('hidden');
+    entrySheetSession.mark('discarded');
     closeModal();
 }
 
@@ -2777,6 +2787,7 @@ export async function deleteEntry() {
     // temp_ 폴백 레코드(구버전 낙관 행): 서버 문서·큐 추적이 없으므로 로컬에서만 제거
     if (String(entryIdToDelete).startsWith('temp_')) {
         const tempRec = window.mealHistory?.find((m) => m.id === entryIdToDelete) || null;
+        entrySheetSession.mark('deleted');
         window.closeModal();
         try {
             getMealSyncManager().removeTempRowSideEffects(tempRec || { id: entryIdToDelete });
@@ -2830,6 +2841,9 @@ export async function deleteEntry() {
     }
 
     // 모달을 먼저 닫기 (사용자 경험 개선)
+    // 삭제는 이탈이 아니다. 지금은 수정 진입에서만 가능해 세션 자체가 없지만(무해),
+    // 나중에 수정 세션도 세게 되면 이 표시가 분모를 지킨다.
+    entrySheetSession.mark('deleted');
     window.closeModal();
 
     if (!mealForDelete || !window.mealHistory?.some((m) => m.id === entryIdToDelete)) {

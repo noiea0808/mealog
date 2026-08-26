@@ -94,6 +94,13 @@ const PAGE_VIEW_METRIC_DEFS = [
  * @type {{field: string, section: string, label: string}[]}
  */
 const RECORD_USAGE_METRIC_DEFS = [
+    // 완주율의 분모·분자 — 열었는데 저장까지 갔나 (js/modals/entry-sheet-session.js)
+    { field: 'entry_sheet_opened', section: '시트', label: '시트 열기(신규)' },
+    { field: 'entry_sheet_saved', section: '시트', label: '저장까지 완료' },
+    // 내용 없이 그냥 닫음 — 열어만 보고 나간 것
+    { field: 'entry_sheet_abandoned', section: '시트', label: '내용 없이 닫음' },
+    // 쓰다가 버림(나가기 확인) — 같은 이탈이라도 신호의 세기가 다르다
+    { field: 'entry_sheet_discarded', section: '시트', label: '쓰다가 버림' },
     { field: 'what_recall_shown', section: '무엇을', label: '자주 먹는 것 표시' },
     { field: 'what_recall_picked', section: '무엇을', label: '자주 먹는 것 선택' },
     { field: 'what_typeahead_shown', section: '무엇을', label: '자동완성 표시' },
