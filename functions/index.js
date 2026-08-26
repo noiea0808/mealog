@@ -6598,6 +6598,34 @@ function adminMealSatietyText(d) {
   return label ? `포만감 ${Math.round(n)}/5 (${label})` : `포만감 ${Math.round(n)}/5`;
 }
 
+/** 간식 슬롯 — js/constants.js SLOTS 의 type: 'snack' 과 같아야 한다 */
+const ADMIN_SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
+
+/**
+ * 확정 분류가 비었을 때 대신 쓸 자동 분류값. 채워져 있으면 ''(그대로 두라는 뜻).
+ *
+ * 사용자가 칩을 확정하면 category(끼니)·snackType(간식)에 들어가지만, **제안을 그대로 두고
+ * 저장하면 categoryAuto 에만** 들어간다(js/modals/entry-save-record.js 자동 분류 블록).
+ * 2026-08 기록 시트 개편 뒤로는 후자가 기본 동선이라, 확정 필드만 읽으면 분류가 붙은
+ * 기록의 대부분이 빈 값으로 보인다 — 8/23 주 기준 확정 10% / 자동만 55%.
+ *
+ * 그래서 식단분석에 보내는 슬롯 상세에서 '무엇을'이 통째로 빠지고 있었다. 클라이언트는
+ * 이미 확정값 우선·없으면 자동값으로 읽는다(js/analytics/meal-analytics-tags.js
+ * effectiveCategoryForAnalytics) — 서버도 같은 규칙으로 맞춘다.
+ *
+ * 두 확정 필드가 동시에 채워지는 문서는 없다(2026-08-26 전수 확인: 0건). 그래서 슬롯을
+ * 보지 않고 「둘 중 채워진 쪽」으로 판단해도 안전하며, 슬롯과 필드가 어긋난 옛 문서 7건도
+ * 함께 살릴 수 있다. 슬롯은 '간식:' 라벨을 붙일지에만 쓴다.
+ *
+ * @param {boolean} [labeled] 간식 슬롯이면 '간식:' 을 붙인다 (슬롯 상세용)
+ */
+function adminMealAutoFormText(d, labeled = false) {
+  if (String(d?.category || '').trim() || String(d?.snackType || '').trim()) return '';
+  const auto = String(d?.categoryAuto || '').trim();
+  if (!auto) return '';
+  return labeled && ADMIN_SNACK_SLOT_IDS.has(String(d?.slotId || '')) ? `간식:${auto}` : auto;
+}
+
 /** 한 줄 요약(웰컴 API 표시용): 입력창 메뉴·메모 등 포함 */
 function adminMealShortLine(d) {
   const mt = (d.mealType || '').trim();
@@ -6606,6 +6634,8 @@ function adminMealShortLine(d) {
   if (d.category) bits.push(String(d.category).trim());
   const st = (d.snackType || '').trim();
   if (st) bits.push(st);
+  const autoForm = adminMealAutoFormText(d);
+  if (autoForm) bits.push(autoForm);
   const md = adminTruncateText(adminMealMenuDetailText(d), 56);
   if (md) bits.push(`메뉴:${md}`);
   const whom = (d.withWhomDetail || d.withWhom || '').trim();
@@ -6631,6 +6661,8 @@ function adminMealSlotDetailForGemini(d) {
   if (d.category) top.push(String(d.category).trim());
   const st = (d.snackType || '').trim();
   if (st) top.push(`간식:${st}`);
+  const autoForm = adminMealAutoFormText(d, true);
+  if (autoForm) top.push(autoForm);
   if (top.length) lines.push(top.join(' · '));
   const menuFull = adminMealMenuDetailText(d);
   if (menuFull) lines.push(`메뉴: ${menuFull}`);
@@ -7621,6 +7653,9 @@ function buildDietReportSource(meals) {
         m.mealType,
         m.category,
         m.snackType,
+        // 확정 없이 저장된 자동 분류. 위 두 필드가 비어도 프롬프트에는 실리므로
+        // 지문에 넣지 않으면 옛 캐시(분류가 빠진 리포트)가 계속 나간다.
+        m.categoryAuto,
         adminMealMenuDetailText(m),
         adminMealPlaceText(m),
         m.comment,
