@@ -160,7 +160,10 @@
                         </div>
                         <div class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 shrink-0 ml-auto pl-2">
                             <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500 text-right">마지막 업데이트: -</span>
-                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                            <button type="button" id="dashboardStatsFullRefreshBtn" onclick="window.refreshDashboardStatsFull()" title="지난 주차 기록의 수정·삭제, 제외 UID 변경까지 반영합니다. 읽기가 많으니 가끔만 누르세요." class="inline-flex items-center justify-center gap-2 px-3 py-2 min-w-[7.5rem] bg-white text-slate-600 text-sm font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>전체 재집계</span>
+                            </button>
+                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" title="지난 집계 이후 달라진 것만 읽습니다." class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
                                 <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>새로고침</span>
                             </button>
                         </div>
@@ -503,7 +506,7 @@
                 <div id="dashboard-panel-excluded" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                     <div class="px-4 pt-4 pb-2">
                         <p class="text-sm text-slate-600 leading-relaxed">
-                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">새로고침</span>으로 통계를 다시 집계하면 반영됩니다.
+                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">전체 재집계</span>를 눌러야 지난 주차까지 반영됩니다 — 일반 「새로고침」은 최근 구간만 다시 셉니다.
                         </p>
                     </div>
                     <div class="px-4 pb-4 flex flex-wrap items-end gap-2 border-b border-slate-100">

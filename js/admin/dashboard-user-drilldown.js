@@ -152,9 +152,13 @@ export function setDashboardDrilldownWeekKeys(keys) {
 /**
  * getUserStatistics()가 만든 UID 집합을 drilldown 하위 문서로 저장.
  * @param {object} userSets stats.userSets — { weeks, last7, all }
+ * @param {{partial?: boolean}} [options] `partial` 이면 증분 집계라 손에 든 UID 가
+ *   다시 센 구간뿐이다. 「전체」문서는 통째로 덮어쓰는 구조라 저장을 건너뛴다 —
+ *   덮어쓰면 과거 명단이 사라진다. (주차 문서는 빈 주를 건너뛰므로 저절로 보존된다)
  */
-export async function writeDashboardUserDrilldown(userSets) {
+export async function writeDashboardUserDrilldown(userSets, options = {}) {
     if (!userSets) return;
+    const partial = options?.partial === true;
     const writes = [];
 
     for (const w of userSets.weeks || []) {
@@ -180,7 +184,7 @@ export async function writeDashboardUserDrilldown(userSets) {
         ]);
     }
 
-    if (userSets.all) {
+    if (userSets.all && !partial) {
         writes.push([
             DRILLDOWN_DOC(DOC_ID_ALL),
             {

@@ -36,6 +36,14 @@ import {
     hourSlotForMealDoc,
     hourSlotForJournalEntry
 } from './dashboard-hour-buckets.js';
+import {
+    rescanStartDateKey,
+    rescanFromWeekIndex,
+    mergeWeeklyArray,
+    mergeWeeklyMap,
+    isRetroactive,
+    canUseIncremental
+} from './dashboard-incremental.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
     writeDashboardUserDrilldown,
@@ -1302,8 +1310,17 @@ function weekIndexForDateKeyStr(dateKeyStr, sundayKeyToIndex) {
     return sk && sundayKeyToIndex.has(sk) ? sundayKeyToIndex.get(sk) : -1;
 }
 
-export async function getUserStatistics() {
+/**
+ * 관리자 「새로고침」 전용 집계.
+ *
+ * @param {{mode?: 'full'|'incremental', cached?: object|null}} [options]
+ *   `incremental` 이면 지난 집계 이후 달라진 것만 읽어 캐시에 얹는다.
+ *   캐시가 없거나 주차 구성이 어긋나면 알아서 전량으로 되돌아간다.
+ */
+export async function getUserStatistics(options = {}) {
     try {
+        const wantIncremental = options?.mode === 'incremental';
+        const cachedForIncremental = options?.cached || null;
         const excluded = await getExcludedAnalyticsUidSet();
         const usersColl = collection(db, 'artifacts', appId, 'users');
         const usersSnapshot = await getDocs(usersColl);
@@ -1428,10 +1445,35 @@ export async function getUserStatistics() {
         const countQ = async (q) => (await getCountFromServer(q)).data().count ?? 0;
 
         const emptyMealsSnap = { forEach() {} };
-        const [recordsAllCountRaw, mealsRangeSnap] = await Promise.all([
+
+        /**
+         * 증분 가능 여부. 여기서 한 번 정하고 아래 전부가 이 값을 따른다 —
+         * 중간에 갈리면 어떤 칸은 캐시, 어떤 칸은 재계산이 되어 표가 섞인다.
+         */
+        const incr = wantIncremental
+            ? canUseIncremental(cachedForIncremental, weekMetas)
+            : { ok: false, reason: 'full-requested' };
+        const useIncremental = incr.ok && nWeeks > 0;
+        if (wantIncremental && !useIncremental) {
+            console.warn('[대시보드] 증분 집계를 쓸 수 없어 전량으로 집계합니다:', incr.reason);
+        }
+
+        /** 캐시를 버리고 다시 세는 구간의 시작 날짜 (전량이면 운영 시작 주) */
+        const rescanStartKey = useIncremental
+            ? rescanStartDateKey(todayStr, sundayKeyForDateKey(todayStr))
+            : firstSundayKey;
+        /** 이 주차 인덱스부터는 캐시를 쓰지 않는다 */
+        const rescanFromIdx = useIncremental ? rescanFromWeekIndex(weekMetas, rescanStartKey) : 0;
+        const lastAggregatedAt = useIncremental ? String(cachedForIncremental.lastAggregatedAt) : '';
+
+        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap] = await Promise.all([
             countQ(query(mealsCg)),
             nWeeks > 0
-                ? getDocs(query(mealsCg, where('date', '>=', firstSundayKey), where('date', '<=', todayStr)))
+                ? getDocs(query(mealsCg, where('date', '>=', rescanStartKey), where('date', '<=', todayStr)))
+                : Promise.resolve(emptyMealsSnap),
+            // 소급 입력분: 지난 집계 뒤에 적혔지만 과거 날짜를 가리키는 기록
+            useIncremental
+                ? getDocs(query(mealsCg, where('recordedAt', '>', lastAggregatedAt)))
                 : Promise.resolve(emptyMealsSnap)
         ]);
         let recordsAllCount = recordsAllCountRaw;
@@ -1467,12 +1509,20 @@ export async function getUserStatistics() {
         /** meals 에 미러 문서가 있는 하루 소감 `${uid}|${date}` — 이중 계산 방지 */
         const mirroredJournalKeys = new Set();
 
-        mealsRangeSnap.forEach((docSnap) => {
+        /**
+         * @param {boolean} retroOnly 소급분 스냅숏인지.
+         *   참이면 다시 세는 구간 **밖**(과거 칸)을 가리키는 기록만 센다.
+         *   구간 안쪽은 mealsRangeSnap 이 이미 정확히 세었으므로, 여기서 또 세면 이중 계산이다.
+         */
+        const scanMealDoc = (docSnap, retroOnly) => {
             const mealData = docSnap.data();
             const dateStr = mealData.date;
             const uid = userIdFromMealDocRef(docSnap.ref);
             if (!dateStr || typeof dateStr !== 'string' || !uid) return;
             if (excluded.has(uid)) return;
+            if (retroOnly && !isRetroactive(dateStr, rescanStartKey)) return;
+            // 스캔 구간을 좁혔으므로 그보다 과거는 캐시가 담당한다 (전량 모드에선 firstSundayKey 라 무해)
+            if (dateStr < firstSundayKey) return;
 
             const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
             if (wi >= 0) {
@@ -1516,7 +1566,20 @@ export async function getUserStatistics() {
                     if (sdi != null && sdi >= 0) slotAgg[sid].byDay[sdi]++;
                 }
             }
-        });
+        };
+
+        mealsRangeSnap.forEach((d) => scanMealDoc(d, false));
+        mealsRetroSnap.forEach((d) => scanMealDoc(d, true));
+
+        if (useIncremental) {
+            console.log('[대시보드] 증분 집계:', {
+                rescanFrom: rescanStartKey,
+                rescanFromWeekIndex: rescanFromIdx,
+                since: lastAggregatedAt,
+                rescanDocs: mealsRangeSnap.size ?? 0,
+                retroDocs: mealsRetroSnap.size ?? 0
+            });
+        }
 
         let dailyJournalAll = 0;
         let dailyJournalToday = 0;
@@ -1545,12 +1608,19 @@ export async function getUserStatistics() {
                     dailyJournalAll++;
                     const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
                     const mirrored = mirroredJournalKeys.has(`${uid}|${dateStr}`);
-                    if (!mirrored) {
+                    /**
+                     * dailyComments 는 맵이라 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없다.
+                     * 그래서 증분에서도 전량을 훑되, **다시 세는 구간 밖은 세지 않는다** —
+                     * 그 몫은 캐시에 이미 들어 있어서, 여기서 또 세면 이중 계산이다.
+                     * (「전체」열만은 위에서 전량으로 센다)
+                     */
+                    const inRescanWindow = !useIncremental || dateStr >= rescanStartKey;
+                    if (!mirrored && inRescanWindow) {
                         if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
                         // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
                         addHourRecord(hourSlotForJournalEntry(dateStr, entry));
                     }
-                    if (wi >= 0) dailyJournalByWeek[wi]++;
+                    if (wi >= 0 && inRescanWindow) dailyJournalByWeek[wi]++;
                     if (dateStr === todayStr) {
                         dailyJournalToday++;
                         if (!mirrored) dailyJournalUnmirroredToday++;
@@ -1745,21 +1815,105 @@ export async function getUserStatistics() {
                           monthIndex: w.monthIndex
                       }));
                       const mg = buildMonthHeaderGroupsWithStarts(weeksPayload);
+                      const computedActive = activeSetsByWeek.map((x) => x.size);
+                      const computedMonthUnique = computeActiveUsersMonthUnique(activeSetsByWeek, mg);
+
+                      if (!useIncremental) {
+                          return {
+                              weeks: weeksPayload,
+                              newUsers: [...newUsersByWeek],
+                              activeUsers: computedActive,
+                              activeUsersMonthUnique: computedMonthUnique,
+                              records: [...recordsByWeek],
+                              recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
+                              recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
+                              sharedPhotos: sharedSetsByWeek.map((x) => x.size),
+                              dailyJournal: [...dailyJournalByWeek]
+                          };
+                      }
+
+                      const cw = cachedForIncremental.weeklyBreakdown || {};
+                      // 세는 값(덧셈이 성립하는 것)은 캐시 + 소급분, 다시 센 구간은 덮어쓴다.
+                      // rescanned 와 retroDelta 에 같은 배열을 넘기는 것이 맞다 —
+                      // 소급분은 구간 밖만 통과했으므로 두 역할이 한 배열에 겹치지 않는다.
+                      const mergeCount = (cached, computed) =>
+                          mergeWeeklyArray(cached, computed, computed, rescanFromIdx, nWeeks);
+
+                      /**
+                       * 활성 사용자는 유니크 수라 더할 수 없다. 다시 센 구간만 새로 쓰고
+                       * 과거는 캐시를 그대로 둔다 — 그래서 **소급 입력으로 그 주에 처음 기록한
+                       * 사용자가 생기면 과거 칸이 한 명 적게 남는다.** 「전체 재집계」가 청소한다.
+                       */
+                      const mergeUnique = (cached, computed, fromIdx, len) => {
+                          const out = [];
+                          for (let i = 0; i < len; i++) {
+                              out.push(i >= fromIdx ? Number(computed?.[i]) || 0 : Number(cached?.[i]) || 0);
+                          }
+                          return out;
+                      };
+
+                      // 월 유니크도 같은 규칙. 다시 센 주차를 하나라도 품은 월부터 새로 쓴다.
+                      let monthFromIdx = mg.length;
+                      for (let gi = 0; gi < mg.length; gi++) {
+                          if (mg[gi].startWeekIndex + mg[gi].span > rescanFromIdx) {
+                              monthFromIdx = gi;
+                              break;
+                          }
+                      }
+
                       return {
                           weeks: weeksPayload,
+                          // 신규 사용자·공유는 아직 전 구간을 읽으므로 그대로 정확하다
                           newUsers: [...newUsersByWeek],
-                          activeUsers: activeSetsByWeek.map((s) => s.size),
-                          activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
-                          records: [...recordsByWeek],
-                          recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
-                          recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
-                          sharedPhotos: sharedSetsByWeek.map((s) => s.size),
-                          dailyJournal: [...dailyJournalByWeek]
+                          activeUsers: mergeUnique(cw.activeUsers, computedActive, rescanFromIdx, nWeeks),
+                          activeUsersMonthUnique: mergeUnique(
+                              cw.activeUsersMonthUnique,
+                              computedMonthUnique,
+                              monthFromIdx,
+                              mg.length
+                          ),
+                          records: mergeCount(cw.records, recordsByWeek),
+                          recordsBySlot: mergeWeeklyMap(
+                              SLOTS.map((x) => x.id),
+                              cw.recordsBySlot,
+                              Object.fromEntries(SLOTS.map((x) => [x.id, slotAgg[x.id].byWeek])),
+                              Object.fromEntries(SLOTS.map((x) => [x.id, slotAgg[x.id].byWeek])),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
+                          recordsByHour: mergeWeeklyMap(
+                              HOUR_BUCKETS.map((b) => b.id),
+                              cw.recordsByHour,
+                              Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, hourAgg[b.id].byWeek])),
+                              Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, hourAgg[b.id].byWeek])),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
+                          sharedPhotos: sharedSetsByWeek.map((x) => x.size),
+                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek)
                       };
                   })()
                 : null;
 
+        /**
+         * 시간대 「전체」는 스캔 구간의 합계다. 증분에서는 구간이 좁아 그대로 두면 확 줄어 보이므로,
+         * 병합된 주차 배열의 합으로 되찾는다 — 정의상 같은 값이다.
+         */
+        if (useIncremental && stats.weeklyBreakdown) {
+            for (const b of HOUR_BUCKETS) {
+                const arr = stats.weeklyBreakdown.recordsByHour?.[b.id];
+                if (!Array.isArray(arr)) continue;
+                stats.recordsByHour[b.id].all = arr.reduce((x, y) => x + (Number(y) || 0), 0);
+            }
+        }
+
         // 드릴다운 명단(UID) — 캐시 본문(payload)에는 넣지 않고 drilldown 하위 문서로만 저장한다
+        /**
+         * 증분에서는 다시 센 구간의 UID 만 손에 있다.
+         * 주차 문서는 비면 건너뛰므로(writeDashboardUserDrilldown) 과거가 보존되지만,
+         * 「전체」 문서는 통째로 덮어쓰기 때문에 저장을 막아야 한다.
+         */
+        stats.userSetsPartial = useIncremental;
         stats.userSets = {
             weeks: weekMetas.map((w, i) => ({
                 sundayKey: w.sundayKey,
@@ -1789,6 +1943,7 @@ export async function getUserStatistics() {
             }
         };
 
+        stats.aggregationMode = useIncremental ? 'incremental' : 'full';
         console.log('📊 대시보드 통계(최적화 집계):', stats);
         return stats;
     } catch (e) {
@@ -2056,16 +2211,28 @@ export async function updateStatistics() {
     }
 }
 
-// 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
-export async function refreshDashboardStats() {
+/**
+ * 새로고침.
+ *
+ * 기본은 **증분** — 지난 집계 이후 달라진 것만 읽어 캐시에 얹는다. meals 를 전량 읽던
+ * 시절엔 한 번 누를 때마다 1만 건이 넘었는데, 그중 지난 주차 숫자는 이미 확정된 값이었다.
+ *
+ * `{ full: true }` 는 전량 재집계다. 증분이 놓치는 것 — 지난 주차 기록의 **수정·삭제**,
+ * **제외 UID 변경** — 을 청소하려면 이쪽을 써야 한다.
+ */
+export async function refreshDashboardStats(options = {}) {
+    const full = options?.full === true;
     try {
         await runAdminRefreshAction(
-            document.getElementById('dashboardStatsRefreshBtn'),
+            document.getElementById(full ? 'dashboardStatsFullRefreshBtn' : 'dashboardStatsRefreshBtn'),
             async () => {
                 const prevSnap = await getDoc(DASHBOARD_STATS_REF());
                 const prevData = prevSnap.exists() ? prevSnap.data() : null;
+                // 집계가 읽어들인 시점 — 다음 증분의 기준이 된다.
+                // 집계 **전** 시각을 찍어야 도는 동안 들어온 기록을 다음 번에 놓치지 않는다.
+                const aggregationStartedAt = new Date().toISOString();
                 const [stats, pageUsage] = await Promise.all([
-                    getUserStatistics(),
+                    getUserStatistics(full ? { mode: 'full' } : { mode: 'incremental', cached: prevData }),
                     aggregatePageUsageFromFirestore(prevData)
                 ]);
                 const payload = {
@@ -2080,13 +2247,15 @@ export async function refreshDashboardStats() {
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,
                     asOfDate: getTodayDateString(),
+                    lastAggregatedAt: aggregationStartedAt,
+                    lastAggregationMode: stats.aggregationMode || (full ? 'full' : 'incremental'),
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
                 // 명단(UID)은 본문 문서가 1MB 한계로 커지지 않도록 drilldown 하위 문서에 나눠 저장.
                 // 실패해도 숫자 통계는 이미 저장됐으므로 새로고침 전체를 실패로 만들지 않는다.
                 try {
-                    await writeDashboardUserDrilldown(stats.userSets);
+                    await writeDashboardUserDrilldown(stats.userSets, { partial: stats.userSetsPartial === true });
                 } catch (drillErr) {
                     console.warn('[대시보드] 사용자 명단 캐시 저장 실패:', drillErr?.message || drillErr);
                 }
@@ -2109,12 +2278,17 @@ export async function refreshDashboardStats() {
                 renderDashboardStats(stats, new Date(), stats.last7Breakdown);
                 renderDashboardPageUsage(pageUsageToShow, { fallbackWeeklyBreakdown: stats.weeklyBreakdown });
             },
-            { loadingText: '집계 중…' }
+            { loadingText: full ? '전체 재집계 중…' : '집계 중…' }
         );
     } catch (e) {
         console.error('대시보드 새로고침 실패:', e);
         alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
     }
+}
+
+/** 관리자 「전체 재집계」 — 증분이 놓친 수정·삭제·제외 UID 변경을 청소한다 */
+export async function refreshDashboardStatsFull() {
+    await refreshDashboardStats({ full: true });
 }
 
 // 공유 게시물 렌더링

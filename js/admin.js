@@ -15,6 +15,7 @@ import {
     renderDashboardStats,
     updateStatistics,
     refreshDashboardStats,
+    refreshDashboardStatsFull,
     renderSharedPhotos,
     switchDashboardSubtab
 } from './admin/dashboard.js';
@@ -200,6 +201,7 @@ window.switchAdminTab = function(tab) {
 
 // 대시보드 새로고침 (전체 집계 후 캐시 문서에 저장)
 window.refreshDashboardStats = refreshDashboardStats;
+window.refreshDashboardStatsFull = refreshDashboardStatsFull;
 window.switchDashboardSubtab = switchDashboardSubtab;
 window.addDashboardExcludedUid = addExcludedUidFromAdminInput;
 
