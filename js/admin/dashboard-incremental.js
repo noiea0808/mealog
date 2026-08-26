@@ -143,3 +143,32 @@ export function canUseIncremental(cached, weeks) {
     }
     return { ok: true };
 }
+
+/**
+ * 유니크 수(활성 사용자, 공유 게시물)를 병합한다.
+ *
+ * 이런 값은 **더할 수 없다.** 같은 사람이 그 주에 이미 세어졌는지 숫자만 봐서는 알 수 없어서다.
+ * 그래서 다시 센 구간만 새 값으로 쓰고, 과거는 캐시를 그대로 둔다.
+ *
+ * 대가가 있다 — 소급 입력으로 어떤 주에 **처음** 기록한 사람이 생기면 그 주 칸이 한 명 적게 남는다.
+ * 「전체 재집계」가 청소한다.
+ */
+export function mergeUniqueArray(cached, computed, fromIndex, length) {
+    const out = [];
+    for (let i = 0; i < length; i++) {
+        out.push(i >= fromIndex ? Number(computed?.[i]) || 0 : Number(cached?.[i]) || 0);
+    }
+    return out;
+}
+
+/**
+ * 주차 밖까지 포함한 「전체」 값.
+ *
+ * 증분은 주차 배열만 정확히 유지한다. 그런데 운영 시작일 이전에 가입한 사람처럼
+ * **어느 주차에도 속하지 않는 몫**이 있어서, 주차 합만 쓰면 그만큼 빠진다.
+ * 그 수는 캐시가 알고 있고(캐시의 전체 − 캐시의 주차 합) 앞으로 더 늘지 않는다.
+ */
+export function totalWithOutsideWeeks(mergedWeekSum, cachedTotal, cachedWeekSum) {
+    const outside = (Number(cachedTotal) || 0) - (Number(cachedWeekSum) || 0);
+    return (Number(mergedWeekSum) || 0) + Math.max(0, outside);
+}

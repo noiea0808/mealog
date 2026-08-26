@@ -12,7 +12,9 @@ import {
     mergeWeeklyArray,
     mergeWeeklyMap,
     isRetroactive,
-    canUseIncremental
+    canUseIncremental,
+    mergeUniqueArray,
+    totalWithOutsideWeeks
 } from '../js/admin/dashboard-incremental.js';
 
 const WEEKS = [
@@ -123,4 +125,25 @@ test('주차 구성이 어긋나면 증분을 포기한다 (운영 시작일이 
         weeklyBreakdown: { weeks: [...WEEKS, { sundayKey: '2026-08-30' }] }
     };
     assert.equal(canUseIncremental(longer, WEEKS).reason, 'cached-weeks-longer');
+});
+
+test('유니크 값은 더하지 않고 구간만 갈아 끼운다', () => {
+    // 활성 사용자·공유 게시물처럼 「사람 수」인 값은 캐시에 더하면 같은 사람을 두 번 센다
+    assert.deepEqual(mergeUniqueArray([5, 6, 7], [0, 0, 9], 2, 3), [5, 6, 9]);
+    assert.deepEqual(mergeUniqueArray(null, [1, 2], 0, 2), [1, 2], '전 구간 재계산이면 계산값만 쓴다');
+});
+
+test('유니크 병합은 캐시가 짧아도 길이를 맞춘다', () => {
+    assert.deepEqual(mergeUniqueArray([3], [0, 0, 4], 2, 3), [3, 0, 4]);
+});
+
+test('「전체」는 주차 밖 몫을 캐시에서 되찾아 더한다', () => {
+    // 캐시: 전체 500명, 주차 합 480명 → 주차 밖(운영 시작 전 가입) 20명
+    assert.equal(totalWithOutsideWeeks(485, 500, 480), 505);
+});
+
+test('캐시가 주차 합보다 작으면 음수를 더하지 않는다', () => {
+    // 캐시가 어그러져 있어도 「전체」가 주차 합보다 작아지지는 않게 한다
+    assert.equal(totalWithOutsideWeeks(100, 10, 480), 100);
+    assert.equal(totalWithOutsideWeeks(100, undefined, undefined), 100);
 });

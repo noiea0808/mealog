@@ -41,6 +41,8 @@ import {
     rescanFromWeekIndex,
     mergeWeeklyArray,
     mergeWeeklyMap,
+    mergeUniqueArray,
+    totalWithOutsideWeeks,
     isRetroactive,
     canUseIncremental
 } from './dashboard-incremental.js';
@@ -1323,8 +1325,6 @@ export async function getUserStatistics(options = {}) {
         const cachedForIncremental = options?.cached || null;
         const excluded = await getExcludedAnalyticsUidSet();
         const usersColl = collection(db, 'artifacts', appId, 'users');
-        const usersSnapshot = await getDocs(usersColl);
-        const usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
 
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1504,10 +1504,49 @@ export async function getUserStatistics(options = {}) {
             }
         }
 
+        /**
+         * 사용자 목록. 증분에서는 다시 세는 구간에 가입한 사람만 읽는다 —
+         * 그 이전 가입자의 주차 칸은 캐시가 들고 있고, 가입일은 나중에 바뀌지 않는다.
+         * 전체 인원수만 count 로 따로 센다(문서를 읽지 않는다).
+         */
+        const rescanStartDate = (() => {
+            const p = String(rescanStartKey || '').split('-');
+            if (p.length !== 3) return DASHBOARD_STATS_RANGE_START;
+            const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+            d.setHours(0, 0, 0, 0);
+            return Number.isNaN(d.getTime()) ? DASHBOARD_STATS_RANGE_START : d;
+        })();
+        const usersSnapshot = useIncremental
+            ? await getDocs(query(usersColl, where('createdAt', '>=', Timestamp.fromDate(rescanStartDate))))
+            : await getDocs(usersColl);
+        let usersFromCollection;
+        if (useIncremental) {
+            let n = await countQ(query(usersColl));
+            for (const exUid of excluded) {
+                const exSnap = await getDoc(doc(usersColl, exUid));
+                if (exSnap.exists()) n -= 1;
+            }
+            usersFromCollection = Math.max(0, n);
+        } else {
+            usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
+        }
+
         let recordsToday = 0;
         let recordsLast7 = 0;
         /** meals 에 미러 문서가 있는 하루 소감 `${uid}|${date}` — 이중 계산 방지 */
         const mirroredJournalKeys = new Set();
+
+        let dailyJournalAll = 0;
+        let dailyJournalToday = 0;
+        let dailyJournalLast7 = 0;
+        /**
+         * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
+         * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
+         */
+        let dailyJournalUnmirroredToday = 0;
+        let dailyJournalUnmirroredLast7 = 0;
+        const dailyJournalUnmirroredByDay = z7();
+        const dailyJournalUnmirroredByWeek = zW();
 
         /**
          * @param {boolean} retroOnly 소급분 스냅숏인지.
@@ -1553,7 +1592,25 @@ export async function getUserStatistics(options = {}) {
 
             const sid = mealData.slotId;
             // 하루 소감 미러는 아래 dailyComments 스캔에서 또 세지 않도록 표시해 둔다.
-            if (sid === 'daily_journal') mirroredJournalKeys.add(`${uid}|${dateStr}`);
+            if (sid === 'daily_journal') {
+                mirroredJournalKeys.add(`${uid}|${dateStr}`);
+                /**
+                 * 증분에서는 config/settings 를 읽지 않는다 — dailyComments 가 맵이라
+                 * 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없어서다.
+                 * 대신 미러(2026-06-10 이후 항상 만들어진다)를 정본으로 삼는다.
+                 * 미러가 없던 시절의 옛 소감은 캐시에 이미 얼려져 있다.
+                 */
+                if (useIncremental) {
+                    dailyJournalAll++;
+                    if (wi >= 0) dailyJournalByWeek[wi]++;
+                    if (dateStr === todayStr) dailyJournalToday++;
+                    if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                        dailyJournalLast7++;
+                        const jdi = last7IndexMap.get(dateStr);
+                        if (jdi != null && jdi >= 0) dailyJournalByDay[jdi]++;
+                    }
+                }
+            }
             addHourRecord(hourSlotForMealDoc(mealData));
 
 
@@ -1581,18 +1638,11 @@ export async function getUserStatistics(options = {}) {
             });
         }
 
-        let dailyJournalAll = 0;
-        let dailyJournalToday = 0;
-        let dailyJournalLast7 = 0;
-        /**
-         * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
-         * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
-         */
-        let dailyJournalUnmirroredToday = 0;
-        let dailyJournalUnmirroredLast7 = 0;
-        const dailyJournalUnmirroredByDay = z7();
-        const dailyJournalUnmirroredByWeek = zW();
         try {
+            if (useIncremental) {
+                // 증분에서는 미러가 정본이라 config 를 아예 읽지 않는다 (아래 skip 참조)
+                throw { code: 'skip-config-scan' };
+            }
             const configGroup = collectionGroup(db, 'config');
             const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
             configSnap.forEach((docSnap) => {
@@ -1637,7 +1687,9 @@ export async function getUserStatistics(options = {}) {
                 }
             });
         } catch (djErr) {
-            console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+            if (djErr?.code !== 'skip-config-scan') {
+                console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+            }
         }
         stats.dailyJournal.all = dailyJournalAll;
         stats.dailyJournal.today = dailyJournalToday;
@@ -1750,7 +1802,8 @@ export async function getUserStatistics(options = {}) {
                       )
                     : startOfSundayWeek(DASHBOARD_STATS_RANGE_START);
             firstSunDate.setHours(0, 0, 0, 0);
-            const tsRangeLo = Timestamp.fromDate(firstSunDate);
+            // 공유는 소급이 없다 — timestamp 가 곧 공유한 순간이라 과거 칸은 다시 바뀌지 않는다
+            const tsRangeLo = Timestamp.fromDate(useIncremental ? rescanStartDate : firstSunDate);
 
             const sharedRangeSnap = await getDocs(
                 query(sharedColl, where('timestamp', '>=', tsRangeLo), where('timestamp', '<', tsEnd))
@@ -1839,18 +1892,7 @@ export async function getUserStatistics(options = {}) {
                       const mergeCount = (cached, computed) =>
                           mergeWeeklyArray(cached, computed, computed, rescanFromIdx, nWeeks);
 
-                      /**
-                       * 활성 사용자는 유니크 수라 더할 수 없다. 다시 센 구간만 새로 쓰고
-                       * 과거는 캐시를 그대로 둔다 — 그래서 **소급 입력으로 그 주에 처음 기록한
-                       * 사용자가 생기면 과거 칸이 한 명 적게 남는다.** 「전체 재집계」가 청소한다.
-                       */
-                      const mergeUnique = (cached, computed, fromIdx, len) => {
-                          const out = [];
-                          for (let i = 0; i < len; i++) {
-                              out.push(i >= fromIdx ? Number(computed?.[i]) || 0 : Number(cached?.[i]) || 0);
-                          }
-                          return out;
-                      };
+                      const mergeUnique = mergeUniqueArray;
 
                       // 월 유니크도 같은 규칙. 다시 센 주차를 하나라도 품은 월부터 새로 쓴다.
                       let monthFromIdx = mg.length;
@@ -1863,8 +1905,8 @@ export async function getUserStatistics(options = {}) {
 
                       return {
                           weeks: weeksPayload,
-                          // 신규 사용자·공유는 아직 전 구간을 읽으므로 그대로 정확하다
-                          newUsers: [...newUsersByWeek],
+                          // 가입일은 나중에 바뀌지 않으므로 과거 칸은 캐시 그대로 남는다
+                          newUsers: mergeCount(cw.newUsers, newUsersByWeek),
                           activeUsers: mergeUnique(cw.activeUsers, computedActive, rescanFromIdx, nWeeks),
                           activeUsersMonthUnique: mergeUnique(
                               cw.activeUsersMonthUnique,
@@ -1889,7 +1931,13 @@ export async function getUserStatistics(options = {}) {
                               rescanFromIdx,
                               nWeeks
                           ),
-                          sharedPhotos: sharedSetsByWeek.map((x) => x.size),
+                          // 공유 게시물 수는 유니크라 더할 수 없다 (같은 게시물의 사진 여러 장)
+                          sharedPhotos: mergeUnique(
+                              cw.sharedPhotos,
+                              sharedSetsByWeek.map((x) => x.size),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
                           dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek)
                       };
                   })()
@@ -1900,10 +1948,38 @@ export async function getUserStatistics(options = {}) {
          * 병합된 주차 배열의 합으로 되찾는다 — 정의상 같은 값이다.
          */
         if (useIncremental && stats.weeklyBreakdown) {
+            const sumArr = (arr) => (Array.isArray(arr) ? arr.reduce((x, y) => x + (Number(y) || 0), 0) : null);
+
             for (const b of HOUR_BUCKETS) {
-                const arr = stats.weeklyBreakdown.recordsByHour?.[b.id];
-                if (!Array.isArray(arr)) continue;
-                stats.recordsByHour[b.id].all = arr.reduce((x, y) => x + (Number(y) || 0), 0);
+                const n = sumArr(stats.weeklyBreakdown.recordsByHour?.[b.id]);
+                if (n != null) stats.recordsByHour[b.id].all = n;
+            }
+
+            /**
+             * 하루 소감 「전체」도 같은 이유로 되찾는다 — 증분에서는 config 를 읽지 않으므로
+             * 위에서 센 dailyJournalAll 은 다시 센 구간의 미러뿐이다.
+             * 하루 소감 기능은 운영 시작일보다 늦게 생겨서, 주차 밖에 남은 소감은 없다.
+             */
+            const djAll = sumArr(stats.weeklyBreakdown.dailyJournal);
+            if (djAll != null) {
+                stats.dailyJournal.all = djAll;
+                stats.records.all = Math.max(0, recordsAllCount - journalMirrorAll) + djAll;
+                stats.totalMeals = stats.records.all;
+            }
+
+            /**
+             * 신규 사용자 「전체」. 증분에서는 최근 가입자만 읽었으므로 그대로 쓰면 확 줄어든다.
+             * 주차 합으로는 **운영 시작일 이전 가입자**가 빠지는데, 그 인원은 캐시가 알고 있다
+             * (캐시의 전체 − 캐시의 주차 합). 가입일은 바뀌지 않으니 이 값도 고정이다.
+             */
+            const mergedNewWeekSum = sumArr(stats.weeklyBreakdown.newUsers);
+            if (mergedNewWeekSum != null) {
+                stats.newUsers.all = totalWithOutsideWeeks(
+                    mergedNewWeekSum,
+                    cachedForIncremental?.newUsers?.all,
+                    sumArr(cachedForIncremental?.weeklyBreakdown?.newUsers)
+                );
+                stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
             }
         }
 
