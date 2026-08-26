@@ -14,7 +14,8 @@ import {
     isRetroactive,
     canUseIncremental,
     mergeUniqueArray,
-    totalWithOutsideWeeks
+    totalWithOutsideWeeks,
+    needsWeeklyFullRefresh
 } from '../js/admin/dashboard-incremental.js';
 
 const WEEKS = [
@@ -146,4 +147,23 @@ test('캐시가 주차 합보다 작으면 음수를 더하지 않는다', () =>
     // 캐시가 어그러져 있어도 「전체」가 주차 합보다 작아지지는 않게 한다
     assert.equal(totalWithOutsideWeeks(100, 10, 480), 100);
     assert.equal(totalWithOutsideWeeks(100, undefined, undefined), 100);
+});
+
+test('주간 정기 재집계는 주가 바뀌었을 때만 돈다', () => {
+    const iso = (y, m, d, h = 12) => new Date(y, m - 1, d, h, 0, 0).toISOString();
+    // 이번 주 일요일이 08-23 일 때
+    assert.equal(needsWeeklyFullRefresh(iso(2026, 8, 24), '2026-08-23'), false, '이번 주에 이미 돌았다');
+    assert.equal(needsWeeklyFullRefresh(iso(2026, 8, 23), '2026-08-23'), false, '주 첫날도 이번 주다');
+    assert.equal(needsWeeklyFullRefresh(iso(2026, 8, 22), '2026-08-23'), true, '지난 주면 다시 돈다');
+});
+
+test('한 번도 안 돌았거나 값이 깨졌으면 재집계한다', () => {
+    assert.equal(needsWeeklyFullRefresh(null, '2026-08-23'), true);
+    assert.equal(needsWeeklyFullRefresh('', '2026-08-23'), true);
+    assert.equal(needsWeeklyFullRefresh('nope', '2026-08-23'), true);
+});
+
+test('이번 주 일요일을 모르면 함부로 돌리지 않는다', () => {
+    // 기준이 없는데 12,800 읽기를 시작하는 편보다, 아무것도 안 하는 편이 안전하다
+    assert.equal(needsWeeklyFullRefresh(null, ''), false);
 });

@@ -172,3 +172,31 @@ export function totalWithOutsideWeeks(mergedWeekSum, cachedTotal, cachedWeekSum)
     const outside = (Number(cachedTotal) || 0) - (Number(cachedWeekSum) || 0);
     return (Number(mergedWeekSum) || 0) + Math.max(0, outside);
 }
+
+/** Date → 로컬 'YYYY-MM-DD' */
+function localDateKeyOf(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+/**
+ * 주간 정기 전체 재집계를 돌 때가 됐는지.
+ *
+ * 증분은 지난 주차 기록의 수정·삭제, 제외 UID 변경, 소급 입력으로 생긴 활성 사용자 오차를
+ * 잡지 못한다. 그 오차가 쌓이지 않게 **주에 한 번은 전량으로 다시 센다.**
+ *
+ * 기준을 「7일 경과」가 아니라 **일요일 시작 주**로 잡은 이유: 표의 주차 구분과 같아야
+ * "이번 주 숫자는 이번 주에 한 번 정리됐다"가 성립한다.
+ *
+ * @param {string|null|undefined} lastFullAggregatedAt ISO. 없으면 한 번도 안 돈 것으로 본다
+ * @param {string} thisWeekSundayKey 오늘이 속한 주의 일요일 키
+ */
+export function needsWeeklyFullRefresh(lastFullAggregatedAt, thisWeekSundayKey) {
+    if (!thisWeekSundayKey) return false;
+    if (typeof lastFullAggregatedAt !== 'string' || !lastFullAggregatedAt.trim()) return true;
+    const t = Date.parse(lastFullAggregatedAt);
+    if (Number.isNaN(t)) return true;
+    return localDateKeyOf(new Date(t)) < thisWeekSundayKey;
+}

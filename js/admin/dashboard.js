@@ -44,7 +44,8 @@ import {
     mergeUniqueArray,
     totalWithOutsideWeeks,
     isRetroactive,
-    canUseIncremental
+    canUseIncremental,
+    needsWeeklyFullRefresh
 } from './dashboard-incremental.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
@@ -2112,7 +2113,7 @@ function markFixedUserDrilldownCells(stats, bd) {
 }
 
 /** 통계 객체를 화면에 반영 + 마지막 업데이트 문구 */
-export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = null) {
+export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = null, fullAggregatedAt = null) {
     const set = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '-';
@@ -2198,14 +2199,26 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     markFixedUserDrilldownCells(stats, bd);
     ensureDashboardDrilldownBinding();
 
+    const fmtStamp = (v) => {
+        if (!v) return null;
+        const d = v.toDate ? v.toDate() : new Date(v);
+        return Number.isNaN(d.getTime())
+            ? null
+            : d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+    };
+
     const label = document.getElementById('dashboardStatsUpdatedAt');
     if (label) {
-        if (updatedAt) {
-            const d = updatedAt && (updatedAt.toDate ? updatedAt.toDate() : new Date(updatedAt));
-            label.textContent = '마지막 업데이트: ' + d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
-        } else {
-            label.textContent = '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
-        }
+        const t = fmtStamp(updatedAt);
+        label.textContent = t ? `최근 업데이트: ${t}` : '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
+    }
+    const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
+    if (fullLabel) {
+        const t = fmtStamp(fullAggregatedAt);
+        fullLabel.textContent = t ? `전체 업데이트: ${t}` : '전체 업데이트: -';
+        fullLabel.title = t
+            ? '증분이 놓치는 수정·삭제·제외 UID 변경까지 반영한 시각. 주가 바뀌면 자동으로 다시 돕니다.'
+            : '아직 전체 재집계를 돌린 적이 없습니다.';
     }
     scrollDashboardTrendTableToRight();
 }
@@ -2280,7 +2293,8 @@ export async function updateStatistics() {
             }
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
-        renderDashboardStats(stats, data.updatedAt, last7Breakdown);
+        renderDashboardStats(stats, data.updatedAt, last7Breakdown, data.lastFullAggregatedAt || null);
+        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null);
         let pageUsage = data.pageUsage || null;
         if (pageUsage && pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage)) {
             try {
@@ -2315,6 +2329,8 @@ export async function updateStatistics() {
  */
 export async function refreshDashboardStats(options = {}) {
     const full = options?.full === true;
+    // 주간 정기 재집계는 사람이 누른 게 아니다 — 실패했다고 경고창을 띄우면 안 된다
+    const silent = options?.silent === true;
     try {
         await runAdminRefreshAction(
             document.getElementById(full ? 'dashboardStatsFullRefreshBtn' : 'dashboardStatsRefreshBtn'),
@@ -2342,6 +2358,9 @@ export async function refreshDashboardStats(options = {}) {
                     asOfDate: getTodayDateString(),
                     lastAggregatedAt: aggregationStartedAt,
                     lastAggregationMode: stats.aggregationMode || (full ? 'full' : 'incremental'),
+                    // 증분은 이 값을 건드리지 않고 물려받는다 — merge 없는 setDoc 이라 빠뜨리면 사라진다
+                    lastFullAggregatedAt:
+                        stats.aggregationMode === 'full' ? aggregationStartedAt : prevData?.lastFullAggregatedAt || null,
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
@@ -2368,15 +2387,53 @@ export async function refreshDashboardStats(options = {}) {
                 } catch (verErr) {
                     console.warn('[대시보드] 캐시 서버 확인 생략:', verErr?.message || verErr);
                 }
-                renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+                renderDashboardStats(stats, new Date(), stats.last7Breakdown, payload.lastFullAggregatedAt || null);
                 renderDashboardPageUsage(pageUsageToShow, { fallbackWeeklyBreakdown: stats.weeklyBreakdown });
             },
             { loadingText: full ? '전체 재집계 중…' : '집계 중…' }
         );
     } catch (e) {
         console.error('대시보드 새로고침 실패:', e);
-        alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
+        if (!silent) {
+            // 버튼으로 부른 경우엔 여기서 끝낸다 — 던지면 onclick 에 처리되지 않은 rejection 이 남는다
+            alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
+            return;
+        }
+        throw e;
     }
+}
+
+/**
+ * 주간 정기 전체 재집계를 한 세션에 두 번 걸지 않기 위한 빗장.
+ * 탭을 여러 개 띄우면 각 탭이 따로 판단하므로 완벽하진 않지만,
+ * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것은 막는다.
+ */
+let weeklyFullRefreshStarted = false;
+
+/**
+ * 주가 바뀌었으면 전체 재집계를 **백그라운드로** 시작한다.
+ *
+ * 집계 로직이 클라이언트에 있어서 서버 cron 으로는 돌릴 수 없다. 관리자가 대시보드를
+ * 여는 순간이 유일한 기회다. 화면은 캐시로 이미 그려져 있으므로 기다리게 하지 않고,
+ * 끝나면 표가 새 숫자로 갈아 끼워진다.
+ *
+ * 실패해도 조용히 넘어간다 — 다음에 열 때 다시 시도한다.
+ */
+function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
+    if (weeklyFullRefreshStarted) return;
+    const todayKey = getTodayDateString();
+    const sundayKey = sundayKeyForDateKey(todayKey);
+    if (!needsWeeklyFullRefresh(lastFullAggregatedAt, sundayKey)) return;
+    weeklyFullRefreshStarted = true;
+    console.log('[대시보드] 주간 정기 전체 재집계를 시작합니다', { lastFullAggregatedAt, sundayKey });
+    const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
+    if (fullLabel) fullLabel.textContent = '전체 업데이트: 정리 중…';
+    refreshDashboardStats({ full: true, silent: true }).catch((e) => {
+        console.warn('[대시보드] 주간 정기 재집계 실패 — 다음에 다시 시도합니다:', e?.message || e);
+        weeklyFullRefreshStarted = false;
+        const el = document.getElementById('dashboardStatsFullUpdatedAt');
+        if (el && el.textContent.includes('정리 중')) el.textContent = '전체 업데이트: -';
+    });
 }
 
 /** 관리자 「전체 재집계」 — 증분이 놓친 수정·삭제·제외 UID 변경을 청소한다 */
