@@ -1478,32 +1478,6 @@ export async function getUserStatistics(options = {}) {
         ]);
         let recordsAllCount = recordsAllCountRaw;
 
-        const userIdsForSlots = usersSnapshot.docs.map((d) => d.id).filter((uid) => !excluded.has(uid));
-        let slotAllArr;
-        try {
-            slotAllArr = await Promise.all(
-                MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
-            );
-        } catch (e) {
-            if (e?.code === 'failed-precondition') {
-                console.warn(
-                    '⚠️ meals 컬렉션 그룹(slotId) 인덱스가 아직 없습니다. 사용자별 meals로 슬롯「전체」건수를 집계합니다. 배포: firebase deploy --only firestore:indexes',
-                    e.message || e
-                );
-                slotAllArr = await countMealsSlotAllViaUserSubcollections(userIdsForSlots, countQ);
-            } else {
-                throw e;
-            }
-        }
-
-        for (const exUid of excluded) {
-            const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
-            recordsAllCount -= await countQ(query(mcEx));
-            for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
-                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
-            }
-        }
-
         /**
          * 사용자 목록. 증분에서는 다시 세는 구간에 가입한 사람만 읽는다 —
          * 그 이전 가입자의 주차 칸은 캐시가 들고 있고, 가입일은 나중에 바뀌지 않는다.
@@ -1529,6 +1503,32 @@ export async function getUserStatistics(options = {}) {
             usersFromCollection = Math.max(0, n);
         } else {
             usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
+        }
+
+        const userIdsForSlots = usersSnapshot.docs.map((d) => d.id).filter((uid) => !excluded.has(uid));
+        let slotAllArr;
+        try {
+            slotAllArr = await Promise.all(
+                MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
+            );
+        } catch (e) {
+            if (e?.code === 'failed-precondition') {
+                console.warn(
+                    '⚠️ meals 컬렉션 그룹(slotId) 인덱스가 아직 없습니다. 사용자별 meals로 슬롯「전체」건수를 집계합니다. 배포: firebase deploy --only firestore:indexes',
+                    e.message || e
+                );
+                slotAllArr = await countMealsSlotAllViaUserSubcollections(userIdsForSlots, countQ);
+            } else {
+                throw e;
+            }
+        }
+
+        for (const exUid of excluded) {
+            const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
+            recordsAllCount -= await countQ(query(mcEx));
+            for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
+                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
+            }
         }
 
         let recordsToday = 0;
