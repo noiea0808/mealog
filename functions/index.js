@@ -63,6 +63,18 @@ function assertNotReadOnlyDemoAuth(auth) {
 const REGION = 'us-central1';
 
 /**
+ * 카카오 장소 검색 전용 리전 — 서울.
+ *
+ * 이 함수는 한국 사용자가 부르고, 한국의 카카오 API 를 호출하고, 서울에 있는 Firestore 로
+ * rate limit 을 확인한다. 그런데 함수만 미국에 있어서 **한 번 검색에 태평양을 다섯 번**
+ * 건넜다(사용자→함수, 함수→Firestore 읽기·쓰기, 함수→카카오, 함수→사용자).
+ * 실측 p50 이 1.3초, p95 가 2.7초였다.
+ *
+ * 나머지 함수는 아직 us-central1 에 있다. 여기서 효과를 확인하고 무거운 것부터 옮긴다.
+ */
+const REGION_SEOUL = 'asia-northeast3';
+
+/**
  * 예약 푸시 태스크 — Cloud Tasks 로 「그 시각에 한 번」을 걸어 둔다.
  *
  * 태스크가 예정 시각보다 살짝 이르게 도착하는 것은 정상이라, 이만큼은 「지금」으로 친다.
@@ -4358,7 +4370,7 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
  * 카카오 장소 검색 프록시 (WebView 차단 우회)
  * Kakao Local REST API 사용
  */
-exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakaoPlaces', async (request) => {
+exports.searchKakaoPlaces = onCall({ region: REGION_SEOUL }, wrapFunction('searchKakaoPlaces', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }

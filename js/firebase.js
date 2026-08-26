@@ -434,6 +434,15 @@ export const storage = getStorage(app);
 // Functions 초기화 (리전 명시: us-central1)
 // 배포된 Functions가 us-central1에 있으므로 해당 리전 사용
 export const functions = getFunctions(app, 'us-central1');
+
+/**
+ * 서울 리전 Functions — 지금은 카카오 장소 검색 하나뿐이다.
+ *
+ * 그 함수는 한국 사용자가 부르고 한국의 카카오 API 를 호출하며 서울 Firestore 를 읽는데,
+ * 함수만 미국에 있어 한 번 검색에 태평양을 다섯 번 건넜다(실측 p50 1.3초).
+ * 리전이 다르면 호출 주소가 달라서 Functions 인스턴스를 따로 만들어야 한다.
+ */
+export const functionsSeoul = getFunctions(app, 'asia-northeast3');
 export const appId = 'mealog-r0';
 export const apiKey = "";
 
@@ -678,7 +687,7 @@ export const callableFunctions = {
     removeDuplicateMeals: httpsCallable(functions, 'removeDuplicateMeals'),
     callGemini: httpsCallable(functions, 'callGemini'),
     logMealdangAnalysis: httpsCallable(functions, 'logMealdangAnalysis'),
-    searchKakaoPlaces: httpsCallable(functions, 'searchKakaoPlaces'),
+    searchKakaoPlaces: httpsCallable(functionsSeoul, 'searchKakaoPlaces'),
     getApkUploadUrl: httpsCallable(functions, 'getApkUploadUrl'),
     confirmApkUpload: httpsCallable(functions, 'confirmApkUpload'),
     migrateSharedPhotosTimestamp: httpsCallable(functions, 'migrateSharedPhotosTimestamp'),
