@@ -93,7 +93,18 @@ self.addEventListener('fetch', (event) => {
           })
           .catch((err) => {
             if (!cachedResponse) console.error('Service Worker: 네트워크 요청 실패', err);
-            return cachedResponse;
+            /**
+             * respondWith 는 Response 를 요구한다. 캐시도 없고 네트워크도 실패한 상황에서
+             * undefined 를 넘기면 "Failed to convert value to Response" 로 요청 자체가 깨진다 —
+             * 브라우저가 네트워크 오류로 처리하는 것보다 나쁘다.
+             *
+             * 오프라인 첫 방문에서 나고, 배포 보호(SSO)가 정적 파일을 로그인 페이지로
+             * 돌려보낼 때도 난다.
+             */
+            return (
+              cachedResponse ||
+              new Response('', { status: 504, statusText: 'Service Worker: offline' })
+            );
           });
         // 캐시를 즉시 반환한 뒤에도 SW가 살아서 백그라운드 갱신을 마치도록 보장
         event.waitUntil(networkUpdate.catch(() => {}));
