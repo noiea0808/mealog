@@ -3,10 +3,12 @@ const { getFirestore, FieldValue, Timestamp, FieldPath } = require('firebase-adm
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
+const { getFunctions: getAdminFunctions } = require('firebase-admin/functions');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onTaskDispatched } = require('firebase-functions/v2/tasks');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
@@ -59,6 +61,56 @@ function assertNotReadOnlyDemoAuth(auth) {
 
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
+
+/**
+ * 예약 푸시 태스크 — Cloud Tasks 로 「그 시각에 한 번」을 걸어 둔다.
+ *
+ * 태스크가 예정 시각보다 살짝 이르게 도착하는 것은 정상이라, 이만큼은 「지금」으로 친다.
+ * 너무 크게 잡으면 방금 미뤄 둔 예약을 앞당겨 쏘게 되므로 좁게 둔다.
+ */
+const ADMIN_PUSH_TASK_EARLY_TOLERANCE_MS = 30 * 1000;
+
+/** Cloud Tasks 가 받아 주는 예약 상한(30일)보다 안쪽. 이보다 먼 예약은 안전망 폴링에 맡긴다 */
+const ADMIN_PUSH_TASK_MAX_LEAD_MS = 29 * 24 * 60 * 60 * 1000;
+
+/**
+ * 예약 한 건을 그 시각에 발송하도록 태스크를 건다.
+ *
+ * 실패해도 예약 자체는 pending 으로 남아 있고 안전망 폴링이 주워 가므로, 던지지 않고 로그만 남긴다.
+ * 발송이 최대 10분 늦어질 뿐 유실되지는 않는다.
+ *
+ * @returns {Promise<boolean>} 태스크를 실제로 걸었는지
+ */
+async function enqueueAdminPushTask(docId, whenMs) {
+  const id = String(docId || '').trim();
+  if (!id || typeof whenMs !== 'number' || !Number.isFinite(whenMs)) return false;
+  const leadMs = whenMs - Date.now();
+  if (leadMs > ADMIN_PUSH_TASK_MAX_LEAD_MS) {
+    logger.info('enqueueAdminPushTask: 너무 먼 예약이라 안전망에 맡깁니다', { docId: id, whenMs });
+    return false;
+  }
+  try {
+    const queue = getAdminFunctions().taskQueue(`locations/${REGION}/functions/deliverScheduledAdminPush`);
+    await queue.enqueue(
+      { docId: id },
+      { scheduleTime: new Date(Math.max(whenMs, Date.now() + 1000)) }
+    );
+    return true;
+  } catch (e) {
+    logger.warn('enqueueAdminPushTask: 태스크 예약 실패 — 안전망 폴링이 처리합니다', {
+      docId: id,
+      whenMs,
+      message: e?.message || String(e)
+    });
+    return false;
+  }
+}
+
+/** 여러 건을 한꺼번에 건다. 실패한 건은 안전망이 맡으므로 개수만 돌려준다 */
+async function enqueueAdminPushTasks(entries) {
+  const results = await Promise.all(entries.map(({ docId, whenMs }) => enqueueAdminPushTask(docId, whenMs)));
+  return results.filter(Boolean).length;
+}
 
 // API 키 (params: .env 또는 배포 시 입력)
 const geminiApiKey = defineString('GEMINI_API_KEY');
@@ -4997,6 +5049,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       const batchGroupId = crypto.randomBytes(12).toString('hex');
       const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
       const ids = [];
+      const taskEntries = [];
       let batch = db.batch();
       let ops = 0;
       for (const { ms, slot } of occurrences) {
@@ -5015,6 +5068,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
           createdAt: FieldValue.serverTimestamp()
         });
         ids.push(ref.id);
+        taskEntries.push({ docId: ref.id, whenMs: ms });
         ops++;
         if (ops >= 450) {
           await batch.commit();
@@ -5025,6 +5079,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       if (ops > 0) {
         await batch.commit();
       }
+      // 문서가 다 저장된 뒤에 건다 — 태스크가 먼저 도착해 빈 문서를 읽는 일이 없도록
+      await enqueueAdminPushTasks(taskEntries);
       return { ok: true, count: ids.length, batchGroupId, ids };
     }
 
@@ -5080,6 +5136,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       createdByUid: callerUid,
       createdAt: FieldValue.serverTimestamp()
     });
+    await enqueueAdminPushTask(ref.id, recurringStartMs);
     return { ok: true, id: ref.id };
   }
 
@@ -5123,6 +5180,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     createdByUid: callerUid,
     createdAt: FieldValue.serverTimestamp()
   });
+  await enqueueAdminPushTask(ref.id, ms);
   return { ok: true, id: ref.id };
 });
 
@@ -5228,6 +5286,10 @@ exports.updateAdminScheduledPush = onCall({ region: REGION }, async (request) =>
   updates.updatedAt = FieldValue.serverTimestamp();
   updates.updatedByUid = callerUid;
   await ref.update(updates);
+  if (updates.scheduledAt) {
+    // 옛 태스크는 그대로 둔다 — 그 시각에 와도 예약이 이미 옮겨져 있어 스스로 물러난다
+    await enqueueAdminPushTask(jobId, updates.scheduledAt.toMillis());
+  }
   return { ok: true, id: jobId };
 });
 
@@ -5567,6 +5629,20 @@ async function fetchActiveAdminPushMessages() {
  * 이미 문서가 있는 슬롯은 건너뛴다 — 취소된 슬롯도 문서가 남아 다시 채워지지 않는다.
  */
 async function planAdminPushRotationCore(rotationId) {
+  const res = await planAdminPushRotationTransaction(rotationId);
+  const { taskEntries, ...rest } = res;
+  if (Array.isArray(taskEntries) && taskEntries.length > 0) {
+    const enqueued = await enqueueAdminPushTasks(taskEntries);
+    return { ...rest, enqueued };
+  }
+  return rest;
+}
+
+/**
+ * 덱에서 뽑아 예약 문서를 깔기까지. 태스크는 커밋 뒤에 planAdminPushRotationCore 가 건다 —
+ * 트랜잭션은 충돌하면 통째로 재시도되므로, 안에서 걸면 같은 태스크가 여러 번 쌓인다.
+ */
+async function planAdminPushRotationTransaction(rotationId) {
   const rotRef = adminPushRotationsColl().doc(rotationId);
   // 풀 스냅샷은 트랜잭션 밖에서 — 자주 바뀌지 않고, 재시도마다 다시 읽을 이유가 없다
   const messages = await fetchActiveAdminPushMessages();
@@ -5598,6 +5674,7 @@ async function planAdminPushRotationCore(rotationId) {
     };
 
     let created = 0;
+    const taskEntries = [];
     for (let i = 0; i < occurrences.length; i++) {
       if (created >= ADMIN_PUSH_ROTATION_MAX_CREATE) break;
       if (snaps[i].exists) continue;
@@ -5622,6 +5699,7 @@ async function planAdminPushRotationCore(rotationId) {
         createdByUid: null,
         createdAt: FieldValue.serverTimestamp()
       });
+      taskEntries.push({ docId: refs[i].id, whenMs: occurrences[i].ms });
       created++;
     }
 
@@ -5633,7 +5711,13 @@ async function planAdminPushRotationCore(rotationId) {
       plannedUntilYmd: occurrences[occurrences.length - 1].ymd,
       lastPlannedAt: FieldValue.serverTimestamp()
     });
-    return { created, cycleNo: deck.cycleNo, remaining: deck.remaining.length, poolSize: activeIds.length };
+    return {
+      created,
+      cycleNo: deck.cycleNo,
+      remaining: deck.remaining.length,
+      poolSize: activeIds.length,
+      taskEntries
+    };
   });
 }
 
@@ -5868,11 +5952,216 @@ exports.planAdminPushRotations = onSchedule(
 );
 
 /**
- * 예약 푸시: 매분 pending 중 예정 시각 도래 건 처리
+ * 예약 한 건을 실제로 보낸다. Cloud Tasks 태스크와 안전망 폴링이 이 경로를 함께 쓴다.
+ *
+ * @param {string} docId 예약 문서 ID
+ * @param {FirebaseFirestore.DocumentReference} ref
+ * @param {number} nowMs 이 시각까지 예정된 건만 집는다.
+ *   태스크는 예정 시각보다 조금 일찍 도착할 수 있어 여유를 얹어 넘긴다.
+ * @returns {Promise<'sent'|'skipped'|'failed'>}
+ */
+async function deliverAdminScheduledPushDoc(docId, ref, nowMs) {
+  try {
+    const acquired = await db.runTransaction(async (transaction) => {
+      const s = await transaction.get(ref);
+      if (!s.exists) return false;
+      const d = s.data();
+      if (d.status !== 'pending') return false;
+      const sa = d.scheduledAt;
+      const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
+      if (!ms || ms > nowMs) return false;
+      transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+
+    // 취소됐거나, 다른 경로가 이미 집어갔거나, 시각이 미뤄진 건 — 조용히 넘긴다
+    if (!acquired) return 'skipped';
+
+    const after = await ref.get();
+    const d = after.data();
+    if (!after.exists || d.status !== 'sending') return 'skipped';
+
+    const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
+    let title = String(d.title || '').trim();
+    let body = String(d.body || '').trim();
+    let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
+      ? String(d.landingTab).trim()
+      : 'dashboard';
+    let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
+
+    if (isWeeklyByDay) {
+      const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
+      if (!slot) {
+        await ref.update({
+          status: 'failed',
+          errorMessage: '요일별 슬롯 매칭 실패',
+          failedAt: FieldValue.serverTimestamp()
+        });
+        return 'failed';
+      }
+      title = slot.title;
+      body = slot.body;
+      landingTab = slot.landingTab;
+      pushTargetEnv = slot.targetEnv;
+    }
+
+    if (!title || !body) {
+      await ref.update({
+        status: 'failed',
+        errorMessage: '제목/내용 누락',
+        failedAt: FieldValue.serverTimestamp()
+      });
+      return 'failed';
+    }
+
+    const { recipientCount } = await broadcastAdminPushToAllUsers({
+      title,
+      body,
+      targetEnv: pushTargetEnv,
+      data: { type: 'adminBroadcast', landingTab }
+    });
+
+    const scheduleType = d.scheduleType || 'once';
+    if (scheduleType === 'recurring') {
+      if (isWeeklyByDay) {
+        const rangeStartMs =
+          d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
+            ? d.recurringStartAt.toMillis()
+            : 0;
+        const rangeEndMs =
+          d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
+            ? d.recurringEndAt.toMillis()
+            : 0;
+        const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+        const nextMs = computeNextWeeklySlotMillis(
+          d.weeklySchedule,
+          rangeStartMs,
+          rangeEndMs,
+          thisRunMs + 60 * 1000
+        );
+        if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
+          await ref.update({
+            status: 'completed',
+            sentAt: FieldValue.serverTimestamp(),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          logger.info('deliverAdminScheduledPush: weeklyByDay completed', { id: docId });
+        } else {
+          await ref.update({
+            status: 'pending',
+            scheduledAt: Timestamp.fromMillis(nextMs),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          await enqueueAdminPushTask(docId, nextMs);
+          logger.info('deliverAdminScheduledPush: weeklyByDay next', { id: docId, nextMs });
+        }
+      } else {
+        const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
+        const intervalRaw = String(d.recurringInterval || 'daily').trim();
+        const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
+        const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+        const nextMs = addRecurringNextMillis(thisRunMs, interval);
+        if (!endMs || nextMs > endMs) {
+          await ref.update({
+            status: 'completed',
+            sentAt: FieldValue.serverTimestamp(),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          logger.info('deliverAdminScheduledPush: recurring completed', { id: docId });
+        } else {
+          await ref.update({
+            status: 'pending',
+            scheduledAt: Timestamp.fromMillis(nextMs),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          await enqueueAdminPushTask(docId, nextMs);
+          logger.info('deliverAdminScheduledPush: recurring next scheduled', { id: docId, nextMs });
+        }
+      }
+    } else {
+      await ref.update({
+        status: 'sent',
+        sentAt: FieldValue.serverTimestamp(),
+        recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+      });
+      logger.info('deliverAdminScheduledPush: sent', { id: docId });
+    }
+
+    // 풀에서 온 메시지면 사용 횟수 집계 (실패해도 발송에는 영향 없음)
+    const sourceMessageId = String(d.messageId || '').trim();
+    if (sourceMessageId) {
+      try {
+        await adminPushMessagesColl().doc(sourceMessageId).update({
+          useCount: FieldValue.increment(1),
+          lastUsedAt: FieldValue.serverTimestamp()
+        });
+      } catch (useErr) {
+        logger.warn('deliverAdminScheduledPush: useCount update failed', {
+          messageId: sourceMessageId,
+          message: useErr?.message
+        });
+      }
+    }
+    return 'sent';
+  } catch (e) {
+    logger.error('deliverAdminScheduledPush: error', { id: docId, message: e?.message });
+    try {
+      await ref.update({
+        status: 'failed',
+        errorMessage: String(e?.message || e).slice(0, 500),
+        failedAt: FieldValue.serverTimestamp()
+      });
+    } catch (_) {}
+    return 'failed';
+  }
+}
+
+/**
+ * 예약 푸시 발송 — 예약을 만들 때 걸어 둔 Cloud Tasks 태스크가 예정 시각에 이걸 부른다.
+ *
+ * 태스크는 취소·수정을 모른다. 그래서 태스크를 지우는 대신 여기서 문서를 보고 판단한다:
+ * 취소됐으면 status 가 pending 이 아니고, 시각이 미뤄졌으면 scheduledAt 이 아직 미래다.
+ * 둘 다 조용히 넘어가고, 미뤄진 건은 그때 새로 걸어 둔 태스크가 처리한다.
+ */
+exports.deliverScheduledAdminPush = onTaskDispatched(
+  {
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB',
+    retryConfig: { maxAttempts: 3, minBackoffSeconds: 30 },
+    rateLimits: { maxConcurrentDispatches: 5 }
+  },
+  async (request) => {
+    const docId = String(request.data?.docId || '').trim();
+    if (!docId) {
+      logger.warn('deliverScheduledAdminPush: docId 없음');
+      return;
+    }
+    const ref = adminScheduledPushesColl().doc(docId);
+    // 태스크는 예정 시각보다 살짝 이르게 도착할 수 있다 — 그 정도는 「지금」으로 친다
+    await deliverAdminScheduledPushDoc(docId, ref, Date.now() + ADMIN_PUSH_TASK_EARLY_TOLERANCE_MS);
+  }
+);
+
+/**
+ * 예약 푸시 안전망 — 태스크가 유실됐거나(enqueue 실패, 큐 오류),
+ * 너무 먼 미래라 태스크를 걸지 못한 예약을 주워 담는다.
+ *
+ * 예전에는 이게 매분 돌면서 유일한 발송 경로였다. 발송 시각은 문서에 이미 적혀 있는데
+ * 1분마다 "지금 보낼 게 있나"를 다시 묻는 구조라, 월 43,200번 깨어나 대부분 빈손으로 돌아갔다.
+ * 이제 정상 경로는 태스크이고 이쪽은 그물이라, 주기를 늘려도 발송이 늦어지지 않는다.
  */
 exports.processScheduledAdminPushes = onSchedule(
   {
-    schedule: '* * * * *',
+    schedule: '*/10 * * * *',
     timeZone: 'Asia/Seoul',
     region: REGION,
     timeoutSeconds: 540,
@@ -5880,170 +6169,67 @@ exports.processScheduledAdminPushes = onSchedule(
   },
   async () => {
     const nowMs = Date.now();
-    const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
-    const snap = await coll.where('status', '==', 'pending').where('scheduledAt', '<=', Timestamp.fromMillis(nowMs)).limit(25).get();
+    const snap = await adminScheduledPushesColl()
+      .where('status', '==', 'pending')
+      .where('scheduledAt', '<=', Timestamp.fromMillis(nowMs))
+      .limit(25)
+      .get();
 
+    let sent = 0;
     for (const docSnap of snap.docs) {
-      const ref = docSnap.ref;
-      try {
-        const acquired = await db.runTransaction(async (transaction) => {
-          const s = await transaction.get(ref);
-          if (!s.exists) return false;
-          const d = s.data();
-          if (d.status !== 'pending') return false;
-          const sa = d.scheduledAt;
-          const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
-          if (!ms || ms > nowMs) return false;
-          transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
-          return true;
-        });
-
-        if (!acquired) continue;
-
-        const after = await ref.get();
-        const d = after.data();
-        if (!after.exists || d.status !== 'sending') continue;
-
-        const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
-        let title = String(d.title || '').trim();
-        let body = String(d.body || '').trim();
-        let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
-          ? String(d.landingTab).trim()
-          : 'dashboard';
-        let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
-
-        if (isWeeklyByDay) {
-          const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
-          if (!slot) {
-            await ref.update({
-              status: 'failed',
-              errorMessage: '요일별 슬롯 매칭 실패',
-              failedAt: FieldValue.serverTimestamp()
-            });
-            continue;
-          }
-          title = slot.title;
-          body = slot.body;
-          landingTab = slot.landingTab;
-          pushTargetEnv = slot.targetEnv;
-        }
-
-        if (!title || !body) {
-          await ref.update({
-            status: 'failed',
-            errorMessage: '제목/내용 누락',
-            failedAt: FieldValue.serverTimestamp()
-          });
-          continue;
-        }
-
-        const { recipientCount } = await broadcastAdminPushToAllUsers({
-          title,
-          body,
-          targetEnv: pushTargetEnv,
-          data: { type: 'adminBroadcast', landingTab }
-        });
-
-        const scheduleType = d.scheduleType || 'once';
-        if (scheduleType === 'recurring') {
-          if (isWeeklyByDay) {
-            const rangeStartMs =
-              d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
-                ? d.recurringStartAt.toMillis()
-                : 0;
-            const rangeEndMs =
-              d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
-                ? d.recurringEndAt.toMillis()
-                : 0;
-            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-            const nextMs = computeNextWeeklySlotMillis(
-              d.weeklySchedule,
-              rangeStartMs,
-              rangeEndMs,
-              thisRunMs + 60 * 1000
-            );
-            if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
-              await ref.update({
-                status: 'completed',
-                sentAt: FieldValue.serverTimestamp(),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: weeklyByDay completed', { id: docSnap.id });
-            } else {
-              await ref.update({
-                status: 'pending',
-                scheduledAt: Timestamp.fromMillis(nextMs),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: weeklyByDay next', { id: docSnap.id, nextMs });
-            }
-          } else {
-            const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
-            const intervalRaw = String(d.recurringInterval || 'daily').trim();
-            const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
-            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-            const nextMs = addRecurringNextMillis(thisRunMs, interval);
-            if (!endMs || nextMs > endMs) {
-              await ref.update({
-                status: 'completed',
-                sentAt: FieldValue.serverTimestamp(),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
-            } else {
-              await ref.update({
-                status: 'pending',
-                scheduledAt: Timestamp.fromMillis(nextMs),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
-            }
-          }
-        } else {
-          await ref.update({
-            status: 'sent',
-            sentAt: FieldValue.serverTimestamp(),
-            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-          });
-          logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
-        }
-
-        // 풀에서 온 메시지면 사용 횟수 집계 (실패해도 발송에는 영향 없음)
-        const sourceMessageId = String(d.messageId || '').trim();
-        if (sourceMessageId) {
-          try {
-            await adminPushMessagesColl().doc(sourceMessageId).update({
-              useCount: FieldValue.increment(1),
-              lastUsedAt: FieldValue.serverTimestamp()
-            });
-          } catch (useErr) {
-            logger.warn('processScheduledAdminPushes: useCount update failed', {
-              messageId: sourceMessageId,
-              message: useErr?.message
-            });
-          }
-        }
-      } catch (e) {
-        logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
-        try {
-          await ref.update({
-            status: 'failed',
-            errorMessage: String(e?.message || e).slice(0, 500),
-            failedAt: FieldValue.serverTimestamp()
-          });
-        } catch (_) {}
-      }
+      const r = await deliverAdminScheduledPushDoc(docSnap.id, docSnap.ref, nowMs);
+      if (r === 'sent') sent++;
     }
+    // 태스크가 제 몫을 하면 여기 걸릴 게 없다 — 잡혔다면 그물이 일한 것이니 남긴다
+    if (sent > 0) {
+      logger.warn('processScheduledAdminPushes: 태스크가 놓친 예약을 안전망이 발송했습니다', {
+        picked: snap.size,
+        sent
+      });
+    }
+
+    await reenqueueUpcomingAdminPushTasks(nowMs);
   }
 );
+
+/** 태스크를 다시 걸어 줄 범위. 스윕이 매시간이라 넉넉히 앞을 본다 */
+const ADMIN_PUSH_TASK_SWEEP_AHEAD_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 태스크를 못 받은 임박 예약에 다시 태스크를 건다 — 이 구조 이전에 만들어진 예약,
+ * enqueue 가 실패했던 예약이 대상이다.
+ *
+ * 어느 예약에 태스크가 걸려 있는지는 따로 적어 두지 않는다. 중복으로 걸려도
+ * 발송은 트랜잭션 락으로 한 번뿐이라(뒤에 온 태스크는 status 가 pending 이 아니라 물러난다),
+ * 태스크 유무를 추적하느라 문서에 쓰기를 더하는 것보다 그냥 다시 거는 쪽이 싸다.
+ *
+ * 매 폴링마다 하면 읽기가 늘어나므로 정시 실행분에서만 돈다(= 시간당 1회).
+ */
+async function reenqueueUpcomingAdminPushTasks(nowMs) {
+  if (new Date(nowMs).getMinutes() >= 10) return;
+  try {
+    const snap = await adminScheduledPushesColl()
+      .where('status', '==', 'pending')
+      .where('scheduledAt', '<=', Timestamp.fromMillis(nowMs + ADMIN_PUSH_TASK_SWEEP_AHEAD_MS))
+      .limit(100)
+      .get();
+    if (snap.empty) return;
+    const entries = [];
+    for (const docSnap of snap.docs) {
+      const ms = docSnap.data()?.scheduledAt?.toMillis?.();
+      // 이미 지난 건은 위 루프가 방금 처리했다
+      if (typeof ms === 'number' && ms > nowMs) entries.push({ docId: docSnap.id, whenMs: ms });
+    }
+    if (entries.length === 0) return;
+    const enqueued = await enqueueAdminPushTasks(entries);
+    logger.info('processScheduledAdminPushes: 임박 예약에 태스크를 다시 걸었습니다', {
+      candidates: entries.length,
+      enqueued
+    });
+  } catch (e) {
+    logger.warn('processScheduledAdminPushes: 태스크 재예약 스윕 실패', { message: e?.message || String(e) });
+  }
+}
 
 /**
  * 공지: pushFrequency === once 이고 아직 pushSentAt 없으면 전체 푸시 1회 후 pushSentAt 기록
