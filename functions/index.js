@@ -4370,7 +4370,12 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
  * 카카오 장소 검색 프록시 (WebView 차단 우회)
  * Kakao Local REST API 사용
  */
-exports.searchKakaoPlaces = onCall({ region: REGION_SEOUL }, wrapFunction('searchKakaoPlaces', async (request) => {
+/**
+ * 두 리전에 함께 둔다. 새 클라이언트는 서울을 부르지만, **이미 배포된 앱은 www 를 번들로
+ * 들고 있어** us-central1 을 계속 부른다 — 그쪽을 지우면 스토어의 기존 앱에서 검색이 깨진다.
+ * 앱이 새 버전으로 갈린 뒤 us-central1 을 뺀다.
+ */
+exports.searchKakaoPlaces = onCall({ region: [REGION_SEOUL, REGION] }, wrapFunction('searchKakaoPlaces', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
