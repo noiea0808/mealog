@@ -14,6 +14,9 @@ let fetchBridgeInstalled = false;
 /** 성공한 원격 요청으로 넛지를 깨울 때 요구하는 「채널이 조용한」 시간 (outbox-worker 와 동일 기준) */
 const CHANNEL_QUIET_MS = 20000;
 
+/** Firestore WebChannel 호스트 — 이 호스트로 나가는 요청은 Firestore SDK 자신의 전송이다. */
+const FIRESTORE_TRANSPORT_HOST_RE = /(^|\.)firestore\.googleapis\.com$/i;
+
 /**
  * 끊김 계열 실패였다면 채널을 찔러 달라고 알린다.
  * @param {unknown} err
@@ -35,7 +38,18 @@ function isRemoteRequestUrl(input) {
         if (!raw) return false;
         const url = new URL(raw, window.location.href);
         if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-        return url.origin !== window.location.origin;
+        if (url.origin === window.location.origin) return false;
+        /**
+         * Firestore 자신의 전송은 프로브로 세지 않는다. 세면 넛지가 자기 요청에 다시 걸리는 루프가 된다:
+         * kick → enableNetwork → startWatchStream → WebChannel send → 이 브리지가 성공을 관측 →
+         * 채널은 방금 끊었다 붙였으니 조용 → pokeNetworkLoop('remote-fetch-ok') → 다시 kick.
+         * 아래의 「채널이 조용할 때만」 가드는 **넛지 직후엔 항상 참**이라 이 요청에 대해선 브레이크가
+         * 되지 못하고, kick 의 최소 간격도 network-loop 가 { force: true } 로 넘겨 무력화된다.
+         * 게다가 채널이 계속 끊기니 fromCache=false 스냅샷이 못 와 activity 는 영원히 stale 이다.
+         * 이 요청의 성패는 SDK 와 network-activity 가 이미 관측하므로 브리지가 중복으로 볼 이유도 없다.
+         */
+        if (FIRESTORE_TRANSPORT_HOST_RE.test(url.hostname)) return false;
+        return true;
     } catch (_) {
         return false;
     }

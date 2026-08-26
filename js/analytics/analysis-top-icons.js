@@ -5,6 +5,7 @@
 import { SATIETY_DATA } from '../constants.js';
 import { appState } from '../state.js';
 import { effectiveChartTag } from './meal-analytics-tags.js';
+import { AUTO_CATEGORIES } from '../utils/food-classifier.js';
 import { ANALYSIS_ICON_ASSETS } from './analysis-icon-assets.js';
 
 const SNACK_WHEN_LABEL = {
@@ -21,6 +22,7 @@ const MEAL_TYPE_ICON = {
     '회식/술자리': 'how-wine',
     '배달/포장': 'how-motorcycle',
     구내식당: 'how-building',
+    // 편의점 전용 아이콘 에셋이 아직 없다 — 생기면 여기에 붙인다(지금은 how-ellipsis 폴백)
     기타: 'how-ellipsis',
     건너뜀: 'how-skip',
     Skip: 'how-skip'
@@ -129,13 +131,15 @@ function getAllowedTags(key) {
         return userTags.mealType;
     }
     if (key === 'category' && Array.isArray(userTags.category) && userTags.category.length > 0) {
-        return userTags.category;
+        // 자동 분류 축은 사용자 태그에 없으므로 합집합 (charts.js aggregateProportionData와 동일)
+        return [...userTags.category, ...AUTO_CATEGORIES];
     }
     if (key === 'withWhom' && Array.isArray(userTags.withWhom) && userTags.withWhom.length > 0) {
         return userTags.withWhom;
     }
     if (key === 'snackType' && Array.isArray(userTags.snackType) && userTags.snackType.length > 0) {
-        return userTags.snackType;
+        // 간식 축에 옛 이름이 없는 형태는 형태 축 값으로 저장된다 (charts.js와 동일 규칙)
+        return [...userTags.snackType, ...AUTO_CATEGORIES];
     }
     if (key === 'snackPlace' && Array.isArray(userTags.snackPlaceMain) && userTags.snackPlaceMain.length > 0) {
         return userTags.snackPlaceMain;
@@ -161,7 +165,8 @@ function pickTopAnalysisValue(data, key) {
         if (!m) continue;
         // 차트 데이터 범위와 맞춤
         if (key === 'mealType' && !String(m.mealType ?? '').trim()) continue;
-        if (key === 'category' && !String(m.category ?? '').trim()) continue;
+        // categoryAuto만 있는(사용자 확정 없는 자동 분류) 기록도 집계에 포함한다
+        if (key === 'category' && !String(m.category ?? '').trim() && !String(m.categoryAuto ?? '').trim()) continue;
         if (key === 'withWhom' && !String(m.withWhom ?? '').trim()) continue;
         if (key === 'snackType' && !String(m.snackType ?? '').trim() && !String(m.menuDetail ?? '').trim()) {
             // snackType 차트는 전체 snacksOnly 포함 — 빈 값은 effective가 기타/미입력 처리

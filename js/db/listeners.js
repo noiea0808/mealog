@@ -7,6 +7,8 @@ import { hideLoading, isLikelyNetworkError } from '../ui.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { markMealogFirestoreActivity } from '../utils/network-activity.js';
 import { isDemoUser } from '../demo-account.js';
+import { setFoodDictionaryOverrides, FORM_CATEGORIES } from '../utils/food-dictionary.js';
+import { setFormAxisPilotUids, isFormAxisPilot } from '../utils/form-axis-pilot.js';
 import {
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
@@ -35,6 +37,17 @@ import { collapseDocsToFeedPage, countMomentPostsFromDocs } from '../utils/momen
 let userDocEnsureDoneForUid = null;
 let cachedDefaultTags = null;
 let lastListenersUserId = null;
+/**
+ * 설정 마이그레이션(구형 태그 백필)은 uid 당 1회.
+ *
+ * migrationInProgress 는 「동시 실행」만 막고 「재실행」은 못 막는다 — 마이그레이션이
+ * 저장을 하면 그 저장이 이 리스너를 다시 깨우고, 스냅샷마다 마이그레이션이 또 돈다.
+ * needsSave 가 참이 되는 조건이 하나라도 남아 있으면 「저장 → 스냅샷 → 저장」이
+ * 피드백 루프가 된다 (2026-08-19 실기기에서 0.8초 주기로 실측 — 설정 문서를 초당
+ * 수 회 쓰면서 동기화 FAB 이 부팅마다 떠 보였다). 백필은 전부 일회성이므로
+ * 세션당 1회면 목적을 다한다.
+ */
+let migrationDoneForUid = null;
 
 function mergePushPreferencesIntoUserSettings() {
     if (!window.userSettings) return;
@@ -166,15 +179,6 @@ export function setupListeners(userId, callbacks) {
             if (!window.userSettings.subTags) {
                 window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
             }
-            if (!window.userSettings.favoriteSubTags) {
-                window.userSettings.favoriteSubTags = {
-                    mealType: {},
-                    category: {},
-                    withWhom: {},
-                    snackType: {},
-                    snackPlace: {}
-                };
-            }
             if (!window.userSettings.tags) {
                 window.userSettings.tags = {};
             }
@@ -216,15 +220,32 @@ export function setupListeners(userId, callbacks) {
                     }
                 };
 
+                /**
+                 * 관리자 태그를 개인 설정 위에 덮는다.
+                 *
+                 * '무엇을'(category · snackType)만 예외가 있다 — 형태 축 파일럿 계정은
+                 * 관리자 문서(아직 옛 축)를 무시하고 코드의 형태 축을 쓴다.
+                 * 임시 장치이고 전환일에 제거한다 (js/utils/form-axis-pilot.js).
+                 */
+                const applyAdminTags = (t) => {
+                    if (t.mealType?.length) window.userSettings.tags.mealType = [...t.mealType];
+                    if (t.withWhom?.length) window.userSettings.tags.withWhom = [...t.withWhom];
+                    setFormAxisPilotUids(t.formAxisPilotUids);
+                    if (isFormAxisPilot()) {
+                        window.userSettings.tags.category = [...FORM_CATEGORIES];
+                        window.userSettings.tags.snackType = [...FORM_CATEGORIES];
+                    } else {
+                        if (t.category?.length) window.userSettings.tags.category = [...t.category];
+                        if (t.snackType?.length) window.userSettings.tags.snackType = [...t.snackType];
+                    }
+                    if (Array.isArray(t.subTagsPlaceSnack) && t.subTagsPlaceSnack.length > 0) {
+                        window.userSettings.tags.snackPlaceMain = [...t.subTagsPlaceSnack];
+                    }
+                };
+
                 const loadAndMergeAdminTags = async () => {
                     if (cachedDefaultTags) {
-                        if (cachedDefaultTags.mealType?.length) window.userSettings.tags.mealType = [...cachedDefaultTags.mealType];
-                        if (cachedDefaultTags.withWhom?.length) window.userSettings.tags.withWhom = [...cachedDefaultTags.withWhom];
-                        if (cachedDefaultTags.category?.length) window.userSettings.tags.category = [...cachedDefaultTags.category];
-                        if (cachedDefaultTags.snackType?.length) window.userSettings.tags.snackType = [...cachedDefaultTags.snackType];
-                        if (cachedDefaultTags.subTagsPlaceSnack?.length) {
-                            window.userSettings.tags.snackPlaceMain = [...cachedDefaultTags.subTagsPlaceSnack];
-                        }
+                        applyAdminTags(cachedDefaultTags);
                         return;
                     }
                     const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
@@ -236,21 +257,34 @@ export function setupListeners(userId, callbacks) {
                             withWhom: adminTags.withWhom,
                             category: adminTags.category,
                             snackType: adminTags.snackType,
-                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack
+                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack,
+                            formAxisPilotUids: adminTags.formAxisPilotUids
                         };
-                        if (adminTags.mealType?.length) window.userSettings.tags.mealType = [...adminTags.mealType];
-                        if (adminTags.withWhom?.length) window.userSettings.tags.withWhom = [...adminTags.withWhom];
-                        if (adminTags.category?.length) window.userSettings.tags.category = [...adminTags.category];
-                        if (adminTags.snackType?.length) window.userSettings.tags.snackType = [...adminTags.snackType];
-                        if (adminTags.subTagsPlaceSnack && Array.isArray(adminTags.subTagsPlaceSnack) && adminTags.subTagsPlaceSnack.length > 0) {
-                            window.userSettings.tags.snackPlaceMain = [...adminTags.subTagsPlaceSnack];
-                        }
+                        applyAdminTags(cachedDefaultTags);
                         console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');
                     }
                 };
 
+                /**
+                 * 음식 사전 관리자 오버라이드 — 코드 기본 사전 위에 덧쓴다.
+                 * 실패해도 기본 사전으로 계속 돌아가야 하므로 조용히 넘긴다.
+                 */
+                const loadFoodDictionaryOverrides = async () => {
+                    try {
+                        const ref = doc(db, 'artifacts', appId, 'content', 'foodDictionary');
+                        const snap = await getDoc(ref);
+                        if (snap.exists()) setFoodDictionaryOverrides(snap.data());
+                    } catch (e) {
+                        console.warn('⚠️ 음식 사전 오버라이드 로드 실패 (기본 사전 사용):', e?.message || e);
+                    }
+                };
+
                 try {
-                    await Promise.all([ensureUserDocIfNeeded(), loadAndMergeAdminTags()]);
+                    await Promise.all([
+                        ensureUserDocIfNeeded(),
+                        loadAndMergeAdminTags(),
+                        loadFoodDictionaryOverrides(),
+                    ]);
                     if (onSettingsUpdate) onSettingsUpdate();
                 } catch (e) {
                     console.warn('⚠️ 관리자 태그 로드 실패 (기본값 사용):', e);
@@ -259,8 +293,10 @@ export function setupListeners(userId, callbacks) {
             });
             
             // 마이그레이션 로직을 비동기로 처리하여 초기 로딩 지연 최소화
-            if (!migrationInProgress) {
+            if (!migrationInProgress && migrationDoneForUid !== userId) {
                 migrationInProgress = true;
+                // 진입 즉시 표시한다 — 실패해도 이 세션에서는 다시 돌지 않는다(다음 부팅이 재시도).
+                migrationDoneForUid = userId;
                 console.log('📞 onSettingsUpdate 콜백 호출');
                 if (onSettingsUpdate) onSettingsUpdate();
                 
@@ -342,7 +378,7 @@ export function setupListeners(userId, callbacks) {
                     }
                     
                     // 식사 방식 태그 마이그레이션: 새로운 순서로 정리
-                    const newMealTypes = ['집밥', '외식', '회식/술자리', '배달/포장', '구내식당', '기타', '건너뜀'];
+                    const newMealTypes = ['집밥', '배달/포장', '구내식당', '편의점', '외식', '회식/술자리', '건너뜀', '기타'];
                     const currentMealTypes = settingsToSave.tags?.mealType || [];
                     
                     let updatedMealTypes = [...currentMealTypes];
@@ -503,7 +539,6 @@ export function setupListeners(userId, callbacks) {
                 if (serverSnap.exists()) {
                     window.userSettings = serverSnap.data();
                     if (!window.userSettings.subTags) window.userSettings.subTags = JSON.parse(JSON.stringify(DEFAULT_SUB_TAGS));
-                    if (!window.userSettings.favoriteSubTags) window.userSettings.favoriteSubTags = { mealType: {}, category: {}, withWhom: {}, snackType: {}, snackPlace: {} };
                     mergePushPreferencesIntoUserSettings();
                     mergeEntryModalGaugesIntoUserSettings();
                     if (demo) {

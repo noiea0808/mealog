@@ -54,7 +54,8 @@ import {
     formatMealClock12TextWhileTyping,
     normalizeMealClock12InputValue,
     mealClock24FromAmPmClock,
-    mealClock24ToAmPmAndDisplay
+    mealClock24ToAmPmAndDisplay,
+    hasExifGpsInImageFile
 } from '../meal-time-utils.js';
 import {
     createPhotoMetaFromFile,
@@ -82,6 +83,7 @@ import {
     pinElementToVisualViewport
 } from '../utils/ime-viewport.js';
 import { ENTRY_DOM, ENTRY_MODE_CONFIG, PHOTO_ASPECT_OPTIONS, getEntryModeConfig } from './entry-form-config.js';
+import { advanceEntryWhatHint } from './entry-what-hints.js';
 import {
     mergeEntrySubChipsIntoInputs,
     readEntryFormFromDom,
@@ -89,6 +91,26 @@ import {
     resolveEntrySaveFields,
 } from './entry-form-state.js';
 import { buildSettingsWithRememberedSubTags, scheduleEntrySettingsSave } from './entry-save-subtags.js';
+import {
+    initEntryCategorySuggest,
+    resetEntryCategorySuggest,
+    recomputeEntryCategorySuggest,
+    syncEntryCategorySuggestFromChips,
+    setEntryCategorySuggestConfirmed,
+} from './entry-category-suggest.js';
+import {
+    initEntryContextPredict,
+    resetEntryContextPredict,
+    setupEntryContextPredict,
+    syncEntryContextMealTypeFromChips,
+} from './entry-context-predict.js';
+import {
+    initEntryWhatRecall,
+    resetEntryWhatRecall,
+    setupEntryWhatRecall,
+} from './entry-what-recall.js';
+import { logUsageMetric } from '../usage-metrics.js';
+import { createEntrySheetSessionTracker } from './entry-sheet-session.js';
 import { buildEntrySaveRecord, buildEntryShareSnapshot, isLocalPendingPhoto } from './entry-save-record.js';
 import { ensureDataUrlForStorage, uploadEntryPhotosAndResave } from './entry-save-photos.js';
 import { syncMomentShareAfterSave } from './entry-save-share.js';
@@ -120,6 +142,11 @@ import {
     resetEntrySheetBaseHeight,
     captureEntrySheetBaseHeight,
 } from './entry-sheet-tabs.js';
+
+/** 시트 완주율(저장/열기)의 분모를 만드는 세션 추적기 — entry-sheet-session.js 참조 */
+const entrySheetSession = createEntrySheetSessionTracker((key) => {
+    logUsageMetric(key).catch(() => {});
+});
 // ⚠️ initPushNotifications import 제거 - 크래시 문제로 인해 비활성화
 // 저장 직후 동기화 도트(waitForPendingWrites 등)는 meal-sync-manager.scheduleServerAckAfterPendingWrites (meal-entry-pending re-export)
 
@@ -143,7 +170,15 @@ export function syncDeliveryVendorSectionVisibility() {
         const active = entryWhereChips.querySelector('button.chip.active');
         if (active) mealType = active.innerText.trim();
     }
-    const show = !skipOptional && mealType === '배달/포장' && appState.entryFormMode !== 'snack';
+    /**
+     * 배달 업체 입력란은 현재 노출하지 않는다 (2026-08-13, 시트 정리 중 보류).
+     * 조건식은 그대로 두고 스위치만 끈다 — 되살릴 때 이 상수만 true 로 바꾸면 된다.
+     * 노출이 꺼져 있으면 아래 !show 경로가 입력값·카카오 속성을 매번 비우므로
+     * record.deliveryVendor 는 빈 값으로 저장된다.
+     */
+    const DELIVERY_VENDOR_FIELD_ENABLED = false;
+    const show = DELIVERY_VENDOR_FIELD_ENABLED &&
+        !skipOptional && mealType === '배달/포장' && appState.entryFormMode !== 'snack';
     if (!show) {
         const dvi = document.getElementById('deliveryVendorInput');
         if (dvi) {
@@ -557,7 +592,8 @@ function initMealTimeTextInputsOnce() {
             requestAnimationFrame(selectAllMealClockText);
         });
 
-        text.addEventListener('input', () => {
+        // value 재대입은 조합 중이면 IME 상태를 깨뜨린다 — 숫자 칸이라도 한글 자판일 수 있다
+        addCompositionAwareInput(text, () => {
             const next = formatMealClock12TextWhileTyping(text.value);
             if (text.value !== next) text.value = next;
             const raw = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', text.value);
@@ -698,6 +734,7 @@ function finishEntryModalAfterSuccessfulSave(saveStartedUnderModalGen) {
     const gen = window.__entryModalOpenGeneration || 0;
     if (saveStartedUnderModalGen != null && gen !== saveStartedUnderModalGen) return;
     setEntryModalSavingState(false);
+    entrySheetSession.mark('saved');
     closeModal();
 }
 
@@ -1221,6 +1258,9 @@ async function fetchMealRecordForEdit(entryId) {
 function resetEntryModalFormFields() {
     const entryModal = document.getElementById('entryModal');
     entryModal?.querySelectorAll('.chip, .sub-chip').forEach((el) => el.classList.remove('active'));
+    resetEntryCategorySuggest();
+    resetEntryContextPredict();
+    resetEntryWhatRecall();
 
     document.getElementById('sharePhotoIndicator')?.classList.add('hidden');
 
@@ -1322,6 +1362,8 @@ function populateSavedRecordIntoForm(r, isS, state) {
     }
     setVal('entryWhatInput', r.menuDetail || '');
     autosizeEntryWhatInput();
+    // 프로그램적 setVal은 input 이벤트가 없어 제안이 안 뜬다 — 로드 후 1회 재계산
+    recomputeEntryCategorySuggest();
     setVal('deliveryVendorInput', !isS ? r.deliveryVendor || '' : '');
     const _dvi = document.getElementById('deliveryVendorInput');
     if (!isS && _dvi && (r.deliveryPlaceId || r.deliveryPlaceAddress || r.deliveryPlaceData)) {
@@ -1376,7 +1418,6 @@ function activateSubChipsByTexts(containerId, texts) {
 function activateSavedRecordTags(r, isS) {
     if (!r) return;
 
-    const subTags = window.userSettings?.subTags || {};
     const cfg = getEntryModeConfig(isS ? 'snack' : 'meal');
 
     if (r.mealType) activateChipByText(ENTRY_DOM.whereChips, r.mealType);
@@ -1389,7 +1430,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.mealType) {
             window.renderSecondary(
                 ENTRY_DOM.whereSuggestions,
-                subTags.place || [],
                 ENTRY_DOM.whereInput,
                 r.mealType.trim(),
                 cfg.axis1SubTagKey
@@ -1398,7 +1438,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.category) {
             window.renderSecondary(
                 ENTRY_DOM.whatSuggestions,
-                subTags[cfg.axis2SubTagsKey] || [],
                 ENTRY_DOM.whatInput,
                 r.category.trim(),
                 cfg.axis2SubTagKey
@@ -1407,7 +1446,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.withWhom) {
             window.renderSecondary(
                 ENTRY_DOM.withSuggestions,
-                subTags.people || [],
                 ENTRY_DOM.withInput,
                 r.withWhom.trim(),
                 ENTRY_MODE_CONFIG.withSubTagKey
@@ -1424,7 +1462,6 @@ function activateSavedRecordTags(r, isS) {
             activateChipByText(ENTRY_DOM.whereChips, snackMainTag);
             window.renderSecondary(
                 ENTRY_DOM.whereSuggestions,
-                subTags.place || [],
                 ENTRY_DOM.whereInput,
                 snackMainTag,
                 cfg.axis1SubTagKey
@@ -1433,7 +1470,6 @@ function activateSavedRecordTags(r, isS) {
         if (r.snackType) {
             window.renderSecondary(
                 ENTRY_DOM.whatSuggestions,
-                subTags[cfg.axis2SubTagsKey] || [],
                 ENTRY_DOM.whatInput,
                 r.snackType,
                 cfg.axis2SubTagKey
@@ -1513,7 +1549,12 @@ function bindEntryWhatInputAutosizeOnce() {
     if (!el || el._whatAutosizeBound || el.tagName !== 'TEXTAREA') return;
     el._whatAutosizeBound = true;
     const resize = () => autosizeEntryWhatInput();
-    el.addEventListener('input', resize);
+    /**
+     * 조합 가드 필수 — 매 키마다 style.height='auto' → scrollHeight → 재기입은 **조합 중인
+     * 요소에 강제 리플로우를 거는 것**이라, WebView 가 조합 중 글자를 그리지 못하고 단어가
+     * 끝나야 나타난다. 댓글·컴포저에서 같은 증상을 고친 적이 있다(커밋 e7acc4e).
+     */
+    addCompositionAwareInput(el, resize);
     el.addEventListener('change', resize);
 }
 
@@ -1602,7 +1643,8 @@ function bindEntryCommentExpandOnce() {
         el._commentExpandBound = true;
         el.addEventListener('focus', () => syncEntryCommentExpandedState(el, { fromFocus: true }));
         el.addEventListener('blur', () => syncEntryCommentExpandedState(el));
-        el.addEventListener('input', () => syncEntryCommentExpandedState(el));
+        // 위와 같은 이유 — rows 재설정·offsetHeight 측정·height 재기입이 전부 리플로우다
+        addCompositionAwareInput(el, () => syncEntryCommentExpandedState(el));
         syncEntryCommentExpandedState(el);
     });
 }
@@ -1617,6 +1659,8 @@ function revealEntryModalShell() {
     bindEntryModalHeaderOnce();
     refreshEntryModalHeader();
     lockBodyScroll('entryModal');
+    // 이 시트 1회에 쓸 '무엇을' 힌트를 다음 것으로 넘긴다 (entry-what-hints.js)
+    advanceEntryWhatHint();
     const openGen = (window.__entryModalOpenGeneration || 0) + 1;
     window.__entryModalOpenGeneration = openGen;
     entryModal.classList.remove('hidden');
@@ -1733,12 +1777,17 @@ export async function openModal(date, slotId, entryId = null) {
         setEntrySheetTabsForSkip(false);
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
+        initEntryCategorySuggest();
+        initEntryContextPredict();
+        initEntryWhatRecall();
+        toggleEntryAxisDetail(false); // 시트 열 때는 항상 접힌 상태로 시작
         bindEntryWhatInputAutosizeOnce();
         autosizeEntryWhatInput();
         bindEntryCommentExpandOnce();
 
         const openGen = revealEntryModalShell();
         if (!openGen) return;
+        entrySheetSession.begin({ isEdit: Boolean(entryId) });
         const isStaleOpen = () => (window.__entryModalOpenGeneration || 0) !== openGen;
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
@@ -1777,14 +1826,33 @@ export async function openModal(date, slotId, entryId = null) {
                 window.setSatiety(null);
             }
 
+            // 어디서·누구와 예측 — 폼에 값이 채워진 뒤 호출해야 빈 필드만 제안한다
+            setupEntryContextPredict({
+                slotId: state.currentEditingSlotId,
+                dateStr: state.currentEditingDate,
+                isSnack,
+                // 자동 적용으로 저장됐던 축은 수정 화면에서도 추천(스위치 지배)으로 되살린다
+                autoContext: savedRecord?.autoContext,
+            });
+
+            // '무엇을' 회상 칩 — 슬롯이 정해진 뒤여야 "이 시간에 자주 적은 것"을 뽑을 수 있다
+            setupEntryWhatRecall({ slotId: state.currentEditingSlotId });
+
+            /**
+             * 저장된 기록의 형태 값을 제안 줄에 세운다 (칩 활성화 뒤라야 순서가 맞다).
+             * 이미 정해진 값이 있는데 줄이 추천을 띄우고 있으면 사용자가 다시 고르게 된다.
+             */
+            if (entryId && savedRecord) {
+                setEntryCategorySuggestConfirmed(savedRecord.category || savedRecord.snackType || '');
+            }
+
             if (entryId && window.currentUser && !window.currentUser.isAnonymous && !isDemoUser(window.currentUser)) {
                 document.getElementById('btnDelete')?.classList.remove('hidden');
             }
 
             if (isSnack && !(entryId && savedRecord)) {
-                const subTags = window.userSettings.subTags.snack || [];
                 const snackType = document.querySelector('#entryWhatChips button.active')?.innerText;
-                window.renderSecondary('entryWhatSuggestions', subTags, 'entryWhatInput', snackType || null, 'snack');
+                window.renderSecondary('entryWhatSuggestions', 'entryWhatInput', snackType || null, 'snack');
             } else if (!isSnack && !(entryId && savedRecord)) {
                 syncDeliveryVendorSectionVisibility();
             }
@@ -1819,6 +1887,7 @@ export async function openModal(date, slotId, entryId = null) {
 
 export function closeModal() {
     if (document.getElementById('entryModal')?.classList.contains('entry-modal-saving')) return;
+    entrySheetSession.end();
     closeTimeSourceSheets();
     closeEntrySlotPicker();
     closeEntryHeaderDatePicker();
@@ -1914,6 +1983,7 @@ export function cancelDiscardEntryModal() {
 
 export function confirmDiscardEntryModal() {
     document.getElementById('discardEntryConfirmModal')?.classList.add('hidden');
+    entrySheetSession.mark('discarded');
     closeModal();
 }
 
@@ -2133,6 +2203,15 @@ export async function saveEntry() {
             gauges: { rateOn, satOn, timeOn, normalizedClock },
             mealHistory: window.mealHistory,
         });
+
+        // 자동 분류 측정: 제안을 무시하고 저장 = 자동값 채택(적중으로 집계)
+        if (record.categorySource === 'local') {
+            logUsageMetric('category_suggest_auto_saved').catch(() => {});
+        }
+        // 맥락 추측 측정: 손대지 않고 저장 = 자동 적용 (교정률의 분모)
+        if (Array.isArray(record.autoContext) && record.autoContext.length > 0) {
+            logUsageMetric('context_predict_auto_saved').catch(() => {});
+        }
 
         // 공유 비교 기준은 모달이 닫히기 전에 스냅샷으로 고정 (closeModal이 originalSharedPhotos를 비움)
         const shareSnapshot = buildEntryShareSnapshot({
@@ -2708,6 +2787,7 @@ export async function deleteEntry() {
     // temp_ 폴백 레코드(구버전 낙관 행): 서버 문서·큐 추적이 없으므로 로컬에서만 제거
     if (String(entryIdToDelete).startsWith('temp_')) {
         const tempRec = window.mealHistory?.find((m) => m.id === entryIdToDelete) || null;
+        entrySheetSession.mark('deleted');
         window.closeModal();
         try {
             getMealSyncManager().removeTempRowSideEffects(tempRec || { id: entryIdToDelete });
@@ -2761,6 +2841,9 @@ export async function deleteEntry() {
     }
 
     // 모달을 먼저 닫기 (사용자 경험 개선)
+    // 삭제는 이탈이 아니다. 지금은 수정 진입에서만 가능해 세션 자체가 없지만(무해),
+    // 나중에 수정 세션도 세게 되면 이 표시가 분모를 지킨다.
+    entrySheetSession.mark('deleted');
     window.closeModal();
 
     if (!mealForDelete || !window.mealHistory?.some((m) => m.id === entryIdToDelete)) {
@@ -3422,36 +3505,6 @@ export function setSatiety(s) {
     renderSatietyButtons('snackSatietyContainer', toggled);
 }
 
-/** 서브 칩 오른쪽 × — data-chip-delete(JSON) 위임 (특수문자·따옴표 안전) */
-function initEntryModalSubChipDeleteDelegation() {
-    const root = document.getElementById('entryModal');
-    if (!root || root._subChipDeleteDelegationBound) return;
-    root._subChipDeleteDelegationBound = true;
-    root.addEventListener('click', (e) => {
-        const delBtn = e.target.closest('[data-chip-delete]');
-        if (!delBtn || !root.contains(delBtn)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        let payload;
-        try {
-            payload = JSON.parse(decodeURIComponent(delBtn.getAttribute('data-chip-delete')));
-        } catch (err) {
-            console.warn('sub-chip delete: invalid payload', err);
-            return;
-        }
-        if (payload.kind === 'recent' && typeof window.deleteSubTag === 'function') {
-            window.deleteSubTag(
-                payload.subTagKey,
-                payload.text,
-                payload.containerId,
-                payload.inputId,
-                payload.parentFilter,
-                payload.fullSubTagText || null
-            );
-        }
-    });
-}
-setTimeout(initEntryModalSubChipDeleteDelegation, 0);
 
 function initEntryModalTagStageBackOnce() {
     const modal = document.getElementById('entryModal');
@@ -3469,7 +3522,7 @@ function initEntryModalTagStageBackOnce() {
 }
 setTimeout(initEntryModalTagStageBackOnce, 0);
 
-const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips';
+const ENTRY_MODAL_HSCROLL_STRIP_SELECTOR = '.entry-subtag-chips, .entry-detail-record-chips, .entry-recall-scroll';
 
 /**
  * 기록 모달 가로 스크롤 줄(서브태그·상세보기 칩): 드래그로 좌우 스크롤 (탭/클릭과 구분).
@@ -3622,31 +3675,67 @@ export function selectTag(inputId, value, btn, isPrimary, subTagKey = null, subC
         toggleFieldsForSkip(isSkip);
     }
     
-    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && selectedValue && appState.entryFormMode === 'meal' && (selectedValue === '집밥' || selectedValue === '배달/포장')) {
-        const pi = document.getElementById('entryWhereInput');
-        if (pi) {
-            pi.value = '우리집';
-            pi.removeAttribute('data-kakao-place-id');
-            pi.removeAttribute('data-kakao-place-address');
-            pi.removeAttribute('data-kakao-place-data');
-            pi.removeAttribute('data-kakao-place-name');
-        }
+    /**
+     * 어떻게(조달) 선택 → 맥락 모듈에 위임한다 (docs/entry-axes-and-tags-direction.md §5).
+     *
+     * 예전에는 여기서 장소 기본값(집밥→우리집)만 직접 채웠는데, 그러면 **어떻게를 바꿨을 때
+     * 이전 값이 남는** 문제가 있었다(집밥→우리집 에서 외식으로 바꿔도 우리집이 남음).
+     * 어디서·누구와 재추론과 같은 규칙이라 맥락 모듈이 한 곳에서 소유하는 편이 맞다.
+     */
+    if (isPrimary && subTagKey === 'place' && subContainerId === 'entryWhereSuggestions' && appState.entryFormMode === 'meal') {
+        syncEntryContextMealTypeFromChips();
     }
 
-    if (isPrimary && subTagKey && subContainerId) {
+    /**
+     * '무엇을'은 형태 칩을 골라도 서브태그(사용자·최근) 패널로 넘어가지 않는다.
+     *
+     * 그 패널이 하던 일 — 내가 전에 적은 음식 텍스트를 다시 꺼내기 — 은 이제 회상 줄이
+     * 입력란 바로 아래에서 한다(entry-what-recall.js). 칩을 고를 때마다 화면이 그쪽으로
+     * 넘어가면 방금 펼친 그리드가 사라져 다른 값을 고르기도 어려워진다.
+     */
+    const skipSubTagStage = subContainerId === ENTRY_DOM.whatSuggestions;
+    if (isPrimary && subTagKey && subContainerId && !skipSubTagStage) {
         if (subContainerId === 'entryWhereSuggestions' && appState.entryFormMode === 'snack') {
             appState.selectedSnackPlaceMainTag = selectedValue;
         }
-        const subTags = window.userSettings.subTags[subTagKey] || [];
         const inputIdForSecondary = (subTagKey === 'people') ? 'entryWithInput' : 
             (document.getElementById(subContainerId)?.getAttribute('data-input-id') || getInputIdFromContainer(subContainerId));
-        window.renderSecondary(subContainerId, subTags, inputIdForSecondary, selectedValue, subTagKey);
+        window.renderSecondary(subContainerId, inputIdForSecondary, selectedValue, subTagKey);
         if (typeof window.setEntryTagStageView === 'function') {
             window.setEntryTagStageView(subContainerId, selectedValue ? 'sub' : 'main');
         }
     }
+    /**
+     * 형태 칩 그리드에서 고른 값은 상단 제안 줄이 표시자다 — 안 알리면 저장은 이 값으로
+     * 되는데 줄은 "그냥 저장해도 자동으로 붙어요"를 계속 띄운다.
+     */
+    if (isPrimary && subContainerId === ENTRY_DOM.whatSuggestions) {
+        syncEntryCategorySuggestFromChips();
+    }
     syncDeliveryVendorSectionVisibility();
 }
+
+/**
+ * 1페이지 '자세히' 접힘 — 전체 축 섹션(어디서·누구와)을 여닫는다.
+ * 어디서·누구와 전용 페이지를 없애면서 이 자리가 그 입력들의 집이 됐다
+ * (건너뜀 칩·서브태그·누구와 상세는 맥락 줄이 다루지 않는다).
+ * @param {boolean} [force] 지정하면 그 상태로 강제 (기록 수정 진입 시 펼침 등)
+ */
+export function toggleEntryAxisDetail(force) {
+    const fields = document.getElementById('entryAxisFields');
+    if (!fields) return;
+    const open = typeof force === 'boolean' ? force : fields.classList.contains('hidden');
+    fields.classList.toggle('hidden', !open);
+    /**
+     * 트리거(맥락 줄의 '세부' 칩)는 entry-context-predict가 렌더할 때 hidden 상태를 다시 읽는다.
+     *
+     * 여기서 scrollIntoView 를 부르지 않는다 — 섹션이 커서 화면이 확 튀고, 누른 버튼이
+     * 시야 밖으로 밀려 "UI가 통째로 바뀐" 느낌을 준다. 시트는 높이 잠금 재측정으로
+     * 자라고, 스크롤은 사용자에게 맡긴다.
+     */
+    if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
+}
+window.toggleEntryAxisDetail = toggleEntryAxisDetail;
 
 function toggleFieldsForSkip(isSkip) {
     // Skip: 무엇을(기본 탭) · 누구와(추가 탭) · 상세 메트릭 숨김
@@ -3655,6 +3744,7 @@ function toggleFieldsForSkip(isSkip) {
         optionalFields.classList.toggle('hidden', !!isSkip);
     }
     document.getElementById('entryWithSection')?.classList.toggle('hidden', !!isSkip);
+    if (isSkip) resetEntryContextPredict();
 
     setEntrySheetTabsForSkip(isSkip);
     setEntryDetailRecordPanelHidden(isSkip);
@@ -3686,6 +3776,21 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
 
     // 선택 직후 다운스케일 처리 중에도 "처리되고 있다"는 걸 바로 보여준다 (완료되면 renderPhotoPreviews가 교체)
     renderPhotoProcessingPlaceholders(filesToProcess.length);
+
+    /**
+     * [계측] 사진 EXIF GPS 존재율 — 사진 GPS 기반 '어디서' 제안 투자 판단용.
+     * 좌표는 읽지 않고 유무만 센다 (hasExifGpsInImageFile 참고). 플랫폼 포토 피커가
+     * 위치 EXIF를 제거하는 비율이 관건이라 실기기 데이터가 나와야 다음 단계를 결정한다.
+     * 완전 비동기 — 인테이크·저장 경로를 기다리게 하지 않는다.
+     */
+    filesToProcess.forEach((file) => {
+        hasExifGpsInImageFile(file)
+            .then((has) => {
+                if (has === null) return; // 판정 불가는 분모에서 제외
+                logUsageMetric(has ? 'photo_gps_present' : 'photo_gps_absent').catch(() => {});
+            })
+            .catch(() => {});
+    });
 
     /**
      * 인테이크에서 다운스케일한다 (설계 §4.6). 예전에는 원본을 그대로 readAsDataURL 해서

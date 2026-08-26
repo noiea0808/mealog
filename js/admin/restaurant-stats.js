@@ -6,13 +6,16 @@ import {
     doc,
     getDoc,
     setDoc,
-    collection,
     query,
     where,
     getDocs,
     collectionGroup
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
+import { refreshLucideIcons } from '../icons.js';
+
+/** 캐시가 없을 때 거슬러 올라갈 하한 (admin.js ADMIN_OPS_START·대시보드 집계 시작일과 같음) */
+const RESTAURANT_SCAN_MIN_DATE = '2026-03-08';
 
 const RESTAURANT_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'restaurantStats');
 
@@ -21,11 +24,16 @@ let currentRestaurantSlotFilter = 'all';
 /** 식당 집계 화면을 한 번이라도 성공적으로 그린 뒤에만 필터 전환이 getDoc/병합 로직을 탑니다 */
 let adminRestaurantMonitoringRendered = false;
 
+/** 한 번에 그릴 행 수. 순위표라 위쪽만 보면 되고, 나머지는 「더보기」로 늘린다 */
+const RESTAURANT_PAGE_SIZE = 100;
+let restaurantVisibleCount = RESTAURANT_PAGE_SIZE;
+/** 「더보기」가 Firestore 를 다시 읽지 않도록 마지막으로 그린 목록을 들고 있는다 */
+let lastRenderedRestaurants = [];
+let lastRenderedFilter = 'all';
+let lastRenderedSlotLabel = '';
+
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
-
-/** 사용자 meals 병렬 조회 시 동시성 (읽기 건수는 동일, 완료 시간 단축) */
-const USER_MEAL_FETCH_CONCURRENCY = 14;
 
 function cacheHasSlotBreakdown(cachedList) {
     return (
@@ -100,13 +108,17 @@ function finalizeRestaurantMapForSlot(restaurantMap, slotFilter) {
     return out;
 }
 
-async function getTodayMealsForRestaurants() {
-    const todayStr = getTodayDateString();
-    const mealsGroup = collectionGroup(db, 'meals');
-    const q = query(mealsGroup, where('date', '==', todayStr));
-    const snap = await getDocs(q);
-    const prefix = `artifacts/${appId}/`;
-    return snap.docs.filter((d) => d.ref.path.startsWith(prefix)).map((d) => d.data());
+/** 'YYYY-MM-DD' 다음 날. 못 읽으면 '' */
+function nextDateKey(dateKey) {
+    const p = String(dateKey || '').split('-');
+    if (p.length !== 3) return '';
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
 }
 
 function restaurantArrayToMap(arr) {
@@ -115,36 +127,131 @@ function restaurantArrayToMap(arr) {
     return map;
 }
 
-/** 전체 사용자 meals 스캔 → 원시 집계 Map (슬롯 필터 전) */
+/**
+ * 지정 구간의 meals 를 훑어 식당 집계에 반영한다.
+ *
+ * 예전에는 users 를 전부 읽고 사용자마다 meals 를 통째로 가져왔다(1만 건 넘음).
+ * collectionGroup 에 날짜 범위를 걸면 필요한 구간만 한 번에 읽는다.
+ *
+ * @param {Map} restaurantMap 여기에 더한다
+ * @param {string} fromDateKey 포함
+ * @param {string} toDateKey 포함
+ * @returns {Promise<number>} 읽은 문서 수
+ */
+async function accumulateRestaurantsFromMeals(restaurantMap, fromDateKey, toDateKey) {
+    if (!fromDateKey || !toDateKey || fromDateKey > toDateKey) return 0;
+    const mealsGroup = collectionGroup(db, 'meals');
+    const snap = await getDocs(
+        query(mealsGroup, where('date', '>=', fromDateKey), where('date', '<=', toDateKey))
+    );
+    const prefix = `artifacts/${appId}/`;
+    let n = 0;
+    snap.forEach((docSnap) => {
+        if (!docSnap.ref.path.startsWith(prefix)) return;
+        applyMealToRestaurantAggregate(restaurantMap, docSnap.data());
+        n++;
+    });
+    return n;
+}
+
+/** 운영 시작일부터 오늘까지 전량 집계 (캐시가 없거나 못 믿을 때만) */
 async function fetchRestaurantAggregateMap() {
-    const usersColl = collection(db, 'artifacts', appId, 'users');
-    const usersSnapshot = await getDocs(usersColl);
-    const userDocs = usersSnapshot.docs;
     const restaurantMap = new Map();
-
-    let cursor = 0;
-    async function worker() {
-        while (cursor < userDocs.length) {
-            const myIndex = cursor++;
-            const userDoc = userDocs[myIndex];
-            try {
-                const mealsColl = collection(db, 'artifacts', appId, 'users', userDoc.id, 'meals');
-                const mealsSnapshot = await getDocs(mealsColl);
-                mealsSnapshot.docs.forEach((mealDoc) => applyMealToRestaurantAggregate(restaurantMap, mealDoc.data()));
-            } catch (e) {
-                console.warn(`사용자 ${userDoc.id} meals 조회 실패:`, e);
-            }
-        }
-    }
-
-    const nWorkers = Math.min(USER_MEAL_FETCH_CONCURRENCY, userDocs.length || 1);
-    await Promise.all(Array.from({ length: nWorkers }, () => worker()));
+    const todayStr = getTodayDateString();
+    const n = await accumulateRestaurantsFromMeals(restaurantMap, RESTAURANT_SCAN_MIN_DATE, todayStr);
+    console.log('🍽️ 식당 통계 전량 집계:', { from: RESTAURANT_SCAN_MIN_DATE, to: todayStr, meals: n });
     return restaurantMap;
 }
 
 async function fetchAllRestaurantsFull(slotFilter) {
     const agg = await fetchRestaurantAggregateMap();
     return finalizeRestaurantMapForSlot(agg, slotFilter);
+}
+
+/**
+ * 표 그리기 — 목록 전체가 아니라 `restaurantVisibleCount` 만큼만 그린다.
+ *
+ * 읽기를 아끼려는 게 아니다(목록은 캐시 문서 **하나**에 배열로 들어 있어, 몇 개를 그리든
+ * Firestore 읽기는 1건이다). 식당이 500곳을 넘으면서 행마다 아이콘이 붙은 DOM 이
+ * 수천 노드가 되는 게 문제다. 순위는 어차피 위쪽만 의미가 있다.
+ */
+function paintRestaurantTable(restaurants, filter, slotLabel) {
+    const container = document.getElementById('restaurantsContainer');
+    if (!container) return;
+    lastRenderedRestaurants = restaurants;
+    lastRenderedFilter = filter;
+    lastRenderedSlotLabel = slotLabel;
+    const shown = restaurants.slice(0, restaurantVisibleCount);
+    const remaining = restaurants.length - shown.length;
+
+    container.innerHTML = `
+        <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">순위</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">식당명</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 횟수</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 방식</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최초 입력</th>
+                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최근 입력</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        ${shown
+                            .map((restaurant, index) => {
+                                const inputTypeBadge = restaurant.isKakao
+                                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+                                    <i data-lucide="map-pin" class="mr-1"></i>카카오맵
+                                   </span>`
+                                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
+                                    <i data-lucide="keyboard" class="mr-1"></i>수동입력
+                                   </span>`;
+
+                                const countDetail =
+                                    restaurant.isKakao && restaurant.manualCount > 0
+                                        ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
+                                        : '';
+
+                                return `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${index + 1}</td>
+                                <td class="px-4 py-3 text-sm text-slate-800">
+                                    <div class="font-bold">${escapeHtml(restaurant.name)}</div>
+                                    ${restaurant.address ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(restaurant.address)}</div>` : ''}
+                                </td>
+                                <td class="px-4 py-3 text-sm">
+                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                                        ${restaurant.count}회
+                                    </span>
+                                    ${countDetail}
+                                </td>
+                                <td class="px-4 py-3 text-sm">${inputTypeBadge}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.firstSeen || '-'}</td>
+                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.lastSeen || '-'}</td>
+                            </tr>
+                        `;
+                            })
+                            .join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 text-sm text-slate-500 text-center">
+                총 ${restaurants.length.toLocaleString()}개의 식당이 ${filter === 'all' ? '등록' : filter === 'kakao' ? '카카오맵으로 입력' : '수동으로 입력'}되어 있습니다.
+                ${slotLabel}${remaining > 0 ? ` · 상위 ${shown.length.toLocaleString()}개 표시 중` : ''}
+            </div>
+    `;
+    if (remaining > 0) {
+        container.insertAdjacentHTML(
+            'beforeend',
+            `<div class="mt-3 text-center">
+                <button type="button" onclick="window.showMoreRestaurants()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white text-slate-600 text-sm font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors">
+                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i><span>더보기 (${remaining.toLocaleString()}개 남음)</span>
+                </button>
+            </div>`
+        );
+    }
+    refreshLucideIcons();
 }
 
 async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
@@ -175,12 +282,20 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
         if (cacheExists && (slotFilter === 'all' || breakdownOk)) {
             restaurantMap = restaurantArrayToMap(cachedList);
             if (asOfDate !== todayStr) {
-                const todayMeals = await getTodayMealsForRestaurants();
-                todayMeals.forEach((mealData) => applyMealToRestaurantAggregate(restaurantMap, mealData));
-                if (slotFilter === 'all') {
-                    const mergedList = Array.from(restaurantMap.values());
-                    await setDoc(RESTAURANT_STATS_REF(), { asOfDate: todayStr, restaurants: mergedList }, { merge: true });
-                }
+                /**
+                 * 예전에는 **오늘 하루치만** 더했다. 캐시 저장은 slotFilter==='all' 일 때만 일어나서,
+                 * 다른 필터로만 열다 보면 asOfDate 가 몇 달씩 멈춰 있었고 그 사이 기록이 통째로 빠졌다.
+                 * 이제 캐시 날짜 다음날부터 오늘까지를 메우고, 필터와 무관하게 저장한다.
+                 */
+                const fromKey = nextDateKey(asOfDate) || todayStr;
+                const filled = await accumulateRestaurantsFromMeals(restaurantMap, fromKey, todayStr);
+                console.log('🍽️ 식당 통계 증분:', { from: fromKey, to: todayStr, meals: filled });
+                const mergedList = Array.from(restaurantMap.values());
+                await setDoc(
+                    RESTAURANT_STATS_REF(),
+                    { asOfDate: todayStr, restaurants: mergedList },
+                    { merge: true }
+                );
             }
             restaurantMap = finalizeRestaurantMapForSlot(restaurantMap, slotFilter);
         } else if (slotFilter === 'all') {
@@ -234,63 +349,7 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
             return;
         }
 
-        container.innerHTML = `
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">순위</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">식당명</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 횟수</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">입력 방식</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최초 입력</th>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase">최근 입력</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        ${restaurants
-                            .map((restaurant, index) => {
-                                const inputTypeBadge = restaurant.isKakao
-                                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                                    <i data-lucide="map-pin" class="mr-1"></i>카카오맵
-                                   </span>`
-                                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">
-                                    <i data-lucide="keyboard" class="mr-1"></i>수동입력
-                                   </span>`;
-
-                                const countDetail =
-                                    restaurant.isKakao && restaurant.manualCount > 0
-                                        ? `<div class="text-xs text-slate-500 mt-1">카카오: ${restaurant.kakaoCount}회, 수동: ${restaurant.manualCount}회</div>`
-                                        : '';
-
-                                return `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-4 py-3 text-sm font-bold text-slate-700">${index + 1}</td>
-                                <td class="px-4 py-3 text-sm text-slate-800">
-                                    <div class="font-bold">${escapeHtml(restaurant.name)}</div>
-                                    ${restaurant.address ? `<div class="text-xs text-slate-500 mt-1">${escapeHtml(restaurant.address)}</div>` : ''}
-                                </td>
-                                <td class="px-4 py-3 text-sm">
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                                        ${restaurant.count}회
-                                    </span>
-                                    ${countDetail}
-                                </td>
-                                <td class="px-4 py-3 text-sm">${inputTypeBadge}</td>
-                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.firstSeen || '-'}</td>
-                                <td class="px-4 py-3 text-sm text-slate-600">${restaurant.lastSeen || '-'}</td>
-                            </tr>
-                        `;
-                            })
-                            .join('')}
-                    </tbody>
-                </table>
-            </div>
-            <div class="mt-4 text-sm text-slate-500 text-center">
-                총 ${restaurants.length}개의 식당이 ${filter === 'all' ? '등록' : filter === 'kakao' ? '카카오맵으로 입력' : '수동으로 입력'}되어 있습니다.
-                ${slotLabel}
-            </div>
-        `;
+        paintRestaurantTable(restaurants, filter, slotLabel);
         adminRestaurantMonitoringRendered = true;
     } catch (e) {
         adminRestaurantMonitoringRendered = false;
@@ -307,11 +366,19 @@ async function renderRestaurantData(filter = 'all', slotFilter = 'all') {
 
 /** 모니터링 사이드바에서 식당 탭 진입 시 현재 필터로 렌더 */
 export function renderRestaurantDataForMonitoringSidebar() {
+    restaurantVisibleCount = RESTAURANT_PAGE_SIZE;
     return renderRestaurantData(currentRestaurantFilter || 'all', currentRestaurantSlotFilter || 'all');
 }
 
 export function registerRestaurantStats() {
     window.renderRestaurantData = renderRestaurantData;
+
+    /** 「더보기」 — 이미 손에 든 목록을 더 그릴 뿐이라 Firestore 를 건드리지 않는다 */
+    window.showMoreRestaurants = function () {
+        restaurantVisibleCount += RESTAURANT_PAGE_SIZE;
+        paintRestaurantTable(lastRenderedRestaurants, lastRenderedFilter, lastRenderedSlotLabel);
+    };
+
     window.setRestaurantFilter = function (filter) {
         document.querySelectorAll('.restaurant-filter-btn').forEach((btn) => {
             btn.classList.remove('bg-emerald-600', 'text-white');
@@ -323,6 +390,7 @@ export function registerRestaurantStats() {
             activeFilterBtn.classList.add('bg-emerald-600', 'text-white');
         }
         currentRestaurantFilter = filter;
+        restaurantVisibleCount = RESTAURANT_PAGE_SIZE;
         if (!adminRestaurantMonitoringRendered) return;
         renderRestaurantData(filter, currentRestaurantSlotFilter);
     };
@@ -337,6 +405,7 @@ export function registerRestaurantStats() {
             activeBtn.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
             activeBtn.classList.add('bg-emerald-600', 'text-white');
         }
+        restaurantVisibleCount = RESTAURANT_PAGE_SIZE;
         if (!adminRestaurantMonitoringRendered) return;
         renderRestaurantData(currentRestaurantFilter, slotFilter);
     };

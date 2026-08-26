@@ -12,6 +12,7 @@ import {
     renderAiMealReportCardHtml,
     extractAnalyzedPhotoUrlsForDisplay
 } from '../utils/ai-meal-report.js';
+import { computeDietRecordScore } from '../utils/diet-record-score.js';
 import { toLocalDateString, captureWithGhostStrategy, uploadBase64ToStorage, shareBlobsToExternal } from '../utils.js';
 import { MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS } from '../constants.js';
 import {
@@ -52,8 +53,6 @@ const DIET_REPORT_SHARE_PHOTO_GAP_PX = 8;
  * 직접 그리므로 보정 없이 정렬이 맞는다 — 정적 HTML 에는 오프셋을 넣지 않는다.
  */
 const DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX = 4;
-const DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX = 12;
-const DIET_REPORT_CAPTURE_MOOD_GAP_PX = 8;
 
 /** pill — 고정 height/inner-flex 금지(html2canvas에서 텍스트가 박스 밖으로 사라짐). 패딩+line-height:1만 사용 */
 function buildDietReportCapturePillStyle(padding, colors) {
@@ -256,7 +255,8 @@ async function refreshSnsShareBlobCache(dateStr, report, reportDoc) {
         clearSnsShareBlobCache();
         return;
     }
-    const cacheKey = `${dateStr}:${report.title || ''}:${report.score ?? ''}:${reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc).join('|') : ''}`;
+    const cacheScore = reportDoc ? computeDietRecordScore(reportDoc)?.total : null;
+    const cacheKey = `${dateStr}:${report.title || ''}:${cacheScore ?? ''}:${reportDoc ? extractAnalyzedPhotoUrlsForDisplay(reportDoc).join('|') : ''}`;
     if (_snsShareBlob && _snsShareBlobKey === cacheKey) return;
 
     if (_snsShareCachePromise && _snsShareCachePromiseKey === cacheKey) {
@@ -353,11 +353,17 @@ function setFooterButtons({ regen = false, share = false, regenLabel = '다시 �
 function renderLoading(mode = 'fetch') {
     const body = document.getElementById('dietReportModalBody');
     if (!body) return;
-    const label = mode === 'writing' ? '리포트 작성중' : '리포트 불러오는 중…';
+    const writing = mode === 'writing';
+    const label = writing ? '리포트 작성중' : '리포트 불러오는 중…';
+    // 사진까지 함께 분석하므로 재생성은 10~20초쯤 걸린다. 빈 화면처럼 보이지 않게 안내를 둔다.
+    const hint = writing
+        ? '<p class="text-xs text-slate-400 mt-1.5">사진까지 함께 살펴보는 중이라 조금 걸려요</p>'
+        : '';
     body.innerHTML = `
-        <div class="flex flex-col items-center justify-center py-10 text-slate-400">
-            <i data-lucide="loader-circle" class="text-2xl mb-3 lucide-spin" aria-hidden="true"></i>
+        <div class="flex flex-col items-center justify-center py-10" role="status" aria-live="polite">
+            <span class="mealog-spinner mb-3" aria-hidden="true"></span>
             <p class="text-sm font-bold text-slate-500">${label}</p>
+            ${hint}
         </div>`;
     _currentReport = null;
     _currentReportDoc = null;
@@ -397,6 +403,8 @@ function renderEmpty(dateStr, mealCount) {
     document.getElementById('dietReportAnalyzeNowBtn')?.addEventListener('click', () => {
         void runRegenerate(dateStr);
     });
+    // 전역 옵저버가 없어서 이 호출을 빼면 sparkles 아이콘이 그려지지 않는다.
+    scheduleLucideIcons(body);
     _currentReport = null;
     _currentReportDoc = null;
     clearSnsShareBlobCache();
@@ -431,7 +439,8 @@ function renderReport(data) {
     _currentReportDoc = data;
     const cardHtml = report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
-              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+              recordScore: computeDietRecordScore(data, report)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
     const generatedLabel = formatReportGeneratedAt(data?.generatedAt);
@@ -596,14 +605,6 @@ function applyDietReportCaptureAlignFix(root) {
         if (badgeCell) badgeCell.style.padding = `${DIET_REPORT_CAPTURE_BADGE_OFFSET_Y_PX}px 0 0 10px`;
     }
 
-    const mood = root.querySelector('[data-diet-report-capture-mood]');
-    if (mood) {
-        mood.style.position = 'relative';
-        mood.style.top = `${DIET_REPORT_CAPTURE_MOOD_OFFSET_Y_PX}px`;
-        mood.style.display = 'inline-block';
-        mood.style.lineHeight = '1';
-        mood.style.padding = '4px 10px';
-    }
 }
 
 /** SNS 공유 캡처 헤더 — 타임라인 AI 리포트 버튼과 동일한 pill */
@@ -614,42 +615,37 @@ function buildDietReportShareCaptureBadgeHtml() {
 }
 
 /** 리포트 카드 → 캡처용 인라인 스타일 HTML */
-function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
+function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = [], recordScore = null) {
     const e = typeof esc === 'function' ? esc : (s) => s;
     const dateLabel = formatMealogDateLabel(dateStr);
-    const score = report?.score;
-    const hasScore = score != null && Number.isFinite(Number(score));
-    const mood = (report?.mood || '').trim();
+    const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
+    const score = hasScore ? recordScore.total : null;
     const title = (report?.title || '').trim();
     const summary = (report?.summary || '').trim();
     const highlight = (report?.highlight || '').trim();
     const nudge = (report?.nudge || '').trim();
 
-    const moodColors =
-        'font-size:12px;font-weight:700;background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;';
-    const moodPill = mood
-        ? `<span data-diet-report-capture-mood="1" style="margin-left:${DIET_REPORT_CAPTURE_MOOD_GAP_PX}px;${buildDietReportCapturePillStyle('4px 10px', moodColors)}">${e(mood)}</span>`
-        : '';
+    // 공유 카드에는 내역을 펼칠 수단이 없다. 설명 못 할 라벨을 붙이느니 숫자만 내보낸다.
     const scoreSpan = hasScore
         ? `<span style="display:inline-block;font-size:40px;font-weight:800;color:#3cb889;line-height:1;">${e(String(score))}<span style="font-size:20px;font-weight:700;color:rgba(16,185,129,0.65);">점</span></span>`
         : '';
-    // 1행: 점수 + 타이틀(mood) — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
+    // 점수 — 인라인 배치(테이블은 html2canvas에서 전체 너비로 늘어남)
     const scoreRow =
-        scoreSpan || moodPill
-            ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}${moodPill}</div>`
+        scoreSpan
+            ? `<div style="line-height:1;white-space:nowrap;">${scoreSpan}</div>`
             : '';
-    // 2행: 제목(report.title)
+    // 제목이 헤드라인이다. 모달 카드와 같은 순서·위계로 맞춘다(제목 → 점수).
     const subjectHtml = title
-        ? `<div style="font-size:17px;font-weight:800;color:#1e293b;line-height:1.35;">${e(title)}</div>`
+        ? `<div style="font-size:21px;font-weight:900;color:#0f172a;line-height:1.3;letter-spacing:-0.02em;word-break:keep-all;">${e(title)}</div>`
         : '';
     const summaryHtml = summary
         ? `<div><div style="font-size:10px;font-weight:700;letter-spacing:0.04em;color:#94a3b8;text-transform:uppercase;margin-bottom:4px;">오늘의 식사 흐름</div><div style="font-size:13.5px;color:#334155;line-height:1.5;">${e(summary)}</div></div>`
         : '';
     const highlightHtml = highlight
-        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">좋았던 흐름</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
+        ? `<div style="border-radius:12px;background:#ecfdf5;border:1px solid #d1fae5;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#2d9f74;margin-bottom:3px;">오늘 눈에 띈 것</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(highlight)}</div></div>`
         : '';
     const nudgeHtml = nudge
-        ? `<div style="border-radius:12px;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#78350f;margin-bottom:3px;">내일의 힌트</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
+        ? `<div style="border-radius:12px;background:#f5f3ff;border:1px solid #ede9fe;padding:10px 12px;"><div style="font-size:11px;font-weight:700;color:#5b21b6;margin-bottom:3px;">밀로그의 한마디</div><div style="font-size:13.5px;color:#1e293b;line-height:1.5;">${e(nudge)}</div></div>`
         : '';
 
     const urls = (photoUrls || []).filter(Boolean).slice(0, 3);
@@ -679,8 +675,8 @@ function buildDietReportShareCaptureHtml(report, dateStr, esc, photoUrls = []) {
         </div>
         ${photosHtml}
         <div style="padding:10px 18px 18px;display:flex;flex-direction:column;gap:10px;background:#ffffff;">
-            ${scoreRow}
             ${subjectHtml}
+            ${scoreRow}
             ${summaryHtml}
             ${highlightHtml}
             ${nudgeHtml}
@@ -711,7 +707,13 @@ async function captureDietReportShareCanvas(dateStr, report, reportDoc) {
     holder.style.left = '-10000px';
     holder.style.top = '0';
     holder.style.zIndex = '-1';
-    holder.innerHTML = buildDietReportShareCaptureHtml(report, dateStr, escapeHtml, photoUrls);
+    holder.innerHTML = buildDietReportShareCaptureHtml(
+        report,
+        dateStr,
+        escapeHtml,
+        photoUrls,
+        reportDoc ? computeDietRecordScore(reportDoc) : null
+    );
     const target = holder.firstElementChild;
     document.body.appendChild(holder);
 

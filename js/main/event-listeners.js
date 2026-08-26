@@ -483,10 +483,6 @@ export function initEventListeners() {
         settingsTabProfile.addEventListener('click', () => window.switchSettingsTab('profile'));
     }
 
-    const settingsTabTags = document.getElementById('settingsTabTags');
-    if (settingsTabTags) {
-        settingsTabTags.addEventListener('click', () => window.switchSettingsTab('tags'));
-    }
 
     const settingsTabShortcuts = document.getElementById('settingsTabShortcuts');
     if (settingsTabShortcuts) {

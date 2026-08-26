@@ -33,7 +33,8 @@ import {
     effectiveCategoryForAnalytics,
     effectiveWithWhomForAnalytics,
     effectiveSnackTypeForAnalytics,
-    effectiveSnackPlaceForAnalytics
+    effectiveSnackPlaceForAnalytics,
+    resolveFoodFormValue
 } from './meal-analytics-tags.js';
 import {
     computeMainMealKpiFromRecords,
@@ -836,7 +837,7 @@ function analyzeMealData(filteredData, dateRangeText) {
     const snackTypeCount = {};
     const snackPlaceCount = {};
     snacks.forEach(meal => {
-        const st = effectiveSnackTypeForAnalytics(meal) || (meal.category || '').trim();
+        const st = effectiveSnackTypeForAnalytics(meal) || resolveFoodFormValue(meal, meal.category);
         if (st) snackTypeCount[st] = (snackTypeCount[st] || 0) + 1;
         const pl = effectiveSnackPlaceForAnalytics(meal, snackPlaceMainSetForInsight);
         if (pl) snackPlaceCount[pl] = (snackPlaceCount[pl] || 0) + 1;
@@ -885,7 +886,7 @@ function analyzeMealData(filteredData, dateRangeText) {
                     withWhomCountS[wEff] = (withWhomCountS[wEff] || 0) + 1;
                 }
             } else {
-                const st = effectiveSnackTypeForAnalytics(meal) || (meal.category || '').trim();
+                const st = effectiveSnackTypeForAnalytics(meal) || resolveFoodFormValue(meal, meal.category);
                 if (st) snackTypeCountS[st] = (snackTypeCountS[st] || 0) + 1;
                 const pls = effectiveSnackPlaceForAnalytics(meal, snackPlaceMainSetForInsight);
                 if (pls) placeCountS[pls] = (placeCountS[pls] || 0) + 1;

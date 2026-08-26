@@ -21,6 +21,7 @@ import {
     getTodayDateString
 } from './utils.js';
 import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
+import { fetchAdminUserDetail } from './users.js';
 import {
     unionOfPeriods,
     buildMatrixRow,
@@ -127,6 +128,8 @@ let currentDropoutOnly = false;
  */
 let allWeekKeys = [];
 let cohortCache = null;
+/** 사용자 상세 열기 순번 — 늦게 도착한 이전 조회가 화면을 덮어쓰지 않도록 */
+let detailSeq = 0;
 
 export function invalidateDashboardUserDrilldownCache() {
     drilldownDocCache.clear();
@@ -149,9 +152,13 @@ export function setDashboardDrilldownWeekKeys(keys) {
 /**
  * getUserStatistics()가 만든 UID 집합을 drilldown 하위 문서로 저장.
  * @param {object} userSets stats.userSets — { weeks, last7, all }
+ * @param {{partial?: boolean}} [options] `partial` 이면 증분 집계라 손에 든 UID 가
+ *   다시 센 구간뿐이다. 「전체」문서는 통째로 덮어쓰는 구조라 저장을 건너뛴다 —
+ *   덮어쓰면 과거 명단이 사라진다. (주차 문서는 빈 주를 건너뛰므로 저절로 보존된다)
  */
-export async function writeDashboardUserDrilldown(userSets) {
+export async function writeDashboardUserDrilldown(userSets, options = {}) {
     if (!userSets) return;
+    const partial = options?.partial === true;
     const writes = [];
 
     for (const w of userSets.weeks || []) {
@@ -177,7 +184,7 @@ export async function writeDashboardUserDrilldown(userSets) {
         ]);
     }
 
-    if (userSets.all) {
+    if (userSets.all && !partial) {
         writes.push([
             DRILLDOWN_DOC(DOC_ID_ALL),
             {
@@ -289,7 +296,14 @@ export function ensureDashboardDrilldownBinding() {
                 if (e.target === modal) closeDashboardUserDrilldown();
             });
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeDashboardUserDrilldown();
+                if (e.key !== 'Escape') return;
+                // 상세가 위에 떠 있으면 그것부터 닫는다
+                const detail = document.getElementById('dashboardUserDetailModal');
+                if (detail && !detail.classList.contains('hidden')) {
+                    closeDashboardUserDetail();
+                    return;
+                }
+                if (!modal.classList.contains('hidden')) closeDashboardUserDrilldown();
             });
             modalBound = true;
         }
@@ -316,6 +330,25 @@ export function ensureDashboardDrilldownBinding() {
         document
             .getElementById('dashboardUserListViewCohort')
             ?.addEventListener('click', () => setDrilldownView('cohort'));
+
+        // 목록·표는 매번 innerHTML 로 다시 그리므로 위임으로 한 번만 건다
+        const listBody = document.getElementById('dashboardUserListBody');
+        const openFromEvent = (e) => {
+            const el = e.target?.closest?.('[data-user-detail]');
+            if (!el) return;
+            e.preventDefault();
+            void openDashboardUserDetail(el.dataset.userDetail, el.dataset.userNickname || '');
+        };
+        listBody?.addEventListener('click', openFromEvent);
+        listBody?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') openFromEvent(e);
+        });
+
+        const detailModal = document.getElementById('dashboardUserDetailModal');
+        detailModal?.addEventListener('click', (e) => {
+            if (e.target === detailModal) closeDashboardUserDetail();
+        });
+        document.getElementById('dashboardUserDetailClose')?.addEventListener('click', closeDashboardUserDetail);
     }
 }
 
@@ -747,7 +780,7 @@ function renderDrilldownRows() {
                 <div class="flex items-center gap-2 px-3 py-2 border-b ${rowCls}">
                     <span class="w-7 text-[11px] text-slate-400 tabular-nums shrink-0">${i + 1}</span>
                     <span class="text-base shrink-0">${escapeHtml(r.icon)}</span>
-                    <span class="font-bold text-sm text-slate-800 truncate">${escapeHtml(r.nickname)}</span>
+                    <span class="font-bold text-sm text-slate-800 truncate cursor-pointer underline decoration-dotted underline-offset-2 hover:text-emerald-700" ${nameTriggerAttrs(r.uid, r.nickname)}>${escapeHtml(r.nickname)}</span>
                     ${badge}
                     <span class="ml-auto flex items-center gap-2 shrink-0">
                         <span class="text-[11px] text-slate-500 tabular-nums">${escapeHtml(formatJoinKey(r.joinKey))}</span>
@@ -837,7 +870,7 @@ export function buildMatrixTableHtml(periods, rows, unit) {
                     <td class="px-2 py-1.5 sticky left-0 z-10 ${r.status === 'kept' ? 'bg-white' : r.status === 'gap' ? 'bg-amber-50/50' : 'bg-slate-50'}">
                         <span class="flex items-center gap-1.5 min-w-0">
                             <span class="text-sm shrink-0">${escapeHtml(r.icon)}</span>
-                            <span class="font-bold text-xs text-slate-800 truncate max-w-[8rem]" title="${escapeHtml(r.uid)}">${escapeHtml(r.nickname)}</span>
+                            <span class="font-bold text-xs text-slate-800 truncate max-w-[8rem] cursor-pointer underline decoration-dotted underline-offset-2 hover:text-emerald-700" ${nameTriggerAttrs(r.uid, r.nickname)}>${escapeHtml(r.nickname)}</span>
                             ${badge}
                         </span>
                     </td>
@@ -865,6 +898,129 @@ export function buildMatrixTableHtml(periods, rows, unit) {
                 <tbody>${bodyRows}</tbody>
             </table>
         </div>`;
+}
+
+// ============================================================
+// 사용자 상세 (목록·표에서 이름 클릭)
+// ============================================================
+
+function fmtDateTime(v) {
+    if (!v) return '-';
+    const d = v instanceof Date ? v : v?.toDate ? v.toDate() : new Date(v);
+    if (Number.isNaN(d.getTime())) return '-';
+    return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+/** 가입~마지막 로그인 경과 (사용자 관리의 「활동일수」와 같은 표기) */
+function fmtActivitySpan(ms) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return '-';
+    const totalHours = Math.floor(ms / (1000 * 60 * 60));
+    return `${Math.floor(totalHours / 24)}일 ${String(totalHours % 24).padStart(2, '0')}시간`;
+}
+
+function detailRow(label, valueHtml) {
+    return `
+        <div class="flex items-start gap-3 py-2 border-b border-slate-100 last:border-b-0">
+            <span class="w-[5.5rem] shrink-0 text-[11px] font-bold text-slate-500 pt-0.5">${escapeHtml(label)}</span>
+            <span class="flex-1 min-w-0 text-xs text-slate-800 break-words">${valueHtml}</span>
+        </div>`;
+}
+
+/** 「사용자 관리」와 같은 항목을 세로로. DOM·Firestore를 안 만져 가짜 데이터로 확인할 수 있다 */
+export function buildUserDetailHtml(u) {
+    const badge = (text, cls) =>
+        `<span class="inline-block px-1.5 py-0.5 text-[10px] font-black rounded ${cls}">${escapeHtml(text)}</span>`;
+    const loginBadge =
+        u.loginMethod === '구글'
+            ? badge('구글', 'bg-red-100 text-red-700')
+            : u.loginMethod === '카카오'
+              ? badge('카카오', 'bg-[#FEE500] text-[#191919]')
+              : badge(u.loginMethod, 'bg-slate-100 text-slate-700');
+
+    const terms = u.termsAgreed
+        ? badge('동의', 'bg-emerald-100 text-emerald-700') +
+          (u.termsVersion ? ` <span class="text-[11px] text-slate-500">v${escapeHtml(String(u.termsVersion))}</span>` : '') +
+          (u.termsAgreedAt ? ` <span class="text-[11px] text-slate-400">${escapeHtml(fmtDateTime(u.termsAgreedAt))}</span>` : '')
+        : badge('미동의', 'bg-amber-100 text-amber-700');
+
+    const bans = [];
+    if (u.bannedShare) bans.push(badge('공유 금지', 'bg-red-100 text-red-700'));
+    if (u.bannedWrite) bans.push(badge('작성 금지', 'bg-red-100 text-red-700'));
+    const banHtml = bans.length ? bans.join(' ') : '<span class="text-slate-400">없음</span>';
+
+    const genderText = u.gender === 'male' ? '남성' : u.gender === 'female' ? '여성' : '-';
+    const plain = (v) => (v ? escapeHtml(String(v)) : '<span class="text-slate-400">-</span>');
+
+    return `
+        ${u.deleteRequested ? `<div class="mb-2 px-2 py-1.5 bg-red-50 border border-red-200 rounded-lg text-[11px] font-bold text-red-700">탈퇴(삭제) 요청이 접수된 사용자입니다.</div>` : ''}
+        ${detailRow('이메일', plain(u.email))}
+        ${detailRow('로그인 방법', loginBadge)}
+        ${detailRow('생년월일', plain(u.birthdate))}
+        ${detailRow('성별', plain(genderText === '-' ? '' : genderText))}
+        ${detailRow('라이프스타일', plain(u.lifestyle))}
+        ${detailRow('약관 동의', terms)}
+        ${detailRow('프로필 완료', u.profileCompleted ? badge('완료', 'bg-emerald-100 text-emerald-700') : badge('미완료', 'bg-slate-100 text-slate-600'))}
+        ${detailRow('가입일', escapeHtml(fmtDateTime(u.createdAtResolved || u.createdAt)))}
+        ${detailRow('마지막 로그인', escapeHtml(fmtDateTime(u.lastLoginAt)))}
+        ${detailRow('활동일수', escapeHtml(fmtActivitySpan(u.signupToLastLoginMs)))}
+        ${detailRow('활동 제한', banHtml)}
+        ${detailRow(
+            '기록 수',
+            `<span class="inline-flex gap-3 tabular-nums">
+                <span>타임라인 <b class="text-slate-900">${u.timelineCount ?? 0}</b></span>
+                <span>앨범 공유 <b class="text-slate-900">${u.albumShareCount ?? 0}</b></span>
+                <span>토크 <b class="text-slate-900">${u.talkCount ?? 0}</b></span>
+            </span>`
+        )}`;
+}
+
+export function closeDashboardUserDetail() {
+    const m = document.getElementById('dashboardUserDetailModal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
+    detailSeq++;
+}
+
+async function openDashboardUserDetail(uid, fallbackNickname) {
+    const modal = document.getElementById('dashboardUserDetailModal');
+    const body = document.getElementById('dashboardUserDetailBody');
+    if (!modal || !body) return;
+    const seq = ++detailSeq;
+
+    setModalText('dashboardUserDetailTitle', fallbackNickname || '사용자 정보');
+    setModalText('dashboardUserDetailSub', uid);
+    body.innerHTML =
+        '<div class="py-8 text-center text-sm text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>불러오는 중…</div>';
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+
+    // 상한 없는 조회는 팝업을 「불러오는 중…」에 영구히 묶어 둘 수 있다
+    const u = await withDeadlineOr(
+        () => fetchAdminUserDetail(uid),
+        DEADLINE.SAVE,
+        undefined,
+        'dashboard-drilldown:user-detail'
+    );
+    if (seq !== detailSeq) return;
+
+    if (u === undefined) {
+        body.innerHTML =
+            '<div class="py-8 text-center text-sm text-slate-500">정보를 불러오지 못했습니다.<br class="my-1">잠시 후 다시 눌러 주세요.</div>';
+        return;
+    }
+    if (u === null) {
+        body.innerHTML =
+            '<div class="py-8 text-center text-sm text-slate-500">설정 문서가 없는 사용자입니다.<br class="my-1">(탈퇴 후 기록만 남은 상태)</div>';
+        return;
+    }
+    setModalText('dashboardUserDetailTitle', `${u.icon || ''} ${u.nickname}`.trim());
+    body.innerHTML = buildUserDetailHtml(u);
+}
+
+/** 목록·표의 이름을 누를 수 있게 하는 공통 속성 */
+function nameTriggerAttrs(uid, nickname) {
+    return `data-user-detail="${escapeHtml(uid)}" data-user-nickname="${escapeHtml(nickname)}" role="button" tabindex="0" title="사용자 정보 보기"`;
 }
 
 /** 잔존율 0~1 → 배경. 여기서는 표 최대값이 아니라 절대 비율로 나눈다 (100%가 기준선) */

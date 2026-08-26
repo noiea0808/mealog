@@ -10,7 +10,7 @@
  *
  * 지우는 시점은 딱 하나 — **서버 존재가 확인됐을 때**. 그 외 어떤 이유로도 지우지 않는다.
  */
-import { openDb, tx, getAll, get as idbGet, del as idbDel, count as idbCount, put as idbPut } from './idb.js';
+import { openDb, tx, getAll, getAllOrNull, get as idbGet, del as idbDel, count as idbCount, put as idbPut } from './idb.js';
 import { diag } from './diagnostics.js';
 
 const DB_NAME = 'mealog-outbox';
@@ -88,7 +88,16 @@ export async function hydrateOutboxIndex() {
         indexHydrated = true;
         return 0;
     }
-    const rows = await getAll(db, STORE);
+    const rows = await getAllOrNull(db, STORE);
+    /**
+     * 못 읽었으면 **인덱스를 비우지 않는다.** 여기서 clear 하면 아직 안 올라간 기록이
+     * 화면에서 「반영됨」으로 보이고 배지도 사라진다 — 읽기 한 번 실패한 것을 데이터가
+     * 없는 것으로 단정하는 셈이다. hydrated 로도 표시하지 않아 다음 기회에 다시 시도된다.
+     */
+    if (rows === null) {
+        diag('outbox.hydrate.failed', { kept: liveIndex.size });
+        return -1;
+    }
     liveIndex.clear();
     for (const r of rows) liveIndex.set(r.key, { uid: r.uid, permanent: r.permanent === true });
     indexHydrated = true;
@@ -247,10 +256,28 @@ async function dropAllOriginals() {
 }
 
 /** @returns {Promise<Array<object>>} 오래된 것부터 */
+/**
+ * 미전송 항목 전체. **읽지 못했으면 `null`** — 빈 배열과 구분된다.
+ *
+ * 이 구분이 없을 때 실제로 난 사고: `getAll` 이 데드라인에 걸려 `[]` 를 돌려주면 워커는
+ * 「큐가 비었다」로 읽고 그대로 쉰다. 배지는 부팅 때 채운 메모리 인덱스를 보므로 N 이
+ * 그대로 떠 있고, 사용자가 FAB 을 눌러도 같은 빈 배열이 나와 아무 시도도 일어나지 않는다.
+ * 항목은 앱을 다시 깔아도 IndexedDB 에 남아 영영 갇힌다.
+ *
+ * **저장소가 아예 없는 것**(시크릿 모드 등)과는 구분한다. 그때는 내구화된 항목도 존재할 수
+ * 없으므로 「비었다」가 참이고, 영영 재시도해 봐야 소용이 없다 — 빈 배열로 답한다.
+ * `null` 은 「스토어는 있는데 이번 읽기를 못 했다」는 뜻이며 그 경우에만 판단을 미룬다.
+ *
+ * @returns {Promise<Array|null>} null = 읽기 실패(모름)
+ */
 export async function listPending(uid) {
     const db = await ensureDb();
-    if (!db) return [];
-    const rows = await getAll(db, STORE);
+    if (!db) return []; // 저장소 자체가 없다 = 담긴 것도 없다 (§4.2 — 이때는 조용히 비어 있는 게 맞다)
+    const rows = await getAllOrNull(db, STORE);
+    if (rows === null) {
+        diag('outbox.list.failed', { uid: uid ? String(uid).slice(0, 8) : '' });
+        return null;
+    }
     return rows
         .filter((r) => !uid || r.uid === uid)
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
@@ -304,12 +331,41 @@ export async function markAttempt(key, error, permanent = false) {
     return ok;
 }
 
+/**
+ * 영구 실패 표식만 푼다. **`attempts` 와 `lastError` 는 건드리지 않는다.**
+ *
+ * 사용자가 재전송을 직접 누른 것이 §4.4 가 말하는 「개입」이다. 그때까지 이 상태에는
+ * 빠져나올 길이 아예 없었다 — 워커는 permanent 를 거르고, 배지는 그것까지 세고,
+ * content 등급은 만료도 없어서 항목이 영원히 갇혔다.
+ *
+ * attempts 를 함께 리셋하면 백오프 시계가 0 으로 돌아가 6초 틱마다 재시도하는 뜨거운
+ * 루프가 된다(ops.saveSettings 의 `fromOutbox` 가드가 막는 것과 같은 함정). 그래서
+ * 표식만 푼다 — 다시 실패하면 워커가 그 자리에서 도로 permanent 로 찍는다.
+ *
+ * @returns {Promise<boolean>} 실제로 풀었는지 (원래 permanent 가 아니었으면 false)
+ */
+export async function clearPermanent(key) {
+    const db = await ensureDb();
+    if (!db) return false;
+    const row = await idbGet(db, STORE, key);
+    if (!row || row.permanent !== true) return false;
+    const ok = await idbPut(db, STORE, { ...row, permanent: false });
+    if (ok) {
+        liveIndex.set(key, { uid: row.uid, permanent: false });
+        notifyIndexChanged();
+        diag('outbox.permanent.cleared', { key: String(key).slice(0, 60), attempts: row.attempts || 0 });
+    }
+    return ok;
+}
+
 /** 배지·표시용 — 아웃박스 크기가 곧 「아직 안 올라간 개수」다 (§4.3) */
 export async function pendingCount(uid) {
     const db = await ensureDb();
     if (!db) return 0;
     if (!uid) return idbCount(db, STORE);
-    return (await listPending(uid)).length;
+    // 읽기 실패는 0 이 아니다 — 모르면 메모리 인덱스가 아는 값을 쓴다
+    const rows = await listPending(uid);
+    return rows === null ? pendingCountSync(uid) : rows.length;
 }
 
 /** id 로 아웃박스에 있는지 — find-unique-meals 의 orphan 보호가 이 한 줄로 대체된다 */
@@ -349,6 +405,7 @@ export async function purgeUser(uid) {
     const db = await ensureDb();
     if (!db || !uid) return 0;
     const rows = await listPending(uid);
+    if (rows === null) return 0; // 못 읽었으면 지우지도 않는다
     let n = 0;
     for (const r of rows) {
         if (await idbDel(db, STORE, r.key)) {

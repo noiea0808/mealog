@@ -406,7 +406,26 @@ service cloud.firestore {
         && request.resource.data.scheduledAt is timestamp;
       allow update, delete: if isAdmin();
     }
-    
+
+    // ============================================
+    // 푸시 메시지 풀 (adminPushMessages) — 관리자만 조회, 쓰기는 Functions(Admin SDK) 전용
+    // ============================================
+    // useCount·lastUsedAt 등 집계 필드를 클라이언트가 임의로 손대지 못하게 쓰기를 막는다.
+    match /artifacts/{appId}/adminPushMessages/{messageId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ============================================
+    // 푸시 순환 설정·덱 상태 (adminPushRotations) — 관리자만 조회, 쓰기는 Functions 전용
+    // ============================================
+    // 덱(deckRemaining/deckServed)은 "한 바퀴 안 중복 없음"을 담보하는 상태다.
+    // 클라이언트가 직접 건드릴 수 있으면 그 보장이 무너지므로 쓰기를 막는다.
+    match /artifacts/{appId}/adminPushRotations/{rotationId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // ============================================
     // 팝업 (popups 컬렉션) - 관리자 작성, 사용자 읽기, 조회/클릭 수는 로그인 사용자 업데이트 허용
     // ============================================
@@ -545,6 +564,15 @@ service cloud.firestore {
     // 경로 규칙과 별도로, collection group 쿼리·집계에 필요 (쓰기는 기존 users/meals 규칙만 사용)
     // ============================================
     match /{path=**}/meals/{mealId} {
+      allow read: if isAdmin();
+    }
+
+    // ============================================
+    // Collection group 'config' — 관리자 대시보드의 하루 소감(dailyComments) 집계용
+    // 위쪽 users/{userId}/config 규칙은 경로가 고정돼 있어 collection group 쿼리에는
+    // 적용되지 않는다. 이게 없어서 하루 소감 집계가 permission-denied 로 실패해 왔다.
+    // ============================================
+    match /{path=**}/config/{configId} {
       allow read: if isAdmin();
     }
   }

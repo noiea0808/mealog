@@ -10,16 +10,82 @@ import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-ch
 import { renderMainAnalysisTopIcons, renderSnackAnalysisTopIcons, setAnalysisTopIconsVisible } from './analysis-top-icons.js';
 import { toLocalDateString } from '../utils.js';
 import { showToast } from '../ui.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import {
     computeMainMealKpiFromRecords,
     computeMainMealKpiDenominator,
 } from './meal-kpi-count.js';
+import { effectiveSnackTypeForAnalytics, effectiveCuisineForAnalytics } from './meal-analytics-tags.js';
 
 /** 참견 탭 일시 비활성 — 선택 시 공사중 플로팅만 표시 */
 const MEALDANG_COMMENT_TAB_CLOSED = true;
 
 const MEAL_SLOTS = ['morning', 'lunch', 'dinner'];
 const SNACK_SLOTS = ['pre_morning', 'snack1', 'snack2', 'night'];
+
+/** 차트 표본 필터용 — 공백만 든 값은 없는 것으로 본다 */
+function hasValue(v) {
+    return String(v ?? '').trim() !== '';
+}
+
+/**
+ * 분석 '무엇을' 차트가 보고 있는 절단면.
+ *   'category' — 사용자가 고른 형태 축 (밥류·면류·국물요리…)
+ *   'cuisine'  — 음식 이름에서 자동으로 붙는 요리 종류 (한식·중식…)
+ *
+ * 저장하지 않는다. 형태 축이 사용자가 고른 값이라 기본이어야 하고, 종류는 "궁금할 때
+ * 잠깐 들춰보는" 쪽이다 — 탭을 떠나면 기본으로 돌아오는 게 맞다.
+ */
+let whatAxisMode = 'category';
+
+/** 마지막으로 '무엇을' 차트를 그린 표본 — 토글 시 재계산 없이 다시 그리기 위해 들고 있는다 */
+let lastWhatAxisRecords = [];
+
+/**
+ * '무엇을' 차트 한 칸을 현재 절단면으로 그린다.
+ *
+ * 종류 모드는 **표본이 다르다.** 형태 축은 칩이 비어 있으면 셀 수 없고(m.category),
+ * 종류는 상세 텍스트나 cuisineAuto 가 있어야 셀 수 있다. 같은 기간이라도 분모가
+ * 달라지므로 필터를 각각 건다.
+ *
+ * @param {any[]} [records] 기간·슬롯 필터가 끝난 끼니 기록. 생략하면 마지막 렌더의 표본을
+ *   그대로 다시 쓴다 — 절단면만 갈아 끼우는 데 대시보드 전체를 다시 계산할 이유가 없다.
+ */
+function renderWhatAxisChart(records) {
+    if (Array.isArray(records)) lastWhatAxisRecords = records;
+    const mainForCharts = lastWhatAxisRecords;
+    const noteEl = document.getElementById('categoryChartNote');
+    if (whatAxisMode !== 'cuisine') {
+        /**
+         * `m.category` 만 보면 **추천 칩을 확정하지 않고 저장한 기록이 통째로 빠진다.**
+         * 텍스트만 적고 넘어가는 게 지금의 기본 동선이라(js/modals/entry-category-suggest.js)
+         * 확정한 한두 건이 100%를 차지하는 화면이 나왔다. 대표 패턴 아이콘은 이미 categoryAuto
+         * 를 포함하고 있어서(js/analytics/analysis-top-icons.js) 같은 기간인데 아이콘과 차트의
+         * 숫자가 갈렸다 — 규칙을 그쪽에 맞춘다.
+         */
+        const formRows = mainForCharts.filter((m) => hasValue(m?.category) || hasValue(m?.categoryAuto));
+        renderProportionChart('categoryChartContainer', formRows, 'category');
+        if (noteEl) {
+            noteEl.textContent = '';
+            noteEl.classList.add('hidden');
+        }
+        return;
+    }
+
+    const rows = mainForCharts.filter((m) => effectiveCuisineForAnalytics(m));
+    renderProportionChart('categoryChartContainer', rows, 'cuisine');
+    if (!noteEl) return;
+    /**
+     * 안내는 **표본이 0일 때만** 한다. 긴 기간은 기록 원문 대신 dailyStats 집계를 펼쳐
+     * 쓰는데(statsToFilteredData) 그 가상 레코드에는 상세 텍스트가 없어 종류를 계산할
+     * 길이 없다 — 차트의 '데이터가 없습니다'만 두면 그게 "안 먹었다"로 읽힌다.
+     * 기록이 아예 없는 기간은 차트 쪽 문구로 충분하므로 덧붙이지 않는다.
+     */
+    noteEl.textContent = rows.length === 0 && mainForCharts.length > 0
+        ? '이 기간은 요약 집계만 남아 있어 종류를 계산할 수 없어요. 기간을 좁히면 볼 수 있어요.'
+        : '';
+    noteEl.classList.toggle('hidden', !noteEl.textContent);
+}
 
 /** dailyStats에서 기간별 merged 데이터를 가상 record 배열로 변환 (차트용) + mainCount, snackCount */
 function statsToFilteredData(dailyStats, startStr, endStr) {
@@ -335,7 +401,7 @@ export async function updateDashboard() {
     
     // 식사 분석 차트 (메인태그만 사용 - 상세입력항목 아님)
     renderProportionChart('propChartContainer', mainForCharts.filter(m => m.mealType), 'mealType');
-    renderProportionChart('categoryChartContainer', mainForCharts.filter(m => m.category), 'category');
+    renderWhatAxisChart(mainForCharts);
     renderProportionChart('mateChartContainer', mainForCharts.filter(m => m.withWhom), 'withWhom');
     renderProportionChart('ratingChartContainer', mainForCharts.filter(m => m.rating), 'rating');
     renderProportionChart('satietyChartContainer', mainForCharts.filter(m => m.satiety), 'satiety');
@@ -437,9 +503,14 @@ export async function updateDashboard() {
     const totalRec = computeMainMealKpiDenominator(targetDays, extraMain, slotsPerDay);
     const mealPercent = totalRec > 0 ? Math.round((recCount / totalRec) * 100) : 0;
     
+    /**
+     * snackType 원문이 아니라 해석값으로 센다 — 자동 분류로 저장된 간식은
+     * snackType이 비어 있고 categoryAuto에 값이 있다(저장 규칙: entry-save-record.js).
+     * 원문만 보면 그런 기록이 KPI에서 통째로 빠진다.
+     */
     const snackCount = (hasMealHistoryData ? null : statsSnackCount) ?? filteredData.filter(m => {
         const slot = SLOTS.find(s => s.id === m.slotId && s.type === 'snack');
-        return slot && m.snackType;
+        return slot && effectiveSnackTypeForAnalytics(m);
     }).length;
     
     // 식사 기록 표시 (undefined 방지)
@@ -864,8 +935,33 @@ export function navigatePeriod(direction) {
     }
 }
 
+/**
+ * '무엇을' 차트의 절단면 전환 (형태 ↔ 종류). 카드 헤더의 세그먼트 버튼 위임.
+ * 요소가 카드 안에 고정이라 위임 대상은 문서가 아니라 스위치 자신이면 충분하다.
+ */
+function bindWhatAxisSwitch() {
+    const sw = document.querySelector('.analysis-axis-switch');
+    if (!sw || sw.dataset.bound === '1') return;
+    sw.dataset.bound = '1';
+    sw.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-what-axis]');
+        if (!btn) return;
+        const next = btn.getAttribute('data-what-axis');
+        if (!next || next === whatAxisMode) return;
+        whatAxisMode = next;
+        sw.querySelectorAll('[data-what-axis]').forEach((b) => {
+            const on = b.getAttribute('data-what-axis') === next;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        renderWhatAxisChart();
+        if (next === 'cuisine') logUsageMetric('mealdang_analysis_cuisine_axis').catch(() => {});
+    });
+}
+
 /** 건강 상세 차트 토글 (식사/간식은 기본 전체 노출) */
 export function initDashboardAnalysisUi() {
+    bindWhatAxisSwitch();
     document.querySelectorAll('.dashboard-vital-detail-btn').forEach((btn) => {
         if (btn.dataset.bound === '1') return;
         btn.dataset.bound = '1';

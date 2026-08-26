@@ -158,6 +158,28 @@ export async function tryExifDateFromImageSrc(src) {
 }
 
 /**
+ * 사진 파일에 EXIF GPS 좌표가 **존재하는지만** 확인한다. 좌표값은 반환하지 않는다.
+ *
+ * 용도는 계측 한정 (사진 GPS 기반 '어디서' 제안 투자 판단용 존재율 측정).
+ * 좌표를 밖으로 내보내는 API를 일부러 만들지 않는다 — 위치는 민감정보라
+ * "존재 여부"와 "좌표 자체"의 취급 등급이 다르다.
+ *
+ * @param {File} file
+ * @returns {Promise<boolean|null>} true=있음, false=없음, null=판정 불가(파싱 실패 등)
+ */
+export async function hasExifGpsInImageFile(file) {
+    if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) return null;
+    try {
+        const mod = await import('https://esm.sh/exifr@7.1.3');
+        const exifr = mod.default || mod;
+        const gps = await exifr.gps(file);
+        return Number.isFinite(gps?.latitude) && Number.isFinite(gps?.longitude);
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
  * 사진 파일 EXIF에서 촬영 시각 → "HH:mm" (로컬). 없으면 null.
  */
 export async function tryExifTimeHHmmFromImageFile(file) {

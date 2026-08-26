@@ -31,6 +31,22 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
+import {
+    HOUR_BUCKETS,
+    hourSlotForMealDoc,
+    hourSlotForJournalEntry
+} from './dashboard-hour-buckets.js';
+import {
+    rescanStartDateKey,
+    rescanFromWeekIndex,
+    mergeWeeklyArray,
+    mergeWeeklyMap,
+    mergeUniqueArray,
+    totalWithOutsideWeeks,
+    isRetroactive,
+    canUseIncremental,
+    needsWeeklyFullRefresh
+} from './dashboard-incremental.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
     writeDashboardUserDrilldown,
@@ -47,20 +63,80 @@ const DASHBOARD_STATS_RANGE_START = new Date(2026, 2, 8);
 /** usageDaily 문서 ID 하한 (YYYY-MM-DD, 운영 시작일과 맞춤) */
 const USAGE_DAILY_MIN_ID = dateKeyFromLocalDate(DASHBOARD_STATS_RANGE_START) || '2026-03-08';
 
-/** 관리자 「페이지별」표 행 정의 (usageDaily 필드명과 동일) */
-export const PAGE_USAGE_METRIC_DEFS = [
+/**
+ * 「페이지별」탭 행 — 화면 방문·조작 수.
+ * @type {{field: string, section: string, label: string}[]}
+ */
+const PAGE_VIEW_METRIC_DEFS = [
     { field: 'tab_mealdang', section: '밀당', label: '탭 방문' },
     { field: 'mealdang_comment_click', section: '밀당', label: '코멘트 클릭' },
     { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
+    { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
     { field: 'lounge_notice', section: '라운지', label: '공지' },
     { field: 'settings_profile', section: '사용자', label: '프로필' },
-    { field: 'settings_tags', section: '사용자', label: '태그 관리' },
+    // 마이 > 태그 탭은 없어졌다(나만의 태그 제거) — 호출부가 없어 더 오르지 않지만 과거 이력이 남아 있다
+    { field: 'settings_tags', section: '사용자', label: '태그 관리(폐지)' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
     { field: 'settings_push', section: '사용자', label: '푸시 알림' }
+];
+
+/**
+ * 「기록」탭 행 — 기록 시트 안에서 벌어지는 일.
+ *
+ * 페이지 방문 수와 성격이 다르다. 이쪽은 **제안이 맞았는지**를 재는 지표라 행 하나만
+ * 보면 뜻이 없고 짝을 이뤄야 읽힌다 (표시 대비 채택, 표시 대비 교정). 그래서 표를
+ * 나눴다 — 페이지별 표에 섞어 두면 두 종류의 숫자가 같은 축으로 읽힌다.
+ *
+ * @type {{field: string, section: string, label: string}[]}
+ */
+const RECORD_USAGE_METRIC_DEFS = [
+    // 완주율의 분모·분자 — 열었는데 저장까지 갔나 (js/modals/entry-sheet-session.js)
+    { field: 'entry_sheet_opened', section: '시트', label: '시트 열기(신규)' },
+    { field: 'entry_sheet_saved', section: '시트', label: '저장까지 완료' },
+    // 내용 없이 그냥 닫음 — 열어만 보고 나간 것
+    { field: 'entry_sheet_abandoned', section: '시트', label: '내용 없이 닫음' },
+    // 쓰다가 버림(나가기 확인) — 같은 이탈이라도 신호의 세기가 다르다
+    { field: 'entry_sheet_discarded', section: '시트', label: '쓰다가 버림' },
+    { field: 'what_recall_shown', section: '무엇을', label: '자주 먹는 것 표시' },
+    { field: 'what_recall_picked', section: '무엇을', label: '자주 먹는 것 선택' },
+    { field: 'what_typeahead_shown', section: '무엇을', label: '자동완성 표시' },
+    { field: 'what_typeahead_picked', section: '무엇을', label: '자동완성 선택' },
+    { field: 'category_suggest_shown', section: '분류 추천', label: '추천 표시' },
+    { field: 'category_suggest_confirmed', section: '분류 추천', label: '추천 확정(탭)' },
+    // 제안을 손대지 않고 저장 = 자동값 채택 (entry-and-core.js) — 확정과 합쳐야 채택률이 된다
+    { field: 'category_suggest_auto_saved', section: '분류 추천', label: '추천 그대로 저장' },
+    { field: 'category_suggest_grid_opened', section: '분류 추천', label: '다른 구분 열기' },
+    { field: 'category_suggest_dismissed', section: '분류 추천', label: '분류 안 함' },
+    { field: 'category_suggest_undismissed', section: '분류 추천', label: '분류 안 함 취소' },
+    { field: 'context_predict_shown', section: '맥락 줄', label: '맥락 줄 표시' },
+    { field: 'context_predict_applied', section: '맥락 줄', label: '맞아요(적용)' },
+    { field: 'context_predict_dismissed', section: '맥락 줄', label: '거부' },
+    // 손대지 않고 저장 = 추측이 그대로 적용된 기록 — 교정률의 분모
+    { field: 'context_predict_auto_saved', section: '맥락 줄', label: '그대로 저장' },
+    { field: 'context_place_typed', section: '맥락 줄', label: '어디서 직접 입력' },
+    { field: 'context_sub_picked', section: '맥락 줄', label: '누구와 세부 선택' },
+    { field: 'context_sub_added', section: '맥락 줄', label: '누구와 세부 추가' },
+    { field: 'context_sub_deleted', section: '맥락 줄', label: '누구와 세부 삭제' },
+    { field: 'photo_gps_present', section: '사진', label: '위치정보 있음' },
+    { field: 'photo_gps_absent', section: '사진', label: '위치정보 없음' }
+];
+
+/**
+ * 두 탭의 행 정의를 이어 붙인 것 — **집계·캐시는 하나로 돈다.**
+ *
+ * usageDaily 문서는 필드가 한 벌이고 읽기도 한 번이라, 표만 갈라 두고 데이터 경로는
+ * 건드리지 않는다. 표시는 `group` 으로 거른다 (applyUsageTableGroupFilter).
+ *
+ * ⚠️ 같은 `section` 은 **반드시 연속**이어야 한다 — 구분 셀이 rowspan 으로 묶이므로
+ * 흩어지면 표가 어긋난다 (computePageUsageSectionRowspans).
+ */
+export const PAGE_USAGE_METRIC_DEFS = [
+    ...PAGE_VIEW_METRIC_DEFS.map((d) => ({ ...d, group: 'page' })),
+    ...RECORD_USAGE_METRIC_DEFS.map((d) => ({ ...d, group: 'record' }))
 ];
 
 function zeroPageUsageTotals() {
@@ -143,6 +219,27 @@ function normalizePageUsageWeeklyForRender(raw) {
 /** 행 정의·레이아웃이 바뀌면 tbody를 다시 생성 */
 let _pageUsageTableBuildKey = '';
 
+/** 지금 보고 있는 탭 — tbody 재생성 시 숨김을 복원하는 데 쓴다 */
+let _usageTableGroup = 'page';
+
+/**
+ * 페이지별·기록 탭은 **같은 표를 나눠 본다.** 집계가 한 벌이라 행을 거르는 편이
+ * 표를 둘로 만드는 것보다 단순하다 — 주차 열 삽입·가로 스크롤 로직이 그대로 산다.
+ *
+ * 구분 셀이 rowspan 으로 여러 행을 덮지만, 섹션은 그룹 경계를 넘지 않으므로
+ * 블록이 통째로 숨겨진다 (PAGE_USAGE_METRIC_DEFS 주석).
+ *
+ * @param {'page'|'record'} group
+ */
+function applyUsageTableGroupFilter(group) {
+    _usageTableGroup = group === 'record' ? 'record' : 'page';
+    document.querySelectorAll('tr[data-usage-group]').forEach((tr) => {
+        tr.classList.toggle('hidden', tr.getAttribute('data-usage-group') !== _usageTableGroup);
+    });
+    document.getElementById('dashboardPageUsageHelp')?.classList.toggle('hidden', _usageTableGroup !== 'page');
+    document.getElementById('dashboardRecordUsageHelp')?.classList.toggle('hidden', _usageTableGroup !== 'record');
+}
+
 function computePageUsageSectionRowspans() {
     const n = PAGE_USAGE_METRIC_DEFS.length;
     /** @type {number[]} rowspan > 0 = 첫 행에 출력, -1 = 구분 셀 생략(위 행 rowspan) */
@@ -164,7 +261,7 @@ function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v6-page-week-darker-sums`;
+    const buildKey = `${n}-v7-page-record-split`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
@@ -198,9 +295,11 @@ function ensurePageUsageTableBody() {
                 `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
             );
         }
-        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}">${cells.join('')}</tr>`;
+        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
     }).join('');
     _pageUsageTableBuildKey = buildKey;
+    // tbody를 다시 만들면 숨김이 풀린다 — 지금 보고 있는 탭으로 되돌린다
+    applyUsageTableGroupFilter(_usageTableGroup);
 }
 
 function renderPageUsage7dHeaders(dates) {
@@ -544,17 +643,21 @@ export function switchDashboardSubtab(which) {
     const excludedPanel = document.getElementById('dashboard-panel-excluded');
     const btnTrend = document.getElementById('dashboard-subtab-trend');
     const btnPage = document.getElementById('dashboard-subtab-page');
+    const btnRecord = document.getElementById('dashboard-subtab-record');
     const btnExcluded = document.getElementById('dashboard-subtab-excluded');
     const active =
         'px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors shrink-0';
     const idle =
         'px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors shrink-0';
-    const w = which === 'page' ? 'page' : which === 'excluded' ? 'excluded' : 'trend';
+    const w = which === 'page' || which === 'record' || which === 'excluded' ? which : 'trend';
+    // 페이지별·기록은 같은 패널을 그룹 필터로 나눠 쓴다 (applyUsageTableGroupFilter)
+    const usesUsagePanel = w === 'page' || w === 'record';
     if (trendPanel) trendPanel.classList.toggle('hidden', w !== 'trend');
-    if (pagePanel) pagePanel.classList.toggle('hidden', w !== 'page');
+    if (pagePanel) pagePanel.classList.toggle('hidden', !usesUsagePanel);
     if (excludedPanel) excludedPanel.classList.toggle('hidden', w !== 'excluded');
     if (btnTrend) btnTrend.className = w === 'trend' ? active : idle;
     if (btnPage) btnPage.className = w === 'page' ? active : idle;
+    if (btnRecord) btnRecord.className = w === 'record' ? active : idle;
     if (btnExcluded) btnExcluded.className = w === 'excluded' ? active : idle;
     if (w === 'excluded') {
         import('./excluded-analytics-admin.js').then((m) => m.loadExcludedAnalyticsAdminPanel());
@@ -562,7 +665,8 @@ export function switchDashboardSubtab(which) {
     if (w === 'trend') {
         scrollDashboardTrendTableToRight();
     }
-    if (w === 'page') {
+    if (usesUsagePanel) {
+        applyUsageTableGroupFilter(w);
         scrollDashboardPageTableToRight();
     }
 }
@@ -570,10 +674,14 @@ export function switchDashboardSubtab(which) {
 const RECORD_SLOT_7D_PREFIXES = SLOTS.map((s) => `statRecSlot_${s.id}_7d`);
 const RECORD_SLOT_7_SUM_IDS = SLOTS.map((s) => `statRecSlot_${s.id}_7Sum`);
 
+const RECORD_HOUR_7D_PREFIXES = ['statRecHourTotal_7d', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_7d`)];
+const RECORD_HOUR_7_SUM_IDS = ['statRecHourTotal_7Sum', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_7Sum`)];
+
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
     'statDailyJournal7d',
+    ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
 ];
 
@@ -581,11 +689,27 @@ const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
     'statDailyJournal7Sum',
+    ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
 ];
 
 /** config/settings dailyComments 스캔 상한 (관리자 새로고침 시 1회) */
 const DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP = 10000;
+
+/**
+ * 시간대 버킷 배열들을 칸마다 더한 「기록 시각 기준 합계」.
+ * 별도로 저장하지 않고 파생시켜야 합계와 내역이 어긋날 일이 없다.
+ */
+function sumHourBucketArrays(byBucket, length) {
+    if (!byBucket) return null;
+    const total = Array.from({ length }, () => 0);
+    for (const b of HOUR_BUCKETS) {
+        const arr = byBucket[b.id];
+        if (!Array.isArray(arr)) continue;
+        for (let i = 0; i < length; i++) total[i] += Number(arr[i]) || 0;
+    }
+    return total;
+}
 
 /** 일별 7칸이 있으면 합계, 없으면 null */
 function sumSevenDaily(values) {
@@ -650,12 +774,19 @@ function cloneLast7Breakdown(raw) {
     for (const s of SLOTS) {
         recordsBySlot[s.id] = pick(rbs[s.id]);
     }
+    const rbh = raw.recordsByHour && typeof raw.recordsByHour === 'object' ? raw.recordsByHour : null;
+    const recordsByHour = {};
+    for (const b of HOUR_BUCKETS) {
+        recordsByHour[b.id] = pick(rbh?.[b.id]);
+    }
     return {
         dates: [...raw.dates],
         newUsers: pick(raw.newUsers),
         activeUsers: pick(raw.activeUsers),
         records: pick(raw.records),
         recordsBySlot,
+        // 시간대는 나중에 추가된 필드라 옛 캐시엔 없다 — 없으면 '—'로 두려고 통째로 뺀다
+        ...(rbh ? { recordsByHour } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
         dailyJournal: pick(raw.dailyJournal)
     };
@@ -689,6 +820,13 @@ function cloneWeeklyBreakdown(raw) {
     for (const s of SLOTS) {
         recordsBySlot[s.id] = pickWeekArr(rbs[s.id], n);
     }
+    const rbh = raw.recordsByHour && typeof raw.recordsByHour === 'object' ? raw.recordsByHour : null;
+    const recordsByHour = {};
+    if (rbh) {
+        for (const b of HOUR_BUCKETS) {
+            recordsByHour[b.id] = pickWeekArr(rbh[b.id], n);
+        }
+    }
     const monthGroups = buildMonthHeaderGroupsWithStarts(weeks);
     const rawMonthU = raw.activeUsersMonthUnique;
     let activeUsersMonthUnique;
@@ -702,6 +840,8 @@ function cloneWeeklyBreakdown(raw) {
         activeUsers: pickWeekArr(raw.activeUsers, n),
         records: pickWeekArr(raw.records, n),
         recordsBySlot,
+        // 옛 캐시(시간대 필드 이전)에는 없다 — 없으면 행이 '—'로 남는다
+        ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
@@ -930,6 +1070,11 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
         const id = key.slice(5);
         return weeklyBreakdown.recordsBySlot?.[id] || [];
     }
+    if (key === 'hourTotal') return weeklyBreakdown.recordsByHourTotal || [];
+    if (key.startsWith('hour:')) {
+        const id = key.slice(5);
+        return weeklyBreakdown.recordsByHour?.[id] || [];
+    }
     return [];
 }
 
@@ -1111,11 +1256,20 @@ function resolveWeeklyLayoutForPagePanel(pageUsage, fallbackWeekly) {
 const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', 'dashboardStats');
 
 /**
+ * 「전체」열을 세는 slotId 목록.
+ * 뒤에 붙은 'daily_journal'은 슬롯 행이 아니라 **하루 소감 meals 미러**의 건수다 —
+ * 하루 소감은 config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서,
+ * 미러 수를 알아야 「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ */
+const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal'];
+const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.length - 1;
+
+/**
  * 컬렉션 그룹 `slotId` 인덱스가 없을 때(aggregation failed-precondition):
  * 각 사용자 `users/{uid}/meals`에서 슬롯별 count를 더해 전체 건수 산출 (새로고침 1회당 읽기 다량).
  */
 async function countMealsSlotAllViaUserSubcollections(userIds, countQFn) {
-    const totals = SLOTS.map(() => 0);
+    const totals = MEAL_COUNT_SLOT_IDS.map(() => 0);
     const UID_BATCH = 8;
     for (let i = 0; i < userIds.length; i += UID_BATCH) {
         const chunk = userIds.slice(i, i + UID_BATCH);
@@ -1123,9 +1277,9 @@ async function countMealsSlotAllViaUserSubcollections(userIds, countQFn) {
             chunk.map(async (uid) => {
                 const mc = collection(db, 'artifacts', appId, 'users', uid, 'meals');
                 const counts = await Promise.all(
-                    SLOTS.map(async (s) => {
+                    MEAL_COUNT_SLOT_IDS.map(async (sid) => {
                         try {
-                            return await countQFn(query(mc, where('slotId', '==', s.id)));
+                            return await countQFn(query(mc, where('slotId', '==', sid)));
                         } catch {
                             return 0;
                         }
@@ -1166,12 +1320,19 @@ function weekIndexForDateKeyStr(dateKeyStr, sundayKeyToIndex) {
     return sk && sundayKeyToIndex.has(sk) ? sundayKeyToIndex.get(sk) : -1;
 }
 
-export async function getUserStatistics() {
+/**
+ * 관리자 「새로고침」 전용 집계.
+ *
+ * @param {{mode?: 'full'|'incremental', cached?: object|null}} [options]
+ *   `incremental` 이면 지난 집계 이후 달라진 것만 읽어 캐시에 얹는다.
+ *   캐시가 없거나 주차 구성이 어긋나면 알아서 전량으로 되돌아간다.
+ */
+export async function getUserStatistics(options = {}) {
     try {
+        const wantIncremental = options?.mode === 'incremental';
+        const cachedForIncremental = options?.cached || null;
         const excluded = await getExcludedAnalyticsUidSet();
         const usersColl = collection(db, 'artifacts', appId, 'users');
-        const usersSnapshot = await getDocs(usersColl);
-        const usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
 
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1240,11 +1401,43 @@ export async function getUserStatistics() {
         const slotAgg = {};
         for (const s of SLOTS) slotAgg[s.id] = emptySlotAgg();
 
+        /**
+         * 시간대 집계. 슬롯과 달리 「전체」를 count 쿼리로 못 센다 —
+         * 문서에 시간대 필드가 없어 where를 걸 수 없다. 그래서 rangeAll(스캔 구간 합계)로 채운다.
+         *
+         * 날짜 칸은 식사 날짜가 아니라 **기록한 날짜**로 잡는다. 그래서 끼니·간식 행과
+         * 열별 합계가 다를 수 있다 — 어제 끼니를 오늘 적으면 저쪽은 어제 칸, 이쪽은 오늘 칸이다.
+         */
+        const hourAgg = {};
+        for (const b of HOUR_BUCKETS) hourAgg[b.id] = { rangeAll: 0, last7: 0, today: 0, byDay: z7(), byWeek: zW() };
+        /**
+         * @param {{dateKey: string, bucketId: string}|null} slot 기록 시점(hourSlotFor* 산출)
+         *
+         * meals 스캔은 식사 날짜로 범위를 걸었으므로, 기록 날짜는 구간 밖으로 나갈 수 있다
+         * (운영 시작 전에 적어 둔 기록, 기기 시계가 앞선 기록). 그런 건 넣을 칸이 없어 버린다.
+         */
+        const addHourRecord = (slot) => {
+            if (!slot) return;
+            const { dateKey } = slot;
+            if (dateKey < firstSundayKey || dateKey > todayStr) return;
+            const a = hourAgg[slot.bucketId] || hourAgg.unknown;
+            a.rangeAll++;
+            const wi = weekIndexForDateKeyStr(dateKey, sundayKeyToIndex);
+            if (wi >= 0) a.byWeek[wi]++;
+            if (dateKey === todayStr) a.today++;
+            if (dateKey >= last7FirstStr) {
+                a.last7++;
+                const di = last7IndexMap.get(dateKey);
+                if (di != null && di >= 0) a.byDay[di]++;
+            }
+        };
+
         const stats = {
             newUsers: { all: 0, last7: 0, today: 0 },
             activeUsers: { all: 0, last7: 0, today: 0 },
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
+            recordsByHour: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
             dailyJournal: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
@@ -1260,19 +1453,71 @@ export async function getUserStatistics() {
         const countQ = async (q) => (await getCountFromServer(q)).data().count ?? 0;
 
         const emptyMealsSnap = { forEach() {} };
-        const [recordsAllCountRaw, mealsRangeSnap] = await Promise.all([
+
+        /**
+         * 증분 가능 여부. 여기서 한 번 정하고 아래 전부가 이 값을 따른다 —
+         * 중간에 갈리면 어떤 칸은 캐시, 어떤 칸은 재계산이 되어 표가 섞인다.
+         */
+        const incr = wantIncremental
+            ? canUseIncremental(cachedForIncremental, weekMetas)
+            : { ok: false, reason: 'full-requested' };
+        const useIncremental = incr.ok && nWeeks > 0;
+        if (wantIncremental && !useIncremental) {
+            console.warn('[대시보드] 증분 집계를 쓸 수 없어 전량으로 집계합니다:', incr.reason);
+        }
+
+        /** 캐시를 버리고 다시 세는 구간의 시작 날짜 (전량이면 운영 시작 주) */
+        const rescanStartKey = useIncremental
+            ? rescanStartDateKey(todayStr, sundayKeyForDateKey(todayStr))
+            : firstSundayKey;
+        /** 이 주차 인덱스부터는 캐시를 쓰지 않는다 */
+        const rescanFromIdx = useIncremental ? rescanFromWeekIndex(weekMetas, rescanStartKey) : 0;
+        const lastAggregatedAt = useIncremental ? String(cachedForIncremental.lastAggregatedAt) : '';
+
+        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap] = await Promise.all([
             countQ(query(mealsCg)),
             nWeeks > 0
-                ? getDocs(query(mealsCg, where('date', '>=', firstSundayKey), where('date', '<=', todayStr)))
+                ? getDocs(query(mealsCg, where('date', '>=', rescanStartKey), where('date', '<=', todayStr)))
+                : Promise.resolve(emptyMealsSnap),
+            // 소급 입력분: 지난 집계 뒤에 적혔지만 과거 날짜를 가리키는 기록
+            useIncremental
+                ? getDocs(query(mealsCg, where('recordedAt', '>', lastAggregatedAt)))
                 : Promise.resolve(emptyMealsSnap)
         ]);
         let recordsAllCount = recordsAllCountRaw;
+
+        /**
+         * 사용자 목록. 증분에서는 다시 세는 구간에 가입한 사람만 읽는다 —
+         * 그 이전 가입자의 주차 칸은 캐시가 들고 있고, 가입일은 나중에 바뀌지 않는다.
+         * 전체 인원수만 count 로 따로 센다(문서를 읽지 않는다).
+         */
+        const rescanStartDate = (() => {
+            const p = String(rescanStartKey || '').split('-');
+            if (p.length !== 3) return DASHBOARD_STATS_RANGE_START;
+            const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+            d.setHours(0, 0, 0, 0);
+            return Number.isNaN(d.getTime()) ? DASHBOARD_STATS_RANGE_START : d;
+        })();
+        const usersSnapshot = useIncremental
+            ? await getDocs(query(usersColl, where('createdAt', '>=', Timestamp.fromDate(rescanStartDate))))
+            : await getDocs(usersColl);
+        let usersFromCollection;
+        if (useIncremental) {
+            let n = await countQ(query(usersColl));
+            for (const exUid of excluded) {
+                const exSnap = await getDoc(doc(usersColl, exUid));
+                if (exSnap.exists()) n -= 1;
+            }
+            usersFromCollection = Math.max(0, n);
+        } else {
+            usersFromCollection = usersSnapshot.docs.filter((d) => !excluded.has(d.id)).length;
+        }
 
         const userIdsForSlots = usersSnapshot.docs.map((d) => d.id).filter((uid) => !excluded.has(uid));
         let slotAllArr;
         try {
             slotAllArr = await Promise.all(
-                SLOTS.map((s) => countQ(query(mealsCg, where('slotId', '==', s.id))))
+                MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
             );
         } catch (e) {
             if (e?.code === 'failed-precondition') {
@@ -1289,20 +1534,48 @@ export async function getUserStatistics() {
         for (const exUid of excluded) {
             const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
             recordsAllCount -= await countQ(query(mcEx));
-            for (let si = 0; si < SLOTS.length; si++) {
-                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', SLOTS[si].id)));
+            for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
+                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
             }
         }
 
         let recordsToday = 0;
         let recordsLast7 = 0;
+        /** meals 에 미러 문서가 있는 하루 소감 `${uid}|${date}` — 이중 계산 방지 */
+        const mirroredJournalKeys = new Set();
 
-        mealsRangeSnap.forEach((docSnap) => {
+        let dailyJournalAll = 0;
+        let dailyJournalToday = 0;
+        let dailyJournalLast7 = 0;
+        /**
+         * config 스캔이 하루 소감을 실제로 세었는지.
+         * 실패하면(권한·인덱스) 미러가 하루 소감의 **유일한** 출처가 되므로,
+         * 아래에서 미러를 빼면 그만큼 통째로 증발한다. 그 경우엔 빼지 않는다.
+         */
+        let journalCountedFromConfig = false;
+        /**
+         * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
+         * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
+         */
+        let dailyJournalUnmirroredToday = 0;
+        let dailyJournalUnmirroredLast7 = 0;
+        const dailyJournalUnmirroredByDay = z7();
+        const dailyJournalUnmirroredByWeek = zW();
+
+        /**
+         * @param {boolean} retroOnly 소급분 스냅숏인지.
+         *   참이면 다시 세는 구간 **밖**(과거 칸)을 가리키는 기록만 센다.
+         *   구간 안쪽은 mealsRangeSnap 이 이미 정확히 세었으므로, 여기서 또 세면 이중 계산이다.
+         */
+        const scanMealDoc = (docSnap, retroOnly) => {
             const mealData = docSnap.data();
             const dateStr = mealData.date;
             const uid = userIdFromMealDocRef(docSnap.ref);
             if (!dateStr || typeof dateStr !== 'string' || !uid) return;
             if (excluded.has(uid)) return;
+            if (retroOnly && !isRetroactive(dateStr, rescanStartKey)) return;
+            // 스캔 구간을 좁혔으므로 그보다 과거는 캐시가 담당한다 (전량 모드에선 firstSundayKey 라 무해)
+            if (dateStr < firstSundayKey) return;
 
             const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
             if (wi >= 0) {
@@ -1332,6 +1605,29 @@ export async function getUserStatistics() {
             }
 
             const sid = mealData.slotId;
+            // 하루 소감 미러는 아래 dailyComments 스캔에서 또 세지 않도록 표시해 둔다.
+            if (sid === 'daily_journal') {
+                mirroredJournalKeys.add(`${uid}|${dateStr}`);
+                /**
+                 * 증분에서는 config/settings 를 읽지 않는다 — dailyComments 가 맵이라
+                 * 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없어서다.
+                 * 대신 미러(2026-06-10 이후 항상 만들어진다)를 정본으로 삼는다.
+                 * 미러가 없던 시절의 옛 소감은 캐시에 이미 얼려져 있다.
+                 */
+                if (useIncremental) {
+                    dailyJournalAll++;
+                    if (wi >= 0) dailyJournalByWeek[wi]++;
+                    if (dateStr === todayStr) dailyJournalToday++;
+                    if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                        dailyJournalLast7++;
+                        const jdi = last7IndexMap.get(dateStr);
+                        if (jdi != null && jdi >= 0) dailyJournalByDay[jdi]++;
+                    }
+                }
+            }
+            addHourRecord(hourSlotForMealDoc(mealData));
+
+
             if (sid && slotAgg[sid]) {
                 if (wi >= 0) slotAgg[sid].byWeek[wi]++;
                 if (dateStr === todayStr) slotAgg[sid].today++;
@@ -1341,12 +1637,26 @@ export async function getUserStatistics() {
                     if (sdi != null && sdi >= 0) slotAgg[sid].byDay[sdi]++;
                 }
             }
-        });
+        };
 
-        let dailyJournalAll = 0;
-        let dailyJournalToday = 0;
-        let dailyJournalLast7 = 0;
+        mealsRangeSnap.forEach((d) => scanMealDoc(d, false));
+        mealsRetroSnap.forEach((d) => scanMealDoc(d, true));
+
+        if (useIncremental) {
+            console.log('[대시보드] 증분 집계:', {
+                rescanFrom: rescanStartKey,
+                rescanFromWeekIndex: rescanFromIdx,
+                since: lastAggregatedAt,
+                rescanDocs: mealsRangeSnap.size ?? 0,
+                retroDocs: mealsRetroSnap.size ?? 0
+            });
+        }
+
         try {
+            if (useIncremental) {
+                // 증분에서는 미러가 정본이라 config 를 아예 읽지 않는다 (아래 skip 참조)
+                throw { code: 'skip-config-scan' };
+            }
             const configGroup = collectionGroup(db, 'config');
             const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
             configSnap.forEach((docSnap) => {
@@ -1357,39 +1667,88 @@ export async function getUserStatistics() {
                 if (!dc || typeof dc !== 'object') return;
                 for (const [dateStr, raw] of Object.entries(dc)) {
                     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
-                    if (!dailyJournalHasContent(normalizeDailyJournalEntry(raw))) continue;
+                    const entry = normalizeDailyJournalEntry(raw);
+                    if (!dailyJournalHasContent(entry)) continue;
                     dailyJournalAll++;
                     const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
-                    if (wi >= 0) dailyJournalByWeek[wi]++;
-                    if (dateStr === todayStr) dailyJournalToday++;
+                    const mirrored = mirroredJournalKeys.has(`${uid}|${dateStr}`);
+                    /**
+                     * dailyComments 는 맵이라 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없다.
+                     * 그래서 증분에서도 전량을 훑되, **다시 세는 구간 밖은 세지 않는다** —
+                     * 그 몫은 캐시에 이미 들어 있어서, 여기서 또 세면 이중 계산이다.
+                     * (「전체」열만은 위에서 전량으로 센다)
+                     */
+                    const inRescanWindow = !useIncremental || dateStr >= rescanStartKey;
+                    if (!mirrored && inRescanWindow) {
+                        if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
+                        // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
+                        addHourRecord(hourSlotForJournalEntry(dateStr, entry));
+                    }
+                    if (wi >= 0 && inRescanWindow) dailyJournalByWeek[wi]++;
+                    if (dateStr === todayStr) {
+                        dailyJournalToday++;
+                        if (!mirrored) dailyJournalUnmirroredToday++;
+                    }
                     if (dateStr >= last7FirstStr && dateStr <= todayStr) {
                         dailyJournalLast7++;
                         const rdi = last7IndexMap.get(dateStr);
                         if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
+                        if (!mirrored) {
+                            dailyJournalUnmirroredLast7++;
+                            if (rdi != null && rdi >= 0) dailyJournalUnmirroredByDay[rdi]++;
+                        }
                     }
                 }
             });
+            journalCountedFromConfig = true;
         } catch (djErr) {
-            console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+            if (djErr?.code !== 'skip-config-scan') {
+                console.warn(
+                    '⚠️ 하루 기록(dailyComments) 집계 실패 — 미러만으로 셉니다:',
+                    djErr?.code || djErr?.message || djErr
+                );
+            }
         }
         stats.dailyJournal.all = dailyJournalAll;
         stats.dailyJournal.today = dailyJournalToday;
         stats.dailyJournal.last7 = dailyJournalLast7;
 
-        stats.records.all = recordsAllCount + dailyJournalAll;
-        stats.records.today = recordsToday + dailyJournalToday;
-        stats.records.last7 = recordsLast7 + dailyJournalLast7;
+        /**
+         * 「전체」는 스캔 구간 밖 날짜도 포함해야 해서 미러 키 집합(구간 내)만으로는 못 뺀다.
+         * meals 전량 count 에 섞여 있는 미러 문서 수를 통째로 덜어내고 dailyComments 전량을 얹는다.
+         */
+        const journalMirrorAll = Math.max(0, slotAllArr[JOURNAL_MIRROR_COUNT_INDEX] ?? 0);
+        /**
+         * 하루 소감은 config 와 meals 미러 양쪽에 있어 그냥 더하면 두 번 세어진다.
+         * 그래서 미러를 덜어내고 config 쪽을 얹는데 — **config 를 못 읽었다면 얘기가 다르다.**
+         * 그때는 미러가 유일한 출처라 덜어내면 그대로 사라진다.
+         */
+        stats.records.all = journalCountedFromConfig
+            ? Math.max(0, recordsAllCount - journalMirrorAll) + dailyJournalAll
+            : recordsAllCount;
+        stats.records.today = recordsToday + dailyJournalUnmirroredToday;
+        stats.records.last7 = recordsLast7 + dailyJournalUnmirroredLast7;
         for (let di = 0; di < 7; di++) {
-            recordsByDay[di] += dailyJournalByDay[di];
+            recordsByDay[di] += dailyJournalUnmirroredByDay[di];
         }
         for (let wi = 0; wi < nWeeks; wi++) {
-            recordsByWeek[wi] += dailyJournalByWeek[wi];
+            recordsByWeek[wi] += dailyJournalUnmirroredByWeek[wi];
         }
 
         SLOTS.forEach((s, i) => {
             const a = slotAgg[s.id];
             stats.recordsBySlot[s.id] = {
                 all: slotAllArr[i] ?? 0,
+                last7: a.last7,
+                today: a.today
+            };
+        });
+
+        HOUR_BUCKETS.forEach((b) => {
+            const a = hourAgg[b.id];
+            stats.recordsByHour[b.id] = {
+                // 슬롯의 all과 달리 「운영 시작일 이후」 합계다 (표에 각주로 밝힌다)
+                all: a.rangeAll,
                 last7: a.last7,
                 today: a.today
             };
@@ -1468,7 +1827,8 @@ export async function getUserStatistics() {
                       )
                     : startOfSundayWeek(DASHBOARD_STATS_RANGE_START);
             firstSunDate.setHours(0, 0, 0, 0);
-            const tsRangeLo = Timestamp.fromDate(firstSunDate);
+            // 공유는 소급이 없다 — timestamp 가 곧 공유한 순간이라 과거 칸은 다시 바뀌지 않는다
+            const tsRangeLo = Timestamp.fromDate(useIncremental ? rescanStartDate : firstSunDate);
 
             const sharedRangeSnap = await getDocs(
                 query(sharedColl, where('timestamp', '>=', tsRangeLo), where('timestamp', '<', tsEnd))
@@ -1518,6 +1878,7 @@ export async function getUserStatistics() {
             activeUsers: activeSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
+            recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
             sharedPhotos: [...sharedByDayCounts],
             dailyJournal: [...dailyJournalByDay]
         };
@@ -1532,20 +1893,128 @@ export async function getUserStatistics() {
                           monthIndex: w.monthIndex
                       }));
                       const mg = buildMonthHeaderGroupsWithStarts(weeksPayload);
+                      const computedActive = activeSetsByWeek.map((x) => x.size);
+                      const computedMonthUnique = computeActiveUsersMonthUnique(activeSetsByWeek, mg);
+
+                      if (!useIncremental) {
+                          return {
+                              weeks: weeksPayload,
+                              newUsers: [...newUsersByWeek],
+                              activeUsers: computedActive,
+                              activeUsersMonthUnique: computedMonthUnique,
+                              records: [...recordsByWeek],
+                              recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
+                              recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
+                              sharedPhotos: sharedSetsByWeek.map((x) => x.size),
+                              dailyJournal: [...dailyJournalByWeek]
+                          };
+                      }
+
+                      const cw = cachedForIncremental.weeklyBreakdown || {};
+                      // 세는 값(덧셈이 성립하는 것)은 캐시 + 소급분, 다시 센 구간은 덮어쓴다.
+                      // rescanned 와 retroDelta 에 같은 배열을 넘기는 것이 맞다 —
+                      // 소급분은 구간 밖만 통과했으므로 두 역할이 한 배열에 겹치지 않는다.
+                      const mergeCount = (cached, computed) =>
+                          mergeWeeklyArray(cached, computed, computed, rescanFromIdx, nWeeks);
+
+                      const mergeUnique = mergeUniqueArray;
+
+                      // 월 유니크도 같은 규칙. 다시 센 주차를 하나라도 품은 월부터 새로 쓴다.
+                      let monthFromIdx = mg.length;
+                      for (let gi = 0; gi < mg.length; gi++) {
+                          if (mg[gi].startWeekIndex + mg[gi].span > rescanFromIdx) {
+                              monthFromIdx = gi;
+                              break;
+                          }
+                      }
+
                       return {
                           weeks: weeksPayload,
-                          newUsers: [...newUsersByWeek],
-                          activeUsers: activeSetsByWeek.map((s) => s.size),
-                          activeUsersMonthUnique: computeActiveUsersMonthUnique(activeSetsByWeek, mg),
-                          records: [...recordsByWeek],
-                          recordsBySlot: Object.fromEntries(SLOTS.map((s) => [s.id, [...slotAgg[s.id].byWeek]])),
-                          sharedPhotos: sharedSetsByWeek.map((s) => s.size),
-                          dailyJournal: [...dailyJournalByWeek]
+                          // 가입일은 나중에 바뀌지 않으므로 과거 칸은 캐시 그대로 남는다
+                          newUsers: mergeCount(cw.newUsers, newUsersByWeek),
+                          activeUsers: mergeUnique(cw.activeUsers, computedActive, rescanFromIdx, nWeeks),
+                          activeUsersMonthUnique: mergeUnique(
+                              cw.activeUsersMonthUnique,
+                              computedMonthUnique,
+                              monthFromIdx,
+                              mg.length
+                          ),
+                          records: mergeCount(cw.records, recordsByWeek),
+                          recordsBySlot: mergeWeeklyMap(
+                              SLOTS.map((x) => x.id),
+                              cw.recordsBySlot,
+                              Object.fromEntries(SLOTS.map((x) => [x.id, slotAgg[x.id].byWeek])),
+                              Object.fromEntries(SLOTS.map((x) => [x.id, slotAgg[x.id].byWeek])),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
+                          recordsByHour: mergeWeeklyMap(
+                              HOUR_BUCKETS.map((b) => b.id),
+                              cw.recordsByHour,
+                              Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, hourAgg[b.id].byWeek])),
+                              Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, hourAgg[b.id].byWeek])),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
+                          // 공유 게시물 수는 유니크라 더할 수 없다 (같은 게시물의 사진 여러 장)
+                          sharedPhotos: mergeUnique(
+                              cw.sharedPhotos,
+                              sharedSetsByWeek.map((x) => x.size),
+                              rescanFromIdx,
+                              nWeeks
+                          ),
+                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek)
                       };
                   })()
                 : null;
 
+        /**
+         * 시간대 「전체」는 스캔 구간의 합계다. 증분에서는 구간이 좁아 그대로 두면 확 줄어 보이므로,
+         * 병합된 주차 배열의 합으로 되찾는다 — 정의상 같은 값이다.
+         */
+        if (useIncremental && stats.weeklyBreakdown) {
+            const sumArr = (arr) => (Array.isArray(arr) ? arr.reduce((x, y) => x + (Number(y) || 0), 0) : null);
+
+            for (const b of HOUR_BUCKETS) {
+                const n = sumArr(stats.weeklyBreakdown.recordsByHour?.[b.id]);
+                if (n != null) stats.recordsByHour[b.id].all = n;
+            }
+
+            /**
+             * 하루 소감 「전체」도 같은 이유로 되찾는다 — 증분에서는 config 를 읽지 않으므로
+             * 위에서 센 dailyJournalAll 은 다시 센 구간의 미러뿐이다.
+             * 하루 소감 기능은 운영 시작일보다 늦게 생겨서, 주차 밖에 남은 소감은 없다.
+             */
+            const djAll = sumArr(stats.weeklyBreakdown.dailyJournal);
+            if (djAll != null) {
+                stats.dailyJournal.all = djAll;
+                stats.records.all = Math.max(0, recordsAllCount - journalMirrorAll) + djAll;
+                stats.totalMeals = stats.records.all;
+            }
+
+            /**
+             * 신규 사용자 「전체」. 증분에서는 최근 가입자만 읽었으므로 그대로 쓰면 확 줄어든다.
+             * 주차 합으로는 **운영 시작일 이전 가입자**가 빠지는데, 그 인원은 캐시가 알고 있다
+             * (캐시의 전체 − 캐시의 주차 합). 가입일은 바뀌지 않으니 이 값도 고정이다.
+             */
+            const mergedNewWeekSum = sumArr(stats.weeklyBreakdown.newUsers);
+            if (mergedNewWeekSum != null) {
+                stats.newUsers.all = totalWithOutsideWeeks(
+                    mergedNewWeekSum,
+                    cachedForIncremental?.newUsers?.all,
+                    sumArr(cachedForIncremental?.weeklyBreakdown?.newUsers)
+                );
+                stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
+            }
+        }
+
         // 드릴다운 명단(UID) — 캐시 본문(payload)에는 넣지 않고 drilldown 하위 문서로만 저장한다
+        /**
+         * 증분에서는 다시 센 구간의 UID 만 손에 있다.
+         * 주차 문서는 비면 건너뛰므로(writeDashboardUserDrilldown) 과거가 보존되지만,
+         * 「전체」 문서는 통째로 덮어쓰기 때문에 저장을 막아야 한다.
+         */
+        stats.userSetsPartial = useIncremental;
         stats.userSets = {
             weeks: weekMetas.map((w, i) => ({
                 sundayKey: w.sundayKey,
@@ -1575,6 +2044,7 @@ export async function getUserStatistics() {
             }
         };
 
+        stats.aggregationMode = useIncremental ? 'incremental' : 'full';
         console.log('📊 대시보드 통계(최적화 집계):', stats);
         return stats;
     } catch (e) {
@@ -1650,7 +2120,7 @@ function markFixedUserDrilldownCells(stats, bd) {
 }
 
 /** 통계 객체를 화면에 반영 + 마지막 업데이트 문구 */
-export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = null) {
+export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = null, fullAggregatedAt = null) {
     const set = (id, value) => {
         const el = document.getElementById(id);
         if (el) el.textContent = value != null ? Number(value).toLocaleString() : '-';
@@ -1692,9 +2162,36 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
             fillDashboard7dNumericRow(`statRecSlot_${s.id}_7d`, bdSlot, d.last7);
             set(`statRecSlot_${s.id}_7Sum`, sumSevenDaily(bdSlot) ?? d.last7);
         });
+
+        const hasHour = stats.recordsByHour && Object.keys(stats.recordsByHour).length > 0;
+        const hourTotals = hasHour
+            ? HOUR_BUCKETS.reduce(
+                  (acc, b) => {
+                      const d = stats.recordsByHour[b.id];
+                      acc.all += Number(d?.all) || 0;
+                      acc.last7 += Number(d?.last7) || 0;
+                      return acc;
+                  },
+                  { all: 0, last7: 0 }
+              )
+            : null;
+        // 새로고침 직후에는 캐시를 거치지 않은 breakdown 이 들어와 파생 합계가 없다 — 여기서 만든다
+        const hourTotalByDay = sumHourBucketArrays(bd?.recordsByHour, 7);
+        set('statRecHourTotal_all', hourTotals ? hourTotals.all : null);
+        fillDashboard7dNumericRow('statRecHourTotal_7d', hourTotalByDay, hourTotals?.last7);
+        set('statRecHourTotal_7Sum', sumSevenDaily(hourTotalByDay) ?? hourTotals?.last7);
+
+        HOUR_BUCKETS.forEach((b) => {
+            const d = hasHour ? (stats.recordsByHour[b.id] || { all: 0, last7: 0, today: 0 }) : null;
+            set(`statRecHour_${b.id}_all`, d ? d.all : null);
+            const bdHour = bd?.recordsByHour?.[b.id];
+            fillDashboard7dNumericRow(`statRecHour_${b.id}_7d`, bdHour, d?.last7);
+            set(`statRecHour_${b.id}_7Sum`, sumSevenDaily(bdHour) ?? d?.last7);
+        });
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll].forEach(
+        const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -1709,14 +2206,26 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     markFixedUserDrilldownCells(stats, bd);
     ensureDashboardDrilldownBinding();
 
+    const fmtStamp = (v) => {
+        if (!v) return null;
+        const d = v.toDate ? v.toDate() : new Date(v);
+        return Number.isNaN(d.getTime())
+            ? null
+            : d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+    };
+
     const label = document.getElementById('dashboardStatsUpdatedAt');
     if (label) {
-        if (updatedAt) {
-            const d = updatedAt && (updatedAt.toDate ? updatedAt.toDate() : new Date(updatedAt));
-            label.textContent = '마지막 업데이트: ' + d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
-        } else {
-            label.textContent = '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
-        }
+        const t = fmtStamp(updatedAt);
+        label.textContent = t ? `최근 업데이트: ${t}` : '캐시된 통계가 없습니다. 「새로고침」을 눌러 주세요.';
+    }
+    const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
+    if (fullLabel) {
+        const t = fmtStamp(fullAggregatedAt);
+        fullLabel.textContent = t ? `전체 업데이트: ${t}` : '전체 업데이트: -';
+        fullLabel.title = t
+            ? '증분이 놓치는 수정·삭제·제외 UID 변경까지 반영한 시각. 주가 바뀌면 자동으로 다시 돕니다.'
+            : '아직 전체 재집계를 돌린 적이 없습니다.';
     }
     scrollDashboardTrendTableToRight();
 }
@@ -1773,6 +2282,7 @@ export async function updateStatistics() {
             activeUsers: data.activeUsers || { all: 0, last7: 0, today: 0 },
             records: data.records || { all: 0, last7: 0, today: 0 },
             recordsBySlot: data.recordsBySlot && typeof data.recordsBySlot === 'object' ? data.recordsBySlot : {},
+            recordsByHour: data.recordsByHour && typeof data.recordsByHour === 'object' ? data.recordsByHour : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
             dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
@@ -1790,7 +2300,8 @@ export async function updateStatistics() {
             }
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
-        renderDashboardStats(stats, data.updatedAt, last7Breakdown);
+        renderDashboardStats(stats, data.updatedAt, last7Breakdown, data.lastFullAggregatedAt || null);
+        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null);
         let pageUsage = data.pageUsage || null;
         if (pageUsage && pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage)) {
             try {
@@ -1814,16 +2325,30 @@ export async function updateStatistics() {
     }
 }
 
-// 새로고침: 전체 집계 후 캐시 문서에 저장 (이때만 DB 다량 읽기)
-export async function refreshDashboardStats() {
+/**
+ * 새로고침.
+ *
+ * 기본은 **증분** — 지난 집계 이후 달라진 것만 읽어 캐시에 얹는다. meals 를 전량 읽던
+ * 시절엔 한 번 누를 때마다 1만 건이 넘었는데, 그중 지난 주차 숫자는 이미 확정된 값이었다.
+ *
+ * `{ full: true }` 는 전량 재집계다. 증분이 놓치는 것 — 지난 주차 기록의 **수정·삭제**,
+ * **제외 UID 변경** — 을 청소하려면 이쪽을 써야 한다.
+ */
+export async function refreshDashboardStats(options = {}) {
+    const full = options?.full === true;
+    // 주간 정기 재집계는 사람이 누른 게 아니다 — 실패했다고 경고창을 띄우면 안 된다
+    const silent = options?.silent === true;
     try {
         await runAdminRefreshAction(
-            document.getElementById('dashboardStatsRefreshBtn'),
+            document.getElementById(full ? 'dashboardStatsFullRefreshBtn' : 'dashboardStatsRefreshBtn'),
             async () => {
                 const prevSnap = await getDoc(DASHBOARD_STATS_REF());
                 const prevData = prevSnap.exists() ? prevSnap.data() : null;
+                // 집계가 읽어들인 시점 — 다음 증분의 기준이 된다.
+                // 집계 **전** 시각을 찍어야 도는 동안 들어온 기록을 다음 번에 놓치지 않는다.
+                const aggregationStartedAt = new Date().toISOString();
                 const [stats, pageUsage] = await Promise.all([
-                    getUserStatistics(),
+                    getUserStatistics(full ? { mode: 'full' } : { mode: 'incremental', cached: prevData }),
                     aggregatePageUsageFromFirestore(prevData)
                 ]);
                 const payload = {
@@ -1831,19 +2356,25 @@ export async function refreshDashboardStats() {
                     activeUsers: stats.activeUsers,
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
+                    recordsByHour: stats.recordsByHour,
                     sharedPhotos: stats.sharedPhotos,
                     dailyJournal: stats.dailyJournal,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,
                     asOfDate: getTodayDateString(),
+                    lastAggregatedAt: aggregationStartedAt,
+                    lastAggregationMode: stats.aggregationMode || (full ? 'full' : 'incremental'),
+                    // 증분은 이 값을 건드리지 않고 물려받는다 — merge 없는 setDoc 이라 빠뜨리면 사라진다
+                    lastFullAggregatedAt:
+                        stats.aggregationMode === 'full' ? aggregationStartedAt : prevData?.lastFullAggregatedAt || null,
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
                 // 명단(UID)은 본문 문서가 1MB 한계로 커지지 않도록 drilldown 하위 문서에 나눠 저장.
                 // 실패해도 숫자 통계는 이미 저장됐으므로 새로고침 전체를 실패로 만들지 않는다.
                 try {
-                    await writeDashboardUserDrilldown(stats.userSets);
+                    await writeDashboardUserDrilldown(stats.userSets, { partial: stats.userSetsPartial === true });
                 } catch (drillErr) {
                     console.warn('[대시보드] 사용자 명단 캐시 저장 실패:', drillErr?.message || drillErr);
                 }
@@ -1863,15 +2394,58 @@ export async function refreshDashboardStats() {
                 } catch (verErr) {
                     console.warn('[대시보드] 캐시 서버 확인 생략:', verErr?.message || verErr);
                 }
-                renderDashboardStats(stats, new Date(), stats.last7Breakdown);
+                renderDashboardStats(stats, new Date(), stats.last7Breakdown, payload.lastFullAggregatedAt || null);
                 renderDashboardPageUsage(pageUsageToShow, { fallbackWeeklyBreakdown: stats.weeklyBreakdown });
             },
-            { loadingText: '집계 중…' }
+            { loadingText: full ? '전체 재집계 중…' : '집계 중…' }
         );
     } catch (e) {
         console.error('대시보드 새로고침 실패:', e);
-        alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
+        if (!silent) {
+            // 버튼으로 부른 경우엔 여기서 끝낸다 — 던지면 onclick 에 처리되지 않은 rejection 이 남는다
+            alert('새로고침 중 오류가 발생했습니다: ' + (e.message || e));
+            return;
+        }
+        throw e;
     }
+}
+
+/**
+ * 주간 정기 전체 재집계를 한 세션에 두 번 걸지 않기 위한 빗장.
+ * 탭을 여러 개 띄우면 각 탭이 따로 판단하므로 완벽하진 않지만,
+ * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것은 막는다.
+ */
+let weeklyFullRefreshStarted = false;
+
+/**
+ * 주가 바뀌었으면 전체 재집계를 **백그라운드로** 시작한다.
+ *
+ * 집계 로직이 클라이언트에 있어서 서버 cron 으로는 돌릴 수 없다. 관리자가 대시보드를
+ * 여는 순간이 유일한 기회다. 화면은 캐시로 이미 그려져 있으므로 기다리게 하지 않고,
+ * 끝나면 표가 새 숫자로 갈아 끼워진다.
+ *
+ * 실패해도 조용히 넘어간다 — 다음에 열 때 다시 시도한다.
+ */
+function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
+    if (weeklyFullRefreshStarted) return;
+    const todayKey = getTodayDateString();
+    const sundayKey = sundayKeyForDateKey(todayKey);
+    if (!needsWeeklyFullRefresh(lastFullAggregatedAt, sundayKey)) return;
+    weeklyFullRefreshStarted = true;
+    console.log('[대시보드] 주간 정기 전체 재집계를 시작합니다', { lastFullAggregatedAt, sundayKey });
+    const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
+    if (fullLabel) fullLabel.textContent = '전체 업데이트: 정리 중…';
+    refreshDashboardStats({ full: true, silent: true }).catch((e) => {
+        console.warn('[대시보드] 주간 정기 재집계 실패 — 다음에 다시 시도합니다:', e?.message || e);
+        weeklyFullRefreshStarted = false;
+        const el = document.getElementById('dashboardStatsFullUpdatedAt');
+        if (el && el.textContent.includes('정리 중')) el.textContent = '전체 업데이트: -';
+    });
+}
+
+/** 관리자 「전체 재집계」 — 증분이 놓친 수정·삭제·제외 UID 변경을 청소한다 */
+export async function refreshDashboardStatsFull() {
+    await refreshDashboardStats({ full: true });
 }
 
 // 공유 게시물 렌더링

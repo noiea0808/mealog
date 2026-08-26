@@ -11,6 +11,7 @@ import {
     extractAnalyzedPhotoUrlsForDisplay,
     aiMealReportPreviewLine
 } from '../utils/ai-meal-report.js';
+import { computeDietRecordScore } from '../utils/diet-record-score.js';
 import {
     collection,
     doc,
@@ -51,6 +52,8 @@ function parseTokensUsed(tokensUsed) {
         prompt: Number(t.promptTokenCount) || 0,
         candidates: Number(t.candidatesTokenCount) || 0,
         thoughts: Number(t.thoughtsTokenCount) || 0,
+        // 입력 중 캐시로 재사용된 몫. 프롬프트 고정 접두부가 실제로 캐시에 걸렸는지 여기서만 보인다.
+        cached: Number(t.cachedContentTokenCount) || 0,
         total: Number(t.totalTokenCount) || 0
     };
 }
@@ -71,7 +74,12 @@ function formatTokensDetail(tokensUsed) {
     const total = resolveTokenTotal(tokensUsed);
     if (!total) return '—';
     const parts = [];
-    if (t.prompt) parts.push(`입력 ${t.prompt.toLocaleString('ko-KR')}`);
+    if (t.prompt) {
+        const cachedNote = t.cached
+            ? ` (캐시 ${t.cached.toLocaleString('ko-KR')} · ${Math.round((t.cached / t.prompt) * 100)}%)`
+            : '';
+        parts.push(`입력 ${t.prompt.toLocaleString('ko-KR')}${cachedNote}`);
+    }
     if (t.candidates) parts.push(`출력 ${t.candidates.toLocaleString('ko-KR')}`);
     if (t.thoughts) parts.push(`thinking ${t.thoughts.toLocaleString('ko-KR')}`);
     if (t.total) parts.push(`합계 ${t.total.toLocaleString('ko-KR')}`);
@@ -80,8 +88,22 @@ function formatTokensDetail(tokensUsed) {
 }
 
 function aggregateUsageRows(rows) {
-    const totals = { prompt: 0, candidates: 0, thoughts: 0, total: 0, reports: 0, withTokens: 0 };
+    const totals = { prompt: 0, candidates: 0, thoughts: 0, cached: 0, total: 0, reports: 0, withTokens: 0 };
     const modelMap = new Map();
+    // 사진이 실제로 얼마나 쓰이는지 / 렌즈가 실제로 도는지 — 추측 대신 숫자로 보기 위한 집계
+    const health = {
+        ready: 0,
+        photoTotal: 0,
+        photoAnalyzed: 0,
+        reportsWithPhoto: 0,
+        reportsPhotoLeftOver: 0,
+        fallbackTextOnly: 0,
+        fallbackNoThinking: 0,
+        policyRetried: 0,
+        policyViolation: 0,
+        cliche: 0
+    };
+    const lensMap = new Map();
 
     for (const row of rows) {
         const data = row?.data || row;
@@ -95,7 +117,31 @@ function aggregateUsageRows(rows) {
             totals.prompt += t.prompt;
             totals.candidates += t.candidates;
             totals.thoughts += t.thoughts;
+            totals.cached += t.cached;
             totals.total += t.total || rowTotal;
+        }
+
+        if (data?.status === 'ready') {
+            health.ready += 1;
+            const photos = Number(data.photoCount) || 0;
+            const analyzed = Number(data.analyzedPhotoCount) || 0;
+            health.photoTotal += photos;
+            health.photoAnalyzed += analyzed;
+            if (photos > 0) health.reportsWithPhoto += 1;
+            // 상한이나 가져오기 실패로 남은 사진 — 상한을 조일지 풀지 판단하는 근거
+            if (photos > analyzed) health.reportsPhotoLeftOver += 1;
+
+            const fb = String(data.fallbackUsed || '').trim();
+            if (fb === 'text-only') health.fallbackTextOnly += 1;
+            else if (fb === 'no-thinking') health.fallbackNoThinking += 1;
+
+            if (data.policyRetried === true) health.policyRetried += 1;
+            if (Array.isArray(data.policyViolation) && data.policyViolation.length) health.policyViolation += 1;
+            // 재생성 없이 계측만 하는 값이라, 줄고 있는지는 여기 숫자로만 보인다
+            if (Array.isArray(data.clicheHits) && data.clicheHits.length) health.cliche += 1;
+
+            const lens = String(data.lens || '').trim() || '(없음)';
+            lensMap.set(lens, (lensMap.get(lens) || 0) + 1);
         }
 
         if (!modelMap.has(model)) {
@@ -109,8 +155,11 @@ function aggregateUsageRows(rows) {
     const models = [...modelMap.entries()]
         .sort((a, b) => b[1].tokens - a[1].tokens || b[1].count - a[1].count)
         .map(([name, stats]) => ({ name, ...stats }));
+    const lenses = [...lensMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
 
-    return { totals, models };
+    return { totals, models, health, lenses };
 }
 
 async function fetchSevenDayUsageStats() {
@@ -143,14 +192,52 @@ function renderUsageStatsPanel(stats) {
         })
         .join(' ');
 
+    const { health, lenses } = stats;
+    const pct = (n, d) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
+
+    const cachePart = totals.prompt
+        ? ` · 캐시 ${totals.cached.toLocaleString('ko-KR')} (${pct(totals.cached, totals.prompt)})`
+        : '';
+
+    // 사진 활용 실태: 남은 사진이 잦으면 상한을 푸는 쪽, 0에 가까우면 상한이 무의미하다는 뜻
+    const photoLine = health.ready
+        ? `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black text-slate-700">사진</span>
+                기록 ${health.photoTotal.toLocaleString('ko-KR')}장 중 분석 ${health.photoAnalyzed.toLocaleString('ko-KR')}장 (${pct(health.photoAnalyzed, health.photoTotal)})
+                · 사진 있는 리포트 ${health.reportsWithPhoto}/${health.ready}건
+                · <span class="${health.reportsPhotoLeftOver ? 'text-amber-700 font-bold' : ''}">미사용 사진 발생 ${health.reportsPhotoLeftOver}건</span>
+            </p>`
+        : '';
+
+    const lensParts = lenses
+        .map((l) => `${escapeHtml(LENS_LABELS_KR[l.name] || l.name)} ${l.count}`)
+        .join(' · ');
+    const lensLine = lenses.length
+        ? `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black text-slate-700">렌즈</span> ${lensParts}
+            </p>`
+        : '';
+
+    const flags = [];
+    if (health.fallbackTextOnly) flags.push(`사진 제외 재시도 ${health.fallbackTextOnly}건`);
+    if (health.fallbackNoThinking) flags.push(`thinking 없이 재시도 ${health.fallbackNoThinking}건`);
+    if (health.policyRetried) flags.push(`금지 주제 재생성 ${health.policyRetried}건`);
+    if (health.policyViolation) flags.push(`금지 주제 잔존 ${health.policyViolation}건`);
+    if (health.cliche) flags.push(`상투 표현 ${health.cliche}건`);
+    const flagLine = flags.length
+        ? `<p class="text-[11px] text-amber-700 tabular-nums leading-snug whitespace-normal mt-1">
+                <span class="font-black">주의</span> ${escapeHtml(flags.join(' · '))}
+            </p>`
+        : '';
+
     el.innerHTML = `<p class="text-[11px] text-slate-600 tabular-nums leading-snug whitespace-normal">
         <span class="font-black text-slate-700">최근 7일 Gemini 사용량</span>
         ${totals.reports}건 분석 · 토큰 기록 ${totals.withTokens}건
         ${modelParts ? ` ${modelParts}` : ''}
-        입력 ${totals.prompt.toLocaleString('ko-KR')} · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
+        입력 ${totals.prompt.toLocaleString('ko-KR')}${cachePart} · 출력 ${totals.candidates.toLocaleString('ko-KR')}${
             totals.thoughts ? ` · thinking ${totals.thoughts.toLocaleString('ko-KR')}` : ''
         } · <strong class="text-emerald-700">총 ${totals.total.toLocaleString('ko-KR')}</strong>
-    </p>`;
+    </p>${photoLine}${lensLine}${flagLine}`;
     el.classList.remove('hidden');
 }
 
@@ -178,11 +265,95 @@ function reportKindBadge(data) {
     return '<span class="px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 text-[11px] font-bold">최신</span>';
 }
 
+/**
+ * 사진을 버린 폴백으로 성공한 경우를 드러낸다. 예전에는 준비한 장수를 그대로 저장해
+ * 텍스트 전용으로 나온 결과도 "사진 N장 분석"으로 보였다.
+ */
+function fallbackNote(data) {
+    const fb = String(data?.fallbackUsed || '').trim();
+    if (!fb) return '';
+    const prepared = Number(data?.preparedPhotoCount) || 0;
+    const label = fb === 'text-only'
+        ? `사진 제외 재시도${prepared ? ` (준비 ${prepared}장)` : ''}`
+        : fb === 'no-thinking'
+            ? 'thinking 없이 재시도'
+            : fb;
+    return ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+}
+
+/** 키 목록은 functions/index.js DIET_REPORT_LENSES · 프롬프트 [관찰 렌즈] 와 일치시킬 것 */
+const LENS_LABELS_KR = {
+    compare: '평소와 비교',
+    diet: '식단 구성',
+    company: '함께한 사람',
+    place: '장소',
+    rhythm: '시간 리듬',
+    feeling: '만족·포만',
+    words: '남긴 말',
+    habit: '기록 습관',
+    pattern: '이어지는 패턴'
+};
+
+/** 그날 어떤 축으로 봐 줬는지. 같은 렌즈만 반복되면 회전이 안 도는 것 */
+function lensBadge(data) {
+    const lens = String(data?.lens || '').trim();
+    if (!lens) {
+        return '<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">렌즈 없음</span>';
+    }
+    const label = LENS_LABELS_KR[lens] || lens;
+    return `<span class="px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 text-[11px] font-bold" title="관찰 렌즈: ${escapeHtml(lens)}">${escapeHtml(label)}</span>`;
+}
+
+/**
+ * 금지 주제(야채·과일·단백질 권유) 가드 결과.
+ * 재생성으로 막았으면 회색, 재생성 후에도 남았으면 빨강 — 후자는 프롬프트를 손봐야 한다.
+ */
+function policyBadge(data) {
+    const violated = Array.isArray(data?.policyViolation) ? data.policyViolation.filter(Boolean) : [];
+    if (violated.length) {
+        const fields = violated.join(', ');
+        return `<span class="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[11px] font-bold" title="재생성 후에도 금지 주제가 남았습니다">금지 주제 잔존 · ${escapeHtml(fields)}</span>`;
+    }
+    if (data?.policyRetried === true) {
+        return '<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold" title="금지 주제가 감지되어 1회 재생성했고, 재생성본은 통과했습니다">금지 주제 재생성됨</span>';
+    }
+    return '<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">금지 주제 없음</span>';
+}
+
+/**
+ * 상투 표현 계측. 위반이 아니라 지루함의 신호라 재생성시키지 않고 표시만 한다.
+ * 이 배지가 계속 뜨면 프롬프트 [상투 표현 금지] 로는 부족하다는 뜻이다.
+ */
+function clicheBadge(data) {
+    const hits = Array.isArray(data?.clicheHits) ? data.clicheHits.filter(Boolean) : [];
+    if (!hits.length) return '';
+    return `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[11px] font-bold" title="반복되는 상투 표현이 감지됐습니다(재생성하지 않고 계측만 합니다)">상투 표현 · ${escapeHtml(hits.join(', '))}</span>`;
+}
+
+/** 프롬프트에 실제로 실린 부가 컨텍스트 */
+function contextBadges(data) {
+    const on = (label) =>
+        `<span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+    const off = (label) =>
+        `<span class="px-1.5 py-0.5 rounded bg-slate-50 text-slate-400 text-[11px] font-bold">${escapeHtml(label)}</span>`;
+    const bits = [
+        lensBadge(data),
+        data?.hasProfileContext === true ? on('프로필') : off('프로필 없음'),
+        data?.hasRecentTrendContext === true ? on('최근 흐름') : off('최근 흐름 없음'),
+        // 이 배지가 꺼져 있으면 리포트는 그날 요약밖에 할 수 없다 — 지루함의 첫 번째 용의자다
+        data?.hasRecentStatsContext === true ? on('평소와 비교') : off('평소와 비교 없음'),
+        policyBadge(data),
+        clicheBadge(data)
+    ].filter(Boolean);
+    return `<div class="flex flex-wrap gap-1">${bits.join('')}</div>`;
+}
+
 function renderInputMealsSection(data) {
     const meals = Array.isArray(data?.inputMeals) ? data.inputMeals : [];
     const mealText = typeof data?.inputMealText === 'string' ? data.inputMealText.trim() : '';
     const dailyJournalComment =
         typeof data?.inputDailyJournalComment === 'string' ? data.inputDailyJournalComment.trim() : '';
+    const recentStats = typeof data?.inputRecentStats === 'string' ? data.inputRecentStats.trim() : '';
 
     if (!meals.length && !mealText && !dailyJournalComment) {
         return `
@@ -232,6 +403,14 @@ function renderInputMealsSection(data) {
            </div>`
         : '';
 
+    // 리포트 문장이 이상할 때 모델 탓인지 계산 탓인지 여기서 갈린다 — 접지 않고 펼쳐 둔다.
+    const statsBlock = recentStats
+        ? `<div class="rounded-lg border border-emerald-200 bg-emerald-50/60 p-2">
+                <p class="text-[11px] font-black text-emerald-800 mb-1">평소와 비교 (서버 계산값)</p>
+                <pre class="whitespace-pre-wrap break-words text-[11px] text-slate-700 leading-snug m-0 font-sans">${escapeHtml(recentStats)}</pre>
+           </div>`
+        : '';
+
     const promptBlock = mealText
         ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
                 <summary class="cursor-pointer select-none px-2 py-1 text-[11px] font-bold text-slate-600">Gemini 전송 텍스트 블록</summary>
@@ -239,7 +418,7 @@ function renderInputMealsSection(data) {
            </details>`
         : '';
 
-    return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${promptBlock}</div>`;
+    return `<div class="space-y-1.5">${mealCards}${dailyJournalBlock}${statsBlock}${promptBlock}</div>`;
 }
 
 function renderListInitial() {
@@ -277,7 +456,8 @@ function renderDetailPanel(data, id) {
         data.status === 'error'
             ? `<pre class="whitespace-pre-wrap break-words text-xs text-red-800 bg-red-50/60 border border-red-100 rounded-lg p-2 font-sans leading-snug m-0">${escapeHtml(data.errorMessage || '(오류 메시지 없음)')}</pre>`
             : `${renderAiMealReportCardHtml(parsedReport, escapeHtml, {
-                  photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+                  photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+                  recordScore: computeDietRecordScore(data, parsedReport)
               })}${
                   rawResponse
                       ? `<details class="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/80">
@@ -300,7 +480,9 @@ function renderDetailPanel(data, id) {
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">사용자</dt>
                     <dd class="text-slate-800 font-mono text-xs min-w-0 break-all">${escapeHtml(data._email || data.userId || '—')}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">기록</dt>
-                    <dd class="text-slate-800 min-w-0">식사/간식 ${Number(data.mealCount) || 0}건 · 사진 ${Number(data.photoCount) || 0}장(분석 ${Number(data.analyzedPhotoCount) || 0}장)</dd>
+                    <dd class="text-slate-800 min-w-0">식사/간식 ${Number(data.mealCount) || 0}건 · 사진 ${Number(data.photoCount) || 0}장(분석 ${Number(data.analyzedPhotoCount) || 0}장)${fallbackNote(data)}</dd>
+                    <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">컨텍스트</dt>
+                    <dd class="min-w-0">${contextBadges(data)}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">모델</dt>
                     <dd class="text-slate-800 font-mono text-xs min-w-0 break-all">${escapeHtml(data.modelVersion || '—')} · ${escapeHtml(data.promptVersion || '—')}</dd>
                     <dt class="text-xs font-bold text-slate-500 shrink-0 pt-0.5">토큰</dt>

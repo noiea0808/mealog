@@ -3,15 +3,24 @@ const { getFirestore, FieldValue, Timestamp, FieldPath } = require('firebase-adm
 const { getAuth } = require('firebase-admin/auth');
 const { getStorage } = require('firebase-admin/storage');
 const { getMessaging } = require('firebase-admin/messaging');
+const { getFunctions: getAdminFunctions } = require('firebase-admin/functions');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineString } = require('firebase-functions/params');
 const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { onTaskDispatched } = require('firebase-functions/v2/tasks');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
 const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
 const crypto = require('crypto');
+const {
+  shuffleIds,
+  drawFromDeck,
+  insertIntoDeckRemaining,
+  rotationSlotDocId
+} = require('./pushRotationDeck');
+const sharp = require('sharp');
 
 // Firebase Admin 초기화
 initializeApp();
@@ -52,6 +61,68 @@ function assertNotReadOnlyDemoAuth(auth) {
 
 // Functions 리전 설정 (us-central1로 변경 - 배포된 리전과 일치)
 const REGION = 'us-central1';
+
+/**
+ * 카카오 장소 검색 전용 리전 — 서울.
+ *
+ * 이 함수는 한국 사용자가 부르고, 한국의 카카오 API 를 호출하고, 서울에 있는 Firestore 로
+ * rate limit 을 확인한다. 그런데 함수만 미국에 있어서 **한 번 검색에 태평양을 다섯 번**
+ * 건넜다(사용자→함수, 함수→Firestore 읽기·쓰기, 함수→카카오, 함수→사용자).
+ * 실측 p50 이 1.3초, p95 가 2.7초였다.
+ *
+ * 나머지 함수는 아직 us-central1 에 있다. 여기서 효과를 확인하고 무거운 것부터 옮긴다.
+ */
+const REGION_SEOUL = 'asia-northeast3';
+
+/**
+ * 예약 푸시 태스크 — Cloud Tasks 로 「그 시각에 한 번」을 걸어 둔다.
+ *
+ * 태스크가 예정 시각보다 살짝 이르게 도착하는 것은 정상이라, 이만큼은 「지금」으로 친다.
+ * 너무 크게 잡으면 방금 미뤄 둔 예약을 앞당겨 쏘게 되므로 좁게 둔다.
+ */
+const ADMIN_PUSH_TASK_EARLY_TOLERANCE_MS = 30 * 1000;
+
+/** Cloud Tasks 가 받아 주는 예약 상한(30일)보다 안쪽. 이보다 먼 예약은 안전망 폴링에 맡긴다 */
+const ADMIN_PUSH_TASK_MAX_LEAD_MS = 29 * 24 * 60 * 60 * 1000;
+
+/**
+ * 예약 한 건을 그 시각에 발송하도록 태스크를 건다.
+ *
+ * 실패해도 예약 자체는 pending 으로 남아 있고 안전망 폴링이 주워 가므로, 던지지 않고 로그만 남긴다.
+ * 발송이 최대 10분 늦어질 뿐 유실되지는 않는다.
+ *
+ * @returns {Promise<boolean>} 태스크를 실제로 걸었는지
+ */
+async function enqueueAdminPushTask(docId, whenMs) {
+  const id = String(docId || '').trim();
+  if (!id || typeof whenMs !== 'number' || !Number.isFinite(whenMs)) return false;
+  const leadMs = whenMs - Date.now();
+  if (leadMs > ADMIN_PUSH_TASK_MAX_LEAD_MS) {
+    logger.info('enqueueAdminPushTask: 너무 먼 예약이라 안전망에 맡깁니다', { docId: id, whenMs });
+    return false;
+  }
+  try {
+    const queue = getAdminFunctions().taskQueue(`locations/${REGION}/functions/deliverScheduledAdminPush`);
+    await queue.enqueue(
+      { docId: id },
+      { scheduleTime: new Date(Math.max(whenMs, Date.now() + 1000)) }
+    );
+    return true;
+  } catch (e) {
+    logger.warn('enqueueAdminPushTask: 태스크 예약 실패 — 안전망 폴링이 처리합니다', {
+      docId: id,
+      whenMs,
+      message: e?.message || String(e)
+    });
+    return false;
+  }
+}
+
+/** 여러 건을 한꺼번에 건다. 실패한 건은 안전망이 맡으므로 개수만 돌려준다 */
+async function enqueueAdminPushTasks(entries) {
+  const results = await Promise.all(entries.map(({ docId, whenMs }) => enqueueAdminPushTask(docId, whenMs)));
+  return results.filter(Boolean).length;
+}
 
 // API 키 (params: .env 또는 배포 시 입력)
 const geminiApiKey = defineString('GEMINI_API_KEY');
@@ -4038,20 +4109,60 @@ exports.deleteArtifactUserMeal = onCall({ region: REGION }, wrapFunction('delete
   return { deleted: true };
 }));
 
-/** 관리자 대시보드「페이지별」usageDaily 필드 — js/admin/dashboard.js PAGE_USAGE_METRIC_DEFS 와 동기화 */
+/**
+ * usageDaily 에 받아 줄 필드 — js/admin/dashboard.js 의
+ * PAGE_VIEW_METRIC_DEFS · RECORD_USAGE_METRIC_DEFS 와 **양쪽 다** 동기화한다.
+ *
+ * 여기 없는 키는 invalid-argument 로 거절된다. 클라이언트는 Firestore 직접 쓰기로
+ * 폴백하지만 그 경로는 로컬 캐시에만 앉는 경우가 있어(js/usage-metrics.js) 서버에는
+ * 아무것도 남지 않는다. 즉 **키를 빠뜨리면 조용히 유실된다** — 대시보드에 행은
+ * 보이는데 값만 0 으로 남아서, 기능이 안 쓰이는 것과 구분되지 않는다.
+ * 실제로 기록 시트 개편 계측 21종이 그렇게 통째로 날아갔다 (2026-08-12~26).
+ *
+ * 행을 추가할 때는 dashboard.js 와 이 목록을 한 커밋에서 같이 고칠 것.
+ */
 const USAGE_DAILY_METRIC_KEYS = new Set([
+  // --- 페이지 방문·조작 (PAGE_VIEW_METRIC_DEFS) ---
   'tab_mealdang',
   'mealdang_comment_click',
   'mealdang_analysis_detail_click',
+  'mealdang_analysis_cuisine_axis',
   'tab_moment',
   'tab_mealog',
   'lounge_mealtalk',
   'lounge_board',
   'lounge_notice',
   'settings_profile',
+  // 나만의 태그 제거로 호출부는 없어졌지만 과거 이력이 남아 있어 목록에 둔다
   'settings_tags',
   'settings_mealdang_memo',
-  'settings_push'
+  'settings_push',
+
+  // --- 기록 시트 안에서 벌어지는 일 (RECORD_USAGE_METRIC_DEFS) ---
+  'entry_sheet_opened',
+  'entry_sheet_saved',
+  'entry_sheet_abandoned',
+  'entry_sheet_discarded',
+  'what_recall_shown',
+  'what_recall_picked',
+  'what_typeahead_shown',
+  'what_typeahead_picked',
+  'category_suggest_shown',
+  'category_suggest_confirmed',
+  'category_suggest_auto_saved',
+  'category_suggest_grid_opened',
+  'category_suggest_dismissed',
+  'category_suggest_undismissed',
+  'context_predict_shown',
+  'context_predict_applied',
+  'context_predict_dismissed',
+  'context_predict_auto_saved',
+  'context_place_typed',
+  'context_sub_picked',
+  'context_sub_added',
+  'context_sub_deleted',
+  'photo_gps_present',
+  'photo_gps_absent'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */
@@ -4299,7 +4410,67 @@ exports.callGemini = onCall({ region: REGION }, wrapFunction('callGemini', async
  * 카카오 장소 검색 프록시 (WebView 차단 우회)
  * Kakao Local REST API 사용
  */
-exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakaoPlaces', async (request) => {
+/**
+ * 두 리전에 함께 둔다. 새 클라이언트는 서울을 부르지만, **이미 배포된 앱은 www 를 번들로
+ * 들고 있어** us-central1 을 계속 부른다 — 그쪽을 지우면 스토어의 기존 앱에서 검색이 깨진다.
+ * 앱이 새 버전으로 갈린 뒤 us-central1 을 뺀다.
+ */
+/**
+ * 카카오 장소 검색 결과를 상호명 일치 순으로 세운다.
+ *
+ * 카카오 로컬 API 는 상호명뿐 아니라 **업종·메뉴 분류까지** 매칭한다. 「돈까스」로 찾으면
+ * 카테고리가 `돈까스,우동` 인 가게가 전부 걸려서, 실측 15건 중 상호명이 맞는 건 3건뿐이었다.
+ * API 에 「상호명만」 옵션이 없어 받아온 뒤 순서를 바로잡는다. **거르지는 않는다** —
+ * 가게 이름을 모른 채 업종으로 찾는 경우도 있다.
+ *
+ * js/utils/place-type.js 의 같은 이름 함수들과 규칙을 맞출 것 (ESM/CJS 라 코드를 공유할 수 없다).
+ */
+const CHOSEONG_TENSE_TO_PLAIN = { 1: 0, 4: 3, 8: 7, 10: 9, 13: 12 };
+
+function softenKoreanTenseConsonants(text) {
+  let out = '';
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      const idx = code - 0xac00;
+      const plain = CHOSEONG_TENSE_TO_PLAIN[Math.floor(idx / 588)];
+      if (plain !== undefined) {
+        out += String.fromCharCode(0xac00 + plain * 588 + (idx % 588));
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function normalizePlaceSearchText(value) {
+  return softenKoreanTenseConsonants(String(value || '').toLowerCase()).replace(
+    /[\s·・()[\]{}\-_,./'"]/g,
+    ''
+  );
+}
+
+function kakaoPlaceNameMatchScore(placeName, keyword) {
+  const name = normalizePlaceSearchText(placeName);
+  const query = normalizePlaceSearchText(keyword);
+  if (!name || !query) return 0;
+  if (name.includes(query)) return 2;
+  const tokens = String(keyword || '')
+    .split(/\s+/)
+    .map(normalizePlaceSearchText)
+    .filter((t) => t.length >= 2);
+  return tokens.some((t) => name.includes(t)) ? 1 : 0;
+}
+
+function sortKakaoPlacesByNameMatch(places, keyword) {
+  return (places || [])
+    .map((place, index) => ({ place, index, score: kakaoPlaceNameMatchScore(place?.place_name, keyword) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map((x) => x.place);
+}
+
+exports.searchKakaoPlaces = onCall({ region: [REGION_SEOUL, REGION] }, wrapFunction('searchKakaoPlaces', async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
   }
@@ -4317,7 +4488,9 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
     throw new HttpsError('failed-precondition', 'KAKAO_REST_API_KEY가 설정되지 않았습니다. functions/.env 파일에 KAKAO_REST_API_KEY를 추가하거나, 배포 시 입력 후 재배포하세요.');
   }
   const query = encodeURIComponent(trimmedKw);
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&category_group_code=FD6&size=10`;
+  // category_group_code 필터 제거: FD6 고정이면 카페(CE7)·편의점(CS2)이 API 단계에서 잘려
+  // 어디서 축 통합(placeType 파생)이 막힌다. 식음 관련 판정은 아래 후처리 필터가 담당.
+  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${query}&size=15`;
   // 카카오 로컬 API: Authorization 헤더만 필수 (공식 문서 기준, KA 헤더 생략)
   const res = await fetch(url, {
     method: 'GET',
@@ -4336,16 +4509,18 @@ exports.searchKakaoPlaces = onCall({ region: REGION }, wrapFunction('searchKakao
   }
   // REST API 응답 구조: documents, meta. documents를 그대로 반환 (클라이언트와 호환)
   const documents = data?.documents || [];
+  // 클라이언트 SDK 경로(js/utils/place-type.js isFoodRelatedKakaoPlace)와 같은 기준 유지
   const restaurants = documents.filter((place) => {
     const cat = (place.category_name || '').toLowerCase();
     const code = place.category_group_code || '';
-    if (code === 'FD6') return true;
+    if (code === 'FD6' || code === 'CE7' || code === 'CS2') return true;
     return cat.includes('음식점') || cat.includes('식당') || cat.includes('카페') ||
       cat.includes('레스토랑') || cat.includes('맛집') || cat.includes('요리') ||
       cat.includes('식음료') || cat.includes('제과') || cat.includes('베이커리') ||
-      cat.includes('술집') || cat.includes('바');
+      cat.includes('술집') || cat.includes('바') || cat.includes('편의점');
   });
-  return { documents: restaurants.slice(0, 10) };
+  // 상호명이 맞는 가게를 위로 올린 뒤 자른다 — 자르고 정렬하면 뒤쪽의 일치가 잘려 나간다
+  return { documents: sortKakaoPlacesByNameMatch(restaurants, trimmedKw).slice(0, 10) };
 }));
 
 /**
@@ -4987,6 +5162,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       const batchGroupId = crypto.randomBytes(12).toString('hex');
       const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
       const ids = [];
+      const taskEntries = [];
       let batch = db.batch();
       let ops = 0;
       for (const { ms, slot } of occurrences) {
@@ -5005,6 +5181,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
           createdAt: FieldValue.serverTimestamp()
         });
         ids.push(ref.id);
+        taskEntries.push({ docId: ref.id, whenMs: ms });
         ops++;
         if (ops >= 450) {
           await batch.commit();
@@ -5015,6 +5192,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       if (ops > 0) {
         await batch.commit();
       }
+      // 문서가 다 저장된 뒤에 건다 — 태스크가 먼저 도착해 빈 문서를 읽는 일이 없도록
+      await enqueueAdminPushTasks(taskEntries);
       return { ok: true, count: ids.length, batchGroupId, ids };
     }
 
@@ -5070,6 +5249,7 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
       createdByUid: callerUid,
       createdAt: FieldValue.serverTimestamp()
     });
+    await enqueueAdminPushTask(ref.id, recurringStartMs);
     return { ok: true, id: ref.id };
   }
 
@@ -5099,6 +5279,8 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
   if (ms < minLead) {
     throw new HttpsError('invalid-argument', '예약 시각은 서버 기준 약 30초 이후로 설정해 주세요.');
   }
+  // 풀에서 만든 예약이면 출처를 남긴다 (발송 성공 시 사용 횟수 집계)
+  const sourceMessageId = String(data.messageId || '').trim();
   const ref = await db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes').add({
     scheduleType: 'once',
     title: t.slice(0, ADMIN_BROADCAST_TITLE_MAX),
@@ -5107,9 +5289,11 @@ exports.scheduleAdminBroadcastPush = onCall({ region: REGION }, async (request) 
     targetEnv: target,
     scheduledAt: Timestamp.fromMillis(ms),
     status: 'pending',
+    ...(sourceMessageId ? { messageId: sourceMessageId } : {}),
     createdByUid: callerUid,
     createdAt: FieldValue.serverTimestamp()
   });
+  await enqueueAdminPushTask(ref.id, ms);
   return { ok: true, id: ref.id };
 });
 
@@ -5215,6 +5399,10 @@ exports.updateAdminScheduledPush = onCall({ region: REGION }, async (request) =>
   updates.updatedAt = FieldValue.serverTimestamp();
   updates.updatedByUid = callerUid;
   await ref.update(updates);
+  if (updates.scheduledAt) {
+    // 옛 태스크는 그대로 둔다 — 그 시각에 와도 예약이 이미 옮겨져 있어 스스로 물러난다
+    await enqueueAdminPushTask(jobId, updates.scheduledAt.toMillis());
+  }
   return { ok: true, id: jobId };
 });
 
@@ -5244,12 +5432,849 @@ exports.deleteAdminBroadcastHistory = onCall({ region: REGION }, async (request)
   return { ok: true, id: jobId };
 });
 
+// ============================================
+// 푸시 메시지 풀 (adminPushMessages)
+// ============================================
+
+const ADMIN_PUSH_MESSAGE_MAX = 2000;
+
+function adminPushMessagesColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminPushMessages');
+}
+
+/** 제목+내용이 같으면 같은 메시지로 본다 (중복 담기 방지) */
+function adminPushMessageDedupeKey(title, body) {
+  const raw = `${String(title || '').trim()}\n${String(body || '').trim()}`;
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 40);
+}
+
+/** 풀에 저장할 형태로 정규화 — 유효하지 않으면 null */
+function normalizeAdminPushMessageInput(raw) {
+  const title = String(raw?.title || '').trim().slice(0, ADMIN_BROADCAST_TITLE_MAX);
+  const body = String(raw?.body || '').trim().slice(0, ADMIN_BROADCAST_BODY_MAX);
+  if (!title || !body) return null;
+  const tab = String(raw?.landingTab || '').trim();
+  const landingTab = ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard';
+  return { title, body, landingTab, dedupeKey: adminPushMessageDedupeKey(title, body) };
+}
+
+/** 관리자 확인 + 풀 크기 상한 안내를 공유 */
+async function assertAdminForPushPool(request, action) {
+  const callerUid = request.auth?.uid;
+  if (!callerUid) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(callerUid))) {
+    throw new HttpsError('permission-denied', `관리자만 ${action} 수 있습니다.`);
+  }
+  return callerUid;
+}
+
+/** 관리자: 풀 메시지 생성·수정 */
+exports.upsertAdminPushMessage = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '등록할');
+  const data = request.data || {};
+  const normalized = normalizeAdminPushMessageInput(data);
+  if (!normalized) {
+    throw new HttpsError('invalid-argument', '제목과 내용을 모두 입력해 주세요.');
+  }
+  const active = data.active === false ? false : true;
+  const messageId = String(data.messageId || '').trim();
+
+  if (messageId) {
+    const ref = adminPushMessagesColl().doc(messageId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      throw new HttpsError('not-found', '메시지를 찾을 수 없습니다.');
+    }
+    const wasActive = snap.data()?.active !== false;
+    await ref.update({
+      ...normalized,
+      active,
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: callerUid
+    });
+    if (wasActive && !active) {
+      // 순환에서 뺐으면 이미 깔린 미래 배정도 비워 다른 메시지로 다시 채운다
+      await replanRotationsForMessages([messageId]).catch((e) =>
+        logger.warn('upsertAdminPushMessage: replan failed', { message: e?.message })
+      );
+    } else if (!wasActive && active) {
+      await insertMessageIntoRotationDecks(messageId).catch((e) =>
+        logger.warn('upsertAdminPushMessage: deck insert failed', { message: e?.message })
+      );
+    }
+    return { ok: true, id: messageId, created: false };
+  }
+
+  // 같은 제목·내용이 이미 있으면 새로 만들지 않는다
+  const dup = await adminPushMessagesColl().where('dedupeKey', '==', normalized.dedupeKey).limit(1).get();
+  if (!dup.empty) {
+    return { ok: true, id: dup.docs[0].id, created: false, duplicated: true };
+  }
+  const total = await adminPushMessagesColl().count().get();
+  if ((total.data().count || 0) >= ADMIN_PUSH_MESSAGE_MAX) {
+    throw new HttpsError('resource-exhausted', `메시지 풀은 최대 ${ADMIN_PUSH_MESSAGE_MAX}개까지 등록할 수 있습니다.`);
+  }
+  const ref = await adminPushMessagesColl().add({
+    ...normalized,
+    active,
+    useCount: 0,
+    lastUsedAt: null,
+    createdByUid: callerUid,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+  if (active) {
+    // 다음 바퀴까지 기다리지 않고 이번 바퀴 안에서 나가도록
+    await insertMessageIntoRotationDecks(ref.id).catch((e) =>
+      logger.warn('upsertAdminPushMessage: deck insert failed', { message: e?.message })
+    );
+  }
+  return { ok: true, id: ref.id, created: true };
+});
+
+/** 관리자: 풀 메시지 삭제 */
+exports.deleteAdminPushMessage = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  await assertAdminForPushPool(request, '삭제할');
+  const ids = Array.isArray(request.data?.messageIds)
+    ? request.data.messageIds
+    : [request.data?.messageId];
+  const targets = [...new Set(ids.map((v) => String(v || '').trim()).filter(Boolean))];
+  if (targets.length === 0) {
+    throw new HttpsError('invalid-argument', '삭제할 메시지 ID가 필요합니다.');
+  }
+  let batch = db.batch();
+  let ops = 0;
+  for (const id of targets) {
+    batch.delete(adminPushMessagesColl().doc(id));
+    ops++;
+    if (ops >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  }
+  if (ops > 0) await batch.commit();
+  await replanRotationsForMessages(targets).catch((e) =>
+    logger.warn('deleteAdminPushMessage: replan failed', { message: e?.message })
+  );
+  return { ok: true, deleted: targets.length };
+});
+
 /**
- * 예약 푸시: 매분 pending 중 예정 시각 도래 건 처리
+ * 관리자: 발송예정·발송완료 기록에서 선택한 건을 풀에 담기
+ * 제목+내용이 같은 메시지는 건너뛴다.
+ */
+exports.importAdminPushMessagesFromHistory = onCall({ region: REGION }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '가져올');
+  const rawIds = Array.isArray(request.data?.jobIds) ? request.data.jobIds : [];
+  const jobIds = [...new Set(rawIds.map((v) => String(v || '').trim()).filter(Boolean))].slice(0, 350);
+  if (jobIds.length === 0) {
+    throw new HttpsError('invalid-argument', '가져올 기록을 선택해 주세요.');
+  }
+
+  const historyColl = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+  const snaps = await db.getAll(...jobIds.map((id) => historyColl.doc(id)));
+
+  // 이미 풀에 있는 제목+내용 (풀은 최대 2000건이라 전량 조회해도 부담이 적다)
+  const poolSnap = await adminPushMessagesColl().select('dedupeKey').get();
+  const seen = new Set(poolSnap.docs.map((d) => String(d.data().dedupeKey || '')).filter(Boolean));
+
+  const toCreate = [];
+  let skippedDuplicate = 0;
+  let skippedInvalid = 0;
+  for (const snap of snaps) {
+    if (!snap.exists) {
+      skippedInvalid++;
+      continue;
+    }
+    const normalized = normalizeAdminPushMessageInput(snap.data());
+    if (!normalized) {
+      skippedInvalid++;
+      continue;
+    }
+    if (seen.has(normalized.dedupeKey)) {
+      // 선택 목록 안의 중복도 여기서 걸러진다
+      skippedDuplicate++;
+      continue;
+    }
+    seen.add(normalized.dedupeKey);
+    toCreate.push(normalized);
+  }
+
+  if (toCreate.length > 0) {
+    const room = ADMIN_PUSH_MESSAGE_MAX - (poolSnap.size || 0);
+    if (toCreate.length > room) {
+      throw new HttpsError(
+        'resource-exhausted',
+        `메시지 풀은 최대 ${ADMIN_PUSH_MESSAGE_MAX}개까지 등록할 수 있습니다. (현재 ${poolSnap.size}개, 담으려는 ${toCreate.length}개)`
+      );
+    }
+    let batch = db.batch();
+    let ops = 0;
+    for (const item of toCreate) {
+      batch.set(adminPushMessagesColl().doc(), {
+        ...item,
+        active: true,
+        useCount: 0,
+        lastUsedAt: null,
+        importedFrom: 'history',
+        createdByUid: callerUid,
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+      ops++;
+      if (ops >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    }
+    if (ops > 0) await batch.commit();
+  }
+
+  return {
+    ok: true,
+    imported: toCreate.length,
+    skippedDuplicate,
+    skippedInvalid,
+    requested: jobIds.length
+  };
+});
+
+// ============================================
+// 푸시 메시지 순환 발송 (adminPushRotations)
+// ============================================
+
+const ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS = 60;
+const ADMIN_PUSH_ROTATION_MAX_SLOTS = 28;
+/** 한 번의 배정에서 만들 수 있는 최대 예약 — 슬롯 설정 실수로 폭주하는 것을 막는다 */
+const ADMIN_PUSH_ROTATION_MAX_CREATE = 200;
+const ADMIN_PUSH_ROTATION_MAX_OCCURRENCES = 400;
+
+function adminPushRotationsColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminPushRotations');
+}
+
+function adminScheduledPushesColl() {
+  return db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
+}
+
+/** 순환 슬롯 [{weekday:1~7, time:'HH:mm'}] — 중복 제거 후 요일·시각 순 */
+function normalizeRotationSlots(rows) {
+  if (!Array.isArray(rows)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    const weekday = Number(row?.weekday);
+    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) continue;
+    const time = normalizeHm(row?.time);
+    if (!/^\d{2}:\d{2}$/.test(time)) continue;
+    const key = `${weekday}_${time}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ weekday, time });
+  }
+  out.sort((a, b) => a.weekday - b.weekday || a.time.localeCompare(b.time));
+  return out.slice(0, ADMIN_PUSH_ROTATION_MAX_SLOTS);
+}
+
+function clampInt(v, min, max, fallback) {
+  const n = Number(v);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
+function normalizeRotationDoc(d) {
+  return {
+    name: String(d?.name || '기본 순환').slice(0, 60),
+    enabled: d?.enabled === true,
+    targetEnv: ADMIN_PUSH_TARGET_ENVS.has(String(d?.targetEnv || '')) ? String(d.targetEnv) : 'all',
+    slots: normalizeRotationSlots(d?.slots),
+    horizonDays: clampInt(d?.horizonDays, 1, ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS, 14),
+    cycleNo: clampInt(d?.cycleNo, 0, 1e9, 0),
+    deckRemaining: Array.isArray(d?.deckRemaining) ? d.deckRemaining.map(String) : [],
+    deckServed: Array.isArray(d?.deckServed) ? d.deckServed.map(String) : [],
+    lastAssignedMessageId: d?.lastAssignedMessageId ? String(d.lastAssignedMessageId) : null,
+    newMessagePriority: d?.newMessagePriority !== false,
+    priorityWindow: clampInt(d?.priorityWindow, 1, 100, 10),
+    plannedUntilYmd: String(d?.plannedUntilYmd || '')
+  };
+}
+
+/** 오늘부터 horizonDays 뒤까지, 슬롯 요일·시각에 걸리는 발송 시각 (KST) */
+function enumerateRotationOccurrences(slots, horizonDays, minFromMs) {
+  if (!slots.length) return [];
+  const out = [];
+  let ymd = kstYmdFromMillis(minFromMs);
+  for (let day = 0; day <= horizonDays && out.length < ADMIN_PUSH_ROTATION_MAX_OCCURRENCES; day++) {
+    const wd = kstWeekdayMon1Sun7FromYmd(ymd);
+    for (const slot of slots) {
+      if (slot.weekday !== wd) continue;
+      const ms = kstMillisForYmdHm(ymd, slot.time);
+      if (Number.isNaN(ms) || ms < minFromMs) continue;
+      out.push({ ms, ymd, time: slot.time });
+    }
+    ymd = addOneKstYmd(ymd);
+  }
+  out.sort((a, b) => a.ms - b.ms);
+  return out;
+}
+
+/** 활성 메시지 전량 — 덱 보충과 내용 스냅샷에 모두 쓴다 */
+async function fetchActiveAdminPushMessages() {
+  const snap = await adminPushMessagesColl().where('active', '==', true).limit(ADMIN_PUSH_MESSAGE_MAX).get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    const tab = String(data.landingTab || '').trim();
+    return {
+      id: d.id,
+      title: String(data.title || ''),
+      body: String(data.body || ''),
+      landingTab: ADMIN_PUSH_LANDING_TABS.has(tab) ? tab : 'dashboard'
+    };
+  });
+}
+
+/**
+ * 호라이즌 안의 빈 슬롯을 덱에서 뽑아 채운다.
+ * 슬롯 나열 → 문서 생성 → 덱 갱신을 한 트랜잭션으로 묶어, 실패해도 덱만 앞서나가지 않게 한다.
+ * 이미 문서가 있는 슬롯은 건너뛴다 — 취소된 슬롯도 문서가 남아 다시 채워지지 않는다.
+ */
+async function planAdminPushRotationCore(rotationId) {
+  const res = await planAdminPushRotationTransaction(rotationId);
+  const { taskEntries, ...rest } = res;
+  if (Array.isArray(taskEntries) && taskEntries.length > 0) {
+    const enqueued = await enqueueAdminPushTasks(taskEntries);
+    return { ...rest, enqueued };
+  }
+  return rest;
+}
+
+/**
+ * 덱에서 뽑아 예약 문서를 깔기까지. 태스크는 커밋 뒤에 planAdminPushRotationCore 가 건다 —
+ * 트랜잭션은 충돌하면 통째로 재시도되므로, 안에서 걸면 같은 태스크가 여러 번 쌓인다.
+ */
+async function planAdminPushRotationTransaction(rotationId) {
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  // 풀 스냅샷은 트랜잭션 밖에서 — 자주 바뀌지 않고, 재시도마다 다시 읽을 이유가 없다
+  const messages = await fetchActiveAdminPushMessages();
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const activeIds = messages.map((m) => m.id);
+
+  return db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (!rotSnap.exists) return { created: 0, reason: 'not-found' };
+    const rot = normalizeRotationDoc(rotSnap.data());
+    if (!rot.enabled) return { created: 0, reason: 'disabled' };
+    if (rot.slots.length === 0) return { created: 0, reason: 'no-slots' };
+    if (activeIds.length === 0) return { created: 0, reason: 'empty-pool' };
+
+    const minFromMs = Date.now() + 60 * 1000;
+    const occurrences = enumerateRotationOccurrences(rot.slots, rot.horizonDays, minFromMs);
+    if (occurrences.length === 0) return { created: 0, reason: 'no-occurrence' };
+
+    const refs = occurrences.map((o) =>
+      adminScheduledPushesColl().doc(rotationSlotDocId(rotationId, o.ymd, o.time))
+    );
+    const snaps = await tx.getAll(...refs);
+
+    const deck = {
+      remaining: [...rot.deckRemaining],
+      served: [...rot.deckServed],
+      cycleNo: rot.cycleNo,
+      lastAssignedMessageId: rot.lastAssignedMessageId
+    };
+
+    let created = 0;
+    const taskEntries = [];
+    for (let i = 0; i < occurrences.length; i++) {
+      if (created >= ADMIN_PUSH_ROTATION_MAX_CREATE) break;
+      if (snaps[i].exists) continue;
+      const messageId = drawFromDeck(deck, activeIds);
+      if (!messageId) break;
+      const msg = byId.get(messageId);
+      if (!msg) continue;
+      tx.set(refs[i], {
+        scheduleType: 'once',
+        scheduleSource: 'rotation',
+        rotationId,
+        messageId,
+        cycleNo: deck.cycleNo,
+        deckIndex: deck.served.length,
+        deckSize: activeIds.length,
+        title: msg.title,
+        body: msg.body,
+        landingTab: msg.landingTab,
+        targetEnv: rot.targetEnv,
+        scheduledAt: Timestamp.fromMillis(occurrences[i].ms),
+        status: 'pending',
+        createdByUid: null,
+        createdAt: FieldValue.serverTimestamp()
+      });
+      taskEntries.push({ docId: refs[i].id, whenMs: occurrences[i].ms });
+      created++;
+    }
+
+    tx.update(rotRef, {
+      deckRemaining: deck.remaining,
+      deckServed: deck.served,
+      cycleNo: deck.cycleNo,
+      lastAssignedMessageId: deck.lastAssignedMessageId,
+      plannedUntilYmd: occurrences[occurrences.length - 1].ymd,
+      lastPlannedAt: FieldValue.serverTimestamp()
+    });
+    return {
+      created,
+      cycleNo: deck.cycleNo,
+      remaining: deck.remaining.length,
+      poolSize: activeIds.length,
+      taskEntries
+    };
+  });
+}
+
+/**
+ * 미래 pending 순환 예약을 되돌린다 — 문서를 지우고 쓰였던 메시지를 덱 앞쪽으로 돌려놓는다.
+ * 지운 슬롯은 문서가 사라지므로 다음 배정에서 다시 채워진다.
+ * @param {(data:object)=>boolean} [filterFn] 되돌릴 대상 (기본: 전부)
+ */
+async function rewindRotationAssignments(rotationId, filterFn) {
+  const nowMs = Date.now();
+  const snap = await adminScheduledPushesColl()
+    .where('rotationId', '==', rotationId)
+    .where('status', '==', 'pending')
+    .limit(500)
+    .get();
+  const targets = snap.docs
+    .filter((d) => {
+      const data = d.data();
+      const ms =
+        data.scheduledAt && typeof data.scheduledAt.toMillis === 'function' ? data.scheduledAt.toMillis() : 0;
+      if (!ms || ms <= nowMs) return false;
+      return filterFn ? filterFn(data) : true;
+    })
+    // 원래 배정 순서대로 되돌려야 다시 채울 때 같은 순서가 나온다
+    .sort((a, b) => a.data().scheduledAt.toMillis() - b.data().scheduledAt.toMillis());
+  if (targets.length === 0) return { rewound: 0 };
+
+  const returnedIds = targets.map((d) => String(d.data().messageId || '')).filter(Boolean);
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  await db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (rotSnap.exists) {
+      const rot = normalizeRotationDoc(rotSnap.data());
+      const returned = new Set(returnedIds);
+      tx.update(rotRef, {
+        deckRemaining: [...returnedIds, ...rot.deckRemaining.filter((id) => !returned.has(id))],
+        deckServed: rot.deckServed.filter((id) => !returned.has(id))
+      });
+    }
+    for (const d of targets) tx.delete(d.ref);
+  });
+  return { rewound: targets.length };
+}
+
+/** 풀이 바뀌어 영향을 받는 미래 배정을 되돌리고 다시 채운다 (비활성·삭제 시) */
+async function replanRotationsForMessages(messageIds) {
+  const ids = new Set(messageIds.map(String).filter(Boolean));
+  if (ids.size === 0) return;
+  const snap = await adminPushRotationsColl().limit(10).get();
+  for (const d of snap.docs) {
+    try {
+      await rewindRotationAssignments(d.id, (data) => ids.has(String(data.messageId || '')));
+      await planAdminPushRotationCore(d.id);
+    } catch (e) {
+      logger.warn('replanRotationsForMessages: failed', { rotationId: d.id, message: e?.message });
+    }
+  }
+}
+
+/** 새로 담은 메시지를 이번 바퀴 잔여 구간에 끼워 넣는다 (우선 배정이 켜져 있으면 앞쪽에) */
+async function insertMessageIntoRotationDecks(messageId) {
+  const snap = await adminPushRotationsColl().where('enabled', '==', true).limit(10).get();
+  for (const docSnap of snap.docs) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(docSnap.ref);
+        if (!s.exists) return;
+        const rot = normalizeRotationDoc(s.data());
+        if (rot.deckServed.includes(messageId)) return;
+        const next = insertIntoDeckRemaining(rot.deckRemaining, messageId, {
+          newMessagePriority: rot.newMessagePriority,
+          priorityWindow: rot.priorityWindow
+        });
+        if (next.length === rot.deckRemaining.length) return;
+        tx.update(docSnap.ref, { deckRemaining: next });
+      });
+    } catch (e) {
+      logger.warn('insertMessageIntoRotationDecks: failed', { rotationId: docSnap.id, message: e?.message });
+    }
+  }
+}
+
+/** 관리자: 순환 설정 저장 — 슬롯·환경이 바뀌면 미래 배정을 다시 깐다 */
+exports.saveAdminPushRotation = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  const callerUid = await assertAdminForPushPool(request, '저장할');
+  const data = request.data || {};
+  const rotationId = String(data.rotationId || 'default').trim() || 'default';
+  const slots = normalizeRotationSlots(data.slots);
+  const enabled = data.enabled === true;
+  if (enabled && slots.length === 0) {
+    throw new HttpsError('invalid-argument', '순환을 켜려면 발송 요일·시각을 하나 이상 지정해 주세요.');
+  }
+  const targetEnv = ADMIN_PUSH_TARGET_ENVS.has(String(data.targetEnv || '')) ? String(data.targetEnv) : 'all';
+  const ref = adminPushRotationsColl().doc(rotationId);
+  const before = await ref.get();
+  const prev = before.exists ? normalizeRotationDoc(before.data()) : null;
+
+  await ref.set(
+    {
+      name: String(data.name || '기본 순환').slice(0, 60),
+      enabled,
+      targetEnv,
+      slots,
+      horizonDays: clampInt(data.horizonDays, 1, ADMIN_PUSH_ROTATION_MAX_HORIZON_DAYS, 14),
+      newMessagePriority: data.newMessagePriority !== false,
+      priorityWindow: clampInt(data.priorityWindow, 1, 100, 10),
+      updatedAt: FieldValue.serverTimestamp(),
+      updatedByUid: callerUid
+    },
+    { merge: true }
+  );
+
+  // 발송 조건이 달라졌으면 이미 깔린 미래 배정은 지금 설정과 맞지 않는다
+  const scheduleChanged =
+    !prev || prev.targetEnv !== targetEnv || JSON.stringify(prev.slots) !== JSON.stringify(slots);
+  if (scheduleChanged) {
+    await rewindRotationAssignments(rotationId);
+  }
+  const planned = enabled ? await planAdminPushRotationCore(rotationId) : { created: 0, reason: 'disabled' };
+  return { ok: true, id: rotationId, planned };
+});
+
+/** 관리자: 지금 다시 채우기 */
+exports.planAdminPushRotationNow = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  await assertAdminForPushPool(request, '배정할');
+  const rotationId = String(request.data?.rotationId || 'default').trim() || 'default';
+  const planned = await planAdminPushRotationCore(rotationId);
+  return { ok: true, planned };
+});
+
+/** 관리자: 남은 바퀴 다시 섞기 — 미래 배정을 되돌리고 잔여 덱을 재셔플한 뒤 다시 깐다 */
+exports.reshuffleAdminPushRotation = onCall({ region: REGION, timeoutSeconds: 300 }, async (request) => {
+  await assertAdminForPushPool(request, '재배정할');
+  const rotationId = String(request.data?.rotationId || 'default').trim() || 'default';
+  const rewound = await rewindRotationAssignments(rotationId);
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  await db.runTransaction(async (tx) => {
+    const s = await tx.get(rotRef);
+    if (!s.exists) return;
+    const rot = normalizeRotationDoc(s.data());
+    tx.update(rotRef, { deckRemaining: shuffleIds(rot.deckRemaining) });
+  });
+  const planned = await planAdminPushRotationCore(rotationId);
+  return { ok: true, rewound: rewound.rewound, planned };
+});
+
+/** 관리자: 예약 1건만 다른 메시지로 재추첨 */
+exports.rerollAdminScheduledPush = onCall({ region: REGION }, async (request) => {
+  await assertAdminForPushPool(request, '재추첨할');
+  const jobId = String(request.data?.jobId || '').trim();
+  if (!jobId) {
+    throw new HttpsError('invalid-argument', '예약 ID(jobId)가 필요합니다.');
+  }
+  const jobRef = adminScheduledPushesColl().doc(jobId);
+  const jobSnap = await jobRef.get();
+  if (!jobSnap.exists) {
+    throw new HttpsError('not-found', '예약을 찾을 수 없습니다.');
+  }
+  const job = jobSnap.data();
+  if (String(job.scheduleSource || '') !== 'rotation') {
+    throw new HttpsError('failed-precondition', '순환에서 만든 예약만 재추첨할 수 있습니다.');
+  }
+  if (String(job.status || '') !== 'pending') {
+    throw new HttpsError('failed-precondition', '대기 중인 예약만 재추첨할 수 있습니다.');
+  }
+  const rotationId = String(job.rotationId || 'default');
+  const messages = await fetchActiveAdminPushMessages();
+  if (messages.length === 0) {
+    throw new HttpsError('failed-precondition', '풀에 활성 메시지가 없습니다.');
+  }
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const activeIds = messages.map((m) => m.id);
+  const oldId = String(job.messageId || '');
+
+  const rotRef = adminPushRotationsColl().doc(rotationId);
+  const picked = await db.runTransaction(async (tx) => {
+    const rotSnap = await tx.get(rotRef);
+    if (!rotSnap.exists) throw new HttpsError('not-found', '순환 설정을 찾을 수 없습니다.');
+    const rot = normalizeRotationDoc(rotSnap.data());
+    const deck = {
+      // 쓰던 메시지는 잔여 덱 맨 뒤로 — 바로 다시 뽑히지 않게
+      remaining: [...rot.deckRemaining.filter((id) => id !== oldId), ...(oldId ? [oldId] : [])],
+      served: rot.deckServed.filter((id) => id !== oldId),
+      cycleNo: rot.cycleNo,
+      lastAssignedMessageId: rot.lastAssignedMessageId
+    };
+    const messageId = drawFromDeck(deck, activeIds);
+    if (!messageId) throw new HttpsError('failed-precondition', '뽑을 메시지가 없습니다.');
+    const msg = byId.get(messageId);
+    tx.update(rotRef, {
+      deckRemaining: deck.remaining,
+      deckServed: deck.served,
+      cycleNo: deck.cycleNo,
+      lastAssignedMessageId: deck.lastAssignedMessageId
+    });
+    tx.update(jobRef, {
+      messageId,
+      title: msg.title,
+      body: msg.body,
+      landingTab: msg.landingTab,
+      cycleNo: deck.cycleNo,
+      deckIndex: deck.served.length,
+      rerolledAt: FieldValue.serverTimestamp()
+    });
+    return { messageId, title: msg.title };
+  });
+  return { ok: true, ...picked };
+});
+
+/**
+ * 순환 배정: 매일 호라이즌을 한 칸씩 민다
+ */
+exports.planAdminPushRotations = onSchedule(
+  {
+    schedule: '10 3 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB'
+  },
+  async () => {
+    const snap = await adminPushRotationsColl().where('enabled', '==', true).limit(10).get();
+    for (const d of snap.docs) {
+      try {
+        const res = await planAdminPushRotationCore(d.id);
+        logger.info('planAdminPushRotations: planned', { rotationId: d.id, ...res });
+      } catch (e) {
+        logger.error('planAdminPushRotations: failed', { rotationId: d.id, message: e?.message });
+      }
+    }
+  }
+);
+
+/**
+ * 예약 한 건을 실제로 보낸다. Cloud Tasks 태스크와 안전망 폴링이 이 경로를 함께 쓴다.
+ *
+ * @param {string} docId 예약 문서 ID
+ * @param {FirebaseFirestore.DocumentReference} ref
+ * @param {number} nowMs 이 시각까지 예정된 건만 집는다.
+ *   태스크는 예정 시각보다 조금 일찍 도착할 수 있어 여유를 얹어 넘긴다.
+ * @returns {Promise<'sent'|'skipped'|'failed'>}
+ */
+async function deliverAdminScheduledPushDoc(docId, ref, nowMs) {
+  try {
+    const acquired = await db.runTransaction(async (transaction) => {
+      const s = await transaction.get(ref);
+      if (!s.exists) return false;
+      const d = s.data();
+      if (d.status !== 'pending') return false;
+      const sa = d.scheduledAt;
+      const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
+      if (!ms || ms > nowMs) return false;
+      transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
+      return true;
+    });
+
+    // 취소됐거나, 다른 경로가 이미 집어갔거나, 시각이 미뤄진 건 — 조용히 넘긴다
+    if (!acquired) return 'skipped';
+
+    const after = await ref.get();
+    const d = after.data();
+    if (!after.exists || d.status !== 'sending') return 'skipped';
+
+    const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
+    let title = String(d.title || '').trim();
+    let body = String(d.body || '').trim();
+    let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
+      ? String(d.landingTab).trim()
+      : 'dashboard';
+    let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
+
+    if (isWeeklyByDay) {
+      const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
+      if (!slot) {
+        await ref.update({
+          status: 'failed',
+          errorMessage: '요일별 슬롯 매칭 실패',
+          failedAt: FieldValue.serverTimestamp()
+        });
+        return 'failed';
+      }
+      title = slot.title;
+      body = slot.body;
+      landingTab = slot.landingTab;
+      pushTargetEnv = slot.targetEnv;
+    }
+
+    if (!title || !body) {
+      await ref.update({
+        status: 'failed',
+        errorMessage: '제목/내용 누락',
+        failedAt: FieldValue.serverTimestamp()
+      });
+      return 'failed';
+    }
+
+    const { recipientCount } = await broadcastAdminPushToAllUsers({
+      title,
+      body,
+      targetEnv: pushTargetEnv,
+      data: { type: 'adminBroadcast', landingTab }
+    });
+
+    const scheduleType = d.scheduleType || 'once';
+    if (scheduleType === 'recurring') {
+      if (isWeeklyByDay) {
+        const rangeStartMs =
+          d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
+            ? d.recurringStartAt.toMillis()
+            : 0;
+        const rangeEndMs =
+          d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
+            ? d.recurringEndAt.toMillis()
+            : 0;
+        const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+        const nextMs = computeNextWeeklySlotMillis(
+          d.weeklySchedule,
+          rangeStartMs,
+          rangeEndMs,
+          thisRunMs + 60 * 1000
+        );
+        if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
+          await ref.update({
+            status: 'completed',
+            sentAt: FieldValue.serverTimestamp(),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          logger.info('deliverAdminScheduledPush: weeklyByDay completed', { id: docId });
+        } else {
+          await ref.update({
+            status: 'pending',
+            scheduledAt: Timestamp.fromMillis(nextMs),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          await enqueueAdminPushTask(docId, nextMs);
+          logger.info('deliverAdminScheduledPush: weeklyByDay next', { id: docId, nextMs });
+        }
+      } else {
+        const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
+        const intervalRaw = String(d.recurringInterval || 'daily').trim();
+        const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
+        const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
+        const nextMs = addRecurringNextMillis(thisRunMs, interval);
+        if (!endMs || nextMs > endMs) {
+          await ref.update({
+            status: 'completed',
+            sentAt: FieldValue.serverTimestamp(),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          logger.info('deliverAdminScheduledPush: recurring completed', { id: docId });
+        } else {
+          await ref.update({
+            status: 'pending',
+            scheduledAt: Timestamp.fromMillis(nextMs),
+            lastSentAt: FieldValue.serverTimestamp(),
+            occurrenceCount: FieldValue.increment(1),
+            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+          });
+          await enqueueAdminPushTask(docId, nextMs);
+          logger.info('deliverAdminScheduledPush: recurring next scheduled', { id: docId, nextMs });
+        }
+      }
+    } else {
+      await ref.update({
+        status: 'sent',
+        sentAt: FieldValue.serverTimestamp(),
+        recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
+      });
+      logger.info('deliverAdminScheduledPush: sent', { id: docId });
+    }
+
+    // 풀에서 온 메시지면 사용 횟수 집계 (실패해도 발송에는 영향 없음)
+    const sourceMessageId = String(d.messageId || '').trim();
+    if (sourceMessageId) {
+      try {
+        await adminPushMessagesColl().doc(sourceMessageId).update({
+          useCount: FieldValue.increment(1),
+          lastUsedAt: FieldValue.serverTimestamp()
+        });
+      } catch (useErr) {
+        logger.warn('deliverAdminScheduledPush: useCount update failed', {
+          messageId: sourceMessageId,
+          message: useErr?.message
+        });
+      }
+    }
+    return 'sent';
+  } catch (e) {
+    logger.error('deliverAdminScheduledPush: error', { id: docId, message: e?.message });
+    try {
+      await ref.update({
+        status: 'failed',
+        errorMessage: String(e?.message || e).slice(0, 500),
+        failedAt: FieldValue.serverTimestamp()
+      });
+    } catch (_) {}
+    return 'failed';
+  }
+}
+
+/**
+ * 예약 푸시 발송 — 예약을 만들 때 걸어 둔 Cloud Tasks 태스크가 예정 시각에 이걸 부른다.
+ *
+ * 태스크는 취소·수정을 모른다. 그래서 태스크를 지우는 대신 여기서 문서를 보고 판단한다:
+ * 취소됐으면 status 가 pending 이 아니고, 시각이 미뤄졌으면 scheduledAt 이 아직 미래다.
+ * 둘 다 조용히 넘어가고, 미뤄진 건은 그때 새로 걸어 둔 태스크가 처리한다.
+ */
+exports.deliverScheduledAdminPush = onTaskDispatched(
+  {
+    region: REGION,
+    timeoutSeconds: 540,
+    memory: '512MiB',
+    retryConfig: { maxAttempts: 3, minBackoffSeconds: 30 },
+    rateLimits: { maxConcurrentDispatches: 5 }
+  },
+  async (request) => {
+    const docId = String(request.data?.docId || '').trim();
+    if (!docId) {
+      logger.warn('deliverScheduledAdminPush: docId 없음');
+      return;
+    }
+    const ref = adminScheduledPushesColl().doc(docId);
+    // 태스크는 예정 시각보다 살짝 이르게 도착할 수 있다 — 그 정도는 「지금」으로 친다
+    await deliverAdminScheduledPushDoc(docId, ref, Date.now() + ADMIN_PUSH_TASK_EARLY_TOLERANCE_MS);
+  }
+);
+
+/**
+ * 예약 푸시 안전망 — 태스크가 유실됐거나(enqueue 실패, 큐 오류),
+ * 너무 먼 미래라 태스크를 걸지 못한 예약을 주워 담는다.
+ *
+ * 예전에는 이게 매분 돌면서 유일한 발송 경로였다. 발송 시각은 문서에 이미 적혀 있는데
+ * 1분마다 "지금 보낼 게 있나"를 다시 묻는 구조라, 월 43,200번 깨어나 대부분 빈손으로 돌아갔다.
+ * 이제 정상 경로는 태스크이고 이쪽은 그물이라, 주기를 늘려도 발송이 늦어지지 않는다.
  */
 exports.processScheduledAdminPushes = onSchedule(
   {
-    schedule: '* * * * *',
+    schedule: '*/10 * * * *',
     timeZone: 'Asia/Seoul',
     region: REGION,
     timeoutSeconds: 540,
@@ -5257,154 +6282,67 @@ exports.processScheduledAdminPushes = onSchedule(
   },
   async () => {
     const nowMs = Date.now();
-    const coll = db.collection('artifacts').doc(APP_ID).collection('adminScheduledPushes');
-    const snap = await coll.where('status', '==', 'pending').where('scheduledAt', '<=', Timestamp.fromMillis(nowMs)).limit(25).get();
+    const snap = await adminScheduledPushesColl()
+      .where('status', '==', 'pending')
+      .where('scheduledAt', '<=', Timestamp.fromMillis(nowMs))
+      .limit(25)
+      .get();
 
+    let sent = 0;
     for (const docSnap of snap.docs) {
-      const ref = docSnap.ref;
-      try {
-        const acquired = await db.runTransaction(async (transaction) => {
-          const s = await transaction.get(ref);
-          if (!s.exists) return false;
-          const d = s.data();
-          if (d.status !== 'pending') return false;
-          const sa = d.scheduledAt;
-          const ms = sa && typeof sa.toMillis === 'function' ? sa.toMillis() : 0;
-          if (!ms || ms > nowMs) return false;
-          transaction.update(ref, { status: 'sending', lockedAt: FieldValue.serverTimestamp() });
-          return true;
-        });
-
-        if (!acquired) continue;
-
-        const after = await ref.get();
-        const d = after.data();
-        if (!after.exists || d.status !== 'sending') continue;
-
-        const isWeeklyByDay = d.recurringMode === 'weeklyByDay' && Array.isArray(d.weeklySchedule);
-        let title = String(d.title || '').trim();
-        let body = String(d.body || '').trim();
-        let landingTab = ADMIN_PUSH_LANDING_TABS.has(String(d.landingTab || '').trim())
-          ? String(d.landingTab).trim()
-          : 'dashboard';
-        let pushTargetEnv = d.targetEnv === 'production' || d.targetEnv === 'staging' ? d.targetEnv : 'all';
-
-        if (isWeeklyByDay) {
-          const slot = findWeeklySlotForScheduledAt(d.weeklySchedule, d.scheduledAt);
-          if (!slot) {
-            await ref.update({
-              status: 'failed',
-              errorMessage: '요일별 슬롯 매칭 실패',
-              failedAt: FieldValue.serverTimestamp()
-            });
-            continue;
-          }
-          title = slot.title;
-          body = slot.body;
-          landingTab = slot.landingTab;
-          pushTargetEnv = slot.targetEnv;
-        }
-
-        if (!title || !body) {
-          await ref.update({
-            status: 'failed',
-            errorMessage: '제목/내용 누락',
-            failedAt: FieldValue.serverTimestamp()
-          });
-          continue;
-        }
-
-        const { recipientCount } = await broadcastAdminPushToAllUsers({
-          title,
-          body,
-          targetEnv: pushTargetEnv,
-          data: { type: 'adminBroadcast', landingTab }
-        });
-
-        const scheduleType = d.scheduleType || 'once';
-        if (scheduleType === 'recurring') {
-          if (isWeeklyByDay) {
-            const rangeStartMs =
-              d.recurringStartAt && typeof d.recurringStartAt.toMillis === 'function'
-                ? d.recurringStartAt.toMillis()
-                : 0;
-            const rangeEndMs =
-              d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function'
-                ? d.recurringEndAt.toMillis()
-                : 0;
-            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-            const nextMs = computeNextWeeklySlotMillis(
-              d.weeklySchedule,
-              rangeStartMs,
-              rangeEndMs,
-              thisRunMs + 60 * 1000
-            );
-            if (nextMs == null || !rangeEndMs || nextMs > rangeEndMs) {
-              await ref.update({
-                status: 'completed',
-                sentAt: FieldValue.serverTimestamp(),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: weeklyByDay completed', { id: docSnap.id });
-            } else {
-              await ref.update({
-                status: 'pending',
-                scheduledAt: Timestamp.fromMillis(nextMs),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: weeklyByDay next', { id: docSnap.id, nextMs });
-            }
-          } else {
-            const endMs = d.recurringEndAt && typeof d.recurringEndAt.toMillis === 'function' ? d.recurringEndAt.toMillis() : 0;
-            const intervalRaw = String(d.recurringInterval || 'daily').trim();
-            const interval = ADMIN_RECURRING_INTERVALS.has(intervalRaw) ? intervalRaw : 'daily';
-            const thisRunMs = d.scheduledAt && typeof d.scheduledAt.toMillis === 'function' ? d.scheduledAt.toMillis() : nowMs;
-            const nextMs = addRecurringNextMillis(thisRunMs, interval);
-            if (!endMs || nextMs > endMs) {
-              await ref.update({
-                status: 'completed',
-                sentAt: FieldValue.serverTimestamp(),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: recurring completed', { id: docSnap.id });
-            } else {
-              await ref.update({
-                status: 'pending',
-                scheduledAt: Timestamp.fromMillis(nextMs),
-                lastSentAt: FieldValue.serverTimestamp(),
-                occurrenceCount: FieldValue.increment(1),
-                recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-              });
-              logger.info('processScheduledAdminPushes: recurring next scheduled', { id: docSnap.id, nextMs });
-            }
-          }
-        } else {
-          await ref.update({
-            status: 'sent',
-            sentAt: FieldValue.serverTimestamp(),
-            recipientCount: typeof recipientCount === 'number' ? recipientCount : 0
-          });
-          logger.info('processScheduledAdminPushes: sent', { id: docSnap.id });
-        }
-      } catch (e) {
-        logger.error('processScheduledAdminPushes: error', { id: docSnap.id, message: e?.message });
-        try {
-          await ref.update({
-            status: 'failed',
-            errorMessage: String(e?.message || e).slice(0, 500),
-            failedAt: FieldValue.serverTimestamp()
-          });
-        } catch (_) {}
-      }
+      const r = await deliverAdminScheduledPushDoc(docSnap.id, docSnap.ref, nowMs);
+      if (r === 'sent') sent++;
     }
+    // 태스크가 제 몫을 하면 여기 걸릴 게 없다 — 잡혔다면 그물이 일한 것이니 남긴다
+    if (sent > 0) {
+      logger.warn('processScheduledAdminPushes: 태스크가 놓친 예약을 안전망이 발송했습니다', {
+        picked: snap.size,
+        sent
+      });
+    }
+
+    await reenqueueUpcomingAdminPushTasks(nowMs);
   }
 );
+
+/** 태스크를 다시 걸어 줄 범위. 스윕이 매시간이라 넉넉히 앞을 본다 */
+const ADMIN_PUSH_TASK_SWEEP_AHEAD_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * 태스크를 못 받은 임박 예약에 다시 태스크를 건다 — 이 구조 이전에 만들어진 예약,
+ * enqueue 가 실패했던 예약이 대상이다.
+ *
+ * 어느 예약에 태스크가 걸려 있는지는 따로 적어 두지 않는다. 중복으로 걸려도
+ * 발송은 트랜잭션 락으로 한 번뿐이라(뒤에 온 태스크는 status 가 pending 이 아니라 물러난다),
+ * 태스크 유무를 추적하느라 문서에 쓰기를 더하는 것보다 그냥 다시 거는 쪽이 싸다.
+ *
+ * 매 폴링마다 하면 읽기가 늘어나므로 정시 실행분에서만 돈다(= 시간당 1회).
+ */
+async function reenqueueUpcomingAdminPushTasks(nowMs) {
+  if (new Date(nowMs).getMinutes() >= 10) return;
+  try {
+    const snap = await adminScheduledPushesColl()
+      .where('status', '==', 'pending')
+      .where('scheduledAt', '<=', Timestamp.fromMillis(nowMs + ADMIN_PUSH_TASK_SWEEP_AHEAD_MS))
+      .limit(100)
+      .get();
+    if (snap.empty) return;
+    const entries = [];
+    for (const docSnap of snap.docs) {
+      const ms = docSnap.data()?.scheduledAt?.toMillis?.();
+      // 이미 지난 건은 위 루프가 방금 처리했다
+      if (typeof ms === 'number' && ms > nowMs) entries.push({ docId: docSnap.id, whenMs: ms });
+    }
+    if (entries.length === 0) return;
+    const enqueued = await enqueueAdminPushTasks(entries);
+    logger.info('processScheduledAdminPushes: 임박 예약에 태스크를 다시 걸었습니다', {
+      candidates: entries.length,
+      enqueued
+    });
+  } catch (e) {
+    logger.warn('processScheduledAdminPushes: 태스크 재예약 스윕 실패', { message: e?.message || String(e) });
+  }
+}
 
 /**
  * 공지: pushFrequency === once 이고 아직 pushSentAt 없으면 전체 푸시 1회 후 pushSentAt 기록
@@ -5660,6 +6598,34 @@ function adminMealSatietyText(d) {
   return label ? `포만감 ${Math.round(n)}/5 (${label})` : `포만감 ${Math.round(n)}/5`;
 }
 
+/** 간식 슬롯 — js/constants.js SLOTS 의 type: 'snack' 과 같아야 한다 */
+const ADMIN_SNACK_SLOT_IDS = new Set(['pre_morning', 'snack1', 'snack2', 'night']);
+
+/**
+ * 확정 분류가 비었을 때 대신 쓸 자동 분류값. 채워져 있으면 ''(그대로 두라는 뜻).
+ *
+ * 사용자가 칩을 확정하면 category(끼니)·snackType(간식)에 들어가지만, **제안을 그대로 두고
+ * 저장하면 categoryAuto 에만** 들어간다(js/modals/entry-save-record.js 자동 분류 블록).
+ * 2026-08 기록 시트 개편 뒤로는 후자가 기본 동선이라, 확정 필드만 읽으면 분류가 붙은
+ * 기록의 대부분이 빈 값으로 보인다 — 8/23 주 기준 확정 10% / 자동만 55%.
+ *
+ * 그래서 식단분석에 보내는 슬롯 상세에서 '무엇을'이 통째로 빠지고 있었다. 클라이언트는
+ * 이미 확정값 우선·없으면 자동값으로 읽는다(js/analytics/meal-analytics-tags.js
+ * effectiveCategoryForAnalytics) — 서버도 같은 규칙으로 맞춘다.
+ *
+ * 두 확정 필드가 동시에 채워지는 문서는 없다(2026-08-26 전수 확인: 0건). 그래서 슬롯을
+ * 보지 않고 「둘 중 채워진 쪽」으로 판단해도 안전하며, 슬롯과 필드가 어긋난 옛 문서 7건도
+ * 함께 살릴 수 있다. 슬롯은 '간식:' 라벨을 붙일지에만 쓴다.
+ *
+ * @param {boolean} [labeled] 간식 슬롯이면 '간식:' 을 붙인다 (슬롯 상세용)
+ */
+function adminMealAutoFormText(d, labeled = false) {
+  if (String(d?.category || '').trim() || String(d?.snackType || '').trim()) return '';
+  const auto = String(d?.categoryAuto || '').trim();
+  if (!auto) return '';
+  return labeled && ADMIN_SNACK_SLOT_IDS.has(String(d?.slotId || '')) ? `간식:${auto}` : auto;
+}
+
 /** 한 줄 요약(웰컴 API 표시용): 입력창 메뉴·메모 등 포함 */
 function adminMealShortLine(d) {
   const mt = (d.mealType || '').trim();
@@ -5668,6 +6634,8 @@ function adminMealShortLine(d) {
   if (d.category) bits.push(String(d.category).trim());
   const st = (d.snackType || '').trim();
   if (st) bits.push(st);
+  const autoForm = adminMealAutoFormText(d);
+  if (autoForm) bits.push(autoForm);
   const md = adminTruncateText(adminMealMenuDetailText(d), 56);
   if (md) bits.push(`메뉴:${md}`);
   const whom = (d.withWhomDetail || d.withWhom || '').trim();
@@ -5693,6 +6661,8 @@ function adminMealSlotDetailForGemini(d) {
   if (d.category) top.push(String(d.category).trim());
   const st = (d.snackType || '').trim();
   if (st) top.push(`간식:${st}`);
+  const autoForm = adminMealAutoFormText(d, true);
+  if (autoForm) top.push(autoForm);
   if (top.length) lines.push(top.join(' · '));
   const menuFull = adminMealMenuDetailText(d);
   if (menuFull) lines.push(`메뉴: ${menuFull}`);
@@ -6235,8 +7205,11 @@ exports.adminWelcomeGeminiComment = onCall(
 // AI 식단 분석 리포트 (날짜 단위)
 // - 매일 00:10 KST 배치로 "전날" 기록을 분석해 aiDietReports에 저장
 // - 대상: 식사/간식 meal 문서(하루 메모 제외)가 2개 이상인 날짜
-// - 사진: meal 문서당 최대 3장, 전체 안전 상한 12장
-// - 점수(0~100) + 한줄평 + 좋았던 점 + 아쉬운 점, sourceHash로 소급 수정 감지
+// - 기록·사진 모두 "시간순"(DIET_SLOT_ORDER)으로 정렬해 보낸다. 알파벳순으로 보내면
+//   모델이 저녁→점심→아침 순으로 하루를 읽게 되어 흐름·야식 판단이 무너진다.
+// - 사진은 슬롯 라벨 캡션과 짝지어 인터리브 전송(캡션 없이 보내면 사진↔기록 매칭 불가)
+// - 프롬프트 치환자: {{date}} {{weekday}} {{mealText}} {{profile}} {{slotCoverage}} {{recentTrend}} {{recentStats}}
+// - 응답은 JSON 모드로 강제하고 서버에서 파싱까지 검증한 뒤에만 status:'ready'
 // =========================================================================
 
 /** 분석 지원 시작일(서울). 배치 재개 시 사용 */
@@ -6248,35 +7221,251 @@ const DIET_REPORT_CONFIG_REF = () => db.doc(`artifacts/${APP_ID}/adminSettings/d
  * 관리자 화면에서 관리한다. 이 상수는 그 문서가 비어 있을 때만 쓰인다.
  * (관리자 화면의 "기본값으로 되돌리기"가 이 값을 덮어쓰므로 함부로 바꾸지 말 것)
  */
-const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱의 영양 코치야. 아래 [식단 데이터]와 함께 제공되는 사진들을 종합해 그날 하루({{date}}) 식단을 평가한다.
+const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그의 AI 식사 리포터다.
+사용자가 그날 남긴 기록과, 서버가 미리 계산해 둔 [평소와 비교]를 읽고 하루 리포트를 쓴다.
 
-[평가 기준 · 100점 만점]
-- 균형(주식·단백질·채소/과일의 고른 구성)
-- 단백질 충분함
-- 채소·과일 포함 여부
-- 과식·잦은 간식·야식 여부(감점 요인)
-- 기록의 충실도(메뉴·사진 등)
-위 항목을 종합해 0~100점을 매긴다. 데이터가 빈약하면 무리하게 높은 점수를 주지 말 것.
+이 리포트의 목적은 식단을 채점하는 것이 아니다.
+사용자가 "내가 세어 보지 않은 걸 알아봐 줬네" 하고 느끼게 하는 것이다.
+그날 먹은 것을 요약하면 사용자는 자기가 이미 아는 것을 다시 읽을 뿐이다. 요약은 리포트가 아니다.
 
-[작성 원칙]
-- 한국어. 담백하고 따뜻한 어투. 캐릭터·이모지·과장 없이.
-- 의학적 진단·치료·질병 단정 표현 금지("~에 좋다/나쁘다" 수준의 일반적 조언까지만).
-- 사진에 음식이 보이면 실제로 반영하되, 데이터에 없는 사실은 지어내지 말 것.
-- summary는 한 줄(공백 포함 60자 내외).
-- goodPoint(좋았던 점), improvePoint(아쉬운 점)은 각각 한 줄, 없으면 빈 문자열.
+[무엇을 말할 것인가]
 
-[식단 데이터 · {{date}}]
+말할 거리는 비교에서 나온다. 아래 순서로 찾는다.
+
+1. [평소와 비교]에 있는 사실. 사용자가 세고 있지 않은 것이라 가장 값이 크다.
+   여기 적힌 숫자는 서버가 계산한 것이니 그대로 쓴다. 여기 없는 숫자는 만들지 않는다.
+2. 그날 기록 안의 대비. 끼니 사이의 낙차, 벌어진 간격, 만족도가 갈린 지점.
+3. 사용자가 남긴 말. 코멘트나 하루소감에 쓴 표현.
+
+[평소와 비교]가 비어 있으면 2, 3으로 쓴다. 비교를 지어내지 않는다.
+
+같은 항목을 매일 쓰면 비교도 요약이 된다. [최근 흐름]에 최근 며칠 무엇으로 봤는지 적혀 있으니
+거기 있는 것과 다른 항목을 고른다. 특히 만족도는 늘 있는 재료라 손이 가기 쉽다.
+사흘 안에 이미 썼으면 다른 것을 본다.
+
+[네 칸]
+
+칸마다 보는 것이 다르다. 같은 이야기를 네 번 고쳐 말하면 리포트가 아니라 메아리가 된다.
+
+* title — 12~18자. 화면에서 가장 먼저, 때로는 유일하게 읽히는 자리다. 무난하면 아무도 읽지 않는다.
+  하루를 요약하지 말고 그날에만 있던 구체적인 것 하나를 집는다 — 메뉴 이름, 가게 이름,
+  함께한 사람 이름, 사용자가 쓴 말. 고유명사가 들어가면 대개 제목이 산다.
+  아래 방식 중 하나를 골라 쓰되, [최근 흐름]의 제목과 같은 방식은 피한다.
+  - 낙차: 하루의 양 끝을 붙인다. "샐러디로 시작, 케이크로 끝"
+  - 인용: 사용자가 쓴 말을 그대로 쓴다. "'한판 말고 반판'이라니"
+  - 선언: 툭 던지고 끝낸다. "치킨은 계획에 없었다"
+  - 명명: 그날에 이름을 붙인다. "야식 없는 날 사흘째"
+  - 장면: 한 장면만 클로즈업한다. "접시 절반은 오이였다"
+  예시는 방식을 보이는 것이지 문형이 아니다. 예시의 표현을 그대로 가져다 메뉴 이름만 바꾸지 않는다.
+  아래는 제목이 아니라 설명이다. 쓰지 않는다.
+  - "~한 하루", "~한 날", "~한 식사", "~한 한 끼"로 끝나는 것
+  - "가족과 함께한 저녁", "집에서 만난 주말의 맛"처럼 그날이 아닌 어느 날에 갖다 붙여도 말이 되는 것
+  - "즐거운", "든든한", "다양한", "특별한", "따뜻한" 같은 형용사로 감싸 뭉뚱그리는 것
+  쓰고 나서 어제 리포트에 붙여 본다. 그래도 말이 되면 그날의 제목이 아니니 다시 쓴다.
+  18자를 넘으면 넘긴 채로 내보내지 않는다. 반드시 줄여서 18자 안에 넣는다.
+* summary — 2문장 55~80자. 끼니에서 끼니로 이어지는 순서. 사실만 쓴다.
+  순서를 보이되 끼니 사이에 몇 시간이 흘렀는지는 쓰지 않는다.
+  응원·위로·칭찬은 여기 쓰지 않는다.
+* highlight — 40~65자. 위 [무엇을 말할 것인가]에서 고른 것 하나만 파고든다.
+  흐름은 summary가 이미 말했으니 다시 훑지 않는다.
+  구체적인 것 하나는 반드시 넣는다 — 고유명사(가게·메뉴·사람), 끼니 수, 며칠째인지,
+  사용자가 쓴 표현의 인용 중에서 고른다. 만족도·포만감 점수는 여기 해당하지 않는다.
+* nudge — 25~45자. 먹은 것이 아니라 사람을 본다. 음식과 메뉴는 쓰지 않는다.
+  "기록", "적다", "남기다"로 사용자를 칭찬하지 않는다. 기록을 남긴 건 매일 참이라 칭찬거리가
+  되지 못하고, 실제로 이 말이 리포트를 가장 많이 망쳐 왔다. lens가 habit인 날에만 쓴다.
+  대신 아래 중 그날 근거가 받쳐 주는 하나를 고른다. [최근 흐름]의 한마디와 같은 방식은 피한다.
+  - 대꾸: 사용자가 쓴 말에 반응한다. "'마니머거씀'이라고 적어 두신 게 오늘을 다 말해 주네요."
+  - 짚기: 그날의 상태를 알아본다. "두 끼 다 늦었지만, 두 번 다 앉아서 드셨어요."
+  - 인정: 이어 가고 있는 것을 알아본다. "이번 주 내내 같은 조합이네요. 그 편이 편하신가 봐요."
+  - 공감: 하루소감의 감정에 반응한다. "비 맞고 오신 날이었네요. 그런 날은 저녁이 유난히 반갑죠."
+  - 기다림: 내일을 기다린다는 인사. 위 넷이 모두 근거가 없는 날에만 쓴다.
+  어제 리포트에 그대로 붙여도 말이 되면 근거가 없는 것이니 다시 쓴다.
+
+lens — 화면에 나오지 않는 값. 오늘 무엇으로 봤는지 아래에서 하나 골라 영문 키 그대로 쓴다.
+compare(평소와의 차이) · diet(무엇을) · company(누구와) · place(어디서) ·
+rhythm(끼니 구성 — 세 끼를 채웠는지, 사이 간식이 몇 번인지) · feeling(만족도·포만감) ·
+words(사용자가 쓴 말) · habit(기록 행위) · pattern(며칠째 이어지는 흐름)
+데이터가 받쳐 주지 않는 렌즈는 고르지 않는다. [최근 흐름]에 있는 렌즈는 피한다.
+
+rhythm 은 시각을 보는 렌즈가 아니라 하루의 짜임을 보는 렌즈다. 아침·점심·저녁 중 무엇을 채우고
+무엇을 건너뛰었는지, 그 사이에 간식이 몇 번 들어왔는지를 본다. [평소와 비교]의 '오늘 끼니 구성'과
+'세 끼를 다 기록한 날'이 그 재료다. 몇 시에 먹었는지는 rhythm 의 소재가 아니다.
+
+balance / balanceNote — 그날 구성이 한쪽으로 치우쳤는지 0~100 정수와 20자 내외의 사실 서술.
+치우침의 정도이지 특정 음식이 나쁘다는 판단이 아니다. 판단할 근거가 부족하면 낮게 주지 말고 50을 준다.
+balanceNote는 있었던 것만 적는다. 좋은 예 "밥·면 위주, 국 한 번" / 나쁜 예 "채소가 부족해요".
+화면에는 점수 칸으로만 나가고 리포트 문장에는 나오지 않는다.
+
+[하지 않는 것]
+
+* 영양 훈수. 채소·야채·샐러드·과일·단백질·비타민·식이섬유·영양 균형·칼로리를 더 챙기라는 취지의
+  문장은 완곡한 표현이나 은유를 포함해 어떤 형태로도 쓰지 않는다.
+  그날 실제로 먹은 것을 사실로 언급하는 것은 괜찮다.
+* 다음 끼니나 내일 무엇을 어떻게 먹으라는 말.
+* 제안형 문장. "~해 보세요", "~하면 좋아요", "~어떨까요", "~해 봐요".
+* 평가와 훈계. "관리가 필요합니다", "건강에 좋지 않습니다", "문제가 있습니다".
+* 만족도와 포만감을 점수로 쓰는 것. "3.3점", "만족도 4점", "5점 만점에" 처럼 쓰지 않는다.
+  사용자가 매긴 점수를 되돌려 읽어 주면 리포트가 성적표가 된다. [평소와 비교]에 "조금 높은 편"
+  처럼 정도로 적혀 있으니 그 말결을 그대로 쓴다.
+* 끼니 사이의 간격. "몇 시간 만에", "간격이 벌어져", "이어서 바로"처럼 끼니와 끼니 사이에 흐른
+  시간을 말하지 않는다.
+* 시각을 그날의 이야기로 삼는 것. 사용자는 끼니 시각을 잘못 넣거나 나중에 몰아 적는 일이 잦아
+  믿을 수 있는 값이 아니다. "몇 시 몇 분에", "늦은 시간까지"처럼 시각을 근거로 관찰하지 않는다.
+  하루의 짜임은 시각이 아니라 무엇을 채우고 건너뛰었는지로 본다.
+* 상투어. "바쁜 하루", "꼼꼼하게", "빠짐없이", "잊지 않고", "놓지 않으셨", "꾸준함이 돋보",
+  "밀로그가 함께", "알찬 하루"처럼 하루 전체를 형용사 하나로 뭉뚱그리는 말.
+  이웃한 두 문장을 모두 "~네요"로 맺는 것.
+* 기록에 없는 것을 짐작해 단정하는 것. 특히 사용자가 바빴는지 힘들었는지는 알 수 없다.
+  사용자가 직접 그렇게 쓴 날에만 그 말을 받아 쓴다.
+* 끼니 시각이 서로 몰려 있으면 실제 식사 시간이 아니라 나중에 몰아 적은 기록 시간이다.
+  이런 날은 시간을 근거로 삼지 않고, 몰려 있다는 사실 자체도 언급하지 않는다.
+
+[사진 읽는 법]
+
+각 사진 바로 앞에 "[사진 1 · 점심 12:30]" 형태의 캡션이 붙는다. 캡션과 [식단 데이터]의 끼니를
+짝지어 읽는다. 사진에서 확인되는 것은 근거로 쓸 수 있고, 텍스트와 다르면 사진을 우선하되 단정하지 않는다.
+없는 음식·양·조리법·영양성분은 지어내지 않는다. 사진이 없다는 이유로 그 끼니를 부정적으로 보지 않는다.
+
+[톤]
+
+가볍고 유쾌하되 따뜻하고 현실적으로. 아쉬운 날에도 실패처럼 말하지 않는다.
+사용자에게 말을 거는 글이다. "드셨어요", "이어졌네요"처럼 존대로 맺는다.
+"먹었습니다", "즐겼습니다", "보였습니다"처럼 사용자를 3인칭으로 서술하지 않는다.
+밈, 인터넷 유행어, 이모지, 반말, 캐릭터 말투는 쓰지 않는다.
+"섭취했습니다", "훌륭했습니다", "보충이 필요합니다" 같은 보고서 말투도 쓰지 않는다.
+"입터짐", "집밥 안정권"처럼 기록 맥락을 살린 가벼운 표현은 괜찮다.
+
+[출력]
+
+아래 형식의 JSON 객체 하나만 출력한다.
+
+{
+"lens": "",
+"balance": 0,
+"balanceNote": "",
+"title": "",
+"summary": "",
+"highlight": "",
+"nudge": ""
+}
+
+* 객체는 하나만 출력한다. 두 개를 이어 붙이거나 뒤에 다른 텍스트를 덧붙이지 않는다.
+* 코드펜스, 설명문, 주석을 출력하지 않는다.
+* key 이름을 바꾸거나 한국어로 옮기지 않고, 일곱 개를 빠짐없이 채운다.
+* balance는 정수, 나머지 여섯은 문자열. 문자열 값에 줄바꿈을 넣지 않는다.
+
+출력 전에 네 칸을 다시 읽고 확인한다.
+- 네 칸이 같은 소재를 돌고 있으면 highlight를 다른 사실로 바꾼다.
+- [하지 않는 것]에 걸리는 말이 있으면 그 문장을 새로 쓴다.
+- title이 "~한 하루/날/식사"로 끝나거나 어제 리포트에 붙여도 말이 되면, 그날의 고유명사를 넣어 새로 쓴다.
+- title 글자 수를 세어 본다. 18자를 넘으면 뜻을 유지한 채 줄여서 다시 쓴다.
+- nudge를 어제 리포트에 붙여도 말이 되면 그날의 근거를 딛고 새로 쓴다.
+- lens가 habit이 아닌데 nudge에 "기록", "적다", "남기다"가 들어 있으면 다른 근거로 새로 쓴다.
+
+[분석 대상]
+
+날짜: {{date}} {{weekday}}
+사용자: {{profile}}
+
+프로필은 표현의 결을 맞추는 참고로만 쓴다. 성별·연령대·생활 패턴으로 영양 기준이나 필요 열량을
+단정하지 않고, 프로필을 리포트 본문에 언급하지 않는다.
+
+[식단 데이터]
+
 {{mealText}}
 
-[출력 형식]
-아래 JSON만 출력한다. 다른 텍스트·설명·코드펜스 없이 JSON 객체 하나만.
-{"score": 0-100 정수, "summary": "한줄평", "goodPoint": "좋았던 점", "improvePoint": "아쉬운 점"}`;
-/** meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한 */
-const DIET_REPORT_MAX_PHOTOS_PER_DOC = 1;
-const DIET_REPORT_MAX_PHOTOS_TOTAL = 3;
+[슬롯 기록 현황]
+
+{{slotCoverage}}
+
+"기록 없음"은 실제로 거른 것일 수도, 기록만 빠진 것일 수도 있으니 결식으로 단정하지 않는다.
+기록 없는 끼니를 지적하지 않는다.
+
+[평소와 비교]
+
+{{recentStats}}
+
+서버가 최근 기록에서 계산한 값이다. 여기 있는 숫자만 쓰고, 여기 없는 숫자는 만들지 않는다.
+"평소"는 이 사용자 자신의 최근 기록이지 일반적인 기준이 아니다. 평소와 다르다는 것이
+잘못했다는 뜻은 아니므로, 차이를 지적이 아니라 관찰로 쓴다.
+
+[최근 흐름]
+
+{{recentTrend}}
+
+최근 며칠의 제목·한마디와 그날 사용한 렌즈다. 사용자는 이미 읽은 것들이다.
+같은 렌즈, 같은 제목 짜임, 같은 소재의 한마디를 반복하지 않는다.
+pattern 렌즈를 고를 때만 내용을 직접 활용하고, 그 외에는 반복 회피용으로만 참고한다.
+지난 리포트를 요약하거나 언급하지 않는다. 오늘 하루가 리포트의 중심이다.
+`;
+/**
+ * meal 문서당 사진 최대 장수 / 하루 전체 사진 안전 상한.
+ *
+ * 한때 "사진이 토큰을 과하게 먹는다"고 보고 끼니당 1장까지 조였으나 실측으로 뒤집혔다:
+ * 사진 0장 리포트(입력 4,105)와 2장 리포트(평균 4,709)를 비교하면 장당 약 302토큰이고,
+ * 이는 입력의 13%에 불과하다(나머지 87%가 프롬프트). 반면 끼니당 1장 제한 때문에
+ * 사진 있는 리포트의 41%에서 사진이 버려지고 있었다.
+ * 비용은 미미하고 정보 손실은 컸으므로 끼니당 2장으로 되돌린다.
+ */
+const DIET_REPORT_MAX_PHOTOS_PER_DOC = 2;
+const DIET_REPORT_MAX_PHOTOS_TOTAL = 8;
 /** gemini-2.5-flash: thinking 토큰도 maxOutputTokens 예산에서 함께 빠지므로 본문 몫을 남겨 둔다 */
 const DIET_REPORT_MAX_OUTPUT_TOKENS = 2048;
+/**
+ * thinking 토큰은 출력 토큰으로 과금되고 출력 단가가 입력보다 훨씬 높아, 개수는 적어도 비용 비중이 크다.
+ * 실측(구 프롬프트)에서 509로 512 예산에 맞춰 들어갔으므로 512로 되돌린다.
+ * 너무 낮추면 본문이 잘려 no-thinking 재시도가 돌아 오히려 호출이 늘어난다 —
+ * 관리자 리포트 상세의 fallbackUsed 배지와 thinking 토큰 수치로 감시할 것.
+ */
 const DIET_REPORT_THINKING_BUDGET = 512;
+/**
+ * 한때 "채점 태스크라 재현성 우선"으로 0.35였으나, score 는 이제 모델이 내지 않는다
+ * (화면 점수는 기록 충실도로 클라이언트가 계산). 채점이 빠진 뒤로는 낮은 온도가
+ * 재현성이 아니라 상투어 고착으로만 작동했다 — 실측(8/16~18, 51건)에서 nudge 의 96%가
+ * "기록"을 언급했고 65%가 "기록 칭찬 + 내일 인사" 한 형태로 수렴했다.
+ * 표현 다양성이 이 리포트의 값어치이므로 온도를 올린다. 사실 왜곡은 프롬프트의
+ * 근거 강제와 [상투 표현 금지]로 막는다.
+ *
+ * 0.7 과 0.85 를 같은 입력 8건으로 비교했다(2026-08-19, 8/18 기록, 사진 제외).
+ * 렌즈 다양성은 5개 대 6개로 비슷했으나 규칙 위반은 5건 대 7건이었고, 0.85 는 기록 입력
+ * 시간을 실제 식사 시간으로 읽는 오독이 눈에 띄었다. 다양성의 이득이 얇아지는 지점이라 0.7.
+ */
+const DIET_REPORT_TEMPERATURE = 0.7;
+/** {{recentTrend}} 에 실을 직전 리포트 일수 */
+const DIET_REPORT_TREND_DAYS = 7;
+/**
+ * {{recentStats}} 의 "평소"를 만들 기간. 7일이면 요일 편향이 그대로 남고(주말 두 번뿐),
+ * 30일이면 오래전 습관이 지금의 평소로 섞인다. 기록이 매일 있지는 않다는 점까지 감안해 14일.
+ */
+const DIET_REPORT_STATS_DAYS = 14;
+/** 이보다 적게 쌓였으면 "평소"라고 부를 수 없다 — 블록을 아예 내보내지 않는다 */
+const DIET_REPORT_STATS_MIN_MEALS = 15;
+/** 하루 끼니 시각이 이 폭 안에 다 들어오면 식사 시각이 아니라 몰아 적은 입력 시각으로 본다(분) */
+const DIET_REPORT_STATS_CLUSTER_RANGE = 90;
+/** 뒤 슬롯이 앞 슬롯보다 이 정도까지 이른 건 오차로 넘긴다. 넘어서면 잘못 입력된 시각으로 본다(분) */
+const DIET_REPORT_STATS_ORDER_SLACK = 30;
+/**
+ * 관찰 렌즈 — 매일 같은 축으로 봐 주면 "봐주는 느낌"이 사라지므로 그날 데이터가
+ * 받쳐 주는 렌즈를 골라 쓰게 하고, 최근에 쓴 렌즈는 {{recentTrend}} 로 되먹여 회피시킨다.
+ * 프롬프트 [관찰 렌즈] 목록과 반드시 일치시킬 것.
+ */
+const DIET_REPORT_LENSES = [
+  'compare',
+  'diet',
+  'company',
+  'place',
+  'rhythm',
+  'feeling',
+  'words',
+  'habit',
+  'pattern'
+];
+
+/** 응답의 lens 값 정규화. 목록에 없으면 null */
+function normalizeDietLens(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  return DIET_REPORT_LENSES.includes(s) ? s : null;
+}
 /** 수동 재분석(사용자 버튼) 하루 허용 횟수 — 관리자는 예외 */
 const DIET_REPORT_MANUAL_DAILY_LIMIT = 3;
 
@@ -6284,40 +7473,65 @@ function dietReportDocId(uid, dateStr) {
   return `${uid}_${dateStr}`;
 }
 
-function normalizeDietBatchRunTime(raw) {
-  const s = String(raw || '').trim();
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
-  if (!m) return '00:10';
-  const h = Math.min(23, Math.max(0, Number(m[1])));
-  const min = Math.min(59, Math.max(0, Number(m[2])));
-  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+/**
+ * 하루 슬롯의 시간순. js/constants.js 의 SLOTS 와 같은 순서를 유지할 것.
+ * slotId 알파벳순(dinner<lunch<morning…)으로 정렬하면 모델이 하루를 거꾸로 읽는다.
+ */
+const DIET_SLOT_ORDER = ['pre_morning', 'morning', 'snack1', 'lunch', 'snack2', 'dinner', 'night'];
+
+function dietSlotRank(slotId) {
+  const i = DIET_SLOT_ORDER.indexOf(String(slotId || ''));
+  return i === -1 ? DIET_SLOT_ORDER.length : i;
 }
 
-function adminSeoulHmFromDate(date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Seoul',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).formatToParts(date);
-  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
-  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
-  return `${hour}:${minute}`;
+/** 시간순 비교: 슬롯 순서 → 기록 시각 → 문서 id(동률 시 안정 정렬) */
+function compareDietMealsChronologically(a, b) {
+  const ra = dietSlotRank(a?.slotId);
+  const rb = dietSlotRank(b?.slotId);
+  if (ra !== rb) return ra - rb;
+  const ta = adminMealTimeText(a) || '';
+  const tb = adminMealTimeText(b) || '';
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return String(a?.id || '').localeCompare(String(b?.id || ''));
 }
 
-function parseHmToMinutes(hm) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || '').trim());
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
+/** 사진 캡션·슬롯 현황용 라벨. adminSlotLabelKr 은 간식을 전부 '간식'으로 뭉개므로 여기선 구분한다 */
+const DIET_SLOT_LABELS_DETAILED = {
+  pre_morning: '아침 전 간식',
+  morning: '아침',
+  snack1: '오전 간식',
+  lunch: '점심',
+  snack2: '오후 간식',
+  dinner: '저녁',
+  night: '야식'
+};
+
+function dietSlotLabel(slotId) {
+  const key = String(slotId || '');
+  return DIET_SLOT_LABELS_DETAILED[key] || adminSlotLabelKr(key) || key || '슬롯';
 }
 
-/** 15분 주기 스케줄에서 설정 시각(HH:mm) 구간에 들어왔는지 */
-function isWithinDietBatchRunWindow(now, runTimeHm, windowMinutes = 15) {
-  const runMins = parseHmToMinutes(runTimeHm);
-  const nowMins = parseHmToMinutes(adminSeoulHmFromDate(now));
-  if (runMins == null || nowMins == null) return false;
-  return nowMins >= runMins && nowMins < runMins + windowMinutes;
+const DIET_WEEKDAY_KR = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** 'YYYY-MM-DD' → '(금)'. 파싱 실패 시 빈 문자열 */
+function dietWeekdayLabel(dateStr) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+  if (!m) return '';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (Number.isNaN(d.getTime())) return '';
+  return `(${DIET_WEEKDAY_KR[d.getUTCDay()]})`;
 }
+
+/**
+ * 배치 실행 시각 — **cron(scheduledDailyDietAnalysis)이 정본이고 이 값은 표시용이다.**
+ * 바꾸려면 두 곳을 같이 고치고 재배포해야 한다. 관리자 화면 문구도 함께
+ * (admin.html 「자동 배치 설정」, js/admin/diet-report-config.js).
+ *
+ * 예전에는 이 시각을 Firestore 설정에 두고 15분마다 깨어나 "지금인가?"를 물었다.
+ * 하루 96번 깨어나 95번을 헛돌았고, 그 헛걸음마다 1GiB 인스턴스가 떴다.
+ * 시각을 바꾸는 일은 거의 없는데 대가가 너무 컸다.
+ */
+const DIET_REPORT_BATCH_RUN_TIME = '04:00';
 
 async function fetchDietReportConfig() {
   const snap = await DIET_REPORT_CONFIG_REF().get();
@@ -6328,15 +7542,63 @@ async function fetchDietReportConfig() {
     promptTemplate,
     promptVersion: d.promptVersion || DIET_REPORT_PROMPT_VERSION,
     batchEnabled: d.batchEnabled === true,
-    batchRunTime: normalizeDietBatchRunTime(d.batchRunTime),
     lastBatchRunDate: d.lastBatchRunDate ? String(d.lastBatchRunDate) : null
   };
 }
 
-function buildDietReportPromptText(dateStr, mealText, promptTemplate) {
+/** 고정부를 systemInstruction 으로 분리할 최소 길이. 이보다 짧으면 분리 이득이 없다 */
+const DIET_PROMPT_MIN_STATIC_CHARS = 500;
+
+/**
+ * 프롬프트를 "요청마다 동일한 고정부"와 "요청마다 달라지는 꼬리"로 가른다.
+ *
+ * 원래 의도는 암시적 캐시 적중이었으나 실패했다. 변수를 전부 꼬리로 몰아 앞 83%를
+ * 동일하게 만들어도, 그 고정부를 systemInstruction 으로 분리해도
+ * cachedContentTokenCount 는 0이었다(연속 호출 2회로 확인). 암시적 캐시는 이 조건에서
+ * 걸리지 않는다. 명시적 캐시(cachedContents)는 저장이 시간당 과금이라
+ * 하루 100건 이상에서만 이득인데 현재는 25건 수준이라 손해다.
+ *
+ * 그럼에도 이 분리를 유지하는 이유는 캐시가 아니라, 지시문과 데이터의 경계가 명확해지고
+ * systemInstruction 쪽 규칙 준수가 더 강하기 때문이다. 캐시 절감을 기대하지 말 것.
+ *
+ * 자르는 지점은 첫 치환자다. 치환자를 전부 꼬리로 몰아 둔 덕에 깔끔하게 갈리고,
+ * 관리자가 치환자를 앞쪽에 두면 고정부가 짧아질 뿐 동작은 그대로다.
+ */
+function splitDietPromptForCaching(ctx, promptTemplate) {
   const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
-  const mealBlock = mealText || '(텍스트 기록 없음 — 사진 위주로 판단)';
-  return tpl.replace(/\{\{date\}\}/g, dateStr).replace(/\{\{mealText\}\}/g, mealBlock);
+  const idx = tpl.search(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend|recentStats)\}\}/);
+  if (idx < DIET_PROMPT_MIN_STATIC_CHARS) {
+    return { staticPart: '', variablePart: buildDietReportPromptText(ctx, tpl) };
+  }
+  // 치환자 자리에서 그냥 자르면 "날짜:" 같은 라벨만 고정부에 남고 값은 가변부로 가 어색해진다.
+  // 치환자를 품은 [섹션] 통째로 가변부에 넘긴다.
+  const candidates = [tpl.lastIndexOf('\n\n[', idx), tpl.lastIndexOf('\n\n', idx), tpl.lastIndexOf('\n', idx)];
+  const cut = candidates.find((c) => c >= DIET_PROMPT_MIN_STATIC_CHARS);
+  const at = cut == null ? idx : cut;
+  return {
+    staticPart: tpl.slice(0, at).trimEnd(),
+    variablePart: buildDietReportPromptText(ctx, tpl.slice(at).trimStart())
+  };
+}
+
+/**
+ * 프롬프트 치환. 사용자 텍스트에 `$&` 같은 시퀀스가 있어도 깨지지 않도록 함수 replacer를 쓴다.
+ * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
+ *          slotCoverage?:string, recentTrend?:string, recentStats?:string}} ctx
+ */
+function buildDietReportPromptText(ctx, promptTemplate) {
+  const tpl = promptTemplate || DEFAULT_DIET_REPORT_PROMPT_TEMPLATE;
+  const values = {
+    date: ctx?.date || '',
+    weekday: ctx?.weekday || '',
+    mealText: ctx?.mealText || '(텍스트 기록 없음 — 사진 위주로 판단)',
+    profile: ctx?.profile || '(프로필 정보 없음)',
+    slotCoverage: ctx?.slotCoverage || '(정보 없음)',
+    recentTrend: ctx?.recentTrend || '(최근 분석 이력 없음 — 이날만 보고 평가)',
+    // 기록이 얕으면 비교할 평소가 없다. 없는 걸 있는 척하지 말고 그렇다고 알린다.
+    recentStats: ctx?.recentStats || '(비교할 만큼 쌓인 기록이 없음 — 오늘 기록만으로 쓴다)'
+  };
+  return tpl.replace(/\{\{(date|weekday|mealText|profile|slotCoverage|recentTrend|recentStats)\}\}/g, (_, key) => values[key]);
 }
 
 /** aiDietReports 문서에 완료된 분석(자동·수동)이 있는지 */
@@ -6375,8 +7637,7 @@ function isDietAnalyzableMeal(m) {
  */
 function buildDietReportSource(meals) {
   const analyzable = (meals || []).filter(isDietAnalyzableMeal);
-  const sortKey = (m) => `${String(m.slotId || '')}~${String(m.time || '')}~${String(m.id || '')}`;
-  analyzable.sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
+  analyzable.sort(compareDietMealsChronologically);
   const parts = [];
   let maxRecordedAt = '';
   let photoCount = 0;
@@ -6392,6 +7653,9 @@ function buildDietReportSource(meals) {
         m.mealType,
         m.category,
         m.snackType,
+        // 확정 없이 저장된 자동 분류. 위 두 필드가 비어도 프롬프트에는 실리므로
+        // 지문에 넣지 않으면 옛 캐시(분류가 빠진 리포트)가 계속 나간다.
+        m.categoryAuto,
         adminMealMenuDetailText(m),
         adminMealPlaceText(m),
         m.comment,
@@ -6408,6 +7672,26 @@ function buildDietReportSource(meals) {
   return { analyzable, hash, maxRecordedAt, photoCount };
 }
 
+/**
+ * 분석에 보낼 사진 URL — 800px 파생본 우선, 없으면 원본.
+ * (js/utils/image-variants.js 의 pickMealDisplayUrl 과 같은 우선순위)
+ */
+function dietPickPhotoUrlForAnalysis(meal, index) {
+  const disp = Array.isArray(meal?.photoDisplayUrls) ? meal.photoDisplayUrls[index] : '';
+  const orig = Array.isArray(meal?.photos) ? meal.photos[index] : '';
+  const pick = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+  return pick(disp) || pick(orig);
+}
+
+/**
+ * Gemini 는 큰 이미지를 타일로 쪼개 타일마다 토큰을 매긴다. 타일 한 변이 768px 이므로
+ * 긴 변을 768 로 맞추면 화질을 최대한 지키면서 타일 수를 최소로 가져갈 수 있다.
+ * (파생본이 800px 라 픽셀 손실은 거의 없고, 재인코딩으로 전송 바이트도 준다)
+ * 실제 절감폭은 재분석 전후 관리자 화면의 "입력 토큰"으로 확인할 것.
+ */
+const DIET_REPORT_PHOTO_MAX_EDGE = 768;
+const DIET_REPORT_PHOTO_JPEG_QUALITY = 80;
+
 /** Firebase Storage 다운로드 URL → Gemini inlineData({ mimeType, data(base64) }). 실패 시 null */
 async function dietFetchStorageImageInline(imageUrl) {
   if (!imageUrl || typeof imageUrl !== 'string') return null;
@@ -6420,59 +7704,616 @@ async function dietFetchStorageImageInline(imageUrl) {
     const bucket = getStorage().bucket('mealog-r0.firebasestorage.app');
     const file = bucket.file(storagePath);
     const [contents] = await file.download();
-    const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
-    const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-    return { mimeType, data: contents.toString('base64') };
+
+    try {
+      const resized = await sharp(contents)
+        .rotate() // EXIF 방향 반영 — 안 하면 눕거나 뒤집힌 채로 전달된다
+        .resize({
+          width: DIET_REPORT_PHOTO_MAX_EDGE,
+          height: DIET_REPORT_PHOTO_MAX_EDGE,
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .jpeg({ quality: DIET_REPORT_PHOTO_JPEG_QUALITY })
+        .toBuffer();
+      return { mimeType: 'image/jpeg', data: resized.toString('base64') };
+    } catch (resizeErr) {
+      // 리사이즈 실패는 분석을 막을 이유가 못 된다. 원본 그대로 보낸다.
+      logger.warn('dietFetchStorageImageInline: 리사이즈 실패, 원본 전송', {
+        storagePath,
+        message: resizeErr?.message
+      });
+      const ext = (storagePath.split('.').pop() || 'jpg').toLowerCase();
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      return { mimeType, data: contents.toString('base64') };
+    }
   } catch (e) {
     logger.warn('dietFetchStorageImageInline failed', { message: e?.message });
     return null;
   }
 }
 
-/** 분석 대상 meal → Gemini 텍스트 블록(슬롯별) */
+/** 분석 대상 meal → Gemini 텍스트 블록(시간순 슬롯별) */
 function formatMealsForDietPrompt(analyzable) {
-  const sorted = [...analyzable].sort((a, b) => String(a.slotId || '').localeCompare(String(b.slotId || '')));
+  const sorted = [...analyzable].sort(compareDietMealsChronologically);
   const lines = [];
   for (const m of sorted) {
-    const sl = adminSlotLabelKr(m.slotId) || '슬롯';
+    const sl = dietSlotLabel(m.slotId);
     const detail = adminMealSlotDetailForGemini(m);
     lines.push(`· ${sl}:\n    ${detail}`);
   }
   return lines.join('\n');
 }
 
-/** Gemini 응답 텍스트 정규화(코드펜스 제거). 출력 스키마 검증 없음 */
+/** 기록된 슬롯 / 기록 없는 슬롯 — "안 먹은 것"과 "기록 안 한 것"을 모델이 구분하도록 분모를 준다 */
+function formatDietSlotCoverage(analyzable) {
+  const present = new Map();
+  for (const m of analyzable || []) {
+    const key = String(m?.slotId || '');
+    if (!present.has(key)) present.set(key, []);
+    present.get(key).push(m);
+  }
+  const recorded = [];
+  const missing = [];
+  for (const slotId of DIET_SLOT_ORDER) {
+    const label = dietSlotLabel(slotId);
+    const rows = present.get(slotId);
+    if (!rows || rows.length === 0) {
+      missing.push(label);
+      continue;
+    }
+    const times = rows.map((m) => adminMealTimeText(m)).filter(Boolean);
+    recorded.push(times.length ? `${label}(${times.join(', ')})` : label);
+  }
+  const lines = [`기록됨: ${recorded.length ? recorded.join(' · ') : '없음'}`];
+  lines.push(`기록 없음: ${missing.length ? missing.join(' · ') : '없음'}`);
+  lines.push('※ "기록 없음"은 실제로 거르셨을 수도, 기록만 빠졌을 수도 있다. 단정하지 말 것.');
+  return lines.join('\n');
+}
+
+/** 사용자 프로필(성별·연령대·라이프스타일) — 없으면 빈 문자열 */
+async function buildDietProfileBlock(uid) {
+  try {
+    const snap = await db.doc(`artifacts/${APP_ID}/users/${uid}/config/settings`).get();
+    const profile = (snap.exists ? snap.data()?.profile : null) || {};
+    const bits = [];
+    const gender = String(profile.gender || '').trim();
+    if (gender) bits.push(`성별: ${gender}`);
+    const birthdate = String(profile.birthdate || '').trim();
+    const by = /^(\d{4})/.exec(birthdate);
+    if (by) {
+      const age = new Date().getFullYear() - Number(by[1]);
+      if (age > 0 && age < 120) bits.push(`연령대: ${Math.floor(age / 10) * 10}대`);
+    }
+    const lifestyle = String(profile.lifestyle || '').trim();
+    if (lifestyle) bits.push(`생활 패턴: ${lifestyle}`);
+    return bits.length ? bits.join(' · ') : '';
+  } catch (e) {
+    logger.warn('buildDietProfileBlock failed', { uid, errMsg: e?.message });
+    return '';
+  }
+}
+
+/** responseText → 파싱된 JSON 객체(코드펜스 허용). 객체가 아니거나 파싱 실패 시 null */
+function parseDietReportResponseJson(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+  try {
+    const obj = JSON.parse(cleaned);
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    return obj;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * 직전 DIET_REPORT_STATS_DAYS일의 리포트 문서를 한 번에 읽어 두 가지를 만든다.
+ * - trendBlock: 최근 DIET_REPORT_TREND_DAYS일의 제목·한마디·렌즈 (반복 회피용)
+ * - pastMeals:  최근 전체 기간의 끼니 스냅샷 (평소를 계산할 재료)
+ *
+ * 문서 id가 {uid}_{date}라 getAll로 바로 집는다(색인·쿼리 불필요, 없는 날짜는 빠진다).
+ * 두 블록이 같은 문서를 보므로 읽기는 한 번으로 끝낸다 — 따로 읽으면 21건이 된다.
+ */
+async function buildDietRecentContext(uid, dateStr) {
+  try {
+    const refs = [];
+    for (let i = 1; i <= DIET_REPORT_STATS_DAYS; i += 1) {
+      const d = adminYmdAddDays(dateStr, -i);
+      refs.push(db.doc(`artifacts/${APP_ID}/aiDietReports/${dietReportDocId(uid, d)}`));
+    }
+    const snaps = await db.getAll(...refs);
+    const lines = [];
+    const pastMeals = [];
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const data = snap.data() || {};
+      if (data.status !== 'ready') continue;
+      const day = String(data.date || snap.id.split('_').pop() || '');
+      for (const m of Array.isArray(data.inputMeals) ? data.inputMeals : []) {
+        pastMeals.push({ ...m, date: day });
+      }
+      // 제목·한마디는 최근 며칠만 되먹인다. 그보다 오래된 건 사용자도 기억하지 않는다.
+      if (lines.length >= DIET_REPORT_TREND_DAYS) continue;
+      const parsed = parseDietReportResponseJson(data.responseText);
+      if (!parsed) continue;
+      const gist = String(parsed.title || parsed.summary || '').replace(/\s+/g, ' ').trim();
+      // 렌즈를 함께 실어야 모델이 "최근에 쓴 축"을 피할 수 있다. 이게 회전의 실질 장치다.
+      const lens = normalizeDietLens(data.lens) || normalizeDietLens(parsed.lens);
+      const lensTxt = lens ? ` · 렌즈: ${lens}` : '';
+      // nudge 원문까지 실어야 한마디의 반복을 모델이 볼 수 있다. 렌즈만 되먹이면 highlight 만
+      // 회전하고 nudge 는 "기록 칭찬 + 내일 인사"로 고착된다(8/16~18 실측 96%).
+      const nudge = String(parsed.nudge || '').replace(/\s+/g, ' ').trim();
+      const nudgeTxt = nudge ? ` · 한마디: "${nudge.slice(0, 50)}"` : '';
+      lines.push(
+        `- ${day} ${dietWeekdayLabel(day)}${lensTxt}${gist ? ` · ${gist.slice(0, 60)}` : ''}${nudgeTxt}`
+      );
+    }
+    // 오래된 날짜가 위로 오도록(문서 순서는 최근 → 과거)
+    lines.reverse();
+    return { trendBlock: lines.join('\n'), pastMeals };
+  } catch (e) {
+    logger.warn('buildDietRecentContext failed', { uid, dateStr, errMsg: e?.message });
+    return { trendBlock: '', pastMeals: [] };
+  }
+}
+
+/**
+ * detailText 한 덩이에서 집계에 쓸 값만 뽑는다.
+ * (formatMealsForDietPrompt 가 만든 형식이라 라벨이 고정이다)
+ */
+function parseDietMealDetail(detailText) {
+  const s = String(detailText || '');
+  const pick = (label) => {
+    const m = s.match(new RegExp(`${label}: *(.+)`));
+    return m ? m[1].trim() : '';
+  };
+  return { menu: pick('메뉴'), place: pick('장소'), withWho: pick('함께') };
+}
+
+/** "HH:MM" → 분. 실패하면 null */
+function dietTimeToMinutes(t) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 세 끼로 치는 슬롯. 나머지(아침 전·오전·오후 간식·야식)는 전부 간식으로 센다 */
+const DIET_MAIN_SLOTS = ['morning', 'lunch', 'dinner'];
+const DIET_MAIN_SLOT_LABELS = ['아침', '점심', '저녁'];
+
+/**
+ * 끼니인지 간식인지. slotId 가 있으면 그걸 쓰고, 없으면 라벨로 폴백한다
+ * (inputMeals 에 slotId 를 담기 전에 만들어진 문서가 최근 흐름에 섞여 들어온다).
+ */
+function dietSlotKind(meal) {
+  const id = String(meal?.slotId || '');
+  if (id) return DIET_MAIN_SLOTS.includes(id) ? 'main' : 'snack';
+  return DIET_MAIN_SLOT_LABELS.includes(String(meal?.slotLabel || '')) ? 'main' : 'snack';
+}
+
+/**
+ * 5점 척도 평균의 차이를 정도 말로 바꾼다. 말할 만한 차이가 아니면 null.
+ *
+ * 만족도·포만감을 "3.3점 · 평소 3.1점"처럼 내보내면 리포트가 성적표가 된다. 사용자가 매긴
+ * 점수를 되돌려 말하는 것이기도 해서, 숫자 대신 정도로만 준다.
+ */
+function dietGapWord(diff) {
+  const d = Math.abs(diff);
+  if (d < 0.3) return null;
+  const degree = d < 0.6 ? '조금' : d < 1.2 ? '뚜렷하게' : '많이';
+  return `${degree} ${diff > 0 ? '높은' : '낮은'}`;
+}
+
+/** 메뉴 문자열에서 비교용 토큰. 2글자 미만은 버린다(조각 매칭 방지) */
+function dietMenuTokens(menu) {
+  return String(menu || '')
+    .split(/[,·/]/)
+    .map((s) => s.trim())
+    // 사용자는 메뉴 칸에 수량과 메모를 함께 적는다("반숙란2개", "물만두5", "맘모스 사진에서1").
+    // 그대로 토큰으로 쓰면 매일 새 토큰이 생겨 "오늘 처음 나온 것"이 늘 참이 된다 —
+    // 신호가 아니라 노이즈다. 괄호와 수량을 떼고, 한글이 남은 짧은 덩이만 인정한다.
+    // (한글 조건이 없으면 몸무게 "43.9kg" 이 ". kg" 라는 토큰으로 살아남는다)
+    .map((s) =>
+      s
+        .replace(/[()[\]{}]/g, ' ')
+        .replace(/[0-9]+(\.[0-9]+)?\s*(개|봉|쪽|잔|병|인분|kg|g|ml|cc)?/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter((s) => s.length <= 8 && (s.match(/ /g) || []).length <= 1 && /[가-힣]{2,}/.test(s));
+}
+
+/**
+ * 오늘 기록의 시각을 근거로 써도 되는지. 못 쓰면 이유를 돌려준다.
+ *
+ * - clustered: 서로 다른 슬롯이 한 덩이 시각에 모여 있다. 식사 시각이 아니라 몰아 적은 입력 시각이다.
+ * - inverted: 슬롯 순서와 시각 순서가 어긋난다. 실측에서 "아침 10:22 · 점심 08:32 · 저녁 20:29"
+ *   같은 날이 드물지 않았고(잘못 넣었다가 나중에 고치는 흔적), 그대로 두면 모델은 데이터를 정확히
+ *   읽은 결과로 "아침보다 이른 점심" 같은 제목을 낸다. 사람이 보면 틀린 문장인데 모델 잘못이 아니다.
+ *
+ * night(야식)은 자정을 넘겨 적히는 게 정상이라 순서 검사에서 뺀다.
+ * 같은 슬롯에 여러 기록이 있을 수 있으므로 슬롯별 평균끼리 비교한다.
+ */
+function detectDietTimeUnreliable(todayMeals) {
+  const timed = (todayMeals || []).filter((m) => dietTimeToMinutes(m.time) != null);
+  if (timed.length < 2) return null;
+
+  const times = timed.map((m) => dietTimeToMinutes(m.time));
+  if (
+    timed.length >= 3 &&
+    new Set(timed.map((m) => m.slotLabel)).size >= 2 &&
+    Math.max(...times) - Math.min(...times) <= DIET_REPORT_STATS_CLUSTER_RANGE
+  ) {
+    return 'clustered';
+  }
+
+  const bySlot = new Map();
+  for (const m of timed) {
+    if (String(m.slotId || '') === 'night') continue;
+    const rank = dietSlotRank(m.slotId);
+    if (!bySlot.has(rank)) bySlot.set(rank, []);
+    bySlot.get(rank).push(dietTimeToMinutes(m.time));
+  }
+  const ranks = [...bySlot.keys()].sort((a, b) => a - b);
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  for (let i = 1; i < ranks.length; i += 1) {
+    if (mean(bySlot.get(ranks[i])) < mean(bySlot.get(ranks[i - 1])) - DIET_REPORT_STATS_ORDER_SLACK) {
+      return 'inverted';
+    }
+  }
+  return null;
+}
+
+/**
+ * "평소와 오늘" 비교 블록.
+ *
+ * 하루치만 보면 모델은 사용자가 이미 아는 것을 요약하는 수밖에 없다 — 그날 안에는 비교 대상이
+ * 없기 때문이다. 실측 기준선(2026-08-19)에서 네 칸이 전부 같은 축을 돌던 것도 이 때문이었다.
+ * 그래서 비교 가능한 사실을 서버가 미리 계산해 넣는다. 모델은 문장만 만들고 숫자는 만들지 않는다.
+ *
+ * 재료 편중도 여기서 교정된다: 실측 652끼니에서 만족도·포만감·시간은 기록률 100%인데
+ * feeling 렌즈는 2%만 뽑혔고, 기록률 5%인 코멘트를 쓰는 words 렌즈가 12% 뽑혔다.
+ */
+function formatDietRecentStatsBlock(pastMeals, todayMeals) {
+  const past = Array.isArray(pastMeals) ? pastMeals : [];
+  const today = Array.isArray(todayMeals) ? todayMeals : [];
+
+  // 이 판정은 오늘 기록만 있으면 되므로 "평소"가 없는 사용자에게도 내보낸다.
+  const unreliable = detectDietTimeUnreliable(today);
+  const lines = unreliable
+    ? [
+        unreliable === 'clustered'
+          ? '* 오늘은 끼니 시각이 한 덩이로 몰려 있다. 실제 식사 시각이 아니라 나중에 몰아서 적은 입력 시각이다.'
+          : '* 오늘은 끼니 시각이 슬롯 순서와 어긋나 있다(예: 점심이 아침보다 이르다). 잘못 입력된 시각이다.',
+        '  시간을 근거로 삼지 말고, 시각이 이상하다는 사실 자체도 리포트에 쓰지 않는다.',
+        '  시각을 뺀 나머지(무엇을, 누구와, 어디서, 만족도)로 그날을 본다.'
+      ]
+    : [];
+  if (past.length < DIET_REPORT_STATS_MIN_MEALS) return lines.join('\n');
+
+  const pastDays = new Set(past.map((m) => m.date).filter(Boolean)).size;
+  const avg = (arr) => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const fmt = (v) => (Math.round(v * 10) / 10).toFixed(1);
+  /**
+   * 점수 필드 추출. null 을 Number() 에 넣으면 0 이 되고 Number.isFinite(0) 은 true 라,
+   * 미기록 끼니가 0점으로 평균에 섞인다. 검증에서 "만족도 평소 0.0점"이 나온 원인이었다.
+   */
+  const scores = (arr, key) =>
+    arr.map((m) => (m?.[key] == null ? NaN : Number(m[key]))).filter((v) => Number.isFinite(v) && v > 0);
+
+  lines.push(`* 최근 ${pastDays}일 ${past.length}끼가 쌓여 있고, 오늘은 ${today.length}끼다.`);
+  const perDay = past.length / Math.max(1, pastDays);
+  if (Math.abs(today.length - perDay) >= 1.5) {
+    lines.push(`* 끼니 수: 오늘 ${today.length}끼 — 최근 ${pastDays}일 하루 평균 ${fmt(perDay)}끼`);
+  }
+
+  // 만족도·포만감 — 기록률 100%인 유일한 비교 재료지만, 점수로 내보내면 리포트가 성적표처럼 읽힌다.
+  // 그래서 숫자를 주지 않고 정도로 바꿔 넣는다. 모델에게 없는 숫자는 모델도 쓸 수 없다.
+  const pr = scores(past, 'rating');
+  const tr = scores(today, 'rating');
+  if (pr.length >= 5 && tr.length) {
+    const word = dietGapWord(avg(tr) - avg(pr));
+    if (word) lines.push(`* 만족도: 오늘은 최근 ${pastDays}일보다 ${word} 편이다`);
+  }
+  const ps = scores(past, 'satiety');
+  const ts = scores(today, 'satiety');
+  if (ps.length >= 5 && ts.length) {
+    const word = dietGapWord(avg(ts) - avg(ps));
+    if (word) lines.push(`* 포만감: 오늘은 최근 ${pastDays}일보다 ${word} 편이다`);
+  }
+
+  // 끼니 구성 — rhythm 이 볼 자리다. 시각은 이 앱에서 신뢰할 수 있는 값이 아니다(잘못 넣거나
+  // 몰아 적는다). 반면 "무엇을 채웠나"는 기록 자체라 언제나 정확하다.
+  const todayMainSet = new Set(
+    today.filter((m) => dietSlotKind(m) === 'main').map((m) => String(m.slotLabel || ''))
+  );
+  const todaySnacks = today.filter((m) => dietSlotKind(m) === 'snack').length;
+  const had = DIET_MAIN_SLOT_LABELS.filter((s) => todayMainSet.has(s));
+  const missed = DIET_MAIN_SLOT_LABELS.filter((s) => !todayMainSet.has(s));
+  lines.push(
+    `* 오늘 끼니 구성: ${
+      missed.length ? `${had.join('·') || '세 끼 모두'} 기록, ${missed.join('·')} 기록 없음` : '아침·점심·저녁 모두 기록'
+    } · 간식 ${todaySnacks}회`
+  );
+
+  const byDate = new Map();
+  for (const m of past) {
+    if (!m.date) continue;
+    if (!byDate.has(m.date)) byDate.set(m.date, []);
+    byDate.get(m.date).push(m);
+  }
+  if (byDate.size >= 3) {
+    const fullDays = [...byDate.values()].filter((ms) => {
+      const s = new Set(ms.filter((m) => dietSlotKind(m) === 'main').map((m) => String(m.slotLabel || '')));
+      return DIET_MAIN_SLOT_LABELS.every((x) => s.has(x));
+    }).length;
+    const snackPerDay = past.filter((m) => dietSlotKind(m) === 'snack').length / byDate.size;
+    lines.push(
+      `* 최근 ${byDate.size}일 중 세 끼를 다 기록한 날 ${fullDays}일 · 하루 간식 평균 ${fmt(snackPerDay)}회`
+    );
+  }
+
+  // 혼자 / 함께 — 기록률이 낮아(실측 13%) 양쪽이 다 모일 때만 말이 된다
+  const withRating = past.filter((m) => m.rating != null && Number(m.rating) > 0 && parseDietMealDetail(m.detailText).withWho);
+  const alone = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho === '혼자').map((m) => Number(m.rating));
+  const together = withRating.filter((m) => parseDietMealDetail(m.detailText).withWho !== '혼자').map((m) => Number(m.rating));
+  if (alone.length >= 5 && together.length >= 5) {
+    const gap = avg(together) - avg(alone);
+    const word = dietGapWord(gap);
+    if (word) {
+      lines.push(
+        `* 최근 ${pastDays}일 만족도: 누군가와 함께 드신 끼니가 혼자 드신 끼니보다 ${word} 편이다`
+      );
+    }
+  }
+
+  // 반복 메뉴와 오늘 처음 보는 메뉴 — "몇 번째인지"는 사용자가 세고 있지 않은 사실이다
+  const pastTokens = new Map();
+  past.forEach((m) => {
+    dietMenuTokens(parseDietMealDetail(m.detailText).menu).forEach((t) => pastTokens.set(t, (pastTokens.get(t) || 0) + 1));
+  });
+  const todayTokens = [...new Set(today.flatMap((m) => dietMenuTokens(parseDietMealDetail(m.detailText).menu)))];
+  const repeated = todayTokens
+    .map((t) => [t, pastTokens.get(t) || 0])
+    .filter(([, c]) => c >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3);
+  if (repeated.length) {
+    lines.push(
+      `* 오늘 메뉴 중 최근 ${pastDays}일에도 나온 것: ${repeated.map(([t, c]) => `${t} ${c}회`).join(' · ')}`
+    );
+  }
+  // "오늘 처음 나온 것"은 뺐다. 메뉴 칸은 자유 입력이라 같은 음식이 날마다 다르게 적힌다 —
+  // 과거에 "캡슐커피"·"빽다방 IA"로 적힌 사용자가 오늘 "커피"라고 적으면 처음 보는 메뉴가 된다.
+  // 실제로 "평소 기록에 없던 '커피'가 처음 등장했어요"가 나갔다. 정확 일치로는 판단할 수 없는 값이고,
+  // 반복(3회 이상 같은 토큰)은 그 자체로 참이라 그것만 남긴다.
+
+  return lines.join('\n');
+}
+
+// -------------------------------------------------------------------------
+// 금지 주제 가드 — "야채·과일 얘기 하지 마라"는 프롬프트만으로는 새어 나온다.
+// 프롬프트가 막는 건 표현이고, 모델은 완곡하게 바꿔서 같은 말을 한다.
+// 여기서 잡아 1회 재생성시키고, 그래도 새면 policyViolation 으로 남긴다.
+// -------------------------------------------------------------------------
+
+/** 검사 대상 필드 — 사용자에게 문장으로 보이는 것만 */
+const DIET_POLICY_FIELDS = ['title', 'summary', 'highlight', 'nudge'];
+
+/**
+ * balanceNote 는 점수 내역의 근거 칸이라 영양 소재를 사실로 적을 수 있는 유일한 필드다
+ * ("고기와 채소가 반반"). 다만 "부족/보충/늘리/챙기" 같은 권유·결핍 표현이 들어오면
+ * 결국 훈수가 되므로 소재 유무와 무관하게 그 신호만 잡는다.
+ * 새 필드를 무방비로 두면 프롬프트가 막은 말이 그대로 이리로 샌다.
+ */
+const DIET_POLICY_BALANCE_NOTE_RE = /부족|보충|늘리|늘려|채워|신경\s*써|보완|곁들|더하|더해|추가|챙기|챙겨|아쉬|필요/;
+
+/** 영양소 소재. 이 자체는 위반이 아니다(먹은 걸 사실로 말할 수 있어야 한다) */
+const DIET_POLICY_NUTRIENT_RE = /채소|야채|샐러드|과일|단백질|비타민|식이섬유|영양소|영양\s*균형|칼로리/;
+
+/**
+ * "더 먹어라" 신호. 소재 + 이 신호가 같은 필드에 있을 때만 위반으로 본다.
+ * (먹은 것을 서술하는 "샐러드로 점심을 챙긴 건 좋았어요"를 오탐하지 않기 위함)
+ */
+const DIET_POLICY_STRONG_RE = /부족|보충|늘리|늘려|채워|섭취|신경\s*써|의식적|보완/;
+/** nudge는 조언 필드라 제안형 어미까지 넓게 잡는다 */
+const DIET_POLICY_NUDGE_RE = /곁들|더하|더해|추가|챙기|챙겨|드셔|먹어\s*보|넣어\s*보/;
+
+/**
+ * nudge 전용 — nudge는 조언 필드가 아니라 "알아봐 주는 한마디"다.
+ * 영양소와 무관하더라도 제안형 문장이면 위반이다.
+ * "내일 기록도 기다릴게요" 같은 관계적 표현은 걸리지 않도록 어미를 좁게 잡는다.
+ */
+const DIET_POLICY_ADVICE_RE =
+  /보세요|보시는 것도|보셔도|보아요|봐요|어떨까요|어때요|하면 좋|해도 좋|가져가도|가져가|추천|권해|드셔 ?보|챙겨 ?보/;
+
+/**
+ * nudge 에서 기록 행위를 칭찬하는 말.
+ *
+ * "기록을 남기셨네요"는 매일 참이라 매일 같은 한마디가 된다. 실측(8/16~18)에서 nudge 의 96%가
+ * 여기 걸렸다. 프롬프트로 세 번 막아 봤지만(축 5종 제시 → 한 줄 금지 → 예시 복원) 매번 새어
+ * 나왔고, 재작성 지시를 붙인 재생성은 실제로 들었다. 그래서 프롬프트가 아니라 여기서 막는다.
+ * lens 가 habit 인 날은 기록 행위가 그날의 관찰 축이므로 예외다.
+ */
+const DIET_NUDGE_RECORD_RE = /기록|적어|적으|남기|남겨/;
+
+/**
+ * 제목을 요약으로 끝내는 말.
+ *
+ * title 은 화면에서 가장 먼저, 때로는 유일하게 읽히는 자리다. "~한 하루"로 맺으면 그날의 제목이
+ * 아니라 아무 날에나 붙는 설명이 된다. 프롬프트에서 방식·예시·점검 항목으로 네 번 막았지만
+ * 검증에서 12건 중 4건이 그대로 나왔다(막을수록 다른 자리로 옮겨 갈 뿐이었다).
+ * 판정이 단순하고 예외가 거의 없으므로 가드로 잡아 다시 쓰게 한다.
+ */
+const DIET_TITLE_BLAND_RE = /(하루|날|식사|한 끼|시간)$/;
+
+/** 위반 필드명 배열. 없으면 빈 배열 */
+function detectDietPolicyViolation(responseText) {
+  const parsed = parseDietReportResponseJson(responseText);
+  if (!parsed) return [];
+  const hits = [];
+  const balanceNote = typeof parsed.balanceNote === 'string' ? parsed.balanceNote : '';
+  if (balanceNote && DIET_POLICY_BALANCE_NOTE_RE.test(balanceNote)) hits.push('balanceNote');
+  for (const field of DIET_POLICY_FIELDS) {
+    const v = typeof parsed[field] === 'string' ? parsed[field] : '';
+    if (!v) continue;
+    // 제목이 "~한 하루"로 끝나면 그날의 제목이 아니라 아무 날에나 붙는 설명이다.
+    if (field === 'title' && DIET_TITLE_BLAND_RE.test(v.trim())) {
+      hits.push(field);
+      continue;
+    }
+    // nudge 는 조언 자체가 금지라 영양소 소재 없이도 제안형이면 걸린다.
+    if (field === 'nudge' && DIET_POLICY_ADVICE_RE.test(v)) {
+      hits.push(field);
+      continue;
+    }
+    // habit 인 날 말고는 기록 칭찬도 위반이다 — 매일 참인 말이라 한마디가 매일 같아진다.
+    if (field === 'nudge' && normalizeDietLens(parsed.lens) !== 'habit' && DIET_NUDGE_RECORD_RE.test(v)) {
+      hits.push(field);
+      continue;
+    }
+    if (!DIET_POLICY_NUTRIENT_RE.test(v)) continue;
+    const suggestive =
+      DIET_POLICY_STRONG_RE.test(v) || (field === 'nudge' && DIET_POLICY_NUDGE_RE.test(v));
+    if (suggestive) hits.push(field);
+  }
+  return hits;
+}
+
+/**
+ * 상투 표현 — 프롬프트 [상투 표현 금지] 가 실제로 먹히는지 보는 눈이다.
+ * 금지 주제와 달리 재생성시키지 않는다: 위험한 게 아니라 지루한 것이고,
+ * 개정 직전 실측(8/16~18, 51건)에서 "바쁜 하루" 39% · "꼼꼼하게" 33% 였으므로
+ * 전부 재호출하면 호출이 1.4배가 된다. 문서에 남겨 추이를 보고, 온도 인상과
+ * 프롬프트로도 줄지 않는 항목만 나중에 재생성 가드로 승격한다.
+ */
+const DIET_CLICHE_RES = [
+  ['바쁜하루', /바쁜 (하루|날|와중|아침|저녁|월요일|한 주)/],
+  ['기록칭찬', /꼼꼼|빠짐없이|잊지 않|놓지 않|꾸준함이 돋보|성실함/],
+  ['앱이름', /밀로그/],
+  ['하루뭉뚱', /(특별한|알찬|든든한|다채로운|즐거운|소중한) 하루/]
+];
+
+/** 걸린 라벨 배열. 없으면 빈 배열 */
+function detectDietClicheHits(responseText) {
+  const parsed = parseDietReportResponseJson(responseText);
+  if (!parsed) return [];
+  const text = DIET_POLICY_FIELDS.map((f) => (typeof parsed[f] === 'string' ? parsed[f] : '')).join(' ');
+  return DIET_CLICHE_RES.filter(([, re]) => re.test(text)).map(([label]) => label);
+}
+
+/** 재생성 시 프롬프트 뒤에 덧붙일 교정 지시 */
+function buildDietPolicyCorrection(violatedFields) {
+  const lines = [
+    '[재작성 지시]',
+    `방금 생성한 응답의 ${violatedFields.join(', ')} 필드가 [금지 주제]를 위반했다.`,
+    '채소·야채·샐러드·과일·단백질·비타민·식이섬유·영양소·영양 균형·칼로리를 더 챙기라는 취지의 문장은',
+    '완곡한 표현이나 은유를 포함해 어떤 형태로도 쓸 수 없다.'
+  ];
+  if (violatedFields.includes('balanceNote')) {
+    lines.push(
+      'balanceNote 는 무엇이 있었는지만 적는 칸이다. 부족·보충·아쉬움·권유를 뜻하는 표현은 쓸 수 없다.',
+      '"밥·면 위주, 국 한 번", "고기와 채소가 반반"처럼 그날 구성을 사실로만 서술한다.'
+    );
+  }
+  if (violatedFields.includes('title')) {
+    lines.push(
+      'title 이 "하루", "날", "식사", "한 끼"로 끝났다. 그렇게 맺으면 그날의 제목이 아니라',
+      '아무 날에나 붙는 설명이 된다. 그날에만 있던 구체적인 것(메뉴 이름, 가게 이름, 함께한 사람,',
+      '사용자가 쓴 말) 하나를 집어 12~18자로 다시 쓴다. 어제 리포트에 붙여도 말이 되면 또 다시 쓴다.'
+    );
+  }
+  if (violatedFields.includes('nudge')) {
+    lines.push(
+      'nudge 는 조언 필드가 아니다. "~해 보세요", "~하면 좋아요", "~어떨까요" 같은 제안형 문장과',
+      '다음 끼니·내일의 식사를 어떻게 하라는 말은 어떤 형태로도 쓸 수 없다.',
+      '"기록", "적다", "남기다"로 사용자를 칭찬하는 문장도 쓸 수 없다. 기록을 남긴 것은 어느 날에나',
+      '참이라 그 말을 쓰는 순간 오늘의 한마디가 아니게 된다.',
+      'nudge 는 그날에만 있는 근거를 딛고 쓴다 — 사용자가 남긴 말에 대한 대꾸, 그날 상태를 짚어 주는 말,',
+      '며칠째 이어 가고 있는 것에 대한 인정, 하루소감의 감정에 대한 공감 중 하나를 고른다.'
+    );
+  }
+  lines.push(
+    '해당 필드를 그날 기록에 실제로 있는 다른 사실(코멘트, 하루소감, 메뉴 이름, 장소, 함께 먹은 사람,',
+    '만족도 점수, 포만감 점수, 끼니 사이 간격, 외식·배달·집밥 비중)을 근거로 완전히 새로 써라.',
+    '나머지 필드는 유지해도 된다. 동일한 JSON 형식으로 전체를 다시 출력한다.'
+  );
+  return lines.join('\n');
+}
+
+/**
+ * Gemini 응답 텍스트 정규화 + 검증.
+ * 클라이언트(js/utils/ai-meal-report.js)가 렌더할 수 있는 형태인지 여기서 확인한다.
+ * 통과 못 하면 던져서 재시도/에러 경로로 보낸다 — 깨진 JSON을 status:'ready'로 저장하면
+ * 사용자 화면에 원문이 그대로 노출된다.
+ */
 function normalizeDietReportResponseText(text) {
   let s = (text || '').trim();
   if (!s) throw new Error('빈 응답');
   s = s.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-  return s.slice(0, 16000);
+  s = s.slice(0, 16000);
+
+  const parsed = parseDietReportResponseJson(s);
+  if (!parsed) throw new Error('응답 JSON 파싱 실패');
+
+  // score 는 더 이상 모델이 내지 않는다(화면 점수는 기록 충실도로, 클라이언트가 직접 계산).
+  // 따라서 표시 가능 여부는 문장 필드만으로 판단한다.
+  const hasText = ['summary', 'title', 'highlight', 'nudge', 'goodPoint', 'improvePoint'].some(
+    (k) => typeof parsed[k] === 'string' && parsed[k].trim()
+  );
+  if (!hasText) throw new Error('응답에 표시할 필드가 없음');
+
+  return s;
 }
 
-/** Gemini 멀티모달 호출 — 프롬프트에 따른 응답 텍스트를 그대로 반환 */
-async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplate) {
+/**
+ * Gemini 멀티모달 호출.
+ * @param {{date:string, weekday?:string, mealText?:string, profile?:string,
+ *          slotCoverage?:string, recentTrend?:string, recentStats?:string}} ctx 프롬프트 치환 컨텍스트
+ * @param {Array<{inlineData:{mimeType:string,data:string}, caption:string}>} imageParts
+ * @returns {Promise<{responseText:string, tokenUsage:object|null, model:string,
+ *                    sentImageCount:number, fallbackUsed:string|null,
+ *                    policyViolation:string[]|null, policyRetried:boolean}>}
+ */
+async function callGeminiDietReport(ctx, imageParts, promptTemplate) {
   const apiKey = geminiApiKey.value();
   if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
     throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.');
   }
-  const prompt = buildDietReportPromptText(dateStr, mealText, promptTemplate);
+  const { staticPart, variablePart } = splitDietPromptForCaching(ctx, promptTemplate);
+  const dateStr = ctx?.date || '';
 
   const model = GEMINI_MEALDANG_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-  const invoke = async (images, thinkingBudget) => {
+  const invoke = async (images, thinkingBudget, extraInstruction) => {
     const generationConfig = {
-      // 운영 프롬프트가 개성 있는 title·mood 문구를 요구하므로 표현 다양성 쪽으로 둔다.
-      temperature: 0.8,
+      temperature: DIET_REPORT_TEMPERATURE,
       topP: 0.9,
       maxOutputTokens: DIET_REPORT_MAX_OUTPUT_TOKENS,
+      // 스키마는 고정하지 않는다 — 운영 프롬프트가 관리자에서 자유롭게 바뀌므로
+      // responseSchema로 필드를 못 박으면 새 필드가 조용히 잘려 나간다. JSON 유효성만 강제.
+      responseMimeType: 'application/json',
       thinkingConfig: { thinkingBudget }
     };
-    const parts = [{ text: prompt }, ...images.map((p) => ({ inlineData: p }))];
+    // 사진마다 바로 앞에 슬롯 캡션을 둔다. 캡션 없이 뒤에 몰아 붙이면
+    // 모델이 어느 사진이 어느 끼니인지 알 수 없어 사진을 사실상 무시한다.
+    const parts = [{ text: variablePart }];
+    for (const img of images) {
+      if (img.caption) parts.push({ text: img.caption });
+      parts.push({ inlineData: img.inlineData });
+    }
+    // 교정 지시는 맨 뒤에 — 가장 최근 지시가 가장 강하게 먹는다.
+    if (extraInstruction) parts.push({ text: extraInstruction });
+    const body = { contents: [{ parts }], generationConfig };
+    // 고정 지시문은 systemInstruction 으로 — 캐시 경계를 명확히 하고 규칙 준수도 강해진다.
+    if (staticPart) body.systemInstruction = { parts: [{ text: staticPart }] };
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Referer: 'https://mealog-r0.web.app/' },
-      body: JSON.stringify({ contents: [{ parts }], generationConfig })
+      body: JSON.stringify(body)
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -6489,31 +8330,64 @@ async function callGeminiDietReport(dateStr, mealText, imageParts, promptTemplat
     return { responseText, tokenUsage: data?.usageMetadata || null, model };
   };
 
+  /**
+   * invoke + 금지 주제 가드. 걸리면 교정 지시를 붙여 1회만 다시 부른다.
+   * 재시도가 실패하거나 또 걸리면 첫 응답을 쓰되 policyViolation 으로 남겨 관리자가 보게 한다.
+   */
+  const invokeGuarded = async (images, thinkingBudget) => {
+    const first = await invoke(images, thinkingBudget);
+    const violated = detectDietPolicyViolation(first.responseText);
+    if (violated.length === 0) return { ...first, policyViolation: null, policyRetried: false };
+
+    logger.warn('callGeminiDietReport: 금지 주제 위반, 재생성', { dateStr, fields: violated });
+    try {
+      const second = await invoke(images, thinkingBudget, buildDietPolicyCorrection(violated));
+      const stillViolated = detectDietPolicyViolation(second.responseText);
+      if (stillViolated.length) {
+        logger.warn('callGeminiDietReport: 재생성 후에도 위반', { dateStr, fields: stillViolated });
+      }
+      return {
+        ...second,
+        policyViolation: stillViolated.length ? stillViolated : null,
+        policyRetried: true
+      };
+    } catch (e) {
+      logger.warn('callGeminiDietReport: 교정 재생성 실패, 첫 응답 사용', { dateStr, errMsg: e?.message });
+      return { ...first, policyViolation: violated, policyRetried: true };
+    }
+  };
+
   const images = Array.isArray(imageParts) ? imageParts : [];
+  // 사진을 버리는 건 마지막 수단이므로, 이미지 관련 오류로만 text-only 강등을 허용한다.
+  const isImageError = (msg) => /Unable to process input image|inlineData|image/i.test(msg);
   const isRetriable = (msg) =>
-    /Unable to process input image|Gemini 응답 텍스트 없음|MAX_TOKENS/i.test(msg) || /image/i.test(msg);
+    /Gemini 응답 텍스트 없음|MAX_TOKENS|응답 JSON 파싱 실패|응답에 표시할 필드가 없음/i.test(msg) ||
+    isImageError(msg);
 
   // thinking이 출력 예산을 잠식해 본문이 잘린 경우가 먼저이므로, 사진을 버리기 전에 thinking부터 끈다.
   const fallbacks = [];
   if (DIET_REPORT_THINKING_BUDGET > 0) fallbacks.push({ images, thinkingBudget: 0, label: 'no-thinking' });
-  if (images.length > 0) fallbacks.push({ images: [], thinkingBudget: 0, label: 'text-only' });
+  if (images.length > 0) fallbacks.push({ images: [], thinkingBudget: 0, label: 'text-only', imageOnly: true });
 
   let lastError;
   try {
-    return await invoke(images, DIET_REPORT_THINKING_BUDGET);
+    const r = await invokeGuarded(images, DIET_REPORT_THINKING_BUDGET);
+    return { ...r, sentImageCount: images.length, fallbackUsed: null };
   } catch (e) {
     lastError = e;
   }
   for (const fb of fallbacks) {
     const msg = String(lastError?.message || lastError);
     if (!isRetriable(msg)) break;
+    if (fb.imageOnly && !isImageError(msg)) break;
     logger.warn(`callGeminiDietReport: retry ${fb.label}`, {
       dateStr,
       imageCount: fb.images.length,
       errMsg: msg
     });
     try {
-      return await invoke(fb.images, fb.thinkingBudget);
+      const r = await invokeGuarded(fb.images, fb.thinkingBudget);
+      return { ...r, sentImageCount: fb.images.length, fallbackUsed: fb.label };
     } catch (e) {
       lastError = e;
     }
@@ -6542,45 +8416,36 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
 
   await archiveDietReportSnapshotIfAny(reportRef);
 
-  // 사진 수집: meal 문서당 DIET_REPORT_MAX_PHOTOS_PER_DOC 장, 하루 전체 DIET_REPORT_MAX_PHOTOS_TOTAL 장
+  // 사진 수집(시간순): meal 문서당 DIET_REPORT_MAX_PHOTOS_PER_DOC 장, 하루 전체 DIET_REPORT_MAX_PHOTOS_TOTAL 장.
+  // 각 사진에는 "몇 번째 사진 · 어느 슬롯 · 몇 시"인지 캡션을 붙여 프롬프트와 짝지어 보낸다.
   const imageParts = [];
   const inputMealsForAnalysis = [];
   for (const m of analyzable) {
-    if (imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) {
-      const photosOnly = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
-      inputMealsForAnalysis.push({
-        slotId: String(m.slotId || ''),
-        slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
-        mealId: String(m.id || ''),
-        detailText: adminMealSlotDetailForGemini(m),
-        comment: adminMealCommentText(m) || null,
-        time: adminMealTimeText(m) || null,
-        rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
-        satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
-        photoCount: photosOnly.length,
-        analyzedPhotoUrls: []
-      });
-      continue;
-    }
     const photos = Array.isArray(m.photos) ? m.photos.filter(Boolean) : [];
+    const slotLabel = dietSlotLabel(m.slotId);
+    const timeTxt = adminMealTimeText(m);
     const analyzedPhotoUrls = [];
     let usedForDoc = 0;
-    for (const purl of photos) {
+    for (let i = 0; i < photos.length; i += 1) {
       if (usedForDoc >= DIET_REPORT_MAX_PHOTOS_PER_DOC || imageParts.length >= DIET_REPORT_MAX_PHOTOS_TOTAL) break;
-      const inline = await dietFetchStorageImageInline(purl);
+      // 원본 대신 800px 파생본을 보낸다 — Gemini가 어차피 다운샘플하므로 화질 손해 없이
+      // 다운로드·입력 토큰만 줄어든다. 파생본이 없는 구버전 기록은 원본으로 폴백.
+      const sourceUrl = dietPickPhotoUrlForAnalysis(m, i);
+      const inline = await dietFetchStorageImageInline(sourceUrl);
       if (inline) {
-        imageParts.push(inline);
-        analyzedPhotoUrls.push(purl);
+        const caption = `[사진 ${imageParts.length + 1} · ${slotLabel}${timeTxt ? ` ${timeTxt}` : ''}]`;
+        imageParts.push({ inlineData: inline, caption });
+        analyzedPhotoUrls.push(sourceUrl);
         usedForDoc += 1;
       }
     }
     inputMealsForAnalysis.push({
       slotId: String(m.slotId || ''),
-      slotLabel: adminSlotLabelKr(m.slotId) || String(m.slotId || '슬롯'),
+      slotLabel,
       mealId: String(m.id || ''),
       detailText: adminMealSlotDetailForGemini(m),
       comment: adminMealCommentText(m) || null,
-      time: adminMealTimeText(m) || null,
+      time: timeTxt || null,
       rating: Number.isFinite(Number(m.rating)) ? Math.round(Number(m.rating)) : null,
       satiety: Number.isFinite(Number(m.satiety)) ? Math.round(Number(m.satiety)) : null,
       photoCount: photos.length,
@@ -6589,41 +8454,83 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
   }
 
   const mealText = formatMealsForDietPrompt(analyzable) + dailyJournalBlock;
+  const [profileBlock, recentContext] = await Promise.all([
+    buildDietProfileBlock(uid),
+    buildDietRecentContext(uid, dateStr)
+  ]);
+  const recentTrendBlock = recentContext.trendBlock;
+  const recentStatsBlock = formatDietRecentStatsBlock(recentContext.pastMeals, inputMealsForAnalysis);
+  const slotCoverageBlock = formatDietSlotCoverage(analyzable);
+  const promptCtx = {
+    date: dateStr,
+    weekday: dietWeekdayLabel(dateStr),
+    mealText,
+    profile: profileBlock,
+    slotCoverage: slotCoverageBlock,
+    recentTrend: recentTrendBlock,
+    recentStats: recentStatsBlock
+  };
   const inputSnapshot = {
     inputMealText: String(mealText || '').slice(0, 12000),
     inputMeals: inputMealsForAnalysis,
-    inputDailyJournalComment: adminNormalizeDailyJournalEntry(dailyJournalEntry).comment.slice(0, 4000) || null
+    inputDailyJournalComment: adminNormalizeDailyJournalEntry(dailyJournalEntry).comment.slice(0, 4000) || null,
+    // 이상한 문장이 나왔을 때 모델 탓인지 계산 탓인지는 이 블록을 봐야 갈린다.
+    // ("평소 기록에 없던 '커피'" 가 왜 나왔는지 추적하려다 이게 없어 다시 계산해 봐야 했다)
+    inputRecentStats: String(recentStatsBlock || '').slice(0, 2000) || null
   };
   const base = {
     userId: uid,
     date: dateStr,
     mealCount: analyzable.length,
     photoCount,
+    // 실제로 모델에 보낸 장수는 폴백 결과를 안 뒤에 덮어쓴다(아래). 여기 값은 에러 경로용 상한.
+    preparedPhotoCount: imageParts.length,
     analyzedPhotoCount: imageParts.length,
     sourceHash: hash,
     sourceUpdatedAtMax: maxRecordedAt || null,
     promptVersion: config.promptVersion,
+    hasProfileContext: !!profileBlock,
+    hasRecentTrendContext: !!recentTrendBlock,
+    hasRecentStatsContext: !!recentStatsBlock,
     trigger,
     generatedAt: FieldValue.serverTimestamp(),
     ...inputSnapshot
   };
 
   try {
-    const { responseText, tokenUsage, model } = await callGeminiDietReport(
-      dateStr,
-      mealText,
-      imageParts,
-      config.promptTemplate
-    );
+    const { responseText, tokenUsage, model, sentImageCount, fallbackUsed, policyViolation, policyRetried } =
+      await callGeminiDietReport(promptCtx, imageParts, config.promptTemplate);
+    // text-only 폴백으로 성공했다면 "분석된 사진"도 없는 게 맞다 — 관리자 카드가
+    // 실제로 안 쓰인 사진을 분석 사진으로 보여 주면 안 된다.
+    const inputMealsFinal =
+      sentImageCount === 0 && imageParts.length > 0
+        ? inputMealsForAnalysis.map((m) => ({ ...m, analyzedPhotoUrls: [] }))
+        : inputMealsForAnalysis;
     await reportRef.set(
       {
         ...base,
+        inputMeals: inputMealsFinal,
         status: 'ready',
         isLatest: true,
         isHistory: false,
         responseText,
         modelVersion: model,
         tokensUsed: tokenUsage,
+        // 사진을 버린 폴백으로 성공했다면 그 사실을 그대로 남긴다.
+        // (예전에는 준비 장수를 그대로 저장해 "사진 3장 분석"으로 보였다)
+        analyzedPhotoCount: sentImageCount,
+        // 다음 날 {{recentTrend}} 가 읽어 렌즈 회전에 쓴다. responseText 안에도 있지만
+        // 매번 파싱하지 않도록 최상위로 승격해 둔다.
+        lens: normalizeDietLens(parseDietReportResponseJson(responseText)?.lens) || FieldValue.delete(),
+        fallbackUsed: fallbackUsed || FieldValue.delete(),
+        // 재생성으로도 못 막은 금지 주제 — 프롬프트를 손봐야 한다는 신호
+        policyViolation: policyViolation && policyViolation.length ? policyViolation : FieldValue.delete(),
+        policyRetried: policyRetried === true ? true : FieldValue.delete(),
+        // 재생성은 시키지 않고 계측만 한다. 이 값이 안 줄면 프롬프트가 아니라 가드로 막아야 한다.
+        clicheHits: (() => {
+          const h = detectDietClicheHits(responseText);
+          return h.length ? h : FieldValue.delete();
+        })(),
         score: FieldValue.delete(),
         summary: FieldValue.delete(),
         goodPoint: FieldValue.delete(),
@@ -6643,6 +8550,12 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
         status: 'error',
         isLatest: true,
         isHistory: false,
+        analyzedPhotoCount: 0,
+        lens: FieldValue.delete(),
+        fallbackUsed: FieldValue.delete(),
+        policyViolation: FieldValue.delete(),
+        policyRetried: FieldValue.delete(),
+        clicheHits: FieldValue.delete(),
         modelVersion: GEMINI_MEALDANG_MODEL,
         errorMessage: String(e?.message || e).slice(0, 500),
         historyOf: FieldValue.delete(),
@@ -6655,13 +8568,14 @@ async function generateAndSaveDietReport(uid, dateStr, meals, trigger, dietConfi
 }
 
 /**
- * 15분마다 실행 — adminSettings/dietReportConfig 의 batchEnabled·batchRunTime 에 맞춰 하루 1회 배치.
+ * 하루 1회 실행(DIET_REPORT_BATCH_RUN_TIME). adminSettings/dietReportConfig 의 batchEnabled 로만 켜고 끈다.
  * 대상: 최근 7일(배치 실행일 제외) 기록이 있는 사용자 → 각 사용자의 가장 최근 기록일 분석.
  * 해당 날짜에 분석 이력(자동·수동)이 있으면 skip.
  */
 exports.scheduledDailyDietAnalysis = onSchedule(
   {
-    schedule: '*/15 * * * *',
+    // DIET_REPORT_BATCH_RUN_TIME 과 같은 시각이어야 한다 — 상수는 표시용, 이 cron 이 정본이다
+    schedule: '0 4 * * *',
     timeZone: 'Asia/Seoul',
     region: REGION,
     timeoutSeconds: 540,
@@ -6674,9 +8588,6 @@ exports.scheduledDailyDietAnalysis = onSchedule(
       return;
     }
     const now = new Date();
-    if (!isWithinDietBatchRunWindow(now, config.batchRunTime, 15)) {
-      return;
-    }
     const todaySeoul = adminSeoulYmdFromDate(now);
     if (config.lastBatchRunDate === todaySeoul) {
       logger.info('scheduledDailyDietAnalysis: already ran today', { todaySeoul });
@@ -6716,7 +8627,7 @@ exports.scheduledDailyDietAnalysis = onSchedule(
       todaySeoul,
       windowStart,
       candidates: candidates.length,
-      batchRunTime: config.batchRunTime
+      batchRunTime: DIET_REPORT_BATCH_RUN_TIME
     });
 
     let ok = 0;
@@ -6848,3 +8759,216 @@ exports.regenerateDietReport = onCall(
     };
   })
 );
+
+// ═══════════════════════════════════════════════════════════════
+// 미분류 식사 기록 카테고리 backfill (docs/food-category-auto-classification.md §6)
+// ═══════════════════════════════════════════════════════════════
+const classifyMoments = require('./classifyMoments.js');
+
+/** 6시간마다: 최근 7일 미분류 기록을 최대 100건 배치 분류 */
+/**
+ * 하루 소감 meals 미러 백필 — 관리자 전용, 수동 1회성.
+ *
+ * 관리자 화면에서는 이 일을 할 수 없다. 규칙상 `users/{uid}/meals` 는 **본인만** 쓸 수 있어서
+ * 클라이언트 백필은 늘 permission-denied 로 끝났다. 규칙을 열어 관리자 쓰기를 허용하는 대신
+ * admin SDK 로 처리한다.
+ *
+ * 미러가 생기기 시작한 것은 2026-06-10 이고, 그 이전 소감은 dailyComments 에만 있다.
+ * 모먼트 관리 목록이 미러를 정본으로 삼게 되면서 옛 소감이 목록에서 빠지므로 한 번 메워 준다.
+ */
+exports.adminBackfillDailyJournalMirrors = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    if (!(await isAdminByUid(callerUid))) throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+
+    const dryRun = request.data?.dryRun === true;
+    const maxWrites = Math.min(Number(request.data?.maxWrites) || 500, 2000);
+
+    /** 이미 미러가 있는 `uid|date` — 한 번에 모아 두면 건마다 확인하지 않아도 된다 */
+    const existing = new Set();
+    const mirrorSnap = await db.collectionGroup('meals').where('slotId', '==', 'daily_journal').get();
+    mirrorSnap.forEach((d) => {
+      const segs = d.ref.path.split('/');
+      const ui = segs.indexOf('users');
+      const uid = ui >= 0 ? segs[ui + 1] : '';
+      const date = String(d.data()?.date || '').trim();
+      if (uid && date) existing.add(`${uid}|${date}`);
+    });
+
+    const normalizeIso = (raw) => {
+      if (raw == null) return '';
+      if (typeof raw === 'string') {
+        const t = Date.parse(raw.trim());
+        return Number.isFinite(t) ? new Date(t).toISOString() : '';
+      }
+      if (typeof raw.toDate === 'function') {
+        const d = raw.toDate();
+        return d && Number.isFinite(d.getTime()) ? d.toISOString() : '';
+      }
+      if (typeof raw.seconds === 'number') return new Date(raw.seconds * 1000).toISOString();
+      return '';
+    };
+
+    /** js/utils/daily-journal-data.js 의 normalize·hasContent 와 같은 기준 */
+    const toEntry = (raw) => {
+      if (raw == null || raw === '') return null;
+      // 구형 소감은 문자열 하나로만 저장돼 있다 — 나머지 필드를 비워 두면 set() 이 undefined 로 거부한다
+      if (typeof raw === 'string') {
+        if (!raw.trim()) return null;
+        return {
+          comment: raw,
+          photos: [],
+          sharedPhotos: [],
+          photoAspectRatio: '1:1',
+          weightEnabled: false,
+          bloodSugarEnabled: false,
+          weightRecords: [],
+          bloodSugarRecords: [],
+          recordedAt: ''
+        };
+      }
+      if (typeof raw !== 'object') return null;
+      return {
+        comment: String(raw.comment || ''),
+        photos: Array.isArray(raw.photos) ? raw.photos.filter(Boolean) : [],
+        sharedPhotos: Array.isArray(raw.sharedPhotos) ? raw.sharedPhotos.filter(Boolean) : [],
+        photoAspectRatio: raw.photoAspectRatio || '1:1',
+        weightEnabled: raw.weightEnabled === true,
+        bloodSugarEnabled: raw.bloodSugarEnabled === true,
+        weightRecords: Array.isArray(raw.weightRecords) ? raw.weightRecords : [],
+        bloodSugarRecords: Array.isArray(raw.bloodSugarRecords) ? raw.bloodSugarRecords : [],
+        recordedAt: normalizeIso(raw.recordedAt)
+      };
+    };
+    const hasContent = (e) =>
+      !!e &&
+      (String(e.comment || '').trim() !== '' ||
+        (e.photos && e.photos.length > 0) ||
+        (e.weightEnabled && (e.weightRecords || []).length > 0) ||
+        (e.bloodSugarEnabled && (e.bloodSugarRecords || []).length > 0));
+
+    /** recordedAt 이 없으면 시각을 모른다 — 23:59 로 밀어 넣지 않고 자정으로 둔다 */
+    const mealTimeOf = (iso) => {
+      if (!iso) return '00:00';
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return '00:00';
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
+    let scanned = 0;
+    let candidates = 0;
+    let written = 0;
+    const configSnap = await db.collectionGroup('config').get();
+    for (const docSnap of configSnap.docs) {
+      if (docSnap.id !== 'settings') continue;
+      const segs = docSnap.ref.path.split('/');
+      const ui = segs.indexOf('users');
+      const uid = ui >= 0 ? segs[ui + 1] : '';
+      if (!uid) continue;
+      const dc = docSnap.data()?.dailyComments;
+      if (!dc || typeof dc !== 'object') continue;
+      for (const [dateStr, raw] of Object.entries(dc)) {
+        const dk = String(dateStr || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+        scanned++;
+        if (existing.has(`${uid}|${dk}`)) continue;
+        const entry = toEntry(raw);
+        if (!hasContent(entry)) continue;
+        candidates++;
+        if (dryRun || written >= maxWrites) continue;
+        const ref = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/dailyJournal_${dk}`);
+        // 옛 문서에는 어떤 모양이 섞여 있을지 모른다 — undefined 가 하나라도 있으면 set 이 통째로 거부된다
+        const payload = {
+          date: dk,
+          time: mealTimeOf(entry.recordedAt),
+          slotId: 'daily_journal',
+          comment: entry.comment,
+          photos: entry.photos,
+          sharedPhotos: entry.sharedPhotos,
+          photoAspectRatio: entry.photoAspectRatio,
+          weightEnabled: entry.weightEnabled,
+          bloodSugarEnabled: entry.bloodSugarEnabled,
+          weightRecords: entry.weightRecords,
+          bloodSugarRecords: entry.bloodSugarRecords,
+          // 시각을 모르는 옛 기록은 그 날짜 자정으로 둔다 — 없는 값을 지어내지 않는다
+          recordedAt: entry.recordedAt || `${dk}T00:00:00.000Z`,
+          mirrorBackfilledAt: FieldValue.serverTimestamp()
+        };
+        for (const k of Object.keys(payload)) {
+          if (payload[k] === undefined) delete payload[k];
+        }
+        await ref.set(payload);
+        written++;
+      }
+    }
+
+    logger.info('adminBackfillDailyJournalMirrors', { scanned, candidates, written, dryRun, existing: existing.size });
+    return { ok: true, scanned, candidates, written, alreadyMirrored: existing.size, dryRun };
+  }
+);
+
+exports.classifyUncategorizedMeals = onSchedule(
+  {
+    schedule: '0 */6 * * *',
+    timeZone: 'Asia/Seoul',
+    region: REGION,
+    timeoutSeconds: 300,
+    memory: '512MiB'
+  },
+  async () => {
+    const apiKey = geminiApiKey.value();
+    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+      logger.warn('classifyUncategorizedMeals: GEMINI_API_KEY 미설정, skip');
+      return;
+    }
+    const today = adminSeoulYmdFromDate(new Date());
+    try {
+      await classifyMoments.runClassifyUncategorizedMeals({
+        db,
+        logger,
+        apiKey,
+        model: GEMINI_MEALDANG_MODEL,
+        startDate: adminYmdAddDays(today, -7),
+        endDate: today,
+        maxDocs: 100
+      });
+    } catch (e) {
+      // best-effort — 실패한 건은 다음 배치가 다시 집는다
+      logger.error('classifyUncategorizedMeals 실패', { errMsg: String(e?.message || e) });
+    }
+  }
+);
+
+/**
+ * 과거 데이터 1회성 마이그레이션 (관리자 전용) — 기간을 지정해 레거시 '기타' 기록을 분류.
+ * 예: { startDate: '2026-07-01', endDate: '2026-08-12', maxDocs: 100 }
+ * 100건씩 나눠 호출한다 (Gemini 배치 1회 = 호출 1회).
+ */
+exports.adminClassifyLegacyMeals = onCall({ region: REGION }, wrapFunction('adminClassifyLegacyMeals', async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+  }
+  if (!(await isAdminByUid(request.auth.uid))) {
+    throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+  }
+  const { startDate, endDate, maxDocs } = request.data || {};
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(endDate || ''))) {
+    throw new HttpsError('invalid-argument', 'startDate/endDate는 YYYY-MM-DD 형식이어야 합니다.');
+  }
+  const apiKey = geminiApiKey.value();
+  if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    throw new HttpsError('failed-precondition', 'GEMINI_API_KEY가 설정되지 않았습니다.');
+  }
+  const result = await classifyMoments.runClassifyUncategorizedMeals({
+    db,
+    logger,
+    apiKey,
+    model: GEMINI_MEALDANG_MODEL,
+    startDate: String(startDate),
+    endDate: String(endDate),
+    maxDocs: Math.min(Number(maxDocs) || 100, 100)
+  });
+  return { ok: true, ...result };
+}));

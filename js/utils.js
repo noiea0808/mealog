@@ -1314,14 +1314,16 @@ export function setupBirthdateInputFormatting(el) {
     if (!el || el.dataset.birthdateFormatted === 'true') return;
     el.dataset.birthdateFormatted = 'true';
 
-    el.addEventListener('input', function () {
-        const digits = this.value.replace(/\D/g, '').slice(0, 8);
+    // 조합 중 value 재대입은 IME 를 깨뜨린다 — 숫자 칸이라도 한글 자판 상태로 들어올 수 있다
+    // 헬퍼는 handler() 로 부르므로 this 가 없다 — el 을 직접 쓴다
+    addCompositionAwareInput(el, () => {
+        const digits = el.value.replace(/\D/g, '').slice(0, 8);
         if (digits.length <= 4) {
-            this.value = digits;
+            el.value = digits;
         } else if (digits.length <= 6) {
-            this.value = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+            el.value = `${digits.slice(0, 4)}-${digits.slice(4)}`;
         } else {
-            this.value = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+            el.value = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
         }
     });
 }
@@ -1496,12 +1498,15 @@ export function formatProfileRrnDisplay(birthdate, gender) {
 export function setupRrnPartialInputFormatting(el) {
     if (!el || el.dataset.rrnPartialFormatted === 'true') return;
     el.dataset.rrnPartialFormatted = 'true';
-    el.addEventListener('input', function () {
-        this.value = formatRrnPartialInput(this.value);
+    // 조합 중 value 재대입 금지 (setupBirthdateInputFormatting 와 같은 이유)
+    addCompositionAwareInput(el, () => {
+        el.value = formatRrnPartialInput(el.value);
     });
 }
 
 const RRN_DIGIT_COUNT = 7;
+/** 앞자리(생년월일) 길이 — 나머지 한 자리가 성별 코드다 */
+const RRN_FRONT_LEN = 6;
 const RRN_DIGIT_LABELS = [
     '생년 십의 자리',
     '생년 일의 자리',
@@ -1527,12 +1532,15 @@ function syncRrnDigitHidden(root) {
 export function getRrnDigitGroupValue(rootOrId) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return '';
-    const cells = root.querySelectorAll('.rrn-digit');
-    let digits = '';
-    cells.forEach((el) => {
-        digits += String(el.value || '').replace(/\D/g, '').slice(0, 1);
-    });
-    return formatRrnPartialInput(digits);
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    const f = String(front?.value || '').replace(/\D/g, '').slice(0, RRN_FRONT_LEN);
+    const b = String(back?.value || '').replace(/\D/g, '').slice(0, 1);
+    /**
+     * 앞자리가 덜 찼는데 뒷자리만 있는 상태는 값으로 치지 않는다 — 이어 붙이면
+     * '9' 한 글자가 생년 십의 자리로 읽혀 formatRrnPartialInput 이 엉뚱한 날짜를 만든다.
+     */
+    return formatRrnPartialInput(f.length === RRN_FRONT_LEN ? f + b : f);
 }
 
 /**
@@ -1544,10 +1552,10 @@ export function setRrnDigitGroupValue(rootOrId, raw) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
     const digits = String(raw || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
-    const cells = root.querySelectorAll('.rrn-digit');
-    cells.forEach((el, i) => {
-        el.value = digits[i] || '';
-    });
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    if (front) front.value = digits.slice(0, RRN_FRONT_LEN);
+    if (back) back.value = digits.slice(RRN_FRONT_LEN, RRN_DIGIT_COUNT);
     syncRrnDigitHidden(root);
 }
 
@@ -1558,9 +1566,11 @@ export function setRrnDigitGroupValue(rootOrId, raw) {
 export function focusRrnDigitGroup(rootOrId) {
     const root = typeof rootOrId === 'string' ? document.getElementById(rootOrId) : rootOrId;
     if (!root) return;
-    const cells = [...root.querySelectorAll('.rrn-digit')];
-    const empty = cells.find((el) => !el.value);
-    (empty || cells[0])?.focus();
+    const front = root.querySelector('.rrn-front');
+    const back = root.querySelector('.rrn-digit');
+    // 앞자리가 아직 덜 찼으면 거기부터 — 다 찼으면 뒤 한 자리로
+    const target = front && front.value.length < RRN_FRONT_LEN ? front : back || front;
+    target?.focus();
 }
 
 /**
@@ -1581,26 +1591,40 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
             root.setAttribute('aria-label', '주민등록번호 앞 6자리와 뒤 첫 자리');
         }
         const frag = document.createDocumentFragment();
-        for (let i = 0; i < RRN_DIGIT_COUNT; i++) {
-            if (i === 6) {
-                const hyphen = document.createElement('span');
-                hyphen.className = 'rrn-digits__hyphen';
-                hyphen.setAttribute('aria-hidden', 'true');
-                hyphen.textContent = '-';
-                frag.appendChild(hyphen);
-            }
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'rrn-digit';
-            input.inputMode = 'numeric';
-            input.autocomplete = 'one-time-code';
-            input.maxLength = 1;
-            input.pattern = '[0-9]*';
-            input.setAttribute('data-rrn-i', String(i));
-            input.setAttribute('aria-label', RRN_DIGIT_LABELS[i] || `자리 ${i + 1}`);
-            input.setAttribute('enterkeyhint', i === RRN_DIGIT_COUNT - 1 ? 'done' : 'next');
-            frag.appendChild(input);
-        }
+        /**
+         * 앞 6자리는 **칸을 쪼개지 않는다.** 생년월일은 한 덩어리로 외우고 한 번에 적는
+         * 값이라, 칸마다 포커스가 튀면 오히려 손이 걸린다. 뒤 한 자리는 성격이 다른
+         * 값(성별 코드)이라 칸으로 남겨 경계를 보이게 둔다.
+         */
+        const front = document.createElement('input');
+        front.type = 'text';
+        front.className = 'rrn-front';
+        front.inputMode = 'numeric';
+        front.autocomplete = 'off';
+        front.maxLength = RRN_FRONT_LEN;
+        front.pattern = '[0-9]*';
+        front.placeholder = 'YYMMDD';
+        front.setAttribute('aria-label', '주민등록번호 앞 6자리(생년월일)');
+        front.setAttribute('enterkeyhint', 'next');
+        frag.appendChild(front);
+
+        const hyphen = document.createElement('span');
+        hyphen.className = 'rrn-digits__hyphen';
+        hyphen.setAttribute('aria-hidden', 'true');
+        hyphen.textContent = '-';
+        frag.appendChild(hyphen);
+
+        const back = document.createElement('input');
+        back.type = 'text';
+        back.className = 'rrn-digit';
+        back.inputMode = 'numeric';
+        back.autocomplete = 'one-time-code';
+        back.maxLength = 1;
+        back.pattern = '[0-9]*';
+        back.setAttribute('data-rrn-i', String(RRN_FRONT_LEN));
+        back.setAttribute('aria-label', RRN_DIGIT_LABELS[RRN_FRONT_LEN] || '성별 코드');
+        back.setAttribute('enterkeyhint', 'done');
+        frag.appendChild(back);
         const mask = document.createElement('span');
         mask.className = 'rrn-digits__mask';
         mask.setAttribute('aria-hidden', 'true');
@@ -1616,73 +1640,105 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
     }
     root.dataset.rrnDigitsBound = 'true';
 
-    const cells = () => [...root.querySelectorAll('.rrn-digit')];
+    const frontEl = () => root.querySelector('.rrn-front');
+    const backEl = () => root.querySelector('.rrn-digit');
 
-    const fillFromDigits = (digitStr, startIndex = 0) => {
-        const list = cells();
-        const digits = String(digitStr || '').replace(/\D/g, '');
-        let i = startIndex;
-        for (const ch of digits) {
-            if (i >= list.length) break;
-            list[i].value = ch;
-            i += 1;
-        }
+    /** 숫자 문자열을 앞·뒤로 갈라 채운다 (7자리를 한 번에 적거나 붙여넣은 경우) */
+    const fillFromDigits = (digitStr) => {
+        const digits = String(digitStr || '').replace(/\D/g, '').slice(0, RRN_DIGIT_COUNT);
+        const front = frontEl();
+        const back = backEl();
+        if (front) front.value = digits.slice(0, RRN_FRONT_LEN);
+        if (back && digits.length > RRN_FRONT_LEN) back.value = digits.slice(RRN_FRONT_LEN);
         syncRrnDigitHidden(root);
-        const next = list[Math.min(i, list.length - 1)];
-        next?.focus();
-        if (next && i < list.length) next.select();
+        if (digits.length >= RRN_FRONT_LEN && back) {
+            back.focus();
+            back.select();
+        }
     };
 
+    /**
+     * 숫자만 남기려고 value 를 다시 쓰는데, **조합 중에는 그러면 안 된다** — IME 상태가
+     * 깨져 글자가 안 보인다(커밋 e7acc4e). 위임이라 요소별 가드 대신 표식으로 거르고,
+     * 조합이 끝나면 compositionend 가 같은 정리를 한 번 돌린다.
+     */
+    root.addEventListener('compositionstart', (e) => {
+        if (e.target instanceof HTMLElement) e.target.dataset.imeComposing = '1';
+    });
+    root.addEventListener('compositionend', (e) => {
+        if (!(e.target instanceof HTMLElement)) return;
+        delete e.target.dataset.imeComposing;
+        e.target.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     root.addEventListener('input', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        const list = cells();
-        const idx = list.indexOf(t);
-        if (idx < 0) return;
-        const raw = t.value.replace(/\D/g, '');
-        if (raw.length > 1) {
-            fillFromDigits(raw, idx);
+        if (!(t instanceof HTMLInputElement)) return;
+        if (t.dataset.imeComposing === '1') return;
+        if (t.classList.contains('rrn-front')) {
+            const raw = t.value.replace(/\D/g, '');
+            // maxlength 를 넘겨 들어오는 경로(IME·자동완성)도 있어 길이를 다시 본다
+            if (raw.length > RRN_FRONT_LEN) {
+                fillFromDigits(raw);
+                return;
+            }
+            t.value = raw;
+            syncRrnDigitHidden(root);
+            // 여섯 자리를 채우면 뒤 한 자리로 넘긴다 — 하이픈을 손으로 건널 이유가 없다
+            if (raw.length === RRN_FRONT_LEN) {
+                const b = backEl();
+                b?.focus();
+                b?.select();
+            }
             return;
         }
-        t.value = raw.slice(0, 1);
-        syncRrnDigitHidden(root);
-        if (t.value && idx < list.length - 1) {
-            list[idx + 1].focus();
-            list[idx + 1].select();
+        if (t.classList.contains('rrn-digit')) {
+            t.value = t.value.replace(/\D/g, '').slice(0, 1);
+            syncRrnDigitHidden(root);
         }
     });
 
     root.addEventListener('keydown', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        const list = cells();
-        const idx = list.indexOf(t);
-        if (idx < 0) return;
-        if (e.key === 'Backspace') {
-            if (t.value) {
-                t.value = '';
+        if (!(t instanceof HTMLInputElement)) return;
+        const isBack = t.classList.contains('rrn-digit');
+        const isFront = t.classList.contains('rrn-front');
+        if (!isBack && !isFront) return;
+
+        if (e.key === 'Backspace' && isBack && !t.value) {
+            /**
+             * 뒤 칸이 이미 비었는데 지우려 한다면 앞자리를 고치려는 것이다.
+             * 마지막 글자를 지우고 커서를 그 자리에 둔다 — 전체가 선택되면 다시 다 쳐야 한다.
+             */
+            e.preventDefault();
+            const f = frontEl();
+            if (f) {
+                f.value = f.value.slice(0, -1);
                 syncRrnDigitHidden(root);
-                e.preventDefault();
-                return;
-            }
-            if (idx > 0) {
-                e.preventDefault();
-                list[idx - 1].focus();
-                list[idx - 1].value = '';
-                syncRrnDigitHidden(root);
+                f.focus();
+                const n = f.value.length;
+                try {
+                    f.setSelectionRange(n, n);
+                } catch (_) { /* 일부 브라우저에서 type=text 외 미지원 */ }
             }
             return;
         }
-        if (e.key === 'ArrowLeft' && idx > 0) {
+        if (e.key === 'ArrowLeft' && isBack) {
             e.preventDefault();
-            list[idx - 1].focus();
-            list[idx - 1].select();
+            const f = frontEl();
+            if (f) {
+                f.focus();
+                const n = f.value.length;
+                try {
+                    f.setSelectionRange(n, n);
+                } catch (_) { /* ignore */ }
+            }
             return;
         }
-        if (e.key === 'ArrowRight' && idx < list.length - 1) {
+        if (e.key === 'ArrowRight' && isFront && t.selectionStart === t.value.length) {
             e.preventDefault();
-            list[idx + 1].focus();
-            list[idx + 1].select();
+            const b = backEl();
+            b?.focus();
+            b?.select();
             return;
         }
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !/\d/.test(e.key)) {
@@ -1692,16 +1748,24 @@ export function mountRrnDigitGroup(rootOrId, options = {}) {
 
     root.addEventListener('paste', (e) => {
         const t = e.target;
-        if (!(t instanceof HTMLInputElement) || !t.classList.contains('rrn-digit')) return;
-        e.preventDefault();
-        const list = cells();
-        const idx = list.indexOf(t);
+        if (!(t instanceof HTMLInputElement)) return;
+        if (!t.classList.contains('rrn-front') && !t.classList.contains('rrn-digit')) return;
         const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
-        fillFromDigits(text, idx >= 0 ? idx : 0);
+        const digits = text.replace(/\D/g, '');
+        if (!digits) return;
+        e.preventDefault();
+        // 뒤 칸에 한 자리만 붙여넣는 경우가 아니면 앞자리부터 다시 배분한다
+        if (t.classList.contains('rrn-digit') && digits.length === 1) {
+            t.value = digits;
+            syncRrnDigitHidden(root);
+            return;
+        }
+        fillFromDigits(digits);
     });
 
     root.addEventListener('focusin', (e) => {
         const t = e.target;
+        // 앞자리는 전체 선택하지 않는다 — 한 글자 고치려다 통째로 날아간다
         if (t instanceof HTMLInputElement && t.classList.contains('rrn-digit')) {
             requestAnimationFrame(() => t.select());
         }
@@ -1753,201 +1817,23 @@ export function addCalendarDaysSeoulYmd(ymd, deltaDays) {
 }
 
 /**
- * 공유 로고 카드 태그라인 — 웰컴(출석) 팝업과 동일 Yeon Sung
- * Google Fonts Yeon Sung은 Regular(400)만 제공(별도 Bold 없음). 캔버스에서 600이면 가짜 볼드가 음절마다 달라질 수 있어 normal(400)만 사용.
- * 폴백 글꼴을 섞지 않음(Noto 등) — 한 줄 안에서 티 나는 이질감 방지.
- */
-async function drawShareLogoTagline(ctx, cx, centerY, maxW, splitLines) {
-    ctx.fillStyle = '#3cb889';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    if ('fontKerning' in ctx) ctx.fontKerning = 'normal';
-    const fontAt = (size) => `normal ${size}px "Yeon Sung", serif`;
-
-    let size = 58;
-    while (size >= 34) {
-        try {
-            if (document.fonts?.load) {
-                await document.fonts.load(fontAt(size));
-            }
-        } catch (_) {}
-        ctx.font = fontAt(size);
-        const lsPx = Math.max(0, Math.round(size * 0.04));
-        if ('letterSpacing' in ctx) {
-            ctx.letterSpacing = `${lsPx}px`;
-        }
-        const w1 = ctx.measureText(splitLines[0]).width;
-        const w2 = ctx.measureText(splitLines[1]).width;
-        if (Math.max(w1, w2) <= maxW) {
-            drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, size);
-            if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-            return;
-        }
-        size -= 2;
-    }
-    try {
-        if (document.fonts?.load) await document.fonts.load(fontAt(32));
-    } catch (_) {}
-    ctx.font = fontAt(32);
-    if ('letterSpacing' in ctx) {
-        ctx.letterSpacing = `${Math.round(32 * 0.04)}px`;
-    }
-    drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, 32);
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-}
-
-/** alphabetic 두 줄 — baseline 간격은 line-height(≈1.42em), 블록 세로 중앙은 actualBoundingBox로 맞춤 */
-function drawShareLogoTaglineTwoLines(ctx, cx, centerY, splitLines, size) {
-    const [line1, line2] = splitLines;
-    const m1 = ctx.measureText(line1);
-    const m2 = ctx.measureText(line2);
-    const a1 = m1.actualBoundingBoxAscent ?? size * 0.74;
-    const d2 = m2.actualBoundingBoxDescent ?? size * 0.26;
-    const lineHeightPx = Math.round(size * 1.42);
-    const y1 = centerY + (a1 - lineHeightPx - d2) / 2;
-    const y2 = y1 + lineHeightPx;
-    ctx.fillText(line1, cx, y1);
-    ctx.fillText(line2, cx, y2);
-}
-
-/**
- * 앱 로고 + 서브타이틀 이미지 생성 (공유 시 마지막에 추가)
+ * 공유 마지막 장에 붙는 로고 카드 (assets/share-logo-card.jpg)
+ *
+ * 예전에는 아이콘·mealog·태그라인을 공유할 때마다 캔버스에 그렸다. 그런데 두 서체가
+ * Google Fonts 원격이라(Fredoka·Yeon Sung) 네트워크가 늦거나 끊기면 각자 다른 폴백으로
+ * — mealog 는 sans, 태그라인은 serif 로 — 떨어져 한 장 안에서 계통이 어긋났고, 같은
+ * 기기에서도 공유 시점에 따라 글꼴이 달라졌다. 폰트가 제대로 물린 상태에서 한 번 구워
+ * 자산으로 굳혀 두면 오프라인에서도 언제나 같은 그림이 나간다.
+ *
+ * 이 파일은 1080x1080 JPEG 다 — 공유 파이프라인이 .jpg 이름으로 내보내므로 형식을 맞춘다.
+ * 문구나 로고를 바꿀 때는 이 이미지를 다시 만들어 교체한다.
  * @returns {Promise<Blob>}
  */
 async function createMealogLogoImage() {
-    const TAGLINE_SPLIT = ['우리가 함께한,', '맛있었던 이야기'];
-    const cw = 1080;
-    const ch = 1080;
-    const maxTextW = cw - 160;
-    const canvas = document.createElement('canvas');
-    canvas.width = cw;
-    canvas.height = ch;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, cw, ch);
-
-    const iconUrl = document.querySelector('#landingMealogIcon')?.src || new URL('assets/icon-only.png', window.location.href).href;
-
-    try {
-        if (document.fonts?.ready) await document.fonts.ready;
-        if (document.fonts?.load) await document.fonts.load('normal 60px "Yeon Sung"').catch(() => {});
-    } catch (_) {}
-
-    let imgEl = null;
-    try {
-        imgEl = await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('icon'));
-            img.src = iconUrl;
-        });
-    } catch (_) {
-        imgEl = null;
-    }
-
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const drawRoundedIconClip = (iconX, iconY, iconSize) => {
-        const radius = iconSize * 0.35;
-        ctx.beginPath();
-        if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(iconX, iconY, iconSize, iconSize, radius);
-        } else {
-            const r = Math.min(radius, iconSize / 2);
-            ctx.moveTo(iconX + r, iconY);
-            ctx.lineTo(iconX + iconSize - r, iconY);
-            ctx.quadraticCurveTo(iconX + iconSize, iconY, iconX + iconSize, iconY + r);
-            ctx.lineTo(iconX + iconSize, iconY + iconSize - r);
-            ctx.quadraticCurveTo(iconX + iconSize, iconY + iconSize, iconX + iconSize - r, iconY + iconSize);
-            ctx.lineTo(iconX + r, iconY + iconSize);
-            ctx.quadraticCurveTo(iconX, iconY + iconSize, iconX, iconY + iconSize - r);
-            ctx.lineTo(iconX, iconY + r);
-            ctx.quadraticCurveTo(iconX, iconY, iconX + r, iconY);
-        }
-    };
-
-    if (imgEl) {
-        try {
-            const iconSize = 280;
-            const iconX = (cw - iconSize) / 2;
-            const iconY = ch * 0.28;
-            ctx.save();
-            drawRoundedIconClip(iconX, iconY, iconSize);
-            ctx.clip();
-            ctx.drawImage(imgEl, iconX, iconY, iconSize, iconSize);
-            ctx.restore();
-            ctx.fillStyle = '#3cb889';
-            ctx.font = 'bold 72px "Fredoka", "Malgun Gothic", sans-serif';
-            ctx.fillText('mealog', cw / 2, iconY + iconSize + 80);
-            await drawShareLogoTagline(ctx, cw / 2, iconY + iconSize + 200, maxTextW, TAGLINE_SPLIT);
-        } catch (_) {
-            imgEl = null;
-        }
-    }
-    if (!imgEl) {
-        ctx.fillStyle = '#3cb889';
-        ctx.font = 'bold 72px "Fredoka", sans-serif';
-        ctx.fillText('mealog', cw / 2, ch / 2 - 60);
-        await drawShareLogoTagline(ctx, cw / 2, ch / 2 + 72, maxTextW, TAGLINE_SPLIT);
-    }
-
-    return new Promise((resolve) => {
-        canvas.toBlob((blob) => resolve(blob ? blob : new Blob([], { type: 'image/jpeg' })), 'image/jpeg', 0.92);
-    });
-}
-
-/**
- * 이미지에 메뉴@장소 캡션을 하단에 오버레이하여 Blob 반환
- * @param {Blob} imageBlob - 원본 이미지 Blob
- * @param {string} caption - 캡션 텍스트 (메뉴 @ 장소)
- * @returns {Promise<Blob>}
- */
-async function addCaptionToImage(imageBlob, caption) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        const url = URL.createObjectURL(imageBlob);
-        img.onload = () => {
-            try {
-                const cw = img.width;
-                const ch = img.height;
-                const barH = Math.max(44, Math.min(56, Math.floor(cw * 0.1)));
-                const canvas = document.createElement('canvas');
-                canvas.width = cw;
-                canvas.height = ch + barH;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                ctx.fillStyle = '#2d9f74';
-                ctx.fillRect(0, ch, cw, barH);
-                ctx.fillStyle = '#ffffff';
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                const fontSize = Math.round(barH * 0.65);
-                ctx.font = `${fontSize}px "나눔손글씨 가람연꽃", "Nanum Garam Yeonkot", "Nanum Pen Script", cursive`;
-                const padding = 12;
-                const maxW = cw - padding * 2;
-                let text = caption;
-                if (ctx.measureText(text).width > maxW) {
-                    while (text.length > 1 && ctx.measureText(text + '…').width > maxW) text = text.slice(0, -1);
-                    text = text + '…';
-                }
-                ctx.fillText(text, padding, ch + barH / 2);
-                canvas.toBlob((blob) => {
-                    URL.revokeObjectURL(url);
-                    resolve(blob || imageBlob);
-                }, imageBlob.type || 'image/jpeg', 0.92);
-            } catch (err) {
-                URL.revokeObjectURL(url);
-                resolve(imageBlob);
-            }
-        };
-        img.onerror = () => {
-            URL.revokeObjectURL(url);
-            resolve(imageBlob);
-        };
-        img.src = url;
-    });
+    const url = new URL('assets/share-logo-card.jpg', window.location.href).href;
+    const res = await fetch(url, { cache: 'force-cache' });
+    if (!res.ok) throw new Error(`share logo card ${res.status}`);
+    return res.blob();
 }
 
 /** Blob을 base64 문자열로 변환 (Capacitor Filesystem 공유용) */
@@ -2218,13 +2104,13 @@ export async function shareBlobsToExternal(blobs, options = {}) {
 /**
  * 모먼트(앨범) 사진을 카카오톡·인스타그램 등 외부 앱으로 공유합니다.
  * 웹: Web Share API(navigator.share). 네이티브 앱: Capacitor Share만 사용(웹뷰 공유와 수신 앱 호환).
- * caption이 있으면 모먼트처럼 이미지 하단에 메뉴@장소를 녹색 바로 오버레이합니다.
+ * 사진에는 아무것도 덧그리지 않는다 — 예전에는 하단에 '메뉴 @ 장소'를 녹색 바로 구워
+ * 넣었지만 받는 쪽에는 원본 사진 그대로가 낫다. caption 은 공유 텍스트로만 쓴다.
  * @param {string|string[]} photoUrls - 쉼표로 구분된 사진 URL 또는 URL 배열
- * @param {string} [caption] - 메뉴@장소 캡션 (있으면 이미지 하단에 오버레이)
- * @param {boolean} [skipCaptionBar] - true면 베스트/일간/인사이트 등 캡쳐 3종에 하단 캡션바 미적용
+ * @param {string} [caption] - 공유 텍스트 (이미지에는 그리지 않는다)
  * @returns {Promise<boolean>} - 공유 성공 여부
  */
-export async function sharePhotosToExternal(photoUrls, caption = '', skipCaptionBar = false) {
+export async function sharePhotosToExternal(photoUrls, caption = '') {
     const urls = typeof photoUrls === 'string'
         ? photoUrls.split(',').map(u => u.trim()).filter(Boolean)
         : Array.isArray(photoUrls) ? photoUrls.filter(Boolean) : [];
@@ -2232,7 +2118,7 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
 
     const captionText = (caption || '').trim();
 
-    // 공통: 이미지 fetch → blob (캡션·리사이즈 적용)
+    // 공통: 이미지 fetch → blob (리사이즈만 적용)
     const blobs = [];
     for (let i = 0; i < Math.min(urls.length, 5); i++) {
         const url = urls[i];
@@ -2241,9 +2127,6 @@ export async function sharePhotosToExternal(photoUrls, caption = '', skipCaption
             if (!res.ok) continue;
             let blob = await res.blob();
             if (!blob.type || !blob.type.startsWith('image/')) continue;
-            if (!skipCaptionBar && captionText) {
-                blob = await addCaptionToImage(blob, captionText);
-            }
             blob = await resizeBlobForShare(blob);
             blobs.push(blob);
         } catch (imgErr) {

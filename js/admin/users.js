@@ -422,6 +422,101 @@ export async function fetchAllUsersForAdminAnalytics() {
     return fetchAllUsersEnriched();
 }
 
+/**
+ * 사용자 한 명의 「사용자 관리」 정보 (대시보드 드릴다운 팝업에서 이름을 눌렀을 때).
+ *
+ * getUsers()는 50명 단위 페이지 파이프라인이라 한 명만 뽑는 데 쓸 수 없다. 대신 같은 원본과
+ * 같은 표시 규칙(닉네임 폴백·로그인 방법·가입일 보정)을 그대로 따라가서 표와 값이 갈리지
+ * 않게 한다. 한 명당 문서 3건 + 집계 3건이므로 눌렀을 때만 조회한다.
+ * @param {string} userId
+ * @returns {Promise<object|null>} settings 문서가 없으면(탈퇴 후 루트만 남은 고아) null
+ */
+export async function fetchAdminUserDetail(userId) {
+    if (!userId) return null;
+    const usersColl = collection(db, 'artifacts', appId, 'users');
+    const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+    const boardPostsColl = collection(db, 'artifacts', appId, 'boardPosts');
+    const countOr0 = async (q) => {
+        try {
+            return (await getCountFromServer(q)).data().count ?? 0;
+        } catch (e) {
+            console.warn('사용자 상세 집계 실패:', e?.message || e);
+            return 0;
+        }
+    };
+
+    const [rootSnap, settingsSnap, banSnap, deleteReqSnap, timelineCount, albumShareCount, talkCount] =
+        await Promise.all([
+            getDoc(doc(usersColl, userId)),
+            getDocFromServer(doc(db, 'artifacts', appId, 'users', userId, 'config', 'settings')),
+            getDoc(doc(db, 'artifacts', appId, 'userBans', userId)),
+            getDocs(query(collection(db, 'artifacts', appId, 'deleteUserRequests'), where('userId', '==', userId))),
+            countOr0(query(collection(db, 'artifacts', appId, 'users', userId, 'meals'))),
+            countOr0(query(sharedColl, where('userId', '==', userId))),
+            countOr0(query(boardPostsColl, where('authorId', '==', userId)))
+        ]);
+
+    if (!settingsSnap.exists()) return null;
+
+    const rootData = rootSnap.exists() ? rootSnap.data() : {};
+    const settings = settingsSnap.data() || {};
+    const profile = settings.profile || {};
+
+    // 닉네임 규칙은 getUsers()와 동일 — 프로필 미완료·게스트·빈값은 「미설정」
+    let nickname = '미설정';
+    if (settings.profileCompleted === true) {
+        const pn = profile.nickname;
+        if (pn != null && String(pn).trim() !== '' && pn !== '게스트') nickname = String(pn);
+    }
+
+    let email = rootData.email || null;
+    if (settings.email) email = settings.email;
+    let providerId = rootData.providerId || null;
+    if (settings.providerId) providerId = settings.providerId;
+
+    let loginMethod = '게스트';
+    if (providerId === 'google.com') loginMethod = '구글';
+    else if (providerId === 'kakao.com') loginMethod = '카카오';
+    else if (email) loginMethod = '이메일';
+    else if (/^kakao_/i.test(String(userId))) loginMethod = '카카오';
+
+    const createdAt = parseRootTimestampField(rootData.createdAt);
+    const lastLoginAt = parseRootTimestampField(rootData.lastLoginAt);
+    const termsAgreedAt = settings.termsAgreedAt ?? null;
+    const termsAgreedAtDate = parseSettingsDate(termsAgreedAt);
+    const profileCompletedAt = parseSettingsDate(settings.profileCompletedAt);
+    const createdAtResolved = coalesceSignupDate(createdAt, profileCompletedAt, termsAgreedAtDate);
+
+    const ban = banSnap.exists() ? banSnap.data() : null;
+    return {
+        userId,
+        nickname,
+        icon: profile.icon || '🐻',
+        birthdate: profile.birthdate ? String(profile.birthdate).trim() : '',
+        lifestyle: profile.lifestyle ? String(profile.lifestyle).trim() : '',
+        gender: profile.gender === 'male' || profile.gender === 'female' ? profile.gender : null,
+        email,
+        loginMethod,
+        termsAgreed: settings.termsAgreed === true || settings.termsAgreed === 'true' || settings.termsAgreed === 1,
+        termsAgreedAt,
+        termsVersion: settings.termsVersion ?? null,
+        profileCompleted: settings.profileCompleted === true,
+        createdAt,
+        createdAtResolved,
+        lastLoginAt,
+        signupToLastLoginMs:
+            loginMethod === '게스트'
+                ? null
+                : computeSignupToLastLoginMs(createdAtResolved || createdAt, lastLoginAt),
+        bannedShare: ban?.bannedShare === true,
+        bannedWrite: ban?.bannedWrite === true,
+        deleteRequested: !deleteReqSnap.empty,
+        timelineCount,
+        albumShareCount,
+        talkCount
+    };
+}
+
 export function ensureAdminUsersSortHandlers() {
     initUsersSortHandlers();
     ensureAdminUsersSearchHandlers();

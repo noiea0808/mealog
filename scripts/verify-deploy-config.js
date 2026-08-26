@@ -14,9 +14,14 @@
  * hosting ignore 에 js/config.js 를 넣는 방식은 쓸 수 없다 — 운영이 이 파일에 의존한다
  * (데모 비밀번호가 config.default.js 에는 비어 있고 여기에만 있다).
  *
+ * 같은 위험이 APK 빌드에도 있다. scripts/copy-to-www.js 가 js/ 를 통째로 www 로 복사하므로
+ * 로컬 config.js 가 앱 안에 그대로 실린다. 그래서 checkDeployConfig 를 export 해 두고
+ * copy-to-www.js 에서도 부른다(운영 빌드는 중단, 스테이징은 경고).
+ *
  * 사용:
  *   node scripts/verify-deploy-config.js            # firebase.json hosting predeploy
  *   node scripts/verify-deploy-config.js <경로>      # 검사 대상 지정 (테스트용)
+ *   require('./verify-deploy-config.js')            # copy-to-www.js 등에서 재사용
  */
 const fs = require('fs');
 const path = require('path');

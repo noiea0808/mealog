@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  기동 스플래시 아이콘 — Android 12+ SplashScreen 이 그리는 중앙 아이콘.
+
+  지정하지 않으면 시스템이 런처 아이콘을 규격대로 크게(실측 약 160dp) 그리는데,
+  네이티브 스플래시가 걷히면 웹 오버레이(#bootSplashOverlay, 80px)가 이어받으므로
+  그 순간 아이콘이 절반으로 줄어 보였다.
+
+  아이콘 뷰 자체의 크기는 시스템이 정해 앱이 바꿀 수 없다. 대신 그림 둘레에 투명 여백을
+  넣어 **실제로 보이는 크기**를 80dp 로 맞춘다. 비적응형 drawable 은 288dp 캔버스에
+  그려지므로 여백은 (288 - 80) / 2 = 104dp.
+
+  ⚠️ 웹 오버레이 크기(index.html .boot-splash-icon-wrap)와 짝이다. 한쪽만 바꾸면
+  전환 순간 아이콘이 튄다.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher"
+    android:insetLeft="104dp"
+    android:insetTop="104dp"
+    android:insetRight="104dp"
+    android:insetBottom="104dp" />

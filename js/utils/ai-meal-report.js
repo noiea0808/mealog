@@ -7,21 +7,25 @@ function clipField(value) {
     return String(value).trim();
 }
 
-function normalizeScore(value) {
-    if (value == null || value === '') return null;
-    const n = Number(value);
-    if (!Number.isFinite(n)) return null;
-    return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-/** 파싱된 객체 → 표준 필드 (legacy goodPoint/improvePoint 호환) */
+/**
+ * 파싱된 객체 → 표준 필드 (legacy goodPoint/improvePoint 호환)
+ *
+ * score 는 더 이상 여기서 오지 않는다. 화면에 뜨는 점수는 diet-record-score.js 가
+ * 리포트 문서의 입력 스냅샷과 balance 로 계산한다.
+ * 구버전 문서의 responseText 에 남아 있는 score 는 의미가 다르므로 무시한다.
+ *
+ * mood 도 뺐다. title 과 역할이 겹쳐 같은 하루를 두 번 이름 붙이고 있었다.
+ * 구버전 문서에 남아 있어도 읽지 않는다.
+ */
 export function normalizeAiMealReportFields(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
         return null;
     }
     return {
-        score: normalizeScore(obj.score),
-        mood: clipField(obj.mood),
+        lens: clipField(obj.lens),
+        // 점수 내역의 "구성 균형" 칸으로만 나간다. 리포트 문장에는 쓰이지 않는다.
+        balance: obj.balance,
+        balanceNote: clipField(obj.balanceNote),
         title: clipField(obj.title),
         summary: clipField(obj.summary),
         highlight: clipField(obj.highlight || obj.goodPoint),
@@ -56,8 +60,6 @@ export function parseAiMealReport(aiResponse) {
         console.warn('AI meal report parse failed:', error);
         const raw = typeof aiResponse === 'string' ? aiResponse.trim() : '';
         return {
-            score: null,
-            mood: '분석 완료',
             title: '오늘의 식사 리포트',
             summary: raw || '분석 결과를 불러왔어요.',
             highlight: '',
@@ -81,8 +83,6 @@ export function extractAiMealReportSource(data) {
     if (!hasLegacy) return null;
 
     return {
-        score: data.score ?? null,
-        mood: '',
         title: '',
         summary: clipField(data.summary),
         highlight: clipField(data.goodPoint),
@@ -116,6 +116,43 @@ function renderAiMealReportPhotosHtml(photoUrls, esc) {
 }
 
 /**
+ * 기록 점수 내역 — 평소엔 접혀 있고 펼치면 그날의 실제 내역을 보여준다.
+ * 점수를 띄우면서 근거를 감추면 모호해진다. 근거를 밝힐 수 있는 점수로 바꾼 이유가 이것이다.
+ */
+function renderDietRecordScoreDetailHtml(recordScore, esc) {
+    if (!recordScore?.sections?.length) return '';
+    const score = recordScore.total;
+    // 항목당 두 줄 — 이름·배점을 위에, 근거를 아래에 둔다.
+    // 한 줄에 몰아넣으면 balanceNote 나 깊이 내역처럼 긴 근거가 잘려 나간다.
+    const rows = recordScore.sections
+        .map(
+            (s) =>
+                `<div class="py-1.5">
+                    <div class="flex items-baseline justify-between gap-2">
+                        <span class="text-[12px] font-semibold text-slate-600">${esc(s.label)}</span>
+                        <span class="text-[12px] font-bold text-slate-700 tabular-nums shrink-0">${esc(String(s.got))}<span class="text-slate-400 font-medium">/${esc(String(s.max))}</span></span>
+                    </div>
+                    <p class="text-[11px] text-slate-400 leading-snug mt-0.5">${esc(s.detail)}</p>
+                </div>`
+        )
+        .join('');
+    // 점수 자체를 summary 안에 둬서 줄 전체가 열림 토글이 된다 — 탭 영역이 넓어진다.
+    return `<details class="ai-meal-report-score-detail">
+        <summary class="flex items-center gap-2 cursor-pointer list-none select-none">
+            <span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>
+            <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 shadow-sm active:bg-slate-50">
+                점수 내역 보기
+                <svg class="ai-meal-report-score-caret w-3 h-3 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </span>
+        </summary>
+        <div class="mt-2 rounded-lg border border-slate-200/80 bg-slate-50/60 px-3 py-1">
+            <div class="divide-y divide-slate-200/70">${rows}</div>
+            <p class="mt-1 mb-1.5 pt-1.5 border-t border-slate-200/70 text-[9px] leading-tight text-slate-400">구성 균형과 그날 기록을 얼마나 남겼는지로 매긴 점수예요.</p>
+        </div>
+    </details>`;
+}
+
+/**
  * 공유카드형 HTML (escapeHtml은 호출 측에서 주입)
  * @param {ReturnType<parseAiMealReport>} report
  * @param {(s: string) => string} escapeHtml
@@ -127,9 +164,10 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
     }
 
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (s) => s;
-    const score = report.score;
-    const hasScore = score != null && Number.isFinite(Number(score));
-    const mood = clipField(report.mood);
+    // 점수는 AI가 아니라 그날 기록에서 계산된다. 근거를 펼쳐 보일 수 있는 숫자만 띄운다.
+    const recordScore = options.recordScore || null;
+    const hasScore = recordScore != null && Number.isFinite(Number(recordScore.total));
+    const score = hasScore ? recordScore.total : null;
     const title = clipField(report.title);
     const summary = clipField(report.summary);
     const highlight = clipField(report.highlight);
@@ -138,31 +176,16 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
         ? options.photoUrls.filter(Boolean).slice(0, 3)
         : [];
 
-    const topRow =
-        hasScore || mood
-            ? `<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                ${
-                    hasScore
-                        ? `<span class="text-2xl font-black text-emerald-600 tabular-nums leading-none tracking-tight">${esc(String(score))}<span class="text-sm font-bold text-emerald-600/70">점</span></span>`
-                        : ''
-                }
-                ${
-                    hasScore && mood
-                        ? `<span class="text-slate-300 font-light select-none" aria-hidden="true">·</span>`
-                        : ''
-                }
-                ${
-                    mood
-                        ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-violet-100 text-violet-800 border border-violet-200/60">${esc(mood)}</span>`
-                        : ''
-                }
-            </div>`
-            : '';
+    // 점수와 "점수 내역 보기"는 한 덩어리다 — renderDietRecordScoreDetailHtml 이 함께 그린다.
+    // mood 뱃지는 뺐다 — title 과 역할이 겹쳐 같은 하루에 이름을 두 번 붙이고 있었다.
+    const topRow = hasScore ? renderDietRecordScoreDetailHtml(recordScore, esc) : '';
 
     const photosBlock = photoUrls.length ? renderAiMealReportPhotosHtml(photoUrls, esc) : '';
 
+    // mood 가 빠진 뒤로 title 이 그날을 이름 붙이는 유일한 칸이다. 카드의 헤드라인답게
+    // 점수보다 크게, 맨 위에 둔다. 숫자가 첫인상이 되면 "채점이 아니다"라는 전제와 어긋난다.
     const titleBlock = title
-        ? `<h3 class="text-base font-black text-slate-800 leading-snug tracking-tight">${esc(title)}</h3>`
+        ? `<h3 class="text-[19px] font-black text-slate-900 leading-tight tracking-tight break-keep">${esc(title)}</h3>`
         : '';
 
     const summaryBlock = summary
@@ -172,25 +195,27 @@ export function renderAiMealReportCardHtml(report, escapeHtml, options = {}) {
             </div>`
         : '';
 
+    // highlight는 "잘한 점"이 아니라 그날 고른 렌즈로 본 관찰,
+    // nudge는 조언이 아니라 알아봐 주는 한마디다. 라벨·색이 평가처럼 읽히지 않게 한다.
     const highlightBlock = highlight
         ? `<div class="rounded-lg bg-emerald-50/90 border border-emerald-100/90 px-3 py-2.5">
-                <p class="text-[11px] font-bold text-emerald-800 mb-1">좋았던 흐름</p>
+                <p class="text-[11px] font-bold text-emerald-800 mb-1">오늘 눈에 띈 것</p>
                 <p class="text-sm text-slate-800 leading-normal">${esc(highlight)}</p>
             </div>`
         : '';
 
     const nudgeBlock = nudge
-        ? `<div class="rounded-lg bg-amber-50/90 border border-amber-100/90 px-3 py-2.5">
-                <p class="text-[11px] font-bold text-amber-900 mb-1">내일의 힌트</p>
+        ? `<div class="rounded-lg bg-violet-50/90 border border-violet-100/90 px-3 py-2.5">
+                <p class="text-[11px] font-bold text-violet-900 mb-1">밀로그의 한마디</p>
                 <p class="text-sm text-slate-800 leading-normal">${esc(nudge)}</p>
             </div>`
         : '';
 
     return `<article class="ai-meal-report-card rounded-xl border border-slate-200/90 bg-gradient-to-br from-white via-emerald-50/25 to-slate-50/40 shadow-[0_2px_16px_-4px_rgba(15,23,42,0.07)] overflow-hidden">
         <div class="p-4 space-y-2.5">
+            ${titleBlock}
             ${topRow}
             ${photosBlock}
-            ${titleBlock}
             ${summaryBlock}
             ${highlightBlock}
             ${nudgeBlock}
@@ -204,12 +229,7 @@ export function aiMealReportPreviewLine(report) {
     const title = clipField(report.title);
     const summary = clipField(report.summary);
     const text = title || summary;
-    if (!text) {
-        if (report.score != null && Number.isFinite(Number(report.score))) {
-            return `${report.score}점`;
-        }
-        return '—';
-    }
+    if (!text) return '—';
     const flat = text.replace(/\s+/g, ' ').trim();
     return flat.length > 48 ? `${flat.slice(0, 47)}…` : flat;
 }

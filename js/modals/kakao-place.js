@@ -5,8 +5,147 @@ import { scheduleLucideIcons } from '../icons.js';
 import { ENTRY_DOM } from './entry-form-config.js';
 import { escapeHtml } from '../render/utils.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { isFoodRelatedKakaoPlace, sortKakaoPlacesByNameMatch } from '../utils/place-type.js';
+import { syncEntryContextPlaceFromInput } from './entry-context-predict.js';
+import { withDeadline, DeadlineError } from '../utils/with-deadline.js';
 
 const KAKAO_SEARCH_MIN_LENGTH = 2;
+
+/**
+ * 검색 응답 상한.
+ *
+ * 다른 경로(DEADLINE.DOC=8초)보다 길다. 앱은 카카오 SDK 대신 Cloud Function 을 프록시로
+ * 타는데(shouldUseKakaoCallable) 그 함수가 us-central1 에 있고 minInstances 가 없다 —
+ * 태평양을 두 번 건너고(폰→미국→카카오(한국)→미국→폰) 콜드 스타트까지 겹치면 수 초가 걸린다.
+ * 여기서 인색하게 굴면 느리지만 정상인 응답을 버리게 되므로, 목적은 빨리 끊는 것이 아니라
+ * **반드시 끝나게 하는 것**이다. 근본 해결(리전 이전·minInstances)은 서버 쪽 일이다.
+ */
+const KAKAO_SEARCH_DEADLINE_MS = 12000;
+
+/**
+ * 키워드 → { at, restaurants }. 지웠다 다시 치거나 오타를 고쳐 되돌아오는 흐름이 흔해
+ * 적중률이 높다. 모듈 수준이라 검색 모달을 닫았다 열어도 남는다.
+ *
+ * 이 캐시가 막는 것은 지연만이 아니다 — 서버의 분당 15회 제한
+ * (functions/index.js RATE_LIMITS.kakaoSearch)을 같은 검색어로 헛되이 깎는 것을 함께 막는다.
+ */
+const KAKAO_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
+const KAKAO_SEARCH_CACHE_MAX = 40;
+/** @type {Map<string, { at: number, restaurants: any[] }>} */
+const kakaoSearchCache = new Map();
+
+/**
+ * 같은 키워드로 이미 나간 요청. 디바운스(320ms)를 통과한 요청이 겹치면 결과를 나눠 쓴다.
+ *
+ * callable 은 취소할 방법이 없다(httpsCallable 에 AbortSignal 이 없다). 그래서 예전에는
+ * 중복 요청이 그대로 날아가고 **결과만 버려졌다** — 서버 호출·요금·분당 제한은 그대로 쓰면서.
+ * 데드라인을 이 공유 약속 **바깥에** 걸어, 상한을 넘겨도 원래 호출은 살려 둔다. 사용자가
+ * 다시 검색하면 그 호출에 다시 올라타므로 제한을 두 번 깎지 않는다.
+ * @type {Map<string, Promise<any[]>>}
+ */
+const kakaoSearchInFlight = new Map();
+
+/** @param {string} keyword */
+function readKakaoSearchCache(keyword) {
+    const hit = kakaoSearchCache.get(keyword);
+    if (!hit) return null;
+    if (Date.now() - hit.at > KAKAO_SEARCH_CACHE_TTL_MS) {
+        kakaoSearchCache.delete(keyword);
+        return null;
+    }
+    // 최근 쓴 것을 뒤로 보내 LRU 로 유지 (Map 은 삽입 순서를 지킨다)
+    kakaoSearchCache.delete(keyword);
+    kakaoSearchCache.set(keyword, hit);
+    return hit.restaurants;
+}
+
+/**
+ * @param {string} keyword
+ * @param {any[]} restaurants
+ */
+function writeKakaoSearchCache(keyword, restaurants) {
+    kakaoSearchCache.set(keyword, { at: Date.now(), restaurants });
+    while (kakaoSearchCache.size > KAKAO_SEARCH_CACHE_MAX) {
+        const oldest = kakaoSearchCache.keys().next().value;
+        kakaoSearchCache.delete(oldest);
+    }
+}
+
+/**
+ * 같은 키워드의 요청을 하나로 합쳐 실행한다. 캐시 기록도 여기서 한다 —
+ * 데드라인에 걸려 화면이 포기한 뒤에 응답이 와도 다음 검색이 그 결과를 쓴다.
+ * @param {string} keyword
+ * @returns {Promise<any[]>}
+ */
+function fetchKakaoPlacesShared(keyword) {
+    const existing = kakaoSearchInFlight.get(keyword);
+    if (existing) return existing;
+
+    const work = fetchKakaoPlaces(keyword)
+        .then((restaurants) => {
+            writeKakaoSearchCache(keyword, restaurants);
+            return restaurants;
+        })
+        .finally(() => {
+            kakaoSearchInFlight.delete(keyword);
+        });
+
+    kakaoSearchInFlight.set(keyword, work);
+    return work;
+}
+
+/**
+ * 앱/스테이징은 Callable, 로컬 웹은 SDK(없으면 Callable) — 경로만 고르고 상한·캐시는 호출부가 건다.
+ * @param {string} keyword
+ * @returns {Promise<any[]>}
+ */
+async function fetchKakaoPlaces(keyword) {
+    const useCallable = shouldUseKakaoCallable();
+
+    if (!useCallable) {
+        // 웹: SDK 로딩 중이면 최대 3초 대기
+        if (window.kakaoSDKLoading && !window.kakaoSDKLoaded) {
+            await new Promise((resolve) => {
+                let waited = 0;
+                const iv = setInterval(() => {
+                    waited += 200;
+                    if (window.kakaoSDKLoaded || waited >= 3000) {
+                        clearInterval(iv);
+                        resolve();
+                    }
+                }, 200);
+            });
+        }
+    }
+
+    // 1) 앱: Callable 즉시 사용 (WebView에서 SDK 불안정·도메인 제한 회피)
+    if (useCallable) {
+        const result = await callableFunctions.searchKakaoPlaces({ keyword });
+        return result?.data?.documents || [];
+    }
+
+    // 2) 웹 + SDK 로드됨: SDK 사용
+    if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
+        const ps = new kakao.maps.services.Places();
+        // 카테고리 무필터 검색 후 식음 관련만 남긴다 — FD6 고정이면 카페(CE7)·편의점(CS2)이
+        // 아예 안 와서 어디서 축 통합(장소 카테고리화)이 막힌다
+        return await new Promise((resolve) => {
+            ps.keywordSearch(keyword, (data, status) => {
+                if (status === kakao.maps.services.Status.OK) {
+                    // 상호명이 맞는 가게를 위로 올린 뒤 자른다 — 자르고 정렬하면 뒤쪽의 일치가 잘려 나간다
+                    const food = (data || []).filter(isFoodRelatedKakaoPlace);
+                    resolve(sortKakaoPlacesByNameMatch(food, keyword).slice(0, 10));
+                } else {
+                    resolve([]);
+                }
+            }, { size: 15 });
+        });
+    }
+
+    // 3) 웹 + SDK 없음: Callable fallback
+    const result = await callableFunctions.searchKakaoPlaces({ keyword });
+    return result?.data?.documents || [];
+}
 
 /** 검색 모달 닫기 — remove() 호출 지점 전부 이걸 거쳐야 배경 잠금이 풀림 */
 export function closeKakaoPlaceSearchModal() {
@@ -46,7 +185,7 @@ function createKakaoSearchModal() {
         <div class="kakao-place-sheet__panel">
             <div class="kakao-place-sheet__handle" aria-hidden="true"></div>
             <div class="kakao-place-sheet__header">
-                <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">음식점 검색</h2>
+                <h2 id="kakaoPlaceSearchTitle" class="kakao-place-sheet__title">장소 검색</h2>
                 <button type="button" class="kakao-place-sheet__close" onclick="window.closeKakaoPlaceSearchModal()" aria-label="닫기">
                     <i data-lucide="x" aria-hidden="true"></i>
                 </button>
@@ -56,7 +195,7 @@ function createKakaoSearchModal() {
                     <button type="button" class="kakao-place-sheet__search-btn" onclick="window.searchKakaoPlaces()" aria-label="검색">
                         <i data-lucide="search" aria-hidden="true"></i>
                     </button>
-                    <input type="text" id="kakaoSearchInput" class="kakao-place-sheet__input" placeholder="음식점 이름을 2글자 이상 입력하세요" autocomplete="off">
+                    <input type="text" id="kakaoSearchInput" class="kakao-place-sheet__input" placeholder="식당·카페 등 장소를 2글자 이상 입력하세요" autocomplete="off">
                     <button type="button" class="kakao-place-sheet__apply-btn" onclick="window.applyKakaoPlaceManualText()" aria-label="검색어를 그대로 장소로 입력">입력</button>
                 </div>
                 <p class="kakao-place-sheet__hint">목록에서 고르거나, 오른쪽 <strong>입력</strong>으로 그대로 넣을 수 있어요.</p>
@@ -130,16 +269,20 @@ function renderKakaoSearchResults(restaurants) {
         const safeAddress = escapeForAttr(roadAddress || address);
         const safePlaceId = escapeForAttr(placeId);
 
-        const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category };
+        // categoryGroupCode: placeType(식당/카페/편의점/술집) 파생용 — 저장 시 place-type.js가 읽는다
+        const placeDataObj = { id: placeId, name: placeName, address: roadAddress || address, roadAddress: roadAddress, category: category, categoryGroupCode: place.category_group_code || '' };
         let placeDataB64 = '';
         try {
             placeDataB64 = btoa(unescape(encodeURIComponent(JSON.stringify(placeDataObj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
         } catch (e) {}
 
+        // "음식점 > 한식 > 냉면" → 마지막 마디만 결과 행에 표시 (선택 전 카테고리 확인용)
+        const categoryTail = category ? category.split('>').pop().trim() : '';
+
         return `
             <button type="button" onclick="window.selectKakaoPlace('${safePlaceName}', '${safeAddress}', '${safePlaceId}', '${placeDataB64}')"
                 class="kakao-place-sheet__result">
-                <div class="kakao-place-sheet__result-name">${escapeHtml(placeName)}</div>
+                <div class="kakao-place-sheet__result-name">${escapeHtml(placeName)}${categoryTail ? `<span class="kakao-place-sheet__result-cat">${escapeHtml(categoryTail)}</span>` : ''}</div>
                 <div class="kakao-place-sheet__result-addr">${escapeHtml(roadAddress || address)}</div>
             </button>
         `;
@@ -174,51 +317,22 @@ export async function searchKakaoPlaces() {
     }
 
     const seq = ++kakaoSearchRequestSeq;
+
+    // 캐시 적중은 네트워크를 타지 않으므로 '검색 중...' 을 깜빡이지 않고 바로 그린다
+    const cached = readKakaoSearchCache(keyword);
+    if (cached) {
+        renderKakaoSearchResults(cached);
+        return;
+    }
+
     resultsContainer.innerHTML = '<div class="kakao-place-sheet__empty">검색 중...</div>';
-    
+
     try {
-        let restaurants = [];
-        const useCallable = shouldUseKakaoCallable();
-        
-        if (!useCallable) {
-            // 웹: SDK 로딩 중이면 최대 3초 대기
-            if (window.kakaoSDKLoading && !window.kakaoSDKLoaded) {
-                await new Promise((resolve) => {
-                    let waited = 0;
-                    const iv = setInterval(() => {
-                        waited += 200;
-                        if (window.kakaoSDKLoaded || waited >= 3000) {
-                            clearInterval(iv);
-                            resolve();
-                        }
-                    }, 200);
-                });
-            }
-        }
-        
-        // 1) 앱: Callable 즉시 사용 (WebView에서 SDK 불안정·도메인 제한 회피)
-        if (useCallable) {
-            const result = await callableFunctions.searchKakaoPlaces({ keyword });
-            restaurants = result?.data?.documents || [];
-        }
-        // 2) 웹 + SDK 로드됨: SDK 사용
-        else if (window.kakaoSDKLoaded && typeof kakao !== 'undefined' && kakao?.maps?.services?.Places) {
-            const ps = new kakao.maps.services.Places();
-            restaurants = await new Promise((resolve) => {
-                ps.keywordSearch(keyword, (data, status) => {
-                    if (status === kakao.maps.services.Status.OK) {
-                        resolve(data || []);
-                    } else {
-                        resolve([]);
-                    }
-                }, { category_group_code: 'FD6', size: 10 });
-            });
-        }
-        // 3) 웹 + SDK 없음: Callable fallback
-        else {
-            const result = await callableFunctions.searchKakaoPlaces({ keyword });
-            restaurants = result?.data?.documents || [];
-        }
+        const restaurants = await withDeadline(
+            fetchKakaoPlacesShared(keyword),
+            KAKAO_SEARCH_DEADLINE_MS,
+            'kakao-place-search'
+        );
 
         if (seq !== kakaoSearchRequestSeq) return;
 
@@ -226,11 +340,24 @@ export async function searchKakaoPlaces() {
     } catch (err) {
         if (seq !== kakaoSearchRequestSeq) return;
 
+        /**
+         * 상한을 넘긴 것은 오류가 아니라 **아직 안 온 것**이다 — 원래 호출은 살아 있다.
+         * 같은 검색어로 다시 누르면 그 호출에 다시 올라타므로 재시도가 헛되지 않다.
+         */
+        if (err instanceof DeadlineError) {
+            resultsContainer.innerHTML =
+                '<div class="kakao-place-sheet__empty">응답이 늦어지고 있어요. 잠시 후 다시 검색하거나, 오른쪽 <strong>입력</strong>으로 그대로 넣어 주세요.</div>';
+            return;
+        }
+
         const msg = err?.message || String(err);
         if (msg.includes('로그인이 필요')) {
             showToast('장소 검색을 사용하려면 로그인해주세요.', 'error');
         } else if (msg.includes('KAKAO_REST_API_KEY')) {
             showToast('장소 검색 서비스를 준비 중입니다.', 'error');
+        } else if (msg.includes('너무 빠르게') || err?.code === 'functions/resource-exhausted') {
+            // 느린 것과 막힌 것은 다르다 — 한 문구로 뭉뚱그리면 사용자가 계속 다시 누른다
+            showToast('검색이 잠시 제한되었습니다. 조금 뒤에 다시 시도해 주세요.', 'error');
         } else {
             showToast('검색 중 오류가 발생했습니다.', 'error');
         }
@@ -256,6 +383,8 @@ export function applyKakaoPlaceManualText() {
     placeInput.removeAttribute('data-kakao-place-data');
     placeInput.removeAttribute('data-kakao-place-name');
     closeKakaoPlaceSearchModal();
+    // 프로그램적 value 설정은 change 이벤트를 발화시키지 않으므로 맥락 줄에 직접 알린다
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast('장소명이 입력되었습니다.', 'success');
 }
 
@@ -304,6 +433,7 @@ export function selectKakaoPlace(placeName, address, placeId = null, placeDataB6
     // 모달 닫기
     closeKakaoPlaceSearchModal();
 
+    if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast("장소가 선택되었습니다.", 'success');
 }
 

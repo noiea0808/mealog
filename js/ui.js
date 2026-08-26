@@ -13,10 +13,12 @@ import {
     renderAiMealReportCardHtml,
     extractAnalyzedPhotoUrlsForDisplay
 } from './utils/ai-meal-report.js';
+import { computeDietRecordScore } from './utils/diet-record-score.js';
 import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
 import { getProfileAvatarDisplay } from './utils.js';
+import { appState } from './state.js';
 import { scheduleLucideIcons } from './icons.js';
 import {
     DEFAULT_WELCOME_WEEKDAY_DEFAULTS,
@@ -605,7 +607,8 @@ function renderWelcomeReportCardHtml(data) {
     const report = parseAiMealReport(source);
     return report
         ? renderAiMealReportCardHtml(report, escapeHtml, {
-              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data)
+              photoUrls: extractAnalyzedPhotoUrlsForDisplay(data),
+              recordScore: computeDietRecordScore(data, report)
           })
         : renderAiMealReportCardHtml(null, escapeHtml);
 }
@@ -1419,7 +1422,13 @@ export function updateHeaderUI() {
         
         const p = window.userSettings.profile;
         const currentNickname = p.nickname || '게스트';
-        const currentPhotoUrl = p.photoUrl || '';
+        /**
+         * 계정 카드와 **같은 순서로** 읽는다 (js/modals/settings.js
+         * renderSettingsProfileAvatarPreview). 여기만 userSettings 만 보던 탓에, 사진을
+         * 저장한 직후 계정 카드에는 새 사진이 뜨는데 네비는 갱신되지 않았다.
+         */
+        const currentPhotoUrl =
+            appState?.tempSettings?.profile?.photoUrl || p.photoUrl || '';
         
         // 프로필 정보가 변경되었는지 확인 (닉네임, 사진, 게스트 상태 포함)
         const currentProfileKey = `${currentNickname}|${currentPhotoUrl}|${isGuest}`;
@@ -1441,9 +1450,9 @@ export function updateHeaderUI() {
             iconEl.style.position = '';
             iconEl.innerHTML = '';
             
-            if (p.photoUrl) {
+            if (currentPhotoUrl) {
                 // 사진이 있으면 원형으로 표시
-                iconEl.style.backgroundImage = `url(${p.photoUrl})`;
+                iconEl.style.backgroundImage = `url("${currentPhotoUrl}")`;
                 iconEl.style.backgroundSize = 'cover';
                 iconEl.style.backgroundPosition = 'center';
                 iconEl.style.borderRadius = '50%';
@@ -1454,8 +1463,24 @@ export function updateHeaderUI() {
                 if (isGuest) {
                     iconEl.innerHTML = '<span style="position: absolute; bottom: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 10px; font-weight: bold; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid white;">게</span>';
                 }
+                /**
+                 * background-image 는 로드에 실패해도 **아무것도 남기지 않는다** — 무효해진
+                 * blob: URL 이나 네트워크 실패면 텅 빈 원만 보인다. 실제로 뜨는지 확인해서
+                 * 안 되면 이니셜로 되돌린다.
+                 */
+                const probe = new Image();
+                probe.onerror = () => {
+                    if (iconEl.style.backgroundImage.includes(currentPhotoUrl)) {
+                        iconEl.style.backgroundImage = '';
+                        const fb = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: '' });
+                        iconEl.className = 'nav-item__avatar font-bold nav-item__avatar--initial';
+                        iconEl.textContent = isGuest ? '게' : fb.value;
+                        lastHeaderUpdate = null; // 다음 갱신 때 다시 시도할 수 있게
+                    }
+                };
+                probe.src = currentPhotoUrl;
             } else {
-                const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: p.photoUrl });
+                const av = getProfileAvatarDisplay({ nickname: currentNickname, icon: p.icon, photoUrl: currentPhotoUrl });
                 const isInitial = av.type === 'initial' || (isGuest && av.type !== 'emoji' && av.type !== 'photo');
                 iconEl.className = [
                     'nav-item__avatar',

@@ -35,6 +35,23 @@ html.platform-native-app .bottom-nav button i.lucide {
 @keyframes lucide-spin {
     to { transform: rotate(360deg); }
 }
+/*
+ * 순수 CSS 스피너 — 로딩 표시는 lucide 로딩 여부에 걸리면 안 된다.
+ * (i[data-lucide]는 scheduleLucideIcons가 돌아야 SVG가 되고, 전역 옵저버가 없어
+ *  호출을 빠뜨리면 아무것도 안 보인다)
+ */
+.mealog-spinner {
+    display: inline-block;
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgba(16, 185, 129, 0.18);
+    border-top-color: #10b981;
+    border-radius: 9999px;
+    animation: lucide-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .mealog-spinner { animation-duration: 2.4s; }
+}
 /* 좋아요·북마크 활성: 라인 아이콘 채움 */
 .liked [data-lucide],
 .liked .lucide,
@@ -2426,10 +2443,10 @@ body:has(#timelineMealPhotosOverlay:not(.hidden)) {
     margin-right: 4px; 
     margin-bottom: 4px; 
 }
-.chip.active { 
-    background: var(--color-primary); 
-    color: white; 
-    border-color: var(--color-primary); 
+.chip.active {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
 }
 /* 기록 모달(끼니·간식 입력): 메인/서브 칩 간격 절반 — flex gap-1과 맞춤 */
 #entryModal .chip {
@@ -3497,9 +3514,14 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     left: calc(50% + 0.45rem);
     transform: none;
 }
+/*
+ * 사진을 등록하면 이 원이 곧 프로필이라 다른 탭의 선 아이콘(1.375rem)보다 커야 읽힌다.
+ * 슬롯(.nav-item__icon-wrap)이 36px 로 고정이고 flex-shrink:0 이라, 그 안에 들어가는
+ * 34px 까지는 **네비 높이도 세로 리듬도 변하지 않는다.** 더 키우려면 슬롯을 함께 봐야 한다.
+ */
 .bottom-nav .nav-item .nav-item__avatar {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: 2.125rem;
+    height: 2.125rem;
     border-radius: 9999px;
     /* overflow:hidden 이면 box-shadow가 잘림 — 배경은 border-radius로 원형 유지 */
     overflow: visible;
@@ -3512,7 +3534,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
     background-repeat: no-repeat;
     border: 1px solid var(--green-mute, #b4e2cd);
     font-family: var(--avatar-fallback-font);
-    font-size: 0.9375rem;
+    font-size: 1.0625rem;
     font-weight: 700;
     color: var(--avatar-fallback-fg, var(--green-deep));
     flex-shrink: 0;
@@ -3522,7 +3544,7 @@ body[data-main-tab='timeline']:has(#mainApp:not(.hidden) #timelineView:not(.hidd
 }
 .bottom-nav .nav-item .nav-item__avatar--initial {
     font-family: var(--avatar-fallback-font);
-    font-size: 1rem;
+    font-size: 1.125rem;
     font-weight: 700;
 }
 .bottom-nav .nav-item.active .nav-item__avatar {
@@ -7027,9 +7049,11 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .best-share-capture__sheet .share-cap-cell {
     height: 101px;
 }
-/* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움 */
+/* 하루기록: 사진이 카드 왼·상·하에 여백 없이 행 높이만큼 채움.
+   너비는 행 높이의 1.5배(3:2) — 세로는 행 높이에 묶여 있으므로 넓힌 만큼 비율이 눕는다.
+   2배(184px)까지 넓히면 제목 칸이 98px 로 눌려 두 줄로도 대부분 잘린다. */
 .daily-share-capture__sheet .share-cap-cell--thumb {
-    width: 92px;
+    width: 138px;
     padding: 0;
     height: 92px;
     vertical-align: top;
@@ -7090,7 +7114,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .daily-share-capture__sheet .share-cap-thumb {
     position: relative;
     display: block;
-    width: 92px;
+    width: 138px;
     height: 92px;
     /* 카드 좌측 모서리와 맞춤 (border-radius 14px − 1px border) */
     border-radius: 13px 0 0 13px;
@@ -7110,7 +7134,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .daily-share-capture__sheet .share-cap-thumb__img {
     display: block;
-    width: 92px;
+    width: 138px;
     height: 92px;
     object-fit: cover;
     border: 0;
@@ -7244,6 +7268,19 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+/* 하루기록: 썸네일이 넓어져 제목 칸이 좁다 — 한 줄 말줄임 대신 두 줄로 흘린다.
+   max-height 는 두 줄(22px×2) + 제목 자신의 padding-bottom 5px = 49px.
+   line-clamp 대신 max-height 로 자른다 — html2canvas 폴백이 -webkit-box 를 제대로 못 그린다. */
+.daily-share-capture__sheet .share-cap-title {
+    white-space: normal;
+    word-break: break-word;
+    max-height: 49px;
+}
+/* 두 줄을 92px 행 안에 넣기 위한 세로 예산: meta 21px + 여백 3px + 제목 49px + 위아래 19px = 92px.
+   (베스트는 바로 아래 자체 padding 으로 덮으므로 영향 없다) */
+.daily-share-capture__sheet .share-cap-cell--text {
+    padding: 11px 8px 8px;
 }
 
 .home-feed-card__photo {
@@ -8924,182 +8961,7 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 .profile-v2-push-list {
     box-shadow: none;
 }
-.profile-v2-tag-group {
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px;
-    background: var(--page);
-}
-.profile-v2-tag-group--meal {
-    background: var(--green-soft);
-    border-color: var(--green-mute);
-}
-.profile-v2-tag-group--snack {
-    background: #fff8e8;
-    border-color: #f0d9a8;
-}
-.profile-v2-tag-group__head {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 8px;
-}
-.profile-v2-tag-group__kind {
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: var(--muted);
-}
-.profile-v2-tag-group__title {
-    margin: 0;
-    font-size: 13.5px;
-    font-weight: 700;
-    color: var(--ink);
-}
-.profile-v2-tag-pills {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-.profile-v2-tag-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid var(--line);
-    background: var(--card);
-    color: var(--ink-2);
-    font: inherit;
-    font-size: 12.5px;
-    font-weight: 600;
-    padding: 7px 11px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
-    -webkit-tap-highlight-color: transparent;
-}
-.profile-v2-tag-pill:hover {
-    border-color: var(--green-mute);
-    background: #fff;
-}
-.profile-v2-tag-pill.is-on,
-.profile-v2-tag-pill[aria-pressed="true"] {
-    background: var(--green);
-    border-color: var(--green);
-    color: #fff;
-}
-.profile-v2-tag-pill__count {
-    font-size: 10.5px;
-    font-weight: 700;
-    opacity: 0.72;
-}
-.profile-v2-tag-compose {
-    display: flex;
-    gap: 6px;
-    align-items: stretch;
-}
-.profile-v2-tag-input {
-    flex: 1 1 auto;
-    min-width: 0;
-    border: 1px solid var(--line);
-    background: var(--card);
-    border-radius: 12px;
-    padding: 9px 12px;
-    font: inherit;
-    font-size: 13px;
-    color: var(--ink);
-    outline: none;
-}
-.profile-v2-tag-input:focus {
-    border-color: var(--green-mute);
-    box-shadow: 0 0 0 3px rgba(60, 184, 137, 0.14);
-}
-.profile-v2-tag-input:disabled {
-    opacity: 0.55;
-    background: rgba(255, 255, 255, 0.55);
-}
-.profile-v2-tag-add-btn {
-    flex: 0 0 auto;
-    border: 0;
-    border-radius: 12px;
-    padding: 0 14px;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 700;
-    color: #fff;
-    background: var(--green);
-    cursor: pointer;
-    transition: background 0.14s ease, opacity 0.14s ease;
-}
-.profile-v2-tag-add-btn:hover:not(:disabled) {
-    background: var(--green-deep);
-}
-.profile-v2-tag-add-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-.profile-v2-tag-favs {
-    margin-top: 10px;
-}
-.profile-v2-tag-favs__label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-    font-size: 11.5px;
-    font-weight: 700;
-    color: var(--ink-2);
-}
-.profile-v2-tag-favs__meta {
-    color: var(--muted);
-    font-variant-numeric: tabular-nums;
-}
-.profile-v2-tag-favs__list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-.profile-v2-tag-fav {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 8px 6px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--green-mute);
-    background: var(--card);
-    color: var(--green-deep);
-    font-size: 12px;
-    font-weight: 700;
-}
-.profile-v2-tag-fav__remove {
-    display: grid;
-    place-items: center;
-    width: 18px;
-    height: 18px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    padding: 0;
-}
-.profile-v2-tag-fav__remove:hover {
-    background: var(--green-soft);
-    color: var(--ink);
-}
-.profile-v2-tag-fav__remove i,
-.profile-v2-tag-fav__remove svg {
-    width: 0.7rem;
-    height: 0.7rem;
-}
-.profile-v2-tag-hint {
-    margin: 8px 0 0;
-    font-size: 11.5px;
-    font-weight: 500;
-    color: var(--muted);
-    line-height: 1.4;
-}
+
 .profile-v2-memo-input {
     width: 100%;
     min-height: 140px;
@@ -9479,7 +9341,6 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
     filter: none;
     transform: none;
 }
-
 
 /* 하루 기록: 체중·혈당 토글 오프 — 뒤 입력 영역을 더 흐리게 */
 .daily-journal-metrics {
@@ -11509,6 +11370,48 @@ body[data-main-tab='dashboard'] #dashboardView {
     padding-top: 0.75rem;
 }
 
+/* 분석 '무엇을' 카드의 축 전환 (형태 ↔ 종류) — 라벨과 한 덩어리로 왼쪽에 붙는다.
+   ui-card-head 가 space-between 이라 라벨·스위치를 감싸지 않으면 스위치가 가운데로 뜬다. */
+#dashboardView.dashboard-view-v2 .analysis-axis-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 999px;
+    background: var(--bg-soft, #f1efe9);
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch__btn {
+    border: 0;
+    background: transparent;
+    color: var(--muted, #7a7268);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 4px 9px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+#dashboardView.dashboard-view-v2 .analysis-axis-switch__btn.is-active {
+    background: #fff;
+    color: var(--green, #3cb889);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+/* 자동 분류라는 사실은 종류 모드에서만 말한다 — 형태 축은 사용자가 고른 값이다 */
+#dashboardView.dashboard-view-v2 .analysis-axis-note {
+    margin-top: 6px;
+    padding-left: 12px;
+    padding-right: 22px;
+    font-size: 11px;
+    color: var(--muted, #7a7268);
+}
+
 #dashboardView.dashboard-view-v2 .dashboard-detail-link {
     border: 0;
     background: transparent;
@@ -12757,7 +12660,13 @@ body:has(#mainAppHeader.header-scroll-hidden) #boardListView.board-list-view-mea
     grid-template-columns: repeat(3, 1fr);
 }
 #settingsView .settings-subtab-row {
-    grid-template-columns: repeat(4, 1fr);
+    /*
+     * 탭 수가 바뀌어도 폭이 균등하게 나뉜다.
+     * repeat(4, 1fr) 로 고정돼 있어서 '태그' 탭을 걷어낸 뒤 넷째 칸이 빈 채로 남았다
+     * — 셋이 왼쪽 3/4 를 나눠 갖고 오른쪽이 비는 모양이었다.
+     */
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
 }
 #boardListView #boardLoungeFrame .board-mealtalk-subtabs .app-chrome-subtab,
 #settingsView .settings-subtab-row .app-chrome-subtab {
@@ -14996,9 +14905,9 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal.entry-sheet-height-probe #entryCommentSectionMeal:not(.hidden) .entry-comment-textarea,
 #entryModal.entry-sheet-height-probe #entryCommentSectionSnack:not(.hidden) .entry-comment-textarea {
-    min-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
-    max-height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
-    height: calc(1em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    min-height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    max-height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
+    height: calc(2em * var(--entry-comment-line, 1.35) + 0.9rem) !important;
     padding-top: 0.45rem !important;
     padding-bottom: 0.45rem !important;
     overflow: hidden !important;
@@ -15790,7 +15699,6 @@ body:has(#adminPage:not(.hidden)),
 /* 무엇을 textarea는 태그 on/off와 무관하게 아래 .entry-what-textarea 패딩으로만 세로 유지
    (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
 
-
 /* 어디서·무엇을·누구와: 라벨 위 · 입력란 아래 */
 #entryModal .entry-form-field-section.entry-axis-stack {
     display: flex;
@@ -15824,6 +15732,13 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal .entry-axis-stack .entry-axis-input-area {
     width: 100%;
+}
+/* 끼니 어디서 보조 라벨 (어떻게 칩 아래·장소 입력 위) — 본 라벨 행보다 낮게, 행 높이 강제 없음 */
+#entryModal .entry-axis-sublabel-row {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    margin-top: 0.125rem;
 }
 #entryModal #entryWhatSection .entry-what-textarea,
 #entryModal #entryWhatSection.entry-field-quick-off .entry-what-textarea,
@@ -15908,10 +15823,12 @@ body:has(#adminPage:not(.hidden)),
     max-width: 100%;
     min-width: 0;
     line-height: var(--entry-comment-line);
-    /* 빈 칸: 1줄. 내용/포커스 시 확장 — 넘치는 분은 #modalScrollArea 세로 스크롤 */
-    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
-    max-height: calc(1em * var(--entry-comment-line) + 0.9rem);
-    height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    /* 빈 칸: 2줄. 내용/포커스 시 확장 — 넘치는 분은 #modalScrollArea 세로 스크롤.
+       한 줄로 접었더니 "여기에 적는 칸"이라는 게 눈에 덜 들어와, 비어 있을 때도
+       두 줄만큼 자리를 잡아 둔다. 접힘 상태의 한 줄 표시(nowrap+말줄임)는 그대로다. */
+    min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
+    max-height: calc(2em * var(--entry-comment-line) + 0.9rem);
+    height: calc(2em * var(--entry-comment-line) + 0.9rem);
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
     overflow-x: hidden;
@@ -15924,7 +15841,7 @@ body:has(#adminPage:not(.hidden)),
 :is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
     max-height: none;
     height: auto;
-    min-height: calc(1em * var(--entry-comment-line) + 0.9rem);
+    min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
     overflow-x: hidden;
@@ -16184,6 +16101,23 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal .chip.active {
     background: var(--entry-accent-dark);
+    border-color: var(--entry-accent-dark);
+    color: #fff;
+}
+/* 위 제안 줄이 밀고 있는 값 — 그리드에서도 같은 생김새(녹색 점선 테두리 + 녹색 글자)로 둔다.
+   14개 중 어디인지 보여야 비교가 된다.
+
+   **`.active` 를 쓰면 안 된다**: active 는 "사용자가 골랐다"는 뜻이고 저장 시
+   `categorySource='user'` 로 이어진다(entry-save-record.js). 제안은 아직 선택이 아니다.
+   `#entryModal .chip` 이 id 를 끼고 색을 정하므로 여기서도 같은 범위로 덮어야 한다. */
+#entryModal .chip--suggested {
+    border-style: dashed;
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+/* 사용자가 실제로 고르면 선택 표시가 이긴다 (동시에 걸릴 일은 없지만 못 박아 둔다) */
+#entryModal .chip.active.chip--suggested {
+    border-style: solid;
     border-color: var(--entry-accent-dark);
     color: #fff;
 }
@@ -16939,6 +16873,18 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 #accountAvatarModal > div,
 #profileFieldEditModal > div {
     padding-bottom: var(--safe-bottom-gesture);
+}
+/*
+ * IME 열림: 그 inset 을 도로 없앤다. 키보드가 제스처 바를 덮고 있으므로 시트가 피할
+ * 대상이 사라졌고, 남겨두면 CTA 아래 빈 띠로만 보인다 (같은 처리: 512행 body.ime-open).
+ *
+ * 판정을 `.is-ime-open` 이 아니라 body 로 하는 이유 — 그 클래스는 개별 VV 핀이 붙을 때만
+ * 달리고, 핀은 overlay 모드 전용이라 **앱(Capacitor resize)에서는 아예 안 붙는다**
+ * (js/utils/ime-viewport.js applyOverlayImePin). 정작 문제가 보이는 쪽이 앱이다.
+ */
+body.ime-open #accountAvatarModal > div,
+body.ime-open #profileFieldEditModal > div {
+    padding-bottom: 0;
 }
 @media (min-width: 640px) {
     #profileFieldEditModal > div,
@@ -17955,6 +17901,18 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     line-height: 1.35;
     color: #7a7167;
 }
+/* 결과 행 카테고리 꼬리표 ("냉면"·"카페"…) — 선택 전에 placeType 파생 근거를 보여준다 */
+.kakao-place-sheet__result-cat {
+    margin-left: 0.4rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #0f766e;
+    background: #f0fdf9;
+    border: 1px solid #ccfbf1;
+    border-radius: 0.375rem;
+    padding: 0.0625rem 0.375rem;
+    vertical-align: 1px;
+}
 .kakao-place-sheet__empty {
     padding: 2rem 0.5rem;
     text-align: center;
@@ -17970,10 +17928,41 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     width: 100%;
     min-width: 0;
 }
-.rrn-digit {
-    flex: 1 1 0;
+/* 앞자리(생년월일)는 칸을 쪼개지 않고 한 입력란으로 받는다 (js/utils.js mountRrnDigitGroup) */
+.rrn-front {
+    flex: 1 1 auto;
     min-width: 0;
-    width: 2.25rem;
+    height: 2.75rem;
+    padding: 0 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+    color: #1e293b;
+    font-size: 1.05rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.16em;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+.rrn-front::placeholder {
+    color: #cbd5e1;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+}
+.rrn-front:focus {
+    border-color: #34d399;
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+/* 뒤 한 자리만 남았으므로 늘어나지 않고 고정 폭 */
+.rrn-digit {
+    flex: 0 0 auto;
+    min-width: 0;
+    width: 2.75rem;
     max-width: 2.75rem;
     height: 2.75rem;
     padding: 0;
@@ -18013,7 +18002,8 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     letter-spacing: 0.12em;
     user-select: none;
 }
-#profileFieldEditPanelBirthdate .rrn-digit {
+#profileFieldEditPanelBirthdate .rrn-digit,
+#profileFieldEditPanelBirthdate .rrn-front {
     background: #fff;
     height: 2.9rem;
 }
@@ -18551,3 +18541,560 @@ html.service-guide-active #landingPage {
     visibility: hidden;
 }
 
+
+/*
+ * AI 리포트 점수 내역 — summary 를 점수 줄 자체로 쓰므로 기본 디스클로저 삼각형을 지운다.
+ * Tailwind list-none 은 Chromium 에서만 먹고, iOS Safari 는 ::-webkit-details-marker 를
+ * 따로 꺼야 한다. 앱이 iOS PWA 로도 돌아가므로 두 경로를 모두 막는다.
+ */
+.ai-meal-report-score-detail > summary {
+    list-style: none;
+}
+.ai-meal-report-score-detail > summary::-webkit-details-marker {
+    display: none;
+}
+/* 펼침 여부를 캐럿 방향으로 알린다 — 라벨은 그대로 두고 방향만 뒤집는다 */
+.ai-meal-report-score-caret {
+    transition: transform 0.15s ease;
+}
+.ai-meal-report-score-detail[open] > summary .ai-meal-report-score-caret {
+    transform: rotate(180deg);
+}
+/* '무엇을' 회상 줄 (entry-what-recall.js) — 자주 먹는 것 · 타이핑 자동완성.
+   분류 제안 칩과 일부러 다르게 생겼다: 점선+프라이머리는 "시스템의 추측"이라는 뜻이고,
+   이 칩은 사용자가 전에 직접 적은 자기 어휘라 중립 회색 실선으로 둔다. */
+/* 입력 중에 잠깐 뜨는 줄이라 **한 줄을 넘기지 않는다** — 두 줄이 되면 시트가 출렁인다.
+   칩은 아래 스크롤 영역 안에서 가로로 흐르고, 아이콘과 닫기는 양 끝에 고정된다. */
+.entry-recall-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-top: 6px;
+    min-height: 30px;
+}
+.entry-recall-scroll {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+/* 스크롤바는 숨긴다 — 잘린 칩 자체가 "옆으로 더 있다"는 신호다 */
+.entry-recall-scroll::-webkit-scrollbar {
+    display: none;
+}
+/* 분류 제안과 같은 규칙 — 빈 상태는 자리를 차지하지 않고, 생길 때 growthPx 로 통지한다 */
+.entry-recall-row--empty {
+    min-height: 0;
+    margin-top: 0;
+}
+/* 아이콘만 — '자주' 글자는 뺐다. 시계 아이콘이 이미 그 뜻이고, 한 줄 폭이 아깝다 */
+.entry-recall-label {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    color: #94a3b8;
+}
+.entry-recall-label svg {
+    width: 13px;
+    height: 13px;
+}
+.entry-recall-chip {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.entry-recall-chip:active {
+    background: #e2e8f0;
+}
+
+/* 카테고리 자동 분류 제안 칩 (entry-category-suggest.js) — 점선+반짝이, 확정 시 실선 */
+.entry-suggest-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+    min-height: 30px;
+}
+/* 빈 상태는 자리를 차지하지 않는다 — 텍스트를 넣어 제안이 뜰 때 그만큼 펼쳐진다.
+   자리를 미리 비워두면 늘 빈 띠가 보였다. 키보드가 열린 동안에는 시트 높이 재측정이
+   막혀 있으므로(entry-sheet-tabs.js), 칩이 생기는 순간 늘어난 높이를 growthPx로
+   따로 통지해 시트가 그만큼 커지게 한다. */
+.entry-suggest-row--empty {
+    min-height: 0;
+    margin-top: 0;
+}
+.entry-suggest-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 700;
+    background: white;
+    border: 1px dashed var(--color-primary);
+    color: var(--color-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.entry-suggest-chip svg {
+    width: 13px;
+    height: 13px;
+}
+.entry-suggest-chip--confirmed {
+    background: var(--color-primary);
+    border-style: solid;
+    color: white;
+}
+/* 요리 종류 꼬리표 — 고르는 값이 아니라 붙는 값이라 버튼이 아닌 라벨 모양으로 */
+.entry-suggest-cuisine {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #eef2f7;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+}
+.entry-suggest-hint {
+    font-size: 11px;
+    color: #94a3b8;
+}
+/* 행동 버튼 묶음('다른 구분' · '분류 안 함' · '되돌리기') — 오른쪽 끝에 붙인다.
+   왼쪽은 값(칩·요리 종류), 오른쪽은 조작. 같은 줄에서 둘이 섞이면 뭘 고르는 건지 흐려진다. */
+.entry-suggest-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+/* 셋 다 같은 생김새 — 값이 아니라 조작이라는 표시라, 칩과도 서로와도 구분이 명확해야 한다 */
+.entry-suggest-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: white;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.entry-suggest-action:active {
+    background: #f1f5f9;
+}
+.entry-suggest-action svg {
+    width: 12px;
+    height: 12px;
+}
+/* 분류 안 함이 적용된 뒤의 표시 — 결정이 화면에 남아야 되돌릴 수 있다 */
+.entry-suggest-hint--off {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+.entry-suggest-hint--off svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* 맥락 한 줄 (entry-context-predict.js) — 1페이지 '무엇을' 아래.
+   세그먼트 = 축 하나. 탭하면 아래 피커가 인라인으로 열린다(오버레이 없음).
+   점선 = 아직 추측(미확인), 실선 = 확인됨. 확인 없이는 저장되지 않는다. */
+.entry-context-predict {
+    padding: 8px 1rem 0;
+    font-size: 12px;
+}
+/* 헤더 행: 리드 텍스트(좌) ↔ 액션 맞아요·✕(우) — 값 행과 행위를 분리 */
+.entry-context-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 26px;
+}
+/* 세그먼트 행: 축 값들만 */
+.entry-context-segs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+}
+.entry-predict-lead {
+    color: #475569;
+    font-size: 13px;
+    font-weight: 700;
+}
+/*
+ * 세그먼트 상태 문법 (구분되는 세 신호를 서로 다른 채널에 배정):
+ *   채움  = 확정 여부  (점선 흰 배경 = 추측/빈 · 프라이머리 채움+흰 글자 = 확정)
+ *   링    = 열림 여부  (바깥 링 + 실선 테두리 — 어느 상태에든 겹쳐지는 독립 신호)
+ * 캐럿은 뺐다 (2026-08-21): 좁은 폭에서 값 텍스트를 (…)로 잘라먹었고, 열림 신호는
+ * 링과 바로 아래 열리는 피커가 이미 하고 있어 중복이었다.
+ * 피커(하위 선택지)는 회색 트레이 안의 흰 칩 — 세그먼트(상위 값)와 색 층위가 다르다.
+ */
+.entry-context-seg {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    /* 폭 고정: 값이 바뀌어도 칸 크기가 흔들리지 않게 세 축이 행을 균등 분할한다 */
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 6px 9px;
+    /* 테두리는 칩의 경계선이자 상태 신호라 또렷해야 한다 (1px #cbd5e1 은 배경에 묻혔고,
+       1.5px 는 1x 디스플레이에서 1px 로 반내림된다) */
+    border: 2px dashed #a3b0c2;
+    /* 각진 모서리 — 피커의 알약형 선택지와 층위를 다르게 한다 */
+    border-radius: 8px;
+    /* 시트 배경과 같은 흰색이면 칩으로 안 읽힌다 — 옅은 회색 바탕을 기본으로 */
+    background: #f8fafc;
+    color: #475569;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.entry-context-seg > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.entry-context-seg svg {
+    width: 17px;
+    height: 17px;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+/* 사용자가 직접 고름 — 진한 초록 채움 */
+.entry-context-seg--confirmed {
+    border-style: solid;
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: white;
+}
+.entry-context-seg--confirmed svg {
+    color: rgba(255, 255, 255, 0.85);
+}
+/* 추천 + 사용 ON — 연한 초록 채움. 점선을 유지해 "내가 고른 값은 아니다"를 남긴다 */
+.entry-context-seg--auto {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+.entry-context-seg--auto svg {
+    color: var(--color-primary);
+}
+/* 값이 없는 트리거 — 채워진 칩보다 약해야 하므로 배경 없이 테두리만 */
+.entry-context-seg--empty {
+    background: transparent;
+    border-color: #c2ccd9;
+    color: #94a3b8;
+}
+/* 열린 세그먼트 = 아래 피커의 주인. 채움을 바꾸지 않고 링만 두른다 */
+.entry-context-seg--open {
+    box-shadow: 0 0 0 2px var(--green-mute, #b4e2cd);
+    border-style: solid;
+    border-color: var(--color-primary);
+}
+/* ⋯(자세히): 전체 축 섹션 여닫기 — 아이콘 전용 미니 칩 */
+/* '세부' 칩: 전체 축 섹션(건너뜀·서브태그·누구와 상세) 여닫기.
+   현재 렌더에서 빠져 있다 — 다시 붙일 때 쓰라고 스타일만 남긴다 */
+.entry-context-seg--more {
+    border-style: solid;
+    border-color: #e2e8f0;
+    background: #f8fafc;
+    color: #94a3b8;
+}
+.entry-context-seg--more.entry-context-seg--open {
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+/* 인라인 피커 — 회색 트레이가 "하위 선택지" 층위를 만든다 (세그먼트와 색으로 구분) */
+.entry-context-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: #f1f5f9;
+    border-radius: 12px;
+}
+.entry-context-picker__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+.entry-context-picker__empty {
+    color: #94a3b8;
+}
+/* 패널 바닥의 별도 칸 — 칩 목록(고르는 자리)과 자유 입력(새로 적는 자리)을 갈라놓는다.
+   flex-basis 100% 로 반드시 제 줄을 차지해, 칩이 적을 때도 칩 옆에 붙어 흐르지 않는다. */
+.entry-context-picker__foot {
+    flex: 1 0 100%;
+    min-width: 0;
+    /* 패널의 flex gap(6px)이 이미 위쪽 여백이다 — margin 을 더하면 알약 아래가 뜬다.
+       구분선 위 6px(gap) · 아래 6px 로 맞춰 대칭으로 둔다. */
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+}
+.entry-context-opt {
+    padding: 4px 10px;
+    /* 회색 트레이(#f1f5f9) 위의 흰 칩이라 slate-200 은 경계가 묻혔다 — 한 단 진하게 */
+    border: 1px solid #cbd5e1;
+    border-radius: 14px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.entry-context-opt--on {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+    color: #0f5132;
+}
+/* 3단 뎁스 — 2단계에서 고른 값에 종속된 상세('친구' → 친구 이름들).
+   같은 패널 안에서 한 단 들여 붙여, 위 칩을 고르면 아래가 따라 바뀐다는 걸 위치로 보여준다. */
+.entry-context-sub {
+    /* 자유 입력 칸과 같은 이유로 제 줄을 차지한다 — 칩이 몇 개 없으면 칩 옆에 나란히
+       붙어 구분선이 반 토막 난 채 "칩 하나 더"처럼 보였다. */
+    flex: 1 0 100%;
+    min-width: 0;
+    /* 자유 입력 칸과 같은 간격 규칙 (위 6px = 패널 gap · 아래 6px) */
+    margin-top: 0;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+}
+.entry-context-sub__label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.entry-context-sub__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+/* 3단 뎁스 알약 — 2단계(구분)와 **일부러 다르게** 생겼다.
+   2단계는 각진 흰 칩(값을 고르는 자리), 3단계는 완전히 둥근 회색 알약(이름을 담는 자리).
+   같은 패널에 두 층이 함께 있으므로 모양이 겹치면 어느 층을 고르는지 헷갈린다. */
+.entry-context-sub-opt {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    background: #f1f5f9;
+    overflow: hidden;
+}
+.entry-context-sub-opt__label {
+    padding: 4px 4px 4px 10px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.entry-context-sub-opt__del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    align-self: stretch;
+    padding-right: 2px;
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+.entry-context-sub-opt__del:hover {
+    color: #ef4444;
+}
+.entry-context-sub-opt--on {
+    border-color: var(--color-primary);
+    background: var(--green-soft, #eaf8f2);
+}
+.entry-context-sub-opt--on .entry-context-sub-opt__label {
+    color: #0f5132;
+    font-weight: 700;
+}
+.entry-context-sub-opt--on .entry-context-sub-opt__del {
+    color: #4c9c7d;
+}
+/* 목록에 없는 새 이름 — 이 자리에서 바로 받는다(축 섹션을 통째로 열지 않는다) */
+/* 입력칸도 알약 — 옆의 이름 알약들과 같은 줄·같은 높이로 흐른다(점선으로 "아직 안 굳음") */
+.entry-context-sub-input {
+    flex: 0 1 110px;
+    min-width: 80px;
+    padding: 4px 10px;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    outline: none;
+}
+.entry-context-sub-input::placeholder {
+    color: #cbd5e1;
+    font-weight: 500;
+}
+/* 눌렀을 때 바뀌는 입력칸과 **같은 생김새의 알약**이다 — 밑줄 텍스트였을 때는 옆의
+   이름 알약들과 층이 달라 보여 "여기도 누르는 자리"라는 게 읽히지 않았다.
+   점선은 이름 알약(실선)과 달리 "아직 값이 아니다"를 말한다. */
+.entry-context-sub-more {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+/* 어디서 자유 입력 — [돋보기][직접 입력칸].
+   기본은 오른쪽 입력칸에 직접 적는 것이고, 카카오 검색은 왼쪽 돋보기를 눌렀을 때만 열린다.
+   위 추천 칩보다 한 치수 크다 — 고르는 자리가 아니라 **적는 자리**라 손이 먼저 가야 한다. */
+.entry-context-place-free {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
+}
+.entry-context-place-free__search {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    padding: 0;
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #64748b;
+    cursor: pointer;
+}
+.entry-context-place-free__search svg {
+    width: 15px;
+    height: 15px;
+}
+.entry-context-place-free__input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 7px 14px;
+    /* 누구와 상세 칸(.entry-context-sub-input)과 같은 알약 꼴 — 완전히 둥근 점선 테두리.
+       점선은 두 곳 모두 "아직 굳지 않은 값"을 뜻한다. 크기만 한 치수 크다(적는 자리라서). */
+    border: 1px dashed var(--color-primary);
+    border-radius: 999px;
+    background: white;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+}
+.entry-context-place-free__input::placeholder {
+    color: #94a3b8;
+    font-weight: 500;
+}
+.entry-context-place-free__input:focus {
+    border-style: solid;
+}
+/* 사용 토글 — 라벨(좌) + 스위치(우). '사용'(기본 ON) ↔ '사용 안함'.
+   어느 쪽이든 사라지지 않고 언제든 되돌릴 수 있다.
+   상자(배경·테두리)는 두지 않는다 — 헤더 줄 안에서 리드 텍스트와 같은 층위로 읽히고,
+   켜짐/꺼짐은 오직 스위치가 말한다. */
+.entry-predict-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+    /* 폭 고정 — 라벨('사용'↔'사용 안함') 길이가 달라도 헤더가 흔들리지 않게 */
+    width: 5.5rem;
+    /* 오른쪽 끝에 딱 붙으면 시트 가장자리와 부딪힌다 — 손가락 자리만큼만 띄운다 */
+    padding: 4px 4px 4px 0;
+    font-size: 12px;
+    font-weight: 700;
+    background: none;
+    border: 0;
+    color: #475569;
+    cursor: pointer;
+}
+/* 라벨이 남는 폭을 다 먹고 스위치는 오른쪽 끝에 못박힌다 —
+   '사용'↔'사용 안함'으로 글자 수가 바뀌어도 스위치가 움직이지 않게 */
+.entry-predict-toggle__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    white-space: nowrap;
+}
+.entry-predict-toggle__track {
+    position: relative;
+    display: inline-block;
+    margin-left: auto;
+    width: 26px;
+    height: 15px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.entry-predict-toggle__knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.15s;
+}
+.entry-predict-toggle--on .entry-predict-toggle__track {
+    background: var(--color-primary);
+}
+.entry-predict-toggle--on .entry-predict-toggle__knob {
+    transform: translateX(11px);
+}
+/*
+ * 사용 OFF인 추천 세그먼트.
+ * opacity 로 흐리게 했더니 값이 든 칸이 빈 칸보다 더 약해 보였다 —
+ * 값은 또렷하게 두고 "지금은 안 쓴다"는 것만 무채색으로 말한다.
+ */
+.entry-context-seg--muted {
+    background: #f1f5f9;
+    border-color: #9aa7b8;
+    color: #64748b;
+}
+.entry-context-seg--muted svg {
+    color: #94a3b8;
+}

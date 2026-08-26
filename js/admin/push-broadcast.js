@@ -1,14 +1,17 @@
 // ADMIN 브로드캐스트 푸시 (발송예정 관리)
 import { app, db, appId, functions, auth } from '../firebase.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
-import { collection, query, orderBy, where, getDocs, limit, doc, setDoc, serverTimestamp, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { collection, query, orderBy, where, getDocs, limit, startAfter, getCountFromServer, doc, setDoc, serverTimestamp, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml, runAdminRefreshAction, afterAdminClick } from './utils.js';
+import { loadAdminPushPool, importAdminPushHistoryToPool } from './push-pool.js';
+import { loadAdminPushRotation } from './push-rotation.js';
 
 // ========== 푸시메시지 관리 (관리자 브로드캐스트) ==========
 const scheduleAdminBroadcastPushFn = httpsCallable(functions, 'scheduleAdminBroadcastPush');
 const cancelAdminScheduledPushFn = httpsCallable(functions, 'cancelAdminScheduledPush');
 const deleteAdminBroadcastHistoryFn = httpsCallable(functions, 'deleteAdminBroadcastHistory');
 const updateAdminScheduledPushFn = httpsCallable(functions, 'updateAdminScheduledPush');
+const rerollAdminScheduledPushFn = httpsCallable(functions, 'rerollAdminScheduledPush');
 /** Cloud Functions `ADMIN_BROADCAST_*_MAX` 와 동일 */
 const ADMIN_BROADCAST_TITLE_MAX = 120;
 const ADMIN_BROADCAST_BODY_MAX = 240;
@@ -221,16 +224,6 @@ function formatAdminPushSentCellHtml(r) {
     return formatAdminPushDateTimeStackedHtml(r.sentAt || r.lastSentAt);
 }
 
-function completedHistorySortMs(r) {
-    const st = r.status || '';
-    if (st === 'failed' && r.failedAt) return tsToMillis(r.failedAt);
-    if (st === 'cancelled' && r.cancelledAt) return tsToMillis(r.cancelledAt);
-    const vals = [tsToMillis(r.sentAt), tsToMillis(r.lastSentAt), tsToMillis(r.scheduledAt)].filter((x) =>
-        Number.isFinite(x)
-    );
-    return vals.length ? Math.max(...vals) : 0;
-}
-
 /** 발송 기록 탭: upcoming | done */
 let adminPushHistoryActiveTab = 'upcoming';
 let adminPushHistoryRows = { upcoming: [], done: [] };
@@ -273,14 +266,24 @@ const ADMIN_PUSH_ENV_OPTIONS = [
     ['staging', '스테이징']
 ];
 
-/** 발송예정 탭에서 취소(선택) 가능한 행: pending 상태만 */
-function isAdminPushRowSelectable(r) {
+function isAdminPushRowPending(r) {
     return (r?.status || 'pending') === 'pending';
+}
+
+/**
+ * 체크박스 선택 가능 여부 — 탭마다 선택의 의미가 다르다.
+ * 발송예정: 취소·풀에 담기 (pending만) / 발송완료: 풀에 담기 (제목·내용이 있는 기록)
+ */
+function isAdminPushRowSelectable(r, tab = adminPushHistoryActiveTab) {
+    if (tab === 'done') {
+        return Boolean(String(r?.title || '').trim()) && Boolean(String(r?.body || '').trim());
+    }
+    return isAdminPushRowPending(r);
 }
 
 /** pending·단일(once, 요일별 개별 포함) 예약만 수정 가능 */
 function isAdminPushRowEditable(r) {
-    if (!isAdminPushRowSelectable(r)) return false;
+    if (!isAdminPushRowPending(r)) return false;
     const isWeeklyByDay = r.recurringMode === 'weeklyByDay' && Array.isArray(r.weeklySchedule);
     return (r.scheduleType || 'once') === 'once' && !isWeeklyByDay;
 }
@@ -307,12 +310,21 @@ function ensureAdminPushHistoryTabHandlers() {
         if (!el) return;
         el.addEventListener('click', () => {
             captureAdminPushInlineDraftsFromDom();
+            const prev = adminPushHistoryActiveTab;
             switchAdminPushHistoryTabUi(tab);
+            if ((tab === 'upcoming' || tab === 'done') && prev !== tab) {
+                // 보고 있는 탭만 읽으므로 전환할 때 그 탭의 첫 페이지를 가져온다
+                adminPushSelectedIds.clear();
+                refreshAdminScheduledPushesCore({ resetPage: true });
+                return;
+            }
             renderAdminPushHistoryTableFromCache();
         });
     };
     bind('adminPushHistoryTabUpcoming', 'upcoming');
     bind('adminPushHistoryTabDone', 'done');
+    bind('adminPushHistoryTabPool', 'pool');
+    bind('adminPushHistoryTabRotation', 'rotation');
 }
 
 function escapeAttr(s) {
@@ -328,11 +340,12 @@ function datetimeLocalMinAhead(minutesAhead = 1) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** 발송예정 목록에서 예약 시각이 가장 늦은(마지막) 항목 */
+/**
+ * 예약 시각이 가장 늦은 항목 — 새 작성 행의 기본 일시를 여기에 +1일 해서 만든다.
+ * 목록이 페이지 단위라 화면에 보이는 것만으로는 알 수 없어, 조회 때 1건만 따로 읽어 둔다.
+ */
 function getLastUpcomingPushRow() {
-    const rows = adminPushHistoryRows.upcoming;
-    if (!rows.length) return null;
-    return [...rows].sort((a, b) => tsToMillis(b.scheduledAt) - tsToMillis(a.scheduledAt))[0];
+    return adminPushLastUpcomingRow;
 }
 
 /** 행 데이터 → 모달 초안 (addDay: 예약일 +1일, 시각 유지) */
@@ -419,6 +432,25 @@ function adminPushUnsavedEnvBadgeHtml() {
     return `<span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-400" title="미저장"><i class="fa-solid fa-circle text-[6px]" aria-hidden="true"></i></span>`;
 }
 
+/** 예약 목록 · 메시지 풀 · 순환 설정 — 한 번에 하나만 보인다 */
+function syncAdminPushPaneVisibility() {
+    const tab = adminPushHistoryActiveTab;
+    const isPool = tab === 'pool';
+    const isRotation = tab === 'rotation';
+    const isSchedule = !isPool && !isRotation;
+    const toggle = (id, hidden) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('hidden', hidden);
+    };
+    toggle('adminScheduledPushesContainer', !isSchedule);
+    toggle('adminPushBulkBar', !isSchedule);
+    // 풀·순환 탭은 자체 버튼을 갖고 있어 상단 새로고침을 감춘다
+    toggle('adminRefreshScheduledPushesBtn', !isSchedule);
+    toggle('adminPushPoolToolbar', !isPool);
+    toggle('adminPushPoolContainer', !isPool);
+    toggle('adminPushRotationContainer', !isRotation);
+}
+
 function switchAdminPushHistoryTabUi(tab) {
     adminPushHistoryActiveTab = tab;
     document.querySelectorAll('.admin-push-history-tab').forEach((btn) => {
@@ -433,29 +465,18 @@ function switchAdminPushHistoryTabUi(tab) {
         btn.classList.toggle('hover:text-slate-700', !on);
         btn.classList.toggle('hover:bg-white/70', !on);
     });
+    syncAdminPushPaneVisibility();
 }
 
 export async function loadAdminPushMessagesPage() {
     ensureAdminPushHistoryTabHandlers();
-    adminPushHistoryActiveTab = 'upcoming';
-    document.querySelectorAll('.admin-push-history-tab').forEach((btn) => {
-        const on = btn.getAttribute('data-tab') === 'upcoming';
-        btn.setAttribute('aria-selected', on ? 'true' : 'false');
-        btn.classList.toggle('bg-white', on);
-        btn.classList.toggle('text-violet-700', on);
-        btn.classList.toggle('shadow-sm', on);
-        btn.classList.toggle('ring-1', on);
-        btn.classList.toggle('ring-violet-200/80', on);
-        btn.classList.toggle('text-slate-500', !on);
-        btn.classList.toggle('hover:text-slate-700', !on);
-        btn.classList.toggle('hover:bg-white/70', !on);
-    });
-    await refreshAdminScheduledPushesCore();
+    switchAdminPushHistoryTabUi('upcoming');
+    await refreshAdminScheduledPushesCore({ resetPage: true });
 }
 
 function buildAdminPushHistoryThead(showSelect) {
     const selectTh = showSelect
-        ? `<th class="px-3 py-2.5 whitespace-nowrap w-8 text-center"><input type="checkbox" id="adminPushSelectAll" onchange="window.toggleAllAdminPushSelection(this.checked)" class="align-middle cursor-pointer" title="전체 선택"></th>`
+        ? `<th class="px-3 py-2.5 whitespace-nowrap w-8 text-center"><input type="checkbox" id="adminPushSelectAll" onchange="window.toggleAllAdminPushSelection(this.checked)" class="align-middle cursor-pointer" title="이 페이지 전체 선택"></th>`
         : '';
     return `
             <thead>
@@ -500,10 +521,15 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
         ? summarizeWeeklyTargetEnvs(ws)
         : (ADMIN_PUSH_TARGET_ENV_LABELS[targetEnv] || ADMIN_PUSH_TARGET_ENV_LABELS.all);
     const canEdit = isAdminPushRowEditable(r);
+    const isRotation = String(r.scheduleSource || '') === 'rotation';
+    const canReroll = isRotation && canCancel;
     const rc = typeof r.recipientCount === 'number' && !Number.isNaN(r.recipientCount) ? String(r.recipientCount) : '—';
     const actionBtns = [
         canEdit
             ? `<button type="button" onclick='window.editAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded border border-violet-100">수정</button>`
+            : '',
+        canReroll
+            ? `<button type="button" onclick='window.rerollAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded border border-amber-100" title="덱에서 다른 메시지로 다시 뽑기">재추첨</button>`
             : '',
         canCancel
             ? `<button type="button" onclick='window.cancelAdminScheduledPush(${JSON.stringify(r.id)})' class="px-2 py-1 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-100">취소</button>`
@@ -520,9 +546,9 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
               selectable
                   ? `<input type="checkbox" class="admin-push-select-item align-middle cursor-pointer mt-0.5" data-job-id="${escapeAttr(
                         r.id
-                    )}" ${adminPushSelectedIds.has(r.id) ? 'checked' : ''} onchange="window.onAdminPushRowSelect(${JSON.stringify(
-                        r.id
-                    )}, this.checked)">`
+                    )}" ${
+                        adminPushSelectedIds.has(r.id) ? 'checked' : ''
+                    } onchange="window.onAdminPushRowSelect(this.dataset.jobId, this.checked)">`
                   : ''
           }</td>`
         : '';
@@ -532,7 +558,14 @@ function buildAdminScheduledPushRowHtml(r, showSelect = false) {
               .join(' · ')
               .slice(0, 400)
         : rawTitle;
-    const titleCell = `<span class="line-clamp-2 text-slate-800 font-medium" title="${escapeAttr(titleAttr)}">${titleText}</span>`;
+    const deckIdx = Number(r.deckIndex);
+    const deckSize = Number(r.deckSize);
+    const rotationBadge = isRotation
+        ? `<span class="inline-flex items-center gap-1 mb-0.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-bold whitespace-nowrap" title="순환 발송에서 자동 배정된 예약"><i class="fa-solid fa-rotate text-[9px]" aria-hidden="true"></i>순환${
+              Number.isFinite(deckIdx) && Number.isFinite(deckSize) ? ` ${deckIdx}/${deckSize}` : ''
+          }</span>`
+        : '';
+    const titleCell = `${rotationBadge}<span class="line-clamp-2 text-slate-800 font-medium" title="${escapeAttr(titleAttr)}">${titleText}</span>`;
     const envCellInner = `<span class="inline-flex items-center justify-center gap-1.5">${adminPushSavedEnvBadgeHtml()}<span>${escapeHtml(targetEnvLabel)}</span></span>`;
     const actionCell = actionBtns
         ? `<div class="inline-flex flex-wrap justify-center gap-1">${actionBtns}</div>`
@@ -610,24 +643,15 @@ function buildAdminPushInlineEditorRowHtml(draft, showSelect = true) {
             </tr>`;
 }
 
-/** 발송예정 탭 상단 툴바 HTML (새알림 버튼은 재마운트하지 않도록 상태만 갱신) */
-function buildAdminPushBulkBarHtml(rows) {
-    const selectableCount = rows.filter(isAdminPushRowSelectable).length;
+/** 상단 툴바 HTML — 발송예정은 작성·취소까지, 발송완료는 '풀에 담기'만 */
+function buildAdminPushBulkBarHtml(rows, tab) {
+    const isUpcoming = tab === 'upcoming';
+    const selectableCount = rows.filter((r) => isAdminPushRowSelectable(r, tab)).length;
     const selectedCount = adminPushSelectedIds.size;
     const draftCount = adminPushInlineDrafts.length;
-    return `
-        <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200">
-            <div class="flex items-center gap-2 text-xs text-slate-600">
-                <label class="inline-flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
-                    <input type="checkbox" id="adminPushSelectAllBar" onchange="window.toggleAllAdminPushSelection(this.checked)" class="cursor-pointer" ${
-                        selectableCount === 0 ? 'disabled' : ''
-                    }>
-                    전체 선택
-                </label>
-                <span class="text-slate-400">·</span>
-                <span>선택 <span id="adminPushSelectedCount" class="font-extrabold text-violet-700 tabular-nums">${selectedCount}</span> / 취소가능 ${selectableCount}건</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
+    const selectableLabel = `선택가능 ${selectableCount}건`;
+    const upcomingBtns = isUpcoming
+        ? `
                 <button type="button" id="adminPushNewBtn" onclick="window.createAdminPushNewNotification()" class="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border text-violet-700 bg-violet-50 hover:bg-violet-100 border-violet-200 transition-colors">
                     <i class="fa-solid fa-plus mr-1" aria-hidden="true"></i>새알림
                 </button>
@@ -650,27 +674,61 @@ function buildAdminPushBulkBarHtml(rows) {
                         : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100'
                 }">
                     <i class="fa-solid fa-ban mr-1" aria-hidden="true"></i>선택 발송취소
+                </button>`
+        : '';
+    return `
+        <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-white border-b border-slate-200" data-bar-tab="${escapeAttr(tab)}">
+            <div class="flex items-center gap-2 text-xs text-slate-600">
+                <label class="inline-flex items-center gap-1.5 cursor-pointer font-bold text-slate-700">
+                    <input type="checkbox" id="adminPushSelectAllBar" onchange="window.toggleAllAdminPushSelection(this.checked)" class="cursor-pointer" title="이 페이지 전체 선택" ${
+                        selectableCount === 0 ? 'disabled' : ''
+                    }>
+                    이 페이지 전체 선택
+                </label>
+                <span class="text-slate-400">·</span>
+                <span>선택 <span id="adminPushSelectedCount" class="font-extrabold text-violet-700 tabular-nums">${selectedCount}</span> / ${escapeHtml(selectableLabel)}</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="adminPushAddToPoolBtn" onclick="window.bulkAddAdminPushToPool()" ${
+                    selectedCount === 0 ? 'disabled' : ''
+                } class="inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                    selectedCount === 0
+                        ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
+                        : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                }">
+                    <i class="fa-solid fa-layer-group mr-1" aria-hidden="true"></i><span id="adminPushAddToPoolLabel">풀에 담기</span>
                 </button>
+                ${upcomingBtns}
             </div>
         </div>`;
+}
+
+/** 버튼 활성/비활성 클래스를 한 곳에서 계산 */
+function applyAdminPushBarBtnState(btn, disabled, enabledClass) {
+    if (!btn) return;
+    btn.disabled = disabled;
+    btn.className = `inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+        disabled ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed' : enabledClass
+    }`;
 }
 
 /** 툴바는 유지하고 카운트·disabled만 갱신 (CTA 클릭 중 DOM 교체 방지) */
 function syncAdminPushBulkBar(rowsArg) {
     const bar = document.getElementById('adminPushBulkBar');
     if (!bar) return;
-    const showSelect = adminPushHistoryActiveTab === 'upcoming';
-    if (!showSelect) {
+    const tab = adminPushHistoryActiveTab;
+    if (tab === 'pool' || tab === 'rotation') {
         bar.classList.add('hidden');
         bar.innerHTML = '';
         return;
     }
-    const rows = rowsArg || adminPushHistoryRows.upcoming;
+    const rows = rowsArg || (tab === 'upcoming' ? adminPushHistoryRows.upcoming : adminPushHistoryRows.done);
     bar.classList.remove('hidden');
-    if (!bar.querySelector('#adminPushNewBtn')) {
-        bar.innerHTML = buildAdminPushBulkBarHtml(rows);
+    // 탭이 바뀌면 버튼 구성이 달라지므로 다시 그린다
+    if (bar.querySelector(`[data-bar-tab="${tab}"]`) === null) {
+        bar.innerHTML = buildAdminPushBulkBarHtml(rows, tab);
     }
-    const selectable = rows.filter(isAdminPushRowSelectable);
+    const selectable = rows.filter((r) => isAdminPushRowSelectable(r, tab));
     const selectedCount = adminPushSelectedIds.size;
     const draftCount = adminPushInlineDrafts.length;
     const allChecked = selectable.length > 0 && selectable.every((r) => adminPushSelectedIds.has(r.id));
@@ -681,30 +739,46 @@ function syncAdminPushBulkBar(rowsArg) {
     }
     const cntEl = document.getElementById('adminPushSelectedCount');
     if (cntEl) cntEl.textContent = String(selectedCount);
-    const cancelBtn = document.getElementById('adminPushBulkCancelBtn');
-    if (cancelBtn) {
-        const disabled = selectedCount === 0;
-        cancelBtn.disabled = disabled;
-        cancelBtn.className = `inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
-            disabled
-                ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
-                : 'text-red-600 bg-red-50 hover:bg-red-100 border-red-100'
-        }`;
-    }
-    const saveAllBtn = document.getElementById('adminPushSaveAllDraftsBtn');
+    applyAdminPushBarBtnState(
+        document.getElementById('adminPushAddToPoolBtn'),
+        selectedCount === 0,
+        'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+    );
+    applyAdminPushBarBtnState(
+        document.getElementById('adminPushBulkCancelBtn'),
+        selectedCount === 0,
+        'text-red-600 bg-red-50 hover:bg-red-100 border-red-100'
+    );
+    applyAdminPushBarBtnState(
+        document.getElementById('adminPushSaveAllDraftsBtn'),
+        draftCount === 0,
+        'text-white bg-violet-600 hover:bg-violet-700 border-violet-600'
+    );
     const saveAllLabel = document.getElementById('adminPushSaveAllDraftsLabel');
-    if (saveAllBtn) {
-        const disabled = draftCount === 0;
-        saveAllBtn.disabled = disabled;
-        saveAllBtn.className = `inline-flex items-center px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
-            disabled
-                ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
-                : 'text-white bg-violet-600 hover:bg-violet-700 border-violet-600'
-        }`;
-    }
     if (saveAllLabel) {
         saveAllLabel.textContent = draftCount ? `저장 (${draftCount})` : '저장';
     }
+}
+
+function buildAdminPushPagerHtml(tab) {
+    const st = adminPushPaging[tab];
+    const shown = adminPushHistoryRows[tab]?.length || 0;
+    if (st.page === 0 && !st.hasNext) return '';
+    const from = st.page * ADMIN_PUSH_PAGE_SIZE + 1;
+    const to = st.page * ADMIN_PUSH_PAGE_SIZE + shown;
+    const totalLabel = st.total == null ? '' : ` / ${st.total}`;
+    const btn = (target, label, disabled) =>
+        `<button type="button" ${disabled ? 'disabled' : ''} onclick="window.adminPushSetPage(${target})" class="px-2.5 py-1 text-xs font-bold rounded-md border transition-colors ${
+            disabled
+                ? 'text-slate-300 bg-slate-50 border-slate-100 cursor-not-allowed'
+                : 'text-slate-600 bg-white border-slate-200 hover:bg-slate-100'
+        }">${escapeHtml(label)}</button>`;
+    return `
+        <div class="flex items-center justify-center gap-2 px-3 py-2 border-t border-slate-200 bg-white">
+            ${btn(st.page - 1, '이전', st.page === 0)}
+            <span class="text-xs text-slate-500 tabular-nums">${from}–${to}${escapeHtml(totalLabel)}</span>
+            ${btn(st.page + 1, '다음', !st.hasNext)}
+        </div>`;
 }
 
 function renderAdminPushHistoryTableFromCache() {
@@ -713,36 +787,43 @@ function renderAdminPushHistoryTableFromCache() {
     const cntUpEl = document.getElementById('adminPushHistoryCountUpcoming');
     const cntDoneEl = document.getElementById('adminPushHistoryCountDone');
     if (!container) return;
-    const nUp = adminPushHistoryRows.upcoming.length;
-    const nDone = adminPushHistoryRows.done.length;
-    if (cntUpEl) cntUpEl.textContent = String(nUp);
-    if (cntDoneEl) cntDoneEl.textContent = String(nDone);
-    const showSelect = adminPushHistoryActiveTab === 'upcoming';
-    const rows = adminPushHistoryActiveTab === 'upcoming' ? adminPushHistoryRows.upcoming : adminPushHistoryRows.done;
-    if (showSelect) {
+    const totalUp = adminPushPaging.upcoming.total;
+    const totalDone = adminPushPaging.done.total;
+    if (cntUpEl) cntUpEl.textContent = totalUp == null ? '—' : String(totalUp);
+    if (cntDoneEl) cntDoneEl.textContent = totalDone == null ? '—' : String(totalDone);
+    syncAdminPushPaneVisibility();
+    if (adminPushHistoryActiveTab === 'pool') {
+        loadAdminPushPool();
+        return;
+    }
+    if (adminPushHistoryActiveTab === 'rotation') {
+        loadAdminPushRotation();
+        return;
+    }
+    const isUpcoming = adminPushHistoryActiveTab === 'upcoming';
+    // 발송완료 탭도 '풀에 담기'를 위해 선택이 필요하다
+    const showSelect = true;
+    const rows = isUpcoming ? adminPushHistoryRows.upcoming : adminPushHistoryRows.done;
+    if (isUpcoming) {
         const upcomingIds = new Set(rows.map((r) => r.id));
         adminPushInlineDrafts = adminPushInlineDrafts.filter(
             (d) => d.mode !== 'edit' || (d.jobId && upcomingIds.has(d.jobId))
         );
     }
-    const createDrafts = showSelect
+    const createDrafts = isUpcoming
         ? adminPushInlineDrafts.filter((d) => d.mode === 'create')
         : [];
     const createDraftHtml = createDrafts.map((d) => buildAdminPushInlineEditorRowHtml(d, true)).join('');
     const hasCreateDraft = createDrafts.length > 0;
     const hasEditDraft =
-        showSelect &&
+        isUpcoming &&
         adminPushInlineDrafts.some((d) => d.mode === 'edit' && rows.some((r) => r.id === d.jobId));
     const hasDraft = hasCreateDraft || hasEditDraft;
 
     // 현재 목록에 없는 선택 id 정리 (새로고침·탭 전환 후 잔존 방지)
-    if (showSelect) {
-        const validIds = new Set(rows.filter(isAdminPushRowSelectable).map((r) => r.id));
-        for (const id of [...adminPushSelectedIds]) {
-            if (!validIds.has(id)) adminPushSelectedIds.delete(id);
-        }
-    } else {
-        adminPushSelectedIds.clear();
+    const validIds = new Set(rows.filter((r) => isAdminPushRowSelectable(r)).map((r) => r.id));
+    for (const id of [...adminPushSelectedIds]) {
+        if (!validIds.has(id)) adminPushSelectedIds.delete(id);
     }
 
     syncAdminPushBulkBar(rows);
@@ -763,14 +844,19 @@ function renderAdminPushHistoryTableFromCache() {
             : '';
     container.innerHTML = `${emptyHint}<div class="overflow-x-auto">
                 <table class="w-full min-w-[960px] text-center border-collapse">${buildAdminPushHistoryThead(showSelect)}<tbody>${tbody}</tbody></table>
-            </div>`;
-    if (showSelect) syncAdminPushSelectAllCheckbox(rows);
+            </div>${buildAdminPushPagerHtml(isUpcoming ? 'upcoming' : 'done')}`;
+    syncAdminPushSelectAllCheckbox(rows);
+}
+
+/** 현재 탭이 보여주는 행 목록 */
+function currentAdminPushRows() {
+    return adminPushHistoryActiveTab === 'done' ? adminPushHistoryRows.done : adminPushHistoryRows.upcoming;
 }
 
 /** 선택 건수·전체선택 체크박스·버튼 상태 갱신 (재렌더 없이) */
 function syncAdminPushSelectAllCheckbox(rowsArg) {
-    const rows = rowsArg || adminPushHistoryRows.upcoming;
-    const selectable = rows.filter(isAdminPushRowSelectable);
+    const rows = rowsArg || currentAdminPushRows();
+    const selectable = rows.filter((r) => isAdminPushRowSelectable(r));
     const selectedCount = adminPushSelectedIds.size;
     const allChecked = selectable.length > 0 && selectable.every((r) => adminPushSelectedIds.has(r.id));
     const headCb = document.getElementById('adminPushSelectAll');
@@ -782,47 +868,134 @@ function syncAdminPushSelectAllCheckbox(rowsArg) {
     syncAdminPushBulkBar(rows);
 }
 
-async function refreshAdminScheduledPushesCore() {
+/** 한 화면에 읽어오는 행 수 — 전체를 통째로 읽으면 열 때마다 수백 건이 과금된다 */
+const ADMIN_PUSH_PAGE_SIZE = 25;
+/** 상태 전량 — ADMIN_SCHEDULED_PUSH_STATUS_LABELS 의 키와 정확히 짝을 이룬다 */
+const ADMIN_PUSH_UPCOMING_STATUSES = ['pending', 'sending'];
+const ADMIN_PUSH_DONE_STATUSES = ['sent', 'completed', 'failed', 'cancelled'];
+
+/**
+ * 탭별 커서 페이지네이션 상태.
+ * cursors[n] = n 페이지를 읽기 시작할 문서 (0페이지는 커서 없음)
+ */
+const adminPushPaging = {
+    upcoming: { page: 0, cursors: [null], hasNext: false, total: null },
+    done: { page: 0, cursors: [null], hasNext: false, total: null }
+};
+
+/** 새 작성 행의 기본 일시 계산용 — 목록 전체 대신 가장 늦은 예약 1건만 읽는다 */
+let adminPushLastUpcomingRow = null;
+
+function adminPushScheduledColl() {
+    return collection(db, 'artifacts', appId, 'adminScheduledPushes');
+}
+
+function adminPushTabStatuses(tab) {
+    return tab === 'done' ? ADMIN_PUSH_DONE_STATUSES : ADMIN_PUSH_UPCOMING_STATUSES;
+}
+
+/** 발송예정은 가까운 순, 발송완료는 최근 순 */
+function adminPushTabOrder(tab) {
+    return tab === 'done' ? 'desc' : 'asc';
+}
+
+/** 뱃지용 총 건수 — 1000건당 1회 읽기로 과금돼 목록 조회보다 훨씬 싸다 */
+async function fetchAdminPushTotal(tab) {
+    try {
+        const agg = await getCountFromServer(
+            query(adminPushScheduledColl(), where('status', 'in', adminPushTabStatuses(tab)))
+        );
+        return agg.data().count;
+    } catch (e) {
+        console.warn('발송 기록 건수 조회 실패:', e?.message || e);
+        return null;
+    }
+}
+
+/** 작성 행 기본값에 쓸 "가장 늦은 예약" 1건 */
+async function fetchLastUpcomingRow() {
+    try {
+        const snap = await getDocs(
+            query(
+                adminPushScheduledColl(),
+                where('status', 'in', ADMIN_PUSH_UPCOMING_STATUSES),
+                orderBy('scheduledAt', 'desc'),
+                limit(1)
+            )
+        );
+        return snap.empty ? null : { ...snap.docs[0].data(), id: snap.docs[0].id };
+    } catch (e) {
+        console.warn('마지막 예약 조회 실패:', e?.message || e);
+        return null;
+    }
+}
+
+/** 현재 탭의 한 페이지만 읽는다 */
+async function fetchAdminPushPage(tab, page) {
+    const st = adminPushPaging[tab];
+    const cursor = st.cursors[page] || null;
+    const parts = [
+        where('status', 'in', adminPushTabStatuses(tab)),
+        orderBy('scheduledAt', adminPushTabOrder(tab))
+    ];
+    if (cursor) parts.push(startAfter(cursor));
+    // 한 건 더 읽어 다음 페이지 유무를 판단한다
+    parts.push(limit(ADMIN_PUSH_PAGE_SIZE + 1));
+    const snap = await getDocs(query(adminPushScheduledColl(), ...parts));
+    const docs = snap.docs.slice(0, ADMIN_PUSH_PAGE_SIZE);
+    st.hasNext = snap.docs.length > ADMIN_PUSH_PAGE_SIZE;
+    st.page = page;
+    if (st.hasNext && docs.length > 0) {
+        st.cursors[page + 1] = docs[docs.length - 1];
+    }
+    return docs.map((d) => ({ ...d.data(), id: d.id }));
+}
+
+async function refreshAdminScheduledPushesCore({ resetPage = false } = {}) {
     const container = document.getElementById('adminScheduledPushesContainer');
     if (!container) return;
     ensureAdminPushHistoryTabHandlers();
     captureAdminPushInlineDraftsFromDom();
+    const tab = adminPushHistoryActiveTab === 'done' ? 'done' : 'upcoming';
+    if (resetPage) {
+        adminPushPaging[tab].page = 0;
+        adminPushPaging[tab].cursors = [null];
+    }
     // 목록만 로딩 표시 — 툴바(새알림 등 CTA)는 유지해 클릭이 끊기지 않게 함
-    container.innerHTML =
-        '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>불러오는 중…</p>';
+    if (adminPushHistoryActiveTab !== 'pool' && adminPushHistoryActiveTab !== 'rotation') {
+        container.innerHTML =
+            '<p class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2" aria-hidden="true"></i>불러오는 중…</p>';
+    }
     try {
-        const coll = collection(db, 'artifacts', appId, 'adminScheduledPushes');
-        const [snapMain, snapPending] = await Promise.all([
-            getDocs(query(coll, orderBy('scheduledAt', 'desc'), limit(350))),
-            getDocs(
-                query(
-                    coll,
-                    where('status', 'in', ['pending', 'sending']),
-                    orderBy('scheduledAt', 'asc'),
-                    limit(120)
-                )
-            )
+        // 보고 있는 탭만 읽는다. 반대편 탭은 그 탭을 열 때 읽는다.
+        const [rows, total] = await Promise.all([
+            fetchAdminPushPage(tab, adminPushPaging[tab].page),
+            fetchAdminPushTotal(tab)
         ]);
-        const mainRows = snapMain.docs.map((d) => ({ ...d.data(), id: d.id }));
-        const upcomingRows = snapPending.docs.map((d) => ({ ...d.data(), id: d.id }));
-        const doneRows = mainRows
-            .filter((r) => !['pending', 'sending'].includes(r.status || ''))
-            .sort((a, b) => completedHistorySortMs(b) - completedHistorySortMs(a));
-
-        adminPushHistoryRows = { upcoming: upcomingRows, done: doneRows };
-
-        if (snapMain.empty && snapPending.empty) {
-            adminPushHistoryRows = { upcoming: [], done: [] };
-            renderAdminPushHistoryTableFromCache();
-            return;
+        adminPushPaging[tab].total = total;
+        adminPushHistoryRows[tab] = rows;
+        if (tab === 'upcoming') {
+            adminPushLastUpcomingRow = await fetchLastUpcomingRow();
         }
-
         renderAdminPushHistoryTableFromCache();
     } catch (e) {
         console.error('예약 푸시 목록 실패:', e);
         container.innerHTML = `<p class="text-center py-8 text-red-400 text-sm px-4">목록을 불러오지 못했습니다. ${escapeHtml(e.message || '')}</p>`;
     }
 }
+
+/** 페이지 이동 — 커서를 이미 갖고 있으므로 해당 페이지만 읽는다 */
+window.adminPushSetPage = async function(page) {
+    const tab = adminPushHistoryActiveTab === 'done' ? 'done' : 'upcoming';
+    const st = adminPushPaging[tab];
+    const next = Number(page);
+    if (!Number.isInteger(next) || next < 0) return;
+    if (next > st.page && !st.hasNext) return;
+    if (next > 0 && !st.cursors[next]) return;
+    adminPushSelectedIds.clear();
+    st.page = next;
+    await refreshAdminScheduledPushesCore();
+};
 
 window.refreshAdminScheduledPushes = async function () {
     await runAdminRefreshAction(
@@ -875,9 +1048,9 @@ window.onAdminPushRowSelect = function(jobId, checked) {
     syncAdminPushSelectAllCheckbox();
 };
 
-/** 전체 선택/해제 (현재 발송예정 목록의 취소 가능한 행) */
+/** 전체 선택/해제 (현재 탭에서 선택 가능한 행) */
 window.toggleAllAdminPushSelection = function(checked) {
-    const selectable = adminPushHistoryRows.upcoming.filter(isAdminPushRowSelectable);
+    const selectable = currentAdminPushRows().filter((r) => isAdminPushRowSelectable(r));
     adminPushSelectedIds.clear();
     if (checked) selectable.forEach((r) => adminPushSelectedIds.add(r.id));
     // 행 체크박스 DOM 동기화 (재렌더 없이)
@@ -915,6 +1088,93 @@ window.bulkCancelAdminScheduledPushes = async function() {
     }
     await refreshAdminScheduledPushesCore();
     alert(`발송 취소 완료: ${ok}건${failed.length ? `, 실패: ${failed.length}건` : ''}`);
+};
+
+/** 순환 예약 1건을 덱에서 다시 뽑아 교체 */
+window.rerollAdminScheduledPush = async function(jobId) {
+    if (!jobId) return;
+    if (!auth.currentUser?.uid) {
+        alert('로그인이 필요합니다.');
+        return;
+    }
+    try {
+        const res = await rerollAdminScheduledPushFn({ jobId });
+        await refreshAdminScheduledPushesCore();
+        const t = String(res?.data?.title || '').trim();
+        alert(t ? `"${t}" 으로 교체했습니다.` : '다른 메시지로 교체했습니다.');
+    } catch (e) {
+        console.error('재추첨 실패:', e);
+        alert('재추첨 실패: ' + (e?.message || e));
+    }
+};
+
+/** 순환 설정 화면이 '다음 발송'을 계산할 때 쓴다 (중복 조회 방지) */
+window.getAdminPushUpcomingRows = function() {
+    return adminPushHistoryRows.upcoming;
+};
+
+/** 다른 탭에서 목록만 조용히 다시 읽을 때 */
+window.refreshAdminScheduledPushesQuiet = async function() {
+    await refreshAdminScheduledPushesCore();
+};
+
+/** 선택한 발송예정·발송완료 기록을 메시지 풀에 담기 */
+window.bulkAddAdminPushToPool = async function() {
+    const ids = [...adminPushSelectedIds];
+    if (ids.length === 0) {
+        alert('풀에 담을 항목을 선택해 주세요.');
+        return;
+    }
+    const btn = document.getElementById('adminPushAddToPoolBtn');
+    const label = document.getElementById('adminPushAddToPoolLabel');
+    if (btn) btn.disabled = true;
+    if (label) label.textContent = '담는 중…';
+    try {
+        const res = await importAdminPushHistoryToPool(ids);
+        if (!res) return;
+        adminPushSelectedIds.clear();
+        const skipped = [];
+        if (res.skippedDuplicate) skipped.push(`이미 있음 ${res.skippedDuplicate}건`);
+        if (res.skippedInvalid) skipped.push(`제외 ${res.skippedInvalid}건`);
+        alert(`풀에 담기 완료: ${res.imported}건${skipped.length ? ` (${skipped.join(', ')})` : ''}`);
+        renderAdminPushHistoryTableFromCache();
+    } catch (e) {
+        console.error('풀에 담기 실패:', e);
+        alert('풀에 담기 실패: ' + (e?.message || e));
+    } finally {
+        if (label) label.textContent = '풀에 담기';
+        syncAdminPushSelectAllCheckbox();
+    }
+};
+
+/**
+ * 메시지 풀에서 고른 메시지들로 발송예정 탭에 작성 행을 연다.
+ * 여러 건이면 앞 행 기준으로 하루씩 밀어 채운다. 등록 자체는 기존 인라인 저장 흐름을 그대로 탄다.
+ */
+window.createAdminPushDraftsFromPoolMessages = function(msgs) {
+    const list = (Array.isArray(msgs) ? msgs : [msgs]).filter(Boolean);
+    if (list.length === 0) return;
+    switchAdminPushHistoryTabUi('upcoming');
+    let firstKey = null;
+    for (const msg of list) {
+        // 방금 넣은 행까지 포함해 다음 날짜를 계산하므로 순서대로 하루씩 밀린다
+        const base = buildNextCreateDraftFields();
+        const draftKey = nextAdminPushDraftKey();
+        if (!firstKey) firstKey = draftKey;
+        adminPushInlineDrafts.push({
+            mode: 'create',
+            draftKey,
+            ...base,
+            title: String(msg.title || ''),
+            body: String(msg.body || ''),
+            landingTab: msg.landingTab || base.landingTab,
+            messageId: msg.messageId || null
+        });
+    }
+    afterAdminClick(() => {
+        renderAdminPushHistoryTableFromCache();
+        focusAdminPushInlineDraftRow(firstKey);
+    });
 };
 
 window.deleteAdminBroadcastHistory = async function(jobId) {
@@ -1074,7 +1334,9 @@ function validateAdminPushInlineDraft(d) {
             body: body.slice(0, ADMIN_BROADCAST_BODY_MAX),
             landingTab,
             targetEnv,
-            scheduledAtMs
+            scheduledAtMs,
+            // 풀에서 만든 예약이면 출처를 남겨 발송 후 사용 횟수를 집계한다
+            ...(d.messageId ? { messageId: d.messageId } : {})
         }
     };
 }

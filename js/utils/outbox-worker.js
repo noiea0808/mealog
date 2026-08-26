@@ -25,9 +25,12 @@ import {
     remove as outboxRemove,
     markAttempt,
     clearOriginals,
+    clearPermanent,
     expireInteractions,
     hydrateOutboxIndex,
+    isOutboxIndexReady,
     subscribeOutboxIndex,
+    pendingCountSync,
     outboxKey
 } from './outbox-store.js';
 import { getMealogFirestoreActivityAgeMs } from './network-activity.js';
@@ -329,18 +332,42 @@ export async function runOutboxCycle(reason = '') {
     return workerLease.run(async () => {
         const all = await listPending(uid);
         /**
+         * 큐를 **못 읽은 것**과 큐가 **빈 것**은 다르다.
+         *
+         * 예전에는 둘 다 `[]` 로 왔고, 그래서 3초 데드라인에 걸린 읽기가 「보낼 게 없다」로
+         * 둔갑했다. 그동안 배지에는 N 이 떠 있었고(배지는 메모리 인덱스를 본다) 사용자가
+         * FAB 을 눌러도 여기서 같은 빈 배열을 받아 아무 시도도 하지 않았다 — 항목이 앱을
+         * 다시 깔아도 사라지지 않는 상태가 이렇게 만들어진다.
+         *
+         * 못 읽었으면 아무 결론도 내리지 않고 다음 사이클에 넘긴다.
+         */
+        if (all === null) {
+            diag('worker.cycle.listFailed', { reason, indexed: pendingCountSync(uid) });
+            return { processed: 0, pending: pendingCountSync(uid), listFailed: true };
+        }
+        /**
          * 사용자가 재전송 버튼을 누른 것(`manual-resend`)만 백오프까지 무시한다.
          * 포그라운드 복귀(`poke`)는 사용자의 의사 표시가 아니므로 유예만 무시한다 —
          * 앱 전환을 반복할 때마다 큐 전체를 다시 밀면 그것대로 낭비다.
          */
         const userInitiated = reason === 'manual-resend';
         const ignoreGrace = userInitiated || reason === 'poke';
+        /**
+         * 영구 실패는 자동 경로에서만 거른다. 사용자가 직접 누른 재전송은 §4.4 가 말하는
+         * 「개입」 그 자체이므로 permanent 항목도 포함하고, 아래에서 표식을 풀어 준다.
+         * 그러지 않으면 permanent 는 빠져나올 길이 없는 종착 상태가 된다 — 게다가
+         * `permission-denied` 8회처럼 **원인이 일시적인데도** 굳는 경우가 있다.
+         */
         const due = all
-            .filter((e) => !e.permanent && dueNow(e, { ignoreGrace, ignoreBackoff: userInitiated }))
+            .filter((e) => (userInitiated || !e.permanent) && dueNow(e, { ignoreGrace, ignoreBackoff: userInitiated }))
             .slice(0, MAX_PER_CYCLE);
         if (due.length === 0) return { processed: 0, pending: all.length };
         diag('worker.cycle', { reason, pending: all.length, due: due.length });
         for (const entry of due) {
+            if (userInitiated && entry.permanent) {
+                await clearPermanent(entry.key);
+                entry.permanent = false;
+            }
             await withDeadlineOr(processEntry(entry), PER_ENTRY_TIMEOUT_MS, undefined, 'worker-entry');
             workerLease.renew(); // 진행 중임을 관측했을 때만 연장한다
         }
@@ -352,8 +379,14 @@ function tick() {
     void (async () => {
         const uid = auth.currentUser?.uid;
         if (!uid) return;
-        const pending = await listPending(uid);
-        if (pending.length === 0) return;
+        /**
+         * 「보낼 게 있나」는 **메모리 인덱스**에 묻는다. 예전에는 여기서 `listPending` 으로
+         * 스토어 전체를 읽었는데, 그건 6초마다 사진 Blob 까지 포함한 전 행을 역직렬화하는
+         * 일이었다. 그 읽기가 3초 데드라인에 걸리면 「없음」으로 읽혀 사이클이 통째로
+         * 건너뛰어졌고(실측 2026-08-21: `idb-tx:getAll:entries` 6회), 정작 부하를 만든 것도
+         * 이 폴링이었다. 인덱스는 배지가 이미 쓰는 단일 기준이므로 공짜로 같은 답을 준다.
+         */
+        if (pendingCountSync(uid) === 0) return;
         /**
          * 보낼 것이 있는데 채널이 조용하면 그 자체가 찔러야 할 이유다.
          * 보낼 것이 없으면 찌르지 않는다 — 멀쩡한 연결을 공회전시킬 뿐이다.
@@ -363,9 +396,12 @@ function tick() {
     })();
 }
 
-/** 사용자 조작·포그라운드 복귀 등 — 백오프를 무시하고 즉시 한 사이클 */
+/**
+ * 사용자 조작·포그라운드 복귀 등 — 백오프를 무시하고 즉시 한 사이클.
+ * @returns 사이클 결과. 리스를 못 잡았으면(이미 돌고 있음) undefined.
+ */
 export async function pokeOutboxWorker(reason = '') {
-    await runOutboxCycle(reason || 'poke');
+    return runOutboxCycle(reason || 'poke');
 }
 
 /**
@@ -412,6 +448,32 @@ async function notifyIndicators() {
     }
 }
 
+/** hydrate 재시도 백오프 — 스토리지 정체는 대개 몇 초면 풀린다 */
+const HYDRATE_RETRY_MS = [1000, 3000, 8000, 20000, 60000];
+
+/**
+ * 인덱스를 채운다. 읽기 실패면 물러섰다가 다시 — **포기하지 않는다.**
+ * 여기서 포기하면 그 세션 내내 아웃박스가 없는 것처럼 동작한다.
+ */
+async function hydrateWithRetry(attempt) {
+    let n = -1;
+    try {
+        n = await hydrateOutboxIndex();
+    } catch (_) {
+        n = -1;
+    }
+    if (n >= 0) {
+        void notifyIndicators();
+        return;
+    }
+    const delay = HYDRATE_RETRY_MS[Math.min(attempt, HYDRATE_RETRY_MS.length - 1)];
+    try {
+        setTimeout(() => void hydrateWithRetry(attempt + 1), delay);
+    } catch (_) {
+        /* 타이머조차 못 걸면 다음 포그라운드 복귀가 이어받는다 */
+    }
+}
+
 let registered = false;
 
 /** main.js 초기화 시 1회 */
@@ -422,10 +484,11 @@ export function registerOutboxWorker() {
     /**
      * 동기 인덱스를 먼저 채운다. 렌더가 「아직 안 올라감」을 동기로 물어보므로,
      * 채워지기 전에는 전부 synced 로 보인다 — hydrate 후 알림으로 바로잡는다.
+     *
+     * 실패(-1)하면 반드시 다시 시도해야 한다. 인덱스가 비어 있으면 배지가 0 으로 보일 뿐
+     * 아니라 `tick` 이 「보낼 게 없다」로 판단해 **워커 자체가 영영 안 돈다.**
      */
-    void hydrateOutboxIndex().then(() => {
-        void notifyIndicators();
-    });
+    void hydrateWithRetry(0);
 
     // 인덱스가 바뀌면 배지·타임라인 표시를 갱신한다 (표시의 단일 기준)
     subscribeOutboxIndex(() => void notifyIndicators());
@@ -440,6 +503,8 @@ export function registerOutboxWorker() {
             'visibilitychange',
             () => {
                 if (document.visibilityState !== 'visible') return;
+                // 부팅 때 인덱스를 못 채웠다면 여기가 다음 기회다 (스토리지 정체는 대개 지나간다)
+                if (!isOutboxIndexReady()) void hydrateWithRetry(0);
                 void pokeOutboxWorker('foreground');
                 void expireInteractions();
             },

@@ -144,9 +144,23 @@ export async function putMany(db, store, values) {
     return r !== null;
 }
 
-export async function getAll(db, store, count) {
+/**
+ * 실패를 **감추지 않는** 전체 읽기 — 읽지 못했으면 `null`.
+ *
+ * `getAll` 은 실패를 `[]` 로 뭉갠다. 대부분의 호출부에서는 그게 편하지만, 아웃박스처럼
+ * 「비었다」가 곧 「보낼 게 없다」로 해석되는 곳에서는 그 뭉개기가 유실로 이어진다 —
+ * 3초 데드라인에 걸린 읽기가 「큐가 비었음」으로 둔갑해 워커가 그대로 쉬어 버린다
+ * (실측 2026-08-21: `idb-tx:getAll:entries` 데드라인이 하루에 6회, 그동안 항목은 갇힘).
+ *
+ * @returns {Promise<Array|null>} null = 읽기 실패(모름). 빈 배열 = 정말로 비어 있음.
+ */
+export async function getAllOrNull(db, store, count) {
     const r = await tx(db, store, 'readonly', (s) => requestToPromise(count ? s.getAll(undefined, count) : s.getAll()), `getAll:${store}`);
-    return Array.isArray(r) ? r : [];
+    return Array.isArray(r) ? r : null;
+}
+
+export async function getAll(db, store, count) {
+    return (await getAllOrNull(db, store, count)) || [];
 }
 
 export async function get(db, store, key) {

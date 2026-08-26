@@ -3,9 +3,51 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { checkDeployConfig } = require('./verify-deploy-config.js');
 
 const root = path.join(__dirname, '..');
 const www = path.join(root, 'www');
+
+/**
+ * APK 에 실릴 js/config.js 안전 검사 — hosting predeploy 와 같은 검사를 앱 빌드에도 건다.
+ *
+ * 왜 여기인가: 아래 toCopy 가 js/ 를 통째로 복사하므로 로컬 js/config.js 가 그대로 APK 안에
+ * 들어간다. 그런데 검사는 firebase.json 의 hosting predeploy 에만 걸려 있었다. 정작 실제
+ * 배포 경로(플레이스토어)에는 아무 검사가 없어서, 디버그 토큰이 실린 채 스토어에 올라갈 수
+ * 있었다. 웹과 달리 앱은 되돌리려면 재심사를 받아야 한다.
+ *
+ * 복사를 시작하기 전에 멈춘다 — 반쯤 만들어진 www 를 남기지 않기 위해.
+ *
+ * 스테이징(appId ...*.staging)은 본인 기기 테스트용이라 경고만 하고 진행한다.
+ * 운영 빌드에서만 중단한다.
+ */
+function verifyConfigForAppBuild() {
+    let appId = '';
+    try {
+        appId = String(JSON.parse(fs.readFileSync(path.join(root, 'capacitor.config.json'), 'utf8')).appId || '');
+    } catch (_) {
+        /* 못 읽으면 판단 불가 — 엄격한 쪽(운영)으로 본다 */
+    }
+    const isStaging = appId.endsWith('.staging');
+    const { errors } = checkDeployConfig(undefined, {
+        allowEmptyDemoPassword: process.env.ALLOW_EMPTY_DEMO_PASSWORD === '1'
+    });
+    if (errors.length === 0) return;
+
+    const head = `js/config.js 가 앱에 그대로 실립니다 (appId: ${appId || '알 수 없음'})`;
+    if (isStaging) {
+        console.warn(`\n⚠️  ${head}`);
+        errors.forEach((e, i) => console.warn(` ${i + 1}. ${e}`));
+        console.warn('   스테이징 빌드라 계속 진행합니다. 운영 빌드에서는 중단됩니다.\n');
+        return;
+    }
+    console.error(`\n❌ 빌드 중단 — ${head}\n`);
+    errors.forEach((e, i) => console.error(` ${i + 1}. ${e}\n`));
+    console.error('   (이 검사는 scripts/copy-to-www.js 에 걸려 있습니다. hosting 배포와 같은 검사입니다.)\n');
+    process.exit(1);
+}
+
+verifyConfigForAppBuild();
 
 const toCopy = [
   'index.html',

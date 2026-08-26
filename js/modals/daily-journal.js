@@ -310,12 +310,27 @@ function ensureDailyJournalMetricsDelegation() {
         }
     });
 
+    /**
+     * 시각 칸 자동 포맷. **조합 중에는 손대지 않는다** — value 재대입이 IME 상태를 깨서
+     * 조합 글자가 안 보이는 증상이 나온다(커밋 e7acc4e). 위임이라 요소별 가드 대신
+     * 이벤트 단계에서 거른다: 조합이 끝나면 compositionend 가 같은 포맷을 한 번 돌린다.
+     */
+    const formatMetricTime = (t) => {
+        if (!t?.classList?.contains('daily-journal-metric-time')) return;
+        const formatted = formatMealClock12TextWhileTyping(t.value);
+        if (t.value !== formatted) t.value = formatted;
+    };
     modal.addEventListener('input', (e) => {
-        const t = e.target;
-        if (t?.classList?.contains('daily-journal-metric-time')) {
-            const formatted = formatMealClock12TextWhileTyping(t.value);
-            if (t.value !== formatted) t.value = formatted;
-        }
+        if (e.target?.dataset?.imeComposing === '1') return;
+        formatMetricTime(e.target);
+    });
+    modal.addEventListener('compositionstart', (e) => {
+        if (e.target instanceof HTMLElement) e.target.dataset.imeComposing = '1';
+    });
+    modal.addEventListener('compositionend', (e) => {
+        if (!(e.target instanceof HTMLElement)) return;
+        delete e.target.dataset.imeComposing;
+        formatMetricTime(e.target);
     });
 
     modal.addEventListener('click', (e) => {
