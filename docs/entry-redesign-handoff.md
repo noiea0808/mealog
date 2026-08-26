@@ -153,6 +153,24 @@ firebase functions:delete classifyUncategorizedMeals --region us-central1
 - 기기에는 스테이징 APK `1.0.43_3`(versionCode 592)이 설치돼 있습니다.
   단 **`b5c1dc1`(간식 요리 종류 면제) 이전 빌드**라, 최신으로 보려면 다시 설치해야 합니다:
   `npm run cap:install:staging`
+- **2026-08-26 추가 배포** (운영 `mealog-r0`, us-central1) — 선택 배포:
+  `logUsageMetric` · `adminWelcomeGeminiComment` · `adminWelcomeStreakUsers` ·
+  `regenerateDietReport` · `scheduledDailyDietAnalysis`.
+  두 가지를 고쳤습니다.
+  - `USAGE_DAILY_METRIC_KEYS` 에 개편 계측 21종이 빠져 있어 Callable 이 전부
+    invalid-argument 로 거절하고 있었습니다. 8/12~26 사이 계측이 **0건**입니다.
+    호출부·대시보드 정의·서버 화이트리스트 셋의 일치를 테스트로 묶었습니다
+    ([usage-metric-keys-sync.test.mjs](../test/usage-metric-keys-sync.test.mjs)).
+  - 식단분석이 `category` 만 읽어, 제안을 확정하지 않고 저장한 기록의 '무엇을'이
+    프롬프트에서 통째로 빠졌습니다. 개편으로 그게 기본 동선이 되면서 8/23 주 기준
+    **확정 10% / 자동만 55%** 입니다. 서버에도 확정값 우선·없으면 `categoryAuto`
+    규칙을 넣고, 캐시 지문에 `categoryAuto` 를 포함시켰습니다(안 넣으면 분류가 빠진
+    옛 리포트가 계속 나갑니다).
+  - ⚠️ 지문이 바뀌어 **다음 요청부터 리포트가 새로 생성**됩니다. 사용자가 열 때
+    하나씩이라 몰리지는 않지만 Gemini 호출이 한 차례 늘어납니다.
+- ⚠️ **시트 완주율 계측(`entry_sheet_*`)은 클라이언트 미배포** — 서버 화이트리스트에는
+  이미 올라가 있으므로, 앱/웹을 배포하는 순간부터 쌓입니다
+  ([entry-sheet-session.js](../js/modals/entry-sheet-session.js)).
 - **categoryAuto 축 혼재는 읽기 매핑으로 흡수**합니다
   ([food-form-normalize.js](../js/utils/food-form-normalize.js), place-normalize 와 같은 패턴).
   서버가 시점마다 다른 축으로 채웠고 `categorySource` 가 찍히면 재분류되지 않아 저절로
