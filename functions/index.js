@@ -8666,8 +8666,20 @@ exports.adminBackfillDailyJournalMirrors = onCall(
     /** js/utils/daily-journal-data.js 의 normalize·hasContent 와 같은 기준 */
     const toEntry = (raw) => {
       if (raw == null || raw === '') return null;
+      // 구형 소감은 문자열 하나로만 저장돼 있다 — 나머지 필드를 비워 두면 set() 이 undefined 로 거부한다
       if (typeof raw === 'string') {
-        return raw.trim() ? { comment: raw, photos: [], sharedPhotos: [], recordedAt: '' } : null;
+        if (!raw.trim()) return null;
+        return {
+          comment: raw,
+          photos: [],
+          sharedPhotos: [],
+          photoAspectRatio: '1:1',
+          weightEnabled: false,
+          bloodSugarEnabled: false,
+          weightRecords: [],
+          bloodSugarRecords: [],
+          recordedAt: ''
+        };
       }
       if (typeof raw !== 'object') return null;
       return {
@@ -8719,7 +8731,8 @@ exports.adminBackfillDailyJournalMirrors = onCall(
         candidates++;
         if (dryRun || written >= maxWrites) continue;
         const ref = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/dailyJournal_${dk}`);
-        await ref.set({
+        // 옛 문서에는 어떤 모양이 섞여 있을지 모른다 — undefined 가 하나라도 있으면 set 이 통째로 거부된다
+        const payload = {
           date: dk,
           time: mealTimeOf(entry.recordedAt),
           slotId: 'daily_journal',
@@ -8734,7 +8747,11 @@ exports.adminBackfillDailyJournalMirrors = onCall(
           // 시각을 모르는 옛 기록은 그 날짜 자정으로 둔다 — 없는 값을 지어내지 않는다
           recordedAt: entry.recordedAt || `${dk}T00:00:00.000Z`,
           mirrorBackfilledAt: FieldValue.serverTimestamp()
-        });
+        };
+        for (const k of Object.keys(payload)) {
+          if (payload[k] === undefined) delete payload[k];
+        }
+        await ref.set(payload);
         written++;
       }
     }
