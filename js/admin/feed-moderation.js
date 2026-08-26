@@ -939,8 +939,28 @@ async function getReportsAggregateCached() {
 }
 
 
-/** Firestore: recordedAt 필드 미보정 구문서는 슬롯(date+time)으로만 가져옴. 1: date+time · 2: date만(인덱스 폴백) */
-let mealsAdminMealsQueryMode = 1;
+/**
+ * 모먼트 목록 정렬 모드.
+ *
+ * 1(정상): `recordedAt` — **적은 순서**다. 사용자가 며칠 전 끼니를 오늘 몰아 적으면
+ *   그 기록들은 오늘 자리에 뜬다. 식사 날짜로 세우면 과거로 흩어져, 모니터링에서
+ *   "방금 뭐가 들어왔나"를 볼 수 없다.
+ *
+ * 2·3은 인덱스가 없을 때만 쓰는 폴백이다. 예전에는 `recordedAt` 이 없는 구문서가 있어
+ * 이 필드로 정렬하면 그것들이 결과에서 통째로 빠졌는데, 2026-08-26 백필로 전 문서가 값을 갖는다.
+ */
+const MEALS_FEED_SORT_MODE_RECORDED_AT = 1;
+let mealsAdminMealsQueryMode = MEALS_FEED_SORT_MODE_RECORDED_AT;
+
+/** 폴백 경고 메시지용 라벨 (인덱스 1~3) */
+const FEED_SORT_MODE_LABELS = { 1: 'recordedAt(기록 시각)', 2: 'date+time(슬롯 일시)', 3: 'date(슬롯일)' };
+
+/** 현재 모드의 Firestore orderBy 절 */
+function feedMealsOrderParts() {
+    if (mealsAdminMealsQueryMode === MEALS_FEED_SORT_MODE_RECORDED_AT) return [orderBy('recordedAt', 'desc')];
+    if (mealsAdminMealsQueryMode === 2) return [orderBy('date', 'desc'), orderBy('time', 'desc')];
+    return [orderBy('date', 'desc')];
+}
 
 function feedQueryCacheKey(page) {
     const author = feedAuthorFilter?.userId?.trim() || '';
@@ -1250,10 +1270,7 @@ async function getFeedPage(options = {}) {
         ? collection(db, 'artifacts', appId, 'users', authorUid, 'meals')
         : collectionGroup(db, 'meals');
 
-    const orderParts =
-        mealsAdminMealsQueryMode === 1
-            ? [orderBy('date', 'desc'), orderBy('time', 'desc')]
-            : [orderBy('date', 'desc')];
+    const orderParts = feedMealsOrderParts();
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
@@ -1334,12 +1351,14 @@ async function getFeedPage(options = {}) {
 
         return { items, totalCount: feedTotalCount, hasMore: feedLastPageHasMore };
     } catch (e) {
-        if (page === 1 && e?.code === 'failed-precondition' && mealsAdminMealsQueryMode === 1) {
+        if (page === 1 && e?.code === 'failed-precondition' && mealsAdminMealsQueryMode < 3) {
+            const next = mealsAdminMealsQueryMode + 1;
             console.warn(
-                '관리자 모먼트 피드: date+time 복합 인덱스가 없어 date(슬롯일)만 사용합니다.',
+                `관리자 모먼트 피드: ${FEED_SORT_MODE_LABELS[mealsAdminMealsQueryMode]} 인덱스가 없어 ` +
+                    `${FEED_SORT_MODE_LABELS[next]}(으)로 내려갑니다. 배포: firebase deploy --only firestore:indexes`,
                 e?.message || e
             );
-            mealsAdminMealsQueryMode = 2;
+            mealsAdminMealsQueryMode = next;
             feedLastDocsByPage = {};
             feedQueryCache.clear();
             return getFeedPage(options);
@@ -2007,7 +2026,7 @@ window.refreshFeedManagement = async function () {
         feedCurrentPage = 1;
         feedLastDocsByPage = {};
         feedTotalCount = 0;
-        mealsAdminMealsQueryMode = 1;
+        mealsAdminMealsQueryMode = MEALS_FEED_SORT_MODE_RECORDED_AT;
         await renderFeedManagement();
     });
 };
@@ -3226,10 +3245,10 @@ window.openAdminFeedPhotoViewer = function (urls, startIndex = 0) {
     updateAdminFeedPhotoViewer();
 };
 
-/** 모니터링에서 '모먼트' 탭으로 들어올 때: date-only 폴백(2) 쓰던 경우 date+time(1)으로 한 번 복구 시도 */
+/** 모니터링에서 '모먼트' 탭으로 들어올 때: 폴백(2·3)으로 내려가 있었으면 recordedAt(1) 복구를 한 번 시도 */
 export function refreshAdminMealsFeedSortMode() {
-    if (mealsAdminMealsQueryMode === 2) {
-        mealsAdminMealsQueryMode = 1;
+    if (mealsAdminMealsQueryMode !== MEALS_FEED_SORT_MODE_RECORDED_AT) {
+        mealsAdminMealsQueryMode = MEALS_FEED_SORT_MODE_RECORDED_AT;
         feedLastDocsByPage = {};
         feedCurrentPage = 1;
     }
