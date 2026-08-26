@@ -16,10 +16,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { SLOTS } from '../js/constants.js';
 
-const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const fnSrc = readFileSync(new URL('../functions/index.js', import.meta.url), 'utf8');
 
 /** functions/index.js 에서 조각을 떼어 실제로 실행 가능한 함수로 만든다 */
