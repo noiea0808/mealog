@@ -566,5 +566,14 @@ service cloud.firestore {
     match /{path=**}/meals/{mealId} {
       allow read: if isAdmin();
     }
+
+    // ============================================
+    // Collection group 'config' — 관리자 대시보드의 하루 소감(dailyComments) 집계용
+    // 위쪽 users/{userId}/config 규칙은 경로가 고정돼 있어 collection group 쿼리에는
+    // 적용되지 않는다. 이게 없어서 하루 소감 집계가 permission-denied 로 실패해 왔다.
+    // ============================================
+    match /{path=**}/config/{configId} {
+      allow read: if isAdmin();
+    }
   }
 }

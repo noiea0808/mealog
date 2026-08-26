@@ -1540,6 +1540,12 @@ export async function getUserStatistics(options = {}) {
         let dailyJournalToday = 0;
         let dailyJournalLast7 = 0;
         /**
+         * config 스캔이 하루 소감을 실제로 세었는지.
+         * 실패하면(권한·인덱스) 미러가 하루 소감의 **유일한** 출처가 되므로,
+         * 아래에서 미러를 빼면 그만큼 통째로 증발한다. 그 경우엔 빼지 않는다.
+         */
+        let journalCountedFromConfig = false;
+        /**
          * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
          * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
          */
@@ -1686,9 +1692,13 @@ export async function getUserStatistics(options = {}) {
                     }
                 }
             });
+            journalCountedFromConfig = true;
         } catch (djErr) {
             if (djErr?.code !== 'skip-config-scan') {
-                console.warn('⚠️ 하루 기록(dailyComments) 집계 실패:', djErr?.code || djErr?.message || djErr);
+                console.warn(
+                    '⚠️ 하루 기록(dailyComments) 집계 실패 — 미러만으로 셉니다:',
+                    djErr?.code || djErr?.message || djErr
+                );
             }
         }
         stats.dailyJournal.all = dailyJournalAll;
@@ -1700,7 +1710,14 @@ export async function getUserStatistics(options = {}) {
          * meals 전량 count 에 섞여 있는 미러 문서 수를 통째로 덜어내고 dailyComments 전량을 얹는다.
          */
         const journalMirrorAll = Math.max(0, slotAllArr[JOURNAL_MIRROR_COUNT_INDEX] ?? 0);
-        stats.records.all = Math.max(0, recordsAllCount - journalMirrorAll) + dailyJournalAll;
+        /**
+         * 하루 소감은 config 와 meals 미러 양쪽에 있어 그냥 더하면 두 번 세어진다.
+         * 그래서 미러를 덜어내고 config 쪽을 얹는데 — **config 를 못 읽었다면 얘기가 다르다.**
+         * 그때는 미러가 유일한 출처라 덜어내면 그대로 사라진다.
+         */
+        stats.records.all = journalCountedFromConfig
+            ? Math.max(0, recordsAllCount - journalMirrorAll) + dailyJournalAll
+            : recordsAllCount;
         stats.records.today = recordsToday + dailyJournalUnmirroredToday;
         stats.records.last7 = recordsLast7 + dailyJournalUnmirroredLast7;
         for (let di = 0; di < 7; di++) {
