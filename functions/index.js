@@ -8618,6 +8618,132 @@ exports.regenerateDietReport = onCall(
 const classifyMoments = require('./classifyMoments.js');
 
 /** 6시간마다: 최근 7일 미분류 기록을 최대 100건 배치 분류 */
+/**
+ * 하루 소감 meals 미러 백필 — 관리자 전용, 수동 1회성.
+ *
+ * 관리자 화면에서는 이 일을 할 수 없다. 규칙상 `users/{uid}/meals` 는 **본인만** 쓸 수 있어서
+ * 클라이언트 백필은 늘 permission-denied 로 끝났다. 규칙을 열어 관리자 쓰기를 허용하는 대신
+ * admin SDK 로 처리한다.
+ *
+ * 미러가 생기기 시작한 것은 2026-06-10 이고, 그 이전 소감은 dailyComments 에만 있다.
+ * 모먼트 관리 목록이 미러를 정본으로 삼게 되면서 옛 소감이 목록에서 빠지므로 한 번 메워 준다.
+ */
+exports.adminBackfillDailyJournalMirrors = onCall(
+  { region: REGION, timeoutSeconds: 540, memory: '512MiB' },
+  async (request) => {
+    const callerUid = request.auth?.uid;
+    if (!callerUid) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+    if (!(await isAdminByUid(callerUid))) throw new HttpsError('permission-denied', '관리자만 실행할 수 있습니다.');
+
+    const dryRun = request.data?.dryRun === true;
+    const maxWrites = Math.min(Number(request.data?.maxWrites) || 500, 2000);
+
+    /** 이미 미러가 있는 `uid|date` — 한 번에 모아 두면 건마다 확인하지 않아도 된다 */
+    const existing = new Set();
+    const mirrorSnap = await db.collectionGroup('meals').where('slotId', '==', 'daily_journal').get();
+    mirrorSnap.forEach((d) => {
+      const segs = d.ref.path.split('/');
+      const ui = segs.indexOf('users');
+      const uid = ui >= 0 ? segs[ui + 1] : '';
+      const date = String(d.data()?.date || '').trim();
+      if (uid && date) existing.add(`${uid}|${date}`);
+    });
+
+    const normalizeIso = (raw) => {
+      if (raw == null) return '';
+      if (typeof raw === 'string') {
+        const t = Date.parse(raw.trim());
+        return Number.isFinite(t) ? new Date(t).toISOString() : '';
+      }
+      if (typeof raw.toDate === 'function') {
+        const d = raw.toDate();
+        return d && Number.isFinite(d.getTime()) ? d.toISOString() : '';
+      }
+      if (typeof raw.seconds === 'number') return new Date(raw.seconds * 1000).toISOString();
+      return '';
+    };
+
+    /** js/utils/daily-journal-data.js 의 normalize·hasContent 와 같은 기준 */
+    const toEntry = (raw) => {
+      if (raw == null || raw === '') return null;
+      if (typeof raw === 'string') {
+        return raw.trim() ? { comment: raw, photos: [], sharedPhotos: [], recordedAt: '' } : null;
+      }
+      if (typeof raw !== 'object') return null;
+      return {
+        comment: String(raw.comment || ''),
+        photos: Array.isArray(raw.photos) ? raw.photos.filter(Boolean) : [],
+        sharedPhotos: Array.isArray(raw.sharedPhotos) ? raw.sharedPhotos.filter(Boolean) : [],
+        photoAspectRatio: raw.photoAspectRatio || '1:1',
+        weightEnabled: raw.weightEnabled === true,
+        bloodSugarEnabled: raw.bloodSugarEnabled === true,
+        weightRecords: Array.isArray(raw.weightRecords) ? raw.weightRecords : [],
+        bloodSugarRecords: Array.isArray(raw.bloodSugarRecords) ? raw.bloodSugarRecords : [],
+        recordedAt: normalizeIso(raw.recordedAt)
+      };
+    };
+    const hasContent = (e) =>
+      !!e &&
+      (String(e.comment || '').trim() !== '' ||
+        (e.photos && e.photos.length > 0) ||
+        (e.weightEnabled && (e.weightRecords || []).length > 0) ||
+        (e.bloodSugarEnabled && (e.bloodSugarRecords || []).length > 0));
+
+    /** recordedAt 이 없으면 시각을 모른다 — 23:59 로 밀어 넣지 않고 자정으로 둔다 */
+    const mealTimeOf = (iso) => {
+      if (!iso) return '00:00';
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return '00:00';
+      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+
+    let scanned = 0;
+    let candidates = 0;
+    let written = 0;
+    const configSnap = await db.collectionGroup('config').get();
+    for (const docSnap of configSnap.docs) {
+      if (docSnap.id !== 'settings') continue;
+      const segs = docSnap.ref.path.split('/');
+      const ui = segs.indexOf('users');
+      const uid = ui >= 0 ? segs[ui + 1] : '';
+      if (!uid) continue;
+      const dc = docSnap.data()?.dailyComments;
+      if (!dc || typeof dc !== 'object') continue;
+      for (const [dateStr, raw] of Object.entries(dc)) {
+        const dk = String(dateStr || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+        scanned++;
+        if (existing.has(`${uid}|${dk}`)) continue;
+        const entry = toEntry(raw);
+        if (!hasContent(entry)) continue;
+        candidates++;
+        if (dryRun || written >= maxWrites) continue;
+        const ref = db.doc(`artifacts/${APP_ID}/users/${uid}/meals/dailyJournal_${dk}`);
+        await ref.set({
+          date: dk,
+          time: mealTimeOf(entry.recordedAt),
+          slotId: 'daily_journal',
+          comment: entry.comment,
+          photos: entry.photos,
+          sharedPhotos: entry.sharedPhotos,
+          photoAspectRatio: entry.photoAspectRatio,
+          weightEnabled: entry.weightEnabled,
+          bloodSugarEnabled: entry.bloodSugarEnabled,
+          weightRecords: entry.weightRecords,
+          bloodSugarRecords: entry.bloodSugarRecords,
+          // 시각을 모르는 옛 기록은 그 날짜 자정으로 둔다 — 없는 값을 지어내지 않는다
+          recordedAt: entry.recordedAt || `${dk}T00:00:00.000Z`,
+          mirrorBackfilledAt: FieldValue.serverTimestamp()
+        });
+        written++;
+      }
+    }
+
+    logger.info('adminBackfillDailyJournalMirrors', { scanned, candidates, written, dryRun, existing: existing.size });
+    return { ok: true, scanned, candidates, written, alreadyMirrored: existing.size, dryRun };
+  }
+);
+
 exports.classifyUncategorizedMeals = onSchedule(
   {
     schedule: '0 */6 * * *',

@@ -1,7 +1,8 @@
 /**
  * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
  */
-import { db, appId, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { db, appId, functions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
@@ -15,7 +16,6 @@ import {
     formatMetricRecordChain,
     getDailyJournalShareEntryId,
     getDailyJournalMealDocId,
-    dailyJournalEntryToMealDocument,
     dailyJournalMealDocToModerationFields,
     isDailyJournalMealRecord,
     recordedAtIsoToMealTime
@@ -34,7 +34,6 @@ import {
     where,
     writeBatch,
     deleteDoc,
-    setDoc,
     Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 
@@ -494,39 +493,6 @@ async function fetchDailyJournalSlotsFromMealMirrors(excluded, rowLimit) {
     return rows.length > rowLimit ? rows.slice(0, rowLimit) : rows;
 }
 
-async function fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded) {
-    const slotByKey = new Map();
-    let settingsDocs = 0;
-    let paginationComplete = true;
-    const configGroup = collectionGroup(db, 'config');
-    const pageSize = 400;
-    const maxPages = 80;
-    let lastDoc = null;
-    for (let page = 0; page < maxPages; page++) {
-        const q = lastDoc
-            ? query(configGroup, startAfter(lastDoc), limit(pageSize))
-            : query(configGroup, limit(pageSize));
-        const snap = await getDocs(q);
-        if (!snap.docs.length) break;
-        const batchRows = [];
-        snap.forEach((docSnap) => {
-            if (docSnap.id !== 'settings') return;
-            settingsDocs++;
-            const uid = userIdFromSettingsDocRef(docSnap.ref);
-            if (!uid || excluded.has(uid)) return;
-            batchRows.push(...settingsDocToDailyJournalRows(docSnap));
-        });
-        mergeDailyJournalSlotRowsIntoMap(slotByKey, batchRows);
-        lastDoc = snap.docs[snap.docs.length - 1];
-        if (snap.docs.length < pageSize) break;
-        if (slotByKey.size >= ADMIN_DAILY_JOURNAL_ROWS_CAP * 2) break;
-        if (page === maxPages - 1 && snap.docs.length === pageSize) {
-            paginationComplete = false;
-        }
-    }
-    return { slotByKey, settingsDocs, paginationComplete };
-}
-
 /**
  * 작성자 필터: 단일 사용자 settings + scoped sharedPhotos만 조회
  */
@@ -617,41 +583,6 @@ async function fetchDailyJournalsForModeration(authorUid = '') {
         );
     }
     return capped;
-}
-
-/** settings-only 하루기록 → meals 미러(식사·간식과 동일 형식) — 관리자 새로고침 시 누락분 보강 */
-async function backfillDailyJournalMealMirrors(rows, maxWrites = 150) {
-    if (!Array.isArray(rows) || rows.length === 0) return;
-    let written = 0;
-    const candidates = rows.filter((r) => r?.isDailyJournalSlot && r.userId && r.date);
-    for (const r of candidates) {
-        if (written >= maxWrites) break;
-        const entry = r.dailyJournalEntry || r;
-        if (!dailyJournalHasContent(entry)) continue;
-        const mealId = getDailyJournalMealDocId(r.date);
-        if (!mealId) continue;
-        const mealRef = doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId);
-        try {
-            const ex = await getDoc(mealRef);
-            if (ex.exists()) continue;
-            const mealDoc = dailyJournalEntryToMealDocument(r.date, entry);
-            const prevRecorded = mealDoc.recordedAt;
-            delete mealDoc.id;
-            if (!prevRecorded) mealDoc.recordedAt = new Date().toISOString();
-            await setDoc(mealRef, mealDoc);
-            written++;
-        } catch (e) {
-            console.warn(
-                '[관리자 모먼트] 하루기록 meals 미러 백필 실패',
-                r.userId,
-                r.date,
-                e?.code || e?.message || e
-            );
-        }
-    }
-    if (written > 0) {
-        console.log(`[관리자 모먼트] 하루기록 meals 미러 백필 ${written}건 (최대 ${maxWrites})`);
-    }
 }
 
 /**
@@ -2082,16 +2013,17 @@ window.refreshFeedManagement = async function () {
 };
 
 /** 하루기록 meals 미러 백필 — 조회 경로와 분리된 수동 액션 (콘솔·스크립트용) */
-window.adminBackfillDailyJournalMealMirrors = async function () {
+window.adminBackfillDailyJournalMealMirrors = async function (options = {}) {
     /**
-     * 목록은 미러만 보므로 여기에 쓸 수 없다 — 미러가 **없는** 소감을 찾는 일이라
-     * settings 를 직접 훑어야 한다. 수동 액션이라 느려도 괜찮다.
+     * 서버에 맡긴다. 규칙상 `users/{uid}/meals` 는 **본인만** 쓸 수 있어서, 관리자 화면에서
+     * 남의 미러를 만들려 하면 늘 permission-denied 였다. admin SDK 는 규칙을 우회한다.
+     *
+     * `{ dryRun: true }` 로 먼저 대상 건수만 세어 볼 수 있다.
      */
-    const excluded = await getExcludedAnalyticsUidSet();
-    const cg = await fetchDailyJournalSlotsFromSettingsCollectionGroup(excluded);
-    const rows = [...cg.slotByKey.values()];
-    console.log(`[관리자 모먼트] 미러 백필 대상 검사 ${rows.length}건 (settings 문서 ${cg.settingsDocs}개)`);
-    await backfillDailyJournalMealMirrors(rows);
+    const fn = httpsCallable(functions, 'adminBackfillDailyJournalMirrors');
+    const res = await fn({ dryRun: options?.dryRun === true, maxWrites: options?.maxWrites });
+    console.log('[관리자 모먼트] 하루기록 미러 백필 결과:', res?.data);
+    return res?.data;
 };
 
 // 신고 상세 팝업 (사유별 건수)
