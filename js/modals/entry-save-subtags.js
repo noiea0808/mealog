@@ -4,7 +4,6 @@
  */
 import { DEFAULT_SUB_TAGS } from '../constants.js';
 import { dbOps } from '../db.js';
-import { isWhatAxisUnified } from '../utils/food-axis-subtags.js';
 
 // 설정 저장 디바운싱을 위한 타이머
 let settingsSaveTimeout = null;
@@ -67,7 +66,6 @@ export function buildSettingsWithRememberedSubTags(currentSettings, form, resolv
     if (!settings.subTags.place) settings.subTags.place = [];
     if (!settings.subTags.menu) settings.subTags.menu = [];
     if (!settings.subTags.people) settings.subTags.people = [];
-    if (!settings.subTags.snack) settings.subTags.snack = [];
 
     let changed = false;
     // 장소·메뉴·누구와·간식: 쉼표로 구분된 항목을 최근 태그에 각각 기억
@@ -86,27 +84,16 @@ export function buildSettingsWithRememberedSubTags(currentSettings, form, resolv
         }
     }
     /**
-     * '무엇을' 축이 통합된 계정은 menu 한 곳에만 기억한다.
+     * '무엇을'은 끼니·간식이 같은 형태 축을 쓰므로 menu 한 곳에만 기억한다.
      *
      * 갈라 두면 같은 형태 칩인데 끼니에서 적은 것과 간식에서 적은 것이 서로 안 보인다.
-     * 옛 데이터는 옮기지 않고 읽을 때 합친다 (js/utils/food-axis-subtags.js).
-     *
-     * 통합 전 경로는 그대로 둔다 — 다만 간식일 때 categoryResolved 가 항상 빈 값이라
-     * menu 쪽에는 부모 없는 항목이 쌓였다. 통합 후에는 형태 값이 부모로 붙는다.
+     * 옛 `subTags.snack` 잔여 값은 옮기지 않는다 — 읽는 쪽이 이미 이력 빈도를 본다
+     * (js/utils/frequent-subtags.js).
      */
     if (whatInputVal) {
-        if (isWhatAxisUnified()) {
-            const whatParent = (isS ? snackTypeResolved : categoryResolved) || '';
-            if (rememberCommaSeparatedSubTags(settings.subTags.menu, whatInputVal, whatParent)) {
-                changed = true;
-            }
-        } else {
-            if (rememberCommaSeparatedSubTags(settings.subTags.menu, whatInputVal, categoryResolved)) {
-                changed = true;
-            }
-            if (isS && rememberCommaSeparatedSubTags(settings.subTags.snack, whatInputVal, snackTypeResolved)) {
-                changed = true;
-            }
+        const whatParent = (isS ? snackTypeResolved : categoryResolved) || '';
+        if (rememberCommaSeparatedSubTags(settings.subTags.menu, whatInputVal, whatParent)) {
+            changed = true;
         }
     }
     if (withInputVal) {

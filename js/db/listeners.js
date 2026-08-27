@@ -7,8 +7,7 @@ import { hideLoading, isLikelyNetworkError } from '../ui.js';
 import { noteNetworkTransportFailure } from '../utils/network-reachability.js';
 import { markMealogFirestoreActivity } from '../utils/network-activity.js';
 import { isDemoUser } from '../demo-account.js';
-import { setFoodDictionaryOverrides, FORM_CATEGORIES } from '../utils/food-dictionary.js';
-import { setFormAxisPilotUids, isFormAxisPilot } from '../utils/form-axis-pilot.js';
+import { setFoodDictionaryOverrides } from '../utils/food-dictionary.js';
 import {
     applyDemoDateShiftToDailyComments,
     applyDemoDateShiftToDailyStats,
@@ -220,24 +219,12 @@ export function setupListeners(userId, callbacks) {
                     }
                 };
 
-                /**
-                 * 관리자 태그를 개인 설정 위에 덮는다.
-                 *
-                 * '무엇을'(category · snackType)만 예외가 있다 — 형태 축 파일럿 계정은
-                 * 관리자 문서(아직 옛 축)를 무시하고 코드의 형태 축을 쓴다.
-                 * 임시 장치이고 전환일에 제거한다 (js/utils/form-axis-pilot.js).
-                 */
+                /** 관리자 태그를 개인 설정 위에 덮는다. */
                 const applyAdminTags = (t) => {
                     if (t.mealType?.length) window.userSettings.tags.mealType = [...t.mealType];
                     if (t.withWhom?.length) window.userSettings.tags.withWhom = [...t.withWhom];
-                    setFormAxisPilotUids(t.formAxisPilotUids);
-                    if (isFormAxisPilot()) {
-                        window.userSettings.tags.category = [...FORM_CATEGORIES];
-                        window.userSettings.tags.snackType = [...FORM_CATEGORIES];
-                    } else {
-                        if (t.category?.length) window.userSettings.tags.category = [...t.category];
-                        if (t.snackType?.length) window.userSettings.tags.snackType = [...t.snackType];
-                    }
+                    if (t.category?.length) window.userSettings.tags.category = [...t.category];
+                    if (t.snackType?.length) window.userSettings.tags.snackType = [...t.snackType];
                     if (Array.isArray(t.subTagsPlaceSnack) && t.subTagsPlaceSnack.length > 0) {
                         window.userSettings.tags.snackPlaceMain = [...t.subTagsPlaceSnack];
                     }
@@ -257,8 +244,7 @@ export function setupListeners(userId, callbacks) {
                             withWhom: adminTags.withWhom,
                             category: adminTags.category,
                             snackType: adminTags.snackType,
-                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack,
-                            formAxisPilotUids: adminTags.formAxisPilotUids
+                            subTagsPlaceSnack: adminTags.subTagsPlaceSnack
                         };
                         applyAdminTags(cachedDefaultTags);
                         console.log('✅ 관리자 태그 병합 완료 (캐시 저장)');

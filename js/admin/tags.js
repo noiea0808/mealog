@@ -1,5 +1,5 @@
 // ADMIN 기본 태그(끼니·함께·카테고리 등) 편집
-import { db, appId, auth } from '../firebase.js';
+import { db, appId } from '../firebase.js';
 import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 import { scheduleLucideIcons } from '../icons.js';
@@ -27,12 +27,7 @@ export async function loadTagsContent() {
             if (data.withWhom) tagsData.withWhom = data.withWhom;
             if (data.category) tagsData.category = data.category;
             if (data.subTagsPlaceSnack && Array.isArray(data.subTagsPlaceSnack)) tagsData.subTagsPlaceSnack = data.subTagsPlaceSnack;
-            savedFormAxisPilotUids = normalizePilotUids(data.formAxisPilotUids);
-        } else {
-            savedFormAxisPilotUids = [];
         }
-        renderFormAxisPilotUids(savedFormAxisPilotUids);
-        renderFormAxisPilotStatus();
 
         // 태그 렌더링
         renderTags('mealType', tagsData.mealType);
@@ -55,9 +50,6 @@ export async function loadTagsContent() {
         renderTags('withWhom', defaultTags.withWhom);
         renderTags('category', defaultTags.category);
         renderTags('subTagsPlaceSnack', defaultTags.subTagsPlaceSnack);
-        // 읽기에 실패했으면 저장 상태를 아는 척하면 안 된다 — 빈 목록으로 그리고 사실을 남긴다
-        savedFormAxisPilotUids = [];
-        renderFormAxisPilotStatus();
     }
 }
 
@@ -204,139 +196,6 @@ window.loadFormAxisTags = function() {
     renderTags('category', [...FORM_CATEGORIES]);
 };
 
-/*
- * ─── 형태 축 파일럿 (임시) ───────────────────────────────────────────────
- * 운영 전환일에 이 블록과 admin.html 의 편집란, js/utils/form-axis-pilot.js 를 함께 지운다.
- * 절차: docs/food-axis-rollout.md
- */
-
-/**
- * 문서에 **실제로 저장돼 있는** 파일럿 목록.
- * 편집란의 텍스트와 구분해서 들고 있어야 "입력은 했는데 저장이 안 됐다"를 구분할 수 있다.
- * @type {string[]}
- */
-let savedFormAxisPilotUids = [];
-
-/** @param {unknown} uids */
-function normalizePilotUids(uids) {
-    return Array.isArray(uids)
-        ? [...new Set(uids.filter((u) => typeof u === 'string' && u.trim()).map((u) => u.trim()))]
-        : [];
-}
-
-/** @param {unknown} uids */
-function renderFormAxisPilotUids(uids) {
-    const input = document.getElementById('formAxisPilotUids');
-    if (!input) return;
-    input.value = normalizePilotUids(uids).join(', ');
-}
-
-/**
- * 저장 상태를 눈으로 확인할 수 있게 그린다.
- *
- * 편집란만으로는 "내가 방금 넣은 값"과 "문서에 저장된 값"이 구별되지 않아,
- * 등록했는데 축이 안 바뀔 때 무엇이 잘못됐는지 알 방법이 없었다.
- * 특히 **관리자 계정과 앱 계정이 다르면** uid가 어긋나는데 그게 화면에 드러나지 않았다.
- */
-function renderFormAxisPilotStatus() {
-    const el = document.getElementById('formAxisPilotStatus');
-    if (!el) return;
-    const myUid = auth.currentUser?.uid || '';
-    const saved = savedFormAxisPilotUids;
-    const registered = Boolean(myUid) && saved.includes(myUid);
-
-    const chips = saved.length
-        ? saved
-            .map((u) => {
-                const isMine = u === myUid;
-                return `<code class="px-1.5 py-0.5 rounded text-[11px] font-mono ${
-                    isMine ? 'bg-emerald-100 text-emerald-800 font-bold' : 'bg-slate-200 text-slate-700'
-                }">${escapeHtml(u)}${isMine ? ' (나)' : ''}</code>`;
-            })
-            .join(' ')
-        : '<span class="text-slate-500">없음 — 전원 옛 축입니다</span>';
-
-    const myLine = myUid
-        ? `<code class="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[11px] font-mono">${escapeHtml(myUid)}</code>
-           ${registered
-            ? '<span class="text-emerald-700 font-bold">✅ 등록됨</span>'
-            : '<span class="text-rose-700 font-bold">❌ 저장된 목록에 없음</span>'}`
-        : '<span class="text-rose-700 font-bold">로그인 정보를 확인할 수 없습니다</span>';
-
-    el.innerHTML = `
-        <div class="mt-3 p-3 bg-white border border-slate-200 rounded-lg text-xs space-y-2">
-            <div><b class="text-slate-700">저장된 목록 (${saved.length})</b><br>${chips}</div>
-            <div><b class="text-slate-700">지금 이 관리자 화면의 uid</b><br>${myLine}</div>
-            <p class="text-slate-500 leading-relaxed">
-                앱에서도 같은 계정으로 로그인해야 새 축이 보입니다.
-                앱 콘솔에서 <code class="font-mono">window.currentUser.uid</code> 로 대조해 보세요.
-            </p>
-        </div>`;
-}
-
-/** @returns {string[]} 편집란의 uid 목록 (중복·공백 제거) */
-function getFormAxisPilotUids() {
-    const input = document.getElementById('formAxisPilotUids');
-    if (!input) return [];
-    return [...new Set(input.value.split(',').map((u) => u.trim()).filter(Boolean))];
-}
-
-/**
- * 관리자 본인 uid를 **입력칸에** 넣는다. 저장은 [파일럿 저장]이 한다.
- * 하는 일이 입력칸 채우기뿐이라 조용히 끝나면 "버튼이 안 먹는다"로 읽힌다 —
- * 그래서 결과와 **다음에 눌러야 할 것**을 alert 로 알린다.
- */
-window.addMyUidToFormAxisPilot = function() {
-    // 이 화면에는 토스트가 없다(window.showToast 는 어디에도 정의돼 있지 않다) — alert 로 확실히 알린다
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-        alert('로그인 정보를 확인할 수 없습니다.');
-        return;
-    }
-    const uids = getFormAxisPilotUids();
-    const already = uids.includes(uid);
-    if (!already) uids.push(uid);
-    renderFormAxisPilotUids(uids);
-    alert(
-        `${already ? '이미 입력칸에 있습니다' : 'uid를 입력칸에 넣었습니다'}:\n${uid}\n\n` +
-        '아직 저장되지 않았습니다 — 옆의 [파일럿 저장] 을 누르세요.'
-    );
-};
-
-/**
- * 파일럿 목록만 문서에 쓴다.
- *
- * 위쪽 큰 [저장] 버튼과 분리한 이유가 둘 있다:
- * ① 두 단계(입력칸 채우기 → 멀리 있는 저장)라 한 단계만 어긋나도 **빈 값이 저장**된다.
- * ② 큰 저장 버튼은 '무엇을' 목록(category·snackType)도 함께 쓴다. 파일럿 등록하려다
- *    '형태 축 불러오기'가 눌려 있으면 **전 사용자 전환**이 나가 버린다 — 되돌릴 수는 있지만
- *    한 계정 테스트하려다 낼 사고가 아니다.
- */
-window.saveFormAxisPilotUids = async function() {
-    const uids = getFormAxisPilotUids();
-    try {
-        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
-        // 파일럿 필드 하나만 merge — 태그 목록은 건드리지 않는다
-        await setDoc(tagsDoc, { formAxisPilotUids: uids, updatedAt: new Date().toISOString() }, { merge: true });
-        // 되읽기가 곧 확인이다
-        const verifySnap = await getDoc(tagsDoc);
-        savedFormAxisPilotUids = normalizePilotUids(verifySnap.data()?.formAxisPilotUids);
-        renderFormAxisPilotUids(savedFormAxisPilotUids);
-        renderFormAxisPilotStatus();
-        const myUid = auth.currentUser?.uid || '';
-        const mine = Boolean(myUid) && savedFormAxisPilotUids.includes(myUid);
-        alert(
-            `파일럿 목록을 저장했습니다 (${savedFormAxisPilotUids.length}개).\n` +
-            (savedFormAxisPilotUids.length ? `${savedFormAxisPilotUids.join('\n')}\n\n` : '\n') +
-            (mine
-                ? '내 uid 포함 ✅ — 앱을 완전히 새로 로드하면 형태 축 14개가 보입니다.'
-                : '내 uid 없음 ❌ — 앱 계정과 같은 uid인지 확인하세요.')
-        );
-    } catch (e) {
-        console.error('형태 축 파일럿 저장 실패:', e);
-        alert('파일럿 저장 중 오류가 발생했습니다: ' + (e?.message || e));
-    }
-};
 
 // 태그 항목 업데이트
 window.updateTagItem = function(type, inputElement) {
@@ -393,37 +252,13 @@ window.saveTags = async function() {
             category: category,
             snackType: snackType,
             subTagsPlaceSnack: subTagsPlaceSnack,
-            // 임시 — 형태 축 파일럿 계정 (전환일에 빈 배열로 저장하고 코드에서 제거)
-            formAxisPilotUids: getFormAxisPilotUids(),
             updatedAt: new Date().toISOString()
         };
         
         const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
         await setDoc(tagsDoc, tagsData, { merge: true });
 
-        /**
-         * 저장 직후 문서를 **다시 읽어** 화면에 반영한다.
-         * "저장했다"는 알림만으로는 파일럿 목록이 실제로 들어갔는지 알 수 없었다 —
-         * 되읽기가 그 확인이다.
-         */
-        let pilotLine = '';
-        try {
-            const verifySnap = await getDoc(tagsDoc);
-            savedFormAxisPilotUids = normalizePilotUids(verifySnap.data()?.formAxisPilotUids);
-            renderFormAxisPilotUids(savedFormAxisPilotUids);
-            renderFormAxisPilotStatus();
-            const myUid = auth.currentUser?.uid || '';
-            pilotLine = savedFormAxisPilotUids.length === 0
-                ? '\n\n형태 축 파일럿: 등록된 계정 없음 (전원 옛 축)'
-                : `\n\n형태 축 파일럿 ${savedFormAxisPilotUids.length}개 저장됨` +
-                  (myUid && savedFormAxisPilotUids.includes(myUid)
-                      ? '\n내 uid 포함 ✅ — 앱을 완전히 새로 로드하세요.'
-                      : '\n내 uid 없음 ❌ — 앱 계정과 같은 uid인지 확인하세요.');
-        } catch (_) {
-            /* 되읽기 실패는 저장 자체와 무관하다 — 알림만 단순해진다 */
-        }
-
-        alert(`태그가 저장되었습니다.${pilotLine}`);
+        alert('태그가 저장되었습니다.\n\n앱은 관리자 태그를 세션당 1회만 읽습니다 — 완전히 새로 로드해야 반영됩니다.');
         console.log('태그 저장 완료:', tagsData);
     } catch (e) {
         console.error('태그 저장 실패:', e);
