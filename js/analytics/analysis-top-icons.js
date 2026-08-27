@@ -29,7 +29,35 @@ const MEAL_TYPE_ICON = {
 };
 
 /** @type {Record<string, string>} */
+/**
+ * '무엇을' = 형태 축 (js/utils/food-dictionary.js FORM_CATEGORIES).
+ *
+ * 옛 요리 종류 축 키(한식·양식…)를 남겨 둔 이유: 상세 텍스트가 없어 재분류할 근거가
+ * 없는 옛 기록은 원문 그대로 차트에 오른다 (meal-analytics-tags.js resolveFoodFormValue).
+ * 그 값들도 아이콘을 잃지 않게 둔다.
+ *
+ * 에셋이 없어 기본 점으로 남는 형태: 면류·반찬류·영양제/약.
+ * 시안(assets/analysis-icons-colored.png)에서 크롭하는 방식이라 코드로 만들 수 없다 —
+ * 그림이 생기면 여기 세 줄만 채우면 된다 (assets/analysis-icons/README.md).
+ */
 const CATEGORY_ICON = {
+    // ─ 형태 축 ─
+    '밥류': 'what-bowl',
+    '국물요리': 'what-soup',
+    '빵류': 'what-sandwich',
+    '고기·생선': 'what-fish',
+    '튀김·분식': 'what-pizza',
+    // 과일 아이콘을 함께 쓴다 — 초록 식물이라는 점만 맞는 임시 자리다
+    '채소·샐러드': 'snack-type-fruit',
+    '커피': 'what-coffee',
+    '차/음료': 'snack-type-tea',
+    '술/주류': 'snack-type-alcohol',
+    '베이커리/떡': 'snack-type-bakery',
+    '과자/스낵': 'snack-type-snack',
+    '아이스크림': 'snack-type-icecream',
+    '과일/견과': 'snack-type-fruit',
+    '기타': 'snack-type-misc',
+    // ─ 옛 요리 종류 축 (재분류 근거가 없는 기록이 이 값으로 남는다) ─
     한식: 'what-soup',
     양식: 'what-pizza',
     일식: 'what-fish',
@@ -64,6 +92,7 @@ const SNACK_TYPE_ICON = {
     '차/음료': 'snack-type-tea',
     '술/주류': 'snack-type-alcohol',
     베이커리: 'snack-type-bakery',
+    '베이커리/떡': 'snack-type-bakery',
     '과자/스낵': 'snack-type-snack',
     아이스크림: 'snack-type-icecream',
     '과일/견과': 'snack-type-fruit',
@@ -245,6 +274,8 @@ function resolveBadge(key, value) {
     }
     if (key === 'snackType') {
         if (SNACK_TYPE_ICON[value]) return pngBadge(SNACK_TYPE_ICON[value]);
+        // 간식으로 밥류·국물요리를 적는 일도 있다 — '무엇을'과 같은 어휘라 그 표를 함께 본다
+        if (CATEGORY_ICON[value]) return pngBadge(CATEGORY_ICON[value]);
         if (String(value).includes('커피') || String(value).includes('카페')) return pngBadge('snack-type-coffee');
         if (String(value).includes('차') || String(value).includes('음료')) return pngBadge('snack-type-tea');
         if (String(value).includes('술') || String(value).includes('주류')) return pngBadge('snack-type-alcohol');
