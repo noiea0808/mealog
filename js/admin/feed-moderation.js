@@ -138,7 +138,7 @@ const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 /** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
 
-let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
+let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
 let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
 
 /** 모니터링 캐시 키 — 전체(__all__) vs 작성자 UID */
@@ -606,6 +606,13 @@ async function filterDailyJournalRowsWithoutMealMirror(rows) {
                     keep.push(r);
                     return;
                 }
+                /**
+                 * 이 행 자체가 그 미러 문서다 — meals 미러 조회(fetchDailyJournalSlotsFromMealMirrors)
+                 * 에서 나왔으니 존재는 이미 증명됐다. 같은 문서를 한 건씩 다시 읽지 않는다.
+                 * (id 까지 맞춰 보는 이유: slotId 만 daily_journal 이고 문서 id 가 다른 옛 문서가
+                 *  섞이면 아래 getDoc 이 가리키는 것은 **다른** 문서라, 그때는 확인이 필요하다)
+                 */
+                if (r.isDailyJournalSlot === true && String(r.id || '') === mealId) return;
                 try {
                     const snap = await getDoc(
                         doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId)
@@ -724,7 +731,11 @@ function formatDailyJournalMetricsAdminHtml(entry) {
         .join('');
 }
 
-async function fetchSpecialSharesForModeration(authorUid = '') {
+/**
+ * @param {string} [authorUid] 작성자 필터. 지정 시 이 결과의 건수가 그대로 「전체」 수가 되므로 상한을 줄이지 않는다
+ * @param {number} [rowLimit] 이 페이지가 실제로 필요한 최대 행 수 (전체 목록에서만 줄인다)
+ */
+async function fetchSpecialSharesForModeration(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
@@ -773,7 +784,7 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
             sharedColl,
             where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES),
             orderBy('timestamp', 'desc'),
-            limit(ADMIN_FEED_SPECIAL_ROWS_CAP)
+            limit(rowLimit)
         );
         const snap = await getDocs(q);
         addDocs(snap.docs);
@@ -792,13 +803,27 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
         }
     }
 
-    // timestamp 필드가 없거나 orderBy에서 빠진 문서를 type 동등만으로 보강
-    for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
-        try {
-            const snap = await getDocs(query(sharedColl, where('type', '==', ty), limit(400)));
-            addDocs(snap.docs);
-        } catch (e) {
-            console.warn('[관리자 모먼트] 캡처 보조 조회(type만):', ty, e?.code || e?.message || e);
+    /**
+     * 보강: `timestamp` 가 없는 문서는 orderBy('timestamp') 결과에서 통째로 빠진다.
+     * 그걸 type 동등 조회로 주워 온다 — 다만 **빠진 게 실제로 있을 때만** 돈다.
+     *
+     * 예전에는 무조건 3회(타입당 400건) 더 읽었다. 위 쿼리가 성공했든 말든 돌았고,
+     * 받아 온 것 대부분은 byId 에서 중복으로 버려졌다. 새로고침 한 번에 최대 1,200건이
+     * 결과를 하나도 바꾸지 않고 나갔다.
+     *
+     * 「빠진 게 있나」는 건수 두 개로 가른다 — 전체 건수와, orderBy('timestamp') 를 통과하는
+     * 건수. 둘이 같으면 timestamp 없는 문서가 하나도 없다는 뜻이라 보강할 것이 없다.
+     * 받아 온 행 수와 비교하지 않는 이유: 상한(rowLimit)을 줄이면 늘 모자라 보여서
+     * 판단이 안 선다. 건수는 getCountFromServer 라 문서를 읽지 않는다.
+     */
+    if (await specialSharesHaveDocsWithoutTimestamp()) {
+        for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
+            try {
+                const snap = await getDocs(query(sharedColl, where('type', '==', ty), limit(400)));
+                addDocs(snap.docs);
+            } catch (e) {
+                console.warn('[관리자 모먼트] 캡처 보조 조회(type만):', ty, e?.code || e?.message || e);
+            }
         }
     }
 
@@ -808,23 +833,79 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
         const rb = sharedPhotoDocToAdminFeedRow(b);
         return moderationRecordedAtMillis(rb) - moderationRecordedAtMillis(ra);
     });
-    return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP) : merged;
+    return merged.length > rowLimit ? merged.slice(0, rowLimit) : merged;
 }
 
-async function getSpecialSharesModerationRowsCached(authorUid = '') {
+/**
+ * @param {number} [rowLimit] 이 페이지가 필요한 행 수. 캐시가 그보다 적게 들고 있으면 다시 받는다 —
+ *   뒤 페이지일수록 더 필요하므로, 앞 페이지 캐시를 그대로 쓰면 행이 모자란다.
+ */
+async function getSpecialSharesModerationRowsCached(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopeKey = moderationCacheScopeKey(authorUid);
     const now = Date.now();
     if (
         moderationSpecialSharesCache.rows &&
         moderationSpecialSharesCache.scopeKey === scopeKey &&
+        (moderationSpecialSharesCache.limitUsed || 0) >= rowLimit &&
         now - moderationSpecialSharesCache.ts < ADMIN_FEED_CACHE_TTL_MS
     ) {
         return moderationSpecialSharesCache.rows;
     }
-    const docs = await fetchSpecialSharesForModeration(authorUid);
+    const docs = await fetchSpecialSharesForModeration(authorUid, rowLimit);
     const rows = docs.map(sharedPhotoDocToAdminFeedRow);
-    moderationSpecialSharesCache = { ts: now, rows, scopeKey };
+    moderationSpecialSharesCache = { ts: now, rows, scopeKey, limitUsed: rowLimit };
     return rows;
+}
+
+/**
+ * 특수 공유 전체 건수 캐시.
+ * 한 번의 새로고침 안에서 「보강이 필요한가」와 「전체 몇 건인가」가 같은 값을 묻는다.
+ * getCountFromServer 라 문서를 읽지는 않지만, 두 번 물을 이유도 없다.
+ */
+let specialSharesCountCache = { ts: 0, value: null };
+/** timestamp 없는 특수 공유가 하나라도 있는가 (보강 조회 필요 여부) */
+let specialSharesMissingTsCache = { ts: 0, value: null };
+
+/**
+ * orderBy('timestamp') 는 그 필드가 없는 문서를 결과에서 통째로 뺀다.
+ * 전체 건수와 「orderBy 를 통과하는 건수」가 같으면 빠지는 문서가 없다는 뜻이다.
+ *
+ * 확인이 실패하면 true 로 답한다 — 모르면 보강을 도는 쪽이 목록이 비는 것보다 낫다.
+ */
+async function specialSharesHaveDocsWithoutTimestamp() {
+    const now = Date.now();
+    if (
+        specialSharesMissingTsCache.value !== null &&
+        now - specialSharesMissingTsCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
+        return specialSharesMissingTsCache.value;
+    }
+    let result = true;
+    try {
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const total = await getSpecialSharesTimelineCountsCached();
+        if (total.known) {
+            const ordered = await getCountFromServer(
+                query(sharedColl, where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES), orderBy('timestamp', 'desc'))
+            );
+            result = (ordered.data().count || 0) < total.count;
+        }
+    } catch (e) {
+        console.warn('[관리자 모먼트] 캡처 보강 필요 여부 확인 실패 — 보조 조회를 돕니다', e?.message || e);
+        result = true;
+    }
+    specialSharesMissingTsCache = { ts: now, value: result };
+    return result;
+}
+
+async function getSpecialSharesTimelineCountsCached() {
+    const now = Date.now();
+    if (specialSharesCountCache.value && now - specialSharesCountCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return specialSharesCountCache.value;
+    }
+    const value = await getSpecialSharesTimelineCounts();
+    specialSharesCountCache = { ts: now, value };
+    return value;
 }
 
 async function getSpecialSharesTimelineCounts() {
@@ -902,7 +983,9 @@ function invalidateAdminFeedMonitoringCache() {
     feedReportsAggCache = { ts: 0, map: null };
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
-    moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
+    moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
+    specialSharesCountCache = { ts: 0, value: null };
+    specialSharesMissingTsCache = { ts: 0, value: null };
     moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
     feedMealTotalCountKnown = true;
     feedLastDocsByPage = {};
@@ -1274,7 +1357,23 @@ async function getFeedPage(options = {}) {
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
-        const specRows = await getSpecialSharesModerationRowsCached(authorUid);
+        /**
+         * 합쳐서 20건을 뽑는 데 500건이 필요하지 않다.
+         *
+         * 병합 목록의 [skip, skip+pageSize) 구간을 만들려면 각 출처에서 **자기 기준 최신
+         * skip+pageSize 건**만 있으면 충분하다 — 그보다 뒤에 있는 행은 자기 출처 안에서만도
+         * 이미 skip+pageSize 개에게 밀렸으므로 이 페이지에 오를 수 없다.
+         *
+         * 특수 공유에만 적용한다. 이 쿼리는 orderBy('timestamp') 로 받고 목록도 같은 값으로
+         * 세우므로 축이 일치해서 이 상한이 정확하다. 하루기록은 축이 어긋나 적용할 수 없다
+         * (아래 getDailyJournalsModerationRowsCached 주석 참고).
+         *
+         * 작성자 필터일 때는 이 결과의 건수가 그대로 「전체」 수로 쓰이므로 줄이지 않는다.
+         */
+        const specNeeded = authorUid
+            ? ADMIN_FEED_SPECIAL_ROWS_CAP
+            : Math.min(skip + pageSize, ADMIN_FEED_SPECIAL_ROWS_CAP);
+        const specRows = await getSpecialSharesModerationRowsCached(authorUid, specNeeded);
         const journalRowsAll = await getDailyJournalsModerationRowsCached(authorUid);
         const journalRows = await filterDailyJournalRowsWithoutMealMirror(journalRowsAll);
         const specPinned = filterModerationRowsByAuthor(specRows);
@@ -1312,7 +1411,7 @@ async function getFeedPage(options = {}) {
                 let specKnown = true;
                 let specN = 0;
                 try {
-                    const sc = await getSpecialSharesTimelineCounts();
+                    const sc = await getSpecialSharesTimelineCountsCached();
                     specN = sc.count;
                     specKnown = sc.known;
                 } catch (e) {
