@@ -185,17 +185,6 @@ window.removeTagItem = function(type, itemElement) {
     }
 };
 
-/**
- * '무엇을' 목록을 코드의 형태 축으로 되돌린다 (편집란만 갱신 — 저장 버튼을 눌러야 반영).
- *
- * 저장된 값이 아직 옛 축(한식·양식… / 커피·베이커리…)인 환경에서 쓰는 버튼이다.
- * 자동으로 치환하지 않는 이유는, 관리자 문서를 고치는 순간 전 사용자 칩이 바뀌기 때문 —
- * 반영 시점은 관리자가 명시적으로 고르게 둔다.
- */
-window.loadFormAxisTags = function() {
-    renderTags('category', [...FORM_CATEGORIES]);
-};
-
 
 // 태그 항목 업데이트
 window.updateTagItem = function(type, inputElement) {
