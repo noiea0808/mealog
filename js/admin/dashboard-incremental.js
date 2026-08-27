@@ -32,11 +32,17 @@ export function addDaysToDateKey(dateKey, days) {
 }
 
 /**
- * 다시 세는 구간의 시작 날짜.
+ * 다시 세는 구간의 시작 날짜. **항상 주의 첫날(일요일)이다.**
  *
- * 현재 주의 일요일과 「최근 7일」의 첫날 중 **이른 쪽**이다. 둘 중 하나만 덮으면
- * 나머지 표가 어긋난다 — 수요일이면 최근 7일이 지난 주 목요일까지 뻗고,
- * 일요일이면 반대로 현재 주가 하루뿐이라 최근 7일이 더 넓다.
+ * 현재 주의 일요일과 「최근 7일」의 첫날 중 **이른 쪽**을 잡되, 최근 7일이 지난 주로
+ * 뻗으면 그 주의 일요일까지 마저 내린다.
+ *
+ * 주 중간에서 자르면 안 되는 이유: 병합은 **주차 단위**다. 스캔이 지난 주 목요일부터라도
+ * 그 주 칸 전체가 「다시 센 값」으로 덮이므로, 일~수요일 몫이 캐시에도 스캔에도 없이
+ * 통째로 사라진다. 요일이 지날수록 손실이 커졌다 토요일에 0이 되는 — 숫자가 왔다갔다
+ * 하는 증상이 여기서 나왔다.
+ *
+ * 대가는 최대 6일치 문서를 더 읽는 것뿐이다(한 주 → 두 주).
  *
  * @param {string} todayKey 'YYYY-MM-DD'
  * @param {string} sundayKeyOfToday 오늘이 속한 주의 일요일 키
@@ -45,7 +51,9 @@ export function rescanStartDateKey(todayKey, sundayKeyOfToday) {
     const last7First = addDaysToDateKey(todayKey, -6);
     if (!last7First) return sundayKeyOfToday || todayKey;
     if (!sundayKeyOfToday) return last7First;
-    return last7First < sundayKeyOfToday ? last7First : sundayKeyOfToday;
+    if (last7First >= sundayKeyOfToday) return sundayKeyOfToday;
+    // 최근 7일은 최대 6일 전까지라, 지난 주로 넘어가더라도 직전 주 안에서 끝난다.
+    return addDaysToDateKey(sundayKeyOfToday, -7) || last7First;
 }
 
 /**
