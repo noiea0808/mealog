@@ -8,7 +8,6 @@ import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
-import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
     normalizeDailyJournalEntry,
     dailyJournalHasContent,
@@ -17,8 +16,7 @@ import {
     getDailyJournalShareEntryId,
     getDailyJournalMealDocId,
     dailyJournalMealDocToModerationFields,
-    isDailyJournalMealRecord,
-    recordedAtIsoToMealTime
+    isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
 import {
     collection,
@@ -135,11 +133,17 @@ let feedSharedKeysCache = null;
 const ADMIN_FEED_SPECIAL_SHARE_TYPES = ['daily', 'best', 'insight'];
 const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 
-/** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
+/**
+ * 하루기록 공유(sharedPhotos, slotId='daily_journal') 조회 상한.
+ *
+ * 하루기록의 정본은 meals 미러라 목록은 일반 기록 스트림을 탄다. 이 상한이 걸리는 곳은
+ * 미러 없는 「고아 공유」를 줍는 경로뿐이고, 평소에는 페이지가 필요한 만큼(skip+pageSize)만
+ * 받는다. 이 값은 정렬 인덱스가 없어 순서 없이 받아야 할 때의 안전망이다.
+ */
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
 
 let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
-let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
+let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
 
 /** 모니터링 캐시 키 — 전체(__all__) vs 작성자 UID */
 function moderationCacheScopeKey(authorUid) {
@@ -181,47 +185,16 @@ function dailyJournalModerationRowKey(userId, dateStr) {
     return `${String(userId || '')}|${String(dateStr || '').trim()}`;
 }
 
-function settingsDocToDailyJournalRows(docSnap) {
-    if (!docSnap?.id || docSnap.id !== 'settings') return [];
-    const pathParts = docSnap.ref.path.split('/');
-    const uidx = pathParts.indexOf('users');
-    const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-    if (!userId) return [];
-    const dc = docSnap.data()?.dailyComments;
-    if (!dc || typeof dc !== 'object') return [];
-    const rows = [];
-    for (const [dateStr, raw] of Object.entries(dc)) {
-        const dk = String(dateStr || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
-        const entry = normalizeDailyJournalEntry(raw);
-        if (!dailyJournalHasContent(entry)) continue;
-        const recordedAt = entry.recordedAt || '';
-        const mealDocId = getDailyJournalMealDocId(dk) || `dailyJournal_${dk}`;
-        rows.push({
-            id: mealDocId,
-            userId,
-            date: dk,
-            time: recordedAtIsoToMealTime(recordedAt),
-            slotId: 'daily_journal',
-            recordedAt: recordedAt || undefined,
-            isDailyJournal: true,
-            isDailyJournalSlot: true,
-            comment: entry.comment,
-            photos: entry.photos,
-            sharedPhotos: entry.sharedPhotos,
-            dailyJournalEntry: entry,
-            slotDisplayDate: formatKoDateLabelFromYmd(dk),
-            slotDisplayLabel: '하루소감'
-        });
-    }
-    return rows;
-}
 
 /**
  * sharedPhotos — slotId daily_journal 또는 entryId dailyJournal_YYYY-MM-DD (meals 컬렉션에 없음)
  * @param {string} [authorUid] — 지정 시 해당 사용자 sharedPhotos만 조회
  */
-async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
+/**
+ * @param {string} [authorUid] 작성자 필터
+ * @param {number} [rowLimit] 이 페이지가 필요한 최대 행 수
+ */
+async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '', rowLimit = ADMIN_DAILY_JOURNAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
@@ -235,14 +208,36 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
     };
 
     try {
-        const snap = await getDocs(
-            query(
-                sharedColl,
-                ...userFilter,
-                where('slotId', '==', 'daily_journal'),
-                limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
-            )
-        );
+        /**
+         * 최신순으로 받아야 상한을 줄일 수 있다 — 정렬 없이 자르면 「아무 N건」이라
+         * 페이지에 뭐가 뜰지 알 수 없다. (slotId, timestamp) 인덱스가 없으면 아래로 내려간다.
+         */
+        let snap;
+        try {
+            snap = await getDocs(
+                query(
+                    sharedColl,
+                    ...userFilter,
+                    where('slotId', '==', 'daily_journal'),
+                    orderBy('timestamp', 'desc'),
+                    limit(rowLimit)
+                )
+            );
+        } catch (eOrder) {
+            if (eOrder?.code !== 'failed-precondition') throw eOrder;
+            console.warn(
+                '[관리자 모먼트] 하루기록 공유 정렬 인덱스 없음 — 순서 없이 상한까지 받습니다.',
+                '배포: firebase deploy --only firestore:indexes'
+            );
+            snap = await getDocs(
+                query(
+                    sharedColl,
+                    ...userFilter,
+                    where('slotId', '==', 'daily_journal'),
+                    limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
+                )
+            );
+        }
         addDocs(snap.docs);
     } catch (e1) {
         console.warn(
@@ -347,243 +342,14 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
     return rows;
 }
 
-function mergeDailyJournalModerationRows(settingsRows, shareRows) {
-    const byKey = new Map();
-    for (const r of settingsRows || []) {
-        if (!r?.userId || !r?.date) continue;
-        byKey.set(dailyJournalModerationRowKey(r.userId, r.date), { ...r });
-    }
-    for (const sr of shareRows || []) {
-        if (!sr?.userId || !sr?.date) continue;
-        const key = dailyJournalModerationRowKey(sr.userId, sr.date);
-        const existing = byKey.get(key);
-        if (!existing) {
-            byKey.set(key, { ...sr });
-            continue;
-        }
-        existing.momentShared = true;
-        existing.isDailyJournalSlot = existing.isDailyJournalSlot === true || sr.isDailyJournalSlot === true;
-        if (sr.momentShareAtMillis > (existing.momentShareAtMillis || 0)) {
-            existing.momentShareAtMillis = sr.momentShareAtMillis;
-        }
-        const mergedEntry = normalizeDailyJournalEntry({
-            ...(existing.dailyJournalEntry || {}),
-            comment: existing.comment || sr.comment || '',
-            photos:
-                Array.isArray(existing.photos) && existing.photos.length > 0
-                    ? existing.photos
-                    : sr.photos || [],
-            sharedPhotos: sr.dailyJournalEntry?.sharedPhotos?.length
-                ? sr.dailyJournalEntry.sharedPhotos
-                : existing.dailyJournalEntry?.sharedPhotos || [],
-            weightEnabled: existing.dailyJournalEntry?.weightEnabled,
-            bloodSugarEnabled: existing.dailyJournalEntry?.bloodSugarEnabled,
-            weightRecords: existing.dailyJournalEntry?.weightRecords,
-            bloodSugarRecords: existing.dailyJournalEntry?.bloodSugarRecords,
-            recordedAt: existing.dailyJournalEntry?.recordedAt || sr.dailyJournalEntry?.recordedAt
-        });
-        const shareMs = existing.momentShareAtMillis || 0;
-        const entryMs = dailyJournalRecordedAtMillis(mergedEntry, existing.date);
-        if (shareMs > entryMs) {
-            mergedEntry.recordedAt = new Date(shareMs).toISOString();
-        }
-        existing.dailyJournalEntry = mergedEntry;
-        existing.comment = mergedEntry.comment;
-        existing.photos = mergedEntry.photos;
-        existing.recordedAt = mergedEntry.recordedAt || existing.recordedAt;
-        if (!dailyJournalHasContent(mergedEntry) && !(existing.photos?.length > 0)) {
-            byKey.delete(key);
-        } else {
-            byKey.set(key, existing);
-        }
-    }
-    return [...byKey.values()];
-}
 
-function userIdFromSettingsDocRef(ref) {
-    const pathParts = ref.path.split('/');
-    const uidx = pathParts.indexOf('users');
-    return uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-}
 
-function mergeDailyJournalSlotRowsIntoMap(byKey, rows) {
-    for (const r of rows || []) {
-        if (!r?.userId || !r?.date) continue;
-        const key = dailyJournalModerationRowKey(r.userId, r.date);
-        const prev = byKey.get(key);
-        if (!prev) {
-            byKey.set(key, { ...r, isDailyJournal: true, isDailyJournalSlot: true });
-            continue;
-        }
-        prev.isDailyJournal = true;
-        prev.isDailyJournalSlot = true;
-        if (!prev.comment && r.comment) prev.comment = r.comment;
-        if ((!prev.photos || !prev.photos.length) && r.photos?.length) prev.photos = r.photos;
-        const prevEntry = prev.dailyJournalEntry || {};
-        const nextEntry = r.dailyJournalEntry || {};
-        prev.dailyJournalEntry = normalizeDailyJournalEntry({
-            ...prevEntry,
-            ...nextEntry,
-            photos: prevEntry.photos?.length ? prevEntry.photos : nextEntry.photos,
-            recordedAt: prevEntry.recordedAt || nextEntry.recordedAt
-        });
-        if (!prev.recordedAt && r.recordedAt) prev.recordedAt = r.recordedAt;
-    }
-}
 
 /**
  * config collectionGroup — users/{uid} 루트 문서 없이 settings 만 있는 계정도 포함
  */
-/**
- * 하루 기록 목록의 정본 — meals 미러(`slotId === 'daily_journal'`).
- *
- * 예전에는 users/{uid}/config/settings 를 전부 훑었다. dailyComments 가 문서 **안의 맵**이라
- * 목록을 만들려면 사용자 수만큼 읽어야 했고, 화면을 열 때마다 900건 가까이 나갔다.
- * 미러는 기록 하나가 문서 하나라 최근 것부터 필요한 만큼만 끊어 읽을 수 있다.
- *
- * 미러가 없던 시절(2026-06-10 이전)의 소감은 여기서 안 잡힌다. 목록이 최근 것부터
- * 상한까지만 보여주는 화면이라 실질적인 손실은 없다.
- */
-async function fetchDailyJournalSlotsFromMealMirrors(excluded, rowLimit) {
-    const mealsGroup = collectionGroup(db, 'meals');
-    const slotFilter = where('slotId', '==', 'daily_journal');
-    let snap;
-    try {
-        snap = await getDocs(query(mealsGroup, slotFilter, orderBy('date', 'desc'), limit(rowLimit)));
-    } catch (e) {
-        if (e?.code !== 'failed-precondition') throw e;
-        // slotId+date 복합 인덱스가 아직 만들어지는 중 — 순서 없이 받아 아래에서 정렬한다
-        console.warn(
-            '[관리자 모먼트] 하루기록 정렬 인덱스 준비 중 — 정렬 없이 조회합니다.',
-            '배포: firebase deploy --only firestore:indexes'
-        );
-        snap = await getDocs(query(mealsGroup, slotFilter));
-    }
 
-    const prefix = `artifacts/${appId}/`;
-    const rows = [];
-    snap.forEach((docSnap) => {
-        if (!docSnap.ref.path.startsWith(prefix)) return;
-        const userId = userIdFromSettingsDocRef(docSnap.ref);
-        if (!userId || excluded.has(userId)) return;
-        const data = docSnap.data() || {};
-        const dk = String(data.date || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return;
-        const entry = normalizeDailyJournalEntry(data);
-        if (!dailyJournalHasContent(entry)) return;
-        const recordedAt = entry.recordedAt || '';
-        rows.push({
-            id: docSnap.id,
-            userId,
-            date: dk,
-            time: typeof data.time === 'string' && data.time ? data.time : recordedAtIsoToMealTime(recordedAt),
-            slotId: 'daily_journal',
-            recordedAt: recordedAt || undefined,
-            isDailyJournal: true,
-            isDailyJournalSlot: true,
-            comment: entry.comment,
-            photos: entry.photos,
-            sharedPhotos: entry.sharedPhotos,
-            dailyJournalEntry: entry,
-            slotDisplayDate: formatKoDateLabelFromYmd(dk),
-            slotDisplayLabel: '하루소감'
-        });
-    });
-    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return rows.length > rowLimit ? rows.slice(0, rowLimit) : rows;
-}
 
-/**
- * 작성자 필터: 단일 사용자 settings + scoped sharedPhotos만 조회
- */
-async function fetchDailyJournalsForModerationForAuthor(authorUid) {
-    await refreshAppCheckTokenBeforeFirestore();
-    const slotByKey = new Map();
-    try {
-        const excluded = await getExcludedAnalyticsUidSet();
-        if (excluded.has(authorUid)) return [];
-        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', authorUid, 'config', 'settings'));
-        if (snap.exists()) {
-            mergeDailyJournalSlotRowsIntoMap(slotByKey, settingsDocToDailyJournalRows(snap));
-        }
-    } catch (err) {
-        console.warn(
-            '[관리자 모먼트] 작성자 하루기록 settings 조회 실패 — 목록에서 제외합니다.',
-            authorUid,
-            err?.code || err?.message || err
-        );
-        return [];
-    }
-    const allRows = [...slotByKey.values()];
-    let shareRows = [];
-    try {
-        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos(authorUid);
-    } catch (e) {
-        console.warn('[관리자 모먼트] 작성자 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
-    }
-    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
-    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
-    return merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
-        ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
-        : merged;
-}
-
-/**
- * users/{uid}/config/settings 의 dailyComments — collectionGroup(전수) + 사용자별 조회 병합
- * (일간 캡처 type=daily sharedPhotos 와 별도 — 하루기록 슬롯 저장분만)
- * @param {string} [authorUid] — 지정 시 scoped 조회 (전체 users/settings 스캔 생략)
- */
-async function fetchDailyJournalsForModeration(authorUid = '') {
-    const scopedUid = String(authorUid || '').trim();
-    if (scopedUid) {
-        return fetchDailyJournalsForModerationForAuthor(scopedUid);
-    }
-
-    await refreshAppCheckTokenBeforeFirestore();
-    const slotByKey = new Map();
-    let mirrorRows = 0;
-    try {
-        const excluded = await getExcludedAnalyticsUidSet();
-        const rows = await fetchDailyJournalSlotsFromMealMirrors(excluded, ADMIN_DAILY_JOURNAL_ROWS_CAP);
-        mirrorRows = rows.length;
-        mergeDailyJournalSlotRowsIntoMap(slotByKey, rows);
-    } catch (err) {
-        console.warn(
-            '[관리자 모먼트] 하루 기록(dailyComments) 조회 실패 — 목록에서 제외합니다.',
-            err?.code || err?.message || err
-        );
-        return [];
-    }
-    const allRows = [...slotByKey.values()];
-    let shareRows = [];
-    try {
-        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos();
-    } catch (e) {
-        console.warn('[관리자 모먼트] 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
-    }
-    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
-    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
-    const capped =
-        merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
-            ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
-            : merged;
-    if (capped.length > 0) {
-        const slotSaveN = capped.filter((r) => r.isDailyJournalSlot === true).length;
-        const momentPhotoN = capped.filter((r) => r.momentShared).length;
-        const dateList = capped.map((r) => r.date).filter(Boolean).sort();
-        const dates = dateList.join(', ');
-        const latest = dateList.length ? dateList[dateList.length - 1] : '';
-        console.log(
-            `[관리자 모먼트] 하루기록 슬롯 ${capped.length}건` +
-                ` (dailyComments ${slotSaveN}건, 모먼트 사진공유 ${momentPhotoN}건 · 일간 캡처는 별도)` +
-                (dates ? ` · 날짜: ${dates}` : '') +
-                (latest ? ` · 최신슬롯일: ${latest}` : '') +
-                (merged.length > capped.length ? ` · 상한 ${ADMIN_DAILY_JOURNAL_ROWS_CAP}` : '') +
-                ` · meals 미러 ${mirrorRows}건`
-        );
-    }
-    return capped;
-}
 
 /**
  * meals 미러(dailyJournal_*)가 있으면 pinned 하루기록 행을 제외한다.
@@ -687,20 +453,6 @@ function collapseDailyJournalDuplicateRows(rows) {
     return out;
 }
 
-async function getDailyJournalsModerationRowsCached(authorUid = '') {
-    const scopeKey = moderationCacheScopeKey(authorUid);
-    const now = Date.now();
-    if (
-        moderationDailyJournalCache.rows &&
-        moderationDailyJournalCache.scopeKey === scopeKey &&
-        now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS
-    ) {
-        return moderationDailyJournalCache.rows;
-    }
-    const rows = await fetchDailyJournalsForModeration(authorUid);
-    moderationDailyJournalCache = { ts: now, rows, scopeKey };
-    return rows;
-}
 
 /** 하루기록 모먼트 공유 — sharedPhotos 컬렉션 문서 존재 시에만 true (settings.sharedPhotos·photos만으로는 판단 안 함) */
 function isDailyJournalMomentSharedRow(meal) {
@@ -840,6 +592,44 @@ async function fetchSpecialSharesForModeration(authorUid = '', rowLimit = ADMIN_
  * @param {number} [rowLimit] 이 페이지가 필요한 행 수. 캐시가 그보다 적게 들고 있으면 다시 받는다 —
  *   뒤 페이지일수록 더 필요하므로, 앞 페이지 캐시를 그대로 쓰면 행이 모자란다.
  */
+/**
+ * 미러가 없는 하루기록 공유 — 「고아」만 목록에 얹는다.
+ *
+ * 하루기록의 정본은 이제 meals 미러(`slotId === 'daily_journal'`)다. 미러가 있는 소감은
+ * 일반 기록과 같은 스트림을 타고 들어오므로 여기서 또 얹으면 한 줄이 두 번 뜬다.
+ *
+ * 그래도 이 경로를 남기는 이유: 소감 본문을 지우면 미러는 삭제되지만 sharedPhotos 문서는
+ * 남는다. 그 공유는 피드에 계속 떠 있는데 관리 목록에서만 사라지면 손댈 방법이 없어진다.
+ *
+ * @param {number} [rowLimit] 이 페이지가 필요한 최대 행 수
+ */
+async function getOrphanJournalSharesCached(authorUid = '', rowLimit = ADMIN_DAILY_JOURNAL_ROWS_CAP) {
+    const scopeKey = moderationCacheScopeKey(authorUid);
+    const now = Date.now();
+    if (
+        moderationDailyJournalCache.rows &&
+        moderationDailyJournalCache.scopeKey === scopeKey &&
+        (moderationDailyJournalCache.limitUsed || 0) >= rowLimit &&
+        now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
+        return moderationDailyJournalCache.rows;
+    }
+    await refreshAppCheckTokenBeforeFirestore();
+    let shareRows = [];
+    try {
+        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos(authorUid, rowLimit);
+    } catch (e) {
+        console.warn('[관리자 모먼트] 하루기록 공유 조회 실패', e?.code || e?.message || e);
+    }
+    const rows = await filterDailyJournalRowsWithoutMealMirror(shareRows);
+    rows.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
+    moderationDailyJournalCache = { ts: now, rows, scopeKey, limitUsed: rowLimit };
+    if (rows.length > 0) {
+        console.log(`[관리자 모먼트] 미러 없는 하루기록 공유 ${rows.length}건 (공유 ${shareRows.length}건 중)`);
+    }
+    return rows;
+}
+
 async function getSpecialSharesModerationRowsCached(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopeKey = moderationCacheScopeKey(authorUid);
     const now = Date.now();
@@ -986,7 +776,7 @@ function invalidateAdminFeedMonitoringCache() {
     moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
     specialSharesCountCache = { ts: 0, value: null };
     specialSharesMissingTsCache = { ts: 0, value: null };
-    moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
+    moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
     feedMealTotalCountKnown = true;
     feedLastDocsByPage = {};
 }
@@ -1364,9 +1154,8 @@ async function getFeedPage(options = {}) {
          * skip+pageSize 건**만 있으면 충분하다 — 그보다 뒤에 있는 행은 자기 출처 안에서만도
          * 이미 skip+pageSize 개에게 밀렸으므로 이 페이지에 오를 수 없다.
          *
-         * 특수 공유에만 적용한다. 이 쿼리는 orderBy('timestamp') 로 받고 목록도 같은 값으로
-         * 세우므로 축이 일치해서 이 상한이 정확하다. 하루기록은 축이 어긋나 적용할 수 없다
-         * (아래 getDailyJournalsModerationRowsCached 주석 참고).
+         * 두 pinned 출처 모두 timestamp 최신순으로 받고 목록도 같은 값으로 세우므로
+         * 축이 일치해 이 상한이 정확하다.
          *
          * 작성자 필터일 때는 이 결과의 건수가 그대로 「전체」 수로 쓰이므로 줄이지 않는다.
          */
@@ -1374,8 +1163,14 @@ async function getFeedPage(options = {}) {
             ? ADMIN_FEED_SPECIAL_ROWS_CAP
             : Math.min(skip + pageSize, ADMIN_FEED_SPECIAL_ROWS_CAP);
         const specRows = await getSpecialSharesModerationRowsCached(authorUid, specNeeded);
-        const journalRowsAll = await getDailyJournalsModerationRowsCached(authorUid);
-        const journalRows = await filterDailyJournalRowsWithoutMealMirror(journalRowsAll);
+        /**
+         * 하루기록은 meals 미러가 정본이라 일반 기록과 같은 스트림으로 들어온다.
+         * 여기서 얹는 것은 미러가 사라진 「고아 공유」뿐이다 — 흔치 않다.
+         */
+        const journalNeeded = authorUid
+            ? ADMIN_DAILY_JOURNAL_ROWS_CAP
+            : Math.min(skip + pageSize, ADMIN_DAILY_JOURNAL_ROWS_CAP);
+        const journalRows = await getOrphanJournalSharesCached(authorUid, journalNeeded);
         const specPinned = filterModerationRowsByAuthor(specRows);
         const journalPinned = filterModerationRowsByAuthor(journalRows);
 
@@ -1418,14 +1213,13 @@ async function getFeedPage(options = {}) {
                     specKnown = false;
                     console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
                 }
-                let journalN = 0;
-                let journalKnown = true;
-                try {
-                    journalN = journalRows.length;
-                } catch (e) {
-                    journalKnown = false;
-                    console.warn('[관리자 모먼트] 하루 기록 건수 집계 실패', e?.code || e?.message || e);
-                }
+                /**
+                 * 하루기록 미러는 meals 문서라 위 mealsN 에 이미 들어 있다.
+                 * 여기서 더하는 것은 미러 없는 고아 공유뿐이고, 그마저 이 페이지가 받은
+                 * 상한 안에서 센 수라 정확한 총계는 아니다 — 고아는 드물어 오차를 감수한다.
+                 */
+                const journalN = journalRows.length;
+                const journalKnown = true;
                 feedMealTotalCountKnown = mealsKnown && specKnown && journalKnown;
                 if (feedMealTotalCountKnown) {
                     feedTotalCount = mealsN + specN + journalN;

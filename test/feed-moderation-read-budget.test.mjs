@@ -2,18 +2,18 @@
  * 모먼트 관리 새로고침의 읽기 예산 — 「결과를 안 바꾸는 조회」 회귀 방지.
  *
  * 배경 (2026-08-27): 새로고침 한 번이 20행을 그리려고 4,000건 가까이 읽고 있었다.
- * 캐시를 전부 비우는 경로라 매번 제값을 다 냈다. 그중 셋은 결과를 하나도 바꾸지 않았다.
+ * 캐시를 전부 비우는 경로라 매번 제값을 다 냈다.
  *
  *   1. 특수 공유 「보강」 3회 — orderBy('timestamp') 쿼리가 성공했든 말든 타입당 400건씩
  *      더 읽었다. 받아 온 것 대부분은 byId 에서 중복으로 버려졌다. 최대 1,200건.
- *   2. 하루기록 미러 존재 재확인 — collectionGroup(meals) 로 방금 읽은 문서를 한 건씩
- *      getDoc 으로 다시 읽어 「있네」를 확인하고, 있으니까 목록에서 뺐다. 최대 800건.
- *   3. 특수 공유를 페이지와 무관하게 늘 500건 받았다. 한 페이지는 20행이다.
+ *   2. 하루기록을 meals 미러로 통째로 읽어(≤800) pinned 로 얹고, 그 각각을 다시
+ *      getDoc 으로 읽어(≤800) 「미러가 있네」를 확인한 뒤 목록에서 뺐다.
+ *   3. 두 pinned 출처를 페이지와 무관하게 늘 상한(500·800)만큼 받았다. 한 페이지는 20행이다.
  *
  * 여기서 지키는 계약:
- *   - 미러에서 온 행은 다시 읽지 않는다.
+ *   - 하루기록의 정본은 meals 미러다. pinned 로 얹는 것은 미러 없는 「고아 공유」뿐이다.
  *   - 보강은 「빠진 문서가 있다」가 확인됐을 때만 돈다.
- *   - 특수 공유는 그 페이지가 필요한 만큼만 받는다.
+ *   - pinned 출처는 그 페이지가 필요한 만큼만 받는다.
  *
  * feed-moderation.js 는 Firestore SDK 를 import 하는 브라우저 모듈이라 여기서 실행할 수
  * 없다. 그래서 소스에서 해당 조각을 떼어 검사한다.
@@ -27,26 +27,82 @@ const src = readFileSync(new URL('../js/admin/feed-moderation.js', import.meta.u
 /** 함수 본문 정규식은 리터럴로 둔다 (템플릿 리터럴로 조립하면 백슬래시가 한 번 풀린다) */
 const MIRROR_FILTER = /async function filterDailyJournalRowsWithoutMealMirror\([\s\S]*?\n\}/;
 const SPECIAL_FETCH = /async function fetchSpecialSharesForModeration\([\s\S]*?\n\}/;
+const ORPHAN_FETCH = /async function getOrphanJournalSharesCached\([\s\S]*?\n\}/;
+const JOURNAL_SHARES = /async function fetchDailyJournalMomentSharesFromSharedPhotos\([\s\S]*?\n\}/;
 
 describe('모먼트 관리 읽기 예산 (2026-08-27)', () => {
-    describe('하루기록 미러를 다시 읽지 않는다', () => {
-        it('미러에서 온 행은 getDoc 없이 판정한다', () => {
+    describe('하루기록은 meals 미러가 정본이다', () => {
+        /**
+         * 미러를 collectionGroup 으로 통째로 읽어 pinned 로 얹던 경로가 되살아나면
+         * 같은 소감이 meals 스트림과 pinned 양쪽에서 들어와 한 줄이 두 번 뜬다.
+         */
+        it('미러를 pinned 로 얹는 옛 경로가 없다', () => {
+            const gone = [
+                'fetchDailyJournalSlotsFromMealMirrors',
+                'fetchDailyJournalsForModeration',
+                'getDailyJournalsModerationRowsCached',
+                'mergeDailyJournalSlotRowsIntoMap'
+            ];
+            for (const name of gone) {
+                assert.doesNotMatch(
+                    src,
+                    new RegExp('function ' + name + '\\('),
+                    name + ' 가 되살아났습니다 — 하루기록이 meals 스트림과 겹칩니다'
+                );
+            }
+        });
+
+        it('pinned 로 얹는 것은 미러 없는 「고아 공유」뿐이다', () => {
+            const fn = ORPHAN_FETCH.exec(src);
+            assert.ok(fn, 'getOrphanJournalSharesCached 를 찾지 못했습니다');
+            assert.match(
+                fn[0],
+                /filterDailyJournalRowsWithoutMealMirror\(shareRows\)/,
+                '미러 유무를 가리지 않으면 미러 있는 소감이 두 줄로 뜹니다'
+            );
+        });
+
+        /**
+         * 소감 본문을 지우면 미러는 삭제되지만 sharedPhotos 문서는 남는다.
+         * 그 공유는 피드에 계속 떠 있으므로 관리 목록에서 사라지면 손댈 방법이 없다.
+         */
+        it('존재 확인(getDoc)은 남아 있다 — 고아를 가려내는 유일한 수단이다', () => {
             const block = MIRROR_FILTER.exec(src);
             assert.ok(block, 'filterDailyJournalRowsWithoutMealMirror 를 찾지 못했습니다');
             assert.match(
                 block[0],
-                /isDailyJournalSlot === true && String\(r\.id \|\| ''\) === mealId/,
-                '미러에서 온 행을 걸러내지 않고 전부 getDoc 합니다 — 방금 읽은 문서를 다시 읽습니다'
+                /getDoc\(/,
+                '존재 확인을 없애면 미러 없는 하루기록 공유가 목록에서 사라집니다'
             );
         });
 
-        it('그래도 getDoc 자체는 남아 있다 — 미러 없는 공유 전용 행은 확인해야 한다', () => {
-            const block = MIRROR_FILTER.exec(src);
+        it('공유 조회를 최신순 + 상한으로 받는다', () => {
+            const fn = JOURNAL_SHARES.exec(src);
+            assert.ok(fn, 'fetchDailyJournalMomentSharesFromSharedPhotos 를 찾지 못했습니다');
             assert.match(
-                block[0],
-                /getDoc\(/,
-                '존재 확인을 통째로 없애면 미러 없는 하루기록이 목록에서 사라집니다'
+                fn[0],
+                /orderBy\('timestamp', 'desc'\),\s*\n\s*limit\(rowLimit\)/,
+                '최신순 상한으로 받지 않으면 「아무 N건」이 잘려 페이지에 뭐가 뜰지 알 수 없습니다'
             );
+            assert.match(
+                fn[0],
+                /failed-precondition/,
+                '인덱스가 없을 때의 폴백이 없습니다 — 목록이 통째로 비어 버립니다'
+            );
+        });
+
+        it('호출부가 skip + pageSize 로 상한을 잡는다', () => {
+            assert.match(
+                src,
+                /Math\.min\(skip \+ pageSize, ADMIN_DAILY_JOURNAL_ROWS_CAP\)/,
+                '고아 공유를 페이지와 무관하게 통째로 받습니다'
+            );
+        });
+
+        it('캐시가 「몇 건으로 받았는지」를 기억한다', () => {
+            const fn = ORPHAN_FETCH.exec(src);
+            assert.match(fn[0], /limitUsed \|\| 0\) >= rowLimit/, '캐시가 상한을 무시하면 뒤 페이지에서 행이 모자랍니다');
+            assert.match(fn[0], /limitUsed: rowLimit/, '받은 상한을 캐시에 남기지 않습니다');
         });
     });
 
@@ -72,7 +128,7 @@ describe('모먼트 관리 읽기 예산 (2026-08-27)', () => {
             assert.match(
                 fn[0],
                 /orderBy\('timestamp', 'desc'\)/,
-                "orderBy 를 통과하는 건수를 세지 않으면 「빠진 문서」를 가릴 수 없습니다"
+                'orderBy 를 통과하는 건수를 세지 않으면 「빠진 문서」를 가릴 수 없습니다'
             );
         });
 
@@ -112,9 +168,6 @@ describe('모먼트 관리 읽기 예산 (2026-08-27)', () => {
             );
         });
 
-        /**
-         * 앞 페이지가 20건으로 캐시해 두면 5페이지(100건 필요)가 모자란 채로 그려진다.
-         */
         it('캐시가 「몇 건으로 받았는지」를 기억한다', () => {
             const fn = /async function getSpecialSharesModerationRowsCached\([\s\S]*?\n\}/.exec(src);
             assert.ok(fn, 'getSpecialSharesModerationRowsCached 를 찾지 못했습니다');
@@ -131,7 +184,7 @@ describe('모먼트 관리 읽기 예산 (2026-08-27)', () => {
             assert.ok(fn, 'invalidateAdminFeedMonitoringCache 를 찾지 못했습니다');
             assert.match(fn[0], /specialSharesCountCache = \{ ts: 0/, '건수 캐시를 비우지 않습니다');
             assert.match(fn[0], /specialSharesMissingTsCache = \{ ts: 0/, '보강 판단 캐시를 비우지 않습니다');
-            assert.match(fn[0], /limitUsed: 0/, '특수 공유 캐시의 limitUsed 를 되돌리지 않습니다');
+            assert.match(fn[0], /limitUsed: 0/, '캐시의 limitUsed 를 되돌리지 않습니다');
         });
     });
 });
