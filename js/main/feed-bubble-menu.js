@@ -8,6 +8,7 @@ import { renderBoardFeedTab } from '../render/board-feed.js';
 import { getDisplayProfile, lightUiHaptic, addCompositionAwareInput } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { updateFeedCharRemainingUi } from '../feed-char-count.js';
+import { refreshLucideIcons } from '../icons.js';
 
 const LONG_PRESS_MS = 520;
 const MOVE_CANCEL_PX = 16;
@@ -278,6 +279,8 @@ function showFeedBubbleSheet({ postId, isMine, bubble }) {
         </div>`;
 
     document.body.appendChild(root);
+    /* i[data-lucide]는 전역 옵저버가 없어 여기서 직접 SVG로 바꿔야 한다 — 안 하면 빈 아이콘 */
+    refreshLucideIcons(root);
     document.body.classList.add('feed-bubble-sheet-open');
     document.addEventListener('keydown', onSheetEscape);
 
