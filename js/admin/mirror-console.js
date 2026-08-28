@@ -30,15 +30,39 @@ function fmtStamp(iso) {
     return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
-function ageBadge(iso) {
+/**
+ * 상태 뱃지 — 미러의 재구축 정책에 따라 다르게 읽어야 한다.
+ *
+ * - 정기 재구축이 있는 미러(users·sharedPhotos·feedPosts·boardPosts): 7일이 지나면
+ *   다음 동기화가 전체를 다시 받는다 — 그 예고를 보여 준다.
+ * - 없는 미러(usageDaily·aiDietReports): 축이 완전하거나 append-only 라 재구축이
+ *   잡을 것이 없다. 오래됐다고 나쁜 상태가 아니므로 「7일 전」 경고를 띄우지 않는다.
+ * - meals: 재구축 대신 드리프트 감지가 있다 — 걸리면 붉은 뱃지로 알린다.
+ */
+function ageBadge(r) {
+    const iso = r.lastSyncedAt;
     if (!iso) return '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[11px] font-bold">미구축</span>';
+    if (r.drift === true) {
+        return '<span class="px-2 py-0.5 rounded bg-red-50 text-red-700 text-[11px] font-bold" title="미러가 서버보다 많은 문서를 들고 있습니다 — 서버에서 지워진 문서가 미러에 남아 있다는 신호입니다. 「재구축 예약」으로 정리하세요.">정합성 의심 · 재구축 권장</span>';
+    }
     const ms = Date.now() - new Date(iso).getTime();
     if (!Number.isFinite(ms)) return '';
     const days = Math.floor(ms / 86400000);
-    if (days >= 7) {
-        return `<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${days}일 전 · 다음 실행 때 전체 재구축</span>`;
+    if (r.periodicRebuild !== false && days >= 7) {
+        return `<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${days}일 전 · 다음 동기화 때 전체 재구축</span>`;
     }
     return '<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">최신</span>';
+}
+
+/** 정책 설명 — 「왜 이 미러는 정기 재구축이 없나」를 표에서 바로 읽게 */
+function policyLabel(r) {
+    if (r.key === 'meals') {
+        return '<span class="text-[11px] text-slate-400" title="재구축이 비싸(1.2만 읽기) 대신 동기화마다 서버 문서 수와 대조합니다. 어긋나면 위 상태에 「정합성 의심」이 뜹니다.">드리프트 감지</span>';
+    }
+    if (r.periodicRebuild === false) {
+        return '<span class="text-[11px] text-slate-400" title="모든 변경이 델타에 걸리거나(서버 시각 도장) 쓰기 자체가 막혀 있어, 재구축이 잡을 것이 없습니다.">재구축 불필요</span>';
+    }
+    return '<span class="text-[11px] text-slate-400" title="생성 시각 축이라 남이 고친 값(좋아요·댓글 수 등)이 델타에 안 걸립니다. 7일마다 전체를 다시 받아 정리합니다. users 는 설정 저장이 도장을 찍지 않아 같은 처방이 필요합니다.">7일 재구축</span>';
 }
 
 /** 모든 미러의 현재 상태 */
@@ -113,6 +137,7 @@ export async function renderMirrorConsole() {
                     <th class="py-2 pr-3 text-right">보유</th>
                     <th class="py-2 pr-3">마지막 동기화</th>
                     <th class="py-2 pr-3">상태</th>
+                    <th class="py-2 pr-3">정책</th>
                     <th class="py-2 text-right">조작</th>
                 </tr>
             </thead>
@@ -124,7 +149,8 @@ export async function renderMirrorConsole() {
                         <td class="py-2 pr-3 font-bold text-slate-700">${escapeHtml(r.label)}</td>
                         <td class="py-2 pr-3 text-right tabular-nums text-slate-700">${(r.docCount || 0).toLocaleString('ko-KR')}</td>
                         <td class="py-2 pr-3 text-slate-500 text-xs">${escapeHtml(fmtStamp(r.lastSyncedAt))}</td>
-                        <td class="py-2 pr-3">${ageBadge(r.lastSyncedAt)}</td>
+                        <td class="py-2 pr-3">${ageBadge(r)}</td>
+                        <td class="py-2 pr-3">${policyLabel(r)}</td>
                         <td class="py-2 text-right whitespace-nowrap">
                             <button type="button" data-mirror-sync="${escapeHtml(r.key)}" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-wait">
                                 ${r.bootstrapDone ? '지금 동기화' : '지금 내려받기'}
@@ -173,7 +199,8 @@ export async function renderMirrorConsole() {
             · 「지금 내려받기」는 이 자리에서 바로 받습니다. 첫 구축은 오래 걸립니다 —
             식사 기록은 1만 건 남짓을 한 번에 받습니다(기기당 한 번).<br>
             · 「재구축 예약」은 지금 지우기만 합니다. 실제 내려받기는 해당 화면을 다음에 열 때 일어납니다.<br>
-            · 각 미러는 마지막 동기화로부터 7일이 지나면 스스로 전체를 다시 받습니다.
+            · 「정책」열이 7일 재구축인 미러는 기한이 차면 배경 유지보수(접속 시 + 6시간 간격)가
+            스스로 전체를 다시 받습니다. 재구축 불필요·드리프트 감지인 미러는 정기 재구축이 없습니다.
         </p>
     `;
     refreshLucideIcons(mount);
@@ -387,6 +414,47 @@ async function importMirrorBackup(file) {
         console.error('[미러 백업] 불러오기 실패:', e);
         setMsg(`불러오기 실패: ${e?.message || e}`, 'red');
     }
+}
+
+/**
+ * 정기 유지보수 — 관리자 페이지가 열려 있는 동안, 이미 구축된 미러를 조용히 동기화한다.
+ *
+ * 7일 재구축은 원래 「그 화면을 다음에 열 때」만 돌았다. 자주 안 여는 화면의 미러는
+ * 기한이 지나도 계속 낡은 채였고, 어쩌다 열면 그 자리에서 전체 재구축이 돌아 뜸금없이
+ * 느렸다. 여기서는 부팅 직후와 6시간 간격으로 각 미러의 `ensureSynced` 를 불러
+ * **각자 판단**(델타/전체)에 맡긴다 — 기한이 찼으면 그때 배경에서 전체가 돈다.
+ *
+ * **미구축 미러는 건드리지 않는다.** 부트스트랩(meals 1.2만 읽기)은 사람이 콘솔에서
+ * 「지금 내려받기」로 부르는 것이지, 배경 작업이 불청객으로 부를 일이 아니다.
+ */
+let mirrorMaintenanceTimer = null;
+
+export async function runMirrorMaintenance() {
+    let rows;
+    try {
+        rows = await collectStatuses();
+    } catch (e) {
+        console.warn('[미러 유지보수] 상태를 읽지 못해 건너뜁니다:', e?.message || e);
+        return;
+    }
+    for (const r of rows) {
+        if (!r.bootstrapDone) continue;
+        try {
+            const res = await syncMirrorByKey(r.key);
+            if (res?.mode && res.mode !== 'delta') {
+                console.log(`[미러 유지보수] ${r.key}: ${res.mode}(${res.reason || ''}) 재구축이 돌았습니다.`);
+            }
+        } catch (e) {
+            console.warn(`[미러 유지보수] ${r.key} 동기화 실패 — 다음 주기에 다시 시도합니다:`, e?.message || e);
+        }
+    }
+}
+
+/** 관리자 인증 뒤 한 번 부른다 — 즉시 1회 + 6시간 간격. 중복 호출은 무시. */
+export function startMirrorMaintenance() {
+    if (mirrorMaintenanceTimer) return;
+    void runMirrorMaintenance();
+    mirrorMaintenanceTimer = setInterval(() => void runMirrorMaintenance(), 6 * 3600 * 1000);
 }
 
 if (typeof window !== 'undefined') {

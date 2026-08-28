@@ -89,3 +89,33 @@ export function nextBookmark(prevIso, syncStartedIso) {
 export function isYmdInRange(ymd, startYmd, endYmd) {
     return typeof ymd === 'string' && ymd >= startYmd && ymd <= endYmd;
 }
+
+/**
+ * meals 미러 드리프트 감지.
+ *
+ * meals 는 미러 중 제일 크고(부트스트랩 ~1.2만) 대시보드·모먼트 관리·사용자 목록이
+ * 전부 여기 얹혀 있는데, **주기적 전체 재구축이 없다** — 비용 때문에 부트스트랩 1회 뒤
+ * 영영 델타·툼스톤이다. 그래서 툼스톤이 유실되면(함수 실패·트리거 배포 전 삭제)
+ * 어긋난 채로 영원히 간다.
+ *
+ * 감지 원리: 건강한 미러는 항상 `미러 수 ≤ 서버 수` 다. 미러는 `date` 있는 문서만
+ * 담으므로 서버가 같거나 크다. **미러가 더 크면** 서버에서 사라진 문서를 미러가
+ * 아직 들고 있다는 확실한 신호다.
+ *
+ * 못 잡는 것: 서버 수가 같거나 큰 채로 내용만 어긋난 경우(도장 없는 쓰기).
+ * 그런 쓰기는 관리자 조치뿐이고, 그쪽은 patchLocalMeal 이 그 자리에서 반영한다.
+ *
+ * @param {number|null} serverCount 서버가 센 meals 전체 수 (못 셌으면 null)
+ * @param {number} mirrorCount 미러 보유 수
+ * @returns {{drift: boolean, reason: string}}
+ */
+export function detectMealsMirrorDrift(serverCount, mirrorCount) {
+    if (typeof serverCount !== 'number' || !Number.isFinite(serverCount)) {
+        return { drift: false, reason: 'count-unavailable' };
+    }
+    if (typeof mirrorCount !== 'number' || !Number.isFinite(mirrorCount)) {
+        return { drift: false, reason: 'mirror-count-unavailable' };
+    }
+    if (mirrorCount > serverCount) return { drift: true, reason: 'mirror-exceeds-server' };
+    return { drift: false, reason: 'ok' };
+}

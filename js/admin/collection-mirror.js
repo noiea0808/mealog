@@ -177,7 +177,10 @@ export function createCollectionMirror(cfg) {
                 bootstrapDone: true,
                 lastSyncedAt: syncStartedIso,
                 docCount,
-                serverCount: serverCount == null ? meta.serverCount || 0 : serverCount
+                serverCount: serverCount == null ? meta.serverCount || 0 : serverCount,
+                // 미러 콘솔 표시용 — 마지막 동기화가 왜 그 모드로 돌았는지
+                lastSyncMode: decision.mode,
+                lastSyncReason: decision.reason
             });
             console.log(
                 `[${name} 미러] ${decision.mode}(${decision.reason}): 받음 ${fetched}건 · 서버 읽기 ${serverReads}회 · 보유 ${docCount}건`
@@ -278,7 +281,12 @@ export function createCollectionMirror(cfg) {
             bootstrapDone: !!meta.bootstrapDone,
             lastSyncedAt: meta.lastSyncedAt || '',
             docCount: meta.docCount || 0,
-            serverCount: meta.serverCount || 0
+            serverCount: meta.serverCount || 0,
+            lastSyncMode: meta.lastSyncMode || '',
+            lastSyncReason: meta.lastSyncReason || '',
+            /** 정기 전체 재구축이 걸려 있는지 — 콘솔이 상태 뱃지를 가른다 */
+            periodicRebuild: Number.isFinite(fullRebuildMs),
+            fullRebuildMs
         };
     }
 
@@ -321,8 +329,19 @@ export function createCollectionMirror(cfg) {
 /** sharedPhotos — 모먼트 관리·대시보드가 읽는다. 생성 축은 Timestamp `timestamp`. */
 export const sharedPhotosMirror = createCollectionMirror({ name: 'sharedPhotos', sortField: 'timestamp' });
 
-/** aiDietReports — 생성 뒤 바뀌지 않는다(진짜 append-only). 축은 Timestamp `generatedAt`. */
-export const aiDietReportsMirror = createCollectionMirror({ name: 'aiDietReports', sortField: 'generatedAt' });
+/**
+ * aiDietReports — 규칙이 `allow write: if false` 다. 클라이언트도 관리자도 못 쓰고,
+ * 서버가 만들고 나면 수정·삭제가 일어나지 않는다(진짜 append-only). 축은 `generatedAt`.
+ *
+ * **정기 재구축을 끈다** — 재구축이 잡을 수정·삭제 자체가 없어서, 7일마다 전량을
+ * 다시 사는 것은 순수 낭비였다. 삭제 감지(count 1읽기)는 그대로 둔다: Firebase 콘솔에서
+ * 손으로 지우는 경우까지 막을 수는 없고, 그때는 count 가 줄어 스스로 재구축한다.
+ */
+export const aiDietReportsMirror = createCollectionMirror({
+    name: 'aiDietReports',
+    sortField: 'generatedAt',
+    fullRebuildMs: Infinity
+});
 
 /** feedPosts — 밀톡. 축은 Timestamp `timestamp`. */
 export const feedPostsMirror = createCollectionMirror({ name: 'feedPosts', sortField: 'timestamp' });
@@ -343,7 +362,17 @@ export const boardPostsMirror = createCollectionMirror({ name: 'boardPosts', sor
  * 삭제는 규칙에서 막혀 있다(`allow delete: if false`). 줄어들 일이 없으니 문서 수
  * 감시는 사실상 「빠진 게 없나」 확인용이다.
  */
-export const usageDailyMirror = createCollectionMirror({ name: 'usageDaily', sortField: 'updatedAt' });
+export const usageDailyMirror = createCollectionMirror({
+    name: 'usageDaily',
+    sortField: 'updatedAt',
+    /**
+     * 정기 재구축을 끈다 — 축이 완전해서다. 모든 쓰기가 `updatedAt` 서버 시각을 찍으므로
+     * 수정이 델타에 빠짐없이 걸리고, 삭제는 규칙이 막는다(`allow delete: if false`).
+     * 재구축이 잡을 것이 없는데 7일마다 전 구간을 다시 사는 것은 낭비였다.
+     * 삭제 감지(count)는 aiDietReports 와 같은 이유로 남긴다.
+     */
+    fullRebuildMs: Infinity
+});
 
 export const ALL_COLLECTION_MIRRORS = [
     sharedPhotosMirror,

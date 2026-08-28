@@ -17,6 +17,7 @@ import {
     collection,
     collectionGroup,
     documentId,
+    getCountFromServer,
     getDocs,
     limit,
     orderBy,
@@ -29,7 +30,8 @@ import {
     toMirrorRecords,
     tombstonesToKeys,
     nextBookmark,
-    mirrorKey
+    mirrorKey,
+    detectMealsMirrorDrift
 } from './meals-mirror-model.js';
 import { openMirrorDb, idbRequest, idbTxDone, readMeta, writeMeta, clearStore } from './admin-mirror-db.js';
 
@@ -183,13 +185,39 @@ export function ensureMealsMirrorSynced(onProgress, options = {}) {
         }
 
         const docCount = await countMirror();
+        /**
+         * 드리프트 감지 — count 1읽기.
+         *
+         * meals 에는 주기적 전체 재구축이 없으므로(비용), 어긋나면 스스로 낫지 않는다.
+         * 건강한 미러는 항상 미러 수 ≤ 서버 수 (미러는 date 있는 문서만). 미러가 더 크면
+         * 서버에서 사라진 문서를 들고 있는 것 — 툼스톤 유실의 확실한 신호다.
+         * 여기서는 **알리기만** 한다. 재구축은 1.2만 읽기라 관리자가 미러 콘솔에서 결정한다.
+         */
+        let serverDocCount = null;
+        let drift = false;
+        try {
+            serverDocCount = (await getCountFromServer(query(collectionGroup(db, 'meals')))).data().count ?? null;
+            const d = detectMealsMirrorDrift(serverDocCount, docCount);
+            drift = d.drift;
+            if (drift) {
+                console.warn(
+                    `[meals 미러] 정합성 의심 — 미러 ${docCount}건 > 서버 ${serverDocCount}건. ` +
+                        '서버에서 지워진 문서를 미러가 들고 있습니다. 미러 콘솔에서 「재구축 예약」을 권합니다.'
+                );
+            }
+        } catch (cntErr) {
+            console.warn('[meals 미러] 서버 문서 수 조회 실패 — 드리프트 감지 생략:', cntErr?.message || cntErr);
+        }
         await writeMeta(META_KEY, {
             bootstrapDone: true,
             lastSyncedAt: nextBookmark(meta.lastSyncedAt, syncStartedIso),
-            docCount
+            docCount,
+            serverDocCount,
+            drift,
+            lastSyncMode: mode
         });
         console.log(`[meals 미러] ${mode}: 받음 ${fetched}건 · 지움 ${removed}건 · 보유 ${docCount}건`);
-        return { mode, fetched, removed, docCount };
+        return { mode, fetched, removed, docCount, drift };
     })();
     syncInFlight = run;
     // 자리를 비우는 건 「내가 아직 현재 동기화일 때」만 — force 가 끼어들어 자리를
@@ -277,7 +305,16 @@ export async function getAllMealsFromMirror() {
 /** 미러 상태 — UI 표시용 */
 export async function getMealsMirrorStatus() {
     const meta = await readMealsMeta();
-    return { bootstrapDone: !!meta.bootstrapDone, lastSyncedAt: meta.lastSyncedAt || '', docCount: meta.docCount || 0 };
+    return {
+        bootstrapDone: !!meta.bootstrapDone,
+        lastSyncedAt: meta.lastSyncedAt || '',
+        docCount: meta.docCount || 0,
+        serverDocCount: meta.serverDocCount ?? null,
+        drift: meta.drift === true,
+        lastSyncMode: meta.lastSyncMode || '',
+        /** meals 는 정기 재구축이 없다 — 콘솔이 뱃지를 가른다 */
+        periodicRebuild: false
+    };
 }
 
 /** 전량 재다운로드 — 정합성이 의심될 때 수동으로 (다음 동기화가 부트스트랩부터 돈다) */

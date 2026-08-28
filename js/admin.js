@@ -54,7 +54,7 @@ import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from '
 import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './loading-spinner-config.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
-import './admin/mirror-console.js';
+import { startMirrorMaintenance } from './admin/mirror-console.js';
 import './admin/moment-analytics.js';
 import './admin/lounge-chat-moderation.js';
 import './admin/board-moderation.js';
@@ -126,6 +126,12 @@ function showAdminPage(user) {
     })();
     renderSharedPhotos();
     window.switchAdminTab('dashboard');
+    /**
+     * 미러 정기 유지보수 — 이미 구축된 미러를 배경에서 델타 동기화하고, 7일 기한이 찬
+     * 미러는 그때 전체 재구축을 돌린다. 화면을 열 때까지 기다리지 않는다.
+     * (미구축 미러는 건드리지 않는다 — 부트스트랩은 미러 콘솔에서 사람이 부른다)
+     */
+    startMirrorMaintenance();
 }
 
 function resetAdminScrollTop() {

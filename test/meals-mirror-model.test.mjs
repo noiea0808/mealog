@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    detectMealsMirrorDrift,
     computeSyncStartIso,
     mirrorKey,
     userIdFromMealPath,
@@ -92,4 +93,14 @@ test('isYmdInRange: 경계 포함 문자열 비교', () => {
     assert.equal(isYmdInRange('2026-08-31', '2026-08-01', '2026-08-31'), true);
     assert.equal(isYmdInRange('2026-07-31', '2026-08-01', '2026-08-31'), false);
     assert.equal(isYmdInRange(undefined, '2026-08-01', '2026-08-31'), false);
+});
+
+test('detectMealsMirrorDrift: 미러가 서버보다 크면 드리프트 — 툼스톤 유실의 확실한 신호', () => {
+    assert.deepEqual(detectMealsMirrorDrift(100, 101), { drift: true, reason: 'mirror-exceeds-server' });
+    // 같거나 작으면 정상 — 서버에는 date 없는 문서가 더 있을 수 있다
+    assert.equal(detectMealsMirrorDrift(100, 100).drift, false);
+    assert.equal(detectMealsMirrorDrift(105, 100).drift, false);
+    // count 를 못 셌으면 판단하지 않는다
+    assert.deepEqual(detectMealsMirrorDrift(null, 100), { drift: false, reason: 'count-unavailable' });
+    assert.equal(detectMealsMirrorDrift(100, NaN).drift, false);
 });

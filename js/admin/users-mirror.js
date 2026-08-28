@@ -253,7 +253,9 @@ export function ensureUsersMirrorSynced(onProgress, options = {}) {
             lastSyncedAt: syncStartedIso,
             rowSchema: USERS_MIRROR_ROW_SCHEMA,
             docCount,
-            rootDocCount: serverRootCount == null ? meta.rootDocCount || 0 : serverRootCount
+            rootDocCount: serverRootCount == null ? meta.rootDocCount || 0 : serverRootCount,
+            lastSyncMode: decision.mode,
+            lastSyncReason: decision.reason
         });
         console.log(
             `[users 미러] ${decision.mode}(${decision.reason}): 훑음 ${seen}명 · 서버 읽기 ${serverReads}회 · 보유 ${docCount}명`
@@ -296,7 +298,15 @@ export async function getUsersMirrorStatus() {
         lastSyncedAt: meta.lastSyncedAt || '',
         docCount: meta.docCount || 0,
         rootDocCount: meta.rootDocCount || 0,
-        rowSchema: meta.rowSchema || 0
+        rowSchema: meta.rowSchema || 0,
+        lastSyncMode: meta.lastSyncMode || '',
+        lastSyncReason: meta.lastSyncReason || '',
+        /**
+         * users 는 정기 재구축이 **필요하다** — saveSettings 가 아무 도장도 찍지 않아서
+         * (setDoc merge 뿐), 로그인 없이 프로필만 고친 변경은 어떤 축으로도 못 잡는다.
+         * 7일 재구축이 유일한 안전망이다.
+         */
+        periodicRebuild: true
     };
 }
 

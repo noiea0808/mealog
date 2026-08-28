@@ -124,3 +124,12 @@ test('sortRowsDesc: 최신순 + 상한, 정렬키 없는 행은 뒤로', () => {
     assert.deepEqual(sortRowsDesc(rows, 2).map((r) => r.id), ['c', 'a']);
     assert.deepEqual(sortRowsDesc(null), []);
 });
+
+test('decideCollectionSyncMode: fullRebuildMs 가 Infinity 면 아무리 오래돼도 정기 재구축이 없다', () => {
+    const now = Date.parse('2026-08-29T00:00:00Z');
+    const meta = { bootstrapDone: true, lastSyncedAt: '2025-01-01T00:00:00Z', serverCount: 10 };
+    // usageDaily·aiDietReports — 축이 완전하거나 append-only 라 재구축이 잡을 것이 없다
+    assert.equal(decideCollectionSyncMode(meta, 10, Infinity, now).mode, 'delta');
+    // 삭제 감지는 그대로 산다 — Firebase 콘솔에서 손으로 지운 경우의 마지막 안전망
+    assert.equal(decideCollectionSyncMode(meta, 9, Infinity, now).reason, 'deletion-detected');
+});
