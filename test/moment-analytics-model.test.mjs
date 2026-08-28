@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 import {
     MOMENT_FIELD_SPECS,
     CORE_FIELD_SPECS,
+    FOOD_PATH_SPECS,
     analyzeMomentRows,
+    foodClassifyPath,
     daysBetweenYmd,
     shiftYmd,
     sundayKeyOfYmd,
@@ -35,14 +37,69 @@ test('「어디서」는 끼니(place)와 간식(snackPlaceMain) 어느 쪽으�
     assert.equal(filled('where', {}), false);
 });
 
-test('「무엇을」은 사용자가 확정한 값만 세고, 자동분류는 참고 행으로 따로 샌다', () => {
-    const userPicked = { category: '한식', categoryAuto: '분식' };
-    const autoOnly = { categoryAuto: '분식' };
+test('「무엇을」은 사용자가 확정한 값만 세고, 자동분류는 최종 도달 행에서만 합쳐진다', () => {
+    const userPicked = { category: '밥류', categoryAuto: '면류', categorySource: 'user' };
+    const autoOnly = { categoryAuto: '면류', categorySource: 'ai' };
     assert.equal(filled('what', userPicked), true);
     assert.equal(filled('what', autoOnly), false, 'categoryAuto는 사람이 채운 값이 아니다');
-    assert.equal(filled('whatAuto', autoOnly), true);
-    assert.equal(filled('whatAuto', userPicked), false, '확정된 기록은 자동분류 행에 겹쳐 세지 않는다');
-    assert.equal(filled('what', { snackType: '과자' }), true, '간식은 snackType으로 저장된다');
+    assert.equal(filled('whatFinal', autoOnly), true, '자동으로라도 값이 남았으면 최종 도달');
+    assert.equal(filled('whatFinal', userPicked), true);
+    assert.equal(filled('whatFinal', { menuDetail: '김치찌개' }), false, '상세만으로는 분류된 것이 아니다');
+    assert.equal(filled('what', { snackType: '과자/스낵' }), true, '간식은 snackType으로 저장된다');
+});
+
+test('「무엇을」 경로는 저장 규칙대로 한 칸에만 떨어진다', () => {
+    // 저장 규칙: 사용자 확정만 category/snackType, 자동 분류는 categoryAuto + source
+    assert.equal(foodClassifyPath({ category: '밥류', categorySource: 'user' }), 'user');
+    assert.equal(foodClassifyPath({ snackType: '커피', categorySource: 'user' }), 'user');
+    assert.equal(
+        foodClassifyPath({ category: '기타' }),
+        'userEtc',
+        '「기타」는 서버가 미분류로 보고 다시 집는 값이라 직접 선택과 가른다'
+    );
+    assert.equal(foodClassifyPath({ categoryAuto: '면류', categorySource: 'local' }), 'local');
+    assert.equal(foodClassifyPath({ categoryAuto: '면류', categorySource: 'ai' }), 'ai');
+    assert.equal(
+        foodClassifyPath({ categoryAuto: '면류' }),
+        'autoUnknown',
+        'source 없이 값만 있는 옛 기록'
+    );
+    assert.equal(foodClassifyPath({ categorySource: 'dismissed', menuDetail: '김밥' }), 'dismissed');
+    assert.equal(
+        foodClassifyPath({ menuDetail: '김밥' }),
+        'pending',
+        '상세가 있고 아무도 안 집었으면 서버 배치 대기'
+    );
+    assert.equal(
+        foodClassifyPath({ categorySource: 'ai' }),
+        'noDetail',
+        'source=ai 인데 값이 없으면 모델이 미분류로 종결한 것 — 다시 대기로 세지 않는다'
+    );
+    assert.equal(foodClassifyPath({}), 'noDetail', '상세 텍스트가 없으면 서버도 집을 수 없다');
+});
+
+test('경로는 서로 배타적이라 합이 전체 기록 수와 같다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류', categorySource: 'user' },
+        { userId: 'u1', date: '2026-08-10', category: '기타' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySource: 'local' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '커피', categorySource: 'ai' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '빵류' },
+        { userId: 'u1', date: '2026-08-10', categorySource: 'dismissed', menuDetail: '김밥' },
+        { userId: 'u1', date: '2026-08-10', menuDetail: '라면' },
+        { userId: 'u1', date: '2026-08-10' }
+    ];
+    const r = analyzeMomentRows(rows, '2026-08-10', '2026-08-10');
+    const sum = FOOD_PATH_SPECS.reduce((acc, p) => acc + r.overall.counts[p.key], 0);
+    assert.equal(sum, rows.length, '모든 기록이 정확히 한 경로에만 들어간다');
+    FOOD_PATH_SPECS.forEach((p) => {
+        assert.equal(r.overall.counts[p.key], 1, `${p.label}에 1건`);
+    });
+
+    // 최종 도달 = 사용자확정 + 기타 + local + ai + autoUnknown = 5
+    assert.equal(r.overall.counts.whatFinal, 5);
+    // 사용자 확정률(what)은 그중 2건뿐 — 이 둘이 갈려야 시트 개편의 영향을 읽을 수 있다
+    assert.equal(r.overall.counts.what, 2);
 });
 
 test('만족도·포만감은 0도 값이다 — 미입력은 없거나 빈 값일 때뿐', () => {

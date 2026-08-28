@@ -27,6 +27,7 @@ import { refreshLucideIcons } from '../icons.js';
 import {
     MOMENT_FIELD_SPECS,
     CORE_FIELD_SPECS,
+    FOOD_PATH_SPECS,
     analyzeMomentRows,
     shiftYmd,
     pct
@@ -216,17 +217,99 @@ function renderFieldTable(result) {
         </div>`;
 }
 
+/**
+ * 「무엇을」만 따로 뜯어 보는 표.
+ *
+ * 이 축은 값이 들어오는 길이 넷이라(직접 선택·로컬 분류기·서버 AI·아무도 못 메움)
+ * 「무엇을 입력률」 한 줄로는 시트를 바꿨을 때 무엇이 움직였는지 답할 수 없다.
+ * 사용자가 덜 고르게 된 것과 분류 자체가 안 되는 것은 손댈 곳이 전혀 다르다.
+ */
+function renderFoodPathTable(result) {
+    const total = result.overall.total;
+    const toneClass = {
+        good: 'bg-emerald-500',
+        weak: 'bg-emerald-300',
+        auto: 'bg-sky-400',
+        pending: 'bg-amber-400',
+        bad: 'bg-red-400'
+    };
+    const rows = FOOD_PATH_SPECS.map((spec) => {
+        const n = result.overall.counts[spec.key];
+        const rate = pct(n, total);
+        return `
+            <tr class="border-b border-slate-100">
+                <td class="px-3 py-2 text-slate-700 whitespace-nowrap">${escapeHtml(spec.label)}</td>
+                <td class="px-3 py-2 text-right tabular-nums text-slate-700">${n.toLocaleString()}</td>
+                <td class="px-3 py-2 w-[45%] min-w-[10rem]">
+                    <div class="flex items-center gap-2">
+                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div class="h-full ${toneClass[spec.tone] || 'bg-slate-400'} rounded-full" style="width:${Math.max(0, Math.min(100, rate)).toFixed(1)}%"></div>
+                        </div>
+                        <span class="text-xs font-bold tabular-nums text-slate-600 w-14 text-right">${fmtPct(rate)}</span>
+                    </div>
+                </td>
+            </tr>`;
+    }).join('');
+
+    const userRate = pct(result.overall.counts.pathUser + result.overall.counts.pathUserEtc, total);
+    const finalRate = pct(result.overall.counts.whatFinal, total);
+
+    return `
+        <div class="mt-6">
+            <h4 class="text-sm font-black text-slate-800 mb-2">「무엇을」이 채워진 경로</h4>
+            <div class="grid grid-cols-2 gap-3 mb-3">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p class="text-xs font-bold text-slate-500">사용자가 고른 비율</p>
+                    <p class="text-2xl font-black text-slate-800 mt-1">${fmtPct(userRate)}</p>
+                    <p class="text-[11px] text-slate-400 mt-1">시트 개편에 직접 반응하는 값</p>
+                </div>
+                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <p class="text-xs font-bold text-emerald-700">최종 분류 도달률</p>
+                    <p class="text-2xl font-black text-emerald-800 mt-1">${fmtPct(finalRate)}</p>
+                    <p class="text-[11px] text-emerald-600 mt-1">자동 분류까지 합쳐 값이 남은 비율</p>
+                </div>
+            </div>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50">
+                        <tr class="border-b border-slate-200">
+                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">경로</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">건수</th>
+                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">비율</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
+                · 서버 AI 분류는 <b>배치로 나중에</b> 돕니다. 최근 며칠은 아직 안 돌았을 수 있어
+                「서버 분류 대기」가 부풀고 「서버 AI가 채움」이 낮게 보입니다 — 추이 맨 오른쪽 구간은 그만큼 감해서 보세요.<br>
+                · 「기타」는 서버가 미분류로 보고 다시 집는 값이라 직접 선택과 갈라 두었습니다.<br>
+                · 「제안을 거부함」은 서버 backfill도 건너뛰어 영구히 빈 칸으로 남습니다.
+            </p>
+        </div>`;
+}
+
 function renderTrendTable(result) {
     if (!result.trend.length) return '';
     // 최신 구간이 위로 오게 뒤집어 보여 준다
     const rows = [...result.trend].reverse();
-    const head = CORE_FIELD_SPECS.map(
-        (f) =>
-            `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600 whitespace-nowrap">${escapeHtml(f.label)}</th>`
-    ).join('');
+    /**
+     * 핵심 8열 + 「무엇을(최종)」. 사용자가 고른 값만 담은 「무엇을」 옆에 자동 분류까지
+     * 합친 열을 세워야, 떨어진 것이 입력인지 분류인지가 한 줄 안에서 갈린다.
+     */
+    const trendSpecs = [...CORE_FIELD_SPECS, MOMENT_FIELD_SPECS.find((f) => f.key === 'whatFinal')].filter(Boolean);
+    const head = trendSpecs
+        .map(
+            (f) =>
+                `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600 whitespace-nowrap">${escapeHtml(
+                    f.key === 'whatFinal' ? '무엇을(최종)' : f.label
+                )}</th>`
+        )
+        .join('');
     const body = rows
         .map((b) => {
-            const cells = CORE_FIELD_SPECS.map((f) => {
+            const cells = trendSpecs.map((f) => {
                 const rate = pct(b.counts[f.key], b.total);
                 return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${rateCellClass(rate)}">${
                     b.total ? rate.toFixed(0) : '-'
@@ -325,12 +408,13 @@ function renderMomentAnalyticsResult(result, meta) {
         </div>
         ${renderSummaryCards(result, meta)}
         ${renderFieldTable(result)}
+        ${renderFoodPathTable(result)}
         ${renderTrendTable(result)}
         ${renderCompletenessTable(result)}
         <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
             · 분모는 기간 안의 끼니·간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을 갖지 않아 제외했습니다.<br>
             · <b>만족도·포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 「꺼 둔 사용자」가 섞여 있습니다.<br>
-            · <b>무엇을</b>은 사용자가 확정한 값만 셉니다. 자동분류(categoryAuto)로만 채워진 기록은 회색 행에 따로 표시됩니다.<br>
+            · <b>무엇을</b>은 사용자가 확정한 값만 셉니다 — 자동 분류는 이 필드를 건드리지 않습니다. 자동까지 합친 값은 아래 「채워진 경로」 표에 있습니다.<br>
             · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
         </p>`;
     refreshLucideIcons(container);
@@ -427,12 +511,19 @@ window.exportMomentAnalyticsToExcel = async function () {
         CORE_FIELD_SPECS.forEach((f) => {
             row[f.label] = Number(pct(b.counts[f.key], b.total).toFixed(1));
         });
+        row['무엇을(최종)'] = Number(pct(b.counts.whatFinal, b.total).toFixed(1));
         return row;
     });
+    const pathRows = FOOD_PATH_SPECS.map((spec) => ({
+        경로: spec.label,
+        건수: result.overall.counts[spec.key],
+        비율: Number(pct(result.overall.counts[spec.key], total).toFixed(1))
+    }));
     try {
         const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fieldRows), '항목별 입력률');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pathRows), '무엇을 경로');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendRows), '기간 추이');
         XLSX.writeFile(wb, `mealog-moment-analytics-${result.startYmd}-${result.endYmd}.xlsx`);
     } catch (e) {

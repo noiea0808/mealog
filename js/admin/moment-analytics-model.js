@@ -25,6 +25,62 @@ export function hasPhoto(meal) {
     return Boolean(trimmed(meal?.photoUrl));
 }
 
+/* ─────────────────────────────────────────────────────────────
+ * 「무엇을」이 채워지는 경로
+ *
+ * 이 축만 값이 들어오는 길이 넷이다 — 사용자가 고르거나, 저장할 때 로컬 분류기가
+ * 집거나, 나중에 서버 Gemini 배치가 메우거나, 아무도 못 메우거나.
+ * 저장 규칙(js/modals/entry-save-record.js, functions/classifyMoments.js):
+ *   - 사용자 확정만 category·snackType 에 들어간다. 자동 분류는 **절대** 이 필드를 안 건드린다.
+ *   - 자동 분류는 categoryAuto + categorySource('local' | 'ai')
+ *   - 제안 ✕ 거부는 값 없이 source='dismissed' — 서버 backfill도 건너뛴다(영구 미분류)
+ *   - source 없고 값도 없으면 서버 배치 대기. 단 서버는 menuDetail 이 있어야 집는다.
+ *
+ * 그래서 「사용자 확정률」과 「최종 분류 도달률」은 다른 값이고, 시트를 바꾸면
+ * 전자만 떨어지고 후자는 그대로일 수 있다. 둘을 갈라 놓지 않으면 그 구분이 안 보인다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 사용자가 확정한 형태 값 — 끼니는 category, 간식은 snackType */
+export const foodUserValue = (m) => trimmed(m?.category) || trimmed(m?.snackType);
+/** 분류기(로컬·서버)가 채운 값 */
+export const foodAutoValue = (m) => trimmed(m?.categoryAuto);
+export const foodSource = (m) => trimmed(m?.categorySource);
+/** 서버 backfill 이 보는 상세 텍스트(간식도 menuDetail 하나로 저장된다 — snackDetail 은 레거시) */
+export const foodDetailText = (m) => trimmed(m?.menuDetail) || trimmed(m?.snackDetail);
+
+/**
+ * 기록 하나가 「무엇을」을 어느 경로로 얻었는지 — 서로 겹치지 않는 한 칸으로 떨어진다.
+ * @returns {'user'|'userEtc'|'local'|'ai'|'autoUnknown'|'dismissed'|'pending'|'noDetail'}
+ */
+export function foodClassifyPath(meal) {
+    const user = foodUserValue(meal);
+    if (user) return user === '기타' ? 'userEtc' : 'user';
+    const auto = foodAutoValue(meal);
+    if (auto) {
+        const src = foodSource(meal);
+        if (src === 'local') return 'local';
+        if (src === 'ai') return 'ai';
+        // 자동 분류 도입 전 기록이거나 source 가 유실된 경우
+        return 'autoUnknown';
+    }
+    if (foodSource(meal) === 'dismissed') return 'dismissed';
+    // source='ai' 인데 값이 없으면 모델이 「미분류」로 종결한 것 — 다시 집지 않는다
+    if (foodSource(meal) === 'ai') return 'noDetail';
+    return foodDetailText(meal) ? 'pending' : 'noDetail';
+}
+
+/** 경로 표의 행 정의 — 위에서부터 「채워짐」 쪽이 오고 아래로 갈수록 빈 칸이다 */
+export const FOOD_PATH_SPECS = [
+    { key: 'pathUser', label: '사용자가 직접 고름', filledPath: 'user', tone: 'good' },
+    { key: 'pathUserEtc', label: '사용자가 「기타」로 고름', filledPath: 'userEtc', tone: 'weak' },
+    { key: 'pathLocal', label: '로컬 분류기가 채움', filledPath: 'local', tone: 'auto' },
+    { key: 'pathAi', label: '서버 AI(Gemini)가 채움', filledPath: 'ai', tone: 'auto' },
+    { key: 'pathAutoUnknown', label: '자동 분류(경로 미상)', filledPath: 'autoUnknown', tone: 'auto' },
+    { key: 'pathDismissed', label: '제안을 거부함(영구 미분류)', filledPath: 'dismissed', tone: 'bad' },
+    { key: 'pathPending', label: '서버 분류 대기', filledPath: 'pending', tone: 'pending' },
+    { key: 'pathNoDetail', label: '분류 불가(상세 텍스트 없음)', filledPath: 'noDetail', tone: 'bad' }
+];
+
 /**
  * 입력률을 셀 항목들.
  *
@@ -55,11 +111,11 @@ export const MOMENT_FIELD_SPECS = [
         filled: (m) => !!(trimmed(m.category) || trimmed(m.snackType))
     },
     {
-        key: 'whatAuto',
-        label: '└ 무엇을(자동분류로만 채워짐)',
+        key: 'whatFinal',
+        label: '└ 무엇을(최종 분류 도달)',
         aux: true,
-        note: '사용자 확정 없이 categoryAuto만 있는 기록',
-        filled: (m) => !trimmed(m.category) && !trimmed(m.snackType) && !!trimmed(m.categoryAuto)
+        note: '사용자 확정 + 로컬·서버 자동 분류',
+        filled: (m) => !!(foodUserValue(m) || foodAutoValue(m))
     },
     {
         key: 'whatDetail',
@@ -95,6 +151,19 @@ export const MOMENT_FIELD_SPECS = [
 ];
 
 export const CORE_FIELD_SPECS = MOMENT_FIELD_SPECS.filter((f) => f.core);
+
+/**
+ * 실제로 세는 것 전부 — 항목별 표(MOMENT_FIELD_SPECS)에 경로 행을 얹은 목록.
+ * 경로는 서로 배타적이라 `filledPath` 로 한 칸만 참이 된다.
+ */
+export const COUNT_SPECS = [
+    ...MOMENT_FIELD_SPECS,
+    ...FOOD_PATH_SPECS.map((p) => ({
+        ...p,
+        path: true,
+        filled: (m) => foodClassifyPath(m) === p.filledPath
+    }))
+];
 
 /** YYYY-MM-DD → 로컬 Date (파싱 실패 시 null) */
 function ymdToLocalDate(ymd) {
@@ -151,7 +220,7 @@ export function weekLabelOfSundayKey(sundayYmd) {
 /** 구간 하나의 빈 카운터 */
 function emptyBucket(label, key) {
     const counts = {};
-    MOMENT_FIELD_SPECS.forEach((f) => {
+    COUNT_SPECS.forEach((f) => {
         counts[f.key] = 0;
     });
     return { key, label, total: 0, counts };
@@ -188,7 +257,7 @@ export function analyzeMomentRows(rows, startYmd, endYmd) {
         bucket.total += 1;
 
         let coreFilled = 0;
-        MOMENT_FIELD_SPECS.forEach((spec) => {
+        COUNT_SPECS.forEach((spec) => {
             let ok = false;
             try {
                 ok = !!spec.filled(meal);
