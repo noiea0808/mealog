@@ -5,8 +5,10 @@
  * 어떻게·어디서·무엇을·누구와·만족도·포만감·사진·코멘트가 각각 몇 %나 입력되는지,
  * 그리고 그 비율이 기간에 따라 어떻게 움직이는지가 이 화면의 전부다.
  *
- * 읽기 비용: 기간 안의 meals 문서를 실제로 전부 읽어 센다. 그래서 탭 진입만으로는
+ * 읽기 비용: 로컬 미러(meals-mirror.js)에서 집계한다 — 실행 시 미러 증분 동기화
+ * (변경분만 Firestore 읽기)를 거친 뒤 IndexedDB에서 기간을 자른다. 탭 진입만으로는
  * 아무것도 조회하지 않고, 「분석 실행」을 눌렀을 때만 움직인다(다른 관리자 화면과 같은 규칙).
+ * 미러가 실패하면 예전 방식(기간 내 meals 전량 서버 스캔)으로 물러난다.
  *
  * 계산은 moment-analytics-model.js가 한다 — 여기는 조회와 그리기만.
  */
@@ -21,6 +23,7 @@ import {
     where
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+import { ensureMealsMirrorSynced, getMealsInRange } from './meals-mirror.js';
 import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
 import { refreshLucideIcons } from '../icons.js';
@@ -90,11 +93,35 @@ function readMomentAnalyticsRange() {
 }
 
 /**
- * 기간 안의 meals 문서를 배치로 모두 읽는다.
+ * 기간 안의 meals 를 가져온다 — 1차: 로컬 미러, 실패 시: 서버 전량 스캔.
  *
  * 축은 **슬롯 날짜(date)** 다 — 관리자 트렌드의 「기록한 날짜(recordedAt)」와는 일부러 다르다.
  * 입력률은 "언제 눌렀나"가 아니라 "어느 끼니 칸이 채워졌나"를 묻는 값이라서다.
+ *
+ * @returns {{rows: object[], truncated: boolean, source: 'mirror'|'server', serverReads: number}}
  */
+async function loadRowsForRange(startYmd, endYmd, onProgress) {
+    try {
+        const sync = await ensureMealsMirrorSynced((p) => {
+            if (typeof onProgress !== 'function') return;
+            onProgress(
+                p.stage === 'bootstrap'
+                    ? `미러 첫 구축 중(최초 1회)… ${p.fetched.toLocaleString()}건 다운로드`
+                    : `미러 동기화 중… 변경분 ${p.fetched.toLocaleString()}건`
+            );
+        });
+        const rows = await getMealsInRange(startYmd, endYmd);
+        return { rows, truncated: false, source: 'mirror', serverReads: sync.fetched + sync.removed };
+    } catch (e) {
+        console.warn('[모먼트 분석] 미러 실패 — 서버 전량 스캔으로 대체:', e);
+        const { rows, truncated } = await fetchMealsInRange(startYmd, endYmd, (n) => {
+            if (typeof onProgress === 'function') onProgress(`서버에서 읽는 중… ${n.toLocaleString()}건`);
+        });
+        return { rows, truncated, source: 'server', serverReads: rows.length };
+    }
+}
+
+/** 예전 방식(폴백 전용): 기간 안의 meals 문서를 배치로 모두 읽는다. */
 async function fetchMealsInRange(startYmd, endYmd, onProgress) {
     const rows = [];
     let cursor = null;
@@ -145,9 +172,12 @@ function renderSummaryCards(result, meta) {
             sub: `핵심 ${CORE_FIELD_SPECS.length}항목 기준`
         },
         {
-            label: '읽은 문서',
-            value: meta.readCount.toLocaleString(),
-            sub: `제외 ${meta.skippedCount.toLocaleString()}건(하루기록·통계제외 UID)`
+            label: meta.source === 'mirror' ? 'Firestore 읽기' : '읽은 문서(서버 스캔)',
+            value: (meta.source === 'mirror' ? meta.serverReads : meta.readCount).toLocaleString(),
+            sub:
+                meta.source === 'mirror'
+                    ? `미러 집계 ${meta.readCount.toLocaleString()}건 · 제외 ${meta.skippedCount.toLocaleString()}건`
+                    : `제외 ${meta.skippedCount.toLocaleString()}건(하루기록·통계제외 UID)`
         }
     ];
     return `
@@ -445,9 +475,9 @@ async function runMomentAnalytics(force = false) {
 
     try {
         const excluded = await getExcludedAnalyticsUidSet().catch(() => new Set());
-        const { rows, truncated } = await fetchMealsInRange(range.startYmd, range.endYmd, (n) => {
+        const { rows, truncated, source, serverReads } = await loadRowsForRange(range.startYmd, range.endYmd, (msg) => {
             const p = document.getElementById('momentAnalyticsProgress');
-            if (p) p.textContent = `기록을 읽는 중… ${n.toLocaleString()}건`;
+            if (p) p.textContent = msg;
         });
 
         const readCount = rows.length;
@@ -459,12 +489,12 @@ async function runMomentAnalytics(force = false) {
         });
 
         const result = analyzeMomentRows(targetRows, range.startYmd, range.endYmd);
-        const meta = { readCount, skippedCount: readCount - targetRows.length, truncated };
+        const meta = { readCount, skippedCount: readCount - targetRows.length, truncated, source, serverReads };
         momentAnalyticsLastResult = result;
         momentAnalyticsCache.set(cacheKey, { ts: Date.now(), result, meta });
         renderMomentAnalyticsResult(result, meta);
         console.log(
-            `[모먼트 분석] ${range.startYmd}~${range.endYmd}: 읽기 ${readCount}건 → 대상 ${targetRows.length}건, 사용자 ${result.userCount}명`
+            `[모먼트 분석] ${range.startYmd}~${range.endYmd}: ${source === 'mirror' ? `미러 집계 (서버 읽기 ${serverReads}건)` : `서버 읽기 ${readCount}건`} → 대상 ${targetRows.length}건, 사용자 ${result.userCount}명`
         );
     } catch (e) {
         console.error('[모먼트 분석] 실패:', e);

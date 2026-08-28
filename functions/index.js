@@ -2724,6 +2724,23 @@ exports.onMealWritten = onDocumentWritten(
     const userId = event.params.userId;
     if (!userId) return;
 
+    /**
+     * 삭제 툼스톤 — 관리자 로컬 미러(docs/admin-local-mirror.md)의 삭제 전파용.
+     * 하드 딜리트는 클라이언트 쿼리로 알 수 없으므로 여기서 흔적을 남긴다.
+     * date 없는 문서의 삭제도 미러에서는 지워야 하니, 아래 early-return 보다 먼저 쓴다.
+     * 실패해도 stats 집계를 막지 않는다(다음 전량 재다운로드가 안전망).
+     */
+    if (before && before.exists && !(after && after.exists)) {
+      const mealId = event.params.mealId;
+      try {
+        await db.collection('artifacts').doc(APP_ID)
+          .collection('adminMealTombstones').doc(`${userId}_${mealId}`)
+          .set({ userId, mealId, deletedAt: new Date().toISOString() });
+      } catch (err) {
+        logger.error('onMealWritten: tombstone write failed', { userId, mealId, err: err.message });
+      }
+    }
+
     const datesToUpdate = new Set();
 
     // 삭제/수정: 이전 데이터에서 -1 delta 적용

@@ -4,6 +4,17 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/fireba
 import { collection, getDocs, getDocsFromServer, query, orderBy, limit, startAfter, doc, getDoc, getDocFromServer, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+/**
+ * 날짜·로그인수단 파생은 users-mirror-model.js 하나만 쓴다 —
+ * 사용자 분석(미러)과 이 목록이 서로 다른 규칙으로 갈리지 않게. (docs/admin-local-mirror.md)
+ */
+import {
+    parseSettingsDate,
+    parseRootTimestampField,
+    coalesceSignupDate,
+    computeSignupToLastLoginMs,
+    deriveLoginMethod
+} from './users-mirror-model.js';
 
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
@@ -165,82 +176,6 @@ function ensureAdminUsersSearchHandlers() {
 function normalizeNumber(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
-}
-
-/** settings / 루트 문서에서 날짜 필드 파싱 (Timestamp·ISO 문자열) */
-function parseSettingsDate(v) {
-    if (v == null || v === '') return null;
-    if (typeof v?.toDate === 'function') return v.toDate();
-    if (v instanceof Date) return v;
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/** users 루트 createdAt — Timestamp·Date·ISO·seconds 객체·ms 숫자 등 안전 파싱 (깨진 값은 null) */
-function parseRootTimestampField(raw) {
-    if (raw == null || raw === '') return null;
-    try {
-        if (typeof raw.toDate === 'function') {
-            const d = raw.toDate();
-            return d != null && !Number.isNaN(d.getTime()) ? d : null;
-        }
-        if (raw instanceof Date) {
-            return !Number.isNaN(raw.getTime()) ? raw : null;
-        }
-        if (typeof raw === 'number' && Number.isFinite(raw)) {
-            const d = new Date(raw);
-            return !Number.isNaN(d.getTime()) ? d : null;
-        }
-        if (typeof raw === 'object' && raw !== null) {
-            const secRaw = raw.seconds ?? raw._seconds;
-            const nanRaw = raw.nanoseconds ?? raw._nanoseconds ?? 0;
-            const sec =
-                typeof secRaw === 'number' && Number.isFinite(secRaw)
-                    ? secRaw
-                    : secRaw != null && secRaw !== ''
-                      ? Number(secRaw)
-                      : NaN;
-            const nan =
-                typeof nanRaw === 'number' && Number.isFinite(nanRaw)
-                    ? nanRaw
-                    : nanRaw != null && nanRaw !== ''
-                      ? Number(nanRaw)
-                      : 0;
-            if (Number.isFinite(sec)) {
-                const ms = sec * 1000 + (Number.isFinite(nan) ? nan / 1e6 : 0);
-                const d = new Date(ms);
-                return !Number.isNaN(d.getTime()) ? d : null;
-            }
-        }
-        const d = new Date(raw);
-        return !Number.isNaN(d.getTime()) ? d : null;
-    } catch (_) {
-        return null;
-    }
-}
-
-/** users 루트에 createdAt 없을 때: 프로필 완료 시각·약관 동의 시각 중 이른 값으로 표시/정렬 보정 */
-function coalesceSignupDate(rootCreated, profileCompletedAt, termsAgreedAt) {
-    if (rootCreated) {
-        return rootCreated instanceof Date ? rootCreated : new Date(rootCreated);
-    }
-    const cands = [profileCompletedAt, termsAgreedAt].filter((x) => x != null);
-    if (!cands.length) return null;
-    const times = cands.map((d) => (d instanceof Date ? d : new Date(d)).getTime()).filter((t) => Number.isFinite(t));
-    if (!times.length) return null;
-    return new Date(Math.min(...times));
-}
-
-/** 가입일~마지막 로그인 사이 경과(ms). 둘 중 하나 없거나 역전이면 null. */
-function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
-    const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
-    const l = lastLoginAt ? (lastLoginAt instanceof Date ? lastLoginAt : new Date(lastLoginAt)) : null;
-    if (!c || !l) return null;
-    const ct = c.getTime();
-    const lt = l.getTime();
-    if (!Number.isFinite(ct) || !Number.isFinite(lt)) return null;
-    if (lt < ct) return null;
-    return lt - ct;
 }
 
 /** 활동일수 셀 HTML: 일과 시간을 두 줄로 (시간은 2자리 패딩) */
@@ -474,11 +409,7 @@ export async function fetchAdminUserDetail(userId) {
     let providerId = rootData.providerId || null;
     if (settings.providerId) providerId = settings.providerId;
 
-    let loginMethod = '게스트';
-    if (providerId === 'google.com') loginMethod = '구글';
-    else if (providerId === 'kakao.com') loginMethod = '카카오';
-    else if (email) loginMethod = '이메일';
-    else if (/^kakao_/i.test(String(userId))) loginMethod = '카카오';
+    const loginMethod = deriveLoginMethod(providerId, email, userId);
 
     const createdAt = parseRootTimestampField(rootData.createdAt);
     const lastLoginAt = parseRootTimestampField(rootData.lastLoginAt);
@@ -675,12 +606,7 @@ async function getUsers(options = {}) {
             if (settings.email) email = settings.email;
             if (settings.providerId) providerId = settings.providerId;
 
-            let loginMethod = '게스트';
-            if (providerId === 'google.com') loginMethod = '구글';
-            else if (providerId === 'kakao.com') loginMethod = '카카오';
-            else if (email) loginMethod = '이메일';
-            // 루트/settings에 providerId가 비어 있는 레거시·레이스 문서: 카카오 커스텀 토큰 UID(kakao_{id})는 앱과 동일하게 카카오로 표시 (대소문자 혼선 방지)
-            else if (typeof userId === 'string' && /^kakao_/i.test(userId)) loginMethod = '카카오';
+            const loginMethod = deriveLoginMethod(providerId, email, userId);
 
             const ban = userBansMap.get(userId);
             const bannedShare = ban?.bannedShare ?? false;
