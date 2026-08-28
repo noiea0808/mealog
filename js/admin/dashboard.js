@@ -11,6 +11,7 @@ import {
     getDoc,
     getDocFromServer,
     setDoc,
+    runTransaction,
     where,
     getCountFromServer,
     Timestamp,
@@ -2482,12 +2483,31 @@ export async function refreshDashboardStats(options = {}) {
                     asOfDate: getTodayDateString(),
                     lastAggregatedAt: aggregationStartedAt,
                     lastAggregationMode: stats.aggregationMode || (full ? 'full' : 'incremental'),
-                    // 증분은 이 값을 건드리지 않고 물려받는다 — merge 없는 setDoc 이라 빠뜨리면 사라진다
-                    lastFullAggregatedAt:
-                        stats.aggregationMode === 'full' ? aggregationStartedAt : prevData?.lastFullAggregatedAt || null,
+                    // lastFullAggregatedAt 은 아래 트랜잭션에서 정한다
                     updatedAt: serverTimestamp()
                 };
-                await setDoc(DASHBOARD_STATS_REF(), payload);
+                /**
+                 * 전량 완료 도장(lastFullAggregatedAt)을 증분이 덮어 되돌리지 않게 한다.
+                 *
+                 * 집계는 몇 분이 걸린다. 그 사이에 주간 정기 전량이 끝나 도장을 찍었는데,
+                 * 집계 **시작 전** 스냅샷인 prevData 에서 도장을 물려받아 merge 없는 setDoc 으로
+                 * 덮으면 도장이 옛값으로 돌아간다. 그럼 다음 날 아침에 전량이 또 돌고,
+                 * 한 번에 meals 전량을 다시 읽는다(실측 약 12.6K 읽기).
+                 *
+                 * 그래서 저장 직전에 서버 값을 다시 읽어, 증분은 **그때의 최신 도장**을 그대로
+                 * 놓아둔다. 본문은 지금까지처럼 통째로 덮는다 — 옆가지로 불어난 옛 필드를 지우려면
+                 * merge 없는 쓰기가 필요하기 때문이다.
+                 */
+                let finalFullAggregatedAt = null;
+                await runTransaction(db, async (tx) => {
+                    const curSnap = await tx.get(DASHBOARD_STATS_REF());
+                    const serverStamp = curSnap.exists() ? curSnap.data()?.lastFullAggregatedAt || null : null;
+                    finalFullAggregatedAt =
+                        stats.aggregationMode === 'full' ? aggregationStartedAt : serverStamp;
+                    tx.set(DASHBOARD_STATS_REF(), { ...payload, lastFullAggregatedAt: finalFullAggregatedAt });
+                });
+                // 아래 렌더링이 같은 값을 보도록 맞춰 둔다
+                payload.lastFullAggregatedAt = finalFullAggregatedAt;
                 // 명단(UID)은 본문 문서가 1MB 한계로 커지지 않도록 drilldown 하위 문서에 나눠 저장.
                 // 실패해도 숫자 통계는 이미 저장됐으므로 새로고침 전체를 실패로 만들지 않는다.
                 try {
