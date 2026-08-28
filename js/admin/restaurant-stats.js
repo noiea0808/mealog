@@ -12,6 +12,7 @@ import {
     collectionGroup
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { getTodayDateString, escapeHtml, runAdminRefreshAction } from './utils.js';
+import { ensureMealsMirrorSynced, getMealsInRange } from './meals-mirror.js';
 import { refreshLucideIcons } from '../icons.js';
 
 /** 캐시가 없을 때 거슬러 올라갈 하한 (admin.js ADMIN_OPS_START·대시보드 집계 시작일과 같음) */
@@ -140,6 +141,19 @@ function restaurantArrayToMap(arr) {
  */
 async function accumulateRestaurantsFromMeals(restaurantMap, fromDateKey, toDateKey) {
     if (!fromDateKey || !toDateKey || fromDateKey > toDateKey) return 0;
+    /**
+     * meals 미러가 정확히 이 모양의 조회(`date` 범위)를 로컬에서 답한다 —
+     * 이 화면이 관리자에서 마지막으로 남은 「새로고침 = 전량 스캔」이었다.
+     * 미러를 못 쓰면 예전 서버 스캔으로 물러난다.
+     */
+    try {
+        await ensureMealsMirrorSynced();
+        const rows = await getMealsInRange(fromDateKey, toDateKey);
+        rows.forEach((row) => applyMealToRestaurantAggregate(restaurantMap, row));
+        return rows.length;
+    } catch (mirrErr) {
+        console.warn('[식당 집계] meals 미러를 쓸 수 없어 서버 스캔으로 갑니다:', mirrErr?.message || mirrErr);
+    }
     const mealsGroup = collectionGroup(db, 'meals');
     const snap = await getDocs(
         query(mealsGroup, where('date', '>=', fromDateKey), where('date', '<=', toDateKey))

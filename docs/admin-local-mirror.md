@@ -235,6 +235,15 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 
 미러 콘솔 표에 「정책」열이 생겨 이 구분이 화면에서 읽힌다.
 
+**비용이 큰 작업은 미러 콘솔 한 곳으로.** Firestore 전체를 다시 읽는 버튼을 각
+화면에서 걷어내 모니터링 > 로컬 미러에 모았다 — 각 화면의 새로고침은 언제나
+「바뀐 것만」이고, 전량 읽기는 이 한 곳에서만 일어난다.
+
+- 대시보드 「전체 재집계」 → 미러 콘솔 「비용이 큰 작업」 (네 미러 강제 재구축 + 통계 재계산·저장)
+- 사용자 분석 「전체 새로 읽기」 → 미러 콘솔 users 행 「전체 재구축」
+- 각 미러 행에 「전체 재구축」(즉시, force) 추가 — 「재구축 예약」(지연)과 구분
+- 식당 통계도 meals 미러로 옮겨, 마지막 남은 「새로고침 = 전량 스캔」이 사라졌다
+
 ## 왜 이렇게
 
 - **Firestore 는 변경 로그를 주지 않는다.** oplog·이력 조회 API 가 없고,
@@ -330,6 +339,8 @@ firebase deploy --only functions:onMealWritten
 
 - 화면 로드 시 도는 페이지별 보정(`fetchPageUsageWeeklyRepairFromUsageDaily`)도 미러로.
   캐시가 성하면 안 도는 길이라 급하진 않다.
+- 식당 통계의 증분 캐시(`adminSettings/restaurantStats`)는 미러 시대에는 불필요한
+  장치일 수 있다 — 미러 전량 집계가 공짜라서. 단순화 여지.
 - **신고 집계**(`postReports`)는 최상위 컬렉션이고 서버 함수만 쓰며 `reportedAt`
   서버 시각을 찍는다 — `createCollectionMirror` 한 줄이면 붙는다. 다만 이미 TTL 캐시
   뒤에 있고 문서 수도 적어 절감액이 거의 없다. **쉽다는 이유만으로 코드를 늘릴 자리가

@@ -155,7 +155,10 @@ export async function renderMirrorConsole() {
                             <button type="button" data-mirror-sync="${escapeHtml(r.key)}" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-wait">
                                 ${r.bootstrapDone ? '지금 동기화' : '지금 내려받기'}
                             </button>
-                            <button type="button" data-mirror-reset="${escapeHtml(r.key)}" class="ml-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                            <button type="button" data-mirror-rebuild="${escapeHtml(r.key)}" title="북마크를 무시하고 서버 전체를 지금 다시 받습니다. 서버 읽기가 많습니다." class="ml-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-wait">
+                                전체 재구축
+                            </button>
+                            <button type="button" data-mirror-reset="${escapeHtml(r.key)}" title="지금은 비우기만 하고, 실제 내려받기는 해당 화면을 다음에 열 때 합니다." class="ml-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                                 재구축 예약
                             </button>
                         </td>
@@ -164,6 +167,21 @@ export async function renderMirrorConsole() {
                     .join('')}
             </tbody>
         </table>
+        </div>
+
+        <div class="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <p class="text-xs font-black text-slate-700 mb-1">비용이 큰 작업</p>
+            <p class="text-[11px] text-slate-500 leading-relaxed mb-2">
+                Firestore 전체를 다시 읽는 작업은 이 자리에 모아 둡니다 — 각 화면의 새로고침은 바뀐 것만 읽습니다.
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" id="mirrorDashboardFullBtn" title="네 미러(meals·users·sharedPhotos·usageDaily)를 통째로 다시 받고 대시보드 통계를 다시 계산해 저장합니다. meals 만 약 1.2만 읽기입니다." class="px-3 py-2 rounded-xl text-sm font-bold border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-wait">
+                    대시보드 전체 재집계
+                </button>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-400">
+                미러 하나만 다시 받으려면 위 표의 「전체 재구축」을 쓰세요. 대시보드 숫자는 그 뒤 대시보드 「새로고침」이면 반영됩니다.
+            </p>
         </div>
 
         <div class="mt-5 flex flex-wrap gap-2">
@@ -220,12 +238,12 @@ function setMsg(text, tone = 'slate') {
  * 부트스트랩은 몇 분이 걸릴 수 있어 진행 상황을 그대로 흘려 보여 준다 —
  * 아무 반응이 없으면 사람은 버튼을 다시 누르고, 그러면 같은 문서를 두 번 산다.
  */
-async function syncMirrorByKey(key, onProgress) {
-    if (key === 'meals') return ensureMealsMirrorSynced(onProgress);
-    if (key === 'users') return ensureUsersMirrorSynced(onProgress);
+async function syncMirrorByKey(key, onProgress, options = {}) {
+    if (key === 'meals') return ensureMealsMirrorSynced(onProgress, options);
+    if (key === 'users') return ensureUsersMirrorSynced(onProgress, options);
     const m = ALL_COLLECTION_MIRRORS.find((x) => x.name === key);
     if (!m) throw new Error(`알 수 없는 미러: ${key}`);
-    return m.ensureSynced(onProgress);
+    return m.ensureSynced(onProgress, options);
 }
 
 /** 조작 중에는 이 화면의 버튼을 전부 잠근다 — 미러 두 개를 동시에 건드리지 않게 */
@@ -240,7 +258,7 @@ function setConsoleBusy(mount, busy) {
  * @param {string[]} keys
  * @param {string} verb 메시지에 쓸 말 ('내려받는' / '동기화하는')
  */
-async function syncMirrors(mount, keys, verb) {
+async function syncMirrors(mount, keys, verb, options = {}) {
     if (!keys.length) {
         setMsg('채울 미러가 없습니다 — 전부 이미 구축돼 있습니다.', 'emerald');
         return;
@@ -254,7 +272,7 @@ async function syncMirrors(mount, keys, verb) {
             try {
                 await syncMirrorByKey(key, (p) => {
                     setMsg(`(${i + 1}/${keys.length}) ${key} ${verb} 중… ${Number(p?.fetched || 0).toLocaleString('ko-KR')}건`);
-                });
+                }, options);
             } catch (e) {
                 console.error(`[미러 콘솔] ${key} 동기화 실패:`, e);
                 failed.push(`${key}(${e?.message || e})`);
@@ -275,6 +293,15 @@ function bindMirrorConsole(mount, rows) {
         });
     });
 
+    mount.querySelectorAll('[data-mirror-rebuild]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const key = btn.getAttribute('data-mirror-rebuild');
+            const costNote = key === 'meals' ? '\nmeals 는 약 1.2만 문서를 다시 받습니다.' : '';
+            if (!confirm(`「${key}」 미러의 서버 전체를 지금 다시 받습니다. 서버 읽기가 많습니다.${costNote}\n계속할까요?`)) return;
+            void syncMirrors(mount, [key], '재구축하는', { force: true });
+        });
+    });
+
     document.getElementById('mirrorBuildAllBtn')?.addEventListener('click', () => {
         const pending = rows.filter((r) => !r.bootstrapDone).map((r) => r.key);
         void syncMirrors(mount, pending, '내려받는');
@@ -282,6 +309,30 @@ function bindMirrorConsole(mount, rows) {
 
     document.getElementById('mirrorSyncAllBtn')?.addEventListener('click', () => {
         void syncMirrors(mount, rows.map((r) => r.key), '동기화하는');
+    });
+
+    document.getElementById('mirrorDashboardFullBtn')?.addEventListener('click', async () => {
+        if (
+            !confirm(
+                '대시보드 전체 재집계 — 네 미러(meals·users·sharedPhotos·usageDaily)를 통째로 다시 받고 통계를 다시 계산합니다.\nmeals 만 약 1.2만 읽기입니다. 계속할까요?'
+            )
+        ) {
+            return;
+        }
+        if (typeof window.refreshDashboardStatsFull !== 'function') {
+            setMsg('대시보드 모듈이 아직 준비되지 않았습니다 — 대시보드 탭을 한 번 연 뒤 다시 시도해 주세요.', 'red');
+            return;
+        }
+        setConsoleBusy(mount, true);
+        setMsg('대시보드 전체 재집계 중… (몇 분 걸릴 수 있습니다)');
+        try {
+            await window.refreshDashboardStatsFull();
+            setMsg('대시보드 전체 재집계를 마쳤습니다.', 'emerald');
+            await renderMirrorConsole();
+        } catch (e) {
+            setConsoleBusy(mount, false);
+            setMsg(`전체 재집계 실패: ${e?.message || e}`, 'red');
+        }
     });
 
     mount.querySelectorAll('[data-mirror-reset]').forEach((btn) => {

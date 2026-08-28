@@ -278,9 +278,7 @@ function renderAdminUserAnalyticsPanel() {
             </p>
             <div class="flex items-center gap-2 shrink-0">
                 ${sourceBadge}
-                <button type="button" id="adminUserAnalyticsRebuildBtn" title="미러를 버리고 전체를 다시 읽습니다." class="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 transition-colors">
-                    전체 새로 읽기
-                </button>
+                <span class="text-[11px] text-slate-400" title="미러를 버리고 전체를 다시 읽는 「전체 재구축」은 모니터링 > 로컬 미러의 users 행에 있습니다.">재구축: 로컬 미러 메뉴</span>
             </div>
         </div>
     `;
@@ -289,10 +287,6 @@ function renderAdminUserAnalyticsPanel() {
     weekBtn?.addEventListener('click', () => {
         _activityFilterLastWeek = !_activityFilterLastWeek;
         renderAdminUserAnalyticsPanel();
-    });
-    const rebuildBtn = mount.querySelector('#adminUserAnalyticsRebuildBtn');
-    rebuildBtn?.addEventListener('click', () => {
-        void refreshAdminUserAnalytics({ force: true });
     });
 }
 

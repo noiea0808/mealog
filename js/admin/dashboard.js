@@ -2589,7 +2589,9 @@ export async function refreshDashboardStats(options = {}) {
     const silent = options?.silent === true;
     try {
         await runAdminRefreshAction(
-            document.getElementById(full ? 'dashboardStatsFullRefreshBtn' : 'dashboardStatsRefreshBtn'),
+            // 「전체 재집계」 버튼은 미러 콘솔로 옮겨졌다 — full 이어도 새로고침 버튼을 잠가
+            // 대시보드 탭에서도 진행 중임이 보이게 한다 (동시에 또 누르는 것도 막는다)
+            document.getElementById('dashboardStatsRefreshBtn'),
             async () => {
                 const prevSnap = await getDoc(DASHBOARD_STATS_REF());
                 const prevData = prevSnap.exists() ? prevSnap.data() : null;
