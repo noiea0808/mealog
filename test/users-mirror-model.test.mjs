@@ -8,6 +8,8 @@ import {
     computeSignupToLastLoginMs,
     deriveLoginMethod,
     buildUserAnalyticsRow,
+    buildUserMirrorRow,
+    USERS_MIRROR_ROW_SCHEMA,
     reviveUserRow,
     computeUsersSyncStart,
     decideUsersSyncMode
@@ -137,17 +139,51 @@ test('decideUsersSyncMode: 미러가 없거나 북마크가 깨졌으면 전체'
 
 test('decideUsersSyncMode: 주기가 지나면 전체', () => {
     const now = Date.parse('2026-08-28T00:00:00Z');
-    const meta = { bootstrapDone: true, lastSyncedAt: '2026-08-20T00:00:00Z', rootDocCount: 10 };
+    const meta = { bootstrapDone: true, lastSyncedAt: '2026-08-20T00:00:00Z', rootDocCount: 10, rowSchema: USERS_MIRROR_ROW_SCHEMA };
     assert.equal(decideUsersSyncMode(meta, 10, 7 * 86400000, now).reason, 'stale');
     assert.equal(decideUsersSyncMode(meta, 10, 30 * 86400000, now).mode, 'delta');
 });
 
 test('decideUsersSyncMode: 서버 문서 수가 줄면 삭제로 보고 전체', () => {
     const now = Date.parse('2026-08-28T00:00:00Z');
-    const meta = { bootstrapDone: true, lastSyncedAt: '2026-08-27T00:00:00Z', rootDocCount: 10 };
+    const meta = { bootstrapDone: true, lastSyncedAt: '2026-08-27T00:00:00Z', rootDocCount: 10, rowSchema: USERS_MIRROR_ROW_SCHEMA };
     assert.equal(decideUsersSyncMode(meta, 9, 7 * 86400000, now).reason, 'deletion-detected');
     // 늘어난 건 신규 가입 — 델타가 채우므로 전체가 필요 없다
     assert.equal(decideUsersSyncMode(meta, 11, 7 * 86400000, now).mode, 'delta');
     // 카운트를 못 셌으면 감지를 건너뛰고 델타로 간다
     assert.equal(decideUsersSyncMode(meta, null, 7 * 86400000, now).mode, 'delta');
+});
+
+test('decideUsersSyncMode: 행 모양이 바뀌면 전체 재구축', () => {
+    const now = Date.parse('2026-08-28T00:00:00Z');
+    const fresh = { bootstrapDone: true, lastSyncedAt: '2026-08-27T00:00:00Z', rootDocCount: 10 };
+    // rowSchema 가 없는(옛 모양) 미러는 아무리 최신이어도 다시 빚는다
+    assert.equal(decideUsersSyncMode(fresh, 10, 7 * 86400000, now).reason, 'schema-changed');
+    assert.equal(
+        decideUsersSyncMode({ ...fresh, rowSchema: USERS_MIRROR_ROW_SCHEMA }, 10, 7 * 86400000, now).mode,
+        'delta'
+    );
+});
+
+test('buildUserMirrorRow: settings 없는 고아도 행을 만든다 (대시보드 신규 사용자용)', () => {
+    const row = buildUserMirrorRow('u1', { createdAt: ts('2026-01-01T00:00:00Z') }, null);
+    assert.equal(row.userId, 'u1');
+    assert.equal(row.hasSettings, false);
+    assert.equal(row.createdAt, '2026-01-01T00:00:00.000Z');
+    assert.deepEqual(row.journal, []);
+    // 「사용자 분석」쪽 규칙은 그대로 — 고아는 여전히 null
+    assert.equal(buildUserAnalyticsRow('u1', { createdAt: ts('2026-01-01T00:00:00Z') }, null), null);
+});
+
+test('buildUserMirrorRow: 하루 소감 자국은 날짜순으로, 깨진 날짜키는 버린다', () => {
+    const row = buildUserMirrorRow('u1', {}, { profile: {} }, [
+        { d: '2026-03-02', r: '2026-03-02T10:00:00.000Z' },
+        { d: '나쁜키', r: '' },
+        { d: '2026-03-01' }
+    ]);
+    assert.deepEqual(row.journal, [
+        { d: '2026-03-01', r: '' },
+        { d: '2026-03-02', r: '2026-03-02T10:00:00.000Z' }
+    ]);
+    assert.equal(row.hasSettings, true);
 });

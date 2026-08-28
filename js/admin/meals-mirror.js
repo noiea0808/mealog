@@ -71,12 +71,25 @@ function snapToDocs(snap) {
     return snap.docs.map((d) => ({ id: d.id, path: d.ref.path, data: d.data() }));
 }
 
+/** 미러가 들고 있는 키 전부 — 부트스트랩의 차집합 계산용 */
+async function getAllMealKeys() {
+    const database = await openMirrorDb();
+    const tx = database.transaction('meals', 'readonly');
+    return (await idbRequest(tx.objectStore('meals').getAllKeys())) || [];
+}
+
 /**
  * 부트스트랩 — meals 컬렉션그룹 전체를 문서 경로(__name__) 순으로 페이지 다운로드.
  * date 정렬이 아니라 경로 정렬인 이유: date 없는 문서도 빠짐없이 훑기 위해서다
  * (저장은 date 있는 것만 — toMirrorRecords 가 거른다).
+ *
+ * 다 받은 뒤 **서버에 없던 키를 지운다.** 평소 삭제는 툼스톤이 알려 주지만, 툼스톤이
+ * 나오기 전에 지워진 옛 기록이나 정합성이 의심돼 재구축을 부른 경우엔 그 흔적이 없다.
+ * 재구축이 「서버와 같아지는 일」이 되려면 담는 것만으로는 모자란다.
+ * 먼저 비우지 않는 이유는 users 미러와 같다 — 중간에 끊겨도 옛 사본이 남아야 한다.
  */
 async function bootstrapAll(onProgress) {
+    const seenKeys = new Set();
     let cursor = null;
     let fetched = 0;
     for (;;) {
@@ -87,11 +100,15 @@ async function bootstrapAll(onProgress) {
         const snap = await getDocs(q);
         if (snap.empty) break;
         fetched += snap.size;
-        await putRecords(toMirrorRecords(snapToDocs(snap)));
+        const records = toMirrorRecords(snapToDocs(snap));
+        records.forEach((r) => seenKeys.add(r.k));
+        await putRecords(records);
         cursor = snap.docs[snap.docs.length - 1];
         if (typeof onProgress === 'function') onProgress({ stage: 'bootstrap', fetched });
         if (snap.size < BATCH) break;
     }
+    const stale = (await getAllMealKeys()).filter((k) => !seenKeys.has(k));
+    await deleteKeys(stale);
     return fetched;
 }
 
@@ -128,11 +145,15 @@ async function pullTombstonesSince(sinceIso) {
  * 미러를 최신으로 맞춘다. 진행 중이면 그 약속을 그대로 돌려준다.
  *
  * @param {(p:{stage:'bootstrap'|'delta', fetched:number})=>void} [onProgress]
+ * @param {{force?: boolean}} [options] force 면 북마크를 무시하고 전량을 다시 받는다
  * @returns {Promise<{mode:'bootstrap'|'delta', fetched:number, removed:number, docCount:number}>}
  */
-export function ensureMealsMirrorSynced(onProgress) {
-    if (syncInFlight) return syncInFlight;
-    syncInFlight = (async () => {
+export function ensureMealsMirrorSynced(onProgress, options = {}) {
+    if (syncInFlight && !options.force) return syncInFlight;
+    const prev = syncInFlight;
+    const run = (async () => {
+        // force 로 끼어들었다면 진행 중인 동기화가 끝난 뒤에 — 같은 스토어를 둘이 동시에 쓰지 않게
+        if (prev) await prev.catch(() => {});
         // 브라우저 자동 정리(eviction)에서 이 사이트의 데이터를 제외해 달라고 요청
         try {
             if (navigator?.storage?.persist) navigator.storage.persist();
@@ -145,7 +166,7 @@ export function ensureMealsMirrorSynced(onProgress) {
         let fetched = 0;
         let removed = 0;
 
-        if (!meta.bootstrapDone) {
+        if (options.force || !meta.bootstrapDone) {
             mode = 'bootstrap';
             fetched = await bootstrapAll(onProgress);
         } else {
@@ -168,10 +189,15 @@ export function ensureMealsMirrorSynced(onProgress) {
         });
         console.log(`[meals 미러] ${mode}: 받음 ${fetched}건 · 지움 ${removed}건 · 보유 ${docCount}건`);
         return { mode, fetched, removed, docCount };
-    })().finally(() => {
-        syncInFlight = null;
-    });
-    return syncInFlight;
+    })();
+    syncInFlight = run;
+    // 자리를 비우는 건 「내가 아직 현재 동기화일 때」만 — force 가 끼어들어 자리를
+    // 넘겨받았는데 먼저 끝난 쪽이 그 자리를 지워 버리면 안 된다 (users 미러와 같은 규칙)
+    const release = () => {
+        if (syncInFlight === run) syncInFlight = null;
+    };
+    run.then(release, release);
+    return run;
 }
 
 /**
@@ -198,6 +224,20 @@ export async function getMealsInRange(startYmd, endYmd) {
         };
         req.onerror = () => reject(req.error);
     });
+}
+
+/**
+ * 미러가 든 meals 전부 — Firestore 읽기 0회.
+ *
+ * 대시보드처럼 **기록 시각(recordedAt) 축**으로도 세어야 하는 소비자를 위해 있다.
+ * IDB 인덱스는 식사 날짜(date) 하나뿐이라 기간으로 자르면 소급 입력이 빠지는데,
+ * 로컬에서는 전량을 훑어도 비용이 없으니 통째로 넘기고 소비자가 자른다.
+ */
+export async function getAllMealsFromMirror() {
+    const database = await openMirrorDb();
+    const tx = database.transaction('meals', 'readonly');
+    const rows = (await idbRequest(tx.objectStore('meals').getAll())) || [];
+    return rows.map(({ k, ...row }) => row);
 }
 
 /** 미러 상태 — UI 표시용 */

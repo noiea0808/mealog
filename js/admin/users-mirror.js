@@ -33,7 +33,14 @@ import {
     where
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { openMirrorDb, idbRequest, idbTxDone, readMeta, writeMeta, clearStore } from './admin-mirror-db.js';
-import { buildUserAnalyticsRow, reviveUserRow, computeUsersSyncStart, decideUsersSyncMode } from './users-mirror-model.js';
+import {
+    buildUserMirrorRow,
+    reviveUserRow,
+    computeUsersSyncStart,
+    decideUsersSyncMode,
+    USERS_MIRROR_ROW_SCHEMA
+} from './users-mirror-model.js';
+import { dailyJournalHasContent, normalizeDailyJournalEntry } from '../utils/daily-journal-data.js';
 
 const META_KEY = 'users';
 const PAGE = 100;
@@ -43,7 +50,30 @@ const SETTINGS_CONCURRENCY = 25;
 let syncInFlight = null;
 
 function readUsersMeta() {
-    return readMeta(META_KEY, { lastSyncedAt: '', bootstrapDone: false, docCount: 0, rootDocCount: 0 });
+    return readMeta(META_KEY, { lastSyncedAt: '', bootstrapDone: false, docCount: 0, rootDocCount: 0, rowSchema: 0 });
+}
+
+/**
+ * settings 의 `dailyComments` 맵 → 하루 소감 자국 배열.
+ *
+ * 대시보드가 「하루 소감」행과 「기록·전체」를 셀 때 쓴다. 예전에는 그 숫자를 위해
+ * `collectionGroup('config')` 를 통째로 훑었는데, users 미러가 어차피 사람마다
+ * settings 를 읽고 있어서 **읽기를 하나도 더 쓰지 않고** 같은 값을 얻는다.
+ *
+ * 본문은 담지 않는다 — 필요한 것은 「어느 날짜에 내용 있는 소감이 있었나」와,
+ * 시간대 행이 쓸 기록 시각뿐이다.
+ */
+function journalMarksFromSettings(settingsData) {
+    const dc = settingsData?.dailyComments;
+    if (!dc || typeof dc !== 'object') return [];
+    const out = [];
+    for (const [dateStr, raw] of Object.entries(dc)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
+        const entry = normalizeDailyJournalEntry(raw);
+        if (!dailyJournalHasContent(entry)) continue;
+        out.push({ d: String(dateStr), r: entry.recordedAt || '' });
+    }
+    return out;
 }
 
 async function putUsers(rows) {
@@ -72,11 +102,14 @@ async function countUsersMirror() {
 
 /**
  * 루트 문서 묶음 → 미러 행. settings 를 병렬로 읽어 붙인다.
- * settings 가 없는 사용자(고아·탈퇴 잔재)는 행이 만들어지지 않으므로 미러에서도 지운다.
+ *
+ * settings 가 없는 고아 문서도 **담는다** (`hasSettings: false`). 「사용자 분석」과
+ * 목록은 예전처럼 건너뛰지만, 대시보드 신규 사용자는 루트 `createdAt` 만으로 세기
+ * 때문이다 — 여기서 지우면 서버 전량 조회 시절보다 신규 사용자가 줄어 보인다.
  */
 async function enrichAndStore(rootDocs) {
     const rows = [];
-    const orphans = [];
+    let orphans = 0;
     for (let i = 0; i < rootDocs.length; i += SETTINGS_CONCURRENCY) {
         const chunk = rootDocs.slice(i, i + SETTINGS_CONCURRENCY);
         const settingsSnaps = await Promise.all(
@@ -87,22 +120,32 @@ async function enrichAndStore(rootDocs) {
         chunk.forEach((d, j) => {
             const snap = settingsSnaps[j];
             const settingsData = snap && snap.exists() ? snap.data() : null;
-            const row = buildUserAnalyticsRow(d.id, d.data, settingsData);
-            if (row) rows.push(row);
-            else orphans.push(d.id);
+            const row = buildUserMirrorRow(d.id, d.data, settingsData, journalMarksFromSettings(settingsData));
+            if (!row) return;
+            if (!row.hasSettings) orphans += 1;
+            rows.push(row);
         });
     }
     await putUsers(rows);
-    await deleteUserKeys(orphans);
-    return { stored: rows.length, skipped: orphans.length };
+    return { stored: rows.length, skipped: orphans };
 }
 
-/** 전체 재구축 — 루트 문서를 경로 순으로 훑는다(lastLoginAt 없는 문서도 포함) */
+/**
+ * 전체 재구축 — 루트 문서를 경로 순으로 훑는다(lastLoginAt 없는 문서도 포함).
+ *
+ * 훑고 나면 **서버에 없던 행을 지운다.** 탈퇴한 사용자는 루트 문서째 사라져 이 순회에
+ * 걸리지 않으므로, 담기만 해서는 옛 행이 미러에 영원히 남는다 (전체 재구축을 부르는
+ * 계기가 「문서 수가 줄었다」인데, 정작 그 재구축이 줄어든 몫을 지우지 못했다).
+ *
+ * 먼저 비우지 않는 이유: 순회가 중간에 끊기면 미러가 통째로 빈 채로 남는다.
+ * 다 받은 뒤에 차집합만 지우면 실패해도 옛 사본이 그대로 남는다.
+ */
 async function rebuildAll(onProgress) {
     const usersColl = collection(db, 'artifacts', appId, 'users');
     let cursor = null;
     let seen = 0;
     let stored = 0;
+    const seenIds = new Set();
     for (;;) {
         const q = cursor
             ? query(usersColl, orderBy(documentId()), startAfter(cursor), limit(PAGE))
@@ -110,13 +153,23 @@ async function rebuildAll(onProgress) {
         const snap = await getDocs(q);
         if (snap.empty) break;
         seen += snap.size;
+        snap.docs.forEach((d) => seenIds.add(d.id));
         const res = await enrichAndStore(snap.docs.map((d) => ({ id: d.id, data: d.data() })));
         stored += res.stored;
         cursor = snap.docs[snap.docs.length - 1];
         if (typeof onProgress === 'function') onProgress({ stage: 'full', fetched: seen });
         if (snap.size < PAGE) break;
     }
-    return { seen, stored };
+    const stale = (await getAllUserIdsInMirror()).filter((id) => !seenIds.has(id));
+    await deleteUserKeys(stale);
+    return { seen, stored, removed: stale.length };
+}
+
+/** 미러가 들고 있는 userId 전부 — 전체 재구축의 차집합 계산용 */
+async function getAllUserIdsInMirror() {
+    const database = await openMirrorDb();
+    const tx = database.transaction('users', 'readonly');
+    return (await idbRequest(tx.objectStore('users').getAllKeys())) || [];
 }
 
 /** 델타 — 마지막 로그인이 북마크 이후인 사용자만 (신규 가입도 여기에 걸린다) */
@@ -198,6 +251,7 @@ export function ensureUsersMirrorSynced(onProgress, options = {}) {
         await writeMeta(META_KEY, {
             bootstrapDone: true,
             lastSyncedAt: syncStartedIso,
+            rowSchema: USERS_MIRROR_ROW_SCHEMA,
             docCount,
             rootDocCount: serverRootCount == null ? meta.rootDocCount || 0 : serverRootCount
         });
@@ -218,12 +272,21 @@ export function ensureUsersMirrorSynced(onProgress, options = {}) {
     return run;
 }
 
-/** 미러의 전체 사용자 행 — 분석 코드가 기대하는 Date 로 되살려 돌려준다 */
-export async function getAllUsersFromMirror() {
+/** 미러에 담긴 행 전부 (고아 포함) — 되살린 Date 로 */
+export async function getAllUserMirrorRows() {
     const database = await openMirrorDb();
     const tx = database.transaction('users', 'readonly');
     const rows = await idbRequest(tx.objectStore('users').getAll());
     return (rows || []).map(reviveUserRow);
+}
+
+/**
+ * 「사용자 분석」용 사용자 행 — settings 없는 고아 문서는 뺀다(목록과 같은 규칙).
+ * 고아까지 필요한 대시보드는 `getAllUserMirrorRows()` 를 쓴다.
+ */
+export async function getAllUsersFromMirror() {
+    const rows = await getAllUserMirrorRows();
+    return rows.filter((r) => r && r.hasSettings !== false);
 }
 
 export async function getUsersMirrorStatus() {
@@ -232,7 +295,8 @@ export async function getUsersMirrorStatus() {
         bootstrapDone: !!meta.bootstrapDone,
         lastSyncedAt: meta.lastSyncedAt || '',
         docCount: meta.docCount || 0,
-        rootDocCount: meta.rootDocCount || 0
+        rootDocCount: meta.rootDocCount || 0,
+        rowSchema: meta.rowSchema || 0
     };
 }
 

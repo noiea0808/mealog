@@ -4,16 +4,18 @@
  * 미러는 「원본이 아니라 사본」이다. 그래서 이 화면이 하는 일은 세 가지뿐이다.
  *
  *  1. 지금 무엇을 얼마나 들고 있는지 보여 준다 (마지막 동기화·보유 건수)
- *  2. 의심스러우면 통째로 다시 받게 한다 (전체 재구축)
- *  3. 파일로 내보내고 되불러온다 — 다른 기기에서 부트스트랩을 되풀이하지 않으려고
+ *  2. 여기서 직접 채운다 — 미러는 원래 **소비자 화면을 열 때** 만들어지는데,
+ *     새 기기에서 여섯 화면을 순례하게 하는 대신 이 자리에서 한 번에 받는다
+ *  3. 의심스러우면 통째로 다시 받게 한다 (전체 재구축)
+ *  4. 파일로 내보내고 되불러온다 — 다른 기기에서 부트스트랩을 되풀이하지 않으려고
  *
  * **백업 파일을 git 에 올리지 말 것.** 사용자 기록·프로필이 통째로 들었다.
  * 저장소에 한 번 들어가면 히스토리에서 지우기 어렵고, 공개 저장소면 그대로 유출이다.
  * 기기 사이에 옮길 때는 이 파일을 직접 건네는 방식만 쓴다. — docs/admin-local-mirror.md
  */
 import { escapeHtml } from './utils.js';
-import { getMealsMirrorStatus, resetMealsMirror } from './meals-mirror.js';
-import { getUsersMirrorStatus, resetUsersMirror } from './users-mirror.js';
+import { getMealsMirrorStatus, resetMealsMirror, ensureMealsMirrorSynced } from './meals-mirror.js';
+import { getUsersMirrorStatus, resetUsersMirror, ensureUsersMirrorSynced } from './users-mirror.js';
 import { ALL_COLLECTION_MIRRORS } from './collection-mirror.js';
 import { openMirrorDb, idbRequest, readMeta, writeMeta } from './admin-mirror-db.js';
 import { refreshLucideIcons } from '../icons.js';
@@ -123,8 +125,11 @@ export async function renderMirrorConsole() {
                         <td class="py-2 pr-3 text-right tabular-nums text-slate-700">${(r.docCount || 0).toLocaleString('ko-KR')}</td>
                         <td class="py-2 pr-3 text-slate-500 text-xs">${escapeHtml(fmtStamp(r.lastSyncedAt))}</td>
                         <td class="py-2 pr-3">${ageBadge(r.lastSyncedAt)}</td>
-                        <td class="py-2 text-right">
-                            <button type="button" data-mirror-reset="${escapeHtml(r.key)}" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                        <td class="py-2 text-right whitespace-nowrap">
+                            <button type="button" data-mirror-sync="${escapeHtml(r.key)}" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 disabled:cursor-wait">
+                                ${r.bootstrapDone ? '지금 동기화' : '지금 내려받기'}
+                            </button>
+                            <button type="button" data-mirror-reset="${escapeHtml(r.key)}" class="ml-1 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                                 재구축 예약
                             </button>
                         </td>
@@ -136,6 +141,12 @@ export async function renderMirrorConsole() {
         </div>
 
         <div class="mt-5 flex flex-wrap gap-2">
+            <button type="button" id="mirrorBuildAllBtn" class="px-3 py-2 rounded-xl text-sm font-bold bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-60 disabled:cursor-wait">
+                미구축 미러 전부 채우기
+            </button>
+            <button type="button" id="mirrorSyncAllBtn" class="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait">
+                전부 동기화
+            </button>
             <button type="button" id="mirrorExportBtn" class="px-3 py-2 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700">
                 백업 파일로 내보내기
             </button>
@@ -159,12 +170,14 @@ export async function renderMirrorConsole() {
 
         <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
             · 미러는 사본입니다 — 지워져도 원본은 Firestore 에 그대로 있고, 다음 실행 때 다시 받습니다.<br>
+            · 「지금 내려받기」는 이 자리에서 바로 받습니다. 첫 구축은 오래 걸립니다 —
+            식사 기록은 1만 건 남짓을 한 번에 받습니다(기기당 한 번).<br>
             · 「재구축 예약」은 지금 지우기만 합니다. 실제 내려받기는 해당 화면을 다음에 열 때 일어납니다.<br>
             · 각 미러는 마지막 동기화로부터 7일이 지나면 스스로 전체를 다시 받습니다.
         </p>
     `;
     refreshLucideIcons(mount);
-    bindMirrorConsole(mount);
+    bindMirrorConsole(mount, rows);
 }
 
 function setMsg(text, tone = 'slate') {
@@ -174,7 +187,76 @@ function setMsg(text, tone = 'slate') {
     el.textContent = text;
 }
 
-function bindMirrorConsole(mount) {
+/**
+ * 미러 하나를 지금 동기화한다.
+ *
+ * 부트스트랩은 몇 분이 걸릴 수 있어 진행 상황을 그대로 흘려 보여 준다 —
+ * 아무 반응이 없으면 사람은 버튼을 다시 누르고, 그러면 같은 문서를 두 번 산다.
+ */
+async function syncMirrorByKey(key, onProgress) {
+    if (key === 'meals') return ensureMealsMirrorSynced(onProgress);
+    if (key === 'users') return ensureUsersMirrorSynced(onProgress);
+    const m = ALL_COLLECTION_MIRRORS.find((x) => x.name === key);
+    if (!m) throw new Error(`알 수 없는 미러: ${key}`);
+    return m.ensureSynced(onProgress);
+}
+
+/** 조작 중에는 이 화면의 버튼을 전부 잠근다 — 미러 두 개를 동시에 건드리지 않게 */
+function setConsoleBusy(mount, busy) {
+    mount.querySelectorAll('button, input[type="file"]').forEach((el) => {
+        el.disabled = busy;
+    });
+}
+
+/**
+ * 미러 여럿을 차례로 채운다.
+ * @param {string[]} keys
+ * @param {string} verb 메시지에 쓸 말 ('내려받는' / '동기화하는')
+ */
+async function syncMirrors(mount, keys, verb) {
+    if (!keys.length) {
+        setMsg('채울 미러가 없습니다 — 전부 이미 구축돼 있습니다.', 'emerald');
+        return;
+    }
+    setConsoleBusy(mount, true);
+    const failed = [];
+    try {
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            setMsg(`(${i + 1}/${keys.length}) ${key} ${verb} 중…`);
+            try {
+                await syncMirrorByKey(key, (p) => {
+                    setMsg(`(${i + 1}/${keys.length}) ${key} ${verb} 중… ${Number(p?.fetched || 0).toLocaleString('ko-KR')}건`);
+                });
+            } catch (e) {
+                console.error(`[미러 콘솔] ${key} 동기화 실패:`, e);
+                failed.push(`${key}(${e?.message || e})`);
+            }
+        }
+    } finally {
+        setConsoleBusy(mount, false);
+    }
+    await renderMirrorConsole();
+    if (failed.length) setMsg(`일부 실패: ${failed.join(', ')}`, 'red');
+    else setMsg(`${keys.length}개 미러를 ${verb} 일을 마쳤습니다.`, 'emerald');
+}
+
+function bindMirrorConsole(mount, rows) {
+    mount.querySelectorAll('[data-mirror-sync]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            void syncMirrors(mount, [btn.getAttribute('data-mirror-sync')], '동기화하는');
+        });
+    });
+
+    document.getElementById('mirrorBuildAllBtn')?.addEventListener('click', () => {
+        const pending = rows.filter((r) => !r.bootstrapDone).map((r) => r.key);
+        void syncMirrors(mount, pending, '내려받는');
+    });
+
+    document.getElementById('mirrorSyncAllBtn')?.addEventListener('click', () => {
+        void syncMirrors(mount, rows.map((r) => r.key), '동기화하는');
+    });
+
     mount.querySelectorAll('[data-mirror-reset]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             const key = btn.getAttribute('data-mirror-reset');

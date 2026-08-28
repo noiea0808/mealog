@@ -1,4 +1,4 @@
-# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~4단계)
+# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~5단계)
 
 관리자 화면들이 방문할 때마다 Firestore 를 전량 스캔하던 비용
 (`firestore-read-audit-2026-08.md` 의 12~25K 스파이크)을 없애기 위한 구조.
@@ -10,7 +10,7 @@
 ```
 관리자 브라우저 (IndexedDB: mealog-admin-mirror, v3)
   meals 스토어         키 `${userId}/${mealId}` · date 인덱스
-  users 스토어         키 userId · 「사용자 분석」이 쓰는 필드만
+  users 스토어         키 userId · 분석이 쓰는 필드 + 하루 소감 자국(journal)
   sharedPhotos 스토어  ┐
   aiDietReports 스토어 │ 범용 컬렉션 미러 — 키 id · _sortMs 인덱스
   feedPosts 스토어     │
@@ -50,6 +50,19 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 - 전체 재구축 주기는 7일. 「전체 새로 읽기」 버튼으로 언제든 강제할 수 있다.
 - 파생 규칙(날짜 파싱·로그인수단·가입간격)은 `users-mirror-model.js` 하나만 쓴다 —
   `users.js` 목록도 여기서 import 한다. 두 곳에 두면 분석 값이 목록과 어긋난다.
+- **settings 없는 고아 문서도 담는다** (`hasSettings: false`). 「사용자 분석」과 목록은
+  예전처럼 건너뛰지만, 대시보드 신규 사용자는 루트 `createdAt` 만으로 세기 때문이다 —
+  여기서 지우면 서버 전량 조회 시절보다 신규 사용자가 줄어 보인다.
+  걸러내기는 `getAllUsersFromMirror()`(분석용) 와 `getAllUserMirrorRows()`(전부) 가 나눈다.
+- **하루 소감 자국**(`journal: [{d, r}]`) 을 함께 담는다 — settings 를 어차피 읽고 있으니
+  **읽기를 하나도 더 쓰지 않는다.** 본문은 담지 않는다: 필요한 것은 「어느 날짜에 내용 있는
+  소감이 있었나」와 시간대 행이 쓸 기록 시각뿐이다. 대시보드가 이걸 쓰면서
+  `collectionGroup('config')` 전량 스캔이 없어졌다.
+- 행 모양이 바뀌면 `USERS_MIRROR_ROW_SCHEMA` 를 올린다. 델타로는 옛 행을 고칠 수 없으므로
+  `decideUsersSyncMode` 가 `schema-changed` 로 전체 재구축을 부른다.
+- **전체 재구축은 서버에 없던 행을 지운다.** 탈퇴자는 루트 문서째 사라져 순회에 걸리지
+  않으므로, 담기만 해서는 옛 행이 영원히 남는다 — 전체 재구축을 부르는 계기가 「문서 수가
+  줄었다」인데 정작 그 재구축이 줄어든 몫을 지우지 못하고 있었다. meals 부트스트랩도 같다.
 
 ### 범용 컬렉션 미러 (3단계)
 
@@ -80,6 +93,45 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 **git 에는 절대 올리지 않는다** — 사용자 기록·프로필이 통째로 들어 있고, 저장소
 히스토리에 한 번 들어가면 지우기 어렵다. 기기 사이에는 파일을 직접 건넨다.
 
+### 대시보드 (5단계)
+
+전량 집계는 Firestore 읽기의 최대 소비자였다 — 1회 약 12.6K
+(`firestore-read-audit-2026-08.md`). 값이 큰 순서로 갈아 끼웠다.
+
+| 자리 | 예전 | 지금 |
+|---|---|---|
+| meals 전량 스캔 (식사 날짜 축) | 컬렉션그룹 getDocs ~12K | meals 미러 |
+| meals 전량 스캔 (기록 시각 축) | 같은 크기로 한 번 더 | 같은 미러 행을 한 번 더 훑는다 |
+| 슬롯별·전체 건수 | count 쿼리 × 슬롯수 | 미러에서 센다 |
+| 「기록 있는 사람」 | **사용자 한 명당 count 쿼리 1회** | 미러의 uid 유니크 집합 |
+| users 전량 조회 | getDocs(users) | users 미러 |
+| 하루 소감 | `collectionGroup('config')` 전량 | users 미러의 `journal` 자국 |
+| sharedPhotos 건수·기간 | count + 기간 getDocs | sharedPhotos 미러 |
+| 제외 UID 차감 | UID 마다 count 쿼리 | 세는 자리에서 바로 거른다 |
+
+남는 서버 읽기는 미러 **동기화 자체**와, 미러가 없는 `usageDaily`(페이지별 탭,
+수십~백여 건)뿐이다.
+
+**증분 병합이 필요 없어졌다.** 얼린 과거 주차·소급 delta 는 *서버 읽기가 비싸서* 만든
+장치였고, 그 대가로 지난 주차의 수정·삭제와 제외 UID 변경을 놓쳤다. 로컬에서는 전량을
+훑어도 비용이 없으므로 미러 모드는 **언제나 전량**이고, 그 구멍이 통째로 없어진다.
+`dashboard-incremental.js` 는 미러를 못 쓸 때의 폴백 경로로만 남는다.
+
+그래서 두 버튼의 뜻이 바뀌었다 — 이제 갈리는 것은 **미러를 얼마나 믿느냐**다.
+
+| 버튼 | 하는 일 |
+|---|---|
+| 새로고침 | 미러 델타 동기화 → 전량 재계산 |
+| 전체 재집계 | 미러를 통째로 다시 받고(`force`) → 전량 재계산 |
+
+주간 정기 전량(`maybeStartWeeklyFullRefresh`)은 `forceMirror: false` 로 돈다. 사람이 누르지
+않은 경로가 화면을 여는 순간 부트스트랩 1.2만 읽기를 부르면 미러로 없앤 비용이 그대로
+돌아오기 때문이다. 미러 모드는 매번 전량이므로 어차피 도장(`lastFullAggregatedAt`)이
+매번 찍혀 이 경로는 거의 돌지 않는다.
+
+**폴백.** 미러 동기화가 실패하면(첫 실행 실패·인덱스 미배포·저장소 거부) 예전 서버
+경로로 물러난다. 그때는 옛 규칙 그대로 — 기본이 증분, 「전체 재집계」가 전량이다.
+
 ## 왜 이렇게
 
 - **Firestore 는 변경 로그를 주지 않는다.** oplog·이력 조회 API 가 없고,
@@ -105,17 +157,22 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 | `js/admin/users-mirror.js` | `ensureUsersMirrorSynced` / `getAllUsersFromMirror` |
 | `js/admin/collection-mirror-model.js` | 범용 미러 순수 계산부 (Timestamp 눕히기·되살리기) |
 | `js/admin/collection-mirror.js` | `createCollectionMirror` 와 네 개 인스턴스 |
-| `js/admin/mirror-console.js` | 관리자 화면: 상태·재구축·백업 |
+| `js/admin/mirror-console.js` | 관리자 화면: 상태·즉시 구축·재구축·백업 |
+| `js/admin/dashboard-mirror.js` | 대시보드가 쓸 재료를 세 미러에서 모아 온다 |
+| `js/admin/dashboard-mirror-model.js` | 미러 행을 Firestore 스냅숏처럼 보이게 하는 어댑터 (순수) |
 | `functions/index.js` `onMealWritten` | 삭제 시 툼스톤 기록 (early-return 앞) |
 | `firestore.rules` | `adminMealTombstones` 읽기 admin 전용, 클라이언트 쓰기 금지 |
 | `firestore.indexes.json` | meals `updatedAt` 컬렉션그룹 ASC fieldOverride |
-| `test/*-mirror-model.test.mjs` (3개) | 모델 테스트 |
+| `test/*-mirror-model.test.mjs` (4개) | 모델 테스트 |
 
 콘솔 수동 조작: `adminMealsMirrorStatus()` · `adminUsersMirrorStatus()` (상태),
 `resetAdminMealsMirror()` · `resetAdminUsersMirror()` (재다운로드 예약).
 
 ## 소비자 (현재)
 
+- **대시보드 트렌드** (`js/admin/dashboard.js`): 새로고침·전체 재집계 모두 미러 위에서
+  전량으로 센다. 미러 실패 시 예전 서버 경로(증분/전량)로 폴백.
+  페이지별 탭의 `usageDaily` 는 아직 서버다.
 - **모먼트 분석** (`js/admin/moment-analytics.js`): 실행 시 미러 동기화 →
   IDB 에서 기간 절단. 미러 실패 시 예전 서버 전량 스캔으로 폴백.
   요약 카드의 「Firestore 읽기」= 이번 동기화가 실제로 산 문서 수.
@@ -150,13 +207,18 @@ firebase deploy --only functions:onMealWritten
 - **users**: 탈퇴와 신규 가입이 같은 주기에 같은 수만큼 일어나면 카운트가 같아 삭제를
   못 알아챈다. 역시 7일 재구축이 정리한다.
 - **meals**: `updatedAt` 은 클라이언트 시계다 — 위와 같은 이유로 48시간 겹쳐 읽는다.
+- **대시보드**: 「기록 · 전체」가 이제 미러 건수다. `date` 없는 meals 문서는 미러에 담기지
+  않으므로(기간 축에 태울 수 없다) 서버 count 보다 그만큼 적을 수 있다. 대신 표 안의
+  합계와 「전체」가 **같은 출처**라 서로 어긋나지 않는다 — 예전에는 서버 count 와 스캔 합계가
+  다른 축이었다.
 - **범용 미러**: 사용자가 남의 화면에서 고친 값(좋아요·댓글 수 등)은 생성 축에 안 걸려
   최대 7일 묵을 수 있다. 관리·모더레이션 판단에 쓰는 값(본문·작성자·숨김)은 관리자
   조치가 곧바로 반영하므로 실무상 문제되지 않는다. 급하면 「재구축 예약」.
 
 ## 다음 단계 (예정)
 
-- 대시보드 주간 전량 재집계를 미러 기반으로 → 12.6K 소멸 (config 미러가 더 필요)
+- `usageDaily`(대시보드 페이지별 탭) 미러 — 남은 서버 읽기 중 가장 큰 자리.
+  수십~백여 건이라 급하진 않다.
 - 사용자 **관리** 탭(목록)도 미러로: 지금은 여전히 페이지마다 서버를 읽는다.
   공유·게시글 수는 이제 sharedPhotos·boardPosts 미러로 셀 수 있고, 식사 수는 meals
   미러로 셀 수 있으니 재료는 갖춰졌다.

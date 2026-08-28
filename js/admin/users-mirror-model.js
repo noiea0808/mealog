@@ -9,6 +9,15 @@
  * 설계 문서: docs/admin-local-mirror.md
  */
 
+/**
+ * 미러 행의 모양 버전. 행에 필드를 더하거나 뜻을 바꾸면 올린다 —
+ * 옛 모양으로 담긴 미러는 `decideUsersSyncMode` 가 전체 재구축으로 되돌린다.
+ * (IndexedDB 스키마 버전과는 다른 축이다. 스토어 구조는 그대로이고 행 내용만 바뀐다.)
+ *
+ * v2: `hasSettings`(고아 문서도 담는다) · `journal`(하루 소감 자국) 추가
+ */
+export const USERS_MIRROR_ROW_SCHEMA = 2;
+
 /** Firestore Timestamp·Date·숫자·문자열·{seconds,nanoseconds} 를 모두 Date 로 */
 export function parseRootTimestampField(raw) {
     if (raw == null || raw === '') return null;
@@ -97,39 +106,46 @@ export function deriveLoginMethod(providerId, email, userId) {
 }
 
 /**
- * 루트 문서 + settings 문서 → 「사용자 분석」 행.
+ * 루트 문서 + settings 문서 → 미러 행.
  *
- * settings 가 없으면 null — 자가 탈퇴 등으로 루트만 남은 고아 문서다
- * (users.js 목록도 같은 이유로 건너뛴다).
+ * **settings 가 없어도 행을 만든다** — `hasSettings: false` 로 표시할 뿐이다.
+ * 자가 탈퇴 등으로 루트만 남은 고아 문서인데, 「사용자 분석」과 목록은 이런 행을
+ * 건너뛰지만 **대시보드 신규 사용자**는 루트 `createdAt` 기준으로 그대로 센다
+ * (서버 전량 조회 시절과 같은 집합을 유지해야 숫자가 어긋나지 않는다).
+ * 소비자별 걸러내기는 `buildUserAnalyticsRow` / `getAllUsersFromMirror` 가 한다.
  *
  * @param {string} userId
  * @param {object|null} rootData users/{uid} 문서 데이터
  * @param {object|null} settingsData users/{uid}/config/settings 문서 데이터 (없으면 null)
+ * @param {{d:string, r:string}[]} [journalMarks] 하루 소감 자국 — 날짜키와 기록 시각(ISO).
+ *        내용 유무 판정(`dailyJournalHasContent`)은 브라우저 쪽에서 끝내고 넘긴다 —
+ *        이 파일은 순수 계산부라 앱 유틸을 끌어오지 않는다.
  */
-export function buildUserAnalyticsRow(userId, rootData, settingsData) {
-    if (!userId || !settingsData) return null;
+export function buildUserMirrorRow(userId, rootData, settingsData, journalMarks) {
+    if (!userId) return null;
     const root = rootData || {};
+    const hasSettings = !!settingsData;
 
     let birthdate = '';
     let lifestyle = '';
     let gender = null;
-    if (settingsData.profile) {
+    if (settingsData?.profile) {
         const p = settingsData.profile;
         if (p.birthdate) birthdate = String(p.birthdate).trim();
         if (p.lifestyle) lifestyle = String(p.lifestyle).trim();
         if (p.gender === 'male' || p.gender === 'female') gender = p.gender;
     }
 
-    const email = settingsData.email || root.email || null;
-    const providerId = settingsData.providerId || root.providerId || null;
+    const email = settingsData?.email || root.email || null;
+    const providerId = settingsData?.providerId || root.providerId || null;
     const loginMethod = deriveLoginMethod(providerId, email, userId);
 
     const createdAt = parseRootTimestampField(root.createdAt);
     const lastLoginAt = parseRootTimestampField(root.lastLoginAt);
     const createdAtResolved = coalesceSignupDate(
         createdAt,
-        parseSettingsDate(settingsData.profileCompletedAt),
-        parseSettingsDate(settingsData.termsAgreedAt)
+        parseSettingsDate(settingsData?.profileCompletedAt),
+        parseSettingsDate(settingsData?.termsAgreedAt)
     );
 
     // 게스트는 가입~마지막 로그인 간격을 재지 않는다(활동 기간 버킷에서 따로 센다)
@@ -138,6 +154,7 @@ export function buildUserAnalyticsRow(userId, rootData, settingsData) {
 
     return {
         userId,
+        hasSettings,
         birthdate,
         lifestyle,
         gender,
@@ -145,8 +162,31 @@ export function buildUserAnalyticsRow(userId, rootData, settingsData) {
         // Date 는 IndexedDB 에 그대로 담기지만, 저장 형식을 못 박아 두려고 ISO 로 눕힌다
         createdAt: createdAt ? createdAt.toISOString() : null,
         lastLoginAt: lastLoginAt ? lastLoginAt.toISOString() : null,
-        signupToLastLoginMs
+        signupToLastLoginMs,
+        journal: normalizeJournalMarks(journalMarks)
     };
+}
+
+/** 하루 소감 자국 배열을 저장 형태로 — 날짜키가 성한 것만, 날짜 오름차순 */
+export function normalizeJournalMarks(marks) {
+    if (!Array.isArray(marks)) return [];
+    const out = [];
+    for (const m of marks) {
+        const d = typeof m?.d === 'string' ? m.d.trim() : '';
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+        out.push({ d, r: typeof m?.r === 'string' ? m.r : '' });
+    }
+    out.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+    return out;
+}
+
+/**
+ * 「사용자 분석」·사용자 목록이 쓰는 행 — settings 없는 고아는 예전처럼 null.
+ * 파생 규칙은 위 `buildUserMirrorRow` 하나뿐이고, 여기서는 걸러내기만 한다.
+ */
+export function buildUserAnalyticsRow(userId, rootData, settingsData, journalMarks) {
+    if (!userId || !settingsData) return null;
+    return buildUserMirrorRow(userId, rootData, settingsData, journalMarks);
 }
 
 /** IDB 에 눕혀 둔 ISO 를 분석 코드가 기대하는 Date 로 되살린다 */
@@ -189,6 +229,8 @@ export function decideUsersSyncMode(meta, serverRootCount, maxAgeMs = 7 * 24 * 3
     if (!meta || !meta.bootstrapDone) return { mode: 'full', reason: 'no-mirror' };
     const t = Date.parse(meta.lastSyncedAt || '');
     if (!Number.isFinite(t)) return { mode: 'full', reason: 'bad-bookmark' };
+    // 행 모양이 바뀌었으면 델타로는 옛 행을 고칠 수 없다 — 통째로 다시 빚는다
+    if (Number(meta.rowSchema || 0) !== USERS_MIRROR_ROW_SCHEMA) return { mode: 'full', reason: 'schema-changed' };
     if (nowMs - t > maxAgeMs) return { mode: 'full', reason: 'stale' };
     if (
         typeof serverRootCount === 'number' &&
