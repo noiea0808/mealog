@@ -12,7 +12,7 @@ const SNACK_WHEN_LABEL = {
     pre_morning: '아침 전',
     snack1: '오전',
     snack2: '오후',
-    night: '야식'
+    night: '저녁 후'
 };
 
 /** @type {Record<string, string>} */
@@ -83,7 +83,7 @@ const SNACK_WHEN_ICON = {
     '아침 전': 'snack-when-pre',
     오전: 'snack-when-am',
     오후: 'snack-when-pm',
-    야식: 'snack-when-night'
+    '저녁 후': 'snack-when-night'
 };
 
 /** @type {Record<string, string>} */
@@ -174,7 +174,7 @@ function getAllowedTags(key) {
         return userTags.snackPlaceMain;
     }
     if (key === 'snackWhen') {
-        return ['아침 전', '오전', '오후', '야식'];
+        return ['아침 전', '오전', '오후', '저녁 후'];
     }
     return null;
 }

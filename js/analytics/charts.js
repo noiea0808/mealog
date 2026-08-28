@@ -226,7 +226,7 @@ function aggregateProportionData(data, key) {
                 pre_morning: '아침 전',
                 snack1: '오전',
                 snack2: '오후',
-                night: '야식'
+                night: '저녁 후'
             };
             return snackSlotLabelMap[m?.slotId] || '미입력';
         }
@@ -265,7 +265,7 @@ function aggregateProportionData(data, key) {
         tagEntries.sort((a, b) => b[1] - a[1]);
         sorted = tagEntries;
     } else if (key === 'snackWhen') {
-        const timeOrder = ['아침 전', '오전', '오후', '야식'];
+        const timeOrder = ['아침 전', '오전', '오후', '저녁 후'];
         const emptyCount = counts['미입력'] || 0;
         const entries = [];
         // 시간 순서 고정

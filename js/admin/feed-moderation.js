@@ -1599,7 +1599,7 @@ async function renderFeedManagement() {
                 morning: '아침',
                 snack1: '오전간식',
                 snack2: '오후간식',
-                night: '야식',
+                night: '저녁후간식',
                 breakfast: '아침',
                 lunch: '점심',
                 dinner: '저녁',
@@ -2822,7 +2822,7 @@ function dailyJournalMetricsPlainText(entry) {
 }
 
 const MOMENT_EXPORT_SLOT_LABELS = {
-    pre_morning: '아침전', morning: '아침', snack1: '오전간식', snack2: '오후간식', night: '야식',
+    pre_morning: '아침전', morning: '아침', snack1: '오전간식', snack2: '오후간식', night: '저녁후간식',
     breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식',
     before_breakfast: '아침전', after_breakfast: '아침후', before_lunch: '점심전', after_lunch: '점심후',
     before_dinner: '저녁전', after_dinner: '저녁후'

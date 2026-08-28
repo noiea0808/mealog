@@ -6537,7 +6537,7 @@ function adminSlotLabelKr(slotId) {
     pre_morning: '새참',
     snack1: '간식',
     snack2: '간식',
-    night: '야식'
+    night: '저녁 후 간식'
   };
   return m[slotId] || (slotId ? String(slotId) : '');
 }
@@ -7206,7 +7206,7 @@ exports.adminWelcomeGeminiComment = onCall(
 // - 매일 00:10 KST 배치로 "전날" 기록을 분석해 aiDietReports에 저장
 // - 대상: 식사/간식 meal 문서(하루 메모 제외)가 2개 이상인 날짜
 // - 기록·사진 모두 "시간순"(DIET_SLOT_ORDER)으로 정렬해 보낸다. 알파벳순으로 보내면
-//   모델이 저녁→점심→아침 순으로 하루를 읽게 되어 흐름·야식 판단이 무너진다.
+//   모델이 저녁→점심→아침 순으로 하루를 읽게 되어 흐름·저녁 후 간식 판단이 무너진다.
 // - 사진은 슬롯 라벨 캡션과 짝지어 인터리브 전송(캡션 없이 보내면 사진↔기록 매칭 불가)
 // - 프롬프트 치환자: {{date}} {{weekday}} {{mealText}} {{profile}} {{slotCoverage}} {{recentTrend}} {{recentStats}}
 // - 응답은 JSON 모드로 강제하고 서버에서 파싱까지 검증한 뒤에만 status:'ready'
@@ -7254,7 +7254,7 @@ const DEFAULT_DIET_REPORT_PROMPT_TEMPLATE = `너는 식단 기록 앱 밀로그�
   - 낙차: 하루의 양 끝을 붙인다. "샐러디로 시작, 케이크로 끝"
   - 인용: 사용자가 쓴 말을 그대로 쓴다. "'한판 말고 반판'이라니"
   - 선언: 툭 던지고 끝낸다. "치킨은 계획에 없었다"
-  - 명명: 그날에 이름을 붙인다. "야식 없는 날 사흘째"
+  - 명명: 그날에 이름을 붙인다. "저녁 후 간식 없는 날 사흘째"
   - 장면: 한 장면만 클로즈업한다. "접시 절반은 오이였다"
   예시는 방식을 보이는 것이지 문형이 아니다. 예시의 표현을 그대로 가져다 메뉴 이름만 바꾸지 않는다.
   아래는 제목이 아니라 설명이다. 쓰지 않는다.
@@ -7503,7 +7503,7 @@ const DIET_SLOT_LABELS_DETAILED = {
   lunch: '점심',
   snack2: '오후 간식',
   dinner: '저녁',
-  night: '야식'
+  night: '저녁 후 간식'
 };
 
 function dietSlotLabel(slotId) {
@@ -7879,7 +7879,7 @@ function dietTimeToMinutes(t) {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-/** 세 끼로 치는 슬롯. 나머지(아침 전·오전·오후 간식·야식)는 전부 간식으로 센다 */
+/** 세 끼로 치는 슬롯. 나머지(아침 전·오전·오후·저녁 후 간식)는 전부 간식으로 센다 */
 const DIET_MAIN_SLOTS = ['morning', 'lunch', 'dinner'];
 const DIET_MAIN_SLOT_LABELS = ['아침', '점심', '저녁'];
 
@@ -7933,7 +7933,7 @@ function dietMenuTokens(menu) {
  *   같은 날이 드물지 않았고(잘못 넣었다가 나중에 고치는 흔적), 그대로 두면 모델은 데이터를 정확히
  *   읽은 결과로 "아침보다 이른 점심" 같은 제목을 낸다. 사람이 보면 틀린 문장인데 모델 잘못이 아니다.
  *
- * night(야식)은 자정을 넘겨 적히는 게 정상이라 순서 검사에서 뺀다.
+ * night(저녁 후 간식)은 자정을 넘겨 적히는 게 정상이라 순서 검사에서 뺀다.
  * 같은 슬롯에 여러 기록이 있을 수 있으므로 슬롯별 평균끼리 비교한다.
  */
 function detectDietTimeUnreliable(todayMeals) {

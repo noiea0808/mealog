@@ -418,7 +418,7 @@ export async function updateDashboard() {
         pre_morning: '아침 전',
         snack1: '오전',
         snack2: '오후',
-        night: '야식'
+        night: '저녁 후'
     };
     const showSnackWhen = snackSlot === 'all';
     const snackWhenCard = document.getElementById('snackWhenChartCard');
