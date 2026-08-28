@@ -46,8 +46,6 @@ let feedAuthorFilter = null; // { userId: string, nickname: string } | null
 /** 닉네임·이메일·UID 검색용 (최초 검색 시 1회 로드) */
 let feedAuthorSearchUsersCache = null;
 let feedAuthorSearchHandlersBound = false;
-let feedAuthorSearchDebounceTimer = null;
-const FEED_AUTHOR_SEARCH_DEBOUNCE_MS = 320;
 let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
@@ -893,6 +891,7 @@ function syncFeedAuthorSearchInput() {
 }
 
 function ensureFeedAuthorSearchHandlers() {
+    ensureFeedBulkSelectionWatch();
     if (feedAuthorSearchHandlersBound) return;
     const inp = document.getElementById('feedAuthorSearchInput');
     const clr = document.getElementById('feedAuthorSearchClearBtn');
@@ -903,26 +902,24 @@ function ensureFeedAuthorSearchHandlers() {
         void applyFeedAuthorSearch();
     };
 
+    /**
+     * 타이핑만으로는 조회하지 않는다 — 지우기(빈 칸)일 때 필터를 푸는 것만 즉시 반응한다.
+     *
+     * 예전에는 320ms 디바운스로 자동 조회했는데, 검색어를 다 치기 전에 멈추기만 해도
+     * 사용자 전량을 읽고 「일치하는 사용자가 없습니다」 alert 를 띄웠다. 한글은 더 심해서
+     * 조합 중인 'ㅁ'·'메' 로도 조회가 나갔다. 필터가 하나로 좁혀지면 다 치기도 전에
+     * 목록이 걸려버리기까지 했다.
+     */
     inp.addEventListener('input', () => {
         const q = (inp.value || '').trim();
         if (clr) clr.classList.toggle('hidden', !q);
-        if (!q) {
-            clearTimeout(feedAuthorSearchDebounceTimer);
-            feedAuthorSearchDebounceTimer = null;
-            if (feedAuthorFilter) void window.clearFeedAuthorFilter();
-            return;
-        }
-        clearTimeout(feedAuthorSearchDebounceTimer);
-        feedAuthorSearchDebounceTimer = setTimeout(() => {
-            feedAuthorSearchDebounceTimer = null;
-            runApply();
-        }, FEED_AUTHOR_SEARCH_DEBOUNCE_MS);
+        if (!q && feedAuthorFilter) void window.clearFeedAuthorFilter();
     });
     inp.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
+        // 한글 조합을 끝내는 엔터다 — 여기서 조회하면 미완성 글자로 찾는다. 다음 엔터가 진짜 검색
+        if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        clearTimeout(feedAuthorSearchDebounceTimer);
-        feedAuthorSearchDebounceTimer = null;
         runApply();
     });
     if (clr) {
@@ -998,6 +995,7 @@ async function applyFeedAuthorSearch() {
 function updateFeedAuthorFilterBar() {
     const bar = document.getElementById('feedAuthorFilterBar');
     syncFeedAuthorSearchInput();
+    updateFeedFilterButtonState();
     if (!bar) return;
     const authorUid = getFeedAuthorUserId();
     if (!authorUid) {
@@ -1509,7 +1507,7 @@ async function renderFeedManagement() {
 
         const rowsHtml =
             paginatedMeals.length === 0
-                ? `<tr><td colspan="13" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
+                ? `<tr><td colspan="14" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
                 : paginatedMeals.map((meal, rowIdx) => {
             const isDailyJournal = meal.isDailyJournal === true;
             const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
@@ -1564,9 +1562,13 @@ async function renderFeedManagement() {
                             ? '밀당의 참견'
                             : '일반';
 
-            const whereTag = isCapture || isDailyJournal ? '' : meal.place || meal.snackPlace || '';
+            // 간식 '어디서'는 칩(snackPlaceMain)이 정본이고, 칩이 없던 옛 기록만 자유입력(place)으로 메운다
+            const whereTag = isCapture || isDailyJournal ? '' : meal.snackPlaceMain || meal.place || meal.snackPlace || '';
             const whereSubTag = isCapture || isDailyJournal ? '' : meal.placeDetail || meal.placeMemo || '';
-            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
+            // 끼니 1축 '어떻게'(집밥·외식·배달). 간식에는 이 축이 없어 빈 칸으로 남는다
+            const howTag = isCapture || isDailyJournal ? '' : meal.mealType || '';
+            // mealType 을 여기 섞지 않는다 — '어떻게'(조달) 값이라 '무엇을'(형태) 칸을 오염시킨다
+            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.categoryAuto || meal.snackType || '';
             const whatSubTag = isCapture || isDailyJournal ? '' : meal.menuDetail || meal.snackDetail || '';
             const withTag = isCapture || isDailyJournal ? '' : meal.withWhom || '';
             const withSubTag = isCapture || isDailyJournal ? '' : meal.withWhomDetail || '';
@@ -1659,6 +1661,7 @@ async function renderFeedManagement() {
                             <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
                         </div>
                     </td>
+                    <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(howTag, '')}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whereTag, whereSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
@@ -1724,6 +1727,7 @@ async function renderFeedManagement() {
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">기록 일시</th>
                             <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
+                            <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어떻게</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
@@ -1760,6 +1764,7 @@ async function renderFeedManagement() {
         updateFeedAuthorFilterBar();
         // 토글 버튼 색상 업데이트
         updateFeedFilterToggleColors();
+        updateFeedBulkButtonState();
         adminFeedMonitoringLoaded = true;
     } catch (e) {
         adminFeedMonitoringLoaded = false;
@@ -1800,7 +1805,167 @@ function updateFeedFilterToggleColors() {
             }
         }
     });
+    updateFeedFilterButtonState();
 }
+
+/** 지금 걸린 필터를 사람이 읽는 문구로. 없으면 빈 배열 */
+function activeFeedFilterLabels() {
+    const yn = (v) => (v === 'yes' ? '예' : '아니오');
+    const out = [];
+    if (feedFilters.shared !== 'all') out.push(`공유 ${yn(feedFilters.shared)}`);
+    if (feedFilters.hasPhotos !== 'all') out.push(`사진 ${yn(feedFilters.hasPhotos)}`);
+    if (feedFilters.banned !== 'all') out.push(`금지 ${yn(feedFilters.banned)}`);
+    if (feedAuthorFilter?.userId) {
+        out.push(`작성자 ${feedAuthorFilter.nickname?.trim() || feedAuthorFilter.userId}`);
+    }
+    return out;
+}
+
+const FEED_FILTER_BTN_BASE =
+    'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-colors';
+const FEED_FILTER_BTN_OFF = `${FEED_FILTER_BTN_BASE} bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200`;
+const FEED_FILTER_BTN_ON = `${FEED_FILTER_BTN_BASE} bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm`;
+
+/**
+ * 필터가 팝업 안으로 들어가면 「지금 걸려 있나」가 화면에서 사라진다.
+ * 버튼 색과 라벨이 그 자리를 대신한다 — 색만으로는 못 읽는 경우가 있어 개수도 같이 적는다.
+ */
+function updateFeedFilterButtonState() {
+    const labels = activeFeedFilterLabels();
+    const n = labels.length;
+    const btn = document.getElementById('feedFilterOpenBtn');
+    const label = document.getElementById('feedFilterOpenBtnLabel');
+    const summary = document.getElementById('feedFilterModalSummary');
+    if (label) label.textContent = n === 0 ? '필터' : `필터 ${n}`;
+    if (btn) {
+        btn.className = n === 0 ? FEED_FILTER_BTN_OFF : FEED_FILTER_BTN_ON;
+        btn.title = n === 0 ? '필터가 적용되지 않았습니다' : `적용 중: ${labels.join(' · ')}`;
+    }
+    if (summary) summary.textContent = n === 0 ? '적용된 필터가 없습니다' : labels.join(' · ');
+}
+
+window.openFeedFilterModal = function () {
+    const m = document.getElementById('feedFilterModal');
+    if (!m) return;
+    ensureFeedAuthorSearchHandlers();
+    updateFeedFilterToggleColors();
+    syncFeedAuthorSearchInput();
+    m.classList.remove('hidden');
+    m.setAttribute('aria-hidden', 'false');
+    if (!m.dataset.dismissBound) {
+        m.dataset.dismissBound = '1';
+        // 배경(모달 바깥)을 눌렀을 때만 닫는다
+        m.addEventListener('click', (e) => {
+            if (e.target === m) window.closeFeedFilterModal();
+        });
+    }
+};
+
+window.closeFeedFilterModal = function () {
+    const m = document.getElementById('feedFilterModal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
+};
+
+const FEED_BULK_BTN_OFF = `${FEED_FILTER_BTN_BASE} bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200`;
+const FEED_BULK_BTN_ON = `${FEED_FILTER_BTN_BASE} bg-slate-800 text-white border-slate-800 hover:bg-slate-900 shadow-sm`;
+let feedBulkSelectionWatchBound = false;
+
+/** 지금 체크된 행 수 */
+function feedBulkSelectedCount() {
+    return document.querySelectorAll('.feed-item-checkbox:checked').length;
+}
+
+/**
+ * 일괄 작업도 팝업으로 접혔으니, 「몇 건 골랐나」를 버튼이 대신 말해야 한다.
+ * 선택이 없으면 팝업 안 작업 버튼을 잠근다 — 눌러보고 alert 로 되돌려보내는 것보다 낫다.
+ */
+function updateFeedBulkButtonState() {
+    const n = feedBulkSelectedCount();
+    const btn = document.getElementById('feedBulkOpenBtn');
+    const label = document.getElementById('feedBulkOpenBtnLabel');
+    const summary = document.getElementById('feedBulkModalSummary');
+    const hint = document.getElementById('feedBulkEmptyHint');
+    if (label) label.textContent = n === 0 ? '일괄 작업' : `일괄 작업 ${n}`;
+    if (btn) {
+        btn.className = n === 0 ? FEED_BULK_BTN_OFF : FEED_BULK_BTN_ON;
+        btn.title = n === 0 ? '선택된 항목이 없습니다' : `${n}건 선택됨`;
+    }
+    if (summary) summary.textContent = n === 0 ? '선택된 항목이 없습니다' : `${n}건 선택됨`;
+    if (hint) hint.classList.toggle('hidden', n > 0);
+    document.querySelectorAll('.feed-bulk-action').forEach((el) => {
+        if (el instanceof HTMLButtonElement) el.disabled = n === 0;
+    });
+}
+
+/** 체크박스는 목록을 그릴 때마다 새로 만들어지므로 문서 한 곳에서 위임으로 듣는다 */
+function ensureFeedBulkSelectionWatch() {
+    if (feedBulkSelectionWatchBound) return;
+    feedBulkSelectionWatchBound = true;
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLElement && t.classList.contains('feed-item-checkbox')) {
+            updateFeedBulkButtonState();
+        }
+    });
+}
+
+window.openFeedBulkModal = function () {
+    const m = document.getElementById('feedBulkModal');
+    if (!m) return;
+    updateFeedBulkButtonState();
+    m.classList.remove('hidden');
+    m.setAttribute('aria-hidden', 'false');
+    if (!m.dataset.dismissBound) {
+        m.dataset.dismissBound = '1';
+        m.addEventListener('click', (e) => {
+            if (e.target === m) window.closeFeedBulkModal();
+        });
+    }
+};
+
+window.closeFeedBulkModal = function () {
+    const m = document.getElementById('feedBulkModal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
+};
+
+/**
+ * 작업이 실제로 돌면 목록이 다시 그려지며 선택이 풀린다. 그걸 신호로 팝업을 닫는다 —
+ * 확인 창에서 취소했다면 선택이 남아 있으므로 팝업도 그대로 둔다.
+ */
+window.runFeedBulkAction = async function (action) {
+    const fns = {
+        unshare: window.bulkUnsharePosts,
+        ban: window.bulkBanPosts,
+        unban: window.bulkUnbanPosts,
+        delete: window.bulkDeleteFeedPosts
+    };
+    const fn = fns[action];
+    if (typeof fn !== 'function') return;
+    await fn();
+    updateFeedBulkButtonState();
+    if (feedBulkSelectedCount() === 0) window.closeFeedBulkModal();
+};
+
+window.resetFeedFilters = async function () {
+    feedFilters.shared = 'all';
+    feedFilters.hasPhotos = 'all';
+    feedFilters.banned = 'all';
+    updateFeedFilterToggleColors();
+    feedCurrentPage = 1;
+    if (feedAuthorFilter) {
+        // 작성자 해제가 목록까지 다시 그린다 — 여기서 또 그리면 같은 조회를 두 번 한다
+        await window.clearFeedAuthorFilter();
+        updateFeedFilterButtonState();
+        return;
+    }
+    updateFeedFilterButtonState();
+    if (!adminFeedMonitoringLoaded) return;
+    await renderFeedManagement();
+};
 
 /** 합산 건수가 있으면 전체 페이지 수, 없으면 현재까지 로드된 범위 기준 */
 function computeFeedAdminTotalPages() {
@@ -1897,6 +2062,7 @@ window.toggleFeedFilter = function(filterType) {
         }
     }
     
+    updateFeedFilterButtonState();
     if (!adminFeedMonitoringLoaded) return;
     feedCurrentPage = 1;
     renderFeedManagement();
@@ -2804,9 +2970,10 @@ async function collectMomentRowsForExport(range = {}) {
                         : '일반';
 
         const noTags = isCapture || isDailyJournal;
-        const whereTag = noTags ? '' : meal.place || meal.snackPlace || '';
+        const whereTag = noTags ? '' : meal.snackPlaceMain || meal.place || meal.snackPlace || '';
         const whereSubTag = noTags ? '' : meal.placeDetail || meal.placeMemo || '';
-        const whatTag = noTags ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
+        const howTag = noTags ? '' : meal.mealType || '';
+        const whatTag = noTags ? '' : meal.category || meal.categoryAuto || meal.snackType || '';
         const whatSubTag = noTags ? '' : meal.menuDetail || meal.snackDetail || '';
         const withTag = noTags ? '' : meal.withWhom || '';
         const withSubTag = noTags ? '' : meal.withWhomDetail || '';
@@ -2831,6 +2998,7 @@ async function collectMomentRowsForExport(range = {}) {
             날짜: dt.date,
             시간: dt.time,
             식사구분: slotLabel,
+            어떻게: howTag,
             어디서: whereTag,
             어디서_상세: whereSubTag,
             무엇을: whatTag,
