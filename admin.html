@@ -561,6 +561,9 @@
                             <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-images mr-2"></i>모먼트 관리
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('momentAnalytics')" id="monitoring-sidebar-momentAnalytics" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-chart-column mr-2"></i>모먼트 분석
+                            </button>
                             <button onclick="window.switchMonitoringSidebar('lounge')" id="monitoring-sidebar-lounge" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-comment-dots mr-2"></i>밀톡 관리
                             </button>
@@ -612,6 +615,56 @@
                                     </div>
                                     <!-- 페이지네이션 -->
                                     <div id="feedPagination" class="mt-6 flex justify-center items-center gap-2"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 모먼트 분석 — 항목별 입력률(어떻게·어디서·무엇을·누구와·만족도·포만감·사진·코멘트) -->
+                        <div id="monitoring-main-momentAnalytics" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <p class="text-sm text-slate-600 leading-relaxed mb-4">
+                                        기간 안의 끼니·간식 기록에서 각 항목이 <span class="font-bold text-slate-700">얼마나 채워졌는지</span>를 셉니다.
+                                        기간만큼의 기록을 실제로 읽으므로 <span class="font-bold text-slate-700">분석 실행</span>을 누를 때만 조회하고,
+                                        같은 기간을 10분 안에 다시 보면 읽기 없이 앞선 결과를 그립니다. 기간이 넓을수록 읽기가 늘어납니다.
+                                    </p>
+                                    <div class="flex flex-wrap gap-3 items-end">
+                                        <div>
+                                            <label for="momentAnalyticsPreset" class="block text-xs font-bold text-slate-600 mb-1">기간</label>
+                                            <select id="momentAnalyticsPreset" onchange="window.syncMomentAnalyticsRangeInputs()" class="px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none">
+                                                <option value="7">최근 7일</option>
+                                                <option value="30" selected>최근 30일</option>
+                                                <option value="90">최근 90일</option>
+                                                <option value="custom">직접 지정</option>
+                                            </select>
+                                        </div>
+                                        <div id="momentAnalyticsCustomRange" class="flex gap-2 items-end opacity-50 pointer-events-none">
+                                            <div>
+                                                <label for="momentAnalyticsStartDate" class="block text-xs font-bold text-slate-500 mb-1">시작일</label>
+                                                <input type="date" id="momentAnalyticsStartDate" class="px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500">
+                                            </div>
+                                            <div>
+                                                <label for="momentAnalyticsEndDate" class="block text-xs font-bold text-slate-500 mb-1">종료일</label>
+                                                <input type="date" id="momentAnalyticsEndDate" class="px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500">
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2 items-center ml-auto">
+                                            <button type="button" id="momentAnalyticsRunBtn" onclick="window.runMomentAnalytics()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                <i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>분석 실행</span>
+                                            </button>
+                                            <button type="button" id="momentAnalyticsExportBtn" onclick="window.exportMomentAnalyticsToExcel()" title="마지막 분석 결과를 엑셀(.xlsx)로 내려받습니다." class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-file-excel mr-1" aria-hidden="true"></i>엑셀 내보내기
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="momentAnalyticsContainer">
+                                        <div class="text-center py-10 text-slate-400">
+                                            <i class="fa-solid fa-chart-column text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">기간을 고르고 <strong class="text-slate-600">분석 실행</strong>을 누르세요.</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
