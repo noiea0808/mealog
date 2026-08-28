@@ -1,4 +1,4 @@
-# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~5단계)
+# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~6단계)
 
 관리자 화면들이 방문할 때마다 Firestore 를 전량 스캔하던 비용
 (`firestore-read-audit-2026-08.md` 의 12~25K 스파이크)을 없애기 위한 구조.
@@ -58,6 +58,10 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
   예전처럼 건너뛰지만, 대시보드 신규 사용자는 루트 `createdAt` 만으로 세기 때문이다 —
   여기서 지우면 서버 전량 조회 시절보다 신규 사용자가 줄어 보인다.
   걸러내기는 `getAllUsersFromMirror()`(분석용) 와 `getAllUserMirrorRows()`(전부) 가 나눈다.
+- **목록이 쓰는 표시 필드**(닉네임·아이콘·약관·프로필 완료·`mealCount`)도 담는다. 같은
+  이유다 — settings 를 어차피 읽고 있어서 **읽기가 하나도 더 들지 않는다.**
+  닉네임·아이콘 규칙(`deriveUserListDisplay`)은 서버 폴백 경로(`users.js` 의 `getUsers`)와
+  **같은 함수**를 쓴다. 두 곳에 두면 미러로 본 목록과 서버로 본 목록의 닉네임이 갈린다.
 - **하루 소감 자국**(`journal: [{d, r}]`) 을 함께 담는다 — settings 를 어차피 읽고 있으니
   **읽기를 하나도 더 쓰지 않는다.** 본문은 담지 않는다: 필요한 것은 「어느 날짜에 내용 있는
   소감이 있었나」와 시간대 행이 쓸 기록 시각뿐이다. 대시보드가 이걸 쓰면서
@@ -102,6 +106,31 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 백업은 다른 기기에서 부트스트랩을 되풀이하지 않으려고 있다.
 **git 에는 절대 올리지 않는다** — 사용자 기록·프로필이 통째로 들어 있고, 저장소
 히스토리에 한 번 들어가면 지우기 어렵다. 기기 사이에는 파일을 직접 건넨다.
+
+### 사용자 관리 목록 (6단계)
+
+목록 한 줄을 만들려고 사람마다 문서 세 건을 사 왔다 — 루트 `users` · `config/settings` ·
+`meals` 건수 집계. 거기에 페이지마다 `sharedPhotos`·`boardPosts` `in` 쿼리와
+`userBans`·`deleteUserRequests` 청크가 붙었다. **정렬·검색이 전체 목록을 요구하므로**
+그 값이 전 사용자에 곱해졌다 — 사용자 N 명이면 3N 을 훌쩍 넘었다.
+
+| 자리 | 예전 | 지금 |
+|---|---|---|
+| 프로필·약관·가입일 | `settings` × N `getDocFromServer` | users 미러 |
+| 타임라인 건수 | **사용자마다 count 쿼리** | meals 미러의 uid 별 건수 |
+| 공유 건수·아이콘 | `in` 쿼리 (30개씩) | sharedPhotos 미러 |
+| 밀톡 건수 | `in` 쿼리 (30개씩) | boardPosts 미러 |
+| 제재·탈퇴 요청 | 페이지마다 `in` 청크 | 컬렉션을 통째로 1회 |
+
+`userBans` 와 `deleteUserRequests` 만 서버에 남는다. 둘 다 「해당되는 사람만 문서가
+생기는」 작은 컬렉션이라, 통째로 한 번 읽는 편이 페이지마다 30개씩 쪼갠 `in` 쿼리보다
+싸다. 못 읽어도 목록은 세운다 — 제재 표시가 빠질 뿐이고, 그 때문에 전체 목록을 못 보는
+편이 더 나쁘다.
+
+**폴백은 `users.js` 안에 그대로 남는다.** `fetchAllUsersFromServer()` 가 예전 페이지
+파이프라인이고, 미러가 비었거나 실패하면 그리로 간다. 「사용자 분석」의 폴백
+(`fetchAllUsersForAdminAnalytics`)은 **곧장 서버로 간다** — 이미 미러에 실패해서 온
+참이라, 여기서 몰래 미러로 성공하면 화면의 「서버 전체 조회」 배지가 거짓말이 된다.
 
 ### 대시보드 (5단계)
 
@@ -166,6 +195,8 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 | `js/admin/meals-mirror.js` | `ensureMealsMirrorSynced` / `getMealsInRange` |
 | `js/admin/users-mirror-model.js` | users 순수 계산부 — 파생 규칙의 **유일한** 출처 |
 | `js/admin/users-mirror.js` | `ensureUsersMirrorSynced` / `getAllUsersFromMirror` |
+| `js/admin/users-list-mirror.js` | 사용자 관리 목록을 네 미러에서 조립 |
+| `js/admin/users-list-mirror-model.js` | 목록 조립의 셈법 (순수) |
 | `js/admin/collection-mirror-model.js` | 범용 미러 순수 계산부 (Timestamp 눕히기·되살리기) |
 | `js/admin/collection-mirror.js` | `createCollectionMirror` 와 네 개 인스턴스 |
 | `js/admin/mirror-console.js` | 관리자 화면: 상태·즉시 구축·재구축·백업 |
@@ -174,7 +205,7 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 | `functions/index.js` `onMealWritten` | 삭제 시 툼스톤 기록 (early-return 앞) |
 | `firestore.rules` | `adminMealTombstones` 읽기 admin 전용, 클라이언트 쓰기 금지 |
 | `firestore.indexes.json` | meals `updatedAt` 컬렉션그룹 ASC fieldOverride |
-| `test/*-mirror-model.test.mjs` (4개) | 모델 테스트 |
+| `test/*-mirror-model.test.mjs` (6개) | 모델 테스트 |
 
 콘솔 수동 조작: `adminMealsMirrorStatus()` · `adminUsersMirrorStatus()` (상태),
 `resetAdminMealsMirror()` · `resetAdminUsersMirror()` (재다운로드 예약).
@@ -193,6 +224,9 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
   미러로 옮겼다 — 하루기록 고아 목록(최대 800) · 특수 공유 목록(최대 500 + 보강 1,200) ·
   특수 공유 건수. 나머지(개별 문서 조작·meals CG 페이지·신고 집계)는 그대로 Firestore 다.
   파일이 3천 줄이 넘고 폴백 체인이 얽혀 있어, 값이 큰 읽기만 골라 옮겼다.
+- **사용자 관리 목록** (`js/admin/users.js`): 전체 목록을 users·meals·sharedPhotos·
+  boardPosts 미러에서 조립. 서버 읽기는 `userBans`·`deleteUserRequests` 뿐.
+  미러가 비었거나 실패하면 예전 페이지 파이프라인으로 폴백.
 - **AI 식단분석** (`js/admin/ai-diet-reports.js`): 목록·7일 사용량 모두 미러.
   미러 모드에서는 커서 대신 오프셋으로 페이지를 자른다.
 - **밀톡 관리** (`lounge-chat-moderation.js`) · **게시판 관리** (`board-moderation.js`):
@@ -227,9 +261,13 @@ firebase deploy --only functions:onMealWritten
 
 ## 다음 단계 (예정)
 
-- 사용자 **관리** 탭(목록)도 미러로: 지금은 여전히 페이지마다 서버를 읽는다.
+- 모먼트 관리 목록의 meals 컬렉션그룹 페이지네이션(`feed-moderation.js` `refillMeals`)도
+  미러로. 재료는 meals 미러에 다 있지만, 파일이 3천 줄이 넘고 폴백 체인이 얽혀 있어
+  따로 손대는 편이 안전하다.
 - 화면 로드 시 도는 페이지별 보정(`fetchPageUsageWeeklyRepairFromUsageDaily`)도 미러로.
   캐시가 성하면 안 도는 길이라 급하진 않다.
+- 신고 집계·반응 수는 **하위 컬렉션**이라 지금 미러 틀(최상위 전용)을 늘려야 한다.
+  비용 대비 이득이 맞지 않아 보류.
   공유·게시글 수는 이제 sharedPhotos·boardPosts 미러로 셀 수 있고, 식사 수는 meals
   미러로 셀 수 있으니 재료는 갖춰졌다.
 - 모먼트 관리의 meals 컬렉션그룹 페이지네이션도 meals 미러로 (지금은 서버 조회)

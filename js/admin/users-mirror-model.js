@@ -15,8 +15,9 @@
  * (IndexedDB 스키마 버전과는 다른 축이다. 스토어 구조는 그대로이고 행 내용만 바뀐다.)
  *
  * v2: `hasSettings`(고아 문서도 담는다) · `journal`(하루 소감 자국) 추가
+ * v3: 사용자 **목록**이 쓰는 표시 필드 — 닉네임·아이콘·약관·프로필 완료·mealCount
  */
-export const USERS_MIRROR_ROW_SCHEMA = 2;
+export const USERS_MIRROR_ROW_SCHEMA = 3;
 
 /** Firestore Timestamp·Date·숫자·문자열·{seconds,nanoseconds} 를 모두 Date 로 */
 export function parseRootTimestampField(raw) {
@@ -106,6 +107,34 @@ export function deriveLoginMethod(providerId, email, userId) {
 }
 
 /**
+ * settings 문서 → 목록에 보일 닉네임·아이콘.
+ *
+ * **아이콘만 폴백이 있다.** 닉네임은 settings 하나로 결정되지만(프로필 미완료·빈값·
+ * 「게스트」는 전부 「미설정」), 아이콘은 settings 에 없을 때 그 사람이 남긴
+ * 공유 게시물의 `userIcon` 을 빌려 쓴다 — 예전 서버 목록이 그렇게 보여 줬다.
+ *
+ * @param {object|null} settingsData
+ * @param {{fallbackIcon?: string|null}} [options] 공유 게시물에서 빌려 온 아이콘
+ */
+export function deriveUserListDisplay(settingsData, options = {}) {
+    let icon = options.fallbackIcon || '🐻';
+    const profile = settingsData?.profile;
+    if (!profile) return { nickname: '미설정', icon };
+    if (profile.icon) icon = profile.icon;
+    let nickname = '미설정';
+    if (settingsData.profileCompleted === true) {
+        const pn = profile.nickname;
+        if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') nickname = pn;
+    }
+    return { nickname, icon };
+}
+
+/** 앱·목록과 같은 규칙 — 느슨한 true 표기까지 동의로 인정 */
+function normalizeTermsAgreed(raw) {
+    return raw === true || raw === 'true' || raw === 1;
+}
+
+/**
  * 루트 문서 + settings 문서 → 미러 행.
  *
  * **settings 가 없어도 행을 만든다** — `hasSettings: false` 로 표시할 뿐이다.
@@ -152,6 +181,10 @@ export function buildUserMirrorRow(userId, rootData, settingsData, journalMarks)
     const signupToLastLoginMs =
         loginMethod === '게스트' ? null : computeSignupToLastLoginMs(createdAtResolved || createdAt, lastLoginAt);
 
+    const profileCompletedAt = parseSettingsDate(settingsData?.profileCompletedAt);
+    const termsAgreedAt = parseSettingsDate(settingsData?.termsAgreedAt);
+    const mealCountField = Number(root.mealCount);
+
     return {
         userId,
         hasSettings,
@@ -163,7 +196,74 @@ export function buildUserMirrorRow(userId, rootData, settingsData, journalMarks)
         createdAt: createdAt ? createdAt.toISOString() : null,
         lastLoginAt: lastLoginAt ? lastLoginAt.toISOString() : null,
         signupToLastLoginMs,
-        journal: normalizeJournalMarks(journalMarks)
+        journal: normalizeJournalMarks(journalMarks),
+
+        // ── 목록용 (v3) ──────────────────────────────────────────────
+        nickname: deriveUserListDisplay(settingsData).nickname,
+        /** 원본 그대로 — 아이콘만 공유 게시물 폴백이 있어서 최종 결정을 목록에서 한다 */
+        profileIcon: settingsData?.profile?.icon || null,
+        email,
+        providerId,
+        termsAgreed: normalizeTermsAgreed(settingsData?.termsAgreed),
+        termsAgreedAt: termsAgreedAt ? termsAgreedAt.toISOString() : null,
+        termsVersion: settingsData?.termsVersion ?? null,
+        profileCompleted: settingsData?.profileCompleted === true,
+        profileCompletedAt: profileCompletedAt ? profileCompletedAt.toISOString() : null,
+        /** meals 미러를 못 쓸 때의 폴백 — 백필/클라 증감용이라 실제와 어긋날 수 있다 */
+        mealCountField: Number.isFinite(mealCountField) && mealCountField >= 0 ? mealCountField : null
+    };
+}
+
+/**
+ * 미러 행 + 다른 미러가 센 값 → 사용자 목록 한 줄.
+ *
+ * 예전에는 이 한 줄을 만들려고 사람마다 문서 3건(루트·settings·meals count)과
+ * 공유·게시글 `in` 쿼리를 서버에서 사 왔다. 재료가 전부 미러에 있으니 이제 조립만 한다.
+ *
+ * @param {object} row `reviveUserRow` 를 거친 미러 행 (createdAt·lastLoginAt 이 Date)
+ * @param {object} parts 다른 미러·작은 컬렉션이 채워 주는 값
+ */
+export function buildUserListRow(row, parts = {}) {
+    if (!row || !row.userId) return null;
+    const nickname = row.nickname ?? '미설정';
+    const icon = row.profileIcon || parts.fallbackIcon || '🐻';
+    const createdAt = row.createdAt || null;
+    const lastLoginAt = row.lastLoginAt || null;
+    const createdAtResolved = coalesceSignupDate(
+        createdAt,
+        row.profileCompletedAt ? new Date(row.profileCompletedAt) : null,
+        row.termsAgreedAt ? new Date(row.termsAgreedAt) : null
+    );
+    const bannedShare = parts.bannedShare === true;
+    const bannedWrite = parts.bannedWrite === true;
+    const timelineCount =
+        typeof parts.timelineCount === 'number' ? parts.timelineCount : row.mealCountField || 0;
+
+    return {
+        userId: row.userId,
+        nickname,
+        icon,
+        birthdate: row.birthdate || '',
+        lifestyle: row.lifestyle || '',
+        gender: row.gender ?? null,
+        email: row.email ?? null,
+        loginMethod: row.loginMethod,
+        termsAgreed: row.termsAgreed === true,
+        termsAgreedAt: row.termsAgreedAt ?? null,
+        termsVersion: row.termsVersion ?? null,
+        profileCompleted: row.profileCompleted === true,
+        timelineCount,
+        albumShareCount: parts.albumShareCount ?? 0,
+        talkCount: parts.talkCount ?? 0,
+        createdAt,
+        createdAtResolved,
+        lastLoginAt,
+        bannedShare,
+        bannedWrite,
+        deleteRequested: parts.deleteRequested === true,
+        pageFetchIndex: parts.pageFetchIndex ?? 0,
+        activityBanLevel: (bannedWrite ? 1 : 0) + (bannedShare ? 1 : 0),
+        signupToLastLoginMs: row.signupToLastLoginMs ?? null
     };
 }
 
