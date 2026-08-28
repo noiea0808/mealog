@@ -1,4 +1,4 @@
-# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~6단계)
+# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~7단계)
 
 관리자 화면들이 방문할 때마다 Firestore 를 전량 스캔하던 비용
 (`firestore-read-audit-2026-08.md` 의 12~25K 스파이크)을 없애기 위한 구조.
@@ -172,6 +172,38 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 **폴백.** 미러 동기화가 실패하면(첫 실행 실패·인덱스 미배포·저장소 거부) 예전 서버
 경로로 물러난다. 그때는 옛 규칙 그대로 — 기본이 증분, 「전체 재집계」가 전량이다.
 
+### 모먼트 관리 목록 (7단계)
+
+목록이 `collectionGroup(meals)` 를 120건씩 커서로 사 왔다. 페이지를 넘길수록 배치가
+쌓이고, 첫 페이지마다 `getCountFromServer` 가 붙었다. 페이지 행의 공유 표시
+(`ensureSharedKeysForFeedRows`)는 사용자별로 `entryId in [10개]` 쿼리를 돌려, 한 페이지에
+여러 사용자가 섞이면 왕복이 그만큼 늘었다.
+
+| 자리 | 예전 | 지금 |
+|---|---|---|
+| meals 스트림 | 커서 배치 120건씩 | meals 미러 전량 정렬 후 slice |
+| meals 건수 | `getCountFromServer` | 미러 행 수 |
+| 공유 표시 매칭 | 사용자별 `entryId in` 쿼리 | sharedPhotos 미러 인덱스 1회 |
+
+**스트리밍 병합기가 미러 경로에는 없다.** `collectMergedModerationPageItems` 의 커서·버퍼·
+조기 종료는 전부 「120건씩만 사 오려고」 있는 물건이다. 로컬에는 살 것이 없으니 전부
+정렬해 잘라 내면 끝이다. 정렬 모드 강등 체인(`failed-precondition` → 1→2→3)도 마찬가지다 —
+서버 인덱스가 없을 때의 이야기고, 로컬 정렬에는 인덱스가 없다.
+
+덤으로 **더 정확하다.** 서버 경로는 배치마다 따로 정렬해 병합하므로 정렬 축이 쿼리의
+`recordedAt`·`date` 인 반면, 목록이 실제로 쓰는 축은 `moderationRecordedAtMillis`
+(하루소감을 따로 취급한다)다. 미러 경로는 그 축 하나로 줄을 세운다.
+
+**관리자 조치를 미러에 즉시 반영해야 한다.** 이게 이 단계의 전제 조건이었다:
+
+- 삭제(`adminDeleteFeedPostInternal`) → `applyLocalMealDelete`.
+  평소 삭제는 툼스톤을 다음 동기화가 소비하는데, 그 사이에는 **방금 지운 기록이
+  새로고침 직후 목록에 그대로 보인다.**
+- 공유 취소·공유 금지·금지 해제(일괄) → `patchLocalMeal`.
+  이쪽이 더 급하다. **관리자 쓰기는 `updatedAt` 을 찍지 않으므로 델타 쿼리에 영영
+  걸리지 않고, meals 미러에는 주기적 전체 재구축도 없다.** 여기서 반영하지 않으면
+  되살아나는 게 아니라 **처음부터 반영되지 않는다** — 배치는 성공했는데 목록은 그대로다.
+
 ## 왜 이렇게
 
 - **Firestore 는 변경 로그를 주지 않는다.** oplog·이력 조회 API 가 없고,
@@ -220,10 +252,10 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 - **사용자 분석** (`js/admin/user-analytics.js`): users 미러에서 집계.
   실패 시 예전 `fetchAllUsersForAdminAnalytics()` 로 폴백(배지가 「서버 전체 조회」로 바뀐다).
   패널 아래 「전체 새로 읽기」가 강제 재구축.
-- **모먼트 관리** (`js/admin/feed-moderation.js`): sharedPhotos 를 훑던 **세 경로**만
-  미러로 옮겼다 — 하루기록 고아 목록(최대 800) · 특수 공유 목록(최대 500 + 보강 1,200) ·
-  특수 공유 건수. 나머지(개별 문서 조작·meals CG 페이지·신고 집계)는 그대로 Firestore 다.
-  파일이 3천 줄이 넘고 폴백 체인이 얽혀 있어, 값이 큰 읽기만 골라 옮겼다.
+- **모먼트 관리** (`js/admin/feed-moderation.js`): 목록 전체가 미러 위에서 돈다 —
+  meals 스트림·건수·공유 표시 매칭에 더해, 예전에 옮긴 세 경로(하루기록 고아 목록 ·
+  특수 공유 목록 · 특수 공유 건수)까지. 남은 서버 읽기는 개별 문서 조작과 신고 집계다.
+  미러 실패 시 예전 커서 페이지네이션으로 폴백.
 - **사용자 관리 목록** (`js/admin/users.js`): 전체 목록을 users·meals·sharedPhotos·
   boardPosts 미러에서 조립. 서버 읽기는 `userBans`·`deleteUserRequests` 뿐.
   미러가 비었거나 실패하면 예전 페이지 파이프라인으로 폴백.
@@ -251,6 +283,10 @@ firebase deploy --only functions:onMealWritten
 - **users**: 탈퇴와 신규 가입이 같은 주기에 같은 수만큼 일어나면 카운트가 같아 삭제를
   못 알아챈다. 역시 7일 재구축이 정리한다.
 - **meals**: `updatedAt` 은 클라이언트 시계다 — 위와 같은 이유로 48시간 겹쳐 읽는다.
+- **meals**: 미러에는 주기적 전체 재구축이 없다(부트스트랩 1회 + 델타·툼스톤). 그래서
+  `updatedAt` 을 찍지 않는 쓰기는 영영 따라잡지 못한다 — 관리자 조치가 그렇다.
+  그런 쓰기는 반드시 `patchLocalMeal` / `applyLocalMealDelete` 로 그 자리에서 반영한다.
+  의심스러우면 미러 콘솔의 「재구축 예약」이 마지막 수단이다.
 - **대시보드**: 「기록 · 전체」가 이제 미러 건수다. `date` 없는 meals 문서는 미러에 담기지
   않으므로(기간 축에 태울 수 없다) 서버 count 보다 그만큼 적을 수 있다. 대신 표 안의
   합계와 「전체」가 **같은 출처**라 서로 어긋나지 않는다 — 예전에는 서버 count 와 스캔 합계가
@@ -261,9 +297,6 @@ firebase deploy --only functions:onMealWritten
 
 ## 다음 단계 (예정)
 
-- 모먼트 관리 목록의 meals 컬렉션그룹 페이지네이션(`feed-moderation.js` `refillMeals`)도
-  미러로. 재료는 meals 미러에 다 있지만, 파일이 3천 줄이 넘고 폴백 체인이 얽혀 있어
-  따로 손대는 편이 안전하다.
 - 화면 로드 시 도는 페이지별 보정(`fetchPageUsageWeeklyRepairFromUsageDaily`)도 미러로.
   캐시가 성하면 안 도는 길이라 급하진 않다.
 - 신고 집계·반응 수는 **하위 컬렉션**이라 지금 미러 틀(최상위 전용)을 늘려야 한다.

@@ -8,6 +8,12 @@
  */
 import { db, appId, functions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
 import { sharedPhotosMirror } from './collection-mirror.js';
+import {
+    ensureMealsMirrorSynced,
+    getAllMealsFromMirror,
+    applyLocalMealDelete,
+    patchLocalMeal
+} from './meals-mirror.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
@@ -850,6 +856,8 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
     await sharedPhotosMirror.applyLocalDelete(sharedSnap.docs.map((d) => d.id)).catch(() => {});
     const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
     await deleteDoc(mealRef);
+    // 툼스톤을 기다리면 방금 지운 기록이 새로고침 직후 목록에 그대로 보인다
+    await applyLocalMealDelete(userId, mealId).catch(() => {});
 }
 
 async function getReportsAggregateCached() {
@@ -1098,7 +1106,14 @@ function mealDocSnapToFeedRow(d) {
     const pathParts = d.ref.path.split('/');
     const uidx = pathParts.indexOf('users');
     const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-    const row = { id: d.id, userId, ...d.data() };
+    return mealRowToFeedRow({ id: d.id, userId, ...d.data() });
+}
+
+/**
+ * meals 한 건(스냅숏이든 미러 행이든) → 목록 행.
+ * 서버 스캔과 미러가 **같은 함수**를 지나야 하루소감 표시가 경로마다 갈리지 않는다.
+ */
+function mealRowToFeedRow(row) {
     if (!isDailyJournalMealRecord(row)) return row;
     const dj = dailyJournalMealDocToModerationFields(row);
     const dateStr = dj.date || row.date;
@@ -1183,6 +1198,34 @@ async function collectMergedModerationPageItems({
     return { items: collected, hasMore, batchesLoaded: batchI };
 }
 
+/**
+ * 미러로 한 페이지를 뽑는다 — Firestore 읽기 0회.
+ *
+ * 서버 경로의 `collectMergedModerationPageItems` 는 커서·버퍼·조기 종료가 얽힌 물건인데,
+ * 그 복잡함은 전부 **「120건씩만 사 오려고」** 존재한다. 로컬에는 살 것이 없으니
+ * 전부 정렬해 잘라 내면 끝이다.
+ *
+ * 덤으로 더 정확하다. 서버 경로는 배치마다 따로 정렬해 병합하므로 정렬 축이
+ * 쿼리의 `recordedAt`·`date` 인 반면, 목록이 실제로 쓰는 축은
+ * `moderationRecordedAtMillis`(하루소감을 따로 취급한다)다. 여기서는 그 축 하나로 줄을 세운다.
+ *
+ * @returns {Promise<{items: object[], hasMore: boolean, mealTotal: number}>}
+ */
+async function collectModerationPageFromMirror({ skip, pageSize, pinnedRows, authorUid }) {
+    await ensureMealsMirrorSynced();
+    const all = await getAllMealsFromMirror();
+    const scoped = authorUid ? all.filter((r) => r?.userId === authorUid) : all;
+    const mealRows = scoped.map(mealRowToFeedRow);
+    const merged = [...(Array.isArray(pinnedRows) ? pinnedRows : []), ...mealRows].sort(
+        compareModerationRowsDesc
+    );
+    return {
+        items: merged.slice(skip, skip + pageSize),
+        hasMore: merged.length > skip + pageSize,
+        mealTotal: mealRows.length
+    };
+}
+
 /** 피드: sharedPhotos(daily/best/insight) + users/…/meals 를 공유·기록 시각 기준으로 합쳐 한 목록으로 페이지네이션 */
 async function getFeedPage(options = {}) {
     const page = options.page ?? 1;
@@ -1224,6 +1267,54 @@ async function getFeedPage(options = {}) {
         const journalRows = await getOrphanJournalSharesCached(authorUid, journalNeeded);
         const specPinned = filterModerationRowsByAuthor(specRows);
         const journalPinned = filterModerationRowsByAuthor(journalRows);
+
+        /**
+         * 미러가 서면 meals 스트림과 건수 집계를 통째로 대신한다.
+         * 실패하면 아래 서버 경로가 그대로 돈다 — 두 갈래가 같은 pinned 행을 쓰므로
+         * 목록의 모양은 달라지지 않는다.
+         */
+        let mirrorPage = null;
+        try {
+            mirrorPage = await collectModerationPageFromMirror({
+                skip,
+                pageSize,
+                pinnedRows: [...specPinned, ...journalPinned],
+                authorUid
+            });
+        } catch (mirrErr) {
+            console.warn('[관리자 모먼트] meals 미러를 쓸 수 없어 서버 조회로 갑니다:', mirrErr?.message || mirrErr);
+        }
+
+        if (page === 1 && mirrorPage) {
+            /**
+             * 건수도 미러에서. 서버 경로는 여기서 `getCountFromServer` 를 던졌다.
+             * 하루소감 미러는 meals 문서라 `mealTotal` 에 이미 들어 있고, 여기서 더하는
+             * 고아 공유는 상한 안에서 센 수라 정확한 총계가 아니다 — 서버 경로와 같은 절충이다.
+             */
+            if (authorUid) {
+                feedTotalCount = mirrorPage.mealTotal + specPinned.length + journalPinned.length;
+                feedMealTotalCountKnown = true;
+            } else {
+                let specN = 0;
+                let specKnown = true;
+                try {
+                    const sc = await getSpecialSharesTimelineCountsCached();
+                    specN = sc.count;
+                    specKnown = sc.known;
+                } catch (e) {
+                    specKnown = false;
+                    console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
+                }
+                feedMealTotalCountKnown = specKnown;
+                feedTotalCount = mirrorPage.mealTotal + (specKnown ? specN : 0) + journalRows.length;
+            }
+        }
+
+        if (mirrorPage) {
+            feedLastPageRowCount = mirrorPage.items.length;
+            feedLastPageHasMore = mirrorPage.hasMore;
+            return { items: mirrorPage.items, totalCount: feedTotalCount, hasMore: feedLastPageHasMore };
+        }
 
         if (page === 1) {
             if (authorUid) {
@@ -1312,6 +1403,31 @@ async function getFeedPage(options = {}) {
     }
 }
 
+/**
+ * `${userId}_${entryId}` → 공유 시각(ms). sharedPhotos 미러를 한 번 훑어 만든다.
+ *
+ * 서버 경로는 이 답을 얻으려고 사용자별로 `entryId in [10개]` 쿼리를 돌렸다 —
+ * 한 페이지에 여러 사용자가 섞이면 왕복이 그만큼 늘어난다. 미러에서는 한 번이면 끝이다.
+ * 같은 (uid, entryId) 가 여럿이면 **가장 늦은 공유 시각**을 남긴다 — 서버 경로가
+ * `tsMs > row.momentShareAtMillis` 로 갱신하던 것과 같은 규칙이다.
+ */
+async function buildSharedEntryIndexFromMirror() {
+    await sharedPhotosMirror.ensureSynced();
+    const docs = await sharedPhotosMirror.getDocsLike();
+    const map = new Map();
+    for (const d of docs) {
+        const data = d.data() || {};
+        const uid = data.userId;
+        const eid = data.entryId || data.mealId || null;
+        if (!uid || !eid) continue;
+        const key = `${uid}_${eid}`;
+        const tsMs = firestoreTimestampToMillis(data.timestamp);
+        const prev = map.get(key);
+        if (prev == null || tsMs > prev) map.set(key, tsMs);
+    }
+    return map;
+}
+
 /** 현재 페이지 식사(meals) 행 기준 공유 표시용 캐시 — sharedPhotos.entryId 매칭 */
 async function ensureSharedKeysForFeedRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return;
@@ -1342,6 +1458,42 @@ async function ensureSharedKeysForFeedRows(rows) {
         if (!djByUser.has(m.userId)) djByUser.set(m.userId, new Set());
         djByUser.get(m.userId).add(eid);
     }
+    /** 미러로 답할 수 있으면 아래 `in` 쿼리들을 전부 건너뛴다 */
+    let sharedIndex = null;
+    if (djByUser.size > 0 || byUser.size > 0) {
+        try {
+            sharedIndex = await buildSharedEntryIndexFromMirror();
+        } catch (e) {
+            console.warn('[관리자 모먼트] 공유 표시를 미러로 못 채웁니다 — 서버 조회로 갑니다:', e?.message || e);
+        }
+    }
+
+    if (sharedIndex) {
+        for (const [uid, eidSet] of djByUser) {
+            for (const eid of eidSet) {
+                const tsMs = sharedIndex.get(`${uid}_${eid}`);
+                if (tsMs == null) continue;
+                feedSharedKeysCache.add(`${uid}_${eid}`);
+                const row = rows.find(
+                    (r) =>
+                        r?.isDailyJournal &&
+                        r.userId === uid &&
+                        getDailyJournalShareEntryId(r.date) === eid
+                );
+                if (row) {
+                    row.momentShared = true;
+                    if (tsMs > (row.momentShareAtMillis || 0)) row.momentShareAtMillis = tsMs;
+                }
+            }
+        }
+        for (const [uid, idSet] of byUser) {
+            for (const id of idSet) {
+                if (sharedIndex.has(`${uid}_${id}`)) feedSharedKeysCache.add(`${uid}_${id}`);
+            }
+        }
+        return;
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     for (const [uid, eidSet] of djByUser) {
         const entryIds = [...eidSet];
@@ -2197,6 +2349,24 @@ window.showReportDetailPopup = function(targetGroupKey) {
     document.body.appendChild(overlay);
 };
 
+/**
+ * 관리자 일괄 조치가 meals 에 쓴 값을 미러에도 반영한다.
+ *
+ * **관리자 쓰기는 `updatedAt` 을 찍지 않는다.** 그래서 델타 쿼리
+ * (`updatedAt > 북마크`)에 영영 걸리지 않고, meals 미러에는 주기적 전체 재구축도 없다.
+ * 여기서 반영하지 않으면 「공유 금지」가 미러에서 되살아나는 게 아니라 **처음부터
+ * 반영되지 않는다** — 배치가 성공했는데 목록은 그대로인 모습이 된다.
+ *
+ * 미러 반영이 실패해도 서버 쓰기는 이미 끝났으므로 조치 자체를 실패로 만들지 않는다.
+ */
+async function applyMealMirrorPatches(patches) {
+    for (const [userId, mealId, patch] of patches) {
+        await patchLocalMeal(userId, mealId, patch).catch((e) => {
+            console.warn('[관리자 모먼트] 미러 반영 실패 — 다음 재구축에서 정리됩니다:', e?.message || e);
+        });
+    }
+}
+
 // 일괄 공유 취소
 window.bulkUnsharePosts = async function() {
     const checkedBoxes = document.querySelectorAll('.feed-item-checkbox:checked');
@@ -2212,6 +2382,7 @@ window.bulkUnsharePosts = async function() {
     
     try {
         const batch = writeBatch(db);
+        const mealMirrorPatches = [];
         let count = 0;
         let sharedPhotosDeleteCount = 0;
         
@@ -2275,6 +2446,7 @@ window.bulkUnsharePosts = async function() {
                 if (mealSnap.exists()) {
                     // meal 문서의 sharedPhotos 필드 빈 배열로 업데이트
                     batch.update(mealDocRef, { sharedPhotos: [] });
+                    mealMirrorPatches.push([userId, mealId, { sharedPhotos: [] }]);
                     count++;
                     
                     // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
@@ -2305,6 +2477,7 @@ window.bulkUnsharePosts = async function() {
         
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유가 취소되었습니다. (${sharedPhotosDeleteCount}개의 공유 사진 삭제)`);
@@ -2332,6 +2505,7 @@ window.bulkBanPosts = async function() {
     
     try {
         const batch = writeBatch(db);
+        const mealMirrorPatches = [];
         let count = 0;
         let sharedPhotosDeleteCount = 0;
         
@@ -2367,6 +2541,7 @@ window.bulkBanPosts = async function() {
                 if (mealSnap.exists()) {
                     // meal 문서에 shareBanned: true 설정 및 sharedPhotos 필드 빈 배열로 업데이트
                     batch.update(mealDocRef, { shareBanned: true, sharedPhotos: [] });
+                    mealMirrorPatches.push([userId, mealId, { shareBanned: true, sharedPhotos: [] }]);
                     count++;
                     
                     // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
@@ -2397,6 +2572,7 @@ window.bulkBanPosts = async function() {
         
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물이 공유 금지되었습니다. (공유 컬렉션에서 ${sharedPhotosDeleteCount}개 삭제)`);
@@ -2719,6 +2895,7 @@ window.bulkUnbanPosts = async function() {
     if (!confirm(`${checkedBoxes.length}개의 게시물 공유 금지를 해제하시겠습니까?`)) return;
     
     const batch = writeBatch(db);
+    const mealMirrorPatches = [];
     let count = 0;
     
     for (const checkbox of checkedBoxes) {
@@ -2728,6 +2905,7 @@ window.bulkUnbanPosts = async function() {
         try {
             const mealDoc = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
             await batch.update(mealDoc, { shareBanned: false });
+            mealMirrorPatches.push([userId, mealId, { shareBanned: false }]);
             count++;
         } catch (e) {
             console.error(`게시물 ${mealId} 금지 해제 실패:`, e);
@@ -2736,6 +2914,7 @@ window.bulkUnbanPosts = async function() {
     
     try {
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유 금지가 해제되었습니다.`);
         renderFeedManagement();

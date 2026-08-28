@@ -28,7 +28,8 @@ import {
     computeSyncStartIso,
     toMirrorRecords,
     tombstonesToKeys,
-    nextBookmark
+    nextBookmark,
+    mirrorKey
 } from './meals-mirror-model.js';
 import { openMirrorDb, idbRequest, idbTxDone, readMeta, writeMeta, clearStore } from './admin-mirror-db.js';
 
@@ -224,6 +225,39 @@ export async function getMealsInRange(startYmd, endYmd) {
         };
         req.onerror = () => reject(req.error);
     });
+}
+
+/**
+ * 관리자 조치 직후 — 내가 지운 meals 문서를 미러에서도 바로 뺀다.
+ *
+ * 평소 삭제는 서버 트리거(`onMealWritten`)가 남긴 툼스톤을 다음 동기화가 소비하는데,
+ * 그 사이에는 미러가 아직 지워진 기록을 들고 있다. 목록을 미러에서 읽는 화면에서는
+ * **방금 지운 기록이 새로고침 직후 그대로 보이는** 모습이 된다.
+ * 내가 한 쓰기이므로 되읽지 않고 그 자리에서 반영한다 (범용 미러의 applyLocalDelete 와 같은 규칙).
+ */
+export async function applyLocalMealDelete(userId, mealId) {
+    if (!userId || !mealId) return;
+    await deleteKeys([mirrorKey(userId, mealId)]);
+}
+
+/**
+ * 관리자 조치 직후 — 내가 고친 필드만 미러 행에 갈아 끼운다 (공유 취소·공유 금지 등).
+ *
+ * 이쪽은 더 급하다. 관리자 쓰기는 `updatedAt` 을 찍지 않으므로 **델타 쿼리에 영영
+ * 걸리지 않고**, meals 미러에는 주기적 전체 재구축도 없다. 여기서 반영하지 않으면
+ * 「공유 금지」 표시가 미러에서 되살아나는 게 아니라 **처음부터 반영되지 않는다.**
+ *
+ * 미러에 없는 문서는 건드리지 않는다 — 다음 동기화가 가져온다.
+ */
+export async function patchLocalMeal(userId, mealId, patch) {
+    if (!userId || !mealId || !patch) return;
+    const database = await openMirrorDb();
+    const tx = database.transaction('meals', 'readwrite');
+    const store = tx.objectStore('meals');
+    const key = mirrorKey(userId, mealId);
+    const row = await idbRequest(store.get(key));
+    if (row) store.put({ ...row, ...patch });
+    await idbTxDone(tx);
 }
 
 /**
