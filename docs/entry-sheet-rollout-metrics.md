@@ -24,6 +24,10 @@ Callable 이 전부 `invalid-argument` 로 거절했다. 조용히 죽는 종류
 cd functions && node scripts/entry-sheet-effect.js --credentials=<키.json>
 ```
 
+2026-08-28 추가 — 아래 표의 **교정률**과 **선택 입력 채움률**은 관리자 화면에서도 바로 볼 수
+있습니다: 모니터링 → **모먼트 분석**(기간별 입력률 + 「무엇을」 경로 분해).
+스크립트와 숫자를 한 번 대조해 볼 것 — [moment-analytics-handoff.md](moment-analytics-handoff.md) §5.
+
 ## 2. 무엇을 「효과」로 볼 것인가
 
 개편의 목표는 **입력 부담을 줄이는 것**이었다(시트 2단계화, 맥락 자동 추측, 분류 제안).
