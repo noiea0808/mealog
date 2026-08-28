@@ -1,4 +1,4 @@
-# 관리자 로컬 미러 — meals·users 사본 + 증분 동기화 (1~2단계)
+# 관리자 로컬 미러 — 관리자 화면이 읽는 데이터의 브라우저 사본 (1~4단계)
 
 관리자 화면들이 방문할 때마다 Firestore 를 전량 스캔하던 비용
 (`firestore-read-audit-2026-08.md` 의 12~25K 스파이크)을 없애기 위한 구조.
@@ -8,10 +8,14 @@
 ## 구조
 
 ```
-관리자 브라우저 (IndexedDB: mealog-admin-mirror, v2)
-  meals 스토어   키 `${userId}/${mealId}` · date 인덱스
-  users 스토어   키 userId · 「사용자 분석」이 쓰는 필드만
-  meta 스토어    스토어별 lastSyncedAt 북마크·bootstrapDone·docCount
+관리자 브라우저 (IndexedDB: mealog-admin-mirror, v3)
+  meals 스토어         키 `${userId}/${mealId}` · date 인덱스
+  users 스토어         키 userId · 「사용자 분석」이 쓰는 필드만
+  sharedPhotos 스토어  ┐
+  aiDietReports 스토어 │ 범용 컬렉션 미러 — 키 id · _sortMs 인덱스
+  feedPosts 스토어     │
+  boardPosts 스토어    ┘
+  meta 스토어          스토어별 lastSyncedAt 북마크·bootstrapDone·docCount
 
 Firestore (기존 그대로 + 1개 추가)
   adminMealTombstones/{userId}_{mealId}   ← onMealWritten 이 삭제 시 남기는 흔적
@@ -47,6 +51,35 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 - 파생 규칙(날짜 파싱·로그인수단·가입간격)은 `users-mirror-model.js` 하나만 쓴다 —
   `users.js` 목록도 여기서 import 한다. 두 곳에 두면 분석 값이 목록과 어긋난다.
 
+### 범용 컬렉션 미러 (3단계)
+
+`sharedPhotos` · `aiDietReports` · `feedPosts` · `boardPosts` 는 한 틀
+(`collection-mirror.js`)로 담는다. meals·users 만큼 특수하지 않아서다.
+
+**축이 「생성 시각」인 이유.** meals 는 앱이 모든 저장 경로에서 `updatedAt` 을 찍어
+주지만, 이 컬렉션들은 클라이언트·Functions 십수 곳에서 제각각 쓰인다(좋아요·댓글·
+신고·관리자 조치…). 공통 도장이 없으니 「수정」을 축으로 삼을 수 없다. 그래서
+생성 축(`timestamp` / `generatedAt`)으로 **새 문서만** 따라가고 나머지는 이렇게 메운다:
+
+- 관리자 조치(숨김·삭제)는 **본인이 하는 쓰기**라 그 자리에서 미러에 반영
+  (`patchLocal` / `applyLocalDelete`) — 되읽지 않는다.
+- 사용자 쪽 수정·삭제는 문서 수 감시(줄면 전체 재구축)와 7일 주기 재구축이 정리한다.
+- `aiDietReports` 는 생성 뒤 바뀌지 않아 이 한계가 아예 없다(진짜 append-only).
+
+**Timestamp 는 눕혀서 담는다.** Firestore `Timestamp` 는 구조화 복제를 통과하며
+프로토타입을 잃는다. `flattenForIdb` 가 `{__fsts: ms}` 로 바꿔 저장하고,
+`rowToDocLike` 가 읽을 때 `.toDate()` 가 되는 물건으로 되살린다 — 덕분에 소비자
+코드가 스냅숏을 다루던 모양(`d.id` · `d.data()`)을 그대로 쓴다.
+
+### 미러 콘솔 (4단계)
+
+관리자 > 모니터링 > **로컬 미러**. 상태(보유 건수·마지막 동기화·저장소 사용량),
+미러별 「재구축 예약」, 백업 **내보내기/불러오기**.
+
+백업은 다른 기기에서 부트스트랩을 되풀이하지 않으려고 있다.
+**git 에는 절대 올리지 않는다** — 사용자 기록·프로필이 통째로 들어 있고, 저장소
+히스토리에 한 번 들어가면 지우기 어렵다. 기기 사이에는 파일을 직접 건넨다.
+
 ## 왜 이렇게
 
 - **Firestore 는 변경 로그를 주지 않는다.** oplog·이력 조회 API 가 없고,
@@ -70,10 +103,13 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 | `js/admin/meals-mirror.js` | `ensureMealsMirrorSynced` / `getMealsInRange` |
 | `js/admin/users-mirror-model.js` | users 순수 계산부 — 파생 규칙의 **유일한** 출처 |
 | `js/admin/users-mirror.js` | `ensureUsersMirrorSynced` / `getAllUsersFromMirror` |
+| `js/admin/collection-mirror-model.js` | 범용 미러 순수 계산부 (Timestamp 눕히기·되살리기) |
+| `js/admin/collection-mirror.js` | `createCollectionMirror` 와 네 개 인스턴스 |
+| `js/admin/mirror-console.js` | 관리자 화면: 상태·재구축·백업 |
 | `functions/index.js` `onMealWritten` | 삭제 시 툼스톤 기록 (early-return 앞) |
 | `firestore.rules` | `adminMealTombstones` 읽기 admin 전용, 클라이언트 쓰기 금지 |
 | `firestore.indexes.json` | meals `updatedAt` 컬렉션그룹 ASC fieldOverride |
-| `test/meals-mirror-model.test.mjs` · `test/users-mirror-model.test.mjs` | 모델 테스트 |
+| `test/*-mirror-model.test.mjs` (3개) | 모델 테스트 |
 
 콘솔 수동 조작: `adminMealsMirrorStatus()` · `adminUsersMirrorStatus()` (상태),
 `resetAdminMealsMirror()` · `resetAdminUsersMirror()` (재다운로드 예약).
@@ -86,6 +122,15 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 - **사용자 분석** (`js/admin/user-analytics.js`): users 미러에서 집계.
   실패 시 예전 `fetchAllUsersForAdminAnalytics()` 로 폴백(배지가 「서버 전체 조회」로 바뀐다).
   패널 아래 「전체 새로 읽기」가 강제 재구축.
+- **모먼트 관리** (`js/admin/feed-moderation.js`): sharedPhotos 를 훑던 **세 경로**만
+  미러로 옮겼다 — 하루기록 고아 목록(최대 800) · 특수 공유 목록(최대 500 + 보강 1,200) ·
+  특수 공유 건수. 나머지(개별 문서 조작·meals CG 페이지·신고 집계)는 그대로 Firestore 다.
+  파일이 3천 줄이 넘고 폴백 체인이 얽혀 있어, 값이 큰 읽기만 골라 옮겼다.
+- **AI 식단분석** (`js/admin/ai-diet-reports.js`): 목록·7일 사용량 모두 미러.
+  미러 모드에서는 커서 대신 오프셋으로 페이지를 자른다.
+- **밀톡 관리** (`lounge-chat-moderation.js`) · **게시판 관리** (`board-moderation.js`):
+  목록·건수를 미러에서. 원래도 한 화면 50건 남짓이라 절감폭은 작다 — 같은 틀로
+  묶어 두는 편이 나아서 함께 옮겼다. 반응 수(하위 컬렉션)와 신고 집계는 그대로 서버.
 
 ## 배포 체크리스트
 
@@ -105,12 +150,15 @@ firebase deploy --only functions:onMealWritten
 - **users**: 탈퇴와 신규 가입이 같은 주기에 같은 수만큼 일어나면 카운트가 같아 삭제를
   못 알아챈다. 역시 7일 재구축이 정리한다.
 - **meals**: `updatedAt` 은 클라이언트 시계다 — 위와 같은 이유로 48시간 겹쳐 읽는다.
+- **범용 미러**: 사용자가 남의 화면에서 고친 값(좋아요·댓글 수 등)은 생성 축에 안 걸려
+  최대 7일 묵을 수 있다. 관리·모더레이션 판단에 쓰는 값(본문·작성자·숨김)은 관리자
+  조치가 곧바로 반영하므로 실무상 문제되지 않는다. 급하면 「재구축 예약」.
 
 ## 다음 단계 (예정)
 
-- 3단계: sharedPhotos / boardPosts / loungePosts / aiDietReports append-only 델타
 - 대시보드 주간 전량 재집계를 미러 기반으로 → 12.6K 소멸 (config 미러가 더 필요)
 - 사용자 **관리** 탭(목록)도 미러로: 지금은 여전히 페이지마다 서버를 읽는다.
-  공유·게시글·식사 카운트가 필요해 meals 미러와 3단계 미러가 갖춰진 뒤가 순서다.
-- 모먼트 관리 목록 전환 시: 관리자 조치(숨김·삭제)는 쓰기 직후 미러에 직접 반영
+  공유·게시글 수는 이제 sharedPhotos·boardPosts 미러로 셀 수 있고, 식사 수는 meals
+  미러로 셀 수 있으니 재료는 갖춰졌다.
+- 모먼트 관리의 meals 컬렉션그룹 페이지네이션도 meals 미러로 (지금은 서버 조회)
 - 툼스톤 청소: 양이 미미해 방치. 거슬리면 Firestore TTL 정책(만료 필드) 추가

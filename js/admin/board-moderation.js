@@ -1,7 +1,11 @@
 /**
  * 관리자 모니터링: 밀톡(게시판) 목록·상세·일괄 처리
+ *
+ * 목록은 로컬 미러에서 읽고, 실패하면 예전 서버 조회로 물러난다.
+ * 신고 집계는 별도 컬렉션이라 그대로 서버에서 읽는다. — docs/admin-local-mirror.md
  */
 import { db, appId, callableFunctions, auth } from '../firebase.js';
+import { boardPostsMirror } from './collection-mirror.js';
 import { boardOperations } from '../db/board.js';
 import {
     deleteBoardPostByAdmin,
@@ -145,6 +149,33 @@ function _adminOpenDetailCommentLightbox(src) {
 })();
 
 const ADMIN_BOARD_CACHE_TTL_MS = 3 * 60 * 1000;
+/** 목록 한 화면에 담는 최대 게시물 수 — 미러·서버 양쪽 같은 상한을 쓴다 */
+const ADMIN_BOARD_ROWS_CAP = 50;
+
+/**
+ * 카테고리별 최신 게시물 — 1차: 로컬 미러, 실패 시: 서버 조회.
+ * @returns {Promise<Array<{id:string, data:()=>object}>>}
+ */
+async function fetchBoardPostDocs(category) {
+    try {
+        await boardPostsMirror.ensureSynced();
+        if (category === 'all') return boardPostsMirror.getDocsLike({ rowLimit: ADMIN_BOARD_ROWS_CAP });
+        return boardPostsMirror.getFilteredDocsLike((data) => data?.category === category, ADMIN_BOARD_ROWS_CAP);
+    } catch (e) {
+        console.warn('[게시판 관리] 미러 실패 — 서버 조회로 대체:', e);
+        const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
+        const q =
+            category === 'all'
+                ? query(postsColl, orderBy('timestamp', 'desc'), limit(ADMIN_BOARD_ROWS_CAP))
+                : query(
+                      postsColl,
+                      where('category', '==', category),
+                      orderBy('timestamp', 'desc'),
+                      limit(ADMIN_BOARD_ROWS_CAP)
+                  );
+        return (await getDocs(q)).docs;
+    }
+}
 const boardListCache = new Map();
 
 /** HTML 본문에서 평문 한 줄 미리보기 (목록용) */
@@ -319,21 +350,12 @@ async function renderBoardPosts(category = 'all') {
             return;
         }
 
-        const [postsSnapshot, reportsMap] = await Promise.all([
-            (() => {
-                const postsColl = collection(db, 'artifacts', appId, 'boardPosts');
-                let q;
-                if (category === 'all') {
-                    q = query(postsColl, orderBy('timestamp', 'desc'), limit(50));
-                } else {
-                    q = query(postsColl, where('category', '==', category), orderBy('timestamp', 'desc'), limit(50));
-                }
-                return getDocs(q);
-            })(),
+        const [postDocs, reportsMap] = await Promise.all([
+            fetchBoardPostDocs(category),
             getReportsAggregateByGroupKeys()
         ]);
 
-        let rows = postsSnapshot.docs.map((d) => ({ id: d.id, post: d.data() }));
+        let rows = postDocs.map((d) => ({ id: d.id, post: d.data() }));
         rows = sortBoardPostRowsByTimestampDesc(rows);
         const authorIds = rows.map((r) => r.post?.authorId).filter(Boolean);
         await fetchUserProfiles(authorIds);
@@ -365,6 +387,8 @@ window.adminBoardBulkHide = async function() {
     if (ids.length === 0) { alert('가릴 게시물을 선택해주세요.'); return; }
     try {
         for (const id of ids) await setBoardPostHidden(id, true);
+        // 내가 쓴 값이라 다시 읽을 이유가 없다 — 미러에 바로 반영
+        for (const id of ids) await boardPostsMirror.patchLocal(id, { isHidden: true });
         invalidateBoardMonitoringCache();
         alert(ids.length + '건이 가려졌습니다.');
         renderBoardPosts(currentAdminBoardCategory);
@@ -379,6 +403,7 @@ window.adminBoardBulkUnhide = async function() {
     if (ids.length === 0) { alert('가리기 해제할 게시물을 선택해주세요.'); return; }
     try {
         for (const id of ids) await setBoardPostHidden(id, false);
+        for (const id of ids) await boardPostsMirror.patchLocal(id, { isHidden: false });
         invalidateBoardMonitoringCache();
         alert(ids.length + '건의 가리기가 해제되었습니다.');
         renderBoardPosts(currentAdminBoardCategory);
@@ -394,6 +419,7 @@ window.adminBoardBulkDelete = async function() {
     if (!confirm('선택한 ' + ids.length + '건을 삭제하시겠습니까?')) return;
     try {
         for (const id of ids) await deleteBoardPostByAdmin(id);
+        await boardPostsMirror.applyLocalDelete(ids);
         invalidateBoardMonitoringCache();
         alert(ids.length + '건이 삭제되었습니다.');
         renderBoardPosts(currentAdminBoardCategory);

@@ -1,0 +1,312 @@
+/**
+ * 관리자 > 모니터링 > 로컬 미러 — 상태 확인·재구축·백업 (4단계)
+ *
+ * 미러는 「원본이 아니라 사본」이다. 그래서 이 화면이 하는 일은 세 가지뿐이다.
+ *
+ *  1. 지금 무엇을 얼마나 들고 있는지 보여 준다 (마지막 동기화·보유 건수)
+ *  2. 의심스러우면 통째로 다시 받게 한다 (전체 재구축)
+ *  3. 파일로 내보내고 되불러온다 — 다른 기기에서 부트스트랩을 되풀이하지 않으려고
+ *
+ * **백업 파일을 git 에 올리지 말 것.** 사용자 기록·프로필이 통째로 들었다.
+ * 저장소에 한 번 들어가면 히스토리에서 지우기 어렵고, 공개 저장소면 그대로 유출이다.
+ * 기기 사이에 옮길 때는 이 파일을 직접 건네는 방식만 쓴다. — docs/admin-local-mirror.md
+ */
+import { escapeHtml } from './utils.js';
+import { getMealsMirrorStatus, resetMealsMirror } from './meals-mirror.js';
+import { getUsersMirrorStatus, resetUsersMirror } from './users-mirror.js';
+import { ALL_COLLECTION_MIRRORS } from './collection-mirror.js';
+import { openMirrorDb, idbRequest, readMeta, writeMeta } from './admin-mirror-db.js';
+import { refreshLucideIcons } from '../icons.js';
+
+/** 백업 파일 형식 버전 — 구조가 바뀌면 올린다 */
+const BACKUP_FORMAT = 2;
+
+function fmtStamp(iso) {
+    if (!iso) return '없음';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '알 수 없음';
+    return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function ageBadge(iso) {
+    if (!iso) return '<span class="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[11px] font-bold">미구축</span>';
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!Number.isFinite(ms)) return '';
+    const days = Math.floor(ms / 86400000);
+    if (days >= 7) {
+        return `<span class="px-2 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold">${days}일 전 · 다음 실행 때 전체 재구축</span>`;
+    }
+    return '<span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[11px] font-bold">최신</span>';
+}
+
+/** 모든 미러의 현재 상태 */
+async function collectStatuses() {
+    const [meals, users] = await Promise.all([getMealsMirrorStatus(), getUsersMirrorStatus()]);
+    const collections = await Promise.all(ALL_COLLECTION_MIRRORS.map((m) => m.getStatus()));
+    return [
+        { key: 'meals', label: '식사 기록 (meals)', ...meals },
+        { key: 'users', label: '사용자 (users)', ...users },
+        ...collections.map((s) => ({ key: s.name, label: s.name, ...s }))
+    ];
+}
+
+/** IndexedDB 가 실제로 얼마나 쓰고 있는지 — 브라우저가 알려 주면 */
+async function storageEstimate() {
+    try {
+        if (!navigator?.storage?.estimate) return null;
+        const est = await navigator.storage.estimate();
+        const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : null;
+        return { usage: est.usage || 0, quota: est.quota || 0, persisted };
+    } catch {
+        return null;
+    }
+}
+
+const fmtBytes = (n) => {
+    if (!Number.isFinite(n) || n <= 0) return '—';
+    const mb = n / (1024 * 1024);
+    return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`;
+};
+
+export async function renderMirrorConsole() {
+    const mount = document.getElementById('mirrorConsoleContainer');
+    if (!mount) return;
+    mount.innerHTML =
+        '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p class="text-sm">미러 상태를 읽는 중…</p></div>';
+    refreshLucideIcons(mount);
+
+    let rows;
+    let est;
+    try {
+        [rows, est] = await Promise.all([collectStatuses(), storageEstimate()]);
+    } catch (e) {
+        mount.innerHTML = `<div class="text-center py-8 text-red-500 text-sm">미러 상태를 읽지 못했습니다: ${escapeHtml(
+            e?.message || String(e)
+        )}</div>`;
+        return;
+    }
+
+    const totalDocs = rows.reduce((a, r) => a + (r.docCount || 0), 0);
+    const storageLine = est
+        ? `브라우저 저장소 ${fmtBytes(est.usage)} 사용 / 한도 ${fmtBytes(est.quota)}${
+              est.persisted === true
+                  ? ' · <span class="text-emerald-700 font-bold">영구 보관 허용됨</span>'
+                  : est.persisted === false
+                    ? ' · <span class="text-amber-700 font-bold">자동 정리 대상</span>'
+                    : ''
+          }`
+        : '브라우저가 저장소 사용량을 알려 주지 않습니다.';
+
+    mount.innerHTML = `
+        <div class="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p class="text-sm font-black text-slate-800">보유 ${totalDocs.toLocaleString('ko-KR')}건</p>
+            <p class="text-[11px] text-slate-500 mt-1">${storageLine}</p>
+        </div>
+
+        <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-xs font-bold text-slate-500 border-b border-slate-200">
+                    <th class="py-2 pr-3">미러</th>
+                    <th class="py-2 pr-3 text-right">보유</th>
+                    <th class="py-2 pr-3">마지막 동기화</th>
+                    <th class="py-2 pr-3">상태</th>
+                    <th class="py-2 text-right">조작</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows
+                    .map(
+                        (r) => `
+                    <tr class="border-b border-slate-100">
+                        <td class="py-2 pr-3 font-bold text-slate-700">${escapeHtml(r.label)}</td>
+                        <td class="py-2 pr-3 text-right tabular-nums text-slate-700">${(r.docCount || 0).toLocaleString('ko-KR')}</td>
+                        <td class="py-2 pr-3 text-slate-500 text-xs">${escapeHtml(fmtStamp(r.lastSyncedAt))}</td>
+                        <td class="py-2 pr-3">${ageBadge(r.lastSyncedAt)}</td>
+                        <td class="py-2 text-right">
+                            <button type="button" data-mirror-reset="${escapeHtml(r.key)}" class="px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                                재구축 예약
+                            </button>
+                        </td>
+                    </tr>`
+                    )
+                    .join('')}
+            </tbody>
+        </table>
+        </div>
+
+        <div class="mt-5 flex flex-wrap gap-2">
+            <button type="button" id="mirrorExportBtn" class="px-3 py-2 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700">
+                백업 파일로 내보내기
+            </button>
+            <label class="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer">
+                백업 파일 불러오기
+                <input type="file" id="mirrorImportInput" accept="application/json,.json" class="hidden">
+            </label>
+            <button type="button" id="mirrorRefreshBtn" class="px-3 py-2 rounded-xl text-sm font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                상태 새로고침
+            </button>
+        </div>
+        <p id="mirrorConsoleMsg" class="mt-3 text-xs text-slate-500"></p>
+
+        <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p class="text-xs font-black text-amber-800">백업 파일을 git 에 올리지 마세요</p>
+            <p class="text-[11px] text-amber-700 leading-relaxed mt-1">
+                사용자 기록과 프로필이 통째로 들어 있습니다. 저장소에 한 번 들어가면 히스토리에서 지우기 어렵고,
+                공개 저장소라면 그대로 유출입니다. 다른 기기로 옮길 때는 이 파일을 직접 건네주세요.
+            </p>
+        </div>
+
+        <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
+            · 미러는 사본입니다 — 지워져도 원본은 Firestore 에 그대로 있고, 다음 실행 때 다시 받습니다.<br>
+            · 「재구축 예약」은 지금 지우기만 합니다. 실제 내려받기는 해당 화면을 다음에 열 때 일어납니다.<br>
+            · 각 미러는 마지막 동기화로부터 7일이 지나면 스스로 전체를 다시 받습니다.
+        </p>
+    `;
+    refreshLucideIcons(mount);
+    bindMirrorConsole(mount);
+}
+
+function setMsg(text, tone = 'slate') {
+    const el = document.getElementById('mirrorConsoleMsg');
+    if (!el) return;
+    el.className = `mt-3 text-xs text-${tone}-600`;
+    el.textContent = text;
+}
+
+function bindMirrorConsole(mount) {
+    mount.querySelectorAll('[data-mirror-reset]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            const key = btn.getAttribute('data-mirror-reset');
+            if (!confirm(`「${key}」 미러를 비웁니다. 다음에 해당 화면을 열 때 전체를 다시 받습니다.\n계속할까요?`)) return;
+            try {
+                await resetMirrorByKey(key);
+                setMsg(`${key} 미러를 비웠습니다 — 다음 실행 때 전체를 다시 받습니다.`, 'emerald');
+                await renderMirrorConsole();
+            } catch (e) {
+                setMsg(`실패: ${e?.message || e}`, 'red');
+            }
+        });
+    });
+
+    document.getElementById('mirrorRefreshBtn')?.addEventListener('click', () => void renderMirrorConsole());
+    document.getElementById('mirrorExportBtn')?.addEventListener('click', () => void exportMirrorBackup());
+    document.getElementById('mirrorImportInput')?.addEventListener('change', (e) => {
+        const file = e.target?.files?.[0];
+        if (file) void importMirrorBackup(file);
+    });
+}
+
+async function resetMirrorByKey(key) {
+    if (key === 'meals') return resetMealsMirror();
+    if (key === 'users') return resetUsersMirror();
+    const m = ALL_COLLECTION_MIRRORS.find((x) => x.name === key);
+    if (!m) throw new Error(`알 수 없는 미러: ${key}`);
+    return m.reset();
+}
+
+/** 스토어 하나를 통째로 읽는다 */
+async function dumpStore(storeName) {
+    const database = await openMirrorDb();
+    const tx = database.transaction(storeName, 'readonly');
+    return (await idbRequest(tx.objectStore(storeName).getAll())) || [];
+}
+
+async function exportMirrorBackup() {
+    setMsg('백업을 만드는 중…');
+    try {
+        const collectionNames = ALL_COLLECTION_MIRRORS.map((m) => m.name);
+        const storeNames = ['meals', 'users', ...collectionNames];
+        const stores = {};
+        const metas = {};
+        for (const name of storeNames) {
+            stores[name] = await dumpStore(name);
+            metas[name] = await readMeta(name, {});
+        }
+        const payload = {
+            format: BACKUP_FORMAT,
+            app: 'mealog-admin-mirror',
+            exportedAt: new Date().toISOString(),
+            metas,
+            stores
+        };
+        const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mealog-admin-mirror-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+        const total = storeNames.reduce((acc, n) => acc + stores[n].length, 0);
+        setMsg(
+            `백업 ${total.toLocaleString('ko-KR')}건을 내려받았습니다 (${fmtBytes(blob.size)}). git 에는 올리지 마세요.`,
+            'emerald'
+        );
+    } catch (e) {
+        console.error('[미러 백업] 내보내기 실패:', e);
+        setMsg(`내보내기 실패: ${e?.message || e}`, 'red');
+    }
+}
+
+async function putAll(storeName, rows) {
+    if (!rows?.length) return 0;
+    const database = await openMirrorDb();
+    // 큰 배열을 한 트랜잭션에 다 넣으면 오래 잠기므로 끊어서 넣는다
+    const CHUNK = 2000;
+    for (let i = 0; i < rows.length; i += CHUNK) {
+        const tx = database.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        rows.slice(i, i + CHUNK).forEach((r) => store.put(r));
+        await new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error || new Error('중단'));
+        });
+    }
+    return rows.length;
+}
+
+async function importMirrorBackup(file) {
+    setMsg('백업을 읽는 중…');
+    try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        if (payload?.app !== 'mealog-admin-mirror' || !payload.stores) {
+            throw new Error('이 파일은 미러 백업이 아닙니다.');
+        }
+        if (Number(payload.format) > BACKUP_FORMAT) {
+            throw new Error(`더 새로운 형식의 백업입니다(format ${payload.format}). 관리자 페이지를 새로고침해 주세요.`);
+        }
+        if (!confirm(`${fmtStamp(payload.exportedAt)} 백업을 불러옵니다.\n같은 문서는 백업 값으로 덮어씁니다. 계속할까요?`)) {
+            setMsg('취소했습니다.');
+            return;
+        }
+
+        const database = await openMirrorDb();
+        const available = new Set([...database.objectStoreNames]);
+        let total = 0;
+        const skipped = [];
+        for (const [name, rows] of Object.entries(payload.stores)) {
+            if (!available.has(name)) {
+                skipped.push(name);
+                continue;
+            }
+            total += await putAll(name, rows);
+            const meta = payload.metas?.[name];
+            if (meta) await writeMeta(name, { ...meta, k: undefined });
+        }
+        const skipNote = skipped.length ? ` (모르는 스토어 ${skipped.join(', ')}은 건너뜀)` : '';
+        setMsg(`${total.toLocaleString('ko-KR')}건을 불러왔습니다${skipNote}.`, 'emerald');
+        await renderMirrorConsole();
+    } catch (e) {
+        console.error('[미러 백업] 불러오기 실패:', e);
+        setMsg(`불러오기 실패: ${e?.message || e}`, 'red');
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.renderMirrorConsole = renderMirrorConsole;
+}

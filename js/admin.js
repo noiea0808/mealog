@@ -54,6 +54,7 @@ import { invalidateAttendancePopupConfigCache, normalizeAttendancePopup } from '
 import { invalidateLoadingSpinnerConfigCache, normalizeLoadingSpinner } from './loading-spinner-config.js';
 // 모니터링(모먼트·밀톡·게시판): HTML onclick용 window.* 등록
 import './admin/feed-moderation.js';
+import './admin/mirror-console.js';
 import './admin/moment-analytics.js';
 import './admin/lounge-chat-moderation.js';
 import './admin/board-moderation.js';

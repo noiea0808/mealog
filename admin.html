@@ -579,6 +579,9 @@
                             <button onclick="window.switchMonitoringSidebar('userCreatedAtBackfill')" id="monitoring-sidebar-userCreatedAtBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-calendar-plus mr-2"></i>가입일 백필
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('mirror')" id="monitoring-sidebar-mirror" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-hard-drive mr-2"></i>로컬 미러
+                            </button>
                         </div>
                     </div>
 
@@ -880,6 +883,31 @@
                                         </button>
                                     </div>
                                     <div id="adminCreatedAtBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 로컬 미러 -->
+                        <div id="monitoring-main-mirror" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <h3 class="text-base font-black text-slate-800">로컬 미러</h3>
+                                        <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+                                            관리자 화면이 읽는 데이터의 <strong>브라우저 사본</strong>입니다. 한 번 받아 두면 이후에는
+                                            바뀐 것만 따라가므로 Firestore 읽기가 크게 줄어듭니다. 사본이라 지워져도 원본은 그대로이고,
+                                            다음에 화면을 열 때 다시 받습니다.
+                                        </p>
+                                    </div>
+                                    <button type="button" onclick="window.renderMirrorConsole()" class="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                                        상태 보기
+                                    </button>
+                                </div>
+                                <div class="p-6">
+                                    <div id="mirrorConsoleContainer">
+                                        <p class="text-sm text-slate-400 text-center py-8">「상태 보기」를 누르면 미러 현황을 읽습니다.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

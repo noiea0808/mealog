@@ -1,7 +1,13 @@
 /**
  * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
+ *
+ * sharedPhotos 를 훑던 세 경로(하루기록 고아 · 특수 공유 목록 · 특수 공유 건수)는
+ * 로컬 미러에서 읽는다 — 새로고침마다 최대 2천 건을 사 오던 자리다. 개별 문서
+ * 조작(숨김·삭제·신고 처리)은 그대로 Firestore 를 쓰고, 쓴 값만 미러에 되비친다.
+ * 미러가 실패하면 각 경로가 예전 서버 조회로 물러난다. — docs/admin-local-mirror.md
  */
 import { db, appId, functions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { sharedPhotosMirror } from './collection-mirror.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
@@ -194,6 +200,22 @@ function dailyJournalModerationRowKey(userId, dateStr) {
  */
 async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '', rowLimit = ADMIN_DAILY_JOURNAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
+
+    /**
+     * 미러가 있으면 여기서 끝난다 — Firestore 읽기 0회.
+     * 아래 서버 경로는 (slotId, timestamp) 인덱스 유무에 따라 두 갈래로 갈리는데,
+     * 미러는 전량을 들고 있어 두 조건을 한 번에 합집합으로 본다.
+     */
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        return await sharedPhotosMirror.getFilteredDocsLike((d) => {
+            if (scopedUid && d?.userId !== scopedUid) return false;
+            return d?.slotId === 'daily_journal' || String(d?.entryId || '').startsWith('dailyJournal_');
+        }, rowLimit);
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 하루기록 미러 실패 — 서버 조회로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byDocId = new Map();
@@ -487,6 +509,23 @@ function formatDailyJournalMetricsAdminHtml(entry) {
  */
 async function fetchSpecialSharesForModeration(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
+
+    /**
+     * 미러가 있으면 여기서 끝난다 — Firestore 읽기 0회.
+     * 아래 서버 경로가 「timestamp 없는 문서 보강」으로 타입당 400건을 더 읽던 이유가
+     * orderBy('timestamp') 가 그 문서들을 통째로 빠뜨려서였는데, 미러는 정렬과 무관하게
+     * 전량을 들고 있어 보강 자체가 필요 없다.
+     */
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        return await sharedPhotosMirror.getFilteredDocsLike((d) => {
+            if (scopedUid && d?.userId !== scopedUid) return false;
+            return ADMIN_FEED_SPECIAL_SHARE_TYPES.includes(d?.type);
+        }, rowLimit);
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 특수 공유 미러 실패 — 서버 조회로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byId = new Map();
@@ -697,6 +736,17 @@ async function getSpecialSharesTimelineCountsCached() {
 }
 
 async function getSpecialSharesTimelineCounts() {
+    // 미러가 있으면 세는 것도 로컬에서 — getCountFromServer 호출조차 필요 없다
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        const count = await sharedPhotosMirror.countLocal((d) =>
+            ADMIN_FEED_SPECIAL_SHARE_TYPES.includes(d?.type)
+        );
+        return { count, known: true };
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 특수 공유 건수 미러 실패 — 서버 집계로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     try {
@@ -787,6 +837,8 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
     await refreshAppCheckTokenBeforeFirestore();
     if (isBest || isDaily || isInsight) {
         await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
+        // 내가 지운 문서다 — 미러에서도 바로 빼야 다음 목록에서 되살아나지 않는다
+        await sharedPhotosMirror.applyLocalDelete(mealId).catch(() => {});
         return;
     }
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -795,6 +847,7 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
     for (const d of sharedSnap.docs) {
         await deleteDoc(d.ref);
     }
+    await sharedPhotosMirror.applyLocalDelete(sharedSnap.docs.map((d) => d.id)).catch(() => {});
     const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
     await deleteDoc(mealRef);
 }

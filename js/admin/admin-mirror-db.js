@@ -8,8 +8,14 @@
  */
 
 const IDB_NAME = 'mealog-admin-mirror';
-/** v1: meals·meta · v2: users 추가 */
-const IDB_VERSION = 2;
+/** v1: meals·meta · v2: users · v3: 범용 컬렉션 미러 스토어 */
+const IDB_VERSION = 3;
+
+/**
+ * 3단계에서 붙은 범용 컬렉션 미러들 — 스토어 이름 = 컬렉션 이름.
+ * 여기 이름을 늘리면 다음 버전 올림 때 스토어가 생긴다.
+ */
+export const COLLECTION_MIRROR_STORES = ['sharedPhotos', 'aiDietReports', 'feedPosts', 'boardPosts'];
 
 let idbPromise = null;
 
@@ -28,6 +34,13 @@ export function openMirrorDb() {
             }
             if (!database.objectStoreNames.contains('users')) {
                 database.createObjectStore('users', { keyPath: 'userId' });
+            }
+            for (const name of COLLECTION_MIRROR_STORES) {
+                if (database.objectStoreNames.contains(name)) continue;
+                // 정렬용 숫자(ms) 인덱스 — 목록이 최신순을 요구한다
+                database.createObjectStore(name, { keyPath: 'id' }).createIndex('sortMs', '_sortMs', {
+                    unique: false
+                });
             }
         };
         req.onsuccess = () => resolve(req.result);
