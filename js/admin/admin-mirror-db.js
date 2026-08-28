@@ -8,14 +8,20 @@
  */
 
 const IDB_NAME = 'mealog-admin-mirror';
-/** v1: meals·meta · v2: users · v3: 범용 컬렉션 미러 스토어 */
-const IDB_VERSION = 3;
+/** v1: meals·meta · v2: users · v3: 범용 컬렉션 미러 스토어 · v4: usageDaily */
+const IDB_VERSION = 4;
 
 /**
  * 3단계에서 붙은 범용 컬렉션 미러들 — 스토어 이름 = 컬렉션 이름.
  * 여기 이름을 늘리면 다음 버전 올림 때 스토어가 생긴다.
  */
-export const COLLECTION_MIRROR_STORES = ['sharedPhotos', 'aiDietReports', 'feedPosts', 'boardPosts'];
+export const COLLECTION_MIRROR_STORES = [
+    'sharedPhotos',
+    'aiDietReports',
+    'feedPosts',
+    'boardPosts',
+    'usageDaily'
+];
 
 let idbPromise = null;
 
@@ -43,8 +49,20 @@ export function openMirrorDb() {
                 });
             }
         };
+        /**
+         * 다른 탭이 옛 버전으로 이 DB 를 붙들고 있으면 업그레이드가 막힌다. 그때
+         * `indexedDB.open` 은 성공도 실패도 하지 않고 **영원히 멈춘다** — 관리자 화면이
+         * 「미러 상태를 읽는 중…」에서 굳는 모습이 된다. 스스로 풀 수 없는 대기이므로
+         * 실패로 바꿔 사람이 읽을 수 있는 말을 남긴다.
+         */
+        req.onblocked = () =>
+            reject(new Error('다른 탭에서 관리자 페이지가 열려 있어 로컬 미러를 갱신할 수 없습니다. 나머지 탭을 닫고 새로고침해 주세요.'));
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error || new Error('IndexedDB open 실패'));
+    });
+    // 실패를 캐시에 남기면 탭을 닫고 새로고침해도 같은 거절이 되돌아온다
+    idbPromise.catch(() => {
+        idbPromise = null;
     });
     return idbPromise;
 }

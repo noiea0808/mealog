@@ -8,13 +8,14 @@
 ## 구조
 
 ```
-관리자 브라우저 (IndexedDB: mealog-admin-mirror, v3)
+관리자 브라우저 (IndexedDB: mealog-admin-mirror, v4)
   meals 스토어         키 `${userId}/${mealId}` · date 인덱스
   users 스토어         키 userId · 분석이 쓰는 필드 + 하루 소감 자국(journal)
   sharedPhotos 스토어  ┐
   aiDietReports 스토어 │ 범용 컬렉션 미러 — 키 id · _sortMs 인덱스
   feedPosts 스토어     │
-  boardPosts 스토어    ┘
+  boardPosts 스토어    │
+  usageDaily 스토어    ┘ (키 id = 날짜 YYYY-MM-DD)
   meta 스토어          스토어별 lastSyncedAt 북마크·bootstrapDone·docCount
 
 Firestore (기존 그대로 + 1개 추가)
@@ -22,7 +23,10 @@ Firestore (기존 그대로 + 1개 추가)
 ```
 
 스키마 버전은 `admin-mirror-db.js` 한 곳에서만 올린다 — 두 모듈이 서로 다른
-버전으로 `indexedDB.open` 하면 충돌한다.
+버전으로 `indexedDB.open` 하면 충돌한다. 버전을 올리는 업그레이드는 **다른 탭이 옛
+버전으로 붙들고 있으면 막히고, 그때 `open` 은 성공도 실패도 하지 않는다.** `onblocked`
+에서 사람이 읽을 수 있는 실패로 바꾼다 — 없으면 화면이 「상태를 읽는 중…」에서 굳는다.
+스토어를 더하기만 하는 업그레이드는 기존 데이터를 건드리지 않는다(v3→v4 확인).
 
 ### meals (1단계)
 
@@ -66,7 +70,7 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 
 ### 범용 컬렉션 미러 (3단계)
 
-`sharedPhotos` · `aiDietReports` · `feedPosts` · `boardPosts` 는 한 틀
+`sharedPhotos` · `aiDietReports` · `feedPosts` · `boardPosts` · `usageDaily` 는 한 틀
 (`collection-mirror.js`)로 담는다. meals·users 만큼 특수하지 않아서다.
 
 **축이 「생성 시각」인 이유.** meals 는 앱이 모든 저장 경로에서 `updatedAt` 을 찍어
@@ -78,6 +82,12 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
   (`patchLocal` / `applyLocalDelete`) — 되읽지 않는다.
 - 사용자 쪽 수정·삭제는 문서 수 감시(줄면 전체 재구축)와 7일 주기 재구축이 정리한다.
 - `aiDietReports` 는 생성 뒤 바뀌지 않아 이 한계가 아예 없다(진짜 append-only).
+
+**`usageDaily` 만은 축이 「수정 시각」이다.** 쓰기 경로가 둘뿐이고(`js/usage-metrics.js`
+직접 쓰기 · `logUsageMetric` Callable) 둘 다 예외 없이 `updatedAt: serverTimestamp()` 를
+함께 찍는다 — 서버 시각이라 시계 뒤틀림도 없다. 그래서 생성 축의 한계가 없다.
+오늘 문서는 하루 종일 값이 오르는데, 생성 축이었다면 첫날 이후로 영영 못 따라갔을 것이다.
+삭제는 규칙에서 막혀 있다(`allow delete: if false`).
 
 **Timestamp 는 눕혀서 담는다.** Firestore `Timestamp` 는 구조화 복제를 통과하며
 프로토타입을 잃는다. `flattenForIdb` 가 `{__fsts: ms}` 로 바꿔 저장하고,
@@ -108,9 +118,10 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 | 하루 소감 | `collectionGroup('config')` 전량 | users 미러의 `journal` 자국 |
 | sharedPhotos 건수·기간 | count + 기간 getDocs | sharedPhotos 미러 |
 | 제외 UID 차감 | UID 마다 count 쿼리 | 세는 자리에서 바로 거른다 |
+| **페이지별** `usageDaily` | 전 구간(약 180) + 최근 7일 `getDocFromServer` 매번 | usageDaily 미러 |
 
-남는 서버 읽기는 미러 **동기화 자체**와, 미러가 없는 `usageDaily`(페이지별 탭,
-수십~백여 건)뿐이다.
+남는 서버 읽기는 미러 **동기화 자체**와 캐시 문서 몇 건뿐이다.
+새로고침 1회 기준 12.6K → 수십 건 수준.
 
 **증분 병합이 필요 없어졌다.** 얼린 과거 주차·소급 delta 는 *서버 읽기가 비싸서* 만든
 장치였고, 그 대가로 지난 주차의 수정·삭제와 제외 UID 변경을 놓쳤다. 로컬에서는 전량을
@@ -170,9 +181,8 @@ userBans·deleteRequests·sharedPhotos·boardPosts·사용자별 meals 카운트
 
 ## 소비자 (현재)
 
-- **대시보드 트렌드** (`js/admin/dashboard.js`): 새로고침·전체 재집계 모두 미러 위에서
-  전량으로 센다. 미러 실패 시 예전 서버 경로(증분/전량)로 폴백.
-  페이지별 탭의 `usageDaily` 는 아직 서버다.
+- **대시보드 트렌드·페이지별** (`js/admin/dashboard.js`): 새로고침·전체 재집계 모두 미러
+  위에서 전량으로 센다. 미러 실패 시 예전 서버 경로(증분/전량)로 폴백.
 - **모먼트 분석** (`js/admin/moment-analytics.js`): 실행 시 미러 동기화 →
   IDB 에서 기간 절단. 미러 실패 시 예전 서버 전량 스캔으로 폴백.
   요약 카드의 「Firestore 읽기」= 이번 동기화가 실제로 산 문서 수.
@@ -217,9 +227,9 @@ firebase deploy --only functions:onMealWritten
 
 ## 다음 단계 (예정)
 
-- `usageDaily`(대시보드 페이지별 탭) 미러 — 남은 서버 읽기 중 가장 큰 자리.
-  수십~백여 건이라 급하진 않다.
 - 사용자 **관리** 탭(목록)도 미러로: 지금은 여전히 페이지마다 서버를 읽는다.
+- 화면 로드 시 도는 페이지별 보정(`fetchPageUsageWeeklyRepairFromUsageDaily`)도 미러로.
+  캐시가 성하면 안 도는 길이라 급하진 않다.
   공유·게시글 수는 이제 sharedPhotos·boardPosts 미러로 셀 수 있고, 식사 수는 meals
   미러로 셀 수 있으니 재료는 갖춰졌다.
 - 모먼트 관리의 meals 컬렉션그룹 페이지네이션도 meals 미러로 (지금은 서버 조회)

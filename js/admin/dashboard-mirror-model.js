@@ -142,3 +142,34 @@ export function journalMarksFromUserRows(rows, excluded) {
     }
     return out;
 }
+
+/** 있지도 않은 문서 자리 — 소비자가 `exists()`/`data()` 를 그대로 부를 수 있게 */
+const MISSING_DOC = { exists: () => false, data: () => ({}) };
+
+/**
+ * 미러 문서를 id 로 찾을 수 있게 편다.
+ * `usageDaily` 는 문서 id 가 곧 날짜(YYYY-MM-DD)라, 날짜로 바로 집어 쓴다.
+ */
+export function indexDocsById(docs) {
+    const map = new Map();
+    for (const d of Array.isArray(docs) ? docs : []) {
+        if (d && d.id) map.set(d.id, d);
+    }
+    return map;
+}
+
+/** 없으면 「빈 문서」를 돌려준다 — 서버 경로에서 `exists() === false` 이던 자리 */
+export function docOrMissing(map, id) {
+    return (map && map.get(id)) || MISSING_DOC;
+}
+
+/**
+ * 문서 id 로 자른다 — 경계 포함. 서버의
+ * `where(documentId() >= from)` + `where(documentId() <= to)` 자리다.
+ */
+export function filterDocsByIdRange(docs, fromId, toId) {
+    return (Array.isArray(docs) ? docs : []).filter((d) => {
+        const id = d?.id;
+        return typeof id === 'string' && id >= fromId && id <= toId;
+    });
+}

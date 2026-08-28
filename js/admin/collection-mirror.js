@@ -5,7 +5,7 @@
  * 당겨온다. 쓰임새와 한계는 collection-mirror-model.js 머리말에 적어 두었다.
  *
  *   전체 재구축  컬렉션 전체를 __name__ 순으로 페이지 다운로드
- *   델타         where(생성축 > 북마크-6h) — 새 문서만
+ *   델타         where(축 > 북마크-6h) — 대개 새 문서만 (usageDaily 만 수정 시각 축)
  *   삭제 감지    getCountFromServer 1회(1읽기), 수가 줄면 전체 재구축
  *   관리자 조치  applyLocalUpsert / applyLocalDelete 로 그 자리에서 미러에 반영
  *
@@ -330,9 +330,25 @@ export const feedPostsMirror = createCollectionMirror({ name: 'feedPosts', sortF
 /** boardPosts — 게시판. 축은 Timestamp `timestamp`. */
 export const boardPostsMirror = createCollectionMirror({ name: 'boardPosts', sortField: 'timestamp' });
 
+/**
+ * usageDaily — 대시보드 「페이지별」탭. 문서 id 가 곧 날짜(YYYY-MM-DD)이고, 하루치
+ * 문서에 필드별 increment 가 쌓인다.
+ *
+ * **이 컬렉션만은 축이 「수정 시각」이다.** 다른 넷과 달리 쓰기 경로가 둘뿐이고
+ * (`js/usage-metrics.js` 직접 쓰기 · `logUsageMetric` Callable), 둘 다 예외 없이
+ * `updatedAt: serverTimestamp()` 를 함께 찍는다. 서버 시각이라 시계 뒤틀림도 없다.
+ * 그래서 「새 문서만」이 아니라 **바뀐 문서만** 정확히 따라갈 수 있다 — 오늘 문서는
+ * 하루 종일 값이 오르는데, 생성 축이었다면 첫날 이후로 영영 못 따라갔을 것이다.
+ *
+ * 삭제는 규칙에서 막혀 있다(`allow delete: if false`). 줄어들 일이 없으니 문서 수
+ * 감시는 사실상 「빠진 게 없나」 확인용이다.
+ */
+export const usageDailyMirror = createCollectionMirror({ name: 'usageDaily', sortField: 'updatedAt' });
+
 export const ALL_COLLECTION_MIRRORS = [
     sharedPhotosMirror,
     aiDietReportsMirror,
     feedPostsMirror,
-    boardPostsMirror
+    boardPostsMirror,
+    usageDailyMirror
 ];

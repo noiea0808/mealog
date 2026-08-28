@@ -52,6 +52,9 @@ import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excl
 import { loadDashboardMirrorSource } from './dashboard-mirror.js';
 import {
     snapshotFromDocs,
+    indexDocsById,
+    docOrMissing,
+    filterDocsByIdRange,
     filterMealRowsByDate,
     countSlotAllFromRows,
     countMealRows,
@@ -575,7 +578,18 @@ async function fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout) {
     return rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, weeks.length);
 }
 
-export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
+/**
+ * 페이지별 집계.
+ *
+ * @param {object|null} _prevDashboardData
+ * @param {object[]|null} [usageDailyDocs] usageDaily 미러 문서. 주면 서버를 읽지 않는다 —
+ *        예전에는 새로고침마다 운영 시작일부터 오늘까지 전 구간(현재 약 180문서)과
+ *        최근 7일을 `getDocFromServer` 로 다시 사 왔고, 대시보드를 미러로 옮긴 뒤에는
+ *        **여기가 남은 서버 읽기의 대부분**이었다.
+ */
+export async function aggregatePageUsageFromFirestore(_prevDashboardData, usageDailyDocs = null) {
+    const useMirror = Array.isArray(usageDailyDocs);
+    const mirrorById = useMirror ? indexDocsById(usageDailyDocs) : null;
     const todayStr = getTodayDateString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -588,9 +602,11 @@ export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     const usageCol = collection(db, 'artifacts', appId, 'usageDaily');
     const todayRef = doc(db, 'artifacts', appId, 'usageDaily', todayStr);
 
-    const last7Snaps = await Promise.all(
-        last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
-    );
+    const last7Snaps = useMirror
+        ? last7DateKeys.map((k) => docOrMissing(mirrorById, k))
+        : await Promise.all(
+              last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
+          );
     const { byField: byFieldDay, last7Sum } = buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
 
     // usageDaily 일자는 수십~백여 건 수준이라 새로고침마다 전 구간 재집계(캐시 증분 오염 방지)
@@ -598,25 +614,31 @@ export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     let todayFieldSnap = zeroPageUsageTotals();
     let weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
 
-    const q = query(
-        usageCol,
-        where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-        where(documentId(), '<=', todayStr),
-        orderBy(documentId())
-    );
-    const snap = await getDocs(q);
-    snap.docs.forEach((d) => {
+    const rangeDocs = useMirror
+        ? filterDocsByIdRange(usageDailyDocs, USAGE_DAILY_MIN_ID, todayStr)
+        : (
+              await getDocs(
+                  query(
+                      usageCol,
+                      where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+                      where(documentId(), '<=', todayStr),
+                      orderBy(documentId())
+                  )
+              )
+          ).docs;
+    rangeDocs.forEach((d) => {
         addDocDataToPageTotals(d.data(), byFieldAll);
         addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
     });
-    const tSnap = await getDocFromServer(todayRef);
+    const tSnap = useMirror ? docOrMissing(mirrorById, todayStr) : await getDocFromServer(todayRef);
     if (tSnap.exists()) {
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
     }
 
     const hasAnyMetric = PAGE_USAGE_METRIC_DEFS.some((def) => (Number(byFieldAll[def.field]) || 0) > 0);
     console.log('[대시보드] 페이지별 usageDaily 집계:', {
-        docCount: snap.docs.length,
+        출처: useMirror ? '로컬 미러' : '서버',
+        docCount: rangeDocs.length,
         hasAnyMetric,
         todayStr,
         rangeFrom: USAGE_DAILY_MIN_ID
@@ -2592,7 +2614,7 @@ export async function refreshDashboardStats(options = {}) {
                       : { mode: 'incremental', cached: prevData };
                 const [stats, pageUsage] = await Promise.all([
                     getUserStatistics(statsOptions),
-                    aggregatePageUsageFromFirestore(prevData)
+                    aggregatePageUsageFromFirestore(prevData, mirrorSource?.usageDailyDocs || null)
                 ]);
                 const payload = {
                     newUsers: stats.newUsers,

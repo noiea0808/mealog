@@ -15,7 +15,10 @@ import {
     countMealRows,
     distinctMealUserIds,
     userRowsToDocLike,
-    journalMarksFromUserRows
+    journalMarksFromUserRows,
+    indexDocsById,
+    docOrMissing,
+    filterDocsByIdRange
 } from '../js/admin/dashboard-mirror-model.js';
 
 const meal = (userId, id, date, slotId) => ({ userId, id, date, slotId });
@@ -114,4 +117,24 @@ test('journalMarksFromUserRows: 사용자별 자국을 평평하게 펴고 제�
         { uid: 'u1', dateStr: '2026-03-08', recordedAt: '2026-03-08T10:00:00.000Z' },
         { uid: 'u1', dateStr: '2026-03-09', recordedAt: '' }
     ]);
+});
+
+const usageDoc = (id, data) => ({ id, exists: () => true, data: () => data });
+
+test('indexDocsById / docOrMissing: 없는 날짜는 「빈 문서」로 — 서버의 exists() false 자리', () => {
+    const map = indexDocsById([usageDoc('2026-03-08', { tab_a: 3 }), null, { id: '' }]);
+    assert.equal(map.size, 1);
+    assert.equal(docOrMissing(map, '2026-03-08').data().tab_a, 3);
+
+    const missing = docOrMissing(map, '2026-03-09');
+    assert.equal(missing.exists(), false);
+    assert.deepEqual(missing.data(), {});
+});
+
+test('filterDocsByIdRange: usageDaily 는 문서 id 가 날짜라 id 로 자른다 (경계 포함)', () => {
+    const docs = ['2026-03-07', '2026-03-08', '2026-08-28', '2026-08-29'].map((id) => usageDoc(id, {}));
+    const got = filterDocsByIdRange(docs, '2026-03-08', '2026-08-28').map((d) => d.id);
+    assert.deepEqual(got, ['2026-03-08', '2026-08-28']);
+    // 오늘보다 뒤(기기 시계가 앞선 기록)는 서버 쿼리와 마찬가지로 뺀다
+    assert.equal(filterDocsByIdRange(docs, '2026-03-08', '2026-08-28').length, 2);
 });
