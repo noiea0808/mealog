@@ -16,6 +16,28 @@ MEALOG (밀로그) is a Korean meal diary and social sharing PWA built with vani
 위해서입니다. **이 영역에서 작은 패치가 그럴듯해 보이면 그게 경고 신호입니다** — 이미 12번
 그럴듯했습니다. 증상만 막기 전에 불변식이 깨진 지점을 먼저 찾으세요.
 
+### ⚠️ 관리자 화면에 새 기능을 만들거나 기존 기능을 고치기 전에
+
+**`docs/admin-local-mirror.md` 를 먼저 읽으세요.** 관리자 화면의 데이터 출처는
+Firestore 가 아니라 **브라우저 IndexedDB 미러**입니다.
+
+미러는 가로채는 계층이 아니다 — 화면마다 손으로 갈아 끼운 것이라, `db`·`getDocs` 는
+여전히 Firestore 를 가리킵니다. **아무것도 안 하면 서버를 봅니다** — `collectionGroup(meals)`
+한 줄이면 미러로 없앴던 1.2만 읽기가 새 화면 하나로 그대로 돌아옵니다.
+
+- **새 기능**: 필요한 데이터가 미러에 있으면 그쪽을 부른다 — `ensureMealsMirrorSynced()`/`getMealsInRange()`,
+  `ensureUsersMirrorSynced()`/`getAllUsersFromMirror()`, 범용 미러는 `xxxMirror.ensureSynced()`/`getDocsLike()`.
+  미러에 없는 것만 서버다 (`userBans`·`deleteUserRequests`·`postReports`·`reactions` 하위 컬렉션).
+- **users 미러만 행이 선별본**이다 (meals·범용 미러는 문서 전체를 담는다). 새 필드가 필요하면
+  `toUserMirrorRow` 에 더하고 **`USERS_MIRROR_ROW_SCHEMA` 를 올려라** — 안 올리면 델타가 옛 행을
+  고치지 못해 새 통계가 「전부 미입력」으로 나온다.
+- **옮겨진 화면은 경로가 둘이다** — 같은 파일 안에 옛 서버 경로가 폴백으로 살아 있다.
+  집계 규칙을 한쪽에만 고치면 **평소엔 맞다가 미러가 실패한 날만 값이 달라진다.**
+  파생 규칙은 `*-mirror-model.js` 순수 모듈 한 곳에 두고 두 경로가 같이 import 한다.
+- **관리자 쓰기를 추가했으면 그 자리에서 미러에 반영**한다 (`patchLocalMeal`/`applyLocalMealDelete`).
+  meals 미러엔 정기 전체 재구축이 없고 관리자 쓰기는 `updatedAt` 을 안 찍어서, 빼먹으면
+  되살아나는 게 아니라 **처음부터 반영이 안 된다.**
+
 ### Git workflow (local-first)
 
 - Default branch for development: **`staging`**

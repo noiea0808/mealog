@@ -1,8 +1,13 @@
 /**
  * 관리자 > AI > AI 식단분석
  * aiDietReports(날짜 단위 리포트) 목록·상세. 생성은 Functions(배치/수동)만.
+ *
+ * 목록·7일 사용량은 로컬 미러에서 읽는다 — 리포트는 생성 뒤 바뀌지 않아
+ * 「새로 생긴 것만」 받으면 되는 진짜 append-only 컬렉션이다.
+ * 미러가 실패하면 예전 서버 조회로 물러난다. — docs/admin-local-mirror.md
  */
 import { db, appId } from '../firebase.js';
+import { aiDietReportsMirror } from './collection-mirror.js';
 import { escapeHtml, runAdminRefreshAction, fetchAdminEmailsForUserIds } from './utils.js';
 import {
     parseAiMealReport,
@@ -27,6 +32,8 @@ import {
 
 const PAGE_SIZE = 50;
 let listLastDoc = null;
+/** 미러 모드 페이지네이션은 커서 대신 오프셋 — 미러가 전량을 들고 있어 자를 수 있다 */
+let listMirrorOffset = 0;
 let listHasMore = false;
 let selectedReportId = null;
 
@@ -162,13 +169,28 @@ function aggregateUsageRows(rows) {
     return { totals, models, health, lenses };
 }
 
-async function fetchSevenDayUsageStats() {
+function sevenDayCutoff() {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 7);
     cutoff.setHours(0, 0, 0, 0);
+    return cutoff;
+}
 
+/** 미러에서 최근 7일 — Firestore 읽기 0회 */
+async function sevenDayUsageStatsFromMirror() {
+    const cutoffMs = sevenDayCutoff().getTime();
+    const docs = await aiDietReportsMirror.getFilteredDocsLike((data) => {
+        const t = data?.generatedAt;
+        const ms = typeof t?.toDate === 'function' ? t.toDate().getTime() : Date.parse(t);
+        return Number.isFinite(ms) && ms >= cutoffMs;
+    });
+    return aggregateUsageRows(docs.map((d) => ({ id: d.id, data: d.data() })));
+}
+
+/** 폴백 전용: 서버에서 최근 7일치를 직접 읽는다 */
+async function fetchSevenDayUsageStats() {
     const coll = collection(db, 'artifacts', appId, 'aiDietReports');
-    const q = query(coll, where('generatedAt', '>=', Timestamp.fromDate(cutoff)));
+    const q = query(coll, where('generatedAt', '>=', Timestamp.fromDate(sevenDayCutoff())));
     const snap = await getDocs(q);
     const rows = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
     return aggregateUsageRows(rows);
@@ -577,6 +599,43 @@ async function decorateRowsWithEmail(rows) {
     }
 }
 
+/**
+ * 한 페이지를 가져온다 — 1차: 로컬 미러, 실패 시: 서버 조회.
+ *
+ * 미러는 전량을 들고 있어 커서 대신 오프셋으로 자른다. 서버 폴백만 startAfter 커서를 쓴다.
+ * @param {boolean} append 「더 보기」면 true
+ */
+async function loadReportPage(append) {
+    try {
+        const sync = await aiDietReportsMirror.ensureSynced();
+        const all = await aiDietReportsMirror.getDocsLike();
+        const offset = append ? listMirrorOffset : 0;
+        const page = all.slice(offset, offset + PAGE_SIZE);
+        listMirrorOffset = offset + page.length;
+        listHasMore = listMirrorOffset < all.length;
+        const stats = append ? null : await sevenDayUsageStatsFromMirror().catch(() => null);
+        console.log(`[AI 식단분석] 미러 목록 ${page.length}건 (서버 읽기 ${sync.serverReads}회)`);
+        return { rows: page.map((d) => ({ id: d.id, data: d.data() })), stats };
+    } catch (e) {
+        console.warn('[AI 식단분석] 미러 실패 — 서버 조회로 대체:', e);
+        const coll = collection(db, 'artifacts', appId, 'aiDietReports');
+        let q = query(coll, orderBy('generatedAt', 'desc'), limit(PAGE_SIZE));
+        if (append && listLastDoc) {
+            q = query(coll, orderBy('generatedAt', 'desc'), startAfter(listLastDoc), limit(PAGE_SIZE));
+        }
+        const statsPromise = append
+            ? Promise.resolve(null)
+            : fetchSevenDayUsageStats().catch((err) => {
+                  console.error('aiDietReports 7d stats failed', err);
+                  return null;
+              });
+        const [snap, stats] = await Promise.all([getDocs(q), statsPromise]);
+        listHasMore = snap.docs.length >= PAGE_SIZE;
+        listLastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : listLastDoc;
+        return { rows: snap.docs.map((d) => ({ id: d.id, data: d.data() })), stats };
+    }
+}
+
 export async function renderAiDietReports({ append = false } = {}) {
     const listEl = document.getElementById('aiDietReportsList');
     if (!listEl) return;
@@ -591,23 +650,7 @@ export async function renderAiDietReports({ append = false } = {}) {
     }
 
     try {
-        const coll = collection(db, 'artifacts', appId, 'aiDietReports');
-        let q = query(coll, orderBy('generatedAt', 'desc'), limit(PAGE_SIZE));
-        if (append && listLastDoc) {
-            q = query(coll, orderBy('generatedAt', 'desc'), startAfter(listLastDoc), limit(PAGE_SIZE));
-        }
-
-        const statsPromise = append
-            ? Promise.resolve(null)
-            : fetchSevenDayUsageStats().catch((e) => {
-                  console.error('aiDietReports 7d stats failed', e);
-                  return null;
-              });
-
-        const [snap, stats] = await Promise.all([getDocs(q), statsPromise]);
-        const rows = snap.docs.map((d) => ({ id: d.id, data: d.data() }));
-        listHasMore = snap.docs.length >= PAGE_SIZE;
-        listLastDoc = snap.docs.length ? snap.docs[snap.docs.length - 1] : listLastDoc;
+        const { rows, stats } = await loadReportPage(append);
 
         await decorateRowsWithEmail(rows);
 
@@ -669,6 +712,7 @@ window.selectAiDietReport = async function (reportId) {
 window.refreshAiDietReports = async function (buttonEl) {
     await runAdminRefreshAction(buttonEl || null, async () => {
         listLastDoc = null;
+        listMirrorOffset = 0;
         listHasMore = false;
         selectedReportId = null;
         window._aiDietReportRows = [];

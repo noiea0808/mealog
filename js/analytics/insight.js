@@ -857,7 +857,7 @@ function analyzeMealData(filteredData, dateRangeText) {
     if (snackRatings.length) snack.avgRating = (snackRatings.reduce((a, b) => a + b, 0) / snackRatings.length).toFixed(1);
     if (snackSatiety.length) snack.avgSatiety = (snackSatiety.reduce((a, b) => a + b, 0) / snackSatiety.length).toFixed(1);
     
-    // 시간대별 분석 (아침/점심/저녁, 아침전간식/오전간식/오후간식/야식)
+    // 시간대별 분석 (아침/점심/저녁, 아침전간식/오전간식/오후간식/저녁후간식)
     const slotLabelMap = Object.fromEntries(SLOTS.map(s => [s.id, s.label]));
     const bySlot = {};
     SLOTS.forEach(slot => {

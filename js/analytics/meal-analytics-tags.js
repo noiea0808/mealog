@@ -6,7 +6,6 @@ import { SLOTS } from '../constants.js';
 import { normalizePlace } from '../utils/place-normalize.js';
 import { normalizeFoodForm } from '../utils/food-form-normalize.js';
 import { classifyFoodText, classifyCuisineText } from '../utils/food-classifier.js';
-import { isFormAxisPilot } from '../utils/form-axis-pilot.js';
 
 const MAIN_IDS = new Set(['morning', 'lunch', 'dinner']);
 const SNACK_IDS = new Set(SLOTS.filter((s) => s.type === 'snack').map((s) => s.id));
@@ -55,9 +54,10 @@ function reclassifyLegacyCuisine(m) {
 /**
  * 저장된 '무엇을' 값 하나를 현재 형태 축 표기로 해석한다.
  *
- * 형태 축 파일럿 계정에서만 옛 요리 종류 축 값을 재분류로 대체한다. 그 외 사용자에게는
- * 지금까지와 동일하게 normalizeFoodForm 결과가 나간다 (js/utils/form-axis-pilot.js).
- * 어느 경우에도 **저장된 원문은 바꾸지 않는다** — 읽을 때만 하는 해석이다.
+ * 옛 요리 종류 축 값은 재분류로 대체한다. 형태 축 전환(2026-08-27) 이후 이 값들은
+ * 사용자 태그 목록에 없어 차트 화이트리스트 밖으로 밀리므로, 재분류하지 않으면
+ * 지난 기록이 통째로 '미입력'으로 접힌다 (js/analytics/charts.js aggregateProportionData).
+ * **저장된 원문은 바꾸지 않는다** — 읽을 때만 하는 해석이다.
  *
  * @param {object} m meal 문서
  * @param {string|null|undefined} raw 그 기록의 category 또는 snackType
@@ -66,7 +66,7 @@ function reclassifyLegacyCuisine(m) {
 export function resolveFoodFormValue(m, raw) {
     const v = trim(raw);
     if (!v) return '';
-    if (m && isFormAxisPilot() && LEGACY_CUISINE_AXIS.has(v)) {
+    if (m && LEGACY_CUISINE_AXIS.has(v)) {
         const derived = reclassifyLegacyCuisine(m);
         if (derived) return derived;
     }

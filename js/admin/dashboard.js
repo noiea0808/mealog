@@ -11,6 +11,7 @@ import {
     getDoc,
     getDocFromServer,
     setDoc,
+    runTransaction,
     where,
     getCountFromServer,
     Timestamp,
@@ -18,6 +19,7 @@ import {
     documentId
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { dailyJournalHasContent, normalizeDailyJournalEntry } from '../utils/daily-journal-data.js';
+import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
 import {
     getSharedPhotoGroupKey,
     dateKeyFromLocalDate,
@@ -48,6 +50,19 @@ import {
     needsWeeklyFullRefresh
 } from './dashboard-incremental.js';
 import { getExcludedAnalyticsUidList, getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
+import { loadDashboardMirrorSource } from './dashboard-mirror.js';
+import {
+    snapshotFromDocs,
+    indexDocsById,
+    docOrMissing,
+    filterDocsByIdRange,
+    filterMealRowsByDate,
+    countSlotAllFromRows,
+    countMealRows,
+    distinctMealUserIds,
+    userRowsToDocLike,
+    journalMarksFromUserRows
+} from './dashboard-mirror-model.js';
 import {
     writeDashboardUserDrilldown,
     markDashboardDrilldownCell,
@@ -564,7 +579,18 @@ async function fetchPageUsageWeeklyRepairFromUsageDaily(weeklyLayout) {
     return rebuildPageUsageWeeklyFromFirestoreRange(usageCol, todayStr, sundayKeyToIndex, weeks.length);
 }
 
-export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
+/**
+ * 페이지별 집계.
+ *
+ * @param {object|null} _prevDashboardData
+ * @param {object[]|null} [usageDailyDocs] usageDaily 미러 문서. 주면 서버를 읽지 않는다 —
+ *        예전에는 새로고침마다 운영 시작일부터 오늘까지 전 구간(현재 약 180문서)과
+ *        최근 7일을 `getDocFromServer` 로 다시 사 왔고, 대시보드를 미러로 옮긴 뒤에는
+ *        **여기가 남은 서버 읽기의 대부분**이었다.
+ */
+export async function aggregatePageUsageFromFirestore(_prevDashboardData, usageDailyDocs = null) {
+    const useMirror = Array.isArray(usageDailyDocs);
+    const mirrorById = useMirror ? indexDocsById(usageDailyDocs) : null;
     const todayStr = getTodayDateString();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -577,9 +603,11 @@ export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     const usageCol = collection(db, 'artifacts', appId, 'usageDaily');
     const todayRef = doc(db, 'artifacts', appId, 'usageDaily', todayStr);
 
-    const last7Snaps = await Promise.all(
-        last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
-    );
+    const last7Snaps = useMirror
+        ? last7DateKeys.map((k) => docOrMissing(mirrorById, k))
+        : await Promise.all(
+              last7DateKeys.map((k) => getDocFromServer(doc(db, 'artifacts', appId, 'usageDaily', k)))
+          );
     const { byField: byFieldDay, last7Sum } = buildPageUsageLast7FromDayDocs(last7DateKeys, last7Snaps);
 
     // usageDaily 일자는 수십~백여 건 수준이라 새로고침마다 전 구간 재집계(캐시 증분 오염 방지)
@@ -587,25 +615,31 @@ export async function aggregatePageUsageFromFirestore(_prevDashboardData) {
     let todayFieldSnap = zeroPageUsageTotals();
     let weeklyByField = zeroPageUsageWeeklyByField(nWeeks);
 
-    const q = query(
-        usageCol,
-        where(documentId(), '>=', USAGE_DAILY_MIN_ID),
-        where(documentId(), '<=', todayStr),
-        orderBy(documentId())
-    );
-    const snap = await getDocs(q);
-    snap.docs.forEach((d) => {
+    const rangeDocs = useMirror
+        ? filterDocsByIdRange(usageDailyDocs, USAGE_DAILY_MIN_ID, todayStr)
+        : (
+              await getDocs(
+                  query(
+                      usageCol,
+                      where(documentId(), '>=', USAGE_DAILY_MIN_ID),
+                      where(documentId(), '<=', todayStr),
+                      orderBy(documentId())
+                  )
+              )
+          ).docs;
+    rangeDocs.forEach((d) => {
         addDocDataToPageTotals(d.data(), byFieldAll);
         addDocDataToPageWeeklyTotals(d.data(), d.id, weeklyByField, sundayKeyToIndex);
     });
-    const tSnap = await getDocFromServer(todayRef);
+    const tSnap = useMirror ? docOrMissing(mirrorById, todayStr) : await getDocFromServer(todayRef);
     if (tSnap.exists()) {
         addDocDataToPageTotals(tSnap.data(), todayFieldSnap);
     }
 
     const hasAnyMetric = PAGE_USAGE_METRIC_DEFS.some((def) => (Number(byFieldAll[def.field]) || 0) > 0);
     console.log('[대시보드] 페이지별 usageDaily 집계:', {
-        docCount: snap.docs.length,
+        출처: useMirror ? '로컬 미러' : '서버',
+        docCount: rangeDocs.length,
         hasAnyMetric,
         todayStr,
         rangeFrom: USAGE_DAILY_MIN_ID
@@ -681,6 +715,7 @@ const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
     'statDailyJournal7d',
+    'statRecordedUsers7d',
     ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
 ];
@@ -689,6 +724,7 @@ const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
     'statDailyJournal7Sum',
+    'statRecordedUsers7Sum',
     ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
 ];
@@ -787,6 +823,8 @@ function cloneLast7Breakdown(raw) {
         recordsBySlot,
         // 시간대는 나중에 추가된 필드라 옛 캐시엔 없다 — 없으면 '—'로 두려고 통째로 뺀다
         ...(rbh ? { recordsByHour } : {}),
+        // 기록한 사람도 마찬가지 (시간대와 같은 recordedAt 축)
+        ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pick(raw.recordedUsers) } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
         dailyJournal: pick(raw.dailyJournal)
     };
@@ -828,11 +866,11 @@ function cloneWeeklyBreakdown(raw) {
         }
     }
     const monthGroups = buildMonthHeaderGroupsWithStarts(weeks);
-    const rawMonthU = raw.activeUsersMonthUnique;
-    let activeUsersMonthUnique;
-    if (Array.isArray(rawMonthU) && rawMonthU.length === monthGroups.length) {
-        activeUsersMonthUnique = rawMonthU.map((x) => Number(x) || 0);
-    }
+    /** 유니크 지표의 월 칸은 주간 합이 아니다 — 길이가 맞을 때만 쓴다 */
+    const pickMonthUnique = (arr) =>
+        Array.isArray(arr) && arr.length === monthGroups.length ? arr.map((x) => Number(x) || 0) : undefined;
+    const activeUsersMonthUnique = pickMonthUnique(raw.activeUsersMonthUnique);
+    const recordedUsersMonthUnique = pickMonthUnique(raw.recordedUsersMonthUnique);
     return {
         weeks,
         monthGroups,
@@ -844,7 +882,10 @@ function cloneWeeklyBreakdown(raw) {
         ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
-        ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {})
+        // 옛 캐시엔 없다 — 없으면 행이 '—'로 남는다
+        ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pickWeekArr(raw.recordedUsers, n) } : {}),
+        ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {}),
+        ...(recordedUsersMonthUnique ? { recordedUsersMonthUnique } : {})
     };
 }
 
@@ -883,14 +924,14 @@ function expandWeeklyValuesWithMonthSums(vals, monthGroups) {
     return out;
 }
 
-/** 같은 달(헤더 구간)에 속한 주들의 활성 사용자 Set을 합쳐 월간 유니크 수 (주간 합과 다름) */
-function computeActiveUsersMonthUnique(activeSetsByWeek, monthGroups) {
+/** 같은 달(헤더 구간)에 속한 주들의 uid Set을 합쳐 월간 유니크 수 (주간 합과 다름) */
+function computeMonthUniqueFromWeekSets(setsByWeek, monthGroups) {
     const out = [];
     for (const g of monthGroups) {
         const union = new Set();
         for (let k = 0; k < g.span; k++) {
             const wi = g.startWeekIndex + k;
-            const s = activeSetsByWeek[wi];
+            const s = setsByWeek[wi];
             if (s && typeof s.forEach === 'function') s.forEach((uid) => union.add(uid));
         }
         out.push(union.size);
@@ -899,20 +940,34 @@ function computeActiveUsersMonthUnique(activeSetsByWeek, monthGroups) {
 }
 
 /**
- * 트렌드 표 펼침: 대부분 지표는 월 칸 = 주간 합, 활성 사용자는 월 칸 = 유니크(activeUsersMonthUnique).
- * activeUsersMonthUnique가 없거나 길이가 맞지 않으면 활성 사용자도 기존처럼 주간 합(참고용).
+ * 월 칸을 주간 합으로 낼 수 없는 행 — 사람 수는 더하면 같은 사람을 여러 번 센다.
+ * 값: weeklyBreakdown 에 든 월간 유니크 배열의 키.
  */
-function expandWeeklyValuesForTrend(vals, monthGroups, rowKey, activeUsersMonthUnique) {
+const TREND_MONTH_UNIQUE_ROWS = {
+    activeUsers: 'activeUsersMonthUnique',
+    recordedUsers: 'recordedUsersMonthUnique'
+};
+
+/** 이 행의 월 칸에 쓸 유니크 배열. 없거나 길이가 안 맞으면 null(→ 주간 합으로 폴백) */
+function monthUniqueArrayForRow(rowKey, weeklyBreakdown, monthGroups) {
+    const field = TREND_MONTH_UNIQUE_ROWS[rowKey];
+    if (!field) return null;
+    const arr = weeklyBreakdown?.[field];
+    return Array.isArray(arr) && monthGroups && arr.length === monthGroups.length ? arr : null;
+}
+
+/**
+ * 트렌드 표 펼침: 대부분 지표는 월 칸 = 주간 합, 사람 수 행은 월 칸 = 유니크.
+ * monthUnique 가 없으면(옛 캐시) 그 행도 기존처럼 주간 합으로 떨어진다 — 참고용.
+ */
+function expandWeeklyValuesForTrend(vals, monthGroups, monthUnique) {
     const v = Array.isArray(vals) ? vals.map((x) => Number(x) || 0) : [];
-    const useActiveMonthUnique =
-        rowKey === 'activeUsers' &&
-        Array.isArray(activeUsersMonthUnique) &&
-        activeUsersMonthUnique.length === monthGroups?.length;
+    const useMonthUnique = Array.isArray(monthUnique) && monthUnique.length === monthGroups?.length;
     const out = [];
     let u = 0;
     for (const g of monthGroups) {
-        if (useActiveMonthUnique) {
-            out.push(Number(activeUsersMonthUnique[u]) || 0);
+        if (useMonthUnique) {
+            out.push(Number(monthUnique[u]) || 0);
         } else {
             let sum = 0;
             for (let k = 0; k < g.span; k++) {
@@ -1063,6 +1118,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (!weeklyBreakdown) return [];
     if (key === 'newUsers') return weeklyBreakdown.newUsers || [];
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
+    if (key === 'recordedUsers') return weeklyBreakdown.recordedUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
     if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
     if (key === 'records') return weeklyBreakdown.records || [];
@@ -1080,11 +1136,6 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
 
 function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
     const monthGroups = weeklyBreakdown?.monthGroups;
-    const activeUsersMonthUnique = weeklyBreakdown?.activeUsersMonthUnique;
-    const activeUsersMonthUniqueOk =
-        Array.isArray(activeUsersMonthUnique) &&
-        monthGroups &&
-        activeUsersMonthUnique.length === monthGroups.length;
     // 코호트 표는 클릭한 칸이 아니라 전 구간을 본다
     setDashboardDrilldownWeekKeys((weeklyBreakdown?.weeks || []).map((w) => w.sundayKey));
     const columnDescriptors = buildTrendColumnDescriptors(weeklyBreakdown?.weeks, monthGroups);
@@ -1092,29 +1143,30 @@ function fillAdminDashboardWeeklyCells(weeklyBreakdown) {
         const key = tr.getAttribute('data-dash-week-row');
         const drillable = key === 'newUsers' || key === 'activeUsers';
         const vals = weeklyValuesForRow(key, weeklyBreakdown);
-        const expanded =
-            monthGroups && monthGroups.length
-                ? expandWeeklyValuesForTrend(vals, monthGroups, key, activeUsersMonthUnique)
-                : vals;
+        const monthUnique = monthUniqueArrayForRow(key, weeklyBreakdown, monthGroups);
+        /**
+         * 배열이 통째로 없으면(그 필드가 생기기 전의 옛 캐시) 0 으로 펴지 않는다.
+         * 0 은 「아무도 안 했다」로 읽히는데 실제로는 「모른다」다 — 그 자리는 '—' 여야 한다.
+         */
+        const missing = !Array.isArray(vals) || vals.length === 0;
+        const expanded = missing
+            ? []
+            : monthGroups && monthGroups.length
+              ? expandWeeklyValuesForTrend(vals, monthGroups, monthUnique)
+              : vals;
         const monthLeads = monthLeadColumnFlags(monthGroups, expanded.length);
         const tds = tr.querySelectorAll(':scope > td.js-dash-week-td');
         tds.forEach((td, i) => {
             const v = expanded[i];
             if (v != null && Number.isFinite(Number(v))) {
                 td.textContent = Number(v).toLocaleString();
-                if (
-                    key === 'activeUsers' &&
-                    monthLeads &&
-                    monthLeads[i] &&
-                    activeUsersMonthUniqueOk
-                ) {
-                    td.title = '해당 월(표시 주차 구간) 동안 기록이 있었던 유니크 사용자 수';
-                } else if (
-                    key === 'activeUsers' &&
-                    monthLeads &&
-                    monthLeads[i] &&
-                    !activeUsersMonthUniqueOk
-                ) {
+                const uniqueMonthLead = Boolean(TREND_MONTH_UNIQUE_ROWS[key] && monthLeads && monthLeads[i]);
+                if (uniqueMonthLead && monthUnique) {
+                    td.title =
+                        key === 'recordedUsers'
+                            ? '해당 월(표시 주차 구간)에 한 번이라도 기록을 남긴 유니크 사용자 수'
+                            : '해당 월(표시 주차 구간) 동안 기록이 있었던 유니크 사용자 수';
+                } else if (uniqueMonthLead) {
                     td.title =
                         '캐시에 월간 유니크가 없어 주간 숫자의 합으로 표시됩니다. 「통계 새로고침」으로 갱신하세요.';
                 } else {
@@ -1330,6 +1382,16 @@ function weekIndexForDateKeyStr(dateKeyStr, sundayKeyToIndex) {
 export async function getUserStatistics(options = {}) {
     try {
         const wantIncremental = options?.mode === 'incremental';
+        /**
+         * 미러 모드 — meals·users·sharedPhotos 를 브라우저 사본에서 읽는다.
+         *
+         * 로컬에서는 전량을 훑어도 비용이 없으므로 **증분 병합을 쓰지 않는다.**
+         * 얼린 과거 주차·소급 delta 는 서버 읽기가 비싸서 만든 장치였고, 그 대가로
+         * 지난 주차의 수정·삭제와 제외 UID 변경을 놓쳤다. 미러에서는 매번 전량이라
+         * 그 구멍이 통째로 없어진다.
+         */
+        const wantMirror = options?.mode === 'mirror';
+        const mirrorSource = options?.mirrorSource || null;
         const cachedForIncremental = options?.cached || null;
         const excluded = await getExcludedAnalyticsUidSet();
         const usersColl = collection(db, 'artifacts', appId, 'users');
@@ -1416,6 +1478,37 @@ export async function getUserStatistics(options = {}) {
          * meals 스캔은 식사 날짜로 범위를 걸었으므로, 기록 날짜는 구간 밖으로 나갈 수 있다
          * (운영 시작 전에 적어 둔 기록, 기기 시계가 앞선 기록). 그런 건 넣을 칸이 없어 버린다.
          */
+        /**
+         * 「기록한 사람」 — 시간대 행과 **같은 축(recordedAt)** 의 유니크 사용자.
+         *
+         * 활성 사용자와 다르다. 저쪽은 식사 날짜라 「그 날짜의 끼니를 가진 사람」이고,
+         * 이쪽은 「그 날 실제로 앱을 켜서 적은 사람」이다. 어제 끼니를 오늘 몰아 적으면
+         * 활성 사용자는 어제 칸, 이쪽은 오늘 칸에 선다.
+         *
+         * 더할 수 없는 값이라 주차·월 칸은 Set 을 그대로 들고 있다가 크기로 낸다.
+         */
+        const recordedUserSetsByDay = Array.from({ length: 7 }, () => new Set());
+        const recordedUserSetsByWeek = Array.from({ length: nWeeks }, () => new Set());
+        const recordedUserSetsToday = new Set();
+        const recordedUserSetsLast7 = new Set();
+        /**
+         * @param {{dateKey: string}|null} slot addHourRecord 와 같은 슬롯
+         * @param {string} uid
+         */
+        const addRecordedUser = (slot, uid) => {
+            if (!slot || !uid) return;
+            const { dateKey } = slot;
+            if (dateKey < firstSundayKey || dateKey > todayStr) return;
+            const wi = weekIndexForDateKeyStr(dateKey, sundayKeyToIndex);
+            if (wi >= 0) recordedUserSetsByWeek[wi].add(uid);
+            if (dateKey === todayStr) recordedUserSetsToday.add(uid);
+            if (dateKey >= last7FirstStr) {
+                recordedUserSetsLast7.add(uid);
+                const di = last7IndexMap.get(dateKey);
+                if (di != null && di >= 0) recordedUserSetsByDay[di].add(uid);
+            }
+        };
+
         const addHourRecord = (slot) => {
             if (!slot) return;
             const { dateKey } = slot;
@@ -1435,6 +1528,7 @@ export async function getUserStatistics(options = {}) {
         const stats = {
             newUsers: { all: 0, last7: 0, today: 0 },
             activeUsers: { all: 0, last7: 0, today: 0 },
+            recordedUsers: { all: 0, last7: 0, today: 0 },
             records: { all: 0, last7: 0, today: 0 },
             recordsBySlot: {},
             recordsByHour: {},
@@ -1460,8 +1554,10 @@ export async function getUserStatistics(options = {}) {
          */
         const incr = wantIncremental
             ? canUseIncremental(cachedForIncremental, weekMetas)
-            : { ok: false, reason: 'full-requested' };
+            : { ok: false, reason: wantMirror ? 'mirror-full' : 'full-requested' };
         const useIncremental = incr.ok && nWeeks > 0;
+        /** 미러 모드가 실제로 성립하는지 — 재료가 손에 있어야 한다 */
+        const useMirror = wantMirror && !!mirrorSource;
         if (wantIncremental && !useIncremental) {
             console.warn('[대시보드] 증분 집계를 쓸 수 없어 전량으로 집계합니다:', incr.reason);
         }
@@ -1474,16 +1570,55 @@ export async function getUserStatistics(options = {}) {
         const rescanFromIdx = useIncremental ? rescanFromWeekIndex(weekMetas, rescanStartKey) : 0;
         const lastAggregatedAt = useIncremental ? String(cachedForIncremental.lastAggregatedAt) : '';
 
-        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap] = await Promise.all([
-            countQ(query(mealsCg)),
-            nWeeks > 0
-                ? getDocs(query(mealsCg, where('date', '>=', rescanStartKey), where('date', '<=', todayStr)))
-                : Promise.resolve(emptyMealsSnap),
-            // 소급 입력분: 지난 집계 뒤에 적혔지만 과거 날짜를 가리키는 기록
-            useIncremental
-                ? getDocs(query(mealsCg, where('recordedAt', '>', lastAggregatedAt)))
-                : Promise.resolve(emptyMealsSnap)
-        ]);
+        /**
+         * 시간대 행이 읽을 구간의 시작 — **기록 시각(recordedAt) 축**의 하한.
+         *
+         * 시간대 행은 「며칟날 몇 시에 앱을 켰나」라서 recordedAt 으로 칸을 잡는데,
+         * 문서를 가져오는 쿼리는 식사 날짜(date)로 범위를 건다. 두 축이 어긋나는 문서
+         * (= 과거 끼니를 오늘 몰아 적은 소급 입력)는 그 쿼리에 아예 안 걸린다.
+         * 그래서 같은 축으로 한 번 더 읽는다.
+         *
+         * recordedAt 은 ISO(UTC) 문자열이라 로컬 자정을 ISO 로 바꿔 비교한다.
+         */
+        const hourScanStartIso = (() => {
+            const parts = String(rescanStartKey || '').split('-');
+            if (parts.length !== 3) return new Date(0).toISOString();
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            d.setHours(0, 0, 0, 0);
+            return Number.isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString();
+        })();
+
+        /**
+         * meals 세 갈래.
+         *
+         * - **미러 모드**: 사본을 한 번 읽어 두 축으로 나눠 쓴다. 소급 delta 는 필요 없다 —
+         *   전량이라 「지난 집계 이후」라는 개념 자체가 없다.
+         * - **서버 모드**: 예전 그대로 쿼리 세 개.
+         */
+        const [recordsAllCountRaw, mealsRangeSnap, mealsRetroSnap, mealsRecordedSnap] = useMirror
+            ? [
+                  countMealRows(mirrorSource.mealRows, excluded),
+                  snapshotFromDocs(
+                      filterMealRowsByDate(mirrorSource.mealDocs, rescanStartKey, todayStr, (d) => d.data().date)
+                  ),
+                  emptyMealsSnap,
+                  // 시간대 행은 기록 시각 축이라 식사 날짜로 자르면 소급 입력이 샌다 — 전량을 넘긴다
+                  snapshotFromDocs(mirrorSource.mealDocs)
+              ]
+            : await Promise.all([
+                  countQ(query(mealsCg)),
+                  nWeeks > 0
+                      ? getDocs(query(mealsCg, where('date', '>=', rescanStartKey), where('date', '<=', todayStr)))
+                      : Promise.resolve(emptyMealsSnap),
+                  // 소급 입력분: 지난 집계 뒤에 적혔지만 과거 날짜를 가리키는 기록
+                  useIncremental
+                      ? getDocs(query(mealsCg, where('recordedAt', '>', lastAggregatedAt)))
+                      : Promise.resolve(emptyMealsSnap),
+                  // 시간대 행 전용 — 기록 시각으로 구간을 건다 (위 두 스냅숏과 축이 다르다)
+                  nWeeks > 0
+                      ? getDocs(query(mealsCg, where('recordedAt', '>=', hourScanStartIso)))
+                      : Promise.resolve(emptyMealsSnap)
+              ]);
         let recordsAllCount = recordsAllCountRaw;
 
         /**
@@ -1498,9 +1633,11 @@ export async function getUserStatistics(options = {}) {
             d.setHours(0, 0, 0, 0);
             return Number.isNaN(d.getTime()) ? DASHBOARD_STATS_RANGE_START : d;
         })();
-        const usersSnapshot = useIncremental
-            ? await getDocs(query(usersColl, where('createdAt', '>=', Timestamp.fromDate(rescanStartDate))))
-            : await getDocs(usersColl);
+        const usersSnapshot = useMirror
+            ? snapshotFromDocs(userRowsToDocLike(mirrorSource.userRows))
+            : useIncremental
+              ? await getDocs(query(usersColl, where('createdAt', '>=', Timestamp.fromDate(rescanStartDate))))
+              : await getDocs(usersColl);
         let usersFromCollection;
         if (useIncremental) {
             let n = await countQ(query(usersColl));
@@ -1515,27 +1652,35 @@ export async function getUserStatistics(options = {}) {
 
         const userIdsForSlots = usersSnapshot.docs.map((d) => d.id).filter((uid) => !excluded.has(uid));
         let slotAllArr;
-        try {
-            slotAllArr = await Promise.all(
-                MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
-            );
-        } catch (e) {
-            if (e?.code === 'failed-precondition') {
-                console.warn(
-                    '⚠️ meals 컬렉션 그룹(slotId) 인덱스가 아직 없습니다. 사용자별 meals로 슬롯「전체」건수를 집계합니다. 배포: firebase deploy --only firestore:indexes',
-                    e.message || e
+        if (useMirror) {
+            // 슬롯마다 던지던 count 쿼리 자리 — 미러를 한 번 훑으면 같은 값이 나온다
+            slotAllArr = countSlotAllFromRows(mirrorSource.mealRows, MEAL_COUNT_SLOT_IDS, excluded);
+        } else {
+            try {
+                slotAllArr = await Promise.all(
+                    MEAL_COUNT_SLOT_IDS.map((sid) => countQ(query(mealsCg, where('slotId', '==', sid))))
                 );
-                slotAllArr = await countMealsSlotAllViaUserSubcollections(userIdsForSlots, countQ);
-            } else {
-                throw e;
+            } catch (e) {
+                if (e?.code === 'failed-precondition') {
+                    console.warn(
+                        '⚠️ meals 컬렉션 그룹(slotId) 인덱스가 아직 없습니다. 사용자별 meals로 슬롯「전체」건수를 집계합니다. 배포: firebase deploy --only firestore:indexes',
+                        e.message || e
+                    );
+                    slotAllArr = await countMealsSlotAllViaUserSubcollections(userIdsForSlots, countQ);
+                } else {
+                    throw e;
+                }
             }
         }
 
-        for (const exUid of excluded) {
-            const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
-            recordsAllCount -= await countQ(query(mcEx));
-            for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
-                slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
+        // 미러 모드에서는 세는 자리마다 제외 UID 를 이미 걸렀다 — 여기서 또 빼면 두 번 빼진다
+        if (!useMirror) {
+            for (const exUid of excluded) {
+                const mcEx = collection(db, 'artifacts', appId, 'users', exUid, 'meals');
+                recordsAllCount -= await countQ(query(mcEx));
+                for (let si = 0; si < MEAL_COUNT_SLOT_IDS.length; si++) {
+                    slotAllArr[si] -= await countQ(query(mcEx, where('slotId', '==', MEAL_COUNT_SLOT_IDS[si])));
+                }
             }
         }
 
@@ -1548,11 +1693,11 @@ export async function getUserStatistics(options = {}) {
         let dailyJournalToday = 0;
         let dailyJournalLast7 = 0;
         /**
-         * config 스캔이 하루 소감을 실제로 세었는지.
+         * 하루 소감을 실제로 센 출처가 있었는지 (config 전량 스캔 또는 users 미러).
          * 실패하면(권한·인덱스) 미러가 하루 소감의 **유일한** 출처가 되므로,
          * 아래에서 미러를 빼면 그만큼 통째로 증발한다. 그 경우엔 빼지 않는다.
          */
-        let journalCountedFromConfig = false;
+        let journalCountedFromSource = false;
         /**
          * meals 미러가 없는 하루 소감. 「하루 소감」행은 전량(위 카운터)을 보여주지만,
          * 「기록 · 전체」에는 미러로 이미 센 몫을 빼고 이쪽만 얹는다.
@@ -1625,9 +1770,6 @@ export async function getUserStatistics(options = {}) {
                     }
                 }
             }
-            addHourRecord(hourSlotForMealDoc(mealData));
-
-
             if (sid && slotAgg[sid]) {
                 if (wi >= 0) slotAgg[sid].byWeek[wi]++;
                 if (dateStr === todayStr) slotAgg[sid].today++;
@@ -1642,13 +1784,42 @@ export async function getUserStatistics(options = {}) {
         mealsRangeSnap.forEach((d) => scanMealDoc(d, false));
         mealsRetroSnap.forEach((d) => scanMealDoc(d, true));
 
+        /**
+         * 시간대 행은 여기서만 채운다.
+         *
+         * 예전에는 위 두 스캔에 얹어 셌는데, 소급 입력이 **집계 한 번 분량만 보였다가
+         * 영구히 사라졌다.** 식사 날짜 범위 쿼리에는 안 걸리고, 소급 델타 쿼리는
+         * `recordedAt > lastAggregatedAt` 이라 한 번 집계가 돌고 나면 같은 문서를 다시
+         * 잡지 않기 때문이다. 게다가 「최근 7일」 시각 칸은 캐시에 남기지 않고 매번 새로
+         * 세므로, 사라진 자리를 메워 줄 것도 없었다.
+         * (2026-08-26 관측: 8/26 시각별 135 → 이튿날 91, 18–21시 67 → 19)
+         *
+         * 이제 기록 시각 축으로 직접 읽으므로 **언제 집계를 돌리든 같은 칸에 들어간다.**
+         */
+        mealsRecordedSnap.forEach((docSnap) => {
+            const uid = userIdFromMealDocRef(docSnap.ref);
+            if (!uid || excluded.has(uid)) return;
+            const slot = hourSlotForMealDoc(docSnap.data());
+            addHourRecord(slot);
+            addRecordedUser(slot, uid);
+        });
+
         if (useIncremental) {
             console.log('[대시보드] 증분 집계:', {
                 rescanFrom: rescanStartKey,
                 rescanFromWeekIndex: rescanFromIdx,
                 since: lastAggregatedAt,
                 rescanDocs: mealsRangeSnap.size ?? 0,
-                retroDocs: mealsRetroSnap.size ?? 0
+                retroDocs: mealsRetroSnap.size ?? 0,
+                hourDocs: mealsRecordedSnap.size ?? 0
+            });
+        } else if (useMirror) {
+            console.log('[대시보드] 미러 전량 집계:', {
+                meals: mirrorSource.mealRows.length,
+                users: mirrorSource.userRows.length,
+                sharedPhotos: mirrorSource.sharedDocs.length,
+                동기화: mirrorSource.syncModes,
+                서버읽기: mirrorSource.serverReads
             });
         }
 
@@ -1657,50 +1828,68 @@ export async function getUserStatistics(options = {}) {
                 // 증분에서는 미러가 정본이라 config 를 아예 읽지 않는다 (아래 skip 참조)
                 throw { code: 'skip-config-scan' };
             }
-            const configGroup = collectionGroup(db, 'config');
-            const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
-            configSnap.forEach((docSnap) => {
-                if (docSnap.id !== 'settings') return;
-                const uid = userIdFromMealDocRef(docSnap.ref);
-                if (!uid || excluded.has(uid)) return;
-                const dc = docSnap.data()?.dailyComments;
-                if (!dc || typeof dc !== 'object') return;
-                for (const [dateStr, raw] of Object.entries(dc)) {
-                    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
-                    const entry = normalizeDailyJournalEntry(raw);
-                    if (!dailyJournalHasContent(entry)) continue;
-                    dailyJournalAll++;
-                    const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
-                    const mirrored = mirroredJournalKeys.has(`${uid}|${dateStr}`);
-                    /**
-                     * dailyComments 는 맵이라 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없다.
-                     * 그래서 증분에서도 전량을 훑되, **다시 세는 구간 밖은 세지 않는다** —
-                     * 그 몫은 캐시에 이미 들어 있어서, 여기서 또 세면 이중 계산이다.
-                     * (「전체」열만은 위에서 전량으로 센다)
-                     */
-                    const inRescanWindow = !useIncremental || dateStr >= rescanStartKey;
-                    if (!mirrored && inRescanWindow) {
-                        if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
-                        // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
-                        addHourRecord(hourSlotForJournalEntry(dateStr, entry));
+            /**
+             * 하루 소감 자국 — `{uid, dateStr, recordedAt}` 목록.
+             *
+             * 미러 모드에서는 users 미러가 settings 를 읽을 때 함께 담아 둔 것을 쓴다
+             * (읽기 0회). 서버 모드에서는 예전처럼 `collectionGroup('config')` 를 훑는다 —
+             * 사용자 수만큼 문서를 사 오는, 전량 집계에서 두 번째로 비싼 자리였다.
+             */
+            let journalMarks;
+            if (useMirror) {
+                journalMarks = journalMarksFromUserRows(mirrorSource.userRows, excluded);
+            } else {
+                const configGroup = collectionGroup(db, 'config');
+                const configSnap = await getDocs(query(configGroup, limit(DASHBOARD_DAILY_JOURNAL_CONFIG_SCAN_CAP)));
+                journalMarks = [];
+                configSnap.forEach((docSnap) => {
+                    if (docSnap.id !== 'settings') return;
+                    const uid = userIdFromMealDocRef(docSnap.ref);
+                    if (!uid || excluded.has(uid)) return;
+                    const dc = docSnap.data()?.dailyComments;
+                    if (!dc || typeof dc !== 'object') return;
+                    for (const [dateStr, raw] of Object.entries(dc)) {
+                        if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) continue;
+                        const entry = normalizeDailyJournalEntry(raw);
+                        if (!dailyJournalHasContent(entry)) continue;
+                        journalMarks.push({ uid, dateStr, recordedAt: entry.recordedAt || '' });
                     }
-                    if (wi >= 0 && inRescanWindow) dailyJournalByWeek[wi]++;
-                    if (dateStr === todayStr) {
-                        dailyJournalToday++;
-                        if (!mirrored) dailyJournalUnmirroredToday++;
-                    }
-                    if (dateStr >= last7FirstStr && dateStr <= todayStr) {
-                        dailyJournalLast7++;
-                        const rdi = last7IndexMap.get(dateStr);
-                        if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
-                        if (!mirrored) {
-                            dailyJournalUnmirroredLast7++;
-                            if (rdi != null && rdi >= 0) dailyJournalUnmirroredByDay[rdi]++;
-                        }
+                });
+            }
+            journalMarks.forEach(({ uid, dateStr, recordedAt }) => {
+                dailyJournalAll++;
+                const wi = weekIndexForDateKeyStr(dateStr, sundayKeyToIndex);
+                const mirrored = mirroredJournalKeys.has(`${uid}|${dateStr}`);
+                /**
+                 * 「다시 세는 구간」은 증분에서만 뜻이 있다. dailyComments 는 맵이라
+                 * 「어느 항목이 새로 생겼는지」를 문서 단위로 가릴 수 없어, 증분에서는 전량을
+                 * 훑되 구간 밖은 세지 않는다 — 그 몫은 캐시에 이미 들어 있다.
+                 * 전량·미러 모드는 캐시를 쓰지 않으므로 항상 참이다.
+                 */
+                const inRescanWindow = !useIncremental || dateStr >= rescanStartKey;
+                if (!mirrored && inRescanWindow) {
+                    if (wi >= 0) dailyJournalUnmirroredByWeek[wi]++;
+                    // 미러가 있는 몫은 meals 스캔에서 이미 시간대에 넣었다
+                    const jSlot = hourSlotForJournalEntry(dateStr, { recordedAt });
+                    addHourRecord(jSlot);
+                    addRecordedUser(jSlot, uid);
+                }
+                if (wi >= 0 && inRescanWindow) dailyJournalByWeek[wi]++;
+                if (dateStr === todayStr) {
+                    dailyJournalToday++;
+                    if (!mirrored) dailyJournalUnmirroredToday++;
+                }
+                if (dateStr >= last7FirstStr && dateStr <= todayStr) {
+                    dailyJournalLast7++;
+                    const rdi = last7IndexMap.get(dateStr);
+                    if (rdi != null && rdi >= 0) dailyJournalByDay[rdi]++;
+                    if (!mirrored) {
+                        dailyJournalUnmirroredLast7++;
+                        if (rdi != null && rdi >= 0) dailyJournalUnmirroredByDay[rdi]++;
                     }
                 }
             });
-            journalCountedFromConfig = true;
+            journalCountedFromSource = true;
         } catch (djErr) {
             if (djErr?.code !== 'skip-config-scan') {
                 console.warn(
@@ -1720,10 +1909,10 @@ export async function getUserStatistics(options = {}) {
         const journalMirrorAll = Math.max(0, slotAllArr[JOURNAL_MIRROR_COUNT_INDEX] ?? 0);
         /**
          * 하루 소감은 config 와 meals 미러 양쪽에 있어 그냥 더하면 두 번 세어진다.
-         * 그래서 미러를 덜어내고 config 쪽을 얹는데 — **config 를 못 읽었다면 얘기가 다르다.**
+         * 그래서 미러를 덜어내고 소감 쪽을 얹는데 — **그 출처를 못 읽었다면 얘기가 다르다.**
          * 그때는 미러가 유일한 출처라 덜어내면 그대로 사라진다.
          */
-        stats.records.all = journalCountedFromConfig
+        stats.records.all = journalCountedFromSource
             ? Math.max(0, recordsAllCount - journalMirrorAll) + dailyJournalAll
             : recordsAllCount;
         stats.records.today = recordsToday + dailyJournalUnmirroredToday;
@@ -1754,19 +1943,27 @@ export async function getUserStatistics(options = {}) {
             };
         });
 
-        const userIds = userIdsForSlots;
-        const UID_BATCH = 30;
-        for (let i = 0; i < userIds.length; i += UID_BATCH) {
-            const chunk = userIds.slice(i, i + UID_BATCH);
-            await Promise.all(
-                chunk.map(async (uid) => {
-                    try {
-                        const mc = collection(db, 'artifacts', appId, 'users', uid, 'meals');
-                        const n = await countQ(query(mc));
-                        if (n > 0) activeUserSets.all.add(uid);
-                    } catch (_) {}
-                })
-            );
+        /**
+         * 「기록이 하나라도 있는 사람」 — 활성 사용자·전체.
+         * 서버 경로에서는 사용자 한 명당 count 쿼리를 한 번씩 던졌다(사용자가 늘면 그대로 는다).
+         */
+        if (useMirror) {
+            distinctMealUserIds(mirrorSource.mealRows, excluded).forEach((uid) => activeUserSets.all.add(uid));
+        } else {
+            const userIds = userIdsForSlots;
+            const UID_BATCH = 30;
+            for (let i = 0; i < userIds.length; i += UID_BATCH) {
+                const chunk = userIds.slice(i, i + UID_BATCH);
+                await Promise.all(
+                    chunk.map(async (uid) => {
+                        try {
+                            const mc = collection(db, 'artifacts', appId, 'users', uid, 'meals');
+                            const n = await countQ(query(mc));
+                            if (n > 0) activeUserSets.all.add(uid);
+                        } catch (_) {}
+                    })
+                );
+            }
         }
 
         usersSnapshot.docs.forEach((userDoc) => {
@@ -1801,9 +1998,16 @@ export async function getUserStatistics(options = {}) {
         stats.totalUsers = Math.max(usersFromCollection, stats.newUsers.all);
 
         try {
-            let sharedAll = await countQ(query(sharedColl));
-            for (const exUid of excluded) {
-                sharedAll -= await countQ(query(sharedColl, where('userId', '==', exUid)));
+            let sharedAll;
+            if (useMirror) {
+                sharedAll = mirrorSource.sharedDocs.filter(
+                    (d) => !excluded.has(String(d.data()?.userId || ''))
+                ).length;
+            } else {
+                sharedAll = await countQ(query(sharedColl));
+                for (const exUid of excluded) {
+                    sharedAll -= await countQ(query(sharedColl, where('userId', '==', exUid)));
+                }
             }
             stats.sharedPhotos.all = sharedAll;
             stats.totalSharedPhotos = stats.sharedPhotos.all;
@@ -1830,9 +2034,20 @@ export async function getUserStatistics(options = {}) {
             // 공유는 소급이 없다 — timestamp 가 곧 공유한 순간이라 과거 칸은 다시 바뀌지 않는다
             const tsRangeLo = Timestamp.fromDate(useIncremental ? rescanStartDate : firstSunDate);
 
-            const sharedRangeSnap = await getDocs(
-                query(sharedColl, where('timestamp', '>=', tsRangeLo), where('timestamp', '<', tsEnd))
-            );
+            const tsRangeLoMs = tsRangeLo.toDate().getTime();
+            const sharedRangeSnap = useMirror
+                ? snapshotFromDocs(
+                      mirrorSource.sharedDocs.filter((d) => {
+                          const raw = d.data()?.timestamp;
+                          const ts = raw && raw.toDate ? raw.toDate() : null;
+                          if (!ts || Number.isNaN(ts.getTime())) return false;
+                          // 서버 쿼리와 같은 반열린 구간 [시작, 내일 0시)
+                          return ts.getTime() >= tsRangeLoMs && ts.getTime() < tTomorrow;
+                      })
+                  )
+                : await getDocs(
+                      query(sharedColl, where('timestamp', '>=', tsRangeLo), where('timestamp', '<', tsEnd))
+                  );
             sharedRangeSnap.forEach((docSnap) => {
                 const data = docSnap.data();
                 if (excluded.has(String(data.userId || ''))) return;
@@ -1866,6 +2081,14 @@ export async function getUserStatistics(options = {}) {
         stats.activeUsers.all = activeUserSets.all.size;
         stats.activeUsers.last7 = activeUserSets.last7.size;
         stats.activeUsers.today = activeUserSets.today.size;
+        /**
+         * 「전체」는 누적이라 축과 무관하다 — 어느 날 적었든 「기록이 하나라도 있는 사람」은
+         * 같은 집합이다. 그래서 활성 사용자의 전체를 그대로 쓴다(추가 읽기 0).
+         * 축이 갈리는 것은 날짜 칸뿐이고, 그건 아래 recordedUserSets 가 센다.
+         */
+        stats.recordedUsers.all = activeUserSets.all.size;
+        stats.recordedUsers.last7 = recordedUserSetsLast7.size;
+        stats.recordedUsers.today = recordedUserSetsToday.size;
         stats.totalMeals = stats.records.all;
 
         const recordsBySlotBreakdown = {};
@@ -1876,6 +2099,7 @@ export async function getUserStatistics(options = {}) {
             dates: last7DateKeys,
             newUsers: [...newUsersByDay],
             activeUsers: activeSetsByDay.map((s) => s.size),
+            recordedUsers: recordedUserSetsByDay.map((s) => s.size),
             records: [...recordsByDay],
             recordsBySlot: recordsBySlotBreakdown,
             recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
@@ -1894,7 +2118,9 @@ export async function getUserStatistics(options = {}) {
                       }));
                       const mg = buildMonthHeaderGroupsWithStarts(weeksPayload);
                       const computedActive = activeSetsByWeek.map((x) => x.size);
-                      const computedMonthUnique = computeActiveUsersMonthUnique(activeSetsByWeek, mg);
+                      const computedMonthUnique = computeMonthUniqueFromWeekSets(activeSetsByWeek, mg);
+                      const computedRecorded = recordedUserSetsByWeek.map((x) => x.size);
+                      const computedRecordedMonthUnique = computeMonthUniqueFromWeekSets(recordedUserSetsByWeek, mg);
 
                       if (!useIncremental) {
                           return {
@@ -1902,6 +2128,8 @@ export async function getUserStatistics(options = {}) {
                               newUsers: [...newUsersByWeek],
                               activeUsers: computedActive,
                               activeUsersMonthUnique: computedMonthUnique,
+                              recordedUsers: computedRecorded,
+                              recordedUsersMonthUnique: computedRecordedMonthUnique,
                               records: [...recordsByWeek],
                               recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
                               recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
@@ -1936,6 +2164,14 @@ export async function getUserStatistics(options = {}) {
                           activeUsersMonthUnique: mergeUnique(
                               cw.activeUsersMonthUnique,
                               computedMonthUnique,
+                              monthFromIdx,
+                              mg.length
+                          ),
+                          // 다시 세는 구간은 recordedAt 축으로 통째로 다시 읽으므로 그대로 신뢰한다
+                          recordedUsers: mergeUnique(cw.recordedUsers, computedRecorded, rescanFromIdx, nWeeks),
+                          recordedUsersMonthUnique: mergeUnique(
+                              cw.recordedUsersMonthUnique,
+                              computedRecordedMonthUnique,
                               monthFromIdx,
                               mg.length
                           ),
@@ -2044,7 +2280,7 @@ export async function getUserStatistics(options = {}) {
             }
         };
 
-        stats.aggregationMode = useIncremental ? 'incremental' : 'full';
+        stats.aggregationMode = useIncremental ? 'incremental' : useMirror ? 'mirror' : 'full';
         console.log('📊 대시보드 통계(최적화 집계):', stats);
         return stats;
     } catch (e) {
@@ -2138,6 +2374,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     if (stats) {
         set('statNewUsersAll', stats.newUsers?.all);
         set('statActiveUsersAll', stats.activeUsers?.all);
+        set('statRecordedUsersAll', stats.recordedUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
         set('statDailyJournalAll', stats.dailyJournal?.all);
@@ -2145,12 +2382,14 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
         fillDashboard7dNumericRow('statActiveUsers7d', bd?.activeUsers, stats.activeUsers?.last7);
+        fillDashboard7dNumericRow('statRecordedUsers7d', bd?.recordedUsers, stats.recordedUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
         fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
+        set('statRecordedUsers7Sum', stats.recordedUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
         set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
@@ -2191,7 +2430,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
         const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -2301,7 +2540,9 @@ export async function updateStatistics() {
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
         renderDashboardStats(stats, data.updatedAt, last7Breakdown, data.lastFullAggregatedAt || null);
-        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null);
+        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null).catch((e) => {
+            console.warn('[대시보드] 주간 정기 재집계 판단 실패:', e?.message || e);
+        });
         let pageUsage = data.pageUsage || null;
         if (pageUsage && pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage)) {
             try {
@@ -2328,32 +2569,62 @@ export async function updateStatistics() {
 /**
  * 새로고침.
  *
- * 기본은 **증분** — 지난 집계 이후 달라진 것만 읽어 캐시에 얹는다. meals 를 전량 읽던
- * 시절엔 한 번 누를 때마다 1만 건이 넘었는데, 그중 지난 주차 숫자는 이미 확정된 값이었다.
+ * **로컬 미러가 기본 경로다.** meals·users·sharedPhotos 를 브라우저 사본에서 읽고,
+ * 서버로는 변경분만 당겨온다. 그러면 「전량이라 비싸다」는 전제가 사라지므로
+ * 집계는 **언제나 전량**이 된다 — 얼린 과거 주차도, 소급 delta 도 쓰지 않는다.
  *
- * `{ full: true }` 는 전량 재집계다. 증분이 놓치는 것 — 지난 주차 기록의 **수정·삭제**,
- * **제외 UID 변경** — 을 청소하려면 이쪽을 써야 한다.
+ * 두 버튼의 차이는 이제 **미러를 얼마나 믿느냐**다.
+ *   새로고침      미러 델타 동기화 → 전량 재계산
+ *   전체 재집계    미러를 통째로 다시 받고(`full`) → 전량 재계산
+ *
+ * 미러를 못 쓰면(첫 실행 실패·인덱스 미배포·저장소 거부) 예전 서버 경로로 물러난다.
+ * 그때는 옛 규칙 그대로 — 기본이 증분, `full` 이 전량이다.
  */
 export async function refreshDashboardStats(options = {}) {
     const full = options?.full === true;
+    /**
+     * 미러를 통째로 다시 받을지. 기본은 `full` 을 따르되 따로 끌 수 있다 —
+     * 주간 정기 재집계처럼 **사람이 누르지 않은** 경로가 화면을 여는 순간 부트스트랩
+     * 1.2만 읽기를 부르면, 미러로 없앤 비용이 그대로 돌아온다.
+     */
+    const forceMirror = options?.forceMirror ?? full;
     // 주간 정기 재집계는 사람이 누른 게 아니다 — 실패했다고 경고창을 띄우면 안 된다
     const silent = options?.silent === true;
     try {
         await runAdminRefreshAction(
-            document.getElementById(full ? 'dashboardStatsFullRefreshBtn' : 'dashboardStatsRefreshBtn'),
+            // 「전체 재집계」 버튼은 미러 콘솔로 옮겨졌다 — full 이어도 새로고침 버튼을 잠가
+            // 대시보드 탭에서도 진행 중임이 보이게 한다 (동시에 또 누르는 것도 막는다)
+            document.getElementById('dashboardStatsRefreshBtn'),
             async () => {
                 const prevSnap = await getDoc(DASHBOARD_STATS_REF());
                 const prevData = prevSnap.exists() ? prevSnap.data() : null;
                 // 집계가 읽어들인 시점 — 다음 증분의 기준이 된다.
                 // 집계 **전** 시각을 찍어야 도는 동안 들어온 기록을 다음 번에 놓치지 않는다.
                 const aggregationStartedAt = new Date().toISOString();
+
+                let mirrorSource = null;
+                try {
+                    mirrorSource = await loadDashboardMirrorSource({ force: forceMirror });
+                } catch (mirrErr) {
+                    console.warn(
+                        '[대시보드] 로컬 미러를 쓸 수 없어 서버 집계로 돌아갑니다:',
+                        mirrErr?.message || mirrErr
+                    );
+                }
+
+                const statsOptions = mirrorSource
+                    ? { mode: 'mirror', mirrorSource }
+                    : full
+                      ? { mode: 'full' }
+                      : { mode: 'incremental', cached: prevData };
                 const [stats, pageUsage] = await Promise.all([
-                    getUserStatistics(full ? { mode: 'full' } : { mode: 'incremental', cached: prevData }),
-                    aggregatePageUsageFromFirestore(prevData)
+                    getUserStatistics(statsOptions),
+                    aggregatePageUsageFromFirestore(prevData, mirrorSource?.usageDailyDocs || null)
                 ]);
                 const payload = {
                     newUsers: stats.newUsers,
                     activeUsers: stats.activeUsers,
+                    recordedUsers: stats.recordedUsers,
                     records: stats.records,
                     recordsBySlot: stats.recordsBySlot,
                     recordsByHour: stats.recordsByHour,
@@ -2365,12 +2636,40 @@ export async function refreshDashboardStats(options = {}) {
                     asOfDate: getTodayDateString(),
                     lastAggregatedAt: aggregationStartedAt,
                     lastAggregationMode: stats.aggregationMode || (full ? 'full' : 'incremental'),
-                    // 증분은 이 값을 건드리지 않고 물려받는다 — merge 없는 setDoc 이라 빠뜨리면 사라진다
-                    lastFullAggregatedAt:
-                        stats.aggregationMode === 'full' ? aggregationStartedAt : prevData?.lastFullAggregatedAt || null,
+                    // lastFullAggregatedAt·weeklyFullRefreshClaim 은 아래 트랜잭션에서 정한다
                     updatedAt: serverTimestamp()
                 };
-                await setDoc(DASHBOARD_STATS_REF(), payload);
+                /**
+                 * 전량 완료 도장(lastFullAggregatedAt)을 증분이 덮어 되돌리지 않게 한다.
+                 *
+                 * 집계는 몇 분이 걸린다. 그 사이에 주간 정기 전량이 끝나 도장을 찍었는데,
+                 * 집계 **시작 전** 스냅샷인 prevData 에서 도장을 물려받아 merge 없는 setDoc 으로
+                 * 덮으면 도장이 옛값으로 돌아간다. 그럼 다음 날 아침에 전량이 또 돌고,
+                 * 한 번에 meals 전량을 다시 읽는다(실측 약 12.6K 읽기).
+                 *
+                 * 그래서 저장 직전에 서버 값을 다시 읽어, 증분은 **그때의 최신 도장**을 그대로
+                 * 놓아둔다. 본문은 지금까지처럼 통째로 덮는다 — 옆가지로 불어난 옛 필드를 지우려면
+                 * merge 없는 쓰기가 필요하기 때문이다.
+                 */
+                let finalFullAggregatedAt = null;
+                await runTransaction(db, async (tx) => {
+                    const curSnap = await tx.get(DASHBOARD_STATS_REF());
+                    const serverStamp = curSnap.exists() ? curSnap.data()?.lastFullAggregatedAt || null : null;
+                    // 미러 집계도 전량이다 — 얼린 구간이 없으므로 도장을 찍을 자격이 있다
+                    const wasFull = stats.aggregationMode === 'full' || stats.aggregationMode === 'mirror';
+                    finalFullAggregatedAt = wasFull ? aggregationStartedAt : serverStamp;
+                    // 주간 재집계 빗장도 서버 값을 그대로 둔다 — merge 없는 쓰기라 빠뜨리면
+                    // 전량이 도는 중에 누른 증분 새로고침이 빗장을 지워, 다른 탭이 같은 집계를
+                    // 또 시작한다. (리스는 시간으로 풀리므로 남은 표식이 영영 잠그지는 않는다)
+                    const serverClaim = curSnap.exists() ? curSnap.data()?.weeklyFullRefreshClaim || null : null;
+                    tx.set(DASHBOARD_STATS_REF(), {
+                        ...payload,
+                        lastFullAggregatedAt: finalFullAggregatedAt,
+                        weeklyFullRefreshClaim: serverClaim
+                    });
+                });
+                // 아래 렌더링이 같은 값을 보도록 맞춰 둔다
+                payload.lastFullAggregatedAt = finalFullAggregatedAt;
                 // 명단(UID)은 본문 문서가 1MB 한계로 커지지 않도록 drilldown 하위 문서에 나눠 저장.
                 // 실패해도 숫자 통계는 이미 저장됐으므로 새로고침 전체를 실패로 만들지 않는다.
                 try {
@@ -2411,11 +2710,64 @@ export async function refreshDashboardStats(options = {}) {
 }
 
 /**
- * 주간 정기 전체 재집계를 한 세션에 두 번 걸지 않기 위한 빗장.
- * 탭을 여러 개 띄우면 각 탭이 따로 판단하므로 완벽하진 않지만,
- * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것은 막는다.
+ * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것을 막는 1차 빗장.
+ * 탭 사이는 이것으로 못 막으므로 `claimWeeklyFullRefresh` 가 이어받는다 —
+ * 여기서 먼저 걸러 주는 덕에 흔한 경우에는 트랜잭션 왕복조차 하지 않는다.
  */
 let weeklyFullRefreshStarted = false;
+
+/**
+ * 주간 재집계 빗장의 유효 기간.
+ *
+ * 빗장을 잡은 탭이 집계 도중 닫히면 표식만 남는다. 그래서 **시간으로 풀리는 리스**로 둔다
+ * (`utils/with-deadline.js` 의 Lease 와 같은 이유 — 해제 코드에 도달해야만 풀리는 불린은
+ * 어딘가에서 매달리면 영영 잠긴다). 이 시간이 지나면 버려진 것으로 보고 다른 탭이 다시 잡는다.
+ * 전량 집계가 실제로 도는 시간보다 넉넉해야 하고, 한 주보다는 훨씬 짧아야 한다.
+ */
+const WEEKLY_FULL_REFRESH_LEASE_MS = 30 * 60 * 1000;
+
+/**
+ * 주간 전체 재집계를 이 탭이 맡을지 **탭 간에** 정한다.
+ *
+ * 모듈 변수 빗장(`weeklyFullRefreshStarted`)은 한 탭 안에서만 유효하다. 관리자가 탭을 두 개
+ * 띄우면 각 탭이 따로 판단해 전량 집계를 각각 돌리는데, 한 번이 meals 1만 건대 스캔이라
+ * 그대로 읽기 비용이 곱해진다. 그래서 표식을 캐시 문서에 두고 **트랜잭션으로** 잡는다 —
+ * 둘이 동시에 읽고 동시에 쓰는 창을 없애려면 조건부 쓰기여야 한다.
+ *
+ * 실패하면 **잡지 않은 것으로 친다.** 못 잡아서 생기는 손해는 이번 주 숫자가 조금 늦게
+ * 정리되는 것뿐이고(대시보드를 다음에 열 때 다시 시도한다), 잘못 잡아서 생기는 손해는
+ * 전량 스캔이 한 번 더 도는 것이다. 비용이 큰 쪽을 피한다.
+ *
+ * @param {string} sundayKey 오늘이 속한 주의 일요일 키
+ * @returns {Promise<boolean>} 이 탭이 맡기로 했는가
+ */
+async function claimWeeklyFullRefresh(sundayKey) {
+    return withDeadlineOr(
+        () =>
+            runTransaction(db, async (tx) => {
+                const snap = await tx.get(DASHBOARD_STATS_REF());
+                const data = snap.exists() ? snap.data() : null;
+                // 읽는 사이에 다른 탭이 이미 끝냈을 수 있다 — 트랜잭션 안에서 다시 본다
+                if (!needsWeeklyFullRefresh(data?.lastFullAggregatedAt || null, sundayKey)) return false;
+                const claim = data?.weeklyFullRefreshClaim;
+                const claimedAt = Date.parse(claim?.at || '');
+                const held =
+                    claim?.sundayKey === sundayKey &&
+                    !Number.isNaN(claimedAt) &&
+                    Date.now() - claimedAt < WEEKLY_FULL_REFRESH_LEASE_MS;
+                if (held) return false;
+                tx.set(
+                    DASHBOARD_STATS_REF(),
+                    { weeklyFullRefreshClaim: { sundayKey, at: new Date().toISOString() } },
+                    { merge: true }
+                );
+                return true;
+            }),
+        DEADLINE.DOC,
+        false,
+        'dashboard-weekly-full-refresh-claim'
+    );
+}
 
 /**
  * 주가 바뀌었으면 전체 재집계를 **백그라운드로** 시작한다.
@@ -2426,16 +2778,29 @@ let weeklyFullRefreshStarted = false;
  *
  * 실패해도 조용히 넘어간다 — 다음에 열 때 다시 시도한다.
  */
-function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
+async function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
     if (weeklyFullRefreshStarted) return;
     const todayKey = getTodayDateString();
     const sundayKey = sundayKeyForDateKey(todayKey);
     if (!needsWeeklyFullRefresh(lastFullAggregatedAt, sundayKey)) return;
+    // 빗장을 잡으러 가기 전에 세운다 — 확보를 기다리는 동안 이 탭이 또 들어오지 않게
     weeklyFullRefreshStarted = true;
+
+    const claimed = await claimWeeklyFullRefresh(sundayKey);
+    if (!claimed) {
+        console.log('[대시보드] 주간 정기 재집계는 다른 탭이 맡았거나 이미 끝났습니다 — 건너뜁니다', {
+            sundayKey
+        });
+        // 그 탭이 끝내지 못하면 리스가 만료되고, 대시보드를 다시 열 때 이 탭이 잡는다
+        weeklyFullRefreshStarted = false;
+        return;
+    }
+
     console.log('[대시보드] 주간 정기 전체 재집계를 시작합니다', { lastFullAggregatedAt, sundayKey });
     const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
     if (fullLabel) fullLabel.textContent = '전체 업데이트: 정리 중…';
-    refreshDashboardStats({ full: true, silent: true }).catch((e) => {
+    // 미러는 강제로 다시 받지 않는다 — 자동 경로가 부트스트랩을 부르면 본전이 없다
+    refreshDashboardStats({ full: true, silent: true, forceMirror: false }).catch((e) => {
         console.warn('[대시보드] 주간 정기 재집계 실패 — 다음에 다시 시도합니다:', e?.message || e);
         weeklyFullRefreshStarted = false;
         const el = document.getElementById('dashboardStatsFullUpdatedAt');

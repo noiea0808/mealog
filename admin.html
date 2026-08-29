@@ -163,10 +163,7 @@
                                 <span id="dashboardStatsFullUpdatedAt" class="text-[11px] text-slate-400">전체 업데이트: -</span>
                                 <span id="dashboardStatsUpdatedAt" class="text-xs text-slate-500">최근 업데이트: -</span>
                             </div>
-                            <button type="button" id="dashboardStatsFullRefreshBtn" onclick="window.refreshDashboardStatsFull()" title="지난 주차 기록의 수정·삭제, 제외 UID 변경까지 반영합니다. 읽기가 많으니 가끔만 누르세요." class="inline-flex items-center justify-center gap-2 px-3 py-2 min-w-[7.5rem] bg-white text-slate-600 text-sm font-bold rounded-xl border border-slate-300 hover:bg-slate-50 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
-                                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>전체 재집계</span>
-                            </button>
-                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" title="지난 집계 이후 달라진 것만 읽습니다." class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
+                            <button type="button" id="dashboardStatsRefreshBtn" onclick="window.refreshDashboardStats()" title="로컬 미러에 바뀐 것만 받아 전 구간을 다시 셉니다. 미러를 통째로 다시 받는 「전체 재집계」는 모니터링 > 로컬 미러에 있습니다." class="inline-flex items-center justify-center gap-2 px-4 py-2 min-w-[9.5rem] bg-emerald-600 text-white text-sm font-bold rounded-xl hover:bg-emerald-700 transition-colors shrink-0 disabled:opacity-90 disabled:cursor-wait" aria-live="polite">
                                 <i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>새로고침</span>
                             </button>
                         </div>
@@ -236,11 +233,11 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statShared7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statShared7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 hover:bg-slate-50/50" data-dash-week-row="records">
-                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-white group-hover:bg-slate-50/50 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
-                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-utensils text-orange-600"></i>기록 · 전체</span>
+                                <tr class="group border-b border-slate-200 border-t-2 border-t-slate-400 [&_td]:bg-orange-200 hover:[&_td]:bg-orange-300/70" data-dash-week-row="records">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-orange-200 group-hover:bg-orange-300/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle">
+                                        <span class="inline-flex items-center gap-2"><i class="fa-solid fa-utensils text-orange-700"></i>기록 · 전체</span>
                                     </td>
-                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-white group-hover:bg-slate-50/50 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecordsAll">-</td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-800 sticky left-[8rem] z-20 bg-orange-200 group-hover:bg-orange-300/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecordsAll">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecords7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d1">—</td>
@@ -250,9 +247,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecords7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecords7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:pre_morning" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침 전 간식</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_pre_morning_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-50 hover:[&_td]:bg-orange-100" data-dash-week-row="slot:pre_morning" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-50 group-hover:bg-orange-100 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침 전 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-50 group-hover:bg-orange-100 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_pre_morning_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_pre_morning_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d1">—</td>
@@ -262,9 +259,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_pre_morning_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_pre_morning_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:morning" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_morning_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-100 hover:[&_td]:bg-orange-200" data-dash-week-row="slot:morning" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-100 group-hover:bg-orange-200 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>아침</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-100 group-hover:bg-orange-200 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_morning_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_morning_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d1">—</td>
@@ -274,9 +271,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_morning_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_morning_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:snack1" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오전 간식</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack1_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-50 hover:[&_td]:bg-orange-100" data-dash-week-row="slot:snack1" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-50 group-hover:bg-orange-100 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오전 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-50 group-hover:bg-orange-100 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack1_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_snack1_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d1">—</td>
@@ -286,9 +283,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack1_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_snack1_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:lunch" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>점심</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_lunch_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-100 hover:[&_td]:bg-orange-200" data-dash-week-row="slot:lunch" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-100 group-hover:bg-orange-200 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>점심</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-100 group-hover:bg-orange-200 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_lunch_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_lunch_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d1">—</td>
@@ -298,9 +295,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_lunch_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_lunch_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:snack2" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오후 간식</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack2_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-50 hover:[&_td]:bg-orange-100" data-dash-week-row="slot:snack2" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-50 group-hover:bg-orange-100 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>오후 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-50 group-hover:bg-orange-100 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_snack2_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_snack2_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d1">—</td>
@@ -310,9 +307,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_snack2_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_snack2_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="slot:dinner" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>저녁</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_dinner_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-100 hover:[&_td]:bg-orange-200" data-dash-week-row="slot:dinner" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-100 group-hover:bg-orange-200 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>저녁</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-100 group-hover:bg-orange-200 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_dinner_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_dinner_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d1">—</td>
@@ -322,9 +319,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_dinner_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_dinner_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-100 hover:[&_td]:bg-slate-200/70" data-dash-week-row="slot:night" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-100 group-hover:bg-slate-200/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>야식</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-100 group-hover:bg-slate-200/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_night_all">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-50 hover:[&_td]:bg-orange-100" data-dash-week-row="slot:night" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-50 group-hover:bg-orange-100 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-orange-500 mr-1" aria-hidden="true">·</span>저녁 후 간식</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-50 group-hover:bg-orange-100 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statRecSlot_night_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecSlot_night_7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d1">—</td>
@@ -334,9 +331,9 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statRecSlot_night_7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statRecSlot_night_7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-100 [&_td]:bg-slate-200 hover:[&_td]:bg-slate-300/65" data-dash-week-row="dailyJournal" data-dash-slot-row="1">
-                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-slate-200 group-hover:bg-slate-300/65 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-teal-600 mr-1" aria-hidden="true">·</span>하루 소감</td>
-                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-slate-200 group-hover:bg-slate-300/65 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statDailyJournalAll">-</td>
+                                <tr class="group border-b border-slate-100 [&_td]:bg-orange-100 hover:[&_td]:bg-orange-200" data-dash-week-row="dailyJournal" data-dash-slot-row="1">
+                                    <td class="px-1.5 py-1.5 text-slate-600 font-semibold text-xs pl-3 sticky left-0 z-20 bg-orange-100 group-hover:bg-orange-200 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle"><span class="text-teal-600 mr-1" aria-hidden="true">·</span>하루 소감</td>
+                                    <td class="px-2 py-1.5 text-center text-xs font-bold text-slate-800 tabular-nums sticky left-[8rem] z-20 bg-orange-100 group-hover:bg-orange-200 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-100 align-middle" id="statDailyJournalAll">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statDailyJournal7Sum">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statDailyJournal7d0">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statDailyJournal7d1">—</td>
@@ -346,7 +343,19 @@
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums" id="statDailyJournal7d5">—</td>
                                     <td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums border-r border-slate-100" id="statDailyJournal7d6">—</td>
                                 </tr>
-                                <tr class="group border-b border-slate-200 border-t-2 border-t-slate-400 [&_td]:bg-sky-200 hover:[&_td]:bg-sky-300/70" data-dash-week-row="hourTotal">
+                                <tr class="group border-b border-slate-200 border-t-2 border-t-slate-400 [&_td]:bg-sky-300 hover:[&_td]:bg-sky-400/60" data-dash-week-row="recordedUsers">
+                                    <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-sky-300 group-hover:bg-sky-400/60 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-200 align-middle" title="그 날 실제로 앱을 켜서 적은 유니크 사용자 수(기록 시각 기준). 활성 사용자는 식사 날짜 기준이라 값이 다릅니다 — 어제 끼니를 오늘 적으면 활성은 어제, 이쪽은 오늘입니다."><span class="inline-flex items-center gap-2"><i class="fa-solid fa-user-clock text-sky-800"></i>기록한 사람</span></td>
+                                    <td class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums sticky left-[8rem] z-20 bg-sky-300 group-hover:bg-sky-400/60 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-200 align-middle" title="누적이라 축과 무관합니다 — 기록이 하나라도 있는 사용자 수(활성 사용자 「전체」와 같은 값). 날짜별로 갈리는 것은 오른쪽 칸들입니다." id="statRecordedUsersAll">-</td>
+                                    <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecordedUsers7Sum">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d0">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d1">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d2">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d3">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d4">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums" id="statRecordedUsers7d5">—</td>
+                                    <td class="px-1 py-2 text-center text-xs font-bold text-slate-900 tabular-nums border-r border-slate-100" id="statRecordedUsers7d6">—</td>
+                                </tr>
+                                <tr class="group border-b border-slate-200 [&_td]:bg-sky-200 hover:[&_td]:bg-sky-300/70" data-dash-week-row="hourTotal">
                                     <td class="px-2 py-2 text-sm font-bold text-slate-700 sticky left-0 z-20 bg-sky-200 group-hover:bg-sky-300/70 w-[8rem] min-w-[8rem] max-w-[8rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-200 align-middle"><span class="inline-flex items-center gap-2"><i class="fa-solid fa-clock text-sky-700"></i>기록 시각별</span></td>
                                     <td class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums sticky left-[8rem] z-20 bg-sky-200 group-hover:bg-sky-300/70 min-w-[4.5rem] shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-200 align-middle" id="statRecHourTotal_all">-</td>
                                     <td data-dash-7block-start class="px-2 py-2 text-center text-sm font-bold text-slate-900 tabular-nums border-l border-slate-100 !bg-slate-300/90" id="statRecHourTotal_7Sum">—</td>
@@ -509,7 +518,7 @@
                 <div id="dashboard-panel-excluded" class="hidden bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-8">
                     <div class="px-4 pt-4 pb-2">
                         <p class="text-sm text-slate-600 leading-relaxed">
-                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">전체 재집계</span>를 눌러야 지난 주차까지 반영됩니다 — 일반 「새로고침」은 최근 구간만 다시 셉니다.
+                            트렌드·페이지별 집계 및 앱 내 사용량 로깅에서 제외할 Firebase UID를 관리합니다. 변경 후 대시보드 <span class="font-bold text-slate-700">새로고침</span>을 누르면 지난 주차까지 반영됩니다 — 집계가 로컬 미러 위에서 매번 전 구간을 다시 세기 때문입니다. 미러를 쓸 수 없어 서버 집계로 물러난 경우에만 <span class="font-bold text-slate-700">전체 재집계</span>(모니터링 > 로컬 미러)가 필요합니다.
                         </p>
                     </div>
                     <div class="px-4 pb-4 flex flex-wrap items-end gap-2 border-b border-slate-100">
@@ -549,6 +558,9 @@
                             <button onclick="window.switchMonitoringSidebar('feed')" id="monitoring-sidebar-feed" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-images mr-2"></i>모먼트 관리
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('momentAnalytics')" id="monitoring-sidebar-momentAnalytics" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-chart-column mr-2"></i>모먼트 분석
+                            </button>
                             <button onclick="window.switchMonitoringSidebar('lounge')" id="monitoring-sidebar-lounge" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-comment-dots mr-2"></i>밀톡 관리
                             </button>
@@ -564,6 +576,9 @@
                             <button onclick="window.switchMonitoringSidebar('userCreatedAtBackfill')" id="monitoring-sidebar-userCreatedAtBackfill" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
                                 <i class="fa-solid fa-calendar-plus mr-2"></i>가입일 백필
                             </button>
+                            <button onclick="window.switchMonitoringSidebar('mirror')" id="monitoring-sidebar-mirror" class="monitoring-subtab-btn px-4 py-2 text-sm font-bold text-slate-500 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl whitespace-nowrap transition-colors">
+                                <i class="fa-solid fa-hard-drive mr-2"></i>로컬 미러
+                            </button>
                         </div>
                     </div>
 
@@ -575,39 +590,15 @@
                                 <div class="p-6 border-b border-slate-100">
                                     <!-- 필터 및 관리 기능 버튼 -->
                                     <div class="flex gap-4 mb-4 items-center flex-wrap">
-                                        <div class="flex items-center gap-2">
-                                            <label class="text-sm font-bold text-slate-700">공유:</label>
-                                            <button onclick="window.toggleFeedFilter('shared')" id="feed-filter-shared-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <label class="text-sm font-bold text-slate-700">사진:</label>
-                                            <button onclick="window.toggleFeedFilter('hasPhotos')" id="feed-filter-hasPhotos-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                                        </div>
-                                        <div class="flex items-center gap-2">
-                                            <label class="text-sm font-bold text-slate-700">금지:</label>
-                                            <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
-                                        </div>
-                                        <div class="flex items-center gap-2 min-w-0 flex-1 sm:flex-none max-w-full sm:max-w-md">
-                                            <label for="feedAuthorSearchInput" class="text-sm font-bold text-slate-700 shrink-0">작성자:</label>
-                                            <input type="search" id="feedAuthorSearchInput" enterkeyhint="search" autocomplete="off" placeholder="닉네임·이메일·UID 검색" class="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30" />
-                                            <button type="button" id="feedAuthorSearchClearBtn" class="hidden shrink-0 px-2.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 border border-slate-200">지우기</button>
-                                        </div>
-                                        <div id="feedAuthorFilterBar" class="hidden basis-full"></div>
+                                        <button type="button" id="feedFilterOpenBtn" onclick="window.openFeedFilterModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-colors bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200">
+                                            <i class="fa-solid fa-filter" aria-hidden="true"></i><span id="feedFilterOpenBtnLabel">필터</span>
+                                        </button>
+                                        <button type="button" id="feedBulkOpenBtn" onclick="window.openFeedBulkModal()" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-colors bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200">
+                                            <i class="fa-solid fa-list-check" aria-hidden="true"></i><span id="feedBulkOpenBtnLabel">일괄 작업</span>
+                                        </button>
                                         <div class="flex gap-2 items-center ml-auto">
                                             <button type="button" id="adminRefreshFeedBtn" onclick="window.refreshFeedManagement()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-sm font-bold hover:bg-slate-200 transition-colors">
                                                 <i class="fa-solid fa-sync-alt" aria-hidden="true"></i><span>새로고침</span>
-                                            </button>
-                                            <button onclick="window.bulkUnsharePosts()" class="px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
-                                                <i class="fa-solid fa-share-slash mr-1"></i>공유 취소
-                                            </button>
-                                            <button onclick="window.bulkBanPosts()" class="px-3 py-2 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200 transition-colors">
-                                                <i class="fa-solid fa-ban mr-1"></i>공유 금지
-                                            </button>
-                                            <button onclick="window.bulkUnbanPosts()" class="px-3 py-2 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
-                                                <i class="fa-solid fa-check mr-1"></i>금지 해제
-                                            </button>
-                                            <button type="button" onclick="window.bulkDeleteFeedPosts()" class="px-3 py-2 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100 border border-red-200 transition-colors">
-                                                <i class="fa-solid fa-trash-can mr-1"></i>선택 삭제
                                             </button>
                                             <button type="button" id="adminExportMomentsBtn" onclick="window.exportMomentsToExcel()" title="모먼트 텍스트 데이터를 엑셀(.xlsx)로 내려받습니다. 사진은 제외됩니다." class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors">
                                                 <i class="fa-solid fa-file-excel mr-1" aria-hidden="true"></i>엑셀 내보내기
@@ -624,6 +615,56 @@
                                     </div>
                                     <!-- 페이지네이션 -->
                                     <div id="feedPagination" class="mt-6 flex justify-center items-center gap-2"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 모먼트 분석 — 항목별 입력률(어떻게·어디서·무엇을·누구와·만족도·포만감·사진·코멘트) -->
+                        <div id="monitoring-main-momentAnalytics" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100">
+                                    <p class="text-sm text-slate-600 leading-relaxed mb-4">
+                                        기간 안의 끼니·간식 기록에서 각 항목이 <span class="font-bold text-slate-700">얼마나 채워졌는지</span>를 셉니다.
+                                        기간만큼의 기록을 실제로 읽으므로 <span class="font-bold text-slate-700">분석 실행</span>을 누를 때만 조회하고,
+                                        같은 기간을 10분 안에 다시 보면 읽기 없이 앞선 결과를 그립니다. 기간이 넓을수록 읽기가 늘어납니다.
+                                    </p>
+                                    <div class="flex flex-wrap gap-3 items-end">
+                                        <div>
+                                            <label for="momentAnalyticsPreset" class="block text-xs font-bold text-slate-600 mb-1">기간</label>
+                                            <select id="momentAnalyticsPreset" onchange="window.syncMomentAnalyticsRangeInputs()" class="px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none">
+                                                <option value="7">최근 7일</option>
+                                                <option value="30" selected>최근 30일</option>
+                                                <option value="90">최근 90일</option>
+                                                <option value="custom">직접 지정</option>
+                                            </select>
+                                        </div>
+                                        <div id="momentAnalyticsCustomRange" class="flex gap-2 items-end opacity-50 pointer-events-none">
+                                            <div>
+                                                <label for="momentAnalyticsStartDate" class="block text-xs font-bold text-slate-500 mb-1">시작일</label>
+                                                <input type="date" id="momentAnalyticsStartDate" class="px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500">
+                                            </div>
+                                            <div>
+                                                <label for="momentAnalyticsEndDate" class="block text-xs font-bold text-slate-500 mb-1">종료일</label>
+                                                <input type="date" id="momentAnalyticsEndDate" class="px-3 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500">
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2 items-center ml-auto">
+                                            <button type="button" id="momentAnalyticsRunBtn" onclick="window.runMomentAnalytics()" class="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                                <i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>분석 실행</span>
+                                            </button>
+                                            <button type="button" id="momentAnalyticsExportBtn" onclick="window.exportMomentAnalyticsToExcel()" title="마지막 분석 결과를 엑셀(.xlsx)로 내려받습니다." class="inline-flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
+                                                <i class="fa-solid fa-file-excel mr-1" aria-hidden="true"></i>엑셀 내보내기
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-6">
+                                    <div id="momentAnalyticsContainer">
+                                        <div class="text-center py-10 text-slate-400">
+                                            <i class="fa-solid fa-chart-column text-2xl mb-2 opacity-40" aria-hidden="true"></i>
+                                            <p class="text-sm">기간을 고르고 <strong class="text-slate-600">분석 실행</strong>을 누르세요.</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -771,7 +812,7 @@
                                     <div id="restaurantsContainer" class="space-y-4">
                                         <div class="text-center py-8 text-slate-400">
                                             <i class="fa-solid fa-rotate-right text-2xl mb-2 opacity-40" aria-hidden="true"></i>
-                                            <p class="text-sm">필터 옆 <strong class="text-slate-600">새로고침</strong>으로 집계를 불러옵니다. (전체 스캔은 새로고침 시에만)</p>
+                                            <p class="text-sm">필터 옆 <strong class="text-slate-600">새로고침</strong>으로 집계를 불러옵니다. (로컬 미러에서 집계 — 서버는 바뀐 것만 읽습니다)</p>
                                         </div>
                                     </div>
                                 </div>
@@ -839,6 +880,31 @@
                                         </button>
                                     </div>
                                     <div id="adminCreatedAtBackfillResult" class="text-sm min-h-0" aria-live="polite"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 로컬 미러 -->
+                        <div id="monitoring-main-mirror" class="monitoring-main-section hidden">
+                            <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
+                                <div class="p-6 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <h3 class="text-base font-black text-slate-800">로컬 미러</h3>
+                                        <p class="text-sm text-slate-600 mt-2 leading-relaxed">
+                                            관리자 화면이 읽는 데이터의 <strong>브라우저 사본</strong>입니다. 한 번 받아 두면 이후에는
+                                            바뀐 것만 따라가므로 Firestore 읽기가 크게 줄어듭니다. 사본이라 지워져도 원본은 그대로이고,
+                                            다음에 화면을 열 때 다시 받습니다.
+                                        </p>
+                                    </div>
+                                    <button type="button" onclick="window.renderMirrorConsole()" class="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-colors">
+                                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                                        상태 보기
+                                    </button>
+                                </div>
+                                <div class="p-6">
+                                    <div id="mirrorConsoleContainer">
+                                        <p class="text-sm text-slate-400 text-center py-8">「상태 보기」를 누르면 미러 현황을 읽습니다.</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1185,12 +1251,12 @@
                     <div id="adminUsersPanelAnalytics" class="hidden">
                         <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
                             <h2 class="text-base font-black text-slate-800">사용자 분석</h2>
-                            <p class="text-sm text-slate-600 mt-1">이 화면을 열거나 새로고침할 때마다 Firestore에서 <strong class="text-slate-800">전체 사용자</strong>를 불러와 집계합니다. (사용자 관리 표의 현재 페이지와 무관)</p>
+                            <p class="text-sm text-slate-600 mt-1">로컬 미러에서 <strong class="text-slate-800">전체 사용자</strong>를 집계합니다 — 서버는 바뀐 사용자만 읽습니다. (사용자 관리 표의 현재 페이지와 무관)</p>
                         </div>
                         <div class="p-4" id="adminUserAnalyticsMount">
                             <div class="text-center py-12 text-slate-400 text-sm">
                                 <i class="fa-solid fa-chart-pie text-2xl mb-2 opacity-40" aria-hidden="true"></i>
-                                <p>이 탭을 열면 전체 사용자를 불러와 집계합니다.</p>
+                                <p>이 탭을 열면 로컬 미러에서 전체 사용자를 집계합니다.</p>
                             </div>
                         </div>
                     </div>
@@ -1883,7 +1949,7 @@
                                                 <p class="text-[11px] leading-relaxed text-slate-500 mt-1">
                                                     끼니와 간식은 <b>기록 슬롯</b>으로 갈리고 '무엇을' 축은 하나입니다 — 여기서 편집한 목록이 두 필드(category · snackType)에 함께 저장됩니다.
                                                     한식·양식 같은 <b>요리 종류</b>는 이제 사용자에게 묻지 않고 음식 이름에서 자동으로 붙습니다(cuisineAuto).
-                                                    <br>아래 목록이 아직 옛 축(한식·양식… / 커피·베이커리…)이라면 <b>형태 축 불러오기</b>를 누른 뒤 저장하세요. 저장 전까지는 아무것도 반영되지 않습니다.
+                                                    <br>여기서 칸을 늘리거나 줄일 수 있습니다. <b>새 칸을 만들면 분류 사전에도 같은 이름을 넣어야</b> 자동 분류가 그 칸을 고를 수 있습니다(js/utils/food-dictionary.js). 저장 전까지는 아무것도 반영되지 않습니다.
                                                 </p>
                                             </details>
                                             <div id="tags-category" class="flex flex-col gap-1.5">
@@ -1892,9 +1958,6 @@
                                             <div class="mt-2 flex flex-col gap-1.5">
                                                 <button onclick="window.addTagItem('category')" class="w-full px-2 py-1.5 bg-slate-200 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-300 transition-colors">
                                                     <i class="fa-solid fa-plus mr-1"></i>추가
-                                                </button>
-                                                <button onclick="window.loadFormAxisTags()" class="w-full px-2 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors">
-                                                    <i class="fa-solid fa-rotate mr-1"></i>형태 축 불러오기
                                                 </button>
                                             </div>
                                         </div>
@@ -1916,32 +1979,6 @@
                                         </div>
                                     </div>
 
-                                    <!-- 형태 축 파일럿 (임시 — 전환일에 이 블록과 js/utils/form-axis-pilot.js 를 함께 제거)
-                                         '무엇을' 카드 안에 두면 그 칸만 길어져 4열이 어긋난다 — 목록 아래 전체 폭으로 뺀다 -->
-                                    <div class="bg-indigo-50/40 rounded-xl p-4 border border-indigo-100">
-                                        <h4 class="text-sm font-black text-slate-700 mb-1 flex items-center gap-2">
-                                            <i class="fa-solid fa-flask text-indigo-600"></i>
-                                            형태 축 파일럿 계정 <span class="text-[11px] font-bold text-indigo-600 bg-indigo-100 rounded px-1.5 py-0.5">임시</span>
-                                        </h4>
-                                        <p class="text-xs text-slate-500 mb-3">
-                                            여기 적은 uid <b>만</b> '무엇을' 칩과 분석이 새 형태 축으로 동작합니다(위 목록을 무시하고 코드 기본값 사용 + 옛 요리 종류 기록은 상세 텍스트로 재분류).
-                                            다른 사용자에게는 아무 변화가 없습니다. 쉼표로 여러 개를 넣을 수 있고, 비우면 전원 옛 축입니다.
-                                            <br><b>운영 전환일에는 이 칸을 비우고</b> 위 '무엇을' 카드에서 '형태 축 불러오기' → 저장하세요 (docs/food-axis-rollout.md).
-                                        </p>
-                                        <div class="flex flex-wrap gap-2">
-                                            <input id="formAxisPilotUids" type="text" placeholder="uid1, uid2"
-                                                   class="flex-1 min-w-[240px] px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-mono text-slate-800 outline-none focus:border-indigo-500">
-                                            <button onclick="window.addMyUidToFormAxisPilot()" class="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm font-bold hover:bg-indigo-200 transition-colors">
-                                                <i class="fa-solid fa-user-plus mr-2"></i>내 uid 추가
-                                            </button>
-                                            <!-- 파일럿 필드만 저장한다 — 위 [저장]은 '무엇을' 목록까지 함께 써서 전체 전환 위험이 있다 -->
-                                            <button onclick="window.saveFormAxisPilotUids()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors">
-                                                <i class="fa-solid fa-save mr-2"></i>파일럿 저장
-                                            </button>
-                                        </div>
-                                        <!-- 저장된 목록 · 내 uid 대조 (js/admin/tags.js renderFormAxisPilotStatus) -->
-                                        <div id="formAxisPilotStatus"></div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2425,6 +2462,78 @@
     </div>
 
     <!-- 대시보드 트렌드: 신규·활성 사용자 명단 (표의 칸 클릭 시) -->
+    <!-- 모먼트 관리 필터 — 화면에서는 버튼 하나로 접고, 적용 여부는 버튼 색·라벨이 알린다 -->
+    <div id="feedFilterModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="feedFilterModalTitle">
+        <div class="bg-white rounded-2xl w-full max-w-md max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
+                <div class="min-w-0">
+                    <h3 id="feedFilterModalTitle" class="text-sm font-black text-slate-800">모먼트 필터</h3>
+                    <p id="feedFilterModalSummary" class="text-xs text-slate-500 mt-0.5">적용된 필터가 없습니다</p>
+                </div>
+                <button type="button" id="feedFilterModalClose" onclick="window.closeFeedFilterModal()" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 shrink-0" aria-label="닫기">
+                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto flex-1 min-h-0 px-4 py-4 space-y-4">
+                <div class="flex items-center justify-between gap-3">
+                    <label class="text-sm font-bold text-slate-700">공유</label>
+                    <button onclick="window.toggleFeedFilter('shared')" id="feed-filter-shared-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                    <label class="text-sm font-bold text-slate-700">사진</label>
+                    <button onclick="window.toggleFeedFilter('hasPhotos')" id="feed-filter-hasPhotos-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                </div>
+                <div class="flex items-center justify-between gap-3">
+                    <label class="text-sm font-bold text-slate-700">금지</label>
+                    <button onclick="window.toggleFeedFilter('banned')" id="feed-filter-banned-toggle" class="feed-filter-toggle px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors">전체</button>
+                </div>
+                <div class="pt-3 border-t border-slate-100">
+                    <label for="feedAuthorSearchInput" class="block text-sm font-bold text-slate-700 mb-2">작성자</label>
+                    <div class="flex items-center gap-2">
+                        <input type="search" id="feedAuthorSearchInput" enterkeyhint="search" autocomplete="off" placeholder="닉네임·이메일·UID 검색" class="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30" />
+                        <button type="button" id="feedAuthorSearchClearBtn" class="hidden shrink-0 px-2.5 py-2 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 border border-slate-200">지우기</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-1.5">엔터를 눌러야 검색합니다. 한글은 글자가 확정된 뒤 한 번 더 누르세요.</p>
+                    <div id="feedAuthorFilterBar" class="hidden mt-2"></div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 px-4 py-3 border-t border-slate-200 shrink-0 bg-slate-50">
+                <button type="button" onclick="window.resetFeedFilters()" class="px-3 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100">필터 초기화</button>
+                <button type="button" onclick="window.closeFeedFilterModal()" class="px-4 py-2 text-xs font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모먼트 일괄 작업 — 선택한 행에만 적용된다. 선택이 없으면 버튼이 잠긴다 -->
+    <div id="feedBulkModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="feedBulkModalTitle">
+        <div class="bg-white rounded-2xl w-full max-w-md max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">
+                <div class="min-w-0">
+                    <h3 id="feedBulkModalTitle" class="text-sm font-black text-slate-800">일괄 작업</h3>
+                    <p id="feedBulkModalSummary" class="text-xs text-slate-500 mt-0.5">선택된 항목이 없습니다</p>
+                </div>
+                <button type="button" onclick="window.closeFeedBulkModal()" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 shrink-0" aria-label="닫기">
+                    <i class="fa-solid fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="overflow-y-auto flex-1 min-h-0 px-4 py-4 space-y-2">
+                <button type="button" data-feed-bulk="unshare" onclick="window.runFeedBulkAction('unshare')" class="feed-bulk-action w-full flex items-center gap-2 px-3 py-2.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-share-slash" aria-hidden="true"></i>공유 취소
+                </button>
+                <button type="button" data-feed-bulk="ban" onclick="window.runFeedBulkAction('ban')" class="feed-bulk-action w-full flex items-center gap-2 px-3 py-2.5 bg-orange-100 text-orange-600 rounded-lg text-xs font-bold hover:bg-orange-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-ban" aria-hidden="true"></i>공유 금지
+                </button>
+                <button type="button" data-feed-bulk="unban" onclick="window.runFeedBulkAction('unban')" class="feed-bulk-action w-full flex items-center gap-2 px-3 py-2.5 bg-emerald-100 text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>금지 해제
+                </button>
+                <button type="button" data-feed-bulk="delete" onclick="window.runFeedBulkAction('delete')" class="feed-bulk-action w-full flex items-center gap-2 px-3 py-2.5 bg-red-50 text-red-700 rounded-lg text-xs font-bold hover:bg-red-100 border border-red-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>선택 삭제
+                </button>
+                <p id="feedBulkEmptyHint" class="text-[11px] text-slate-400 pt-1">목록에서 처리할 행을 먼저 선택하세요. 하루 소감은 이 화면에서 일괄 처리할 수 없습니다.</p>
+            </div>
+        </div>
+    </div>
+
     <div id="dashboardUserListModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="dashboardUserListModalTitle">
         <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
             <div class="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 shrink-0">

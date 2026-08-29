@@ -4,6 +4,19 @@ import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/fireba
 import { collection, getDocs, getDocsFromServer, query, orderBy, limit, startAfter, doc, getDoc, getDocFromServer, setDoc, where, addDoc, serverTimestamp, getCountFromServer, documentId } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { getCurrentTermsVersion } from '../utils-terms.js';
 import { escapeHtml, runAdminRefreshAction } from './utils.js';
+/**
+ * 날짜·로그인수단 파생은 users-mirror-model.js 하나만 쓴다 —
+ * 사용자 분석(미러)과 이 목록이 서로 다른 규칙으로 갈리지 않게. (docs/admin-local-mirror.md)
+ */
+import {
+    parseSettingsDate,
+    parseRootTimestampField,
+    coalesceSignupDate,
+    computeSignupToLastLoginMs,
+    deriveLoginMethod,
+    deriveUserListDisplay
+} from './users-mirror-model.js';
+import { fetchAllUsersFromMirror } from './users-list-mirror.js';
 
 // 사용자 테이블 정렬 상태/캐시
 let usersCache = null; // 서버 페이지 모드일 때만: 현재 페이지 원본
@@ -165,82 +178,6 @@ function ensureAdminUsersSearchHandlers() {
 function normalizeNumber(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
-}
-
-/** settings / 루트 문서에서 날짜 필드 파싱 (Timestamp·ISO 문자열) */
-function parseSettingsDate(v) {
-    if (v == null || v === '') return null;
-    if (typeof v?.toDate === 'function') return v.toDate();
-    if (v instanceof Date) return v;
-    const d = new Date(v);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/** users 루트 createdAt — Timestamp·Date·ISO·seconds 객체·ms 숫자 등 안전 파싱 (깨진 값은 null) */
-function parseRootTimestampField(raw) {
-    if (raw == null || raw === '') return null;
-    try {
-        if (typeof raw.toDate === 'function') {
-            const d = raw.toDate();
-            return d != null && !Number.isNaN(d.getTime()) ? d : null;
-        }
-        if (raw instanceof Date) {
-            return !Number.isNaN(raw.getTime()) ? raw : null;
-        }
-        if (typeof raw === 'number' && Number.isFinite(raw)) {
-            const d = new Date(raw);
-            return !Number.isNaN(d.getTime()) ? d : null;
-        }
-        if (typeof raw === 'object' && raw !== null) {
-            const secRaw = raw.seconds ?? raw._seconds;
-            const nanRaw = raw.nanoseconds ?? raw._nanoseconds ?? 0;
-            const sec =
-                typeof secRaw === 'number' && Number.isFinite(secRaw)
-                    ? secRaw
-                    : secRaw != null && secRaw !== ''
-                      ? Number(secRaw)
-                      : NaN;
-            const nan =
-                typeof nanRaw === 'number' && Number.isFinite(nanRaw)
-                    ? nanRaw
-                    : nanRaw != null && nanRaw !== ''
-                      ? Number(nanRaw)
-                      : 0;
-            if (Number.isFinite(sec)) {
-                const ms = sec * 1000 + (Number.isFinite(nan) ? nan / 1e6 : 0);
-                const d = new Date(ms);
-                return !Number.isNaN(d.getTime()) ? d : null;
-            }
-        }
-        const d = new Date(raw);
-        return !Number.isNaN(d.getTime()) ? d : null;
-    } catch (_) {
-        return null;
-    }
-}
-
-/** users 루트에 createdAt 없을 때: 프로필 완료 시각·약관 동의 시각 중 이른 값으로 표시/정렬 보정 */
-function coalesceSignupDate(rootCreated, profileCompletedAt, termsAgreedAt) {
-    if (rootCreated) {
-        return rootCreated instanceof Date ? rootCreated : new Date(rootCreated);
-    }
-    const cands = [profileCompletedAt, termsAgreedAt].filter((x) => x != null);
-    if (!cands.length) return null;
-    const times = cands.map((d) => (d instanceof Date ? d : new Date(d)).getTime()).filter((t) => Number.isFinite(t));
-    if (!times.length) return null;
-    return new Date(Math.min(...times));
-}
-
-/** 가입일~마지막 로그인 사이 경과(ms). 둘 중 하나 없거나 역전이면 null. */
-function computeSignupToLastLoginMs(createdAt, lastLoginAt) {
-    const c = createdAt ? (createdAt instanceof Date ? createdAt : new Date(createdAt)) : null;
-    const l = lastLoginAt ? (lastLoginAt instanceof Date ? lastLoginAt : new Date(lastLoginAt)) : null;
-    if (!c || !l) return null;
-    const ct = c.getTime();
-    const lt = l.getTime();
-    if (!Number.isFinite(ct) || !Number.isFinite(lt)) return null;
-    if (lt < ct) return null;
-    return lt - ct;
 }
 
 /** 활동일수 셀 HTML: 일과 시간을 두 줄로 (시간은 2자리 패딩) */
@@ -415,11 +352,14 @@ function updateUsersSortHeaderUI() {
 }
 
 /**
- * 사용자 분석용: 전체 사용자를 페이지 단위로 모두 로드한 배열 (Firestore 다회 조회).
- * 테이블의 `usersFullListRaw`와 별개로 호출해도 동일한 getUsers 파이프라인을 사용합니다.
+ * 사용자 분석의 **폴백** 경로 — 미러를 못 썼을 때만 부른다.
+ *
+ * 그래서 여기서는 미러를 다시 시도하지 않고 곧장 서버로 간다. 부르는 쪽은 이미
+ * `ensureUsersMirrorSynced()` 에 실패해서 온 참이고, 화면에는 「서버 전체 조회」
+ * 배지가 걸린다 — 여기서 몰래 미러로 성공하면 그 배지가 거짓말이 된다.
  */
 export async function fetchAllUsersForAdminAnalytics() {
-    return fetchAllUsersEnriched();
+    return fetchAllUsersFromServer();
 }
 
 /**
@@ -474,11 +414,7 @@ export async function fetchAdminUserDetail(userId) {
     let providerId = rootData.providerId || null;
     if (settings.providerId) providerId = settings.providerId;
 
-    let loginMethod = '게스트';
-    if (providerId === 'google.com') loginMethod = '구글';
-    else if (providerId === 'kakao.com') loginMethod = '카카오';
-    else if (email) loginMethod = '이메일';
-    else if (/^kakao_/i.test(String(userId))) loginMethod = '카카오';
+    const loginMethod = deriveLoginMethod(providerId, email, userId);
 
     const createdAt = parseRootTimestampField(rootData.createdAt);
     const lastLoginAt = parseRootTimestampField(rootData.lastLoginAt);
@@ -626,8 +562,6 @@ async function getUsers(options = {}) {
         for (let i = 0; i < userIds.length; i++) {
             const userId = userIds[i];
             const userDocData = usersSnapshot.docs[i].data();
-            let nickname = '익명';
-            let icon = '🐻';
             let birthdate = '';
             let lifestyle = '';
             let gender = null;
@@ -641,29 +575,21 @@ async function getUsers(options = {}) {
             let createdAt = parseRootTimestampField(userDocData.createdAt);
             let lastLoginAt = parseRootTimestampField(userDocData.lastLoginAt);
 
-            if (sharedUserMap.has(userId)) {
-                const s = sharedUserMap.get(userId);
-                if (s.nickname) nickname = s.nickname;
-                if (s.icon) icon = s.icon;
-            }
-
             const settingsSnap = settingsDocs[i];
             // 자가 탈퇴(deleteAllUserData) 등으로 settings 가 없으면 루트만 남은 고아 문서 → 목록에서 제외(닉네임만 익명으로 보이던 케이스)
             if (!settingsSnap || !settingsSnap.exists()) {
                 continue;
             }
             const settings = settingsSnap.data();
+            // 닉네임·아이콘 규칙은 users-mirror-model 하나만 쓴다 — 미러 목록과 갈리지 않게
+            const { nickname, icon } = deriveUserListDisplay(settings, {
+                fallbackIcon: sharedUserMap.get(userId)?.icon || null
+            });
             if (settings.profile) {
-                if (settings.profileCompleted === true) {
-                    const pn = settings.profile.nickname;
-                    if (pn !== undefined && pn !== null && String(pn).trim() !== '' && pn !== '게스트') nickname = pn;
-                    else nickname = '미설정';
-                } else nickname = '미설정';
-                if (settings.profile.icon) icon = settings.profile.icon;
                 if (settings.profile.birthdate) birthdate = String(settings.profile.birthdate).trim();
                 if (settings.profile.lifestyle) lifestyle = String(settings.profile.lifestyle).trim();
                 if (settings.profile.gender === 'male' || settings.profile.gender === 'female') gender = settings.profile.gender;
-            } else nickname = '미설정';
+            }
             termsAgreed =
                 settings.termsAgreed === true ||
                 settings.termsAgreed === 'true' ||
@@ -675,12 +601,7 @@ async function getUsers(options = {}) {
             if (settings.email) email = settings.email;
             if (settings.providerId) providerId = settings.providerId;
 
-            let loginMethod = '게스트';
-            if (providerId === 'google.com') loginMethod = '구글';
-            else if (providerId === 'kakao.com') loginMethod = '카카오';
-            else if (email) loginMethod = '이메일';
-            // 루트/settings에 providerId가 비어 있는 레거시·레이스 문서: 카카오 커스텀 토큰 UID(kakao_{id})는 앱과 동일하게 카카오로 표시 (대소문자 혼선 방지)
-            else if (typeof userId === 'string' && /^kakao_/i.test(userId)) loginMethod = '카카오';
+            const loginMethod = deriveLoginMethod(providerId, email, userId);
 
             const ban = userBansMap.get(userId);
             const bannedShare = ban?.bannedShare ?? false;
@@ -743,8 +664,32 @@ async function getUsers(options = {}) {
     }
 }
 
-/** 전체 사용자를 페이지 단위로 로드해 합침 — 정렬은 이 배열 전체 기준 */
+/**
+ * 전체 사용자 목록 — **로컬 미러가 기본 경로다.**
+ *
+ * 서버 파이프라인은 사람마다 문서 세 건(루트·settings·meals 건수)을 사 왔고,
+ * 정렬·검색이 전체 목록을 요구하므로 그 값이 전 사용자에 곱해졌다.
+ * 미러에는 재료가 이미 다 있어서, 남는 서버 읽기는 제재·탈퇴 요청 두 컬렉션뿐이다.
+ *
+ * 미러를 못 쓰면(첫 구축 실패·저장소 거부) 예전 경로로 그대로 물러난다.
+ */
 async function fetchAllUsersEnriched() {
+    try {
+        const users = await fetchAllUsersFromMirror();
+        // 미러가 비어 있으면 아직 안 받았거나 깨진 것 — 빈 목록을 보여 주느니 서버로 간다
+        if (users.length > 0) {
+            adminUsersTotalCount = users.length;
+            return users;
+        }
+        console.warn('[사용자 목록] 미러가 비어 있어 서버 조회로 갑니다.');
+    } catch (e) {
+        console.warn('[사용자 목록] 미러를 쓸 수 없어 서버 조회로 갑니다:', e?.message || e);
+    }
+    return fetchAllUsersFromServer();
+}
+
+/** 예전 경로 — 페이지 단위로 서버를 훑어 합친다. 미러를 못 쓸 때의 폴백. */
+async function fetchAllUsersFromServer() {
     adminUsersLastDocsByPage = {};
     const all = [];
     let page = 1;

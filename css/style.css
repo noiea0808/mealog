@@ -9134,6 +9134,9 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
 }
 .mealog-wheel__scroller {
     height: 100%;
+    /* 고르는 칸이지 읽는 글이 아니다 — 끌어 돌릴 때 글자가 잡히면 안 된다 */
+    -webkit-user-select: none;
+    user-select: none;
     overflow-y: auto;
     overscroll-behavior: contain;
     scroll-snap-type: y mandatory;
@@ -9426,10 +9429,16 @@ label.entry-gauge-switch input.peer:checked ~ .entry-gauge-switch__thumb {
 .mealog-wheel--time {
     width: 100%;
 }
+/**
+ * 시간 휠은 열 너비가 화면에 따라 달라져, 기본 지시자의 「고정 폭 + 음수 마진」 중앙정렬을
+ * 쓸 수 없다. 좌우를 같은 값으로 물려 폭을 스스로 정하게 둔다 — 퍼센트 마진으로 되돌리지 말 것
+ * (margin의 %는 부모 **너비** 기준이라 폭이 바뀌면 중앙이 어긋난다).
+ */
 .mealog-wheel--time .mealog-wheel__indicator {
-    width: calc(100% - 0.5rem);
-    margin-left: calc(-50% + 50%);
-    left: 50%;
+    left: 0.25rem;
+    right: 0.25rem;
+    width: auto;
+    margin-left: 0;
 }
 .mealog-wheel--time .mealog-wheel__item {
     font-size: 0.9375rem;

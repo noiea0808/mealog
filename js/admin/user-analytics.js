@@ -1,6 +1,12 @@
-// 관리자 > 사용자 > 사용자 분석 (전체 사용자 Firestore 조회 후 집계)
+// 관리자 > 사용자 > 사용자 분석 (users 로컬 미러에서 집계)
+//
+// 예전에는 탭을 열 때마다 목록 화면과 같은 「풍부한」 전체 조회를 돌렸다. 분석이 쓰는
+// 값은 생년월일·성별·라이프스타일·로그인수단·마지막로그인·가입간격뿐인데도 공유·게시글·
+// 식사 카운트까지 함께 사 오던 구조였다. 지금은 users 미러(users-mirror.js)에서 읽고,
+// 미러가 못 뜨면 예전 경로로 물러난다. — docs/admin-local-mirror.md
 import { escapeHtml } from './utils.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
+import { ensureUsersMirrorSynced, getAllUsersFromMirror } from './users-mirror.js';
 
 const DAY_MS = 86400000;
 
@@ -190,6 +196,8 @@ function buildActivityMapFromUsers(users) {
 /** 분석 탭에서 재사용 — 새로 불러오기 전까지 유지 */
 let _adminAnalyticsUsers = null;
 let _activityFilterLastWeek = false;
+/** 이번 표본을 어디서·몇 읽기로 가져왔는지 (미러 배지 표시용) */
+let _analyticsLoadMeta = { source: 'mirror', serverReads: 0 };
 
 function renderAdminUserAnalyticsPanel() {
     const mount = document.getElementById('adminUserAnalyticsMount');
@@ -250,6 +258,11 @@ function renderAdminUserAnalyticsPanel() {
         ? `활동일수 차트만 <strong class="text-slate-700">마지막 로그인 7일 이내 ${nActivity.toLocaleString('ko-KR')}명</strong>을 집계했습니다. 나머지 차트는 전체 ${n.toLocaleString('ko-KR')}명 기준입니다.`
         : `집계 대상 <strong class="text-slate-700">전체 ${n.toLocaleString('ko-KR')}명</strong> (Firestore <code class="text-[11px] bg-slate-100 px-1 rounded">users</code> 기준 전원).`;
 
+    const sourceBadge =
+        _analyticsLoadMeta.source === 'mirror'
+            ? `<span class="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold" title="로컬 미러에서 집계했습니다. 괄호 안은 이번에 실제로 산 Firestore 문서 수입니다.">미러 집계 · Firestore 읽기 ${Number(_analyticsLoadMeta.serverReads || 0).toLocaleString('ko-KR')}</span>`
+            : `<span class="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-[11px] font-bold" title="미러를 쓰지 못해 예전 전체 조회로 불러왔습니다.">서버 전체 조회</span>`;
+
     mount.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             ${renderSection('라이프스타일', agg.lifestyle, n, entriesInFixedOrder(agg.lifestyle, LIFESTYLE_ORDER))}
@@ -258,10 +271,16 @@ function renderAdminUserAnalyticsPanel() {
             ${renderSection('로그인 방법', agg.loginMethod, n, entriesInFixedOrder(agg.loginMethod, LOGIN_ORDER))}
             ${activitySectionInner}
         </div>
-        <p class="text-xs text-slate-500 mt-4 leading-relaxed">
-            ${footNote}
-            사용자 관리 표는 페이지 단위로만 보일 수 있으며, 사용자 분석은 Firestore 전원을 불러와 계산합니다.
-        </p>
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p class="text-xs text-slate-500 leading-relaxed min-w-0">
+                ${footNote}
+                사용자 관리 표는 페이지 단위로만 보일 수 있으며, 사용자 분석은 전원을 대상으로 계산합니다.
+            </p>
+            <div class="flex items-center gap-2 shrink-0">
+                ${sourceBadge}
+                <span class="text-[11px] text-slate-400" title="미러를 버리고 전체를 다시 읽는 「전체 재구축」은 모니터링 > 로컬 미러의 users 행에 있습니다.">재구축: 로컬 미러 메뉴</span>
+            </div>
+        </div>
     `;
 
     const weekBtn = mount.querySelector('#adminUserAnalyticsActivityWeekBtn');
@@ -288,10 +307,37 @@ function buildAggregates(users) {
 }
 
 /**
- * 사용자 분석 패널 갱신 — 매번 Firestore에서 전체 사용자를 페이지 단위로 로드한 뒤 집계합니다.
- * (사용자 관리 탭의 현재 페이지 캐시와 무관)
+ * 미러에서 사용자 행을 얻는다 — 실패하면 예전 전체 조회로 물러난다.
+ * @param {{force?: boolean}} options force 면 미러를 전체 재구축한다
  */
-export async function refreshAdminUserAnalytics() {
+async function loadUsersForAnalytics(options = {}) {
+    try {
+        const sync = await ensureUsersMirrorSynced(
+            (p) => {
+                const el = document.getElementById('adminUserAnalyticsProgress');
+                if (!el) return;
+                el.textContent =
+                    p.stage === 'full'
+                        ? `미러 전체 구축 중… ${p.fetched.toLocaleString()}명`
+                        : `미러 동기화 중… 변경 ${p.fetched.toLocaleString()}명`;
+            },
+            options
+        );
+        const users = await getAllUsersFromMirror();
+        return { users, source: 'mirror', serverReads: sync.serverReads };
+    } catch (e) {
+        console.warn('[사용자 분석] 미러 실패 — 예전 전체 조회로 대체:', e);
+        const users = await fetchAllUsersForAdminAnalytics();
+        return { users, source: 'server', serverReads: null };
+    }
+}
+
+/**
+ * 사용자 분석 패널 갱신 — users 미러에서 읽어 집계합니다.
+ * (사용자 관리 탭의 현재 페이지 캐시와 무관)
+ * @param {{force?: boolean}} [options] force 면 미러를 전체 재구축한 뒤 집계
+ */
+export async function refreshAdminUserAnalytics(options = {}) {
     const mount = document.getElementById('adminUserAnalyticsMount');
     if (!mount) return;
     _adminAnalyticsUsers = null;
@@ -299,13 +345,15 @@ export async function refreshAdminUserAnalytics() {
     mount.innerHTML = `
         <div class="text-center py-16 text-slate-500 text-sm">
             <i data-lucide="loader-circle" class="text-2xl mb-3 text-emerald-600 lucide-spin" aria-hidden="true"></i>
-            <p class="font-medium text-slate-700">전체 사용자를 불러오는 중입니다…</p>
+            <p class="font-medium text-slate-700" id="adminUserAnalyticsProgress">전체 사용자를 불러오는 중입니다…</p>
             <p class="text-xs text-slate-400 mt-2">인원이 많으면 잠시 걸릴 수 있습니다.</p>
         </div>
     `;
     let users;
     try {
-        users = await fetchAllUsersForAdminAnalytics();
+        const loaded = await loadUsersForAnalytics(options);
+        users = loaded.users;
+        _analyticsLoadMeta = { source: loaded.source, serverReads: loaded.serverReads };
     } catch (e) {
         const errMsg = (e && (e.message || e.code || String(e))) || '알 수 없는 오류';
         mount.innerHTML = `

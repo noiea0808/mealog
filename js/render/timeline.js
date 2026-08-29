@@ -77,7 +77,7 @@ function mainMealSlotListTitleHtml(slot, specificStyle, displayLabel = null) {
     </div>`;
 }
 
-/** 슬롯 라벨 — 동일 슬롯에 2건 이상이면 아침1·점심2·야식1 형식 */
+/** 슬롯 라벨 — 동일 슬롯에 2건 이상이면 아침1·점심2·저녁 후 간식1 형식 */
 function slotOrdinalTitle(slot, ordinal1Based, totalInSlot) {
     return totalInSlot > 1 ? `${slot.label}${ordinal1Based}` : slot.label;
 }

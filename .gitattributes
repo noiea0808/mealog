@@ -1,0 +1,3 @@
+# 운영 프롬프트 사본은 Firestore 본문과 바이트가 같아야 한다.
+# CRLF 로 바뀌면 promptVersion(본문 SHA-1) 이 어긋나고, 그대로 올리면 \r 이 프롬프트에 섞인다.
+docs/ai-diet-report-prompt.txt text eol=lf

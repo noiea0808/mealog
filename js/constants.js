@@ -40,7 +40,7 @@ export const SLOTS = [
     { id: 'lunch', label: '점심', type: 'main' },
     { id: 'snack2', label: '오후 간식', type: 'snack' },
     { id: 'dinner', label: '저녁', type: 'main' },
-    { id: 'night', label: '야식', type: 'snack' }
+    { id: 'night', label: '저녁 후 간식', type: 'snack' }
 ];
 
 /** 타임라인 하루 소감 슬롯 (meals 컬렉션과 별도, userSettings.dailyComments) */

@@ -3,6 +3,7 @@
  */
 import { appState, getState } from '../state.js';
 import { auth, db, appId } from '../firebase.js';
+import { refreshLucideIcons } from '../icons.js';
 import { signOut } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 import {
     dbOps,
@@ -1875,8 +1876,13 @@ async function runBoardInlineFeedSubmit() {
     const submitBtn = boardInlineSubmit;
     const sendIconHtml = '<i data-lucide="arrow-up" class="text-sm"></i>';
     const prevHtml = submitBtn.innerHTML;
+    /* i[data-lucide]는 전역 옵저버가 없어 넣은 쪽이 직접 SVG로 바꿔야 한다 — 안 하면 빈 아이콘 */
+    const setSubmitIcon = (html) => {
+        submitBtn.innerHTML = html;
+        refreshLucideIcons(submitBtn);
+    };
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i data-lucide="loader-circle" class="text-sm lucide-spin"></i>';
+    setSubmitIcon('<i data-lucide="loader-circle" class="text-sm lucide-spin"></i>');
 
     let imageUrls = [];
     if (hasPhoto) {
@@ -1887,7 +1893,7 @@ async function runBoardInlineFeedSubmit() {
             removePendingFeedPosts();
             showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
             submitBtn.disabled = false;
-            submitBtn.innerHTML = prevHtml || sendIconHtml;
+            setSubmitIcon(prevHtml || sendIconHtml);
             syncBoardInlineComposerUi();
             return;
         }
@@ -1905,7 +1911,7 @@ async function runBoardInlineFeedSubmit() {
         // createMessage에서 토스트 처리
     } finally {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = sendIconHtml;
+        setSubmitIcon(sendIconHtml);
         syncBoardInlineComposerUi();
     }
 }

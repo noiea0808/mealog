@@ -32,13 +32,23 @@ test('날짜 키에 일수를 더한다 (월 경계 포함)', () => {
     assert.equal(addDaysToDateKey('bad', -1), '');
 });
 
-test('다시 세는 구간은 이번 주와 최근 7일 중 이른 쪽부터다', () => {
-    // 수요일: 최근 7일이 지난 주 목요일까지 뻗는다 → 최근 7일이 이르다
-    assert.equal(rescanStartDateKey('2026-08-26', '2026-08-23'), '2026-08-20');
-    // 일요일: 이번 주는 하루뿐이라 최근 7일이 훨씬 넓다
-    assert.equal(rescanStartDateKey('2026-08-23', '2026-08-23'), '2026-08-17');
-    // 토요일: 이번 주 일요일이 정확히 6일 전 → 둘이 같은 날
+test('다시 세는 구간은 최근 7일이 닿는 주의 첫날부터다', () => {
+    // 수요일: 최근 7일이 지난 주 목요일까지 뻗는다 → 그 주 일요일까지 내린다
+    assert.equal(rescanStartDateKey('2026-08-26', '2026-08-23'), '2026-08-16');
+    // 일요일: 이번 주는 하루뿐이라 최근 7일이 지난 주로 넘어간다
+    assert.equal(rescanStartDateKey('2026-08-23', '2026-08-23'), '2026-08-16');
+    // 토요일: 이번 주 일요일이 정확히 6일 전 → 지난 주로 넘어갈 일이 없다
     assert.equal(rescanStartDateKey('2026-08-29', '2026-08-23'), '2026-08-23');
+});
+
+test('스캔 시작이 병합 경계 주차의 첫날과 어긋나지 않는다', () => {
+    // 주 중간에서 자르면 그 주의 앞부분이 캐시에도 스캔에도 없이 사라진다.
+    const days = ['2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29'];
+    for (const today of days) {
+        const start = rescanStartDateKey(today, '2026-08-23');
+        const idx = rescanFromWeekIndex(WEEKS, start);
+        assert.equal(start, WEEKS[idx].sundayKey, `${today}: 스캔 ${start} vs 경계 ${WEEKS[idx].sundayKey}`);
+    }
 });
 
 test('다시 세는 구간이 속한 주차 인덱스를 찾는다', () => {

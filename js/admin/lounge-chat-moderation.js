@@ -1,7 +1,12 @@
 /**
  * 관리자 > 모니터링 > 밀톡 관리 (feedPosts 실시간 대화)
+ *
+ * 목록·전체 건수는 로컬 미러에서 읽는다 — 미러가 실패하면 예전 서버 페이지 조회로
+ * 물러난다. 반응(좋아요 등)은 하위 컬렉션이라 미러에 담지 않고 그때그때 읽는다.
+ * — docs/admin-local-mirror.md
  */
 import { db, appId } from '../firebase.js';
+import { feedPostsMirror } from './collection-mirror.js';
 import {
     attachReactionCountsToPosts,
     setFeedPostHiddenByAdmin,
@@ -38,6 +43,27 @@ function resetLoungePagination() {
     loungeCurrentPage = 1;
     loungeTotalCount = null;
     Object.keys(loungeLastSnapByPage).forEach((k) => delete loungeLastSnapByPage[k]);
+}
+
+/**
+ * 미러에서 한 페이지 — 미러는 전량을 들고 있어 커서 대신 오프셋으로 자른다.
+ * 실패하면 호출부가 서버 경로로 물러난다.
+ */
+async function fetchLoungeChatPageFromMirror(page) {
+    await feedPostsMirror.ensureSynced();
+    const docs = await feedPostsMirror.getDocsLike();
+    loungeTotalCount = docs.length;
+    if (!loungeTotalCount) return { items: [], hasMore: false, empty: true };
+
+    const offset = (page - 1) * LOUNGE_PAGE_SIZE;
+    const slice = docs.slice(offset, offset + LOUNGE_PAGE_SIZE);
+    const list = slice.map((d) => ({ id: d.id, ...d.data() }));
+    const withReactions = await attachReactionCountsToPosts(list);
+    return {
+        items: withReactions,
+        hasMore: offset + slice.length < docs.length,
+        empty: slice.length === 0
+    };
 }
 
 async function fetchLoungeChatPageFromNetwork(page) {
@@ -82,7 +108,13 @@ async function fetchLoungeChatPage(page) {
             empty: ent.empty
         };
     }
-    const res = await fetchLoungeChatPageFromNetwork(page);
+    let res;
+    try {
+        res = await fetchLoungeChatPageFromMirror(page);
+    } catch (e) {
+        console.warn('[밀톡 관리] 미러 실패 — 서버 페이지 조회로 대체:', e);
+        res = await fetchLoungeChatPageFromNetwork(page);
+    }
     loungePageCache.set(page, {
         ts: now,
         totalCount: loungeTotalCount,
@@ -268,6 +300,8 @@ window.adminLoungeBulkHide = async function () {
     }
     try {
         for (const id of ids) await setFeedPostHiddenByAdmin(id, true);
+        // 내가 쓴 값이라 다시 읽을 이유가 없다 — 미러에 바로 반영
+        for (const id of ids) await feedPostsMirror.patchLocal(id, { isHidden: true });
         invalidateLoungeMonitoringCache();
         alert(`${ids.length}건을 숨겼습니다.`);
         await renderLoungeChatManagement();
@@ -285,6 +319,7 @@ window.adminLoungeBulkUnhide = async function () {
     }
     try {
         for (const id of ids) await setFeedPostHiddenByAdmin(id, false);
+        for (const id of ids) await feedPostsMirror.patchLocal(id, { isHidden: false });
         invalidateLoungeMonitoringCache();
         alert(`${ids.length}건 숨김을 해제했습니다.`);
         await renderLoungeChatManagement();
@@ -303,6 +338,7 @@ window.adminLoungeBulkDelete = async function () {
     if (!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까?`)) return;
     try {
         for (const id of ids) await deleteFeedPostByAdmin(id);
+        await feedPostsMirror.applyLocalDelete(ids);
         invalidateLoungeMonitoringCache();
         alert(`${ids.length}건을 삭제했습니다.`);
         resetLoungePagination();

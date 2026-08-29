@@ -1,14 +1,25 @@
 /**
  * 관리자 모니터링: 모먼트(타임라인) 공유·신고·일괄 처리
+ *
+ * sharedPhotos 를 훑던 세 경로(하루기록 고아 · 특수 공유 목록 · 특수 공유 건수)는
+ * 로컬 미러에서 읽는다 — 새로고침마다 최대 2천 건을 사 오던 자리다. 개별 문서
+ * 조작(숨김·삭제·신고 처리)은 그대로 Firestore 를 쓰고, 쓴 값만 미러에 되비친다.
+ * 미러가 실패하면 각 경로가 예전 서버 조회로 물러난다. — docs/admin-local-mirror.md
  */
 import { db, appId, functions, refreshAppCheckTokenBeforeFirestore } from '../firebase.js';
+import { sharedPhotosMirror } from './collection-mirror.js';
+import {
+    ensureMealsMirrorSynced,
+    getAllMealsFromMirror,
+    applyLocalMealDelete,
+    patchLocalMeal
+} from './meals-mirror.js';
 import { httpsCallable } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-functions.js';
 import { getReportsAggregateByGroupKeys } from '../db.js';
 import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
-import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import {
     normalizeDailyJournalEntry,
     dailyJournalHasContent,
@@ -17,8 +28,7 @@ import {
     getDailyJournalShareEntryId,
     getDailyJournalMealDocId,
     dailyJournalMealDocToModerationFields,
-    isDailyJournalMealRecord,
-    recordedAtIsoToMealTime
+    isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
 import {
     collection,
@@ -48,8 +58,6 @@ let feedAuthorFilter = null; // { userId: string, nickname: string } | null
 /** 닉네임·이메일·UID 검색용 (최초 검색 시 1회 로드) */
 let feedAuthorSearchUsersCache = null;
 let feedAuthorSearchHandlersBound = false;
-let feedAuthorSearchDebounceTimer = null;
-const FEED_AUTHOR_SEARCH_DEBOUNCE_MS = 320;
 let feedCurrentPage = 1;
 const feedPageSize = 20;
 let feedLastDocsByPage = {};
@@ -135,11 +143,17 @@ let feedSharedKeysCache = null;
 const ADMIN_FEED_SPECIAL_SHARE_TYPES = ['daily', 'best', 'insight'];
 const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 
-/** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
+/**
+ * 하루기록 공유(sharedPhotos, slotId='daily_journal') 조회 상한.
+ *
+ * 하루기록의 정본은 meals 미러라 목록은 일반 기록 스트림을 탄다. 이 상한이 걸리는 곳은
+ * 미러 없는 「고아 공유」를 줍는 경로뿐이고, 평소에는 페이지가 필요한 만큼(skip+pageSize)만
+ * 받는다. 이 값은 정렬 인덱스가 없어 순서 없이 받아야 할 때의 안전망이다.
+ */
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
 
-let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
-let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
+let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
+let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
 
 /** 모니터링 캐시 키 — 전체(__all__) vs 작성자 UID */
 function moderationCacheScopeKey(authorUid) {
@@ -181,48 +195,33 @@ function dailyJournalModerationRowKey(userId, dateStr) {
     return `${String(userId || '')}|${String(dateStr || '').trim()}`;
 }
 
-function settingsDocToDailyJournalRows(docSnap) {
-    if (!docSnap?.id || docSnap.id !== 'settings') return [];
-    const pathParts = docSnap.ref.path.split('/');
-    const uidx = pathParts.indexOf('users');
-    const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-    if (!userId) return [];
-    const dc = docSnap.data()?.dailyComments;
-    if (!dc || typeof dc !== 'object') return [];
-    const rows = [];
-    for (const [dateStr, raw] of Object.entries(dc)) {
-        const dk = String(dateStr || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
-        const entry = normalizeDailyJournalEntry(raw);
-        if (!dailyJournalHasContent(entry)) continue;
-        const recordedAt = entry.recordedAt || '';
-        const mealDocId = getDailyJournalMealDocId(dk) || `dailyJournal_${dk}`;
-        rows.push({
-            id: mealDocId,
-            userId,
-            date: dk,
-            time: recordedAtIsoToMealTime(recordedAt),
-            slotId: 'daily_journal',
-            recordedAt: recordedAt || undefined,
-            isDailyJournal: true,
-            isDailyJournalSlot: true,
-            comment: entry.comment,
-            photos: entry.photos,
-            sharedPhotos: entry.sharedPhotos,
-            dailyJournalEntry: entry,
-            slotDisplayDate: formatKoDateLabelFromYmd(dk),
-            slotDisplayLabel: '하루소감'
-        });
-    }
-    return rows;
-}
 
 /**
  * sharedPhotos — slotId daily_journal 또는 entryId dailyJournal_YYYY-MM-DD (meals 컬렉션에 없음)
  * @param {string} [authorUid] — 지정 시 해당 사용자 sharedPhotos만 조회
  */
-async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
+/**
+ * @param {string} [authorUid] 작성자 필터
+ * @param {number} [rowLimit] 이 페이지가 필요한 최대 행 수
+ */
+async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '', rowLimit = ADMIN_DAILY_JOURNAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
+
+    /**
+     * 미러가 있으면 여기서 끝난다 — Firestore 읽기 0회.
+     * 아래 서버 경로는 (slotId, timestamp) 인덱스 유무에 따라 두 갈래로 갈리는데,
+     * 미러는 전량을 들고 있어 두 조건을 한 번에 합집합으로 본다.
+     */
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        return await sharedPhotosMirror.getFilteredDocsLike((d) => {
+            if (scopedUid && d?.userId !== scopedUid) return false;
+            return d?.slotId === 'daily_journal' || String(d?.entryId || '').startsWith('dailyJournal_');
+        }, rowLimit);
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 하루기록 미러 실패 — 서버 조회로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byDocId = new Map();
@@ -235,14 +234,36 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
     };
 
     try {
-        const snap = await getDocs(
-            query(
-                sharedColl,
-                ...userFilter,
-                where('slotId', '==', 'daily_journal'),
-                limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
-            )
-        );
+        /**
+         * 최신순으로 받아야 상한을 줄일 수 있다 — 정렬 없이 자르면 「아무 N건」이라
+         * 페이지에 뭐가 뜰지 알 수 없다. (slotId, timestamp) 인덱스가 없으면 아래로 내려간다.
+         */
+        let snap;
+        try {
+            snap = await getDocs(
+                query(
+                    sharedColl,
+                    ...userFilter,
+                    where('slotId', '==', 'daily_journal'),
+                    orderBy('timestamp', 'desc'),
+                    limit(rowLimit)
+                )
+            );
+        } catch (eOrder) {
+            if (eOrder?.code !== 'failed-precondition') throw eOrder;
+            console.warn(
+                '[관리자 모먼트] 하루기록 공유 정렬 인덱스 없음 — 순서 없이 상한까지 받습니다.',
+                '배포: firebase deploy --only firestore:indexes'
+            );
+            snap = await getDocs(
+                query(
+                    sharedColl,
+                    ...userFilter,
+                    where('slotId', '==', 'daily_journal'),
+                    limit(ADMIN_DAILY_JOURNAL_ROWS_CAP)
+                )
+            );
+        }
         addDocs(snap.docs);
     } catch (e1) {
         console.warn(
@@ -347,243 +368,14 @@ async function fetchDailyJournalMomentSharesFromSharedPhotos(authorUid = '') {
     return rows;
 }
 
-function mergeDailyJournalModerationRows(settingsRows, shareRows) {
-    const byKey = new Map();
-    for (const r of settingsRows || []) {
-        if (!r?.userId || !r?.date) continue;
-        byKey.set(dailyJournalModerationRowKey(r.userId, r.date), { ...r });
-    }
-    for (const sr of shareRows || []) {
-        if (!sr?.userId || !sr?.date) continue;
-        const key = dailyJournalModerationRowKey(sr.userId, sr.date);
-        const existing = byKey.get(key);
-        if (!existing) {
-            byKey.set(key, { ...sr });
-            continue;
-        }
-        existing.momentShared = true;
-        existing.isDailyJournalSlot = existing.isDailyJournalSlot === true || sr.isDailyJournalSlot === true;
-        if (sr.momentShareAtMillis > (existing.momentShareAtMillis || 0)) {
-            existing.momentShareAtMillis = sr.momentShareAtMillis;
-        }
-        const mergedEntry = normalizeDailyJournalEntry({
-            ...(existing.dailyJournalEntry || {}),
-            comment: existing.comment || sr.comment || '',
-            photos:
-                Array.isArray(existing.photos) && existing.photos.length > 0
-                    ? existing.photos
-                    : sr.photos || [],
-            sharedPhotos: sr.dailyJournalEntry?.sharedPhotos?.length
-                ? sr.dailyJournalEntry.sharedPhotos
-                : existing.dailyJournalEntry?.sharedPhotos || [],
-            weightEnabled: existing.dailyJournalEntry?.weightEnabled,
-            bloodSugarEnabled: existing.dailyJournalEntry?.bloodSugarEnabled,
-            weightRecords: existing.dailyJournalEntry?.weightRecords,
-            bloodSugarRecords: existing.dailyJournalEntry?.bloodSugarRecords,
-            recordedAt: existing.dailyJournalEntry?.recordedAt || sr.dailyJournalEntry?.recordedAt
-        });
-        const shareMs = existing.momentShareAtMillis || 0;
-        const entryMs = dailyJournalRecordedAtMillis(mergedEntry, existing.date);
-        if (shareMs > entryMs) {
-            mergedEntry.recordedAt = new Date(shareMs).toISOString();
-        }
-        existing.dailyJournalEntry = mergedEntry;
-        existing.comment = mergedEntry.comment;
-        existing.photos = mergedEntry.photos;
-        existing.recordedAt = mergedEntry.recordedAt || existing.recordedAt;
-        if (!dailyJournalHasContent(mergedEntry) && !(existing.photos?.length > 0)) {
-            byKey.delete(key);
-        } else {
-            byKey.set(key, existing);
-        }
-    }
-    return [...byKey.values()];
-}
 
-function userIdFromSettingsDocRef(ref) {
-    const pathParts = ref.path.split('/');
-    const uidx = pathParts.indexOf('users');
-    return uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-}
 
-function mergeDailyJournalSlotRowsIntoMap(byKey, rows) {
-    for (const r of rows || []) {
-        if (!r?.userId || !r?.date) continue;
-        const key = dailyJournalModerationRowKey(r.userId, r.date);
-        const prev = byKey.get(key);
-        if (!prev) {
-            byKey.set(key, { ...r, isDailyJournal: true, isDailyJournalSlot: true });
-            continue;
-        }
-        prev.isDailyJournal = true;
-        prev.isDailyJournalSlot = true;
-        if (!prev.comment && r.comment) prev.comment = r.comment;
-        if ((!prev.photos || !prev.photos.length) && r.photos?.length) prev.photos = r.photos;
-        const prevEntry = prev.dailyJournalEntry || {};
-        const nextEntry = r.dailyJournalEntry || {};
-        prev.dailyJournalEntry = normalizeDailyJournalEntry({
-            ...prevEntry,
-            ...nextEntry,
-            photos: prevEntry.photos?.length ? prevEntry.photos : nextEntry.photos,
-            recordedAt: prevEntry.recordedAt || nextEntry.recordedAt
-        });
-        if (!prev.recordedAt && r.recordedAt) prev.recordedAt = r.recordedAt;
-    }
-}
 
 /**
  * config collectionGroup — users/{uid} 루트 문서 없이 settings 만 있는 계정도 포함
  */
-/**
- * 하루 기록 목록의 정본 — meals 미러(`slotId === 'daily_journal'`).
- *
- * 예전에는 users/{uid}/config/settings 를 전부 훑었다. dailyComments 가 문서 **안의 맵**이라
- * 목록을 만들려면 사용자 수만큼 읽어야 했고, 화면을 열 때마다 900건 가까이 나갔다.
- * 미러는 기록 하나가 문서 하나라 최근 것부터 필요한 만큼만 끊어 읽을 수 있다.
- *
- * 미러가 없던 시절(2026-06-10 이전)의 소감은 여기서 안 잡힌다. 목록이 최근 것부터
- * 상한까지만 보여주는 화면이라 실질적인 손실은 없다.
- */
-async function fetchDailyJournalSlotsFromMealMirrors(excluded, rowLimit) {
-    const mealsGroup = collectionGroup(db, 'meals');
-    const slotFilter = where('slotId', '==', 'daily_journal');
-    let snap;
-    try {
-        snap = await getDocs(query(mealsGroup, slotFilter, orderBy('date', 'desc'), limit(rowLimit)));
-    } catch (e) {
-        if (e?.code !== 'failed-precondition') throw e;
-        // slotId+date 복합 인덱스가 아직 만들어지는 중 — 순서 없이 받아 아래에서 정렬한다
-        console.warn(
-            '[관리자 모먼트] 하루기록 정렬 인덱스 준비 중 — 정렬 없이 조회합니다.',
-            '배포: firebase deploy --only firestore:indexes'
-        );
-        snap = await getDocs(query(mealsGroup, slotFilter));
-    }
 
-    const prefix = `artifacts/${appId}/`;
-    const rows = [];
-    snap.forEach((docSnap) => {
-        if (!docSnap.ref.path.startsWith(prefix)) return;
-        const userId = userIdFromSettingsDocRef(docSnap.ref);
-        if (!userId || excluded.has(userId)) return;
-        const data = docSnap.data() || {};
-        const dk = String(data.date || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) return;
-        const entry = normalizeDailyJournalEntry(data);
-        if (!dailyJournalHasContent(entry)) return;
-        const recordedAt = entry.recordedAt || '';
-        rows.push({
-            id: docSnap.id,
-            userId,
-            date: dk,
-            time: typeof data.time === 'string' && data.time ? data.time : recordedAtIsoToMealTime(recordedAt),
-            slotId: 'daily_journal',
-            recordedAt: recordedAt || undefined,
-            isDailyJournal: true,
-            isDailyJournalSlot: true,
-            comment: entry.comment,
-            photos: entry.photos,
-            sharedPhotos: entry.sharedPhotos,
-            dailyJournalEntry: entry,
-            slotDisplayDate: formatKoDateLabelFromYmd(dk),
-            slotDisplayLabel: '하루소감'
-        });
-    });
-    rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    return rows.length > rowLimit ? rows.slice(0, rowLimit) : rows;
-}
 
-/**
- * 작성자 필터: 단일 사용자 settings + scoped sharedPhotos만 조회
- */
-async function fetchDailyJournalsForModerationForAuthor(authorUid) {
-    await refreshAppCheckTokenBeforeFirestore();
-    const slotByKey = new Map();
-    try {
-        const excluded = await getExcludedAnalyticsUidSet();
-        if (excluded.has(authorUid)) return [];
-        const snap = await getDoc(doc(db, 'artifacts', appId, 'users', authorUid, 'config', 'settings'));
-        if (snap.exists()) {
-            mergeDailyJournalSlotRowsIntoMap(slotByKey, settingsDocToDailyJournalRows(snap));
-        }
-    } catch (err) {
-        console.warn(
-            '[관리자 모먼트] 작성자 하루기록 settings 조회 실패 — 목록에서 제외합니다.',
-            authorUid,
-            err?.code || err?.message || err
-        );
-        return [];
-    }
-    const allRows = [...slotByKey.values()];
-    let shareRows = [];
-    try {
-        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos(authorUid);
-    } catch (e) {
-        console.warn('[관리자 모먼트] 작성자 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
-    }
-    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
-    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
-    return merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
-        ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
-        : merged;
-}
-
-/**
- * users/{uid}/config/settings 의 dailyComments — collectionGroup(전수) + 사용자별 조회 병합
- * (일간 캡처 type=daily sharedPhotos 와 별도 — 하루기록 슬롯 저장분만)
- * @param {string} [authorUid] — 지정 시 scoped 조회 (전체 users/settings 스캔 생략)
- */
-async function fetchDailyJournalsForModeration(authorUid = '') {
-    const scopedUid = String(authorUid || '').trim();
-    if (scopedUid) {
-        return fetchDailyJournalsForModerationForAuthor(scopedUid);
-    }
-
-    await refreshAppCheckTokenBeforeFirestore();
-    const slotByKey = new Map();
-    let mirrorRows = 0;
-    try {
-        const excluded = await getExcludedAnalyticsUidSet();
-        const rows = await fetchDailyJournalSlotsFromMealMirrors(excluded, ADMIN_DAILY_JOURNAL_ROWS_CAP);
-        mirrorRows = rows.length;
-        mergeDailyJournalSlotRowsIntoMap(slotByKey, rows);
-    } catch (err) {
-        console.warn(
-            '[관리자 모먼트] 하루 기록(dailyComments) 조회 실패 — 목록에서 제외합니다.',
-            err?.code || err?.message || err
-        );
-        return [];
-    }
-    const allRows = [...slotByKey.values()];
-    let shareRows = [];
-    try {
-        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos();
-    } catch (e) {
-        console.warn('[관리자 모먼트] 하루기록 모먼트 공유 조회 실패', e?.code || e?.message || e);
-    }
-    const merged = mergeDailyJournalModerationRows(allRows, shareRows);
-    merged.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
-    const capped =
-        merged.length > ADMIN_DAILY_JOURNAL_ROWS_CAP
-            ? merged.slice(0, ADMIN_DAILY_JOURNAL_ROWS_CAP)
-            : merged;
-    if (capped.length > 0) {
-        const slotSaveN = capped.filter((r) => r.isDailyJournalSlot === true).length;
-        const momentPhotoN = capped.filter((r) => r.momentShared).length;
-        const dateList = capped.map((r) => r.date).filter(Boolean).sort();
-        const dates = dateList.join(', ');
-        const latest = dateList.length ? dateList[dateList.length - 1] : '';
-        console.log(
-            `[관리자 모먼트] 하루기록 슬롯 ${capped.length}건` +
-                ` (dailyComments ${slotSaveN}건, 모먼트 사진공유 ${momentPhotoN}건 · 일간 캡처는 별도)` +
-                (dates ? ` · 날짜: ${dates}` : '') +
-                (latest ? ` · 최신슬롯일: ${latest}` : '') +
-                (merged.length > capped.length ? ` · 상한 ${ADMIN_DAILY_JOURNAL_ROWS_CAP}` : '') +
-                ` · meals 미러 ${mirrorRows}건`
-        );
-    }
-    return capped;
-}
 
 /**
  * meals 미러(dailyJournal_*)가 있으면 pinned 하루기록 행을 제외한다.
@@ -606,6 +398,13 @@ async function filterDailyJournalRowsWithoutMealMirror(rows) {
                     keep.push(r);
                     return;
                 }
+                /**
+                 * 이 행 자체가 그 미러 문서다 — meals 미러 조회(fetchDailyJournalSlotsFromMealMirrors)
+                 * 에서 나왔으니 존재는 이미 증명됐다. 같은 문서를 한 건씩 다시 읽지 않는다.
+                 * (id 까지 맞춰 보는 이유: slotId 만 daily_journal 이고 문서 id 가 다른 옛 문서가
+                 *  섞이면 아래 getDoc 이 가리키는 것은 **다른** 문서라, 그때는 확인이 필요하다)
+                 */
+                if (r.isDailyJournalSlot === true && String(r.id || '') === mealId) return;
                 try {
                     const snap = await getDoc(
                         doc(db, 'artifacts', appId, 'users', r.userId, 'meals', mealId)
@@ -680,20 +479,6 @@ function collapseDailyJournalDuplicateRows(rows) {
     return out;
 }
 
-async function getDailyJournalsModerationRowsCached(authorUid = '') {
-    const scopeKey = moderationCacheScopeKey(authorUid);
-    const now = Date.now();
-    if (
-        moderationDailyJournalCache.rows &&
-        moderationDailyJournalCache.scopeKey === scopeKey &&
-        now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS
-    ) {
-        return moderationDailyJournalCache.rows;
-    }
-    const rows = await fetchDailyJournalsForModeration(authorUid);
-    moderationDailyJournalCache = { ts: now, rows, scopeKey };
-    return rows;
-}
 
 /** 하루기록 모먼트 공유 — sharedPhotos 컬렉션 문서 존재 시에만 true (settings.sharedPhotos·photos만으로는 판단 안 함) */
 function isDailyJournalMomentSharedRow(meal) {
@@ -724,8 +509,29 @@ function formatDailyJournalMetricsAdminHtml(entry) {
         .join('');
 }
 
-async function fetchSpecialSharesForModeration(authorUid = '') {
+/**
+ * @param {string} [authorUid] 작성자 필터. 지정 시 이 결과의 건수가 그대로 「전체」 수가 되므로 상한을 줄이지 않는다
+ * @param {number} [rowLimit] 이 페이지가 실제로 필요한 최대 행 수 (전체 목록에서만 줄인다)
+ */
+async function fetchSpecialSharesForModeration(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopedUid = String(authorUid || '').trim();
+
+    /**
+     * 미러가 있으면 여기서 끝난다 — Firestore 읽기 0회.
+     * 아래 서버 경로가 「timestamp 없는 문서 보강」으로 타입당 400건을 더 읽던 이유가
+     * orderBy('timestamp') 가 그 문서들을 통째로 빠뜨려서였는데, 미러는 정렬과 무관하게
+     * 전량을 들고 있어 보강 자체가 필요 없다.
+     */
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        return await sharedPhotosMirror.getFilteredDocsLike((d) => {
+            if (scopedUid && d?.userId !== scopedUid) return false;
+            return ADMIN_FEED_SPECIAL_SHARE_TYPES.includes(d?.type);
+        }, rowLimit);
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 특수 공유 미러 실패 — 서버 조회로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     const byId = new Map();
@@ -773,7 +579,7 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
             sharedColl,
             where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES),
             orderBy('timestamp', 'desc'),
-            limit(ADMIN_FEED_SPECIAL_ROWS_CAP)
+            limit(rowLimit)
         );
         const snap = await getDocs(q);
         addDocs(snap.docs);
@@ -792,13 +598,27 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
         }
     }
 
-    // timestamp 필드가 없거나 orderBy에서 빠진 문서를 type 동등만으로 보강
-    for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
-        try {
-            const snap = await getDocs(query(sharedColl, where('type', '==', ty), limit(400)));
-            addDocs(snap.docs);
-        } catch (e) {
-            console.warn('[관리자 모먼트] 캡처 보조 조회(type만):', ty, e?.code || e?.message || e);
+    /**
+     * 보강: `timestamp` 가 없는 문서는 orderBy('timestamp') 결과에서 통째로 빠진다.
+     * 그걸 type 동등 조회로 주워 온다 — 다만 **빠진 게 실제로 있을 때만** 돈다.
+     *
+     * 예전에는 무조건 3회(타입당 400건) 더 읽었다. 위 쿼리가 성공했든 말든 돌았고,
+     * 받아 온 것 대부분은 byId 에서 중복으로 버려졌다. 새로고침 한 번에 최대 1,200건이
+     * 결과를 하나도 바꾸지 않고 나갔다.
+     *
+     * 「빠진 게 있나」는 건수 두 개로 가른다 — 전체 건수와, orderBy('timestamp') 를 통과하는
+     * 건수. 둘이 같으면 timestamp 없는 문서가 하나도 없다는 뜻이라 보강할 것이 없다.
+     * 받아 온 행 수와 비교하지 않는 이유: 상한(rowLimit)을 줄이면 늘 모자라 보여서
+     * 판단이 안 선다. 건수는 getCountFromServer 라 문서를 읽지 않는다.
+     */
+    if (await specialSharesHaveDocsWithoutTimestamp()) {
+        for (const ty of ADMIN_FEED_SPECIAL_SHARE_TYPES) {
+            try {
+                const snap = await getDocs(query(sharedColl, where('type', '==', ty), limit(400)));
+                addDocs(snap.docs);
+            } catch (e) {
+                console.warn('[관리자 모먼트] 캡처 보조 조회(type만):', ty, e?.code || e?.message || e);
+            }
         }
     }
 
@@ -808,26 +628,131 @@ async function fetchSpecialSharesForModeration(authorUid = '') {
         const rb = sharedPhotoDocToAdminFeedRow(b);
         return moderationRecordedAtMillis(rb) - moderationRecordedAtMillis(ra);
     });
-    return merged.length > ADMIN_FEED_SPECIAL_ROWS_CAP ? merged.slice(0, ADMIN_FEED_SPECIAL_ROWS_CAP) : merged;
+    return merged.length > rowLimit ? merged.slice(0, rowLimit) : merged;
 }
 
-async function getSpecialSharesModerationRowsCached(authorUid = '') {
+/**
+ * @param {number} [rowLimit] 이 페이지가 필요한 행 수. 캐시가 그보다 적게 들고 있으면 다시 받는다 —
+ *   뒤 페이지일수록 더 필요하므로, 앞 페이지 캐시를 그대로 쓰면 행이 모자란다.
+ */
+/**
+ * 미러가 없는 하루기록 공유 — 「고아」만 목록에 얹는다.
+ *
+ * 하루기록의 정본은 이제 meals 미러(`slotId === 'daily_journal'`)다. 미러가 있는 소감은
+ * 일반 기록과 같은 스트림을 타고 들어오므로 여기서 또 얹으면 한 줄이 두 번 뜬다.
+ *
+ * 그래도 이 경로를 남기는 이유: 소감 본문을 지우면 미러는 삭제되지만 sharedPhotos 문서는
+ * 남는다. 그 공유는 피드에 계속 떠 있는데 관리 목록에서만 사라지면 손댈 방법이 없어진다.
+ *
+ * @param {number} [rowLimit] 이 페이지가 필요한 최대 행 수
+ */
+async function getOrphanJournalSharesCached(authorUid = '', rowLimit = ADMIN_DAILY_JOURNAL_ROWS_CAP) {
+    const scopeKey = moderationCacheScopeKey(authorUid);
+    const now = Date.now();
+    if (
+        moderationDailyJournalCache.rows &&
+        moderationDailyJournalCache.scopeKey === scopeKey &&
+        (moderationDailyJournalCache.limitUsed || 0) >= rowLimit &&
+        now - moderationDailyJournalCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
+        return moderationDailyJournalCache.rows;
+    }
+    await refreshAppCheckTokenBeforeFirestore();
+    let shareRows = [];
+    try {
+        shareRows = await fetchDailyJournalMomentSharesFromSharedPhotos(authorUid, rowLimit);
+    } catch (e) {
+        console.warn('[관리자 모먼트] 하루기록 공유 조회 실패', e?.code || e?.message || e);
+    }
+    const rows = await filterDailyJournalRowsWithoutMealMirror(shareRows);
+    rows.sort((a, b) => moderationRecordedAtMillis(b) - moderationRecordedAtMillis(a));
+    moderationDailyJournalCache = { ts: now, rows, scopeKey, limitUsed: rowLimit };
+    if (rows.length > 0) {
+        console.log(`[관리자 모먼트] 미러 없는 하루기록 공유 ${rows.length}건 (공유 ${shareRows.length}건 중)`);
+    }
+    return rows;
+}
+
+async function getSpecialSharesModerationRowsCached(authorUid = '', rowLimit = ADMIN_FEED_SPECIAL_ROWS_CAP) {
     const scopeKey = moderationCacheScopeKey(authorUid);
     const now = Date.now();
     if (
         moderationSpecialSharesCache.rows &&
         moderationSpecialSharesCache.scopeKey === scopeKey &&
+        (moderationSpecialSharesCache.limitUsed || 0) >= rowLimit &&
         now - moderationSpecialSharesCache.ts < ADMIN_FEED_CACHE_TTL_MS
     ) {
         return moderationSpecialSharesCache.rows;
     }
-    const docs = await fetchSpecialSharesForModeration(authorUid);
+    const docs = await fetchSpecialSharesForModeration(authorUid, rowLimit);
     const rows = docs.map(sharedPhotoDocToAdminFeedRow);
-    moderationSpecialSharesCache = { ts: now, rows, scopeKey };
+    moderationSpecialSharesCache = { ts: now, rows, scopeKey, limitUsed: rowLimit };
     return rows;
 }
 
+/**
+ * 특수 공유 전체 건수 캐시.
+ * 한 번의 새로고침 안에서 「보강이 필요한가」와 「전체 몇 건인가」가 같은 값을 묻는다.
+ * getCountFromServer 라 문서를 읽지는 않지만, 두 번 물을 이유도 없다.
+ */
+let specialSharesCountCache = { ts: 0, value: null };
+/** timestamp 없는 특수 공유가 하나라도 있는가 (보강 조회 필요 여부) */
+let specialSharesMissingTsCache = { ts: 0, value: null };
+
+/**
+ * orderBy('timestamp') 는 그 필드가 없는 문서를 결과에서 통째로 뺀다.
+ * 전체 건수와 「orderBy 를 통과하는 건수」가 같으면 빠지는 문서가 없다는 뜻이다.
+ *
+ * 확인이 실패하면 true 로 답한다 — 모르면 보강을 도는 쪽이 목록이 비는 것보다 낫다.
+ */
+async function specialSharesHaveDocsWithoutTimestamp() {
+    const now = Date.now();
+    if (
+        specialSharesMissingTsCache.value !== null &&
+        now - specialSharesMissingTsCache.ts < ADMIN_FEED_CACHE_TTL_MS
+    ) {
+        return specialSharesMissingTsCache.value;
+    }
+    let result = true;
+    try {
+        const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
+        const total = await getSpecialSharesTimelineCountsCached();
+        if (total.known) {
+            const ordered = await getCountFromServer(
+                query(sharedColl, where('type', 'in', ADMIN_FEED_SPECIAL_SHARE_TYPES), orderBy('timestamp', 'desc'))
+            );
+            result = (ordered.data().count || 0) < total.count;
+        }
+    } catch (e) {
+        console.warn('[관리자 모먼트] 캡처 보강 필요 여부 확인 실패 — 보조 조회를 돕니다', e?.message || e);
+        result = true;
+    }
+    specialSharesMissingTsCache = { ts: now, value: result };
+    return result;
+}
+
+async function getSpecialSharesTimelineCountsCached() {
+    const now = Date.now();
+    if (specialSharesCountCache.value && now - specialSharesCountCache.ts < ADMIN_FEED_CACHE_TTL_MS) {
+        return specialSharesCountCache.value;
+    }
+    const value = await getSpecialSharesTimelineCounts();
+    specialSharesCountCache = { ts: now, value };
+    return value;
+}
+
 async function getSpecialSharesTimelineCounts() {
+    // 미러가 있으면 세는 것도 로컬에서 — getCountFromServer 호출조차 필요 없다
+    try {
+        await sharedPhotosMirror.ensureSynced();
+        const count = await sharedPhotosMirror.countLocal((d) =>
+            ADMIN_FEED_SPECIAL_SHARE_TYPES.includes(d?.type)
+        );
+        return { count, known: true };
+    } catch (eMirror) {
+        console.warn('[관리자 모먼트] 특수 공유 건수 미러 실패 — 서버 집계로 대체:', eMirror);
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     await refreshAppCheckTokenBeforeFirestore();
     try {
@@ -902,8 +827,10 @@ function invalidateAdminFeedMonitoringCache() {
     feedReportsAggCache = { ts: 0, map: null };
     feedUserSettingsCache.clear();
     feedSharedKeysCache = null;
-    moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
-    moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
+    moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
+    specialSharesCountCache = { ts: 0, value: null };
+    specialSharesMissingTsCache = { ts: 0, value: null };
+    moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '', limitUsed: 0 };
     feedMealTotalCountKnown = true;
     feedLastDocsByPage = {};
 }
@@ -916,6 +843,8 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
     await refreshAppCheckTokenBeforeFirestore();
     if (isBest || isDaily || isInsight) {
         await deleteDoc(doc(db, 'artifacts', appId, 'sharedPhotos', mealId));
+        // 내가 지운 문서다 — 미러에서도 바로 빼야 다음 목록에서 되살아나지 않는다
+        await sharedPhotosMirror.applyLocalDelete(mealId).catch(() => {});
         return;
     }
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
@@ -924,8 +853,11 @@ async function adminDeleteFeedPostInternal({ mealId, userId, isBest, isDaily, is
     for (const d of sharedSnap.docs) {
         await deleteDoc(d.ref);
     }
+    await sharedPhotosMirror.applyLocalDelete(sharedSnap.docs.map((d) => d.id)).catch(() => {});
     const mealRef = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
     await deleteDoc(mealRef);
+    // 툼스톤을 기다리면 방금 지운 기록이 새로고침 직후 목록에 그대로 보인다
+    await applyLocalMealDelete(userId, mealId).catch(() => {});
 }
 
 async function getReportsAggregateCached() {
@@ -1020,6 +952,7 @@ function syncFeedAuthorSearchInput() {
 }
 
 function ensureFeedAuthorSearchHandlers() {
+    ensureFeedBulkSelectionWatch();
     if (feedAuthorSearchHandlersBound) return;
     const inp = document.getElementById('feedAuthorSearchInput');
     const clr = document.getElementById('feedAuthorSearchClearBtn');
@@ -1030,26 +963,24 @@ function ensureFeedAuthorSearchHandlers() {
         void applyFeedAuthorSearch();
     };
 
+    /**
+     * 타이핑만으로는 조회하지 않는다 — 지우기(빈 칸)일 때 필터를 푸는 것만 즉시 반응한다.
+     *
+     * 예전에는 320ms 디바운스로 자동 조회했는데, 검색어를 다 치기 전에 멈추기만 해도
+     * 사용자 전량을 읽고 「일치하는 사용자가 없습니다」 alert 를 띄웠다. 한글은 더 심해서
+     * 조합 중인 'ㅁ'·'메' 로도 조회가 나갔다. 필터가 하나로 좁혀지면 다 치기도 전에
+     * 목록이 걸려버리기까지 했다.
+     */
     inp.addEventListener('input', () => {
         const q = (inp.value || '').trim();
         if (clr) clr.classList.toggle('hidden', !q);
-        if (!q) {
-            clearTimeout(feedAuthorSearchDebounceTimer);
-            feedAuthorSearchDebounceTimer = null;
-            if (feedAuthorFilter) void window.clearFeedAuthorFilter();
-            return;
-        }
-        clearTimeout(feedAuthorSearchDebounceTimer);
-        feedAuthorSearchDebounceTimer = setTimeout(() => {
-            feedAuthorSearchDebounceTimer = null;
-            runApply();
-        }, FEED_AUTHOR_SEARCH_DEBOUNCE_MS);
+        if (!q && feedAuthorFilter) void window.clearFeedAuthorFilter();
     });
     inp.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter') return;
+        // 한글 조합을 끝내는 엔터다 — 여기서 조회하면 미완성 글자로 찾는다. 다음 엔터가 진짜 검색
+        if (e.isComposing || e.keyCode === 229) return;
         e.preventDefault();
-        clearTimeout(feedAuthorSearchDebounceTimer);
-        feedAuthorSearchDebounceTimer = null;
         runApply();
     });
     if (clr) {
@@ -1125,6 +1056,7 @@ async function applyFeedAuthorSearch() {
 function updateFeedAuthorFilterBar() {
     const bar = document.getElementById('feedAuthorFilterBar');
     syncFeedAuthorSearchInput();
+    updateFeedFilterButtonState();
     if (!bar) return;
     const authorUid = getFeedAuthorUserId();
     if (!authorUid) {
@@ -1174,7 +1106,14 @@ function mealDocSnapToFeedRow(d) {
     const pathParts = d.ref.path.split('/');
     const uidx = pathParts.indexOf('users');
     const userId = uidx >= 0 && pathParts.length > uidx + 1 ? pathParts[uidx + 1] : '';
-    const row = { id: d.id, userId, ...d.data() };
+    return mealRowToFeedRow({ id: d.id, userId, ...d.data() });
+}
+
+/**
+ * meals 한 건(스냅숏이든 미러 행이든) → 목록 행.
+ * 서버 스캔과 미러가 **같은 함수**를 지나야 하루소감 표시가 경로마다 갈리지 않는다.
+ */
+function mealRowToFeedRow(row) {
     if (!isDailyJournalMealRecord(row)) return row;
     const dj = dailyJournalMealDocToModerationFields(row);
     const dateStr = dj.date || row.date;
@@ -1259,6 +1198,34 @@ async function collectMergedModerationPageItems({
     return { items: collected, hasMore, batchesLoaded: batchI };
 }
 
+/**
+ * 미러로 한 페이지를 뽑는다 — Firestore 읽기 0회.
+ *
+ * 서버 경로의 `collectMergedModerationPageItems` 는 커서·버퍼·조기 종료가 얽힌 물건인데,
+ * 그 복잡함은 전부 **「120건씩만 사 오려고」** 존재한다. 로컬에는 살 것이 없으니
+ * 전부 정렬해 잘라 내면 끝이다.
+ *
+ * 덤으로 더 정확하다. 서버 경로는 배치마다 따로 정렬해 병합하므로 정렬 축이
+ * 쿼리의 `recordedAt`·`date` 인 반면, 목록이 실제로 쓰는 축은
+ * `moderationRecordedAtMillis`(하루소감을 따로 취급한다)다. 여기서는 그 축 하나로 줄을 세운다.
+ *
+ * @returns {Promise<{items: object[], hasMore: boolean, mealTotal: number}>}
+ */
+async function collectModerationPageFromMirror({ skip, pageSize, pinnedRows, authorUid }) {
+    await ensureMealsMirrorSynced();
+    const all = await getAllMealsFromMirror();
+    const scoped = authorUid ? all.filter((r) => r?.userId === authorUid) : all;
+    const mealRows = scoped.map(mealRowToFeedRow);
+    const merged = [...(Array.isArray(pinnedRows) ? pinnedRows : []), ...mealRows].sort(
+        compareModerationRowsDesc
+    );
+    return {
+        items: merged.slice(skip, skip + pageSize),
+        hasMore: merged.length > skip + pageSize,
+        mealTotal: mealRows.length
+    };
+}
+
 /** 피드: sharedPhotos(daily/best/insight) + users/…/meals 를 공유·기록 시각 기준으로 합쳐 한 목록으로 페이지네이션 */
 async function getFeedPage(options = {}) {
     const page = options.page ?? 1;
@@ -1274,11 +1241,80 @@ async function getFeedPage(options = {}) {
 
     try {
         await refreshAppCheckTokenBeforeFirestore();
-        const specRows = await getSpecialSharesModerationRowsCached(authorUid);
-        const journalRowsAll = await getDailyJournalsModerationRowsCached(authorUid);
-        const journalRows = await filterDailyJournalRowsWithoutMealMirror(journalRowsAll);
+        /**
+         * 합쳐서 20건을 뽑는 데 500건이 필요하지 않다.
+         *
+         * 병합 목록의 [skip, skip+pageSize) 구간을 만들려면 각 출처에서 **자기 기준 최신
+         * skip+pageSize 건**만 있으면 충분하다 — 그보다 뒤에 있는 행은 자기 출처 안에서만도
+         * 이미 skip+pageSize 개에게 밀렸으므로 이 페이지에 오를 수 없다.
+         *
+         * 두 pinned 출처 모두 timestamp 최신순으로 받고 목록도 같은 값으로 세우므로
+         * 축이 일치해 이 상한이 정확하다.
+         *
+         * 작성자 필터일 때는 이 결과의 건수가 그대로 「전체」 수로 쓰이므로 줄이지 않는다.
+         */
+        const specNeeded = authorUid
+            ? ADMIN_FEED_SPECIAL_ROWS_CAP
+            : Math.min(skip + pageSize, ADMIN_FEED_SPECIAL_ROWS_CAP);
+        const specRows = await getSpecialSharesModerationRowsCached(authorUid, specNeeded);
+        /**
+         * 하루기록은 meals 미러가 정본이라 일반 기록과 같은 스트림으로 들어온다.
+         * 여기서 얹는 것은 미러가 사라진 「고아 공유」뿐이다 — 흔치 않다.
+         */
+        const journalNeeded = authorUid
+            ? ADMIN_DAILY_JOURNAL_ROWS_CAP
+            : Math.min(skip + pageSize, ADMIN_DAILY_JOURNAL_ROWS_CAP);
+        const journalRows = await getOrphanJournalSharesCached(authorUid, journalNeeded);
         const specPinned = filterModerationRowsByAuthor(specRows);
         const journalPinned = filterModerationRowsByAuthor(journalRows);
+
+        /**
+         * 미러가 서면 meals 스트림과 건수 집계를 통째로 대신한다.
+         * 실패하면 아래 서버 경로가 그대로 돈다 — 두 갈래가 같은 pinned 행을 쓰므로
+         * 목록의 모양은 달라지지 않는다.
+         */
+        let mirrorPage = null;
+        try {
+            mirrorPage = await collectModerationPageFromMirror({
+                skip,
+                pageSize,
+                pinnedRows: [...specPinned, ...journalPinned],
+                authorUid
+            });
+        } catch (mirrErr) {
+            console.warn('[관리자 모먼트] meals 미러를 쓸 수 없어 서버 조회로 갑니다:', mirrErr?.message || mirrErr);
+        }
+
+        if (page === 1 && mirrorPage) {
+            /**
+             * 건수도 미러에서. 서버 경로는 여기서 `getCountFromServer` 를 던졌다.
+             * 하루소감 미러는 meals 문서라 `mealTotal` 에 이미 들어 있고, 여기서 더하는
+             * 고아 공유는 상한 안에서 센 수라 정확한 총계가 아니다 — 서버 경로와 같은 절충이다.
+             */
+            if (authorUid) {
+                feedTotalCount = mirrorPage.mealTotal + specPinned.length + journalPinned.length;
+                feedMealTotalCountKnown = true;
+            } else {
+                let specN = 0;
+                let specKnown = true;
+                try {
+                    const sc = await getSpecialSharesTimelineCountsCached();
+                    specN = sc.count;
+                    specKnown = sc.known;
+                } catch (e) {
+                    specKnown = false;
+                    console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
+                }
+                feedMealTotalCountKnown = specKnown;
+                feedTotalCount = mirrorPage.mealTotal + (specKnown ? specN : 0) + journalRows.length;
+            }
+        }
+
+        if (mirrorPage) {
+            feedLastPageRowCount = mirrorPage.items.length;
+            feedLastPageHasMore = mirrorPage.hasMore;
+            return { items: mirrorPage.items, totalCount: feedTotalCount, hasMore: feedLastPageHasMore };
+        }
 
         if (page === 1) {
             if (authorUid) {
@@ -1312,21 +1348,20 @@ async function getFeedPage(options = {}) {
                 let specKnown = true;
                 let specN = 0;
                 try {
-                    const sc = await getSpecialSharesTimelineCounts();
+                    const sc = await getSpecialSharesTimelineCountsCached();
                     specN = sc.count;
                     specKnown = sc.known;
                 } catch (e) {
                     specKnown = false;
                     console.warn('[관리자 모먼트] 캡처 공유 건수 집계 실패', e?.code || e?.message || e);
                 }
-                let journalN = 0;
-                let journalKnown = true;
-                try {
-                    journalN = journalRows.length;
-                } catch (e) {
-                    journalKnown = false;
-                    console.warn('[관리자 모먼트] 하루 기록 건수 집계 실패', e?.code || e?.message || e);
-                }
+                /**
+                 * 하루기록 미러는 meals 문서라 위 mealsN 에 이미 들어 있다.
+                 * 여기서 더하는 것은 미러 없는 고아 공유뿐이고, 그마저 이 페이지가 받은
+                 * 상한 안에서 센 수라 정확한 총계는 아니다 — 고아는 드물어 오차를 감수한다.
+                 */
+                const journalN = journalRows.length;
+                const journalKnown = true;
                 feedMealTotalCountKnown = mealsKnown && specKnown && journalKnown;
                 if (feedMealTotalCountKnown) {
                     feedTotalCount = mealsN + specN + journalN;
@@ -1368,6 +1403,31 @@ async function getFeedPage(options = {}) {
     }
 }
 
+/**
+ * `${userId}_${entryId}` → 공유 시각(ms). sharedPhotos 미러를 한 번 훑어 만든다.
+ *
+ * 서버 경로는 이 답을 얻으려고 사용자별로 `entryId in [10개]` 쿼리를 돌렸다 —
+ * 한 페이지에 여러 사용자가 섞이면 왕복이 그만큼 늘어난다. 미러에서는 한 번이면 끝이다.
+ * 같은 (uid, entryId) 가 여럿이면 **가장 늦은 공유 시각**을 남긴다 — 서버 경로가
+ * `tsMs > row.momentShareAtMillis` 로 갱신하던 것과 같은 규칙이다.
+ */
+async function buildSharedEntryIndexFromMirror() {
+    await sharedPhotosMirror.ensureSynced();
+    const docs = await sharedPhotosMirror.getDocsLike();
+    const map = new Map();
+    for (const d of docs) {
+        const data = d.data() || {};
+        const uid = data.userId;
+        const eid = data.entryId || data.mealId || null;
+        if (!uid || !eid) continue;
+        const key = `${uid}_${eid}`;
+        const tsMs = firestoreTimestampToMillis(data.timestamp);
+        const prev = map.get(key);
+        if (prev == null || tsMs > prev) map.set(key, tsMs);
+    }
+    return map;
+}
+
 /** 현재 페이지 식사(meals) 행 기준 공유 표시용 캐시 — sharedPhotos.entryId 매칭 */
 async function ensureSharedKeysForFeedRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return;
@@ -1398,6 +1458,42 @@ async function ensureSharedKeysForFeedRows(rows) {
         if (!djByUser.has(m.userId)) djByUser.set(m.userId, new Set());
         djByUser.get(m.userId).add(eid);
     }
+    /** 미러로 답할 수 있으면 아래 `in` 쿼리들을 전부 건너뛴다 */
+    let sharedIndex = null;
+    if (djByUser.size > 0 || byUser.size > 0) {
+        try {
+            sharedIndex = await buildSharedEntryIndexFromMirror();
+        } catch (e) {
+            console.warn('[관리자 모먼트] 공유 표시를 미러로 못 채웁니다 — 서버 조회로 갑니다:', e?.message || e);
+        }
+    }
+
+    if (sharedIndex) {
+        for (const [uid, eidSet] of djByUser) {
+            for (const eid of eidSet) {
+                const tsMs = sharedIndex.get(`${uid}_${eid}`);
+                if (tsMs == null) continue;
+                feedSharedKeysCache.add(`${uid}_${eid}`);
+                const row = rows.find(
+                    (r) =>
+                        r?.isDailyJournal &&
+                        r.userId === uid &&
+                        getDailyJournalShareEntryId(r.date) === eid
+                );
+                if (row) {
+                    row.momentShared = true;
+                    if (tsMs > (row.momentShareAtMillis || 0)) row.momentShareAtMillis = tsMs;
+                }
+            }
+        }
+        for (const [uid, idSet] of byUser) {
+            for (const id of idSet) {
+                if (sharedIndex.has(`${uid}_${id}`)) feedSharedKeysCache.add(`${uid}_${id}`);
+            }
+        }
+        return;
+    }
+
     const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
     for (const [uid, eidSet] of djByUser) {
         const entryIds = [...eidSet];
@@ -1616,7 +1712,7 @@ async function renderFeedManagement() {
 
         const rowsHtml =
             paginatedMeals.length === 0
-                ? `<tr><td colspan="13" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
+                ? `<tr><td colspan="14" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
                 : paginatedMeals.map((meal, rowIdx) => {
             const isDailyJournal = meal.isDailyJournal === true;
             const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
@@ -1671,9 +1767,13 @@ async function renderFeedManagement() {
                             ? '밀당의 참견'
                             : '일반';
 
-            const whereTag = isCapture || isDailyJournal ? '' : meal.place || meal.snackPlace || '';
+            // 간식 '어디서'는 칩(snackPlaceMain)이 정본이고, 칩이 없던 옛 기록만 자유입력(place)으로 메운다
+            const whereTag = isCapture || isDailyJournal ? '' : meal.snackPlaceMain || meal.place || meal.snackPlace || '';
             const whereSubTag = isCapture || isDailyJournal ? '' : meal.placeDetail || meal.placeMemo || '';
-            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
+            // 끼니 1축 '어떻게'(집밥·외식·배달). 간식에는 이 축이 없어 빈 칸으로 남는다
+            const howTag = isCapture || isDailyJournal ? '' : meal.mealType || '';
+            // mealType 을 여기 섞지 않는다 — '어떻게'(조달) 값이라 '무엇을'(형태) 칸을 오염시킨다
+            const whatTag = isCapture || isDailyJournal ? '' : meal.category || meal.categoryAuto || meal.snackType || '';
             const whatSubTag = isCapture || isDailyJournal ? '' : meal.menuDetail || meal.snackDetail || '';
             const withTag = isCapture || isDailyJournal ? '' : meal.withWhom || '';
             const withSubTag = isCapture || isDailyJournal ? '' : meal.withWhomDetail || '';
@@ -1704,7 +1804,7 @@ async function renderFeedManagement() {
                 morning: '아침',
                 snack1: '오전간식',
                 snack2: '오후간식',
-                night: '야식',
+                night: '저녁후간식',
                 breakfast: '아침',
                 lunch: '점심',
                 dinner: '저녁',
@@ -1766,6 +1866,7 @@ async function renderFeedManagement() {
                             <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
                         </div>
                     </td>
+                    <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(howTag, '')}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whereTag, whereSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(whatTag, whatSubTag)}</td>
                     <td class="px-3 py-3 align-middle w-[102px] max-w-[102px] text-center border-r border-slate-200 overflow-hidden">${getCategoryCell(withTag, withSubTag)}</td>
@@ -1831,6 +1932,7 @@ async function renderFeedManagement() {
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[112px] min-w-[112px] border-r border-slate-200">기록 일시</th>
                             <th class="px-3 py-3 font-bold text-center w-[176px] whitespace-nowrap border-r border-slate-200">작성자</th>
                             <th class="px-2 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">식사구분</th>
+                            <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어떻게</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
@@ -1867,6 +1969,7 @@ async function renderFeedManagement() {
         updateFeedAuthorFilterBar();
         // 토글 버튼 색상 업데이트
         updateFeedFilterToggleColors();
+        updateFeedBulkButtonState();
         adminFeedMonitoringLoaded = true;
     } catch (e) {
         adminFeedMonitoringLoaded = false;
@@ -1907,7 +2010,167 @@ function updateFeedFilterToggleColors() {
             }
         }
     });
+    updateFeedFilterButtonState();
 }
+
+/** 지금 걸린 필터를 사람이 읽는 문구로. 없으면 빈 배열 */
+function activeFeedFilterLabels() {
+    const yn = (v) => (v === 'yes' ? '예' : '아니오');
+    const out = [];
+    if (feedFilters.shared !== 'all') out.push(`공유 ${yn(feedFilters.shared)}`);
+    if (feedFilters.hasPhotos !== 'all') out.push(`사진 ${yn(feedFilters.hasPhotos)}`);
+    if (feedFilters.banned !== 'all') out.push(`금지 ${yn(feedFilters.banned)}`);
+    if (feedAuthorFilter?.userId) {
+        out.push(`작성자 ${feedAuthorFilter.nickname?.trim() || feedAuthorFilter.userId}`);
+    }
+    return out;
+}
+
+const FEED_FILTER_BTN_BASE =
+    'inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition-colors';
+const FEED_FILTER_BTN_OFF = `${FEED_FILTER_BTN_BASE} bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200`;
+const FEED_FILTER_BTN_ON = `${FEED_FILTER_BTN_BASE} bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700 shadow-sm`;
+
+/**
+ * 필터가 팝업 안으로 들어가면 「지금 걸려 있나」가 화면에서 사라진다.
+ * 버튼 색과 라벨이 그 자리를 대신한다 — 색만으로는 못 읽는 경우가 있어 개수도 같이 적는다.
+ */
+function updateFeedFilterButtonState() {
+    const labels = activeFeedFilterLabels();
+    const n = labels.length;
+    const btn = document.getElementById('feedFilterOpenBtn');
+    const label = document.getElementById('feedFilterOpenBtnLabel');
+    const summary = document.getElementById('feedFilterModalSummary');
+    if (label) label.textContent = n === 0 ? '필터' : `필터 ${n}`;
+    if (btn) {
+        btn.className = n === 0 ? FEED_FILTER_BTN_OFF : FEED_FILTER_BTN_ON;
+        btn.title = n === 0 ? '필터가 적용되지 않았습니다' : `적용 중: ${labels.join(' · ')}`;
+    }
+    if (summary) summary.textContent = n === 0 ? '적용된 필터가 없습니다' : labels.join(' · ');
+}
+
+window.openFeedFilterModal = function () {
+    const m = document.getElementById('feedFilterModal');
+    if (!m) return;
+    ensureFeedAuthorSearchHandlers();
+    updateFeedFilterToggleColors();
+    syncFeedAuthorSearchInput();
+    m.classList.remove('hidden');
+    m.setAttribute('aria-hidden', 'false');
+    if (!m.dataset.dismissBound) {
+        m.dataset.dismissBound = '1';
+        // 배경(모달 바깥)을 눌렀을 때만 닫는다
+        m.addEventListener('click', (e) => {
+            if (e.target === m) window.closeFeedFilterModal();
+        });
+    }
+};
+
+window.closeFeedFilterModal = function () {
+    const m = document.getElementById('feedFilterModal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
+};
+
+const FEED_BULK_BTN_OFF = `${FEED_FILTER_BTN_BASE} bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200`;
+const FEED_BULK_BTN_ON = `${FEED_FILTER_BTN_BASE} bg-slate-800 text-white border-slate-800 hover:bg-slate-900 shadow-sm`;
+let feedBulkSelectionWatchBound = false;
+
+/** 지금 체크된 행 수 */
+function feedBulkSelectedCount() {
+    return document.querySelectorAll('.feed-item-checkbox:checked').length;
+}
+
+/**
+ * 일괄 작업도 팝업으로 접혔으니, 「몇 건 골랐나」를 버튼이 대신 말해야 한다.
+ * 선택이 없으면 팝업 안 작업 버튼을 잠근다 — 눌러보고 alert 로 되돌려보내는 것보다 낫다.
+ */
+function updateFeedBulkButtonState() {
+    const n = feedBulkSelectedCount();
+    const btn = document.getElementById('feedBulkOpenBtn');
+    const label = document.getElementById('feedBulkOpenBtnLabel');
+    const summary = document.getElementById('feedBulkModalSummary');
+    const hint = document.getElementById('feedBulkEmptyHint');
+    if (label) label.textContent = n === 0 ? '일괄 작업' : `일괄 작업 ${n}`;
+    if (btn) {
+        btn.className = n === 0 ? FEED_BULK_BTN_OFF : FEED_BULK_BTN_ON;
+        btn.title = n === 0 ? '선택된 항목이 없습니다' : `${n}건 선택됨`;
+    }
+    if (summary) summary.textContent = n === 0 ? '선택된 항목이 없습니다' : `${n}건 선택됨`;
+    if (hint) hint.classList.toggle('hidden', n > 0);
+    document.querySelectorAll('.feed-bulk-action').forEach((el) => {
+        if (el instanceof HTMLButtonElement) el.disabled = n === 0;
+    });
+}
+
+/** 체크박스는 목록을 그릴 때마다 새로 만들어지므로 문서 한 곳에서 위임으로 듣는다 */
+function ensureFeedBulkSelectionWatch() {
+    if (feedBulkSelectionWatchBound) return;
+    feedBulkSelectionWatchBound = true;
+    document.addEventListener('change', (e) => {
+        const t = e.target;
+        if (t instanceof HTMLElement && t.classList.contains('feed-item-checkbox')) {
+            updateFeedBulkButtonState();
+        }
+    });
+}
+
+window.openFeedBulkModal = function () {
+    const m = document.getElementById('feedBulkModal');
+    if (!m) return;
+    updateFeedBulkButtonState();
+    m.classList.remove('hidden');
+    m.setAttribute('aria-hidden', 'false');
+    if (!m.dataset.dismissBound) {
+        m.dataset.dismissBound = '1';
+        m.addEventListener('click', (e) => {
+            if (e.target === m) window.closeFeedBulkModal();
+        });
+    }
+};
+
+window.closeFeedBulkModal = function () {
+    const m = document.getElementById('feedBulkModal');
+    if (!m) return;
+    m.classList.add('hidden');
+    m.setAttribute('aria-hidden', 'true');
+};
+
+/**
+ * 작업이 실제로 돌면 목록이 다시 그려지며 선택이 풀린다. 그걸 신호로 팝업을 닫는다 —
+ * 확인 창에서 취소했다면 선택이 남아 있으므로 팝업도 그대로 둔다.
+ */
+window.runFeedBulkAction = async function (action) {
+    const fns = {
+        unshare: window.bulkUnsharePosts,
+        ban: window.bulkBanPosts,
+        unban: window.bulkUnbanPosts,
+        delete: window.bulkDeleteFeedPosts
+    };
+    const fn = fns[action];
+    if (typeof fn !== 'function') return;
+    await fn();
+    updateFeedBulkButtonState();
+    if (feedBulkSelectedCount() === 0) window.closeFeedBulkModal();
+};
+
+window.resetFeedFilters = async function () {
+    feedFilters.shared = 'all';
+    feedFilters.hasPhotos = 'all';
+    feedFilters.banned = 'all';
+    updateFeedFilterToggleColors();
+    feedCurrentPage = 1;
+    if (feedAuthorFilter) {
+        // 작성자 해제가 목록까지 다시 그린다 — 여기서 또 그리면 같은 조회를 두 번 한다
+        await window.clearFeedAuthorFilter();
+        updateFeedFilterButtonState();
+        return;
+    }
+    updateFeedFilterButtonState();
+    if (!adminFeedMonitoringLoaded) return;
+    await renderFeedManagement();
+};
 
 /** 합산 건수가 있으면 전체 페이지 수, 없으면 현재까지 로드된 범위 기준 */
 function computeFeedAdminTotalPages() {
@@ -2004,6 +2267,7 @@ window.toggleFeedFilter = function(filterType) {
         }
     }
     
+    updateFeedFilterButtonState();
     if (!adminFeedMonitoringLoaded) return;
     feedCurrentPage = 1;
     renderFeedManagement();
@@ -2085,6 +2349,24 @@ window.showReportDetailPopup = function(targetGroupKey) {
     document.body.appendChild(overlay);
 };
 
+/**
+ * 관리자 일괄 조치가 meals 에 쓴 값을 미러에도 반영한다.
+ *
+ * **관리자 쓰기는 `updatedAt` 을 찍지 않는다.** 그래서 델타 쿼리
+ * (`updatedAt > 북마크`)에 영영 걸리지 않고, meals 미러에는 주기적 전체 재구축도 없다.
+ * 여기서 반영하지 않으면 「공유 금지」가 미러에서 되살아나는 게 아니라 **처음부터
+ * 반영되지 않는다** — 배치가 성공했는데 목록은 그대로인 모습이 된다.
+ *
+ * 미러 반영이 실패해도 서버 쓰기는 이미 끝났으므로 조치 자체를 실패로 만들지 않는다.
+ */
+async function applyMealMirrorPatches(patches) {
+    for (const [userId, mealId, patch] of patches) {
+        await patchLocalMeal(userId, mealId, patch).catch((e) => {
+            console.warn('[관리자 모먼트] 미러 반영 실패 — 다음 재구축에서 정리됩니다:', e?.message || e);
+        });
+    }
+}
+
 // 일괄 공유 취소
 window.bulkUnsharePosts = async function() {
     const checkedBoxes = document.querySelectorAll('.feed-item-checkbox:checked');
@@ -2100,6 +2382,7 @@ window.bulkUnsharePosts = async function() {
     
     try {
         const batch = writeBatch(db);
+        const mealMirrorPatches = [];
         let count = 0;
         let sharedPhotosDeleteCount = 0;
         
@@ -2163,6 +2446,7 @@ window.bulkUnsharePosts = async function() {
                 if (mealSnap.exists()) {
                     // meal 문서의 sharedPhotos 필드 빈 배열로 업데이트
                     batch.update(mealDocRef, { sharedPhotos: [] });
+                    mealMirrorPatches.push([userId, mealId, { sharedPhotos: [] }]);
                     count++;
                     
                     // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
@@ -2193,6 +2477,7 @@ window.bulkUnsharePosts = async function() {
         
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유가 취소되었습니다. (${sharedPhotosDeleteCount}개의 공유 사진 삭제)`);
@@ -2220,6 +2505,7 @@ window.bulkBanPosts = async function() {
     
     try {
         const batch = writeBatch(db);
+        const mealMirrorPatches = [];
         let count = 0;
         let sharedPhotosDeleteCount = 0;
         
@@ -2255,6 +2541,7 @@ window.bulkBanPosts = async function() {
                 if (mealSnap.exists()) {
                     // meal 문서에 shareBanned: true 설정 및 sharedPhotos 필드 빈 배열로 업데이트
                     batch.update(mealDocRef, { shareBanned: true, sharedPhotos: [] });
+                    mealMirrorPatches.push([userId, mealId, { shareBanned: true, sharedPhotos: [] }]);
                     count++;
                     
                     // sharedPhotos 컬렉션에서 해당 entryId의 모든 문서 삭제
@@ -2285,6 +2572,7 @@ window.bulkBanPosts = async function() {
         
         // 배치 커밋 (meal 문서 업데이트 + sharedPhotos 컬렉션 삭제 모두 포함)
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물이 공유 금지되었습니다. (공유 컬렉션에서 ${sharedPhotosDeleteCount}개 삭제)`);
@@ -2607,6 +2895,7 @@ window.bulkUnbanPosts = async function() {
     if (!confirm(`${checkedBoxes.length}개의 게시물 공유 금지를 해제하시겠습니까?`)) return;
     
     const batch = writeBatch(db);
+    const mealMirrorPatches = [];
     let count = 0;
     
     for (const checkbox of checkedBoxes) {
@@ -2616,6 +2905,7 @@ window.bulkUnbanPosts = async function() {
         try {
             const mealDoc = doc(db, 'artifacts', appId, 'users', userId, 'meals', mealId);
             await batch.update(mealDoc, { shareBanned: false });
+            mealMirrorPatches.push([userId, mealId, { shareBanned: false }]);
             count++;
         } catch (e) {
             console.error(`게시물 ${mealId} 금지 해제 실패:`, e);
@@ -2624,6 +2914,7 @@ window.bulkUnbanPosts = async function() {
     
     try {
         await batch.commit();
+        await applyMealMirrorPatches(mealMirrorPatches);
         invalidateAdminFeedMonitoringCache();
         alert(`${count}개의 게시물 공유 금지가 해제되었습니다.`);
         renderFeedManagement();
@@ -2763,7 +3054,7 @@ function dailyJournalMetricsPlainText(entry) {
 }
 
 const MOMENT_EXPORT_SLOT_LABELS = {
-    pre_morning: '아침전', morning: '아침', snack1: '오전간식', snack2: '오후간식', night: '야식',
+    pre_morning: '아침전', morning: '아침', snack1: '오전간식', snack2: '오후간식', night: '저녁후간식',
     breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식',
     before_breakfast: '아침전', after_breakfast: '아침후', before_lunch: '점심전', after_lunch: '점심후',
     before_dinner: '저녁전', after_dinner: '저녁후'
@@ -2911,9 +3202,10 @@ async function collectMomentRowsForExport(range = {}) {
                         : '일반';
 
         const noTags = isCapture || isDailyJournal;
-        const whereTag = noTags ? '' : meal.place || meal.snackPlace || '';
+        const whereTag = noTags ? '' : meal.snackPlaceMain || meal.place || meal.snackPlace || '';
         const whereSubTag = noTags ? '' : meal.placeDetail || meal.placeMemo || '';
-        const whatTag = noTags ? '' : meal.category || meal.categoryAuto || meal.mealType || meal.snackType || '';
+        const howTag = noTags ? '' : meal.mealType || '';
+        const whatTag = noTags ? '' : meal.category || meal.categoryAuto || meal.snackType || '';
         const whatSubTag = noTags ? '' : meal.menuDetail || meal.snackDetail || '';
         const withTag = noTags ? '' : meal.withWhom || '';
         const withSubTag = noTags ? '' : meal.withWhomDetail || '';
@@ -2938,6 +3230,7 @@ async function collectMomentRowsForExport(range = {}) {
             날짜: dt.date,
             시간: dt.time,
             식사구분: slotLabel,
+            어떻게: howTag,
             어디서: whereTag,
             어디서_상세: whereSubTag,
             무엇을: whatTag,
