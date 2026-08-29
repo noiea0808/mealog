@@ -32,6 +32,7 @@ import {
     refreshUsers
 } from './admin/users.js';
 import { switchAdminUsersSubmenu, refreshAdminUserAnalytics } from './admin/user-analytics.js';
+import { autoloadWhenMirrored } from './admin/mirror-autoload.js';
 import {
     handleAdminLogin,
     handleAdminLogout
@@ -140,6 +141,48 @@ function resetAdminScrollTop() {
     document.body.scrollTop = 0;
 }
 
+/**
+ * 화면별 자동 로드 — 「이 화면이 읽는 미러」와 평소의 새로고침 경로.
+ *
+ * 미러가 구축돼 있으면 진입만으로 채운다(델타). 미구축이면 아무것도 하지 않고
+ * 예전처럼 「새로고침」을 기다린다 — 화면을 여는 것만으로 부트스트랩을 사지 않기
+ * 위해서다. 판단은 `mirror-autoload.js` 가 한다.
+ */
+const SCREEN_AUTOLOAD = {
+    users: { mirrors: ['users', 'meals', 'sharedPhotos', 'boardPosts'], loader: 'refreshUsers' },
+    feed: { mirrors: ['meals', 'sharedPhotos'], loader: 'refreshFeedManagement' },
+    momentAnalytics: { mirrors: ['meals'], loader: 'runMomentAnalytics' },
+    lounge: { mirrors: ['feedPosts'], loader: 'refreshLoungeChatManagement' },
+    board: { mirrors: ['boardPosts'], loader: 'refreshBoardPosts' },
+    restaurants: { mirrors: ['meals'], loader: 'refreshRestaurantData' }
+};
+
+/** 이미 채운 화면 — 사이드바를 오갈 때마다 델타를 되사지 않게 */
+const autoloadedScreens = new Set();
+
+/**
+ * 세션당 1회만 자동으로 채운다. 되풀이 진입은 이미 그려진 화면을 그대로 두고,
+ * 최신이 필요하면 사람이 「새로고침」을 누른다 — 관리자 조치는 그 자리에서 미러와
+ * 화면에 함께 반영되므로 오가는 사이에 목록이 낡지 않는다.
+ *
+ * 자동 로드가 **실제로 일어나지 않았으면 표시를 지운다** — 미구축이라 건너뛴
+ * 경우이므로, 미러 콘솔에서 구축한 뒤 다시 들어오면 그때는 채워져야 한다.
+ */
+function autoloadScreenOnce(screen) {
+    const spec = SCREEN_AUTOLOAD[screen];
+    if (!spec || autoloadedScreens.has(screen)) return;
+    /**
+     * 새로고침 경로는 각 화면 모듈이 window 에 붙인다 — 식당정보처럼 등록 함수 안에서
+     * 붙는 것도 있어, 아직 없으면 표시하지 않고 다음 진입에 다시 본다.
+     */
+    const load = window[spec.loader];
+    if (typeof load !== 'function') return;
+    autoloadedScreens.add(screen);
+    void autoloadWhenMirrored(spec.mirrors, () => load()).then((filled) => {
+        if (!filled) autoloadedScreens.delete(screen);
+    });
+}
+
 // 어드민 탭 전환 (기존 코드 유지 - switchAdminTab은 import했지만 내부 구현은 여기서)
 window.switchAdminTab = function(tab) {
     // 모든 탭 버튼 비활성화
@@ -177,7 +220,7 @@ window.switchAdminTab = function(tab) {
     if (tab === 'dashboard') {
         updateStatistics();
     } else if (tab === 'monitoring') {
-        window.switchMonitoringSidebar('feed'); // UI만 전환 — 목록은 각 화면의 새로고침으로 로드
+        window.switchMonitoringSidebar('feed'); // 목록은 미러가 있으면 여기서 자동으로 채워진다
         loadAdminSettings(); // 공지·댓글 표시 이름 캐시 로드
     } else if (tab === 'ai') {
         window.switchAiSidebar('characters');
@@ -185,7 +228,7 @@ window.switchAdminTab = function(tab) {
         // 페르소나 탭은 더 이상 사용하지 않음
     } else if (tab === 'users') {
         ensureAdminUsersSortHandlers();
-        /* 사용자 목록은 새로고침 버튼으로만 로드 */
+        autoloadScreenOnce('users');
     } else if (tab === 'alerts') {
         window.switchAlertsSidebar('pushMessage');
     } else if (tab === 'content') {
@@ -741,7 +784,7 @@ window.switchMonitoringSidebar = function(section) {
         activeMainSection.classList.remove('hidden');
     }
     resetAdminScrollTop();
-    /* 데이터는 각 섹션의「새로고침」버튼에서만 로드 (탭/서브메뉴 진입 시 Firestore 조회 없음) */
+    autoloadScreenOnce(section);
 };
 
 const AI_SIDEBAR_SECTIONS = ['characters', 'aiResponses', 'dietPrompt', 'aiDietReports'];
