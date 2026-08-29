@@ -6,6 +6,8 @@
 
 import { SLOTS } from '../constants.js';
 
+import { resolveRecordSlotView } from '../utils/slot-view.js';
+
 import { appState } from '../state.js';
 
 import { sortSnackSlotRecordsChronological } from '../render/timeline.js';
@@ -60,19 +62,30 @@ export function inferEntryFormModeFromRecord(record, slot) {
 
 
 
-/** 슬롯 표시 라벨 (동일 슬롯 다건이면 점심2 형식) */
-
+/**
+ * 슬롯 표시 라벨 (동일 슬롯 다건이면 점심2 형식)
+ *
+ * 라벨·서수 모두 **사용자 슬롯** 기준이다(docs/user-slot-plan.md §3).
+ * 같은 base('야식'·'2차' 둘 다 dinner)라도 slotKey 가 다르면 다른 슬롯이므로
+ * 서수를 섞어 세지 않는다 — 그룹 판정은 resolveRecordSlotView 의 slotKey 로 한다.
+ * plan 없는 사용자는 slotKey 가 전부 null 이라 현행(slotId 단위)과 동일.
+ */
 export function getEntrySlotTitleLabel(date, slotId, entryId = null) {
 
-    const slot = SLOTS.find((s) => s.id === slotId);
+    if (!SLOTS.some((s) => s.id === slotId)) return '';
 
-    if (!slot) return '';
+    const self = entryId ? window.mealHistory?.find((m) => m.id === entryId) ?? null : null;
 
-    const inSlot = (window.mealHistory || []).filter((m) => m?.date === date && m?.slotId === slotId);
+    const targetView = resolveRecordSlotView(self || { date, slotId });
+
+    const sameGroup = (m) => {
+        if (!m || m.date !== date || m.slotId !== slotId) return false;
+        return resolveRecordSlotView(m).slotKey === targetView.slotKey;
+    };
+
+    const inSlot = (window.mealHistory || []).filter(sameGroup);
 
     if (entryId) {
-
-        const self = window.mealHistory?.find((m) => m.id === entryId);
 
         const all = self && !inSlot.some((m) => m.id === entryId) ? [...inSlot, self] : [...inSlot];
 
@@ -80,13 +93,13 @@ export function getEntrySlotTitleLabel(date, slotId, entryId = null) {
 
         const ord = sorted.findIndex((m) => m.id === entryId) + 1;
 
-        return sorted.length > 1 ? `${slot.label}${ord}` : slot.label;
+        return sorted.length > 1 ? `${targetView.label}${ord}` : targetView.label;
 
     }
 
     const nextOrd = inSlot.length + 1;
 
-    return inSlot.length > 0 ? `${slot.label}${nextOrd}` : slot.label;
+    return inSlot.length > 0 ? `${targetView.label}${nextOrd}` : targetView.label;
 
 }
 

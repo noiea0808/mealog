@@ -290,3 +290,65 @@ export function revisionCount(plan) {
     const revisions = plan && typeof plan === 'object' ? plan.revisions : null;
     return revisions && typeof revisions === 'object' ? Object.keys(revisions).length : 0;
 }
+
+/* ── 타임라인 그룹핑 (§3 정렬 위치) ────────────────────────── */
+
+/** base 의 본식/간식 구분 — 아이콘·색·폼 종류와 함께 base 가 답하는 것들 */
+export function baseSlotType(baseId) {
+    const def = SLOTS.find((s) => s.id === baseId);
+    return def ? def.type : 'main';
+}
+
+/**
+ * 그 날짜의 기록들을 사용자 슬롯 그룹으로 묶는다 — 타임라인·사진 뷰어·일간
+ * 공유 캡처가 공유하는 순회. 반환 그룹의 `slot` 은 기존 카드 빌더가 받던
+ * SLOTS 원소와 호환되는 모양(id·type·label)에 key 를 더한 것이다.
+ *
+ * 규칙 (docs/user-slot-plan.md §3):
+ * - 그룹 = 기록의 resolveSlotView 결과. slotKey 가 그 날짜 개정판에 있으면
+ *   그 슬롯, 없으면 base 원본(가장 오래된 key) 슬롯 자리에 끼운다.
+ * - 그룹 순서 = 유효 개정판의 배열 순서. 개정판에 그 base 슬롯이 하나도
+ *   없으면(전부 삭제) 목록 끝에 base 시간 순서로 붙는다.
+ * - enabled:false 여도 기록이 있으면 그룹이 나온다 — 렌더 필터 아님 (불변식 4).
+ * - slotId 가 기준 슬롯이 아닌 기록은 버린다 (현행 SLOTS.forEach 와 동일).
+ *
+ * 그룹 안 기록 정렬(시간순)은 호출부 몫이다 — 렌더 계층의
+ * sortSnackSlotRecordsChronological 을 그대로 쓴다.
+ *
+ * @param {string} dateStr YYYY-MM-DD
+ * @param {Array<object>} history 전체 기록 (이 함수가 날짜로 거른다)
+ * @returns {Array<{ slot: {id:string,type:string,label:string,key:string|null}, records: object[] }>}
+ */
+export function groupMealsByUserSlotForDate(dateStr, history, userSettings, todayIso) {
+    const slots = effectiveSlots(userSettings, dateStr, todayIso);
+    const groups = new Map(); // groupKey → { order, slot, records }
+
+    for (const m of Array.isArray(history) ? history : []) {
+        if (!m || m.date !== dateStr || !BASE_IDS.has(m.slotId)) continue;
+        const view = resolveSlotView(m, userSettings, todayIso);
+
+        let order = view.slotKey != null ? slots.findIndex((s) => s.key === view.slotKey) : -1;
+        if (order < 0) {
+            const original = oldestSlotForBase(slots, view.base);
+            order = original
+                ? slots.indexOf(original)
+                : slots.length + SLOTS.findIndex((s) => s.id === view.base);
+        }
+
+        const groupKey = view.slotKey != null ? `k:${view.slotKey}` : `b:${view.base}`;
+        let g = groups.get(groupKey);
+        if (!g) {
+            g = {
+                order,
+                slot: { id: view.base, type: baseSlotType(view.base), label: view.label, key: view.slotKey },
+                records: []
+            };
+            groups.set(groupKey, g);
+        }
+        g.records.push(m);
+    }
+
+    return [...groups.values()]
+        .sort((a, b) => a.order - b.order)
+        .map(({ slot, records }) => ({ slot, records }));
+}

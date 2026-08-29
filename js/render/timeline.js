@@ -60,6 +60,7 @@ import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 import { getSharedPhotos } from '../utils/moment-share-state.js';
+import { userSlotGroupsForDate } from '../utils/slot-view.js';
 function mainMealSlotLucideIcon(slotId) {
     return getSlotLucideIcon(slotId);
 }
@@ -552,9 +553,8 @@ export function getMealDisplayUrlsForTimeline(r) {
  */
 export function buildMealPhotoViewerRowsForDate(dateStr) {
     const rows = [];
-    const history = window.mealHistory || [];
-    SLOTS.forEach((slot) => {
-        const recordsRaw = history.filter((m) => m.date === dateStr && m.slotId === slot.id);
+    // 사용자 슬롯 그룹 순회 — plan 없는 사용자는 SLOTS 순회와 결과가 같다
+    userSlotGroupsForDate(dateStr).forEach(({ slot, records: recordsRaw }) => {
         const records = sortSnackSlotRecordsChronological(recordsRaw);
         records.forEach((r, idx) => {
             rows.push(mealPhotoViewerRowFromRecord(dateStr, slot, r, idx + 1, records.length));
@@ -1617,8 +1617,7 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
 export function buildDailyShareHomeFeedBodyHtml(dateStr) {
     let html = '';
     const shareOpts = { forShareCapture: true };
-    SLOTS.forEach((slot) => {
-        const recordsRaw = (window.mealHistory || []).filter((m) => m.date === dateStr && m.slotId === slot.id);
+    userSlotGroupsForDate(dateStr).forEach(({ slot, records: recordsRaw }) => {
         const records = sortSnackSlotRecordsChronological(recordsRaw);
         if (records.length === 0) return;
         const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES.default;
@@ -2036,8 +2035,7 @@ export function renderTimeline(options = {}) {
             ${rightHtml}
         </div>`;
 
-        SLOTS.forEach(slot => {
-            const recordsRaw = window.mealHistory.filter(m => m.date === dateStr && m.slotId === slot.id);
+        userSlotGroupsForDate(dateStr).forEach(({ slot, records: recordsRaw }) => {
             const records = sortSnackSlotRecordsChronological(recordsRaw);
             // 빈 슬롯은 타임라인에 표시하지 않음 — 추가는 슬롯 피커로
             if (records.length === 0) return;

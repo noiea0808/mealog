@@ -29,6 +29,7 @@ import {
     withTodayRevision,
     renameSlotEverywhere,
     revisionCount,
+    groupMealsByUserSlotForDate,
     MAX_SLOTS_PER_REVISION
 } from '../js/utils/slot-plan.js';
 
@@ -314,6 +315,69 @@ describe('key 생성·비교', () => {
 
     it('null 은 어떤 실제 key 보다도 오래됐다', () => {
         assert.ok(compareSlotKeys(null, generateSlotKey()) < 0);
+    });
+});
+
+describe('groupMealsByUserSlotForDate — 타임라인 순회 (§3)', () => {
+    it('plan 없는 사용자: 그룹 순서·라벨이 SLOTS 순회와 정확히 같다', () => {
+        const history = [
+            { id: '1', date: TODAY, slotId: 'dinner' },
+            { id: '2', date: TODAY, slotId: 'morning' },
+            { id: '3', date: TODAY, slotId: 'morning' },
+            { id: '4', date: '2026-08-28', slotId: 'lunch' }, // 다른 날짜 — 제외
+            { id: '5', date: TODAY, slotId: 'zzz' } // 모르는 slotId — 현행처럼 버림
+        ];
+        const groups = groupMealsByUserSlotForDate(TODAY, history, {}, TODAY);
+        assert.deepEqual(
+            groups.map((g) => [g.slot.id, g.slot.label, g.records.length]),
+            [['morning', '아침', 2], ['dinner', '저녁', 1]]
+        );
+        assert.equal(groups[0].slot.type, 'main');
+    });
+
+    it('slotKey 기록과 slotKey 없는 기록이 같은 원본 슬롯 그룹으로 합쳐진다', () => {
+        const history = [
+            { id: 'a', date: TODAY, slotId: 'dinner', slotKey: 'k-dinner' },
+            { id: 'b', date: TODAY, slotId: 'dinner' } // 폴백 → 원본(k-dinner)
+        ];
+        const groups = groupMealsByUserSlotForDate(TODAY, history, { slotPlan: richPlan() }, TODAY);
+        assert.equal(groups.length, 1);
+        assert.equal(groups[0].records.length, 2);
+        assert.equal(groups[0].slot.label, '저녁');
+    });
+
+    it('같은 base 라도 slotKey 가 다르면 다른 그룹 — 순서는 개정판 배열 순서', () => {
+        const history = [
+            { id: 'a', date: TODAY, slotId: 'dinner', slotKey: 'k-yasik' },
+            { id: 'b', date: TODAY, slotId: 'dinner', slotKey: 'k-dinner' },
+            { id: 'c', date: TODAY, slotId: 'night', slotKey: 'k-night1' }
+        ];
+        const groups = groupMealsByUserSlotForDate(TODAY, history, { slotPlan: richPlan() }, TODAY);
+        // richPlan 배열 순서: …저녁(k-dinner) → 밤 간식(k-night1) → 야식(k-yasik)
+        assert.deepEqual(
+            groups.map((g) => g.slot.label),
+            ['저녁', '밤 간식', '야식']
+        );
+        // 야식은 base 가 dinner 이므로 본식 카드로 렌더된다
+        assert.equal(groups[2].slot.type, 'main');
+    });
+
+    it('개정판에서 삭제된 슬롯의 기록: 이름은 유지, 위치는 원본 자리', () => {
+        const plan = richPlan();
+        plan.revisions['2026-08-25'] = {
+            createdAt: 2,
+            slots: plan.revisions['2026-08-01'].slots.filter((s) => s.key !== 'k-yasik')
+        };
+        const history = [
+            { id: 'a', date: TODAY, slotId: 'dinner', slotKey: 'k-yasik' },
+            { id: 'b', date: TODAY, slotId: 'night', slotKey: 'k-night1' }
+        ];
+        const groups = groupMealsByUserSlotForDate(TODAY, history, { slotPlan: plan }, TODAY);
+        // 야식 그룹은 원본 저녁(k-dinner) 자리 = 밤 간식보다 앞
+        assert.deepEqual(
+            groups.map((g) => g.slot.label),
+            ['야식', '밤 간식']
+        );
     });
 });
 

@@ -6,6 +6,7 @@ import {
 } from '../constants.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
+import { resolveRecordSlotView } from '../utils/slot-view.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { dbOps } from '../db.js';
 import { isDemoUser } from '../demo-account.js';
@@ -483,7 +484,8 @@ export function renderBestMeals() {
     container.innerHTML = displayMeals.filter(m => m && m.id).map((meal, index) => {
         if (!meal) return '';
         const slot = SLOTS.find(s => s.id === meal.slotId);
-        const slotLabel = slot ? slot.label : '알 수 없음';
+        // 라벨은 사용자 슬롯 이름, 본식/간식 구분은 base(slotId)의 것 (user-slot-plan §3)
+        const slotLabel = slot ? resolveRecordSlotView(meal).label : '알 수 없음';
         const isSnack = slot && slot.type === 'snack';
         const displayTitle = isSnack ? (meal.menuDetail || meal.snackType || '간식') : (meal.menuDetail || meal.mealType || '식사');
         const originalUrl = getOriginalImageUrl(meal, 0, 'best.list') || '';
