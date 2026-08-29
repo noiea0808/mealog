@@ -192,6 +192,40 @@ function tallyAxes(axes, meal) {
 }
 
 /**
+ * 누적 바에 색을 줄 수 있는 선택지 수.
+ *
+ * 데이터 시각화 팔레트가 인접 대비를 보장하는 슬롯이 여덟이다 — 아홉 번째 색을 만들어
+ * 쓰면 색맹 조건에서 기존 색과 구별되지 않는다. 넘치는 만큼은 「그 외」로 접고, 정확한
+ * 값은 바로 아래 표가 그대로 들고 있다.
+ */
+export const AXIS_CHART_SLOTS = 8;
+
+/**
+ * 색을 **관리자 목록의 순서**로 준다 — 건수 순이 아니라.
+ *
+ * 건수 순으로 주면 기간을 7일에서 30일로 바꾸는 것만으로 같은 선택지의 색이 바뀐다.
+ * 색은 「그 값이 무엇인가」를 가리켜야지 「이번에 몇 등인가」를 가리키면 안 된다.
+ * 덤으로, 「태그 관리」에서 칩을 위로 끌어올리면 그 칩이 색을 받는다 — 무엇을 색으로
+ * 볼지가 관리자 손에 남는다.
+ */
+const slotOfIndex = (i) => (i < AXIS_CHART_SLOTS ? i : null);
+
+/** 표의 행들 → 누적 바 한 줄. 분모는 축의 전체 기록 수라 바의 총 길이가 100%다. */
+function buildAxisChart(rows, outside, empty, total) {
+    const segments = rows
+        .filter((r) => r.n > 0 && r.slot !== null)
+        .map((r) => ({ label: r.label, n: r.n, rate: r.rate, slot: r.slot }));
+    const foldedRows = rows.filter((r) => r.n > 0 && r.slot === null);
+    const foldedN = foldedRows.reduce((acc, r) => acc + r.n, 0);
+    return {
+        segments,
+        folded: { n: foldedN, rate: pct(foldedN, total), distinct: foldedRows.length },
+        outside: { n: outside.n, rate: outside.rate },
+        empty: { n: empty, rate: pct(empty, total) }
+    };
+}
+
+/**
  * 축별 카운터 + 관리자 태그 목록 → 화면에 그대로 그릴 수 있는 한 장의 표.
  *
  * 순수 함수로 둔 이유는 나머지와 같다 — 「목록에 있는 값」과 「목록 밖 값」을 가르는 규칙이
@@ -208,9 +242,10 @@ export function buildAxisBreakdown(result, tagLists = {}) {
         const listed = new Set(list);
         const total = bucket.total;
 
-        const rows = list.map((tag) => {
+        const rows = list.map((tag, i) => {
             const cell = bucket.values[tag] || { n: 0, auto: 0, direct: 0 };
-            return { label: tag, ...cell, rate: pct(cell.n, total), inList: true };
+            // 건수가 0이어도 슬롯은 지킨다 — 기간을 바꿔 값이 생겨도 색이 그대로다
+            return { label: tag, ...cell, rate: pct(cell.n, total), inList: true, slot: slotOfIndex(i) };
         });
 
         // 목록 밖 값 — 옛 어휘(한식·양식…)나 자유 입력이 여기 모인다
@@ -240,6 +275,12 @@ export function buildAxisBreakdown(result, tagLists = {}) {
                 distinct: outside.length,
                 samples: outside.slice(0, AXIS_OTHER_SAMPLE_LIMIT)
             },
+            chart: buildAxisChart(
+                rows,
+                { n: outsideTotal, rate: pct(outsideTotal, total) },
+                bucket.empty,
+                total
+            ),
             emptyPaths: spec.emptyPaths
                 ? FOOD_EMPTY_PATH_SPECS.map((p) => ({
                       label: p.label,

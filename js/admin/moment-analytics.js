@@ -200,6 +200,151 @@ function renderSummaryCards(result, meta) {
 }
 
 /**
+ * 누적 바의 색 — 인접 대비가 검증된 8슬롯.
+ *
+ * 아홉 번째 색을 만들어 쓰지 않는다. 생성한 색은 색맹 조건에서 기존 색과 구별되지 않아
+ * 검사(CVD ΔE)를 통째로 깨뜨린다. 슬롯을 넘는 선택지는 「그 외」로 접고, 정확한 값은
+ * 바로 아래 표가 그대로 들고 있다 — 접힌 것이 사라지지는 않는다.
+ *
+ * 세 색(#1baf7a·#eda100·#e87ba4)은 흰 바탕 대비가 3:1 아래라 색만으로 세우면 안 된다.
+ * 그래서 바에 직접 라벨을 얹고, 아래 표가 같은 색 스와치로 같은 값을 다시 센다.
+ */
+const AXIS_SLOT_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+/** 이름을 따로 세우지 않는 두 몫 — 색상 축이 아니라 밝기로만 갈린다 */
+const AXIS_FOLDED_COLOR = '#94a3b8'; // slate-400 · 목록 안이지만 슬롯을 넘은 꼬리
+const AXIS_OUTSIDE_COLOR = '#475569'; // slate-600 · 목록에 아예 없는 값
+/** 미입력은 계열이 아니라 「남은 자리」다 — 트랙 색으로 둔다 */
+const AXIS_EMPTY_COLOR = '#f1f5f9'; // slate-100
+
+function axisSlotColor(slot) {
+    return AXIS_SLOT_COLORS[slot] ?? AXIS_FOLDED_COLOR;
+}
+
+/** 칠 위에 얹는 글자색 — 밝은 칠에는 먹색, 어두운 칠에는 흰색 */
+function inkOnFill(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lin = (c) => {
+        const v = c / 255;
+        return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+    return L > 0.45 ? '#0f172a' : '#ffffff';
+}
+
+/**
+ * 축 하나의 누적 바.
+ *
+ * **총 길이는 언제나 분석 대상 기록 100%다.** 축마다 제 입력분만큼만 칠해지고 나머지는
+ * 미입력 트랙으로 남는다 — 그래서 축 넷을 위아래로 세우면 「어떻게는 절반 넘게 채워지고
+ * 누구와는 그 절반」 같은 것이 길이 차이로 바로 보인다. 각 축을 100%로 늘려 그리면
+ * 구성비는 보이지만 그 비교가 통째로 사라진다.
+ *
+ * 칸 사이의 2px 틈은 **칸 안쪽에서** 낸다(흰 테두리 + border-box). 바깥 여백으로 내면
+ * 칸 수만큼 폭이 밀려 — 열 칸이면 20px, 좁은 화면에서 5% 넘게 — 길이가 곧 비율이라는
+ * 이 그림의 전제가 깨진다.
+ *
+ * 라벨은 **여기서 넣지 않는다.** 들어갈지 말지는 픽셀 폭을 재야 알 수 있고, 그건 DOM 에
+ * 붙은 뒤에만 가능하다(`fitAxisBarLabels`). 잘린 글자는 없는 것만 못하다.
+ */
+function renderAxisBar(axis) {
+    const c = axis.chart;
+    const seg = (label, n, rate, color, ink) => {
+        if (!(rate > 0)) return '';
+        const title = `${label} · ${n.toLocaleString()}건 · ${fmtPct(rate)}`;
+        return `<div class="h-full flex items-center justify-center" data-seg-label="${escapeHtml(
+            `${label} ${rate.toFixed(0)}%`
+        )}" style="width:${rate}%;background:${color};min-width:4px;box-sizing:border-box;border-right:2px solid #fff"
+                     title="${escapeHtml(title)}"><span class="text-[10px] font-bold whitespace-nowrap px-1" style="color:${
+                         ink || inkOnFill(color)
+                     }"></span></div>`;
+    };
+
+    const parts = [
+        ...c.segments.map((x) => seg(x.label, x.n, x.rate, axisSlotColor(x.slot))),
+        c.folded.n ? seg(`그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate, AXIS_FOLDED_COLOR) : '',
+        c.outside.n ? seg('목록 밖', c.outside.n, c.outside.rate, AXIS_OUTSIDE_COLOR) : '',
+        c.empty.rate > 0 ? seg('미입력', c.empty.n, c.empty.rate, AXIS_EMPTY_COLOR, '#64748b') : ''
+    ].join('');
+
+    return `<div class="flex w-full rounded overflow-hidden" style="height:22px;background:${AXIS_EMPTY_COLOR}">${parts}</div>`;
+}
+
+/**
+ * 칸에 들어가는 라벨만 남긴다 — **폭을 재고 나서.**
+ *
+ * 비율로 어림하면 틀린다. 9%는 넓은 화면에서 100px 이지만 좁은 패널에서는 33px 이고,
+ * 「배달/포장 9%」는 66px 이 필요하다. 그래서 같은 글꼴의 자를 하나 세워 실제 글자 폭을
+ * 재고, 칸보다 좁을 때만 글자를 넣는다. 화면 폭이 바뀌면 다시 잰다(그래서 지우는 것이
+ * 아니라 비웠다 채운다 — 넓어지면 라벨이 돌아온다).
+ */
+function fitAxisBarLabels(root) {
+    const segs = root.querySelectorAll('[data-seg-label]');
+    if (!segs.length) return;
+    const ruler = document.createElement('span');
+    ruler.className = 'text-[10px] font-bold whitespace-nowrap';
+    ruler.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;top:0';
+    root.appendChild(ruler);
+    segs.forEach((seg) => {
+        const span = seg.firstElementChild;
+        if (!span) return;
+        span.textContent = '';
+        const text = seg.getAttribute('data-seg-label') || '';
+        ruler.textContent = text;
+        // px-1 좌우 여백(8px)까지 들어가야 「comfortable padding」이다
+        if (ruler.offsetWidth + 8 <= seg.clientWidth) span.textContent = text;
+    });
+    ruler.remove();
+}
+
+/** 폭이 바뀌면 라벨을 다시 재운다. 그릴 때마다 끊고 새 묶음에 다시 건다 */
+let axisBarResizeObserver = null;
+function watchAxisBarWidth(root) {
+    if (typeof ResizeObserver === 'undefined') return;
+    if (axisBarResizeObserver) axisBarResizeObserver.disconnect();
+    axisBarResizeObserver = new ResizeObserver(() => fitAxisBarLabels(root));
+    axisBarResizeObserver.observe(root);
+}
+
+/**
+ * 바 넷을 한자리에 세운 묶음 — 표보다 먼저 온다.
+ *
+ * 숫자만 늘어놓은 표는 「멀게」 읽힌다는 지적이 이 블록의 출발점이다. 구성비와 건수는
+ * 둘 다 중요하므로 둘을 한 그림에 담는다: 길이가 건수(전체 대비 몫)이고, 칸 나눔이 구성이다.
+ */
+function renderAxisCharts(breakdown, total) {
+    const bars = breakdown
+        .map(
+            (axis) => `
+        <div class="py-2.5">
+            <div class="flex items-baseline justify-between gap-3 mb-1.5">
+                <span class="text-xs font-black text-slate-800">${escapeHtml(axis.label)}</span>
+                <span class="text-[11px] tabular-nums text-slate-500">
+                    입력 <b class="text-slate-700">${axis.filled.toLocaleString()}</b>건 ·
+                    <b class="${axis.filledRate >= 70 ? 'text-emerald-700' : axis.filledRate >= 40 ? 'text-amber-700' : 'text-red-600'}">${fmtPct(
+                        axis.filledRate
+                    )}</b>
+                    ${axis.auto ? `<span class="ml-1 text-sky-600">· 자동 ${axis.auto.toLocaleString()}</span>` : ''}
+                </span>
+            </div>
+            ${renderAxisBar(axis)}
+        </div>`
+        )
+        .join('');
+
+    return `
+        <div class="mt-6">
+            <h4 class="text-sm font-black text-slate-800 mb-1">
+                축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
+            </h4>
+            <p class="text-[11px] text-slate-400 mb-2">
+                각 막대의 <b>칠해진 길이</b>가 그 축의 입력률이고, <b>칸 나눔</b>이 무엇으로 채워졌는지입니다.
+                네 막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
+            </p>
+            <div id="momentAxisCharts" class="rounded-xl border border-slate-200 bg-white px-4 py-2 divide-y divide-slate-100">${bars}</div>
+        </div>`;
+}
+
+/**
  * 이 화면의 본표 — 선택지 하나하나가 얼마나 골라졌고, 그 값이 어디서 왔나.
  *
  * 표 하나로 묶은 이유: 세 질문이 원래 한 줄에서 답해져야 하는 것들이라서다.
@@ -212,6 +357,15 @@ function renderSummaryCards(result, meta) {
  * 세로 공간만 늘리고 축 사이 비교를 오히려 방해했다.
  */
 function renderAxisTable(breakdown) {
+    /**
+     * 표 행과 막대 칸을 잇는 색 표식. 글자에 색을 입히지 않고 **옆에 세운다** —
+     * 밝은 계열색(노랑·아쿠아)은 흰 바탕에서 글자로 읽히지 않는다.
+     */
+    const swatch = (color, extra = '') =>
+        color
+            ? `<span class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-2 ${extra}" style="background:${color}"></span>`
+            : '<span class="inline-block w-2.5 h-2.5 align-middle mr-2"></span>';
+
     const axisBlocks = breakdown
         .map((axis) => {
             const cell = (n, tone = 'text-slate-700') =>
@@ -222,9 +376,14 @@ function renderAxisTable(breakdown) {
                     const dim = r.n === 0;
                     return `
                 <tr class="border-b border-slate-100 ${dim ? 'bg-slate-50/40' : ''}">
-                    <td class="px-3 py-1.5 pl-8 ${dim ? 'text-slate-400' : 'text-slate-700'} whitespace-nowrap">${escapeHtml(r.label)}${
-                        dim ? '<span class="ml-2 text-[10px] font-bold text-slate-400">선택 없음</span>' : ''
-                    }</td>
+                    <td class="px-3 py-1.5 pl-8 ${dim ? 'text-slate-400' : 'text-slate-700'} whitespace-nowrap">
+                        ${swatch(dim ? null : axisSlotColor(r.slot))}${escapeHtml(r.label)}${
+                            dim ? '<span class="ml-2 text-[10px] font-bold text-slate-400">선택 없음</span>' : ''
+                        }${
+                            r.slot === null && !dim
+                                ? '<span class="ml-2 text-[10px] text-slate-400">그 외 묶음</span>'
+                                : ''
+                        }</td>
                     ${cell(r.n)}
                     <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums ${rateCellClass(r.rate)}">${fmtPct(r.rate)}</td>
                     ${cell(r.direct)}
@@ -237,7 +396,7 @@ function renderAxisTable(breakdown) {
             const outsideRow = `
                 <tr class="border-b border-slate-100 bg-amber-50/40">
                     <td class="px-3 py-1.5 pl-8 text-slate-600 whitespace-nowrap">
-                        목록 밖 값
+                        ${swatch(AXIS_OUTSIDE_COLOR)}목록 밖 값
                         <span class="ml-1 text-[10px] text-slate-400">${axis.outside.distinct.toLocaleString()}종</span>
                     </td>
                     ${cell(axis.outside.n, 'text-amber-700')}
@@ -290,7 +449,10 @@ function renderAxisTable(breakdown) {
                 ${tagRows}
                 ${outsideRow}
                 <tr class="border-b border-slate-100 bg-slate-50/60">
-                    <td class="px-3 py-1.5 pl-8 font-bold text-slate-500 whitespace-nowrap">미입력</td>
+                    <td class="px-3 py-1.5 pl-8 font-bold text-slate-500 whitespace-nowrap">${swatch(
+                        AXIS_EMPTY_COLOR,
+                        'ring-1 ring-inset ring-slate-300'
+                    )}미입력</td>
                     ${cell(axis.empty, 'text-slate-500')}
                     <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-slate-500">${fmtPct(emptyRate)}</td>
                     <td class="px-3 py-1.5 text-right text-slate-300">-</td>
@@ -524,7 +686,11 @@ function renderMomentAnalyticsResult(result, meta) {
             ${cachedNote}
         </div>
         ${renderSummaryCards(result, meta)}
-        ${renderAxisTable(buildAxisBreakdown(result, meta.tagLists || {}))}
+        ${(() => {
+            // 같은 breakdown 을 막대와 표가 나눠 쓴다 — 두 번 계산하면 갈릴 자리를 만든다
+            const breakdown = buildAxisBreakdown(result, meta.tagLists || {});
+            return renderAxisCharts(breakdown, result.overall.total) + renderAxisTable(breakdown);
+        })()}
         ${renderFieldTable(result)}
         ${renderTrendTable(result)}
         ${renderCompletenessTable(result)}
@@ -536,6 +702,12 @@ function renderMomentAnalyticsResult(result, meta) {
             · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
         </p>`;
     refreshLucideIcons(container);
+    // 라벨은 DOM 에 붙은 뒤에야 폭을 잴 수 있다 — 그리기와 재기가 나뉘는 이유
+    const charts = document.getElementById('momentAxisCharts');
+    if (charts) {
+        fitAxisBarLabels(charts);
+        watchAxisBarWidth(charts);
+    }
 }
 
 async function runMomentAnalytics(force = false) {

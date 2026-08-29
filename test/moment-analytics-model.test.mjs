@@ -11,6 +11,7 @@ import {
     FOOD_PATH_SPECS,
     analyzeMomentRows,
     buildAxisBreakdown,
+    AXIS_CHART_SLOTS,
     foodClassifyPath,
     daysBetweenYmd,
     shiftYmd,
@@ -346,4 +347,65 @@ test('축 비율의 분모는 전체 기록 수다 — 입력된 것만이 아�
     assert.equal(row(how, '집밥').rate, 25);
     assert.equal(how.filledRate, 25);
     assert.equal(how.autoShare, 0, '자동 비중의 분모는 입력된 건수다');
+});
+
+/* ── 누적 바의 재료 ───────────────────────────────────────────
+ * 막대는 「길이가 곧 비율」이라는 전제 위에 서 있다. 몫의 합이 100%가 아니거나
+ * 색이 기간마다 옮겨 다니면 그림은 여전히 그럴듯하게 그려지면서 거짓말을 한다.
+ */
+
+const chartOf = (rows, tags, key) =>
+    buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), tags).find((a) => a.key === key).chart;
+
+test('막대의 몫은 빠짐없이 100%가 된다 — 칸·그 외·목록 밖·미입력', () => {
+    const mk = (o) => Object.assign({ userId: 'u1', date: '2026-08-10' }, o);
+    const rows = [
+        mk({ mealType: '집밥' }),
+        mk({ mealType: '외식' }),
+        mk({ mealType: '한식' }), // 목록 밖
+        mk({}) // 미입력
+    ];
+    const c = chartOf(rows, TAGS, 'how');
+    const sum =
+        c.segments.reduce((a, s) => a + s.rate, 0) + c.folded.rate + c.outside.rate + c.empty.rate;
+    assert.ok(Math.abs(sum - 100) < 1e-9, `몫의 합이 ${sum}`);
+});
+
+test('색 슬롯은 관리자 목록 순서로 고정된다 — 건수 순이 아니다', () => {
+    const mk = (mealType, times) => Array.from({ length: times }, () => ({ userId: 'u1', date: '2026-08-10', mealType }));
+    // 「외식」이 압도적이어도 「집밥」의 슬롯을 빼앗지 않는다
+    const many = [...mk('집밥', 1), ...mk('외식', 50)];
+    const few = [...mk('집밥', 50), ...mk('외식', 1)];
+    const slotOf = (rows, label) =>
+        buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS)
+            .find((a) => a.key === 'how')
+            .rows.find((r) => r.label === label).slot;
+    assert.equal(slotOf(many, '집밥'), 0);
+    assert.equal(slotOf(few, '집밥'), 0, '건수가 뒤집혀도 같은 슬롯');
+    assert.equal(slotOf(many, '외식'), 1);
+    assert.equal(slotOf(few, '외식'), 1);
+});
+
+test('슬롯을 넘는 선택지는 「그 외」로 접히지만 표에는 그대로 남는다', () => {
+    const list = Array.from({ length: 11 }, (_, i) => `t${i}`);
+    const rows = list.map((t) => ({ userId: 'u1', date: '2026-08-10', mealType: t }));
+    const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), { mealType: list }).find(
+        (a) => a.key === 'how'
+    );
+    assert.equal(axis.chart.segments.length, AXIS_CHART_SLOTS, '칸은 슬롯 수까지만');
+    assert.deepEqual(axis.chart.segments.map((s) => s.slot), [0, 1, 2, 3, 4, 5, 6, 7]);
+    assert.equal(axis.chart.folded.distinct, 3, '나머지 셋이 접힌다');
+    assert.equal(axis.chart.folded.n, 3);
+    assert.equal(axis.rows.length, 11, '표는 열한 줄 전부 들고 있다');
+    assert.equal(axis.rows[8].slot, null, '접힌 행은 슬롯이 없다');
+});
+
+test('건수 0인 선택지는 칸을 만들지 않지만 슬롯은 지킨다', () => {
+    const rows = [{ userId: 'u1', date: '2026-08-10', mealType: '기타' }];
+    const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS).find(
+        (a) => a.key === 'how'
+    );
+    assert.deepEqual(axis.chart.segments.map((s) => s.label), ['기타'], '값이 있는 것만 칸이 된다');
+    assert.equal(axis.rows[0].slot, 0, '건수 0인 「집밥」도 제 슬롯을 지킨다');
+    assert.equal(axis.chart.segments[0].slot, 2, '「기타」는 목록의 셋째라 셋째 색');
 });
