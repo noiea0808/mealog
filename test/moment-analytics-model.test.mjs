@@ -10,6 +10,7 @@ import {
     CORE_FIELD_SPECS,
     FOOD_PATH_SPECS,
     analyzeMomentRows,
+    buildAxisBreakdown,
     foodClassifyPath,
     daysBetweenYmd,
     shiftYmd,
@@ -200,4 +201,149 @@ test('기록이 없으면 0으로 나누지 않는다', () => {
     assert.equal(r.overall.total, 0);
     assert.equal(r.avgCompleteness, 0);
     assert.deepEqual(r.trend, []);
+});
+
+/* ── 선택지 분포와 입력 경로 ─────────────────────────────────────
+ * 이 표가 답해야 하는 것은 셋이다: 안 골라지는 칩이 있나 · 「기타」가 여전히 큰가 ·
+ * 늘어난 입력이 사람의 것인가 기계의 것인가. 셋 다 세는 규칙이 한 칸 어긋나도
+ * 표는 멀쩡해 보인다 — 특히 「자동」은 값만 보면 직접 입력과 구별이 안 된다.
+ */
+
+/** 축별 태그 목록(관리자 화면이 편집하는 것과 같은 모양) */
+const TAGS = {
+    mealType: ['집밥', '외식', '기타'],
+    withWhom: ['혼자', '가족', '기타'],
+    category: ['밥류', '면류', '기타'],
+    subTagsPlaceSnack: ['집', '사무실', '카페']
+};
+
+const byKey = (breakdown, key) => breakdown.find((a) => a.key === key);
+const row = (axis, label) => axis.rows.find((r) => r.label === label);
+
+test('자동 적용된 값은 「자동」으로, 사용자가 고른 값은 「직접」으로 갈린다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥', withWhom: '가족' },
+        // 같은 값이지만 맥락 예측이 넣은 것 — 값만 보면 위와 구별되지 않는다
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥', withWhom: '가족', autoContext: ['mealType'] }
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+
+    const how = byKey(b, 'how');
+    assert.equal(how.filled, 2);
+    assert.equal(how.direct, 1);
+    assert.equal(how.auto, 1);
+    assert.deepEqual(
+        { n: row(how, '집밥').n, direct: row(how, '집밥').direct, auto: row(how, '집밥').auto },
+        { n: 2, direct: 1, auto: 1 }
+    );
+
+    // autoContext 에 없는 축은 같은 기록이어도 직접이다
+    const who = byKey(b, 'withWhom');
+    assert.equal(who.direct, 2, 'withWhom 은 자동 목록에 없으므로 둘 다 직접');
+    assert.equal(who.auto, 0);
+});
+
+test('아무도 안 고른 칩은 건수 0으로 남는다 — 목록에서 사라지지 않는다', () => {
+    const rows = [{ userId: 'u1', date: '2026-08-10', mealType: '집밥' }];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const how = byKey(b, 'how');
+    assert.deepEqual(how.rows.map((r) => [r.label, r.n]), [['집밥', 1], ['외식', 0], ['기타', 0]]);
+    assert.deepEqual(how.rows.map((r) => r.label), TAGS.mealType, '행 순서는 관리자 목록 순서 그대로');
+});
+
+test('목록에 없는 값은 「목록 밖」으로 모이고 많은 순으로 예시가 붙는다', () => {
+    const mk = (mealType) => ({ userId: 'u1', date: '2026-08-10', mealType });
+    const rows = [mk('한식'), mk('한식'), mk('양식'), mk('집밥')];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const how = byKey(b, 'how');
+    assert.equal(how.outside.n, 3);
+    assert.equal(how.outside.distinct, 2);
+    assert.deepEqual(how.outside.samples.map((s) => [s.label, s.n]), [['한식', 2], ['양식', 1]]);
+    assert.equal(how.outside.rate, 75);
+});
+
+test('태그 목록을 못 읽으면 전부 목록 밖으로 떨어진다 — 그 사실을 표시로 남긴다', () => {
+    const rows = [{ userId: 'u1', date: '2026-08-10', mealType: '집밥' }];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), {});
+    const how = byKey(b, 'how');
+    assert.equal(how.tagListMissing, true);
+    assert.equal(how.rows.length, 0);
+    assert.equal(how.outside.n, 1, '값은 사라지지 않고 목록 밖에 남는다');
+});
+
+test('「무엇을」 분포는 최종 값 축이다 — 자동 분류가 채운 값도 그 칩에 선다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류', categorySource: 'user' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySource: 'local' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySource: 'ai' },
+        { userId: 'u1', date: '2026-08-10', category: '기타', categorySource: 'user' }
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const what = byKey(b, 'what');
+    assert.deepEqual(what.rows.map((r) => [r.label, r.n, r.direct, r.auto]), [
+        ['밥류', 1, 1, 0],
+        ['면류', 2, 0, 2],
+        ['기타', 1, 1, 0]
+    ]);
+    assert.equal(what.direct, 2);
+    assert.equal(what.auto, 2);
+    assert.equal(what.empty, 0);
+});
+
+test('「무엇을」의 미입력은 거부·대기·상세없음으로 갈린다 — 손댈 곳이 다르다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', categorySource: 'dismissed' },
+        { userId: 'u1', date: '2026-08-10', menuDetail: '김치찌개' },
+        { userId: 'u1', date: '2026-08-10' }
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const what = byKey(b, 'what');
+    assert.equal(what.empty, 3);
+    assert.deepEqual(what.emptyPaths.map((p) => p.n), [1, 1, 1]);
+    assert.equal(byKey(b, 'how').emptyPaths, null, '다른 축은 미입력을 가르지 않는다');
+});
+
+test('「어디서」는 간식 칩과 끼니 자유 입력을 한 축에서 센다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', snackPlaceMain: '카페' },
+        { userId: 'u1', date: '2026-08-10', place: '김밥천국' },
+        // 예측이 자동 적용한 place — 입력란은 건드리지 않고 저장 때만 들어온다
+        { userId: 'u1', date: '2026-08-10', place: '집', autoContext: ['place'] },
+        { userId: 'u1', date: '2026-08-10' }
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const where = byKey(b, 'where');
+    assert.equal(where.freeText, true);
+    assert.equal(where.filled, 3);
+    assert.equal(where.auto, 1);
+    assert.equal(where.empty, 1);
+    assert.equal(row(where, '카페').n, 1);
+    assert.equal(row(where, '집').auto, 1, '자동 적용값도 목록 칩에 선다');
+    assert.equal(where.outside.n, 1, '가게 이름은 목록 밖');
+});
+
+test('추이의 자동적용 열은 축을 하나라도 자동으로 채운 기록만 센다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥', autoContext: ['mealType', 'place'] },
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥', autoContext: [] },
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥' }
+    ];
+    const r = analyzeMomentRows(rows, '2026-08-10', '2026-08-10');
+    assert.equal(r.autoContextRows, 1, '빈 배열은 자동 적용이 아니다');
+    assert.equal(r.overall.counts.autoContext, 1);
+    assert.equal(r.trend[0].counts.autoContext, 1, '구간 카운터도 같이 센다');
+});
+
+test('축 비율의 분모는 전체 기록 수다 — 입력된 것만이 아니다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', mealType: '집밥' },
+        { userId: 'u1', date: '2026-08-10' },
+        { userId: 'u1', date: '2026-08-10' },
+        { userId: 'u1', date: '2026-08-10' }
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const how = byKey(b, 'how');
+    assert.equal(row(how, '집밥').rate, 25);
+    assert.equal(how.filledRate, 25);
+    assert.equal(how.autoShare, 0, '자동 비중의 분모는 입력된 건수다');
 });

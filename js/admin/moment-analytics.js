@@ -32,9 +32,11 @@ import {
     CORE_FIELD_SPECS,
     FOOD_PATH_SPECS,
     analyzeMomentRows,
+    buildAxisBreakdown,
     shiftYmd,
     pct
 } from './moment-analytics-model.js';
+import { loadAdminTagLists } from './admin-tag-axes.js';
 
 /** 한 번의 분석이 읽을 수 있는 meals 문서 상한 — 넘으면 기간을 좁히라고 알린다 */
 const MOMENT_ANALYTICS_DOC_CAP = 20000;
@@ -50,6 +52,8 @@ const momentAnalyticsCache = new Map();
 
 /** 마지막 분석 결과 — 엑셀 내보내기용 */
 let momentAnalyticsLastResult = null;
+/** 그때의 meta — 태그 목록이 있어야 선택지 분포를 같은 순서로 내보낼 수 있다 */
+let momentAnalyticsLastMeta = null;
 
 function kstTodayYmd() {
     return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
@@ -195,35 +199,158 @@ function renderSummaryCards(result, meta) {
         </div>`;
 }
 
+/**
+ * 이 화면의 본표 — 선택지 하나하나가 얼마나 골라졌고, 그 값이 어디서 왔나.
+ *
+ * 표 하나로 묶은 이유: 세 질문이 원래 한 줄에서 답해져야 하는 것들이라서다.
+ *   1. 「태그 관리」의 구분이 유의미했나 — 아무도 안 고르는 칩이 보인다(건수 0)
+ *   2. 「기타」가 여전히 큰가 — 다른 칩과 같은 줄에서 비교된다
+ *   3. 시트 개편의 자동 항목이 입력을 늘렸나 — 「직접 / 자동」 두 열이 그 자리에서 가른다
+ * 따로 그리면 축을 오갈 때마다 사람이 머릿속에서 표를 합쳐야 한다.
+ *
+ * 막대는 뺐다. 축마다 선택지가 10개 안팎이고 비율이 이미 옆 칸에 있어, 긴 막대는
+ * 세로 공간만 늘리고 축 사이 비교를 오히려 방해했다.
+ */
+function renderAxisTable(breakdown) {
+    const axisBlocks = breakdown
+        .map((axis) => {
+            const cell = (n, tone = 'text-slate-700') =>
+                `<td class="px-3 py-1.5 text-right tabular-nums ${n ? tone : 'text-slate-300'}">${n.toLocaleString()}</td>`;
+
+            const tagRows = axis.rows
+                .map((r) => {
+                    const dim = r.n === 0;
+                    return `
+                <tr class="border-b border-slate-100 ${dim ? 'bg-slate-50/40' : ''}">
+                    <td class="px-3 py-1.5 pl-8 ${dim ? 'text-slate-400' : 'text-slate-700'} whitespace-nowrap">${escapeHtml(r.label)}${
+                        dim ? '<span class="ml-2 text-[10px] font-bold text-slate-400">선택 없음</span>' : ''
+                    }</td>
+                    ${cell(r.n)}
+                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums ${rateCellClass(r.rate)}">${fmtPct(r.rate)}</td>
+                    ${cell(r.direct)}
+                    ${cell(r.auto, 'text-sky-600')}
+                </tr>`;
+                })
+                .join('');
+
+            const sampleText = axis.outside.samples.map((s) => `${s.label} ${s.n.toLocaleString()}`).join(' · ');
+            const outsideRow = `
+                <tr class="border-b border-slate-100 bg-amber-50/40">
+                    <td class="px-3 py-1.5 pl-8 text-slate-600 whitespace-nowrap">
+                        목록 밖 값
+                        <span class="ml-1 text-[10px] text-slate-400">${axis.outside.distinct.toLocaleString()}종</span>
+                    </td>
+                    ${cell(axis.outside.n, 'text-amber-700')}
+                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums ${rateCellClass(axis.outside.rate)}">${fmtPct(axis.outside.rate)}</td>
+                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
+                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
+                </tr>
+                ${
+                    sampleText
+                        ? `<tr class="border-b border-slate-100 bg-amber-50/20">
+                               <td colspan="5" class="px-3 py-1 pl-12 text-[11px] text-slate-500">많은 순: ${escapeHtml(sampleText)}${
+                                   axis.outside.distinct > axis.outside.samples.length ? ' …' : ''
+                               }</td>
+                           </tr>`
+                        : ''
+                }`;
+
+            const emptyRows = axis.emptyPaths
+                ? axis.emptyPaths
+                      .map(
+                          (p) => `
+                <tr class="border-b border-slate-100">
+                    <td class="px-3 py-1.5 pl-12 text-slate-400 text-xs whitespace-nowrap">└ ${escapeHtml(p.label)}</td>
+                    ${cell(p.n, 'text-slate-500')}
+                    <td class="px-3 py-1.5 text-right text-xs tabular-nums text-slate-400">${fmtPct(p.rate)}</td>
+                    <td class="px-3 py-1.5"></td>
+                    <td class="px-3 py-1.5"></td>
+                </tr>`
+                      )
+                      .join('')
+                : '';
+
+            const emptyRate = pct(axis.empty, axis.total);
+            return `
+            <tbody class="border-t-2 border-slate-300">
+                <tr class="bg-slate-100/80">
+                    <td class="px-3 py-2 font-black text-slate-800 whitespace-nowrap">
+                        ${escapeHtml(axis.label)}
+                        <span class="ml-2 text-[11px] font-normal text-slate-500">${escapeHtml(axis.note || '')}</span>
+                        ${axis.tagListMissing ? '<span class="ml-2 text-[10px] font-bold text-red-600">태그 목록을 읽지 못함</span>' : ''}
+                    </td>
+                    <td class="px-3 py-2 text-right tabular-nums font-bold text-slate-700">${axis.filled.toLocaleString()}</td>
+                    <td class="px-3 py-2 text-right text-xs font-black tabular-nums ${rateCellClass(axis.filledRate)}">${fmtPct(axis.filledRate)}</td>
+                    <td class="px-3 py-2 text-right tabular-nums font-bold text-slate-700">${axis.direct.toLocaleString()}</td>
+                    <td class="px-3 py-2 text-right tabular-nums font-bold text-sky-700">${axis.auto.toLocaleString()}${
+                        // 건수 뒤에 곧바로 비율을 붙이면 「1」 + 「25.0%」 가 125.0% 로 읽힌다
+                        axis.auto ? `<span class="ml-1.5 text-[10px] font-normal text-sky-500">(${fmtPct(axis.autoShare)})</span>` : ''
+                    }</td>
+                </tr>
+                ${tagRows}
+                ${outsideRow}
+                <tr class="border-b border-slate-100 bg-slate-50/60">
+                    <td class="px-3 py-1.5 pl-8 font-bold text-slate-500 whitespace-nowrap">미입력</td>
+                    ${cell(axis.empty, 'text-slate-500')}
+                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-slate-500">${fmtPct(emptyRate)}</td>
+                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
+                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
+                </tr>
+                ${emptyRows}
+            </tbody>`;
+        })
+        .join('');
+
+    return `
+        <div class="mt-6">
+            <h4 class="text-sm font-black text-slate-800 mb-2">
+                선택지별 분포와 입력 경로
+                <span class="text-xs font-normal text-slate-400">(관리자 &gt; 태그 관리의 목록 순서 그대로)</span>
+            </h4>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50">
+                        <tr class="border-b border-slate-200">
+                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">축 · 선택지</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">건수</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">비율</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">직접</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-sky-700 uppercase">자동</th>
+                        </tr>
+                    </thead>
+                    ${axisBlocks}
+                </table>
+            </div>
+            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
+                · <b>자동</b> = 사람이 고르지 않았는데 값이 남은 것. 「어떻게·어디서·누구와」는 맥락 예측이 자동 적용한 축(<code>autoContext</code>),
+                「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다. 비율의 분모는 축마다 <b>전체 기록 수</b>입니다.<br>
+                · <b>목록 밖 값</b>은 태그 목록에 없는 값입니다 — 목록을 바꾸기 전에 저장된 옛 어휘거나, 「어디서」처럼 자유 입력이 허용된 축입니다.
+                「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 크게 나오는 것이 정상입니다.<br>
+                · <b>건수 0</b>인 선택지는 기간 안에 아무도 고르지 않은 칩입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
+                · 「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을 수 있어 「서버 분류 대기」가 부풀어 보입니다.
+            </p>
+        </div>`;
+}
+
+/**
+ * 항목별 입력률 — 선택지가 없는 항목(사진·코멘트·만족도…)까지 포함한 「채워졌나」 표.
+ * 막대는 뺐다: 12줄짜리 막대가 화면을 채우는 데 비해, 정작 비교하고 싶은 것은 옆 칸의 숫자였다.
+ */
 function renderFieldTable(result) {
     const total = result.overall.total;
     const rows = MOMENT_FIELD_SPECS.map((spec) => {
         const filled = result.overall.counts[spec.key];
         const rate = pct(filled, total);
-        const barColor = spec.aux
-            ? 'bg-slate-300'
-            : rate >= 70
-                ? 'bg-emerald-500'
-                : rate >= 40
-                    ? 'bg-amber-400'
-                    : 'bg-red-400';
         const labelClass = spec.core ? 'font-bold text-slate-800' : 'text-slate-500';
         return `
             <tr class="border-b border-slate-100 ${spec.aux ? 'bg-slate-50/60' : ''}">
-                <td class="px-3 py-2 ${labelClass} whitespace-nowrap">${escapeHtml(spec.label)}${
+                <td class="px-3 py-1.5 ${labelClass} whitespace-nowrap">${escapeHtml(spec.label)}${
                     spec.gated ? '<span class="ml-1 text-[10px] text-amber-600 font-bold">설정</span>' : ''
                 }</td>
-                <td class="px-3 py-2 text-right tabular-nums text-slate-700">${filled.toLocaleString()}</td>
-                <td class="px-3 py-2 text-right tabular-nums text-slate-400">${(total - filled).toLocaleString()}</td>
-                <td class="px-3 py-2 w-[40%] min-w-[10rem]">
-                    <div class="flex items-center gap-2">
-                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full ${barColor} rounded-full" style="width:${Math.max(0, Math.min(100, rate)).toFixed(1)}%"></div>
-                        </div>
-                        <span class="text-xs font-bold tabular-nums text-slate-600 w-14 text-right">${fmtPct(rate)}</span>
-                    </div>
-                </td>
-                <td class="px-3 py-2 text-[11px] text-slate-400 whitespace-nowrap hidden lg:table-cell">${escapeHtml(spec.note || '')}</td>
+                <td class="px-3 py-1.5 text-right tabular-nums text-slate-700">${filled.toLocaleString()}</td>
+                <td class="px-3 py-1.5 text-right tabular-nums text-slate-400">${(total - filled).toLocaleString()}</td>
+                <td class="px-3 py-1.5 text-right text-xs font-black tabular-nums ${rateCellClass(rate)}">${fmtPct(rate)}</td>
+                <td class="px-3 py-1.5 text-[11px] text-slate-400 whitespace-nowrap hidden lg:table-cell">${escapeHtml(spec.note || '')}</td>
             </tr>`;
     }).join('');
 
@@ -237,7 +364,7 @@ function renderFieldTable(result) {
                             <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">항목</th>
                             <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">입력</th>
                             <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">미입력</th>
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">입력률</th>
+                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">입력률</th>
                             <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase hidden lg:table-cell">비고</th>
                         </tr>
                     </thead>
@@ -247,109 +374,46 @@ function renderFieldTable(result) {
         </div>`;
 }
 
-/**
- * 「무엇을」만 따로 뜯어 보는 표.
- *
- * 이 축은 값이 들어오는 길이 넷이라(직접 선택·로컬 분류기·서버 AI·아무도 못 메움)
- * 「무엇을 입력률」 한 줄로는 시트를 바꿨을 때 무엇이 움직였는지 답할 수 없다.
- * 사용자가 덜 고르게 된 것과 분류 자체가 안 되는 것은 손댈 곳이 전혀 다르다.
- */
-function renderFoodPathTable(result) {
-    const total = result.overall.total;
-    const toneClass = {
-        good: 'bg-emerald-500',
-        weak: 'bg-emerald-300',
-        auto: 'bg-sky-400',
-        pending: 'bg-amber-400',
-        bad: 'bg-red-400'
-    };
-    const rows = FOOD_PATH_SPECS.map((spec) => {
-        const n = result.overall.counts[spec.key];
-        const rate = pct(n, total);
-        return `
-            <tr class="border-b border-slate-100">
-                <td class="px-3 py-2 text-slate-700 whitespace-nowrap">${escapeHtml(spec.label)}</td>
-                <td class="px-3 py-2 text-right tabular-nums text-slate-700">${n.toLocaleString()}</td>
-                <td class="px-3 py-2 w-[45%] min-w-[10rem]">
-                    <div class="flex items-center gap-2">
-                        <div class="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                            <div class="h-full ${toneClass[spec.tone] || 'bg-slate-400'} rounded-full" style="width:${Math.max(0, Math.min(100, rate)).toFixed(1)}%"></div>
-                        </div>
-                        <span class="text-xs font-bold tabular-nums text-slate-600 w-14 text-right">${fmtPct(rate)}</span>
-                    </div>
-                </td>
-            </tr>`;
-    }).join('');
-
-    const userRate = pct(result.overall.counts.pathUser + result.overall.counts.pathUserEtc, total);
-    const finalRate = pct(result.overall.counts.whatFinal, total);
-
-    return `
-        <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">「무엇을」이 채워진 경로</h4>
-            <div class="grid grid-cols-2 gap-3 mb-3">
-                <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p class="text-xs font-bold text-slate-500">사용자가 고른 비율</p>
-                    <p class="text-2xl font-black text-slate-800 mt-1">${fmtPct(userRate)}</p>
-                    <p class="text-[11px] text-slate-400 mt-1">시트 개편에 직접 반응하는 값</p>
-                </div>
-                <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <p class="text-xs font-bold text-emerald-700">최종 분류 도달률</p>
-                    <p class="text-2xl font-black text-emerald-800 mt-1">${fmtPct(finalRate)}</p>
-                    <p class="text-[11px] text-emerald-600 mt-1">자동 분류까지 합쳐 값이 남은 비율</p>
-                </div>
-            </div>
-            <div class="overflow-x-auto rounded-xl border border-slate-200">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50">
-                        <tr class="border-b border-slate-200">
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">경로</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">건수</th>
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">비율</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
-                · 서버 AI 분류는 <b>배치로 나중에</b> 돕니다. 최근 며칠은 아직 안 돌았을 수 있어
-                「서버 분류 대기」가 부풀고 「서버 AI가 채움」이 낮게 보입니다 — 추이 맨 오른쪽 구간은 그만큼 감해서 보세요.<br>
-                · 「기타」는 서버가 미분류로 보고 다시 집는 값이라 직접 선택과 갈라 두었습니다.<br>
-                · 「제안을 거부함」은 서버 backfill도 건너뛰어 영구히 빈 칸으로 남습니다.
-            </p>
-        </div>`;
-}
-
 function renderTrendTable(result) {
     if (!result.trend.length) return '';
     // 최신 구간이 위로 오게 뒤집어 보여 준다
     const rows = [...result.trend].reverse();
     /**
-     * 핵심 8열 + 「무엇을(최종)」. 사용자가 고른 값만 담은 「무엇을」 옆에 자동 분류까지
-     * 합친 열을 세워야, 떨어진 것이 입력인지 분류인지가 한 줄 안에서 갈린다.
+     * 핵심 8열 + 「무엇을(최종)」 + 「자동적용」.
+     * 자동적용은 맥락 예측이 한 축이라도 채운 기록의 비율이다 — 시트 개편이 입력을
+     * 늘렸는지는 항목 입력률만으로는 답이 안 나온다. 입력률이 올라도 그게 사람이
+     * 더 채운 것인지 기계가 메운 것인지 갈리지 않기 때문이다.
      */
     const trendSpecs = [...CORE_FIELD_SPECS, MOMENT_FIELD_SPECS.find((f) => f.key === 'whatFinal')].filter(Boolean);
-    const head = trendSpecs
-        .map(
-            (f) =>
-                `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600 whitespace-nowrap">${escapeHtml(
-                    f.key === 'whatFinal' ? '무엇을(최종)' : f.label
-                )}</th>`
-        )
-        .join('');
+    const head =
+        trendSpecs
+            .map(
+                (f) =>
+                    `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600 whitespace-nowrap">${escapeHtml(
+                        f.key === 'whatFinal' ? '무엇을(최종)' : f.label
+                    )}</th>`
+            )
+            .join('') +
+        '<th class="px-2 py-2 text-center text-xs font-bold text-sky-700 whitespace-nowrap border-l border-slate-200">자동적용</th>';
     const body = rows
         .map((b) => {
-            const cells = trendSpecs.map((f) => {
-                const rate = pct(b.counts[f.key], b.total);
-                return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${rateCellClass(rate)}">${
-                    b.total ? rate.toFixed(0) : '-'
-                }</td>`;
-            }).join('');
+            const cells = trendSpecs
+                .map((f) => {
+                    const rate = pct(b.counts[f.key], b.total);
+                    return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${rateCellClass(rate)}">${
+                        b.total ? rate.toFixed(0) : '-'
+                    }</td>`;
+                })
+                .join('');
+            const autoRate = pct(b.counts.autoContext || 0, b.total);
             return `
                 <tr class="border-b border-slate-100">
                     <td class="px-3 py-2 text-xs font-bold text-slate-700 whitespace-pre-line sticky left-0 bg-white">${escapeHtml(b.label)}</td>
                     <td class="px-3 py-2 text-right text-xs tabular-nums text-slate-500">${b.total.toLocaleString()}</td>
                     ${cells}
+                    <td class="px-2 py-2 text-center text-xs font-bold tabular-nums text-sky-700 border-l border-slate-200">${
+                        b.total ? autoRate.toFixed(0) : '-'
+                    }</td>
                 </tr>`;
         })
         .join('');
@@ -373,23 +437,26 @@ function renderTrendTable(result) {
                     <tbody>${body}</tbody>
                 </table>
             </div>
+            <p class="mt-2 text-[11px] text-slate-400">
+                · <b>자동적용</b> = 맥락 예측이 어떻게·어디서·누구와 중 한 축이라도 자동으로 채운 기록의 비율.
+                개편 전 기록에는 이 자국이 없어 0으로 나옵니다.
+            </p>
         </div>`;
 }
 
+/** 완성도 분포 — 막대 대신 한 줄 표. 0~8을 가로로 늘어놓아야 분포 모양이 한눈에 들어온다 */
 function renderCompletenessTable(result) {
     const total = result.overall.total;
-    const max = Math.max(...result.completeness, 1);
-    const bars = result.completeness
-        .map((count, filledCount) => {
-            const rate = pct(count, total);
-            return `
-                <div class="flex items-center gap-2">
-                    <span class="w-14 shrink-0 text-xs font-bold text-slate-600 tabular-nums">${filledCount}개</span>
-                    <div class="flex-1 h-4 rounded bg-slate-100 overflow-hidden">
-                        <div class="h-full bg-indigo-400 rounded" style="width:${((count / max) * 100).toFixed(1)}%"></div>
-                    </div>
-                    <span class="w-28 shrink-0 text-xs tabular-nums text-slate-500 text-right">${count.toLocaleString()}건 · ${fmtPct(rate)}</span>
-                </div>`;
+    const head = result.completeness
+        .map((_, i) => `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600">${i}개</th>`)
+        .join('');
+    const counts = result.completeness
+        .map((c) => `<td class="px-2 py-2 text-center text-xs tabular-nums text-slate-700">${c.toLocaleString()}</td>`)
+        .join('');
+    const rates = result.completeness
+        .map((c) => {
+            const rate = pct(c, total);
+            return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${rateCellClass(rate)}">${fmtPct(rate)}</td>`;
         })
         .join('');
     return `
@@ -397,9 +464,29 @@ function renderCompletenessTable(result) {
             <h4 class="text-sm font-black text-slate-800 mb-2">
                 기록 하나가 채운 항목 수 <span class="text-xs font-normal text-slate-400">(핵심 ${CORE_FIELD_SPECS.length}항목 중)</span>
             </h4>
-            <div class="rounded-xl border border-slate-200 p-4 space-y-1.5">${bars}</div>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50">
+                        <tr class="border-b border-slate-200">
+                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase whitespace-nowrap">채운 항목</th>
+                            ${head}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="border-b border-slate-100">
+                            <td class="px-3 py-2 text-xs font-bold text-slate-600 whitespace-nowrap">기록 수</td>
+                            ${counts}
+                        </tr>
+                        <tr>
+                            <td class="px-3 py-2 text-xs font-bold text-slate-600 whitespace-nowrap">비율</td>
+                            ${rates}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
         </div>`;
 }
+
 
 function renderMomentAnalyticsResult(result, meta) {
     const container = document.getElementById('momentAnalyticsContainer');
@@ -437,14 +524,15 @@ function renderMomentAnalyticsResult(result, meta) {
             ${cachedNote}
         </div>
         ${renderSummaryCards(result, meta)}
+        ${renderAxisTable(buildAxisBreakdown(result, meta.tagLists || {}))}
         ${renderFieldTable(result)}
-        ${renderFoodPathTable(result)}
         ${renderTrendTable(result)}
         ${renderCompletenessTable(result)}
         <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
             · 분모는 기간 안의 끼니·간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을 갖지 않아 제외했습니다.<br>
             · <b>만족도·포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 「꺼 둔 사용자」가 섞여 있습니다.<br>
-            · <b>무엇을</b>은 사용자가 확정한 값만 셉니다 — 자동 분류는 이 필드를 건드리지 않습니다. 자동까지 합친 값은 아래 「채워진 경로」 표에 있습니다.<br>
+            · 「항목별 입력률」의 <b>무엇을</b>은 사용자가 확정한 값만 셉니다 — 자동 분류는 이 필드를 건드리지 않습니다.
+              자동까지 합친 값은 바로 아래 「무엇을(최종 분류 도달)」 행과, 위 본표의 「무엇을」 묶음에 있습니다.<br>
             · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
         </p>`;
     refreshLucideIcons(container);
@@ -460,6 +548,7 @@ async function runMomentAnalytics(force = false) {
         const age = hit ? Date.now() - hit.ts : Infinity;
         if (hit && age < MOMENT_ANALYTICS_CACHE_TTL_MS) {
             momentAnalyticsLastResult = hit.result;
+            momentAnalyticsLastMeta = hit.meta;
             renderMomentAnalyticsResult(hit.result, { ...hit.meta, fromCache: true, cacheAgeMs: age });
             console.log(`[모먼트 분석] ${cacheKey}: 캐시 사용 — Firestore 읽기 없음`);
             return;
@@ -475,6 +564,11 @@ async function runMomentAnalytics(force = false) {
 
     try {
         const excluded = await getExcludedAnalyticsUidSet().catch(() => new Set());
+        /**
+         * 본표의 행 순서는 「태그 관리」의 목록 순서다 — 관리자가 보는 화면과 같은 줄에
+         * 같은 값이 오도록. 문서 1건 읽기이고, 실패해도 기본값을 돌려주므로 분석을 막지 않는다.
+         */
+        const { tags: tagLists, fromServer: tagListsFromServer } = await loadAdminTagLists();
         const { rows, truncated, source, serverReads } = await loadRowsForRange(range.startYmd, range.endYmd, (msg) => {
             const p = document.getElementById('momentAnalyticsProgress');
             if (p) p.textContent = msg;
@@ -489,8 +583,17 @@ async function runMomentAnalytics(force = false) {
         });
 
         const result = analyzeMomentRows(targetRows, range.startYmd, range.endYmd);
-        const meta = { readCount, skippedCount: readCount - targetRows.length, truncated, source, serverReads };
+        const meta = {
+            readCount,
+            skippedCount: readCount - targetRows.length,
+            truncated,
+            source,
+            serverReads,
+            tagLists,
+            tagListsFromServer
+        };
         momentAnalyticsLastResult = result;
+        momentAnalyticsLastMeta = meta;
         momentAnalyticsCache.set(cacheKey, { ts: Date.now(), result, meta });
         renderMomentAnalyticsResult(result, meta);
         console.log(
@@ -521,7 +624,7 @@ window.runMomentAnalytics = function (force = false) {
     });
 };
 
-/** 결과를 엑셀(.xlsx)로 — 항목별 시트 + 추이 시트 */
+/** 결과를 엑셀(.xlsx)로 — 선택지 분포 + 항목별 + 무엇을 경로 + 추이 */
 window.exportMomentAnalyticsToExcel = async function () {
     const result = momentAnalyticsLastResult;
     if (!result || !result.overall.total) {
@@ -542,7 +645,55 @@ window.exportMomentAnalyticsToExcel = async function () {
             row[f.label] = Number(pct(b.counts[f.key], b.total).toFixed(1));
         });
         row['무엇을(최종)'] = Number(pct(b.counts.whatFinal, b.total).toFixed(1));
+        row['자동적용'] = Number(pct(b.counts.autoContext || 0, b.total).toFixed(1));
         return row;
+    });
+    /** 화면 본표를 그대로 편 시트 — 축·선택지·건수·직접·자동 */
+    const axisRows = [];
+    buildAxisBreakdown(result, momentAnalyticsLastMeta?.tagLists || {}).forEach((axis) => {
+        axis.rows.forEach((r) => {
+            axisRows.push({
+                축: axis.label,
+                선택지: r.label,
+                구분: '태그 목록',
+                건수: r.n,
+                비율: Number(r.rate.toFixed(1)),
+                직접: r.direct,
+                자동: r.auto
+            });
+        });
+        axis.outside.samples.forEach((r) => {
+            axisRows.push({
+                축: axis.label,
+                선택지: r.label,
+                구분: '목록 밖',
+                건수: r.n,
+                비율: Number(pct(r.n, axis.total).toFixed(1)),
+                직접: r.direct,
+                자동: r.auto
+            });
+        });
+        axisRows.push({
+            축: axis.label,
+            선택지: '(목록 밖 합계)',
+            구분: '합계',
+            건수: axis.outside.n,
+            비율: Number(axis.outside.rate.toFixed(1)),
+            직접: '',
+            자동: ''
+        });
+        (axis.emptyPaths || []).forEach((e) => {
+            axisRows.push({ 축: axis.label, 선택지: e.label, 구분: '미입력 분해', 건수: e.n, 비율: Number(e.rate.toFixed(1)), 직접: '', 자동: '' });
+        });
+        axisRows.push({
+            축: axis.label,
+            선택지: '(미입력)',
+            구분: '합계',
+            건수: axis.empty,
+            비율: Number(pct(axis.empty, axis.total).toFixed(1)),
+            직접: '',
+            자동: ''
+        });
     });
     const pathRows = FOOD_PATH_SPECS.map((spec) => ({
         경로: spec.label,
@@ -552,6 +703,7 @@ window.exportMomentAnalyticsToExcel = async function () {
     try {
         const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
         const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(axisRows), '선택지 분포');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fieldRows), '항목별 입력률');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pathRows), '무엇을 경로');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendRows), '기간 추이');

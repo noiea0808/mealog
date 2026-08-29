@@ -1,56 +1,19 @@
 // ADMIN 기본 태그(끼니·함께·카테고리 등) 편집
+//
+// 목록의 출처는 `admin-tag-axes.js` 하나다 — 예전엔 이 파일 안에 기본값 리터럴이
+// 정상 경로와 에러 폴백에 각각 박혀 있었다. 「모먼트 분석」이 같은 목록을 읽으므로
+// 갈라지면 편집하는 목록과 세는 목록이 달라진다.
 import { db, appId } from '../firebase.js';
-import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { escapeHtml } from './utils.js';
 import { scheduleLucideIcons } from '../icons.js';
-import { FORM_CATEGORIES } from '../utils/food-dictionary.js';
+import { ADMIN_TAG_AXES, loadAdminTagLists } from './admin-tag-axes.js';
 
 // 태그 콘텐츠 로드
 export async function loadTagsContent() {
-    try {
-        // Firestore에서 태그 데이터 가져오기
-        const tagsDoc = doc(db, 'artifacts', appId, 'content', 'defaultTags');
-        const tagsSnap = await getDoc(tagsDoc);
-        
-        // 기본값 (constants.js의 DEFAULT_USER_SETTINGS에서 가져옴)
-        let tagsData = {
-            mealType: ['집밥', '배달/포장', '구내식당', '편의점', '외식', '회식/술자리', '건너뜀', '기타'],
-            withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
-            // '무엇을'은 끼니·간식 공통 형태 축 (constants.js DEFAULT_USER_SETTINGS와 동일 소스)
-            category: [...FORM_CATEGORIES],
-            subTagsPlaceSnack: ['집', '사무실', '카페']
-        };
-
-        if (tagsSnap.exists()) {
-            const data = tagsSnap.data();
-            if (data.mealType) tagsData.mealType = data.mealType;
-            if (data.withWhom) tagsData.withWhom = data.withWhom;
-            if (data.category) tagsData.category = data.category;
-            if (data.subTagsPlaceSnack && Array.isArray(data.subTagsPlaceSnack)) tagsData.subTagsPlaceSnack = data.subTagsPlaceSnack;
-        }
-
-        // 태그 렌더링
-        renderTags('mealType', tagsData.mealType);
-        renderTags('withWhom', tagsData.withWhom);
-        // '무엇을'은 편집란 하나 — snackType 은 저장 시 category 와 같은 값으로 기록된다
-        renderTags('category', tagsData.category);
-        renderTags('subTagsPlaceSnack', tagsData.subTagsPlaceSnack);
-
-    } catch (e) {
-        console.error('태그 콘텐츠 로드 실패:', e);
-        // 기본값으로 렌더링
-        const defaultTags = {
-            mealType: ['집밥', '배달/포장', '구내식당', '편의점', '외식', '회식/술자리', '건너뜀', '기타'],
-            withWhom: ['혼자', '가족', '연인', '친구', '직장동료', '학교친구', '모임', '기타'],
-            // '무엇을'은 끼니·간식 공통 형태 축 (constants.js DEFAULT_USER_SETTINGS와 동일 소스)
-            category: [...FORM_CATEGORIES],
-            subTagsPlaceSnack: ['집', '사무실', '카페']
-        };
-        renderTags('mealType', defaultTags.mealType);
-        renderTags('withWhom', defaultTags.withWhom);
-        renderTags('category', defaultTags.category);
-        renderTags('subTagsPlaceSnack', defaultTags.subTagsPlaceSnack);
-    }
+    // loadAdminTagLists 는 실패해도 기본값을 돌려준다 — 화면이 비는 경우가 없다
+    const { tags } = await loadAdminTagLists();
+    ADMIN_TAG_AXES.forEach((axis) => renderTags(axis.key, tags[axis.key] || []));
 }
 
 // 태그 렌더링

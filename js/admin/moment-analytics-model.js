@@ -81,6 +81,176 @@ export const FOOD_PATH_SPECS = [
     { key: 'pathNoDetail', label: '분류 불가(상세 텍스트 없음)', filledPath: 'noDetail', tone: 'bad' }
 ];
 
+
+/* ─────────────────────────────────────────────────────────────
+ * 선택지 축 — 「태그 관리」의 목록이 실제로 얼마나 골라지는가
+ *
+ * 입력률(채워졌나)만으로는 답할 수 없는 두 질문이 있다:
+ *   1. 관리자가 갈라 둔 구분이 실제로 유의미했나 — 아무도 안 고르는 칩, 여전히 큰 「기타」
+ *   2. 시트 개편의 자동 항목이 입력을 늘렸나 — 그 값을 사람이 골랐나 기계가 넣었나
+ *
+ * 둘째를 세려면 값과 **출처**를 같이 봐야 한다. 저장 경로가 남기는 자국은 둘이다:
+ *   - `autoContext: ['mealType'|'place'|'withWhom']` — 맥락 예측이 자동 적용한 축
+ *     (js/modals/entry-save-record.js §맥락 줄 병합)
+ *   - `categorySource` — 「무엇을」의 분류 경로 (위 foodClassifyPath)
+ * ───────────────────────────────────────────────────────────── */
+
+/** 그 축이 맥락 예측으로 자동 적용됐는지 — 저장 경로가 남긴 자국만 믿는다 */
+export function hasAutoContext(meal, field) {
+    const list = meal?.autoContext;
+    return Array.isArray(list) && list.includes(field);
+}
+
+/**
+ * 목록 밖 값 아래에 예시로 보여 줄 개수. 전부 늘어놓으면 「어디서」의 자유 입력
+ * (가게 이름)이 표를 통째로 삼킨다 — 알고 싶은 건 목록이 얼마나 새는가지 그 목록이 아니다.
+ */
+export const AXIS_OTHER_SAMPLE_LIMIT = 5;
+
+export const CHOICE_AXIS_SPECS = [
+    {
+        key: 'how',
+        label: '어떻게',
+        tagKey: 'mealType',
+        value: (m) => trimmed(m.mealType),
+        auto: (m) => hasAutoContext(m, 'mealType'),
+        note: 'mealType · 맥락 예측 자동 적용 있음'
+    },
+    {
+        key: 'where',
+        label: '어디서',
+        tagKey: 'subTagsPlaceSnack',
+        value: (m) => trimmed(m.snackPlaceMain) || trimmed(m.place) || trimmed(m.snackPlace),
+        auto: (m) => hasAutoContext(m, 'place'),
+        /** 끼니의 「어디서」는 자유 입력(가게 이름)이라 목록 밖 값이 정상이다 */
+        freeText: true,
+        note: '간식은 칩 · 끼니는 자유 입력'
+    },
+    {
+        key: 'what',
+        label: '무엇을',
+        tagKey: 'category',
+        /** 사용자가 고른 값이 없으면 분류기가 채운 값을 쓴다 — 분포는 「최종」 축이 맞다 */
+        value: (m) => foodUserValue(m) || foodAutoValue(m),
+        auto: (m) => !foodUserValue(m) && !!foodAutoValue(m),
+        /** 이 축만 미입력이 세 갈래로 갈린다(거부·대기·상세없음) */
+        emptyPaths: true,
+        note: 'category / snackType · 자동 분류 있음'
+    },
+    {
+        key: 'withWhom',
+        label: '누구와',
+        tagKey: 'withWhom',
+        value: (m) => trimmed(m.withWhom),
+        auto: (m) => hasAutoContext(m, 'withWhom'),
+        note: 'withWhom · 맥락 예측 자동 적용 있음'
+    }
+];
+
+/** 「무엇을」의 미입력을 가르는 세 경로 — 손댈 곳이 서로 다르다 */
+export const FOOD_EMPTY_PATH_SPECS = [
+    { key: 'dismissed', label: '제안을 거부함(영구 미분류)' },
+    { key: 'pending', label: '서버 분류 대기' },
+    { key: 'noDetail', label: '분류 불가(상세 텍스트 없음)' }
+];
+
+function emptyAxisBucket() {
+    const values = {};
+    return { total: 0, filled: 0, direct: 0, auto: 0, empty: 0, values, emptyPaths: { dismissed: 0, pending: 0, noDetail: 0 } };
+}
+
+/** 기록 하나를 축별 카운터에 반영 */
+function tallyAxes(axes, meal) {
+    CHOICE_AXIS_SPECS.forEach((spec) => {
+        const bucket = axes[spec.key];
+        bucket.total += 1;
+        let v = '';
+        let isAuto = false;
+        try {
+            v = trimmed(spec.value(meal));
+            isAuto = !!spec.auto(meal);
+        } catch (_) {
+            v = '';
+            isAuto = false;
+        }
+        if (!v) {
+            bucket.empty += 1;
+            if (spec.emptyPaths) {
+                const path = foodClassifyPath(meal);
+                if (path in bucket.emptyPaths) bucket.emptyPaths[path] += 1;
+            }
+            return;
+        }
+        bucket.filled += 1;
+        if (isAuto) bucket.auto += 1;
+        else bucket.direct += 1;
+        const cell = bucket.values[v] || (bucket.values[v] = { n: 0, auto: 0, direct: 0 });
+        cell.n += 1;
+        if (isAuto) cell.auto += 1;
+        else cell.direct += 1;
+    });
+}
+
+/**
+ * 축별 카운터 + 관리자 태그 목록 → 화면에 그대로 그릴 수 있는 한 장의 표.
+ *
+ * 순수 함수로 둔 이유는 나머지와 같다 — 「목록에 있는 값」과 「목록 밖 값」을 가르는 규칙이
+ * 한 칸 어긋나도 표는 멀쩡해 보인다. 관리자 목록이 비어 있으면(문서 없음·읽기 실패)
+ * 모든 값이 목록 밖으로 떨어지므로, 그 경우는 `tagListMissing` 으로 화면에 알린다.
+ *
+ * @param {object} result analyzeMomentRows 의 반환값
+ * @param {Record<string, string[]>} tagLists `content/defaultTags` 축별 목록
+ */
+export function buildAxisBreakdown(result, tagLists = {}) {
+    return CHOICE_AXIS_SPECS.map((spec) => {
+        const bucket = result.axes?.[spec.key] || emptyAxisBucket();
+        const list = Array.isArray(tagLists[spec.tagKey]) ? tagLists[spec.tagKey] : [];
+        const listed = new Set(list);
+        const total = bucket.total;
+
+        const rows = list.map((tag) => {
+            const cell = bucket.values[tag] || { n: 0, auto: 0, direct: 0 };
+            return { label: tag, ...cell, rate: pct(cell.n, total), inList: true };
+        });
+
+        // 목록 밖 값 — 옛 어휘(한식·양식…)나 자유 입력이 여기 모인다
+        const outside = Object.entries(bucket.values)
+            .filter(([v]) => !listed.has(v))
+            .map(([v, c]) => ({ label: v, ...c }))
+            .sort((a, b) => b.n - a.n);
+        const outsideTotal = outside.reduce((acc, r) => acc + r.n, 0);
+
+        return {
+            key: spec.key,
+            label: spec.label,
+            note: spec.note,
+            freeText: !!spec.freeText,
+            tagListMissing: list.length === 0,
+            total,
+            filled: bucket.filled,
+            direct: bucket.direct,
+            auto: bucket.auto,
+            empty: bucket.empty,
+            filledRate: pct(bucket.filled, total),
+            autoShare: pct(bucket.auto, bucket.filled),
+            rows,
+            outside: {
+                n: outsideTotal,
+                rate: pct(outsideTotal, total),
+                distinct: outside.length,
+                samples: outside.slice(0, AXIS_OTHER_SAMPLE_LIMIT)
+            },
+            emptyPaths: spec.emptyPaths
+                ? FOOD_EMPTY_PATH_SPECS.map((p) => ({
+                      label: p.label,
+                      n: bucket.emptyPaths[p.key],
+                      rate: pct(bucket.emptyPaths[p.key], total)
+                  }))
+                : null
+        };
+    });
+}
+
 /**
  * 입력률을 셀 항목들.
  *
@@ -219,7 +389,7 @@ export function weekLabelOfSundayKey(sundayYmd) {
 
 /** 구간 하나의 빈 카운터 */
 function emptyBucket(label, key) {
-    const counts = {};
+    const counts = { autoContext: 0 };
     COUNT_SPECS.forEach((f) => {
         counts[f.key] = 0;
     });
@@ -236,6 +406,13 @@ export function analyzeMomentRows(rows, startYmd, endYmd) {
 
     const overall = emptyBucket('전체', 'overall');
     const buckets = new Map();
+    /** 선택지 축 카운터 — 값별 분포와 자동/직접 출처를 같이 센다 */
+    const axes = {};
+    CHOICE_AXIS_SPECS.forEach((spec) => {
+        axes[spec.key] = emptyAxisBucket();
+    });
+    /** 축 하나라도 맥락 예측이 자동 적용된 기록 — 추이에서 개편 효과를 따라간다 */
+    let autoContextRows = 0;
     const userIds = new Set();
     /** 핵심 8항목 중 몇 개를 채웠나 → 0~8 히스토그램 */
     const completeness = new Array(CORE_FIELD_SPECS.length + 1).fill(0);
@@ -255,6 +432,13 @@ export function analyzeMomentRows(rows, startYmd, endYmd) {
         if (!buckets.has(bKey)) buckets.set(bKey, emptyBucket(bLabel, bKey));
         const bucket = buckets.get(bKey);
         bucket.total += 1;
+
+        tallyAxes(axes, meal);
+        if (Array.isArray(meal.autoContext) && meal.autoContext.length > 0) {
+            autoContextRows += 1;
+            bucket.counts.autoContext += 1;
+            overall.counts.autoContext += 1;
+        }
 
         let coreFilled = 0;
         COUNT_SPECS.forEach((spec) => {
@@ -286,7 +470,9 @@ export function analyzeMomentRows(rows, startYmd, endYmd) {
         trend,
         completeness,
         userCount: userIds.size,
-        avgCompleteness
+        avgCompleteness,
+        axes,
+        autoContextRows
     };
 }
 
