@@ -65,6 +65,7 @@ const ESCAPE_OVERLAY_IDS = [
     'discardEntryConfirmModal',
     'entryModal',
     'entrySlotPickerModal',
+    'slotPlanSettingsModal',
     'dailyJournalModal'
 ];
 
@@ -245,6 +246,9 @@ function closeOverlayById(id) {
             break;
         case 'entrySlotPickerModal':
             closeEntrySlotPicker();
+            break;
+        case 'slotPlanSettingsModal':
+            window.closeSlotPlanSettings?.();
             break;
         case 'dailyJournalModal':
             closeDailyJournalModal();

@@ -9,6 +9,7 @@ import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
 import { openDailyJournalModal } from './daily-journal.js';
+import { openSlotPlanSettings } from './slot-plan-settings.js';
 import {
     dailyJournalHasContent,
     getDailyJournalFromSettings
@@ -191,6 +192,10 @@ function bindPickerOnce() {
     if (!modal) return;
 
     modal.querySelector('#entrySlotPickerBackdrop')?.addEventListener('click', closeEntrySlotPicker);
+    modal.querySelector('#entrySlotPickerSettingsBtn')?.addEventListener('click', () => {
+        closeEntrySlotPicker();
+        openSlotPlanSettings({ fromPicker: true });
+    });
     modal.querySelector('#entrySlotPickerList')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-slot-id]');
         if (!btn || !modal.contains(btn)) return;
