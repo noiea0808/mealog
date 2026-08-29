@@ -81,8 +81,18 @@ const PICKER_DAILY_ICON_STYLE = {
 
 function countBadgeHtml(count) {
     return count > 0
-        ? `<span class="entry-slot-picker__count">${count}건 · 추가 가능</span>`
+        ? `<span class="entry-slot-picker__count">${count}건</span>`
         : `<span class="entry-slot-picker__count entry-slot-picker__count--empty">아직 없음</span>`;
+}
+
+/** 아이콘 + 이름은 한 행 — 건수는 그 아래 */
+function slotHeadRowHtml(style, iconName, label) {
+    return `<span class="entry-slot-picker__head-row">
+        <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
+            <i data-lucide="${iconName}" aria-hidden="true"></i>
+        </span>
+        <span class="entry-slot-picker__label">${escapeHtml(label)}</span>
+    </span>`;
 }
 
 /**
@@ -92,22 +102,15 @@ function countBadgeHtml(count) {
 function buildUserSlotCardHtml(slot, count) {
     const style = SLOT_STYLES[slot.base] || SLOT_STYLES.default;
     return `<button type="button" class="entry-slot-picker__item" data-slot-id="${escapeHtml(slot.base)}" data-slot-key="${escapeHtml(slot.key || '')}" data-slot-type="meal">
-        <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
-            <i data-lucide="${getSlotLucideIcon(slot.base)}" aria-hidden="true"></i>
-        </span>
-        <span class="entry-slot-picker__label">${escapeHtml(slot.label)}</span>
+        ${slotHeadRowHtml(style, getSlotLucideIcon(slot.base), slot.label)}
         ${countBadgeHtml(count)}
     </button>`;
 }
 
 /** 하루 소감 — 슬롯이 아니므로 전체 폭 한 줄 (설정 대상도 아니다) */
 function buildDailyJournalRowHtml(count) {
-    const style = PICKER_DAILY_ICON_STYLE;
     return `<button type="button" class="entry-slot-picker__item entry-slot-picker__item--daily" data-slot-id="${escapeHtml(DAILY_JOURNAL_SLOT.id)}" data-slot-type="daily">
-        <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
-            <i data-lucide="${getSlotLucideIcon(DAILY_JOURNAL_SLOT.id)}" aria-hidden="true"></i>
-        </span>
-        <span class="entry-slot-picker__label">${escapeHtml(DAILY_JOURNAL_SLOT.label)}</span>
+        ${slotHeadRowHtml(PICKER_DAILY_ICON_STYLE, getSlotLucideIcon(DAILY_JOURNAL_SLOT.id), DAILY_JOURNAL_SLOT.label)}
         ${countBadgeHtml(count)}
     </button>`;
 }

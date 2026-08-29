@@ -71,8 +71,10 @@ function rowHtml(slot, idx) {
             <i data-lucide="${getSlotLucideIcon(slot.base)}" aria-hidden="true"></i>
         </span>
         <span class="slot-plan-row__main">
-            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(slot.label)}" maxlength="${SLOT_LABEL_MAX_CHARS}" aria-label="슬롯 이름" />
-            <span class="slot-plan-row__base">${escapeHtml(BASE_TIME_LABELS[slot.base] || slot.base)} 시간대</span>
+            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(slot.label)}" maxlength="${SLOT_LABEL_MAX_CHARS}" size="${Math.max(4, slot.label.length + 2)}" aria-label="슬롯 이름" />
+            <button type="button" class="slot-plan-row__pencil" data-action="edit" aria-label="이름 편집">
+                <i data-lucide="pencil" aria-hidden="true"></i>
+            </button>
         </span>
         <button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="${slot.enabled ? '사용 중' : '사용 안 함'}">${slot.enabled ? '사용' : '해제'}</button>
         <button type="button" class="slot-plan-row__menu" data-action="menu" aria-label="더보기">
@@ -344,6 +346,11 @@ function bindOnce() {
         const action = btn.getAttribute('data-action');
         if (action === 'toggle') onToggle(idx);
         else if (action === 'menu') onMenu(idx, btn);
+        else if (action === 'edit') {
+            const input = row?.querySelector('[data-action="label"]');
+            input?.focus();
+            input?.select();
+        }
     });
 
     if (list) bindDrag(list);
