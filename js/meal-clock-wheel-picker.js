@@ -11,6 +11,11 @@ const WHEEL_STEP_PX = 100;
 /** 한 번의 굴림으로 건너뛸 수 있는 최대 칸 수 */
 const WHEEL_MAX_STEPS = 5;
 
+/** 칸을 옮길 때 미끄러지는 시간 — 거리에 따라 base~max 사이에서 정해진다 */
+const GLIDE_BASE_MS = 120;
+const GLIDE_MS_PER_PX = 0.45;
+const GLIDE_MAX_MS = 280;
+
 let escapeHandler = null;
 
 function closeSiblingTimeSheets() {
@@ -89,17 +94,85 @@ function initWheelScroller(scroller) {
     const centerTopOf = (item) => item.offsetTop - (scroller.clientHeight - item.offsetHeight) / 2;
 
     /**
+     * CSS scroll-snap 을 잠시 내려놓는다.
+     *
+     * 이 스크롤러는 `scroll-snap-type: y mandatory` 라, 켜져 있는 동안에는 **scrollTop 에
+     * 넣은 값이 그대로 남지 않고 가장 가까운 칸으로 끌려간다** (실측: 1560 을 넣으면 1541,
+     * 1571 을 넣으면 1585). 칸 사이의 중간값이 아예 존재할 수 없으니 한 프레임씩 옮기는
+     * 애니메이션도, 손끝을 1:1 로 따라가는 끌기도 만들 수 없다.
+     *
+     * 그래서 마우스로 움직이는 동안만 스냅을 내려놓고, 끝나면 정확히 칸 위에서 되돌린다.
+     * 터치는 이 경로를 타지 않으므로 네이티브 스냅이 그대로 살아 있다.
+     */
+    const suspendSnap = () => {
+        scroller.style.scrollSnapType = 'none';
+    };
+    const restoreSnap = () => {
+        scroller.style.scrollSnapType = '';
+    };
+
+    let glideRaf = 0;
+    /** 글라이드가 향하는 항목 — 연속으로 굴릴 때 화면이 아니라 목적지에서 이어 세려고 */
+    let glideTarget = null;
+
+    /** 진행 중인 글라이드를 멈춘다. 스냅은 뒤이어 올 동작이 책임진다 */
+    const stopGlide = () => {
+        if (!glideRaf) return;
+        cancelAnimationFrame(glideRaf);
+        glideRaf = 0;
+    };
+
+    const prefersReducedMotion = () =>
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+    /**
      * 항목을 창 한가운데로 옮긴다.
      *
-     * `scrollTo({ behavior: 'smooth' })` 는 쓰지 않는다. 이 스크롤러는 세로 scroll-snap 이
-     * mandatory 라 **부드러운 스크롤 요청이 통째로 무시된다** — 실측에서 같은 자리를
-     * behavior:'auto' 나 scrollTop 대입으로는 정상 이동했다. 조용히 아무 일도 안 하는 코드는
-     * 남기지 않는다.
+     * `scrollTo({ behavior: 'smooth' })` 는 쓸 수 없다 — 스냅이 켜져 있으면 부드러운 스크롤
+     * 요청이 통째로 무시되고(실측), 끄면 한 번에 건너뛰어 버린다. 그래서 프레임마다 우리가
+     * 옮긴다. 숫자가 미끄러져 올라오고 내려가는 느낌은 여기서 나온다.
+     *
+     * @param {Element|null} item 가운데로 데려올 항목
+     * @param {boolean} animate 미끄러뜨릴지 (열 때의 첫 위치잡기는 즉시여야 한다)
      */
-    const centerOn = (item) => {
+    const centerOn = (item, animate = false) => {
         if (!item) return;
-        scroller.scrollTop = centerTopOf(item);
-        paintActive();
+        stopGlide();
+        const to = centerTopOf(item);
+        const from = scroller.scrollTop;
+        const dist = to - from;
+
+        if (!animate || !dist || prefersReducedMotion()) {
+            suspendSnap();
+            scroller.scrollTop = to;
+            restoreSnap();
+            glideTarget = null;
+            paintActive();
+            return;
+        }
+
+        // 가까우면 짧게, 멀면 조금 길게 — 어느 쪽이든 기다린다는 느낌은 들지 않게
+        const ms = Math.min(GLIDE_MAX_MS, GLIDE_BASE_MS + Math.abs(dist) * GLIDE_MS_PER_PX);
+        glideTarget = item;
+        suspendSnap();
+        const t0 = performance.now();
+        const step = (now) => {
+            const p = Math.min(1, (now - t0) / ms);
+            // easeOutCubic — 처음엔 시원하게 밀리고 끝에서 살며시 멎는다
+            scroller.scrollTop = from + dist * (1 - Math.pow(1 - p, 3));
+            paintActive();
+            if (p < 1) {
+                glideRaf = requestAnimationFrame(step);
+                return;
+            }
+            glideRaf = 0;
+            // 반올림 오차로 칸이 어긋나지 않게 마지막은 정확히 짚고 스냅을 되돌린다
+            scroller.scrollTop = to;
+            restoreSnap();
+            glideTarget = null;
+            paintActive();
+        };
+        glideRaf = requestAnimationFrame(step);
     };
 
     /** 마우스로 끄는 중인가 */
@@ -144,9 +217,11 @@ function initWheelScroller(scroller) {
             // 한 번에 너무 멀리 뛰면 되돌리는 품이 더 든다
             steps = Math.max(-WHEEL_MAX_STEPS, Math.min(WHEEL_MAX_STEPS, steps));
             const list = items();
-            const cur = list.indexOf(getActiveItem());
+            // 미끄러지는 도중이면 화면이 아니라 목적지에서 세야 연속으로 굴린 만큼 간다
+            const base = glideTarget && list.includes(glideTarget) ? glideTarget : getActiveItem();
+            const cur = list.indexOf(base);
             if (cur < 0) return;
-            centerOn(list[Math.max(0, Math.min(list.length - 1, cur + steps))]);
+            centerOn(list[Math.max(0, Math.min(list.length - 1, cur + steps))], true);
         },
         { passive: false }
     );
@@ -159,18 +234,19 @@ function initWheelScroller(scroller) {
      */
     scroller.addEventListener('pointerdown', (e) => {
         if (e.pointerType !== 'mouse' || e.button !== 0) return;
-        drag = {
-            y: e.clientY,
-            top: scroller.scrollTop,
-            moved: false,
-            // 포인터를 붙잡으면 이후 이벤트의 target 이 스크롤러로 바뀐다 — 지금 집어 둔다
-            hit: e.target.closest?.('.mealog-wheel__item') || null
-        };
         /**
          * 여기서 preventDefault 하지 않는다 — 그러면 브라우저가 이 누름을 마우스 포커스로
          * 세지 않아 :focus-visible 이 걸리고, 클릭만 해도 키보드용 포커스 테두리가 뜬다.
          * 끌 때 글자가 잡히는 건 CSS 의 user-select:none 이 막는다.
          */
+        // 포인터를 붙잡으면 이후 이벤트의 target 이 스크롤러로 바뀐다 — 지금 집어 둔다
+        const hit = e.target.closest?.('.mealog-wheel__item') || null;
+        // 미끄러지는 중에 잡았으면 그 자리에서 넘겨받고,
+        stopGlide();
+        // 스냅이 켜져 있으면 끌어도 칸 단위로 튄다 — 손끝을 1:1 로 따라가게 내려놓는다
+        suspendSnap();
+        // 시작 위치는 위 둘을 끝낸 **뒤에** 읽어야 실제로 끌기 시작하는 자리와 맞는다
+        drag = { y: e.clientY, top: scroller.scrollTop, moved: false, hit };
         scroller.setPointerCapture(e.pointerId);
     });
 
@@ -193,7 +269,14 @@ function initWheelScroller(scroller) {
             // 이미 놓인 포인터 — 붙잡지 못했어도 아래 정렬은 그대로 해야 한다
         }
         // 끌었으면 놓은 자리에서 가장 가까운 칸으로, 안 끌었으면 누른 칸으로
-        centerOn(moved ? getActiveItem() : hit);
+        const target = moved ? getActiveItem() : hit;
+        if (!target) {
+            // 여백을 눌렀다 뗀 경우 — centerOn 이 돌지 않으니 스냅은 여기서 되돌린다
+            restoreSnap();
+            return;
+        }
+        // centerOn 이 끝에서 스냅을 되돌리므로 여기서 따로 켜지 않는다
+        centerOn(target, true);
     };
     scroller.addEventListener('pointerup', endDrag);
     scroller.addEventListener('pointercancel', endDrag);
@@ -210,6 +293,12 @@ function initWheelScroller(scroller) {
             });
         },
         getValue() {
+            /**
+             * 미끄러지는 도중에 「적용」을 누르면 화면은 아직 칸 사이에 있다. 그때 위치로
+             * 고르면 사용자가 마지막에 고른 칸이 아니라 지나가던 칸이 잡힌다 — 목적지가
+             * 정해져 있으면 그것을 답으로 한다.
+             */
+            if (glideTarget) return glideTarget.getAttribute('data-val');
             return paintActive();
         },
     };
