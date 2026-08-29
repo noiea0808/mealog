@@ -23,6 +23,39 @@ import { refreshLucideIcons } from '../icons.js';
 /** 백업 파일 형식 버전 — 구조가 바뀌면 올린다 */
 const BACKUP_FORMAT = 2;
 
+/**
+ * 미러 이름 — 컬렉션 이름은 Firestore 의 어휘지 화면의 어휘가 아니다.
+ * `feedPosts` 만 보고 밀톡인지 게시판인지 가리려면 코드를 뒤져야 했다.
+ */
+const MIRROR_LABELS = {
+    meals: '식사 기록',
+    users: '사용자',
+    sharedPhotos: '모먼트 공유',
+    aiDietReports: 'AI 식단분석 결과',
+    feedPosts: '밀톡 글',
+    boardPosts: '게시판 글',
+    usageDaily: '일별 사용량'
+};
+
+/**
+ * 사용처 — 이 사본이 받치는 관리자 메뉴.
+ *
+ * 재구축할지 말지는 「이게 낡으면 어느 화면이 틀리나」로 판단한다. 그 판단을 하려면
+ * 컬렉션 이름이 아니라 메뉴 이름이 필요하다.
+ *
+ * **문구는 admin.html 의 탭·사이드바와 글자까지 같게 유지한다** — 여기 이름으로
+ * 화면을 찾아가는 것이 이 열의 용도라, 다르게 적으면 오히려 헤매게 된다.
+ */
+const MIRROR_MENUS = {
+    meals: ['대시보드', '모먼트 관리', '모먼트 분석', '사용자 관리', '식당정보'],
+    users: ['대시보드', '사용자 관리', '사용자 분석'],
+    sharedPhotos: ['대시보드', '모먼트 관리', '사용자 관리'],
+    aiDietReports: ['AI 식단분석'],
+    feedPosts: ['밀톡 관리'],
+    boardPosts: ['게시판 관리', '사용자 관리'],
+    usageDaily: ['대시보드 (페이지별)']
+};
+
 function fmtStamp(iso) {
     if (!iso) return '없음';
     const d = new Date(iso);
@@ -65,15 +98,29 @@ function policyLabel(r) {
     return '<span class="text-[11px] text-slate-400" title="생성 시각 축이라 남이 고친 값(좋아요·댓글 수 등)이 델타에 안 걸립니다. 7일마다 전체를 다시 받아 정리합니다. users 는 설정 저장이 도장을 찍지 않아 같은 처방이 필요합니다.">7일 재구축</span>';
 }
 
+/** 사용처 열 — 이 미러가 낡으면 틀려지는 화면들 */
+function menusCell(r) {
+    const menus = MIRROR_MENUS[r.key] || [];
+    if (menus.length === 0) return '<span class="text-[11px] text-slate-300">—</span>';
+    return menus
+        .map(
+            (m) =>
+                `<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-bold whitespace-nowrap">${escapeHtml(
+                    m
+                )}</span>`
+        )
+        .join('');
+}
+
 /** 모든 미러의 현재 상태 */
 async function collectStatuses() {
     const [meals, users] = await Promise.all([getMealsMirrorStatus(), getUsersMirrorStatus()]);
     const collections = await Promise.all(ALL_COLLECTION_MIRRORS.map((m) => m.getStatus()));
     return [
-        { key: 'meals', label: '식사 기록 (meals)', ...meals },
-        { key: 'users', label: '사용자 (users)', ...users },
-        ...collections.map((s) => ({ key: s.name, label: s.name, ...s }))
-    ];
+        { key: 'meals', ...meals },
+        { key: 'users', ...users },
+        ...collections.map((s) => ({ key: s.name, ...s }))
+    ].map((r) => ({ ...r, label: MIRROR_LABELS[r.key] || r.key }));
 }
 
 /** IndexedDB 가 실제로 얼마나 쓰고 있는지 — 브라우저가 알려 주면 */
@@ -133,6 +180,7 @@ export async function renderMirrorConsole() {
         <table class="w-full text-sm">
             <thead>
                 <tr class="text-left text-xs font-bold text-slate-500 border-b border-slate-200">
+                    <th class="py-2 pr-3">사용처</th>
                     <th class="py-2 pr-3">미러</th>
                     <th class="py-2 pr-3 text-right">보유</th>
                     <th class="py-2 pr-3">마지막 동기화</th>
@@ -146,7 +194,11 @@ export async function renderMirrorConsole() {
                     .map(
                         (r) => `
                     <tr class="border-b border-slate-100">
-                        <td class="py-2 pr-3 font-bold text-slate-700">${escapeHtml(r.label)}</td>
+                        <td class="py-2 pr-3 align-top max-w-[15rem]">${menusCell(r)}</td>
+                        <td class="py-2 pr-3 align-top whitespace-nowrap">
+                            <span class="font-bold text-slate-700">${escapeHtml(r.label)}</span>
+                            <span class="block text-[11px] text-slate-400 font-mono">${escapeHtml(r.key)}</span>
+                        </td>
                         <td class="py-2 pr-3 text-right tabular-nums text-slate-700">${(r.docCount || 0).toLocaleString('ko-KR')}</td>
                         <td class="py-2 pr-3 text-slate-500 text-xs">${escapeHtml(fmtStamp(r.lastSyncedAt))}</td>
                         <td class="py-2 pr-3">${ageBadge(r)}</td>
