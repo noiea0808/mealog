@@ -1,6 +1,8 @@
 # 사용자 슬롯 설계 — 화면의 슬롯과 집계의 슬롯을 가른다
 
-작성: 2026-08-29 (설계 확정, 미착수)
+작성: 2026-08-29 · **0~4단계 구현 완료** (staging, 같은 날)
+구현: `js/utils/slot-plan.js`(순수 계층) · `js/utils/slot-view.js`(브라우저 어댑터) ·
+`js/modals/slot-plan-settings.js`(설정 시트) · 테스트 `test/slot-plan.test.mjs`
 관련: [entry-axes-and-tags-direction.md](entry-axes-and-tags-direction.md),
 [admin-local-mirror.md](admin-local-mirror.md), [sync-outbox-design.md](sync-outbox-design.md)
 
@@ -296,14 +298,14 @@ UI 도 단순해진다(이름 편집에는 "오늘부터 적용" 안내를 띄�
 
 ## 7. 단계
 
-| 단계 | 내용 | 배포 시 사용자에게 보이는 변화 |
+| 단계 | 내용 | 상태 |
 |---|---|---|
-| 0 | `js/utils/slot-plan.js` 신설 — 개정판 해석·검증·기본값·시계 가드. 순수 함수 + 테스트 | 없음 |
-| 1 | 읽기 경로 교체: 피커·타임라인·공유카드가 `resolveSlotView` 와 **개정판 순회**를 쓰게(`SLOTS.forEach` 제거, `js/render/timeline.js:1620` 등 3곳). 기본 개정판이라 결과는 현행과 동일 | 없음 (폴백이 실전 검증됨) |
-| 2 | 피커 두 열 카드 레이아웃 + 유효 개정판 반영 + 톱니 진입점 | 두 열, 톱니 등장 |
-| 3 | 슬롯 설정 시트 — 이름 소급 편집 / 복제·순서·사용 개정판 추가 | 설정 가능 |
-| 4 | `entry-save-record` 가 `slotKey` 기록 | 같은 base 다중 슬롯이 실제로 갈림 |
-| 5 | (선택) 분석 탭 슬롯 필터를 사용자 슬롯 기준으로 | — |
+| 0 | `js/utils/slot-plan.js` — 개정판 해석·검증·기본값·시계 가드. 순수 함수 + 테스트 33케이스 | ✅ f770596 |
+| 1 | 읽기 경로 교체: 타임라인 3곳·기록 모달 제목·베스트 공유가 해석기·그룹 순회를 쓴다. 라운지(타인 기록)는 의도적으로 기준 라벨 유지 | ✅ cd863de |
+| 2 | 피커 두 열 카드 + 유효 개정판 + 톱니. 헤더 슬롯 select 도 사용자 슬롯(`k:<key>` 값) | ✅ a35fdc4 |
+| 3 | 슬롯 설정 시트 — 이름 소급 / 복제·순서 드래그·사용 토글 / 7택 추가. sw v34 | ✅ e0d0895 |
+| 4 | 저장 레코드에 `slotKey` (피커 → openModal opts → state → save) | ✅ a35fdc4 에 포함 |
+| 5 | (선택) 분석 탭 슬롯 필터를 사용자 슬롯 기준으로 | 미착수 |
 
 4단계 전까지는 `slotKey` 없는 기록만 존재하므로, 폴백 경로가 새 기능보다 먼저
 검증된다. index.html 구조가 바뀌는 2·3단계 배포에는 `sw.js` CACHE_NAME 범프가
@@ -324,13 +326,18 @@ UI 도 단순해진다(이름 편집에는 "오늘부터 적용" 안내를 띄�
    staging 에만 있는 동안 웹에서 저장한 기록은 `slotKey` 가 없다. 폴백 덕에
    깨지진 않지만, 같은 base 다중 슬롯 사용자가 웹에서 저장하면 전부 원본
    슬롯으로 귀속된다. 4단계는 **웹(main) 배포와 묶어서** 내보낸다.
-5. **퀵입력의 하드코딩 잔재.** `resolveQuickEntrySlotId`(`js/modals/entry-quick-open.js`)
-   가 `['morning','lunch','dinner']` 로 비어 있는 본식을 찾는다. 사용자가 점심을
-   꺼도 점심을 하이라이트한다. 2단계에서 유효 개정판의 enabled 본식으로 교체.
-   같은 부류의 하드코딩이 `entry-modal-header.js:211`, `meal-delete-optimistic.js:9`
-   등에 더 있다 — **type(main/snack) 판정은 전부 base 로 하면 되므로** 바꿀 필요가
-   없는 곳이 대부분이지만, 1단계에서 한 번 전수 훑어 "바꿀 곳 / 그대로 둘 곳"을
-   표로 남긴다.
+5. **퀵입력의 하드코딩 잔재.** ~~2단계에서 교체~~ → 전수 확인 결과
+   `resolveQuickEntrySlotId`·`getTimeBasedMainSlotId` 는 **사용처가 없는 죽은
+   코드**였다(정의만 존재). 나머지 하드코딩 전수표:
+
+   | 위치 | 하드코딩 | 판정 |
+   |---|---|---|
+   | `js/admin/*`, `functions/*` | MEAL/SNACK_SLOTS 등 | 그대로 — base 집계축 (§1) |
+   | `js/analytics/*` (charts·insight·kpi·tags) | main/snack id 집합 | 그대로 — base 축 분석, 5단계에서 선택 |
+   | `js/utils/diet-record-score.js` | MAIN_SLOT_IDS | 그대로 — 점수 계약은 base |
+   | `js/utils/meal-delete-optimistic.js:9` | main 집합 | 그대로 — type 판정 = base |
+   | `entry-modal-header.js` TINTED_SLOTS | morning/lunch/dinner | 그대로 — 헤더 테마 = base (야식도 저녁 테마가 맞다) |
+   | `entry-quick-open.js` | QUICK_MAIN_SLOT_IDS | 죽은 코드 — 필요 시 삭제 |
 
 한편 확인해서 **문제없음으로 닫은 것**: meals 쓰기 규칙(firestore.rules:64)에
 `hasOnly` 필드 제한이 없고, `saveArtifactUserMeal` Callable 도 필드 화이트리스트
