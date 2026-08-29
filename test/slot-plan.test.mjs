@@ -490,6 +490,71 @@ describe('고른 날짜부터 적용 (§4.2.3)', () => {
     });
 });
 
+describe('폐기 이름 보존 — 같은 날 만들고 같은 날 지워도 (§3.2)', () => {
+    const withCha = (labelDinner = '저녁') => [
+        { key: 'k-dinner', base: 'dinner', label: labelDinner, enabled: true },
+        { key: 'k-cha', base: 'dinner', label: '2차', enabled: true }
+    ];
+
+    it('같은 날짜 개정판을 덮어써 key 가 증발해도 이름이 남는다', () => {
+        // 8/30 에 '2차' 생성
+        let plan = withRevisionOn(null, '2026-08-30', withCha(), 1000, rngOf(0), '2026-08-30');
+        assert.ok(plan.revisions['2026-08-30'].slots.some((s) => s.key === 'k-cha'));
+
+        // 같은 8/30 로 '2차' 삭제 → 개정판이 통째로 교체된다
+        plan = withRevisionOn(
+            plan,
+            '2026-08-30',
+            [{ key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true }],
+            2000,
+            rngOf(0),
+            '2026-08-30'
+        );
+        assert.ok(!plan.revisions['2026-08-30'].slots.some((s) => s.key === 'k-cha'));
+
+        // 그 슬롯으로 남긴 기록의 이름은 그대로여야 한다 (불변식)
+        assert.equal(plan.retired['k-cha'].label, '2차');
+        const v = resolveSlotView(
+            { slotId: 'dinner', slotKey: 'k-cha', date: '2026-08-30' },
+            { slotPlan: plan },
+            '2026-08-30'
+        );
+        assert.equal(v.label, '2차');
+        assert.equal(v.matchedBy, 'key');
+    });
+
+    it('다른 개정판에 살아 있으면 폐기하지 않는다', () => {
+        let plan = withRevisionOn(null, '2026-08-27', withCha(), 1000, rngOf(0), TODAY);
+        plan = withRevisionOn(
+            plan,
+            '2026-08-29',
+            [{ key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true }],
+            2000,
+            rngOf(0),
+            TODAY
+        );
+        assert.equal(plan.retired, undefined);
+        assert.equal(findSlotByKey(plan, 'k-cha', TODAY).label, '2차');
+    });
+
+    it('폐기 목록은 쌓이기만 하고 기존 항목을 잃지 않는다', () => {
+        let plan = withRevisionOn(null, '2026-08-30', withCha(), 1000, rngOf(0), '2026-08-30');
+        plan = withRevisionOn(plan, '2026-08-30', [{ key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true }], 2000, rngOf(0), '2026-08-30');
+        // 또 다른 슬롯을 만들었다 같은 날 지운다
+        plan = withRevisionOn(plan, '2026-08-30', [
+            { key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true },
+            { key: 'k-nite', base: 'night', label: '야참', enabled: true }
+        ], 3000, rngOf(0), '2026-08-30');
+        plan = withRevisionOn(plan, '2026-08-30', [{ key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true }], 4000, rngOf(0), '2026-08-30');
+        assert.deepEqual(Object.keys(plan.retired).sort(), ['k-cha', 'k-nite']);
+    });
+
+    it('손상된 폐기 항목은 무시하고 기준 슬롯으로 내려간다', () => {
+        const plan = { schema: 1, revisions: {}, retired: { 'k-x': { base: 'nope', label: 'x' } } };
+        assert.equal(findSlotByKey(plan, 'k-x', TODAY), null);
+    });
+});
+
 describe('adoptExistingKeys — 과거 날짜 편집이 슬롯 정체성을 쪼개지 않는다', () => {
     it('29일 개정판만 있을 때 27일 기본값이 같은 key 를 물려받는다', () => {
         // 기본값 그대로면 개정판이 안 생긴다(성장 억제) — 실제 변경을 담아 저장한다

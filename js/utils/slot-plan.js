@@ -160,13 +160,15 @@ export function effectiveSlots(userSettings, dateIso, todayIso) {
  */
 export function findSlotByKey(plan, slotKey, todayIso) {
     if (typeof slotKey !== 'string' || !slotKey) return null;
+    if (!plan || typeof plan !== 'object') return null;
     const dates = listRevisionDates(plan, todayIso);
     for (let i = dates.length - 1; i >= 0; i--) {
         const slots = sanitizeSlots(plan.revisions[dates[i]]?.slots);
         const hit = slots && slots.find((s) => s.key === slotKey);
         if (hit) return hit;
     }
-    return null;
+    // 개정판에서 완전히 사라진 슬롯 — 폐기 이름으로 답한다 (§3.2)
+    return retiredSlotByKey(plan, slotKey);
 }
 
 /**
@@ -304,14 +306,64 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
     );
 
     const base = plan && typeof plan === 'object' && plan.revisions ? plan : { schema: SLOT_PLAN_SCHEMA, revisions: {} };
-    return {
+    const nextRevisions = {
+        ...base.revisions,
+        [effectiveFrom]: { createdAt: nowMs, slots: materialized }
+    };
+
+    /**
+     * 이 저장으로 **어느 개정판에서도 사라지는** key 를 이름과 함께 남긴다 (§3.2).
+     *
+     * 같은 날짜 키의 개정판을 덮어쓰면(같은 날 만들고 같은 날 삭제) 그 슬롯의
+     * key 가 통째로 증발한다. 그러면 그 슬롯으로 남긴 기록이 기준 슬롯 이름으로
+     * 되돌아가, §3 이 약속한 "한 번 붙은 이름은 영원히 유지된다"가 깨진다.
+     * 기록 자체는 무사하지만 약속은 약속이다.
+     */
+    const gone = collectRevisionKeys(base);
+    for (const k of collectRevisionKeys({ revisions: nextRevisions }).keys()) gone.delete(k);
+
+    const prevRetired = base.retired && typeof base.retired === 'object' ? base.retired : null;
+    const retired = gone.size > 0 || prevRetired ? { ...prevRetired } : null;
+    for (const [k, v] of gone) retired[k] = v;
+
+    const next = {
         ...base,
         schema: SLOT_PLAN_SCHEMA,
-        revisions: {
-            ...base.revisions,
-            [effectiveFrom]: { createdAt: nowMs, slots: materialized }
-        }
+        revisions: nextRevisions
     };
+    if (retired) next.retired = retired;
+    return next;
+}
+
+/**
+ * 개정판 전체에서 key → { base, label } 을 모은다. 나중 개정판이 이긴다
+ * (Object.values 는 삽입 순서이고 날짜 키는 대체로 오름차순으로 들어온다 —
+ * 정확한 최신값이 아니어도 폐기 이름의 근사로 충분하다).
+ */
+function collectRevisionKeys(plan) {
+    const out = new Map();
+    const revisions = plan && typeof plan === 'object' ? plan.revisions : null;
+    if (!revisions || typeof revisions !== 'object') return out;
+    for (const date of Object.keys(revisions).sort()) {
+        for (const s of Array.isArray(revisions[date]?.slots) ? revisions[date].slots : []) {
+            if (!s || typeof s.key !== 'string' || !s.key) continue;
+            if (!BASE_IDS.has(s.base)) continue;
+            const label = typeof s.label === 'string' ? s.label.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
+            if (!label) continue;
+            out.set(s.key, { base: s.base, label });
+        }
+    }
+    return out;
+}
+
+/** 폐기된 슬롯(어느 개정판에도 없는 key)의 이름 — §3 폴백의 마지막 보루 */
+function retiredSlotByKey(plan, slotKey) {
+    const r = plan && typeof plan === 'object' && plan.retired && typeof plan.retired === 'object'
+        ? plan.retired[slotKey]
+        : null;
+    if (!r || !BASE_IDS.has(r.base)) return null;
+    const label = typeof r.label === 'string' ? r.label.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
+    return label ? { key: slotKey, base: r.base, label, enabled: false } : null;
 }
 
 /**
