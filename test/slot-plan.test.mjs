@@ -32,7 +32,7 @@ import {
     countEnabledSlots,
     originalSlotSet,
     materializeSlotKeys,
-    nextRevisionDateAfter,
+    nextDifferentRevisionAfter,
     adoptExistingKeys,
     addDaysIso,
     groupMealsByUserSlotForDate,
@@ -481,12 +481,13 @@ describe('고른 날짜부터 적용 (§4.2.3)', () => {
         assert.equal(revisionSlotsForDate(plan, '2026-08-27', TODAY)[0].label, '둘째판');
     });
 
-    it('nextRevisionDateAfter: 안내문이 "며칠까지"를 계산하는 근거', () => {
+    it('안내문이 "며칠까지"를 계산하는 근거 — 내용이 다른 다음 개정판', () => {
         let plan = withRevisionOn(null, '2026-08-27', slotsNamed('a'), 1000, rngOf(0), TODAY);
         plan = withRevisionOn(plan, '2026-08-29', slotsNamed('b'), 2000, rngOf(0), TODAY);
-        assert.equal(nextRevisionDateAfter(plan, '2026-08-27', TODAY), '2026-08-29');
+        const at27 = revisionSlotsForDate(plan, '2026-08-27', TODAY);
+        assert.equal(nextDifferentRevisionAfter(plan, '2026-08-27', TODAY, at27), '2026-08-29');
         assert.equal(addDaysIso('2026-08-29', -1), '2026-08-28');
-        assert.equal(nextRevisionDateAfter(plan, '2026-08-29', TODAY), null);
+        assert.equal(nextDifferentRevisionAfter(plan, '2026-08-29', TODAY, slotsNamed('b')), null);
     });
 });
 
@@ -564,6 +565,48 @@ describe('뒤 개정판 통일 (§4.2.4)', () => {
         });
         assert.notEqual(plan, p);
         assert.ok(labelsOn(plan, '2026-08-28').includes('2차'));
+    });
+});
+
+describe('내용이 같은 개정판은 "끝나는 날"로 안 센다 (§4.2.5)', () => {
+    const A = () => defaultUserSlots().map((s) => ({ ...s, key: `d_${s.base}` }));
+    const B = () => A().map((s) => (s.base === 'lunch' ? { ...s, label: '런치' } : s));
+
+    /** 29일에 고쳤다가 되돌리면 28일과 내용이 같은 개정판 29 가 남는다 */
+    function planWithNoopRevision() {
+        let p = withRevisionOn(null, '2026-08-28', B(), 1000, rngOf(0), TODAY);
+        p = withRevisionOn(p, '2026-08-29', A(), 2000, rngOf(0), TODAY); // 편집
+        p = withRevisionOn(p, '2026-08-29', B(), 3000, rngOf(0), TODAY); // 원복
+        return p;
+    }
+
+    it('되돌려도 개정판 자국은 남는다 — 그래서 이 처리가 필요하다', () => {
+        const plan = planWithNoopRevision();
+        assert.deepEqual(Object.keys(plan.revisions).sort(), ['2026-08-28', '2026-08-29']);
+        assert.deepEqual(
+            plan.revisions['2026-08-28'].slots.map((s) => s.label),
+            plan.revisions['2026-08-29'].slots.map((s) => s.label)
+        );
+    });
+
+    it('내용이 같으면 건너뛰고 계속 적용으로 본다', () => {
+        const plan = planWithNoopRevision();
+        assert.equal(nextDifferentRevisionAfter(plan, '2026-08-28', TODAY, B()), null);
+    });
+
+    it('내용이 다른 개정판이 더 뒤에 있으면 거기서 끊는다', () => {
+        // 30일은 TODAY(29일) + 1 이라 시계 방어(§5.5) 안쪽이다
+        let plan = planWithNoopRevision();
+        const C = A().map((s) => (s.base === 'dinner' ? { ...s, label: '디너' } : s));
+        plan = withRevisionOn(plan, '2026-08-30', C, 4000, rngOf(0), TODAY);
+        assert.equal(nextDifferentRevisionAfter(plan, '2026-08-28', TODAY, B()), '2026-08-30');
+    });
+
+    it("'뒤 개정판 통일'이 만든 동일 내용도 마찬가지로 안 센다", () => {
+        let plan = withRevisionOn(null, '2026-08-28', B(), 1000, rngOf(0), TODAY);
+        plan = withRevisionOn(plan, '2026-08-26', A(), 2000, rngOf(0), TODAY, { overwriteLater: true });
+        assert.deepEqual(Object.keys(plan.revisions).sort(), ['2026-08-26', '2026-08-28']);
+        assert.equal(nextDifferentRevisionAfter(plan, '2026-08-26', TODAY, A()), null);
     });
 });
 

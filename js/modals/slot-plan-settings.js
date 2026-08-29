@@ -16,7 +16,7 @@ import {
     originalSlotSet,
     generateSlotKey,
     withRevisionOn,
-    nextRevisionDateAfter,
+    nextDifferentRevisionAfter,
     adoptExistingKeys,
     addDaysIso,
     renameSlotEverywhere,
@@ -67,10 +67,11 @@ function formatNoticeDate(iso) {
  */
 function noticeText() {
     const from = formatNoticeDate(effectiveFromIso);
-    const next = nextRevisionDateAfter(
+    const next = nextDifferentRevisionAfter(
         window.userSettings?.slotPlan || null,
         effectiveFromIso,
-        localTodayIso()
+        localTodayIso(),
+        draft || []
     );
     if (next) {
         return `${from}부터 ${formatNoticeDate(addDaysIso(next, -1))}까지의 기록에 적용됩니다. ${formatNoticeDate(next)}부터는 그날 저장한 구성이 따로 있어요.`;
@@ -89,10 +90,12 @@ function syncCascadeRow() {
     const row = document.getElementById('slotPlanCascadeRow');
     const label = document.getElementById('slotPlanCascadeLabel');
     if (!row) return;
-    const next = nextRevisionDateAfter(
+    // 내용이 이미 같은 뒤 개정판은 통일할 게 없다 — 세지 않는다 (§4.2.5)
+    const next = nextDifferentRevisionAfter(
         window.userSettings?.slotPlan || null,
         effectiveFromIso,
-        localTodayIso()
+        localTodayIso(),
+        draft || []
     );
     row.classList.toggle('hidden', !next);
     if (next && label) {

@@ -412,12 +412,39 @@ export function renameSlotEverywhere(plan, slotKey, newLabel) {
     return touched ? { ...plan, revisions: nextRevisions } : plan;
 }
 
+/** 두 슬롯 배열이 글자 그대로 같은지 — key 를 와일드카드로 보지 않는다 */
+function slotsIdentical(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every(
+        (s, i) =>
+            s.key === b[i].key &&
+            s.base === b[i].base &&
+            s.label === b[i].label &&
+            s.enabled === b[i].enabled
+    );
+}
+
 /**
- * `dateIso` 다음에 오는 개정판 날짜. 없으면 null.
- * 설정 시트가 "이 구성이 며칠까지 적용되는지" 안내하는 데 쓴다(§4.2.3).
+ * `slots` 구성이 **실제로 끝나는** 날 — `dateIso` 뒤에서 내용이 처음으로 달라지는
+ * 개정판 날짜. 없으면 null(= 계속 적용).
+ *
+ * "다음 개정판"이 아니라 "다음으로 **다른** 개정판"인 이유(§4.2.5): 내용이 같은
+ * 개정판이 남을 수 있다.
+ * - 29일에 고쳤다가 되돌리면 개정판 29 가 28 과 같은 내용으로 덮여 남는다
+ *   (그 날짜의 개정판 자신과 비교하므로 되돌림도 '변경'이다).
+ * - '뒤 개정판 통일'(§4.2.4)은 설계상 같은 내용을 뒤 날짜에 써넣는다.
+ *
+ * 이런 자국을 세면 안내가 "28일까지만 적용"이라고 거짓말한다 — 29일 내용이
+ * 같으니 실제로는 계속 적용되는데도.
  */
-export function nextRevisionDateAfter(plan, dateIso, todayIso) {
-    return listRevisionDates(plan, todayIso).find((d) => d > dateIso) || null;
+export function nextDifferentRevisionAfter(plan, dateIso, todayIso, slots) {
+    const revisions = plan && typeof plan === 'object' ? plan.revisions : null;
+    if (!revisions) return null;
+    for (const d of listRevisionDates(plan, todayIso)) {
+        if (d <= dateIso) continue;
+        if (!slotsIdentical(sanitizeSlots(revisions[d]?.slots) || [], slots)) return d;
+    }
+    return null;
 }
 
 /**
