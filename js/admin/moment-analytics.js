@@ -31,6 +31,7 @@ import {
     MOMENT_FIELD_SPECS,
     CORE_FIELD_SPECS,
     FOOD_PATH_SPECS,
+    AXIS_CHART_SLOTS,
     analyzeMomentRows,
     buildAxisBreakdown,
     shiftYmd,
@@ -306,27 +307,91 @@ function watchAxisBarWidth(root) {
 }
 
 /**
- * 바 넷을 한자리에 세운 묶음 — 표보다 먼저 온다.
+ * 막대 아래 범례 — **모든 칸에 이름을 붙인다.**
+ *
+ * 칸 안의 직접 라벨은 넓은 칸에만 들어간다(좁은 칸에 넣으면 글자가 잘린다). 그래서
+ * 좁은 칸은 색만 남고, 색만으로는 무엇인지 알 수 없다 — 게다가 이 팔레트의 세 색은
+ * 흰 바탕 대비가 3:1 아래라 색을 단독 식별 수단으로 쓰면 안 된다. 범례가 그 몫을 맡는다.
+ *
+ * **건수 0인 선택지도 흐리게 싣는다.** 「아무도 안 고른 칩」이 이 화면이 답해야 하는
+ * 질문 중 하나인데, 막대에는 칸이 안 생겨 흔적이 없다. 범례에서만 보인다.
+ */
+function renderAxisLegend(axis) {
+    const c = axis.chart;
+    const item = (color, label, n, rate, muted = false, ring = '') => `
+        <span class="inline-flex items-center gap-1.5 mr-3 mb-1 ${muted ? 'opacity-45' : ''}">
+            <span class="inline-block w-2.5 h-2.5 rounded-sm shrink-0 ${ring}" style="background:${color}"></span>
+            <span class="text-[11px] ${muted ? 'text-slate-500' : 'text-slate-700'} whitespace-nowrap">${escapeHtml(label)}</span>
+            <span class="text-[11px] tabular-nums text-slate-400 whitespace-nowrap">${
+                n > 0 ? `${n.toLocaleString()} · ${rate.toFixed(rate < 10 ? 1 : 0)}%` : '0'
+            }</span>
+        </span>`;
+
+    const chips = [
+        ...axis.rows
+            .filter((r) => r.slot !== null)
+            .map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate, r.n === 0)),
+        c.folded.n ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate) : '',
+        c.outside.n ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate) : '',
+        c.empty.n ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, false, 'ring-1 ring-inset ring-slate-300') : ''
+    ].join('');
+
+    /** 한 색으로 묶인 것들의 이름 — 묶었다고 정체까지 감추지는 않는다 */
+    const detail = (label, items, more) =>
+        items.length
+            ? `<p class="text-[11px] text-slate-400 mt-0.5">${label}: ${items
+                  .map((x) => `${escapeHtml(x.label)} ${x.n.toLocaleString()}`)
+                  .join(' · ')}${more ? ' …' : ''}</p>`
+            : '';
+
+    const emptyDetail =
+        axis.emptyPaths && axis.empty
+            ? `<p class="text-[11px] text-slate-400 mt-0.5">미입력 내역: ${axis.emptyPaths
+                  .map((p) => `${escapeHtml(p.label.replace(/\(.*\)/, '').trim())} ${p.n.toLocaleString()}`)
+                  .join(' · ')}</p>`
+            : '';
+
+    return `
+        <div class="mt-1.5">
+            <div class="flex flex-wrap">${chips}</div>
+            ${detail('그 외', c.folded.items || [], false)}
+            ${detail('목록 밖', c.outside.samples || [], c.outside.distinct > (c.outside.samples || []).length)}
+            ${emptyDetail}
+        </div>`;
+}
+
+/**
+ * 축별 누적 막대 — 이 화면의 본체.
  *
  * 숫자만 늘어놓은 표는 「멀게」 읽힌다는 지적이 이 블록의 출발점이다. 구성비와 건수는
- * 둘 다 중요하므로 둘을 한 그림에 담는다: 길이가 건수(전체 대비 몫)이고, 칸 나눔이 구성이다.
+ * 둘 다 중요하므로 둘을 한 그림에 담는다: 길이가 몫이고, 칸 나눔이 구성이다.
+ * 예전에는 이 아래 선택지별 표가 한 장 더 있었는데, 범례가 같은 값을 더 짧게 말해
+ * 걷어냈다 — 정확한 값이 더 필요하면 「엑셀 내보내기」의 `선택지 분포` 시트가 전부 들고 있다.
  */
 function renderAxisCharts(breakdown, total) {
     const bars = breakdown
         .map(
             (axis) => `
-        <div class="py-2.5">
+        <div class="py-3">
             <div class="flex items-baseline justify-between gap-3 mb-1.5">
-                <span class="text-xs font-black text-slate-800">${escapeHtml(axis.label)}</span>
-                <span class="text-[11px] tabular-nums text-slate-500">
+                <span class="text-xs font-black text-slate-800">
+                    ${escapeHtml(axis.label)}
+                    <span class="ml-1.5 text-[10px] font-normal text-slate-400">${escapeHtml(axis.note || '')}</span>
+                    ${axis.tagListMissing ? '<span class="ml-1.5 text-[10px] font-bold text-red-600">태그 목록을 읽지 못함</span>' : ''}
+                </span>
+                <span class="text-[11px] tabular-nums text-slate-500 whitespace-nowrap">
                     입력 <b class="text-slate-700">${axis.filled.toLocaleString()}</b>건 ·
                     <b class="${axis.filledRate >= 70 ? 'text-emerald-700' : axis.filledRate >= 40 ? 'text-amber-700' : 'text-red-600'}">${fmtPct(
                         axis.filledRate
                     )}</b>
-                    ${axis.auto ? `<span class="ml-1 text-sky-600">· 자동 ${axis.auto.toLocaleString()}</span>` : ''}
+                    <span class="ml-1 text-slate-400">직접 ${axis.direct.toLocaleString()}</span>
+                    <span class="ml-1 text-sky-600">자동 ${axis.auto.toLocaleString()}${
+                        axis.auto ? ` (${fmtPct(axis.autoShare)})` : ''
+                    }</span>
                 </span>
             </div>
             ${renderAxisBar(axis)}
+            ${renderAxisLegend(axis)}
         </div>`
         )
         .join('');
@@ -341,154 +406,15 @@ function renderAxisCharts(breakdown, total) {
                 네 막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
             </p>
             <div id="momentAxisCharts" class="rounded-xl border border-slate-200 bg-white px-4 py-2 divide-y divide-slate-100">${bars}</div>
-        </div>`;
-}
-
-/**
- * 이 화면의 본표 — 선택지 하나하나가 얼마나 골라졌고, 그 값이 어디서 왔나.
- *
- * 표 하나로 묶은 이유: 세 질문이 원래 한 줄에서 답해져야 하는 것들이라서다.
- *   1. 「태그 관리」의 구분이 유의미했나 — 아무도 안 고르는 칩이 보인다(건수 0)
- *   2. 「기타」가 여전히 큰가 — 다른 칩과 같은 줄에서 비교된다
- *   3. 시트 개편의 자동 항목이 입력을 늘렸나 — 「직접 / 자동」 두 열이 그 자리에서 가른다
- * 따로 그리면 축을 오갈 때마다 사람이 머릿속에서 표를 합쳐야 한다.
- *
- * 막대는 뺐다. 축마다 선택지가 10개 안팎이고 비율이 이미 옆 칸에 있어, 긴 막대는
- * 세로 공간만 늘리고 축 사이 비교를 오히려 방해했다.
- */
-function renderAxisTable(breakdown) {
-    /**
-     * 표 행과 막대 칸을 잇는 색 표식. 글자에 색을 입히지 않고 **옆에 세운다** —
-     * 밝은 계열색(노랑·아쿠아)은 흰 바탕에서 글자로 읽히지 않는다.
-     */
-    const swatch = (color, extra = '') =>
-        color
-            ? `<span class="inline-block w-2.5 h-2.5 rounded-sm align-middle mr-2 ${extra}" style="background:${color}"></span>`
-            : '<span class="inline-block w-2.5 h-2.5 align-middle mr-2"></span>';
-
-    const axisBlocks = breakdown
-        .map((axis) => {
-            const cell = (n, tone = 'text-slate-700') =>
-                `<td class="px-3 py-1.5 text-right tabular-nums ${n ? tone : 'text-slate-300'}">${n.toLocaleString()}</td>`;
-
-            const tagRows = axis.rows
-                .map((r) => {
-                    const dim = r.n === 0;
-                    return `
-                <tr class="border-b border-slate-100 ${dim ? 'bg-slate-50/40' : ''}">
-                    <td class="px-3 py-1.5 pl-8 ${dim ? 'text-slate-400' : 'text-slate-700'} whitespace-nowrap">
-                        ${swatch(dim ? null : axisSlotColor(r.slot))}${escapeHtml(r.label)}${
-                            dim ? '<span class="ml-2 text-[10px] font-bold text-slate-400">선택 없음</span>' : ''
-                        }${
-                            r.slot === null && !dim
-                                ? '<span class="ml-2 text-[10px] text-slate-400">그 외 묶음</span>'
-                                : ''
-                        }</td>
-                    ${cell(r.n)}
-                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums ${rateCellClass(r.rate)}">${fmtPct(r.rate)}</td>
-                    ${cell(r.direct)}
-                    ${cell(r.auto, 'text-sky-600')}
-                </tr>`;
-                })
-                .join('');
-
-            const sampleText = axis.outside.samples.map((s) => `${s.label} ${s.n.toLocaleString()}`).join(' · ');
-            const outsideRow = `
-                <tr class="border-b border-slate-100 bg-amber-50/40">
-                    <td class="px-3 py-1.5 pl-8 text-slate-600 whitespace-nowrap">
-                        ${swatch(AXIS_OUTSIDE_COLOR)}목록 밖 값
-                        <span class="ml-1 text-[10px] text-slate-400">${axis.outside.distinct.toLocaleString()}종</span>
-                    </td>
-                    ${cell(axis.outside.n, 'text-amber-700')}
-                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums ${rateCellClass(axis.outside.rate)}">${fmtPct(axis.outside.rate)}</td>
-                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
-                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
-                </tr>
-                ${
-                    sampleText
-                        ? `<tr class="border-b border-slate-100 bg-amber-50/20">
-                               <td colspan="5" class="px-3 py-1 pl-12 text-[11px] text-slate-500">많은 순: ${escapeHtml(sampleText)}${
-                                   axis.outside.distinct > axis.outside.samples.length ? ' …' : ''
-                               }</td>
-                           </tr>`
-                        : ''
-                }`;
-
-            const emptyRows = axis.emptyPaths
-                ? axis.emptyPaths
-                      .map(
-                          (p) => `
-                <tr class="border-b border-slate-100">
-                    <td class="px-3 py-1.5 pl-12 text-slate-400 text-xs whitespace-nowrap">└ ${escapeHtml(p.label)}</td>
-                    ${cell(p.n, 'text-slate-500')}
-                    <td class="px-3 py-1.5 text-right text-xs tabular-nums text-slate-400">${fmtPct(p.rate)}</td>
-                    <td class="px-3 py-1.5"></td>
-                    <td class="px-3 py-1.5"></td>
-                </tr>`
-                      )
-                      .join('')
-                : '';
-
-            const emptyRate = pct(axis.empty, axis.total);
-            return `
-            <tbody class="border-t-2 border-slate-300">
-                <tr class="bg-slate-100/80">
-                    <td class="px-3 py-2 font-black text-slate-800 whitespace-nowrap">
-                        ${escapeHtml(axis.label)}
-                        <span class="ml-2 text-[11px] font-normal text-slate-500">${escapeHtml(axis.note || '')}</span>
-                        ${axis.tagListMissing ? '<span class="ml-2 text-[10px] font-bold text-red-600">태그 목록을 읽지 못함</span>' : ''}
-                    </td>
-                    <td class="px-3 py-2 text-right tabular-nums font-bold text-slate-700">${axis.filled.toLocaleString()}</td>
-                    <td class="px-3 py-2 text-right text-xs font-black tabular-nums ${rateCellClass(axis.filledRate)}">${fmtPct(axis.filledRate)}</td>
-                    <td class="px-3 py-2 text-right tabular-nums font-bold text-slate-700">${axis.direct.toLocaleString()}</td>
-                    <td class="px-3 py-2 text-right tabular-nums font-bold text-sky-700">${axis.auto.toLocaleString()}${
-                        // 건수 뒤에 곧바로 비율을 붙이면 「1」 + 「25.0%」 가 125.0% 로 읽힌다
-                        axis.auto ? `<span class="ml-1.5 text-[10px] font-normal text-sky-500">(${fmtPct(axis.autoShare)})</span>` : ''
-                    }</td>
-                </tr>
-                ${tagRows}
-                ${outsideRow}
-                <tr class="border-b border-slate-100 bg-slate-50/60">
-                    <td class="px-3 py-1.5 pl-8 font-bold text-slate-500 whitespace-nowrap">${swatch(
-                        AXIS_EMPTY_COLOR,
-                        'ring-1 ring-inset ring-slate-300'
-                    )}미입력</td>
-                    ${cell(axis.empty, 'text-slate-500')}
-                    <td class="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-slate-500">${fmtPct(emptyRate)}</td>
-                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
-                    <td class="px-3 py-1.5 text-right text-slate-300">-</td>
-                </tr>
-                ${emptyRows}
-            </tbody>`;
-        })
-        .join('');
-
-    return `
-        <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">
-                선택지별 분포와 입력 경로
-                <span class="text-xs font-normal text-slate-400">(관리자 &gt; 태그 관리의 목록 순서 그대로)</span>
-            </h4>
-            <div class="overflow-x-auto rounded-xl border border-slate-200">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50">
-                        <tr class="border-b border-slate-200">
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">축 · 선택지</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">건수</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">비율</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">직접</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-sky-700 uppercase">자동</th>
-                        </tr>
-                    </thead>
-                    ${axisBlocks}
-                </table>
-            </div>
             <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
                 · <b>자동</b> = 사람이 고르지 않았는데 값이 남은 것. 「어떻게·어디서·누구와」는 맥락 예측이 자동 적용한 축(<code>autoContext</code>),
-                「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다. 비율의 분모는 축마다 <b>전체 기록 수</b>입니다.<br>
-                · <b>목록 밖 값</b>은 태그 목록에 없는 값입니다 — 목록을 바꾸기 전에 저장된 옛 어휘거나, 「어디서」처럼 자유 입력이 허용된 축입니다.
-                「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 크게 나오는 것이 정상입니다.<br>
-                · <b>건수 0</b>인 선택지는 기간 안에 아무도 고르지 않은 칩입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
+                「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다.<br>
+                · <b>흐린 범례</b>는 기간 안에 아무도 고르지 않은 선택지입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
+                · <b>목록 밖</b>은 지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에 저장된 옛 어휘</b>(한식·양식·일식·중식·분식·카페)와 「기타」입니다 —
+                「한식」은 밥류일 수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다(표기만 달랐던 옛 형태 축 값은 읽을 때 맞춰 제 칩으로 갑니다).
+                「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 큰 것이 정상입니다.<br>
+                · <b>색은 「태그 관리」의 목록 순서</b>로 앞 ${AXIS_CHART_SLOTS}개에 갑니다(건수 순이 아니라 — 기간을 바꿔도 색이 옮겨 다니지 않게).
+                나머지는 「그 외」로 묶이니, 색으로 보고 싶은 칩은 태그 관리에서 위로 올리세요.<br>
                 · 「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을 수 있어 「서버 분류 대기」가 부풀어 보입니다.
             </p>
         </div>`;
@@ -686,11 +612,7 @@ function renderMomentAnalyticsResult(result, meta) {
             ${cachedNote}
         </div>
         ${renderSummaryCards(result, meta)}
-        ${(() => {
-            // 같은 breakdown 을 막대와 표가 나눠 쓴다 — 두 번 계산하면 갈릴 자리를 만든다
-            const breakdown = buildAxisBreakdown(result, meta.tagLists || {});
-            return renderAxisCharts(breakdown, result.overall.total) + renderAxisTable(breakdown);
-        })()}
+        ${renderAxisCharts(buildAxisBreakdown(result, meta.tagLists || {}), result.overall.total)}
         ${renderFieldTable(result)}
         ${renderTrendTable(result)}
         ${renderCompletenessTable(result)}
@@ -698,7 +620,7 @@ function renderMomentAnalyticsResult(result, meta) {
             · 분모는 기간 안의 끼니·간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을 갖지 않아 제외했습니다.<br>
             · <b>만족도·포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 「꺼 둔 사용자」가 섞여 있습니다.<br>
             · 「항목별 입력률」의 <b>무엇을</b>은 사용자가 확정한 값만 셉니다 — 자동 분류는 이 필드를 건드리지 않습니다.
-              자동까지 합친 값은 바로 아래 「무엇을(최종 분류 도달)」 행과, 위 본표의 「무엇을」 묶음에 있습니다.<br>
+              자동까지 합친 값은 바로 아래 「무엇을(최종 분류 도달)」 행과, 위 「축별 구성」의 무엇을 막대에 있습니다.<br>
             · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
         </p>`;
     refreshLucideIcons(container);

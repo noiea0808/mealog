@@ -12,6 +12,8 @@
 /** 이 일수 이하면 추이를 일별로, 넘으면 주별로 끊는다 */
 export const MOMENT_ANALYTICS_DAILY_MAX_SPAN = 31;
 
+import { normalizeFoodForm } from '../utils/food-form-normalize.js';
+
 export const trimmed = (v) => (v == null ? '' : String(v).trim());
 
 /** 만족도·포만감: 0도 값이다(입력 안 함은 null/undefined/'') */
@@ -40,10 +42,22 @@ export function hasPhoto(meal) {
  * 전자만 떨어지고 후자는 그대로일 수 있다. 둘을 갈라 놓지 않으면 그 구분이 안 보인다.
  * ───────────────────────────────────────────────────────────── */
 
-/** 사용자가 확정한 형태 값 — 끼니는 category, 간식은 snackType */
-export const foodUserValue = (m) => trimmed(m?.category) || trimmed(m?.snackType);
-/** 분류기(로컬·서버)가 채운 값 */
-export const foodAutoValue = (m) => trimmed(m?.categoryAuto);
+/**
+ * 사용자가 확정한 형태 값 — 끼니는 category, 간식은 snackType.
+ *
+ * **읽을 때 표기를 맞춘다**(`normalizeFoodForm`). 축을 갈아끼우기 전에 저장된 값이
+ * 남아 있어서다 — 「밥/한상」은 지금의 「밥류」고 「베이커리」는 「베이커리/떡」이다.
+ * 맞추지 않으면 같은 것이 목록 밖으로 밀려 「예전 기준」의 양이 부풀어 보인다.
+ * 앱의 읽기 계층(`js/analytics/meal-analytics-tags.js`)이 쓰는 것과 같은 함수다 —
+ * 여기만 다르면 관리자가 보는 분포와 사용자가 보는 분포가 갈린다.
+ *
+ * 옛 **요리 종류** 축(한식·양식·일식·중식·분식·카페)은 매핑하지 않는다. 「한식」은 밥류일
+ * 수도 국물요리일 수도 있어서, 어느 칩에 넣든 없는 정보를 지어내는 셈이 된다 —
+ * 그것들은 목록 밖에 남는 편이 정직하다.
+ */
+export const foodUserValue = (m) => normalizeFoodForm(trimmed(m?.category) || trimmed(m?.snackType));
+/** 분류기(로컬·서버)가 채운 값 — 같은 이유로 표기를 맞춘다 */
+export const foodAutoValue = (m) => normalizeFoodForm(trimmed(m?.categoryAuto));
 export const foodSource = (m) => trimmed(m?.categorySource);
 /** 서버 backfill 이 보는 상세 텍스트(간식도 menuDetail 하나로 저장된다 — snackDetail 은 레거시) */
 export const foodDetailText = (m) => trimmed(m?.menuDetail) || trimmed(m?.snackDetail);
@@ -215,12 +229,19 @@ function buildAxisChart(rows, outside, empty, total) {
     const segments = rows
         .filter((r) => r.n > 0 && r.slot !== null)
         .map((r) => ({ label: r.label, n: r.n, rate: r.rate, slot: r.slot }));
-    const foldedRows = rows.filter((r) => r.n > 0 && r.slot === null);
+    const foldedRows = rows.filter((r) => r.n > 0 && r.slot === null).sort((a, b) => b.n - a.n);
     const foldedN = foldedRows.reduce((acc, r) => acc + r.n, 0);
     return {
         segments,
-        folded: { n: foldedN, rate: pct(foldedN, total), distinct: foldedRows.length },
-        outside: { n: outside.n, rate: outside.rate },
+        folded: {
+            n: foldedN,
+            rate: pct(foldedN, total),
+            distinct: foldedRows.length,
+            /** 접힌 것들의 이름 — 색은 하나로 묶여도 무엇이 묶였는지는 밝힌다 */
+            items: foldedRows.map((r) => ({ label: r.label, n: r.n, rate: r.rate }))
+        },
+        // 목록 밖은 통째로 넘긴다 — 범례가 종 수와 예시까지 쓴다
+        outside,
         empty: { n: empty, rate: pct(empty, total) }
     };
 }
@@ -255,6 +276,13 @@ export function buildAxisBreakdown(result, tagLists = {}) {
             .sort((a, b) => b.n - a.n);
         const outsideTotal = outside.reduce((acc, r) => acc + r.n, 0);
 
+        const outsideSummary = {
+            n: outsideTotal,
+            rate: pct(outsideTotal, total),
+            distinct: outside.length,
+            samples: outside.slice(0, AXIS_OTHER_SAMPLE_LIMIT).map((r) => ({ ...r, rate: pct(r.n, total) }))
+        };
+
         return {
             key: spec.key,
             label: spec.label,
@@ -269,18 +297,8 @@ export function buildAxisBreakdown(result, tagLists = {}) {
             filledRate: pct(bucket.filled, total),
             autoShare: pct(bucket.auto, bucket.filled),
             rows,
-            outside: {
-                n: outsideTotal,
-                rate: pct(outsideTotal, total),
-                distinct: outside.length,
-                samples: outside.slice(0, AXIS_OTHER_SAMPLE_LIMIT)
-            },
-            chart: buildAxisChart(
-                rows,
-                { n: outsideTotal, rate: pct(outsideTotal, total) },
-                bucket.empty,
-                total
-            ),
+            outside: outsideSummary,
+            chart: buildAxisChart(rows, outsideSummary, bucket.empty, total),
             emptyPaths: spec.emptyPaths
                 ? FOOD_EMPTY_PATH_SPECS.map((p) => ({
                       label: p.label,

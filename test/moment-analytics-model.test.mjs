@@ -400,6 +400,34 @@ test('슬롯을 넘는 선택지는 「그 외」로 접히지만 표에는 그�
     assert.equal(axis.rows[8].slot, null, '접힌 행은 슬롯이 없다');
 });
 
+test('막대의 목록 밖 몫은 종 수와 예시를 함께 들고 있다 — 범례가 그걸로 이름을 댄다', () => {
+    const mk = (mealType) => ({ userId: 'u1', date: '2026-08-10', mealType });
+    const rows = [mk('한식'), mk('한식'), mk('양식'), mk('집밥')];
+    const c = chartOf(rows, TAGS, 'how');
+    assert.equal(c.outside.n, 3);
+    assert.equal(c.outside.distinct, 2);
+    assert.deepEqual(c.outside.samples.map((x) => [x.label, x.n, x.rate]), [['한식', 2, 50], ['양식', 1, 25]]);
+});
+
+test('「무엇을」은 표기만 달랐던 옛 형태 축 값을 제 칩으로 되돌린다', () => {
+    const mk = (o) => Object.assign({ userId: 'u1', date: '2026-08-10' }, o);
+    const rows = [
+        mk({ category: '밥/한상', categorySource: 'user' }), // 옛 형태 축 표기
+        mk({ categoryAuto: '베이커리', categorySource: 'ai' }), // 옛 간식 축 표기
+        mk({ category: '한식', categorySource: 'user' }) // 옛 요리 종류 축 — 대응이 없다
+    ];
+    const tags = { ...TAGS, category: ['밥류', '베이커리/떡', '면류'] };
+    const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), tags).find(
+        (a) => a.key === 'what'
+    );
+    const at = (label) => axis.rows.find((r) => r.label === label);
+    assert.equal(at('밥류').n, 1, '「밥/한상」은 「밥류」다');
+    assert.equal(at('베이커리/떡').n, 1, '「베이커리」는 「베이커리/떡」이다');
+    assert.equal(at('베이커리/떡').auto, 1, '자동 분류였다는 사실은 그대로');
+    assert.equal(axis.outside.n, 1, '「한식」만 목록 밖에 남는다');
+    assert.deepEqual(axis.outside.samples.map((s) => s.label), ['한식']);
+});
+
 test('건수 0인 선택지는 칸을 만들지 않지만 슬롯은 지킨다', () => {
     const rows = [{ userId: 'u1', date: '2026-08-10', mealType: '기타' }];
     const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS).find(
