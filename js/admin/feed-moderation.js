@@ -138,6 +138,16 @@ const ADMIN_FEED_SPECIAL_ROWS_CAP = 500;
 /** userSettings.dailyComments — 모니터링 목록 병합용 (최근 N건) */
 const ADMIN_DAILY_JOURNAL_ROWS_CAP = 800;
 
+/**
+ * 정렬 인덱스가 없을 때 쓰는 폴백 스캔의 상한.
+ *
+ * 표시 상한(800)보다 넉넉하게 잡는다. 이 값은 「몇 건을 보여줄까」가 아니라 **무한 스캔을
+ * 막는 안전장치**다 — 폴백 쿼리에는 orderBy 가 없어서 상한에 걸리면 「최신 N건」이 아니라
+ * 경로 순서대로 앞쪽 N건, 즉 특정 사용자들의 기록만 받게 된다. 그래서 평소에는 상한에
+ * 닿지 않아 결과가 온전하고, 실제로 닿았다면 목록이 불완전하다는 뜻이라 시끄럽게 알린다.
+ */
+const ADMIN_DAILY_JOURNAL_FALLBACK_SCAN_CAP = 5000;
+
 let moderationSpecialSharesCache = { ts: 0, rows: null, scopeKey: '' };
 let moderationDailyJournalCache = { ts: 0, rows: null, scopeKey: '' };
 
@@ -457,7 +467,14 @@ async function fetchDailyJournalSlotsFromMealMirrors(excluded, rowLimit) {
             '[관리자 모먼트] 하루기록 정렬 인덱스 준비 중 — 정렬 없이 조회합니다.',
             '배포: firebase deploy --only firestore:indexes'
         );
-        snap = await getDocs(query(mealsGroup, slotFilter));
+        snap = await getDocs(query(mealsGroup, slotFilter, limit(ADMIN_DAILY_JOURNAL_FALLBACK_SCAN_CAP)));
+        if ((snap.size ?? 0) >= ADMIN_DAILY_JOURNAL_FALLBACK_SCAN_CAP) {
+            console.warn(
+                `[관리자 모먼트] 하루기록 폴백 스캔이 상한 ${ADMIN_DAILY_JOURNAL_FALLBACK_SCAN_CAP}건에 걸렸습니다 —`,
+                '정렬 없이 앞쪽 구간만 받은 것이라 목록이 최신순으로 온전하지 않습니다.',
+                '인덱스 배포 후 다시 확인하세요: firebase deploy --only firestore:indexes'
+            );
+        }
     }
 
     const prefix = `artifacts/${appId}/`;

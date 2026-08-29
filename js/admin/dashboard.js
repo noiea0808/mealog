@@ -15,9 +15,11 @@ import {
     getCountFromServer,
     Timestamp,
     serverTimestamp,
-    documentId
+    documentId,
+    runTransaction
 } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
 import { dailyJournalHasContent, normalizeDailyJournalEntry } from '../utils/daily-journal-data.js';
+import { withDeadlineOr, DEADLINE } from '../utils/with-deadline.js';
 import {
     getSharedPhotoGroupKey,
     dateKeyFromLocalDate,
@@ -2301,7 +2303,9 @@ export async function updateStatistics() {
             // records/activeUsers·7일 일별의 오늘 칸은 집계 비용상 캐시 유지 (새로고침 시 반영)
         }
         renderDashboardStats(stats, data.updatedAt, last7Breakdown, data.lastFullAggregatedAt || null);
-        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null);
+        maybeStartWeeklyFullRefresh(data.lastFullAggregatedAt || null).catch((e) => {
+            console.warn('[대시보드] 주간 정기 재집계 판단 실패:', e?.message || e);
+        });
         let pageUsage = data.pageUsage || null;
         if (pageUsage && pageUsage.all && typeof pageUsage.all === 'object' && !pageUsageLast7ByFieldUsable(pageUsage)) {
             try {
@@ -2368,6 +2372,10 @@ export async function refreshDashboardStats(options = {}) {
                     // 증분은 이 값을 건드리지 않고 물려받는다 — merge 없는 setDoc 이라 빠뜨리면 사라진다
                     lastFullAggregatedAt:
                         stats.aggregationMode === 'full' ? aggregationStartedAt : prevData?.lastFullAggregatedAt || null,
+                    // 같은 이유로 주간 재집계 빗장도 물려받는다. 여기서 빠뜨리면 전체 재집계가
+                    // 도는 중에 누른 증분 새로고침이 빗장을 지워, 다른 탭이 같은 집계를 또 시작한다.
+                    // (리스는 시간으로 풀리므로 물려받은 표식이 영영 남지는 않는다)
+                    weeklyFullRefreshClaim: prevData?.weeklyFullRefreshClaim || null,
                     updatedAt: serverTimestamp()
                 };
                 await setDoc(DASHBOARD_STATS_REF(), payload);
@@ -2411,11 +2419,64 @@ export async function refreshDashboardStats(options = {}) {
 }
 
 /**
- * 주간 정기 전체 재집계를 한 세션에 두 번 걸지 않기 위한 빗장.
- * 탭을 여러 개 띄우면 각 탭이 따로 판단하므로 완벽하진 않지만,
- * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것은 막는다.
+ * 한 탭 안에서 대시보드를 여러 번 오갈 때 매번 도는 것을 막는 1차 빗장.
+ * 탭 사이는 이것으로 못 막으므로 `claimWeeklyFullRefresh` 가 이어받는다 —
+ * 여기서 먼저 걸러 주는 덕에 흔한 경우에는 트랜잭션 왕복조차 하지 않는다.
  */
 let weeklyFullRefreshStarted = false;
+
+/**
+ * 주간 재집계 빗장의 유효 기간.
+ *
+ * 빗장을 잡은 탭이 집계 도중 닫히면 표식만 남는다. 그래서 **시간으로 풀리는 리스**로 둔다
+ * (`utils/with-deadline.js` 의 Lease 와 같은 이유 — 해제 코드에 도달해야만 풀리는 불린은
+ * 어딘가에서 매달리면 영영 잠긴다). 이 시간이 지나면 버려진 것으로 보고 다른 탭이 다시 잡는다.
+ * 전량 집계가 실제로 도는 시간보다 넉넉해야 하고, 한 주보다는 훨씬 짧아야 한다.
+ */
+const WEEKLY_FULL_REFRESH_LEASE_MS = 30 * 60 * 1000;
+
+/**
+ * 주간 전체 재집계를 이 탭이 맡을지 **탭 간에** 정한다.
+ *
+ * 모듈 변수 빗장(`weeklyFullRefreshStarted`)은 한 탭 안에서만 유효하다. 관리자가 탭을 두 개
+ * 띄우면 각 탭이 따로 판단해 전량 집계를 각각 돌리는데, 한 번이 meals 1만 건대 스캔이라
+ * 그대로 읽기 비용이 곱해진다. 그래서 표식을 캐시 문서에 두고 **트랜잭션으로** 잡는다 —
+ * 둘이 동시에 읽고 동시에 쓰는 창을 없애려면 조건부 쓰기여야 한다.
+ *
+ * 실패하면 **잡지 않은 것으로 친다.** 못 잡아서 생기는 손해는 이번 주 숫자가 조금 늦게
+ * 정리되는 것뿐이고(대시보드를 다음에 열 때 다시 시도한다), 잘못 잡아서 생기는 손해는
+ * 전량 스캔이 한 번 더 도는 것이다. 비용이 큰 쪽을 피한다.
+ *
+ * @param {string} sundayKey 오늘이 속한 주의 일요일 키
+ * @returns {Promise<boolean>} 이 탭이 맡기로 했는가
+ */
+async function claimWeeklyFullRefresh(sundayKey) {
+    return withDeadlineOr(
+        () =>
+            runTransaction(db, async (tx) => {
+                const snap = await tx.get(DASHBOARD_STATS_REF());
+                const data = snap.exists() ? snap.data() : null;
+                // 읽는 사이에 다른 탭이 이미 끝냈을 수 있다 — 트랜잭션 안에서 다시 본다
+                if (!needsWeeklyFullRefresh(data?.lastFullAggregatedAt || null, sundayKey)) return false;
+                const claim = data?.weeklyFullRefreshClaim;
+                const claimedAt = Date.parse(claim?.at || '');
+                const held =
+                    claim?.sundayKey === sundayKey &&
+                    !Number.isNaN(claimedAt) &&
+                    Date.now() - claimedAt < WEEKLY_FULL_REFRESH_LEASE_MS;
+                if (held) return false;
+                tx.set(
+                    DASHBOARD_STATS_REF(),
+                    { weeklyFullRefreshClaim: { sundayKey, at: new Date().toISOString() } },
+                    { merge: true }
+                );
+                return true;
+            }),
+        DEADLINE.DOC,
+        false,
+        'dashboard-weekly-full-refresh-claim'
+    );
+}
 
 /**
  * 주가 바뀌었으면 전체 재집계를 **백그라운드로** 시작한다.
@@ -2426,12 +2487,24 @@ let weeklyFullRefreshStarted = false;
  *
  * 실패해도 조용히 넘어간다 — 다음에 열 때 다시 시도한다.
  */
-function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
+async function maybeStartWeeklyFullRefresh(lastFullAggregatedAt) {
     if (weeklyFullRefreshStarted) return;
     const todayKey = getTodayDateString();
     const sundayKey = sundayKeyForDateKey(todayKey);
     if (!needsWeeklyFullRefresh(lastFullAggregatedAt, sundayKey)) return;
+    // 빗장을 잡으러 가기 전에 세운다 — 확보를 기다리는 동안 이 탭이 또 들어오지 않게
     weeklyFullRefreshStarted = true;
+
+    const claimed = await claimWeeklyFullRefresh(sundayKey);
+    if (!claimed) {
+        console.log('[대시보드] 주간 정기 재집계는 다른 탭이 맡았거나 이미 끝났습니다 — 건너뜁니다', {
+            sundayKey
+        });
+        // 그 탭이 끝내지 못하면 리스가 만료되고, 대시보드를 다시 열 때 이 탭이 잡는다
+        weeklyFullRefreshStarted = false;
+        return;
+    }
+
     console.log('[대시보드] 주간 정기 전체 재집계를 시작합니다', { lastFullAggregatedAt, sundayKey });
     const fullLabel = document.getElementById('dashboardStatsFullUpdatedAt');
     if (fullLabel) fullLabel.textContent = '전체 업데이트: 정리 중…';
