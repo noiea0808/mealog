@@ -12451,6 +12451,32 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     width: 0.9375rem;
     height: 0.9375rem;
 }
+/* 적용 시작일 — 고른 날짜부터 구성이 바뀐다 (user-slot-plan §4.2.3) */
+.slot-plan-settings__date-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem var(--mealog-dialog-pad-x) 0.6rem;
+}
+.slot-plan-settings__date-row label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+.slot-plan-settings__date-row input[type="date"] {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    padding: 0.35rem 0.6rem;
+    -webkit-appearance: none;
+    appearance: none;
+}
 .slot-plan-settings__footer {
     padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
 }

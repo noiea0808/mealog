@@ -26,12 +26,15 @@ import {
     findSlotByKey,
     oldestSlotForBase,
     resolveSlotView,
-    withTodayRevision,
+    withRevisionOn,
     renameSlotEverywhere,
     revisionCount,
     countEnabledSlots,
     originalSlotSet,
     materializeSlotKeys,
+    nextRevisionDateAfter,
+    adoptExistingKeys,
+    addDaysIso,
     groupMealsByUserSlotForDate,
     MAX_ENABLED_SLOTS,
     MAX_SLOTS_PER_REVISION
@@ -247,17 +250,17 @@ describe('sanitizeSlots — 남의 기기·구버전을 신뢰하지 않는다',
     });
 });
 
-describe('withTodayRevision — 성장 억제와 key 구체화 (§5.6)', () => {
+describe('withRevisionOn — 성장 억제와 key 구체화 (§5.6)', () => {
     it('변화 없으면 원본 plan 참조를 그대로 돌려준다 (기본값 사용자)', () => {
         // 설정을 열고 그냥 닫은 경우: plan 없음 + 기본 목록 그대로 저장 시도
-        const result = withTodayRevision(null, TODAY, defaultUserSlots(), 1000, rngOf(0));
+        const result = withRevisionOn(null, TODAY, defaultUserSlots(), 1000, rngOf(0));
         assert.equal(result, null);
     });
 
     it('변화 없으면 원본 plan 참조를 그대로 돌려준다 (개정판 사용자)', () => {
         const plan = richPlan();
         const current = revisionSlotsForDate(plan, TODAY, TODAY);
-        assert.equal(withTodayRevision(plan, TODAY, current, 1000, rngOf(0)), plan);
+        assert.equal(withRevisionOn(plan, TODAY, current, 1000, rngOf(0)), plan);
     });
 
     it('라벨 하나만 바꿔도 오늘 날짜 개정판이 생긴다', () => {
@@ -265,7 +268,7 @@ describe('withTodayRevision — 성장 억제와 key 구체화 (§5.6)', () => {
         const edited = revisionSlotsForDate(plan, TODAY, TODAY).map((s) =>
             s.key === 'k-yasik' ? { ...s, enabled: false } : s
         );
-        const next = withTodayRevision(plan, TODAY, edited, 1000, rngOf(0));
+        const next = withRevisionOn(plan, TODAY, edited, 1000, rngOf(0));
         assert.notEqual(next, plan);
         assert.ok(next.revisions[TODAY]);
         // 기존 개정판은 그대로
@@ -276,7 +279,7 @@ describe('withTodayRevision — 성장 억제와 key 구체화 (§5.6)', () => {
         const edited = defaultUserSlots().map((s) =>
             s.base === 'lunch' ? { ...s, label: '런치' } : s
         );
-        const next = withTodayRevision(null, TODAY, edited, 1000, rngOf(0.5));
+        const next = withRevisionOn(null, TODAY, edited, 1000, rngOf(0.5));
         const saved = next.revisions[TODAY].slots;
         assert.ok(saved.every((s) => typeof s.key === 'string' && s.key.length > 0));
         // 구체화 순서 = 목록 순서 → 가장 오래된 key 는 목록 앞쪽 (원본 판정 유지)
@@ -426,13 +429,13 @@ describe('materializeSlotKeys — 구체화만으로 개정판이 생기면 안 
         const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
         assert.ok(opened.every((s) => typeof s.key === 'string'));
         // 사용자가 아무것도 안 건드리고 저장 → plan 참조 그대로
-        assert.equal(withTodayRevision(null, TODAY, opened, 5000, rngOf(0)), null);
+        assert.equal(withRevisionOn(null, TODAY, opened, 5000, rngOf(0)), null);
     });
 
     it('구체화 후 라벨을 바꾸면 개정판이 생긴다', () => {
         const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
         const edited = opened.map((s) => (s.base === 'lunch' ? { ...s, label: '런치' } : s));
-        const next = withTodayRevision(null, TODAY, edited, 5000, rngOf(0));
+        const next = withRevisionOn(null, TODAY, edited, 5000, rngOf(0));
         assert.ok(next?.revisions?.[TODAY]);
         assert.equal(next.revisions[TODAY].slots.find((s) => s.base === 'lunch').label, '런치');
     });
@@ -440,6 +443,73 @@ describe('materializeSlotKeys — 구체화만으로 개정판이 생기면 안 
     it('이미 key 가 있으면 건드리지 않는다', () => {
         const slots = [{ key: 'keep', base: 'lunch', label: '점심', enabled: true }];
         assert.equal(materializeSlotKeys(slots, 1000, rngOf(0))[0].key, 'keep');
+    });
+});
+
+describe('고른 날짜부터 적용 (§4.2.3)', () => {
+    const slotsNamed = (label) => [{ key: 'k1', base: 'lunch', label, enabled: true }];
+
+    it('27일에 저장하고 29일에 또 저장하면 27·28은 앞 구성, 29부터는 뒷 구성', () => {
+        let plan = withRevisionOn(null, '2026-08-27', slotsNamed('27일구성'), 1000, rngOf(0), TODAY);
+        plan = withRevisionOn(plan, '2026-08-29', slotsNamed('29일구성'), 2000, rngOf(0), TODAY);
+
+        assert.deepEqual(Object.keys(plan.revisions).sort(), ['2026-08-27', '2026-08-29']);
+        const labelOn = (d) => revisionSlotsForDate(plan, d, TODAY)[0].label;
+        assert.equal(labelOn('2026-08-27'), '27일구성');
+        assert.equal(labelOn('2026-08-28'), '27일구성');
+        assert.equal(labelOn('2026-08-29'), '29일구성');
+        assert.equal(labelOn('2026-09-05'), '29일구성');
+    });
+
+    it('26일 이전은 두 개정판 어느 쪽도 아니다 — 기본값', () => {
+        const plan = withRevisionOn(null, '2026-08-27', slotsNamed('27일구성'), 1000, rngOf(0), TODAY);
+        assert.equal(revisionSlotsForDate(plan, '2026-08-26', TODAY), null);
+        assert.equal(effectiveSlots({ slotPlan: plan }, '2026-08-26', TODAY).length, SLOTS.length);
+    });
+
+    it('과거 날짜를 나중에 끼워 넣어도 뒤 개정판을 안 지운다 (맵이라서)', () => {
+        let plan = withRevisionOn(null, '2026-08-29', slotsNamed('29일구성'), 2000, rngOf(0), TODAY);
+        plan = withRevisionOn(plan, '2026-08-27', slotsNamed('27일구성'), 3000, rngOf(0), TODAY);
+        assert.equal(revisionSlotsForDate(plan, '2026-08-28', TODAY)[0].label, '27일구성');
+        assert.equal(revisionSlotsForDate(plan, '2026-08-29', TODAY)[0].label, '29일구성');
+    });
+
+    it('같은 날짜에 다시 저장하면 덮어쓴다 — "마지막 편집이 이긴다" (§5.3)', () => {
+        let plan = withRevisionOn(null, '2026-08-27', slotsNamed('첫판'), 1000, rngOf(0), TODAY);
+        plan = withRevisionOn(plan, '2026-08-27', slotsNamed('둘째판'), 2000, rngOf(0), TODAY);
+        assert.equal(Object.keys(plan.revisions).length, 1);
+        assert.equal(revisionSlotsForDate(plan, '2026-08-27', TODAY)[0].label, '둘째판');
+    });
+
+    it('nextRevisionDateAfter: 안내문이 "며칠까지"를 계산하는 근거', () => {
+        let plan = withRevisionOn(null, '2026-08-27', slotsNamed('a'), 1000, rngOf(0), TODAY);
+        plan = withRevisionOn(plan, '2026-08-29', slotsNamed('b'), 2000, rngOf(0), TODAY);
+        assert.equal(nextRevisionDateAfter(plan, '2026-08-27', TODAY), '2026-08-29');
+        assert.equal(addDaysIso('2026-08-29', -1), '2026-08-28');
+        assert.equal(nextRevisionDateAfter(plan, '2026-08-29', TODAY), null);
+    });
+});
+
+describe('adoptExistingKeys — 과거 날짜 편집이 슬롯 정체성을 쪼개지 않는다', () => {
+    it('29일 개정판만 있을 때 27일 기본값이 같은 key 를 물려받는다', () => {
+        // 기본값 그대로면 개정판이 안 생긴다(성장 억제) — 실제 변경을 담아 저장한다
+        const edited29 = defaultUserSlots().map((s) =>
+            s.base === 'lunch' ? { ...s, label: '런치' } : s
+        );
+        const plan = withRevisionOn(null, '2026-08-29', edited29, 1000, rngOf(0), TODAY);
+        const keys29 = plan.revisions['2026-08-29'].slots.map((s) => s.key);
+
+        // 27일에는 개정판이 없어 기본값(key:null)이 온다
+        const raw27 = effectiveSlots({ slotPlan: plan }, '2026-08-27', TODAY);
+        assert.ok(raw27.every((s) => s.key === null));
+
+        const adopted = adoptExistingKeys(raw27, plan, TODAY);
+        assert.deepEqual(adopted.map((s) => s.key), keys29);
+    });
+
+    it('개정판이 없으면 그대로 둔다', () => {
+        const slots = defaultUserSlots();
+        assert.equal(adoptExistingKeys(slots, null, TODAY), slots);
     });
 });
 

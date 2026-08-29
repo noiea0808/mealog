@@ -101,7 +101,7 @@ function isIsoDate(s) {
     return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
-function addDaysIso(iso, days) {
+export function addDaysIso(iso, days) {
     const [y, m, d] = iso.split('-').map(Number);
     const dt = new Date(y, m - 1, d + days);
     const mm = String(dt.getMonth() + 1).padStart(2, '0');
@@ -271,15 +271,21 @@ function slotsEqual(current, next) {
 }
 
 /**
- * 오늘 날짜 개정판으로 nextSlots 를 넣은 **새 plan** 을 돌려준다.
- * 직전 유효 개정판과 완전히 같으면 원본 plan 을 그대로 돌려준다 —
+ * `effectiveFrom` 날짜의 개정판으로 nextSlots 를 넣은 **새 plan** 을 돌려준다.
+ * 그 날짜에 이미 유효하던 구성과 완전히 같으면 원본 plan 을 그대로 돌려준다 —
  * 성장 억제(§5.6). 호출부는 참조 동일성으로 "저장 불필요"를 안다.
  *
+ * 날짜는 **사용자가 고른다**(§4.2.3). 27일에 저장하고 29일에 또 저장하면
+ * 27·28일은 27일 구성, 29일부터는 29일 구성이 된다 — 맵이라 서로 안 지운다.
+ *
  * key 가 null 인 기본 슬롯은 여기서 실제 key 로 구체화한다. 이때 생성 순서를
- * SLOTS 순서로 하므로, 구체화 후에도 "가장 오래된 key = 원본" 이 성립한다.
+ * 목록 순서로 하므로, 구체화 후에도 "가장 오래된 key = 원본" 이 성립한다.
+ *
+ * @param {string} effectiveFrom YYYY-MM-DD — 이 날짜 기록부터 적용
+ * @param {string} [todayIso] 시계 방어 기준(§5.5). 생략하면 effectiveFrom
  */
-export function withTodayRevision(plan, todayIso, nextSlots, nowMs = Date.now(), rng = Math.random) {
-    if (!isIsoDate(todayIso)) return plan;
+export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(), rng = Math.random, todayIso = effectiveFrom) {
+    if (!isIsoDate(effectiveFrom)) return plan;
     const cleaned = sanitizeSlots(nextSlots);
     if (!cleaned) return plan;
 
@@ -289,7 +295,7 @@ export function withTodayRevision(plan, todayIso, nextSlots, nowMs = Date.now(),
      * 그대로 같다. 구체화 후에 비교하면 새 key 때문에 항상 "달라진" 걸로
      * 보여서, 설정을 열고 그냥 닫아도 개정판이 생긴다 (§5.1·§5.6 위반).
      */
-    const current = revisionSlotsForDate(plan, todayIso, todayIso) || defaultUserSlots();
+    const current = revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots();
     if (slotsEqual(current, cleaned)) return plan;
 
     let seq = 0;
@@ -303,7 +309,7 @@ export function withTodayRevision(plan, todayIso, nextSlots, nowMs = Date.now(),
         schema: SLOT_PLAN_SCHEMA,
         revisions: {
             ...base.revisions,
-            [todayIso]: { createdAt: nowMs, slots: materialized }
+            [effectiveFrom]: { createdAt: nowMs, slots: materialized }
         }
     };
 }
@@ -333,6 +339,37 @@ export function renameSlotEverywhere(plan, slotKey, newLabel) {
         };
     }
     return touched ? { ...plan, revisions: nextRevisions } : plan;
+}
+
+/**
+ * `dateIso` 다음에 오는 개정판 날짜. 없으면 null.
+ * 설정 시트가 "이 구성이 며칠까지 적용되는지" 안내하는 데 쓴다(§4.2.3).
+ */
+export function nextRevisionDateAfter(plan, dateIso, todayIso) {
+    return listRevisionDates(plan, todayIso).find((d) => d > dateIso) || null;
+}
+
+/**
+ * key 가 null 인 기본 슬롯에, 이미 이 사용자 문서에 있는 같은 base 의 원본 key 를
+ * 물려준다.
+ *
+ * 과거 날짜를 편집할 때 필요하다: 29일 개정판만 있는 상태에서 27일을 편집하면
+ * `effectiveSlots(27)` 은 개정판이 없어 기본값(key:null)을 준다. 그대로 구체화하면
+ * 같은 '아침'인데 27일과 29일의 key 가 갈라져, 이름 소급(§3.1)이 한쪽만 고치게 된다.
+ */
+export function adoptExistingKeys(slots, plan, todayIso) {
+    const dates = listRevisionDates(plan, todayIso);
+    if (!dates.length) return slots;
+    const earliest = sanitizeSlots(plan.revisions[dates[0]]?.slots);
+    if (!earliest) return slots;
+    const used = new Set();
+    return (Array.isArray(slots) ? slots : []).map((s) => {
+        if (!s || s.key != null) return s;
+        const orig = oldestSlotForBase(earliest, s.base);
+        if (!orig || orig.key == null || used.has(orig.key)) return s;
+        used.add(orig.key);
+        return { ...s, key: orig.key };
+    });
 }
 
 /** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽 */

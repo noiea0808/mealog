@@ -201,8 +201,10 @@ function bindPickerOnce() {
 
     modal.querySelector('#entrySlotPickerBackdrop')?.addEventListener('click', closeEntrySlotPicker);
     modal.querySelector('#entrySlotPickerSettingsBtn')?.addEventListener('click', () => {
+        // 보고 있던 날짜를 적용 시작일 기본값으로 넘긴다 (§4.2.3)
+        const dateIso = pendingDateIso || pageDateIso() || localTodayIso();
         closeEntrySlotPicker();
-        openSlotPlanSettings({ fromPicker: true });
+        openSlotPlanSettings({ fromPicker: true, dateIso });
     });
     modal.querySelector('#entrySlotPickerList')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-slot-id]');
