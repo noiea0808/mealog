@@ -12199,11 +12199,11 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     text-transform: uppercase;
     color: #94a3b8;
 }
+/* 아이콘 | (이름 / 건수) — 아이콘은 카드 높이의 중앙에 선다 */
 .entry-slot-picker__item {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.3rem;
+    align-items: center;
+    gap: 0.5rem;
     width: 100%;
     padding: 0.65rem 0.75rem;
     border: 1px solid transparent;
@@ -12213,25 +12213,22 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     transition: background-color 0.15s, border-color 0.15s;
     -webkit-tap-highlight-color: transparent;
 }
-/* 아이콘 + 이름은 한 행 */
-.entry-slot-picker__head-row {
+.entry-slot-picker__body {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    flex-direction: column;
+    gap: 0.15rem;
     min-width: 0;
-    width: 100%;
+    flex: 1;
 }
-/* 하루 소감: 슬롯이 아니므로 전체 폭 한 줄 — 격자 마지막에 가로형으로 */
+/* 하루 소감: 슬롯이 아니므로 전체 폭 한 줄 — 이름과 건수를 좌우로 벌린다 */
 .entry-slot-picker__item--daily {
     grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
     gap: 0.625rem;
     margin-top: 0.25rem;
 }
-.entry-slot-picker__item--daily .entry-slot-picker__head-row {
-    width: auto;
-    flex: 1;
+.entry-slot-picker__item--daily .entry-slot-picker__body {
+    flex-direction: row;
+    align-items: center;
 }
 .entry-slot-picker__item:active {
     background: #f1f5f9;
@@ -12263,19 +12260,23 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    /*
+     * 어절 단위로 접는다 — anywhere 만 두면 '저녁 후 간식'이 '저녁 후 간 / 식'
+     * 으로 잘린다(375px 실측). anywhere 는 공백 없는 긴 이름('아침전간식먹고또먹기')
+     * 의 넘침을 막는 뒷받침으로만 남긴다.
+     */
+    word-break: keep-all;
     overflow-wrap: anywhere;
 }
 .entry-slot-picker__count {
     flex-shrink: 0;
-    /* 아이콘 폭(2.25rem) + gap(0.5rem) 만큼 들여써 이름과 왼쪽을 맞춘다 */
-    padding-left: 2.75rem;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--green);
     white-space: nowrap;
 }
 .entry-slot-picker__item--daily .entry-slot-picker__count {
-    padding-left: 0;
+    margin-left: auto;
 }
 .entry-slot-picker__item--daily .entry-slot-picker__count {
     margin-left: auto;
