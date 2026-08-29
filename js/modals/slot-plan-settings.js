@@ -78,6 +78,38 @@ function noticeText() {
     return `${from} 기록부터 적용됩니다. 그 이전 기록은 그대로 남습니다.`;
 }
 
+/**
+ * "뒤 개정판도 이걸로 통일" 체크박스 — 뒤에 개정판이 **있을 때만** 뜬다 (§4.2.4).
+ *
+ * 28일을 편집한 뒤 26일을 편집하면 26일 편집이 26~27일짜리 섬이 된다. 대개는
+ * "사실 26일부터였어"라는 뜻이므로 통일하고 싶겠지만, 28일을 일부러 다르게
+ * 둔 경우도 있다. 추측하지 않고 묻는다. 기본은 꺼짐 — 켜면 되돌릴 수 없다.
+ */
+function syncCascadeRow() {
+    const row = document.getElementById('slotPlanCascadeRow');
+    const label = document.getElementById('slotPlanCascadeLabel');
+    if (!row) return;
+    const next = nextRevisionDateAfter(
+        window.userSettings?.slotPlan || null,
+        effectiveFromIso,
+        localTodayIso()
+    );
+    row.classList.toggle('hidden', !next);
+    if (next && label) {
+        label.textContent = `${formatNoticeDate(next)} 이후 구성도 이걸로 통일하기 — 그날 저장해 둔 구성은 덮어써집니다.`;
+    }
+    if (!next) setCascadeChecked(false);
+}
+
+function setCascadeChecked(v) {
+    const cb = document.getElementById('slotPlanCascade');
+    if (cb) cb.checked = !!v;
+}
+
+function isCascadeChecked() {
+    return !!document.getElementById('slotPlanCascade')?.checked;
+}
+
 /* ── 렌더 ─────────────────────────────────────────────────── */
 
 function rowHtml(slot, idx, isOriginal) {
@@ -122,6 +154,7 @@ function render() {
     // 세는 건 '사용 중'인 수 — 해제한 슬롯은 피커에 안 나오므로 상한과 무관하다
     if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
     if (notice) notice.textContent = noticeText();
+    syncCascadeRow();
     scheduleLucideIcons(list);
 }
 
@@ -177,6 +210,7 @@ export function openSlotPlanSettings(opts = {}) {
         : today;
     effectiveFromIso = asked > today ? today : asked;
 
+    setCascadeChecked(false);
     loadDraftForDate(effectiveFromIso);
     syncDateInput();
     render();
@@ -207,6 +241,7 @@ function onEffectiveFromChange() {
     if (v === effectiveFromIso) return;
     const hadEdits = draftHasEdits();
     effectiveFromIso = v;
+    setCascadeChecked(false);
     loadDraftForDate(v);
     syncDateInput();
     render();
@@ -373,7 +408,9 @@ async function onSave() {
     }
 
     // 2. 구성 개정판 — 사용자가 고른 날짜부터 (§4.2.3). 변화 없으면 참조 그대로
-    const nextPlan = withRevisionOn(plan, effectiveFromIso, draft, Date.now(), Math.random, localTodayIso());
+    const nextPlan = withRevisionOn(plan, effectiveFromIso, draft, Date.now(), Math.random, localTodayIso(), {
+        overwriteLater: isCascadeChecked()
+    });
 
     if (nextPlan === (settings.slotPlan || null)) {
         closeSlotPlanSettings();

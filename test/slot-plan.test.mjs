@@ -490,6 +490,83 @@ describe('고른 날짜부터 적용 (§4.2.3)', () => {
     });
 });
 
+describe('뒤 개정판 통일 (§4.2.4)', () => {
+    const withExtra = (label, key) => {
+        const out = defaultUserSlots().map((s) => ({ ...s, key: `d_${s.base}` }));
+        out.splice(6, 0, { key, base: 'dinner', label, enabled: true });
+        return out;
+    };
+    /** 28일에 '야식' → 그 다음 26일에 '2차' — 사용자가 지적한 구멍 */
+    function planWithHole() {
+        let p = withRevisionOn(null, '2026-08-28', withExtra('야식', 'k-y'), 1000, rngOf(0), TODAY);
+        return { p, at26: withExtra('2차', 'k-c') };
+    }
+    const labelsOn = (plan, d) =>
+        (revisionSlotsForDate(plan, d, TODAY) || defaultUserSlots()).map((s) => s.label);
+
+    it('기본(끔): 26일 편집이 26~27일 섬으로 남는다 — 현행 유지', () => {
+        const { p, at26 } = planWithHole();
+        const plan = withRevisionOn(p, '2026-08-26', at26, 2000, rngOf(0), TODAY);
+        assert.ok(labelsOn(plan, '2026-08-27').includes('2차'));
+        assert.ok(!labelsOn(plan, '2026-08-28').includes('2차'));
+        assert.ok(labelsOn(plan, '2026-08-28').includes('야식'));
+    });
+
+    it('켬: 28일 이후도 26일 구성으로 통일된다', () => {
+        const { p, at26 } = planWithHole();
+        const plan = withRevisionOn(p, '2026-08-26', at26, 2000, rngOf(0), TODAY, {
+            overwriteLater: true
+        });
+        for (const d of ['2026-08-26', '2026-08-27', '2026-08-28', '2026-09-10']) {
+            assert.ok(labelsOn(plan, d).includes('2차'), d);
+            assert.ok(!labelsOn(plan, d).includes('야식'), d);
+        }
+    });
+
+    it('켬: 통일하며 사라진 슬롯의 이름은 retired 로 보존된다', () => {
+        const { p, at26 } = planWithHole();
+        const plan = withRevisionOn(p, '2026-08-26', at26, 2000, rngOf(0), TODAY, {
+            overwriteLater: true
+        });
+        assert.equal(plan.retired['k-y'].label, '야식');
+        // 그 슬롯으로 남긴 28일 기록의 이름은 그대로다
+        const v = resolveSlotView(
+            { slotId: 'dinner', slotKey: 'k-y', date: '2026-08-28' },
+            { slotPlan: plan },
+            TODAY
+        );
+        assert.equal(v.label, '야식');
+    });
+
+    it('켬: 앞 날짜 개정판은 건드리지 않는다', () => {
+        let p = withRevisionOn(null, '2026-08-20', withExtra('브런치', 'k-b'), 500, rngOf(0), TODAY);
+        p = withRevisionOn(p, '2026-08-28', withExtra('야식', 'k-y'), 1000, rngOf(0), TODAY);
+        const plan = withRevisionOn(p, '2026-08-26', withExtra('2차', 'k-c'), 2000, rngOf(0), TODAY, {
+            overwriteLater: true
+        });
+        assert.ok(labelsOn(plan, '2026-08-25').includes('브런치'));
+        assert.ok(labelsOn(plan, '2026-08-28').includes('2차'));
+    });
+
+    it('켬이어도 통일할 게 없으면 개정판을 안 만든다 (성장 억제 유지)', () => {
+        const slots = withExtra('야식', 'k-y');
+        const p = withRevisionOn(null, '2026-08-28', slots, 1000, rngOf(0), TODAY);
+        // 28일에 같은 내용으로 다시 저장 + 통일 → 뒤에 개정판도 없다
+        assert.equal(withRevisionOn(p, '2026-08-28', slots, 2000, rngOf(0), TODAY, { overwriteLater: true }), p);
+    });
+
+    it('켬: 내용이 같아도 뒤 개정판이 다르면 저장한다', () => {
+        let p = withRevisionOn(null, '2026-08-26', withExtra('2차', 'k-c'), 1000, rngOf(0), TODAY);
+        p = withRevisionOn(p, '2026-08-28', withExtra('야식', 'k-y'), 1500, rngOf(0), TODAY);
+        // 26일 내용은 그대로 두고 통일만 요청 → 28일이 달라서 써야 한다
+        const plan = withRevisionOn(p, '2026-08-26', withExtra('2차', 'k-c'), 2000, rngOf(0), TODAY, {
+            overwriteLater: true
+        });
+        assert.notEqual(plan, p);
+        assert.ok(labelsOn(plan, '2026-08-28').includes('2차'));
+    });
+});
+
 describe('폐기 이름 보존 — 같은 날 만들고 같은 날 지워도 (§3.2)', () => {
     const withCha = (labelDinner = '저녁') => [
         { key: 'k-dinner', base: 'dinner', label: labelDinner, enabled: true },

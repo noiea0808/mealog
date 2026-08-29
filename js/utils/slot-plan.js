@@ -285,8 +285,10 @@ function slotsEqual(current, next) {
  *
  * @param {string} effectiveFrom YYYY-MM-DD — 이 날짜 기록부터 적용
  * @param {string} [todayIso] 시계 방어 기준(§5.5). 생략하면 effectiveFrom
+ * @param {{ overwriteLater?: boolean }} [opts] overwriteLater 면 이 날짜보다 뒤의
+ *        개정판도 같은 내용으로 덮어쓴다 (§4.2.4). 기본 false
  */
-export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(), rng = Math.random, todayIso = effectiveFrom) {
+export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(), rng = Math.random, todayIso = effectiveFrom, opts = {}) {
     if (!isIsoDate(effectiveFrom)) return plan;
     const cleaned = sanitizeSlots(nextSlots);
     if (!cleaned) return plan;
@@ -298,7 +300,21 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
      * 보여서, 설정을 열고 그냥 닫아도 개정판이 생긴다 (§5.1·§5.6 위반).
      */
     const current = revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots();
-    if (slotsEqual(current, cleaned)) return plan;
+
+    /**
+     * 뒤 개정판 통일(§4.2.4) — 사용자가 명시적으로 골랐을 때만.
+     * 지우지 않고 **같은 내용으로 덮어쓴다**. 삭제는 `deleteField` 센티널이
+     * 필요해 아웃박스 payload 를 탈 수 없고(§5.2), §5.6 과도 부딪힌다.
+     * 맵 갱신만으로 같은 결과를 얻는다.
+     */
+    const laterDates = opts.overwriteLater
+        ? Object.keys(plan?.revisions || {}).filter((d) => isIsoDate(d) && d > effectiveFrom).sort()
+        : [];
+    const laterNeedsWrite = laterDates.some(
+        (d) => !slotsEqual(sanitizeSlots(plan.revisions[d]?.slots) || [], cleaned)
+    );
+
+    if (slotsEqual(current, cleaned) && !laterNeedsWrite) return plan;
 
     let seq = 0;
     const materialized = cleaned.map((s) =>
@@ -310,6 +326,9 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
         ...base.revisions,
         [effectiveFrom]: { createdAt: nowMs, slots: materialized }
     };
+    for (const d of laterDates) {
+        nextRevisions[d] = { createdAt: nowMs, slots: materialized };
+    }
 
     /**
      * 이 저장으로 **어느 개정판에서도 사라지는** key 를 이름과 함께 남긴다 (§3.2).
