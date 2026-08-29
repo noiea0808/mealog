@@ -12,12 +12,10 @@
 import { SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
 import {
     effectiveSlots,
-    materializeSlotKeys,
     originalSlotSet,
     generateSlotKey,
     withRevisionOn,
     nextDifferentRevisionAfter,
-    adoptExistingKeys,
     addDaysIso,
     renameSlotEverywhere,
     revisionCount,
@@ -165,26 +163,12 @@ function render() {
 
 /**
  * `effectiveFromIso` 날짜에 유효하던 구성을 draft 로 적재한다.
- *
- * key 를 **여기서** 구체화한다. 저장 때 하면 그 사이 만든 복제본의 key 가
- * 원본보다 오래돼 원본/확장 판정이 뒤집힌다. 구체화만으로는 개정판이 생기지
- * 않는다 — withRevisionOn 의 비교가 null key 를 무시한다.
- *
- * adoptExistingKeys 가 먼저다: 29일 개정판만 있는데 27일을 편집하면 기본값
- * (key:null)이 오는데, 그대로 새 key 를 매기면 같은 '아침'이 날짜마다 다른
- * 슬롯이 돼 이름 소급(§3.1)이 한쪽만 고친다.
+ * 기본 슬롯의 key 가 결정적이라(§2.4) 날짜가 달라도 같은 슬롯은 같은 key 다 —
+ * 여기서 따로 손볼 게 없다.
  */
 function loadDraftForDate(dateIso) {
-    const plan = window.userSettings?.slotPlan || null;
-    const today = localTodayIso();
-    draft = materializeSlotKeys(
-        adoptExistingKeys(
-            effectiveSlots(window.userSettings, dateIso, today).map((s) => ({ ...s })),
-            plan,
-            today
-        )
-    );
-    openedLabels = new Map((plan ? draft : []).map((s) => [s.key, s.label]));
+    draft = effectiveSlots(window.userSettings, dateIso, localTodayIso()).map((s) => ({ ...s }));
+    openedLabels = new Map(draft.map((s) => [s.key, s.label]));
     baselineJson = JSON.stringify(draft);
 }
 
@@ -307,7 +291,7 @@ function addBlockedReason() {
  * 복제 — 슬롯을 늘리는 **유일한** 길이다(§4.2).
  * base 를 상속하므로 집계 축 질문을 사용자에게 하지 않아도 되고, 원본 7개가
  * 항상 남아 있으므로(삭제 불가) 어떤 시간대든 복제로 도달할 수 있다.
- * key 는 지금 붙인다 — 원본보다 반드시 나중이어야 한다.
+ * key 는 지금 붙인다 — 원본(결정적 key)보다 반드시 나중이 된다.
  */
 function onDuplicate(idx) {
     if (!draft?.[idx]) return;

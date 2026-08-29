@@ -19,6 +19,7 @@ import {
     generateSlotKey,
     compareSlotKeys,
     defaultUserSlots,
+    defaultSlotKey,
     sanitizeSlots,
     listRevisionDates,
     revisionSlotsForDate,
@@ -31,9 +32,7 @@ import {
     revisionCount,
     countEnabledSlots,
     originalSlotSet,
-    materializeSlotKeys,
     nextDifferentRevisionAfter,
-    adoptExistingKeys,
     addDaysIso,
     groupMealsByUserSlotForDate,
     MAX_ENABLED_SLOTS,
@@ -73,7 +72,7 @@ describe('기본값 동치 — 1단계 무변화 배포의 근거', () => {
             assert.equal(s.base, SLOTS[i].id);
             assert.equal(s.label, SLOTS[i].label);
             assert.equal(s.enabled, true);
-            assert.equal(s.key, null);
+            assert.equal(s.key, defaultSlotKey(SLOTS[i].id));
         });
     });
 
@@ -194,7 +193,7 @@ describe('날짜별 유효 개정판 (§2.1)', () => {
         const settings = { slotPlan: richPlan() };
         const slots = effectiveSlots(settings, '2026-07-01', TODAY);
         assert.equal(slots.length, SLOTS.length);
-        assert.equal(slots[0].key, null);
+        assert.deepEqual(slots.map((x) => x.label), SLOTS.map((x) => x.label));
     });
 });
 
@@ -204,7 +203,7 @@ describe('시계 방어 (§5.5)', () => {
             '2030-01-01': { createdAt: 9, slots: [{ key: 'z', base: 'lunch', label: '미래', enabled: true }] }
         });
         assert.deepEqual(listRevisionDates(plan, TODAY), []);
-        assert.equal(effectiveSlots({ slotPlan: plan }, TODAY, TODAY)[0].key, null);
+        assert.equal(effectiveSlots({ slotPlan: plan }, TODAY, TODAY)[0].key, defaultSlotKey(SLOTS[0].id));
     });
 
     it('내일(=오늘+1)까지는 유효 — 자정 걸친 기기 시차 허용', () => {
@@ -250,7 +249,7 @@ describe('sanitizeSlots — 남의 기기·구버전을 신뢰하지 않는다',
     });
 });
 
-describe('withRevisionOn — 성장 억제와 key 구체화 (§5.6)', () => {
+describe('withRevisionOn — 성장 억제 (§5.6)', () => {
     it('변화 없으면 원본 plan 참조를 그대로 돌려준다 (기본값 사용자)', () => {
         // 설정을 열고 그냥 닫은 경우: plan 없음 + 기본 목록 그대로 저장 시도
         const result = withRevisionOn(null, TODAY, defaultUserSlots(), 1000, rngOf(0));
@@ -275,16 +274,16 @@ describe('withRevisionOn — 성장 억제와 key 구체화 (§5.6)', () => {
         assert.equal(next.revisions['2026-08-01'], plan.revisions['2026-08-01']);
     });
 
-    it('기본값 사용자가 처음 수정하면 null key 가 실제 key 로 구체화된다', () => {
+    it('기본값 사용자가 처음 수정하면 결정적 key 가 그대로 저장된다', () => {
         const edited = defaultUserSlots().map((s) =>
             s.base === 'lunch' ? { ...s, label: '런치' } : s
         );
         const next = withRevisionOn(null, TODAY, edited, 1000, rngOf(0.5));
         const saved = next.revisions[TODAY].slots;
-        assert.ok(saved.every((s) => typeof s.key === 'string' && s.key.length > 0));
-        // 구체화 순서 = 목록 순서 → 가장 오래된 key 는 목록 앞쪽 (원본 판정 유지)
-        const keys = saved.map((s) => s.key);
-        assert.deepEqual([...keys].sort(), keys);
+        assert.deepEqual(saved.map((s) => s.key), SLOTS.map((s) => defaultSlotKey(s.id)));
+        // 기본 key 끼리의 정렬 순서는 상관없다 — base 마다 하나뿐이라 원본 판정이
+        // 흔들릴 여지가 없다 (§2.4)
+        assert.equal(originalSlotSet(saved).size, SLOTS.length);
     });
 });
 
@@ -415,34 +414,12 @@ describe('원본 vs 확장 — 삭제 가능 여부를 가른다 (§4.2.1)', () 
         assert.equal(originals.size, SLOTS.length);
     });
 
-    it('복제는 원본보다 나중 key 를 받아야 한다 (열 때 구체화 → 복제 순서)', () => {
-        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
-        const dup = { key: generateSlotKey(2000, rngOf(0)), base: 'dinner', label: '야식', enabled: true };
+    it('복제는 원본보다 나중 key 를 받는다', () => {
+        const opened = defaultUserSlots();
+        const dup = { key: generateSlotKey(2e12, rngOf(0)), base: 'dinner', label: '야식', enabled: true };
         const dinner = opened.find((s) => s.base === 'dinner');
         assert.ok(compareSlotKeys(dinner.key, dup.key) < 0);
         assert.ok(originalSlotSet([...opened, dup]).has(dinner));
-    });
-});
-
-describe('materializeSlotKeys — 구체화만으로 개정판이 생기면 안 된다', () => {
-    it('열 때 key 를 붙여도 내용이 같으면 저장 없음 (§5.6)', () => {
-        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
-        assert.ok(opened.every((s) => typeof s.key === 'string'));
-        // 사용자가 아무것도 안 건드리고 저장 → plan 참조 그대로
-        assert.equal(withRevisionOn(null, TODAY, opened, 5000, rngOf(0)), null);
-    });
-
-    it('구체화 후 라벨을 바꾸면 개정판이 생긴다', () => {
-        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
-        const edited = opened.map((s) => (s.base === 'lunch' ? { ...s, label: '런치' } : s));
-        const next = withRevisionOn(null, TODAY, edited, 5000, rngOf(0));
-        assert.ok(next?.revisions?.[TODAY]);
-        assert.equal(next.revisions[TODAY].slots.find((s) => s.base === 'lunch').label, '런치');
-    });
-
-    it('이미 key 가 있으면 건드리지 않는다', () => {
-        const slots = [{ key: 'keep', base: 'lunch', label: '점심', enabled: true }];
-        assert.equal(materializeSlotKeys(slots, 1000, rngOf(0))[0].key, 'keep');
     });
 });
 
@@ -675,26 +652,54 @@ describe('폐기 이름 보존 — 같은 날 만들고 같은 날 지워도 (§
     });
 });
 
-describe('adoptExistingKeys — 과거 날짜 편집이 슬롯 정체성을 쪼개지 않는다', () => {
-    it('29일 개정판만 있을 때 27일 기본값이 같은 key 를 물려받는다', () => {
-        // 기본값 그대로면 개정판이 안 생긴다(성장 억제) — 실제 변경을 담아 저장한다
-        const edited29 = defaultUserSlots().map((s) =>
+describe('결정적 기본 key (§2.4) — 규칙 셋을 없앤 자리', () => {
+    it('날짜가 달라도 같은 슬롯은 같은 key 다 — 정체성이 안 쪼개진다', () => {
+        const edited = defaultUserSlots().map((s) =>
             s.base === 'lunch' ? { ...s, label: '런치' } : s
         );
-        const plan = withRevisionOn(null, '2026-08-29', edited29, 1000, rngOf(0), TODAY);
-        const keys29 = plan.revisions['2026-08-29'].slots.map((s) => s.key);
-
-        // 27일에는 개정판이 없어 기본값(key:null)이 온다
-        const raw27 = effectiveSlots({ slotPlan: plan }, '2026-08-27', TODAY);
-        assert.ok(raw27.every((s) => s.key === null));
-
-        const adopted = adoptExistingKeys(raw27, plan, TODAY);
-        assert.deepEqual(adopted.map((s) => s.key), keys29);
+        const plan = withRevisionOn(null, '2026-08-29', edited, 1000, rngOf(0), TODAY);
+        const at27 = effectiveSlots({ slotPlan: plan }, '2026-08-27', TODAY);
+        const at29 = effectiveSlots({ slotPlan: plan }, '2026-08-29', TODAY);
+        assert.deepEqual(at27.map((s) => s.key), at29.map((s) => s.key));
     });
 
-    it('개정판이 없으면 그대로 둔다', () => {
-        const slots = defaultUserSlots();
-        assert.equal(adoptExistingKeys(slots, null, TODAY), slots);
+    it('편집 없이 저장하면 개정판이 안 생긴다 — 구체화 단계가 없으니 당연하다', () => {
+        assert.equal(withRevisionOn(null, TODAY, defaultUserSlots(), 1000, rngOf(0), TODAY), null);
+    });
+
+    it('기본 key 는 어떤 생성 key 보다도 오래됐다 — 원본 판정의 근거', () => {
+        assert.ok(compareSlotKeys(defaultSlotKey('dinner'), generateSlotKey(Date.now(), rngOf(0.9))) < 0);
+        // 2059년 이후(타임스탬프 9자, '1' 이상 시작)에도 성립
+        assert.ok(compareSlotKeys(defaultSlotKey('dinner'), generateSlotKey(3e12, rngOf(0))) < 0);
+    });
+
+    it('기본 슬롯이 언제나 원본 — 복제본은 확장', () => {
+        const slots = [
+            ...defaultUserSlots(),
+            { key: generateSlotKey(2e12, rngOf(0)), base: 'dinner', label: '야식', enabled: true }
+        ];
+        const originals = originalSlotSet(slots);
+        assert.equal(originals.size, SLOTS.length);
+        assert.ok(!originals.has(slots[slots.length - 1]));
+    });
+
+    it('마이그레이션 심지: 옛 생성 key 로 저장된 plan 은 그 key 를 물려준다', () => {
+        const legacy = planWith({
+            '2026-08-29': {
+                createdAt: 1,
+                slots: SLOTS.map((s, i) => ({
+                    key: generateSlotKey(2e12 + i, rngOf(0)),
+                    base: s.id,
+                    label: s.label,
+                    enabled: true
+                }))
+            }
+        });
+        const at27 = effectiveSlots({ slotPlan: legacy }, '2026-08-27', TODAY);
+        assert.deepEqual(
+            at27.map((s) => s.key),
+            legacy.revisions['2026-08-29'].slots.map((s) => s.key)
+        );
     });
 });
 

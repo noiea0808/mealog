@@ -62,12 +62,25 @@ export function compareSlotKeys(a, b) {
 /* ── 기본값 ────────────────────────────────────────────────── */
 
 /**
- * slotPlan 이 없는 사용자의 사용자 슬롯 = 기준 슬롯 7개 그대로.
- * key 는 null — "원래부터 있던 슬롯"의 표식이며, 개정판을 처음 만들 때
- * 실제 key 로 구체화된다.
+ * 기본 7슬롯의 key 는 base 에서 **결정적으로** 만든다.
+ *
+ * 예전엔 `key: null` 을 "아직 저장 안 된 기본 슬롯" 표식으로 썼는데, 그 하나가
+ * 규칙 셋을 낳았다 — 구체화 시점, 비교의 비대칭, 과거 날짜 편집의 정체성 분리.
+ * 결정적 key 면 셋 다 사라진다. **어느 날짜에서 읽어도 '아침'은 늘 같은 슬롯**이다.
+ *
+ * 접두사가 0 아홉 개인 이유: 생성 key 의 타임스탬프(base36)는 2059년까지 8자라
+ * 한 자리만 0 으로 채워지고('0mtek…'), 그 뒤로는 9자가 되며 '1' 이상으로 시작한다.
+ * 어느 쪽이든 문자열 비교에서 기본 슬롯이 먼저 온다 = "가장 오래된 key = 원본"(§3).
  */
+export const DEFAULT_SLOT_KEY_PREFIX = '000000000';
+
+export function defaultSlotKey(baseId) {
+    return `${DEFAULT_SLOT_KEY_PREFIX}${baseId}`;
+}
+
+/** slotPlan 이 없는 사용자의 사용자 슬롯 = 기준 슬롯 7개 그대로 */
 export function defaultUserSlots() {
-    return SLOTS.map((s) => ({ key: null, base: s.id, label: s.label, enabled: true }));
+    return SLOTS.map((s) => ({ key: defaultSlotKey(s.id), base: s.id, label: s.label, enabled: true }));
 }
 
 /* ── 검증 ──────────────────────────────────────────────────── */
@@ -148,7 +161,32 @@ export function revisionSlotsForDate(plan, dateIso, todayIso) {
  */
 export function effectiveSlots(userSettings, dateIso, todayIso) {
     const plan = userSettings && typeof userSettings === 'object' ? userSettings.slotPlan : null;
-    return revisionSlotsForDate(plan, dateIso, todayIso) || defaultUserSlots();
+    return revisionSlotsForDate(plan, dateIso, todayIso) || adoptLegacyKeys(defaultUserSlots(), plan, todayIso);
+}
+
+/**
+ * 마이그레이션 심지 — 결정적 key(§2.4) **이전에** 저장된 plan 만을 위한 것.
+ *
+ * 옛 코드는 기본 슬롯 key 를 저장 시점에 생성했다. 그런 plan 을 가진 사용자가
+ * 첫 개정판보다 앞선 날짜를 편집하면, 기본값의 결정적 key 와 개정판의 생성 key 가
+ * 갈려 같은 '아침'이 날짜마다 다른 슬롯이 된다(이름 소급이 반쪽만 된다).
+ * 가장 이른 개정판의 같은 base 원본 key 를 물려줘 하나로 묶는다.
+ *
+ * `effectiveSlots` 안에서만 돈다 — **호출부가 기억할 규칙이 아니다.**
+ * 결정적 key 이전 plan 이 없다고 확신되면 이 함수째로 지워도 된다.
+ */
+function adoptLegacyKeys(slots, plan, todayIso) {
+    const dates = listRevisionDates(plan, todayIso);
+    if (!dates.length) return slots;
+    const earliest = sanitizeSlots(plan.revisions[dates[0]]?.slots);
+    if (!earliest) return slots;
+    const used = new Set();
+    return slots.map((s) => {
+        const orig = oldestSlotForBase(earliest, s.base);
+        if (!orig || !orig.key || orig.key === s.key || used.has(orig.key)) return s;
+        used.add(orig.key);
+        return { ...s, key: orig.key };
+    });
 }
 
 /* ── 기록 → 슬롯 해석 (§3) ─────────────────────────────────── */
@@ -203,20 +241,6 @@ export function originalSlotSet(slots) {
 }
 
 /**
- * key 없는 슬롯(기본 7개)에 실제 key 를 붙인 새 배열. 목록 순서대로 매기므로
- * 구체화 후에도 "가장 오래된 key = 원본"이 성립한다.
- *
- * 설정 시트는 **열 때** 이걸 부른다. 저장 때 부르면 그 사이 만든 복제본의 key 가
- * 원본보다 오래돼 원본 판정이 뒤집힌다(복제 시각 < 저장 시각).
- */
-export function materializeSlotKeys(slots, nowMs = Date.now(), rng = Math.random) {
-    let seq = 0;
-    return (Array.isArray(slots) ? slots : []).map((s) =>
-        s && s.key == null ? { ...s, key: generateSlotKey(nowMs + seq++, rng) } : s
-    );
-}
-
-/**
  * 기록 하나의 표시 슬롯을 해석한다. 절대 실패하지 않는다 (§3 폴백 사슬).
  *
  * 반환의 base 로 기존 SLOT_STYLES[base]·getSlotLucideIcon(base)·type 판정을
@@ -253,24 +277,7 @@ export function resolveSlotView(record, userSettings, todayIso) {
 
 /* ── 개정판 편집 (순수 — 저장은 호출부 몫) ─────────────────── */
 
-/**
- * "사용자가 뭔가 바꿨나?" — 비대칭이다. `current`(저장된 값·기본값) 쪽의 key 가
- * null 이면 어떤 key 와도 같다고 본다: 설정 시트가 열면서 붙인 key 는 사용자의
- * 편집이 아니므로, 그것만으로 개정판이 생기면 안 된다(§5.6 성장 억제).
- *
- * @param {Array} current 저장된(또는 기본) 슬롯 — key 가 null 일 수 있는 쪽
- * @param {Array} next 편집 결과 — key 가 다 채워진 쪽
- */
-function slotsEqual(current, next) {
-    if (!Array.isArray(current) || !Array.isArray(next) || current.length !== next.length) return false;
-    return current.every(
-        (s, i) =>
-            (s.key == null || s.key === next[i].key) &&
-            s.base === next[i].base &&
-            s.label === next[i].label &&
-            s.enabled === next[i].enabled
-    );
-}
+
 
 /**
  * `effectiveFrom` 날짜의 개정판으로 nextSlots 를 넣은 **새 plan** 을 돌려준다.
@@ -294,10 +301,8 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
     if (!cleaned) return plan;
 
     /**
-     * 성장 억제 비교는 key 구체화 **전**에 한다. UI 는 effectiveSlots 가 준
-     * 목록(기본 슬롯이면 key:null)을 편집해 돌려주므로, 안 건드렸으면 여기서
-     * 그대로 같다. 구체화 후에 비교하면 새 key 때문에 항상 "달라진" 걸로
-     * 보여서, 설정을 열고 그냥 닫아도 개정판이 생긴다 (§5.1·§5.6 위반).
+     * 성장 억제(§5.6): 안 바꿨으면 개정판을 만들지 않는다. 기본 슬롯의 key 가
+     * 결정적이라(§2.4) 편집 없이 저장하면 여기서 글자 그대로 같아진다.
      */
     const current = revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots();
 
@@ -311,15 +316,12 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
         ? Object.keys(plan?.revisions || {}).filter((d) => isIsoDate(d) && d > effectiveFrom).sort()
         : [];
     const laterNeedsWrite = laterDates.some(
-        (d) => !slotsEqual(sanitizeSlots(plan.revisions[d]?.slots) || [], cleaned)
+        (d) => !slotsIdentical(sanitizeSlots(plan.revisions[d]?.slots) || [], cleaned)
     );
 
-    if (slotsEqual(current, cleaned) && !laterNeedsWrite) return plan;
+    if (slotsIdentical(current, cleaned) && !laterNeedsWrite) return plan;
 
-    let seq = 0;
-    const materialized = cleaned.map((s) =>
-        s.key != null ? s : { ...s, key: generateSlotKey(nowMs + seq++, rng) }
-    );
+    const materialized = cleaned;
 
     const base = plan && typeof plan === 'object' && plan.revisions ? plan : { schema: SLOT_PLAN_SCHEMA, revisions: {} };
     const nextRevisions = {
@@ -445,29 +447,6 @@ export function nextDifferentRevisionAfter(plan, dateIso, todayIso, slots) {
         if (!slotsIdentical(sanitizeSlots(revisions[d]?.slots) || [], slots)) return d;
     }
     return null;
-}
-
-/**
- * key 가 null 인 기본 슬롯에, 이미 이 사용자 문서에 있는 같은 base 의 원본 key 를
- * 물려준다.
- *
- * 과거 날짜를 편집할 때 필요하다: 29일 개정판만 있는 상태에서 27일을 편집하면
- * `effectiveSlots(27)` 은 개정판이 없어 기본값(key:null)을 준다. 그대로 구체화하면
- * 같은 '아침'인데 27일과 29일의 key 가 갈라져, 이름 소급(§3.1)이 한쪽만 고치게 된다.
- */
-export function adoptExistingKeys(slots, plan, todayIso) {
-    const dates = listRevisionDates(plan, todayIso);
-    if (!dates.length) return slots;
-    const earliest = sanitizeSlots(plan.revisions[dates[0]]?.slots);
-    if (!earliest) return slots;
-    const used = new Set();
-    return (Array.isArray(slots) ? slots : []).map((s) => {
-        if (!s || s.key != null) return s;
-        const orig = oldestSlotForBase(earliest, s.base);
-        if (!orig || orig.key == null || used.has(orig.key)) return s;
-        used.add(orig.key);
-        return { ...s, key: orig.key };
-    });
 }
 
 /** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽 */
