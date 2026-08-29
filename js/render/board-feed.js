@@ -8,6 +8,13 @@ import { fetchUserProfiles } from './user-profiles.js';
 import { getDisplayProfile, getProfileAvatarDisplay, toSeoulDateString, SEOUL_LOCALE_OPTIONS } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
 import { FEED_TIMELINE_BATCH_SIZE } from '../db/feed-posts.js';
+/**
+ * 이 모듈은 <i data-lucide>를 뿌리면서 아이콘 생성을 한 번도 부르지 않았다.
+ * 전역 MutationObserver 가 없으므로(js/icons.js 주석) 그 자리는 **빈 칸**으로 남는다 —
+ * 라이트박스 닫기 X 가 안 보이던 원인. 형제인 모먼트 라이트박스는 부르고 있었다.
+ * root 를 좁혀 부른다: 문서 전체로 돌리면 피드 갱신마다 네비가 멈춘다.
+ */
+import { scheduleLucideIcons } from '../icons.js';
 
 /** paintFeedTimeline마다 이전 관찰자 해제 — 레이아웃 변화 시 스크롤 한 번만 보정 */
 let _feedScrollResizeCleanup = null;
@@ -249,6 +256,7 @@ function openFeedImageLightbox(imageUrl) {
         _feedImageLightboxOverlay.querySelector('[data-feed-lb-download]')?.addEventListener('click', () => {
             void downloadFeedLightboxImage(_feedImageLightboxUrl);
         });
+        scheduleLucideIcons(_feedImageLightboxOverlay);
     }
     const img = _feedImageLightboxOverlay.querySelector('[data-feed-lb-img]');
     if (img) {
@@ -567,6 +575,7 @@ function paintFeedTimeline(root, posts) {
                 </div>
                 ${feedRefreshButtonHtml()}
             </div>`;
+        scheduleLucideIcons(root);
         ensureFeedImageLightboxDelegate();
         return;
     }
@@ -598,6 +607,7 @@ function paintFeedTimeline(root, posts) {
             <div class="feed-timeline flex w-full flex-col justify-end gap-2 pb-0 pt-1">${rowsHtml}</div>
             ${feedRefreshButtonHtml()}
         </div>`;
+    scheduleLucideIcons(root);
     ensureFeedImageLightboxDelegate();
 }
 
@@ -779,6 +789,7 @@ export async function renderBoardFeedTab(options = {}) {
             <i data-lucide="loader-circle" class="feed-panel-loading-icon text-2xl mb-2 lucide-spin" aria-hidden="true"></i>
             <span class="feed-panel-loading-text text-xs">불러오는 중…</span>
         </div>`;
+        scheduleLucideIcons(root);
     }
 
     try {
