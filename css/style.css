@@ -12416,6 +12416,20 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: #f1f5f9;
     color: #94a3b8;
 }
+/* 확장 슬롯 자리 — 원본의 사용/해제와 같은 칸, 다른 의미 */
+.slot-plan-row__del {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    background: #fef2f2;
+    color: #dc2626;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__del:active {
+    background: #fee2e2;
+}
 .slot-plan-row__dup {
     flex-shrink: 0;
     display: inline-flex;
@@ -12438,24 +12452,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 .slot-plan-settings__footer {
     padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
-}
-.slot-plan-settings__add-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 700;
-    color: var(--green, #059669);
-    padding: 0.4rem 0.25rem;
-    -webkit-tap-highlight-color: transparent;
-}
-.slot-plan-settings__add-btn[disabled] {
-    color: #cbd5e1;
-}
-.slot-plan-settings__add-btn [data-lucide],
-.slot-plan-settings__add-btn .lucide {
-    width: 1rem;
-    height: 1rem;
 }
 .slot-plan-settings__notice {
     margin: 0.4rem 0 0.75rem;
@@ -12484,33 +12480,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: var(--green, #059669);
     color: #fff;
 }
-.slot-plan-add-chooser {
-    padding: 0.5rem 0.25rem 0.75rem;
-}
-.slot-plan-add-chooser__q {
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: #475569;
-    margin: 0 0 0.4rem;
-}
-.slot-plan-add-chooser__grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-}
-.slot-plan-add-chooser__opt {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #334155;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 999px;
-    padding: 0.35rem 0.7rem;
-    -webkit-tap-highlight-color: transparent;
-}
-.slot-plan-add-chooser__opt:active {
-    background: #f1f5f9;
-}
+
 
 /* 밀로그 퀵입력 FAB — 게시판 글쓰기와 동일 스타일·위치 */
 #entryQuickInputFab.entry-quick-input-fab {

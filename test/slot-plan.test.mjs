@@ -30,6 +30,8 @@ import {
     renameSlotEverywhere,
     revisionCount,
     countEnabledSlots,
+    originalSlotSet,
+    materializeSlotKeys,
     groupMealsByUserSlotForDate,
     MAX_ENABLED_SLOTS,
     MAX_SLOTS_PER_REVISION
@@ -380,6 +382,64 @@ describe('groupMealsByUserSlotForDate — 타임라인 순회 (§3)', () => {
             groups.map((g) => g.slot.label),
             ['야식', '밤 간식']
         );
+    });
+});
+
+describe('원본 vs 확장 — 삭제 가능 여부를 가른다 (§4.2.1)', () => {
+    it('base 마다 가장 오래된 key 하나씩이 원본', () => {
+        const slots = [
+            { key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true },
+            { key: 'k-yasik', base: 'dinner', label: '야식', enabled: true },
+            { key: 'k-lunch', base: 'lunch', label: '점심', enabled: true }
+        ];
+        const originals = originalSlotSet(slots);
+        assert.equal(originals.size, 2);
+        assert.ok(originals.has(slots[0]));
+        assert.ok(!originals.has(slots[1])); // 야식 = 확장 → 삭제 가능
+        assert.ok(originals.has(slots[2]));
+    });
+
+    it('배열 순서를 바꿔도 원본은 그대로 — key 기준이다', () => {
+        const slots = [
+            { key: 'k-yasik', base: 'dinner', label: '야식', enabled: true },
+            { key: 'k-dinner', base: 'dinner', label: '저녁', enabled: true }
+        ];
+        assert.ok(originalSlotSet(slots).has(slots[1]));
+    });
+
+    it('기본 7슬롯은 전부 원본 — 아무도 못 지운다', () => {
+        const originals = originalSlotSet(defaultUserSlots());
+        assert.equal(originals.size, SLOTS.length);
+    });
+
+    it('복제는 원본보다 나중 key 를 받아야 한다 (열 때 구체화 → 복제 순서)', () => {
+        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
+        const dup = { key: generateSlotKey(2000, rngOf(0)), base: 'dinner', label: '야식', enabled: true };
+        const dinner = opened.find((s) => s.base === 'dinner');
+        assert.ok(compareSlotKeys(dinner.key, dup.key) < 0);
+        assert.ok(originalSlotSet([...opened, dup]).has(dinner));
+    });
+});
+
+describe('materializeSlotKeys — 구체화만으로 개정판이 생기면 안 된다', () => {
+    it('열 때 key 를 붙여도 내용이 같으면 저장 없음 (§5.6)', () => {
+        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
+        assert.ok(opened.every((s) => typeof s.key === 'string'));
+        // 사용자가 아무것도 안 건드리고 저장 → plan 참조 그대로
+        assert.equal(withTodayRevision(null, TODAY, opened, 5000, rngOf(0)), null);
+    });
+
+    it('구체화 후 라벨을 바꾸면 개정판이 생긴다', () => {
+        const opened = materializeSlotKeys(defaultUserSlots(), 1000, rngOf(0));
+        const edited = opened.map((s) => (s.base === 'lunch' ? { ...s, label: '런치' } : s));
+        const next = withTodayRevision(null, TODAY, edited, 5000, rngOf(0));
+        assert.ok(next?.revisions?.[TODAY]);
+        assert.equal(next.revisions[TODAY].slots.find((s) => s.base === 'lunch').label, '런치');
+    });
+
+    it('이미 key 가 있으면 건드리지 않는다', () => {
+        const slots = [{ key: 'keep', base: 'lunch', label: '점심', enabled: true }];
+        assert.equal(materializeSlotKeys(slots, 1000, rngOf(0))[0].key, 'keep');
     });
 });
 

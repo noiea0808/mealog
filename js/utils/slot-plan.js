@@ -183,6 +183,38 @@ export function oldestSlotForBase(slots, baseId) {
 }
 
 /**
+ * base 마다 하나씩인 **원본 슬롯**의 집합 (객체 참조 기준).
+ *
+ * 원본은 지울 수 없고 해제만 된다. 두 이유가 겹친다:
+ * 1. 원본이 사라지면 그 시간대로 새 슬롯을 만들 길이 없어진다 — 복제가 유일한
+ *    추가 경로이므로(§4.2) 복제할 원본이 남아 있어야 한다.
+ * 2. `slotKey` 없는 옛 기록의 폴백 귀속처가 원본이다(§3). 사라지면 라벨이 흔들린다.
+ */
+export function originalSlotSet(slots) {
+    const byBase = new Map();
+    for (const s of Array.isArray(slots) ? slots : []) {
+        if (!s) continue;
+        const cur = byBase.get(s.base);
+        if (!cur || compareSlotKeys(s.key, cur.key) < 0) byBase.set(s.base, s);
+    }
+    return new Set(byBase.values());
+}
+
+/**
+ * key 없는 슬롯(기본 7개)에 실제 key 를 붙인 새 배열. 목록 순서대로 매기므로
+ * 구체화 후에도 "가장 오래된 key = 원본"이 성립한다.
+ *
+ * 설정 시트는 **열 때** 이걸 부른다. 저장 때 부르면 그 사이 만든 복제본의 key 가
+ * 원본보다 오래돼 원본 판정이 뒤집힌다(복제 시각 < 저장 시각).
+ */
+export function materializeSlotKeys(slots, nowMs = Date.now(), rng = Math.random) {
+    let seq = 0;
+    return (Array.isArray(slots) ? slots : []).map((s) =>
+        s && s.key == null ? { ...s, key: generateSlotKey(nowMs + seq++, rng) } : s
+    );
+}
+
+/**
  * 기록 하나의 표시 슬롯을 해석한다. 절대 실패하지 않는다 (§3 폴백 사슬).
  *
  * 반환의 base 로 기존 SLOT_STYLES[base]·getSlotLucideIcon(base)·type 판정을
@@ -219,14 +251,22 @@ export function resolveSlotView(record, userSettings, todayIso) {
 
 /* ── 개정판 편집 (순수 — 저장은 호출부 몫) ─────────────────── */
 
-function slotsEqual(a, b) {
-    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-    return a.every(
+/**
+ * "사용자가 뭔가 바꿨나?" — 비대칭이다. `current`(저장된 값·기본값) 쪽의 key 가
+ * null 이면 어떤 key 와도 같다고 본다: 설정 시트가 열면서 붙인 key 는 사용자의
+ * 편집이 아니므로, 그것만으로 개정판이 생기면 안 된다(§5.6 성장 억제).
+ *
+ * @param {Array} current 저장된(또는 기본) 슬롯 — key 가 null 일 수 있는 쪽
+ * @param {Array} next 편집 결과 — key 가 다 채워진 쪽
+ */
+function slotsEqual(current, next) {
+    if (!Array.isArray(current) || !Array.isArray(next) || current.length !== next.length) return false;
+    return current.every(
         (s, i) =>
-            s.key === b[i].key &&
-            s.base === b[i].base &&
-            s.label === b[i].label &&
-            s.enabled === b[i].enabled
+            (s.key == null || s.key === next[i].key) &&
+            s.base === next[i].base &&
+            s.label === next[i].label &&
+            s.enabled === next[i].enabled
     );
 }
 

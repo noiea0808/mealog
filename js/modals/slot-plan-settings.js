@@ -9,9 +9,12 @@
  * 저장은 dbOps.saveSettings 전체 경로를 그대로 탄다 — 아웃박스 내구화·병합
  * 규칙(§5.2)이 이미 거기 있다. slotPlan 만의 새 기계장치를 만들지 않는다.
  */
-import { SLOTS, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
+import { SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
 import {
     effectiveSlots,
+    materializeSlotKeys,
+    originalSlotSet,
+    generateSlotKey,
     withTodayRevision,
     renameSlotEverywhere,
     revisionCount,
@@ -28,24 +31,12 @@ import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { diag } from '../utils/diagnostics.js';
 
-/** base 를 사용자에게 보여줄 때의 시간대 이름 — 집계 축 얘기는 하지 않는다 (§4.2) */
-const BASE_TIME_LABELS = {
-    pre_morning: '아침 전',
-    morning: '아침',
-    snack1: '오전',
-    lunch: '점심',
-    snack2: '오후',
-    dinner: '저녁',
-    night: '저녁 후'
-};
-
 let bound = false;
 /** @type {Array<{key:string|null, base:string, label:string, enabled:boolean}>|null} */
 let draft = null;
 /** 열 때의 원본 라벨 (key → label) — 이름 소급 판정용 */
 let openedLabels = new Map();
 let reopenPickerOnClose = false;
-let addChooserOpen = false;
 
 function localTodayIso() {
     const t = new Date();
@@ -62,9 +53,17 @@ function formatNoticeDate(iso) {
 
 /* ── 렌더 ─────────────────────────────────────────────────── */
 
-function rowHtml(slot, idx) {
+function rowHtml(slot, idx, isOriginal) {
     const style = SLOT_STYLES[slot.base] || SLOT_STYLES.default;
     const off = !slot.enabled;
+    /**
+     * 원본은 지울 수 없다(복제할 씨앗이자 폴백 귀속처) → 사용/해제.
+     * 복제로 늘린 슬롯은 되돌릴 수단이 삭제뿐이다 → 삭제.
+     * 한 자리에 하나만 둔다 — 둘을 나란히 뒀다가 구분이 안 된다는 지적을 받았다.
+     */
+    const tailBtn = isOriginal
+        ? `<button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="${slot.enabled ? '사용 중' : '사용 안 함'}">${slot.enabled ? '사용' : '해제'}</button>`
+        : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 슬롯 삭제">삭제</button>`;
     return `<div class="slot-plan-row${off ? ' slot-plan-row--off' : ''}" data-idx="${idx}">
         <span class="slot-plan-row__drag" data-action="drag" role="button" aria-label="순서 이동" title="끌어서 순서 변경">
             <i data-lucide="grip-vertical" aria-hidden="true"></i>
@@ -78,21 +77,10 @@ function rowHtml(slot, idx) {
                 <i data-lucide="pencil" aria-hidden="true"></i>
             </button>
         </span>
-        <button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="${slot.enabled ? '사용 중' : '사용 안 함'}">${slot.enabled ? '사용' : '해제'}</button>
+        ${tailBtn}
         <button type="button" class="slot-plan-row__dup" data-action="dup" aria-label="이 슬롯 복제">
             <i data-lucide="copy-plus" aria-hidden="true"></i>
         </button>
-    </div>`;
-}
-
-function addChooserHtml() {
-    return `<div class="slot-plan-add-chooser" id="slotPlanAddChooser">
-        <p class="slot-plan-add-chooser__q">언제쯤인가요?</p>
-        <div class="slot-plan-add-chooser__grid">
-            ${SLOTS.map(
-                (s) => `<button type="button" class="slot-plan-add-chooser__opt" data-add-base="${s.id}">${escapeHtml(BASE_TIME_LABELS[s.id] || s.label)}</button>`
-            ).join('')}
-        </div>
     </div>`;
 }
 
@@ -100,17 +88,15 @@ function render() {
     const list = document.getElementById('slotPlanSettingsList');
     const countEl = document.getElementById('slotPlanSettingsCount');
     const notice = document.getElementById('slotPlanSettingsNotice');
-    const addBtn = document.getElementById('slotPlanAddBtn');
     if (!list || !draft) return;
 
-    list.innerHTML =
-        draft.map((s, i) => rowHtml(s, i)).join('') + (addChooserOpen ? addChooserHtml() : '');
+    const originals = originalSlotSet(draft);
+    list.innerHTML = draft.map((s, i) => rowHtml(s, i, originals.has(s))).join('');
     // 세는 건 '사용 중'인 수 — 해제한 슬롯은 피커에 안 나오므로 상한과 무관하다
     if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
     if (notice) {
         notice.textContent = `사용 여부·순서 변경은 ${formatNoticeDate(localTodayIso())} 기록부터 적용됩니다. 지난 기록은 그대로 남습니다.`;
     }
-    if (addBtn) addBtn.disabled = !!addBlockedReason();
     scheduleLucideIcons(list);
 }
 
@@ -125,10 +111,19 @@ export function openSlotPlanSettings(opts = {}) {
     if (!modal) return;
     reopenPickerOnClose = opts.fromPicker === true;
 
-    // 오늘의 유효 구성이 편집 대상 — enabled:false 도 제자리에 회색으로 (§4.2)
-    draft = effectiveSlots(window.userSettings, localTodayIso(), localTodayIso()).map((s) => ({ ...s }));
-    openedLabels = new Map(draft.filter((s) => s.key != null).map((s) => [s.key, s.label]));
-    addChooserOpen = false;
+    /**
+     * 오늘의 유효 구성이 편집 대상 — enabled:false 도 제자리에 회색으로 (§4.2).
+     *
+     * key 를 **여기서** 구체화한다. 저장 때 하면 그 사이 만든 복제본의 key 가
+     * 원본보다 오래돼 원본/확장 판정이 뒤집힌다. 구체화만으로는 개정판이 생기지
+     * 않는다 — withTodayRevision 의 비교가 null key 를 무시한다.
+     */
+    draft = materializeSlotKeys(
+        effectiveSlots(window.userSettings, localTodayIso(), localTodayIso()).map((s) => ({ ...s }))
+    );
+    openedLabels = new Map(
+        (window.userSettings?.slotPlan ? draft : []).map((s) => [s.key, s.label])
+    );
 
     render();
     modal.classList.remove('hidden');
@@ -188,7 +183,12 @@ function addBlockedReason() {
     return '';
 }
 
-/** 복제: base 상속, key 는 새로(null → 저장 시 구체화), 이름만 새로 짓게 (§4.2) */
+/**
+ * 복제 — 슬롯을 늘리는 **유일한** 길이다(§4.2).
+ * base 를 상속하므로 집계 축 질문을 사용자에게 하지 않아도 되고, 원본 7개가
+ * 항상 남아 있으므로(삭제 불가) 어떤 시간대든 복제로 도달할 수 있다.
+ * key 는 지금 붙인다 — 원본보다 반드시 나중이어야 한다.
+ */
 function onDuplicate(idx) {
     if (!draft?.[idx]) return;
     syncDraftLabelsFromInputs();
@@ -199,7 +199,7 @@ function onDuplicate(idx) {
     }
     const src = draft[idx];
     draft.splice(idx + 1, 0, {
-        key: null,
+        key: generateSlotKey(),
         base: src.base,
         label: `${src.label}2`.slice(0, SLOT_LABEL_MAX_CHARS),
         enabled: true
@@ -209,21 +209,16 @@ function onDuplicate(idx) {
     rows[idx + 1]?.querySelector('[data-action="label"]')?.select?.();
 }
 
-function onAddBase(baseId) {
-    if (!draft) return;
+/**
+ * 삭제 — 복제로 늘린 슬롯만. 원본은 이 버튼 자리에 사용/해제가 온다.
+ * 지워도 그 슬롯으로 남긴 과거 기록의 이름은 유지된다(§3, key 를 전 개정판에서
+ * 찾으므로). 그래서 확인 창을 띄우지 않는다 — 되돌릴 수 없는 일이 아니다.
+ */
+function onDelete(idx) {
+    if (!draft?.[idx]) return;
     syncDraftLabelsFromInputs();
-    const blocked = addBlockedReason();
-    if (blocked) {
-        showToast(blocked, 'error');
-        return;
-    }
-    const def = SLOTS.find((s) => s.id === baseId);
-    if (!def) return;
-    draft.push({ key: null, base: baseId, label: def.label, enabled: true });
-    addChooserOpen = false;
+    draft.splice(idx, 1);
     render();
-    const rows = document.querySelectorAll('#slotPlanSettingsList .slot-plan-row');
-    rows[rows.length - 1]?.querySelector('[data-action="label"]')?.select?.();
 }
 
 /* ── 드래그 순서 (pointer 기반 — 터치 포함) ────────────────── */
@@ -343,18 +338,8 @@ function bindOnce() {
     modal.querySelector('#slotPlanSettingsBackdrop')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanCancelBtn')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanSaveBtn')?.addEventListener('click', () => void onSave());
-    modal.querySelector('#slotPlanAddBtn')?.addEventListener('click', () => {
-        addChooserOpen = !addChooserOpen;
-        syncDraftLabelsFromInputs();
-        render();
-    });
 
     list?.addEventListener('click', (e) => {
-        const addBase = e.target.closest('[data-add-base]');
-        if (addBase) {
-            onAddBase(addBase.getAttribute('data-add-base'));
-            return;
-        }
         const btn = e.target.closest('[data-action]');
         if (!btn) return;
         const row = btn.closest('.slot-plan-row');
@@ -362,6 +347,7 @@ function bindOnce() {
         const action = btn.getAttribute('data-action');
         if (action === 'toggle') onToggle(idx);
         else if (action === 'dup') onDuplicate(idx);
+        else if (action === 'del') onDelete(idx);
         else if (action === 'edit') {
             const input = row?.querySelector('[data-action="label"]');
             input?.focus();
