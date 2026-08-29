@@ -1688,7 +1688,7 @@ function revealEntryModalShell() {
     return openGen;
 }
 
-export async function openModal(date, slotId, entryId = null) {
+export async function openModal(date, slotId, entryId = null, opts = {}) {
     try {
         const state = appState;
         if (!window.currentUser) return;
@@ -1751,6 +1751,16 @@ export async function openModal(date, slotId, entryId = null) {
         }
 
         let savedRecord = entryId ? window.mealHistory?.find((m) => m.id === entryId) ?? null : null;
+
+        /**
+         * 사용자 슬롯 key (docs/user-slot-plan.md §2.2) — 새 기록은 피커가 고른
+         * 슬롯, 수정은 기존 기록의 값을 보존한다. slotId(base)는 위에서 이미
+         * 확정됐고, slotKey 는 같은 base 다중 슬롯을 가르는 표시용 값일 뿐이다.
+         */
+        state.currentEditingSlotKey =
+            (typeof opts.slotKey === 'string' && opts.slotKey) ||
+            (savedRecord && typeof savedRecord.slotKey === 'string' && savedRecord.slotKey) ||
+            null;
 
         resetEntryModalFormFields();
 

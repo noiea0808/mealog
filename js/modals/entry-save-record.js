@@ -196,6 +196,8 @@ export function buildEntrySaveRecord({ state, form, resolved, entryMode, gauges,
         id: idToUse,
         date: state.currentEditingDate,
         slotId: state.currentEditingSlotId,
+        // 사용자 슬롯 key — 서버·통계는 읽지 않는 표시용 필드 (user-slot-plan §2.2)
+        slotKey: state.currentEditingSlotKey || null,
         mealType: mealTypeFinal,
         withWhom: withWhomFinal,
         withWhomDetail: isSk ? '' : withInputVal,

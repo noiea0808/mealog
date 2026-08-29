@@ -3,7 +3,8 @@
  * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 소감은 하단에 둔다.
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
-import { SLOTS, DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
+import { DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
+import { userSlotsForDate, userSlotGroupsForDate } from '../utils/slot-view.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
@@ -35,9 +36,21 @@ function pageDateIso() {
     return `${y}-${m}-${day}`;
 }
 
-function countMealsOnSlot(dateIso, slotId) {
-    const history = Array.isArray(window.mealHistory) ? window.mealHistory : [];
-    return history.filter((m) => m?.date === dateIso && m?.slotId === slotId).length;
+/**
+ * 사용자 슬롯별 건수 — 타임라인과 같은 그룹 규칙(user-slot-plan §3).
+ * slotKey 없는 옛 기록은 base 원본 슬롯의 건수로 잡힌다.
+ * @returns {Map<string, number>} 그룹 식별자(`key` 또는 `b:base`) → 건수
+ */
+function countMealsByUserSlot(dateIso) {
+    const counts = new Map();
+    for (const { slot, records } of userSlotGroupsForDate(dateIso)) {
+        counts.set(slot.key != null ? slot.key : `b:${slot.id}`, records.length);
+    }
+    return counts;
+}
+
+function userSlotCountId(slot) {
+    return slot.key != null ? slot.key : `b:${slot.base}`;
 }
 
 function dailyJournalCount(dateIso) {
@@ -59,35 +72,42 @@ function formatPickerDateLabel(dateIso) {
     return `${mo}월 ${d}일 (${week})`;
 }
 
-function slotLucideIcon(slot) {
-    return getSlotLucideIcon(slot.id);
-}
-
 /** 피커에서 하루 소감 아이콘 — 보라 계열로 본식 슬롯처럼 강조 */
 const PICKER_DAILY_ICON_STYLE = {
     iconBg: 'bg-violet-50',
     iconText: 'text-violet-600'
 };
 
-function slotTint(slot) {
-    if (slot.type === 'daily') return PICKER_DAILY_ICON_STYLE;
-    return SLOT_STYLES[slot.id] || SLOT_STYLES.default;
+function countBadgeHtml(count) {
+    return count > 0
+        ? `<span class="entry-slot-picker__count">${count}건 · 추가 가능</span>`
+        : `<span class="entry-slot-picker__count entry-slot-picker__count--empty">아직 없음</span>`;
 }
 
-function buildSlotRowHtml(slot, count) {
-    const style = slotTint(slot);
-    const countBadge =
-        count > 0
-            ? `<span class="entry-slot-picker__count">${count}건 · 추가 가능</span>`
-            : `<span class="entry-slot-picker__count entry-slot-picker__count--empty">아직 없음</span>`;
-    const itemMod = slot.type === 'daily' ? ' entry-slot-picker__item--daily' : '';
-    return `<button type="button" class="entry-slot-picker__item${itemMod}" data-slot-id="${escapeHtml(slot.id)}" data-slot-type="${escapeHtml(slot.type)}">
+/**
+ * 사용자 슬롯 카드 (두 열 격자의 한 칸).
+ * 아이콘·색은 base 의 것 — 사용자 슬롯이 뭐라 불리든 시간대의 낯은 유지된다.
+ */
+function buildUserSlotCardHtml(slot, count) {
+    const style = SLOT_STYLES[slot.base] || SLOT_STYLES.default;
+    return `<button type="button" class="entry-slot-picker__item" data-slot-id="${escapeHtml(slot.base)}" data-slot-key="${escapeHtml(slot.key || '')}" data-slot-type="meal">
         <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
-            <i data-lucide="${slotLucideIcon(slot)}" aria-hidden="true"></i>
+            <i data-lucide="${getSlotLucideIcon(slot.base)}" aria-hidden="true"></i>
         </span>
         <span class="entry-slot-picker__label">${escapeHtml(slot.label)}</span>
-        ${countBadge}
-        <i data-lucide="chevron-right" class="entry-slot-picker__chevron" aria-hidden="true"></i>
+        ${countBadgeHtml(count)}
+    </button>`;
+}
+
+/** 하루 소감 — 슬롯이 아니므로 전체 폭 한 줄 (설정 대상도 아니다) */
+function buildDailyJournalRowHtml(count) {
+    const style = PICKER_DAILY_ICON_STYLE;
+    return `<button type="button" class="entry-slot-picker__item entry-slot-picker__item--daily" data-slot-id="${escapeHtml(DAILY_JOURNAL_SLOT.id)}" data-slot-type="daily">
+        <span class="entry-slot-picker__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
+            <i data-lucide="${getSlotLucideIcon(DAILY_JOURNAL_SLOT.id)}" aria-hidden="true"></i>
+        </span>
+        <span class="entry-slot-picker__label">${escapeHtml(DAILY_JOURNAL_SLOT.label)}</span>
+        ${countBadgeHtml(count)}
     </button>`;
 }
 
@@ -98,10 +118,16 @@ function renderPickerList(dateIso) {
 
     if (dateEl) dateEl.textContent = formatPickerDateLabel(dateIso);
 
-    // 식사·간식(시간순) + 하루 소감 — 한 목록, 그룹 제목 없음
+    /**
+     * 그 날짜 유효 개정판의 enabled 슬롯만 — 여기가 enabled 를 볼 수 있는
+     * 유일한 곳이다(불변식 4: 렌더 필터 아님, 피커 필터).
+     */
+    const slots = userSlotsForDate(dateIso).filter((s) => s.enabled);
+    const counts = countMealsByUserSlot(dateIso);
+
     const html = `<div class="entry-slot-picker__group">
-        ${SLOTS.map((s) => buildSlotRowHtml(s, countMealsOnSlot(dateIso, s.id))).join('')}
-        ${buildSlotRowHtml(DAILY_JOURNAL_SLOT, dailyJournalCount(dateIso))}
+        ${slots.map((s) => buildUserSlotCardHtml(s, counts.get(userSlotCountId(s)) || 0)).join('')}
+        ${buildDailyJournalRowHtml(dailyJournalCount(dateIso))}
     </div>`;
 
     list.innerHTML = html;
@@ -144,7 +170,7 @@ export async function openEntrySlotPicker(dateIso) {
     lockBodyScroll('entrySlotPicker');
 }
 
-async function onPickSlot(slotId, slotType) {
+async function onPickSlot(slotId, slotType, slotKey) {
     const dateIso = pendingDateIso || pageDateIso() || localTodayIso();
     closeEntrySlotPicker();
     if (slotType === 'daily' || slotId === 'daily_journal') {
@@ -155,7 +181,7 @@ async function onPickSlot(slotId, slotType) {
         }
         return;
     }
-    await openModal(dateIso, slotId, null);
+    await openModal(dateIso, slotId, null, { slotKey: slotKey || null });
 }
 
 function bindPickerOnce() {
@@ -170,8 +196,9 @@ function bindPickerOnce() {
         if (!btn || !modal.contains(btn)) return;
         const slotId = btn.getAttribute('data-slot-id');
         const slotType = btn.getAttribute('data-slot-type') || '';
+        const slotKey = btn.getAttribute('data-slot-key') || '';
         if (!slotId) return;
-        void onPickSlot(slotId, slotType);
+        void onPickSlot(slotId, slotType, slotKey);
     });
 }
 
