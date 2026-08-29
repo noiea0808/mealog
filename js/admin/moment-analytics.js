@@ -327,13 +327,14 @@ function renderAxisLegend(axis) {
             }</span>
         </span>`;
 
+    // 막대의 칸 순서(많은 순)를 그대로 따라간다 — 눈이 왼쪽부터 짚어 내려오게
     const chips = [
-        ...axis.rows
-            .filter((r) => r.slot !== null)
-            .map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate, r.n === 0)),
+        ...axis.rows.filter((r) => r.slot !== null).map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate)),
         c.folded.n ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate) : '',
         c.outside.n ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate) : '',
-        c.empty.n ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, false, 'ring-1 ring-inset ring-slate-300') : ''
+        c.empty.n ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, false, 'ring-1 ring-inset ring-slate-300') : '',
+        // 아무도 안 고른 칩은 맨 뒤에 흐리게 — 막대에는 칸이 없어 여기서만 보인다
+        ...axis.rows.filter((r) => r.n === 0).map((r) => item('transparent', r.label, 0, 0, true, 'ring-1 ring-inset ring-slate-300'))
     ].join('');
 
     /** 한 색으로 묶인 것들의 이름 — 묶었다고 정체까지 감추지는 않는다 */
@@ -384,10 +385,14 @@ function renderAxisCharts(breakdown, total) {
                     <b class="${axis.filledRate >= 70 ? 'text-emerald-700' : axis.filledRate >= 40 ? 'text-amber-700' : 'text-red-600'}">${fmtPct(
                         axis.filledRate
                     )}</b>
-                    <span class="ml-1 text-slate-400">직접 ${axis.direct.toLocaleString()}</span>
-                    <span class="ml-1 text-sky-600">자동 ${axis.auto.toLocaleString()}${
-                        axis.auto ? ` (${fmtPct(axis.autoShare)})` : ''
-                    }</span>
+                    ${
+                        axis.noSourceSplit
+                            ? '<span class="ml-1 text-slate-400">전부 자동 분류</span>'
+                            : `<span class="ml-1 text-slate-400">직접 ${axis.direct.toLocaleString()}</span>
+                               <span class="ml-1 text-sky-600">자동 ${axis.auto.toLocaleString()}${
+                                   axis.auto ? ` (${fmtPct(axis.autoShare)})` : ''
+                               }</span>`
+                    }
                 </span>
             </div>
             ${renderAxisBar(axis)}
@@ -409,12 +414,19 @@ function renderAxisCharts(breakdown, total) {
             <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
                 · <b>자동</b> = 사람이 고르지 않았는데 값이 남은 것. 「어떻게·어디서·누구와」는 맥락 예측이 자동 적용한 축(<code>autoContext</code>),
                 「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다.<br>
-                · <b>흐린 범례</b>는 기간 안에 아무도 고르지 않은 선택지입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
+                · <b>칸도 범례도 많은 순</b>으로 섭니다. 색은 그 순위를 따라가므로, 다른 기간을 보면 같은 값의 색이 달라질 수 있습니다 —
+                식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어 있는 이유입니다).<br>
+                · <b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
+                · <b>무엇을</b>은 축이 둘입니다. <b>형태</b>(밥류·면류…)는 사용자가 고르거나 분류기가 채우고,
+                <b>종류</b>(한식·중식…)는 <b>묻지 않고</b> 분류기가 붙입니다 — 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른 질문이라 축이 둘입니다.
+                형태 축에서 목록 밖으로 밀리는 옛 한식·양식 기록이 종류 축에서는 제자리를 찾습니다.
+                다만 <b>종류의 「미입력」을 실패로 읽지 마세요</b> — 과일·커피·채소처럼 <b>축이 애초에 해당되지 않는 형태</b>가
+                여기 섞여 있습니다(「사과가 한식인가 양식인가」는 질문이 성립하지 않습니다).<br>
                 · <b>목록 밖</b>은 지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에 저장된 옛 어휘</b>(한식·양식·일식·중식·분식·카페)와 「기타」입니다 —
                 「한식」은 밥류일 수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다(표기만 달랐던 옛 형태 축 값은 읽을 때 맞춰 제 칩으로 갑니다).
                 「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 큰 것이 정상입니다.<br>
-                · <b>색은 「태그 관리」의 목록 순서</b>로 앞 ${AXIS_CHART_SLOTS}개에 갑니다(건수 순이 아니라 — 기간을 바꿔도 색이 옮겨 다니지 않게).
-                나머지는 「그 외」로 묶이니, 색으로 보고 싶은 칩은 태그 관리에서 위로 올리세요.<br>
+                · 색은 <b>많은 순 앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과 구별되지 않아,
+                나머지는 「그 외」로 묶고 이름은 아래 잔줄에 답니다.<br>
                 · 「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을 수 있어 「서버 분류 대기」가 부풀어 보입니다.
             </p>
         </div>`;

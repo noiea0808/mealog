@@ -13,6 +13,8 @@
 export const MOMENT_ANALYTICS_DAILY_MAX_SPAN = 31;
 
 import { normalizeFoodForm } from '../utils/food-form-normalize.js';
+import { effectiveCuisineForAnalytics } from '../analytics/meal-analytics-tags.js';
+import { CUISINE_CATEGORIES, MIXED_CUISINE } from '../utils/food-dictionary.js';
 
 export const trimmed = (v) => (v == null ? '' : String(v).trim());
 
@@ -142,7 +144,7 @@ export const CHOICE_AXIS_SPECS = [
     },
     {
         key: 'what',
-        label: '무엇을',
+        label: '무엇을 · 형태',
         tagKey: 'category',
         /** 사용자가 고른 값이 없으면 분류기가 채운 값을 쓴다 — 분포는 「최종」 축이 맞다 */
         value: (m) => foodUserValue(m) || foodAutoValue(m),
@@ -150,6 +152,34 @@ export const CHOICE_AXIS_SPECS = [
         /** 이 축만 미입력이 세 갈래로 갈린다(거부·대기·상세없음) */
         emptyPaths: true,
         note: 'category / snackType · 자동 분류 있음'
+    },
+    {
+        /**
+         * 무엇을의 **다른 절단면** — 형태(밥류·면류…)와 같은 자리를 두고 경쟁하지 않는다.
+         * 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른 질문이라 축이 둘이다
+         * (docs/food-category-auto-classification.md §6.2).
+         *
+         * 이 축은 **관리자 태그 목록에 없다** — 사용자에게 묻지 않고 분류기가 붙이는
+         * 값이라 편집란이 없다. 그래서 목록을 사전에서 직접 가져온다.
+         *
+         * 값을 고르는 규칙은 앱의 읽기 계층(`effectiveCuisineForAnalytics`)을 **그대로**
+         * 쓴다: `cuisineAuto` → 옛 사용자 값이 종류 축이면 그것 → 상세 텍스트 재분류.
+         * 세 번째 덕분에 형태 축에서 「목록 밖」으로 밀려나던 옛 한식·양식 기록이
+         * 여기서는 제자리를 찾는다.
+         */
+        key: 'cuisine',
+        label: '무엇을 · 종류',
+        tagKey: '__cuisine',
+        fixedList: [...CUISINE_CATEGORIES, MIXED_CUISINE],
+        value: (m) => trimmed(effectiveCuisineForAnalytics(m)),
+        /**
+         * 이 축은 **직접/자동을 가르지 않는다.** 사용자가 고르는 칸이 애초에 없어서다.
+         * 옛 기록 일부는 사용자가 직접 고른 값이지만, 그걸 가르려면 옛 어휘 집합을
+         * 여기 한 벌 더 두어야 한다 — 두 곳에 두면 갈린다.
+         */
+        noSourceSplit: true,
+        auto: () => false,
+        note: 'cuisineAuto · 사용자에게 묻지 않는 축'
     },
     {
         key: 'withWhom',
@@ -215,14 +245,28 @@ function tallyAxes(axes, meal) {
 export const AXIS_CHART_SLOTS = 8;
 
 /**
- * 색을 **관리자 목록의 순서**로 준다 — 건수 순이 아니라.
+ * 행을 **많은 순**으로 세우고 그 순위대로 색 슬롯을 준다.
  *
- * 건수 순으로 주면 기간을 7일에서 30일로 바꾸는 것만으로 같은 선택지의 색이 바뀐다.
- * 색은 「그 값이 무엇인가」를 가리켜야지 「이번에 몇 등인가」를 가리키면 안 된다.
- * 덤으로, 「태그 관리」에서 칩을 위로 끌어올리면 그 칩이 색을 받는다 — 무엇을 색으로
- * 볼지가 관리자 손에 남는다.
+ * 원래는 관리자 목록 순서로 색을 고정했다 — 기간을 바꿔도 색이 옮겨 다니지 않게.
+ * 그 대가로 목록 뒤쪽의 큰 값(예: 「커피」)이 회색 「그 외」에 묻혔고, 정작 크기 순으로
+ * 읽고 싶은 그림에서 그건 손해가 더 컸다. **색이 순위를 따라가는 것의 위험은
+ * 「기간을 바꾸면 색이 바뀐다」인데, 이 화면은 막대 바로 아래 범례가 모든 칸의 이름을
+ * 대고 있어 색을 맞춰 볼 일이 없다** — 그래서 순위 쪽을 골랐다.
+ *
+ * 건수 0인 선택지는 슬롯을 받지 않고 뒤로 밀린다(막대에 칸이 안 생기므로). 대신
+ * 범례가 흐린 칩으로 실어 「아무도 안 고른 칩」이라는 사실을 남긴다.
  */
-const slotOfIndex = (i) => (i < AXIS_CHART_SLOTS ? i : null);
+function rankRows(rows) {
+    const nonzero = rows.filter((r) => r.n > 0).sort((a, b) => b.n - a.n || a.order - b.order);
+    const zero = rows.filter((r) => r.n === 0);
+    nonzero.forEach((r, i) => {
+        r.slot = i < AXIS_CHART_SLOTS ? i : null;
+    });
+    zero.forEach((r) => {
+        r.slot = null;
+    });
+    return [...nonzero, ...zero];
+}
 
 /** 표의 행들 → 누적 바 한 줄. 분모는 축의 전체 기록 수라 바의 총 길이가 100%다. */
 function buildAxisChart(rows, outside, empty, total) {
@@ -259,15 +303,18 @@ function buildAxisChart(rows, outside, empty, total) {
 export function buildAxisBreakdown(result, tagLists = {}) {
     return CHOICE_AXIS_SPECS.map((spec) => {
         const bucket = result.axes?.[spec.key] || emptyAxisBucket();
-        const list = Array.isArray(tagLists[spec.tagKey]) ? tagLists[spec.tagKey] : [];
+        const fromAdmin = Array.isArray(tagLists[spec.tagKey]) ? tagLists[spec.tagKey] : null;
+        const list = fromAdmin || spec.fixedList || [];
         const listed = new Set(list);
         const total = bucket.total;
 
-        const rows = list.map((tag, i) => {
-            const cell = bucket.values[tag] || { n: 0, auto: 0, direct: 0 };
-            // 건수가 0이어도 슬롯은 지킨다 — 기간을 바꿔 값이 생겨도 색이 그대로다
-            return { label: tag, ...cell, rate: pct(cell.n, total), inList: true, slot: slotOfIndex(i) };
-        });
+        const rows = rankRows(
+            list.map((tag, i) => {
+                const cell = bucket.values[tag] || { n: 0, auto: 0, direct: 0 };
+                // order 는 목록 순서 — 건수가 같을 때 순서를 흔들리지 않게 하는 자다
+                return { label: tag, ...cell, rate: pct(cell.n, total), inList: true, order: i, slot: null };
+            })
+        );
 
         // 목록 밖 값 — 옛 어휘(한식·양식…)나 자유 입력이 여기 모인다
         const outside = Object.entries(bucket.values)
@@ -288,7 +335,9 @@ export function buildAxisBreakdown(result, tagLists = {}) {
             label: spec.label,
             note: spec.note,
             freeText: !!spec.freeText,
-            tagListMissing: list.length === 0,
+            // 고정 목록 축은 「못 읽었다」가 성립하지 않는다 — 읽어 오는 것이 아니다
+            tagListMissing: !spec.fixedList && list.length === 0,
+            noSourceSplit: !!spec.noSourceSplit,
             total,
             filled: bucket.filled,
             direct: bucket.direct,

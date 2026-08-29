@@ -281,9 +281,10 @@ test('「무엇을」 분포는 최종 값 축이다 — 자동 분류가 채운
     ];
     const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
     const what = byKey(b, 'what');
+    // 많은 순으로 선다. 동점이면 목록 순서가 순서를 잡는다(밥류가 기타보다 앞)
     assert.deepEqual(what.rows.map((r) => [r.label, r.n, r.direct, r.auto]), [
-        ['밥류', 1, 1, 0],
         ['면류', 2, 0, 2],
+        ['밥류', 1, 1, 0],
         ['기타', 1, 1, 0]
     ]);
     assert.equal(what.direct, 2);
@@ -321,6 +322,34 @@ test('「어디서」는 간식 칩과 끼니 자유 입력을 한 축에서 센
     assert.equal(row(where, '카페').n, 1);
     assert.equal(row(where, '집').auto, 1, '자동 적용값도 목록 칩에 선다');
     assert.equal(where.outside.n, 1, '가게 이름은 목록 밖');
+});
+
+test('「무엇을 · 종류」는 형태와 다른 절단면이다 — 옛 요리 종류 값이 여기서 제자리를 찾는다', () => {
+    const mk = (o) => Object.assign({ userId: 'u1', date: '2026-08-10' }, o);
+    const rows = [
+        mk({ category: '밥류', categorySource: 'user', cuisineAuto: '한식' }),
+        mk({ categoryAuto: '면류', categorySource: 'local', cuisineAuto: '중식' }),
+        // 옛 기록: 사용자가 「무엇을」에 요리 종류를 골랐다. 형태 축에서는 목록 밖이다
+        mk({ category: '양식', categorySource: 'user' }),
+        mk({}) // 어느 축으로도 값이 없다
+    ];
+    const b = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS);
+    const form = byKey(b, 'what');
+    const cuisine = byKey(b, 'cuisine');
+
+    assert.equal(form.label, '무엇을 · 형태');
+    assert.equal(form.outside.n, 1, '「양식」은 형태 축의 목록 밖');
+    assert.deepEqual(form.outside.samples.map((x) => x.label), ['양식']);
+
+    assert.equal(cuisine.label, '무엇을 · 종류');
+    assert.equal(cuisine.tagListMissing, false, '관리자 목록이 없어도 사전이 목록을 준다');
+    assert.equal(cuisine.filled, 3, '「양식」이 여기서는 값으로 선다');
+    assert.deepEqual(
+        cuisine.rows.filter((r) => r.n > 0).map((r) => r.label).sort(),
+        ['양식', '중식', '한식']
+    );
+    assert.equal(cuisine.outside.n, 0, '사전 어휘라 목록 밖이 없다');
+    assert.equal(cuisine.noSourceSplit, true, '묻지 않는 축이라 직접/자동을 가르지 않는다');
 });
 
 test('추이의 자동적용 열은 축을 하나라도 자동으로 채운 기록만 센다', () => {
@@ -371,31 +400,42 @@ test('막대의 몫은 빠짐없이 100%가 된다 — 칸·그 외·목록 밖�
     assert.ok(Math.abs(sum - 100) < 1e-9, `몫의 합이 ${sum}`);
 });
 
-test('색 슬롯은 관리자 목록 순서로 고정된다 — 건수 순이 아니다', () => {
+test('행은 많은 순으로 서고 색 슬롯도 그 순위를 따른다', () => {
     const mk = (mealType, times) => Array.from({ length: times }, () => ({ userId: 'u1', date: '2026-08-10', mealType }));
-    // 「외식」이 압도적이어도 「집밥」의 슬롯을 빼앗지 않는다
-    const many = [...mk('집밥', 1), ...mk('외식', 50)];
-    const few = [...mk('집밥', 50), ...mk('외식', 1)];
-    const slotOf = (rows, label) =>
-        buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS)
-            .find((a) => a.key === 'how')
-            .rows.find((r) => r.label === label).slot;
-    assert.equal(slotOf(many, '집밥'), 0);
-    assert.equal(slotOf(few, '집밥'), 0, '건수가 뒤집혀도 같은 슬롯');
-    assert.equal(slotOf(many, '외식'), 1);
-    assert.equal(slotOf(few, '외식'), 1);
+    const axisOf = (rows) =>
+        buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS).find((a) => a.key === 'how');
+
+    // 목록 순서는 집밥 → 외식 → 기타. 건수가 뒤집히면 순서도 뒤집힌다
+    const a1 = axisOf([...mk('집밥', 1), ...mk('외식', 50)]);
+    assert.deepEqual(a1.rows.map((r) => [r.label, r.slot]), [['외식', 0], ['집밥', 1], ['기타', null]]);
+
+    const a2 = axisOf([...mk('집밥', 50), ...mk('외식', 1)]);
+    assert.deepEqual(a2.rows.map((r) => [r.label, r.slot]), [['집밥', 0], ['외식', 1], ['기타', null]]);
+
+    // 막대의 칸 순서도 같다 — 범례가 이 순서를 그대로 따라간다
+    assert.deepEqual(a1.chart.segments.map((s) => s.label), ['외식', '집밥']);
+});
+
+test('동점이면 관리자 목록 순서가 순서를 잡는다 — 실행마다 흔들리지 않게', () => {
+    const mk = (mealType) => ({ userId: 'u1', date: '2026-08-10', mealType });
+    const axis = buildAxisBreakdown(
+        analyzeMomentRows([mk('기타'), mk('외식'), mk('집밥')], '2026-08-10', '2026-08-10'),
+        TAGS
+    ).find((a) => a.key === 'how');
+    assert.deepEqual(axis.rows.map((r) => r.label), ['집밥', '외식', '기타']);
 });
 
 test('슬롯을 넘는 선택지는 「그 외」로 접히지만 표에는 그대로 남는다', () => {
     const list = Array.from({ length: 11 }, (_, i) => `t${i}`);
-    const rows = list.map((t) => ({ userId: 'u1', date: '2026-08-10', mealType: t }));
+    // 건수를 계단으로 줘서 순위가 목록 순서와 같아지게 한다
+    const rows = list.flatMap((t, i) => Array.from({ length: 11 - i }, () => ({ userId: 'u1', date: '2026-08-10', mealType: t })));
     const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), { mealType: list }).find(
         (a) => a.key === 'how'
     );
     assert.equal(axis.chart.segments.length, AXIS_CHART_SLOTS, '칸은 슬롯 수까지만');
     assert.deepEqual(axis.chart.segments.map((s) => s.slot), [0, 1, 2, 3, 4, 5, 6, 7]);
     assert.equal(axis.chart.folded.distinct, 3, '나머지 셋이 접힌다');
-    assert.equal(axis.chart.folded.n, 3);
+    assert.equal(axis.chart.folded.n, 3 + 2 + 1, '접힌 것들의 건수 합');
     assert.equal(axis.rows.length, 11, '표는 열한 줄 전부 들고 있다');
     assert.equal(axis.rows[8].slot, null, '접힌 행은 슬롯이 없다');
 });
@@ -428,12 +468,16 @@ test('「무엇을」은 표기만 달랐던 옛 형태 축 값을 제 칩으로
     assert.deepEqual(axis.outside.samples.map((s) => s.label), ['한식']);
 });
 
-test('건수 0인 선택지는 칸을 만들지 않지만 슬롯은 지킨다', () => {
+test('건수 0인 선택지는 칸도 슬롯도 없이 뒤로 밀린다 — 범례에는 남는다', () => {
     const rows = [{ userId: 'u1', date: '2026-08-10', mealType: '기타' }];
     const axis = buildAxisBreakdown(analyzeMomentRows(rows, '2026-08-10', '2026-08-10'), TAGS).find(
         (a) => a.key === 'how'
     );
     assert.deepEqual(axis.chart.segments.map((s) => s.label), ['기타'], '값이 있는 것만 칸이 된다');
-    assert.equal(axis.rows[0].slot, 0, '건수 0인 「집밥」도 제 슬롯을 지킨다');
-    assert.equal(axis.chart.segments[0].slot, 2, '「기타」는 목록의 셋째라 셋째 색');
+    assert.equal(axis.chart.segments[0].slot, 0, '유일한 값이라 첫 색');
+    assert.deepEqual(axis.rows.map((r) => [r.label, r.slot]), [
+        ['기타', 0],
+        ['집밥', null],
+        ['외식', null]
+    ]);
 });
