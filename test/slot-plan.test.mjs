@@ -29,7 +29,9 @@ import {
     withTodayRevision,
     renameSlotEverywhere,
     revisionCount,
+    countEnabledSlots,
     groupMealsByUserSlotForDate,
+    MAX_ENABLED_SLOTS,
     MAX_SLOTS_PER_REVISION
 } from '../js/utils/slot-plan.js';
 
@@ -222,8 +224,8 @@ describe('sanitizeSlots — 남의 기기·구버전을 신뢰하지 않는다',
         assert.equal(out[0].key, 'a');
     });
 
-    it('12개 상한으로 자른다', () => {
-        const many = Array.from({ length: 20 }, (_, i) => ({
+    it('저장 배열 총 상한으로 자른다', () => {
+        const many = Array.from({ length: MAX_SLOTS_PER_REVISION + 8 }, (_, i) => ({
             key: `k${String(i).padStart(2, '0')}`,
             base: 'lunch',
             label: `슬롯${i}`,
@@ -378,6 +380,29 @@ describe('groupMealsByUserSlotForDate — 타임라인 순회 (§3)', () => {
             groups.map((g) => g.slot.label),
             ['야식', '밤 간식']
         );
+    });
+});
+
+describe('상한 두 개 — 세는 대상이 다르다', () => {
+    it('피커 상한은 사용 중인 수만 센다 — 해제분은 자리를 안 먹는다', () => {
+        const slots = [
+            ...Array.from({ length: MAX_ENABLED_SLOTS }, (_, i) => ({
+                key: `on${i}`, base: 'lunch', label: `쓰는${i}`, enabled: true
+            })),
+            { key: 'off1', base: 'lunch', label: '안쓰는', enabled: false }
+        ];
+        assert.equal(countEnabledSlots(slots), MAX_ENABLED_SLOTS);
+        // 해제분까지 13개지만 저장 상한(24)에는 여유가 있다 — 잘리지 않는다
+        assert.equal(sanitizeSlots(slots).length, 13);
+    });
+
+    it('저장 상한이 피커 상한보다 커야 해제분을 담을 수 있다', () => {
+        assert.ok(MAX_SLOTS_PER_REVISION > MAX_ENABLED_SLOTS);
+    });
+
+    it('countEnabledSlots: enabled 생략은 사용 중으로 본다 (기본값 호환)', () => {
+        assert.equal(countEnabledSlots([{ base: 'lunch', label: 'a' }, { base: 'lunch', label: 'b', enabled: false }]), 1);
+        assert.equal(countEnabledSlots(null), 0);
     });
 });
 

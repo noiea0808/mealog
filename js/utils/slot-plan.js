@@ -12,8 +12,18 @@
 import { SLOTS } from '../constants.js';
 
 export const SLOT_PLAN_SCHEMA = 1;
-/** 한 개정판 안의 슬롯 상한 — 두 열 × 6줄 (§2.1) */
-export const MAX_SLOTS_PER_REVISION = 12;
+/**
+ * 상한은 둘이고, 세는 대상이 다르다.
+ *
+ * - `MAX_ENABLED_SLOTS` — **피커에 보이는 수**. 두 열 × 6줄이 한 화면이라는 제약.
+ * - `MAX_SLOTS_PER_REVISION` — 저장 배열 총 길이(해제분 포함). 슬롯 삭제가 없으므로
+ *   (해제만 가능) 안 쓰는 슬롯이 목록에 쌓이는데, 그게 피커 상한을 먹으면 안 된다.
+ *
+ * 총 상한에 닿으면 새로 만드는 대신 **해제된 슬롯을 되살려 이름을 고치는** 길이 있다 —
+ * 그래서 막다른 길이 아니다.
+ */
+export const MAX_ENABLED_SLOTS = 12;
+export const MAX_SLOTS_PER_REVISION = 24;
 export const SLOT_LABEL_MAX_CHARS = 12;
 /** 개정판 수가 이 값을 넘으면 진단 로그만 남긴다 — 가지치기하지 않는다 (§5.6) */
 export const REVISION_COUNT_DIAG_THRESHOLD = 200;
@@ -283,6 +293,11 @@ export function renameSlotEverywhere(plan, slotKey, newLabel) {
         };
     }
     return touched ? { ...plan, revisions: nextRevisions } : plan;
+}
+
+/** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽 */
+export function countEnabledSlots(slots) {
+    return (Array.isArray(slots) ? slots : []).filter((s) => s && s.enabled !== false).length;
 }
 
 /** 개정판 수 — REVISION_COUNT_DIAG_THRESHOLD 초과 시 호출부가 diag 한 줄 남긴다 (§5.6) */

@@ -15,6 +15,8 @@ import {
     withTodayRevision,
     renameSlotEverywhere,
     revisionCount,
+    countEnabledSlots,
+    MAX_ENABLED_SLOTS,
     MAX_SLOTS_PER_REVISION,
     SLOT_LABEL_MAX_CHARS,
     REVISION_COUNT_DIAG_THRESHOLD
@@ -77,8 +79,8 @@ function rowHtml(slot, idx) {
             </button>
         </span>
         <button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="${slot.enabled ? '사용 중' : '사용 안 함'}">${slot.enabled ? '사용' : '해제'}</button>
-        <button type="button" class="slot-plan-row__menu" data-action="menu" aria-label="더보기">
-            <i data-lucide="ellipsis-vertical" aria-hidden="true"></i>
+        <button type="button" class="slot-plan-row__dup" data-action="dup" aria-label="이 슬롯 복제">
+            <i data-lucide="copy-plus" aria-hidden="true"></i>
         </button>
     </div>`;
 }
@@ -103,11 +105,12 @@ function render() {
 
     list.innerHTML =
         draft.map((s, i) => rowHtml(s, i)).join('') + (addChooserOpen ? addChooserHtml() : '');
-    if (countEl) countEl.textContent = `${draft.length} / ${MAX_SLOTS_PER_REVISION}`;
+    // 세는 건 '사용 중'인 수 — 해제한 슬롯은 피커에 안 나오므로 상한과 무관하다
+    if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
     if (notice) {
         notice.textContent = `사용 여부·순서 변경은 ${formatNoticeDate(localTodayIso())} 기록부터 적용됩니다. 지난 기록은 그대로 남습니다.`;
     }
-    if (addBtn) addBtn.disabled = draft.length >= MAX_SLOTS_PER_REVISION;
+    if (addBtn) addBtn.disabled = !!addBlockedReason();
     scheduleLucideIcons(list);
 }
 
@@ -170,43 +173,50 @@ function onToggle(idx) {
     render();
 }
 
-function onMenu(idx, anchorBtn) {
+/**
+ * 새 슬롯을 넣을 수 있는지 — 두 상한을 함께 본다.
+ * 슬롯 삭제가 없으므로(해제만) 해제분이 피커 상한을 먹지 않게 나눠 센다.
+ */
+function addBlockedReason() {
+    if (!draft) return '';
+    if (countEnabledSlots(draft) >= MAX_ENABLED_SLOTS) {
+        return `사용 중인 슬롯은 ${MAX_ENABLED_SLOTS}개까지예요. 안 쓰는 슬롯을 해제해 주세요.`;
+    }
+    if (draft.length >= MAX_SLOTS_PER_REVISION) {
+        return '슬롯 목록이 가득 찼어요. 해제해 둔 슬롯의 이름을 고쳐서 쓰세요.';
+    }
+    return '';
+}
+
+/** 복제: base 상속, key 는 새로(null → 저장 시 구체화), 이름만 새로 짓게 (§4.2) */
+function onDuplicate(idx) {
     if (!draft?.[idx]) return;
-    // 경량 인라인 메뉴: 복제 / 삭제
-    document.querySelectorAll('.slot-plan-row__popmenu').forEach((el) => el.remove());
-    const menu = document.createElement('div');
-    menu.className = 'slot-plan-row__popmenu';
-    const canAdd = draft.length < MAX_SLOTS_PER_REVISION;
-    menu.innerHTML = `
-        <button type="button" data-pop="dup"${canAdd ? '' : ' disabled'}>복제</button>
-        <button type="button" data-pop="del">삭제</button>`;
-    anchorBtn.closest('.slot-plan-row')?.appendChild(menu);
-    menu.addEventListener('click', (e) => {
-        const act = e.target.closest('[data-pop]')?.getAttribute('data-pop');
-        menu.remove();
-        if (!act || !draft?.[idx]) return;
-        syncDraftLabelsFromInputs();
-        if (act === 'dup' && draft.length < MAX_SLOTS_PER_REVISION) {
-            // 복제: base 상속, key 는 새로(null → 저장 시 구체화), 이름만 새로 짓게 (§4.2)
-            const src = draft[idx];
-            draft.splice(idx + 1, 0, { key: null, base: src.base, label: `${src.label}2`.slice(0, SLOT_LABEL_MAX_CHARS), enabled: true });
-            render();
-            const rows = document.querySelectorAll('#slotPlanSettingsList .slot-plan-row');
-            rows[idx + 1]?.querySelector('[data-action="label"]')?.select?.();
-        } else if (act === 'del') {
-            if (draft.length <= 1) {
-                showToast('슬롯은 최소 1개 필요합니다.', 'error');
-                return;
-            }
-            draft.splice(idx, 1);
-            render();
-        }
+    syncDraftLabelsFromInputs();
+    const blocked = addBlockedReason();
+    if (blocked) {
+        showToast(blocked, 'error');
+        return;
+    }
+    const src = draft[idx];
+    draft.splice(idx + 1, 0, {
+        key: null,
+        base: src.base,
+        label: `${src.label}2`.slice(0, SLOT_LABEL_MAX_CHARS),
+        enabled: true
     });
+    render();
+    const rows = document.querySelectorAll('#slotPlanSettingsList .slot-plan-row');
+    rows[idx + 1]?.querySelector('[data-action="label"]')?.select?.();
 }
 
 function onAddBase(baseId) {
-    if (!draft || draft.length >= MAX_SLOTS_PER_REVISION) return;
+    if (!draft) return;
     syncDraftLabelsFromInputs();
+    const blocked = addBlockedReason();
+    if (blocked) {
+        showToast(blocked, 'error');
+        return;
+    }
     const def = SLOTS.find((s) => s.id === baseId);
     if (!def) return;
     draft.push({ key: null, base: baseId, label: def.label, enabled: true });
@@ -268,6 +278,12 @@ function bindDrag(list) {
 async function onSave() {
     if (!draft) return;
     syncDraftLabelsFromInputs();
+
+    // 전부 해제하면 피커에 고를 게 없어진다 — 되돌릴 수는 있지만 막는 편이 친절하다
+    if (countEnabledSlots(draft) === 0) {
+        showToast('슬롯을 하나 이상 사용해 주세요.', 'error');
+        return;
+    }
 
     const settings = window.userSettings || {};
     let plan = settings.slotPlan || null;
@@ -345,7 +361,7 @@ function bindOnce() {
         const idx = row ? Number(row.getAttribute('data-idx')) : -1;
         const action = btn.getAttribute('data-action');
         if (action === 'toggle') onToggle(idx);
-        else if (action === 'menu') onMenu(idx, btn);
+        else if (action === 'dup') onDuplicate(idx);
         else if (action === 'edit') {
             const input = row?.querySelector('[data-action="label"]');
             input?.focus();

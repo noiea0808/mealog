@@ -12416,7 +12416,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: #f1f5f9;
     color: #94a3b8;
 }
-.slot-plan-row__menu {
+.slot-plan-row__dup {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -12427,40 +12427,14 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     color: #94a3b8;
     -webkit-tap-highlight-color: transparent;
 }
-.slot-plan-row__menu:active {
+.slot-plan-row__dup:active {
     background: #f1f5f9;
+    color: #475569;
 }
-.slot-plan-row__menu [data-lucide],
-.slot-plan-row__menu .lucide {
-    width: 1rem;
-    height: 1rem;
-}
-.slot-plan-row__popmenu {
-    position: absolute;
-    right: 2rem;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 5;
-    display: flex;
-    gap: 0.25rem;
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.625rem;
-    padding: 0.25rem;
-    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
-}
-.slot-plan-row__popmenu button {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: #334155;
-    padding: 0.3rem 0.6rem;
-    border-radius: 0.5rem;
-}
-.slot-plan-row__popmenu button:active {
-    background: #f1f5f9;
-}
-.slot-plan-row__popmenu button[disabled] {
-    color: #cbd5e1;
+.slot-plan-row__dup [data-lucide],
+.slot-plan-row__dup .lucide {
+    width: 0.9375rem;
+    height: 0.9375rem;
 }
 .slot-plan-settings__footer {
     padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
