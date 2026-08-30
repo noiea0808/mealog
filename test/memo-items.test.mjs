@@ -36,6 +36,7 @@ import {
     defaultMemoKey,
     defaultMemoItems,
     isDefaultMemoKey,
+    defaultMemoItemByKey,
     MEMO_SLOT_ID,
     MEMO_LABEL_MAX_CHARS,
     DEFAULT_MEMO_ICON,
@@ -365,38 +366,69 @@ describe('dayTimelineUnits — 타임라인이 실제로 쓰는 순회', () => {
 });
 
 describe('기본 메모 항목 (§2.6)', () => {
-    it('개정판이 없어도 체중·혈당·하루 소감이 순서대로 딸려 온다', () => {
+    it('개정판이 없어도 체중·운동·화장실·하루 소감이 순서대로 딸려 온다', () => {
         const items = effectiveSlots({}, '2026-09-05', TODAY);
         const memos = memoItemsOnly(items);
-        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당', '하루 소감']);
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '운동', '화장실', '하루 소감']);
         assert.equal(memos[0].key, defaultMemoKey('weight'));
         assert.equal(memos[0].unit, 'kg');
-        assert.equal(memos[1].unit, 'mg/dL');
-        assert.equal('unit' in memos[2], false, '하루 소감은 숫자 메모가 아니다');
+        // 체중만 숫자 메모다 — 나머지는 단위 필드 자체가 없다
+        assert.equal('unit' in memos[1], false);
+        assert.equal('unit' in memos[2], false);
+        assert.equal('unit' in memos[3], false, '하루 소감은 숫자 메모가 아니다');
+    });
+
+    /**
+     * 혈당은 기본에서 내렸지만(§2.6) 정의는 남아 있어야 한다. 개정판을 한 번도
+     * 저장하지 않은 채 혈당을 기록해 둔 사용자의 값이 '메모'로 떨어지고 단위가
+     * 사라지면, 이미 적어 둔 숫자를 고칠 수 없게 된다.
+     */
+    it('내린 기본 메모(혈당)는 새로 깔리지 않지만 이름·단위는 계속 풀린다', () => {
+        const memos = memoItemsOnly(effectiveSlots({}, '2026-09-05', TODAY));
+        assert.equal(memos.some((m) => m.label === '혈당'), false, '새로 깔리지 않는다');
+
+        const found = defaultMemoItemByKey(defaultMemoKey('bloodSugar'));
+        assert.equal(found.label, '혈당');
+        assert.equal(found.unit, 'mg/dL');
+
+        const view = resolveSlotView(
+            { slotId: MEMO_SLOT_ID, slotKey: defaultMemoKey('bloodSugar') },
+            {},
+            TODAY
+        );
+        assert.equal(view.label, '혈당');
+        assert.equal(view.unit, 'mg/dL');
+    });
+
+    it('이미 개정판에 있는 혈당은 그대로 남는다 — 쓰던 사람에게서 사라지지 않는다', () => {
+        const bs = { key: defaultMemoKey('bloodSugar'), kind: 'memo', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0, enabled: true };
+        const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), bs]) };
+        const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
+        assert.equal(memos.some((m) => m.label === '혈당'), true);
     });
 
     it('메모 없는 옛 개정판에도 덧붙는다 — 마이그레이션 없이', () => {
         const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심')]) };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.equal(memos.length, 3);
+        assert.equal(memos.length, 4);
         assert.equal(slotItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY)).length, 1);
     });
 
     it('빠진 기본 항목은 메모 구간 **맨 앞**에 들어간다 — 체중이 위에 보여야 한다', () => {
-        const mine = memo('mine', '운동', 'dumbbell');
+        const mine = memo('mine', '수면', 'moon');
         const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine]) };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당', '하루 소감', '운동']);
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '운동', '화장실', '하루 소감', '수면']);
     });
 
     it('이미 있는 기본 항목의 자리는 건드리지 않는다 — 사용자가 끌어 정한 순서다', () => {
-        const [w, g, j] = defaultMemoItems();
-        const mine = memo('mine', '운동', 'dumbbell');
+        const [w, e, t, j] = defaultMemoItems();
+        const mine = memo('mine', '수면', 'moon');
         const settings = {
-            slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine, w, g, j])
+            slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine, w, e, t, j])
         };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.deepEqual(memos.map((m) => m.label), ['운동', '체중', '혈당', '하루 소감']);
+        assert.deepEqual(memos.map((m) => m.label), ['수면', '체중', '운동', '화장실', '하루 소감']);
     });
 
     it('해제해 둔 기본 메모는 다시 켜지지 않는다 — key 가 개정판에 살아 있다', () => {
