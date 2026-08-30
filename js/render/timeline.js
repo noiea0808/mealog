@@ -1122,23 +1122,23 @@ function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opt
      * 항목 이름이다. 이름이 어느 줄에 있을지가 기록마다 달라지면 카드를 훑을 때
      * 눈이 매번 다시 자리를 찾아야 한다.
      *
-     * 숫자 메모는 값이 본체이므로(§2.7) 값이 제목을 차지하고, 내용은 끼니의
-     * 코멘트와 같은 자리(회색 인용 줄)로 내려간다. 텍스트 메모는 내용이 곧 제목이라
-     * 그 줄이 비어 있다.
+     * 내용은 **언제나** 회색 인용 줄이다 — 하루 소감 카드와 같다. 굵은 줄은
+     * 숫자 메모의 값만 차지한다(§2.7). 값은 훑어보는 숫자열이라 굵어야 하고,
+     * 내용은 읽는 글이라 그 무게를 나눠 가지면 둘 다 안 읽힌다.
      */
     const note = String(r.comment || '').trim();
     const valueText =
         Number.isFinite(Number(r.value)) && r.value !== '' && r.value != null
             ? `${Number(r.value)}${slot.unit || ''}`
             : '';
-    const body = valueText || note;
-    let noteText = valueText ? note : '';
     /**
-     * 공유 캡처는 한 줄짜리라 회색 줄이 없다 — 거기서만 값과 덧말을 한 줄로 잇는다.
-     * 안 그러면 캡처에서 덧말이 통째로 사라진다.
+     * 공유 캡처는 한 줄짜리라 회색 줄이 없다 — 거기서만 값과 내용을 한 줄로 잇는다.
+     * 안 그러면 캡처에서 내용이 통째로 사라진다.
      */
-    const titleText = forShareCapture && valueText && note ? `${valueText} · ${note}` : body;
-    if (forShareCapture) noteText = '';
+    const titleText = forShareCapture
+        ? (valueText && note ? `${valueText} · ${note}` : valueText || note)
+        : valueText;
+    const noteText = forShareCapture ? '' : note;
     const photoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = photoUrls.length > 0;
     const photoHtml = hasPhoto
@@ -1175,10 +1175,10 @@ function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opt
         iconKind: 'snack',
         iconToneClass: 'home-feed-card__icon--tone-memo',
         /**
-         * 이름은 **늘** meta 에 있다. 본문이 없는 메모(§4.6 "있었다")는 제목 줄이
-         * 비는데, 거기에 이름을 한 번 더 적으면 '운동 / 운동'이 된다. 빈 줄은
-         * CSS 가 접는다(.home-feed-card--memo .home-feed-card__title:empty).
-         * 그 카드에는 이름과 시각 태그가 남고, 그게 그 기록의 전부다.
+         * 이름은 **늘** meta 에 있다. 값이 없는 메모는 굵은 줄이 비는데, 거기에
+         * 이름을 한 번 더 적으면 '운동 / 운동'이 된다. 빈 줄은 CSS 가 접는다
+         * (.home-feed-card--memo .home-feed-card__title:empty) — 하루 소감 카드가
+         * 내용만 있을 때 제목을 비우는 것과 같은 처리다.
          */
         metaHtml: escapeHtml(slot.label),
         titleHtml: escapeHtml(titleText),
