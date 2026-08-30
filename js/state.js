@@ -96,11 +96,9 @@ export const appState = {
     /** 신규 기록 모달: 시간 자동 채우기 1회 제한용 */
     entryMealClockDidSeedModalOpenMain: false,
     entryMealClockDidSeedModalOpenSnack: false,
-    entryMealClockDidApplyPhotoExifMain: false,
-    entryMealClockDidApplyPhotoExifSnack: false,
-    /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
-    entryMealClockPendingExifHhmmMain: null,
-    entryMealClockPendingExifHhmmSnack: null,
+    /** 사용자가 시간을 직접 고른 뒤 — 자동 기본값이 더는 건드리지 않는다 */
+    entryMealClockAutoLockedMain: false,
+    entryMealClockAutoLockedSnack: false,
     /** 기록 시간 입력 출처: 'now' | 'photo' | 'manual' | null */
     entryMealClockSourceMain: null,
     entryMealClockSourceSnack: null,

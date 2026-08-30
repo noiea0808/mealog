@@ -265,11 +265,20 @@ function applyEntryGaugeDialUi() {
     );
 }
 
-/** 시간을 켜는 순간의 기본값 — 빈 칸이 아니라 현재 시각 */
+/**
+ * 시간을 켜는 순간의 기본값.
+ *
+ * 잠긴 상태(수정 모드)에서는 예전 그대로 '미입력'이다 — 이미 저장된 기록에
+ * 오늘의 시각을 슬며시 밀어 넣지 않는다.
+ */
 function applyDefaultMealClockWhenTimeEnabled(isMain) {
-    if (!getMealClock24FromModal(isMain)) {
-        applyMealClockFromDate(isMain, new Date(), 'now');
+    if (getMealClock24FromModal(isMain)) return;
+    if (isMealClockAutoLocked(isMain)) {
+        applyMealClockRowFrom24(isMain, '');
+        setEntryMealClockSource(isMain, 'empty');
+        return;
     }
+    applyAutoMealClockDefault(isMain);
 }
 
 /** 상세기록 칩 prefs → 만족도·포만감·시간 on/off (개별 토글 대체) */
@@ -318,6 +327,110 @@ const MEAL_CLOCK_SOURCE_LABELS = {
     manual: '직접 입력',
     empty: '미입력',
 };
+
+/**
+ * 시간 자동 기본값 — 사진이 있으면 사진 시각, 없으면 지난번에 쓰던 방식.
+ *
+ * 지난번 방식으로 기억하는 것은 '현재 시각'과 '미입력' 둘뿐이다. 사진 시각과
+ * 직접 입력은 그때 그 기록에 대한 판단이지 다음 기록의 기본값이 아니다.
+ */
+const MEAL_CLOCK_DEFAULT_SOURCE_KEY = 'mealog_meal_clock_default_source';
+
+function readMealClockDefaultSource() {
+    try {
+        const v = localStorage.getItem(MEAL_CLOCK_DEFAULT_SOURCE_KEY);
+        if (v === 'now' || v === 'empty') return v;
+    } catch (_) {}
+    return 'now';
+}
+
+function rememberMealClockDefaultSource(source) {
+    if (source !== 'now' && source !== 'empty') return;
+    try {
+        localStorage.setItem(MEAL_CLOCK_DEFAULT_SOURCE_KEY, source);
+    } catch (_) {}
+}
+
+function localTodayIso() {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+/** 지금 쓰고 있는 기록이 오늘 것인가 — '현재 시각'은 오늘 기록에만 뜻이 있다 */
+function isEntryDateToday() {
+    const d = appState.currentEditingDate;
+    if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return true;
+    return d === localTodayIso();
+}
+
+/**
+ * 자동 기본값 잠금 — 사용자가 시간을 직접 고른 뒤로는 자동으로 건드리지 않는다.
+ * 수정 모드는 열 때부터 잠긴 상태다(저장된 값이 곧 사용자의 선택이다).
+ */
+function isMealClockAutoLocked(isMain) {
+    return isMain
+        ? appState.entryMealClockAutoLockedMain === true
+        : appState.entryMealClockAutoLockedSnack === true;
+}
+
+function setMealClockAutoLocked(isMain, locked) {
+    if (isMain) appState.entryMealClockAutoLockedMain = locked === true;
+    else appState.entryMealClockAutoLockedSnack = locked === true;
+}
+
+/** 사용자가 시트에서 직접 고른 값 — 잠그고, 기억할 만한 방식이면 기억한다 */
+function markMealClockPickedByUser(isMain, source) {
+    setMealClockAutoLocked(isMain, true);
+    rememberMealClockDefaultSource(source);
+}
+
+function applyRememberedMealClockDefault(isMain) {
+    if (readMealClockDefaultSource() === 'now' && isEntryDateToday()) {
+        applyMealClockFromDate(isMain, new Date(), 'now');
+        return;
+    }
+    applyMealClockRowFrom24(isMain, '');
+    setEntryMealClockSource(isMain, 'empty');
+}
+
+/**
+ * 기억한 방식을 먼저 넣고, 사진 촬영시각이 읽히면 그것으로 갈아끼운다.
+ *
+ * EXIF 읽기는 느릴 수 있어 기다리지 않는다 — 빈 칸이 잠깐 보였다 바뀌는 것보다
+ * 그럴듯한 값이 먼저 서 있는 편이 낫다.
+ */
+function applyAutoMealClockDefault(isMain) {
+    if (isMealClockAutoLocked(isMain)) return;
+    applyRememberedMealClockDefault(isMain);
+    void upgradeMealClockToPhotoTimeIfAuto(isMain);
+}
+
+/**
+ * 사진의 촬영시각으로 올려준다 — 모달을 열 때와 사진을 더한 직후 둘 다에서 부른다.
+ * 사용자가 직접 고른 뒤라면 아무것도 하지 않는다.
+ */
+async function upgradeMealClockToPhotoTimeIfAuto(isMain) {
+    if (isMealClockAutoLocked(isMain)) return;
+    const timeOn = isMain ? appState.entryTimeOnMain === true : appState.entryTimeOnSnack === true;
+    if (!timeOn) return;
+    if (!appState.currentPhotos?.length && !appState.currentPhotoMeta?.length) return;
+
+    /* 읽는 사이에 모달이 닫히거나 다른 기록으로 바뀌면 버린다 */
+    const gen = window.__entryModalOpenGeneration || 0;
+    let date = null;
+    try {
+        date = await resolveFirstPhotoTakenAt({
+            photoMeta: appState.currentPhotoMeta,
+            photos: appState.currentPhotos
+        });
+    } catch (_) {
+        return;
+    }
+    if (!date) return;
+    if ((window.__entryModalOpenGeneration || 0) !== gen) return;
+    if (isMealClockAutoLocked(isMain)) return;
+    applyMealClockFromDate(isMain, date, 'photo');
+}
 
 function setEntryMealClockSource(isMain, source) {
     if (isMain) appState.entryMealClockSourceMain = source || null;
@@ -390,7 +503,10 @@ function openEntryMealTimeSourceSheet(isMain) {
         title: '시간 선택',
         zIndex: 350,
         showEmpty: true,
-        onNow: () => applyMealClockFromDate(isMain, new Date(), 'now'),
+        onNow: () => {
+            markMealClockPickedByUser(isMain, 'now');
+            applyMealClockFromDate(isMain, new Date(), 'now');
+        },
         onPhoto: async () => {
             const date = await resolveFirstPhotoTakenAt({
                 photoMeta: appState.currentPhotoMeta,
@@ -401,16 +517,21 @@ function openEntryMealTimeSourceSheet(isMain) {
                 return;
             }
             closeTimeSourceSheets();
+            markMealClockPickedByUser(isMain, 'photo');
             applyMealClockFromDate(isMain, date, 'photo');
         },
         onManual: () => {
             openMealClockWheelPanel({
                 zIndex: 350,
                 initialDate: getMealClockInitialDate(isMain),
-                onApply: (date) => applyMealClockFromDate(isMain, date, 'manual'),
+                onApply: (date) => {
+                    markMealClockPickedByUser(isMain, 'manual');
+                    applyMealClockFromDate(isMain, date, 'manual');
+                },
             });
         },
         onEmpty: () => {
+            markMealClockPickedByUser(isMain, 'empty');
             applyMealClockRowFrom24(isMain, '');
             setEntryMealClockSource(isMain, 'empty');
         }
@@ -493,38 +614,23 @@ function finalizeEntryMealClock(savedRecord, isSnackMode) {
 
 /** 신규 기록이면 플래그 초기화, 수정이면 자동 시간·EXIF 채우기 비활성 */
 function resetEntryMealClockSessionFlagsForOpen(isNewEntry) {
-    if (isNewEntry) {
-        appState.entryMealClockDidSeedModalOpenMain = false;
-        appState.entryMealClockDidSeedModalOpenSnack = false;
-        appState.entryMealClockDidApplyPhotoExifMain = false;
-        appState.entryMealClockDidApplyPhotoExifSnack = false;
-        appState.entryMealClockPendingExifHhmmMain = null;
-        appState.entryMealClockPendingExifHhmmSnack = null;
-    } else {
-        appState.entryMealClockDidSeedModalOpenMain = true;
-        appState.entryMealClockDidSeedModalOpenSnack = true;
-        appState.entryMealClockDidApplyPhotoExifMain = true;
-        appState.entryMealClockDidApplyPhotoExifSnack = true;
-        appState.entryMealClockPendingExifHhmmMain = null;
-        appState.entryMealClockPendingExifHhmmSnack = null;
-    }
+    appState.entryMealClockDidSeedModalOpenMain = !isNewEntry;
+    appState.entryMealClockDidSeedModalOpenSnack = !isNewEntry;
+    /* 수정 모드는 처음부터 잠근다 — 저장된 시각(또는 일부러 비운 것)이 곧 사용자의 선택이다 */
+    appState.entryMealClockAutoLockedMain = !isNewEntry;
+    appState.entryMealClockAutoLockedSnack = !isNewEntry;
 }
 
-/**
- * 신규 + 해당 슬롯 시간 on: 기본은 현재 시각.
- *
- * 밥을 먹고 바로 적는 것이 기본 쓰임이라, 빈 칸을 두면 거의 항상
- * 한 번 더 눌러 ‘현재 시각’을 고르게 된다. 틀리면 그자리에서 고치면 된다.
- */
+/** 신규 + 해당 슬롯 시간 on: 자동 기본값을 1회 채운다 (applyAutoMealClockDefault) */
 function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
     if (entryId) return;
     if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
-        applyMealClockFromDate(true, new Date(), 'now');
         appState.entryMealClockDidSeedModalOpenMain = true;
+        applyAutoMealClockDefault(true);
     }
     if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
-        applyMealClockFromDate(false, new Date(), 'now');
         appState.entryMealClockDidSeedModalOpenSnack = true;
+        applyAutoMealClockDefault(false);
     }
 }
 
@@ -3847,6 +3953,8 @@ export function processRecordImagesFromFiles(files, { isSnack = false } = {}) {
                     reasons: [...new Set(sortedResults.map((r) => r.reason))]
                 });
                 state.recordPhotoHeroIndex = state.currentPhotos.length - 1;
+                /* 사진이 생겼으니 시간 기본값을 촬영시각으로 올린다 (사용자가 직접 고른 뒤면 무시) */
+                void upgradeMealClockToPhotoTimeIfAuto(!isSnack);
             }
 
             renderPhotoPreviews();
