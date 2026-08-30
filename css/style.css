@@ -150,6 +150,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-bubble-menu: 210;
     /* 기록 모달 스택 */
     --z-slot-picker: 295;
+    --z-slot-picker-help: 296;    /* 기록 항목 설정 위에 겹치는 도움말 팝업 */
     --z-record-modal: 300;        /* 기록·데일리저널·식단리포트 */
     --z-meal-photos-popup: 310;
     --z-detail-modal: 350;
@@ -7448,6 +7449,19 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     background: #f5f3ff;
     color: #7c3aed;
 }
+/*
+ * 사용자 메모 (docs/user-memo-items.md §4.5) — 중성 색 + 점선.
+ * 식사 슬롯은 시간대마다 제 색이 있다. 메모까지 색을 주면 하루가 알록달록해져
+ * '이건 밥, 이건 메모'라는 큰 구분이 먼저 안 읽힌다. 낯을 낮추는 쪽을 고른다.
+ */
+.home-feed-card__icon--tone-memo {
+    background: #f8fafc;
+    color: #64748b;
+    border: 1px dashed #cbd5e1;
+}
+.home-feed-card.home-feed-card--memo {
+    border-style: dashed;
+}
 /* tone 미지정 폴백 */
 .home-feed-card__icon--meal {
     background: #ecfdf5;
@@ -7536,6 +7550,13 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     line-height: 1.3;
     margin-bottom: 5px;
     word-break: break-word;
+}
+/*
+ * 본문 없는 메모 카드 — 제목 줄이 비면 접는다 (docs/user-memo-items.md §4.5).
+ * 이름은 meta 에 있으므로 여기 다시 적지 않는다.
+ */
+.home-feed-card--memo .home-feed-card__title:empty {
+    display: none;
 }
 .home-feed-card__note {
     font-size: 14px;
@@ -11614,17 +11635,41 @@ body[data-main-tab='dashboard'] #dashboardView {
     font-weight: 700;
     white-space: nowrap;
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn {
-    color: #475569; /* slate-600 */
+/*
+ * 베스트 순서 손잡이 — 설정 시트와 같은 부품·같은 낯(⠿).
+ * 손가락이 닿는 넓이는 36px x 행 높이로, 글리프는 작게(HIG 44pt 권고에 맞춰
+ * 영역만 넓힌다). 늘어난 만큼은 음수 마진으로 되돌려 별점이 안 밀리게 한다.
+ */
+#dashboardView.dashboard-view-v2 .dashboard-best-drag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 2.25rem;
+    margin: -10px -0.5rem -10px 0;
+    border-radius: 0.625rem;
+    color: #475569;
+    cursor: grab;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn:hover:not(:disabled) {
-    color: #1e293b; /* slate-800 */
+#dashboardView.dashboard-view-v2 .dashboard-best-drag:active {
+    background: rgba(15, 23, 42, 0.06);
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn [data-lucide],
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke-width: 2.5;
+#dashboardView.dashboard-view-v2 .dashboard-best-drag:focus-visible {
+    outline: 2px solid var(--green, #059669);
+    outline-offset: 2px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-drag [data-lucide],
+#dashboardView.dashboard-view-v2 .dashboard-best-drag svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2;
+}
+/* 끄는 동안은 목록 배경 위로 살짝 떠 보이게 */
+#dashboardView.dashboard-view-v2 .dashboard-best-item--dragging {
+    background: var(--card, #fff);
+    border-radius: 0.75rem;
 }
 
 /* 레거시 선택자 유지 (비-v2 또는 공유 블록) */
@@ -12173,17 +12218,23 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
 }
 /* entry-slot-picker grabber → .mealog-dialog-grabber 공통 스타일 사용 */
-#entrySlotPickerModal .entry-slot-picker__head {
+#entrySlotPickerModal .entry-slot-picker__head,
+#slotPlanSettingsModal .entry-slot-picker__head {
     border-bottom: none;
     background: transparent;
 }
-#entrySlotPickerModal .entry-slot-picker__list {
+#entrySlotPickerModal .entry-slot-picker__list,
+#slotPlanSettingsModal .entry-slot-picker__list {
     padding-left: var(--mealog-dialog-pad-x);
     padding-right: var(--mealog-dialog-pad-x);
     box-sizing: border-box;
 }
+/* 두 열 카드 격자 (user-slot-plan §4.1) — 아이템 margin-bottom 은 gap 이 대신한다 */
 .entry-slot-picker__group {
     margin-bottom: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
 }
 .entry-slot-picker__group-title {
     margin: 0.35rem 0.5rem 0.35rem;
@@ -12193,13 +12244,13 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     text-transform: uppercase;
     color: #94a3b8;
 }
+/* 아이콘 | (이름 / 건수) — 아이콘은 카드 높이의 중앙에 선다 */
 .entry-slot-picker__item {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5rem;
     width: 100%;
     padding: 0.65rem 0.75rem;
-    margin-bottom: 0.25rem;
     border: 1px solid transparent;
     border-radius: 0.875rem;
     background: #f8fafc;
@@ -12207,12 +12258,22 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     transition: background-color 0.15s, border-color 0.15s;
     -webkit-tap-highlight-color: transparent;
 }
-.entry-slot-picker__item:last-child {
-    margin-bottom: 0;
+.entry-slot-picker__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 1;
 }
-/* 하루 소감: 끼니 목록과 살짝 띄워 마지막에 붙임 */
+/* 하루 소감: 슬롯이 아니므로 전체 폭 한 줄 — 이름과 건수를 좌우로 벌린다 */
 .entry-slot-picker__item--daily {
-    margin-top: 0.35rem;
+    grid-column: 1 / -1;
+    gap: 0.625rem;
+    margin-top: 0.25rem;
+}
+.entry-slot-picker__item--daily .entry-slot-picker__body {
+    flex-direction: row;
+    align-items: center;
 }
 .entry-slot-picker__item:active {
     background: #f1f5f9;
@@ -12235,30 +12296,810 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 .entry-slot-picker__label {
     min-width: 0;
-    flex: 0 1 auto;
     font-size: 0.9375rem;
     font-weight: 700;
     color: #1e293b;
     line-height: 1.25;
-    white-space: nowrap;
+    /* 사용자 이름은 12자까지 — 좁은 기기에서 2줄 클램프 (user-slot-plan §4.1) */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    /*
+     * 어절 단위로 접는다 — anywhere 만 두면 '저녁 후 간식'이 '저녁 후 간 / 식'
+     * 으로 잘린다(375px 실측). anywhere 는 공백 없는 긴 이름('아침전간식먹고또먹기')
+     * 의 넘침을 막는 뒷받침으로만 남긴다.
+     */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
 }
 .entry-slot-picker__count {
-    margin-left: auto;
     flex-shrink: 0;
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--green);
-    text-align: right;
     white-space: nowrap;
+}
+.entry-slot-picker__item--daily .entry-slot-picker__count {
+    margin-left: auto;
+}
+.entry-slot-picker__item--daily .entry-slot-picker__count {
+    margin-left: auto;
+    text-align: right;
 }
 .entry-slot-picker__count--empty {
     color: #94a3b8;
     font-weight: 500;
 }
-.entry-slot-picker__chevron {
+.entry-slot-picker__settings-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    color: #94a3b8;
+    -webkit-tap-highlight-color: transparent;
+}
+.entry-slot-picker__settings-btn:active {
+    background: #f1f5f9;
+    color: #475569;
+}
+.entry-slot-picker__settings-btn [data-lucide],
+.entry-slot-picker__settings-btn .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.75;
+}
+
+/* ── 피커 메모 구역 (docs/user-memo-items.md §4.1) ── */
+/*
+ * 3열 · 중성 색 · 점선. 식사 슬롯은 base 색을 쓰고 2열이다 — 줄당 개수와 색이
+ * 함께 달라야 소제목 없이도 두 구역이 갈린다.
+ */
+/*
+ * 4열 — 같은 폭·같은 gap 이므로 **식사 카드 2칸 = 메모 카드 4칸**이 된다.
+ * 위 구역과 한 뜼거로 붙지 않게 위 여백을 좀 더 벌린다.
+ */
+.entry-slot-picker__memo-group {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0.15rem var(--mealog-dialog-pad-x) 0.5rem;
+    margin-top: 0.5rem;
+}
+.entry-slot-picker__memo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.5rem 0.2rem 0.45rem;
+    border-radius: 0.875rem;
+    border: 1px dashed #cbd5e1;
+    background: #fff;
+    -webkit-tap-highlight-color: transparent;
+}
+.entry-slot-picker__memo:active {
+    background: #f8fafc;
+}
+.entry-slot-picker__memo-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: #64748b;
+}
+.entry-slot-picker__memo-icon [data-lucide],
+.entry-slot-picker__memo-icon .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.75;
+}
+.entry-slot-picker__memo-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #334155;
+    text-align: center;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+    /* 4열이라 칸이 좀다 — 긴 이름은 두 줄까지만 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.entry-slot-picker__memo-count {
+    min-height: 0.9rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--green);
+}
+
+/* ── 메모 기록 시트 (§4.4) ── */
+.memo-record__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    flex-shrink: 0;
+}
+.memo-record__icon [data-lucide],
+.memo-record__icon .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+}
+.memo-record__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.memo-record__foot {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.6rem var(--mealog-dialog-pad-x) 1rem;
+}
+.memo-record__delete {
+    flex: 0 0 auto;
+    min-width: 5rem;
+    background: #fef2f2;
+    color: #dc2626;
+}
+.memo-record__delete.hidden {
+    display: none;
+}
+
+/* 도움말이 열려 있는 동안은 버튼도 눌린 낯 — 어디서 열렸는지 보이게 */
+.entry-slot-picker__settings-btn--on {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+/* ── 기록 항목 설정 시트 (user-slot-plan §4.2) ── */
+/*
+ * 시트가 화면을 넘지 않게 못 박는다. 패널이 overflow:hidden 이라 넘친 만큼이
+ * **위아래에서 잘려** 제목과 저장 버튼이 사라진다(360×640 실측 — 목록 70vh
+ * 상한에 머리·날짜·바닥을 더하면 짧은 화면에서 이미 넘친다).
+ * 머리·날짜·바닥은 고정, 남는 높이는 목록이 갖고 목록만 스크롤한다.
+ */
+#slotPlanSettingsModal .entry-slot-picker {
+    max-height: 100%;
+}
+#slotPlanSettingsModal .mealog-dialog-grabber,
+#slotPlanSettingsModal .entry-slot-picker__head,
+#slotPlanSettingsModal .slot-plan-settings__footer {
+    flex-shrink: 0;
+}
+#slotPlanSettingsModal .slot-plan-settings__list {
+    flex: 1 1 auto;
+    min-height: 4.5rem;
+}
+
+/*
+ * 도움말 팝업 — 설정 시트 **위에** 겹친다 (user-slot-plan §4.2).
+ * 시트 안에 접었다 펴는 안내로 두었더니 짧은 화면에서 목록을 밀어내 정작
+ * 설명대로 해 볼 대상이 안 보였다. 겹치는 대신 설명 자체를 '무엇을 하고
+ * 싶은지'로 묶어, 읽고 닫으면 바로 그 자리인 편이 낫다.
+ */
+/*
+ * 딤을 옅게 — 아래 설정 시트가 이미 제 딤을 깔고 있어서, 여기에 같은 농도를
+ * 또 얹으면 두 겹이 되어 시트가 통째로 사라진다. 설정 화면 위에 잠깐 뜬
+ * 설명이라는 감각을 지키려면 시트가 비쳐 보여야 한다.
+ */
+.slot-plan-help__backdrop {
+    background: rgba(79, 72, 65, 0.2);
+    background: color-mix(in srgb, var(--ink-2) 20%, transparent);
+}
+.slot-plan-help {
+    max-height: 100%;
+    background: var(--card);
+    border-radius: var(--shell-r-dialog);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
+}
+.slot-plan-help__head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.9rem var(--mealog-dialog-pad-x) 0.5rem;
+}
+.slot-plan-help__title {
+    min-width: 0;
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #1e293b;
+}
+.slot-plan-help__x {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-help__x:active {
+    background: #f1f5f9;
+    color: #334155;
+}
+.slot-plan-help__x [data-lucide],
+.slot-plan-help__x .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 2;
+}
+.slot-plan-help__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    /* 바닥 버튼이 없다 — 닫기는 우상단 X·바깥·ESC. 마지막 줄 여백은 본문이 진다 */
+    padding: 0 var(--mealog-dialog-pad-x) 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+.slot-plan-help__item h3 {
+    margin: 0 0 0.2rem;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: #334155;
+}
+.slot-plan-help__item p {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: #64748b;
+}
+.slot-plan-help__item p + p {
+    margin-top: 0.35rem;
+}
+/* 본문 속 아이콘 — 어느 버튼을 말하는지 글로만 설명하기 어렵다 */
+.slot-plan-help__icon {
+    display: inline;
+    vertical-align: -0.15em;
+    margin: 0 0.15rem;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    stroke-width: 2;
+    color: #475569;
+}
+
+#slotPlanSettingsModal .slot-plan-settings__list {
+    display: block;
+}
+.slot-plan-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.25rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.slot-plan-row--off .slot-plan-row__label-input,
+.slot-plan-row--off .slot-plan-row__base {
+    color: #94a3b8;
+}
+.slot-plan-row--off .slot-plan-row__icon {
+    opacity: 0.45;
+}
+.slot-plan-row--dragging {
+    background: #f8fafc;
+    border-radius: 0.75rem;
+}
+
+/* ── 목록 순서 끌기 (js/utils/list-drag-reorder.js) ──
+ *
+ * 끄는 동안 DOM 순서는 그대로다. 비켜서는 연출이 전부 여기 있다.
+ */
+.list-drag__row {
+    transition: transform 0.16s cubic-bezier(0.2, 0.7, 0.3, 1);
+    will-change: transform;
+}
+/*
+ * 끄는 행만은 전환을 끊는다 — 손가락을 1:1로 따라야 하는데 0.16s 가 걸리면
+ * 그만큼 뒤에서 따라오는 것처럼 보인다.
+ */
+.list-drag__row--lift {
+    transition: none;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    border-radius: 0.75rem;
+}
+/* 끄는 중에는 글자가 잡히지 않게 — 길게 눌러 선택되면 끌기가 끊긴다 */
+.list-drag__row {
+    -webkit-user-select: none;
+    user-select: none;
+}
+/* 손잡이에 포커스가 가면 보인다 — 화살표 키로 옮기는 길이 있다는 신호 */
+.slot-plan-row__drag:focus-visible {
+    outline: 2px solid var(--green, #059669);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+}
+/* 손잡이·연필은 '만질 수 있다'는 유일한 신호다 — 흐리면 아무도 못 본다 (사용자 피드백) */
+/*
+ * 손가락이 닿는 넓이는 **44px**(HIG 44pt / Material 48dp). 예전엔 17x25 였고,
+ * 47px 짜리 행에서 위아래 11px 씩이 죽은 공간이었다 — 조준해야 잡히는 손잡이는
+ * 끌기가 아무리 부드러워도 불편하다.
+ *
+ * 글리프는 그대로 두고 **영역만** 넓힌다. 아이콘을 키우면 목록이 시끄러워진다.
+ * 세로는 `align-self: stretch` 로 행 높이를 받고, 행 안쪽 여백은 아래 두 규칙이
+ * 음수 마진으로 마저 먹는다. 가로로 늘어난 만큼은 좌우 음수 마진으로 되돌려
+ * 이름 칸이 밀리지 않게 한다.
+ */
+.slot-plan-row__drag {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 2.25rem;
+    /*
+     * 늘어난 폭은 좌우 음수 마진으로 되돌린다 — 왼쪽은 행·목록의 여백(죽은 공간)
+     * 으로, 오른쪽은 아이콘과의 간격으로. 글리프는 제자리에 남고 이름 칸도
+     * 3px 밖에 안 밀린다.
+     */
+    margin-left: -0.75rem;
+    margin-right: -0.5rem;
+    padding: 0;
+    border-radius: 0.625rem;
+    color: #64748b;
+    touch-action: none;
+    cursor: grab;
+    -webkit-tap-highlight-color: transparent;
+}
+/* 눌린 낯 — 잡혔다는 신호가 있어야 끌지 말지 손이 정한다 */
+.slot-plan-row__drag:active {
+    background: #f1f5f9;
+}
+.slot-plan-row > .slot-plan-row__drag {
+    margin-top: -0.5rem;
+    margin-bottom: -0.5rem;
+}
+.memo-settings__row > .slot-plan-row__drag {
+    margin-top: -0.35rem;
+    margin-bottom: -0.35rem;
+}
+.slot-plan-row__drag [data-lucide],
+.slot-plan-row__drag .lucide {
+    width: 1.0625rem;
+    height: 1.0625rem;
+    stroke-width: 2;
+}
+.slot-plan-row__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.625rem;
+}
+.slot-plan-row__icon [data-lucide],
+.slot-plan-row__icon .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+}
+.slot-plan-row__main {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+.slot-plan-row__label-input {
+    min-width: 0;
+    flex: 0 1 auto;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+.slot-plan-row__label-input:focus {
+    border-bottom-color: #94a3b8;
+}
+/*
+ * 이름을 고칠 수 있다는 신호.
+ *
+ * 이름 바로 옆에 붙여 뒀더니 이름 길이만큼 행마다 좌우로 튀어 목록이 어수선했다
+ * (사용자 피드백). `margin-left: auto` 로 이름 칸 오른쪽 끝에 세워 **한 열로**
+ * 맞춘다. 점선 밑줄은 그대로 글자만큼만 — 그게 '고칠 수 있다'의 신호다.
+ */
+.slot-plan-row__pencil {
+    margin-left: auto;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.375rem;
+    color: #64748b;
+    background: #f1f5f9;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__pencil:active {
+    background: #e2e8f0;
+    color: #334155;
+}
+.slot-plan-row__pencil [data-lucide],
+.slot-plan-row__pencil .lucide {
+    width: 0.875rem;
+    height: 0.875rem;
+    stroke-width: 2;
+}
+/*
+ * 라벨이 상태다 — '사용 중' / '사용 안 함'. 두 글자 수가 달라 폭이 들썩이므로
+ * 최소 폭을 잡아 삭제 버튼과 같은 열에 세운다.
+ */
+.slot-plan-row__toggle {
+    flex-shrink: 0;
+    min-width: 4.6rem;
+    text-align: center;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3rem 0.5rem;
+    border-radius: 999px;
+    background: #ecfdf5;
+    color: #059669;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__toggle[aria-pressed="false"] {
+    background: #f1f5f9;
+    color: #64748b;
+}
+/* 확장 슬롯 자리 — 원본의 사용/해제와 같은 칸, 다른 의미 */
+.slot-plan-row__del {
+    flex-shrink: 0;
+    min-width: 4.6rem;
+    text-align: center;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    background: #fef2f2;
+    color: #dc2626;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__del:active {
+    background: #fee2e2;
+}
+.slot-plan-row__dup {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__dup:active {
+    background: #f1f5f9;
+    color: #475569;
+}
+.slot-plan-row__dup [data-lucide],
+.slot-plan-row__dup .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+}
+/* ── 메모 설정 팝업 — 목록과 새 항목이 한 화면 (docs/user-memo-items.md §4.3) ── */
+/* 시트로 전환해 열린다 — 기록 항목 설정과 같은 꺼데기 */
+#memoSettingsModal .memo-settings {
+    max-height: 100%;
+}
+#memoSettingsModal .mealog-dialog-grabber,
+#memoSettingsModal .entry-slot-picker__head,
+#memoSettingsModal .memo-settings__new {
+    flex-shrink: 0;
+}
+.memo-settings__list {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    padding: 0 var(--mealog-dialog-pad-x);
+}
+.memo-settings__row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0;
+}
+/* 순서 끌기 — 피커 격자에 보이는 순서다(타임라인 자리는 시각이 정한다) */
+.memo-settings__row-wrap--dragging {
+    background: #f8fafc;
+    border-radius: 0.75rem;
+}
+.memo-settings__row-wrap {
+    border-bottom: 1px solid #f1f5f9;
+}
+.memo-settings__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+/* 격자가 펼쳐진 대상은 누릀 낯 — 어느 줄의 격자인지 자리로 드러난다 */
+.memo-settings__icon--on {
+    background: #ecfdf5;
+    border-color: var(--green, #059669);
+    border-style: solid;
+    color: #059669;
+}
+.memo-settings__icon [data-lucide],
+.memo-settings__icon .lucide {
+    width: 1.0625rem;
+    height: 1.0625rem;
+    stroke-width: 1.75;
+}
+.memo-settings__name {
+    min-width: 0;
+    flex: 1;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0.2rem 0;
+    border-bottom: 1px dashed #e2e8f0;
+}
+.memo-settings__name:focus {
+    border-bottom-color: #94a3b8;
+}
+.memo-settings__grid {
+    padding: 0.1rem 0 0.55rem;
+}
+.memo-settings__empty {
+    margin: 0;
+    padding: 0.2rem 0 0.6rem;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: #94a3b8;
+}
+/* 새 항목 — 목록 바로 아래, 같은 행 모양으로 */
+.memo-settings__row-wrap--off .memo-settings__name,
+.memo-settings__row-wrap--off .memo-settings__unit {
+    color: #94a3b8;
+}
+.memo-settings__row-wrap--off .memo-settings__icon {
+    opacity: 0.5;
+}
+/* 단위 — 숫자 메모임을 이름 옆에서 조용히 알린다 (§2.7) */
+.memo-settings__unit {
     flex-shrink: 0;
     font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.memo-settings__new {
+    padding: 0.55rem var(--mealog-dialog-pad-x) 1rem;
+    border-top: 1px solid #f1f5f9;
+}
+.memo-settings__new-head {
+    margin: 0 0 0.1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.memo-settings__new-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #94a3b8;
+}
+/* 아이콘 판이 열려 있으면 안내는 제 할 일을 끝냈다 */
+.memo-settings__new-hint.hidden {
+    display: none;
+}
+.memo-settings__row--new .memo-settings__name::placeholder {
+    font-weight: 600;
     color: #cbd5e1;
+}
+.memo-settings__make {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: var(--green, #059669);
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+}
+.memo-settings__make:active {
+    filter: brightness(0.95);
+}
+
+/* ── 메모 항목 만들기·고치기 팝업 (§4.3) ── */
+.slot-memo-edit__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.slot-memo-edit__presets.hidden {
+    display: none;
+}
+.slot-memo-edit__preset {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 0.3rem 0.65rem;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-memo-edit__preset:active {
+    background: #e2e8f0;
+}
+/* 고른 칩은 상태가 남는다 — 이름칸을 직접 고치면 풀린다 (기록 시트 제안 줄과 같은 관용구) */
+.slot-memo-edit__preset--on {
+    background: var(--green, #059669);
+    color: #fff;
+}
+.slot-memo-edit__field {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.slot-memo-edit__field--icons {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.slot-memo-edit__field label {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.slot-memo-edit__field input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    padding: 0.4rem 0.65rem;
+}
+.slot-memo-edit__field input[type="text"]:focus {
+    outline: none;
+    border-color: #94a3b8;
+}
+.slot-memo-edit__icons {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.35rem;
+    width: 100%;
+}
+.slot-memo-edit__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 0.625rem;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-memo-edit__icon--on {
+    border-color: var(--green, #059669);
+    background: #ecfdf5;
+    color: #059669;
+}
+.slot-memo-edit__icon [data-lucide],
+.slot-memo-edit__icon .lucide {
+    width: 1.0625rem;
+    height: 1.0625rem;
+    stroke-width: 1.75;
+}
+.slot-memo-edit__error {
+    margin: 0;
+    min-height: 1.1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #dc2626;
+}
+.slot-memo-edit__foot {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
+}
+
+.slot-plan-settings__footer {
+    padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
+}
+.slot-plan-settings__notice {
+    margin: 0.4rem 0 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: #94a3b8;
+    background: #f8fafc;
+    border-radius: 0.625rem;
+    padding: 0.5rem 0.65rem;
+}
+.slot-plan-settings__actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.slot-plan-settings__btn {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 700;
+    padding: 0.6rem 0;
+    border-radius: 0.75rem;
+    background: #f1f5f9;
+    color: #475569;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-settings__btn--primary {
+    background: var(--green, #059669);
+    color: #fff;
+}
+
+
+/* 하루 소감 — 체중·혈당은 메모로 옴겼다는 안내 한 줄 (user-memo-items §7.1) */
+.daily-journal-metrics-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0 1rem 0.25rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: #64748b;
+}
+.daily-journal-metrics-notice b {
+    color: #334155;
+    font-weight: 700;
+}
+.daily-journal-metrics-notice [data-lucide],
+.daily-journal-metrics-notice .lucide {
+    flex-shrink: 0;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    margin-top: 0.15rem;
+    stroke-width: 1.75;
 }
 
 /* 밀로그 퀵입력 FAB — 게시판 글쓰기와 동일 스타일·위치 */
@@ -14539,7 +15380,7 @@ body:has(#adminPage:not(.hidden)),
 /* ═══════════════════════════════════════════════════════════
    기록 시트 — 디자인 시스템 (위계: 핵심 입력 › 부가 › 메모)
    ═══════════════════════════════════════════════════════════ */
-:is(#entryModal, #dailyJournalModal) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) {
     --entry-accent: var(--green);
     --entry-accent-dark: var(--green-deep);
     --entry-accent-soft: var(--green-soft);
@@ -14574,14 +15415,14 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 헤더: 메타(날짜·슬롯) — 조용하게 ── */
-:is(#entryModal, #dailyJournalModal) .entry-modal-panel {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-panel {
     background: var(--card);
     border-radius: var(--shell-r-dialog);
     border: 1px solid var(--line);
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
     will-change: transform;
 }
-:is(#entryModal, #dailyJournalModal) .entry-modal-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-header {
     background: var(--entry-surface);
     border-bottom: 1px solid var(--entry-border-soft);
     border-radius: var(--shell-r-dialog) var(--shell-r-dialog) 0 0;
@@ -14590,8 +15431,8 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     gap: 0.375rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-header-date,
-:is(#entryModal, #dailyJournalModal) .entry-header-slot {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-date,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-slot {
     font-variant-numeric: tabular-nums;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -14653,7 +15494,7 @@ body:has(#adminPage:not(.hidden)),
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
     color: #0f172a;
 }
-:is(#entryModal, #dailyJournalModal) .entry-header-date {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-date {
     flex: 0 1 auto;
     min-width: 6.5rem;
     max-width: 8.25rem;
@@ -14947,10 +15788,10 @@ body:has(#adminPage:not(.hidden)),
 }
 /* entry-detail-record-bar removed — 상세보기 칩 UI 삭제 */
 
-:is(#entryModal, #dailyJournalModal) .entry-sheet-body {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-body {
     background: var(--entry-surface-body);
 }
-:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--media {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-zone--media {
     background: var(--entry-surface);
     padding: 0;
     border-bottom: none;
@@ -14968,7 +15809,7 @@ body:has(#adminPage:not(.hidden)),
     padding: 0;
     border-top: 1px solid var(--entry-border-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--memo {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-zone--memo {
     background: var(--entry-surface-band);
     border-top: 1px solid var(--entry-border-soft);
 }
@@ -15052,7 +15893,7 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 필드 행 ── */
-#entryModal .entry-form-field-section {
+:is(#entryModal, #memoRecordModal) .entry-form-field-section {
     margin: 0;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
@@ -15092,7 +15933,7 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 라벨: 14px·검정 통일 ── */
-#entryModal .entry-axis-label {
+:is(#entryModal, #memoRecordModal) .entry-axis-label {
     min-width: var(--entry-form-label-w);
     line-height: 1.25;
     text-transform: none;
@@ -15101,20 +15942,20 @@ body:has(#adminPage:not(.hidden)),
     font-weight: 600;
     color: #0f172a;
 }
-#entryModal .entry-axis-label-with-icon {
+:is(#entryModal, #memoRecordModal) .entry-axis-label-with-icon {
     display: inline-flex;
     align-items: center;
     gap: calc(0.375rem + 0.5em);
     min-width: auto;
 }
-#entryModal .entry-axis-icon {
+:is(#entryModal, #memoRecordModal) .entry-axis-icon {
     width: 1.05rem;
     font-size: 0.9rem;
     line-height: 1;
     text-align: center;
     flex-shrink: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header .entry-axis-icon {
     color: #8b5cf6;
 }
 #entryModal #entryWhereSection .entry-axis-icon {
@@ -15139,7 +15980,7 @@ body:has(#adminPage:not(.hidden)),
     color: #0ea5e9;
 }
 
-#entryModal .entry-axis-input-row {
+:is(#entryModal, #memoRecordModal) .entry-axis-input-row {
     width: 100%;
     gap: var(--entry-form-row-gap);
     align-items: center;
@@ -15152,7 +15993,7 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-axis-input-row > .entry-axis-label.entry-axis-label-with-icon {
     grid-column: 1;
 }
-#entryModal .entry-axis-input-col {
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col {
     grid-column: 2;
     min-width: 0;
     padding-left: var(--entry-form-input-pl);
@@ -15164,10 +16005,10 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 입력 필드 (핵심 강조) ── */
-#entryModal .entry-axis-input-col input[type="text"],
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col input[type="text"],
 #entryModal .entry-axis-input-area input[type="text"],
 #entryModal #entryWhatSection .entry-what-textarea,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea {
     background: var(--entry-input-bg);
     border: 1px solid transparent;
     border-radius: var(--entry-radius);
@@ -15189,9 +16030,9 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-sheet-zone--core #entryWithSection input[type="text"] {
     font-size: 0.9375rem;
 }
-#entryModal .entry-axis-input-col input[type="text"]::placeholder,
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col input[type="text"]::placeholder,
 #entryModal .entry-axis-input-area input[type="text"]::placeholder,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea::placeholder,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea::placeholder,
 #entryModal #entryWhatSection .entry-what-textarea::placeholder {
     color: var(--entry-placeholder);
     font-weight: 500;
@@ -15204,7 +16045,7 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal .entry-axis-input-col input[type="text"]:focus,
 #entryModal .entry-axis-input-area input[type="text"]:focus,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea:focus,
 #entryModal #entryWhatSection .entry-what-textarea:focus {
     outline: none;
     background: var(--entry-input-bg-focus);
@@ -15247,61 +16088,61 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 사진 (보조) ── */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section {
     margin-bottom: 0;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     margin-bottom: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-preview-row {
     padding: 0;
     margin: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     margin: 0;
     padding: 0;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn {
     border: 1px solid var(--entry-border, #e2e8f0);
     background: #ffffff;
     color: var(--entry-action-icon);
     box-sizing: border-box;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn i {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn i {
     font-size: 1.125rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:hover {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn:hover {
     background: #ffffff;
     border-color: #cbd5e1;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn:active {
     background: #f8fafc;
     border-color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools {
     display: none;
     opacity: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
     display: inline-flex;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools .photo-aspect-btn {
     font-size: 0.6875rem;
     font-weight: 800;
     color: var(--entry-text-secondary);
     border-color: var(--entry-border-soft);
     background: transparent;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: #6ee7b7;
     color: var(--entry-accent-dark);
     font-weight: 800;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-count {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-count {
     margin-left: 0.375rem;
     font-size: 0.625rem;
     font-weight: 700;
@@ -15310,13 +16151,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: 0;
     text-transform: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
 }
 
 /* ── 사진 등록 후: 스트립 썸네일 → 아래 고정 툴바 ── */
 /* :not(.hidden) — has-photos의 display:flex가 Tailwind .hidden을 덮지 않도록 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos:not(.hidden) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos:not(.hidden) {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -15324,17 +16165,17 @@ body:has(#adminPage:not(.hidden)),
     border-bottom: 1px solid var(--entry-border-row);
     background: var(--entry-surface);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section.hidden {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section.hidden {
     display: none !important;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     order: 1;
     margin: 0;
     padding: 0;
     overflow: visible;
     display: block;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header {
     order: 2;
     position: static;
     inset: auto;
@@ -15350,7 +16191,7 @@ body:has(#adminPage:not(.hidden)),
     border-top: none; /* 사진과 바로 붙도록 구분선·간격 제거 */
     pointer-events: auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
     position: static;
     top: auto;
     right: auto;
@@ -15371,15 +16212,15 @@ body:has(#adminPage:not(.hidden)),
     align-items: center;
     gap: 0.35rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
     display: inline-block;
     font-size: 0.95rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
     display: inline;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-count {
     margin: 0;
     margin-left: 0.25rem;
     padding: 2px 7px;
@@ -15390,12 +16231,12 @@ body:has(#adminPage:not(.hidden)),
     font-size: 0.6875rem;
     font-weight: 700;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
     border-color: var(--green-mute);
     background: var(--green-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
     position: static;
     inset: auto;
     padding: 0;
@@ -15408,10 +16249,10 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     pointer-events: auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
     padding-left: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-add-btns {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-add-btns {
     position: static;
     left: auto;
     bottom: auto;
@@ -15419,7 +16260,7 @@ body:has(#adminPage:not(.hidden)),
     pointer-events: auto;
     gap: 6px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
     position: static;
     right: auto;
     bottom: auto;
@@ -15429,8 +16270,8 @@ body:has(#adminPage:not(.hidden)),
     gap: 4px;
 }
 /* 사진 설정 행: 카메라/앨범·비율 버튼 높이·타이포 통일 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     box-sizing: border-box;
     height: 2rem;
     min-height: 2rem;
@@ -15445,20 +16286,20 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn {
     width: 2rem;
     min-width: 2rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn i,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn .lucide {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn i,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn .lucide {
     color: var(--entry-action-icon);
     font-size: 0.875rem;
     width: 0.875rem;
     height: 0.875rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     width: auto;
     min-width: 3rem;
     padding: 0 0.65rem;
@@ -15467,13 +16308,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: -0.01em;
     color: var(--entry-text-secondary);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: var(--green-mute);
     color: var(--entry-accent-dark);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #photoPreviewContainer,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #snackPhotoPreviewContainer {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos #photoPreviewContainer,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos #snackPhotoPreviewContainer {
     display: block;
     width: 100%;
     padding: 0;
@@ -15481,7 +16322,7 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
 }
 /* 등록 사진 썸네일 스트립 — 편집·좌우 이동은 사진 내 하단 오버레이 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-thumb-strip {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-thumb-strip {
     display: flex;
     flex-wrap: nowrap;
     align-items: flex-start;
@@ -15495,13 +16336,13 @@ body:has(#adminPage:not(.hidden)),
     scrollbar-width: thin;
     box-sizing: border-box;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-card {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-card {
     display: block;
     width: 10.2rem;
     min-width: 10.2rem;
     flex: 0 0 auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb {
     position: relative;
     width: 100%;
     height: auto;
@@ -15514,20 +16355,20 @@ body:has(#adminPage:not(.hidden)),
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
     width: 24px;
     height: 24px;
     top: 6px;
     right: 6px;
     font-size: 12px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
     width: 12px;
     height: 12px;
 }
 /* 사진 내 하단: ‹ 편집 › — 아래 패딩으로 살짝 올림 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
     display: flex;
     align-items: flex-end;
     gap: 2px;
@@ -15536,8 +16377,8 @@ body:has(#adminPage:not(.hidden)),
     padding: 0.75rem 0.25rem 0.35rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.28) 55%, transparent);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
     box-sizing: border-box;
     flex: 1 1 0;
     min-width: 0;
@@ -15558,21 +16399,21 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
     background: rgba(0, 0, 0, 0.78);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
     opacity: 0.32;
     cursor: not-allowed;
     pointer-events: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
     font-size: 1rem;
     font-weight: 700;
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
     padding: 0 0.25rem;
     font-size: 12px;
     font-weight: 400;
@@ -15624,7 +16465,7 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #snackSatietySection .entry-axis-input-row {
     align-items: center;
 }
-#entryModal .entry-meal-clock-compound {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound {
     width: 100%;
     max-width: 100%;
     margin-left: 0;
@@ -15645,7 +16486,7 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-border-soft);
     font-size: 12px;
 }
-#entryModal .entry-meal-clock-compound .entry-meal-ampm {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound .entry-meal-ampm {
     background: #ffffff;
     border-color: var(--entry-border-soft);
     font-size: 12px;
@@ -15665,7 +16506,7 @@ body:has(#adminPage:not(.hidden)),
     background: #ffffff;
     font-size: 12px;
 }
-#entryModal .entry-meal-clock-compound:focus-within {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound:focus-within {
     background: #ffffff;
     border-color: var(--entry-accent);
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
@@ -15681,17 +16522,17 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #entryWithSection.entry-field-quick-off .entry-axis-label-row,
 #entryModal #entryMealTimeSectionMain .entry-axis-input-row,
 #entryModal #entryMealTimeSectionSnack .entry-axis-input-row,
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     min-height: var(--entry-form-row-h);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     display: grid;
     grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-label {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header > .entry-axis-label {
     grid-column: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header > .entry-axis-input-col {
     grid-column: 2;
     padding-left: var(--entry-form-input-pl);
 }
@@ -15709,12 +16550,12 @@ body:has(#adminPage:not(.hidden)),
    (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
 
 /* 어디서·무엇을·누구와: 라벨 위 · 입력란 아래 */
-#entryModal .entry-form-field-section.entry-axis-stack {
+:is(#entryModal, #memoRecordModal) .entry-form-field-section.entry-axis-stack {
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
 }
-#entryModal .entry-axis-stack .entry-axis-label-row {
+:is(#entryModal, #memoRecordModal) .entry-axis-stack .entry-axis-label-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -15739,7 +16580,7 @@ body:has(#adminPage:not(.hidden)),
     width: 0.9rem;
     height: 0.9rem;
 }
-#entryModal .entry-axis-stack .entry-axis-input-area {
+:is(#entryModal, #memoRecordModal) .entry-axis-stack .entry-axis-input-area {
     width: 100%;
 }
 /* 끼니 어디서 보조 라벨 (어떻게 칩 아래·장소 입력 위) — 본 라벨 행보다 낮게, 행 높이 강제 없음 */
@@ -15788,13 +16629,13 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 메모·더 적기 (하단 보조) ── */
-:is(#entryModal, #dailyJournalModal) .entry-comment-detail-footer {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-detail-footer {
     margin-top: 0;
     padding: 0;
     background: transparent;
     border-top: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-section {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-section {
     padding: 0.625rem 1rem;
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
@@ -15803,7 +16644,7 @@ body:has(#adminPage:not(.hidden)),
     max-width: 100%;
     overflow-x: hidden;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-heading {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-heading {
     display: block;
     font-size: 0.875rem;
     font-weight: 600;
@@ -15813,18 +16654,18 @@ body:has(#adminPage:not(.hidden)),
     margin-bottom: 0.375rem;
     text-transform: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-heading-with-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-heading-with-icon {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-icon {
     font-size: 1.05rem;
     line-height: 1;
     color: var(--entry-action-icon);
     flex-shrink: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea {
     --entry-comment-line: 1.35;
     box-sizing: border-box;
     display: block;
@@ -15846,8 +16687,8 @@ body:has(#adminPage:not(.hidden)),
     text-overflow: ellipsis;
     transition: min-height 0.18s ease, padding 0.18s ease;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea:focus,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea.entry-comment-textarea--expanded {
     max-height: none;
     height: auto;
     min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
@@ -16141,23 +16982,23 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 하단 액션 (기록 완료 강조) — 기록시트·하루 소감 공통 ── */
-:is(#entryModal, #dailyJournalModal) .entry-modal-actions {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-actions {
     background: var(--entry-surface);
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
     padding: 16px 16px 16px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-modal-actions > .flex {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-actions > .flex {
     gap: 8px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn {
     transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
     border-radius: var(--shell-r-btn);
     min-height: 46px;
 }
 /* 버튼 배경은 영역 전체 유지, 내부 콘텐츠만 축소 → 주변 하얀 여백 방지 */
-:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn__inner {
     display: flex;
     flex-direction: inherit;
     align-items: inherit;
@@ -16166,17 +17007,17 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     transition: transform 0.1s ease;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner--loading {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn__inner--loading {
     flex-direction: row;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
     transform: scale(0.92);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save {
     background: var(--cta-mint-grad);
     color: #fff;
     font-size: 15px;
@@ -16186,69 +17027,69 @@ body:has(#adminPage:not(.hidden)),
     min-height: var(--cta-btn-h);
     box-shadow: var(--cta-mint-shadow);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:hover:not(:disabled) {
     filter: brightness(1.02);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save.btn-is-pressed:not(:disabled) {
     filter: brightness(0.96);
     box-shadow: inset 0 1px 6px rgb(0 0 0 / 0.1), 0 1px 4px rgba(45, 159, 116, 0.22);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:disabled {
     cursor: not-allowed;
     box-shadow: none;
     opacity: 0.55;
     filter: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete {
     background: #fff1f2;
     color: #e11d48;
     border-right: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete:hover:not(:disabled) {
     background: #ffe4e6;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
     background: #fda4af;
     color: #9f1239;
     box-shadow: inset 0 2px 10px rgb(159 18 57 / 0.22);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share {
     background: var(--entry-surface-muted);
     color: var(--entry-text-muted);
     border-left: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
     background: var(--entry-border-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
     background: #cbd5e1;
     color: #334155;
     box-shadow: inset 0 2px 10px rgb(15 23 42 / 0.14);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
     background: var(--green-deep);
     color: #fff;
     box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.28);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on {
     background: var(--green);
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on i {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on i {
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-banned {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-banned {
     background: #fff1f2;
     color: #f87171;
     border-left-color: #fecaca;
     cursor: not-allowed;
     pointer-events: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:disabled {
     opacity: 1;
 }
 
@@ -16350,6 +17191,7 @@ body:has(#adminPage:not(.hidden)),
 #pwaInstallGuideModal .pwa-install-guide-panel,
 #desktopShortcutGuideModal > div,
 #entrySlotPickerModal .entry-slot-picker,
+#slotPlanSettingsModal .entry-slot-picker,
 #entryModal .entry-modal-panel,
 #dailyJournalModal .daily-journal-modal-panel,
 #dietReportModal .diet-report-modal,
@@ -16676,7 +17518,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 
 /* Soft Mint Center Dialog — 상단 스와이프 핸들 */
 .mealog-dialog-grabber,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber {
     flex: 0 0 auto;
     align-self: center;
     width: 100%;
@@ -16694,14 +17536,14 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     -webkit-tap-highlight-color: transparent;
 }
 .mealog-dialog-grabber:active,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber:active {
     cursor: grabbing;
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;
 }
 .mealog-dialog-grabber:focus-visible,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:focus-visible {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber:focus-visible {
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;
@@ -19106,4 +19948,129 @@ html.service-guide-active #landingPage {
 }
 .entry-context-seg--muted svg {
     color: #94a3b8;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   메모 기록 시트 — 끼니 시트와 같은 필드 마감 (docs/user-memo-items.md §4.4)
+
+   라벨·구분선·입력칸·사진 줄 규칙은 위 공유 선택자
+   `:is(#entryModal, #dailyJournalModal, #memoRecordModal)` 가 이미 준다.
+   여기 남는 것은 (1) 끼니가 `#entryMealTimeSectionMain` 같은 id 로 받던 시간
+   행 마감과 (2) 좁은 시트에 맞춘 라벨 칸 폭뿐이다. **공유 규칙 뒤에 와야**
+   이 마감이 이기므로 파일 끝에 둔다.
+   ══════════════════════════════════════════════════════════ */
+#memoRecordModal .memo-record__body {
+    background: var(--entry-surface, #fff);
+    /* 사진 줄이 넘쳐도 시트가 가로로 밀리지 않게 */
+    overflow-x: hidden;
+    /*
+     * 라벨 칸만 좁힌다. 끼니는 '어디서/무엇을/누구와'처럼 긴 라벨이 있어
+     * 7.25rem 이 필요하지만 메모 라벨은 두 글자뿐이고, 시트도 22rem 으로 좁다.
+     * 그 폭을 그대로 쓰면 시각 복합칸([출처][오전/오후][시:분])이 밀려 시:분이
+     * 잘리고 사진 줄의 비율 버튼이 밖으로 나간다.
+     */
+    --entry-form-label-w: 5rem;
+}
+#memoRecordModal .entry-form-field-section:last-child {
+    border-bottom: 0;
+}
+#memoRecordModal .entry-axis-label {
+    white-space: nowrap;
+}
+#memoRecordModal .entry-axis-label-with-icon {
+    gap: 0.375rem;
+}
+
+/* ── 라벨 아이콘 색: 끼니와 같은 규칙(항목마다 다른 색) ── */
+#memoRecordModal .entry-axis-icon {
+    color: #8b5cf6;
+}
+#memoRecordModal #memoRecordValueRow .entry-axis-icon {
+    color: #f59e0b;
+}
+#memoRecordModal #memoRecordCommentSection .entry-axis-icon {
+    color: var(--entry-action-icon, #76a797);
+}
+#memoRecordModal #memoRecordTimeSection .entry-axis-icon {
+    color: #0ea5e9;
+}
+
+/* ── 시각 복합칸 — 끼니 시간 행과 같은 높이·글자 ── */
+#memoRecordModal #memoRecordTimeSection .entry-meal-clock-compound {
+    height: var(--entry-form-row-h);
+    min-height: var(--entry-form-row-h);
+}
+#memoRecordModal #memoRecordTimeSection .entry-meal-time-source-btn {
+    min-height: var(--entry-form-row-h);
+    padding-left: 0.5rem;
+    padding-right: 0.375rem;
+    background: #ffffff;
+    border-color: var(--entry-border-soft);
+    font-size: 11px;
+}
+#memoRecordModal .entry-meal-clock-compound .entry-meal-ampm {
+    min-width: 3.9rem;
+    padding-left: 0.5rem;
+}
+#memoRecordModal #memoRecordTimeInput {
+    text-align: right;
+    padding-right: 0.625rem;
+    padding-left: 0.375rem;
+    background: #ffffff;
+    font-size: 12px;
+}
+
+/* ── 값 칸 (숫자 메모) ── */
+#memoRecordModal #memoRecordValue {
+    text-align: right;
+    padding: 0.5rem 0.75rem;
+    border-color: var(--entry-border, #d0c6ba);
+    font-variant-numeric: tabular-nums;
+}
+#memoRecordModal .memo-record__unit {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--entry-text-secondary, #64748b);
+}
+
+/* ── 내용 — 흰 바탕이라 윤곽이 있어야 입력칸으로 읽힌다 ── */
+#memoRecordModal .memo-record__body .entry-comment-textarea {
+    border-color: var(--entry-border, #d0c6ba);
+    min-height: 3.5rem;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+/* 사진이 없으면 미리보기 줄이 빈 칸으로 남지 않게 */
+#memoRecordModal .entry-photo-preview-row:not(:has(.photo-preview-item)) {
+    display: none;
+}
+/*
+ * 끼니는 큰 사진 한 장을 두고 좌우 버튼으로 넘기지만(히어로), 메모는 장수가
+ * 적어 띠로 늘어놓는다. 공유 규칙이 overflow:visible 로 덮으므로 되돌린다 —
+ * 안 그러면 셋째 장부터 잘린 채 손이 닿지 않는다.
+ */
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+#memoRecordModal .entry-photo-preview-row::-webkit-scrollbar {
+    display: none;
+}
+
+/*
+ * 사진 띠 — 끼니 시트는 화면 폭을 다 쓰는 바텀시트지만 메모는 22rem 짜리
+ * 가운데 시트라 같은 내용이 360px 에서 넘친다. 담긴 것을 빼지 않고
+ * 여백과 버튼 폭만 줄인다. 그래도 모자라면 줄을 접는다.
+ */
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+}
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+    min-width: 2.5rem;
+    padding: 0 0.4rem;
 }

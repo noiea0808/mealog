@@ -26,11 +26,13 @@ import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import { ensureMealsMirrorSynced, getMealsInRange } from './meals-mirror.js';
 import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
+import { isMemoMealRecord } from '../utils/slot-plan.js';
 import { refreshLucideIcons } from '../icons.js';
 import {
     MOMENT_FIELD_SPECS,
     CORE_FIELD_SPECS,
     FOOD_PATH_SPECS,
+    FOOD_SUGGEST_SPECS,
     AXIS_CHART_SLOTS,
     analyzeMomentRows,
     buildAxisBreakdown,
@@ -165,6 +167,33 @@ function rateCellClass(rate) {
     if (rate >= 40) return 'bg-amber-50 text-amber-700';
     if (rate > 0) return 'bg-red-50 text-red-600';
     return 'text-slate-300';
+}
+
+/**
+ * 반대로 읽는 값의 배경 — 미분류·추천 안 씀처럼 **높을수록 나쁜** 칸.
+ *
+ * 같은 눈금을 그대로 쓰면 미분류 90%가 초록으로 칠해진다. 색이 값의 크기가 아니라
+ * 「좋은가」를 말하는 표라, 방향이 다른 열은 눈금도 뒤집어야 한다.
+ */
+function rateCellClassInverse(rate) {
+    if (rate <= 0) return 'text-slate-300';
+    if (rate <= 10) return 'bg-emerald-50 text-emerald-700';
+    if (rate <= 30) return 'bg-amber-50 text-amber-700';
+    return 'bg-red-50 text-red-600';
+}
+
+/**
+ * 좋고 나쁨이 없는 값의 배경 — 「자동」·「자동적용」처럼 **크기만 말하면 되는** 칸.
+ *
+ * 초록/빨강 눈금을 주면 「자동이 많아서 좋다(혹은 나쁘다)」로 읽힌다. 둘 다 아니다 —
+ * 사람이 채운 몫과 기계가 채운 몫의 **비중**일 뿐이라 판정을 얹으면 안 된다.
+ * 그래서 색상은 한 계열(하늘색)로 묶고 진하기로만 크기를 말한다.
+ */
+function rateCellClassNeutral(rate) {
+    if (rate <= 0) return 'text-slate-300';
+    if (rate <= 10) return 'bg-sky-50 text-sky-700';
+    if (rate <= 30) return 'bg-sky-100 text-sky-700';
+    return 'bg-sky-200 text-sky-800';
 }
 
 function renderSummaryCards(result, meta) {
@@ -318,8 +347,15 @@ function watchAxisBarWidth(root) {
  */
 function renderAxisLegend(axis) {
     const c = axis.chart;
-    const item = (color, label, n, rate, muted = false, ring = '') => `
-        <span class="inline-flex items-center gap-1.5 mr-3 mb-1 ${muted ? 'opacity-45' : ''}">
+    /**
+     * 칩 하나 — 이름·건수·비율은 눈에 보이고, **무엇을 뜻하는 칸인지는 마우스를 올렸을 때** 나온다.
+     *
+     * 예전에는 「그 외 / 목록 밖 / 미입력 내역」의 내역이 범례 아래 잔줄 셋으로 항상 깔려 있었다.
+     * 축이 다섯이라 잔줄이 최대 열다섯 줄이 되고, 그중 관심 있는 한 줄을 눈으로 찾아야 했다.
+     * 내역은 그 칩에 붙어 있는 게 맞다 — 칩을 짚는 순간 그 칩의 내역만 뜬다.
+     */
+    const item = (color, label, n, rate, { muted = false, ring = '', title = '' } = {}) => `
+        <span class="inline-flex items-center gap-1.5 mr-3 mb-1 cursor-help ${muted ? 'opacity-45' : ''}" title="${escapeHtml(title)}">
             <span class="inline-block w-2.5 h-2.5 rounded-sm shrink-0 ${ring}" style="background:${color}"></span>
             <span class="text-[11px] ${muted ? 'text-slate-500' : 'text-slate-700'} whitespace-nowrap">${escapeHtml(label)}</span>
             <span class="text-[11px] tabular-nums text-slate-400 whitespace-nowrap">${
@@ -327,38 +363,69 @@ function renderAxisLegend(axis) {
             }</span>
         </span>`;
 
+    /** 툴팁 한 덩어리 — 빈 줄은 버린다(줄이 비면 툴팁에 빈 칸이 생긴다) */
+    const tip = (...lines) => lines.filter(Boolean).join('\n');
+    const amount = (n, rate) => `${n.toLocaleString()}건 · ${rate.toFixed(1)}%`;
+    /** 「커피 17 · 면류 16 · …」 */
+    const names = (items, more = false) =>
+        items.length ? items.map((x) => `${x.label} ${x.n.toLocaleString()}`).join(' · ') + (more ? ' …' : '') : '';
+
+    const rowTip = (r) =>
+        tip(
+            `${r.label} — 태그 목록 안의 선택지`,
+            amount(r.n, r.rate),
+            axis.noSourceSplit ? '이 축은 사용자에게 묻지 않는다 — 전부 자동 분류' : `직접 ${r.direct.toLocaleString()} · 자동 ${r.auto.toLocaleString()}`
+        );
+
     // 막대의 칸 순서(많은 순)를 그대로 따라간다 — 눈이 왼쪽부터 짚어 내려오게
     const chips = [
-        ...axis.rows.filter((r) => r.slot !== null).map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate)),
-        c.folded.n ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate) : '',
-        c.outside.n ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate) : '',
-        c.empty.n ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, false, 'ring-1 ring-inset ring-slate-300') : '',
+        ...axis.rows
+            .filter((r) => r.slot !== null)
+            .map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate, { title: rowTip(r) })),
+        c.folded.n
+            ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate, {
+                  title: tip(
+                      `그 외 ${c.folded.distinct}종 — 색 슬롯 ${AXIS_CHART_SLOTS}개를 넘어 한 색으로 접힌 선택지`,
+                      amount(c.folded.n, c.folded.rate),
+                      names(c.folded.items || [])
+                  )
+              })
+            : '',
+        c.outside.n
+            ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate, {
+                  title: tip(
+                      `목록 밖 ${c.outside.distinct}종 — 지금의 태그 목록에 없는 값`,
+                      amount(c.outside.n, c.outside.rate),
+                      names(c.outside.samples || [], c.outside.distinct > (c.outside.samples || []).length),
+                      axis.freeText ? '이 축은 자유 입력이라 목록 밖이 큰 것이 정상이다' : ''
+                  )
+              })
+            : '',
+        c.empty.n
+            ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, {
+                  ring: 'ring-1 ring-inset ring-slate-300',
+                  title: tip(
+                      '미입력 — 이 축에 값이 남지 않은 기록',
+                      amount(c.empty.n, c.empty.rate),
+                      axis.emptyPaths
+                          ? names(axis.emptyPaths.map((e) => ({ label: e.label.replace(/\(.*\)/, '').trim(), n: e.n })))
+                          : ''
+                  )
+              })
+            : '',
         // 아무도 안 고른 칩은 맨 뒤에 흐리게 — 막대에는 칸이 없어 여기서만 보인다
-        ...axis.rows.filter((r) => r.n === 0).map((r) => item('transparent', r.label, 0, 0, true, 'ring-1 ring-inset ring-slate-300'))
+        ...axis.rows
+            .filter((r) => r.n === 0)
+            .map((r) =>
+                item('transparent', r.label, 0, 0, {
+                    muted: true,
+                    ring: 'ring-1 ring-inset ring-slate-300',
+                    title: `${r.label} — 이 기간에 아무도 고르지 않은 선택지 (0건)`
+                })
+            )
     ].join('');
 
-    /** 한 색으로 묶인 것들의 이름 — 묶었다고 정체까지 감추지는 않는다 */
-    const detail = (label, items, more) =>
-        items.length
-            ? `<p class="text-[11px] text-slate-400 mt-0.5">${label}: ${items
-                  .map((x) => `${escapeHtml(x.label)} ${x.n.toLocaleString()}`)
-                  .join(' · ')}${more ? ' …' : ''}</p>`
-            : '';
-
-    const emptyDetail =
-        axis.emptyPaths && axis.empty
-            ? `<p class="text-[11px] text-slate-400 mt-0.5">미입력 내역: ${axis.emptyPaths
-                  .map((p) => `${escapeHtml(p.label.replace(/\(.*\)/, '').trim())} ${p.n.toLocaleString()}`)
-                  .join(' · ')}</p>`
-            : '';
-
-    return `
-        <div class="mt-1.5">
-            <div class="flex flex-wrap">${chips}</div>
-            ${detail('그 외', c.folded.items || [], false)}
-            ${detail('목록 밖', c.outside.samples || [], c.outside.distinct > (c.outside.samples || []).length)}
-            ${emptyDetail}
-        </div>`;
+    return `<div class="mt-1.5 flex flex-wrap">${chips}</div>`;
 }
 
 /**
@@ -403,143 +470,525 @@ function renderAxisCharts(breakdown, total) {
 
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-1">
-                축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-1">
+                <h4 class="text-sm font-black text-slate-800">
+                    축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
+                </h4>
+                ${guideButton('axis')}
+            </div>
             <p class="text-[11px] text-slate-400 mb-2">
                 각 막대의 <b>칠해진 길이</b>가 그 축의 입력률이고, <b>칸 나눔</b>이 무엇으로 채워졌는지입니다.
-                네 막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
+                막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
             </p>
             <div id="momentAxisCharts" class="rounded-xl border border-slate-200 bg-white px-4 py-2 divide-y divide-slate-100">${bars}</div>
-            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
-                · <b>자동</b> = 사람이 고르지 않았는데 값이 남은 것. 「어떻게·어디서·누구와」는 맥락 예측이 자동 적용한 축(<code>autoContext</code>),
-                「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다.<br>
-                · <b>칸도 범례도 많은 순</b>으로 섭니다. 색은 그 순위를 따라가므로, 다른 기간을 보면 같은 값의 색이 달라질 수 있습니다 —
-                식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어 있는 이유입니다).<br>
-                · <b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
-                · <b>무엇을</b>은 축이 둘입니다. <b>형태</b>(밥류·면류…)는 사용자가 고르거나 분류기가 채우고,
-                <b>종류</b>(한식·중식…)는 <b>묻지 않고</b> 분류기가 붙입니다 — 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른 질문이라 축이 둘입니다.
-                형태 축에서 목록 밖으로 밀리는 옛 한식·양식 기록이 종류 축에서는 제자리를 찾습니다.
-                다만 <b>종류의 「미입력」을 실패로 읽지 마세요</b> — 과일·커피·채소처럼 <b>축이 애초에 해당되지 않는 형태</b>가
-                여기 섞여 있습니다(「사과가 한식인가 양식인가」는 질문이 성립하지 않습니다).<br>
-                · <b>목록 밖</b>은 지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에 저장된 옛 어휘</b>(한식·양식·일식·중식·분식·카페)와 「기타」입니다 —
-                「한식」은 밥류일 수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다(표기만 달랐던 옛 형태 축 값은 읽을 때 맞춰 제 칩으로 갑니다).
-                「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 큰 것이 정상입니다.<br>
-                · 색은 <b>많은 순 앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과 구별되지 않아,
-                나머지는 「그 외」로 묶고 이름은 아래 잔줄에 답니다.<br>
-                · 「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을 수 있어 「서버 분류 대기」가 부풀어 보입니다.
-            </p>
         </div>`;
 }
 
-/**
- * 항목별 입력률 — 선택지가 없는 항목(사진·코멘트·만족도…)까지 포함한 「채워졌나」 표.
- * 막대는 뺐다: 12줄짜리 막대가 화면을 채우는 데 비해, 정작 비교하고 싶은 것은 옆 칸의 숫자였다.
- */
-function renderFieldTable(result) {
-    const total = result.overall.total;
-    const rows = MOMENT_FIELD_SPECS.map((spec) => {
-        const filled = result.overall.counts[spec.key];
-        const rate = pct(filled, total);
-        const labelClass = spec.core ? 'font-bold text-slate-800' : 'text-slate-500';
-        return `
-            <tr class="border-b border-slate-100 ${spec.aux ? 'bg-slate-50/60' : ''}">
-                <td class="px-3 py-1.5 ${labelClass} whitespace-nowrap">${escapeHtml(spec.label)}${
-                    spec.gated ? '<span class="ml-1 text-[10px] text-amber-600 font-bold">설정</span>' : ''
-                }</td>
-                <td class="px-3 py-1.5 text-right tabular-nums text-slate-700">${filled.toLocaleString()}</td>
-                <td class="px-3 py-1.5 text-right tabular-nums text-slate-400">${(total - filled).toLocaleString()}</td>
-                <td class="px-3 py-1.5 text-right text-xs font-black tabular-nums ${rateCellClass(rate)}">${fmtPct(rate)}</td>
-                <td class="px-3 py-1.5 text-[11px] text-slate-400 whitespace-nowrap hidden lg:table-cell">${escapeHtml(spec.note || '')}</td>
-            </tr>`;
-    }).join('');
+/* ─────────────────────────────────────────────────────────────
+ * 「읽는 법」 팝업
+ *
+ * 이 설명들은 표 바로 아래에 잔줄로 깔려 있었다. 셋을 합치면 열댓 줄짜리 회색 글이
+ * 화면의 절반을 차지하는데, **매번 읽을 글이 아니라 한 번 읽고 가끔 확인할 글**이었다.
+ * 그래서 접어 두고 필요할 때 부른다 — 대신 접는 김에 주제별로 다시 묶었다(잔줄은
+ * 순서가 없었다).
+ *
+ * 껍데기는 **하나**다. 표마다 팝업을 두면 admin.html 에 같은 마크업이 셋 생기고 셋이
+ * 따로 늙는다. 한 번에 둘을 열 일도 없으므로 제목·본문만 갈아 끼운다.
+ * 그 껍데기는 `momentAnalyticsContainer` **바깥**에 둔다 — 결과를 다시 그릴 때마다
+ * 컨테이너는 통째로 갈려서, 안에 두면 버튼이 가리키는 대상이 사라진다.
+ * ───────────────────────────────────────────────────────────── */
 
+/** 팝업 안의 한 마디 — 제목 + 본문 */
+const guideSection = (title, body) => `
+    <section class="pt-4 mt-4 border-t border-slate-100 first:pt-0 first:mt-0 first:border-0">
+        <h4 class="text-[13px] font-black text-slate-900 mb-1.5">${title}</h4>
+        <div class="text-[12px] leading-[1.75] text-slate-600 space-y-1.5">${body}</div>
+    </section>`;
+
+/** 표 제목 오른쪽에 서는 버튼 */
+const guideButton = (key) => `
+    <button type="button" onclick="window.openMomentGuide('${key}')"
+            class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+        <i data-lucide="circle-help" class="w-3.5 h-3.5"></i>읽는 법
+    </button>`;
+
+function renderAxisGuideBody() {
+    return [
+        guideSection(
+            '막대 하나를 어떻게 읽나',
+            `<p><b>총 길이는 언제나 분석 대상 기록 100%</b>입니다. 축마다 제 입력분만큼만 칠해지고 나머지는
+             미입력 트랙으로 남습니다 — 그래서 축을 위아래로 세우면 「어떻게는 절반 넘게 채워지고 누구와는
+             그 절반」 같은 것이 <b>길이 차이로</b> 바로 보입니다. 각 축을 100%로 늘려 그리면 구성비는
+             보이지만 그 비교가 통째로 사라집니다.</p>
+             <p><b>막대의 칸에도, 범례의 칩에도 마우스를 올리면</b> 그 칸이 무엇인지와 정확한 건수가 뜹니다.
+             「그 외」·「목록 밖」·「미입력」에 무엇이 묶여 있는지도 그 칩에 붙어 있습니다.</p>`
+        ),
+        guideSection(
+            '직접과 자동',
+            `<p><b>자동</b> = 사람이 고르지 않았는데 값이 남은 것입니다. 근거는 저장 경로가 남긴 자국뿐입니다:</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li>어떻게 · 어디서 · 누구와 — 맥락 예측이 자동 적용한 축(<code>autoContext</code>)</li>
+                 <li>무엇을 — 로컬 · 서버 분류기가 채운 값(<code>categoryAuto</code>)</li>
+             </ul>
+             <p><b>값만 보면 둘은 구별되지 않습니다</b> — 「집밥」은 사람이 골라도 집밥이고 예측이 넣어도
+             집밥입니다. 이 두 숫자가 없으면 입력률이 올라도 그게 사람이 더 채운 것인지 기계가 메운
+             것인지 영영 알 수 없습니다.</p>`
+        ),
+        guideSection(
+            '순서와 색',
+            `<p><b>칸도 범례도 많은 순</b>으로 섭니다. 색이 그 순위를 따라가므로 <b>다른 기간을 보면 같은 값의
+             색이 달라질 수 있습니다</b> — 식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어
+             있는 이유입니다).</p>
+             <p>색은 <b>앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과
+             구별되지 않아, 나머지는 「그 외」로 묶습니다 — 무엇이 묶였는지는 그 칩에 마우스를 올리면 나옵니다.</p>
+             <p><b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 막대에는 칸이 안 생겨
+             범례에서만 보입니다. 구분을 접거나 이름을 바꿀 후보입니다.</p>`
+        ),
+        guideSection(
+            '「무엇을」은 축이 둘이다',
+            `<p><b>형태</b>(밥류 · 면류…)는 사용자가 고르거나 분류기가 채우고, <b>종류</b>(한식 · 중식…)는
+             <b>묻지 않고</b> 분류기가 붙입니다. 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른
+             질문이라 축이 둘입니다. 형태 축에서 목록 밖으로 밀리는 옛 한식 · 양식 기록이 종류 축에서는
+             제자리를 찾습니다.</p>
+             <p><b>종류의 「미입력」을 실패로 읽지 마세요</b> — 과일 · 커피 · 채소처럼 <b>축이 애초에 해당되지
+             않는 형태</b>가 여기 섞여 있습니다(「사과가 한식인가 양식인가」는 질문이 성립하지 않습니다).</p>`
+        ),
+        guideSection(
+            '「목록 밖」에 무엇이 모이나',
+            `<p>지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에
+             저장된 옛 어휘</b>(한식 · 양식 · 일식 · 중식 · 분식 · 카페)와 「기타」입니다 — 「한식」은 밥류일
+             수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다. 표기만 달랐던 옛 형태 축 값은 읽을 때
+             맞춰 제 칩으로 갑니다.</p>
+             <p>「어디서」는 끼니가 가게 이름을 <b>자유 입력</b>하므로 목록 밖이 큰 것이 정상입니다.</p>`
+        ),
+        guideSection(
+            '조심할 곳',
+            `<p>「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을
+             수 있어 「서버 분류 대기」가 부풀어 보입니다 — 맨 최근 구간은 그만큼 감해서 보세요.</p>`
+        )
+    ].join('');
+}
+
+function renderTrendGuideBody() {
+    return [
+        guideSection(
+            '이 표를 어떻게 읽나',
+            `<p>모든 숫자는 그 구간의 기록 수 대비 <b>%</b>입니다 — <b>「추천 분류」 두 열만 예외</b>로,
+             제안이 뜬 기록이 분모입니다. 칸에 마우스를 올리면 <b>건수와 그 칸의 분모</b>가 뜨고,
+             맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.</p>
+             <p>열은 <b>사용자가 시트에서 채우는 순서</b>로 섭니다 — 무엇을 → 추천 분류 → 어떻게 → 어디서 →
+             누구와 → 만족도 → 포만감 → 사진 → 코멘트. 이 표에서 읽으려는 것이 「시트를 내려가며 어디서
+             손이 멈추나」라서, 세는 순서가 아니라 채우는 순서를 따릅니다.</p>`
+        ),
+        guideSection(
+            '「무엇을」이 여러 열인 이유',
+            `<p>이 축은 값이 채워지는 길이 둘(사람 · 분류기)이라 한 칸으로 접으면 <b>입력률이 올라도 사람이
+             채운 것인지 기계가 메운 것인지</b> 갈리지 않습니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>최종</b> — 어떤 경로로든 형태 값이 남았다</li>
+                 <li><b>직접</b> — 사람이 칩으로 고르거나 제안을 확정했다</li>
+                 <li><b>자동</b> — 사용자 값 없이 분류기가 채웠다</li>
+                 <li><b>미분류</b> — 거부 · 서버 대기 · 상세 없음</li>
+             </ul>
+             <p>직접 + 자동 = 최종이고, 미분류까지 더하면 100%입니다.</p>
+             <p><b>「자동」 오른쪽 세 열은 그 안쪽입니다</b> — 같은 기계라도 누가 채웠는지가 다릅니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>로컬</b> — 저장하는 <b>그 순간</b> 기기 안 분류기가 집었다(<code>categorySource='local'</code>)</li>
+                 <li><b>AI</b> — <b>나중에</b> 서버 Gemini 배치가 메웠다(<code>'ai'</code>)</li>
+                 <li><b>미상</b> — <code>categorySource</code> 를 남기기 전 옛 기록이라 알 방법이 없다</li>
+             </ul>
+             <p><b>로컬 + AI + 미상 = 자동</b>입니다(정확히 같습니다). 셋을 갈라 세운 이유는 <b>시간이 다르기
+             때문</b>입니다 — 로컬은 즉시 채우고 서버 배치는 6시간마다 최근 7일만 돕니다. 한 칸으로 접으면
+             배치가 따라잡고 있는지가 안 보입니다.</p>
+             <p><b>옛 구간이 「미상」으로 몰리는 것은 정상입니다.</b> 그 구간에서 로컬 대 AI 비율을 읽으면
+             오독입니다 — 비율이 아니라 결측입니다.</p>`
+        ),
+        guideSection(
+            '추천 분류 — 제안을 사람이 받아들였나',
+            `<p>위 네 열이 「값이 어디서 왔나」를 묻는다면 이 둘은 다른 질문입니다: 분류기가 내민 답을 사람이
+             썼나. 근거는 <code>categorySuggested</code> 하나입니다 — 저장 경로가 <b>사용자가 다른 값으로
+             고쳤어도</b> 분류기의 답을 남깁니다. 그 자국이 없으면 맞힌 경우만 데이터에 남아 교정률을 셀
+             방법이 없습니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>사용</b> — 최종 값이 제안값과 같다(확정했거나, 그대로 두고 저장했거나)</li>
+                 <li><b>안 씀</b> — 사람이 다른 값으로 고쳤거나(= 오분류), ✕로 거부했다</li>
+             </ul>
+             <p><b>이 두 열만 분모가 다릅니다</b> — 전체 기록이 아니라 「제안이 뜬 기록」입니다. 그래서
+             <b>사용 + 안 씀 = 100%</b>이고, 제안이 안 뜬 기록은 어느 칸에도 들어가지 않습니다. 옆 열들과
+             세로로 견주면 안 되는 이유가 이것입니다 — 밟고 선 바닥이 다릅니다.</p>
+             <p>제안 자국(<code>categorySuggested</code>)을 남기기 전에 저장된 옛 기록은 분모가 아예 0이라
+             칸이 <b><code>-</code></b> 로 비어 있습니다. <b>개편 이전 구간의 빈칸은 결측이지 실패가 아닙니다.</b>
+             정확한 건수는 표 아래 한 줄과 「엑셀 내보내기」의 <code>추천 분류</code> 시트에 있습니다.</p>`
+        ),
+        guideSection(
+            '색 눈금이 열마다 다르다',
+            `<ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>초록 ↔ 빨강</b> — 높을수록 좋다(대부분의 열)</li>
+                 <li><b>뒤집은 눈금</b> — 「미분류」와 「안 씀」은 높을수록 나쁜 값이라 방향을 뒤집습니다.
+                     같은 눈금을 쓰면 미분류 90%가 초록으로 칠해집니다.</li>
+                 <li><b>하늘색</b> — 「자동」과 그 안쪽 셋(로컬 · AI · 미상), 그리고 「자동적용」은 좋고 나쁨이
+                     <b>없는</b> 열입니다. 사람이 채운 몫과 기계가 채운 몫의 비중일 뿐이라 판정을 얹지 않고,
+                     진하기로 크기만 말합니다.</li>
+             </ul>`
+        ),
+        guideSection(
+            '자동적용',
+            `<p>맥락 예측이 어떻게 · 어디서 · 누구와 중 <b>한 축이라도</b> 자동으로 채운 기록의 비율입니다.
+             개편 전 기록에는 이 자국(<code>autoContext</code>)이 없어 0으로 나옵니다.</p>`
+        ),
+        guideSection(
+            '서버 AI 배치는 나중에, 그것도 조금씩 돕니다',
+            `<p>「무엇을」의 <b>AI</b> 열은 <code>classifyUncategorizedMeals</code> 가 채웁니다 —
+             <b>6시간마다(하루 4회) · 한 번에 최대 100건 · 최근 7일 범위</b>입니다.</p>
+             <p>그래서 <b>맨 윗 구간 몇 줄은 AI 열이 덜 차 있고 미분류가 부풀어 보입니다</b> — 그만큼 감해서
+             보세요. 반대로 그 기간의 미분류가 하루 400건보다 빠르게 쌓이면 배치가 따라잡지 못하고,
+             <b>7일이 지나면 정기 배치는 그 기록을 다시 보지 않습니다</b>(영구 미분류로 남습니다).</p>
+             <p>임의 기간을 다시 도는 <code>adminClassifyLegacyMeals</code> 가 서버에 있지만 <b>화면에 버튼이
+             없습니다</b> — 지금은 콘솔에서 직접 부르는 수밖에 없습니다.</p>`
+        )
+    ].join('');
+}
+
+function renderCompletenessGuideBody() {
+    return [
+        guideSection(
+            '이 표가 세는 것',
+            `<p>기록 하나가 <b>핵심 ${CORE_FIELD_SPECS.length}항목</b>(어떻게 · 어디서 · 무엇을 · 누구와 ·
+             만족도 · 포만감 · 사진 · 코멘트) 중 몇 개를 채웠는지의 분포입니다. 항목별 입력률이 「어느 칸이
+             비었나」를 묻는다면, 이 표는 <b>「한 사람이 한 번에 얼마나 쓰나」</b>를 묻습니다.</p>
+             <p>봐야 할 것은 평균이 아니라 <b>분포의 모양</b>입니다. 가운데가 두꺼우면 대체로 비슷하게 쓰는
+             것이고, 양 끝이 두꺼우면 「거의 안 쓰는 사람」과 「다 쓰는 사람」으로 갈린 것입니다 — 뒤쪽이면
+             평균을 올리려는 시도가 대부분에게 닿지 않습니다.</p>`
+        ),
+        guideSection(
+            '분석 전체에 해당하는 것',
+            `<ul class="list-disc pl-4 space-y-1">
+                 <li><b>분모</b>는 기간 안의 끼니 · 간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을
+                     애초에 갖지 않아 제외했습니다 — 넣으면 입력률이 통째로 내려앉아 아무것도 못 읽는 숫자가 됩니다.</li>
+                 <li><b>만족도 · 포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 <b>「꺼 둔 사용자」가
+                     섞여 있습니다</b>. 걸러내려면 사용자별 설정을 읽어야 해서(읽기가 사용자 수만큼 늘어납니다) 하지 않았습니다.</li>
+                 <li><b>어디서 · 무엇을 · 누구와의 「상세」 입력</b>(선택 입력 텍스트)은 화면에서 뺐습니다 —
+                     「엑셀 내보내기」의 <code>항목별 입력률</code> 시트가 그대로 들고 있습니다.</li>
+                 <li><b>통계 제외 UID</b>(대시보드 설정)의 기록은 빼고 셉니다.</li>
+             </ul>`
+        )
+    ].join('');
+}
+
+/** 표 하나당 한 마디 — 버튼의 `key` 가 이 표의 열쇠다 */
+const MOMENT_GUIDES = {
+    axis: { title: '축별 구성 읽는 법', body: renderAxisGuideBody },
+    trend: { title: '기간 추이 읽는 법', body: renderTrendGuideBody },
+    completeness: { title: '채운 항목 수 읽는 법 · 분석 주석', body: renderCompletenessGuideBody }
+};
+
+function openMomentGuide(key) {
+    const guide = MOMENT_GUIDES[key];
+    const modal = document.getElementById('momentGuideModal');
+    const title = document.getElementById('momentGuideTitle');
+    const body = document.getElementById('momentGuideBody');
+    if (!guide || !modal || !title || !body) return;
+    title.textContent = guide.title;
+    body.innerHTML = guide.body();
+    body.scrollTop = 0;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeMomentGuide() {
+    const modal = document.getElementById('momentGuideModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+window.openMomentGuide = openMomentGuide;
+window.closeMomentGuide = closeMomentGuide;
+
+/** 닫기 경로 셋(X · 바깥 · ESC) — 화면당 한 번만 건다 */
+let momentGuideBound = false;
+function bindMomentGuideOnce() {
+    if (momentGuideBound) return;
+    const modal = document.getElementById('momentGuideModal');
+    if (!modal) return;
+    momentGuideBound = true;
+    document.getElementById('momentGuideClose')?.addEventListener('click', closeMomentGuide);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeMomentGuide();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!modal.classList.contains('hidden')) closeMomentGuide();
+    });
+}
+
+/**
+ * 「추천 분류」 두 열의 분모 — 전체 기록이 아니라 **제안 자국이 남은 기록**이다.
+ * 셋(그대로 씀 · 고침 · 거부)이 서로 배타적이라 합이 곧 「제안이 떴던 횟수」가 된다.
+ * 전체 기록으로 나누면 두 열의 합이 「제안이 뜬 비율」로 흘러가 버려, 받아들임률도
+ * 건수도 아닌 읽을 수 없는 숫자가 된다.
+ *
+ * 옛 기록에는 `categorySuggested` 가 없어 0이 나온다 — 그 구간은 0%가 아니라 결측이라
+ * 칸을 `-` 로 비운다.
+ */
+const suggestOffered = (b) =>
+    (b.counts.suggestUsed || 0) + (b.counts.suggestChanged || 0) + (b.counts.suggestRejected || 0);
+
+/**
+ * 추이 표의 열 — **사용자가 시트에서 채우는 순서**로 선다.
+ *
+ * 예전에는 모델의 핵심 8항목 순서를 그대로 썼는데, 그건 「무엇을 세는가」의 순서지
+ * 「무엇을 채우는가」의 순서가 아니었다. 관리자가 이 표에서 읽으려는 것은 시트를
+ * 위에서 아래로 내려가며 어디서 손이 멈추는가라, 시트 순서와 어긋나면 매번 머릿속에서
+ * 열을 다시 세워야 한다.
+ *
+ * 「무엇을」만 열이 넷인 이유: 이 축은 값이 채워지는 길이 둘(사람·분류기)이라
+ * 한 칸으로 접으면 **입력률이 올라도 그게 사람이 채운 것인지 기계가 메운 것인지**
+ * 갈리지 않는다. 그래서 최종을 앞에 세우고 그 안을 직접·자동·미분류로 쪼갠다
+ * (셋의 합이 언제나 100%다).
+ *
+ * `tone` — good: 높을수록 좋다 / bad: 높을수록 나쁘다 / info: 좋고 나쁨이 없다.
+ *
+ * `denom` — 그 열만의 분모(없으면 그 구간의 기록 수). 열마다 밟고 선 바닥이 다를 수 있어
+ * `denomLabel` 을 같이 달아 두면 마우스를 올렸을 때 무엇으로 나눈 값인지가 뜬다.
+ * `displayRate` — 그리는 %를 따로 셈해야 하는 열(짝 열과 합을 100에 맞추는 자리)만 쓴다.
+ */
+const TREND_COLUMN_GROUPS = [
+    {
+        label: '무엇을',
+        cols: [
+            {
+                label: '최종',
+                tone: 'good',
+                value: (b) => b.counts.whatFinal,
+                hint: '사용자 확정 + 자동 분류 — 최종적으로 형태 값이 남은 기록'
+            },
+            { label: '직접', tone: 'good', value: (b) => b.counts.what, hint: '사용자가 칩으로 고르거나 제안을 확정한 것' },
+            {
+                label: '자동',
+                tone: 'info',
+                value: (b) => b.counts.whatFinal - b.counts.what,
+                hint: '사용자 값 없이 로컬·서버 분류기가 채운 것 — 오른쪽 세 열이 그 안쪽이다'
+            },
+            /* ─────────────────────────────────────────────────────────
+             * 「자동」의 안쪽 셋 — 자동을 **누가** 채웠나.
+             * 합은 왼쪽 「자동」 칸과 **정확히** 같다(자동 = 최종 − 직접 = 로컬 + AI + 미상).
+             *
+             * 세로로 세운 이유: 셋은 **채우는 시점이 다르다**. 로컬은 저장하는 그 순간
+             * 채우고, 서버 Gemini 배치는 6시간마다 최근 7일만 돈다. 「얼마나 채웠나」가
+             * 애초에 날짜에 매인 값이라, 기간 전체를 접은 축별 구성에 두면 숫자 하나가
+             * 나올 뿐이다. 여기 두어야 배치가 따라잡고 있는지가 세로로 보인다.
+             * ───────────────────────────────────────────────────────── */
+            {
+                label: '로컬',
+                tone: 'info',
+                divider: true,
+                value: (b) => b.counts.pathLocal || 0,
+                hint: '「자동」 중 — 저장하는 그 순간 기기 안 로컬 분류기가 집은 것'
+            },
+            {
+                label: 'AI',
+                tone: 'info',
+                value: (b) => b.counts.pathAi || 0,
+                hint: '「자동」 중 — 나중에 서버 Gemini 배치가 메운 것 (6시간마다 최근 7일)'
+            },
+            {
+                label: '미상',
+                tone: 'info',
+                value: (b) => b.counts.pathAutoUnknown || 0,
+                /**
+                 * 옛 구간이 이 칸으로 몰리는 것은 정상이다 — `categorySource` 를 남기기 전
+                 * 기록이라 누가 채웠는지 알 방법이 자체가 없다. 그 구간에서 로컬 대 AI 비율을
+                 * 읽으면 오독이다.
+                 */
+                hint: '「자동」 중 — categorySource 가 없어 누가 채웠는지 모르는 옛 기록'
+            },
+            {
+                label: '미분류',
+                tone: 'bad',
+                divider: true,
+                value: (b) => b.total - b.counts.whatFinal,
+                hint: '거부·서버 대기·상세 없음 — 어떤 경로로도 값이 남지 않은 것'
+            }
+        ]
+    },
+    {
+        label: '추천 분류',
+        innerDivider: true,
+        cols: [
+            {
+                label: '사용',
+                tone: 'good',
+                value: (b) => b.counts.suggestUsed,
+                denom: suggestOffered,
+                denomLabel: '제안이 뜬 기록',
+                hint: '제안이 뜬 기록 중, 최종 값이 제안값과 같은 것 — 분모가 전체 기록이 아니다'
+            },
+            {
+                label: '안 씀',
+                tone: 'bad',
+                value: (b) => b.counts.suggestChanged + b.counts.suggestRejected,
+                denom: suggestOffered,
+                denomLabel: '제안이 뜬 기록',
+                /**
+                 * 「사용」을 반올림하고 남은 몫으로 그린다 — 둘을 따로 반올림하면 37.5 + 62.5가
+                 * 38 + 63 = 101로 찍혀, 합이 100이라는 이 표의 약속이 반올림에 깨진다.
+                 */
+                displayRate: (b) => 100 - Math.round(pct(b.counts.suggestUsed, suggestOffered(b))),
+                hint: '제안이 뜬 기록 중, 사람이 다른 값으로 고쳤거나 ✕로 거부한 것 — 사용 + 안 씀 = 100%'
+            }
+        ]
+    },
+    { label: '어떻게', cols: [{ label: '어떻게', tone: 'good', value: (b) => b.counts.how }] },
+    { label: '어디서', cols: [{ label: '어디서', tone: 'good', value: (b) => b.counts.where }] },
+    { label: '누구와', cols: [{ label: '누구와', tone: 'good', value: (b) => b.counts.withWhom }] },
+    { label: '만족도', cols: [{ label: '만족도', tone: 'good', value: (b) => b.counts.rating, hint: '설정에서 끌 수 있는 항목' }] },
+    { label: '포만감', cols: [{ label: '포만감', tone: 'good', value: (b) => b.counts.satiety, hint: '설정에서 끌 수 있는 항목' }] },
+    { label: '사진', cols: [{ label: '사진', tone: 'good', value: (b) => b.counts.photo }] },
+    { label: '코멘트', cols: [{ label: '코멘트', tone: 'good', value: (b) => b.counts.comment }] },
+    {
+        label: '자동적용',
+        divider: true,
+        cols: [
+            {
+                label: '자동적용',
+                tone: 'info',
+                value: (b) => b.counts.autoContext || 0,
+                hint: '맥락 예측이 어떻게·어디서·누구와 중 한 축이라도 자동으로 채운 기록'
+            }
+        ]
+    }
+];
+
+/** 그룹 경계의 세로줄 — 「무엇을」 넷과 「추천 분류」 둘이 한 덩어리로 읽히게 */
+const TREND_DIVIDER = 'border-l border-slate-200';
+/**
+ * 그룹 **안쪽**의 세로줄. 경계선과 같은 굵기다 — 한 단 옅게(slate-100) 그어 봤더니
+ * 실제 화면에서 보이지 않았고, 안 보이는 선은 없는 선이다. 그룹의 묶임은 두 줄 헤더의
+ * `colspan` 이 이미 말하고 있어 선의 굵기까지 빌릴 필요가 없다.
+ *
+ * 「무엇을」 넷에는 긋지 않는다: 최종 = 직접 + 자동처럼 서로를 설명하는 사이라 칸을
+ * 갈라 놓으면 그 관계가 끊긴다. 「추천 분류」 둘은 **경쟁하는 두 결말**이라 갈라야 읽힌다.
+ */
+const TREND_INNER_DIVIDER = 'border-l border-slate-200';
+
+/**
+ * 그 칸 왼쪽에 그을 선 — 그룹 첫 칸은 경계선, 안쪽 칸은 `innerDivider` 인 그룹이거나
+ * 그 칸 스스로 `divider` 를 든 경우만. 「무엇을」처럼 한 그룹 안에 덩어리가 여럿이면
+ * 그룹 전체가 아니라 덩어리의 경계에만 선이 필요하다.
+ */
+function trendCellDivider(group, index) {
+    if (index === 0) return group.cols.length > 1 || group.divider ? TREND_DIVIDER : '';
+    return group.innerDivider || group.cols[index]?.divider ? TREND_INNER_DIVIDER : '';
+}
+
+function trendCellClass(tone, rate) {
+    if (tone === 'bad') return rateCellClassInverse(rate);
+    if (tone === 'info') return rateCellClassNeutral(rate);
+    return rateCellClass(rate);
+}
+
+/** 추이 한 줄 — `b` 는 구간 버킷이거나 전체(overall) 버킷이다(모양이 같다) */
+function renderTrendRow(b, { label, emphasis = false }) {
+    const cells = TREND_COLUMN_GROUPS.map((g) =>
+        g.cols
+            .map((col, i) => {
+                /** 열마다 제 분모다 — 대부분은 그 구간의 기록 수, 「추천 분류」만 제안이 뜬 기록 수 */
+                const denom = col.denom ? col.denom(b) : b.total;
+                const n = denom ? Math.max(0, col.value(b)) : 0;
+                /** 그리는 값은 `displayRate` 가 있으면 그쪽이다 — 짝 열과 합을 맞추는 열이 쓴다 */
+                const rate = denom && col.displayRate ? col.displayRate(b, denom) : pct(n, denom);
+                const title =
+                    `${col.label} · ${n.toLocaleString()}건 / ${denom.toLocaleString()}건` +
+                    (col.denomLabel ? ` (${col.denomLabel})` : '');
+                return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(
+                    col.tone,
+                    rate
+                )} ${trendCellDivider(g, i)}" title="${escapeHtml(title)}">${denom ? rate.toFixed(0) : '-'}</td>`;
+            })
+            .join('')
+    ).join('');
+    const rowClass = emphasis ? 'border-b-2 border-slate-300 bg-slate-50' : 'border-b border-slate-100';
+    const stickyBg = emphasis ? 'bg-slate-50' : 'bg-white';
     return `
-        <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">항목별 입력률</h4>
-            <div class="overflow-x-auto rounded-xl border border-slate-200">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50">
-                        <tr class="border-b border-slate-200">
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase">항목</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">입력</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">미입력</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase">입력률</th>
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase hidden lg:table-cell">비고</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`;
+        <tr class="${rowClass}">
+            <td class="px-3 py-2 text-xs font-bold ${
+                emphasis ? 'text-slate-900' : 'text-slate-700'
+            } whitespace-pre-line sticky left-0 ${stickyBg}">${escapeHtml(label ?? b.label)}</td>
+            <td class="px-3 py-2 text-right text-xs tabular-nums text-slate-500">${b.total.toLocaleString()}</td>
+            ${cells}
+        </tr>`;
 }
 
 function renderTrendTable(result) {
     if (!result.trend.length) return '';
-    // 최신 구간이 위로 오게 뒤집어 보여 준다
-    const rows = [...result.trend].reverse();
-    /**
-     * 핵심 8열 + 「무엇을(최종)」 + 「자동적용」.
-     * 자동적용은 맥락 예측이 한 축이라도 채운 기록의 비율이다 — 시트 개편이 입력을
-     * 늘렸는지는 항목 입력률만으로는 답이 안 나온다. 입력률이 올라도 그게 사람이
-     * 더 채운 것인지 기계가 메운 것인지 갈리지 않기 때문이다.
-     */
-    const trendSpecs = [...CORE_FIELD_SPECS, MOMENT_FIELD_SPECS.find((f) => f.key === 'whatFinal')].filter(Boolean);
-    const head =
-        trendSpecs
-            .map(
-                (f) =>
-                    `<th class="px-2 py-2 text-center text-xs font-bold text-slate-600 whitespace-nowrap">${escapeHtml(
-                        f.key === 'whatFinal' ? '무엇을(최종)' : f.label
-                    )}</th>`
-            )
-            .join('') +
-        '<th class="px-2 py-2 text-center text-xs font-bold text-sky-700 whitespace-nowrap border-l border-slate-200">자동적용</th>';
-    const body = rows
-        .map((b) => {
-            const cells = trendSpecs
-                .map((f) => {
-                    const rate = pct(b.counts[f.key], b.total);
-                    return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${rateCellClass(rate)}">${
-                        b.total ? rate.toFixed(0) : '-'
-                    }</td>`;
-                })
-                .join('');
-            const autoRate = pct(b.counts.autoContext || 0, b.total);
-            return `
-                <tr class="border-b border-slate-100">
-                    <td class="px-3 py-2 text-xs font-bold text-slate-700 whitespace-pre-line sticky left-0 bg-white">${escapeHtml(b.label)}</td>
-                    <td class="px-3 py-2 text-right text-xs tabular-nums text-slate-500">${b.total.toLocaleString()}</td>
-                    ${cells}
-                    <td class="px-2 py-2 text-center text-xs font-bold tabular-nums text-sky-700 border-l border-slate-200">${
-                        b.total ? autoRate.toFixed(0) : '-'
-                    }</td>
-                </tr>`;
-        })
+
+    // 그룹 행 + 세부 행 2단 헤더 — 열이 하나뿐인 그룹은 두 줄을 통째로 쓴다
+    const groupHead = TREND_COLUMN_GROUPS.map((g) => {
+        const div = g.cols.length > 1 || g.divider ? TREND_DIVIDER : '';
+        const tone = g.label === '자동적용' ? 'text-sky-700' : 'text-slate-600';
+        return `<th ${g.cols.length > 1 ? `colspan="${g.cols.length}"` : 'rowspan="2"'}
+                    class="px-2 py-2 text-center text-xs font-bold ${tone} whitespace-nowrap bg-slate-50 ${div}">${escapeHtml(
+                        g.label
+                    )}</th>`;
+    }).join('');
+    const subHead = TREND_COLUMN_GROUPS.filter((g) => g.cols.length > 1)
+        .flatMap((g) => g.cols.map((col, i) => ({ col, divider: trendCellDivider(g, i) })))
+        .map(
+            ({ col, divider }) =>
+                `<th class="px-2 py-1 text-center text-[11px] font-bold text-slate-500 whitespace-nowrap bg-slate-50 ${divider}"
+                     title="${escapeHtml(col.hint || '')}">${escapeHtml(col.label)}</th>`
+        )
         .join('');
+
+    // 최신 구간이 위로 오게 뒤집고, 맨 위에 기간 전체를 한 줄 얹는다
+    const body =
+        renderTrendRow(result.overall, { label: '전체', emphasis: true }) +
+        [...result.trend]
+            .reverse()
+            .map((b) => renderTrendRow(b, {}))
+            .join('');
+
+    const sug = {
+        used: result.overall.counts.suggestUsed || 0,
+        changed: result.overall.counts.suggestChanged || 0,
+        rejected: result.overall.counts.suggestRejected || 0
+    };
+    const sugTotal = sug.used + sug.changed + sug.rejected;
+    const sugLine = sugTotal
+        ? `제안이 뜬 기록 <b>${sugTotal.toLocaleString()}건</b> 중
+           그대로 쓴 것 <b class="text-emerald-700">${sug.used.toLocaleString()}건(${fmtPct(pct(sug.used, sugTotal))})</b> ·
+           다른 값으로 고친 것 <b class="text-amber-700">${sug.changed.toLocaleString()}건</b> ·
+           ✕로 거부한 것 <b class="text-red-600">${sug.rejected.toLocaleString()}건</b>`
+        : '이 기간에는 제안 자국(<code>categorySuggested</code>)이 남은 기록이 없습니다';
 
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">
-                기간 추이 <span class="text-xs font-normal text-slate-400">(${result.byWeek ? '주별' : '일별'} · 단위 %)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <h4 class="text-sm font-black text-slate-800">
+                    기간 추이 <span class="text-xs font-normal text-slate-400">(${
+                        result.byWeek ? '주별' : '일별'
+                    } · 단위 % · 열 순서는 입력 시트 순서)</span>
+                </h4>
+                ${guideButton('trend')}
+            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="min-w-full text-sm border-separate border-spacing-0">
                     <thead class="bg-slate-50">
                         <tr class="border-b border-slate-200">
-                            <th class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase sticky left-0 bg-slate-50">${
+                            <th rowspan="2" class="px-3 py-2 text-left text-xs font-bold text-slate-600 uppercase sticky left-0 bg-slate-50">${
                                 result.byWeek ? '주차' : '날짜'
                             }</th>
-                            <th class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase whitespace-nowrap">기록</th>
-                            ${head}
+                            <th rowspan="2" class="px-3 py-2 text-right text-xs font-bold text-slate-600 uppercase whitespace-nowrap">기록</th>
+                            ${groupHead}
                         </tr>
+                        <tr class="border-b border-slate-200">${subHead}</tr>
                     </thead>
                     <tbody>${body}</tbody>
                 </table>
             </div>
-            <p class="mt-2 text-[11px] text-slate-400">
-                · <b>자동적용</b> = 맥락 예측이 어떻게·어디서·누구와 중 한 축이라도 자동으로 채운 기록의 비율.
-                개편 전 기록에는 이 자국이 없어 0으로 나옵니다.
+            <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
+                <b class="text-slate-700">추천 분류</b> — ${sugLine}.
             </p>
         </div>`;
 }
@@ -561,9 +1010,12 @@ function renderCompletenessTable(result) {
         .join('');
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">
-                기록 하나가 채운 항목 수 <span class="text-xs font-normal text-slate-400">(핵심 ${CORE_FIELD_SPECS.length}항목 중)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <h4 class="text-sm font-black text-slate-800">
+                    기록 하나가 채운 항목 수 <span class="text-xs font-normal text-slate-400">(핵심 ${CORE_FIELD_SPECS.length}항목 중)</span>
+                </h4>
+                ${guideButton('completeness')}
+            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="min-w-full text-sm">
                     <thead class="bg-slate-50">
@@ -625,17 +1077,10 @@ function renderMomentAnalyticsResult(result, meta) {
         </div>
         ${renderSummaryCards(result, meta)}
         ${renderAxisCharts(buildAxisBreakdown(result, meta.tagLists || {}), result.overall.total)}
-        ${renderFieldTable(result)}
         ${renderTrendTable(result)}
-        ${renderCompletenessTable(result)}
-        <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
-            · 분모는 기간 안의 끼니·간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을 갖지 않아 제외했습니다.<br>
-            · <b>만족도·포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 「꺼 둔 사용자」가 섞여 있습니다.<br>
-            · 「항목별 입력률」의 <b>무엇을</b>은 사용자가 확정한 값만 셉니다 — 자동 분류는 이 필드를 건드리지 않습니다.
-              자동까지 합친 값은 바로 아래 「무엇을(최종 분류 도달)」 행과, 위 「축별 구성」의 무엇을 막대에 있습니다.<br>
-            · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
-        </p>`;
+        ${renderCompletenessTable(result)}`;
     refreshLucideIcons(container);
+    bindMomentGuideOnce();
     // 라벨은 DOM 에 붙은 뒤에야 폭을 잴 수 있다 — 그리기와 재기가 나뉘는 이유
     const charts = document.getElementById('momentAxisCharts');
     if (charts) {
@@ -685,6 +1130,8 @@ async function runMomentAnalytics(force = false) {
             if (excluded && excluded.has(m.userId)) return false;
             // 하루기록 미러는 이 항목들을 갖지 않는다 — 분모에 넣으면 입력률이 통째로 내려앉는다
             if (isDailyJournalMealRecord(m) || String(m.slotId || '') === 'daily_journal') return false;
+            // 사용자 메모도 같다 — 식사 축이 없다 (docs/user-memo-items.md §6)
+            if (isMemoMealRecord(m)) return false;
             return true;
         });
 
@@ -745,15 +1192,33 @@ window.exportMomentAnalyticsToExcel = async function () {
         미입력: total - result.overall.counts[spec.key],
         입력률: Number(pct(result.overall.counts[spec.key], total).toFixed(1))
     }));
-    const trendRows = result.trend.map((b) => {
-        const row = { 구간: String(b.label).replace('\n', ' '), 기록수: b.total };
-        CORE_FIELD_SPECS.forEach((f) => {
-            row[f.label] = Number(pct(b.counts[f.key], b.total).toFixed(1));
+    /** 화면 추이 표와 같은 열·같은 순서 — 두 곳이 갈리면 어느 쪽이 맞는지 알 수 없다 */
+    const trendRowOf = (b, label) => {
+        const row = { 구간: label ?? String(b.label).replace('\n', ' '), 기록수: b.total };
+        TREND_COLUMN_GROUPS.forEach((g) => {
+            g.cols.forEach((col) => {
+                const name = g.cols.length > 1 ? `${g.label}-${col.label}` : col.label;
+                const denom = col.denom ? col.denom(b) : b.total;
+                row[name] = denom ? Number(pct(Math.max(0, col.value(b)), denom).toFixed(1)) : '';
+            });
         });
-        row['무엇을(최종)'] = Number(pct(b.counts.whatFinal, b.total).toFixed(1));
-        row['자동적용'] = Number(pct(b.counts.autoContext || 0, b.total).toFixed(1));
         return row;
+    };
+    const trendRows = [trendRowOf(result.overall, '전체'), ...result.trend.map((b) => trendRowOf(b))];
+    /**
+     * 추이 시트의 「추천 분류」 %는 제안이 뜬 기록이 분모다(화면과 같다). 여기서는 그 분모 자체와
+     * 전체 대비 비중까지 건수로 펴 둔다 — 셋으로 가른 결말(고침/거부)은 추이 표에서 한 칸으로 접힌다.
+     */
+    const suggestRows = FOOD_SUGGEST_SPECS.map((spec) => ({
+        결말: spec.label,
+        건수: result.overall.counts[spec.key] || 0
+    }));
+    const suggestOffered = suggestRows.reduce((acc, r) => acc + r.건수, 0);
+    suggestRows.forEach((r) => {
+        r['제안 대비'] = Number(pct(r.건수, suggestOffered).toFixed(1));
+        r['전체 대비'] = Number(pct(r.건수, total).toFixed(1));
     });
+    suggestRows.push({ 결말: '(제안이 뜬 기록)', 건수: suggestOffered, '제안 대비': 100, '전체 대비': Number(pct(suggestOffered, total).toFixed(1)) });
     /** 화면 본표를 그대로 편 시트 — 축·선택지·건수·직접·자동 */
     const axisRows = [];
     buildAxisBreakdown(result, momentAnalyticsLastMeta?.tagLists || {}).forEach((axis) => {
@@ -812,6 +1277,7 @@ window.exportMomentAnalyticsToExcel = async function () {
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(axisRows), '선택지 분포');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fieldRows), '항목별 입력률');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pathRows), '무엇을 경로');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(suggestRows), '추천 분류');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(trendRows), '기간 추이');
         XLSX.writeFile(wb, `mealog-moment-analytics-${result.startYmd}-${result.endYmd}.xlsx`);
     } catch (e) {

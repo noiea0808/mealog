@@ -48,11 +48,12 @@ const TIMESTAMP_HANDLE_SIZE = 18;
 function getPhotoEditContextPhotos() {
     if (photoEditContext === 'dailyJournal') return appState.dailyJournalPhotos;
     if (photoEditContext === 'meal') return appState.currentPhotos;
+    if (photoEditContext === 'memo') return appState.memoRecordPhotos || [];
     return [];
 }
 
 function isRecordPhotoEditContext() {
-    return photoEditContext === 'meal' || photoEditContext === 'dailyJournal';
+    return photoEditContext === 'meal' || photoEditContext === 'dailyJournal' || photoEditContext === 'memo';
 }
 
 function isMealPhotoEditContext() {
@@ -63,6 +64,11 @@ async function refreshPhotoEditContextPreviews() {
     if (photoEditContext === 'dailyJournal') {
         const { renderDailyJournalPhotoPreviews } = await import('../modals/daily-journal.js');
         renderDailyJournalPhotoPreviews();
+        return;
+    }
+    if (photoEditContext === 'memo') {
+        const { renderMemoRecordPhotoPreviews } = await import('../modals/memo-record.js');
+        renderMemoRecordPhotoPreviews();
         return;
     }
     const { renderPhotoPreviews } = await import('../render.js');
@@ -110,6 +116,17 @@ export function editPhoto(idx) {
     const photoSrc = appState.currentPhotos[idx];
     
     openPhotoEditModalWithImage(photoSrc);
+}
+
+/** 메모 기록 시트 사진 편집 (docs/user-memo-items.md §4.4) */
+export function editMemoRecordPhoto(idx) {
+    const photos = appState.memoRecordPhotos || [];
+    if (idx < 0 || idx >= photos.length) return;
+
+    photoEditContext = 'memo';
+    profilePhotoEditObjectUrl = null;
+    editingPhotoIndex = idx;
+    openPhotoEditModalWithImage(photos[idx]);
 }
 
 /** 하루 기록 모달 사진 편집 */
@@ -168,6 +185,8 @@ function getPhotoEditAspectRatioCss() {
         ratio = '1:1';
     } else if (photoEditContext === 'dailyJournal') {
         ratio = appState.dailyJournalPhotoAspectRatio || '1:1';
+    } else if (photoEditContext === 'memo') {
+        ratio = appState.memoRecordPhotoAspectRatio || '1:1';
     } else {
         ratio = appState.recordPhotoAspectRatio || '1:1';
     }
@@ -204,16 +223,25 @@ function overlayPartsToDate(overlay) {
     return new Date(year, monthIndex >= 0 ? monthIndex : 0, day, hh, mm);
 }
 
+/** 편집 컨텍스트의 photoMeta — photos 와 같은 인덱스 */
+function getPhotoEditContextMeta() {
+    if (photoEditContext === 'meal') return appState.currentPhotoMeta;
+    if (photoEditContext === 'memo') return appState.memoRecordPhotoMeta;
+    return null;
+}
+
 function getEditingPhotoSrc() {
-    if (editingPhotoIndex != null && Array.isArray(appState.currentPhotos)) {
-        return appState.currentPhotos[editingPhotoIndex] || editingPhotoImage?.src || null;
+    const photos = getPhotoEditContextPhotos();
+    if (editingPhotoIndex != null && Array.isArray(photos)) {
+        return photos[editingPhotoIndex] || editingPhotoImage?.src || null;
     }
     return editingPhotoImage?.src || null;
 }
 
 async function resolveEditingPhotoTakenAt() {
-    if (editingPhotoIndex != null && Array.isArray(appState.currentPhotoMeta)) {
-        const fromMeta = parsePhotoTakenAt(appState.currentPhotoMeta[editingPhotoIndex]);
+    const meta = getPhotoEditContextMeta();
+    if (editingPhotoIndex != null && Array.isArray(meta)) {
+        const fromMeta = parsePhotoTakenAt(meta[editingPhotoIndex]);
         if (fromMeta) return fromMeta;
     }
     return tryExifDateFromImageSrc(getEditingPhotoSrc());

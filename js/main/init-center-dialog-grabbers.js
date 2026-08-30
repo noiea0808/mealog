@@ -50,6 +50,16 @@ export function initCenterDialogGrabbers() {
             onClose: () => window.closeEntrySlotPicker?.()
         },
         {
+            rootId: 'slotPlanSettingsModal',
+            panelSelector: '.entry-slot-picker',
+            onClose: () => window.closeSlotPlanSettings?.()
+        },
+        {
+            rootId: 'memoSettingsModal',
+            panelSelector: '.entry-slot-picker',
+            onClose: () => window.closeMemoSettings?.()
+        },
+        {
             rootId: 'trackerMonthCalendarModal',
             panelSelector: '.tracker-month-calendar-panel',
             onClose: () => {

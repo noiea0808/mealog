@@ -97,6 +97,45 @@ export const FOOD_PATH_SPECS = [
     { key: 'pathNoDetail', label: '분류 불가(상세 텍스트 없음)', filledPath: 'noDetail', tone: 'bad' }
 ];
 
+/* ─────────────────────────────────────────────────────────────
+ * 추천 분류(제안 칩)를 썼나 안 썼나
+ *
+ * 위 경로표는 **값이 어디서 왔나**를 묻는다. 이건 다른 질문이다 — 분류기가 내민 답을
+ * 사람이 받아들였나. 둘이 갈리는 이유는 `categorySuggested` 때문이다:
+ * 저장 경로는 **사용자가 다른 값으로 고쳤어도** 분류기가 뭐라고 했는지를 남긴다
+ * (js/modals/entry-save-record.js §카테고리 자동 분류). 그 자국이 없으면
+ * 「맞힌 경우만 데이터에 남는」 상태가 되어 교정률을 셀 방법이 없다.
+ *
+ * 그래서 제안이 떴던 기록만 분모로 잡고 셋으로 가른다:
+ *   used     — 최종 값이 제안값과 같다 (확정했거나, 그대로 두고 저장했거나)
+ *   changed  — 최종 값이 있는데 제안값과 다르다 (사람이 고쳤다 = 오분류)
+ *   rejected — 최종 값이 없다 (✕ 로 거부했거나 값이 안 남았다)
+ *
+ * **옛 기록에는 `categorySuggested` 가 없다.** 제안이 떴는지조차 알 수 없으므로
+ * 분모에서 통째로 빠진다 — 개편 전 구간이 0으로 보이는 것은 결측이지 실패가 아니다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 분류기가 내밀었던 값 — 사용자가 고쳤어도 남아 있다(표기는 읽을 때 맞춘다) */
+export const foodSuggestValue = (m) => normalizeFoodForm(trimmed(m?.categorySuggested));
+
+/**
+ * 제안 하나의 결말 — 겹치지 않는 한 칸.
+ * @returns {'none'|'used'|'changed'|'rejected'}
+ */
+export function foodSuggestOutcome(meal) {
+    const suggested = foodSuggestValue(meal);
+    if (!suggested) return 'none';
+    const final = foodUserValue(meal) || foodAutoValue(meal);
+    if (!final) return 'rejected';
+    return final === suggested ? 'used' : 'changed';
+}
+
+export const FOOD_SUGGEST_SPECS = [
+    { key: 'suggestUsed', label: '추천 그대로', outcome: 'used' },
+    { key: 'suggestChanged', label: '다른 값으로 고침', outcome: 'changed' },
+    { key: 'suggestRejected', label: '거부(값 없음)', outcome: 'rejected' }
+];
+
 
 /* ─────────────────────────────────────────────────────────────
  * 선택지 축 — 「태그 관리」의 목록이 실제로 얼마나 골라지는가
@@ -431,8 +470,8 @@ export const MOMENT_FIELD_SPECS = [
 export const CORE_FIELD_SPECS = MOMENT_FIELD_SPECS.filter((f) => f.core);
 
 /**
- * 실제로 세는 것 전부 — 항목별 표(MOMENT_FIELD_SPECS)에 경로 행을 얹은 목록.
- * 경로는 서로 배타적이라 `filledPath` 로 한 칸만 참이 된다.
+ * 실제로 세는 것 전부 — 항목 목록(MOMENT_FIELD_SPECS)에 「무엇을」의 경로 행과
+ * 추천 분류 결말 행을 얹은 목록. 둘 다 각자 서로 배타적이라 한 칸만 참이 된다.
  */
 export const COUNT_SPECS = [
     ...MOMENT_FIELD_SPECS,
@@ -440,6 +479,11 @@ export const COUNT_SPECS = [
         ...p,
         path: true,
         filled: (m) => foodClassifyPath(m) === p.filledPath
+    })),
+    ...FOOD_SUGGEST_SPECS.map((p) => ({
+        ...p,
+        suggest: true,
+        filled: (m) => foodSuggestOutcome(m) === p.outcome
     }))
 ];
 

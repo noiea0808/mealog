@@ -2352,6 +2352,11 @@
                         </div>
                     </div>
                     <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
+                        <div class="profile-v2-panel-card">
+                            <h3 class="profile-v2-panel-title">기록 항목</h3>
+                            <p class="profile-v2-panel-desc">기록 추가 팝업의 항목 이름·사용 여부·순서를 바꿉니다.</p>
+                            <button type="button" class="profile-v2-memo-save" onclick="window.openSlotPlanSettings?.()">기록 항목 설정 열기</button>
+                        </div>
                         <div class="profile-v2-panel-card profile-v2-memo-card">
                             <h3 class="profile-v2-panel-title">밀당 메모</h3>
                             <p class="profile-v2-panel-desc">밀당 캐릭터가 식단을 분석할 때 참고합니다. 메뉴 약어, 상태, 식습관을 적어 두세요.</p>
@@ -2837,8 +2842,226 @@
                     <h2 id="entrySlotPickerTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
                     <p id="entrySlotPickerDateLabel" class="min-w-0 truncate text-sm font-medium text-slate-500"></p>
                 </div>
+                <button type="button" id="entrySlotPickerMemoAddBtn" class="entry-slot-picker__settings-btn" aria-label="메모 설정" title="메모 설정">
+                    <i data-lucide="notebook-pen" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="entrySlotPickerSettingsBtn" class="entry-slot-picker__settings-btn" aria-label="기록 항목 설정">
+                    <i data-lucide="settings-2" aria-hidden="true"></i>
+                </button>
             </div>
             <div id="entrySlotPickerList" class="entry-slot-picker__list max-h-[min(80vh,36rem)] overflow-y-auto pb-3 pt-1"></div>
+        </div>
+    </div>
+
+    <!-- 기록 항목 설정 시트 (docs/user-slot-plan.md §4.2) -->
+    <div id="slotPlanSettingsModal" class="hidden fixed inset-0 z-[var(--z-slot-picker)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="slotPlanSettingsTitle" aria-hidden="true">
+        <button type="button" id="slotPlanSettingsBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
+                <div class="flex min-w-0 flex-1 items-baseline gap-2">
+                    <h2 id="slotPlanSettingsTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 항목 설정</h2>
+                    <p id="slotPlanSettingsCount" class="min-w-0 truncate text-sm font-medium text-slate-400"></p>
+                </div>
+                <button type="button" id="slotPlanSettingsHelpBtn" class="entry-slot-picker__settings-btn" aria-label="도움말" aria-haspopup="dialog">
+                    <i data-lucide="circle-help" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="slotPlanSettingsList" class="entry-slot-picker__list slot-plan-settings__list max-h-[min(70vh,30rem)] overflow-y-auto pt-1"></div>
+            <div class="slot-plan-settings__footer">
+                <!-- 적용 시작일은 묻지 않는다 — 늘 "지금부터" 다 (§4.2.3) -->
+                <p id="slotPlanSettingsNotice" class="slot-plan-settings__notice"></p>
+                <div class="slot-plan-settings__actions">
+                    <button type="button" id="slotPlanCancelBtn" class="slot-plan-settings__btn">취소</button>
+                    <button type="button" id="slotPlanSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메모 기록 시트 (user-memo-items §4.4) — 시간·내용·사진 세 칸 -->
+    <div id="memoRecordModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="memoRecordTitle" aria-hidden="true">
+        <button type="button" id="memoRecordBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="entry-slot-picker memo-record relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
+                <div class="flex min-w-0 flex-1 items-center gap-2">
+                    <span id="memoRecordIcon" class="memo-record__icon" aria-hidden="true"></span>
+                    <h2 id="memoRecordTitle" class="min-w-0 truncate text-base font-bold tracking-tight text-slate-800">메모</h2>
+                </div>
+                <button type="button" id="memoRecordCloseBtn" class="entry-slot-picker__settings-btn" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <!--
+                끼니 시트와 **같은 부품·같은 결**로 짠다 (docs/user-memo-items.md §4.4).
+                항목마다 구분선을 긋고, 라벨은 색 아이콘 + 굵은 글씨, 시각은
+                출처 버튼이 달린 그 복합 입력칸 그대로. 같은 일을 두 가지 모양으로
+                배우게 하지 않는다.
+
+                순서만 다르다 — 사진 > 값 > 내용 > 시간. 메모를 남기는 손은 대개
+                사진에서 출발하고, 시각은 그 사진에서 끌어올 수 있어 마지막에
+                확인만 하면 된다.
+            -->
+            <div class="memo-record__body">
+                <div id="memoRecordPhotoSection" class="entry-form-field-section entry-photo-section">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>사진</span>
+                            <span id="memoRecordPhotoCount" class="entry-photo-count">0/5</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
+                                <button type="button" id="memoRecordCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
+                                    <i data-lucide="camera" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" id="memoRecordAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                    <i data-lucide="image" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('4:3')">4:3</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
+                        <div id="memoRecordPhotoPreviews" class="flex gap-2 min-w-0"></div>
+                    </div>
+                </div>
+                <div id="memoRecordValueRow" class="entry-form-field-section hidden">
+                    <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                        <label class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0" for="memoRecordValue">
+                            <i data-lucide="hash" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>값</span>
+                        </label>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <input type="text" id="memoRecordValue" class="memo-record__value min-w-0 flex-1" inputmode="decimal" autocomplete="off" placeholder="0" />
+                            <span id="memoRecordUnit" class="memo-record__unit shrink-0"></span>
+                        </div>
+                    </div>
+                </div>
+                <div id="memoRecordCommentSection" class="entry-form-field-section entry-axis-stack">
+                    <div class="entry-axis-label-row">
+                        <div class="entry-axis-label-group shrink-0">
+                            <label class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase" for="memoRecordText">
+                                <i data-lucide="message-circle-more" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>내용</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="entry-axis-input-area w-full min-w-0">
+                        <textarea id="memoRecordText" rows="2" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요." class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 appearance-none"></textarea>
+                    </div>
+                </div>
+                <div id="memoRecordTimeSection" class="entry-form-field-section">
+                    <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i data-lucide="clock" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>시간</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                            <!--
+                                끼니 시트의 시각 복합칸 그대로 — [출처 ▾][오전/오후][시:분].
+                                출처 버튼을 누르면 현재 시각·사진 시각·직접 입력 시트가 열린다.
+                                '미입력'만 없다: 메모는 시각이 곧 자리다 (§3.3).
+                            -->
+                            <div id="memoRecordClockCompound" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                <button type="button" id="memoRecordTimeSourceBtn"
+                                    class="entry-meal-time-source-btn shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 active:bg-slate-100"
+                                    aria-label="시간 선택 방식" aria-haspopup="dialog">
+                                    <span id="memoRecordTimeSourceLabel" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite">현재 시각</span>
+                                    <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                </button>
+                                <label for="memoRecordAmpm" class="sr-only">오전 또는 오후</label>
+                                <select id="memoRecordAmpm" class="entry-meal-ampm shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                    <option value="am">오전</option>
+                                    <option value="pm">오후</option>
+                                </select>
+                                <div class="relative min-w-0 flex-1">
+                                    <input type="text" id="memoRecordTimeInput"
+                                        maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                        placeholder="시:분" aria-label="시각"
+                                        class="absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="memo-record__foot">
+                <button type="button" id="memoRecordDeleteBtn" class="slot-plan-settings__btn memo-record__delete hidden">삭제</button>
+                <button type="button" id="memoRecordSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메모 항목 만들기·고치기 팝업 — 설정 시트 위에 겹친다 (user-memo-items §4.3) -->
+    <!-- 메모 설정 시트 — 피커에서 전환해 열린다 (user-memo-items §4.3) -->
+    <div id="memoSettingsModal" class="hidden fixed inset-0 z-[var(--z-slot-picker)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="memoSettingsTitle" aria-hidden="true">
+        <button type="button" id="memoSettingsBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="entry-slot-picker memo-settings relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
+                <div class="flex min-w-0 flex-1 items-baseline gap-2">
+                    <h2 id="memoSettingsTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">메모 설정</h2>
+                    <p id="memoSettingsCount" class="min-w-0 truncate text-sm font-medium text-slate-400"></p>
+                </div>
+                <button type="button" id="memoSettingsCloseBtn" class="entry-slot-picker__settings-btn" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="memoSettingsList" class="entry-slot-picker__list memo-settings__list max-h-[min(60vh,26rem)] overflow-y-auto"></div>
+            <div class="memo-settings__new">
+                <p class="memo-settings__new-head">새 메모 항목</p>
+                <div class="memo-settings__row memo-settings__row--new">
+                    <button type="button" id="memoNewIconBtn" class="memo-settings__icon" aria-label="아이콘 고르기"></button>
+                    <input type="text" id="memoNewNameInput" class="memo-settings__name" maxlength="8" placeholder="이름 (8자)" autocomplete="off" aria-label="새 메모 항목 이름" />
+                    <button type="button" id="memoNewAddBtn" class="memo-settings__make">추가</button>
+                </div>
+                <!--
+                    아이콘 안내는 이름 칸 플레이스홀더에 못 넣는다 — 그 칸이 200px 인데
+                    이 문장은 346px 다. 넣으면 '다양한 아이…' 에서 잘려 아무것도 안 알려 준다.
+                    줄 아래 한 줄이면 온전히 읽히고, 이름 칸은 이름 칸이라는 것도 남는다.
+                -->
+                <p id="memoNewIconHint" class="memo-settings__new-hint">왼쪽 박스를 선택하면 다양한 아이콘을 선택할 수 있어요</p>
+                <div id="memoNewIconGrid" class="slot-memo-edit__icons hidden" role="radiogroup" aria-label="아이콘"></div>
+                <p id="memoSettingsError" class="slot-memo-edit__error" role="alert"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 기록 항목 설정 도움말 팝업 — 설정 시트 위에 겹친다 (user-slot-plan §4.2) -->
+    <div id="slotPlanHelpModal" class="hidden fixed inset-0 z-[var(--z-slot-picker-help)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="slotPlanHelpTitle" aria-hidden="true">
+        <button type="button" id="slotPlanHelpBackdrop" class="slot-plan-help__backdrop absolute inset-0 z-0 cursor-default border-0 p-0" aria-label="닫기"></button>
+        <div class="slot-plan-help relative z-10 flex w-full max-w-[21rem] flex-col overflow-hidden">
+            <div class="slot-plan-help__head">
+                <h2 id="slotPlanHelpTitle" class="slot-plan-help__title">기록 항목, 이렇게 바꿔요</h2>
+                <button type="button" id="slotPlanHelpCloseBtn" class="slot-plan-help__x" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="slot-plan-help__body">
+                <section class="slot-plan-help__item">
+                    <h3>항목을 새로 만들고 싶어요</h3>
+                    <p>비슷한 시간대의 항목 오른쪽 끝에 있는 복제 버튼<i data-lucide="copy-plus" class="slot-plan-help__icon" aria-hidden="true"></i>을 눌러 보세요. 똑같은 항목이 바로 아래에 하나 더 생기니, 이름만 새로 지어 주시면 돼요. '저녁'을 복제해서 '야식'으로 바꾸는 식이에요.</p>
+                </section>
+                <section class="slot-plan-help__item">
+                    <h3>안 쓰는 항목을 숨기고 싶어요</h3>
+                    <p>'사용 중'을 누르면 '사용 안 함'으로 바뀌어요. 기록을 추가할 때 목록에서 빠지지만, 이미 남겨 둔 기록은 그대로 있으니 안심하셔도 좋아요. 언제든 다시 켤 수 있고요.</p>
+                    <p>직접 복제해서 만든 항목에는 '삭제'가 있어요. 지워도 그 항목으로 남긴 기록은 사라지지 않아요.</p>
+                </section>
+                <section class="slot-plan-help__item">
+                    <h3>순서를 바꾸고 싶어요</h3>
+                    <p>항목 왼쪽의 손잡이<i data-lucide="grip-vertical" class="slot-plan-help__icon" aria-hidden="true"></i>를 꾹 누른 채 위아래로 끌어 주세요. 여기서 정한 순서 그대로 기록을 추가할 때 보여 드려요.</p>
+                </section>
+                <section class="slot-plan-help__item">
+                    <h3>언제부터 적용되나요?</h3>
+                    <p>저장하는 순간부터요. 여기서 정한 항목으로 앞으로 계속 기록하시게 돼요. 이미 남겨 둔 기록은 그대로 있고, 이름만 고치신 거라면 지난 기록에도 새 이름이 따라갑니다.</p>
+                </section>
+            </div>
         </div>
     </div>
 
@@ -3359,47 +3582,14 @@
                     <input type="file" id="dailyJournalImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
 
-                <div id="dailyJournalMetricsSection" class="entry-sheet-zone daily-journal-metrics-stack flex flex-col gap-2 px-4 py-3">
-                    <div id="dailyJournalWeightSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
-                        <div class="flex items-center justify-between gap-2 mb-1.5">
-                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
-                                <i data-lucide="scale" class="entry-axis-icon" aria-hidden="true"></i>
-                                <span>체중</span>
-                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">kg</span>
-                            </span>
-                            <label class="entry-gauge-switch shrink-0" title="체중 기록">
-                                <input type="checkbox" id="dailyJournalWeightToggle" class="peer sr-only" role="switch" aria-label="체중 기록 사용">
-                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                            </label>
-                        </div>
-                        <div id="dailyJournalWeightWrap">
-                            <div id="dailyJournalWeightRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalWeightRecords" class="flex flex-col gap-1.5"></div>
-                            </div>
-                            <button type="button" id="dailyJournalWeightAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
-                        </div>
-                    </div>
-                    <div id="dailyJournalBloodSugarSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
-                        <div class="flex items-center justify-between gap-2 mb-1.5">
-                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
-                                <i data-lucide="droplet" class="entry-axis-icon" aria-hidden="true"></i>
-                                <span>혈당</span>
-                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">mg/dL</span>
-                            </span>
-                            <label class="entry-gauge-switch shrink-0" title="혈당 기록">
-                                <input type="checkbox" id="dailyJournalBloodSugarToggle" class="peer sr-only" role="switch" aria-label="혈당 기록 사용">
-                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                            </label>
-                        </div>
-                        <div id="dailyJournalBloodSugarWrap">
-                            <div id="dailyJournalBloodSugarRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalBloodSugarRecords" class="flex flex-col gap-1.5"></div>
-                            </div>
-                            <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
-                        </div>
-                    </div>
+                <!--
+                    체중·혈당 입력은 여기서 걷었다 — 기록 추가의 **메모**가 받는다
+                    (docs/user-memo-items.md §7.1). 옷 값은 dailyComments 에 그대로 남아
+                    타임라인·분석 탭이 계속 읽는다 — 마이그레이션이 없다.
+                -->
+                <div id="dailyJournalMetricsNotice" class="daily-journal-metrics-notice">
+                    <i data-lucide="scale" aria-hidden="true"></i>
+                    <span>체중·혈당은 <b>기록 추가</b>의 메모에서 남기세요. 지금까지 적은 값은 그대로 있어요.</span>
                 </div>
 
                 <div class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo">

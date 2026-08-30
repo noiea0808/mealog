@@ -1,5 +1,6 @@
 // 밀당 건강 탭 — 체중·혈당 일별 차트 (단일 기록: 선, 복수 기록: 시고저종 캔들)
 import { getDailyJournalFromSettings } from '../utils/daily-journal-data.js';
+import { defaultMemoKey, MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
 import { formatMealClockTagLabel } from '../meal-time-utils.js';
 
@@ -450,7 +451,36 @@ function legacyVitalsToRecords(raw, field) {
     return [{ value: num, time: '' }];
 }
 
+/**
+ * 그 날짜 메모 기록에서 온 값 — 새 입력은 전부 여기로 들어온다
+ * (docs/user-memo-items.md §6.2). 기본 메모의 key 가 결정적이라(§2.6)
+ * 사용자가 이름을 '몸무게'로 고쳐도 이 조회가 안 끊긴다.
+ */
+function memoRecordsForDate(dateStr, metric) {
+    const key = defaultMemoKey(metric === 'weight' ? 'weight' : 'bloodSugar');
+    const out = [];
+    for (const m of window.mealHistory || []) {
+        if (!m || m.date !== dateStr || m.slotId !== MEMO_SLOT_ID || m.slotKey !== key) continue;
+        const value = Number(m.value);
+        if (!Number.isFinite(value)) continue;
+        const t = String(m.time || '').slice(0, 5);
+        out.push({ value, time: /^\d{2}:\d{2}$/.test(t) ? t : '' });
+    }
+    return out.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+}
+
+/**
+ * 폴백 사슬 세 칸 (docs/user-memo-items.md §6.2):
+ *   숫자 메모 → 하루 소감의 weightRecords → 구세대 dailyVitals
+ *
+ * **마이그레이션이 없다.** 옷 데이터를 옷기지 않고 사슬만 늘렸다 —
+ * 이미 `dailyVitals` 에 쓰고 있는 수법 그대로다. 하루 소감의 입력 UI 를
+ * 걷어낸 뒤에도 옳 값이 그대로 보이는 이유가 이 사슬이다.
+ */
 function getMetricRecordsForDate(settings, dateStr, metric) {
+    const fromMemo = memoRecordsForDate(dateStr, metric);
+    if (fromMemo.length > 0) return fromMemo;
+
     const entry = getDailyJournalFromSettings(settings, dateStr);
     const listKey = metric === 'weight' ? 'weightRecords' : 'bloodSugarRecords';
     const enabledKey = metric === 'weight' ? 'weightEnabled' : 'bloodSugarEnabled';

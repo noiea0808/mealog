@@ -9,6 +9,8 @@ import {
     MOMENT_FIELD_SPECS,
     CORE_FIELD_SPECS,
     FOOD_PATH_SPECS,
+    FOOD_SUGGEST_SPECS,
+    foodSuggestOutcome,
     analyzeMomentRows,
     buildAxisBreakdown,
     AXIS_CHART_SLOTS,
@@ -102,6 +104,54 @@ test('경로는 서로 배타적이라 합이 전체 기록 수와 같다', () =
     assert.equal(r.overall.counts.whatFinal, 5);
     // 사용자 확정률(what)은 그중 2건뿐 — 이 둘이 갈려야 시트 개편의 영향을 읽을 수 있다
     assert.equal(r.overall.counts.what, 2);
+});
+
+test('추천 분류의 결말은 제안 자국이 남은 기록에서만 갈린다', () => {
+    // 제안 자체가 안 떴거나, 자국을 남기기 전에 저장된 옛 기록 — 분모에 들어가지 않는다
+    assert.equal(foodSuggestOutcome({ category: '밥류' }), 'none');
+    assert.equal(foodSuggestOutcome({}), 'none');
+    // 확정했거나, 그대로 두고 저장했거나 — 값이 제안과 같으면 「사용」
+    assert.equal(foodSuggestOutcome({ category: '밥류', categorySuggested: '밥류', categorySource: 'user' }), 'used');
+    assert.equal(foodSuggestOutcome({ categoryAuto: '면류', categorySuggested: '면류', categorySource: 'local' }), 'used');
+    // 사람이 다른 값으로 고쳤다 = 오분류. 제안이 맞힌 것만 남으면 이 사실이 사라진다
+    assert.equal(foodSuggestOutcome({ category: '면류', categorySuggested: '밥류', categorySource: 'user' }), 'changed');
+    // ✕ 거부 — 값이 아예 안 남는다
+    assert.equal(foodSuggestOutcome({ categorySuggested: '밥류', categorySource: 'dismissed' }), 'rejected');
+    // 표기가 갈린 옛 값도 같은 것으로 본다(읽을 때 축을 맞춘다)
+    assert.equal(foodSuggestOutcome({ category: '밥류', categorySuggested: '밥/한상' }), 'used');
+});
+
+test('추천 분류 결말도 서로 배타적이다 — 합이 제안이 뜬 기록 수와 같다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류', categorySuggested: '밥류', categorySource: 'user' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySuggested: '면류', categorySource: 'local' },
+        { userId: 'u1', date: '2026-08-10', category: '면류', categorySuggested: '밥류', categorySource: 'user' },
+        { userId: 'u1', date: '2026-08-10', categorySuggested: '밥류', categorySource: 'dismissed' },
+        // 제안 자국 없음 — 어느 칸에도 안 들어간다
+        { userId: 'u1', date: '2026-08-10', category: '빵류', categorySource: 'user' },
+        { userId: 'u1', date: '2026-08-10' }
+    ];
+    const r = analyzeMomentRows(rows, '2026-08-10', '2026-08-10');
+    assert.equal(r.overall.counts.suggestUsed, 2);
+    assert.equal(r.overall.counts.suggestChanged, 1);
+    assert.equal(r.overall.counts.suggestRejected, 1);
+    const sum = FOOD_SUGGEST_SPECS.reduce((acc, spec) => acc + r.overall.counts[spec.key], 0);
+    assert.equal(sum, 4, '제안이 뜬 기록만 분모다 — 전체 기록 수가 아니다');
+});
+
+test('추이 구간도 추천 분류 결말을 따로 센다 — 개편 전후를 갈라 볼 수 있게', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류', categorySuggested: '밥류' },
+        { userId: 'u1', date: '2026-08-11', category: '면류', categorySuggested: '밥류' },
+        { userId: 'u1', date: '2026-08-11', categorySuggested: '밥류', categorySource: 'dismissed' }
+    ];
+    const r = analyzeMomentRows(rows, '2026-08-10', '2026-08-11');
+    const [d10, d11] = r.trend;
+    assert.equal(d10.counts.suggestUsed, 1);
+    assert.equal(d10.counts.suggestChanged + d10.counts.suggestRejected, 0);
+    assert.equal(d11.counts.suggestUsed, 0);
+    assert.equal(d11.counts.suggestChanged, 1);
+    assert.equal(d11.counts.suggestRejected, 1);
 });
 
 test('만족도·포만감은 0도 값이다 — 미입력은 없거나 빈 값일 때뿐', () => {
@@ -480,4 +530,20 @@ test('건수 0인 선택지는 칸도 슬롯도 없이 뒤로 밀린다 — 범�
         ['집밥', null],
         ['외식', null]
     ]);
+});
+
+test('「자동」은 로컬·서버AI·경로미상 셋으로 정확히 쪼개진다 — 추이 툴팁이 이 항등식에 기댄다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySource: 'local' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '커피', categorySource: 'ai' },
+        // categorySource 가 유실된 옛 기록 — 자동이지만 누가 채웠는지 모른다
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '빵류' },
+        { userId: 'u1', date: '2026-08-10', menuDetail: '라면' }
+    ];
+    const c = analyzeMomentRows(rows, '2026-08-10', '2026-08-10').overall.counts;
+    const auto = c.whatFinal - c.what;
+    assert.equal(auto, 3);
+    assert.equal(c.pathLocal + c.pathAi + c.pathAutoUnknown, auto, '자동 = 최종 − 직접 = 로컬 + AI + 경로미상');
+    assert.equal(c.pathAi, 1, '서버 Gemini 배치가 채운 몫');
 });

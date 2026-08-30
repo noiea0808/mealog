@@ -61,6 +61,7 @@ import {
     getDailyJournalMealDocId,
     dailyJournalEntryToMealDocument
 } from '../utils/daily-journal-data.js';
+import { isMemoMealRecord, isMemoMealId } from '../utils/slot-plan.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
@@ -165,6 +166,8 @@ export const dbOps = {
      * @returns {Promise<MealSaveResult>}
      */
     async save(record, silent = false, opts = {}) {
+        /** 메모는 식사가 아니다 — mealCount 와 완료 문구가 갈린다 (user-memo-items §6) */
+        const isMemo = isMemoMealRecord(record);
         let currentUser = await resolveUserForFirestoreWrite();
         if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
             logger.warn('[dbOps] auth/window UID 불일치 — auth 기준으로 저장', {
@@ -286,17 +289,18 @@ export const dbOps = {
                         markSavePhase(diagId, 'setdoc-resolved');
                         diag('save.setdoc.done', { id: diagId, ms: Date.now() - setDocStartedAt });
                         // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
-                        if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);
+                        // 메모는 식사가 아니다 — mealCount 에 안 센다 (user-memo-items §6)
+                        if (opts.isNewRecord === true && !isMemo) void bumpUserMealCount(currentUser.uid, 1);
                         if (!silent) {
-                            showToast("기록이 수정되었습니다.", 'success');
+                            showToast(isMemo ? "메모를 남겼어요." : "기록이 수정되었습니다.", 'success');
                         }
                         return { mealId: String(docId), savedViaCallableFallback: false };
                     }
                     const docRef = await addDoc(coll, cleaned);
-                    void bumpUserMealCount(currentUser.uid, 1);
+                    if (!isMemo) void bumpUserMealCount(currentUser.uid, 1);
                     logger.log('식사 기록 저장 성공:', docRef.id);
                     if (!silent) {
-                        showToast("식사가 기록되었습니다.", 'success');
+                        showToast(isMemo ? "메모를 남겼어요." : "식사가 기록되었습니다.", 'success');
                     }
                     return { mealId: docRef.id, savedViaCallableFallback: false };
                 } catch (wErr) {
@@ -416,7 +420,8 @@ export const dbOps = {
             }
 
             if (!deletedViaCallable) {
-                await bumpUserMealCount(uid, -1);
+                // 메모는 +1 된 적이 없으므로 -1 하면 카운트가 아래로 흐른다
+                if (!isMemoMealId(id)) await bumpUserMealCount(uid, -1);
                 const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
                 const sharedQuery = query(
                     sharedColl,
@@ -831,8 +836,25 @@ export const dbOps = {
                 const prevRecorded = prev ? normalizeDailyJournalEntry(prev).recordedAt : '';
                 normalized.recordedAt = normalized.recordedAt || prevRecorded || new Date().toISOString();
                 window.userSettings.dailyComments[date] = normalized;
-            } else {
-                delete window.userSettings.dailyComments[date];
+            } else if (window.userSettings.dailyComments[date] !== undefined) {
+                /**
+                 * 지울 때 **키를 빼지 않고 빈 항목을 남긴다.**
+                 *
+                 * 설정 문서는 `setDoc(..., { merge: true })` 로 쓴다. Firestore 의 merge 는
+                 * 맵을 키 단위로 합치므로, 페이로드에서 키를 빼는 것은 "지워 달라"가 아니라
+                 * **"이 키는 안 건드린다"** 가 된다. 그래서 지워도 서버 값이 그대로 남고,
+                 * 새로고침하면 지웠던 하루 소감이 되살아났다. 아웃박스의 `deepMergePlain`
+                 * 도 같은 이유로 키 삭제를 표현하지 못한다.
+                 *
+                 * 빈 항목은 이 코드베이스에서 이미 '내용 없음'의 정본이다
+                 * (`normalizeDailyJournalEntry(null)` · `dailyJournalHasContent`). 읽는 쪽은
+                 * 전부 그 함수를 지나므로 키가 남아 있어도 없는 것과 똑같이 다뤄지고,
+                 * merge 로도 outbox 병합으로도 온전히 전달된다.
+                 *
+                 * 값이 있던 날짜만 남긴다 — 한 번도 쓴 적 없는 날짜까지 빈 항목으로 채우면
+                 * 설정 문서(1MB 한도)가 이유 없이 자란다.
+                 */
+                window.userSettings.dailyComments[date] = normalized;
             }
             await dbOps.saveSettings(window.userSettings);
             await dbOps.syncDailyJournalMealMirror(date, normalized);
@@ -884,7 +906,10 @@ export const dbOps = {
             const glucoseOn = vitals.glucoseOn === true;
             const hasData = weightOn || glucoseOn || weight || glucose;
             if (!hasData) {
-                delete window.userSettings.dailyVitals[date];
+                // 하루 소감과 같은 이유로 키를 빼지 않고 빈 값을 남긴다 (merge 는 삭제를 못 옮긴다)
+                if (window.userSettings.dailyVitals[date] !== undefined) {
+                    window.userSettings.dailyVitals[date] = { weight: '', glucose: '', weightOn: false, glucoseOn: false };
+                }
             } else {
                 window.userSettings.dailyVitals[date] = { weight, glucose, weightOn, glucoseOn };
             }

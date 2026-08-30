@@ -6,6 +6,8 @@
 
 import { SLOTS } from '../constants.js';
 
+import { resolveRecordSlotView, currentUserSlots } from '../utils/slot-view.js';
+
 import { appState } from '../state.js';
 
 import { sortSnackSlotRecordsChronological } from '../render/timeline.js';
@@ -60,19 +62,33 @@ export function inferEntryFormModeFromRecord(record, slot) {
 
 
 
-/** 슬롯 표시 라벨 (동일 슬롯 다건이면 점심2 형식) */
-
+/**
+ * 슬롯 표시 라벨 (동일 슬롯 다건이면 점심2 형식)
+ *
+ * 라벨·서수 모두 **사용자 슬롯** 기준이다(docs/user-slot-plan.md §3).
+ * 같은 base('야식'·'2차' 둘 다 dinner)라도 slotKey 가 다르면 다른 슬롯이므로
+ * 서수를 섞어 세지 않는다 — 그룹 판정은 resolveRecordSlotView 의 slotKey 로 한다.
+ * plan 없는 사용자는 slotKey 가 전부 null 이라 현행(slotId 단위)과 동일.
+ */
 export function getEntrySlotTitleLabel(date, slotId, entryId = null) {
 
-    const slot = SLOTS.find((s) => s.id === slotId);
+    if (!SLOTS.some((s) => s.id === slotId)) return '';
 
-    if (!slot) return '';
+    const self = entryId ? window.mealHistory?.find((m) => m.id === entryId) ?? null : null;
 
-    const inSlot = (window.mealHistory || []).filter((m) => m?.date === date && m?.slotId === slotId);
+    // 새 기록: 피커에서 고른 사용자 슬롯(appState.currentEditingSlotKey)으로 라벨 결정
+    const targetView = resolveRecordSlotView(
+        self || { date, slotId, slotKey: appState.currentEditingSlotKey || undefined }
+    );
+
+    const sameGroup = (m) => {
+        if (!m || m.date !== date || m.slotId !== slotId) return false;
+        return resolveRecordSlotView(m).slotKey === targetView.slotKey;
+    };
+
+    const inSlot = (window.mealHistory || []).filter(sameGroup);
 
     if (entryId) {
-
-        const self = window.mealHistory?.find((m) => m.id === entryId);
 
         const all = self && !inSlot.some((m) => m.id === entryId) ? [...inSlot, self] : [...inSlot];
 
@@ -80,13 +96,13 @@ export function getEntrySlotTitleLabel(date, slotId, entryId = null) {
 
         const ord = sorted.findIndex((m) => m.id === entryId) + 1;
 
-        return sorted.length > 1 ? `${slot.label}${ord}` : slot.label;
+        return sorted.length > 1 ? `${targetView.label}${ord}` : targetView.label;
 
     }
 
     const nextOrd = inSlot.length + 1;
 
-    return inSlot.length > 0 ? `${slot.label}${nextOrd}` : slot.label;
+    return inSlot.length > 0 ? `${targetView.label}${nextOrd}` : targetView.label;
 
 }
 
@@ -188,21 +204,57 @@ function syncEntryHeaderDateButtonLabel() {
 
 
 
+/**
+ * 헤더 슬롯 select 의 option value 인코딩 — 사용자 슬롯은 `k:<key>`,
+ * key 없는 기본 슬롯은 base id 그대로. plan 없는 사용자는 현행과 완전히 같다.
+ */
+function headerSlotOptionValue(slot) {
+    return slot.key != null ? `k:${slot.key}` : slot.base;
+}
+
+function parseHeaderSlotOptionValue(value, slots) {
+    const v = String(value || '');
+    if (v.startsWith('k:')) {
+        const key = v.slice(2);
+        const hit = slots.find((s) => s.key === key);
+        return hit ? { base: hit.base, key } : null;
+    }
+    return v ? { base: v, key: null } : null;
+}
+
+function currentHeaderSlotList() {
+    const date = appState.currentEditingDate || '';
+    // 과거 날짜를 적을 때도 고를 수 있는 항목은 **지금** 목록이다 (user-slot-plan §4.2.3)
+    const slots = currentUserSlots().filter((s) => s.enabled);
+    /**
+     * 수정 중인 기록의 슬롯이 꺼져 있어도(enabled:false·삭제) 목록에 넣는다 —
+     * 없으면 select 가 임의 슬롯으로 튀어 기록이 소리 없이 이사간다 (불변식 4).
+     */
+    const cur = { base: appState.currentEditingSlotId, key: appState.currentEditingSlotKey || null };
+    if (cur.base && !slots.some((s) => s.base === cur.base && (s.key || null) === cur.key)) {
+        const view = resolveRecordSlotView({ date, slotId: cur.base, slotKey: cur.key || undefined });
+        slots.push({ key: view.slotKey, base: view.base, label: view.label, enabled: false });
+    }
+    return slots;
+}
+
 function populateEntryHeaderSlotOptions() {
 
     const slotSelect = document.getElementById('entryHeaderSlotSelect');
 
     if (!slotSelect) return;
 
-    const current = appState.currentEditingSlotId;
+    const slots = currentHeaderSlotList();
 
-    slotSelect.innerHTML = SLOTS.map(
-
-        (slot) => `<option value="${slot.id}">${slot.label}</option>`
-
+    slotSelect.innerHTML = slots.map(
+        (slot) => `<option value="${headerSlotOptionValue(slot)}">${slot.label}</option>`
     ).join('');
 
-    if (current) slotSelect.value = current;
+    const cur = slots.find(
+        (s) => s.base === appState.currentEditingSlotId && (s.key || null) === (appState.currentEditingSlotKey || null)
+    ) || slots.find((s) => s.base === appState.currentEditingSlotId);
+
+    if (cur) slotSelect.value = headerSlotOptionValue(cur);
 
 }
 
@@ -216,10 +268,11 @@ const ENTRY_HEADER_TINTED_SLOTS = new Set(['morning', 'lunch', 'dinner']);
 export function syncEntryHeaderSlotTheme() {
     const controls = document.querySelector('#entryModal .entry-header-controls');
     if (!controls) return;
+    const rawSelectValue = document.getElementById('entryHeaderSlotSelect')?.value || '';
     const slotId =
         appState.currentEditingSlotId ||
-        document.getElementById('entryHeaderSlotSelect')?.value ||
-        '';
+        // 'k:<key>' 형식(사용자 슬롯)은 base 를 모르니 테마 판정에 쓰지 않는다
+        (rawSelectValue.startsWith('k:') ? '' : rawSelectValue);
     const theme = ENTRY_HEADER_TINTED_SLOTS.has(slotId) ? slotId : 'default';
     controls.setAttribute('data-entry-slot-theme', theme);
 }
@@ -250,11 +303,7 @@ export function refreshEntryModalHeader() {
 
     syncEntryHeaderDateButtonLabel();
 
-    if (slotSelect && slotId) {
-
-        slotSelect.value = slotId;
-
-    }
+    // 선택값 동기화는 populateEntryHeaderSlotOptions 가 slotKey 까지 맞춰서 했다
 
     syncEntryHeaderSlotTheme();
 
@@ -378,15 +427,17 @@ function onHeaderSlotChange() {
 
     const slotSelect = document.getElementById('entryHeaderSlotSelect');
 
-    const slotId = slotSelect?.value;
+    const picked = parseHeaderSlotOptionValue(slotSelect?.value, currentHeaderSlotList());
 
     const date = appState.currentEditingDate || document.getElementById('entryHeaderDate')?.value?.trim();
 
-    if (!slotId || !date) return;
+    if (!picked || !date) return;
 
-    if (!applyEntrySlotAndDate(date, slotId)) return;
+    appState.currentEditingSlotKey = picked.key;
 
-    const slot = SLOTS.find((s) => s.id === slotId);
+    if (!applyEntrySlotAndDate(date, picked.base)) return;
+
+    const slot = SLOTS.find((s) => s.id === picked.base);
 
     const modeFromSlot = getEntryModeFromSlot(slot);
 

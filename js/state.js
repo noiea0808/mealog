@@ -75,6 +75,15 @@ export const appState = {
     recordPhotoHeroIndex: 0,
     /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
     currentPhotoMeta: [],
+    /**
+     * 메모 기록 시트의 사진 — 끼니·하루 소감과 같은 자리에 둔다
+     * (docs/user-memo-items.md §4.4). 사진 편집기(js/render/photo-edit.js)가
+     * 컨텍스트별로 여기서 배열을 집어 가므로, 모듈 안에만 두면 편집을 못 붙인다.
+     */
+    memoRecordPhotos: [],
+    /** memoRecordPhotos와 동일 인덱스 — { takenAt: ISO string | null } */
+    memoRecordPhotoMeta: [],
+    memoRecordPhotoAspectRatio: '1:1',
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
@@ -96,11 +105,9 @@ export const appState = {
     /** 신규 기록 모달: 시간 자동 채우기 1회 제한용 */
     entryMealClockDidSeedModalOpenMain: false,
     entryMealClockDidSeedModalOpenSnack: false,
-    entryMealClockDidApplyPhotoExifMain: false,
-    entryMealClockDidApplyPhotoExifSnack: false,
-    /** 시간 off일 때 찍어둔 사진 첫 EXIF(HH:mm) — 시간 on 시 1회 반영 */
-    entryMealClockPendingExifHhmmMain: null,
-    entryMealClockPendingExifHhmmSnack: null,
+    /** 사용자가 시간을 직접 고른 뒤 — 자동 기본값이 더는 건드리지 않는다 */
+    entryMealClockAutoLockedMain: false,
+    entryMealClockAutoLockedSnack: false,
     /** 기록 시간 입력 출처: 'now' | 'photo' | 'manual' | null */
     entryMealClockSourceMain: null,
     entryMealClockSourceSnack: null,

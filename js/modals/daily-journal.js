@@ -14,49 +14,12 @@ import { invalidateTimelineDateSection, renderTimelineDateSections, updateTimeli
 import { isDemoUser } from '../demo-account.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { getUserFacingErrorMessage } from '../utils/user-facing-error.js';
-import {
-    mealClock24FromAmPmClock,
-    mealClock24ToAmPmAndDisplay,
-    formatMealClock12TextWhileTyping
-} from '../meal-time-utils.js';
 import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
 import { scheduleLucideIcons } from '../icons.js';
 
 import { getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
 const MAX_DAILY_JOURNAL_PHOTOS = 5;
-const MAX_DAILY_JOURNAL_METRIC_RECORDS = 3;
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
-
-const METRIC_CONFIG = {
-    weight: {
-        containerId: 'dailyJournalWeightRecords',
-        toggleId: 'dailyJournalWeightToggle',
-        recordsWrapId: 'dailyJournalWeightRecordsWrap',
-        addBtnId: 'dailyJournalWeightAddBtn',
-        unit: 'kg',
-        placeholder: '62.5',
-        step: '0.1',
-        inputMode: 'decimal',
-        label: '체중'
-    },
-    bloodSugar: {
-        containerId: 'dailyJournalBloodSugarRecords',
-        toggleId: 'dailyJournalBloodSugarToggle',
-        recordsWrapId: 'dailyJournalBloodSugarRecordsWrap',
-        addBtnId: 'dailyJournalBloodSugarAddBtn',
-        unit: 'mg/dL',
-        placeholder: '105',
-        step: '1',
-        inputMode: 'numeric',
-        label: '혈당'
-    }
-};
-
-let dailyJournalMetricsDelegationBound = false;
-
-function emptyMetricRow() {
-    return { value: '', time: '' };
-}
 
 function getDailyJournalAspectCss() {
     const ratio = appState.dailyJournalPhotoAspectRatio || '1:1';
@@ -79,278 +42,7 @@ function syncDailyJournalAspectButtons() {
     });
 }
 
-function metricStateKey(type) {
-    return type === 'weight' ? 'dailyJournalWeightRecords' : 'dailyJournalBloodSugarRecords';
-}
-
-function metricEnabledKey(type) {
-    return type === 'weight' ? 'dailyJournalWeightEnabled' : 'dailyJournalBloodSugarEnabled';
-}
-
-function ensureMetricState(type) {
-    const key = metricStateKey(type);
-    if (!Array.isArray(appState[key])) {
-        appState[key] = [emptyMetricRow()];
-    }
-    if (appState[key].length === 0) {
-        appState[key].push(emptyMetricRow());
-    }
-}
-
-/** 현재 시각 → 12시 표시용 { ampm, display } (placeholder·기본 오전/오후) */
-function getCurrentMetricClockParts() {
-    const now = new Date();
-    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    return mealClock24ToAmPmAndDisplay(hhmm);
-}
-
-function syncMetricToggleUi(type) {
-    const cfg = METRIC_CONFIG[type];
-    const enabled = appState[metricEnabledKey(type)] === true;
-    const toggle = document.getElementById(cfg.toggleId);
-    const addBtn = document.getElementById(cfg.addBtnId);
-    const container = document.getElementById(cfg.containerId);
-    const recordsWrap = document.getElementById(cfg.recordsWrapId);
-    if (toggle) toggle.checked = enabled;
-    // 오프: "오프상태입니다" 문구 없이 입력·추가 UI만 숨김 (토글 헤더만 남김)
-    if (recordsWrap) {
-        recordsWrap.classList.toggle('hidden', !enabled);
-        recordsWrap.setAttribute('aria-hidden', enabled ? 'false' : 'true');
-    }
-    const disabled = !enabled;
-    const rowCount = (appState[metricStateKey(type)] || []).length;
-    const atMax = rowCount >= MAX_DAILY_JOURNAL_METRIC_RECORDS;
-    if (addBtn) {
-        addBtn.classList.toggle('hidden', disabled);
-        addBtn.disabled = disabled || atMax;
-        addBtn.classList.toggle('opacity-50', !disabled && atMax);
-        addBtn.classList.toggle('pointer-events-none', !disabled && atMax);
-        addBtn.setAttribute('aria-hidden', disabled ? 'true' : 'false');
-    }
-    if (container) {
-        container.querySelectorAll('input, select, button.daily-journal-metric-remove').forEach((el) => {
-            el.disabled = disabled;
-            el.classList.toggle('opacity-60', disabled);
-        });
-    }
-}
-
-function buildMetricRowHtml(type, idx, row) {
-    const cfg = METRIC_CONFIG[type];
-    const value = row?.value != null && row.value !== '' ? String(row.value) : '';
-    const storedTime = row?.time || '';
-    const currentClock = getCurrentMetricClockParts();
-    const parsed = mealClock24ToAmPmAndDisplay(storedTime);
-    const ampm = storedTime ? parsed.ampm : currentClock.ampm;
-    const display = storedTime ? parsed.display : '';
-    const timePlaceholder = currentClock.display || '시:분';
-    const rowCount = (appState[metricStateKey(type)] || []).length;
-    const clearOnly = rowCount <= 1;
-    const label = cfg.label;
-    return `<div class="daily-journal-metric-row" data-metric-type="${type}" data-metric-index="${idx}">
-        <div class="daily-journal-metric-row__main">
-            <div class="daily-journal-metric-value-wrap">
-                <span class="daily-journal-metric-field-label">측정값</span>
-                <div class="daily-journal-metric-value-field">
-                    <input type="number" min="0" step="${cfg.step}" inputmode="${cfg.inputMode}"
-                        value="${value.replace(/"/g, '&quot;')}"
-                        placeholder="${escapeHtml(cfg.placeholder)}"
-                        class="daily-journal-metric-value daily-journal-metric-no-spin"
-                        aria-label="${label}">
-                    <span class="daily-journal-metric-unit" aria-hidden="true">${escapeHtml(cfg.unit)}</span>
-                </div>
-            </div>
-            <div class="daily-journal-metric-time-block">
-                <span class="daily-journal-metric-field-label">시간</span>
-                <div class="daily-journal-metric-time-wrap">
-                    <select class="daily-journal-metric-ampm"
-                        aria-label="${label} 오전 또는 오후">
-                        <option value="am"${ampm === 'am' ? ' selected' : ''}>오전</option>
-                        <option value="pm"${ampm === 'pm' ? ' selected' : ''}>오후</option>
-                    </select>
-                    <input type="text" inputmode="numeric" maxlength="5" autocomplete="off" spellcheck="false"
-                        value="${escapeHtml(display)}"
-                        placeholder="${escapeHtml(timePlaceholder)}"
-                        class="daily-journal-metric-time"
-                        aria-label="${label} 기록 시간 (선택)">
-                </div>
-            </div>
-        </div>
-        <button type="button" class="daily-journal-metric-remove" data-metric-type="${type}" data-metric-index="${idx}" data-metric-clear-only="${clearOnly ? '1' : '0'}" aria-label="${clearOnly ? '입력 초기화' : '기록 삭제'}"><i data-lucide="x" aria-hidden="true"></i></button>
-    </div>`;
-}
-
-function readMetricTimeFromRowEl(rowEl) {
-    const ampmEl = rowEl.querySelector('.daily-journal-metric-ampm');
-    const timeEl = rowEl.querySelector('.daily-journal-metric-time');
-    const display = timeEl ? timeEl.value.trim() : '';
-    if (!display) return '';
-    const ampm = ampmEl?.value === 'am' ? 'am' : 'pm';
-    return mealClock24FromAmPmClock(ampm, display) || '';
-}
-
-function readMetricRowsFromDom(type) {
-    const cfg = METRIC_CONFIG[type];
-    const container = document.getElementById(cfg.containerId);
-    if (!container) return appState[metricStateKey(type)] || [];
-    const rows = [];
-    container.querySelectorAll('.daily-journal-metric-row').forEach((rowEl) => {
-        const valueEl = rowEl.querySelector('.daily-journal-metric-value');
-        rows.push({
-            value: valueEl ? valueEl.value : '',
-            time: readMetricTimeFromRowEl(rowEl)
-        });
-    });
-    return rows.length ? rows : [emptyMetricRow()];
-}
-
-function escapeHtml(str) {
-    return String(str || '')
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function syncMetricRowsFromDom(type) {
-    appState[metricStateKey(type)] = readMetricRowsFromDom(type);
-}
-
-export function renderDailyJournalMetricRows(type, { skipDomSync = false } = {}) {
-    if (!METRIC_CONFIG[type]) return;
-    const cfg = METRIC_CONFIG[type];
-    const container = document.getElementById(cfg.containerId);
-    if (!skipDomSync && container?.querySelector('.daily-journal-metric-row')) {
-        syncMetricRowsFromDom(type);
-    }
-    ensureMetricState(type);
-    const rows = appState[metricStateKey(type)];
-    if (rows.length > MAX_DAILY_JOURNAL_METRIC_RECORDS) {
-        appState[metricStateKey(type)] = rows.slice(0, MAX_DAILY_JOURNAL_METRIC_RECORDS);
-    }
-
-    if (!container) return;
-    const displayRows = appState[metricStateKey(type)];
-    container.innerHTML = displayRows.map((row, idx) => buildMetricRowHtml(type, idx, row)).join('');
-    syncMetricToggleUi(type);
-    scheduleLucideIcons(container);
-}
-
-export function renderDailyJournalAllMetrics() {
-    renderDailyJournalMetricRows('weight');
-    renderDailyJournalMetricRows('bloodSugar');
-}
-
-function setDailyJournalMetricEnabled(type, enabled) {
-    appState[metricEnabledKey(type)] = enabled === true;
-    if (enabled) {
-        ensureMetricState(type);
-        renderDailyJournalMetricRows(type);
-    } else {
-        syncMetricToggleUi(type);
-    }
-}
-
-export function addDailyJournalMetricRecord(type) {
-    if (!METRIC_CONFIG[type] || appState[metricEnabledKey(type)] !== true) return;
-    syncMetricRowsFromDom(type);
-    const rows = appState[metricStateKey(type)];
-    if (rows.length >= MAX_DAILY_JOURNAL_METRIC_RECORDS) {
-        showToast(`최대 ${MAX_DAILY_JOURNAL_METRIC_RECORDS}개까지 추가할 수 있습니다.`, 'info');
-        return;
-    }
-    rows.push(emptyMetricRow());
-    renderDailyJournalMetricRows(type, { skipDomSync: true });
-}
-
-export function removeDailyJournalMetricRecord(type, index) {
-    if (!METRIC_CONFIG[type]) return;
-    syncMetricRowsFromDom(type);
-    const rows = appState[metricStateKey(type)];
-    if (!Array.isArray(rows) || rows.length === 0) return;
-    const i = Number(index);
-    if (!Number.isInteger(i) || i < 0 || i >= rows.length) return;
-    if (rows.length <= 1) {
-        rows[0] = emptyMetricRow();
-        renderDailyJournalMetricRows(type, { skipDomSync: true });
-        return;
-    }
-    rows.splice(i, 1);
-    renderDailyJournalMetricRows(type, { skipDomSync: true });
-}
-
-function collectMetricRecordsFromDom(type) {
-    if (appState[metricEnabledKey(type)] !== true) return [];
-    const rows = readMetricRowsFromDom(type);
-    const out = [];
-    for (const row of rows) {
-        const raw = row?.value;
-        if (raw === '' || raw == null) continue;
-        const value = Number(raw);
-        if (!Number.isFinite(value) || value < 0) continue;
-        let time = typeof row.time === 'string' ? row.time.trim() : '';
-        if (time && !/^\d{2}:\d{2}$/.test(time)) time = '';
-        out.push({ value, time });
-    }
-    return out;
-}
-
-function ensureDailyJournalMetricsDelegation() {
-    if (dailyJournalMetricsDelegationBound) return;
-    dailyJournalMetricsDelegationBound = true;
-    const modal = document.getElementById('dailyJournalModal');
-    if (!modal) return;
-
-    modal.addEventListener('change', (e) => {
-        const t = e.target;
-        if (t?.id === 'dailyJournalWeightToggle') {
-            setDailyJournalMetricEnabled('weight', t.checked);
-        } else if (t?.id === 'dailyJournalBloodSugarToggle') {
-            setDailyJournalMetricEnabled('bloodSugar', t.checked);
-        }
-    });
-
-    /**
-     * 시각 칸 자동 포맷. **조합 중에는 손대지 않는다** — value 재대입이 IME 상태를 깨서
-     * 조합 글자가 안 보이는 증상이 나온다(커밋 e7acc4e). 위임이라 요소별 가드 대신
-     * 이벤트 단계에서 거른다: 조합이 끝나면 compositionend 가 같은 포맷을 한 번 돌린다.
-     */
-    const formatMetricTime = (t) => {
-        if (!t?.classList?.contains('daily-journal-metric-time')) return;
-        const formatted = formatMealClock12TextWhileTyping(t.value);
-        if (t.value !== formatted) t.value = formatted;
-    };
-    modal.addEventListener('input', (e) => {
-        if (e.target?.dataset?.imeComposing === '1') return;
-        formatMetricTime(e.target);
-    });
-    modal.addEventListener('compositionstart', (e) => {
-        if (e.target instanceof HTMLElement) e.target.dataset.imeComposing = '1';
-    });
-    modal.addEventListener('compositionend', (e) => {
-        if (!(e.target instanceof HTMLElement)) return;
-        delete e.target.dataset.imeComposing;
-        formatMetricTime(e.target);
-    });
-
-    modal.addEventListener('click', (e) => {
-        const addBtn = e.target.closest('#dailyJournalWeightAddBtn, #dailyJournalBloodSugarAddBtn');
-        if (addBtn) {
-            e.preventDefault();
-            if (addBtn.id === 'dailyJournalWeightAddBtn') addDailyJournalMetricRecord('weight');
-            else addDailyJournalMetricRecord('bloodSugar');
-            return;
-        }
-        const removeBtn = e.target.closest('.daily-journal-metric-remove');
-        if (removeBtn) {
-            e.preventDefault();
-            removeDailyJournalMetricRecord(
-                removeBtn.getAttribute('data-metric-type'),
-                removeBtn.getAttribute('data-metric-index')
-            );
-        }
-    });
-}
+/* 체중·혈당 입력기는 걷었다 — 기록 추가의 메모가 받는다 (docs/user-memo-items.md §7.1) */
 
 export function renderDailyJournalPhotoPreviews() {
     const container = document.getElementById('dailyJournalPhotoPreviewContainer');
@@ -554,26 +246,6 @@ export function moveDailyJournalPhotoOrder(idx, delta) {
     renderDailyJournalPhotoPreviews();
 }
 
-function loadDailyJournalMetricsFromEntry(entry) {
-    appState.dailyJournalWeightEnabled = entry.weightEnabled === true;
-    appState.dailyJournalBloodSugarEnabled = entry.bloodSugarEnabled === true;
-    appState.dailyJournalWeightRecords =
-        entry.weightRecords?.length > 0
-            ? entry.weightRecords.slice(0, MAX_DAILY_JOURNAL_METRIC_RECORDS).map((r) => ({ value: r.value, time: r.time || '' }))
-            : [emptyMetricRow()];
-    appState.dailyJournalBloodSugarRecords =
-        entry.bloodSugarRecords?.length > 0
-            ? entry.bloodSugarRecords.slice(0, MAX_DAILY_JOURNAL_METRIC_RECORDS).map((r) => ({ value: r.value, time: r.time || '' }))
-            : [emptyMetricRow()];
-}
-
-function resetDailyJournalMetricsState() {
-    appState.dailyJournalWeightEnabled = false;
-    appState.dailyJournalBloodSugarEnabled = false;
-    appState.dailyJournalWeightRecords = [emptyMetricRow()];
-    appState.dailyJournalBloodSugarRecords = [emptyMetricRow()];
-}
-
 function updateDailyJournalModalActions(hasExisting) {
     const btnDelete = document.getElementById('btnDailyJournalDelete');
     const btnSave = document.getElementById('btnDailyJournalSave');
@@ -611,15 +283,12 @@ export function openDailyJournalModal(dateStr) {
     const modal = document.getElementById('dailyJournalModal');
     if (!modal) return;
 
-    ensureDailyJournalMetricsDelegation();
-
     const entry = getDailyJournalFromSettings(window.userSettings, dateStr);
     appState.dailyJournalEditingDate = dateStr;
     appState.dailyJournalPhotos = Array.isArray(entry.photos) ? [...entry.photos] : [];
     appState.dailyJournalPhotoAspectRatio = entry.photoAspectRatio || '1:1';
     appState.dailyJournalWantsToShare =
         entry.sharedPhotos?.length > 0 || isDailyJournalShared(dateStr, entry);
-    loadDailyJournalMetricsFromEntry(entry);
 
     const titleEl = document.getElementById('dailyJournalModalTitle');
     if (titleEl) {
@@ -632,7 +301,6 @@ export function openDailyJournalModal(dateStr) {
     if (commentInput) commentInput.value = entry.comment || '';
 
     renderDailyJournalPhotoPreviews();
-    renderDailyJournalAllMetrics();
     updateDailyJournalShareIndicator();
     updateDailyJournalModalActions(dailyJournalHasContent(entry));
     modal.classList.remove('hidden');
@@ -649,7 +317,6 @@ export function closeDailyJournalModal() {
     appState.dailyJournalEditingDate = '';
     appState.dailyJournalPhotos = [];
     appState.dailyJournalWantsToShare = false;
-    resetDailyJournalMetricsState();
 }
 
 async function materializeDailyJournalPhotos(photos, dateStr) {
@@ -730,19 +397,20 @@ export async function saveDailyJournal() {
         const photos = await materializeDailyJournalPhotos(appState.dailyJournalPhotos, dateStr);
         const wantsToShare = appState.dailyJournalWantsToShare === true;
         const photosToShare = wantsToShare && photos.length > 0 ? [...photos] : [];
-        const weightEnabled = appState.dailyJournalWeightEnabled === true;
-        const bloodSugarEnabled = appState.dailyJournalBloodSugarEnabled === true;
-        const weightRecords = weightEnabled ? collectMetricRecordsFromDom('weight') : [];
-        const bloodSugarRecords = bloodSugarEnabled ? collectMetricRecordsFromDom('bloodSugar') : [];
         const entry = normalizeDailyJournalEntry({
             comment,
             photos,
             sharedPhotos: photosToShare,
             photoAspectRatio: appState.dailyJournalPhotoAspectRatio || '1:1',
-            weightEnabled: weightEnabled && weightRecords.length > 0,
-            bloodSugarEnabled: bloodSugarEnabled && bloodSugarRecords.length > 0,
-            weightRecords,
-            bloodSugarRecords,
+            /**
+             * 체중·혈당 입력은 걷었지만 값은 **그대로 실어 낸다**
+             * (docs/user-memo-items.md §7.1). 빼면 하루 소감을 고쳐 저장할 때마다
+             * 옷 기록이 지워진다 — 분석 탭 차트와 타임라인이 아직 이걸 읽는다.
+             */
+            weightEnabled: prev.weightEnabled,
+            bloodSugarEnabled: prev.bloodSugarEnabled,
+            weightRecords: prev.weightRecords,
+            bloodSugarRecords: prev.bloodSugarRecords,
             recordedAt: prev.recordedAt || ''
         });
         await dbOps.saveDailyJournal(dateStr, entry);

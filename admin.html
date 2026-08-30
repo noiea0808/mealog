@@ -619,7 +619,7 @@
                             </div>
                         </div>
 
-                        <!-- 모먼트 분석 — 항목별 입력률(어떻게·어디서·무엇을·누구와·만족도·포만감·사진·코멘트) -->
+                        <!-- 모먼트 분석 — 축별 구성 + 기간 추이(입력 시트 순서: 무엇을·추천분류·어떻게·어디서·누구와·만족도·포만감·사진·코멘트) -->
                         <div id="monitoring-main-momentAnalytics" class="monitoring-main-section hidden">
                             <div class="bg-white rounded-2xl shadow-sm border border-slate-100">
                                 <div class="p-6 border-b border-slate-100">
@@ -665,6 +665,21 @@
                                             <p class="text-sm">기간을 고르고 <strong class="text-slate-600">분석 실행</strong>을 누르세요.</p>
                                         </div>
                                     </div>
+                                </div>
+                            </div>
+
+                            <!-- 「읽는 법」 팝업 하나 — 표마다 껍데기를 두지 않고 제목·본문만 갈아 끼운다.
+                                 결과를 다시 그릴 때마다 momentAnalyticsContainer 는 통째로 갈리므로
+                                 팝업은 그 바깥에 둔다(본문은 moment-analytics.js 가 열 때 채운다). -->
+                            <div id="momentGuideModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="momentGuideTitle">
+                                <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-slate-200">
+                                    <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                        <h3 id="momentGuideTitle" class="text-sm font-black text-slate-800">읽는 법</h3>
+                                        <button type="button" id="momentGuideClose" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="닫기">
+                                            <i class="fa-solid fa-xmark text-lg"></i>
+                                        </button>
+                                    </div>
+                                    <div id="momentGuideBody" class="px-5 py-4 overflow-y-auto flex-1 min-h-0"></div>
                                 </div>
                             </div>
                         </div>

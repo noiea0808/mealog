@@ -30,6 +30,7 @@ import {
     dailyJournalMealDocToModerationFields,
     isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
+import { isMemoMealRecord } from '../utils/slot-plan.js';
 import {
     collection,
     collectionGroup,
@@ -1114,6 +1115,20 @@ function mealDocSnapToFeedRow(d) {
  * 서버 스캔과 미러가 **같은 함수**를 지나야 하루소감 표시가 경로마다 갈리지 않는다.
  */
 function mealRowToFeedRow(row) {
+    /**
+     * 사용자 메모 — 빼는 게 아니라 **넣는다**. 사용자가 올린 글·사진이므로
+     * 모니터링 대상이다 (docs/user-memo-items.md §6.1).
+     * 새 컴럼을 만들지 않고 기존 컴럼에 실는다 — 유형·식사구분·코멘트.
+     */
+    if (isMemoMealRecord(row)) {
+        const label = String(row.memoLabel || '').trim() || '메모';
+        return {
+            ...row,
+            isUserMemo: true,
+            slotDisplayDate: formatKoDateLabelFromYmd(String(row.date || '')),
+            slotDisplayLabel: label
+        };
+    }
     if (!isDailyJournalMealRecord(row)) return row;
     const dj = dailyJournalMealDocToModerationFields(row);
     const dateStr = dj.date || row.date;
@@ -1715,6 +1730,7 @@ async function renderFeedManagement() {
                 ? `<tr><td colspan="14" class="px-4 py-10 text-center text-slate-400 text-sm border-t border-slate-200">이 페이지에 표시할 모먼트가 없습니다.</td></tr>`
                 : paginatedMeals.map((meal, rowIdx) => {
             const isDailyJournal = meal.isDailyJournal === true;
+            const isUserMemo = meal.isUserMemo === true;
             const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
             const targetGroupKey = isDailyJournal
                 ? `dailyJournal_${meal.date || ''}_${meal.userId}`
@@ -1753,7 +1769,9 @@ async function renderFeedManagement() {
             const isBanned = meal.shareBanned === true;
             const hasDataMismatch = !isCapture && !isDailyJournal && hasLocalSharedPhotos && !isShared;
 
-            const typeLabel = isDailyJournal
+            const typeLabel = isUserMemo
+                ? '사용자 메모'
+                : isDailyJournal
                 ? meal.momentShared && meal.isDailyJournalSlot !== true
                     ? '하루기록·모먼트'
                     : meal.momentShared
@@ -1840,7 +1858,7 @@ async function renderFeedManagement() {
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
                     <td class="px-3 py-3 align-middle text-center border-r border-slate-200">
-                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''} ${isDailyJournal ? 'data-is-daily-journal="true"' : ''} ${isDailyJournal ? 'disabled title="하루 소감은 이 화면에서 일괄 처리할 수 없습니다"' : ''}>
+                        <input type="checkbox" class="feed-item-checkbox" data-meal-id="${meal.id}" data-user-id="${meal.userId}" ${meal.isBestShare ? 'data-is-best="true"' : ''} ${meal.isDailyShare ? 'data-is-daily="true"' : ''} ${meal.isInsightShare ? 'data-is-insight="true"' : ''} ${isDailyJournal ? 'data-is-daily-journal="true"' : ''} ${isUserMemo ? 'data-is-user-memo="true"' : ''} ${isDailyJournal ? 'disabled title="하루 소감은 이 화면에서 일괄 처리할 수 없습니다"' : ''}${isUserMemo ? ' disabled title="사용자 메모는 모먼트 공유 대상이 아니라 일괄 처리할 게 없습니다"' : ''}>
                     </td>
                     <td class="px-2 py-3 align-middle text-center border-r border-slate-200 w-[56px] min-w-[56px]">
                         <div class="flex flex-col items-center gap-1">
@@ -3163,6 +3181,7 @@ async function collectMomentRowsForExport(range = {}) {
 
     return filtered.map((meal, idx) => {
         const isDailyJournal = meal.isDailyJournal === true;
+        const isUserMemo = meal.isUserMemo === true;
         const isCapture = !!(meal.isDailyShare || meal.isBestShare || meal.isInsightShare);
         const targetGroupKey = isDailyJournal
             ? `dailyJournal_${meal.date || ''}_${meal.userId}`
@@ -3187,7 +3206,9 @@ async function collectMomentRowsForExport(range = {}) {
             : isCapture || !!(feedSharedKeysCache && feedSharedKeysCache.has(`${meal.userId}_${meal.id}`));
         const isBanned = meal.shareBanned === true;
 
-        const typeLabel = isDailyJournal
+        const typeLabel = isUserMemo
+            ? '사용자 메모'
+            : isDailyJournal
             ? meal.momentShared && meal.isDailyJournalSlot !== true
                 ? '하루기록·모먼트'
                 : meal.momentShared
@@ -3201,7 +3222,8 @@ async function collectMomentRowsForExport(range = {}) {
                         ? '밀당의 참견'
                         : '일반';
 
-        const noTags = isCapture || isDailyJournal;
+        // 메모에는 식사 축이 없다 — 어떻게·어디서·무엇을·누구와·만족도·포만감은 빈칸
+        const noTags = isCapture || isDailyJournal || isUserMemo;
         const whereTag = noTags ? '' : meal.snackPlaceMain || meal.place || meal.snackPlace || '';
         const whereSubTag = noTags ? '' : meal.placeDetail || meal.placeMemo || '';
         const howTag = noTags ? '' : meal.mealType || '';
