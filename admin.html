@@ -667,6 +667,21 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- 축별 구성 「읽는 법」 — 막대 아래 잔줄로 깔려 있던 설명.
+                                 결과를 다시 그릴 때마다 momentAnalyticsContainer 는 통째로 갈리므로
+                                 팝업은 그 바깥에 둔다(본문은 moment-analytics.js 가 한 번 채운다). -->
+                            <div id="momentAxisGuideModal" class="hidden fixed inset-0 z-[var(--z-admin-modal)] bg-slate-900/50 flex items-center justify-center p-4" aria-hidden="true" role="dialog" aria-labelledby="momentAxisGuideModalTitle">
+                                <div class="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col border border-slate-200">
+                                    <div class="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0">
+                                        <h3 id="momentAxisGuideModalTitle" class="text-sm font-black text-slate-800">축별 구성 읽는 법</h3>
+                                        <button type="button" id="momentAxisGuideClose" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="닫기">
+                                            <i class="fa-solid fa-xmark text-lg"></i>
+                                        </button>
+                                    </div>
+                                    <div id="momentAxisGuideBody" class="px-5 py-4 overflow-y-auto flex-1 min-h-0"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 밀톡 관리 (feedPosts 대화) -->

@@ -26,6 +26,7 @@ import { escapeHtml, runAdminRefreshAction } from './utils.js';
 import { ensureMealsMirrorSynced, getMealsInRange } from './meals-mirror.js';
 import { getExcludedAnalyticsUidSet } from '../excluded-analytics-uids.js';
 import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
+import { isMemoMealRecord } from '../utils/slot-plan.js';
 import { refreshLucideIcons } from '../icons.js';
 import {
     MOMENT_FIELD_SPECS,
@@ -431,33 +432,131 @@ function renderAxisCharts(breakdown, total) {
 
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-1">
-                축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-1">
+                <h4 class="text-sm font-black text-slate-800">
+                    축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
+                </h4>
+                <button type="button" onclick="window.openMomentAxisGuide()"
+                        class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+                    <i data-lucide="circle-help" class="w-3.5 h-3.5"></i>읽는 법
+                </button>
+            </div>
             <p class="text-[11px] text-slate-400 mb-2">
                 각 막대의 <b>칠해진 길이</b>가 그 축의 입력률이고, <b>칸 나눔</b>이 무엇으로 채워졌는지입니다.
-                네 막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
+                막대가 같은 100%를 나눠 쓰므로 축끼리 길이를 그대로 비교할 수 있습니다. 칸에 마우스를 올리면 정확한 값이 뜹니다.
             </p>
             <div id="momentAxisCharts" class="rounded-xl border border-slate-200 bg-white px-4 py-2 divide-y divide-slate-100">${bars}</div>
-            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
-                · <b>자동</b> = 사람이 고르지 않았는데 값이 남은 것. 「어떻게·어디서·누구와」는 맥락 예측이 자동 적용한 축(<code>autoContext</code>),
-                「무엇을」은 로컬·서버 분류기가 채운 값(<code>categoryAuto</code>)입니다.<br>
-                · <b>칸도 범례도 많은 순</b>으로 섭니다. 색은 그 순위를 따라가므로, 다른 기간을 보면 같은 값의 색이 달라질 수 있습니다 —
-                식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어 있는 이유입니다).<br>
-                · <b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 구분을 접거나 이름을 바꿀 후보입니다.<br>
-                · <b>무엇을</b>은 축이 둘입니다. <b>형태</b>(밥류·면류…)는 사용자가 고르거나 분류기가 채우고,
-                <b>종류</b>(한식·중식…)는 <b>묻지 않고</b> 분류기가 붙입니다 — 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른 질문이라 축이 둘입니다.
-                형태 축에서 목록 밖으로 밀리는 옛 한식·양식 기록이 종류 축에서는 제자리를 찾습니다.
-                다만 <b>종류의 「미입력」을 실패로 읽지 마세요</b> — 과일·커피·채소처럼 <b>축이 애초에 해당되지 않는 형태</b>가
-                여기 섞여 있습니다(「사과가 한식인가 양식인가」는 질문이 성립하지 않습니다).<br>
-                · <b>목록 밖</b>은 지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에 저장된 옛 어휘</b>(한식·양식·일식·중식·분식·카페)와 「기타」입니다 —
-                「한식」은 밥류일 수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다(표기만 달랐던 옛 형태 축 값은 읽을 때 맞춰 제 칩으로 갑니다).
-                「어디서」는 끼니가 가게 이름을 자유 입력하므로 목록 밖이 큰 것이 정상입니다.<br>
-                · 색은 <b>많은 순 앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과 구별되지 않아,
-                나머지는 「그 외」로 묶고 이름은 아래 잔줄에 답니다.<br>
-                · 「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을 수 있어 「서버 분류 대기」가 부풀어 보입니다.
-            </p>
         </div>`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 「읽는 법」 팝업
+ *
+ * 이 설명은 막대 바로 아래에 잔줄로 깔려 있었다. 여섯 줄짜리 회색 글이 화면의 절반을
+ * 차지하는데, **매번 읽을 글이 아니라 한 번 읽고 가끔 확인할 글**이었다. 그래서 접어 두고
+ * 필요할 때 부른다 — 대신 접는 김에 주제별로 다시 묶었다(잔줄 여섯 개는 순서가 없었다).
+ *
+ * 본문은 여기서 만든다. `momentAnalyticsContainer` 는 결과를 그릴 때마다 통째로 갈리므로
+ * 팝업 껍데기는 그 바깥(admin.html)에 두고, 본문만 한 번 채워 넣는다.
+ * ───────────────────────────────────────────────────────────── */
+
+/** 팝업 안의 한 마디 — 제목 + 본문 */
+const guideSection = (title, body) => `
+    <section class="pt-4 mt-4 border-t border-slate-100 first:pt-0 first:mt-0 first:border-0">
+        <h4 class="text-[13px] font-black text-slate-900 mb-1.5">${title}</h4>
+        <div class="text-[12px] leading-[1.75] text-slate-600 space-y-1.5">${body}</div>
+    </section>`;
+
+function renderAxisGuideBody() {
+    return [
+        guideSection(
+            '막대 하나를 어떻게 읽나',
+            `<p><b>총 길이는 언제나 분석 대상 기록 100%</b>입니다. 축마다 제 입력분만큼만 칠해지고 나머지는
+             미입력 트랙으로 남습니다 — 그래서 축을 위아래로 세우면 「어떻게는 절반 넘게 채워지고 누구와는
+             그 절반」 같은 것이 <b>길이 차이로</b> 바로 보입니다. 각 축을 100%로 늘려 그리면 구성비는
+             보이지만 그 비교가 통째로 사라집니다.</p>
+             <p>칸에 마우스를 올리면 정확한 건수와 비율이 뜹니다.</p>`
+        ),
+        guideSection(
+            '직접과 자동',
+            `<p><b>자동</b> = 사람이 고르지 않았는데 값이 남은 것입니다. 근거는 저장 경로가 남긴 자국뿐입니다:</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li>어떻게 · 어디서 · 누구와 — 맥락 예측이 자동 적용한 축(<code>autoContext</code>)</li>
+                 <li>무엇을 — 로컬 · 서버 분류기가 채운 값(<code>categoryAuto</code>)</li>
+             </ul>
+             <p><b>값만 보면 둘은 구별되지 않습니다</b> — 「집밥」은 사람이 골라도 집밥이고 예측이 넣어도
+             집밥입니다. 이 두 숫자가 없으면 입력률이 올라도 그게 사람이 더 채운 것인지 기계가 메운
+             것인지 영영 알 수 없습니다.</p>`
+        ),
+        guideSection(
+            '순서와 색',
+            `<p><b>칸도 범례도 많은 순</b>으로 섭니다. 색이 그 순위를 따라가므로 <b>다른 기간을 보면 같은 값의
+             색이 달라질 수 있습니다</b> — 식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어
+             있는 이유입니다).</p>
+             <p>색은 <b>앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과
+             구별되지 않아, 나머지는 「그 외」로 묶고 이름은 아래 잔줄에 답니다.</p>
+             <p><b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 막대에는 칸이 안 생겨
+             범례에서만 보입니다. 구분을 접거나 이름을 바꿀 후보입니다.</p>`
+        ),
+        guideSection(
+            '「무엇을」은 축이 둘이다',
+            `<p><b>형태</b>(밥류 · 면류…)는 사용자가 고르거나 분류기가 채우고, <b>종류</b>(한식 · 중식…)는
+             <b>묻지 않고</b> 분류기가 붙입니다. 「면을 얼마나 먹나」와 「중식을 얼마나 먹나」는 다른
+             질문이라 축이 둘입니다. 형태 축에서 목록 밖으로 밀리는 옛 한식 · 양식 기록이 종류 축에서는
+             제자리를 찾습니다.</p>
+             <p><b>종류의 「미입력」을 실패로 읽지 마세요</b> — 과일 · 커피 · 채소처럼 <b>축이 애초에 해당되지
+             않는 형태</b>가 여기 섞여 있습니다(「사과가 한식인가 양식인가」는 질문이 성립하지 않습니다).</p>`
+        ),
+        guideSection(
+            '「목록 밖」에 무엇이 모이나',
+            `<p>지금의 태그 목록에 없는 값입니다. 「무엇을」의 목록 밖은 대부분 <b>축을 갈아끼우기 전에
+             저장된 옛 어휘</b>(한식 · 양식 · 일식 · 중식 · 분식 · 카페)와 「기타」입니다 — 「한식」은 밥류일
+             수도 국물요리일 수도 있어 어느 칩에도 넣지 않습니다. 표기만 달랐던 옛 형태 축 값은 읽을 때
+             맞춰 제 칩으로 갑니다.</p>
+             <p>「어디서」는 끼니가 가게 이름을 <b>자유 입력</b>하므로 목록 밖이 큰 것이 정상입니다.</p>`
+        ),
+        guideSection(
+            '조심할 곳',
+            `<p>「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 아직 안 돌았을
+             수 있어 「서버 분류 대기」가 부풀어 보입니다 — 맨 최근 구간은 그만큼 감해서 보세요.</p>`
+        )
+    ].join('');
+}
+
+function openMomentAxisGuide() {
+    const modal = document.getElementById('momentAxisGuideModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeMomentAxisGuide() {
+    const modal = document.getElementById('momentAxisGuideModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+window.openMomentAxisGuide = openMomentAxisGuide;
+window.closeMomentAxisGuide = closeMomentAxisGuide;
+
+/** 팝업 본문 채우기 + 닫기 경로 넷(X · 바깥 · ESC) — 화면당 한 번만 */
+let momentAxisGuideBound = false;
+function bindMomentAxisGuideOnce() {
+    if (momentAxisGuideBound) return;
+    const modal = document.getElementById('momentAxisGuideModal');
+    const body = document.getElementById('momentAxisGuideBody');
+    if (!modal || !body) return;
+    momentAxisGuideBound = true;
+    body.innerHTML = renderAxisGuideBody();
+    document.getElementById('momentAxisGuideClose')?.addEventListener('click', closeMomentAxisGuide);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeMomentAxisGuide();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (!modal.classList.contains('hidden')) closeMomentAxisGuide();
+    });
 }
 
 /**
@@ -764,6 +863,7 @@ function renderMomentAnalyticsResult(result, meta) {
             · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
         </p>`;
     refreshLucideIcons(container);
+    bindMomentAxisGuideOnce();
     // 라벨은 DOM 에 붙은 뒤에야 폭을 잴 수 있다 — 그리기와 재기가 나뉘는 이유
     const charts = document.getElementById('momentAxisCharts');
     if (charts) {
@@ -813,6 +913,8 @@ async function runMomentAnalytics(force = false) {
             if (excluded && excluded.has(m.userId)) return false;
             // 하루기록 미러는 이 항목들을 갖지 않는다 — 분모에 넣으면 입력률이 통째로 내려앉는다
             if (isDailyJournalMealRecord(m) || String(m.slotId || '') === 'daily_journal') return false;
+            // 사용자 메모도 같다 — 식사 축이 없다 (docs/user-memo-items.md §6)
+            if (isMemoMealRecord(m)) return false;
             return true;
         });
 
