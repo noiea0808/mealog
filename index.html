@@ -2901,11 +2901,44 @@
                     <i data-lucide="x" aria-hidden="true"></i>
                 </button>
             </div>
+            <!--
+                순서는 사진 > 값 > 내용 > 시간이다 (docs/user-memo-items.md §4.4).
+                메모를 남기는 손은 대개 사진에서 출발하고, 시각은 사진에서 끌어올 수
+                있어 마지막에 확인만 하면 된다.
+            -->
             <div class="memo-record__body">
+                <div class="memo-record__row memo-record__row--stack">
+                    <span class="memo-record__label">사진 <span id="memoRecordPhotoCount" class="memo-record__count">0/5</span></span>
+                    <div class="memo-record__photo-tools">
+                        <div class="memo-record__photo-btns">
+                            <button type="button" id="memoRecordCameraBtn" class="memo-record__photo-btn" aria-label="사진 찍기" title="사진 찍기">
+                                <i data-lucide="camera" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" id="memoRecordAlbumBtn" class="memo-record__photo-btn" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                <i data-lucide="image" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div class="memo-record__aspect">
+                            <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('1:1')">1:1</button>
+                            <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('3:4')">3:4</button>
+                            <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('4:3')">4:3</button>
+                        </div>
+                    </div>
+                    <div id="memoRecordPhotoPreviews" class="memo-record__previews"></div>
+                </div>
+                <div id="memoRecordValueRow" class="memo-record__row hidden">
+                    <label class="memo-record__label" for="memoRecordValue">값</label>
+                    <input type="text" id="memoRecordValue" class="memo-record__value" inputmode="decimal" autocomplete="off" placeholder="0" />
+                    <span id="memoRecordUnit" class="memo-record__unit"></span>
+                </div>
+                <div class="memo-record__row memo-record__row--stack">
+                    <label class="memo-record__label" for="memoRecordText">내용</label>
+                    <textarea id="memoRecordText" rows="3" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요."></textarea>
+                </div>
                 <div class="memo-record__row">
                     <span class="memo-record__label">시간</span>
                     <!--
-                        끜니 시트와 같은 모양 — 오전/오후 + 시:분 직접 입력 + 휠로 고르기.
+                        끼니 시트와 같은 모양 — 오전/오후 + 시:분 직접 입력 + 버튼으로 고르기.
                         같은 일을 두 가지 모양으로 배우게 하지 않는다 (user-memo-items §4.4).
                     -->
                     <div class="entry-meal-clock-compound memo-record__clock">
@@ -2922,27 +2955,6 @@
                             <i data-lucide="clock" aria-hidden="true"></i>
                         </button>
                     </div>
-                </div>
-                <div id="memoRecordValueRow" class="memo-record__row hidden">
-                    <label class="memo-record__label" for="memoRecordValue">값</label>
-                    <input type="text" id="memoRecordValue" class="memo-record__value" inputmode="decimal" autocomplete="off" placeholder="0" />
-                    <span id="memoRecordUnit" class="memo-record__unit"></span>
-                </div>
-                <div class="memo-record__row memo-record__row--stack">
-                    <label class="memo-record__label" for="memoRecordText">내용</label>
-                    <textarea id="memoRecordText" rows="3" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요."></textarea>
-                </div>
-                <div class="memo-record__row memo-record__row--stack">
-                    <span class="memo-record__label">사진 <span id="memoRecordPhotoCount" class="memo-record__count">0/5</span></span>
-                    <div class="memo-record__photo-btns">
-                        <button type="button" id="memoRecordCameraBtn" class="memo-record__photo-btn" aria-label="사진 찍기">
-                            <i data-lucide="camera" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" id="memoRecordAlbumBtn" class="memo-record__photo-btn" aria-label="앨범에서 선택">
-                            <i data-lucide="image" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                    <div id="memoRecordPhotoPreviews" class="memo-record__previews"></div>
                 </div>
             </div>
             <div class="memo-record__foot">

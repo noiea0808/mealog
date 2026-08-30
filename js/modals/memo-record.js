@@ -9,6 +9,7 @@
  * 거기 있다(docs/sync-outbox-design.md §1). 여기서 두 번째 경로를 만들면
  * 그 불변식이 두 벌이 된다.
  */
+import { appState } from '../state.js';
 import { dbOps, generateMealDocId } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
@@ -16,7 +17,10 @@ import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { uploadBase64ToStorage } from '../utils.js';
 import { isDemoUser } from '../demo-account.js';
-import { pickCameraImage, pickGalleryImages } from '../utils/image-source-picker.js';
+import { pickCameraImage, pickGalleryImages, setPhotoAddButtonsEnabled } from '../utils/image-source-picker.js';
+import { prepareIntakeImage } from '../utils/image-downscale.js';
+import { createPhotoMetaFromFile, resolveFirstPhotoTakenAt } from '../photo-meta.js';
+import { openTimeSourceSheet, closeTimeSourceSheets } from '../time-source-picker.js';
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
 import {
     mealClock24ToAmPmAndDisplay,
@@ -27,6 +31,10 @@ import {
 } from '../meal-time-utils.js';
 import { findSlotByKey, defaultMemoItemByKey, memoIconOrDefault, MEMO_SLOT_ID, MEMO_MEAL_ID_PREFIX, DEFAULT_MEMO_LABEL, DEFAULT_MEMO_ICON } from '../utils/slot-plan.js';
 import { RECORD_MAX_PHOTOS } from '../constants.js';
+
+/** 시각 시트·시계 휠은 메모 시트(--z-record-modal: 300) 위에 떠야 한다 */
+const MEMO_SHEET_Z = 350;
+const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
 let bound = false;
 /** 편집 중 상태 — 열려 있을 때만 유효 */
@@ -41,7 +49,7 @@ function localTodayIso() {
 }
 
 /**
- * 시각 칸을 24시 'HH:mm' 에서 다시 그린다 — 끜니 시트의
+ * 시각 칸을 24시 'HH:mm' 에서 다시 그린다 — 끼니 시트의
  * `applyMealClockRowFrom24` 와 같은 수다(오전/오후 select + 12시 표시).
  */
 function syncClockRow() {
@@ -92,22 +100,111 @@ function formatMemoValue(value, decimals) {
 
 /* ── 렌더 ─────────────────────────────────────────────────── */
 
-function renderPhotos() {
+/* ── 사진 ───────────────────────────────── */
+
+/**
+ * 사진은 `appState.memoRecordPhotos` 에 산다 (docs/user-memo-items.md §4.4).
+ *
+ * 모듈 지역 변수로 두면 사진 편집기가 못 집는다 — 편집기는 컨텍스트 이름으로
+ * 배열을 찾아가는 구조라(js/render/photo-edit.js), 그 규칙을 따르는 값만
+ * 편집·회전·시각 도장을 받을 수 있다.
+ */
+function memoPhotos() {
+    if (!Array.isArray(appState.memoRecordPhotos)) appState.memoRecordPhotos = [];
+    return appState.memoRecordPhotos;
+}
+
+function memoPhotoMeta() {
+    if (!Array.isArray(appState.memoRecordPhotoMeta)) appState.memoRecordPhotoMeta = [];
+    return appState.memoRecordPhotoMeta;
+}
+
+function memoAspectCss() {
+    const ratio = appState.memoRecordPhotoAspectRatio || '1:1';
+    if (ratio === '3:4') return '3/4';
+    if (ratio === '4:3') return '4/3';
+    return '1';
+}
+
+function syncMemoAspectButtons() {
+    const ratio = appState.memoRecordPhotoAspectRatio || '1:1';
+    document.querySelectorAll('.aspect-btn-memo-record').forEach((btn) => {
+        const active = btn.getAttribute('data-aspect') === ratio;
+        btn.classList.toggle('bg-white', active);
+        btn.classList.toggle('text-slate-900', active);
+        btn.classList.toggle('border-slate-900', active);
+        btn.classList.toggle('border-slate-200', !active);
+        btn.classList.toggle('text-slate-600', !active);
+    });
+}
+
+/** 비율 바꾸기 — 하루 소감과 같은 이름·같은 동작 */
+export function setMemoRecordPhotoAspectRatio(ratio) {
+    if (!PHOTO_ASPECT_OPTIONS.includes(ratio)) return;
+    appState.memoRecordPhotoAspectRatio = ratio;
+    renderMemoRecordPhotoPreviews();
+}
+
+export function removeMemoRecordPhoto(idx) {
+    const photos = memoPhotos();
+    if (idx < 0 || idx >= photos.length) return;
+    photos.splice(idx, 1);
+    memoPhotoMeta().splice(idx, 1);
+    renderMemoRecordPhotoPreviews();
+}
+
+export function moveMemoRecordPhotoOrder(idx, delta) {
+    const photos = memoPhotos();
+    const meta = memoPhotoMeta();
+    const j = idx + delta;
+    if (j < 0 || j >= photos.length) return;
+    [photos[idx], photos[j]] = [photos[j], photos[idx]];
+    if (meta.length === photos.length) [meta[idx], meta[j]] = [meta[j], meta[idx]];
+    renderMemoRecordPhotoPreviews();
+}
+
+export function renderMemoRecordPhotoPreviews() {
     const wrap = document.getElementById('memoRecordPhotoPreviews');
     const countEl = document.getElementById('memoRecordPhotoCount');
-    if (countEl) countEl.textContent = `${state.photos.length}/${RECORD_MAX_PHOTOS}`;
-    if (!wrap) return;
-    wrap.innerHTML = state.photos
-        .map(
-            (src, i) => `<span class="memo-record__thumb">
-                <img src="${escapeHtml(src)}" alt="" />
-                <button type="button" class="memo-record__thumb-del" data-photo-idx="${i}" aria-label="사진 빼기">
-                    <i data-lucide="x" aria-hidden="true"></i>
+    const cameraBtn = document.getElementById('memoRecordCameraBtn');
+    const albumBtn = document.getElementById('memoRecordAlbumBtn');
+    const photos = memoPhotos();
+    const aspectCss = memoAspectCss();
+
+    if (countEl) countEl.textContent = `${photos.length}/${RECORD_MAX_PHOTOS}`;
+    if (wrap) {
+        wrap.innerHTML = photos
+            .map((src, idx) => {
+                const disPrev = idx === 0 ? ' disabled' : '';
+                const disNext = idx === photos.length - 1 ? ' disabled' : '';
+                return `<div class="photo-preview-item relative rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border-2 border-slate-300 select-none" style="width: 7rem; aspect-ratio: ${aspectCss};-webkit-touch-callout:none;" data-index="${idx}">
+                <img src="${escapeHtml(src)}" draggable="false" class="absolute inset-0 w-full h-full object-cover pointer-events-none select-none" style="-webkit-user-drag:none" alt="">
+                <button type="button" onclick="window.removeMemoRecordPhoto(${idx})" class="photo-remove-btn" aria-label="사진 삭제">
+                    <i data-lucide="x"></i>
                 </button>
-            </span>`
-        )
-        .join('');
-    scheduleLucideIcons(wrap);
+                <div class="photo-preview-bottom-bar absolute bottom-0 left-0 right-0 z-10 flex gap-0.5 px-0.5 pb-0.5 pt-2 bg-gradient-to-t from-black/65 via-black/30 to-transparent pointer-events-none">
+                    <button type="button" onclick="window.moveMemoRecordPhotoOrder(${idx}, -1)" class="photo-order-btn pointer-events-auto"${disPrev} title="순서 앞으로" aria-label="순서 앞으로">
+                        <i data-lucide="chevron-left" class="text-[9px]"></i>
+                    </button>
+                    <button type="button" onclick="window.editMemoRecordPhoto(${idx})" class="photo-edit-btn photo-edit-btn--in-bar pointer-events-auto" title="편집" aria-label="사진 편집">
+                        <i data-lucide="square-pen" class="text-[9px]"></i>
+                    </button>
+                    <button type="button" onclick="window.moveMemoRecordPhotoOrder(${idx}, 1)" class="photo-order-btn pointer-events-auto"${disNext} title="순서 뒤로" aria-label="순서 뒤로">
+                        <i data-lucide="chevron-right" class="text-[9px]"></i>
+                    </button>
+                </div>
+                <div class="photo-preview-order-badge absolute top-1 left-1 w-5 h-5 bg-black/60 text-white text-[10px] font-bold rounded-full flex items-center justify-center pointer-events-none z-10">${idx + 1}</div>
+            </div>`;
+            })
+            .join('');
+        scheduleLucideIcons(wrap);
+    }
+
+    const full = photos.length >= RECORD_MAX_PHOTOS;
+    setPhotoAddButtonsEnabled([cameraBtn, albumBtn], !full, {
+        disabledTitle: `사진은 최대 ${RECORD_MAX_PHOTOS}개까지 추가할 수 있습니다`
+    });
+    syncMemoAspectButtons();
 }
 
 function renderHead() {
@@ -189,15 +286,21 @@ export function openMemoRecordModal(dateIso, slotKey, entryId = null) {
             ? Number(existing.value)
             : null,
         comment: String(existing?.comment || ''),
-        photos: Array.isArray(existing?.photos) ? existing.photos.filter(Boolean).slice(0, RECORD_MAX_PHOTOS) : [],
-        photoAspectRatio: existing?.photoAspectRatio || '1:1',
         // 새 기록의 기본 시각은 **지금** — 시각이 늘 있어야 §3.3 이 성립한다
         clock: normalizeExistingClock(existing) || nowHHmm(),
         saving: false
     };
 
+    appState.memoRecordPhotos = Array.isArray(existing?.photos)
+        ? existing.photos.filter(Boolean).slice(0, RECORD_MAX_PHOTOS)
+        : [];
+    appState.memoRecordPhotoMeta = appState.memoRecordPhotos.map(() => ({ takenAt: null }));
+    appState.memoRecordPhotoAspectRatio = PHOTO_ASPECT_OPTIONS.includes(existing?.photoAspectRatio)
+        ? existing.photoAspectRatio
+        : '1:1';
+
     renderHead();
-    renderPhotos();
+    renderMemoRecordPhotoPreviews();
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
     lockBodyScroll('memoRecord');
@@ -219,10 +322,21 @@ export function closeMemoRecordModal() {
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
     state = null;
+    // 다음에 열 때 남은 사진이 딸려 오지 않게 — 저장 경로는 닫기 전에 복사해 둔다
+    appState.memoRecordPhotos = [];
+    appState.memoRecordPhotoMeta = [];
+    closeTimeSourceSheets();
     unlockBodyScroll('memoRecord');
 }
 
 /* ── 편집 ─────────────────────────────────────────────────── */
+
+/** Date 를 시각 칸에 꽂는다 */
+function applyClockFromDate(date) {
+    if (!state || !date || Number.isNaN(date.getTime())) return;
+    state.clock = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    syncClockRow();
+}
 
 function openTimePicker() {
     if (!state) return;
@@ -233,18 +347,53 @@ function openTimePicker() {
     const seed = new Date();
     seed.setHours(Number.isFinite(h) ? h : 12, Number.isFinite(m) ? m : 0, 0, 0);
     openMealClockWheelPanel({
+        zIndex: MEMO_SHEET_Z,
         initialDate: seed,
-        onApply: (date) => {
-            if (!state) return;
-            state.clock = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-            syncClockRow();
-        }
+        onApply: (date) => applyClockFromDate(date)
     });
 }
 
+/**
+ * 시각 출처 고르기 — 끼니 시트와 같은 목록 (docs/user-memo-items.md §4.4).
+ *
+ * '미입력'만 없다. 메모의 시각은 그 기록이 하루의 어느 자리에 서는지를
+ * 정하는 값이라(§3.3) 비면 놓을 자리가 사라진다. 끼니는 슬롯이 자리를
+ * 쥐고 있어 시각을 비워도 되지만, 메모에는 그 슬롯이 없다.
+ */
+function openTimeSourceForMemo() {
+    if (!state) return;
+    openTimeSourceSheet({
+        title: '시간 선택',
+        zIndex: MEMO_SHEET_Z,
+        showEmpty: false,
+        onNow: () => applyClockFromDate(new Date()),
+        onPhoto: async () => {
+            const date = await resolveFirstPhotoTakenAt({
+                photoMeta: memoPhotoMeta(),
+                photos: memoPhotos()
+            });
+            if (!date) {
+                showToast('사진 촬영 시각 정보를 찾을 수 없습니다.', 'info');
+                return;
+            }
+            closeTimeSourceSheets();
+            applyClockFromDate(date);
+        },
+        onManual: () => openTimePicker()
+    });
+}
+
+/**
+ * 사진 고르기 — 끼니 시트와 같은 전처리를 거친다.
+ *
+ * 원본을 그대로 안고 있으면 큰 사진 몇 장에 시트가 멎는다. 그리고 EXIF
+ * 촬영시각을 여기서 같이 읽어 둬야 '사진 시각'을 고를 수 있다 —
+ * 업로드 뒤의 URL 에는 그 정보가 남지 않는다.
+ */
 async function pickPhotos(source) {
     if (!state) return;
-    const remaining = RECORD_MAX_PHOTOS - state.photos.length;
+    const photos = memoPhotos();
+    const remaining = RECORD_MAX_PHOTOS - photos.length;
     if (remaining <= 0) {
         showToast(`사진은 최대 ${RECORD_MAX_PHOTOS}장까지 넣을 수 있어요.`, 'error');
         return;
@@ -253,22 +402,28 @@ async function pickPhotos(source) {
         source === 'camera' ? await pickCameraImage({ facing: 'environment' }) : await pickGalleryImages({ multiple: true });
     const list = Array.from(files || []).filter((f) => f?.type?.startsWith?.('image/')).slice(0, remaining);
     if (!list.length) return;
-    const read = await Promise.all(
-        list.map(
-            (f) =>
-                new Promise((resolve) => {
-                    const r = new FileReader();
-                    r.onload = (ev) => resolve(ev.target?.result || null);
-                    r.onerror = () => resolve(null);
-                    r.readAsDataURL(f);
-                })
-        )
+
+    const prepared = await Promise.all(
+        list.map(async (f) => {
+            try {
+                const out = await prepareIntakeImage(f);
+                return out?.dataUrl || null;
+            } catch (_) {
+                return null;
+            }
+        })
     );
+    const meta = await Promise.all(list.map((f) => createPhotoMetaFromFile(f)));
+
+    // await 사이에 사용자가 시트를 닫았을 수 있다
     if (!state) return;
-    read.filter(Boolean).forEach((src) => {
-        if (state.photos.length < RECORD_MAX_PHOTOS) state.photos.push(src);
+    prepared.forEach((src, i) => {
+        if (!src) return;
+        if (memoPhotos().length >= RECORD_MAX_PHOTOS) return;
+        memoPhotos().push(src);
+        memoPhotoMeta().push(meta[i] || { takenAt: null });
     });
-    renderPhotos();
+    renderMemoRecordPhotoPreviews();
 }
 
 /** data:/blob: 사진만 Storage 로 올리고 URL 로 바꾼다 — 하루 소감과 같은 경로 */
@@ -321,7 +476,14 @@ async function onSave() {
         value = state.decimals === 1 ? Math.round(num * 10) / 10 : Math.round(num);
     }
 
-    const snapshot = { ...state, comment, value };
+    const snapshot = {
+        ...state,
+        comment,
+        value,
+        // 닫으면 appState 가 비워지므로 **닫기 전에** 복사한다
+        photos: [...memoPhotos()],
+        photoAspectRatio: appState.memoRecordPhotoAspectRatio || '1:1'
+    };
     closeMemoRecordModal();
 
     try {
@@ -415,10 +577,10 @@ function bindOnce() {
     if (!modal) return;
     modal.querySelector('#memoRecordBackdrop')?.addEventListener('click', closeMemoRecordModal);
     modal.querySelector('#memoRecordCloseBtn')?.addEventListener('click', closeMemoRecordModal);
-    modal.querySelector('#memoRecordTimeBtn')?.addEventListener('click', openTimePicker);
+    modal.querySelector('#memoRecordTimeBtn')?.addEventListener('click', openTimeSourceForMemo);
 
     /**
-     * 직접 입력 — 끜니 시트와 같은 규칙이다.
+     * 직접 입력 — 끼니 시트와 같은 규칙이다.
      * 치는 동안에는 '1230' → '12:30' 으로 모양만 잡아 주고(값 판정은 안 한다),
      * 떠날 때 한 번 정리한다 — '9' 만 적고 나가면 09:00 으로 읽는다.
      */
@@ -468,15 +630,6 @@ function bindOnce() {
     modal.querySelector('#memoRecordAlbumBtn')?.addEventListener('click', () => void pickPhotos('gallery'));
     modal.querySelector('#memoRecordSaveBtn')?.addEventListener('click', () => void onSave());
     modal.querySelector('#memoRecordDeleteBtn')?.addEventListener('click', () => void onDelete());
-    modal.querySelector('#memoRecordPhotoPreviews')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-photo-idx]');
-        if (!btn || !state) return;
-        const idx = Number(btn.getAttribute('data-photo-idx'));
-        if (Number.isFinite(idx)) {
-            state.photos.splice(idx, 1);
-            renderPhotos();
-        }
-    });
 }
 
 export function initMemoRecordModal() {
@@ -493,3 +646,14 @@ if (typeof document !== 'undefined') {
 
 window.openMemoRecordModal = openMemoRecordModal;
 window.closeMemoRecordModal = closeMemoRecordModal;
+window.removeMemoRecordPhoto = removeMemoRecordPhoto;
+window.moveMemoRecordPhotoOrder = moveMemoRecordPhotoOrder;
+window.setMemoRecordPhotoAspectRatio = setMemoRecordPhotoAspectRatio;
+/**
+ * 사진 편집기는 동적으로 부른다 — 정적으로 얽으면 편집기 쪽이 이 파일을
+ * 되불러야 하는 순환이 생긴다(편집 저장 뒤 미리보기 갱신).
+ */
+window.editMemoRecordPhoto = async (idx) => {
+    const { editMemoRecordPhoto } = await import('../render/photo-edit.js');
+    editMemoRecordPhoto(idx);
+};

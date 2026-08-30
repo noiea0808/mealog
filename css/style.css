@@ -12535,43 +12535,29 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     width: 1.0625rem;
     height: 1.0625rem;
 }
+/*
+ * 사진 줄은 끼니 시트와 같은 부품을 쓴다 (docs/user-memo-items.md §4.4) —
+ * 미리보기 한 칸이 7rem 이라 감싸지 않고 가로로 흘린다. 접어 내리면
+ * 시트 높이가 사진 수에 따라 널뛴다.
+ */
+.memo-record__photo-tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.memo-record__aspect {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+}
 .memo-record__previews {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 0.5rem;
+    overflow-x: auto;
 }
-.memo-record__thumb {
-    position: relative;
-    display: inline-flex;
-    width: 3.5rem;
-    height: 3.5rem;
-    border-radius: 0.625rem;
-    overflow: hidden;
-    background: #f1f5f9;
-}
-.memo-record__thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-.memo-record__thumb-del {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.1rem;
-    height: 1.1rem;
-    border-radius: 999px;
-    background: rgba(15, 23, 42, 0.6);
-    color: #fff;
-}
-.memo-record__thumb-del [data-lucide],
-.memo-record__thumb-del .lucide {
-    width: 0.6875rem;
-    height: 0.6875rem;
-    stroke-width: 2.5;
+.memo-record__previews:empty {
+    display: none;
 }
 .memo-record__foot {
     flex-shrink: 0;

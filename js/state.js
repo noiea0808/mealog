@@ -75,6 +75,15 @@ export const appState = {
     recordPhotoHeroIndex: 0,
     /** photos와 동일 인덱스 — { takenAt: ISO string | null } */
     currentPhotoMeta: [],
+    /**
+     * 메모 기록 시트의 사진 — 끼니·하루 소감과 같은 자리에 둔다
+     * (docs/user-memo-items.md §4.4). 사진 편집기(js/render/photo-edit.js)가
+     * 컨텍스트별로 여기서 배열을 집어 가므로, 모듈 안에만 두면 편집을 못 붙인다.
+     */
+    memoRecordPhotos: [],
+    /** memoRecordPhotos와 동일 인덱스 — { takenAt: ISO string | null } */
+    memoRecordPhotoMeta: [],
+    memoRecordPhotoAspectRatio: '1:1',
     currentPhotoFiles: [], // 실제 파일 객체 (Storage 업로드용)
     sharedPhotos: [], // 현재 공유된 사진 목록 (모달 내)
     originalSharedPhotos: [], // 모달 열 때의 원본 공유 사진 목록 (삭제 추적용)
