@@ -732,16 +732,42 @@ export function normalizeTimeKey(raw, fallback = '') {
 }
 
 /**
- * 그룹의 **대표 시각** = 그 그룹에서 가장 이른 기록의 시각.
- * 시각을 못 읽는 기록만 있으면 ''(가장 이른 것으로 취급) — 메모가 그 뒤로 간다.
+ * base 슬롯이 **뜻하는 시각** — 시각을 안 적은 끼니의 자리를 잡을 때만 쓴다.
+ *
+ * 정확한 시각이 아니라 '점심은 낮'이라는 낯이다. 끼니 사이에 메모를 끼우는 데는
+ * 이 정도면 충분하고, 사용자에게 시각을 강요하지 않아도 된다.
+ */
+const BASE_NOMINAL_TIME = {
+    pre_morning: '06:30:00',
+    morning: '08:00:00',
+    snack1: '10:30:00',
+    lunch: '12:30:00',
+    snack2: '15:30:00',
+    dinner: '18:30:00',
+    night: '21:30:00'
+};
+
+/**
+ * 그룹의 **대표 시각** = 그 그룹에서 사용자가 **적어 둔** 가장 이른 시각.
+ *
+ * ⚠️ `record.time` 을 보지 않는다. 끼니의 `time` 은 시각을 안 적으면 **저장한
+ * 순간**이 들어가는 정렬용 필드다(entry-save-record.js). 그걸 대표 시각으로 쓰면
+ * 오후 두 시에 몰아 적은 '아침'이 오후 두 시의 끼니가 되어, 낮 한 시 반에 한
+ * 운동 메모가 아침 **앞**에 선다 — 화면에 시각이 없으니 이유도 안 보인다.
+ *
+ * 그래서 사용자가 실제로 고른 `mealClock` 만 본다. 아무도 안 적었으면 그 슬롯이
+ * 뜻하는 시각(BASE_NOMINAL_TIME)으로 자리를 잡는다 — 시각을 안 적는 사람에게도
+ * 아침·점심·저녁이라는 순서 정보는 이미 있다.
  */
 function groupRepTimeKey(group) {
     let best = null;
     for (const r of Array.isArray(group?.records) ? group.records : []) {
-        const t = normalizeTimeKey(r?.time, '');
+        const t = normalizeTimeKey(r?.mealClock, '');
+        if (!t) continue;
         if (best === null || t < best) best = t;
     }
-    return best === null ? '' : best;
+    if (best !== null) return best;
+    return BASE_NOMINAL_TIME[group?.slot?.id] || '';
 }
 
 /**
@@ -779,6 +805,9 @@ export function memoUnitsForDate(dateStr, history, userSettings, todayIso) {
  *
  * 규칙 한 문장: **그룹을 목록 순서로 훑으며 대표 시각 ≤ 메모 시각인 마지막
  * 그룹 뒤에 놓는다.** 그런 그룹이 없으면 맨 앞.
+ *
+ * 대표 시각은 사용자가 적은 시각이고, 안 적었으면 그 슬롯이 뜻하는 시각이다
+ * (`groupRepTimeKey`). 저장 시각은 절대 쓰지 않는다.
  *
  * 메모는 그룹 **사이**에만 낀다 — 그룹 안(점심 2건 사이)은 가르지 않는다.
  * 그룹은 카드가 이어 붙은 시각적 한 덩어리이고, 그 사이를 벌리는 비용이

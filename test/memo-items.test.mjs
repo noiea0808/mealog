@@ -230,11 +230,15 @@ describe('메모는 묶이지 않는다 (§3.2)', () => {
 });
 
 describe('자리 계산 (§3.3)', () => {
-    const g = (label, times) => ({
-        slot: { id: 'x', type: 'main', label, key: `k-${label}` },
-        records: times.map((t) => ({ time: t }))
+    /**
+     * 사용자가 적은 시각은 `mealClock` 이다. `time` 은 시각을 안 적으면
+     * 저장 순간이 들어가는 정렬용 필드라 자리 계산에 쓰지 않는다.
+     */
+    const g = (label, clocks, baseId = 'x') => ({
+        slot: { id: baseId, type: 'main', label, key: `k-${label}` },
+        records: clocks.map((c) => ({ mealClock: c, time: '14:22:00' }))
     });
-    const groups = [g('아침', ['07:00:00']), g('오전 간식', ['10:20:00']), g('점심', ['12:00:00', '13:30:00']), g('저녁', ['19:00:00'])];
+    const groups = [g('아침', ['07:00']), g('오전 간식', ['10:20']), g('점심', ['12:00', '13:30']), g('저녁', ['19:00'])];
     const u = (label, timeKey) => ({ slot: { id: MEMO_SLOT_ID, type: 'memo', label, key: 'm1', icon: 'scale' }, record: { time: timeKey }, timeKey });
 
     const labels = (units) => units.map((x) => (x.type === 'memo' ? `[${x.slot.label}]` : x.slot.label));
@@ -281,9 +285,46 @@ describe('자리 계산 (§3.3)', () => {
         ]);
     });
 
-    it('시각을 못 읽는 그룹은 가장 이른 것으로 취급한다 — 메모가 그 뒤로 간다', () => {
-        const broken = [{ slot: { id: 'x', type: 'main', label: '기록', key: 'k' }, records: [{ time: null }] }];
+    it('시각도 슬롯도 못 읽는 그룹은 가장 이른 것으로 취급한다 — 메모가 그 뒤로 간다', () => {
+        const broken = [{ slot: { id: 'x', type: 'main', label: '기록', key: 'k' }, records: [{ mealClock: null }] }];
         assert.deepEqual(labels(mergeMemoUnits(broken, [u('체중', '00:05:00')])), ['기록', '[체중]']);
+    });
+
+    /**
+     * 실제로 물린 자리 — 시각을 안 적은 아침·점심을 오후 두 시에 몰아 적으면
+     * 그 `time` 이 14시대가 된다. 그걸 대표 시각으로 쓰면 낮 한 시 반 운동이
+     * 아침 **앞**에 서고, 화면에는 시각이 없으니 이유도 안 보인다.
+     */
+    it('저장 시각(time)은 자리를 정하지 않는다 — 오후에 몰아 적은 아침이 오후 끼니가 되면 안 된다', () => {
+        const noClock = (label, baseId) => ({
+            slot: { id: baseId, type: 'main', label, key: `k-${label}` },
+            // 저장 순간이 들어간 time 만 있고 사용자가 고른 시각은 없다
+            records: [{ mealClock: null, time: '14:22:00' }]
+        });
+        const day = [noClock('아침', 'morning'), noClock('점심', 'lunch')];
+        assert.deepEqual(labels(mergeMemoUnits(day, [u('운동', '13:30:00')])), [
+            '아침', '점심', '[운동]'
+        ]);
+    });
+
+    it('시각을 안 적은 그룹은 그 슬롯이 뜻하는 시각으로 선다', () => {
+        const day = [g('아침', [], 'morning'), g('점심', [], 'lunch'), g('저녁', [], 'dinner')];
+        // 아침(08:00) 보다 이른 메모는 맨 앞
+        assert.deepEqual(labels(mergeMemoUnits(day, [u('체중', '07:00:00')])), [
+            '[체중]', '아침', '점심', '저녁'
+        ]);
+        // 점심(12:30)과 저녁(18:30) 사이
+        assert.deepEqual(labels(mergeMemoUnits(day, [u('운동', '13:30:00')])), [
+            '아침', '점심', '[운동]', '저녁'
+        ]);
+    });
+
+    it('한 사람이 적은 시각이 있으면 그 시각이 이름값보다 우선한다', () => {
+        // '점심'을 09:30 에 먹었다고 적었으면 10:00 메모는 그 뒤다
+        const day = [g('아침', [], 'morning'), g('점심', ['09:30'], 'lunch')];
+        assert.deepEqual(labels(mergeMemoUnits(day, [u('체중', '10:00:00')])), [
+            '아침', '점심', '[체중]'
+        ]);
     });
 
     it('normalizeTimeKey 는 자릿수와 초 유무를 흡수한다', () => {
@@ -303,8 +344,8 @@ describe('dayTimelineUnits — 타임라인이 실제로 쓰는 순회', () => {
         ])
     };
     const history = [
-        { id: 'a', date: '2026-09-05', slotId: 'morning', slotKey: defaultSlotKey('morning'), time: '07:00:00' },
-        { id: 'd', date: '2026-09-05', slotId: 'dinner', slotKey: defaultSlotKey('dinner'), time: '19:00:00' },
+        { id: 'a', date: '2026-09-05', slotId: 'morning', slotKey: defaultSlotKey('morning'), mealClock: '07:00', time: '07:00:00' },
+        { id: 'd', date: '2026-09-05', slotId: 'dinner', slotKey: defaultSlotKey('dinner'), mealClock: '19:00', time: '19:00:00' },
         { id: 'w1', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '07:30:00' },
         { id: 'w2', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '21:10:00' }
     ];
