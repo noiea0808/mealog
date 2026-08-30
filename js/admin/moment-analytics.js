@@ -573,7 +573,8 @@ function renderTrendGuideBody() {
     return [
         guideSection(
             '이 표를 어떻게 읽나',
-            `<p>모든 숫자는 그 구간의 기록 수 대비 <b>%</b>입니다. 칸에 마우스를 올리면 <b>건수</b>가 뜨고,
+            `<p>모든 숫자는 그 구간의 기록 수 대비 <b>%</b>입니다 — <b>「추천 분류」 두 열만 예외</b>로,
+             제안이 뜬 기록이 분모입니다. 칸에 마우스를 올리면 <b>건수와 그 칸의 분모</b>가 뜨고,
              맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.</p>
              <p>열은 <b>사용자가 시트에서 채우는 순서</b>로 섭니다 — 무엇을 → 추천 분류 → 어떻게 → 어디서 →
              누구와 → 만족도 → 포만감 → 사진 → 코멘트. 이 표에서 읽으려는 것이 「시트를 내려가며 어디서
@@ -604,10 +605,12 @@ function renderTrendGuideBody() {
                  <li><b>사용</b> — 최종 값이 제안값과 같다(확정했거나, 그대로 두고 저장했거나)</li>
                  <li><b>안 씀</b> — 사람이 다른 값으로 고쳤거나(= 오분류), ✕로 거부했다</li>
              </ul>
-             <p><b>이 두 열만 분모가 다릅니다.</b> 「제안이 뜬 기록」이 분모라 둘의 합이 100%가 되지 않고,
-             제안이 안 뜬 기록은 어느 칸에도 들어가지 않습니다. 제안 자국을 남기기 전에 저장된 옛 기록도
-             마찬가지라 <b>개편 이전 구간의 0은 결측이지 실패가 아닙니다</b>. 정확한 건수는 표 아래 한 줄과
-             「엑셀 내보내기」의 <code>추천 분류</code> 시트에 있습니다.</p>`
+             <p><b>이 두 열만 분모가 다릅니다</b> — 전체 기록이 아니라 「제안이 뜬 기록」입니다. 그래서
+             <b>사용 + 안 씀 = 100%</b>이고, 제안이 안 뜬 기록은 어느 칸에도 들어가지 않습니다. 옆 열들과
+             세로로 견주면 안 되는 이유가 이것입니다 — 밟고 선 바닥이 다릅니다.</p>
+             <p>제안 자국(<code>categorySuggested</code>)을 남기기 전에 저장된 옛 기록은 분모가 아예 0이라
+             칸이 <b><code>-</code></b> 로 비어 있습니다. <b>개편 이전 구간의 빈칸은 결측이지 실패가 아닙니다.</b>
+             정확한 건수는 표 아래 한 줄과 「엑셀 내보내기」의 <code>추천 분류</code> 시트에 있습니다.</p>`
         ),
         guideSection(
             '색 눈금이 열마다 다르다',
@@ -711,6 +714,18 @@ function bindMomentGuideOnce() {
 }
 
 /**
+ * 「추천 분류」 두 열의 분모 — 전체 기록이 아니라 **제안 자국이 남은 기록**이다.
+ * 셋(그대로 씀 · 고침 · 거부)이 서로 배타적이라 합이 곧 「제안이 떴던 횟수」가 된다.
+ * 전체 기록으로 나누면 두 열의 합이 「제안이 뜬 비율」로 흘러가 버려, 받아들임률도
+ * 건수도 아닌 읽을 수 없는 숫자가 된다.
+ *
+ * 옛 기록에는 `categorySuggested` 가 없어 0이 나온다 — 그 구간은 0%가 아니라 결측이라
+ * 칸을 `-` 로 비운다.
+ */
+const suggestOffered = (b) =>
+    (b.counts.suggestUsed || 0) + (b.counts.suggestChanged || 0) + (b.counts.suggestRejected || 0);
+
+/**
  * 추이 표의 열 — **사용자가 시트에서 채우는 순서**로 선다.
  *
  * 예전에는 모델의 핵심 8항목 순서를 그대로 썼는데, 그건 「무엇을 세는가」의 순서지
@@ -724,6 +739,10 @@ function bindMomentGuideOnce() {
  * (셋의 합이 언제나 100%다).
  *
  * `tone` — good: 높을수록 좋다 / bad: 높을수록 나쁘다 / info: 좋고 나쁨이 없다.
+ *
+ * `denom` — 그 열만의 분모(없으면 그 구간의 기록 수). 열마다 밟고 선 바닥이 다를 수 있어
+ * `denomLabel` 을 같이 달아 두면 마우스를 올렸을 때 무엇으로 나눈 값인지가 뜬다.
+ * `displayRate` — 그리는 %를 따로 셈해야 하는 열(짝 열과 합을 100에 맞추는 자리)만 쓴다.
  */
 const TREND_COLUMN_GROUPS = [
     {
@@ -772,13 +791,22 @@ const TREND_COLUMN_GROUPS = [
                 label: '사용',
                 tone: 'good',
                 value: (b) => b.counts.suggestUsed,
-                hint: '제안이 뜬 기록 중, 최종 값이 제안값과 같은 것'
+                denom: suggestOffered,
+                denomLabel: '제안이 뜬 기록',
+                hint: '제안이 뜬 기록 중, 최종 값이 제안값과 같은 것 — 분모가 전체 기록이 아니다'
             },
             {
                 label: '안 씀',
                 tone: 'bad',
                 value: (b) => b.counts.suggestChanged + b.counts.suggestRejected,
-                hint: '제안이 뜬 기록 중, 사람이 다른 값으로 고쳤거나 ✕로 거부한 것'
+                denom: suggestOffered,
+                denomLabel: '제안이 뜬 기록',
+                /**
+                 * 「사용」을 반올림하고 남은 몫으로 그린다 — 둘을 따로 반올림하면 37.5 + 62.5가
+                 * 38 + 63 = 101로 찍혀, 합이 100이라는 이 표의 약속이 반올림에 깨진다.
+                 */
+                displayRate: (b) => 100 - Math.round(pct(b.counts.suggestUsed, suggestOffered(b))),
+                hint: '제안이 뜬 기록 중, 사람이 다른 값으로 고쳤거나 ✕로 거부한 것 — 사용 + 안 씀 = 100%'
             }
         ]
     },
@@ -832,18 +860,22 @@ function renderTrendRow(b, { label, emphasis = false }) {
     const cells = TREND_COLUMN_GROUPS.map((g) =>
         g.cols
             .map((col, i) => {
-                const n = b.total ? Math.max(0, col.value(b)) : 0;
-                const rate = pct(n, b.total);
+                /** 열마다 제 분모다 — 대부분은 그 구간의 기록 수, 「추천 분류」만 제안이 뜬 기록 수 */
+                const denom = col.denom ? col.denom(b) : b.total;
+                const n = denom ? Math.max(0, col.value(b)) : 0;
+                /** 그리는 값은 `displayRate` 가 있으면 그쪽이다 — 짝 열과 합을 맞추는 열이 쓴다 */
+                const rate = denom && col.displayRate ? col.displayRate(b, denom) : pct(n, denom);
                 const title = [
-                    `${col.label} · ${n.toLocaleString()}건 / ${b.total.toLocaleString()}건`,
-                    col.detail && b.total ? col.detail(b) : ''
+                    `${col.label} · ${n.toLocaleString()}건 / ${denom.toLocaleString()}건` +
+                        (col.denomLabel ? ` (${col.denomLabel})` : ''),
+                    col.detail && denom ? col.detail(b) : ''
                 ]
                     .filter(Boolean)
                     .join('\n');
                 return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(
                     col.tone,
                     rate
-                )} ${trendCellDivider(g, i)}" title="${escapeHtml(title)}">${b.total ? rate.toFixed(0) : '-'}</td>`;
+                )} ${trendCellDivider(g, i)}" title="${escapeHtml(title)}">${denom ? rate.toFixed(0) : '-'}</td>`;
             })
             .join('')
     ).join('');
@@ -1137,13 +1169,17 @@ window.exportMomentAnalyticsToExcel = async function () {
         TREND_COLUMN_GROUPS.forEach((g) => {
             g.cols.forEach((col) => {
                 const name = g.cols.length > 1 ? `${g.label}-${col.label}` : col.label;
-                row[name] = Number(pct(b.total ? Math.max(0, col.value(b)) : 0, b.total).toFixed(1));
+                const denom = col.denom ? col.denom(b) : b.total;
+                row[name] = denom ? Number(pct(Math.max(0, col.value(b)), denom).toFixed(1)) : '';
             });
         });
         return row;
     };
     const trendRows = [trendRowOf(result.overall, '전체'), ...result.trend.map((b) => trendRowOf(b))];
-    /** 추천 분류는 「제안이 뜬 기록」이 분모라 추이 표의 %와 분모가 다르다 — 건수로 따로 싣는다 */
+    /**
+     * 추이 시트의 「추천 분류」 %는 제안이 뜬 기록이 분모다(화면과 같다). 여기서는 그 분모 자체와
+     * 전체 대비 비중까지 건수로 펴 둔다 — 셋으로 가른 결말(고침/거부)은 추이 표에서 한 칸으로 접힌다.
+     */
     const suggestRows = FOOD_SUGGEST_SPECS.map((spec) => ({
         결말: spec.label,
         건수: result.overall.counts[spec.key] || 0
