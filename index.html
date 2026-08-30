@@ -2904,7 +2904,24 @@
             <div class="memo-record__body">
                 <div class="memo-record__row">
                     <span class="memo-record__label">시간</span>
-                    <button type="button" id="memoRecordTimeBtn" class="memo-record__time">오전 12:00</button>
+                    <!--
+                        끜니 시트와 같은 모양 — 오전/오후 + 시:분 직접 입력 + 휠로 고르기.
+                        같은 일을 두 가지 모양으로 배우게 하지 않는다 (user-memo-items §4.4).
+                    -->
+                    <div class="entry-meal-clock-compound memo-record__clock">
+                        <label for="memoRecordAmpm" class="sr-only">오전 또는 오후</label>
+                        <select id="memoRecordAmpm" class="entry-meal-ampm shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                            <option value="am">오전</option>
+                            <option value="pm">오후</option>
+                        </select>
+                        <input type="text" id="memoRecordTimeInput"
+                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                            placeholder="시:분" aria-label="시각"
+                            class="min-w-0 flex-1 border-0 bg-white py-2 pl-3 pr-2 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
+                        <button type="button" id="memoRecordTimeBtn" class="memo-record__clock-btn" aria-label="시각 고르기" title="시각 고르기">
+                            <i data-lucide="clock" aria-hidden="true"></i>
+                        </button>
+                    </div>
                 </div>
                 <div id="memoRecordValueRow" class="memo-record__row hidden">
                     <label class="memo-record__label" for="memoRecordValue">값</label>
