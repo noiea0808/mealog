@@ -12720,8 +12720,15 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 .slot-plan-row__label-input:focus {
     border-bottom-color: #94a3b8;
 }
-/* 이름을 고칠 수 있다는 신호 — 이름 바로 옆 (사용자 피드백) */
+/*
+ * 이름을 고칠 수 있다는 신호.
+ *
+ * 이름 바로 옆에 붙여 뒀더니 이름 길이만큼 행마다 좌우로 튀어 목록이 어수선했다
+ * (사용자 피드백). `margin-left: auto` 로 이름 칸 오른쪽 끝에 세워 **한 열로**
+ * 맞춘다. 점선 밑줄은 그대로 글자만큼만 — 그게 '고칠 수 있다'의 신호다.
+ */
 .slot-plan-row__pencil {
+    margin-left: auto;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
