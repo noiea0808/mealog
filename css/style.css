@@ -12824,6 +12824,13 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     font-weight: 600;
     color: #cbd5e1;
 }
+/* 메모가 하나도 없을 때 — 만드는 자리를 알려 준다 (만들기는 피커에 있다) */
+.slot-plan-settings__memo-empty {
+    padding: 0.3rem 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: #94a3b8;
+}
 /* 메모 행에는 손잡이가 없다 — 자리를 고르는 개념 자체가 없다 (§1) */
 .slot-plan-row--memo {
     padding-left: 0.25rem;
@@ -12843,35 +12850,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: #e2e8f0;
     color: #334155;
 }
-.slot-plan-settings__memo-add-row {
-    padding: 0.1rem var(--mealog-dialog-pad-x) 0;
-}
-.slot-plan-settings__memo-add {
-    width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    padding: 0.55rem 0;
-    border-radius: 0.75rem;
-    border: 1px dashed #cbd5e1;
-    background: transparent;
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: #64748b;
-    -webkit-tap-highlight-color: transparent;
-}
-.slot-plan-settings__memo-add:active {
-    background: #f1f5f9;
-    color: #334155;
-}
-.slot-plan-settings__memo-add [data-lucide],
-.slot-plan-settings__memo-add .lucide {
-    width: 0.9375rem;
-    height: 0.9375rem;
-    stroke-width: 2;
-}
-
 /* ── 메모 항목 만들기·고치기 팝업 (§4.3) ── */
 .slot-memo-edit__presets {
     display: flex;
