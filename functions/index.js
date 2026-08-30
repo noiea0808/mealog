@@ -10,6 +10,7 @@ const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('fir
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onTaskDispatched } = require('firebase-functions/v2/tasks');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
+const { checkSpam } = require('./spam-filter.js');
 const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
@@ -146,21 +147,6 @@ const GEMINI_ALLOWED_MODELS = ['gemini-2.5-flash'];
 const GEMINI_ALLOWED_API_VERSION = 'v1beta';
 const GEMINI_MAX_REQUEST_BODY_BYTES = 32 * 1024; // 32KB — 프롬프트+페르소나 여유 포함
 const GEMINI_MAX_OUTPUT_TOKENS_CEILING = 1024; // 클라이언트 기본값(768)보다 여유만 둔 서버 상한
-
-// 금칙어 목록 (간단한 예시, 필요시 확장)
-const BANNED_WORDS = [
-  // 스팸 관련
-  /(광고|홍보|무료|이벤트|할인|쿠폰|추천인|링크|http|www\.|\.com)/gi,
-  // 부적절한 내용 (예시)
-  /(욕설|비방|혐오)/gi
-];
-
-// 링크 패턴 감지
-const LINK_PATTERNS = [
-  /https?:\/\/[^\s]+/gi,
-  /www\.[^\s]+/gi,
-  /[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*/gi
-];
 
 /**
  * 에러 리포팅 헬퍼 (Functions용)
@@ -619,32 +605,6 @@ async function checkRateLimit(userId, actionType, context) {
     [actionKey]: recentActions,
     lastUpdated: FieldValue.serverTimestamp()
   }, { merge: true });
-}
-
-/**
- * 스팸 필터링
- */
-function checkSpam(content) {
-  if (!content || typeof content !== 'string') {
-    return { isSpam: false };
-  }
-
-  const text = content.toLowerCase().trim();
-
-  // 금칙어 체크
-  for (const pattern of BANNED_WORDS) {
-    if (pattern.test(text)) {
-      return { isSpam: true, reason: '금칙어가 포함되어 있습니다.' };
-    }
-  }
-
-  // 링크 체크 (게시글/댓글에 링크가 많으면 스팸 의심)
-  const links = text.match(LINK_PATTERNS[0]) || [];
-  if (links.length > 2) {
-    return { isSpam: true, reason: '과도한 링크가 포함되어 있습니다.' };
-  }
-
-  return { isSpam: false };
 }
 
 /**
