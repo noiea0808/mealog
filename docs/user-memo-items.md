@@ -211,30 +211,37 @@ user-slot-plan 의 불변식 2 를 고쳐 쓴다. 지금 문장은 이미 사실
 
 ```js
 defaultMemoItems() → [
-  { key: '000000000memo-weight',   kind: 'memo', icon: 'scale',     label: '체중', unit: 'kg', decimals: 1, enabled: true },
-  { key: '000000000memo-exercise', kind: 'memo', icon: 'dumbbell',  label: '운동',              enabled: true },
-  { key: '000000000memo-toilet',   kind: 'memo', icon: 'toilet',    label: '화장실',            enabled: true },
-  { key: '000000000memo-journal',  kind: 'memo', icon: 'book-open', label: '하루 소감',          enabled: true }
+  { key: '000000000memo-weight',     kind: 'memo', icon: 'scale',     label: '체중',   unit: 'kg',    decimals: 1, enabled: true },
+  { key: '000000000memo-exercise',   kind: 'memo', icon: 'dumbbell',  label: '운동',                              enabled: true },
+  { key: '000000000memo-toilet',     kind: 'memo', icon: 'toilet',    label: '화장실',                             enabled: true },
+  { key: '000000000memo-bloodSugar', kind: 'memo', icon: 'droplet',   label: '혈당',   unit: 'mg/dL', decimals: 0, enabled: false },
+  { key: '000000000memo-journal',    kind: 'memo', icon: 'book-open', label: '하루 소감',                           enabled: true }
 ]
 ```
 
-숫자 메모는 **체중 하나뿐**이다(§2.7). 운동·화장실은 "했다"와 한 줄 덧말이면
+숫자 메모는 **체중·혈당 둘뿐**이다(§2.7). 운동·화장실은 "했다"와 한 줄 덧말이면
 충분한 일이라 값 칸을 두지 않는다 — 강도나 횟수를 숫자로 받기 시작하면 그
 단위를 누가 정할지부터 답이 없다.
 
-#### 내린 기본 항목 — 혈당
+#### 혈당은 **꺼진 채로** 깔린다 — 빼지 않는다
 
-혈당은 기본에서 내렸다. **기본에서 빼는 것과 없던 것으로 만드는 것은 다르다.**
+혈당은 기본에서 내렸지만 목록에서 없애지는 않았다. `enabled: false` 다.
+피커에는 안 뜨고(불변식 4는 렌더 필터가 아니라 피커 필터다), 메모 설정에는
+'사용 안 함'으로 보인다 — 누르면 켜진다.
 
-개정판을 한 번도 저장하지 않은 채 혈당을 기록해 둔 사용자가 있다. 그들의
-개정판에는 혈당 key 가 없고 기본 목록에도 없으면 `resolveSlotView` 가 '메모'로
-떨어진다 — 제목이 바뀌는 데서 끝나지 않는다. **단위가 사라져 값 칸 자체가 안
-나오고, 이미 적어 둔 숫자를 고칠 수 없게 된다.**
+빼버리지 않는 이유가 둘이다.
 
-그래서 목록(`defaultMemoItems`)에서만 빼고 정의(`defaultMemoItemByKey`)는
-남긴다. 이미 쓰던 사람은 개정판에 key 가 살아 있어 그대로 보이고, 하루 소감에
-쌓인 옛 혈당도 §7.1 대로 계속 메모 카드로 뜬다. 사라지는 것은 **새로 깔리는
-것**뿐이다. 분석 차트도 key 로 찾으므로(§6.2) 끊기지 않는다.
+1. **분석의 혈당 차트가 이 key 로 값을 찾는다**(§6.2). 목록에서 없애면 혈당을
+   쓰고 싶은 사람은 새 메모를 직접 만들어야 하는데, 그건 임의의 새 key 를 받아
+   **차트에 영영 안 잡힌다.** 켜는 길을 남겨 두는 것이 곧 분석 연결을 남겨 두는
+   것이다.
+2. 개정판을 한 번도 저장하지 않은 채 혈당을 기록해 둔 사용자의 값이
+   `resolveSlotView` 에서 '메모'로 떨어진다. 제목만 바뀌는 게 아니라 **단위가
+   사라져 값 칸 자체가 안 나오고, 이미 적어 둔 숫자를 고칠 수 없게 된다.**
+
+이미 켜서 쓰던 사용자는 개정판에 `enabled: true` 가 살아 있으므로 그대로다 —
+덧붙임은 key 가 없는 경우에만 돈다. 하루 소감에 쌓인 옛 혈당도 §7.1 대로 계속
+메모 카드로 뜬다.
 
 > 이미 쓰고 있던 사용자에게는 운동·화장실이 메모 구간 **맨 앞**에 덧붙는다
 > (아래 규칙). 체중 위로 올라오지만 한 번 끌어 옮기면 그만이고, 덧붙임 자리를

@@ -97,27 +97,28 @@ export function defaultMemoKey(id) {
  */
 export const JOURNAL_MEMO_ID = 'journal';
 
+/**
+ * 혈당은 목록에 **남되 꺼진 채로** 깔린다 (`enabled: false`).
+ *
+ * 빼버리지 않는 이유가 둘이다.
+ *
+ * 1. 분석의 혈당 차트는 `000000000memo-bloodSugar` 라는 **이 key** 로 값을 찾는다
+ *    (§6.2). 목록에서 없애면 혈당을 쓰고 싶은 사람은 새 메모를 직접 만들어야
+ *    하는데, 그건 임의의 새 key 를 받으므로 **차트에 영영 안 잡힌다.**
+ * 2. 개정판을 한 번도 저장하지 않은 채 혈당을 기록해 둔 사용자의 값이
+ *    `resolveSlotView` 에서 '메모' 로 떨어진다. 제목만 바뀌는 게 아니라 단위가
+ *    사라져 **값 칸 자체가 안 나오고, 이미 적어 둔 숫자를 고칠 수 없게 된다.**
+ *
+ * 꺼둔 항목은 피커에 안 뜨고(불변식 4는 렌더가 아니라 피커 필터다) 메모 설정에서
+ * '사용 안 함' 으로 보인다 — 누르면 켜지고, 켜는 순간 차트까지 이어진다.
+ * 이미 켜서 쓰던 사용자는 개정판에 `enabled: true` 가 살아 있으므로 그대로다.
+ */
 export const DEFAULT_MEMO_ITEMS = [
     { id: 'weight', icon: 'scale', label: '체중', unit: 'kg', decimals: 1 },
     { id: 'exercise', icon: 'dumbbell', label: '운동' },
     { id: 'toilet', icon: 'toilet', label: '화장실' },
+    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0, enabled: false },
     { id: JOURNAL_MEMO_ID, icon: 'book-open', label: '하루 소감' }
-];
-
-/**
- * 한때 기본이었다가 내린 항목 — **새로 깔리지는 않지만 이름은 계속 풀린다.**
- *
- * 혈당이 그렇다. 기본에서 빼는 것과 **없던 것으로 만드는 것**은 다르다.
- * 개정판을 한 번도 저장하지 않은 채 혈당을 기록해 둔 사용자가 있는데, 그들의
- * 개정판에는 혈당이 없고 기본 목록에도 없으면 `resolveSlotView` 가 '메모'로
- * 떨어진다 — 제목이 바뀌는 데서 끝나지 않는다. 단위가 사라져 **값 칸 자체가 안
- * 나오고**, 이미 적어 둔 숫자를 고칠 수 없게 된다.
- *
- * 그래서 목록에서만 빼고 정의는 남긴다. 이미 쓰고 있던 사람은 개정판에 key 가
- * 살아 있으므로 그대로 보인다 — 사라지는 것은 '새로 깔리는 것'뿐이다.
- */
-const RETIRED_DEFAULT_MEMO_ITEMS = [
-    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0 }
 ];
 
 /** 그 항목이 하루 소감인가 — 기록 시트가 다르다 */
@@ -126,7 +127,8 @@ export function isJournalMemoKey(key) {
 }
 
 function toMemoItem(m) {
-    const item = { key: defaultMemoKey(m.id), kind: 'memo', icon: m.icon, label: m.label, enabled: true };
+    // enabled 를 명시하지 않은 항목은 켜진 채로 깔린다
+    const item = { key: defaultMemoKey(m.id), kind: 'memo', icon: m.icon, label: m.label, enabled: m.enabled !== false };
     // 단위가 있는 것만 숫자 메모다 — 운동·화장실·하루 소감은 텍스트다
     if (m.unit) {
         item.unit = m.unit;
@@ -148,16 +150,12 @@ export function isDefaultMemoKey(key) {
  * key 로 기본 메모 정의를 찾는다 — plan 이 아예 없는 사용자의 폴백.
  * 이게 없으면 체중 기록이 '메모/sticky-note' 로 떨어진다.
  *
- * 내린 항목(혈당)도 여기서는 찾힌다 — 이미 적어 둔 값을 계속 읽고 고칠 수
- * 있어야 한다. 새로 깔리는 것은 `defaultMemoItems` 만 본다.
+ * 꺼진 항목(혈당)도 여기서 찾힌다 — 이미 적어 둔 값을 계속 읽고 고칠 수 있어야
+ * 한다. `enabled` 는 피커에 띄울지의 문제이지 이름을 풀지의 문제가 아니다.
  */
 export function defaultMemoItemByKey(key) {
     if (!isDefaultMemoKey(key)) return null;
-    return (
-        defaultMemoItems().find((m) => m.key === key) ||
-        RETIRED_DEFAULT_MEMO_ITEMS.map(toMemoItem).find((m) => m.key === key) ||
-        null
-    );
+    return defaultMemoItems().find((m) => m.key === key) || null;
 }
 
 /**
