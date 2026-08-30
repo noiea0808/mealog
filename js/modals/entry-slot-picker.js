@@ -11,19 +11,8 @@ import { openModal } from './entry-and-core.js';
 import { openDailyJournalModal } from './daily-journal.js';
 import { openSlotPlanSettings } from './slot-plan-settings.js';
 import { openMemoRecordModal } from './memo-record.js';
-import { openMemoItemEdit } from './memo-item-edit.js';
-import { dbOps } from '../db.js';
-import {
-    memoIconOrDefault,
-    generateSlotKey,
-    withRevisionOn,
-    effectiveSlots,
-    countMemos,
-    MEMO_SLOT_ID,
-    MAX_ENABLED_MEMOS,
-    MAX_SLOTS_PER_REVISION,
-    isMemoMealRecord
-} from '../utils/slot-plan.js';
+import { openMemoSettings } from './memo-settings.js';
+import { memoIconOrDefault, MEMO_SLOT_ID, isMemoMealRecord } from '../utils/slot-plan.js';
 import {
     dailyJournalHasContent,
     getDailyJournalFromSettings
@@ -231,55 +220,18 @@ export async function openEntrySlotPicker(dateIso) {
 }
 
 /**
- * 메모 항목 만들기 — 기록 추가 시트 머리에서 (user-memo-items §4.3).
+ * 메모 설정 — 기록 추가 시트 머리의 메모 아이콘 (user-memo-items §4.3).
  *
- * 항목을 만드는 일과 기록하는 일이 같은 자리에 있어야 발견된다. 설정 시트
- * 안에 두었더니 "메모를 남기려면 먼저 설정에 들어가야 한다"가 되어 버렸다.
- *
- * 여기서는 **즉시 저장한다.** 설정 시트처럼 저장 버튼이 없기 때문이다.
- * 적용 시작일은 지금 보고 있는 날짜 — 만들자마자 그 날짜에 기록할 수 있어야
- * 한다. 미래는 오늘로 자른다(user-slot-plan §5.5 시계 방어).
+ * 항목을 만들·고치·빼는 일이 전부 그 팝업에 있다. 기록 항목 설정 시트는
+ * 식사 항목만 다룬다 — 개념이 다른 둘이 한 화면을 나눠 쓰면 어느 쪽을
+ * 고치는 화면인지 매번 읽어야 한다.
  */
-function onCreateMemoItem() {
-    const today = localTodayIso();
-    const asked = pendingDateIso || pageDateIso() || today;
-    const effectiveFrom = asked > today ? today : asked;
-    const items = effectiveSlots(window.userSettings, effectiveFrom, today);
-
-    let blockedReason = '';
-    if (countMemos(items) >= MAX_ENABLED_MEMOS) {
-        blockedReason = `메모 항목은 ${MAX_ENABLED_MEMOS}개까지 만들 수 있어요. 기록 항목 설정에서 안 쓰는 항목을 지워 주세요.`;
-    } else if (items.length >= MAX_SLOTS_PER_REVISION) {
-        blockedReason = '항목 목록이 가득 찼어요.';
-    }
-
-    openMemoItemEdit({
-        blockedReason,
-        onCommit: ({ label, icon }) => void saveNewMemoItem(effectiveFrom, items, { label, icon })
+function onOpenMemoSettings() {
+    const dateIso = pendingDateIso || pageDateIso() || localTodayIso();
+    openMemoSettings({
+        dateIso,
+        onChanged: () => renderPickerList(pendingDateIso || dateIso)
     });
-}
-
-async function saveNewMemoItem(effectiveFrom, items, { label, icon }) {
-    const settings = window.userSettings || {};
-    const next = withRevisionOn(
-        settings.slotPlan || null,
-        effectiveFrom,
-        [...items, { key: generateSlotKey(), kind: 'memo', icon, label, enabled: true }],
-        Date.now(),
-        Math.random,
-        localTodayIso()
-    );
-    if (next === (settings.slotPlan || null)) return;
-
-    settings.slotPlan = next;
-    window.userSettings = settings;
-    // 저장을 기다리지 않고 먼저 그린다 — 아웃박스가 내구화를 맡는다
-    renderPickerList(pendingDateIso || effectiveFrom);
-    try {
-        await dbOps.saveSettings(settings);
-    } catch (e) {
-        console.warn('메모 항목 저장(즉시 전송) 실패 — 아웃박스 재시도 예정:', e?.message || e);
-    }
 }
 
 async function onPickSlot(slotId, slotType, slotKey) {
@@ -318,7 +270,7 @@ function bindPickerOnce() {
         closeEntrySlotPicker();
         openSlotPlanSettings({ fromPicker: true, dateIso });
     });
-    modal.querySelector('#entrySlotPickerMemoAddBtn')?.addEventListener('click', onCreateMemoItem);
+    modal.querySelector('#entrySlotPickerMemoAddBtn')?.addEventListener('click', onOpenMemoSettings);
     modal.querySelector('#entrySlotPickerList')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-slot-id]');
         if (!btn || !modal.contains(btn)) return;

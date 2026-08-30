@@ -12806,50 +12806,100 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     height: 1rem;
     stroke-width: 1.75;
 }
-/* ── 메모 항목 (docs/user-memo-items.md §4.2) ── */
-.slot-plan-settings__section {
+/* ── 메모 설정 팝업 — 목록 (docs/user-memo-items.md §4.3) ── */
+.memo-settings__list {
     display: flex;
-    align-items: baseline;
+    flex-direction: column;
+}
+.memo-settings__row {
+    display: flex;
+    align-items: center;
     gap: 0.5rem;
-    padding: 0.7rem 0.25rem 0.35rem;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #94a3b8;
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #f1f5f9;
 }
-.slot-plan-settings__section:first-child {
-    padding-top: 0.15rem;
-}
-.slot-plan-settings__section-count {
-    margin-left: auto;
-    font-weight: 600;
-    color: #cbd5e1;
-}
-/* 메모가 하나도 없을 때 — 만드는 자리를 알려 준다 (만들기는 피커에 있다) */
-.slot-plan-settings__memo-empty {
-    padding: 0.3rem 0.25rem 0.5rem;
-    font-size: 0.75rem;
-    line-height: 1.55;
-    color: #94a3b8;
-}
-/* 메모 행에는 손잡이가 없다 — 자리를 고르는 개념 자체가 없다 (§1) */
-.slot-plan-row--memo {
-    padding-left: 0.25rem;
-}
-/* 복제 버튼 자리를 비워 둔다 — 삭제가 슬롯의 토글과 같은 열에 서게 */
-.slot-plan-row__dup-spacer {
-    flex-shrink: 0;
-    width: 1.75rem;
-}
-.slot-plan-row__icon--memo {
-    background: #f8fafc;
-    color: #64748b;
-    border: 1px dashed #cbd5e1;
+.memo-settings__row-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-align: left;
     -webkit-tap-highlight-color: transparent;
 }
-.slot-plan-row__icon--memo:active {
-    background: #e2e8f0;
+.memo-settings__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+}
+.memo-settings__icon [data-lucide],
+.memo-settings__icon .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+}
+.memo-settings__label {
+    min-width: 0;
+    flex: 1;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.memo-settings__edit-hint {
+    flex-shrink: 0;
+    display: inline-flex;
+    color: #94a3b8;
+}
+.memo-settings__edit-hint [data-lucide],
+.memo-settings__edit-hint .lucide {
+    width: 0.8125rem;
+    height: 0.8125rem;
+    stroke-width: 2;
+}
+.memo-settings__empty {
+    margin: 0;
+    padding: 0.4rem 0 0.7rem;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: #94a3b8;
+}
+.memo-settings__add {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin-top: 0.7rem;
+    padding: 0.55rem 0;
+    border-radius: 0.75rem;
+    border: 1px dashed #cbd5e1;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.memo-settings__add:active {
+    background: #f1f5f9;
     color: #334155;
 }
+.memo-settings__add [data-lucide],
+.memo-settings__add .lucide {
+    width: 0.9375rem;
+    height: 0.9375rem;
+    stroke-width: 2;
+}
+
 /* ── 메모 항목 만들기·고치기 팝업 (§4.3) ── */
 .slot-memo-edit__presets {
     display: flex;
@@ -12870,6 +12920,11 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 .slot-memo-edit__preset:active {
     background: #e2e8f0;
+}
+/* 고른 칩은 상태가 남는다 — 이름칸을 직접 고치면 풀린다 (기록 시트 제안 줄과 같은 관용구) */
+.slot-memo-edit__preset--on {
+    background: var(--green, #059669);
+    color: #fff;
 }
 .slot-memo-edit__field {
     display: flex;

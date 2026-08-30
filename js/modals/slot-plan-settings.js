@@ -21,11 +21,8 @@ import {
     renameSlotEverywhere,
     revisionCount,
     countEnabledSlots,
-    countMemos,
     isMemoItem,
-    memoIconOrDefault,
     MAX_ENABLED_SLOTS,
-    MAX_ENABLED_MEMOS,
     MAX_SLOTS_PER_REVISION,
     SLOT_LABEL_MAX_CHARS,
     MEMO_LABEL_MAX_CHARS,
@@ -37,7 +34,6 @@ import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { diag } from '../utils/diagnostics.js';
-import { openMemoItemEdit, closeMemoItemEdit } from './memo-item-edit.js';
 
 let bound = false;
 /** @type {Array<{key:string|null, base:string, label:string, enabled:boolean}>|null} */
@@ -181,34 +177,6 @@ function rowHtml(slot, idx, isOriginal) {
     </div>`;
 }
 
-/**
- * 메모 행 — 손잡이가 없다. 순서를 고를 수 있게 하면 "체중을 아침과
- * 점심 사이에 둘까"라는, 사용자가 답할 수 없는 질문이 돌아온다
- * (user-memo-items §1). 자리는 기록의 시각이 정한다.
- */
-function memoRowHtml(item, idx) {
-    return `<div class="slot-plan-row slot-plan-row--memo" data-idx="${idx}">
-        <button type="button" class="slot-plan-row__icon slot-plan-row__icon--memo" data-action="icon" aria-label="아이콘 고르기">
-            <i data-lucide="${escapeHtml(memoIconOrDefault(item.icon))}" aria-hidden="true"></i>
-        </button>
-        <span class="slot-plan-row__main">
-            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(item.label)}" maxlength="${MEMO_LABEL_MAX_CHARS}" size="${Math.max(4, item.label.length + 2)}" aria-label="항목 이름" />
-            <button type="button" class="slot-plan-row__pencil" data-action="edit" aria-label="이름 편집">
-                <i data-lucide="pencil" aria-hidden="true"></i>
-            </button>
-        </span>
-        <button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 메모 항목 삭제">삭제</button>
-        <span class="slot-plan-row__dup-spacer" aria-hidden="true"></span>
-    </div>`;
-}
-
-function sectionHeadHtml(title, countText) {
-    return `<div class="slot-plan-settings__section">
-        <span>${escapeHtml(title)}</span>
-        <span class="slot-plan-settings__section-count">${escapeHtml(countText)}</span>
-    </div>`;
-}
-
 function render() {
     const list = document.getElementById('slotPlanSettingsList');
     const countEl = document.getElementById('slotPlanSettingsCount');
@@ -217,23 +185,19 @@ function render() {
 
     const originals = originalSlotSet(draft);
     /**
-     * draft 는 sanitizeSlots 가 슬롯 앞·메모 뒤로 넣어 준 순서 그대로다
-     * (user-memo-items §2.1). 그래서 구역을 나누는 데 정렬이 필요 없고,
-     * data-idx 는 둘 다 draft 의 인덱스라 편집 코드가 한 종류만 안다.
+     * **식사 항목만 그린다.** 메모는 메모 설정 팝업이 다룬다
+     * (user-memo-items §4.3) — 개념이 다른 둘이 한 화면을 나눠 쓰면
+     * 어느 쪽을 고치는 화면인지 매번 읽어야 한다.
+     *
+     * ⚠ 그러나 **draft 에는 메모가 그대로 들어 있다.** 저장은 draft 를
+     * 통째로 개정판에 쓰므로, 안 그린다고 빼버리면 이 시트를 저장할 때마다
+     * 메모가 사라진다. `sanitizeSlots` 가 메모를 항상 뒤로 몰아 주므로
+     * (§2.1) 앞쪽만 그려도 data-idx 가 draft 인덱스와 그대로 맞는다.
      */
     const cut = draft.findIndex(isMemoItem);
-    const firstMemo = cut < 0 ? draft.length : cut;
-    const slotRows = draft.slice(0, firstMemo).map((s, i) => rowHtml(s, i, originals.has(s))).join('');
-    const memoRows = draft.slice(firstMemo).map((s, i) => memoRowHtml(s, firstMemo + i)).join('');
-    list.innerHTML =
-        sectionHeadHtml('식사 항목', `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`) +
-        slotRows +
-        sectionHeadHtml('메모 항목', `${countMemos(draft)} / ${MAX_ENABLED_MEMOS}`) +
-        (memoRows ||
-            // 만들기는 피커 머리에 있다 — 빈 구역이 그 자리를 알려 준다
-            '<p class="slot-plan-settings__memo-empty">체중·혈당·운동처럼 밥이 아닌 것도 남길 수 있어요. 기록 추가 화면 오른쪽 위 <b>메모 아이콘</b>으로 만듭니다.</p>');
-    // 구역마다 제 수를 달고 있으므로 머리의 수는 비운다 — 둘이 같은 말을 했다
-    if (countEl) countEl.textContent = '';
+    const slotCount = cut < 0 ? draft.length : cut;
+    list.innerHTML = draft.slice(0, slotCount).map((s, i) => rowHtml(s, i, originals.has(s))).join('');
+    if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
     if (notice) notice.textContent = noticeText();
     syncCascadeRow();
     scheduleLucideIcons(list);
@@ -279,7 +243,6 @@ export function openSlotPlanSettings(opts = {}) {
 
     setCascadeChecked(false);
     setHelpOpen(false);
-    closeMemoItemEdit();
     loadDraftForDate(effectiveFromIso);
     syncDateInput();
     render();
@@ -321,7 +284,6 @@ export function closeSlotPlanSettings() {
     const modal = document.getElementById('slotPlanSettingsModal');
     if (!modal) return;
     setHelpOpen(false); // 시트가 닫히면 그 위의 도움말·메모 편집도 같이 걷는다
-    closeMemoItemEdit();
     const active = document.activeElement;
     if (active instanceof HTMLElement && modal.contains(active)) active.blur();
     modal.classList.add('hidden');
@@ -333,29 +295,6 @@ export function closeSlotPlanSettings() {
         window.openEntrySlotPicker(pickerReturnDateIso || undefined);
     }
 }
-
-/* ── 메모 항목 고치기 ── */
-
-/**
- * 메모 행의 아이콘을 누를 때 — 이름·아이콘 팝업을 draft 모드로 열고
- * 결과를 draft 에만 반영한다. 저장은 이 시트의 저장 버튼이 한 번에 한다.
- *
- * **만들기는 여기 없다.** 기록 추가 시트(피커) 머리로 옮겼다 — 항목을
- * 만드는 일과 기록하는 일이 같은 자리에 있어야 발견된다 (user-memo-items §4.3).
- */
-function onEditMemoItem(idx) {
-    if (!draft || !isMemoItem(draft[idx])) return;
-    syncDraftLabelsFromInputs();
-    openMemoItemEdit({
-        item: draft[idx],
-        onCommit: ({ label, icon }) => {
-            if (!draft || !isMemoItem(draft[idx])) return;
-            draft[idx] = { ...draft[idx], label, icon };
-            render();
-        }
-    });
-}
-
 
 /* ── 편집 동작 ────────────────────────────────────────────── */
 
@@ -574,7 +513,6 @@ function bindOnce() {
         if (action === 'toggle') onToggle(idx);
         else if (action === 'dup') onDuplicate(idx);
         else if (action === 'del') onDelete(idx);
-        else if (action === 'icon') onEditMemoItem(idx);
         else if (action === 'edit') {
             const input = row?.querySelector('[data-action="label"]');
             input?.focus();

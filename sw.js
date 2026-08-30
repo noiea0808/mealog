@@ -6,7 +6,8 @@
 // v37: '슬롯 설정' → '기록 항목 설정'. 도움말 팝업(slotPlanHelpModal)이 새로
 //      붙어 index.html 구조가 바뀐다.
 // v38: 사용자 메모 — 기록 시트·항목 만들기 팝업이 index.html 에 더 붙는다.
-const CACHE_NAME = 'mealog-v38';
+// v39: 메모 설정 팝업 — index.html 의 메모 팝업 구조가 바뀐다.
+const CACHE_NAME = 'mealog-v39';
 /*
  * 상대 경로 사용 (서브디렉토리 배포 대응)
  * 루트 배포면 '', 서브디렉토리면 '/foo' — 뒤에 '/...' 를 붙이므로 여기서 '/' 로 폴백하면
