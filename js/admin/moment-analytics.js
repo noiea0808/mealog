@@ -581,7 +581,7 @@ function renderTrendGuideBody() {
              손이 멈추나」라서, 세는 순서가 아니라 채우는 순서를 따릅니다.</p>`
         ),
         guideSection(
-            '「무엇을」이 네 열인 이유',
+            '「무엇을」이 여러 열인 이유',
             `<p>이 축은 값이 채워지는 길이 둘(사람 · 분류기)이라 한 칸으로 접으면 <b>입력률이 올라도 사람이
              채운 것인지 기계가 메운 것인지</b> 갈리지 않습니다.</p>
              <ul class="list-disc pl-4 space-y-0.5">
@@ -591,9 +591,17 @@ function renderTrendGuideBody() {
                  <li><b>미분류</b> — 거부 · 서버 대기 · 상세 없음</li>
              </ul>
              <p>직접 + 자동 = 최종이고, 미분류까지 더하면 100%입니다.</p>
-             <p><b>「자동」 칸에 마우스를 올리면 누가 채웠는지</b>가 나옵니다 — 로컬 분류기(저장할 때
-             클라이언트가) · 서버 AI(Gemini 배치가 나중에) · 경로 미상(<code>categorySource</code> 가
-             유실된 옛 기록). 셋의 합은 그 칸과 정확히 같습니다.</p>`
+             <p><b>「자동」 오른쪽 세 열은 그 안쪽입니다</b> — 같은 기계라도 누가 채웠는지가 다릅니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>로컬</b> — 저장하는 <b>그 순간</b> 기기 안 분류기가 집었다(<code>categorySource='local'</code>)</li>
+                 <li><b>AI</b> — <b>나중에</b> 서버 Gemini 배치가 메웠다(<code>'ai'</code>)</li>
+                 <li><b>미상</b> — <code>categorySource</code> 를 남기기 전 옛 기록이라 알 방법이 없다</li>
+             </ul>
+             <p><b>로컬 + AI + 미상 = 자동</b>입니다(정확히 같습니다). 셋을 갈라 세운 이유는 <b>시간이 다르기
+             때문</b>입니다 — 로컬은 즉시 채우고 서버 배치는 6시간마다 최근 7일만 돕니다. 한 칸으로 접으면
+             배치가 따라잡고 있는지가 안 보입니다.</p>
+             <p><b>옛 구간이 「미상」으로 몰리는 것은 정상입니다.</b> 그 구간에서 로컬 대 AI 비율을 읽으면
+             오독입니다 — 비율이 아니라 결측입니다.</p>`
         ),
         guideSection(
             '추천 분류 — 제안을 사람이 받아들였나',
@@ -618,8 +626,9 @@ function renderTrendGuideBody() {
                  <li><b>초록 ↔ 빨강</b> — 높을수록 좋다(대부분의 열)</li>
                  <li><b>뒤집은 눈금</b> — 「미분류」와 「안 씀」은 높을수록 나쁜 값이라 방향을 뒤집습니다.
                      같은 눈금을 쓰면 미분류 90%가 초록으로 칠해집니다.</li>
-                 <li><b>하늘색</b> — 「자동」과 「자동적용」은 좋고 나쁨이 <b>없는</b> 열입니다. 사람이 채운 몫과
-                     기계가 채운 몫의 비중일 뿐이라 판정을 얹지 않고, 진하기로 크기만 말합니다.</li>
+                 <li><b>하늘색</b> — 「자동」과 그 안쪽 셋(로컬 · AI · 미상), 그리고 「자동적용」은 좋고 나쁨이
+                     <b>없는</b> 열입니다. 사람이 채운 몫과 기계가 채운 몫의 비중일 뿐이라 판정을 얹지 않고,
+                     진하기로 크기만 말합니다.</li>
              </ul>`
         ),
         guideSection(
@@ -629,9 +638,9 @@ function renderTrendGuideBody() {
         ),
         guideSection(
             '서버 AI 배치는 나중에, 그것도 조금씩 돕니다',
-            `<p>「무엇을」의 <b>자동</b> 중 서버 AI 몫은 <code>classifyUncategorizedMeals</code> 가 채웁니다 —
+            `<p>「무엇을」의 <b>AI</b> 열은 <code>classifyUncategorizedMeals</code> 가 채웁니다 —
              <b>6시간마다(하루 4회) · 한 번에 최대 100건 · 최근 7일 범위</b>입니다.</p>
-             <p>그래서 <b>맨 윗 구간 몇 줄은 자동이 덜 차 있고 미분류가 부풀어 보입니다</b> — 그만큼 감해서
+             <p>그래서 <b>맨 윗 구간 몇 줄은 AI 열이 덜 차 있고 미분류가 부풀어 보입니다</b> — 그만큼 감해서
              보세요. 반대로 그 기간의 미분류가 하루 400건보다 빠르게 쌓이면 배치가 따라잡지 못하고,
              <b>7일이 지나면 정기 배치는 그 기록을 다시 보지 않습니다</b>(영구 미분류로 남습니다).</p>
              <p>임의 기간을 다시 도는 <code>adminClassifyLegacyMeals</code> 가 서버에 있지만 <b>화면에 버튼이
@@ -759,25 +768,45 @@ const TREND_COLUMN_GROUPS = [
                 label: '자동',
                 tone: 'info',
                 value: (b) => b.counts.whatFinal - b.counts.what,
+                hint: '사용자 값 없이 로컬·서버 분류기가 채운 것 — 오른쪽 세 열이 그 안쪽이다'
+            },
+            /* ─────────────────────────────────────────────────────────
+             * 「자동」의 안쪽 셋 — 자동을 **누가** 채웠나.
+             * 합은 왼쪽 「자동」 칸과 **정확히** 같다(자동 = 최종 − 직접 = 로컬 + AI + 미상).
+             *
+             * 세로로 세운 이유: 셋은 **채우는 시점이 다르다**. 로컬은 저장하는 그 순간
+             * 채우고, 서버 Gemini 배치는 6시간마다 최근 7일만 돈다. 「얼마나 채웠나」가
+             * 애초에 날짜에 매인 값이라, 기간 전체를 접은 축별 구성에 두면 숫자 하나가
+             * 나올 뿐이다. 여기 두어야 배치가 따라잡고 있는지가 세로로 보인다.
+             * ───────────────────────────────────────────────────────── */
+            {
+                label: '로컬',
+                tone: 'info',
+                divider: true,
+                value: (b) => b.counts.pathLocal || 0,
+                hint: '「자동」 중 — 저장하는 그 순간 기기 안 로컬 분류기가 집은 것'
+            },
+            {
+                label: 'AI',
+                tone: 'info',
+                value: (b) => b.counts.pathAi || 0,
+                hint: '「자동」 중 — 나중에 서버 Gemini 배치가 메운 것 (6시간마다 최근 7일)'
+            },
+            {
+                label: '미상',
+                tone: 'info',
+                value: (b) => b.counts.pathAutoUnknown || 0,
                 /**
-                 * 자동을 **누가** 채웠나 — 저장할 때 클라이언트가 잡았나, 나중에 서버 배치가 메웠나.
-                 *
-                 * 이 자리인 이유: 서버 Gemini 배치는 6시간마다 **최근 7일만** 돌기 때문에
-                 * 「얼마나 채웠나」가 애초에 날짜에 매인 값이다. 기간 전체를 한 덩어리로 접은
-                 * 축별 구성에 두면 숫자 하나가 나올 뿐이고, 그건 엑셀이 이미 주는 값과 같다.
-                 * 여기 두면 배치가 따라잡고 있는지가 세로로 보인다.
-                 *
-                 * 셋의 합은 이 칸과 **정확히** 같다 — 자동 = 최종 − 직접 = 로컬 + AI + 경로 미상.
+                 * 옛 구간이 이 칸으로 몰리는 것은 정상이다 — `categorySource` 를 남기기 전
+                 * 기록이라 누가 채웠는지 알 방법이 자체가 없다. 그 구간에서 로컬 대 AI 비율을
+                 * 읽으면 오독이다.
                  */
-                detail: (b) =>
-                    `로컬 분류기 ${(b.counts.pathLocal || 0).toLocaleString()} · ` +
-                    `서버 AI(Gemini) ${(b.counts.pathAi || 0).toLocaleString()} · ` +
-                    `경로 미상 ${(b.counts.pathAutoUnknown || 0).toLocaleString()}`,
-                hint: '사용자 값 없이 로컬·서버 분류기가 채운 것 (마우스를 올리면 누가 채웠는지)'
+                hint: '「자동」 중 — categorySource 가 없어 누가 채웠는지 모르는 옛 기록'
             },
             {
                 label: '미분류',
                 tone: 'bad',
+                divider: true,
                 value: (b) => b.total - b.counts.whatFinal,
                 hint: '거부·서버 대기·상세 없음 — 어떤 경로로도 값이 남지 않은 것'
             }
@@ -843,10 +872,14 @@ const TREND_DIVIDER = 'border-l border-slate-200';
  */
 const TREND_INNER_DIVIDER = 'border-l border-slate-200';
 
-/** 그 칸 왼쪽에 그을 선 — 그룹 첫 칸은 경계선, 안쪽 칸은 `innerDivider` 인 그룹만 */
+/**
+ * 그 칸 왼쪽에 그을 선 — 그룹 첫 칸은 경계선, 안쪽 칸은 `innerDivider` 인 그룹이거나
+ * 그 칸 스스로 `divider` 를 든 경우만. 「무엇을」처럼 한 그룹 안에 덩어리가 여럿이면
+ * 그룹 전체가 아니라 덩어리의 경계에만 선이 필요하다.
+ */
 function trendCellDivider(group, index) {
     if (index === 0) return group.cols.length > 1 || group.divider ? TREND_DIVIDER : '';
-    return group.innerDivider ? TREND_INNER_DIVIDER : '';
+    return group.innerDivider || group.cols[index]?.divider ? TREND_INNER_DIVIDER : '';
 }
 
 function trendCellClass(tone, rate) {
@@ -865,13 +898,9 @@ function renderTrendRow(b, { label, emphasis = false }) {
                 const n = denom ? Math.max(0, col.value(b)) : 0;
                 /** 그리는 값은 `displayRate` 가 있으면 그쪽이다 — 짝 열과 합을 맞추는 열이 쓴다 */
                 const rate = denom && col.displayRate ? col.displayRate(b, denom) : pct(n, denom);
-                const title = [
+                const title =
                     `${col.label} · ${n.toLocaleString()}건 / ${denom.toLocaleString()}건` +
-                        (col.denomLabel ? ` (${col.denomLabel})` : ''),
-                    col.detail && denom ? col.detail(b) : ''
-                ]
-                    .filter(Boolean)
-                    .join('\n');
+                    (col.denomLabel ? ` (${col.denomLabel})` : '');
                 return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(
                     col.tone,
                     rate
