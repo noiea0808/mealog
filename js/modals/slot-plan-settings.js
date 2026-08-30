@@ -482,7 +482,6 @@ function bindOnce() {
     const help = document.getElementById('slotPlanHelpModal');
     help?.querySelector('#slotPlanHelpBackdrop')?.addEventListener('click', closeSlotPlanHelp);
     help?.querySelector('#slotPlanHelpCloseBtn')?.addEventListener('click', closeSlotPlanHelp);
-    help?.querySelector('#slotPlanHelpOkBtn')?.addEventListener('click', closeSlotPlanHelp);
     modal.querySelector('#slotPlanSaveBtn')?.addEventListener('click', () => void onSave());
 
     list?.addEventListener('click', (e) => {

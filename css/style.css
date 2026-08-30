@@ -12399,7 +12399,8 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 0 var(--mealog-dialog-pad-x) 0.25rem;
+    /* 바닥 버튼이 없다 — 닫기는 우상단 X·바깥·ESC. 마지막 줄 여백은 본문이 진다 */
+    padding: 0 var(--mealog-dialog-pad-x) 1.1rem;
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
@@ -12428,11 +12429,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     height: 0.9375rem;
     stroke-width: 2;
     color: #475569;
-}
-.slot-plan-help__foot {
-    flex-shrink: 0;
-    display: flex; /* 버튼이 flex:1 이라 부모가 flex 여야 폭을 채운다 */
-    padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
 }
 
 #slotPlanSettingsModal .slot-plan-settings__list {
