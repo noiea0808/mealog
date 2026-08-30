@@ -2,6 +2,7 @@
  * 현재 시각 / 사진 시각 / 직접 입력 — 공통 선택 시트
  */
 import { showToast } from './ui.js';
+import { scheduleLucideIcons } from './icons.js';
 
 const SHEET_ID = 'timeSourcePickerSheet';
 const MANUAL_SHEET_ID = 'timeSourceManualSheet';
@@ -201,6 +202,9 @@ export function openTimeSourceSheet(options = {}) {
         </div>`;
 
     document.body.appendChild(root);
+    /* innerHTML 로 심은 <i data-lucide> 는 여기서 불러 줘야 SVG 가 된다 —
+       전역 MutationObserver 가 없어 자동으로 그려지지 않는다 (icons.js) */
+    scheduleLucideIcons(root);
     attachEscapeHandler(() => closeTimeSourceSheets());
     bindSheetDismiss(root, () => closeTimeSourceSheets());
 
