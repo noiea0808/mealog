@@ -13137,6 +13137,33 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 
 
+/* 하루 소감 — 체중·혈당은 메모로 옴겼다는 안내 한 줄 (user-memo-items §7.1) */
+.daily-journal-metrics-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.45rem;
+    margin: 0 1rem 0.25rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.75rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: #64748b;
+}
+.daily-journal-metrics-notice b {
+    color: #334155;
+    font-weight: 700;
+}
+.daily-journal-metrics-notice [data-lucide],
+.daily-journal-metrics-notice .lucide {
+    flex-shrink: 0;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    margin-top: 0.15rem;
+    stroke-width: 1.75;
+}
+
 /* 밀로그 퀵입력 FAB — 게시판 글쓰기와 동일 스타일·위치 */
 #entryQuickInputFab.entry-quick-input-fab {
     position: fixed;

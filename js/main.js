@@ -74,7 +74,6 @@ import {
     updateDailyJournalShareIndicator, toggleDailyJournalSharePhoto,
     handleDailyJournalImages, removeDailyJournalPhoto, moveDailyJournalPhotoOrder, setDailyJournalPhotoAspectRatio,
     editDailyJournalPhoto,
-    addDailyJournalMetricRecord, removeDailyJournalMetricRecord,
     openDailyCommentModal, closeDailyCommentModal,
     openEntrySlotPicker, closeEntrySlotPicker
 } from './modals.js';
@@ -372,10 +371,6 @@ window.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
 window.Mealog.setDailyJournalPhotoAspectRatio = setDailyJournalPhotoAspectRatio;
 window.editDailyJournalPhoto = editDailyJournalPhoto;
 window.Mealog.editDailyJournalPhoto = editDailyJournalPhoto;
-window.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
-window.Mealog.addDailyJournalMetricRecord = addDailyJournalMetricRecord;
-window.removeDailyJournalMetricRecord = removeDailyJournalMetricRecord;
-window.Mealog.removeDailyJournalMetricRecord = removeDailyJournalMetricRecord;
 window.openDailyCommentModal = openDailyCommentModal;
 window.Mealog.openDailyCommentModal = openDailyCommentModal;
 window.closeDailyCommentModal = closeDailyCommentModal;

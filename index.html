@@ -3514,47 +3514,14 @@
                     <input type="file" id="dailyJournalImageInput" class="hidden" accept="image/*" multiple tabindex="-1" aria-hidden="true">
                 </div>
 
-                <div id="dailyJournalMetricsSection" class="entry-sheet-zone daily-journal-metrics-stack flex flex-col gap-2 px-4 py-3">
-                    <div id="dailyJournalWeightSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
-                        <div class="flex items-center justify-between gap-2 mb-1.5">
-                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
-                                <i data-lucide="scale" class="entry-axis-icon" aria-hidden="true"></i>
-                                <span>체중</span>
-                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">kg</span>
-                            </span>
-                            <label class="entry-gauge-switch shrink-0" title="체중 기록">
-                                <input type="checkbox" id="dailyJournalWeightToggle" class="peer sr-only" role="switch" aria-label="체중 기록 사용">
-                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                            </label>
-                        </div>
-                        <div id="dailyJournalWeightWrap">
-                            <div id="dailyJournalWeightRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalWeightRecords" class="flex flex-col gap-1.5"></div>
-                            </div>
-                            <button type="button" id="dailyJournalWeightAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
-                        </div>
-                    </div>
-                    <div id="dailyJournalBloodSugarSection" class="daily-journal-metric-panel min-w-0 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
-                        <div class="flex items-center justify-between gap-2 mb-1.5">
-                            <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase leading-tight">
-                                <i data-lucide="droplet" class="entry-axis-icon" aria-hidden="true"></i>
-                                <span>혈당</span>
-                                <span class="ml-1 text-[11px] font-bold text-slate-400 normal-case">mg/dL</span>
-                            </span>
-                            <label class="entry-gauge-switch shrink-0" title="혈당 기록">
-                                <input type="checkbox" id="dailyJournalBloodSugarToggle" class="peer sr-only" role="switch" aria-label="혈당 기록 사용">
-                                <span class="entry-gauge-switch__track" aria-hidden="true"></span>
-                                <span class="entry-gauge-switch__thumb" aria-hidden="true"></span>
-                            </label>
-                        </div>
-                        <div id="dailyJournalBloodSugarWrap">
-                            <div id="dailyJournalBloodSugarRecordsWrap" class="relative rounded-lg">
-                                <div id="dailyJournalBloodSugarRecords" class="flex flex-col gap-1.5"></div>
-                            </div>
-                            <button type="button" id="dailyJournalBloodSugarAddBtn" class="mt-1.5 w-full py-2 text-xs font-bold text-slate-600 bg-white/80 border border-dashed border-slate-200 rounded-lg active:bg-slate-100 transition-colors">+ 추가 기록</button>
-                        </div>
-                    </div>
+                <!--
+                    체중·혈당 입력은 여기서 걷었다 — 기록 추가의 **메모**가 받는다
+                    (docs/user-memo-items.md §7.1). 옷 값은 dailyComments 에 그대로 남아
+                    타임라인·분석 탭이 계속 읽는다 — 마이그레이션이 없다.
+                -->
+                <div id="dailyJournalMetricsNotice" class="daily-journal-metrics-notice">
+                    <i data-lucide="scale" aria-hidden="true"></i>
+                    <span>체중·혈당은 <b>기록 추가</b>의 메모에서 남기세요. 지금까지 적은 값은 그대로 있어요.</span>
                 </div>
 
                 <div class="entry-comment-detail-footer entry-sheet-zone entry-sheet-zone--memo">
