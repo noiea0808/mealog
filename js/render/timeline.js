@@ -60,7 +60,7 @@ import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 
 import { getSharedPhotos } from '../utils/moment-share-state.js';
-import { userSlotGroupsForDate } from '../utils/slot-view.js';
+import { userSlotGroupsForDate, dayTimelineUnitsForDate } from '../utils/slot-view.js';
 function mainMealSlotLucideIcon(slotId) {
     return getSlotLucideIcon(slotId);
 }
@@ -175,6 +175,12 @@ function mealTimelineOpenDataAttrs(dateStr, slotId, entryId = null) {
 function applyMealTimelineOpenTarget(el, dateStr, slotId, entryId = null) {
     if (!el) return;
     if (slotId === 'daily_journal' || (entryId && String(entryId).startsWith('dailyJournal_'))) return;
+    /**
+     * 메모 카드는 그려질 때 이미 자기 열기 속성을 달고 나온다
+     * (data-mealog-open-memo). 여기서 식사 속성을 덮어쓰면 클릭이
+     * openModal(date, 'memo') 로 새서 기록 시트가 열린다.
+     */
+    if (slotId === 'memo' || (entryId && String(entryId).startsWith('memo_'))) return;
     el.setAttribute('data-mealog-open-date', String(dateStr));
     el.setAttribute('data-mealog-open-slot', String(slotId));
     if (entryId != null && entryId !== '' && entryId !== 'null') {
@@ -190,6 +196,9 @@ function clearMealTimelineOpenTarget(el) {
     el.removeAttribute('data-mealog-open-date');
     el.removeAttribute('data-mealog-open-slot');
     el.removeAttribute('data-mealog-open-entry');
+    // 메모도 같이 걷는다 — 전송 중·삭제 중인 카드는 열리면 안 된다
+    el.removeAttribute('data-mealog-open-memo');
+    el.removeAttribute('data-mealog-memo-key');
     el.removeAttribute('onclick');
 }
 
@@ -1095,6 +1104,69 @@ function buildHomeFeedCardShellHtml({
     </div>`;
 }
 
+/**
+ * 사용자 메모 카드 (docs/user-memo-items.md §4.5).
+ *
+ * 간식 카드와 **같은 껍데기**를 쓴다 — 사진·태그·열기 규약이 이미 거기 있고,
+ * 메모만의 두 번째 카드 문법을 만들면 나중에 둘이 어긋난다.
+ * 다른 것은 아이콘(사용자가 고른 것)·색(중성)·본문이 곧 제목이라는 것뿐이다.
+ *
+ * 같은 항목의 다건에 서수를 붙이지 않는다(§3.2) — 카드마다 시각이 적혀 있다.
+ */
+function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opts = {}) {
+    const forShareCapture = !!opts.forShareCapture;
+    const body = String(r.comment || '').trim();
+    const photoUrls = getMealPhotoUrlsForTimeline(r);
+    const hasPhoto = photoUrls.length > 0;
+    const photoHtml = hasPhoto
+        ? (forShareCapture
+            ? buildShareCaptureThumbHtml(photoUrls)
+            : buildTimelinePhotoCellInnerHtml(
+                  photoUrls,
+                  'object-cover',
+                  { dateStr, slotId: slot.id, recordId: r.id },
+                  getMealDisplayUrlsForTimeline(r),
+                  { interactive: false, showAspectToggle: true }
+              ))
+        : '';
+    const tags = [];
+    if (!forShareCapture) {
+        const clockTag = mealClockTagLabelFromRecord(r);
+        if (clockTag) tags.push(clockTag);
+    }
+    return buildHomeFeedCardShellHtml({
+        openClick: forShareCapture ? '' : memoTimelineOpenDataAttrs(dateStr, slot.key, r.id),
+        cardMbClass: `${cardMbClass} home-feed-card--memo`,
+        record: r,
+        hasPhoto,
+        photoHtml,
+        iconHtml: `<i data-lucide="${escapeHtml(slot.icon || 'sticky-note')}"></i>`,
+        iconKind: 'snack',
+        iconToneClass: 'home-feed-card__icon--tone-memo',
+        /**
+         * 본문이 있으면 [이름 / 본문] 두 줄, 없으면 [이름] 한 줄.
+         * 빈 메모도 유효한 기록이고(§4.6), 그때 이름을 두 번 적으면
+         * '혈당 혈당'이 된다.
+         */
+        metaHtml: body ? escapeHtml(slot.label) : '',
+        titleHtml: escapeHtml(body || slot.label),
+        noteHtml: '',
+        tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
+        ratingVal: '',
+        forShareCapture,
+        photoAspectRatio: r.photoAspectRatio
+    });
+}
+
+/** 메모 카드 열기 — slotKey 로 어느 항목인지, entry 로 어느 건인지 가린다 */
+function memoTimelineOpenDataAttrs(dateStr, slotKey, entryId) {
+    const eid =
+        entryId != null && entryId !== '' && entryId !== 'null'
+            ? ` data-mealog-open-entry="${escapeHtml(String(entryId))}"`
+            : '';
+    return `data-mealog-open-memo="${escapeHtml(String(dateStr))}" data-mealog-memo-key="${escapeHtml(String(slotKey || ''))}"${eid}`;
+}
+
 function buildSnackTimelineCardHtml(
     dateStr,
     slot,
@@ -1637,7 +1709,12 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
 export function buildDailyShareHomeFeedBodyHtml(dateStr) {
     let html = '';
     const shareOpts = { forShareCapture: true };
-    userSlotGroupsForDate(dateStr).forEach(({ slot, records: recordsRaw }) => {
+    dayTimelineUnitsForDate(dateStr).forEach((unit) => {
+        if (unit.type === 'memo') {
+            html += buildMemoTimelineCardHtml(dateStr, unit.slot, unit.record, 'mb-0', shareOpts);
+            return;
+        }
+        const { slot, records: recordsRaw } = unit;
         const records = sortSnackSlotRecordsChronological(recordsRaw);
         if (records.length === 0) return;
         const specificStyle = SLOT_STYLES[slot.id] || SLOT_STYLES.default;
@@ -1710,6 +1787,18 @@ function ensureTimelineOpenModalDelegation() {
                     void window.openEntrySlotPicker(pickerDate);
                     return;
                 }
+            }
+            const memoTarget = e.target.closest('[data-mealog-open-memo]');
+            if (memoTarget && root.contains(memoTarget)) {
+                const memoDate = memoTarget.getAttribute('data-mealog-open-memo');
+                const memoKey = memoTarget.getAttribute('data-mealog-memo-key') || '';
+                const memoEntry = memoTarget.getAttribute('data-mealog-open-entry') || null;
+                if (memoDate && typeof window.openMemoRecordModal === 'function') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.openMemoRecordModal(memoDate, memoKey, memoEntry);
+                }
+                return;
             }
             const dailyTarget = e.target.closest('.daily-journal-slot[data-mealog-open-daily]');
             if (dailyTarget && root.contains(dailyTarget)) {
@@ -2066,7 +2155,16 @@ export function renderTimeline(options = {}) {
             ${rightHtml}
         </div>`;
 
-        userSlotGroupsForDate(dateStr).forEach(({ slot, records: recordsRaw }) => {
+        dayTimelineUnitsForDate(dateStr).forEach((unit) => {
+            /**
+             * 메모는 그룹을 이루지 않는다 — 낱건이 곹 배치 단위다
+             * (docs/user-memo-items.md §3.2). 자리는 그 건의 시각이 정했다(§3.3).
+             */
+            if (unit.type === 'memo') {
+                html += buildMemoTimelineCardHtml(dateStr, unit.slot, unit.record, 'mb-1.5');
+                return;
+            }
+            const { slot, records: recordsRaw } = unit;
             const records = sortSnackSlotRecordsChronological(recordsRaw);
             // 빈 슬롯은 타임라인에 표시하지 않음 — 추가는 슬롯 피커로
             if (records.length === 0) return;

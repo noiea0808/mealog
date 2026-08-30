@@ -21,9 +21,16 @@ import {
     renameSlotEverywhere,
     revisionCount,
     countEnabledSlots,
+    countMemos,
+    isMemoItem,
+    memoIconOrDefault,
     MAX_ENABLED_SLOTS,
+    MAX_ENABLED_MEMOS,
     MAX_SLOTS_PER_REVISION,
     SLOT_LABEL_MAX_CHARS,
+    MEMO_LABEL_MAX_CHARS,
+    MEMO_ICONS,
+    MEMO_PRESETS,
     REVISION_COUNT_DIAG_THRESHOLD
 } from '../utils/slot-plan.js';
 import { dbOps } from '../db.js';
@@ -175,6 +182,34 @@ function rowHtml(slot, idx, isOriginal) {
     </div>`;
 }
 
+/**
+ * 메모 행 — 손잡이가 없다. 순서를 고를 수 있게 하면 "체중을 아침과
+ * 점심 사이에 둘까"라는, 사용자가 답할 수 없는 질문이 돌아온다
+ * (user-memo-items §1). 자리는 기록의 시각이 정한다.
+ */
+function memoRowHtml(item, idx) {
+    return `<div class="slot-plan-row slot-plan-row--memo" data-idx="${idx}">
+        <button type="button" class="slot-plan-row__icon slot-plan-row__icon--memo" data-action="icon" aria-label="아이콘 고르기">
+            <i data-lucide="${escapeHtml(memoIconOrDefault(item.icon))}" aria-hidden="true"></i>
+        </button>
+        <span class="slot-plan-row__main">
+            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(item.label)}" maxlength="${MEMO_LABEL_MAX_CHARS}" size="${Math.max(4, item.label.length + 2)}" aria-label="항목 이름" />
+            <button type="button" class="slot-plan-row__pencil" data-action="edit" aria-label="이름 편집">
+                <i data-lucide="pencil" aria-hidden="true"></i>
+            </button>
+        </span>
+        <button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 메모 항목 삭제">삭제</button>
+        <span class="slot-plan-row__dup-spacer" aria-hidden="true"></span>
+    </div>`;
+}
+
+function sectionHeadHtml(title, countText) {
+    return `<div class="slot-plan-settings__section">
+        <span>${escapeHtml(title)}</span>
+        <span class="slot-plan-settings__section-count">${escapeHtml(countText)}</span>
+    </div>`;
+}
+
 function render() {
     const list = document.getElementById('slotPlanSettingsList');
     const countEl = document.getElementById('slotPlanSettingsCount');
@@ -182,9 +217,22 @@ function render() {
     if (!list || !draft) return;
 
     const originals = originalSlotSet(draft);
-    list.innerHTML = draft.map((s, i) => rowHtml(s, i, originals.has(s))).join('');
-    // 세는 건 '사용 중'인 수 — 해제한 슬롯은 피커에 안 나오므로 상한과 무관하다
-    if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
+    /**
+     * draft 는 sanitizeSlots 가 슬롯 앞·메모 뒤로 넣어 준 순서 그대로다
+     * (user-memo-items §2.1). 그래서 구역을 나누는 데 정렬이 필요 없고,
+     * data-idx 는 둘 다 draft 의 인덱스라 편집 코드가 한 종류만 안다.
+     */
+    const cut = draft.findIndex(isMemoItem);
+    const firstMemo = cut < 0 ? draft.length : cut;
+    const slotRows = draft.slice(0, firstMemo).map((s, i) => rowHtml(s, i, originals.has(s))).join('');
+    const memoRows = draft.slice(firstMemo).map((s, i) => memoRowHtml(s, firstMemo + i)).join('');
+    list.innerHTML =
+        sectionHeadHtml('식사 항목', `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`) +
+        slotRows +
+        sectionHeadHtml('메모 항목', `${countMemos(draft)} / ${MAX_ENABLED_MEMOS}`) +
+        memoRows;
+    // 구역마다 제 수를 달고 있으므로 머리의 수는 비운다 — 둘이 같은 말을 했다
+    if (countEl) countEl.textContent = '';
     if (notice) notice.textContent = noticeText();
     syncCascadeRow();
     scheduleLucideIcons(list);
@@ -230,6 +278,7 @@ export function openSlotPlanSettings(opts = {}) {
 
     setCascadeChecked(false);
     setHelpOpen(false);
+    closeMemoEdit();
     loadDraftForDate(effectiveFromIso);
     syncDateInput();
     render();
@@ -270,7 +319,8 @@ function onEffectiveFromChange() {
 export function closeSlotPlanSettings() {
     const modal = document.getElementById('slotPlanSettingsModal');
     if (!modal) return;
-    setHelpOpen(false); // 시트가 닫히면 그 위의 도움말도 같이 걷는다
+    setHelpOpen(false); // 시트가 닫히면 그 위의 도움말·메모 편집도 같이 걷는다
+    closeMemoEdit();
     const active = document.activeElement;
     if (active instanceof HTMLElement && modal.contains(active)) active.blur();
     modal.classList.add('hidden');
@@ -283,6 +333,120 @@ export function closeSlotPlanSettings() {
     }
 }
 
+/* ── 메모 항목 만들기·고치기 팝업 (user-memo-items §4.3) ── */
+
+/** 편집 중인 draft 인덱스 — -1 이면 새로 만드는 중 */
+let memoEditIdx = -1;
+let memoEditIcon = MEMO_ICONS[0];
+
+function setMemoEditError(msg) {
+    const el = document.getElementById('slotMemoEditError');
+    if (el) el.textContent = msg || '';
+}
+
+function renderMemoIconGrid() {
+    const grid = document.getElementById('slotMemoIconGrid');
+    if (!grid) return;
+    grid.innerHTML = MEMO_ICONS.map(
+        (name) =>
+            `<button type="button" class="slot-memo-edit__icon${name === memoEditIcon ? ' slot-memo-edit__icon--on' : ''}" role="radio" aria-checked="${name === memoEditIcon ? 'true' : 'false'}" data-icon="${escapeHtml(name)}" aria-label="${escapeHtml(name)}">
+                <i data-lucide="${escapeHtml(name)}" aria-hidden="true"></i>
+            </button>`
+    ).join('');
+    scheduleLucideIcons(grid);
+}
+
+function renderMemoPresets() {
+    const row = document.getElementById('slotMemoPresetRow');
+    if (!row) return;
+    row.innerHTML = MEMO_PRESETS.map(
+        (p) =>
+            `<button type="button" class="slot-memo-edit__preset" data-preset-label="${escapeHtml(p.label)}" data-preset-icon="${escapeHtml(p.icon)}">${escapeHtml(p.label)}</button>`
+    ).join('');
+}
+
+/**
+ * 새 메모를 넣을 수 있는가 — 메모 예산과 개정판 총길이를 함께 본다.
+ * 슬롯 상한(MAX_ENABLED_SLOTS)과는 섞지 않는다 — 예산이 둘이다 (§2.5).
+ */
+function memoAddBlockedReason() {
+    if (!draft) return '';
+    if (countMemos(draft) >= MAX_ENABLED_MEMOS) {
+        return `메모 항목은 ${MAX_ENABLED_MEMOS}개까지 만들 수 있어요. 안 쓰는 항목을 지워 주세요.`;
+    }
+    if (draft.length >= MAX_SLOTS_PER_REVISION) {
+        return '항목 목록이 가득 찼어요.';
+    }
+    return '';
+}
+
+function openMemoEdit(idx) {
+    const modal = document.getElementById('slotMemoEditModal');
+    if (!modal || !draft) return;
+    const editing = idx >= 0 && isMemoItem(draft[idx]);
+    if (!editing) {
+        const blocked = memoAddBlockedReason();
+        if (blocked) {
+            showToast(blocked, 'error');
+            return;
+        }
+    }
+    syncDraftLabelsFromInputs();
+    memoEditIdx = editing ? idx : -1;
+    memoEditIcon = editing ? memoIconOrDefault(draft[idx].icon) : MEMO_ICONS[0];
+
+    const title = document.getElementById('slotMemoEditTitle');
+    if (title) title.textContent = editing ? '메모 항목 고치기' : '새 메모 항목';
+    const saveBtn = document.getElementById('slotMemoEditSaveBtn');
+    if (saveBtn) saveBtn.textContent = editing ? '적용' : '만들기';
+    const nameInput = document.getElementById('slotMemoNameInput');
+    if (nameInput) nameInput.value = editing ? draft[idx].label : '';
+    // 프리셋은 처음 만들 때만 — 고치는 중에 이름을 덮어쓰면 놀란다
+    document.getElementById('slotMemoPresetRow')?.classList.toggle('hidden', editing);
+    setMemoEditError('');
+    renderMemoPresets();
+    renderMemoIconGrid();
+
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    nameInput?.focus();
+}
+
+/** ESC·바깥 클릭에서 부르는 닫기 (escape-close-modals 등록용) */
+export function closeMemoEdit() {
+    const modal = document.getElementById('slotMemoEditModal');
+    if (!modal) return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && modal.contains(active)) active.blur();
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    memoEditIdx = -1;
+}
+
+function commitMemoEdit() {
+    if (!draft) return;
+    const nameInput = document.getElementById('slotMemoNameInput');
+    const label = String(nameInput?.value || '').trim().slice(0, MEMO_LABEL_MAX_CHARS);
+    if (!label) {
+        setMemoEditError('이름을 적어 주세요.');
+        nameInput?.focus();
+        return;
+    }
+    if (memoEditIdx >= 0 && isMemoItem(draft[memoEditIdx])) {
+        draft[memoEditIdx] = { ...draft[memoEditIdx], label, icon: memoEditIcon };
+    } else {
+        const blocked = memoAddBlockedReason();
+        if (blocked) {
+            setMemoEditError(blocked);
+            return;
+        }
+        // 새 key 는 지금 붙인다 — 슬롯과 같은 이름공간, 재사용 없음
+        draft.push({ key: generateSlotKey(), kind: 'memo', icon: memoEditIcon, label, enabled: true });
+    }
+    closeMemoEdit();
+    render();
+}
+
 /* ── 편집 동작 ────────────────────────────────────────────── */
 
 function syncDraftLabelsFromInputs() {
@@ -292,7 +456,8 @@ function syncDraftLabelsFromInputs() {
         const idx = Number(row.getAttribute('data-idx'));
         const input = row.querySelector('[data-action="label"]');
         if (draft[idx] && input) {
-            const v = String(input.value || '').trim().slice(0, SLOT_LABEL_MAX_CHARS);
+            const max = isMemoItem(draft[idx]) ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
+            const v = String(input.value || '').trim().slice(0, max);
             if (v) draft[idx].label = v;
         }
     });
@@ -383,7 +548,13 @@ function bindDrag(list) {
         if (dragIdx < 0 || !draft) return;
         const delta = Math.round((e.clientY - startY) / rowH);
         if (delta === 0) return;
-        const to = Math.max(0, Math.min(draft.length - 1, dragIdx + delta));
+        /**
+         * 슬롯 구간 밖으로 나가지 않는다. 메모가 섮이면 sanitizeSlots 가
+         * 저장 때 다시 뒤로 보내버려(§2.1), 끌어다 놓은 결과가 사라진다.
+         */
+        const lastSlot = draft.findIndex(isMemoItem);
+        const upper = (lastSlot < 0 ? draft.length : lastSlot) - 1;
+        const to = Math.max(0, Math.min(upper, dragIdx + delta));
         if (to === dragIdx) return;
         const [moved] = draft.splice(dragIdx, 1);
         draft.splice(to, 0, moved);
@@ -493,11 +664,42 @@ function bindOnce() {
         if (action === 'toggle') onToggle(idx);
         else if (action === 'dup') onDuplicate(idx);
         else if (action === 'del') onDelete(idx);
+        else if (action === 'icon') openMemoEdit(idx);
         else if (action === 'edit') {
             const input = row?.querySelector('[data-action="label"]');
             input?.focus();
             input?.select();
         }
+    });
+
+    modal.querySelector('#slotPlanMemoAddBtn')?.addEventListener('click', () => openMemoEdit(-1));
+
+    const memoEdit = document.getElementById('slotMemoEditModal');
+    memoEdit?.querySelector('#slotMemoEditBackdrop')?.addEventListener('click', closeMemoEdit);
+    memoEdit?.querySelector('#slotMemoEditCloseBtn')?.addEventListener('click', closeMemoEdit);
+    memoEdit?.querySelector('#slotMemoEditCancelBtn')?.addEventListener('click', closeMemoEdit);
+    memoEdit?.querySelector('#slotMemoEditSaveBtn')?.addEventListener('click', commitMemoEdit);
+    memoEdit?.querySelector('#slotMemoNameInput')?.addEventListener('input', () => setMemoEditError(''));
+    memoEdit?.querySelector('#slotMemoNameInput')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commitMemoEdit();
+        }
+    });
+    memoEdit?.querySelector('#slotMemoPresetRow')?.addEventListener('click', (e) => {
+        const chip = e.target.closest('[data-preset-label]');
+        if (!chip) return;
+        const nameInput = document.getElementById('slotMemoNameInput');
+        if (nameInput) nameInput.value = chip.getAttribute('data-preset-label') || '';
+        memoEditIcon = memoIconOrDefault(chip.getAttribute('data-preset-icon'));
+        setMemoEditError('');
+        renderMemoIconGrid();
+    });
+    memoEdit?.querySelector('#slotMemoIconGrid')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-icon]');
+        if (!btn) return;
+        memoEditIcon = memoIconOrDefault(btn.getAttribute('data-icon'));
+        renderMemoIconGrid();
     });
 
     if (list) bindDrag(list);
@@ -518,3 +720,4 @@ if (typeof document !== 'undefined') {
 window.openSlotPlanSettings = openSlotPlanSettings;
 window.closeSlotPlanSettings = closeSlotPlanSettings;
 window.closeSlotPlanHelp = closeSlotPlanHelp;
+window.closeSlotMemoEdit = closeMemoEdit;

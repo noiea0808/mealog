@@ -7449,6 +7449,19 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     background: #f5f3ff;
     color: #7c3aed;
 }
+/*
+ * 사용자 메모 (docs/user-memo-items.md §4.5) — 중성 색 + 점선.
+ * 식사 슬롯은 시간대마다 제 색이 있다. 메모까지 색을 주면 하루가 알록달록해져
+ * '이건 밥, 이건 메모'라는 큰 구분이 먼저 안 읽힌다. 낯을 낮추는 쪽을 고른다.
+ */
+.home-feed-card__icon--tone-memo {
+    background: #f8fafc;
+    color: #64748b;
+    border: 1px dashed #cbd5e1;
+}
+.home-feed-card.home-feed-card--memo {
+    border-style: dashed;
+}
 /* tone 미지정 폴백 */
 .home-feed-card__icon--meal {
     background: #ecfdf5;
@@ -12309,6 +12322,212 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     stroke-width: 1.75;
 }
 
+/* ── 피커 메모 구역 (docs/user-memo-items.md §4.1) ── */
+/*
+ * 3열 · 중성 색 · 점선. 식사 슬롯은 base 색을 쓰고 2열이다 — 줄당 개수와 색이
+ * 함께 달라야 소제목 없이도 두 구역이 갈린다.
+ */
+.entry-slot-picker__memo-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    padding: 0.15rem var(--mealog-dialog-pad-x) 0.5rem;
+}
+.entry-slot-picker__memo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.55rem 0.35rem 0.5rem;
+    border-radius: 0.875rem;
+    border: 1px dashed #cbd5e1;
+    background: #fff;
+    -webkit-tap-highlight-color: transparent;
+}
+.entry-slot-picker__memo:active {
+    background: #f8fafc;
+}
+.entry-slot-picker__memo-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: #64748b;
+}
+.entry-slot-picker__memo-icon [data-lucide],
+.entry-slot-picker__memo-icon .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 1.75;
+}
+.entry-slot-picker__memo-label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #334155;
+    text-align: center;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-height: 1.25;
+}
+.entry-slot-picker__memo-count {
+    min-height: 0.9rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--green);
+}
+
+/* ── 메모 기록 시트 (§4.4) ── */
+.memo-record__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 0.625rem;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+    flex-shrink: 0;
+}
+.memo-record__icon [data-lucide],
+.memo-record__icon .lucide {
+    width: 1rem;
+    height: 1rem;
+    stroke-width: 1.75;
+}
+.memo-record__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 0.35rem var(--mealog-dialog-pad-x) 0.25rem;
+    overflow-y: auto;
+}
+.memo-record__row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.memo-record__row--stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+.memo-record__label {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.memo-record__count {
+    margin-left: 0.25rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+.memo-record__time {
+    flex: 1;
+    text-align: left;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    padding: 0.45rem 0.7rem;
+    -webkit-tap-highlight-color: transparent;
+}
+.memo-record__body textarea {
+    width: 100%;
+    resize: none;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+    padding: 0.55rem 0.7rem;
+}
+.memo-record__body textarea:focus {
+    outline: none;
+    border-color: #94a3b8;
+}
+.memo-record__photo-btns {
+    display: flex;
+    gap: 0.4rem;
+}
+.memo-record__photo-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+    background: #f1f5f9;
+    color: #475569;
+    -webkit-tap-highlight-color: transparent;
+}
+.memo-record__photo-btn:active {
+    background: #e2e8f0;
+}
+.memo-record__photo-btn [data-lucide],
+.memo-record__photo-btn .lucide {
+    width: 1.0625rem;
+    height: 1.0625rem;
+}
+.memo-record__previews {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.memo-record__thumb {
+    position: relative;
+    display: inline-flex;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 0.625rem;
+    overflow: hidden;
+    background: #f1f5f9;
+}
+.memo-record__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.memo-record__thumb-del {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.1rem;
+    height: 1.1rem;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.6);
+    color: #fff;
+}
+.memo-record__thumb-del [data-lucide],
+.memo-record__thumb-del .lucide {
+    width: 0.6875rem;
+    height: 0.6875rem;
+    stroke-width: 2.5;
+}
+.memo-record__foot {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.6rem var(--mealog-dialog-pad-x) 1rem;
+}
+.memo-record__delete {
+    flex: 0 0 auto;
+    min-width: 5rem;
+    background: #fef2f2;
+    color: #dc2626;
+}
+.memo-record__delete.hidden {
+    display: none;
+}
+
 /* 도움말이 열려 있는 동안은 버튼도 눌린 낯 — 어디서 열렸는지 보이게 */
 .entry-slot-picker__settings-btn--on {
     background: #f1f5f9;
@@ -12587,6 +12806,166 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     height: 1rem;
     stroke-width: 1.75;
 }
+/* ── 메모 항목 (docs/user-memo-items.md §4.2) ── */
+.slot-plan-settings__section {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.7rem 0.25rem 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.slot-plan-settings__section:first-child {
+    padding-top: 0.15rem;
+}
+.slot-plan-settings__section-count {
+    margin-left: auto;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+/* 메모 행에는 손잡이가 없다 — 자리를 고르는 개념 자체가 없다 (§1) */
+.slot-plan-row--memo {
+    padding-left: 0.25rem;
+}
+/* 복제 버튼 자리를 비워 둔다 — 삭제가 슬롯의 토글과 같은 열에 서게 */
+.slot-plan-row__dup-spacer {
+    flex-shrink: 0;
+    width: 1.75rem;
+}
+.slot-plan-row__icon--memo {
+    background: #f8fafc;
+    color: #64748b;
+    border: 1px dashed #cbd5e1;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-row__icon--memo:active {
+    background: #e2e8f0;
+    color: #334155;
+}
+.slot-plan-settings__memo-add-row {
+    padding: 0.1rem var(--mealog-dialog-pad-x) 0;
+}
+.slot-plan-settings__memo-add {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding: 0.55rem 0;
+    border-radius: 0.75rem;
+    border: 1px dashed #cbd5e1;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-settings__memo-add:active {
+    background: #f1f5f9;
+    color: #334155;
+}
+.slot-plan-settings__memo-add [data-lucide],
+.slot-plan-settings__memo-add .lucide {
+    width: 0.9375rem;
+    height: 0.9375rem;
+    stroke-width: 2;
+}
+
+/* ── 메모 항목 만들기·고치기 팝업 (§4.3) ── */
+.slot-memo-edit__presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.slot-memo-edit__presets.hidden {
+    display: none;
+}
+.slot-memo-edit__preset {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #475569;
+    background: #f1f5f9;
+    border-radius: 999px;
+    padding: 0.3rem 0.65rem;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-memo-edit__preset:active {
+    background: #e2e8f0;
+}
+.slot-memo-edit__field {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+.slot-memo-edit__field--icons {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.slot-memo-edit__field label {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
+.slot-memo-edit__field input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    padding: 0.4rem 0.65rem;
+}
+.slot-memo-edit__field input[type="text"]:focus {
+    outline: none;
+    border-color: #94a3b8;
+}
+.slot-memo-edit__icons {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.35rem;
+    width: 100%;
+}
+.slot-memo-edit__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    border-radius: 0.625rem;
+    border: 1px solid transparent;
+    background: #f8fafc;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-memo-edit__icon--on {
+    border-color: var(--green, #059669);
+    background: #ecfdf5;
+    color: #059669;
+}
+.slot-memo-edit__icon [data-lucide],
+.slot-memo-edit__icon .lucide {
+    width: 1.0625rem;
+    height: 1.0625rem;
+    stroke-width: 1.75;
+}
+.slot-memo-edit__error {
+    margin: 0;
+    min-height: 1.1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #dc2626;
+}
+.slot-memo-edit__foot {
+    flex-shrink: 0;
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
+}
+
 /*
  * 적용 시작일 — 고른 날짜부터 구성이 바뀐다 (user-slot-plan §4.2.3).
  * 바닥에 둔다. 안내문("8월 30일 기록부터…")이 바로 이 날짜를 풀어 쓴 문장이라,

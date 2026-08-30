@@ -12,7 +12,10 @@
 import {
     effectiveSlots,
     resolveSlotView,
-    groupMealsByUserSlotForDate
+    groupMealsByUserSlotForDate,
+    dayTimelineUnits,
+    memoItemsOnly,
+    slotItemsOnly
 } from './slot-plan.js';
 
 function localTodayIso() {
@@ -48,4 +51,28 @@ export function userSlotGroupsForDate(dateStr) {
         window.userSettings,
         localTodayIso()
     );
+}
+
+/**
+ * 슬롯 그룹 + 메모 낱건을 한 줄로 섞은 하루 순회 (docs/user-memo-items.md §3.3).
+ * 메모가 없는 사용자에게는 `userSlotGroupsForDate` 와 결과가 같다 —
+ * 화면이 1픽셀도 안 바뀐다.
+ */
+export function dayTimelineUnitsForDate(dateStr) {
+    return dayTimelineUnits(
+        dateStr,
+        window.mealHistory || [],
+        window.userSettings,
+        localTodayIso()
+    );
+}
+
+/** 그 날짜의 메모 항목 정의만 (피커·설정 시트용) */
+export function userMemoItemsForDate(dateIso) {
+    return memoItemsOnly(effectiveSlots(window.userSettings, dateIso, localTodayIso()));
+}
+
+/** 그 날짜의 식사 슬롯 정의만 — 메모를 빼고 세는 자리 */
+export function userMealSlotsForDate(dateIso) {
+    return slotItemsOnly(effectiveSlots(window.userSettings, dateIso, localTodayIso()));
 }

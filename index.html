@@ -2865,6 +2865,12 @@
                 </button>
             </div>
             <div id="slotPlanSettingsList" class="entry-slot-picker__list slot-plan-settings__list max-h-[min(70vh,30rem)] overflow-y-auto pt-1"></div>
+            <div class="slot-plan-settings__memo-add-row">
+                <button type="button" id="slotPlanMemoAddBtn" class="slot-plan-settings__memo-add">
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    <span>메모 항목 만들기</span>
+                </button>
+            </div>
             <div class="slot-plan-settings__footer">
                 <!-- 날짜와 그 날짜를 설명하는 안내문은 붙어 있어야 한다 (§4.2.3) -->
                 <div class="slot-plan-settings__date-row">
@@ -2880,6 +2886,78 @@
                     <button type="button" id="slotPlanCancelBtn" class="slot-plan-settings__btn">취소</button>
                     <button type="button" id="slotPlanSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">저장</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메모 기록 시트 (user-memo-items §4.4) — 시간·내용·사진 세 칸 -->
+    <div id="memoRecordModal" class="hidden fixed inset-0 z-[var(--z-record-modal)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="memoRecordTitle" aria-hidden="true">
+        <button type="button" id="memoRecordBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
+        <div class="entry-slot-picker memo-record relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
+            <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
+            <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
+                <div class="flex min-w-0 flex-1 items-center gap-2">
+                    <span id="memoRecordIcon" class="memo-record__icon" aria-hidden="true"></span>
+                    <h2 id="memoRecordTitle" class="min-w-0 truncate text-base font-bold tracking-tight text-slate-800">메모</h2>
+                </div>
+                <button type="button" id="memoRecordCloseBtn" class="entry-slot-picker__settings-btn" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="memo-record__body">
+                <div class="memo-record__row">
+                    <span class="memo-record__label">시간</span>
+                    <button type="button" id="memoRecordTimeBtn" class="memo-record__time">오전 12:00</button>
+                </div>
+                <div class="memo-record__row memo-record__row--stack">
+                    <label class="memo-record__label" for="memoRecordText">내용</label>
+                    <textarea id="memoRecordText" rows="3" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요."></textarea>
+                </div>
+                <div class="memo-record__row memo-record__row--stack">
+                    <span class="memo-record__label">사진 <span id="memoRecordPhotoCount" class="memo-record__count">0/5</span></span>
+                    <div class="memo-record__photo-btns">
+                        <button type="button" id="memoRecordCameraBtn" class="memo-record__photo-btn" aria-label="사진 찍기">
+                            <i data-lucide="camera" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" id="memoRecordAlbumBtn" class="memo-record__photo-btn" aria-label="앨범에서 선택">
+                            <i data-lucide="image" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="memoRecordPhotoPreviews" class="memo-record__previews"></div>
+                </div>
+            </div>
+            <div class="memo-record__foot">
+                <button type="button" id="memoRecordDeleteBtn" class="slot-plan-settings__btn memo-record__delete hidden">삭제</button>
+                <button type="button" id="memoRecordSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메모 항목 만들기·고치기 팝업 — 설정 시트 위에 겹친다 (user-memo-items §4.3) -->
+    <div id="slotMemoEditModal" class="hidden fixed inset-0 z-[var(--z-slot-picker-help)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="slotMemoEditTitle" aria-hidden="true">
+        <button type="button" id="slotMemoEditBackdrop" class="slot-plan-help__backdrop absolute inset-0 z-0 cursor-default border-0 p-0" aria-label="닫기"></button>
+        <div class="slot-plan-help relative z-10 flex w-full max-w-[21rem] flex-col overflow-hidden">
+            <div class="slot-plan-help__head">
+                <h2 id="slotMemoEditTitle" class="slot-plan-help__title">새 메모 항목</h2>
+                <button type="button" id="slotMemoEditCloseBtn" class="slot-plan-help__x" aria-label="닫기">
+                    <i data-lucide="x" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="slot-plan-help__body">
+                <div id="slotMemoPresetRow" class="slot-memo-edit__presets"></div>
+                <div class="slot-memo-edit__field">
+                    <label for="slotMemoNameInput">이름</label>
+                    <input type="text" id="slotMemoNameInput" maxlength="8" placeholder="체중" autocomplete="off" />
+                </div>
+                <div class="slot-memo-edit__field slot-memo-edit__field--icons">
+                    <label id="slotMemoIconLabel">아이콘</label>
+                    <div id="slotMemoIconGrid" class="slot-memo-edit__icons" role="radiogroup" aria-labelledby="slotMemoIconLabel"></div>
+                </div>
+                <p id="slotMemoEditError" class="slot-memo-edit__error" role="alert"></p>
+            </div>
+            <div class="slot-memo-edit__foot">
+                <button type="button" id="slotMemoEditCancelBtn" class="slot-plan-settings__btn">취소</button>
+                <button type="button" id="slotMemoEditSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">만들기</button>
             </div>
         </div>
     </div>

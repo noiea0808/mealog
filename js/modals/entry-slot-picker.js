@@ -4,12 +4,14 @@
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
 import { DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
-import { userSlotsForDate, userSlotGroupsForDate } from '../utils/slot-view.js';
+import { userSlotGroupsForDate, userMemoItemsForDate, userMealSlotsForDate } from '../utils/slot-view.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
 import { openDailyJournalModal } from './daily-journal.js';
 import { openSlotPlanSettings } from './slot-plan-settings.js';
+import { openMemoRecordModal } from './memo-record.js';
+import { memoIconOrDefault, MEMO_SLOT_ID, isMemoMealRecord } from '../utils/slot-plan.js';
 import {
     dailyJournalHasContent,
     getDailyJournalFromSettings
@@ -113,6 +115,33 @@ function buildUserSlotCardHtml(slot, count) {
     </button>`;
 }
 
+/**
+ * 메모 카드 — 3열, 중성 색, 점선 (user-memo-items §4.1).
+ *
+ * 줄당 개수와 색을 식사 슬롯과 다르게 둔다. 두 구역이 한눈에 갈라져야
+ * "이건 밥, 이건 메모"가 소제목 없이 전달된다.
+ */
+function buildMemoCardHtml(item, count) {
+    return `<button type="button" class="entry-slot-picker__memo" data-slot-id="${MEMO_SLOT_ID}" data-slot-key="${escapeHtml(item.key || '')}" data-slot-type="memo">
+        <span class="entry-slot-picker__memo-icon" aria-hidden="true">
+            <i data-lucide="${escapeHtml(memoIconOrDefault(item.icon))}" aria-hidden="true"></i>
+        </span>
+        <span class="entry-slot-picker__memo-label">${escapeHtml(item.label)}</span>
+        <span class="entry-slot-picker__memo-count">${count > 0 ? `${count}건` : ''}</span>
+    </button>`;
+}
+
+/** 그 날짜의 메모 항목별 기록 수 — 낱건이라 그냥 센다 (§3.2) */
+function countMemoRecords(dateIso) {
+    const counts = new Map();
+    for (const m of window.mealHistory || []) {
+        if (!m || m.date !== dateIso || !isMemoMealRecord(m)) continue;
+        const k = String(m.slotKey || '');
+        counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    return counts;
+}
+
 /** 하루 소감 — 슬롯이 아니므로 전체 폭 한 줄 (설정 대상도 아니다) */
 function buildDailyJournalRowHtml(count) {
     return `<button type="button" class="entry-slot-picker__item entry-slot-picker__item--daily" data-slot-id="${escapeHtml(DAILY_JOURNAL_SLOT.id)}" data-slot-type="daily">
@@ -131,11 +160,21 @@ function renderPickerList(dateIso) {
      * 그 날짜 유효 개정판의 enabled 슬롯만 — 여기가 enabled 를 볼 수 있는
      * 유일한 곳이다(불변식 4: 렌더 필터 아님, 피커 필터).
      */
-    const slots = userSlotsForDate(dateIso).filter((s) => s.enabled);
+    // 메모를 배제한 식사 슬롯만 — 메모는 아래 구역이 따로 맡는다
+    const slots = userMealSlotsForDate(dateIso).filter((s) => s.enabled);
     const counts = countMealsByUserSlot(dateIso);
+
+    const memos = userMemoItemsForDate(dateIso).filter((m) => m.enabled);
+    const memoCounts = countMemoRecords(dateIso);
+    const memoGroup = memos.length
+        ? `<div class="entry-slot-picker__memo-group">
+            ${memos.map((m) => buildMemoCardHtml(m, memoCounts.get(String(m.key || '')) || 0)).join('')}
+        </div>`
+        : '';
 
     const html = `<div class="entry-slot-picker__group">
         ${slots.map((s) => buildUserSlotCardHtml(s, counts.get(userSlotCountId(s)) || 0)).join('')}
+    </div>${memoGroup}<div class="entry-slot-picker__group">
         ${buildDailyJournalRowHtml(dailyJournalCount(dateIso))}
     </div>`;
 
@@ -182,6 +221,15 @@ export async function openEntrySlotPicker(dateIso) {
 async function onPickSlot(slotId, slotType, slotKey) {
     const dateIso = pendingDateIso || pageDateIso() || localTodayIso();
     closeEntrySlotPicker();
+    /**
+     * 메모는 누를 때마다 **늘 새 기록**이다 (user-memo-items §4.4).
+     * 아침에 재고 저녁에 또 재는 것이 기본 쓰임이라,
+     * '고칠까 새로 쓸까'를 되묻는 화면은 매번 나오는 방해가 된다.
+     */
+    if (slotType === 'memo' || slotId === MEMO_SLOT_ID) {
+        openMemoRecordModal(dateIso, slotKey || '');
+        return;
+    }
     if (slotType === 'daily' || slotId === 'daily_journal') {
         if (typeof openDailyJournalModal === 'function') {
             openDailyJournalModal(dateIso);
