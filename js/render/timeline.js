@@ -240,6 +240,26 @@ function insertTimelineDateSectionInChronologicalOrder(container, section, dateS
     container.appendChild(section);
 }
 
+/**
+ * 일간(page)보기에서 선택일이 아닌 날짜 섹션을 걷어낸다.
+ * 다른 날짜의 증분 렌더(동기화 수신·저장 반영)가 화면에 이틀을 겹쳐 놓는 것을 막는다.
+ * @param {HTMLElement} container #timelineContainer
+ * @param {string} keepDateStr 화면에 남길 날짜 YYYY-MM-DD
+ */
+function pruneTimelineDateSectionsExcept(container, keepDateStr) {
+    if (!container || !keepDateStr) return;
+    [...container.children].forEach((el) => {
+        if (!el.id || !el.id.startsWith('date-')) return;
+        const dateStr = el.id.slice(5);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || dateStr === keepDateStr) return;
+        el.remove();
+        if (Array.isArray(window.loadedDates)) {
+            const idx = window.loadedDates.indexOf(dateStr);
+            if (idx >= 0) window.loadedDates.splice(idx, 1);
+        }
+    });
+}
+
 function patchTimelineCardLeadIcon(el, record) {
     const titleEl =
         el.querySelector('h4.mb-0.flex.min-w-0.items-center') ||
@@ -1946,10 +1966,19 @@ export function renderTimeline(options = {}) {
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const todayStr = `${year}-${month}-${day}`;
-    
+
+    // 일간(page)보기는 선택한 하루만 보여준다 — 이 날짜 외의 섹션은 들이지도, 남기지도 않는다
+    const pageIso =
+        state.viewMode === 'page' && state.pageDate instanceof Date && !Number.isNaN(+state.pageDate)
+            ? localTodayYmd(state.pageDate)
+            : null;
+    if (pageIso) pruneTimelineDateSectionsExcept(container, pageIso);
+
     const targetDates = [];
     if (incrementalDates) {
         onlyDates.forEach((d) => {
+            // 증분 렌더는 선택일에만 반영 — 다른 날짜를 그리면 화면에 이틀이 겹친다
+            if (pageIso && d !== pageIso) return;
             if (!targetDates.includes(d)) targetDates.push(d);
         });
     } else if (state.viewMode === 'list') {
@@ -1970,10 +1999,7 @@ export function renderTimeline(options = {}) {
         }).forEach((dateStr) => targetDates.push(dateStr));
     } else {
         // page 모드: 선택한 날짜만 표시 (로컬 날짜로 변환)
-        const pageYear = state.pageDate.getFullYear();
-        const pageMonth = String(state.pageDate.getMonth() + 1).padStart(2, '0');
-        const pageDay = String(state.pageDate.getDate()).padStart(2, '0');
-        targetDates.push(`${pageYear}-${pageMonth}-${pageDay}`);
+        targetDates.push(pageIso || localTodayYmd());
     }
 
     // 날짜를 최신순으로 정렬하여 DOM에 추가 (최신 -> 과거)
@@ -1995,7 +2021,12 @@ export function renderTimeline(options = {}) {
 
     if (pendingTimelineSectionRebuildDates.size > 0) {
         const extra = [...pendingTimelineSectionRebuildDates].filter(
-            (d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !sortedTargetDates.includes(d)
+            (d) =>
+                typeof d === 'string' &&
+                /^\d{4}-\d{2}-\d{2}$/.test(d) &&
+                !sortedTargetDates.includes(d) &&
+                // 일간보기: 밀린 재구성이라도 선택일이 아니면 그리지 않는다
+                (!pageIso || d === pageIso)
         );
         if (extra.length) {
             sortedTargetDates = [...sortedTargetDates, ...extra].sort((a, b) => b.localeCompare(a));
