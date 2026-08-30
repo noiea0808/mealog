@@ -12806,7 +12806,10 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     height: 1rem;
     stroke-width: 1.75;
 }
-/* ── 메모 설정 팝업 — 목록 (docs/user-memo-items.md §4.3) ── */
+/* ── 메모 설정 팝업 — 목록과 새 항목이 한 화면 (docs/user-memo-items.md §4.3) ── */
+.memo-settings__body {
+    gap: 0;
+}
 .memo-settings__list {
     display: flex;
     flex-direction: column;
@@ -12816,88 +12819,87 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     align-items: center;
     gap: 0.5rem;
     padding: 0.35rem 0;
-    border-bottom: 1px solid #f1f5f9;
 }
-.memo-settings__row-main {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    text-align: left;
-    -webkit-tap-highlight-color: transparent;
+.memo-settings__row-wrap {
+    border-bottom: 1px solid #f1f5f9;
 }
 .memo-settings__icon {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.9rem;
-    height: 1.9rem;
+    width: 2rem;
+    height: 2rem;
     border-radius: 0.625rem;
     background: #f8fafc;
     border: 1px dashed #cbd5e1;
     color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+/* 격자가 펼쳐진 대상은 누릀 낯 — 어느 줄의 격자인지 자리로 드러난다 */
+.memo-settings__icon--on {
+    background: #ecfdf5;
+    border-color: var(--green, #059669);
+    border-style: solid;
+    color: #059669;
 }
 .memo-settings__icon [data-lucide],
 .memo-settings__icon .lucide {
-    width: 1rem;
-    height: 1rem;
+    width: 1.0625rem;
+    height: 1.0625rem;
     stroke-width: 1.75;
 }
-.memo-settings__label {
+.memo-settings__name {
     min-width: 0;
     flex: 1;
     font-size: 0.9375rem;
     font-weight: 700;
     color: #1e293b;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0.2rem 0;
+    border-bottom: 1px dashed #e2e8f0;
 }
-.memo-settings__edit-hint {
-    flex-shrink: 0;
-    display: inline-flex;
-    color: #94a3b8;
+.memo-settings__name:focus {
+    border-bottom-color: #94a3b8;
 }
-.memo-settings__edit-hint [data-lucide],
-.memo-settings__edit-hint .lucide {
-    width: 0.8125rem;
-    height: 0.8125rem;
-    stroke-width: 2;
+.memo-settings__grid {
+    padding: 0.1rem 0 0.55rem;
 }
 .memo-settings__empty {
     margin: 0;
-    padding: 0.4rem 0 0.7rem;
+    padding: 0.2rem 0 0.6rem;
     font-size: 0.8125rem;
     line-height: 1.6;
     color: #94a3b8;
 }
-.memo-settings__add {
-    width: 100%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    margin-top: 0.7rem;
-    padding: 0.55rem 0;
-    border-radius: 0.75rem;
-    border: 1px dashed #cbd5e1;
-    background: transparent;
-    font-size: 0.8125rem;
+/* 새 항목 — 목록 바로 아래, 같은 행 모양으로 */
+.memo-settings__new {
+    padding-top: 0.55rem;
+}
+.memo-settings__new-head {
+    margin: 0 0 0.1rem;
+    font-size: 0.75rem;
     font-weight: 700;
-    color: #64748b;
+    color: #94a3b8;
+}
+.memo-settings__row--new .memo-settings__name::placeholder {
+    font-weight: 600;
+    color: #cbd5e1;
+}
+.memo-settings__make {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    background: var(--green, #059669);
+    color: #fff;
     -webkit-tap-highlight-color: transparent;
 }
-.memo-settings__add:active {
-    background: #f1f5f9;
-    color: #334155;
-}
-.memo-settings__add [data-lucide],
-.memo-settings__add .lucide {
-    width: 0.9375rem;
-    height: 0.9375rem;
-    stroke-width: 2;
+.memo-settings__make:active {
+    filter: brightness(0.95);
 }
 
 /* ── 메모 항목 만들기·고치기 팝업 (§4.3) ── */
