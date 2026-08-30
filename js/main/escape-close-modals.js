@@ -65,6 +65,7 @@ const ESCAPE_OVERLAY_IDS = [
     'discardEntryConfirmModal',
     'entryModal',
     'entrySlotPickerModal',
+    'slotPlanHelpModal',
     'slotPlanSettingsModal',
     'dailyJournalModal'
 ];
@@ -246,6 +247,10 @@ function closeOverlayById(id) {
             break;
         case 'entrySlotPickerModal':
             closeEntrySlotPicker();
+            break;
+        case 'slotPlanHelpModal':
+            // 설정 시트보다 z 가 높다 — 도움말만 닫고 시트는 남는다
+            window.closeSlotPlanHelp?.();
             break;
         case 'slotPlanSettingsModal':
             window.closeSlotPlanSettings?.();

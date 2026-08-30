@@ -104,21 +104,29 @@ function syncCascadeRow() {
 }
 
 /**
- * 설명 접기/펼치기 — 우상단 물음표.
- * 별도 팝업을 겹치지 않는다. 시트 안에서 펼쳐야 설명과 실물을 같이 볼 수 있고,
- * 겹친 모달을 닫는 두 번째 규칙을 만들 필요도 없다. 열 때는 항상 접힌 상태.
+ * 도움말 팝업 — 우상단 물음표. 설정 시트 위에 겹친다.
+ *
+ * 시트 안에 접었다 펴는 안내로 두었더니 짧은 화면에서 목록을 밀어내, 정작
+ * 설명대로 해 볼 대상이 안 보였다. 겹쳐 띄우고 읽고 닫으면 바로 그 자리다.
+ * 몸통 스크롤 잠금은 시트가 이미 잡고 있으므로 여기서 또 잡지 않는다.
+ * ESC 는 escape-close-modals 의 z-index 규칙이 알아서 이쪽을 먼저 닫는다.
  */
 function setHelpOpen(open) {
-    const panel = document.getElementById('slotPlanSettingsHelp');
+    const modal = document.getElementById('slotPlanHelpModal');
     const btn = document.getElementById('slotPlanSettingsHelpBtn');
-    // 목록 최대 높이를 같이 줄인다 — 안 그러면 작은 화면에서 시트가 넘쳐 잘린다
-    document.getElementById('slotPlanSettingsModal')
-        ?.classList.toggle('slot-plan-settings--help-open', open);
-    if (panel) panel.classList.toggle('hidden', !open);
-    if (btn) {
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        btn.classList.toggle('entry-slot-picker__settings-btn--on', open);
+    if (modal) {
+        const active = document.activeElement;
+        if (!open && active instanceof HTMLElement && modal.contains(active)) active.blur();
+        modal.classList.toggle('hidden', !open);
+        modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+        if (open) modal.querySelector('#slotPlanHelpCloseBtn')?.focus();
     }
+    if (btn) btn.classList.toggle('entry-slot-picker__settings-btn--on', open);
+}
+
+/** ESC·바깥 클릭에서 부르는 닫기 (escape-close-modals 등록용) */
+export function closeSlotPlanHelp() {
+    setHelpOpen(false);
 }
 
 function setCascadeChecked(v) {
@@ -262,6 +270,7 @@ function onEffectiveFromChange() {
 export function closeSlotPlanSettings() {
     const modal = document.getElementById('slotPlanSettingsModal');
     if (!modal) return;
+    setHelpOpen(false); // 시트가 닫히면 그 위의 도움말도 같이 걷는다
     const active = document.activeElement;
     if (active instanceof HTMLElement && modal.contains(active)) active.blur();
     modal.classList.add('hidden');
@@ -468,9 +477,12 @@ function bindOnce() {
     modal.querySelector('#slotPlanSettingsBackdrop')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanCancelBtn')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanEffectiveFrom')?.addEventListener('change', onEffectiveFromChange);
-    modal.querySelector('#slotPlanSettingsHelpBtn')?.addEventListener('click', () => {
-        setHelpOpen(document.getElementById('slotPlanSettingsHelpBtn')?.getAttribute('aria-expanded') !== 'true');
-    });
+    modal.querySelector('#slotPlanSettingsHelpBtn')?.addEventListener('click', () => setHelpOpen(true));
+
+    const help = document.getElementById('slotPlanHelpModal');
+    help?.querySelector('#slotPlanHelpBackdrop')?.addEventListener('click', closeSlotPlanHelp);
+    help?.querySelector('#slotPlanHelpCloseBtn')?.addEventListener('click', closeSlotPlanHelp);
+    help?.querySelector('#slotPlanHelpOkBtn')?.addEventListener('click', closeSlotPlanHelp);
     modal.querySelector('#slotPlanSaveBtn')?.addEventListener('click', () => void onSave());
 
     list?.addEventListener('click', (e) => {
@@ -506,3 +518,4 @@ if (typeof document !== 'undefined') {
 
 window.openSlotPlanSettings = openSlotPlanSettings;
 window.closeSlotPlanSettings = closeSlotPlanSettings;
+window.closeSlotPlanHelp = closeSlotPlanHelp;

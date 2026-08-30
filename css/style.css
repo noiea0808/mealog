@@ -150,6 +150,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-bubble-menu: 210;
     /* 기록 모달 스택 */
     --z-slot-picker: 295;
+    --z-slot-picker-help: 296;    /* 기록 항목 설정 위에 겹치는 도움말 팝업 */
     --z-record-modal: 300;        /* 기록·데일리저널·식단리포트 */
     --z-meal-photos-popup: 310;
     --z-detail-modal: 350;
@@ -12308,7 +12309,7 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     stroke-width: 1.75;
 }
 
-/* 펼쳐 둔 동안은 버튼도 눌린 낯 — 어디서 열렸는지 보이게 */
+/* 도움말이 열려 있는 동안은 버튼도 눌린 낯 — 어디서 열렸는지 보이게 */
 .entry-slot-picker__settings-btn--on {
     background: #f1f5f9;
     color: #334155;
@@ -12316,10 +12317,10 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 
 /* ── 기록 항목 설정 시트 (user-slot-plan §4.2) ── */
 /*
- * 시트가 화면을 넘지 않게 못 박는다. 설명을 펼치면 내용이 갑자기 한 화면을
- * 넘기는데, 패널이 overflow:hidden 이라 넘친 만큼이 **위아래에서 잘려** 제목과
- * 저장 버튼이 사라졌다(360×640 실측). 머리·날짜·바닥은 고정, 설명과 목록이
- * 남는 높이를 나눠 갖고 각자 스크롤한다.
+ * 시트가 화면을 넘지 않게 못 박는다. 패널이 overflow:hidden 이라 넘친 만큼이
+ * **위아래에서 잘려** 제목과 저장 버튼이 사라진다(360×640 실측 — 목록 70vh
+ * 상한에 머리·날짜·바닥을 더하면 짧은 화면에서 이미 넘친다).
+ * 머리·날짜·바닥은 고정, 남는 높이는 목록이 갖고 목록만 스크롤한다.
  */
 #slotPlanSettingsModal .entry-slot-picker {
     max-height: 100%;
@@ -12334,40 +12335,104 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     flex: 1 1 auto;
     min-height: 4.5rem;
 }
-/* 우상단 물음표로 펼치는 설명 — 기본은 접힘 */
-.slot-plan-settings__help {
-    flex: 0 1 auto;
+
+/*
+ * 도움말 팝업 — 설정 시트 **위에** 겹친다 (user-slot-plan §4.2).
+ * 시트 안에 접었다 펴는 안내로 두었더니 짧은 화면에서 목록을 밀어내 정작
+ * 설명대로 해 볼 대상이 안 보였다. 겹치는 대신 설명 자체를 '무엇을 하고
+ * 싶은지'로 묶어, 읽고 닫으면 바로 그 자리인 편이 낫다.
+ */
+/*
+ * 딤을 옅게 — 아래 설정 시트가 이미 제 딤을 깔고 있어서, 여기에 같은 농도를
+ * 또 얹으면 두 겹이 되어 시트가 통째로 사라진다. 설정 화면 위에 잠깐 뜬
+ * 설명이라는 감각을 지키려면 시트가 비쳐 보여야 한다.
+ */
+.slot-plan-help__backdrop {
+    background: rgba(79, 72, 65, 0.2);
+    background: color-mix(in srgb, var(--ink-2) 20%, transparent);
+}
+.slot-plan-help {
+    max-height: 100%;
+    background: var(--card);
+    border-radius: var(--shell-r-dialog);
+    border: 1px solid var(--line);
+    box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
+}
+.slot-plan-help__head {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.9rem var(--mealog-dialog-pad-x) 0.5rem;
+}
+.slot-plan-help__title {
+    min-width: 0;
+    flex: 1;
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #1e293b;
+}
+.slot-plan-help__x {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    color: #64748b;
+    -webkit-tap-highlight-color: transparent;
+}
+.slot-plan-help__x:active {
+    background: #f1f5f9;
+    color: #334155;
+}
+.slot-plan-help__x [data-lucide],
+.slot-plan-help__x .lucide {
+    width: 1.125rem;
+    height: 1.125rem;
+    stroke-width: 2;
+}
+.slot-plan-help__body {
+    flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    margin: 0 var(--mealog-dialog-pad-x) 0.25rem;
-    padding: 0.6rem 0.7rem;
-    border-radius: 0.75rem;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-}
-.slot-plan-settings__help.hidden {
-    display: none;
-}
-.slot-plan-settings__help-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+    padding: 0 var(--mealog-dialog-pad-x) 0.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    font-size: 0.75rem;
-    line-height: 1.55;
+    gap: 0.85rem;
+}
+.slot-plan-help__item h3 {
+    margin: 0 0 0.2rem;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: #334155;
+}
+.slot-plan-help__item p {
+    margin: 0;
+    font-size: 0.8125rem;
+    line-height: 1.65;
     color: #64748b;
 }
-.slot-plan-settings__help-list b {
-    color: #334155;
-    font-weight: 700;
-    margin-right: 0.25rem;
+.slot-plan-help__item p + p {
+    margin-top: 0.35rem;
 }
-/* 설명이 펼쳐진 동안은 목록을 줄여 시트가 화면을 넘지 않게 한다 */
-.slot-plan-settings--help-open .slot-plan-settings__list {
-    max-height: min(34vh, 16rem);
+/* 본문 속 아이콘 — 어느 버튼을 말하는지 글로만 설명하기 어렵다 */
+.slot-plan-help__icon {
+    display: inline;
+    vertical-align: -0.15em;
+    margin: 0 0.15rem;
+    width: 0.9375rem;
+    height: 0.9375rem;
+    stroke-width: 2;
+    color: #475569;
+}
+.slot-plan-help__foot {
+    flex-shrink: 0;
+    display: flex; /* 버튼이 flex:1 이라 부모가 flex 여야 폭을 채운다 */
+    padding: 0.5rem var(--mealog-dialog-pad-x) 1rem;
 }
 
 #slotPlanSettingsModal .slot-plan-settings__list {
