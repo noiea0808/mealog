@@ -347,8 +347,15 @@ function watchAxisBarWidth(root) {
  */
 function renderAxisLegend(axis) {
     const c = axis.chart;
-    const item = (color, label, n, rate, muted = false, ring = '') => `
-        <span class="inline-flex items-center gap-1.5 mr-3 mb-1 ${muted ? 'opacity-45' : ''}">
+    /**
+     * 칩 하나 — 이름·건수·비율은 눈에 보이고, **무엇을 뜻하는 칸인지는 마우스를 올렸을 때** 나온다.
+     *
+     * 예전에는 「그 외 / 목록 밖 / 미입력 내역」의 내역이 범례 아래 잔줄 셋으로 항상 깔려 있었다.
+     * 축이 다섯이라 잔줄이 최대 열다섯 줄이 되고, 그중 관심 있는 한 줄을 눈으로 찾아야 했다.
+     * 내역은 그 칩에 붙어 있는 게 맞다 — 칩을 짚는 순간 그 칩의 내역만 뜬다.
+     */
+    const item = (color, label, n, rate, { muted = false, ring = '', title = '' } = {}) => `
+        <span class="inline-flex items-center gap-1.5 mr-3 mb-1 cursor-help ${muted ? 'opacity-45' : ''}" title="${escapeHtml(title)}">
             <span class="inline-block w-2.5 h-2.5 rounded-sm shrink-0 ${ring}" style="background:${color}"></span>
             <span class="text-[11px] ${muted ? 'text-slate-500' : 'text-slate-700'} whitespace-nowrap">${escapeHtml(label)}</span>
             <span class="text-[11px] tabular-nums text-slate-400 whitespace-nowrap">${
@@ -356,38 +363,69 @@ function renderAxisLegend(axis) {
             }</span>
         </span>`;
 
+    /** 툴팁 한 덩어리 — 빈 줄은 버린다(줄이 비면 툴팁에 빈 칸이 생긴다) */
+    const tip = (...lines) => lines.filter(Boolean).join('\n');
+    const amount = (n, rate) => `${n.toLocaleString()}건 · ${rate.toFixed(1)}%`;
+    /** 「커피 17 · 면류 16 · …」 */
+    const names = (items, more = false) =>
+        items.length ? items.map((x) => `${x.label} ${x.n.toLocaleString()}`).join(' · ') + (more ? ' …' : '') : '';
+
+    const rowTip = (r) =>
+        tip(
+            `${r.label} — 태그 목록 안의 선택지`,
+            amount(r.n, r.rate),
+            axis.noSourceSplit ? '이 축은 사용자에게 묻지 않는다 — 전부 자동 분류' : `직접 ${r.direct.toLocaleString()} · 자동 ${r.auto.toLocaleString()}`
+        );
+
     // 막대의 칸 순서(많은 순)를 그대로 따라간다 — 눈이 왼쪽부터 짚어 내려오게
     const chips = [
-        ...axis.rows.filter((r) => r.slot !== null).map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate)),
-        c.folded.n ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate) : '',
-        c.outside.n ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate) : '',
-        c.empty.n ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, false, 'ring-1 ring-inset ring-slate-300') : '',
+        ...axis.rows
+            .filter((r) => r.slot !== null)
+            .map((r) => item(axisSlotColor(r.slot), r.label, r.n, r.rate, { title: rowTip(r) })),
+        c.folded.n
+            ? item(AXIS_FOLDED_COLOR, `그 외 ${c.folded.distinct}종`, c.folded.n, c.folded.rate, {
+                  title: tip(
+                      `그 외 ${c.folded.distinct}종 — 색 슬롯 ${AXIS_CHART_SLOTS}개를 넘어 한 색으로 접힌 선택지`,
+                      amount(c.folded.n, c.folded.rate),
+                      names(c.folded.items || [])
+                  )
+              })
+            : '',
+        c.outside.n
+            ? item(AXIS_OUTSIDE_COLOR, `목록 밖 ${c.outside.distinct}종`, c.outside.n, c.outside.rate, {
+                  title: tip(
+                      `목록 밖 ${c.outside.distinct}종 — 지금의 태그 목록에 없는 값`,
+                      amount(c.outside.n, c.outside.rate),
+                      names(c.outside.samples || [], c.outside.distinct > (c.outside.samples || []).length),
+                      axis.freeText ? '이 축은 자유 입력이라 목록 밖이 큰 것이 정상이다' : ''
+                  )
+              })
+            : '',
+        c.empty.n
+            ? item(AXIS_EMPTY_COLOR, '미입력', c.empty.n, c.empty.rate, {
+                  ring: 'ring-1 ring-inset ring-slate-300',
+                  title: tip(
+                      '미입력 — 이 축에 값이 남지 않은 기록',
+                      amount(c.empty.n, c.empty.rate),
+                      axis.emptyPaths
+                          ? names(axis.emptyPaths.map((e) => ({ label: e.label.replace(/\(.*\)/, '').trim(), n: e.n })))
+                          : ''
+                  )
+              })
+            : '',
         // 아무도 안 고른 칩은 맨 뒤에 흐리게 — 막대에는 칸이 없어 여기서만 보인다
-        ...axis.rows.filter((r) => r.n === 0).map((r) => item('transparent', r.label, 0, 0, true, 'ring-1 ring-inset ring-slate-300'))
+        ...axis.rows
+            .filter((r) => r.n === 0)
+            .map((r) =>
+                item('transparent', r.label, 0, 0, {
+                    muted: true,
+                    ring: 'ring-1 ring-inset ring-slate-300',
+                    title: `${r.label} — 이 기간에 아무도 고르지 않은 선택지 (0건)`
+                })
+            )
     ].join('');
 
-    /** 한 색으로 묶인 것들의 이름 — 묶었다고 정체까지 감추지는 않는다 */
-    const detail = (label, items, more) =>
-        items.length
-            ? `<p class="text-[11px] text-slate-400 mt-0.5">${label}: ${items
-                  .map((x) => `${escapeHtml(x.label)} ${x.n.toLocaleString()}`)
-                  .join(' · ')}${more ? ' …' : ''}</p>`
-            : '';
-
-    const emptyDetail =
-        axis.emptyPaths && axis.empty
-            ? `<p class="text-[11px] text-slate-400 mt-0.5">미입력 내역: ${axis.emptyPaths
-                  .map((p) => `${escapeHtml(p.label.replace(/\(.*\)/, '').trim())} ${p.n.toLocaleString()}`)
-                  .join(' · ')}</p>`
-            : '';
-
-    return `
-        <div class="mt-1.5">
-            <div class="flex flex-wrap">${chips}</div>
-            ${detail('그 외', c.folded.items || [], false)}
-            ${detail('목록 밖', c.outside.samples || [], c.outside.distinct > (c.outside.samples || []).length)}
-            ${emptyDetail}
-        </div>`;
+    return `<div class="mt-1.5 flex flex-wrap">${chips}</div>`;
 }
 
 /**
@@ -436,10 +474,7 @@ function renderAxisCharts(breakdown, total) {
                 <h4 class="text-sm font-black text-slate-800">
                     축별 구성 <span class="text-xs font-normal text-slate-400">(막대 전체 = 분석 대상 기록 ${total.toLocaleString()}건 · 100%)</span>
                 </h4>
-                <button type="button" onclick="window.openMomentAxisGuide()"
-                        class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
-                    <i data-lucide="circle-help" class="w-3.5 h-3.5"></i>읽는 법
-                </button>
+                ${guideButton('axis')}
             </div>
             <p class="text-[11px] text-slate-400 mb-2">
                 각 막대의 <b>칠해진 길이</b>가 그 축의 입력률이고, <b>칸 나눔</b>이 무엇으로 채워졌는지입니다.
@@ -452,12 +487,15 @@ function renderAxisCharts(breakdown, total) {
 /* ─────────────────────────────────────────────────────────────
  * 「읽는 법」 팝업
  *
- * 이 설명은 막대 바로 아래에 잔줄로 깔려 있었다. 여섯 줄짜리 회색 글이 화면의 절반을
- * 차지하는데, **매번 읽을 글이 아니라 한 번 읽고 가끔 확인할 글**이었다. 그래서 접어 두고
- * 필요할 때 부른다 — 대신 접는 김에 주제별로 다시 묶었다(잔줄 여섯 개는 순서가 없었다).
+ * 이 설명들은 표 바로 아래에 잔줄로 깔려 있었다. 셋을 합치면 열댓 줄짜리 회색 글이
+ * 화면의 절반을 차지하는데, **매번 읽을 글이 아니라 한 번 읽고 가끔 확인할 글**이었다.
+ * 그래서 접어 두고 필요할 때 부른다 — 대신 접는 김에 주제별로 다시 묶었다(잔줄은
+ * 순서가 없었다).
  *
- * 본문은 여기서 만든다. `momentAnalyticsContainer` 는 결과를 그릴 때마다 통째로 갈리므로
- * 팝업 껍데기는 그 바깥(admin.html)에 두고, 본문만 한 번 채워 넣는다.
+ * 껍데기는 **하나**다. 표마다 팝업을 두면 admin.html 에 같은 마크업이 셋 생기고 셋이
+ * 따로 늙는다. 한 번에 둘을 열 일도 없으므로 제목·본문만 갈아 끼운다.
+ * 그 껍데기는 `momentAnalyticsContainer` **바깥**에 둔다 — 결과를 다시 그릴 때마다
+ * 컨테이너는 통째로 갈려서, 안에 두면 버튼이 가리키는 대상이 사라진다.
  * ───────────────────────────────────────────────────────────── */
 
 /** 팝업 안의 한 마디 — 제목 + 본문 */
@@ -467,6 +505,13 @@ const guideSection = (title, body) => `
         <div class="text-[12px] leading-[1.75] text-slate-600 space-y-1.5">${body}</div>
     </section>`;
 
+/** 표 제목 오른쪽에 서는 버튼 */
+const guideButton = (key) => `
+    <button type="button" onclick="window.openMomentGuide('${key}')"
+            class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors">
+        <i data-lucide="circle-help" class="w-3.5 h-3.5"></i>읽는 법
+    </button>`;
+
 function renderAxisGuideBody() {
     return [
         guideSection(
@@ -475,7 +520,8 @@ function renderAxisGuideBody() {
              미입력 트랙으로 남습니다 — 그래서 축을 위아래로 세우면 「어떻게는 절반 넘게 채워지고 누구와는
              그 절반」 같은 것이 <b>길이 차이로</b> 바로 보입니다. 각 축을 100%로 늘려 그리면 구성비는
              보이지만 그 비교가 통째로 사라집니다.</p>
-             <p>칸에 마우스를 올리면 정확한 건수와 비율이 뜹니다.</p>`
+             <p><b>막대의 칸에도, 범례의 칩에도 마우스를 올리면</b> 그 칸이 무엇인지와 정확한 건수가 뜹니다.
+             「그 외」·「목록 밖」·「미입력」에 무엇이 묶여 있는지도 그 칩에 붙어 있습니다.</p>`
         ),
         guideSection(
             '직접과 자동',
@@ -494,7 +540,7 @@ function renderAxisGuideBody() {
              색이 달라질 수 있습니다</b> — 식별은 언제나 <b>범례의 이름</b>으로 하세요(막대 바로 아래 붙어
              있는 이유입니다).</p>
              <p>색은 <b>앞 ${AXIS_CHART_SLOTS}개</b>까지입니다. 아홉 번째 색을 만들면 색맹 조건에서 기존 색과
-             구별되지 않아, 나머지는 「그 외」로 묶고 이름은 아래 잔줄에 답니다.</p>
+             구별되지 않아, 나머지는 「그 외」로 묶습니다 — 무엇이 묶였는지는 그 칩에 마우스를 올리면 나옵니다.</p>
              <p><b>맨 뒤 흐린 칩</b>은 기간 안에 아무도 고르지 않은 선택지입니다 — 막대에는 칸이 안 생겨
              범례에서만 보입니다. 구분을 접거나 이름을 바꿀 후보입니다.</p>`
         ),
@@ -523,39 +569,136 @@ function renderAxisGuideBody() {
     ].join('');
 }
 
-function openMomentAxisGuide() {
-    const modal = document.getElementById('momentAxisGuideModal');
-    if (!modal) return;
+function renderTrendGuideBody() {
+    return [
+        guideSection(
+            '이 표를 어떻게 읽나',
+            `<p>모든 숫자는 그 구간의 기록 수 대비 <b>%</b>입니다. 칸에 마우스를 올리면 <b>건수</b>가 뜨고,
+             맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.</p>
+             <p>열은 <b>사용자가 시트에서 채우는 순서</b>로 섭니다 — 무엇을 → 추천 분류 → 어떻게 → 어디서 →
+             누구와 → 만족도 → 포만감 → 사진 → 코멘트. 이 표에서 읽으려는 것이 「시트를 내려가며 어디서
+             손이 멈추나」라서, 세는 순서가 아니라 채우는 순서를 따릅니다.</p>`
+        ),
+        guideSection(
+            '「무엇을」이 네 열인 이유',
+            `<p>이 축은 값이 채워지는 길이 둘(사람 · 분류기)이라 한 칸으로 접으면 <b>입력률이 올라도 사람이
+             채운 것인지 기계가 메운 것인지</b> 갈리지 않습니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>최종</b> — 어떤 경로로든 형태 값이 남았다</li>
+                 <li><b>직접</b> — 사람이 칩으로 고르거나 제안을 확정했다</li>
+                 <li><b>자동</b> — 사용자 값 없이 분류기가 채웠다</li>
+                 <li><b>미분류</b> — 거부 · 서버 대기 · 상세 없음</li>
+             </ul>
+             <p>직접 + 자동 = 최종이고, 미분류까지 더하면 100%입니다.</p>`
+        ),
+        guideSection(
+            '추천 분류 — 제안을 사람이 받아들였나',
+            `<p>위 네 열이 「값이 어디서 왔나」를 묻는다면 이 둘은 다른 질문입니다: 분류기가 내민 답을 사람이
+             썼나. 근거는 <code>categorySuggested</code> 하나입니다 — 저장 경로가 <b>사용자가 다른 값으로
+             고쳤어도</b> 분류기의 답을 남깁니다. 그 자국이 없으면 맞힌 경우만 데이터에 남아 교정률을 셀
+             방법이 없습니다.</p>
+             <ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>사용</b> — 최종 값이 제안값과 같다(확정했거나, 그대로 두고 저장했거나)</li>
+                 <li><b>안 씀</b> — 사람이 다른 값으로 고쳤거나(= 오분류), ✕로 거부했다</li>
+             </ul>
+             <p><b>이 두 열만 분모가 다릅니다.</b> 「제안이 뜬 기록」이 분모라 둘의 합이 100%가 되지 않고,
+             제안이 안 뜬 기록은 어느 칸에도 들어가지 않습니다. 제안 자국을 남기기 전에 저장된 옛 기록도
+             마찬가지라 <b>개편 이전 구간의 0은 결측이지 실패가 아닙니다</b>. 정확한 건수는 표 아래 한 줄과
+             「엑셀 내보내기」의 <code>추천 분류</code> 시트에 있습니다.</p>`
+        ),
+        guideSection(
+            '색 눈금이 열마다 다르다',
+            `<ul class="list-disc pl-4 space-y-0.5">
+                 <li><b>초록 ↔ 빨강</b> — 높을수록 좋다(대부분의 열)</li>
+                 <li><b>뒤집은 눈금</b> — 「미분류」와 「안 씀」은 높을수록 나쁜 값이라 방향을 뒤집습니다.
+                     같은 눈금을 쓰면 미분류 90%가 초록으로 칠해집니다.</li>
+                 <li><b>하늘색</b> — 「자동」과 「자동적용」은 좋고 나쁨이 <b>없는</b> 열입니다. 사람이 채운 몫과
+                     기계가 채운 몫의 비중일 뿐이라 판정을 얹지 않고, 진하기로 크기만 말합니다.</li>
+             </ul>`
+        ),
+        guideSection(
+            '자동적용',
+            `<p>맥락 예측이 어떻게 · 어디서 · 누구와 중 <b>한 축이라도</b> 자동으로 채운 기록의 비율입니다.
+             개편 전 기록에는 이 자국(<code>autoContext</code>)이 없어 0으로 나옵니다.</p>`
+        ),
+        guideSection(
+            '조심할 곳',
+            `<p>「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 자동이 덜 차
+             있고 미분류가 부풀어 보입니다 — 맨 윗 구간 몇 줄은 그만큼 감해서 보세요.</p>`
+        )
+    ].join('');
+}
+
+function renderCompletenessGuideBody() {
+    return [
+        guideSection(
+            '이 표가 세는 것',
+            `<p>기록 하나가 <b>핵심 ${CORE_FIELD_SPECS.length}항목</b>(어떻게 · 어디서 · 무엇을 · 누구와 ·
+             만족도 · 포만감 · 사진 · 코멘트) 중 몇 개를 채웠는지의 분포입니다. 항목별 입력률이 「어느 칸이
+             비었나」를 묻는다면, 이 표는 <b>「한 사람이 한 번에 얼마나 쓰나」</b>를 묻습니다.</p>
+             <p>봐야 할 것은 평균이 아니라 <b>분포의 모양</b>입니다. 가운데가 두꺼우면 대체로 비슷하게 쓰는
+             것이고, 양 끝이 두꺼우면 「거의 안 쓰는 사람」과 「다 쓰는 사람」으로 갈린 것입니다 — 뒤쪽이면
+             평균을 올리려는 시도가 대부분에게 닿지 않습니다.</p>`
+        ),
+        guideSection(
+            '분석 전체에 해당하는 것',
+            `<ul class="list-disc pl-4 space-y-1">
+                 <li><b>분모</b>는 기간 안의 끼니 · 간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을
+                     애초에 갖지 않아 제외했습니다 — 넣으면 입력률이 통째로 내려앉아 아무것도 못 읽는 숫자가 됩니다.</li>
+                 <li><b>만족도 · 포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 <b>「꺼 둔 사용자」가
+                     섞여 있습니다</b>. 걸러내려면 사용자별 설정을 읽어야 해서(읽기가 사용자 수만큼 늘어납니다) 하지 않았습니다.</li>
+                 <li><b>어디서 · 무엇을 · 누구와의 「상세」 입력</b>(선택 입력 텍스트)은 화면에서 뺐습니다 —
+                     「엑셀 내보내기」의 <code>항목별 입력률</code> 시트가 그대로 들고 있습니다.</li>
+                 <li><b>통계 제외 UID</b>(대시보드 설정)의 기록은 빼고 셉니다.</li>
+             </ul>`
+        )
+    ].join('');
+}
+
+/** 표 하나당 한 마디 — 버튼의 `key` 가 이 표의 열쇠다 */
+const MOMENT_GUIDES = {
+    axis: { title: '축별 구성 읽는 법', body: renderAxisGuideBody },
+    trend: { title: '기간 추이 읽는 법', body: renderTrendGuideBody },
+    completeness: { title: '채운 항목 수 읽는 법 · 분석 주석', body: renderCompletenessGuideBody }
+};
+
+function openMomentGuide(key) {
+    const guide = MOMENT_GUIDES[key];
+    const modal = document.getElementById('momentGuideModal');
+    const title = document.getElementById('momentGuideTitle');
+    const body = document.getElementById('momentGuideBody');
+    if (!guide || !modal || !title || !body) return;
+    title.textContent = guide.title;
+    body.innerHTML = guide.body();
+    body.scrollTop = 0;
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
 }
 
-function closeMomentAxisGuide() {
-    const modal = document.getElementById('momentAxisGuideModal');
+function closeMomentGuide() {
+    const modal = document.getElementById('momentGuideModal');
     if (!modal) return;
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
 }
 
-window.openMomentAxisGuide = openMomentAxisGuide;
-window.closeMomentAxisGuide = closeMomentAxisGuide;
+window.openMomentGuide = openMomentGuide;
+window.closeMomentGuide = closeMomentGuide;
 
-/** 팝업 본문 채우기 + 닫기 경로 넷(X · 바깥 · ESC) — 화면당 한 번만 */
-let momentAxisGuideBound = false;
-function bindMomentAxisGuideOnce() {
-    if (momentAxisGuideBound) return;
-    const modal = document.getElementById('momentAxisGuideModal');
-    const body = document.getElementById('momentAxisGuideBody');
-    if (!modal || !body) return;
-    momentAxisGuideBound = true;
-    body.innerHTML = renderAxisGuideBody();
-    document.getElementById('momentAxisGuideClose')?.addEventListener('click', closeMomentAxisGuide);
+/** 닫기 경로 셋(X · 바깥 · ESC) — 화면당 한 번만 건다 */
+let momentGuideBound = false;
+function bindMomentGuideOnce() {
+    if (momentGuideBound) return;
+    const modal = document.getElementById('momentGuideModal');
+    if (!modal) return;
+    momentGuideBound = true;
+    document.getElementById('momentGuideClose')?.addEventListener('click', closeMomentGuide);
     modal.addEventListener('click', (e) => {
-        if (e.target === modal) closeMomentAxisGuide();
+        if (e.target === modal) closeMomentGuide();
     });
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
-        if (!modal.classList.contains('hidden')) closeMomentAxisGuide();
+        if (!modal.classList.contains('hidden')) closeMomentGuide();
     });
 }
 
@@ -725,7 +868,7 @@ function renderTrendTable(result) {
     };
     const sugTotal = sug.used + sug.changed + sug.rejected;
     const sugLine = sugTotal
-        ? `제안이 뜬 기록 <b>${sugTotal.toLocaleString()}건</b> 중 —
+        ? `제안이 뜬 기록 <b>${sugTotal.toLocaleString()}건</b> 중
            그대로 쓴 것 <b class="text-emerald-700">${sug.used.toLocaleString()}건(${fmtPct(pct(sug.used, sugTotal))})</b> ·
            다른 값으로 고친 것 <b class="text-amber-700">${sug.changed.toLocaleString()}건</b> ·
            ✕로 거부한 것 <b class="text-red-600">${sug.rejected.toLocaleString()}건</b>`
@@ -733,11 +876,14 @@ function renderTrendTable(result) {
 
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">
-                기간 추이 <span class="text-xs font-normal text-slate-400">(${
-                    result.byWeek ? '주별' : '일별'
-                } · 단위 % · 열 순서는 입력 시트 순서)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <h4 class="text-sm font-black text-slate-800">
+                    기간 추이 <span class="text-xs font-normal text-slate-400">(${
+                        result.byWeek ? '주별' : '일별'
+                    } · 단위 % · 열 순서는 입력 시트 순서)</span>
+                </h4>
+                ${guideButton('trend')}
+            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="min-w-full text-sm border-separate border-spacing-0">
                     <thead class="bg-slate-50">
@@ -753,21 +899,8 @@ function renderTrendTable(result) {
                     <tbody>${body}</tbody>
                 </table>
             </div>
-            <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
-                · 모든 숫자는 그 구간 기록 수 대비 <b>%</b>입니다. 칸에 마우스를 올리면 <b>건수</b>가 뜨고,
-                맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.<br>
-                · 색은 <b>초록이 좋고 빨강이 나쁘다</b>는 뜻입니다 —
-                「미분류」와 「안 씀」은 높을수록 나쁜 값이라 눈금을 뒤집어 칠합니다.
-                <b>하늘색</b>(자동·자동적용)은 좋고 나쁨이 없는 열이라 진하기로 크기만 말합니다.<br>
-                · <b>무엇을</b>의 최종 = 직접 + 자동이고, 미분류까지 더하면 100%입니다.
-                <b>직접</b>은 사람이 고른 것, <b>자동</b>은 로컬·서버 분류기가 채운 것 —
-                입력률이 올랐을 때 사람이 더 채운 것인지 기계가 메운 것인지는 이 두 열로만 갈립니다.
-                서버 AI 배치는 <b>나중에</b> 돌기 때문에 최근 며칠은 자동이 덜 차 있고 미분류가 부풀어 보입니다.<br>
-                · <b>추천 분류</b> = 저장할 때 뜬 제안 칩을 사람이 받아들였나. ${sugLine}.
-                분모는 <b>제안이 뜬 기록</b>이라 두 열의 합이 100%가 아닙니다 — 제안이 안 뜬 기록은 두 열 어디에도 들어가지 않습니다.
-                제안 자국을 남기기 전에 저장된 옛 기록도 마찬가지라, 개편 이전 구간의 0은 <b>결측이지 실패가 아닙니다</b>.<br>
-                · <b>자동적용</b> = 맥락 예측이 어떻게·어디서·누구와 중 한 축이라도 자동으로 채운 기록의 비율.
-                개편 전 기록에는 이 자국이 없어 0으로 나옵니다.
+            <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
+                <b class="text-slate-700">추천 분류</b> — ${sugLine}.
             </p>
         </div>`;
 }
@@ -789,9 +922,12 @@ function renderCompletenessTable(result) {
         .join('');
     return `
         <div class="mt-6">
-            <h4 class="text-sm font-black text-slate-800 mb-2">
-                기록 하나가 채운 항목 수 <span class="text-xs font-normal text-slate-400">(핵심 ${CORE_FIELD_SPECS.length}항목 중)</span>
-            </h4>
+            <div class="flex items-center justify-between gap-3 mb-2">
+                <h4 class="text-sm font-black text-slate-800">
+                    기록 하나가 채운 항목 수 <span class="text-xs font-normal text-slate-400">(핵심 ${CORE_FIELD_SPECS.length}항목 중)</span>
+                </h4>
+                ${guideButton('completeness')}
+            </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="min-w-full text-sm">
                     <thead class="bg-slate-50">
@@ -854,16 +990,9 @@ function renderMomentAnalyticsResult(result, meta) {
         ${renderSummaryCards(result, meta)}
         ${renderAxisCharts(buildAxisBreakdown(result, meta.tagLists || {}), result.overall.total)}
         ${renderTrendTable(result)}
-        ${renderCompletenessTable(result)}
-        <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
-            · 분모는 기간 안의 끼니·간식 기록입니다. 하루기록(소감)과 캡처 공유는 이 항목들을 갖지 않아 제외했습니다.<br>
-            · <b>만족도·포만감</b>은 사용자가 설정에서 끌 수 있는 항목이라, 미입력에는 「꺼 둔 사용자」가 섞여 있습니다.<br>
-            · <b>어디서·무엇을·누구와의 「상세」 입력</b>(선택 입력 텍스트)은 화면에서 뺐습니다 —
-              「엑셀 내보내기」의 <code>항목별 입력률</code> 시트가 그대로 들고 있습니다.<br>
-            · 통계 제외 UID(대시보드 설정)의 기록은 빼고 셉니다.
-        </p>`;
+        ${renderCompletenessTable(result)}`;
     refreshLucideIcons(container);
-    bindMomentAxisGuideOnce();
+    bindMomentGuideOnce();
     // 라벨은 DOM 에 붙은 뒤에야 폭을 잴 수 있다 — 그리기와 재기가 나뉘는 이유
     const charts = document.getElementById('momentAxisCharts');
     if (charts) {
