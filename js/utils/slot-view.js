@@ -22,9 +22,10 @@ import {
     normalizeTimeKey,
     defaultMemoKey,
     defaultMemoItemByKey,
+    isJournalMemoKey,
     MEMO_SLOT_ID
 } from './slot-plan.js';
-import { getDailyJournalFromSettings } from './daily-journal-data.js';
+import { getDailyJournalFromSettings, dailyJournalHasContent } from './daily-journal-data.js';
 
 function localTodayIso() {
     const t = new Date();
@@ -89,6 +90,14 @@ export function memoRecordCountsForDate(dateStr) {
     for (const u of all) {
         const k = String(u.slot.key || '');
         counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    /**
+     * 하루 소감은 메모 목록에 있지만 기록은 dailyComments 에 산다(§7.3).
+     * 하루에 하나뿐이므로 있고/없고 둘이다.
+     */
+    const journalKey = defaultMemoKey('journal');
+    if (dailyJournalHasContent(getDailyJournalFromSettings(window.userSettings, dateStr))) {
+        counts.set(journalKey, 1);
     }
     return counts;
 }

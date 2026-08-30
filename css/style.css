@@ -12327,18 +12327,23 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
  * 3열 · 중성 색 · 점선. 식사 슬롯은 base 색을 쓰고 2열이다 — 줄당 개수와 색이
  * 함께 달라야 소제목 없이도 두 구역이 갈린다.
  */
+/*
+ * 4열 — 같은 폭·같은 gap 이므로 **식사 카드 2칸 = 메모 카드 4칸**이 된다.
+ * 위 구역과 한 뜼거로 붙지 않게 위 여백을 좀 더 벌린다.
+ */
 .entry-slot-picker__memo-group {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.5rem;
     padding: 0.15rem var(--mealog-dialog-pad-x) 0.5rem;
+    margin-top: 0.5rem;
 }
 .entry-slot-picker__memo {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
-    padding: 0.55rem 0.35rem 0.5rem;
+    padding: 0.5rem 0.2rem 0.45rem;
     border-radius: 0.875rem;
     border: 1px dashed #cbd5e1;
     background: #fff;
@@ -12362,13 +12367,18 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     stroke-width: 1.75;
 }
 .entry-slot-picker__memo-label {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-weight: 700;
     color: #334155;
     text-align: center;
     word-break: keep-all;
     overflow-wrap: anywhere;
     line-height: 1.25;
+    /* 4열이라 칸이 좀다 — 긴 이름은 두 줄까지만 */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .entry-slot-picker__memo-count {
     min-height: 0.9rem;
@@ -12852,8 +12862,16 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 .memo-settings__row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.45rem;
     padding: 0.35rem 0;
+}
+/* 순서 끌기 — 피커 격자에 보이는 순서다(타임라인 자리는 시각이 정한다) */
+.memo-settings__drag {
+    margin-left: -0.15rem;
+}
+.memo-settings__row-wrap--dragging {
+    background: #f8fafc;
+    border-radius: 0.75rem;
 }
 .memo-settings__row-wrap {
     border-bottom: 1px solid #f1f5f9;

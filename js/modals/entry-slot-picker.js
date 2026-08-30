@@ -3,7 +3,7 @@
  * 식사·간식을 시간순으로 한 목록에 표시하고, 하루 소감은 하단에 둔다.
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
-import { DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
+import { SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
 import { userSlotGroupsForDate, userMemoItemsForDate, userMealSlotsForDate, memoRecordCountsForDate } from '../utils/slot-view.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
@@ -12,11 +12,7 @@ import { openDailyJournalModal } from './daily-journal.js';
 import { openSlotPlanSettings } from './slot-plan-settings.js';
 import { openMemoRecordModal } from './memo-record.js';
 import { openMemoSettings } from './memo-settings.js';
-import { memoIconOrDefault, MEMO_SLOT_ID } from '../utils/slot-plan.js';
-import {
-    dailyJournalHasContent,
-    getDailyJournalFromSettings
-} from '../utils/daily-journal-data.js';
+import { memoIconOrDefault, isJournalMemoKey, MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
@@ -57,17 +53,6 @@ function userSlotCountId(slot) {
     return slot.key != null ? slot.key : `b:${slot.base}`;
 }
 
-function dailyJournalCount(dateIso) {
-    try {
-        if (window.dbOps && typeof window.dbOps.getDailyJournal === 'function') {
-            return dailyJournalHasContent(window.dbOps.getDailyJournal(dateIso)) ? 1 : 0;
-        }
-    } catch (_) {}
-    return dailyJournalHasContent(getDailyJournalFromSettings(window.userSettings, dateIso))
-        ? 1
-        : 0;
-}
-
 function formatPickerDateLabel(dateIso) {
     const [y, mo, d] = String(dateIso).split('-').map(Number);
     if (!y || !mo || !d) return dateIso;
@@ -75,12 +60,6 @@ function formatPickerDateLabel(dateIso) {
     const week = ['일', '월', '화', '수', '목', '금', '토'][dt.getDay()];
     return `${mo}월 ${d}일 (${week})`;
 }
-
-/** 피커에서 하루 소감 아이콘 — 보라 계열로 본식 슬롯처럼 강조 */
-const PICKER_DAILY_ICON_STYLE = {
-    iconBg: 'bg-violet-50',
-    iconText: 'text-violet-600'
-};
 
 function countBadgeHtml(count) {
     return count > 0
@@ -132,13 +111,6 @@ function buildMemoCardHtml(item, count) {
     </button>`;
 }
 
-/** 하루 소감 — 슬롯이 아니므로 전체 폭 한 줄 (설정 대상도 아니다) */
-function buildDailyJournalRowHtml(count) {
-    return `<button type="button" class="entry-slot-picker__item entry-slot-picker__item--daily" data-slot-id="${escapeHtml(DAILY_JOURNAL_SLOT.id)}" data-slot-type="daily">
-        ${slotCardInnerHtml(PICKER_DAILY_ICON_STYLE, getSlotLucideIcon(DAILY_JOURNAL_SLOT.id), DAILY_JOURNAL_SLOT.label, count)}
-    </button>`;
-}
-
 function renderPickerList(dateIso) {
     const list = document.getElementById('entrySlotPickerList');
     const dateEl = document.getElementById('entrySlotPickerDateLabel');
@@ -164,9 +136,7 @@ function renderPickerList(dateIso) {
 
     const html = `<div class="entry-slot-picker__group">
         ${slots.map((s) => buildUserSlotCardHtml(s, counts.get(userSlotCountId(s)) || 0)).join('')}
-    </div>${memoGroup}<div class="entry-slot-picker__group">
-        ${buildDailyJournalRowHtml(dailyJournalCount(dateIso))}
-    </div>`;
+    </div>${memoGroup}`;
 
     list.innerHTML = html;
     scheduleLucideIcons(list);
@@ -231,6 +201,15 @@ async function onPickSlot(slotId, slotType, slotKey) {
      * '고칠까 새로 쓸까'를 되묻는 화면은 매번 나오는 방해가 된다.
      */
     if (slotType === 'memo' || slotId === MEMO_SLOT_ID) {
+        /**
+         * 하루 소감도 메모 항목이지만 기록은 dailyComments 에 산다(§7.3) —
+         * 목록에서의 자리만 메모 규칙을 따르고, 시트는 그쪽 것이 열린다.
+         */
+        if (isJournalMemoKey(slotKey)) {
+            if (typeof openDailyJournalModal === 'function') openDailyJournalModal(dateIso);
+            else window.openDailyJournalModal?.(dateIso);
+            return;
+        }
         openMemoRecordModal(dateIso, slotKey || '');
         return;
     }

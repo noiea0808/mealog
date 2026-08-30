@@ -324,20 +324,38 @@ describe('dayTimelineUnits — 타임라인이 실제로 쓰는 순회', () => {
 });
 
 describe('기본 메모 항목 (§2.6)', () => {
-    it('개정판이 없어도 체중·혈당이 딸려 온다', () => {
+    it('개정판이 없어도 체중·혈당·하루 소감이 순서대로 딸려 온다', () => {
         const items = effectiveSlots({}, '2026-09-05', TODAY);
         const memos = memoItemsOnly(items);
-        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당']);
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당', '하루 소감']);
         assert.equal(memos[0].key, defaultMemoKey('weight'));
         assert.equal(memos[0].unit, 'kg');
         assert.equal(memos[1].unit, 'mg/dL');
+        assert.equal('unit' in memos[2], false, '하루 소감은 숫자 메모가 아니다');
     });
 
     it('메모 없는 옛 개정판에도 덧붙는다 — 마이그레이션 없이', () => {
         const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심')]) };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.equal(memos.length, 2);
+        assert.equal(memos.length, 3);
         assert.equal(slotItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY)).length, 1);
+    });
+
+    it('빠진 기본 항목은 메모 구간 **맨 앞**에 들어간다 — 체중이 위에 보여야 한다', () => {
+        const mine = memo('mine', '운동', 'dumbbell');
+        const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine]) };
+        const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당', '하루 소감', '운동']);
+    });
+
+    it('이미 있는 기본 항목의 자리는 건드리지 않는다 — 사용자가 끌어 정한 순서다', () => {
+        const [w, g, j] = defaultMemoItems();
+        const mine = memo('mine', '운동', 'dumbbell');
+        const settings = {
+            slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine, w, g, j])
+        };
+        const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
+        assert.deepEqual(memos.map((m) => m.label), ['운동', '체중', '혈당', '하루 소감']);
     });
 
     it('해제해 둔 기본 메모는 다시 켜지지 않는다 — key 가 개정판에 살아 있다', () => {

@@ -30,7 +30,6 @@ import {
     isMemoItem,
     isDefaultMemoKey,
     MEMO_ICONS,
-    MEMO_PRESETS,
     DEFAULT_MEMO_ICON,
     MEMO_LABEL_MAX_CHARS,
     MAX_ENABLED_MEMOS,
@@ -86,6 +85,10 @@ function iconGridHtml(selected) {
 }
 
 /**
+ * 메모는 **목록 순서**를 끌어 바꿀 수 있다 (§4.3). 이건 피커 격자에
+ * 보이는 순서일 뿐, **타임라인의 자리는 여전히 기록의 시각이 정한다**(§1).
+ * 둘을 혼동하면 "체중을 아침과 점심 사이에 둘까"가 다시 생긴다.
+ *
  * 기본 메모는 **토글**, 사용자가 만든 것은 **빼기**다 (§2.6).
  * 기록 항목 설정의 '원본은 해제, 확장은 삭제'와 같은 규칙이다 — 기본은
  * 지워도 다음 읽기에서 덩붙어 되살아나므로 삭제 버튼이 거짓말이 된다.
@@ -100,6 +103,9 @@ function rowHtml(item, idx) {
         : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="${escapeHtml(item.label)} 항목 빼기">빼기</button>`;
     return `<div class="memo-settings__row-wrap${off ? ' memo-settings__row-wrap--off' : ''}" data-idx="${idx}">
         <div class="memo-settings__row">
+            <span class="slot-plan-row__drag memo-settings__drag" data-action="drag" role="button" aria-label="순서 이동" title="끌어서 순서 변경">
+                <i data-lucide="grip-vertical" aria-hidden="true"></i>
+            </span>
             <button type="button" class="memo-settings__icon${open ? ' memo-settings__icon--on' : ''}" data-action="icon" aria-label="${escapeHtml(item.label)} 아이콘 고르기" aria-expanded="${open ? 'true' : 'false'}">
                 <i data-lucide="${escapeHtml(memoIconOrDefault(item.icon))}" aria-hidden="true"></i>
             </button>
@@ -112,29 +118,19 @@ function rowHtml(item, idx) {
 }
 
 function renderList() {
+    renderListFrom(currentMemos());
+}
+
+/** 끌기 중에는 저장 전 작업 사본을 그려야 한다 — 그래서 목록을 받는다 */
+function renderListFrom(memos) {
     const wrap = el('memoSettingsList');
     if (!wrap || !session) return;
-    const memos = currentMemos();
     const countEl = el('memoSettingsCount');
     if (countEl) countEl.textContent = `사용 중 ${memos.filter((m) => m.enabled !== false).length} / ${MAX_ENABLED_MEMOS}`;
     wrap.innerHTML = memos.length
         ? memos.map(rowHtml).join('')
         : `<p class="memo-settings__empty">아직 메모 항목이 없어요. 체중·혈당·운동처럼 밥이 아닌 것도 남길 수 있습니다.</p>`;
     scheduleLucideIcons(wrap);
-}
-
-/**
- * 프리셋 칩은 **이름칸 아래**에 둔다 — 폼과 나란한 선택지가 아니라 폼을 채우는
- * 도구이기 때문이다. 고른 칩은 상태가 남는다(기록 시트 '무엇을' 축의 제안 줄과
- * 같은 관용구). 이름을 직접 고치면 상태가 풀린다.
- */
-function renderPresets() {
-    const row = el('memoNewPresetRow');
-    if (!row || !session) return;
-    row.innerHTML = MEMO_PRESETS.map(
-        (p) =>
-            `<button type="button" class="slot-memo-edit__preset${p.label === session.presetLabel ? ' slot-memo-edit__preset--on' : ''}" data-preset-label="${escapeHtml(p.label)}" data-preset-icon="${escapeHtml(p.icon)}">${escapeHtml(p.label)}</button>`
-    ).join('');
 }
 
 function renderNew() {
@@ -162,7 +158,6 @@ function renderNew() {
             grid.innerHTML = '';
         }
     }
-    renderPresets();
 }
 
 function render() {
@@ -265,9 +260,70 @@ function addNew() {
     const next = [...currentMemos(), { key: generateSlotKey(), kind: 'memo', icon: session.newIcon, label, enabled: true }];
     if (input) input.value = '';
     session.newIcon = DEFAULT_MEMO_ICON;
-    session.presetLabel = '';
     session.gridFor = null;
     void commitMemos(next);
+}
+
+/* ── 순서 바꾸기 (pointer 기반 — 터치 포함) ────── */
+
+/**
+ * 기록 항목 설정의 드래그와 같은 수다. 다른 점은 **놓는 순간 저장**한다는
+ * 것 — 이 시트에는 저장 버튼이 없다. 끌기 중에는 draft 로만 움직이고
+ * 떼는 순간 한 번 쓴다 — 한 칸 움직일 때마다 저장하면 개정판이 쌓는다.
+ */
+function bindDrag(list) {
+    let dragIdx = -1;
+    let startY = 0;
+    let rowH = 0;
+    /** 끌기 중에만 사는 작업 사본 — 떼면 저장하고 버린다 */
+    let order = null;
+
+    list.addEventListener('pointerdown', (e) => {
+        const handle = e.target.closest('[data-action="drag"]');
+        if (!handle || !session) return;
+        const row = handle.closest('.memo-settings__row-wrap');
+        if (!row) return;
+        order = currentMemos();
+        dragIdx = Number(row.getAttribute('data-idx'));
+        if (!Number.isFinite(dragIdx) || !order[dragIdx]) {
+            order = null;
+            dragIdx = -1;
+            return;
+        }
+        startY = e.clientY;
+        rowH = row.offsetHeight || 48;
+        session.gridFor = null;
+        row.classList.add('memo-settings__row-wrap--dragging');
+        handle.setPointerCapture?.(e.pointerId);
+        e.preventDefault();
+    });
+
+    list.addEventListener('pointermove', (e) => {
+        if (dragIdx < 0 || !order) return;
+        const delta = Math.round((e.clientY - startY) / rowH);
+        if (delta === 0) return;
+        const to = Math.max(0, Math.min(order.length - 1, dragIdx + delta));
+        if (to === dragIdx) return;
+        const [moved] = order.splice(dragIdx, 1);
+        order.splice(to, 0, moved);
+        dragIdx = to;
+        startY = e.clientY;
+        renderListFrom(order);
+        list.querySelectorAll('.memo-settings__row-wrap')[to]?.classList.add('memo-settings__row-wrap--dragging');
+    });
+
+    const endDrag = () => {
+        if (dragIdx < 0) return;
+        const next = order;
+        dragIdx = -1;
+        order = null;
+        list.querySelectorAll('.memo-settings__row-wrap--dragging').forEach((el) =>
+            el.classList.remove('memo-settings__row-wrap--dragging')
+        );
+        if (next) void commitMemos(next);
+    };
+    list.addEventListener('pointerup', endDrag);
+    list.addEventListener('pointercancel', endDrag);
 }
 
 /* ── 열기/닫기 ────────────────────────────────────────────── */
@@ -292,7 +348,6 @@ export function openMemoSettings(opts = {}) {
         pickerDateIso: typeof opts.dateIso === 'string' ? opts.dateIso : '',
         gridFor: null,
         newIcon: DEFAULT_MEMO_ICON,
-        presetLabel: ''
     };
     const input = el('memoNewNameInput');
     if (input) input.value = '';
@@ -343,6 +398,7 @@ function bindOnce() {
             return;
         }
         const action = btn.getAttribute('data-action');
+        if (action === 'drag') return; // 순서 끌기는 pointer 핸들러가 맡는다
         if (action === 'del') removeAt(idx);
         else if (action === 'toggle') toggleAt(idx);
         else if (action === 'icon') {
@@ -363,6 +419,7 @@ function bindOnce() {
             e.target.blur();
         }
     });
+    if (list) bindDrag(list);
 
     modal.querySelector('#memoNewAddBtn')?.addEventListener('click', addNew);
     modal.querySelector('#memoNewIconBtn')?.addEventListener('click', () => {
@@ -370,28 +427,12 @@ function bindOnce() {
         session.gridFor = session.gridFor === 'new' ? null : 'new';
         render();
     });
-    modal.querySelector('#memoNewNameInput')?.addEventListener('input', () => {
-        if (!session) return;
-        session.presetLabel = '';
-        renderPresets();
-        setError('');
-    });
+    modal.querySelector('#memoNewNameInput')?.addEventListener('input', () => setError(''));
     modal.querySelector('#memoNewNameInput')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             addNew();
         }
-    });
-    modal.querySelector('#memoNewPresetRow')?.addEventListener('click', (e) => {
-        const chip = e.target.closest('[data-preset-label]');
-        if (!chip || !session) return;
-        const label = chip.getAttribute('data-preset-label') || '';
-        const input = el('memoNewNameInput');
-        if (input) input.value = label;
-        session.presetLabel = label;
-        session.newIcon = memoIconOrDefault(chip.getAttribute('data-preset-icon'));
-        setError('');
-        renderNew();
     });
     modal.querySelector('#memoNewIconGrid')?.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-icon]');

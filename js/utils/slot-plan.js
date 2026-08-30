@@ -90,21 +90,34 @@ export function defaultMemoKey(id) {
     return `${DEFAULT_MEMO_KEY_PREFIX}${id}`;
 }
 
+/**
+ * 하루 소감도 기본 메모 항목이다 (§7.3). 다만 **기록은 여전히
+ * `dailyComments` 에** 산다 — 목록에서의 자리와 사용 여부만 메모 규칙을
+ * 따르고, 누르면 하루 소감 시트가 열린다.
+ */
+export const JOURNAL_MEMO_ID = 'journal';
+
 export const DEFAULT_MEMO_ITEMS = [
     { id: 'weight', icon: 'scale', label: '체중', unit: 'kg', decimals: 1 },
-    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0 }
+    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0 },
+    { id: JOURNAL_MEMO_ID, icon: 'book-open', label: '하루 소감' }
 ];
 
+/** 그 항목이 하루 소감인가 — 기록 시트가 다르다 */
+export function isJournalMemoKey(key) {
+    return key === defaultMemoKey(JOURNAL_MEMO_ID);
+}
+
 export function defaultMemoItems() {
-    return DEFAULT_MEMO_ITEMS.map((m) => ({
-        key: defaultMemoKey(m.id),
-        kind: 'memo',
-        icon: m.icon,
-        label: m.label,
-        unit: m.unit,
-        decimals: m.decimals,
-        enabled: true
-    }));
+    return DEFAULT_MEMO_ITEMS.map((m) => {
+        const item = { key: defaultMemoKey(m.id), kind: 'memo', icon: m.icon, label: m.label, enabled: true };
+        // 단위가 있는 것만 숫자 메모다 — 하루 소감은 텍스트다
+        if (m.unit) {
+            item.unit = m.unit;
+            item.decimals = m.decimals;
+        }
+        return item;
+    });
 }
 
 /** 기본 메모인가 — 지울 수 없고 해제만 된다 (§2.6) */
@@ -131,20 +144,18 @@ export function defaultMemoItemByKey(key) {
 export function withDefaultMemos(items) {
     const list = Array.isArray(items) ? items.slice() : [];
     const have = new Set(list.map((s) => s && s.key));
-    for (const m of defaultMemoItems()) {
-        if (!have.has(m.key)) list.push(m);
-    }
-    return list;
+    const missing = defaultMemoItems().filter((m) => !have.has(m.key));
+    if (!missing.length) return list;
+    /**
+     * 빠진 기본 항목은 메모 구간의 **맨 앞**에 넣는다 — 체중·혈당이
+     * 위에 순서대로 보여야 한다. 뒤에 붙이면 먼저 만든 사용자 메모가
+     * 기본보다 앞에 온다. 이미 있는 기본 항목의 자리는 건드리지 않는다 —
+     * 사용자가 끌어 정한 순서를 읽을 때마다 되돌리면 안 된다(§4.3).
+     */
+    const slots = list.filter((s) => !isMemoItem(s));
+    const memos = list.filter(isMemoItem);
+    return [...slots, ...missing, ...memos];
 }
-
-export const MEMO_PRESETS = [
-    { label: '배변', icon: 'toilet' },
-    { label: '운동', icon: 'dumbbell' },
-    { label: '수면', icon: 'moon' },
-    { label: '약', icon: 'pill' },
-    { label: '물', icon: 'glass-water' },
-    { label: '기분', icon: 'smile' }
-];
 
 /**
  * 메모 기록의 문서 ID 접두사.
