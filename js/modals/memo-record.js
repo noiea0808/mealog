@@ -244,6 +244,14 @@ async function onSave() {
             date: snapshot.dateIso,
             slotId: MEMO_SLOT_ID,
             slotKey: snapshot.slotKey || null,
+            /**
+             * 기록 당시의 항목 이름을 **문서에 함께 적는다** (user-memo-items §6.1).
+             * 앱 화면은 key 로 이름을 풀지만(그래서 이름 수정이 소급된다), 관리자
+             * 모니터링은 그 사용자의 slotPlan 을 손에 쥐고 있지 않다 — 미러가
+             * 담는 것은 분석이 쓰는 몇 필드뿐이다. 행마다 설정을 읽어 오는 대신
+             * 한 필드를 같이 적는다. 화면 표시에는 쓰지 않는다.
+             */
+            memoLabel: snapshot.label,
             comment,
             photos,
             photoAspectRatio: snapshot.photoAspectRatio,
