@@ -181,6 +181,20 @@ function rateCellClassInverse(rate) {
     return 'bg-red-50 text-red-600';
 }
 
+/**
+ * 좋고 나쁨이 없는 값의 배경 — 「자동」·「자동적용」처럼 **크기만 말하면 되는** 칸.
+ *
+ * 초록/빨강 눈금을 주면 「자동이 많아서 좋다(혹은 나쁘다)」로 읽힌다. 둘 다 아니다 —
+ * 사람이 채운 몫과 기계가 채운 몫의 **비중**일 뿐이라 판정을 얹으면 안 된다.
+ * 그래서 색상은 한 계열(하늘색)로 묶고 진하기로만 크기를 말한다.
+ */
+function rateCellClassNeutral(rate) {
+    if (rate <= 0) return 'text-slate-300';
+    if (rate <= 10) return 'bg-sky-50 text-sky-700';
+    if (rate <= 30) return 'bg-sky-100 text-sky-700';
+    return 'bg-sky-200 text-sky-800';
+}
+
 function renderSummaryCards(result, meta) {
     const cards = [
         { label: '분석 대상 기록', value: result.overall.total.toLocaleString(), sub: '끼니·간식 기록(하루기록 제외)' },
@@ -488,6 +502,7 @@ const TREND_COLUMN_GROUPS = [
     },
     {
         label: '추천 분류',
+        innerDivider: true,
         cols: [
             {
                 label: '사용',
@@ -524,12 +539,27 @@ const TREND_COLUMN_GROUPS = [
     }
 ];
 
-/** 그룹 경계에만 세로줄 — 「무엇을」 넷과 「추천 분류」 둘이 한 덩어리로 읽히게 */
+/** 그룹 경계의 세로줄 — 「무엇을」 넷과 「추천 분류」 둘이 한 덩어리로 읽히게 */
 const TREND_DIVIDER = 'border-l border-slate-200';
+/**
+ * 그룹 **안쪽**의 세로줄. 경계선과 같은 굵기다 — 한 단 옅게(slate-100) 그어 봤더니
+ * 실제 화면에서 보이지 않았고, 안 보이는 선은 없는 선이다. 그룹의 묶임은 두 줄 헤더의
+ * `colspan` 이 이미 말하고 있어 선의 굵기까지 빌릴 필요가 없다.
+ *
+ * 「무엇을」 넷에는 긋지 않는다: 최종 = 직접 + 자동처럼 서로를 설명하는 사이라 칸을
+ * 갈라 놓으면 그 관계가 끊긴다. 「추천 분류」 둘은 **경쟁하는 두 결말**이라 갈라야 읽힌다.
+ */
+const TREND_INNER_DIVIDER = 'border-l border-slate-200';
+
+/** 그 칸 왼쪽에 그을 선 — 그룹 첫 칸은 경계선, 안쪽 칸은 `innerDivider` 인 그룹만 */
+function trendCellDivider(group, index) {
+    if (index === 0) return group.cols.length > 1 || group.divider ? TREND_DIVIDER : '';
+    return group.innerDivider ? TREND_INNER_DIVIDER : '';
+}
 
 function trendCellClass(tone, rate) {
     if (tone === 'bad') return rateCellClassInverse(rate);
-    if (tone === 'info') return rate > 0 ? 'text-sky-700' : 'text-slate-300';
+    if (tone === 'info') return rateCellClassNeutral(rate);
     return rateCellClass(rate);
 }
 
@@ -541,9 +571,10 @@ function renderTrendRow(b, { label, emphasis = false }) {
                 const n = b.total ? Math.max(0, col.value(b)) : 0;
                 const rate = pct(n, b.total);
                 const title = `${col.label} · ${n.toLocaleString()}건 / ${b.total.toLocaleString()}건`;
-                return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(col.tone, rate)} ${
-                    i === 0 && (g.cols.length > 1 || g.divider) ? TREND_DIVIDER : ''
-                }" title="${escapeHtml(title)}">${b.total ? rate.toFixed(0) : '-'}</td>`;
+                return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(
+                    col.tone,
+                    rate
+                )} ${trendCellDivider(g, i)}" title="${escapeHtml(title)}">${b.total ? rate.toFixed(0) : '-'}</td>`;
             })
             .join('')
     ).join('');
@@ -572,12 +603,11 @@ function renderTrendTable(result) {
                     )}</th>`;
     }).join('');
     const subHead = TREND_COLUMN_GROUPS.filter((g) => g.cols.length > 1)
-        .flatMap((g) => g.cols.map((col, i) => ({ col, first: i === 0 })))
+        .flatMap((g) => g.cols.map((col, i) => ({ col, divider: trendCellDivider(g, i) })))
         .map(
-            ({ col, first }) =>
-                `<th class="px-2 py-1 text-center text-[11px] font-bold text-slate-500 whitespace-nowrap bg-slate-50 ${
-                    first ? TREND_DIVIDER : ''
-                }" title="${escapeHtml(col.hint || '')}">${escapeHtml(col.label)}</th>`
+            ({ col, divider }) =>
+                `<th class="px-2 py-1 text-center text-[11px] font-bold text-slate-500 whitespace-nowrap bg-slate-50 ${divider}"
+                     title="${escapeHtml(col.hint || '')}">${escapeHtml(col.label)}</th>`
         )
         .join('');
 
@@ -625,7 +655,11 @@ function renderTrendTable(result) {
                 </table>
             </div>
             <p class="mt-2 text-[11px] leading-relaxed text-slate-400">
-                · 칸에 마우스를 올리면 <b>건수</b>가 뜹니다. 맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.<br>
+                · 모든 숫자는 그 구간 기록 수 대비 <b>%</b>입니다. 칸에 마우스를 올리면 <b>건수</b>가 뜨고,
+                맨 윗줄 <b>전체</b>는 기간 전체를 한 줄로 접은 값입니다.<br>
+                · 색은 <b>초록이 좋고 빨강이 나쁘다</b>는 뜻입니다 —
+                「미분류」와 「안 씀」은 높을수록 나쁜 값이라 눈금을 뒤집어 칠합니다.
+                <b>하늘색</b>(자동·자동적용)은 좋고 나쁨이 없는 열이라 진하기로 크기만 말합니다.<br>
                 · <b>무엇을</b>의 최종 = 직접 + 자동이고, 미분류까지 더하면 100%입니다.
                 <b>직접</b>은 사람이 고른 것, <b>자동</b>은 로컬·서버 분류기가 채운 것 —
                 입력률이 올랐을 때 사람이 더 채운 것인지 기계가 메운 것인지는 이 두 열로만 갈립니다.
