@@ -730,12 +730,10 @@ body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus,
     white-space: nowrap;
 }
 .health-vitals-chart-empty {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 72px;
     margin: 0;
     padding: 0 1rem;
     text-align: center;

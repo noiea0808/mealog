@@ -30,7 +30,7 @@ import {
     dailyJournalMealDocToModerationFields,
     isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
-import { isMemoMealRecord } from '../utils/slot-plan.js';
+import { isMemoMealRecord, defaultMemoItemByKey } from '../utils/slot-plan.js';
 import {
     collection,
     collectionGroup,
@@ -1103,6 +1103,34 @@ async function getFeedPageWithCache(page) {
     return items;
 }
 
+/**
+ * 숫자 메모(체중·혈당)의 값 한 줄 — '체중 93.0 kg'.
+ *
+ * 단위와 소수 자리는 **문서에 없다**. 메모 저장이 담는 것은 `value` 와
+ * `memoLabel` 뿐이고(user-memo-items §6.1), 단위는 그 사용자의 slotPlan 에
+ * 산다. 관리자는 행마다 남의 설정을 읽어 오지 않으므로 **기본 메모 key** 로만
+ * 단위를 되살린다 — 체중·혈당이 바로 그 둘이다.
+ *
+ * 사용자가 만든 숫자 메모는 정의를 못 찾으니 값만 적는다. 반올림도 하지
+ * 않는다 — 자릿수를 모르는 채 깎으면 적힌 값이 아닌 것이 보인다.
+ *
+ * `withLabel` 은 부르는 자리가 항목 이름을 이미 보여 주는지에 달렸다. 목록의
+ * 값 칸은 92px 이고 바로 옆 '식사구분' 칸에 같은 이름이 서 있으므로 값만
+ * 적어 한 줄에 담는다. 내보내기는 하루기록 지표와 한 칸을 나눠 쓰니 이름이
+ * 있어야 무엇의 숫자인지 남는다.
+ */
+function formatMemoValueAdminText(row, { withLabel = true } = {}) {
+    const raw = row?.value;
+    if (raw == null || raw === '') return '';
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return '';
+    const def = defaultMemoItemByKey(String(row?.slotKey || ''));
+    const valueText = def ? (def.decimals === 1 ? num.toFixed(1) : String(Math.round(num))) : String(num);
+    const label = withLabel ? String(row?.memoLabel || def?.label || '').trim() : '';
+    const unit = def?.unit ? ` ${def.unit}` : '';
+    return `${label ? `${label} ` : ''}${valueText}${unit}`;
+}
+
 function mealDocSnapToFeedRow(d) {
     const pathParts = d.ref.path.split('/');
     const uidx = pathParts.indexOf('users');
@@ -1125,6 +1153,7 @@ function mealRowToFeedRow(row) {
         return {
             ...row,
             isUserMemo: true,
+            memoValueText: formatMemoValueAdminText(row),
             slotDisplayDate: formatKoDateLabelFromYmd(String(row.date || '')),
             slotDisplayLabel: label
         };
@@ -1800,6 +1829,9 @@ async function renderFeedManagement() {
             const dailyJournalMetricsHtml = isDailyJournal
                 ? formatDailyJournalMetricsAdminHtml(meal.dailyJournalEntry)
                 : '';
+            // 숫자 메모(체중·혈당)의 값 — 하루기록 지표와 같은 칸에 싣는다.
+            // 이름은 옆 '식사구분' 칸에 이미 있어 값만 적는다
+            const memoValueText = isUserMemo ? formatMemoValueAdminText(meal, { withLabel: false }) : '';
             const photoUrls = (() => {
                 if (Array.isArray(meal.photos) && meal.photos.length > 0) {
                     return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
@@ -1892,6 +1924,12 @@ async function renderFeedManagement() {
                         ${
                             isDailyJournal
                                 ? `<div class="text-xs leading-tight">${dailyJournalMetricsHtml}</div>`
+                                : isUserMemo
+                                ? `<div class="text-xs leading-tight">${
+                                      memoValueText
+                                          ? `<div class="font-bold text-slate-700 whitespace-nowrap">${escapeHtml(memoValueText)}</div>`
+                                          : '<span class="text-slate-300 text-xs">-</span>'
+                                  }</div>`
                                 : `<div class="text-xs leading-tight">
                             <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
                             <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
@@ -1954,7 +1992,7 @@ async function renderFeedManagement() {
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
-                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
+                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감·값</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px] border-r border-slate-200">상태/신고</th>
@@ -3244,7 +3282,12 @@ async function collectMomentRowsForExport(range = {}) {
             ? meal.photos.filter(Boolean)
             : (meal.photoUrl && String(meal.photoUrl).trim() ? [meal.photoUrl] : []);
 
-        const metricsText = isDailyJournal ? dailyJournalMetricsPlainText(meal.dailyJournalEntry) : '';
+        // 하루기록의 체중·혈당과 숫자 메모의 값은 성격이 같다 — 한 칸에 모은다
+        const metricsText = isDailyJournal
+            ? dailyJournalMetricsPlainText(meal.dailyJournalEntry)
+            : isUserMemo
+              ? String(meal.memoValueText || '')
+              : '';
 
         return {
             번호: total - idx,
@@ -3262,7 +3305,7 @@ async function collectMomentRowsForExport(range = {}) {
             만족도: ratingVal === null ? '' : ratingVal,
             포만감: satietyVal === null ? '' : satietyVal,
             코멘트: meal.comment ? String(meal.comment) : '',
-            하루기록지표: metricsText,
+            지표값: metricsText,
             공유여부: isShared ? 'Y' : 'N',
             금지여부: isBanned ? 'Y' : 'N',
             신고수: reportCount,

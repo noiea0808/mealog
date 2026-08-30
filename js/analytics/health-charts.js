@@ -759,6 +759,7 @@ function renderVitalSparkCard({ sparkId, valueId, deltaId, emptyId, series, unit
             deltaEl.classList.remove('is-up');
         }
         sparkEl.innerHTML = '';
+        sparkEl.classList.add('hidden');
         if (emptyEl) {
             emptyEl.classList.remove('hidden');
             emptyEl.setAttribute('aria-hidden', 'false');
@@ -766,6 +767,7 @@ function renderVitalSparkCard({ sparkId, valueId, deltaId, emptyId, series, unit
         return;
     }
 
+    sparkEl.classList.remove('hidden');
     if (emptyEl) {
         emptyEl.classList.add('hidden');
         emptyEl.setAttribute('aria-hidden', 'true');
