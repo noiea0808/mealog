@@ -203,19 +203,22 @@ user-slot-plan 의 불변식 2 를 고쳐 쓴다. 지금 문장은 이미 사실
 
 개정판 배열 총 길이는 24 → **32**.
 
-### 2.6 기본 메모 항목 — 체중·운동·화장실·하루 소감 ★
+### 2.6 기본 메모 항목 — 다섯 개 ★
 
-빈 목록은 아무것도 가르쳐 주지 않는다. "메모를 만들 수 있다"는 사실보다
-"체중을 여기 남기면 된다"가 훨씬 잘 전달된다. 그래서 넷은 **기본으로 깔려
-있다.** 나머지는 사용자가 만든다.
+빈 목록은 아무것도 가르쳐 주지 않는다. "메모를 추가할 수 있다"는 사실보다
+"체중을 여기 남기면 된다"가 훨씬 잘 전달된다. 그래서 다섯은 **기본으로 깔려
+있다.** 나머지는 사용자가 추가한다.
+
+다섯 다 **지울 수 없고 사용 중/사용 안 함으로만 토글**된다 — 기본 슬롯의
+§4.2.1("원본은 해제, 확장은 삭제")과 같은 규칙이다.
 
 ```js
 defaultMemoItems() → [
-  { key: '000000000memo-weight',     kind: 'memo', icon: 'scale',     label: '체중',   unit: 'kg',    decimals: 1, enabled: true },
-  { key: '000000000memo-exercise',   kind: 'memo', icon: 'dumbbell',  label: '운동',                              enabled: true },
-  { key: '000000000memo-toilet',     kind: 'memo', icon: 'toilet',    label: '화장실',                             enabled: true },
+  { key: '000000000memo-weight',     kind: 'memo', icon: 'scale',     label: '체중',   unit: 'kg',    decimals: 1, enabled: true  },
   { key: '000000000memo-bloodSugar', kind: 'memo', icon: 'droplet',   label: '혈당',   unit: 'mg/dL', decimals: 0, enabled: false },
-  { key: '000000000memo-journal',    kind: 'memo', icon: 'book-open', label: '하루 소감',                           enabled: true }
+  { key: '000000000memo-exercise',   kind: 'memo', icon: 'dumbbell',  label: '운동',                               enabled: true  },
+  { key: '000000000memo-toilet',     kind: 'memo', icon: 'toilet',    label: '화장실',                              enabled: true  },
+  { key: '000000000memo-journal',    kind: 'memo', icon: 'book-open', label: '하루 소감',                            enabled: true  }
 ]
 ```
 
@@ -465,7 +468,7 @@ defaultMemoItems() → [
 | 복제 슬롯 | 있음 | base 고정 | 삭제 | 편집 |
 
 메모 행도 같은 규칙을 따르되 그건 메모 설정 팝업에 있다(§4.3) — 기본
-메모(체중·운동·화장실·하루 소감)는 **사용 안 함**, 사용자가 만든 것은 **빼기**.
+메모 다섯은 **사용 안 함**, 사용자가 추가한 것은 **빼기**.
 
 > **빼도 기록과 이름은 남는다**(§2.3 · `retired`). 이 점이 안 보이면 사용자가
 > 빼기를 무서워한다 — 도움말에 한 줄 넣는다.
@@ -492,7 +495,7 @@ defaultMemoItems() → [
  🏃  [운동      ]                     빼기
 ─────────────────────────────────
 새 메모 항목
- 🗒  [이름 (8자)   ]              만들기
+ 🗒  [이름 (8자)   ]                추가
  [체중][혈당][배변][운동][수면][약][물][기분]     ← 제안 칩
 ```
 

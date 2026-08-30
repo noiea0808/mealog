@@ -172,7 +172,7 @@ function render() {
 
 function addBlockedReason(items) {
     if (countMemos(items) >= MAX_ENABLED_MEMOS) {
-        return `메모 항목은 ${MAX_ENABLED_MEMOS}개까지 만들 수 있어요. 안 쓰는 항목을 빼 주세요.`;
+        return `메모 항목은 ${MAX_ENABLED_MEMOS}개까지 쓸 수 있어요. 안 쓰는 항목을 빼 주세요.`;
     }
     if (items.length >= MAX_SLOTS_PER_REVISION) return '항목 목록이 가득 찼어요.';
     return '';

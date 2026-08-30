@@ -429,7 +429,7 @@ describe('기본 메모 항목 (§2.6)', () => {
         const mine = memo('mine', '수면', 'moon');
         const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine]) };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.deepEqual(memos.map((m) => m.label), ['체중', '운동', '화장실', '혈당', '하루 소감', '수면']);
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당', '운동', '화장실', '하루 소감', '수면']);
     });
 
     it('이미 있는 기본 항목의 자리는 건드리지 않는다 — 사용자가 끌어 정한 순서다', () => {
@@ -439,7 +439,7 @@ describe('기본 메모 항목 (§2.6)', () => {
             slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), mine, ...all])
         };
         const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
-        assert.deepEqual(memos.map((m) => m.label), ['수면', '체중', '운동', '화장실', '혈당', '하루 소감']);
+        assert.deepEqual(memos.map((m) => m.label), ['수면', '체중', '혈당', '운동', '화장실', '하루 소감']);
     });
 
     it('꺼진 기본 메모를 사용자가 켜 두면 그대로 켜져 있다 — 읽을 때마다 끄지 않는다', () => {

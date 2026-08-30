@@ -115,9 +115,9 @@ export const JOURNAL_MEMO_ID = 'journal';
  */
 export const DEFAULT_MEMO_ITEMS = [
     { id: 'weight', icon: 'scale', label: '체중', unit: 'kg', decimals: 1 },
+    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0, enabled: false },
     { id: 'exercise', icon: 'dumbbell', label: '운동' },
     { id: 'toilet', icon: 'toilet', label: '화장실' },
-    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0, enabled: false },
     { id: JOURNAL_MEMO_ID, icon: 'book-open', label: '하루 소감' }
 ];
 
