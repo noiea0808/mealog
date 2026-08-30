@@ -1,0 +1,319 @@
+/**
+ * 사용자 메모 항목의 계약 (docs/user-memo-items.md).
+ *
+ * 여기서 못박는 것:
+ * 1. 메모가 섞여도 슬롯 쪽 계산이 흔들리지 않는다 — base 가 없는 항목이
+ *    원본 판정·폴백 귀속에 끼어들면 슬롯 이름이 엉킨다.
+ * 2. 정화는 슬롯 앞·메모 뒤로 안정 정렬하고, 아이콘을 화이트리스트로 자른다.
+ * 3. 메모 이름도 절대 잃지 않는다 — 전 개정판 탐색 + retired 폴백.
+ * 4. **메모는 묶이지 않는다** — 같은 항목의 다건이 각자의 자리를 갖는다(§3.2).
+ * 5. 자리 계산(§3.3)은 "대표 시각 ≤ 메모 시각인 마지막 그룹 뒤" 한 문장이다.
+ */
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+    sanitizeSlots,
+    isMemoItem,
+    memoIconOrDefault,
+    slotItemsOnly,
+    memoItemsOnly,
+    countEnabledSlots,
+    countMemos,
+    originalSlotSet,
+    oldestSlotForBase,
+    resolveSlotView,
+    findSlotByKey,
+    withRevisionOn,
+    renameSlotEverywhere,
+    normalizeTimeKey,
+    memoUnitsForDate,
+    mergeMemoUnits,
+    dayTimelineUnits,
+    defaultSlotKey,
+    MEMO_SLOT_ID,
+    MEMO_LABEL_MAX_CHARS,
+    DEFAULT_MEMO_ICON,
+    MEMO_ICONS
+} from '../js/utils/slot-plan.js';
+
+const TODAY = '2026-09-10';
+
+const memo = (key, label, icon = 'scale', enabled = true) => ({ key, kind: 'memo', icon, label, enabled });
+const slot = (key, base, label, enabled = true) => ({ key, base, label, enabled });
+
+function planWith(dateIso, slots) {
+    return { schema: 1, revisions: { [dateIso]: { createdAt: 1, slots } } };
+}
+
+describe('정화 — 슬롯 앞, 메모 뒤', () => {
+    it('메모를 살리고 슬롯 뒤로 안정 정렬한다', () => {
+        const out = sanitizeSlots([
+            memo('m1', '체중'),
+            slot('s1', 'morning', '아침'),
+            memo('m2', '혈당', 'droplet'),
+            slot('s2', 'lunch', '점심')
+        ]);
+        assert.deepEqual(
+            out.map((s) => s.label),
+            ['아침', '점심', '체중', '혈당']
+        );
+        assert.equal(isMemoItem(out[2]), true);
+        assert.equal(out[2].base, undefined, '메모에는 base 가 없다');
+    });
+
+    it('구버전이 쓴 임의 아이콘은 읽는 시점에 기본값으로 정화된다', () => {
+        const out = sanitizeSlots([memo('m1', '체중', '"><script>')]);
+        assert.equal(out[0].icon, DEFAULT_MEMO_ICON);
+        assert.equal(memoIconOrDefault('scale'), 'scale');
+        assert.equal(memoIconOrDefault(undefined), DEFAULT_MEMO_ICON);
+        assert.ok(MEMO_ICONS.includes(DEFAULT_MEMO_ICON));
+    });
+
+    it('메모 이름은 8자에서 잘린다 — 슬롯의 12자와 다르다', () => {
+        const out = sanitizeSlots([
+            memo('m1', '아주아주아주아주긴이름'),
+            slot('s1', 'morning', '열두자를넘기는아주긴이름입니다')
+        ]);
+        const m = out.find(isMemoItem);
+        assert.equal(m.label.length, MEMO_LABEL_MAX_CHARS);
+        assert.equal(out.find((s) => !isMemoItem(s)).label.length, 12);
+    });
+
+    it('key 중복은 종류를 가리지 않고 하나만 남는다', () => {
+        const out = sanitizeSlots([slot('dup', 'morning', '아침'), memo('dup', '체중')]);
+        assert.equal(out.length, 1);
+    });
+});
+
+describe('메모는 슬롯 계산에 끼어들지 않는다', () => {
+    const items = sanitizeSlots([
+        slot(defaultSlotKey('dinner'), 'dinner', '저녁'),
+        slot('zzz9', 'dinner', '야식'),
+        memo('m1', '체중'),
+        memo('m2', '혈당', 'droplet')
+    ]);
+
+    it('originalSlotSet 은 메모를 담지 않는다', () => {
+        const originals = originalSlotSet(items);
+        assert.equal(originals.size, 1);
+        assert.equal([...originals][0].label, '저녁');
+    });
+
+    it('oldestSlotForBase 는 base 없는 항목을 집지 않는다', () => {
+        assert.equal(oldestSlotForBase(items, undefined), null);
+        assert.equal(oldestSlotForBase(items, 'dinner').label, '저녁');
+    });
+
+    it('상한은 따로 센다 — 메모가 슬롯 예산을 먹지 않는다', () => {
+        assert.equal(countEnabledSlots(items), 2);
+        assert.equal(countMemos(items), 2);
+        assert.equal(slotItemsOnly(items).length, 2);
+        assert.equal(memoItemsOnly(items).length, 2);
+    });
+});
+
+describe('메모 이름도 절대 잃지 않는다', () => {
+    const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), memo('m1', '체중')]) };
+
+    it('key 로 찾으면 사용자가 지은 이름과 아이콘이 온다', () => {
+        const v = resolveSlotView({ date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1' }, settings, TODAY);
+        assert.equal(v.label, '체중');
+        assert.equal(v.icon, 'scale');
+        assert.equal(v.kind, 'memo');
+        assert.equal(v.base, MEMO_SLOT_ID);
+        assert.equal(v.matchedBy, 'key');
+    });
+
+    it('개정판에 없는 날짜의 기록도 같은 이름이다 — 날짜로 좁히지 않는다', () => {
+        const v = resolveSlotView({ date: '2026-08-01', slotId: MEMO_SLOT_ID, slotKey: 'm1' }, settings, TODAY);
+        assert.equal(v.label, '체중');
+    });
+
+    it('만든 날 지워도 retired 가 이름을 지킨다 — 개정판이 통째로 덮이는 경우', () => {
+        // 다른 날짜에 지우면 앞 개정판에 key 가 살아 있어 retired 가 안 생긴다.
+        // 위험한 것은 **같은 날짜 개정판을 덮어써서** key 가 증발하는 경로다 (§3.2).
+        const next = withRevisionOn(
+            settings.slotPlan,
+            '2026-09-01',
+            [slot(defaultSlotKey('lunch'), 'lunch', '점심')],
+            2,
+            () => 0.5,
+            TODAY
+        );
+        assert.ok(next.retired && next.retired.m1, '폐기 이름이 남아야 한다');
+        const found = findSlotByKey(next, 'm1', TODAY);
+        assert.equal(found.label, '체중');
+        assert.equal(found.icon, 'scale');
+        const v = resolveSlotView({ date: '2026-09-06', slotId: MEMO_SLOT_ID, slotKey: 'm1' }, { slotPlan: next }, TODAY);
+        assert.equal(v.label, '체중');
+    });
+
+    it('이름을 고치면 과거 기록에도 소급된다 (8자 상한으로 잘려서)', () => {
+        const renamed = renameSlotEverywhere(settings.slotPlan, 'm1', '아침몸무게측정');
+        const v = resolveSlotView({ date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1' }, { slotPlan: renamed }, TODAY);
+        assert.equal(v.label, '아침몸무게측정');
+        const long = renameSlotEverywhere(settings.slotPlan, 'm1', '아홉자가넘는이름이다');
+        const v2 = resolveSlotView({ date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1' }, { slotPlan: long }, TODAY);
+        assert.equal(v2.label.length, MEMO_LABEL_MAX_CHARS);
+    });
+
+    it('어디서도 못 찾아도 폴백은 성공한다', () => {
+        const v = resolveSlotView({ date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'unknown' }, settings, TODAY);
+        assert.equal(v.label, '메모');
+        assert.equal(v.icon, DEFAULT_MEMO_ICON);
+        assert.equal(v.matchedBy, 'default');
+    });
+
+    it('아이콘만 바꿔도 개정판이 새로 생긴다', () => {
+        const next = withRevisionOn(
+            settings.slotPlan,
+            '2026-09-05',
+            [slot(defaultSlotKey('lunch'), 'lunch', '점심'), memo('m1', '체중', 'droplet')],
+            2,
+            () => 0.5,
+            TODAY
+        );
+        assert.notEqual(next, settings.slotPlan);
+        assert.equal(next.revisions['2026-09-05'].slots.find(isMemoItem).icon, 'droplet');
+    });
+
+    it('안 바꾸면 개정판을 만들지 않는다 — 성장 억제는 메모에도 적용된다', () => {
+        const same = withRevisionOn(
+            settings.slotPlan,
+            '2026-09-01',
+            [slot(defaultSlotKey('lunch'), 'lunch', '점심'), memo('m1', '체중')],
+            2,
+            () => 0.5,
+            TODAY
+        );
+        assert.equal(same, settings.slotPlan);
+    });
+});
+
+describe('메모는 묶이지 않는다 (§3.2)', () => {
+    const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('morning'), 'morning', '아침'), memo('m1', '체중')]) };
+    const history = [
+        { id: 'a', date: '2026-09-05', slotId: 'morning', slotKey: defaultSlotKey('morning'), time: '07:00:00' },
+        { id: 'w1', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '07:30:00' },
+        { id: 'w2', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '21:10:00' }
+    ];
+
+    it('같은 항목 두 건이 두 단위로 나온다 — 한 그룹으로 접히지 않는다', () => {
+        const units = memoUnitsForDate('2026-09-05', history, settings, TODAY);
+        assert.equal(units.length, 2);
+        assert.equal(units[0].record.id, 'w1');
+        assert.equal(units[1].record.id, 'w2', '시간순으로 온다');
+        assert.equal(units[0].slot.label, '체중');
+        assert.equal(units[1].slot.label, '체중');
+    });
+
+    it('다른 날짜·다른 슬롯은 섞이지 않는다', () => {
+        const units = memoUnitsForDate('2026-09-06', history, settings, TODAY);
+        assert.equal(units.length, 0);
+    });
+
+    it('시각이 없는 메모는 하루의 끝으로 간다', () => {
+        const units = memoUnitsForDate(
+            '2026-09-05',
+            [{ id: 'x', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1' }],
+            settings,
+            TODAY
+        );
+        assert.equal(units[0].timeKey, '23:59:59');
+    });
+});
+
+describe('자리 계산 (§3.3)', () => {
+    const g = (label, times) => ({
+        slot: { id: 'x', type: 'main', label, key: `k-${label}` },
+        records: times.map((t) => ({ time: t }))
+    });
+    const groups = [g('아침', ['07:00:00']), g('오전 간식', ['10:20:00']), g('점심', ['12:00:00', '13:30:00']), g('저녁', ['19:00:00'])];
+    const u = (label, timeKey) => ({ slot: { id: MEMO_SLOT_ID, type: 'memo', label, key: 'm1', icon: 'scale' }, record: { time: timeKey }, timeKey });
+
+    const labels = (units) => units.map((x) => (x.type === 'memo' ? `[${x.slot.label}]` : x.slot.label));
+
+    it('대표 시각 ≤ 메모 시각인 마지막 그룹 뒤', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('체중', '07:30:00')])), [
+            '아침', '[체중]', '오전 간식', '점심', '저녁'
+        ]);
+    });
+
+    it('가장 이른 기록보다 앞서면 맨 앞', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('체중', '06:40:00')])), [
+            '[체중]', '아침', '오전 간식', '점심', '저녁'
+        ]);
+    });
+
+    it('맨 뒤 그룹보다 늦으면 맨 뒤', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('운동', '21:00:00')])), [
+            '아침', '오전 간식', '점심', '저녁', '[운동]'
+        ]);
+    });
+
+    it('그룹 안은 가르지 않는다 — 점심 두 건 사이의 시각도 그룹 전체 뒤', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('혈당', '13:00:00')])), [
+            '아침', '오전 간식', '점심', '저녁'
+        ].flatMap((l) => (l === '점심' ? ['점심', '[혈당]'] : [l])));
+    });
+
+    it('같은 항목 두 건이 서로 다른 자리에 놓인다 — 이 기능의 핵심', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('체중', '07:30:00'), u('체중', '21:00:00')])), [
+            '아침', '[체중]', '오전 간식', '점심', '저녁', '[체중]'
+        ]);
+    });
+
+    it('같은 앵커에 여러 건이면 시간순으로 나란히', () => {
+        assert.deepEqual(labels(mergeMemoUnits(groups, [u('체중', '07:10:00'), u('혈당', '07:50:00')])), [
+            '아침', '[체중]', '[혈당]', '오전 간식', '점심', '저녁'
+        ]);
+    });
+
+    it('그 날 슬롯 기록이 없으면 메모끼리 시간순', () => {
+        assert.deepEqual(labels(mergeMemoUnits([], [u('체중', '07:30:00'), u('혈당', '09:00:00')])), [
+            '[체중]', '[혈당]'
+        ]);
+    });
+
+    it('시각을 못 읽는 그룹은 가장 이른 것으로 취급한다 — 메모가 그 뒤로 간다', () => {
+        const broken = [{ slot: { id: 'x', type: 'main', label: '기록', key: 'k' }, records: [{ time: null }] }];
+        assert.deepEqual(labels(mergeMemoUnits(broken, [u('체중', '00:05:00')])), ['기록', '[체중]']);
+    });
+
+    it('normalizeTimeKey 는 자릿수와 초 유무를 흡수한다', () => {
+        assert.equal(normalizeTimeKey('7:05'), '07:05:00');
+        assert.equal(normalizeTimeKey('07:05:09'), '07:05:09');
+        assert.equal(normalizeTimeKey('25:00'), '');
+        assert.equal(normalizeTimeKey(undefined, '23:59:59'), '23:59:59');
+    });
+});
+
+describe('dayTimelineUnits — 타임라인이 실제로 쓰는 순회', () => {
+    const settings = {
+        slotPlan: planWith('2026-09-01', [
+            slot(defaultSlotKey('morning'), 'morning', '아침'),
+            slot(defaultSlotKey('dinner'), 'dinner', '저녁'),
+            memo('m1', '체중')
+        ])
+    };
+    const history = [
+        { id: 'a', date: '2026-09-05', slotId: 'morning', slotKey: defaultSlotKey('morning'), time: '07:00:00' },
+        { id: 'd', date: '2026-09-05', slotId: 'dinner', slotKey: defaultSlotKey('dinner'), time: '19:00:00' },
+        { id: 'w1', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '07:30:00' },
+        { id: 'w2', date: '2026-09-05', slotId: MEMO_SLOT_ID, slotKey: 'm1', time: '21:10:00' }
+    ];
+
+    it('슬롯 그룹과 메모 낱건이 한 줄로 섞인다', () => {
+        const units = dayTimelineUnits('2026-09-05', history, settings, TODAY);
+        assert.deepEqual(
+            units.map((u) => `${u.type}:${u.slot.label}`),
+            ['slot:아침', 'memo:체중', 'slot:저녁', 'memo:체중']
+        );
+    });
+
+    it('메모가 없으면 슬롯 그룹만 나온다 — 기존 화면과 같다', () => {
+        const units = dayTimelineUnits('2026-09-05', history.slice(0, 2), settings, TODAY);
+        assert.deepEqual(units.map((u) => u.type), ['slot', 'slot']);
+    });
+});

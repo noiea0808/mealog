@@ -23,8 +23,79 @@ export const SLOT_PLAN_SCHEMA = 1;
  * 그래서 막다른 길이 아니다.
  */
 export const MAX_ENABLED_SLOTS = 12;
-export const MAX_SLOTS_PER_REVISION = 24;
+export const MAX_SLOTS_PER_REVISION = 32;
 export const SLOT_LABEL_MAX_CHARS = 12;
+
+/* ── 메모 항목 (docs/user-memo-items.md) ───────────────────── */
+
+/**
+ * 메모 기록의 `meals.slotId`. 기준 슬롯 7개가 아닌 **"식사가 아니다"는 표식**이다
+ * (불변식 2′). 식사를 세는 코드는 이 값을 명시적으로 뺀다.
+ */
+export const MEMO_SLOT_ID = 'memo';
+/** 피커 3열 카드에 한 줄로 들어가는 한계 (user-memo-items §2.5) */
+export const MEMO_LABEL_MAX_CHARS = 8;
+/** 슬롯과 **따로** 센다 — 피커에서 두 구역이 갈라져 있으므로 예산도 갈라 둔다 */
+export const MAX_ENABLED_MEMOS = 8;
+export const DEFAULT_MEMO_ICON = 'sticky-note';
+export const DEFAULT_MEMO_LABEL = '메모';
+
+/**
+ * 아이콘 화이트리스트 — 다른 기기·구버전이 쓴 임의 문자열을 그대로
+ * `<i data-lucide>` 에 꽂지 않는다. 밖의 값은 **읽는 시점**에 정화된다.
+ */
+export const MEMO_ICONS = [
+    'scale', 'droplet', 'activity', 'heart-pulse', 'pill', 'syringe',
+    'dumbbell', 'footprints', 'bike', 'waves', 'moon', 'bed',
+    'alarm-clock', 'smile', 'frown', 'brain', 'thermometer', 'stethoscope',
+    'toilet', 'glass-water', 'coffee', 'cigarette', 'wine', 'sun',
+    'cloud-rain', 'book-open', 'pen-line', 'camera', 'map-pin', 'sticky-note'
+];
+const MEMO_ICON_SET = new Set(MEMO_ICONS);
+
+/** 새 메모를 만들 때 이름·아이콘을 한 번에 채우는 지름길 (§4.3) */
+export const MEMO_PRESETS = [
+    { label: '체중', icon: 'scale' },
+    { label: '혈당', icon: 'droplet' },
+    { label: '배변', icon: 'toilet' },
+    { label: '운동', icon: 'dumbbell' },
+    { label: '수면', icon: 'moon' },
+    { label: '약', icon: 'pill' },
+    { label: '물', icon: 'glass-water' },
+    { label: '기분', icon: 'smile' }
+];
+
+/**
+ * 메모 기록의 문서 ID 접두사.
+ *
+ * `slotId` 만으로 충분해 보이지만, **ID 밖에 모르는 자리**가 있다 —
+ * `dbOps.delete(id)` 와 아웃박스 워커가 그렇다. 거기서 mealCount 를 깎을지
+ * 정하려면 본문 없이 판정할 수 있어야 한다. 하루 소감이 이미 같은 수를 쓴다
+ * (`dailyJournal_{date}`).
+ */
+export const MEMO_MEAL_ID_PREFIX = 'memo_';
+
+export function newMemoMealId(baseId) {
+    return `${MEMO_MEAL_ID_PREFIX}${baseId}`;
+}
+
+export function isMemoMealId(id) {
+    return typeof id === 'string' && id.startsWith(MEMO_MEAL_ID_PREFIX);
+}
+
+/** 이 meals 문서가 메모인가 — 식사를 세는 코드가 빼는 기준 (불변식 2′) */
+export function isMemoMealRecord(record) {
+    return !!record && (record.slotId === MEMO_SLOT_ID || isMemoMealId(record.id));
+}
+
+/** 항목 하나가 메모인가 — `kind` 가 없으면 슬롯이다 (하위호환) */
+export function isMemoItem(item) {
+    return !!item && item.kind === 'memo';
+}
+
+export function memoIconOrDefault(icon) {
+    return typeof icon === 'string' && MEMO_ICON_SET.has(icon) ? icon : DEFAULT_MEMO_ICON;
+}
 /** 개정판 수가 이 값을 넘으면 진단 로그만 남긴다 — 가지치기하지 않는다 (§5.6) */
 export const REVISION_COUNT_DIAG_THRESHOLD = 200;
 
@@ -86,28 +157,48 @@ export function defaultUserSlots() {
 /* ── 검증 ──────────────────────────────────────────────────── */
 
 /**
- * 슬롯 배열 정화 — 다른 기기·구버전이 쓴 값을 신뢰하지 않는다.
- * 모르는 base·빈 라벨은 버리고, 12개 상한으로 자른다.
+ * 항목 배열 정화 — 다른 기기·구버전이 쓴 값을 신뢰하지 않는다.
+ * 모르는 base·빈 라벨은 버리고, 아이콘은 화이트리스트로 정화하고, 상한으로 자른다.
  * 전부 버려지면 null — 호출부는 기본값으로 폴백한다.
+ *
+ * **슬롯을 앞, 메모를 뒤로 안정 정렬한다** (user-memo-items §2.1). 이 한 줄이
+ * "배열 순서 = 표시 순서"를 슬롯 구간에서 지키면서, "메모는 피커 아래쪽"을
+ * 자료구조로 보장한다. 메모끼리의 순서는 만든 순이고 편집 수단이 없다.
  */
 export function sanitizeSlots(rawSlots) {
     if (!Array.isArray(rawSlots)) return null;
-    const out = [];
+    const slots = [];
+    const memos = [];
     const seenKeys = new Set();
     for (const s of rawSlots) {
         if (!s || typeof s !== 'object') continue;
-        if (!BASE_IDS.has(s.base)) continue;
-        const label = typeof s.label === 'string' ? s.label.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
+        const memo = isMemoItem(s);
+        if (!memo && !BASE_IDS.has(s.base)) continue;
+        const max = memo ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
+        const label = typeof s.label === 'string' ? s.label.trim().slice(0, max) : '';
         if (!label) continue;
         const key = typeof s.key === 'string' && s.key ? s.key : null;
         if (key != null) {
             if (seenKeys.has(key)) continue;
             seenKeys.add(key);
         }
-        out.push({ key, base: s.base, label, enabled: s.enabled !== false });
-        if (out.length >= MAX_SLOTS_PER_REVISION) break;
+        if (memo) {
+            // 메모에는 base 가 없다 — 키가 없어야 originalSlotSet 등이 오인하지 않는다
+            memos.push({ key, kind: 'memo', icon: memoIconOrDefault(s.icon), label, enabled: s.enabled !== false });
+        } else {
+            slots.push({ key, base: s.base, label, enabled: s.enabled !== false });
+        }
     }
+    const out = slots.concat(memos).slice(0, MAX_SLOTS_PER_REVISION);
     return out.length > 0 ? out : null;
+}
+
+/** 그 목록의 슬롯만 / 메모만 */
+export function slotItemsOnly(items) {
+    return (Array.isArray(items) ? items : []).filter((s) => s && !isMemoItem(s));
+}
+export function memoItemsOnly(items) {
+    return (Array.isArray(items) ? items : []).filter(isMemoItem);
 }
 
 function isIsoDate(s) {
@@ -216,6 +307,8 @@ export function findSlotByKey(plan, slotKey, todayIso) {
 export function oldestSlotForBase(slots, baseId) {
     let best = null;
     for (const s of Array.isArray(slots) ? slots : []) {
+        // 메모는 base 가 없다 — undefined === undefined 로 걸려들지 않게 먼저 뺀다
+        if (isMemoItem(s)) continue;
         if (s.base !== baseId) continue;
         if (!best || compareSlotKeys(s.key, best.key) < 0) best = s;
     }
@@ -233,7 +326,7 @@ export function oldestSlotForBase(slots, baseId) {
 export function originalSlotSet(slots) {
     const byBase = new Map();
     for (const s of Array.isArray(slots) ? slots : []) {
-        if (!s) continue;
+        if (!s || isMemoItem(s)) continue; // 메모는 원본/복제 구분이 없다
         const cur = byBase.get(s.base);
         if (!cur || compareSlotKeys(s.key, cur.key) < 0) byBase.set(s.base, s);
     }
@@ -255,7 +348,25 @@ export function resolveSlotView(record, userSettings, todayIso) {
 
     const byKey = plan ? findSlotByKey(plan, record?.slotKey, todayIso) : null;
     if (byKey) {
-        return { label: byKey.label, base: byKey.base, slotKey: byKey.key, matchedBy: 'key' };
+        return isMemoItem(byKey)
+            ? { label: byKey.label, base: MEMO_SLOT_ID, slotKey: byKey.key, kind: 'memo', icon: byKey.icon, matchedBy: 'key' }
+            : { label: byKey.label, base: byKey.base, slotKey: byKey.key, matchedBy: 'key' };
+    }
+
+    /**
+     * 메모는 base 폴백 단계가 없다 — 귀속할 기준 슬롯이 없기 때문이다.
+     * 지운 항목의 이름은 위 `findSlotByKey` 가 `retired` 에서 찾아 온다.
+     * 그마저 없으면 여기서 떨어진다 — **폴백은 반드시 성공한다**(§3).
+     */
+    if (slotId === MEMO_SLOT_ID) {
+        return {
+            label: DEFAULT_MEMO_LABEL,
+            base: MEMO_SLOT_ID,
+            slotKey: typeof record?.slotKey === 'string' && record.slotKey ? record.slotKey : null,
+            kind: 'memo',
+            icon: DEFAULT_MEMO_ICON,
+            matchedBy: 'default'
+        };
     }
 
     if (plan && isIsoDate(record?.date)) {
@@ -368,23 +479,31 @@ function collectRevisionKeys(plan) {
     for (const date of Object.keys(revisions).sort()) {
         for (const s of Array.isArray(revisions[date]?.slots) ? revisions[date].slots : []) {
             if (!s || typeof s.key !== 'string' || !s.key) continue;
-            if (!BASE_IDS.has(s.base)) continue;
-            const label = typeof s.label === 'string' ? s.label.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
+            const memo = isMemoItem(s);
+            if (!memo && !BASE_IDS.has(s.base)) continue;
+            const max = memo ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
+            const label = typeof s.label === 'string' ? s.label.trim().slice(0, max) : '';
             if (!label) continue;
-            out.set(s.key, { base: s.base, label });
+            out.set(s.key, memo ? { kind: 'memo', icon: memoIconOrDefault(s.icon), label } : { base: s.base, label });
         }
     }
     return out;
 }
 
-/** 폐기된 슬롯(어느 개정판에도 없는 key)의 이름 — §3 폴백의 마지막 보루 */
+/** 폐기된 항목(어느 개정판에도 없는 key)의 이름 — §3 폴백의 마지막 보루 */
 function retiredSlotByKey(plan, slotKey) {
     const r = plan && typeof plan === 'object' && plan.retired && typeof plan.retired === 'object'
         ? plan.retired[slotKey]
         : null;
-    if (!r || !BASE_IDS.has(r.base)) return null;
-    const label = typeof r.label === 'string' ? r.label.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
-    return label ? { key: slotKey, base: r.base, label, enabled: false } : null;
+    if (!r) return null;
+    const memo = isMemoItem(r);
+    if (!memo && !BASE_IDS.has(r.base)) return null;
+    const max = memo ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
+    const label = typeof r.label === 'string' ? r.label.trim().slice(0, max) : '';
+    if (!label) return null;
+    return memo
+        ? { key: slotKey, kind: 'memo', icon: memoIconOrDefault(r.icon), label, enabled: false }
+        : { key: slotKey, base: r.base, label, enabled: false };
 }
 
 /**
@@ -392,8 +511,7 @@ function retiredSlotByKey(plan, slotKey) {
  * key 가 어디에도 없으면 원본을 그대로 돌려준다.
  */
 export function renameSlotEverywhere(plan, slotKey, newLabel) {
-    const label = typeof newLabel === 'string' ? newLabel.trim().slice(0, SLOT_LABEL_MAX_CHARS) : '';
-    if (!label || typeof slotKey !== 'string' || !slotKey) return plan;
+    if (typeof newLabel !== 'string' || typeof slotKey !== 'string' || !slotKey) return plan;
     const revisions = plan && typeof plan === 'object' ? plan.revisions : null;
     if (!revisions || typeof revisions !== 'object') return plan;
 
@@ -401,20 +519,23 @@ export function renameSlotEverywhere(plan, slotKey, newLabel) {
     const nextRevisions = {};
     for (const [date, rev] of Object.entries(revisions)) {
         const slots = Array.isArray(rev?.slots) ? rev.slots : null;
-        if (!slots || !slots.some((s) => s?.key === slotKey && s.label !== label)) {
+        // 이름 길이 상한이 종류마다 다르다 — 자를 때 그 항목의 kind 를 본다
+        const labelFor = (s) =>
+            newLabel.trim().slice(0, isMemoItem(s) ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS);
+        if (!slots || !slots.some((s) => s?.key === slotKey && labelFor(s) && s.label !== labelFor(s))) {
             nextRevisions[date] = rev;
             continue;
         }
         touched = true;
         nextRevisions[date] = {
             ...rev,
-            slots: slots.map((s) => (s?.key === slotKey ? { ...s, label } : s))
+            slots: slots.map((s) => (s?.key === slotKey ? { ...s, label: labelFor(s) } : s))
         };
     }
     return touched ? { ...plan, revisions: nextRevisions } : plan;
 }
 
-/** 두 슬롯 배열이 글자 그대로 같은지 — key 를 와일드카드로 보지 않는다 */
+/** 두 항목 배열이 글자 그대로 같은지 — key 를 와일드카드로 보지 않는다 */
 function slotsIdentical(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
     return a.every(
@@ -422,7 +543,9 @@ function slotsIdentical(a, b) {
             s.key === b[i].key &&
             s.base === b[i].base &&
             s.label === b[i].label &&
-            s.enabled === b[i].enabled
+            s.enabled === b[i].enabled &&
+            isMemoItem(s) === isMemoItem(b[i]) &&
+            (!isMemoItem(s) || s.icon === b[i].icon)
     );
 }
 
@@ -449,9 +572,14 @@ export function nextDifferentRevisionAfter(plan, dateIso, todayIso, slots) {
     return null;
 }
 
-/** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽 */
+/** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽. 메모는 안 센다 */
 export function countEnabledSlots(slots) {
-    return (Array.isArray(slots) ? slots : []).filter((s) => s && s.enabled !== false).length;
+    return (Array.isArray(slots) ? slots : []).filter((s) => s && !isMemoItem(s) && s.enabled !== false).length;
+}
+
+/** 메모 항목 수 — MAX_ENABLED_MEMOS 와 비교하는 쪽 (메모에는 사용 토글이 없다) */
+export function countMemos(items) {
+    return memoItemsOnly(items).length;
 }
 
 /** 개정판 수 — REVISION_COUNT_DIAG_THRESHOLD 초과 시 호출부가 diag 한 줄 남긴다 (§5.6) */
@@ -464,8 +592,114 @@ export function revisionCount(plan) {
 
 /** base 의 본식/간식 구분 — 아이콘·색·폼 종류와 함께 base 가 답하는 것들 */
 export function baseSlotType(baseId) {
+    if (baseId === MEMO_SLOT_ID) return 'memo';
     const def = SLOTS.find((s) => s.id === baseId);
     return def ? def.type : 'main';
+}
+
+/* ── 메모 배치 (user-memo-items §3.2·§3.3) ─────────────────── */
+
+/** 'H:mm' · 'HH:mm:ss' → 비교 가능한 'HH:mm:ss'. 못 읽으면 fallback */
+export function normalizeTimeKey(raw, fallback = '') {
+    const s = typeof raw === 'string' ? raw.trim() : '';
+    const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(s);
+    if (!m) return fallback;
+    const h = Number(m[1]);
+    if (!Number.isFinite(h) || h > 23) return fallback;
+    return `${String(h).padStart(2, '0')}:${m[2]}:${m[3] || '00'}`;
+}
+
+/**
+ * 그룹의 **대표 시각** = 그 그룹에서 가장 이른 기록의 시각.
+ * 시각을 못 읽는 기록만 있으면 ''(가장 이른 것으로 취급) — 메모가 그 뒤로 간다.
+ */
+function groupRepTimeKey(group) {
+    let best = null;
+    for (const r of Array.isArray(group?.records) ? group.records : []) {
+        const t = normalizeTimeKey(r?.time, '');
+        if (best === null || t < best) best = t;
+    }
+    return best === null ? '' : best;
+}
+
+/**
+ * 그 날짜의 메모 기록들 — **낱건**이 배치 단위다 (§3.2).
+ *
+ * 슬롯처럼 key 로 묶지 않는다. 아침에 잰 체중과 저녁에 잰 체중을 한 덩어리로
+ * 묶으면 하루에 한 자리밖에 못 갖는다 — "시각이 자리를 정한다"가 거기서 죽는다.
+ *
+ * @returns {Array<{ slot: {id:string,type:string,label:string,key:string|null,icon:string}, record: object, timeKey: string }>}
+ */
+export function memoUnitsForDate(dateStr, history, userSettings, todayIso) {
+    const out = [];
+    for (const m of Array.isArray(history) ? history : []) {
+        if (!m || m.date !== dateStr || m.slotId !== MEMO_SLOT_ID) continue;
+        const view = resolveSlotView(m, userSettings, todayIso);
+        out.push({
+            slot: {
+                id: MEMO_SLOT_ID,
+                type: 'memo',
+                label: view.label,
+                key: view.slotKey,
+                icon: memoIconOrDefault(view.icon)
+            },
+            record: m,
+            // 시각 없는 메모는 하루의 끝 — 하루 소감(23:59)과 같은 자리 규칙
+            timeKey: normalizeTimeKey(m.time, '23:59:59')
+        });
+    }
+    return out.sort((a, b) => (a.timeKey < b.timeKey ? -1 : a.timeKey > b.timeKey ? 1 : 0));
+}
+
+/**
+ * 슬롯 그룹 사이에 메모 낱건을 끼운 표시 단위 목록 (§3.3).
+ *
+ * 규칙 한 문장: **그룹을 목록 순서로 훑으며 대표 시각 ≤ 메모 시각인 마지막
+ * 그룹 뒤에 놓는다.** 그런 그룹이 없으면 맨 앞.
+ *
+ * 메모는 그룹 **사이**에만 낀다 — 그룹 안(점심 2건 사이)은 가르지 않는다.
+ * 그룹은 카드가 이어 붙은 시각적 한 덩어리이고, 그 사이를 벌리는 비용이
+ * 얻는 정확도보다 크다.
+ *
+ * @returns {Array<{ type:'slot', slot: object, records: object[] }
+ *               | { type:'memo', slot: object, record: object }>}
+ */
+export function mergeMemoUnits(groups, memoUnits) {
+    const list = Array.isArray(groups) ? groups : [];
+    const memos = Array.isArray(memoUnits) ? memoUnits : [];
+    const reps = list.map(groupRepTimeKey);
+
+    const buckets = new Map(); // 앵커 인덱스(-1 = 맨 앞) → 메모 단위들
+    for (const u of memos) {
+        let anchor = -1;
+        for (let i = 0; i < list.length; i++) {
+            if (reps[i] <= u.timeKey) anchor = i;
+        }
+        if (!buckets.has(anchor)) buckets.set(anchor, []);
+        buckets.get(anchor).push(u);
+    }
+
+    const out = [];
+    const pushMemos = (idx) => {
+        for (const u of buckets.get(idx) || []) out.push({ type: 'memo', slot: u.slot, record: u.record });
+    };
+    pushMemos(-1);
+    for (let i = 0; i < list.length; i++) {
+        out.push({ type: 'slot', slot: list[i].slot, records: list[i].records });
+        pushMemos(i);
+    }
+    return out;
+}
+
+/**
+ * 타임라인·사진 뷰어·일간 캡처가 함께 쓰는 하루 순회 — 슬롯 그룹 + 메모 낱건.
+ * 하루 소감은 여기 오지 않는다(호출부가 목록 끝에 따로 그린다).
+ */
+export function dayTimelineUnits(dateStr, history, userSettings, todayIso) {
+    return mergeMemoUnits(
+        groupMealsByUserSlotForDate(dateStr, history, userSettings, todayIso),
+        memoUnitsForDate(dateStr, history, userSettings, todayIso)
+    );
 }
 
 /**

@@ -7645,6 +7645,9 @@ function isDietAnalyzableMeal(m) {
   if (!m || typeof m !== 'object') return false;
   if (m.slotId === 'daily_journal') return false;
   if (String(m.id || '').startsWith('dailyJournal_')) return false;
+  // 사용자 메모 — 식사가 아니다 (docs/user-memo-items.md §6)
+  if (m.slotId === 'memo') return false;
+  if (String(m.id || '').startsWith('memo_')) return false;
   return true;
 }
 

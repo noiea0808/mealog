@@ -16,6 +16,8 @@ import {
     computeMainMealKpiDenominator,
 } from './meal-kpi-count.js';
 import { effectiveSnackTypeForAnalytics, effectiveCuisineForAnalytics } from './meal-analytics-tags.js';
+import { isMemoMealRecord } from '../utils/slot-plan.js';
+import { isDailyJournalMealRecord } from '../utils/daily-journal-data.js';
 
 /** 참견 탭 일시 비활성 — 선택 시 공사중 플로팅만 표시 */
 const MEALDANG_COMMENT_TAB_CLOSED = true;
@@ -191,7 +193,14 @@ export function getDashboardData() {
 
     const daysDiff = Math.max(1, Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1);
     // 차트용: mealHistory가 있으면 우선 사용 (식사당 1개 레코드로 정확한 집계, stats expand는 필드별 별도 레코드 생성으로 중복/미입력 발생 가능)
-    const mealFiltered = (window.mealHistory || []).filter(m => m.date >= startStr && m.date <= effectiveEndStr);
+    /**
+     * 식사가 아닌 기록은 분모에서 뻐다 — 하루 소감 미러와 사용자 메모
+     * (docs/user-memo-items.md 불변식 2′). mealHistory 는 meals 컴렉션을 그대로
+     * 담으므로 둘 다 여기까지 따라온다.
+     */
+    const mealFiltered = (window.mealHistory || []).filter(
+        m => m.date >= startStr && m.date <= effectiveEndStr && !isMemoMealRecord(m) && !isDailyJournalMealRecord(m)
+    );
     const statsHasData = (window.dailyStats && Object.keys(window.dailyStats).length > 0);
     const r = statsHasData ? statsToFilteredData(window.dailyStats, startStr, effectiveEndStr) : null;
     let filteredData, statsMainCount, statsSnackCount;

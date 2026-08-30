@@ -61,6 +61,7 @@ import {
     getDailyJournalMealDocId,
     dailyJournalEntryToMealDocument
 } from '../utils/daily-journal-data.js';
+import { isMemoMealRecord, isMemoMealId } from '../utils/slot-plan.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { normalizeNicknameForClaim, nicknameClaimDocId } from './nickname-claims.js';
 
@@ -165,6 +166,8 @@ export const dbOps = {
      * @returns {Promise<MealSaveResult>}
      */
     async save(record, silent = false, opts = {}) {
+        /** 메모는 식사가 아니다 — mealCount 와 완료 문구가 갈린다 (user-memo-items §6) */
+        const isMemo = isMemoMealRecord(record);
         let currentUser = await resolveUserForFirestoreWrite();
         if (auth.currentUser && window.currentUser && auth.currentUser.uid !== window.currentUser.uid) {
             logger.warn('[dbOps] auth/window UID 불일치 — auth 기준으로 저장', {
@@ -286,17 +289,18 @@ export const dbOps = {
                         markSavePhase(diagId, 'setdoc-resolved');
                         diag('save.setdoc.done', { id: diagId, ms: Date.now() - setDocStartedAt });
                         // ID 선발급된 신규 문서: 오프라인 큐잉 중에도 hang 하지 않도록 비대기
-                        if (opts.isNewRecord === true) void bumpUserMealCount(currentUser.uid, 1);
+                        // 메모는 식사가 아니다 — mealCount 에 안 센다 (user-memo-items §6)
+                        if (opts.isNewRecord === true && !isMemo) void bumpUserMealCount(currentUser.uid, 1);
                         if (!silent) {
-                            showToast("기록이 수정되었습니다.", 'success');
+                            showToast(isMemo ? "메모를 남겼어요." : "기록이 수정되었습니다.", 'success');
                         }
                         return { mealId: String(docId), savedViaCallableFallback: false };
                     }
                     const docRef = await addDoc(coll, cleaned);
-                    void bumpUserMealCount(currentUser.uid, 1);
+                    if (!isMemo) void bumpUserMealCount(currentUser.uid, 1);
                     logger.log('식사 기록 저장 성공:', docRef.id);
                     if (!silent) {
-                        showToast("식사가 기록되었습니다.", 'success');
+                        showToast(isMemo ? "메모를 남겼어요." : "식사가 기록되었습니다.", 'success');
                     }
                     return { mealId: docRef.id, savedViaCallableFallback: false };
                 } catch (wErr) {
@@ -416,7 +420,8 @@ export const dbOps = {
             }
 
             if (!deletedViaCallable) {
-                await bumpUserMealCount(uid, -1);
+                // 메모는 +1 된 적이 없으므로 -1 하면 카운트가 아래로 흐른다
+                if (!isMemoMealId(id)) await bumpUserMealCount(uid, -1);
                 const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
                 const sharedQuery = query(
                     sharedColl,

@@ -19,6 +19,15 @@ function isSnackSlot(slotId) {
  */
 function getMealDelta(meal, increment) {
   if (!meal || !meal.date) return null;
+  /**
+   * 사용자 메모는 식사가 아니다 — 총 기록 수(count)에 세지 않는다
+   * (docs/user-memo-items.md 불변식 2′ · §6).
+   *
+   * 하루 소감 미러(slotId 'daily_journal')는 **지금도 세고 있다.** 같은 성격의
+   * 과다계수지만, 여기서 함께 빼면 사용자의 '총 기록 수'가 하루 소감 수만큼
+   * 줄어 보인다. 소급 재집계는 별건이라 실제 분포를 보고 정한다 (§6).
+   */
+  if (meal.slotId === 'memo' || String(meal.id || '').startsWith('memo_')) return null;
   const delta = {
     date: meal.date,
     count: increment,
