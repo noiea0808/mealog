@@ -24,6 +24,8 @@ let entrySheetBaseMinHeightPx = 0;
 let entrySheetPeakHeightPx = 0;
 /** 현재 적용 중인 패널 top(px). 작을수록 헤더가 위. 세션 중 증가(헤더 하강) 금지 */
 let entrySheetTopPx = null;
+/** 키보드 때문에 미룬 기준 높이 재측정 — 키보드가 닫힌 뒤 실행 */
+let entrySheetBaseCapturePending = false;
 /** 탭 슬라이드 전환 중이면 true */
 let tabAnimating = false;
 /** 진행 중 전환 취소/교체용 토큰 */
@@ -64,10 +66,46 @@ function getEntrySheetMaxHeightPx() {
     return Math.max(0, Math.min(byLayout, byVh));
 }
 
+/**
+ * 키보드가 열려 있는 동안 키보드 레이아웃이 잡아 둔 패널 가용 높이(px).
+ * entry-and-core.js applyViewportGeometry가 인라인 maxHeight로 남긴 값이 기준.
+ * @returns {number} 0이면 아직 모름
+ */
+function getKeyboardAvailHeightPx(panel) {
+    const inlineMax = Number.parseFloat(panel?.style?.maxHeight || '');
+    if (Number.isFinite(inlineMax) && inlineMax > 0) return inlineMax;
+    const varH = Number.parseFloat(panel?.style?.getPropertyValue('--entry-sheet-h') || '');
+    return Number.isFinite(varH) && varH > 0 ? varH : 0;
+}
+
+/**
+ * 키보드가 열려 있는 동안의 잠금 반영 — **높이만, 키우는 쪽으로만**.
+ *
+ * top(--entry-sheet-top)과 상한(maxHeight)은 키보드 레이아웃이 소유한다
+ * (entry-and-core.js applyViewportGeometry). 여기서 세션 top(키보드 없을 때의 중앙
+ * 정렬값)을 되쓰면 키보드 위에 붙어 있던 시트가 갑자기 아래로 내려앉고, 높이까지 그 top
+ * 기준으로 다시 잡혀 입력부가 키보드에 먹힌다 — 회상 줄·분류 제안·메모 확장이 뜰 때마다
+ * 재현되던 증상.
+ */
+function applyEntrySheetHeightLockWhileKeyboardOpen(panel) {
+    const cap = getKeyboardAvailHeightPx(panel);
+    const cur = Math.ceil(panel.getBoundingClientRect().height);
+    let next = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx, cur);
+    if (cap > 0) next = Math.min(next, cap);
+    if (!(next > cur + 0.5)) return; // 줄이지 않는다
+    const px = `${next}px`;
+    panel.style.setProperty('--entry-sheet-h', px);
+    panel.style.height = px;
+}
+
 function applyEntrySheetHeightLock() {
     const panel = getEntryModalPanel();
     const modal = document.getElementById('entryModal');
     if (!panel) return;
+    if (modal?.classList.contains('keyboard-open')) {
+        applyEntrySheetHeightLockWhileKeyboardOpen(panel);
+        return;
+    }
     const maxH = getEntrySheetMaxHeightPx();
     let lockH = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
     if (maxH > 0 && lockH > maxH) lockH = maxH;
@@ -104,6 +142,8 @@ function ratchetEntrySheetTopForHeight(panelHeightPx) {
     const modal = document.getElementById('entryModal');
     const panel = getEntryModalPanel();
     if (!modal || !(panelHeightPx > 0)) return;
+    // 키보드 중 top은 키보드 레이아웃이 소유한다 (되쓰면 시트가 아래로 내려앉는다)
+    if (modal.classList.contains('keyboard-open')) return;
     const vh = modal.clientHeight || window.innerHeight || 0;
     if (!(vh > 0)) return;
     const bottomPad = 16;
@@ -156,6 +196,13 @@ export function syncEntrySheetHeightLock(opts = {}) {
         return;
     }
 
+    if (entrySheetBaseCapturePending) {
+        // 키보드가 닫혔다 — 미뤄 둔 기준 높이 재측정을 여기서 소화한다 (잠금·top까지 반영)
+        entrySheetBaseCapturePending = false;
+        captureEntrySheetBaseHeight({ force: true });
+        return;
+    }
+
     const floor = Math.max(entrySheetBaseMinHeightPx, entrySheetPeakHeightPx);
     panel.style.setProperty('--entry-sheet-min-h', floor > 0 ? `${floor}px` : '0px');
     panel.style.setProperty('--entry-sheet-h', 'auto');
@@ -185,6 +232,7 @@ export function resetEntrySheetBaseHeight() {
     entrySheetBaseMinHeightPx = 0;
     entrySheetPeakHeightPx = 0;
     entrySheetTopPx = null;
+    entrySheetBaseCapturePending = false;
     const modal = document.getElementById('entryModal');
     const panel = getEntryModalPanel();
     modal?.style.removeProperty('--entry-sheet-top');
@@ -238,6 +286,16 @@ export function captureEntrySheetBaseHeight(opts = {}) {
     const modal = document.getElementById('entryModal');
     const panel = getEntryModalPanel();
     if (!modal || !panel || modal.classList.contains('hidden')) return;
+    /**
+     * 키보드 중에는 기준 높이를 잴 수 없다 — 시트가 키보드 위 자리로 잡혀 있고,
+     * 프로브가 탭을 'basic'으로 바꿨다 되돌리기까지 한다. 닫힌 뒤로 미룬다.
+     * (수정 화면은 기록을 불러온 뒤 force 재측정이 들어와, 그 사이 사용자가 이미
+     *  입력을 시작했으면 시트가 통째로 흔들렸다.)
+     */
+    if (modal.classList.contains('keyboard-open')) {
+        entrySheetBaseCapturePending = true;
+        return;
+    }
     if (entrySheetHasPhotos()) {
         // 사진 포함 상태로 열림: 자연 높이로 피크·top 갱신
         syncEntrySheetHeightLock();
