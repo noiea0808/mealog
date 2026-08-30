@@ -265,10 +265,10 @@ function applyEntryGaugeDialUi() {
     );
 }
 
-function applyDefaultEmptyMealClockWhenTimeEnabled(isMain) {
+/** 시간을 켜는 순간의 기본값 — 빈 칸이 아니라 현재 시각 */
+function applyDefaultMealClockWhenTimeEnabled(isMain) {
     if (!getMealClock24FromModal(isMain)) {
-        applyMealClockRowFrom24(isMain, '');
-        setEntryMealClockSource(isMain, 'empty');
+        applyMealClockFromDate(isMain, new Date(), 'now');
     }
 }
 
@@ -294,7 +294,7 @@ function syncEntryGaugesFromDetailRecordPrefs(prefs, modeKey) {
 
     const mainSide = !isSnack;
     if (prefs.time && !wasTimeOn) {
-        applyDefaultEmptyMealClockWhenTimeEnabled(mainSide);
+        applyDefaultMealClockWhenTimeEnabled(mainSide);
     } else if (!prefs.time && wasTimeOn) {
         applyMealClockRowFrom24(mainSide, '');
         setEntryMealClockSource(mainSide, null);
@@ -510,17 +510,20 @@ function resetEntryMealClockSessionFlagsForOpen(isNewEntry) {
     }
 }
 
-/** 신규 + 해당 슬롯 시간 on: 기본은 미입력(라벨만 1회 세팅) */
+/**
+ * 신규 + 해당 슬롯 시간 on: 기본은 현재 시각.
+ *
+ * 밥을 먹고 바로 적는 것이 기본 쓰임이라, 빈 칸을 두면 거의 항상
+ * 한 번 더 눌러 ‘현재 시각’을 고르게 된다. 틀리면 그자리에서 고치면 된다.
+ */
 function seedEntryMealClockOnModalOpenAfterFinalize(entryId, isSnackMode) {
     if (entryId) return;
     if (!isSnackMode && appState.entryTimeOnMain === true && !appState.entryMealClockDidSeedModalOpenMain) {
-        applyMealClockRowFrom24(true, '');
-        setEntryMealClockSource(true, 'empty');
+        applyMealClockFromDate(true, new Date(), 'now');
         appState.entryMealClockDidSeedModalOpenMain = true;
     }
     if (isSnackMode && appState.entryTimeOnSnack === true && !appState.entryMealClockDidSeedModalOpenSnack) {
-        applyMealClockRowFrom24(false, '');
-        setEntryMealClockSource(false, 'empty');
+        applyMealClockFromDate(false, new Date(), 'now');
         appState.entryMealClockDidSeedModalOpenSnack = true;
     }
 }
