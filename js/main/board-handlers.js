@@ -1129,7 +1129,15 @@ window.addBoardComment = async (postId) => {
         }
     } catch (e) {
         console.error("댓글 작성 오류:", e);
-        showToast("댓글 작성에 실패했습니다.", 'error');
+        /* 서버가 이유를 말해 줬으면 그대로 보여 준다 — 「실패했습니다」만으로는 고칠 수가 없다 */
+        showToast(e?.message || e?.details || "댓글 작성에 실패했습니다.", 'error');
+        /* 전송 전에 비운 입력창을 되돌린다 (아직 아무것도 안 쓴 경우에만) */
+        if (input && !input.value.trim()) {
+            input.value = content;
+            try {
+                window.syncBoardDetailCommentComposer?.();
+            } catch (_) {}
+        }
         if (commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-comment-id="${tempCommentId}"]`);
             if (tempRow) tempRow.remove();
@@ -1814,6 +1822,63 @@ function syncBoardInlineComposerUi() {
 }
 window.syncBoardInlineComposerUi = syncBoardInlineComposerUi;
 
+/**
+ * ── 전송 실패 시 입력창 복원 ────────────────────────────────────────────────
+ *
+ * 전송은 입력창을 **먼저 비우고** 시작한다(낙관적 반영 — 키보드가 내려가지 않게 하려는
+ * 의도였다). 그래서 실패하면 사용자가 쓴 글이 화면에서 통째로 사라졌다. 아웃박스에는
+ * 남지만 사용자에게는 보이지 않고, 앱 안에서 다시 꺼낼 방법도 없다.
+ *
+ * 실제 사고 (2026-08-30): 스팸 필터가 자기 도메인 링크를 금칙어로 잡아 밀톡 답변을
+ * 거절했고, 사용자가 쓴 답변 한 편이 그대로 사라졌다. 필터는 고쳤지만(functions/spam-filter.js)
+ * 「실패하면 글이 사라진다」는 자리 자체가 남아 있으면 다음 실패에서 또 같은 일이 난다.
+ */
+function captureFeedComposerState({ raw, photoFile, replyToPostId }) {
+    const nickEl = document.getElementById('boardInlineComposerReplyNick');
+    const snipEl = document.getElementById('boardInlineComposerReplySnippet');
+    return {
+        raw,
+        photoFile,
+        replyToPostId,
+        replyNick: nickEl ? nickEl.textContent : '',
+        replySnippet: snipEl ? snipEl.textContent : '',
+        replyTitle: snipEl ? snipEl.getAttribute('title') : null
+    };
+}
+
+/**
+ * 스냅샷을 입력창에 되돌린다.
+ *
+ * 비어 있는 자리만 되돌린다 — 전송이 도는 동안 사용자가 이미 다음 글을 쓰고 있었다면
+ * 그걸 덮어쓰는 쪽이 더 나쁘다. 그 경우에도 원문은 아웃박스에 남아 있다.
+ */
+function restoreFeedComposerState(snap) {
+    if (!snap) return;
+    if (boardInlineInput && !boardInlineInput.value.trim()) {
+        boardInlineInput.value = snap.raw || '';
+    }
+    if (snap.photoFile && !window.feedComposerPhotoFile) {
+        window.feedComposerPhotoFile = snap.photoFile;
+        try {
+            window.feedComposerPhotoObjectUrl = URL.createObjectURL(snap.photoFile);
+        } catch (_) {}
+        renderFeedComposerPhotoPreview();
+    }
+    if (snap.replyToPostId && !window.__feedReplyToPostId) {
+        window.__feedReplyToPostId = snap.replyToPostId;
+        const nickEl = document.getElementById('boardInlineComposerReplyNick');
+        const snipEl = document.getElementById('boardInlineComposerReplySnippet');
+        if (nickEl) nickEl.textContent = snap.replyNick || '';
+        if (snipEl) {
+            snipEl.textContent = snap.replySnippet || '';
+            if (snap.replyTitle) snipEl.setAttribute('title', snap.replyTitle);
+            else snipEl.removeAttribute('title');
+        }
+        document.getElementById('boardInlineComposerReplyBar')?.classList.remove('hidden');
+    }
+    syncBoardInlineComposerUi();
+}
+
 if (boardInlineInput) {
     /* 조합 중 height 재기입·리플로우가 IME 글자 렌더를 깨뜨림 — 모먼트 댓글과 동일 가드 */
     addCompositionAwareInput(boardInlineInput, syncBoardInlineComposerUi);
@@ -1868,6 +1933,9 @@ async function runBoardInlineFeedSubmit() {
     const pending = buildPendingFeedMessage({ text, imagePreviewUrls, replyToPostId });
     if (pending) applyOptimisticFeedPost(pending);
 
+    /* 비우기 **전에** 찍는다 — 실패하면 이걸로 되돌린다 */
+    const composerSnapshot = captureFeedComposerState({ raw, photoFile, replyToPostId });
+
     if (boardInlineInput) boardInlineInput.value = '';
     clearFeedReplyBar();
     clearFeedComposerPhoto();
@@ -1891,6 +1959,7 @@ async function runBoardInlineFeedSubmit() {
         } catch (err) {
             console.error('[feed composer] upload:', err);
             removePendingFeedPosts();
+            restoreFeedComposerState(composerSnapshot);
             showToast(err?.message || '사진 업로드에 실패했습니다.', 'error');
             submitBtn.disabled = false;
             setSubmitIcon(prevHtml || sendIconHtml);
@@ -1908,6 +1977,7 @@ async function runBoardInlineFeedSubmit() {
         await renderBoardFeedTab({ quietRefresh: true, optimisticPost: created });
     } catch (_) {
         removePendingFeedPosts();
+        restoreFeedComposerState(composerSnapshot);
         // createMessage에서 토스트 처리
     } finally {
         submitBtn.disabled = false;

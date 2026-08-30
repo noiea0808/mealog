@@ -2055,6 +2055,17 @@ window.submitComment = async (postId) => {
         console.error("[submitComment] 에러:", e);
         const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
         showToast(errorMessage, 'error');
+        /* 전송 전에 비운 입력창을 되돌린다 — 실패하면 쓴 글이 사라지던 자리다 (2026-08-30 밀톡 사고와 같은 구조).
+           그 사이에 다음 댓글을 이미 쓰고 있었다면 덮어쓰지 않는다. */
+        if (inputEl && !inputEl.value.trim()) {
+            inputEl.value = commentText;
+            try {
+                syncCommentSendButtonVisibility(postId, inputEl);
+            } catch (_) {}
+            try {
+                syncMomentV2CommentTextareaHeight(inputEl);
+            } catch (_) {}
+        }
         // 낙관적 업데이트 롤백
         if (commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);
