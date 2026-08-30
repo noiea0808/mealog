@@ -47,7 +47,6 @@ import {
     getDailyJournalShareEntryId,
     isDailyJournalShared,
     isDailyJournalMealRecord,
-    formatMetricRecordChain,
     normalizeDailyJournalEntry
 } from '../utils/daily-journal-data.js';
 import { formatMealogDateLabel, isWeekendIsoDate } from '../utils/date-label.js';
@@ -1115,7 +1114,16 @@ function buildHomeFeedCardShellHtml({
  */
 function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opts = {}) {
     const forShareCapture = !!opts.forShareCapture;
-    const body = String(r.comment || '').trim();
+    /**
+     * 숫자 메모는 값이 본체다(§2.7) — '68.4kg' 이 제목이 되고
+     * 내용은 그 뒤에 붙는다. 텍스트 메모는 내용이 그대로 제목이다.
+     */
+    const note = String(r.comment || '').trim();
+    const valueText =
+        Number.isFinite(Number(r.value)) && r.value !== '' && r.value != null
+            ? `${Number(r.value)}${slot.unit || ''}`
+            : '';
+    const body = valueText ? (note ? `${valueText} · ${note}` : valueText) : note;
     const photoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = photoUrls.length > 0;
     const photoHtml = hasPhoto
@@ -1135,7 +1143,15 @@ function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opt
         if (clockTag) tags.push(clockTag);
     }
     return buildHomeFeedCardShellHtml({
-        openClick: forShareCapture ? '' : memoTimelineOpenDataAttrs(dateStr, slot.key, r.id),
+        /**
+         * 하루 소감에서 온 값은 정본이 거기다 — 누르면 하루 소감이 열린다
+         * (user-memo-items §7.1). 메모 기록 시트로 보내면 고쳐도 갈 데가 없다.
+         */
+        openClick: forShareCapture
+            ? ''
+            : r.fromDailyJournal
+              ? `data-mealog-open-daily="${escapeHtml(String(dateStr))}"`
+              : memoTimelineOpenDataAttrs(dateStr, slot.key, r.id),
         cardMbClass: `${cardMbClass} home-feed-card--memo`,
         record: r,
         hasPhoto,
@@ -1594,28 +1610,7 @@ function updateTimelineDailyJournalSyncLeads(container) {
     });
 }
 
-function dailyJournalMetricHashtagSpan(label, chain) {
-    if (!chain) return '';
-    const tagText = `${label} ${chain}`;
-    return `<span class="home-feed-card__tag">#${escapeHtml(tagText)}</span>`;
-}
-
-function dailyJournalMetricsSlotPreviewHtml(journal) {
-    const n = normalizeDailyJournalEntry(journal);
-    const tags = [];
-    if (n.weightEnabled && n.weightRecords.length > 0) {
-        const chain = formatMetricRecordChain(n.weightRecords, { isWeight: true });
-        const span = dailyJournalMetricHashtagSpan('체중', chain);
-        if (span) tags.push(span);
-    }
-    if (n.bloodSugarEnabled && n.bloodSugarRecords.length > 0) {
-        const chain = formatMetricRecordChain(n.bloodSugarRecords, { isWeight: false });
-        const span = dailyJournalMetricHashtagSpan('혈당', chain);
-        if (span) tags.push(span);
-    }
-    if (!tags.length) return '';
-    return `<div class="home-feed-card__tags">${tags.join('')}</div>`;
-}
+/* 체중·혈당 해시태그 미리보기는 걷었다 — 기본 메모 카드가 그 자리를 대신한다 (user-memo-items §7.1) */
 
 function buildDailyJournalSlotHtml(dateStr) {
     const journal = getDailyJournalForTimeline(dateStr);
@@ -1673,14 +1668,18 @@ function buildDailyJournalCardHtml(dateStr, journal, opts = {}) {
     const metaHtml = `${dailyJournalSyncLeadHolderHtml(journal)}${safeLabel}${shareArrow}`;
     // 기록된 카드는 제목 없이 메모·지표만 (제목=메모 중복 방지). 빈 슬롯만 CTA 제목.
     const titleHtml = hasContent ? '' : '기록하기';
-    const metricsPreview = dailyJournalMetricsSlotPreviewHtml(journal);
+    /**
+     * 체중·혈당 해시태그 미리보기를 여기서 뺀다 — 같은 값이 이제
+     * **기본 메모 카드로** 제 시각 자리에 따로 뜨기 때문이다
+     * (user-memo-items §7.1). 둘 다 두면 한 화면에 같은 숫자가 두 번 나온다.
+     * 값 자체는 하루 소감 시트를 열면 그대로 있다 — 사라지지 않는다.
+     */
     const noteParts = [];
     if (comment && hasContent) {
         noteParts.push(
             `<p class="home-feed-card__note">"${escapeHtml(comment)}"</p>`
         );
     }
-    if (metricsPreview) noteParts.push(metricsPreview);
     const noteHtml = noteParts.join('');
     const photoClass = hasPhoto ? ' home-feed-card--photo' : '';
     const opacity = hasContent ? '' : ' opacity-80';

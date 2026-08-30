@@ -13,10 +13,18 @@ import {
     effectiveSlots,
     resolveSlotView,
     groupMealsByUserSlotForDate,
-    dayTimelineUnits,
+    memoUnitsForDate,
+    mergeMemoUnits,
     memoItemsOnly,
-    slotItemsOnly
+    slotItemsOnly,
+    memoIconOrDefault,
+    findSlotByKey,
+    normalizeTimeKey,
+    defaultMemoKey,
+    defaultMemoItemByKey,
+    MEMO_SLOT_ID
 } from './slot-plan.js';
+import { getDailyJournalFromSettings } from './daily-journal-data.js';
 
 function localTodayIso() {
     const t = new Date();
@@ -59,12 +67,88 @@ export function userSlotGroupsForDate(dateStr) {
  * 화면이 1픽셀도 안 바뀐다.
  */
 export function dayTimelineUnitsForDate(dateStr) {
-    return dayTimelineUnits(
-        dateStr,
-        window.mealHistory || [],
-        window.userSettings,
-        localTodayIso()
+    const today = localTodayIso();
+    const memos = [
+        ...memoUnitsForDate(dateStr, window.mealHistory || [], window.userSettings, today),
+        ...journalMemoUnitsForDate(dateStr)
+    ].sort((a, b) => (a.timeKey < b.timeKey ? -1 : a.timeKey > b.timeKey ? 1 : 0));
+    return mergeMemoUnits(
+        groupMealsByUserSlotForDate(dateStr, window.mealHistory || [], window.userSettings, today),
+        memos
     );
+}
+
+/** 그 날짜 메모 항목별 기록 수 — 하루 소감에서 온 것도 같이 센다 */
+export function memoRecordCountsForDate(dateStr) {
+    const counts = new Map();
+    const today = localTodayIso();
+    const all = [
+        ...memoUnitsForDate(dateStr, window.mealHistory || [], window.userSettings, today),
+        ...journalMemoUnitsForDate(dateStr)
+    ];
+    for (const u of all) {
+        const k = String(u.slot.key || '');
+        counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    return counts;
+}
+
+/**
+ * 하루 소감에 쌓여 있는 체중·혈당을 **기본 메모 기록처럼** 보여 준다
+ * (docs/user-memo-items.md §7.1).
+ *
+ * 데이터를 옮기지 않는다. 옮기면 meals 문서가 사용자당 수백 개 생기고 되돌릴
+ * 수 없는데, **읽는 자리에서 합치면** 같은 화면을 얻고 코드를 되돌리는 것만으로
+ * 원상복구된다. 하루 소감 입력 UI 를 걷을 때까지는 두 곳에서 입력되므로,
+ * 합쳐 보여 주는 편이 오히려 맞다.
+ *
+ * 이 기록은 **읽기 전용**이다 — 누르면 하루 소감이 열린다(정본이 거기다).
+ */
+function journalMemoUnitsForDate(dateStr) {
+    const entry = getDailyJournalFromSettings(window.userSettings, dateStr);
+    const plan = window.userSettings?.slotPlan || null;
+    const today = localTodayIso();
+    const out = [];
+    for (const [field, id, fallbackLabel, fallbackUnit] of [
+        ['weightRecords', 'weight', '체중', 'kg'],
+        ['bloodSugarRecords', 'bloodSugar', '혈당', 'mg/dL']
+    ]) {
+        const key = defaultMemoKey(id);
+        // plan 에 없으면 기본 정의를 쓴다 — 이름·아이콘·단위가 거기 있다
+        const item = findSlotByKey(plan, key, today) || defaultMemoItemByKey(key);
+        // 사용자가 해제해 둔 기본 메모는 보여 주지 않는다
+        if (item && item.enabled === false) continue;
+        const records = Array.isArray(entry[field]) ? entry[field] : [];
+        records.forEach((r, i) => {
+            const value = Number(r?.value);
+            if (!Number.isFinite(value)) return;
+            const timeKey = normalizeTimeKey(r?.time, '23:59:59');
+            out.push({
+                slot: {
+                    id: MEMO_SLOT_ID,
+                    type: 'memo',
+                    label: item?.label || fallbackLabel,
+                    key,
+                    icon: memoIconOrDefault(item?.icon),
+                    unit: item?.unit || fallbackUnit
+                },
+                record: {
+                    id: `dailyJournal_${dateStr}#${id}${i}`,
+                    date: dateStr,
+                    slotId: MEMO_SLOT_ID,
+                    slotKey: key,
+                    value,
+                    time: timeKey,
+                    // 시각 칩은 mealClock 을 본다 — 없으면 카드에 시각이 안 붙는다
+                    mealClock: timeKey.slice(0, 5),
+                    photos: [],
+                    fromDailyJournal: true
+                },
+                timeKey
+            });
+        });
+    }
+    return out;
 }
 
 /** 그 날짜의 메모 항목 정의만 (피커·설정 시트용) */

@@ -35,6 +35,8 @@ import {
     nextDifferentRevisionAfter,
     addDaysIso,
     groupMealsByUserSlotForDate,
+    slotItemsOnly,
+    withDefaultMemos,
     MAX_ENABLED_SLOTS,
     MAX_SLOTS_PER_REVISION
 } from '../js/utils/slot-plan.js';
@@ -66,7 +68,8 @@ function richPlan() {
 
 describe('기본값 동치 — 1단계 무변화 배포의 근거', () => {
     it('plan 없는 사용자의 effectiveSlots 는 SLOTS 와 id·라벨·순서가 같다', () => {
-        const slots = effectiveSlots({}, TODAY, TODAY);
+        // 기본 메모(체중·혈당)가 덩붙으므로 슬롯만 떼어 비교한다 (user-memo-items §2.6)
+        const slots = slotItemsOnly(effectiveSlots({}, TODAY, TODAY));
         assert.equal(slots.length, SLOTS.length);
         slots.forEach((s, i) => {
             assert.equal(s.base, SLOTS[i].id);
@@ -77,8 +80,8 @@ describe('기본값 동치 — 1단계 무변화 배포의 근거', () => {
     });
 
     it('userSettings 가 null·undefined 여도 기본값이 나온다', () => {
-        assert.equal(effectiveSlots(null, TODAY, TODAY).length, SLOTS.length);
-        assert.equal(effectiveSlots(undefined, TODAY, TODAY).length, SLOTS.length);
+        assert.equal(slotItemsOnly(effectiveSlots(null, TODAY, TODAY)).length, SLOTS.length);
+        assert.equal(slotItemsOnly(effectiveSlots(undefined, TODAY, TODAY)).length, SLOTS.length);
     });
 
     it('plan 없는 기록의 resolveSlotView 는 현행 SLOTS 라벨과 같다', () => {
@@ -191,7 +194,7 @@ describe('날짜별 유효 개정판 (§2.1)', () => {
 
     it('첫 개정판보다 앞 날짜는 기본값 — 과거 기록은 예전 모습 그대로', () => {
         const settings = { slotPlan: richPlan() };
-        const slots = effectiveSlots(settings, '2026-07-01', TODAY);
+        const slots = slotItemsOnly(effectiveSlots(settings, '2026-07-01', TODAY));
         assert.equal(slots.length, SLOTS.length);
         assert.deepEqual(slots.map((x) => x.label), SLOTS.map((x) => x.label));
     });
@@ -251,15 +254,16 @@ describe('sanitizeSlots — 남의 기기·구버전을 신뢰하지 않는다',
 
 describe('withRevisionOn — 성장 억제 (§5.6)', () => {
     it('변화 없으면 원본 plan 참조를 그대로 돌려준다 (기본값 사용자)', () => {
-        // 설정을 열고 그냥 닫은 경우: plan 없음 + 기본 목록 그대로 저장 시도
-        const result = withRevisionOn(null, TODAY, defaultUserSlots(), 1000, rngOf(0));
+        // 설정을 열고 그냥 닫은 경우: plan 없음 + 기본 목록 그대로 저장 시도.
+        // 호출부는 항상 effectiveSlots 결과(= 기본 메모 덩붙은 것)를 넘긴다 (§2.6)
+        const result = withRevisionOn(null, TODAY, withDefaultMemos(defaultUserSlots()), 1000, rngOf(0));
         assert.equal(result, null);
     });
 
     it('변화 없으면 원본 plan 참조를 그대로 돌려준다 (개정판 사용자)', () => {
         const plan = richPlan();
         const current = revisionSlotsForDate(plan, TODAY, TODAY);
-        assert.equal(withRevisionOn(plan, TODAY, current, 1000, rngOf(0)), plan);
+        assert.equal(withRevisionOn(plan, TODAY, withDefaultMemos(current), 1000, rngOf(0)), plan);
     });
 
     it('라벨 하나만 바꿔도 오늘 날짜 개정판이 생긴다', () => {
@@ -441,7 +445,7 @@ describe('고른 날짜부터 적용 (§4.2.3)', () => {
     it('26일 이전은 두 개정판 어느 쪽도 아니다 — 기본값', () => {
         const plan = withRevisionOn(null, '2026-08-27', slotsNamed('27일구성'), 1000, rngOf(0), TODAY);
         assert.equal(revisionSlotsForDate(plan, '2026-08-26', TODAY), null);
-        assert.equal(effectiveSlots({ slotPlan: plan }, '2026-08-26', TODAY).length, SLOTS.length);
+        assert.equal(slotItemsOnly(effectiveSlots({ slotPlan: plan }, '2026-08-26', TODAY)).length, SLOTS.length);
     });
 
     it('과거 날짜를 나중에 끼워 넣어도 뒤 개정판을 안 지운다 (맵이라서)', () => {
@@ -527,7 +531,7 @@ describe('뒤 개정판 통일 (§4.2.4)', () => {
     });
 
     it('켬이어도 통일할 게 없으면 개정판을 안 만든다 (성장 억제 유지)', () => {
-        const slots = withExtra('야식', 'k-y');
+        const slots = withDefaultMemos(withExtra('야식', 'k-y'));
         const p = withRevisionOn(null, '2026-08-28', slots, 1000, rngOf(0), TODAY);
         // 28일에 같은 내용으로 다시 저장 + 통일 → 뒤에 개정판도 없다
         assert.equal(withRevisionOn(p, '2026-08-28', slots, 2000, rngOf(0), TODAY, { overwriteLater: true }), p);
@@ -658,13 +662,13 @@ describe('결정적 기본 key (§2.4) — 규칙 셋을 없앤 자리', () => {
             s.base === 'lunch' ? { ...s, label: '런치' } : s
         );
         const plan = withRevisionOn(null, '2026-08-29', edited, 1000, rngOf(0), TODAY);
-        const at27 = effectiveSlots({ slotPlan: plan }, '2026-08-27', TODAY);
-        const at29 = effectiveSlots({ slotPlan: plan }, '2026-08-29', TODAY);
+        const at27 = slotItemsOnly(effectiveSlots({ slotPlan: plan }, '2026-08-27', TODAY));
+        const at29 = slotItemsOnly(effectiveSlots({ slotPlan: plan }, '2026-08-29', TODAY));
         assert.deepEqual(at27.map((s) => s.key), at29.map((s) => s.key));
     });
 
     it('편집 없이 저장하면 개정판이 안 생긴다 — 구체화 단계가 없으니 당연하다', () => {
-        assert.equal(withRevisionOn(null, TODAY, defaultUserSlots(), 1000, rngOf(0), TODAY), null);
+        assert.equal(withRevisionOn(null, TODAY, withDefaultMemos(defaultUserSlots()), 1000, rngOf(0), TODAY), null);
     });
 
     it('기본 key 는 어떤 생성 key 보다도 오래됐다 — 원본 판정의 근거', () => {
@@ -695,7 +699,7 @@ describe('결정적 기본 key (§2.4) — 규칙 셋을 없앤 자리', () => {
                 }))
             }
         });
-        const at27 = effectiveSlots({ slotPlan: legacy }, '2026-08-27', TODAY);
+        const at27 = slotItemsOnly(effectiveSlots({ slotPlan: legacy }, '2026-08-27', TODAY));
         assert.deepEqual(
             at27.map((s) => s.key),
             legacy.revisions['2026-08-29'].slots.map((s) => s.key)

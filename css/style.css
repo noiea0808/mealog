@@ -12436,6 +12436,32 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     padding: 0.45rem 0.7rem;
     -webkit-tap-highlight-color: transparent;
 }
+/* 숫자 메모의 값 칸 (§2.7) — 내용보다 위, 숫자가 본체다 */
+.memo-record__value {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.625rem;
+    padding: 0.45rem 0.7rem;
+    text-align: right;
+}
+.memo-record__value:focus {
+    outline: none;
+    border-color: #94a3b8;
+}
+.memo-record__unit {
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #64748b;
+}
+.memo-record__row.hidden {
+    display: none;
+}
 .memo-record__body textarea {
     width: 100%;
     resize: none;
@@ -12807,12 +12833,21 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     stroke-width: 1.75;
 }
 /* ── 메모 설정 팝업 — 목록과 새 항목이 한 화면 (docs/user-memo-items.md §4.3) ── */
-.memo-settings__body {
-    gap: 0;
+/* 시트로 전환해 열린다 — 기록 항목 설정과 같은 꺼데기 */
+#memoSettingsModal .memo-settings {
+    max-height: 100%;
+}
+#memoSettingsModal .mealog-dialog-grabber,
+#memoSettingsModal .entry-slot-picker__head,
+#memoSettingsModal .memo-settings__new {
+    flex-shrink: 0;
 }
 .memo-settings__list {
     display: flex;
     flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    padding: 0 var(--mealog-dialog-pad-x);
 }
 .memo-settings__row {
     display: flex;
@@ -12875,8 +12910,23 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     color: #94a3b8;
 }
 /* 새 항목 — 목록 바로 아래, 같은 행 모양으로 */
+.memo-settings__row-wrap--off .memo-settings__name,
+.memo-settings__row-wrap--off .memo-settings__unit {
+    color: #94a3b8;
+}
+.memo-settings__row-wrap--off .memo-settings__icon {
+    opacity: 0.5;
+}
+/* 단위 — 숫자 메모임을 이름 옆에서 조용히 알린다 (§2.7) */
+.memo-settings__unit {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #94a3b8;
+}
 .memo-settings__new {
-    padding-top: 0.55rem;
+    padding: 0.55rem var(--mealog-dialog-pad-x) 1rem;
+    border-top: 1px solid #f1f5f9;
 }
 .memo-settings__new-head {
     margin: 0 0 0.1rem;

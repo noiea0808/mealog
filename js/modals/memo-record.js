@@ -46,13 +46,22 @@ function nowHHmm() {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** 그 메모 항목의 이름·아이콘 — 지운 항목이어도 retired 가 답한다 (§2.3) */
+/** 그 메모 항목의 이름·아이콘·단위 — 지운 항목이어도 retired 가 답한다 (§2.3) */
 function memoItemView(slotKey) {
     const found = findSlotByKey(window.userSettings?.slotPlan || null, slotKey, localTodayIso());
     return {
         label: found?.label || DEFAULT_MEMO_LABEL,
-        icon: memoIconOrDefault(found?.icon)
+        icon: memoIconOrDefault(found?.icon),
+        // 단위가 있으면 숫자 메모다 (§2.7)
+        unit: typeof found?.unit === 'string' ? found.unit : '',
+        decimals: found?.decimals === 1 ? 1 : 0
     };
+}
+
+/** 숫자 메모의 표시 문자열 — 소수 자릿수만큼만 */
+function formatMemoValue(value, decimals) {
+    if (!Number.isFinite(value)) return '';
+    return decimals === 1 ? String(Math.round(value * 10) / 10) : String(Math.round(value));
 }
 
 /* ── 렌더 ─────────────────────────────────────────────────── */
@@ -89,6 +98,37 @@ function renderHead() {
     if (delBtn) delBtn.classList.toggle('hidden', !state.editingId);
     const text = document.getElementById('memoRecordText');
     if (text) text.value = state.comment;
+
+    /**
+     * 값 칸은 **숫자 메모에만** 나온다(§2.7). 내용 위에 두는 것은
+     * 숫자가 그 기록의 본체기 때문이다.
+     */
+    const valueRow = document.getElementById('memoRecordValueRow');
+    const valueInput = document.getElementById('memoRecordValue');
+    const unitEl = document.getElementById('memoRecordUnit');
+    const numeric = !!state.unit;
+    if (valueRow) valueRow.classList.toggle('hidden', !numeric);
+    if (unitEl) unitEl.textContent = state.unit || '';
+    if (valueInput) {
+        valueInput.value = state.value != null ? formatMemoValue(state.value, state.decimals) : '';
+        // 직전 값을 흐릿하게 깔아 둔다 — 넣어 주지는 않는다(안 고치고 저장하면 거짓 기록)
+        valueInput.placeholder = numeric ? lastValuePlaceholder() : '0';
+    }
+}
+
+/** 그 항목의 가장 최근 값 — 대개 비슷한 값을 넣는다 */
+function lastValuePlaceholder() {
+    const key = state.slotKey;
+    if (!key) return '0';
+    let best = null;
+    for (const m of window.mealHistory || []) {
+        if (!m || m.slotId !== MEMO_SLOT_ID || m.slotKey !== key) continue;
+        if (m.id === state.editingId) continue;
+        if (!Number.isFinite(Number(m.value))) continue;
+        const stamp = `${m.date || ''} ${m.time || ''}`;
+        if (!best || stamp > best.stamp) best = { stamp, value: Number(m.value) };
+    }
+    return best ? formatMemoValue(best.value, state.decimals) : '0';
 }
 
 /* ── 열기/닫기 ────────────────────────────────────────────── */
@@ -118,6 +158,11 @@ export function openMemoRecordModal(dateIso, slotKey, entryId = null) {
         label: view.label,
         icon: view.icon,
         editingId: existing ? String(existing.id) : '',
+        unit: view.unit,
+        decimals: view.decimals,
+        value: Number.isFinite(Number(existing?.value)) && existing?.value !== '' && existing?.value != null
+            ? Number(existing.value)
+            : null,
         comment: String(existing?.comment || ''),
         photos: Array.isArray(existing?.photos) ? existing.photos.filter(Boolean).slice(0, RECORD_MAX_PHOTOS) : [],
         photoAspectRatio: existing?.photoAspectRatio || '1:1',
@@ -226,7 +271,26 @@ async function onSave() {
     if (saveBtn) saveBtn.disabled = true;
 
     const comment = String(document.getElementById('memoRecordText')?.value || '').trim().slice(0, 300);
-    const snapshot = { ...state, comment };
+
+    /**
+     * 숫자 메모는 값이 없으면 저장하지 않는다. 텍스트 메모의 빈 저장은
+     * "있었다"라는 뜻이지만(§4.6), 숫자 메모의 빈 값은 아무 뜻이 없다.
+     */
+    let value = null;
+    if (state.unit) {
+        const raw = String(document.getElementById('memoRecordValue')?.value || '').trim().replace(/,/g, '');
+        const num = Number(raw);
+        if (!raw || !Number.isFinite(num) || num < 0) {
+            state.saving = false;
+            if (saveBtn) saveBtn.disabled = false;
+            showToast('값을 적어 주세요.', 'error');
+            document.getElementById('memoRecordValue')?.focus();
+            return;
+        }
+        value = state.decimals === 1 ? Math.round(num * 10) / 10 : Math.round(num);
+    }
+
+    const snapshot = { ...state, comment, value };
     closeMemoRecordModal();
 
     try {
@@ -259,6 +323,8 @@ async function onSave() {
             time: `${snapshot.clock}:00`,
             updatedAt: new Date().toISOString()
         };
+        // 숫자 메모만 value 를 갖는다 — 없는 필드는 없는 채로 둔다
+        if (snapshot.value != null) record.value = snapshot.value;
         if (isNew) record.recordedAt = new Date().toISOString();
 
         await dbOps.save(record, false, { isNewRecord: isNew });

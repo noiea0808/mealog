@@ -7,14 +7,17 @@
  * 세 판을 거쳐 이 모양이 됐다.
  *   1) 기록 항목 설정 시트에 '식사/메모' 두 구역 → 개념이 다른 둘이 한 화면.
  *   2) 만들기만 피커로 옮김 → "만들기는 여기, 빼기는 저기".
- *   3) 메모를 통째로 이 팝업으로. 그리고 **목록과 새 항목을 한 화면에** 둔다 —
+ *   3) 메모를 통째로 이리로. 목록과 새 항목을 **한 화면에** 둔다 —
  *      항목이 두어 개뿐인데 목록을 보고 다시 눌러 폼으로 들어가는 건 헛걸음이다.
+ *   4) 겹치는 팝업이 아니라 **시트 전환**으로 — 기록 항목 설정과 같은 결이다.
+ *      피커를 닫고 열며, 닫으면 피커로 돌아간다.
  *
  * 저장은 **즉시**다. 저장 버튼이 없다 — 적용 시작일은 부른 화면이 보고 있던
  * 날짜이고, 미래는 오늘로 자른다(user-slot-plan §5.5).
  */
 import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
+import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
 import {
@@ -25,6 +28,7 @@ import {
     memoIconOrDefault,
     countMemos,
     isMemoItem,
+    isDefaultMemoKey,
     MEMO_ICONS,
     MEMO_PRESETS,
     DEFAULT_MEMO_ICON,
@@ -81,15 +85,27 @@ function iconGridHtml(selected) {
     </div>`;
 }
 
+/**
+ * 기본 메모는 **토글**, 사용자가 만든 것은 **빼기**다 (§2.6).
+ * 기록 항목 설정의 '원본은 해제, 확장은 삭제'와 같은 규칙이다 — 기본은
+ * 지워도 다음 읽기에서 덩붙어 되살아나므로 삭제 버튼이 거짓말이 된다.
+ */
 function rowHtml(item, idx) {
     const open = session.gridFor === idx;
-    return `<div class="memo-settings__row-wrap" data-idx="${idx}">
+    const isDefault = isDefaultMemoKey(item.key);
+    const off = item.enabled === false;
+    const unit = item.unit ? `<span class="memo-settings__unit">${escapeHtml(item.unit)}</span>` : '';
+    const tail = isDefault
+        ? `<button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${off ? 'false' : 'true'}" aria-label="${escapeHtml(item.label)} 사용">${off ? '사용 안 함' : '사용 중'}</button>`
+        : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="${escapeHtml(item.label)} 항목 빼기">빼기</button>`;
+    return `<div class="memo-settings__row-wrap${off ? ' memo-settings__row-wrap--off' : ''}" data-idx="${idx}">
         <div class="memo-settings__row">
             <button type="button" class="memo-settings__icon${open ? ' memo-settings__icon--on' : ''}" data-action="icon" aria-label="${escapeHtml(item.label)} 아이콘 고르기" aria-expanded="${open ? 'true' : 'false'}">
                 <i data-lucide="${escapeHtml(memoIconOrDefault(item.icon))}" aria-hidden="true"></i>
             </button>
             <input type="text" class="memo-settings__name" data-action="name" value="${escapeHtml(item.label)}" maxlength="${MEMO_LABEL_MAX_CHARS}" aria-label="항목 이름" />
-            <button type="button" class="slot-plan-row__del" data-action="del" aria-label="${escapeHtml(item.label)} 항목 빼기">빼기</button>
+            ${unit}
+            ${tail}
         </div>
         ${open ? iconGridHtml(memoIconOrDefault(item.icon)) : ''}
     </div>`;
@@ -99,6 +115,8 @@ function renderList() {
     const wrap = el('memoSettingsList');
     if (!wrap || !session) return;
     const memos = currentMemos();
+    const countEl = el('memoSettingsCount');
+    if (countEl) countEl.textContent = `사용 중 ${memos.filter((m) => m.enabled !== false).length} / ${MAX_ENABLED_MEMOS}`;
     wrap.innerHTML = memos.length
         ? memos.map(rowHtml).join('')
         : `<p class="memo-settings__empty">아직 메모 항목이 없어요. 체중·혈당·운동처럼 밥이 아닌 것도 남길 수 있습니다.</p>`;
@@ -184,7 +202,6 @@ async function commitMemos(nextMemos) {
     window.userSettings = settings;
     // 저장을 기다리지 않고 먼저 그린다 — 아웃박스가 내구화를 맡는다
     render();
-    session.onChanged?.();
     try {
         await dbOps.saveSettings(settings);
     } catch (e) {
@@ -217,9 +234,16 @@ function setIconAt(idx, icon) {
  */
 function removeAt(idx) {
     const memos = currentMemos();
-    if (!memos[idx]) return;
+    if (!memos[idx] || isDefaultMemoKey(memos[idx].key)) return;
     if (session.gridFor === idx) session.gridFor = null;
     void commitMemos(memos.filter((_, i) => i !== idx));
+}
+
+/** 기본 메모 사용/해제 — 끄면 피커에서만 사라진다. 기록은 그대로다(불변식 4) */
+function toggleAt(idx) {
+    const memos = currentMemos();
+    if (!memos[idx]) return;
+    void commitMemos(memos.map((m, i) => (i === idx ? { ...m, enabled: m.enabled === false } : m)));
 }
 
 function addNew() {
@@ -249,8 +273,9 @@ function addNew() {
 /* ── 열기/닫기 ────────────────────────────────────────────── */
 
 /**
- * @param {{ dateIso?: string, onChanged?: () => void }} [opts]
+ * @param {{ dateIso?: string, fromPicker?: boolean }} [opts]
  *        dateIso — 적용 시작일(부른 화면이 보고 있던 날짜). 미래는 오늘로 자른다
+ *        fromPicker — 닫을 때 피커로 돌아간다 (기록 항목 설정과 같은 결)
  */
 export function openMemoSettings(opts = {}) {
     if (!window.currentUser || window.currentUser.isAnonymous) {
@@ -263,7 +288,8 @@ export function openMemoSettings(opts = {}) {
     const asked = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateIso || '')) ? opts.dateIso : today;
     session = {
         effectiveFrom: asked > today ? today : asked,
-        onChanged: typeof opts.onChanged === 'function' ? opts.onChanged : null,
+        reopenPicker: opts.fromPicker === true,
+        pickerDateIso: typeof opts.dateIso === 'string' ? opts.dateIso : '',
         gridFor: null,
         newIcon: DEFAULT_MEMO_ICON,
         presetLabel: ''
@@ -274,6 +300,7 @@ export function openMemoSettings(opts = {}) {
     render();
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
+    lockBodyScroll('memoSettings');
 }
 
 /** ESC·바깥 클릭에서 부르는 닫기 (escape-close-modals 등록용) */
@@ -282,9 +309,16 @@ export function closeMemoSettings() {
     if (!modal) return;
     const active = document.activeElement;
     if (active instanceof HTMLElement && modal.contains(active)) active.blur();
+    const back = session?.reopenPicker === true;
+    const dateIso = session?.pickerDateIso || '';
     modal.classList.add('hidden');
     modal.setAttribute('aria-hidden', 'true');
     session = null;
+    unlockBodyScroll('memoSettings');
+    // 겹치는 팝업이 아니라 전환이다 — 온 자리로 돌려놓는다
+    if (back && typeof window.openEntrySlotPicker === 'function') {
+        window.openEntrySlotPicker(dateIso || undefined);
+    }
 }
 
 /* ── 바인딩 ───────────────────────────────────────────────── */
@@ -310,6 +344,7 @@ function bindOnce() {
         }
         const action = btn.getAttribute('data-action');
         if (action === 'del') removeAt(idx);
+        else if (action === 'toggle') toggleAt(idx);
         else if (action === 'icon') {
             session.gridFor = session.gridFor === idx ? null : idx;
             render();

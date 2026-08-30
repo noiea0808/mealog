@@ -4,7 +4,7 @@
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
 import { DAILY_JOURNAL_SLOT, SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
-import { userSlotGroupsForDate, userMemoItemsForDate, userMealSlotsForDate } from '../utils/slot-view.js';
+import { userSlotGroupsForDate, userMemoItemsForDate, userMealSlotsForDate, memoRecordCountsForDate } from '../utils/slot-view.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
@@ -12,7 +12,7 @@ import { openDailyJournalModal } from './daily-journal.js';
 import { openSlotPlanSettings } from './slot-plan-settings.js';
 import { openMemoRecordModal } from './memo-record.js';
 import { openMemoSettings } from './memo-settings.js';
-import { memoIconOrDefault, MEMO_SLOT_ID, isMemoMealRecord } from '../utils/slot-plan.js';
+import { memoIconOrDefault, MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import {
     dailyJournalHasContent,
     getDailyJournalFromSettings
@@ -132,17 +132,6 @@ function buildMemoCardHtml(item, count) {
     </button>`;
 }
 
-/** 그 날짜의 메모 항목별 기록 수 — 낱건이라 그냥 센다 (§3.2) */
-function countMemoRecords(dateIso) {
-    const counts = new Map();
-    for (const m of window.mealHistory || []) {
-        if (!m || m.date !== dateIso || !isMemoMealRecord(m)) continue;
-        const k = String(m.slotKey || '');
-        counts.set(k, (counts.get(k) || 0) + 1);
-    }
-    return counts;
-}
-
 /** 하루 소감 — 슬롯이 아니므로 전체 폭 한 줄 (설정 대상도 아니다) */
 function buildDailyJournalRowHtml(count) {
     return `<button type="button" class="entry-slot-picker__item entry-slot-picker__item--daily" data-slot-id="${escapeHtml(DAILY_JOURNAL_SLOT.id)}" data-slot-type="daily">
@@ -166,7 +155,7 @@ function renderPickerList(dateIso) {
     const counts = countMealsByUserSlot(dateIso);
 
     const memos = userMemoItemsForDate(dateIso).filter((m) => m.enabled);
-    const memoCounts = countMemoRecords(dateIso);
+    const memoCounts = memoRecordCountsForDate(dateIso);
     const memoGroup = memos.length
         ? `<div class="entry-slot-picker__memo-group">
             ${memos.map((m) => buildMemoCardHtml(m, memoCounts.get(String(m.key || '')) || 0)).join('')}
@@ -228,10 +217,9 @@ export async function openEntrySlotPicker(dateIso) {
  */
 function onOpenMemoSettings() {
     const dateIso = pendingDateIso || pageDateIso() || localTodayIso();
-    openMemoSettings({
-        dateIso,
-        onChanged: () => renderPickerList(pendingDateIso || dateIso)
-    });
+    // 겹치는 팝업이 아니라 **전환**이다 — 기록 항목 설정과 같은 결
+    closeEntrySlotPicker();
+    openMemoSettings({ dateIso, fromPicker: true });
 }
 
 async function onPickSlot(slotId, slotType, slotKey) {

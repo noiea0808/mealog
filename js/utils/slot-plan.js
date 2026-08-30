@@ -26,6 +26,26 @@ export const MAX_ENABLED_SLOTS = 12;
 export const MAX_SLOTS_PER_REVISION = 32;
 export const SLOT_LABEL_MAX_CHARS = 12;
 
+/**
+ * 기본 7슬롯의 key 는 base 에서 **결정적으로** 만든다.
+ *
+ * 예전엔 `key: null` 을 "아직 저장 안 된 기본 슬롯" 표식으로 썼는데, 그 하나가
+ * 규칙 셋을 낳았다 — 구체화 시점, 비교의 비대칭, 과거 날짜 편집의 정체성 분리.
+ * 결정적 key 면 셋 다 사라진다. **어느 날짜에서 읽어도 '아침'은 늘 같은 슬롯**이다.
+ *
+ * 접두사가 0 아홉 개인 이유: 생성 key 의 타임스탬프(base36)는 2059년까지 8자라
+ * 한 자리만 0 으로 채워지고('0mtek…'), 그 뒤로는 9자가 되며 '1' 이상으로 시작한다.
+ * 어느 쪽이든 문자열 비교에서 기본 슬롯이 먼저 온다 = "가장 오래된 key = 원본"(§3).
+ *
+ * ⚠ 아래 기본 메모 key 가 이 접두사를 쓰므로 **여기가 위**여야 한다 —
+ * 뒤에 두면 모듈 평가 순서상 TDZ 로 죽는다.
+ */
+export const DEFAULT_SLOT_KEY_PREFIX = '000000000';
+
+export function defaultSlotKey(baseId) {
+    return `${DEFAULT_SLOT_KEY_PREFIX}${baseId}`;
+}
+
 /* ── 메모 항목 (docs/user-memo-items.md) ───────────────────── */
 
 /**
@@ -35,6 +55,8 @@ export const SLOT_LABEL_MAX_CHARS = 12;
 export const MEMO_SLOT_ID = 'memo';
 /** 피커 3열 카드에 한 줄로 들어가는 한계 (user-memo-items §2.5) */
 export const MEMO_LABEL_MAX_CHARS = 8;
+/** 단위 — 'mg/dL' 길이가 상한의 근거다 */
+export const MEMO_UNIT_MAX_CHARS = 6;
 /** 슬롯과 **따로** 센다 — 피커에서 두 구역이 갈라져 있으므로 예산도 갈라 둔다 */
 export const MAX_ENABLED_MEMOS = 8;
 export const DEFAULT_MEMO_ICON = 'sticky-note';
@@ -54,9 +76,68 @@ export const MEMO_ICONS = [
 const MEMO_ICON_SET = new Set(MEMO_ICONS);
 
 /** 새 메모를 만들 때 이름·아이콘을 한 번에 채우는 지름길 (§4.3) */
+/**
+ * 기본 메모 항목 — 체중·혈당은 처음부터 깔려 있다 (user-memo-items §2.6).
+ *
+ * key 가 **결정적**인 것이 계약이다(기본 슬롯과 같은 수, §2.4). 사용자가 이름을
+ * '몸무게'로 바꿔도 key 는 그대로라 분석 탭 차트가 이 key 로 값을 계속 찾는다.
+ *
+ * `unit` 이 붙어 있으므로 **숫자 메모**다(§2.7).
+ */
+export const DEFAULT_MEMO_KEY_PREFIX = `${DEFAULT_SLOT_KEY_PREFIX}memo-`;
+
+export function defaultMemoKey(id) {
+    return `${DEFAULT_MEMO_KEY_PREFIX}${id}`;
+}
+
+export const DEFAULT_MEMO_ITEMS = [
+    { id: 'weight', icon: 'scale', label: '체중', unit: 'kg', decimals: 1 },
+    { id: 'bloodSugar', icon: 'droplet', label: '혈당', unit: 'mg/dL', decimals: 0 }
+];
+
+export function defaultMemoItems() {
+    return DEFAULT_MEMO_ITEMS.map((m) => ({
+        key: defaultMemoKey(m.id),
+        kind: 'memo',
+        icon: m.icon,
+        label: m.label,
+        unit: m.unit,
+        decimals: m.decimals,
+        enabled: true
+    }));
+}
+
+/** 기본 메모인가 — 지울 수 없고 해제만 된다 (§2.6) */
+export function isDefaultMemoKey(key) {
+    return typeof key === 'string' && key.startsWith(DEFAULT_MEMO_KEY_PREFIX);
+}
+
+/**
+ * key 로 기본 메모 정의를 찾는다 — plan 이 아예 없는 사용자의 폴백.
+ * 이게 없으면 체중 기록이 '메모/sticky-note' 로 떨어진다.
+ */
+export function defaultMemoItemByKey(key) {
+    if (!isDefaultMemoKey(key)) return null;
+    return defaultMemoItems().find((m) => m.key === key) || null;
+}
+
+/**
+ * 개정판에 없는 기본 메모를 **덧붙인다**. 기존 사용자(이미 개정판이 있는)도
+ * 마이그레이션 없이 얻게 하는 장치다.
+ *
+ * key 로 판정하므로 사용자가 해제해 둔(enabled:false) 기본 메모는 다시 켜지
+ * 않는다 — 개정판에 그 key 가 살아 있기 때문이다.
+ */
+export function withDefaultMemos(items) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    const have = new Set(list.map((s) => s && s.key));
+    for (const m of defaultMemoItems()) {
+        if (!have.has(m.key)) list.push(m);
+    }
+    return list;
+}
+
 export const MEMO_PRESETS = [
-    { label: '체중', icon: 'scale' },
-    { label: '혈당', icon: 'droplet' },
     { label: '배변', icon: 'toilet' },
     { label: '운동', icon: 'dumbbell' },
     { label: '수면', icon: 'moon' },
@@ -132,23 +213,6 @@ export function compareSlotKeys(a, b) {
 
 /* ── 기본값 ────────────────────────────────────────────────── */
 
-/**
- * 기본 7슬롯의 key 는 base 에서 **결정적으로** 만든다.
- *
- * 예전엔 `key: null` 을 "아직 저장 안 된 기본 슬롯" 표식으로 썼는데, 그 하나가
- * 규칙 셋을 낳았다 — 구체화 시점, 비교의 비대칭, 과거 날짜 편집의 정체성 분리.
- * 결정적 key 면 셋 다 사라진다. **어느 날짜에서 읽어도 '아침'은 늘 같은 슬롯**이다.
- *
- * 접두사가 0 아홉 개인 이유: 생성 key 의 타임스탬프(base36)는 2059년까지 8자라
- * 한 자리만 0 으로 채워지고('0mtek…'), 그 뒤로는 9자가 되며 '1' 이상으로 시작한다.
- * 어느 쪽이든 문자열 비교에서 기본 슬롯이 먼저 온다 = "가장 오래된 key = 원본"(§3).
- */
-export const DEFAULT_SLOT_KEY_PREFIX = '000000000';
-
-export function defaultSlotKey(baseId) {
-    return `${DEFAULT_SLOT_KEY_PREFIX}${baseId}`;
-}
-
 /** slotPlan 이 없는 사용자의 사용자 슬롯 = 기준 슬롯 7개 그대로 */
 export function defaultUserSlots() {
     return SLOTS.map((s) => ({ key: defaultSlotKey(s.id), base: s.id, label: s.label, enabled: true }));
@@ -184,7 +248,14 @@ export function sanitizeSlots(rawSlots) {
         }
         if (memo) {
             // 메모에는 base 가 없다 — 키가 없어야 originalSlotSet 등이 오인하지 않는다
-            memos.push({ key, kind: 'memo', icon: memoIconOrDefault(s.icon), label, enabled: s.enabled !== false });
+            const item = { key, kind: 'memo', icon: memoIconOrDefault(s.icon), label, enabled: s.enabled !== false };
+            // 단위가 있으면 숫자 메모다 (§2.7). 없으면 필드 자체를 두지 않는다
+            const unit = typeof s.unit === 'string' ? s.unit.trim().slice(0, MEMO_UNIT_MAX_CHARS) : '';
+            if (unit) {
+                item.unit = unit;
+                item.decimals = s.decimals === 1 ? 1 : 0;
+            }
+            memos.push(item);
         } else {
             slots.push({ key, base: s.base, label, enabled: s.enabled !== false });
         }
@@ -252,7 +323,9 @@ export function revisionSlotsForDate(plan, dateIso, todayIso) {
  */
 export function effectiveSlots(userSettings, dateIso, todayIso) {
     const plan = userSettings && typeof userSettings === 'object' ? userSettings.slotPlan : null;
-    return revisionSlotsForDate(plan, dateIso, todayIso) || adoptLegacyKeys(defaultUserSlots(), plan, todayIso);
+    const base = revisionSlotsForDate(plan, dateIso, todayIso) || adoptLegacyKeys(defaultUserSlots(), plan, todayIso);
+    // 기본 메모는 개정판에 없으면 덩붙는다 (§2.6) — 기존 사용자도 얻게
+    return withDefaultMemos(base);
 }
 
 /**
@@ -349,7 +422,16 @@ export function resolveSlotView(record, userSettings, todayIso) {
     const byKey = plan ? findSlotByKey(plan, record?.slotKey, todayIso) : null;
     if (byKey) {
         return isMemoItem(byKey)
-            ? { label: byKey.label, base: MEMO_SLOT_ID, slotKey: byKey.key, kind: 'memo', icon: byKey.icon, matchedBy: 'key' }
+            ? {
+                  label: byKey.label,
+                  base: MEMO_SLOT_ID,
+                  slotKey: byKey.key,
+                  kind: 'memo',
+                  icon: byKey.icon,
+                  unit: byKey.unit || '',
+                  decimals: byKey.decimals === 1 ? 1 : 0,
+                  matchedBy: 'key'
+              }
             : { label: byKey.label, base: byKey.base, slotKey: byKey.key, matchedBy: 'key' };
     }
 
@@ -359,10 +441,25 @@ export function resolveSlotView(record, userSettings, todayIso) {
      * 그마저 없으면 여기서 떨어진다 — **폴백은 반드시 성공한다**(§3).
      */
     if (slotId === MEMO_SLOT_ID) {
+        const key = typeof record?.slotKey === 'string' && record.slotKey ? record.slotKey : null;
+        // 기본 메모는 plan 이 없어도 정의가 있다 (§2.6)
+        const def = defaultMemoItemByKey(key);
+        if (def) {
+            return {
+                label: def.label,
+                base: MEMO_SLOT_ID,
+                slotKey: key,
+                kind: 'memo',
+                icon: def.icon,
+                unit: def.unit,
+                decimals: def.decimals,
+                matchedBy: 'default'
+            };
+        }
         return {
             label: DEFAULT_MEMO_LABEL,
             base: MEMO_SLOT_ID,
-            slotKey: typeof record?.slotKey === 'string' && record.slotKey ? record.slotKey : null,
+            slotKey: key,
             kind: 'memo',
             icon: DEFAULT_MEMO_ICON,
             matchedBy: 'default'
@@ -415,7 +512,12 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
      * 성장 억제(§5.6): 안 바꿨으면 개정판을 만들지 않는다. 기본 슬롯의 key 가
      * 결정적이라(§2.4) 편집 없이 저장하면 여기서 글자 그대로 같아진다.
      */
-    const current = revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots();
+    /**
+     * 비교 기준도 **같은 보강**을 타야 한다(§2.6). 안 그러면 기본 메모가
+     * 덩붙은 draft 와 덩붙지 않은 current 가 달라져, 설정을 열었다 저장만 해도
+     * 개정판이 하나 생긴다 (§5.6 성장 억제와 충돌).
+     */
+    const current = withDefaultMemos(revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots());
 
     /**
      * 뒤 개정판 통일(§4.2.4) — 사용자가 명시적으로 골랐을 때만.
@@ -484,7 +586,12 @@ function collectRevisionKeys(plan) {
             const max = memo ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
             const label = typeof s.label === 'string' ? s.label.trim().slice(0, max) : '';
             if (!label) continue;
-            out.set(s.key, memo ? { kind: 'memo', icon: memoIconOrDefault(s.icon), label } : { base: s.base, label });
+            out.set(
+                s.key,
+                memo
+                    ? { kind: 'memo', icon: memoIconOrDefault(s.icon), label, ...(s.unit ? { unit: s.unit, decimals: s.decimals === 1 ? 1 : 0 } : {}) }
+                    : { base: s.base, label }
+            );
         }
     }
     return out;
@@ -501,9 +608,13 @@ function retiredSlotByKey(plan, slotKey) {
     const max = memo ? MEMO_LABEL_MAX_CHARS : SLOT_LABEL_MAX_CHARS;
     const label = typeof r.label === 'string' ? r.label.trim().slice(0, max) : '';
     if (!label) return null;
-    return memo
-        ? { key: slotKey, kind: 'memo', icon: memoIconOrDefault(r.icon), label, enabled: false }
-        : { key: slotKey, base: r.base, label, enabled: false };
+    if (!memo) return { key: slotKey, base: r.base, label, enabled: false };
+    const out = { key: slotKey, kind: 'memo', icon: memoIconOrDefault(r.icon), label, enabled: false };
+    if (r.unit) {
+        out.unit = String(r.unit).slice(0, MEMO_UNIT_MAX_CHARS);
+        out.decimals = r.decimals === 1 ? 1 : 0;
+    }
+    return out;
 }
 
 /**
@@ -545,7 +656,7 @@ function slotsIdentical(a, b) {
             s.label === b[i].label &&
             s.enabled === b[i].enabled &&
             isMemoItem(s) === isMemoItem(b[i]) &&
-            (!isMemoItem(s) || s.icon === b[i].icon)
+            (!isMemoItem(s) || (s.icon === b[i].icon && (s.unit || '') === (b[i].unit || '') && (s.decimals || 0) === (b[i].decimals || 0)))
     );
 }
 
@@ -641,7 +752,8 @@ export function memoUnitsForDate(dateStr, history, userSettings, todayIso) {
                 type: 'memo',
                 label: view.label,
                 key: view.slotKey,
-                icon: memoIconOrDefault(view.icon)
+                icon: memoIconOrDefault(view.icon),
+                unit: view.unit || ''
             },
             record: m,
             // 시각 없는 메모는 하루의 끝 — 하루 소감(23:59)과 같은 자리 규칙

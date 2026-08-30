@@ -31,6 +31,11 @@ import {
     mergeMemoUnits,
     dayTimelineUnits,
     defaultSlotKey,
+    withDefaultMemos,
+    effectiveSlots,
+    defaultMemoKey,
+    defaultMemoItems,
+    isDefaultMemoKey,
     MEMO_SLOT_ID,
     MEMO_LABEL_MAX_CHARS,
     DEFAULT_MEMO_ICON,
@@ -182,7 +187,7 @@ describe('메모 이름도 절대 잃지 않는다', () => {
         const same = withRevisionOn(
             settings.slotPlan,
             '2026-09-01',
-            [slot(defaultSlotKey('lunch'), 'lunch', '점심'), memo('m1', '체중')],
+            withDefaultMemos([slot(defaultSlotKey('lunch'), 'lunch', '점심'), memo('m1', '체중')]),
             2,
             () => 0.5,
             TODAY
@@ -315,5 +320,63 @@ describe('dayTimelineUnits — 타임라인이 실제로 쓰는 순회', () => {
     it('메모가 없으면 슬롯 그룹만 나온다 — 기존 화면과 같다', () => {
         const units = dayTimelineUnits('2026-09-05', history.slice(0, 2), settings, TODAY);
         assert.deepEqual(units.map((u) => u.type), ['slot', 'slot']);
+    });
+});
+
+describe('기본 메모 항목 (§2.6)', () => {
+    it('개정판이 없어도 체중·혈당이 딸려 온다', () => {
+        const items = effectiveSlots({}, '2026-09-05', TODAY);
+        const memos = memoItemsOnly(items);
+        assert.deepEqual(memos.map((m) => m.label), ['체중', '혈당']);
+        assert.equal(memos[0].key, defaultMemoKey('weight'));
+        assert.equal(memos[0].unit, 'kg');
+        assert.equal(memos[1].unit, 'mg/dL');
+    });
+
+    it('메모 없는 옛 개정판에도 덧붙는다 — 마이그레이션 없이', () => {
+        const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심')]) };
+        const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
+        assert.equal(memos.length, 2);
+        assert.equal(slotItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY)).length, 1);
+    });
+
+    it('해제해 둔 기본 메모는 다시 켜지지 않는다 — key 가 개정판에 살아 있다', () => {
+        const off = { ...defaultMemoItems()[0], enabled: false };
+        const settings = { slotPlan: planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심'), off]) };
+        const memos = memoItemsOnly(effectiveSlots(settings, '2026-09-05', TODAY));
+        const weight = memos.find((m) => m.key === defaultMemoKey('weight'));
+        assert.equal(weight.enabled, false, '해제 상태가 유지돼야 한다');
+    });
+
+    it('기본 메모는 key 로 알아본다 — 지우기와 해제를 가르는 기준', () => {
+        assert.equal(isDefaultMemoKey(defaultMemoKey('weight')), true);
+        assert.equal(isDefaultMemoKey('0mtek3x9'), false);
+    });
+
+    it('덧붙임만으로는 개정판이 생기지 않는다 (§5.6 과 충돌하지 않는다)', () => {
+        const plan = planWith('2026-09-01', [slot(defaultSlotKey('lunch'), 'lunch', '점심')]);
+        const draft = effectiveSlots({ slotPlan: plan }, '2026-09-01', TODAY);
+        assert.equal(withRevisionOn(plan, '2026-09-01', draft, 2, () => 0.5, TODAY), plan);
+    });
+});
+
+describe('숫자 메모 (§2.7)', () => {
+    it('단위가 있으면 숫자 메모 — 소수 자릿수는 0 또는 1', () => {
+        const out = sanitizeSlots([{ key: 'n1', kind: 'memo', icon: 'scale', label: '혈압', unit: 'mmHg', decimals: 3 }]);
+        assert.equal(out[0].unit, 'mmHg');
+        assert.equal(out[0].decimals, 0, '0·1 밖의 값은 0 으로');
+    });
+
+    it('단위가 없으면 필드 자체를 두지 않는다 — 텍스트 메모', () => {
+        const out = sanitizeSlots([memo('t1', '배변')]);
+        assert.equal('unit' in out[0], false);
+        assert.equal('decimals' in out[0], false);
+    });
+
+    it('단위만 바꿔도 개정판이 생긴다', () => {
+        const items = withDefaultMemos([slot(defaultSlotKey('lunch'), 'lunch', '점심')]);
+        const plan = withRevisionOn(null, '2026-09-01', items, 1, () => 0.5, TODAY);
+        const changed = items.map((s) => (s.key === defaultMemoKey('weight') ? { ...s, unit: 'lb' } : s));
+        assert.notEqual(withRevisionOn(plan, '2026-09-01', changed, 2, () => 0.5, TODAY), plan);
     });
 });
