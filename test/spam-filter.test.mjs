@@ -35,6 +35,7 @@ describe('스팸 필터 — 판정의 안정성', () => {
         const samples = [
             REAL_BLOCKED_MESSAGE,
             '광고 문의 주세요',
+            '무료 이벤트 할인 쿠폰',
             '오늘 점심은 김치찌개였습니다',
             'https://www.mealog.net/ 여기로 오세요',
             'http://a.example http://b.example http://c.example 다 보세요'
@@ -103,11 +104,28 @@ describe('스팸 필터 — 링크', () => {
     });
 });
 
+describe('스팸 필터 — 일상어는 막지 않는다', () => {
+    /* 예전 목록에는 이것들이 금칙어로 들어 있어서 정상 답변이 그대로 막혔다 */
+    const everyday = [
+        '지금은 무료로 쓰실 수 있어요',
+        '이벤트 기간에는 조금 다릅니다',
+        '할인 받으셨다니 다행이네요',
+        '쿠폰 쓰신 거면 그 금액이 맞습니다',
+        '무료 이벤트 할인 쿠폰'
+    ];
+    for (const text of everyday) {
+        it(`"${text}" 는 통과한다`, () => {
+            const r = checkSpam(text);
+            assert.equal(r.isSpam, false, `막혔다: ${r.reason}`);
+        });
+    }
+});
+
 describe('스팸 필터 — 이유', () => {
     it('무엇이 걸렸는지 사용자에게 말한다', () => {
-        const r = checkSpam('무료 쿠폰 나눠 드립니다');
+        const r = checkSpam('추천인 코드 넣어 주세요');
         assert.equal(r.isSpam, true);
-        assert.match(r.reason, /무료/, `걸린 말이 이유에 없다: ${r.reason}`);
+        assert.match(r.reason, /추천인/, `걸린 말이 이유에 없다: ${r.reason}`);
     });
 
     it('사용자가 쓴 형태 그대로 돌려준다', () => {

@@ -93,7 +93,7 @@ for(let i = 0; i < 4; i++) {
 ```javascript
 await window.boardOperations.createPost({
     title: '광고 게시글',
-    content: '무료 이벤트 참여하세요!',
+    content: '추천인 코드 넣어 주세요',
     category: 'serious'
 });
 ```
