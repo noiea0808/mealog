@@ -2353,9 +2353,9 @@
                     </div>
                     <div id="settingsTabContentShortcuts" class="settings-tab-content settings-tab-content-fullwidth hidden pt-3 pb-8">
                         <div class="profile-v2-panel-card">
-                            <h3 class="profile-v2-panel-title">기록 슬롯</h3>
-                            <p class="profile-v2-panel-desc">기록 추가 팝업의 슬롯 이름·사용 여부·순서를 바꿉니다.</p>
-                            <button type="button" class="profile-v2-memo-save" onclick="window.openSlotPlanSettings?.()">슬롯 설정 열기</button>
+                            <h3 class="profile-v2-panel-title">기록 항목</h3>
+                            <p class="profile-v2-panel-desc">기록 추가 팝업의 항목 이름·사용 여부·순서를 바꿉니다.</p>
+                            <button type="button" class="profile-v2-memo-save" onclick="window.openSlotPlanSettings?.()">기록 항목 설정 열기</button>
                         </div>
                         <div class="profile-v2-panel-card profile-v2-memo-card">
                             <h3 class="profile-v2-panel-title">밀당 메모</h3>
@@ -2842,7 +2842,7 @@
                     <h2 id="entrySlotPickerTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 추가</h2>
                     <p id="entrySlotPickerDateLabel" class="min-w-0 truncate text-sm font-medium text-slate-500"></p>
                 </div>
-                <button type="button" id="entrySlotPickerSettingsBtn" class="entry-slot-picker__settings-btn" aria-label="슬롯 설정">
+                <button type="button" id="entrySlotPickerSettingsBtn" class="entry-slot-picker__settings-btn" aria-label="기록 항목 설정">
                     <i data-lucide="settings-2" aria-hidden="true"></i>
                 </button>
             </div>
@@ -2850,16 +2850,30 @@
         </div>
     </div>
 
-    <!-- 슬롯 설정 시트 (docs/user-slot-plan.md §4.2) -->
+    <!-- 기록 항목 설정 시트 (docs/user-slot-plan.md §4.2) -->
     <div id="slotPlanSettingsModal" class="hidden fixed inset-0 z-[var(--z-slot-picker)] flex items-center justify-center p-4" aria-modal="true" role="dialog" aria-labelledby="slotPlanSettingsTitle" aria-hidden="true">
         <button type="button" id="slotPlanSettingsBackdrop" class="absolute inset-0 z-0 cursor-default border-0 p-0 mealog-action-dim" aria-label="닫기" style="background:var(--shell-dim)"></button>
         <div class="entry-slot-picker relative z-10 flex w-full max-w-[22rem] flex-col overflow-hidden">
             <div class="mealog-dialog-grabber" role="button" tabindex="0" aria-label="아래로 스와이프하여 닫기" title="아래로 스와이프하여 닫기"></div>
             <div class="mealog-dialog-head entry-slot-picker__head border-0 pb-2 pt-3">
                 <div class="flex min-w-0 flex-1 items-baseline gap-2">
-                    <h2 id="slotPlanSettingsTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">슬롯 설정</h2>
+                    <h2 id="slotPlanSettingsTitle" class="shrink-0 text-base font-bold tracking-tight text-slate-800">기록 항목 설정</h2>
                     <p id="slotPlanSettingsCount" class="min-w-0 truncate text-sm font-medium text-slate-400"></p>
                 </div>
+                <button type="button" id="slotPlanSettingsHelpBtn" class="entry-slot-picker__settings-btn" aria-label="설정 항목 설명" aria-expanded="false" aria-controls="slotPlanSettingsHelp">
+                    <i data-lucide="circle-help" aria-hidden="true"></i>
+                </button>
+            </div>
+            <!-- 설명은 접어 둔다 — 필요할 때만 펼친다 (물음표 버튼) -->
+            <div id="slotPlanSettingsHelp" class="slot-plan-settings__help hidden" role="region" aria-labelledby="slotPlanSettingsHelpBtn">
+                <ul class="slot-plan-settings__help-list">
+                    <li><b>순서 바꾸기</b> 왼쪽 손잡이를 끌면 기록 추가 팝업에 보일 순서가 바뀝니다.</li>
+                    <li><b>이름 고치기</b> 이름을 누르거나 연필을 눌러 고칩니다. 지난 기록의 이름도 함께 바뀝니다.</li>
+                    <li><b>사용 중 / 사용 안 함</b> 기록 추가 팝업에 보일지 정합니다. 꺼도 지난 기록은 그대로 남습니다.</li>
+                    <li><b>복제</b> 같은 시간대의 항목을 하나 더 만듭니다. 저녁을 복제해 '야식'을 만드는 식입니다.</li>
+                    <li><b>삭제</b> 복제해서 만든 항목만 지울 수 있습니다. 그 항목으로 남긴 기록은 지워지지 않습니다.</li>
+                    <li><b>적용 시작일</b> 고른 날짜부터 이 구성이 적용됩니다. 그 이전 기록은 예전 구성 그대로입니다.</li>
+                </ul>
             </div>
             <div class="slot-plan-settings__date-row">
                 <label for="slotPlanEffectiveFrom">적용 시작일</label>

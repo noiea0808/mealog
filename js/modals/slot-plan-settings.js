@@ -1,5 +1,6 @@
 /**
- * 슬롯 설정 시트 (docs/user-slot-plan.md §4.2)
+ * 기록 항목 설정 시트 (docs/user-slot-plan.md §4.2)
+ * — 화면 이름은 '기록 항목', 코드·문서의 내부 용어는 그대로 '슬롯'이다.
  *
  * 편집은 draft(작업 사본)에서만 일어나고, 저장 버튼에서 한 번에:
  *   1. 이름 소급(renameSlotEverywhere) — key 유지 편집, 과거 기록도 바뀐다
@@ -102,6 +103,24 @@ function syncCascadeRow() {
     if (!next) setCascadeChecked(false);
 }
 
+/**
+ * 설명 접기/펼치기 — 우상단 물음표.
+ * 별도 팝업을 겹치지 않는다. 시트 안에서 펼쳐야 설명과 실물을 같이 볼 수 있고,
+ * 겹친 모달을 닫는 두 번째 규칙을 만들 필요도 없다. 열 때는 항상 접힌 상태.
+ */
+function setHelpOpen(open) {
+    const panel = document.getElementById('slotPlanSettingsHelp');
+    const btn = document.getElementById('slotPlanSettingsHelpBtn');
+    // 목록 최대 높이를 같이 줄인다 — 안 그러면 작은 화면에서 시트가 넘쳐 잘린다
+    document.getElementById('slotPlanSettingsModal')
+        ?.classList.toggle('slot-plan-settings--help-open', open);
+    if (panel) panel.classList.toggle('hidden', !open);
+    if (btn) {
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.classList.toggle('entry-slot-picker__settings-btn--on', open);
+    }
+}
+
 function setCascadeChecked(v) {
     const cb = document.getElementById('slotPlanCascade');
     if (cb) cb.checked = !!v;
@@ -117,13 +136,17 @@ function rowHtml(slot, idx, isOriginal) {
     const style = SLOT_STYLES[slot.base] || SLOT_STYLES.default;
     const off = !slot.enabled;
     /**
-     * 원본은 지울 수 없다(복제할 씨앗이자 폴백 귀속처) → 사용/해제.
+     * 원본은 지울 수 없다(복제할 씨앗이자 폴백 귀속처) → 사용 중/사용 안 함.
      * 복제로 늘린 슬롯은 되돌릴 수단이 삭제뿐이다 → 삭제.
      * 한 자리에 하나만 둔다 — 둘을 나란히 뒀다가 구분이 안 된다는 지적을 받았다.
+     *
+     * 라벨은 **현재 상태**를 적는다. '사용'이라고만 쓰니 지금 켜졌다는 뜻인지
+     * 누르면 켜진다는 뜻인지 모르겠다는 지적을 받았다 — 상태로 읽히는 쪽이
+     * 목록에서 훑기 좋다(꺼진 행은 회색이라는 신호와도 어긋나지 않는다).
      */
     const tailBtn = isOriginal
-        ? `<button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="${slot.enabled ? '사용 중' : '사용 안 함'}">${slot.enabled ? '사용' : '해제'}</button>`
-        : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 슬롯 삭제">삭제</button>`;
+        ? `<button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="이 항목 사용">${slot.enabled ? '사용 중' : '사용 안 함'}</button>`
+        : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 항목 삭제">삭제</button>`;
     return `<div class="slot-plan-row${off ? ' slot-plan-row--off' : ''}" data-idx="${idx}">
         <span class="slot-plan-row__drag" data-action="drag" role="button" aria-label="순서 이동" title="끌어서 순서 변경">
             <i data-lucide="grip-vertical" aria-hidden="true"></i>
@@ -132,13 +155,13 @@ function rowHtml(slot, idx, isOriginal) {
             <i data-lucide="${getSlotLucideIcon(slot.base)}" aria-hidden="true"></i>
         </span>
         <span class="slot-plan-row__main">
-            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(slot.label)}" maxlength="${SLOT_LABEL_MAX_CHARS}" size="${Math.max(4, slot.label.length + 2)}" aria-label="슬롯 이름" />
+            <input type="text" class="slot-plan-row__label-input" data-action="label" value="${escapeHtml(slot.label)}" maxlength="${SLOT_LABEL_MAX_CHARS}" size="${Math.max(4, slot.label.length + 2)}" aria-label="항목 이름" />
             <button type="button" class="slot-plan-row__pencil" data-action="edit" aria-label="이름 편집">
                 <i data-lucide="pencil" aria-hidden="true"></i>
             </button>
         </span>
         ${tailBtn}
-        <button type="button" class="slot-plan-row__dup" data-action="dup" aria-label="이 슬롯 복제">
+        <button type="button" class="slot-plan-row__dup" data-action="dup" aria-label="이 항목 복제">
             <i data-lucide="copy-plus" aria-hidden="true"></i>
         </button>
     </div>`;
@@ -198,6 +221,7 @@ export function openSlotPlanSettings(opts = {}) {
     effectiveFromIso = asked > today ? today : asked;
 
     setCascadeChecked(false);
+    setHelpOpen(false);
     loadDraftForDate(effectiveFromIso);
     syncDateInput();
     render();
@@ -279,10 +303,10 @@ function onToggle(idx) {
 function addBlockedReason() {
     if (!draft) return '';
     if (countEnabledSlots(draft) >= MAX_ENABLED_SLOTS) {
-        return `사용 중인 슬롯은 ${MAX_ENABLED_SLOTS}개까지예요. 안 쓰는 슬롯을 해제해 주세요.`;
+        return `사용 중인 항목은 ${MAX_ENABLED_SLOTS}개까지예요. 안 쓰는 항목을 '사용 안 함'으로 바꿔 주세요.`;
     }
     if (draft.length >= MAX_SLOTS_PER_REVISION) {
-        return '슬롯 목록이 가득 찼어요. 해제해 둔 슬롯의 이름을 고쳐서 쓰세요.';
+        return '항목 목록이 가득 찼어요. 사용 안 함으로 둔 항목의 이름을 고쳐서 쓰세요.';
     }
     return '';
 }
@@ -380,7 +404,7 @@ async function onSave() {
 
     // 전부 해제하면 피커에 고를 게 없어진다 — 되돌릴 수는 있지만 막는 편이 친절하다
     if (countEnabledSlots(draft) === 0) {
-        showToast('슬롯을 하나 이상 사용해 주세요.', 'error');
+        showToast('항목을 하나 이상 사용해 주세요.', 'error');
         return;
     }
 
@@ -416,10 +440,10 @@ async function onSave() {
     closeSlotPlanSettings();
     try {
         await dbOps.saveSettings(settings);
-        showToast('슬롯 설정을 저장했습니다.', 'success');
+        showToast('기록 항목 설정을 저장했습니다.', 'success');
     } catch (e) {
         // 아웃박스가 내구화를 맡는다 — 여기 실패는 즉시 전송 실패일 뿐
-        console.warn('슬롯 설정 저장(즉시 전송) 실패 — 아웃박스 재시도 예정:', e?.message || e);
+        console.warn('기록 항목 설정 저장(즉시 전송) 실패 — 아웃박스 재시도 예정:', e?.message || e);
     }
     if (prevPlan !== nextPlan && typeof window.renderTimeline === 'function') {
         // 전체 다시 그리기 — 탭 전환(main/tabs.js)과 같은 패턴, 뷰 모드 무관
@@ -444,6 +468,9 @@ function bindOnce() {
     modal.querySelector('#slotPlanSettingsBackdrop')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanCancelBtn')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanEffectiveFrom')?.addEventListener('change', onEffectiveFromChange);
+    modal.querySelector('#slotPlanSettingsHelpBtn')?.addEventListener('click', () => {
+        setHelpOpen(document.getElementById('slotPlanSettingsHelpBtn')?.getAttribute('aria-expanded') !== 'true');
+    });
     modal.querySelector('#slotPlanSaveBtn')?.addEventListener('click', () => void onSave());
 
     list?.addEventListener('click', (e) => {
