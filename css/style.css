@@ -12407,158 +12407,11 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     stroke-width: 1.75;
 }
 .memo-record__body {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    padding: 0.35rem var(--mealog-dialog-pad-x) 0.25rem;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
 }
-.memo-record__row {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-.memo-record__row--stack {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.35rem;
-}
-.memo-record__label {
-    flex-shrink: 0;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #94a3b8;
-}
-.memo-record__count {
-    margin-left: 0.25rem;
-    font-weight: 600;
-    color: #cbd5e1;
-}
-/* 끜니 시트의 시각 꺼데기를 그대로 — 고르기·입력 둘 다 (§4.4) */
-.memo-record__clock {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: stretch;
-    min-height: 42px;
-    overflow: hidden;
-    border-radius: 0.75rem;
-    border: 1px solid #e2e8f0;
-    background: #fff;
-    transition: border-color 0.15s;
-}
-.memo-record__clock:focus-within {
-    border-color: #94a3b8;
-}
-.memo-record__clock-btn {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    border-left: 1px solid #e2e8f0;
-    background: #f8fafc;
-    color: #475569;
-    -webkit-tap-highlight-color: transparent;
-}
-.memo-record__clock-btn:active {
-    background: #e2e8f0;
-    color: #1e293b;
-}
-.memo-record__clock-btn [data-lucide],
-.memo-record__clock-btn .lucide {
-    width: 1rem;
-    height: 1rem;
-    stroke-width: 1.75;
-}
-/* 숫자 메모의 값 칸 (§2.7) — 내용보다 위, 숫자가 본체다 */
-.memo-record__value {
-    flex: 1;
-    min-width: 0;
-    font-size: 1.0625rem;
-    font-weight: 700;
-    color: #1e293b;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.625rem;
-    padding: 0.45rem 0.7rem;
-    text-align: right;
-}
-.memo-record__value:focus {
-    outline: none;
-    border-color: #94a3b8;
-}
-.memo-record__unit {
-    flex-shrink: 0;
-    font-size: 0.8125rem;
-    font-weight: 700;
-    color: #64748b;
-}
-.memo-record__row.hidden {
-    display: none;
-}
-.memo-record__body textarea {
-    width: 100%;
-    resize: none;
-    font-size: 0.9375rem;
-    line-height: 1.55;
-    color: #1e293b;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 0.75rem;
-    padding: 0.55rem 0.7rem;
-}
-.memo-record__body textarea:focus {
-    outline: none;
-    border-color: #94a3b8;
-}
-.memo-record__photo-btns {
-    display: flex;
-    gap: 0.4rem;
-}
-.memo-record__photo-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 0.75rem;
-    background: #f1f5f9;
-    color: #475569;
-    -webkit-tap-highlight-color: transparent;
-}
-.memo-record__photo-btn:active {
-    background: #e2e8f0;
-}
-.memo-record__photo-btn [data-lucide],
-.memo-record__photo-btn .lucide {
-    width: 1.0625rem;
-    height: 1.0625rem;
-}
-/*
- * 사진 줄은 끼니 시트와 같은 부품을 쓴다 (docs/user-memo-items.md §4.4) —
- * 미리보기 한 칸이 7rem 이라 감싸지 않고 가로로 흘린다. 접어 내리면
- * 시트 높이가 사진 수에 따라 널뛴다.
- */
-.memo-record__photo-tools {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.memo-record__aspect {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-}
-.memo-record__previews {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-}
-.memo-record__previews:empty {
-    display: none;
-}
+
 .memo-record__foot {
     flex-shrink: 0;
     display: flex;
@@ -15471,7 +15324,7 @@ body:has(#adminPage:not(.hidden)),
 /* ═══════════════════════════════════════════════════════════
    기록 시트 — 디자인 시스템 (위계: 핵심 입력 › 부가 › 메모)
    ═══════════════════════════════════════════════════════════ */
-:is(#entryModal, #dailyJournalModal) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) {
     --entry-accent: var(--green);
     --entry-accent-dark: var(--green-deep);
     --entry-accent-soft: var(--green-soft);
@@ -15506,14 +15359,14 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 헤더: 메타(날짜·슬롯) — 조용하게 ── */
-:is(#entryModal, #dailyJournalModal) .entry-modal-panel {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-panel {
     background: var(--card);
     border-radius: var(--shell-r-dialog);
     border: 1px solid var(--line);
     box-shadow: 0 12px 40px rgba(36, 31, 28, 0.14);
     will-change: transform;
 }
-:is(#entryModal, #dailyJournalModal) .entry-modal-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-header {
     background: var(--entry-surface);
     border-bottom: 1px solid var(--entry-border-soft);
     border-radius: var(--shell-r-dialog) var(--shell-r-dialog) 0 0;
@@ -15522,8 +15375,8 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     gap: 0.375rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-header-date,
-:is(#entryModal, #dailyJournalModal) .entry-header-slot {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-date,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-slot {
     font-variant-numeric: tabular-nums;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -15585,7 +15438,7 @@ body:has(#adminPage:not(.hidden)),
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
     color: #0f172a;
 }
-:is(#entryModal, #dailyJournalModal) .entry-header-date {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-header-date {
     flex: 0 1 auto;
     min-width: 6.5rem;
     max-width: 8.25rem;
@@ -15879,10 +15732,10 @@ body:has(#adminPage:not(.hidden)),
 }
 /* entry-detail-record-bar removed — 상세보기 칩 UI 삭제 */
 
-:is(#entryModal, #dailyJournalModal) .entry-sheet-body {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-body {
     background: var(--entry-surface-body);
 }
-:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--media {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-zone--media {
     background: var(--entry-surface);
     padding: 0;
     border-bottom: none;
@@ -15900,7 +15753,7 @@ body:has(#adminPage:not(.hidden)),
     padding: 0;
     border-top: 1px solid var(--entry-border-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-sheet-zone--memo {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-sheet-zone--memo {
     background: var(--entry-surface-band);
     border-top: 1px solid var(--entry-border-soft);
 }
@@ -15984,7 +15837,7 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 필드 행 ── */
-#entryModal .entry-form-field-section {
+:is(#entryModal, #memoRecordModal) .entry-form-field-section {
     margin: 0;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
@@ -16024,7 +15877,7 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 라벨: 14px·검정 통일 ── */
-#entryModal .entry-axis-label {
+:is(#entryModal, #memoRecordModal) .entry-axis-label {
     min-width: var(--entry-form-label-w);
     line-height: 1.25;
     text-transform: none;
@@ -16033,20 +15886,20 @@ body:has(#adminPage:not(.hidden)),
     font-weight: 600;
     color: #0f172a;
 }
-#entryModal .entry-axis-label-with-icon {
+:is(#entryModal, #memoRecordModal) .entry-axis-label-with-icon {
     display: inline-flex;
     align-items: center;
     gap: calc(0.375rem + 0.5em);
     min-width: auto;
 }
-#entryModal .entry-axis-icon {
+:is(#entryModal, #memoRecordModal) .entry-axis-icon {
     width: 1.05rem;
     font-size: 0.9rem;
     line-height: 1;
     text-align: center;
     flex-shrink: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header .entry-axis-icon {
     color: #8b5cf6;
 }
 #entryModal #entryWhereSection .entry-axis-icon {
@@ -16071,7 +15924,7 @@ body:has(#adminPage:not(.hidden)),
     color: #0ea5e9;
 }
 
-#entryModal .entry-axis-input-row {
+:is(#entryModal, #memoRecordModal) .entry-axis-input-row {
     width: 100%;
     gap: var(--entry-form-row-gap);
     align-items: center;
@@ -16084,7 +15937,7 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-axis-input-row > .entry-axis-label.entry-axis-label-with-icon {
     grid-column: 1;
 }
-#entryModal .entry-axis-input-col {
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col {
     grid-column: 2;
     min-width: 0;
     padding-left: var(--entry-form-input-pl);
@@ -16096,10 +15949,10 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 입력 필드 (핵심 강조) ── */
-#entryModal .entry-axis-input-col input[type="text"],
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col input[type="text"],
 #entryModal .entry-axis-input-area input[type="text"],
 #entryModal #entryWhatSection .entry-what-textarea,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea {
     background: var(--entry-input-bg);
     border: 1px solid transparent;
     border-radius: var(--entry-radius);
@@ -16121,9 +15974,9 @@ body:has(#adminPage:not(.hidden)),
 #entryModal .entry-sheet-zone--core #entryWithSection input[type="text"] {
     font-size: 0.9375rem;
 }
-#entryModal .entry-axis-input-col input[type="text"]::placeholder,
+:is(#entryModal, #memoRecordModal) .entry-axis-input-col input[type="text"]::placeholder,
 #entryModal .entry-axis-input-area input[type="text"]::placeholder,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea::placeholder,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea::placeholder,
 #entryModal #entryWhatSection .entry-what-textarea::placeholder {
     color: var(--entry-placeholder);
     font-weight: 500;
@@ -16136,7 +15989,7 @@ body:has(#adminPage:not(.hidden)),
 }
 #entryModal .entry-axis-input-col input[type="text"]:focus,
 #entryModal .entry-axis-input-area input[type="text"]:focus,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea:focus,
 #entryModal #entryWhatSection .entry-what-textarea:focus {
     outline: none;
     background: var(--entry-input-bg-focus);
@@ -16179,61 +16032,61 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 사진 (보조) ── */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section {
     margin-bottom: 0;
     padding: 0.625rem 1rem;
     border-bottom: 1px solid var(--entry-border-row);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     margin-bottom: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-preview-row {
     padding: 0;
     margin: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     margin: 0;
     padding: 0;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn {
     border: 1px solid var(--entry-border, #e2e8f0);
     background: #ffffff;
     color: var(--entry-action-icon);
     box-sizing: border-box;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn i {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn i {
     font-size: 1.125rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:hover {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn:hover {
     background: #ffffff;
     border-color: #cbd5e1;
 }
-:is(#entryModal, #dailyJournalModal) .record-photo-add-btn:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .record-photo-add-btn:active {
     background: #f8fafc;
     border-color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools {
     display: none;
     opacity: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
     display: inline-flex;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools .photo-aspect-btn {
     font-size: 0.6875rem;
     font-weight: 800;
     color: var(--entry-text-secondary);
     border-color: var(--entry-border-soft);
     background: transparent;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: #6ee7b7;
     color: var(--entry-accent-dark);
     font-weight: 800;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-count {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-count {
     margin-left: 0.375rem;
     font-size: 0.625rem;
     font-weight: 700;
@@ -16242,13 +16095,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: 0;
     text-transform: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
 }
 
 /* ── 사진 등록 후: 스트립 썸네일 → 아래 고정 툴바 ── */
 /* :not(.hidden) — has-photos의 display:flex가 Tailwind .hidden을 덮지 않도록 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos:not(.hidden) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos:not(.hidden) {
     position: relative;
     display: flex;
     flex-direction: column;
@@ -16256,17 +16109,17 @@ body:has(#adminPage:not(.hidden)),
     border-bottom: 1px solid var(--entry-border-row);
     background: var(--entry-surface);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section.hidden {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section.hidden {
     display: none !important;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-preview-row {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-preview-row {
     order: 1;
     margin: 0;
     padding: 0;
     overflow: visible;
     display: block;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header {
     order: 2;
     position: static;
     inset: auto;
@@ -16282,7 +16135,7 @@ body:has(#adminPage:not(.hidden)),
     border-top: none; /* 사진과 바로 붙도록 구분선·간격 제거 */
     pointer-events: auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label {
     position: static;
     top: auto;
     right: auto;
@@ -16303,15 +16156,15 @@ body:has(#adminPage:not(.hidden)),
     align-items: center;
     gap: 0.35rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-icon {
     display: inline-block;
     font-size: 0.95rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-label > span:not(.entry-photo-count) {
     display: inline;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-count {
     margin: 0;
     margin-left: 0.25rem;
     padding: 2px 7px;
@@ -16322,12 +16175,12 @@ body:has(#adminPage:not(.hidden)),
     font-size: 0.6875rem;
     font-weight: 700;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-count.text-emerald-600 {
     color: var(--entry-accent-dark);
     border-color: var(--green-mute);
     background: var(--green-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col {
     position: static;
     inset: auto;
     padding: 0;
@@ -16340,10 +16193,10 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     pointer-events: auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-header .entry-axis-input-col.pl-2 {
     padding-left: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-add-btns {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-add-btns {
     position: static;
     left: auto;
     bottom: auto;
@@ -16351,7 +16204,7 @@ body:has(#adminPage:not(.hidden)),
     pointer-events: auto;
     gap: 6px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools {
     position: static;
     right: auto;
     bottom: auto;
@@ -16361,8 +16214,8 @@ body:has(#adminPage:not(.hidden)),
     gap: 4px;
 }
 /* 사진 설정 행: 카메라/앨범·비율 버튼 높이·타이포 통일 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     box-sizing: border-box;
     height: 2rem;
     min-height: 2rem;
@@ -16377,20 +16230,20 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn {
     width: 2rem;
     min-width: 2rem;
     color: var(--entry-action-icon);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn i,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .record-photo-add-btn .lucide {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn i,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .record-photo-add-btn .lucide {
     color: var(--entry-action-icon);
     font-size: 0.875rem;
     width: 0.875rem;
     height: 0.875rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     width: auto;
     min-width: 3rem;
     padding: 0 0.65rem;
@@ -16399,13 +16252,13 @@ body:has(#adminPage:not(.hidden)),
     letter-spacing: -0.01em;
     color: var(--entry-text-secondary);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn.photo-aspect-btn--active {
     background: var(--entry-accent-soft);
     border-color: var(--green-mute);
     color: var(--entry-accent-dark);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #photoPreviewContainer,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos #snackPhotoPreviewContainer {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos #photoPreviewContainer,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos #snackPhotoPreviewContainer {
     display: block;
     width: 100%;
     padding: 0;
@@ -16413,7 +16266,7 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
 }
 /* 등록 사진 썸네일 스트립 — 편집·좌우 이동은 사진 내 하단 오버레이 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .entry-photo-thumb-strip {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .entry-photo-thumb-strip {
     display: flex;
     flex-wrap: nowrap;
     align-items: flex-start;
@@ -16427,13 +16280,13 @@ body:has(#adminPage:not(.hidden)),
     scrollbar-width: thin;
     box-sizing: border-box;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-card {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-card {
     display: block;
     width: 10.2rem;
     min-width: 10.2rem;
     flex: 0 0 auto;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb {
     position: relative;
     width: 100%;
     height: auto;
@@ -16446,20 +16299,20 @@ body:has(#adminPage:not(.hidden)),
     overflow: hidden;
     -webkit-tap-highlight-color: transparent;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn {
     width: 24px;
     height: 24px;
     top: 6px;
     right: 6px;
     font-size: 12px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn [data-lucide],
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-item--thumb .photo-remove-btn .lucide {
     width: 12px;
     height: 12px;
 }
 /* 사진 내 하단: ‹ 편집 › — 아래 패딩으로 살짝 올림 */
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls.photo-preview-bottom-bar {
     display: flex;
     align-items: flex-end;
     gap: 2px;
@@ -16468,8 +16321,8 @@ body:has(#adminPage:not(.hidden)),
     padding: 0.75rem 0.25rem 0.35rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.65), rgba(0, 0, 0, 0.28) 55%, transparent);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn {
     box-sizing: border-box;
     flex: 1 1 0;
     min-width: 0;
@@ -16490,21 +16343,21 @@ body:has(#adminPage:not(.hidden)),
     justify-content: center;
     line-height: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn:active {
     background: rgba(0, 0, 0, 0.78);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn:disabled {
     opacity: 0.32;
     cursor: not-allowed;
     pointer-events: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-order-btn--arrow {
     font-size: 1rem;
     font-weight: 700;
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-section--has-photos .photo-preview-thumb-controls .photo-edit-btn--text {
     padding: 0 0.25rem;
     font-size: 12px;
     font-weight: 400;
@@ -16556,7 +16409,7 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #snackSatietySection .entry-axis-input-row {
     align-items: center;
 }
-#entryModal .entry-meal-clock-compound {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound {
     width: 100%;
     max-width: 100%;
     margin-left: 0;
@@ -16577,7 +16430,7 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-border-soft);
     font-size: 12px;
 }
-#entryModal .entry-meal-clock-compound .entry-meal-ampm {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound .entry-meal-ampm {
     background: #ffffff;
     border-color: var(--entry-border-soft);
     font-size: 12px;
@@ -16597,7 +16450,7 @@ body:has(#adminPage:not(.hidden)),
     background: #ffffff;
     font-size: 12px;
 }
-#entryModal .entry-meal-clock-compound:focus-within {
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound:focus-within {
     background: #ffffff;
     border-color: var(--entry-accent);
     box-shadow: 0 0 0 3px var(--entry-accent-ring);
@@ -16613,17 +16466,17 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #entryWithSection.entry-field-quick-off .entry-axis-label-row,
 #entryModal #entryMealTimeSectionMain .entry-axis-input-row,
 #entryModal #entryMealTimeSectionSnack .entry-axis-input-row,
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     min-height: var(--entry-form-row-h);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header {
     display: grid;
     grid-template-columns: var(--entry-form-label-w) minmax(0, 1fr);
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-label {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header > .entry-axis-label {
     grid-column: 1;
 }
-:is(#entryModal, #dailyJournalModal) .entry-photo-header > .entry-axis-input-col {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-photo-header > .entry-axis-input-col {
     grid-column: 2;
     padding-left: var(--entry-form-input-pl);
 }
@@ -16641,12 +16494,12 @@ body:has(#adminPage:not(.hidden)),
    (quick-off 시 padding:0 이 적용되면 placeholder가 위로 붙음) */
 
 /* 어디서·무엇을·누구와: 라벨 위 · 입력란 아래 */
-#entryModal .entry-form-field-section.entry-axis-stack {
+:is(#entryModal, #memoRecordModal) .entry-form-field-section.entry-axis-stack {
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
 }
-#entryModal .entry-axis-stack .entry-axis-label-row {
+:is(#entryModal, #memoRecordModal) .entry-axis-stack .entry-axis-label-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -16671,7 +16524,7 @@ body:has(#adminPage:not(.hidden)),
     width: 0.9rem;
     height: 0.9rem;
 }
-#entryModal .entry-axis-stack .entry-axis-input-area {
+:is(#entryModal, #memoRecordModal) .entry-axis-stack .entry-axis-input-area {
     width: 100%;
 }
 /* 끼니 어디서 보조 라벨 (어떻게 칩 아래·장소 입력 위) — 본 라벨 행보다 낮게, 행 높이 강제 없음 */
@@ -16720,13 +16573,13 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 메모·더 적기 (하단 보조) ── */
-:is(#entryModal, #dailyJournalModal) .entry-comment-detail-footer {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-detail-footer {
     margin-top: 0;
     padding: 0;
     background: transparent;
     border-top: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-section {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-section {
     padding: 0.625rem 1rem;
     margin: 0;
     border-bottom: 1px solid var(--entry-border-row);
@@ -16735,7 +16588,7 @@ body:has(#adminPage:not(.hidden)),
     max-width: 100%;
     overflow-x: hidden;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-heading {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-heading {
     display: block;
     font-size: 0.875rem;
     font-weight: 600;
@@ -16745,18 +16598,18 @@ body:has(#adminPage:not(.hidden)),
     margin-bottom: 0.375rem;
     text-transform: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-heading-with-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-heading-with-icon {
     display: inline-flex;
     align-items: center;
     gap: 0.375rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-icon {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-icon {
     font-size: 1.05rem;
     line-height: 1;
     color: var(--entry-action-icon);
     flex-shrink: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea {
     --entry-comment-line: 1.35;
     box-sizing: border-box;
     display: block;
@@ -16778,8 +16631,8 @@ body:has(#adminPage:not(.hidden)),
     text-overflow: ellipsis;
     transition: min-height 0.18s ease, padding 0.18s ease;
 }
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea:focus,
-:is(#entryModal, #dailyJournalModal) .entry-comment-textarea.entry-comment-textarea--expanded {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea:focus,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-comment-textarea.entry-comment-textarea--expanded {
     max-height: none;
     height: auto;
     min-height: calc(2em * var(--entry-comment-line) + 0.9rem);
@@ -17073,23 +16926,23 @@ body:has(#adminPage:not(.hidden)),
 }
 
 /* ── 하단 액션 (기록 완료 강조) — 기록시트·하루 소감 공통 ── */
-:is(#entryModal, #dailyJournalModal) .entry-modal-actions {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-actions {
     background: var(--entry-surface);
     border-top: 1px solid var(--entry-border-soft);
     box-shadow: 0 -4px 16px rgb(15 23 42 / 0.04);
     border-radius: 0 0 var(--shell-r-dialog) var(--shell-r-dialog);
     padding: 16px 16px 16px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-modal-actions > .flex {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-actions > .flex {
     gap: 8px;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn {
     transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
     border-radius: var(--shell-r-btn);
     min-height: 46px;
 }
 /* 버튼 배경은 영역 전체 유지, 내부 콘텐츠만 축소 → 주변 하얀 여백 방지 */
-:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn__inner {
     display: flex;
     flex-direction: inherit;
     align-items: inherit;
@@ -17098,17 +16951,17 @@ body:has(#adminPage:not(.hidden)),
     min-width: 0;
     transition: transform 0.1s ease;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn__inner--loading {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn__inner--loading {
     flex-direction: row;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn:active:not(:disabled) .entry-action-btn__inner,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn.btn-is-pressed:not(:disabled) .entry-action-btn__inner {
     transform: scale(0.92);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save {
     background: var(--cta-mint-grad);
     color: #fff;
     font-size: 15px;
@@ -17118,69 +16971,69 @@ body:has(#adminPage:not(.hidden)),
     min-height: var(--cta-btn-h);
     box-shadow: var(--cta-mint-shadow);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:hover:not(:disabled) {
     filter: brightness(1.02);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save.btn-is-pressed:not(:disabled) {
     filter: brightness(0.96);
     box-shadow: inset 0 1px 6px rgb(0 0 0 / 0.1), 0 1px 4px rgba(45, 159, 116, 0.22);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--save:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--save:disabled {
     cursor: not-allowed;
     box-shadow: none;
     opacity: 0.55;
     filter: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete {
     background: #fff1f2;
     color: #e11d48;
     border-right: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:hover:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete:hover:not(:disabled) {
     background: #ffe4e6;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete:active:not(:disabled),
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete:active:not(:disabled),
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--delete.btn-is-pressed:not(:disabled) {
     background: #fda4af;
     color: #9f1239;
     box-shadow: inset 0 2px 10px rgb(159 18 57 / 0.22);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share {
     background: var(--entry-surface-muted);
     color: var(--entry-text-muted);
     border-left: 0;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):hover {
     background: var(--entry-border-soft);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on):active,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:not(:disabled):not(.entry-action-btn--share-on).btn-is-pressed {
     background: #cbd5e1;
     color: #334155;
     box-shadow: inset 0 2px 10px rgb(15 23 42 / 0.14);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled):active,
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on:not(:disabled).btn-is-pressed {
     background: var(--green-deep);
     color: #fff;
     box-shadow: inset 0 2px 10px rgb(4 120 87 / 0.28);
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on {
     background: var(--green);
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-on i {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-on i {
     color: #fff;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share.entry-action-btn--share-banned {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share.entry-action-btn--share-banned {
     background: #fff1f2;
     color: #f87171;
     border-left-color: #fecaca;
     cursor: not-allowed;
     pointer-events: none;
 }
-:is(#entryModal, #dailyJournalModal) .entry-action-btn--share:disabled {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-action-btn--share:disabled {
     opacity: 1;
 }
 
@@ -17609,7 +17462,7 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 
 /* Soft Mint Center Dialog — 상단 스와이프 핸들 */
 .mealog-dialog-grabber,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber {
     flex: 0 0 auto;
     align-self: center;
     width: 100%;
@@ -17627,14 +17480,14 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     -webkit-tap-highlight-color: transparent;
 }
 .mealog-dialog-grabber:active,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:active {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber:active {
     cursor: grabbing;
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;
 }
 .mealog-dialog-grabber:focus-visible,
-:is(#entryModal, #dailyJournalModal) .entry-modal-grabber:focus-visible {
+:is(#entryModal, #dailyJournalModal, #memoRecordModal) .entry-modal-grabber:focus-visible {
     background:
         linear-gradient(rgba(15, 23, 42, 0.34), rgba(15, 23, 42, 0.34))
         center 0.55rem / 2.5rem 0.28rem no-repeat;
@@ -20039,4 +19892,129 @@ html.service-guide-active #landingPage {
 }
 .entry-context-seg--muted svg {
     color: #94a3b8;
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   메모 기록 시트 — 끼니 시트와 같은 필드 마감 (docs/user-memo-items.md §4.4)
+
+   라벨·구분선·입력칸·사진 줄 규칙은 위 공유 선택자
+   `:is(#entryModal, #dailyJournalModal, #memoRecordModal)` 가 이미 준다.
+   여기 남는 것은 (1) 끼니가 `#entryMealTimeSectionMain` 같은 id 로 받던 시간
+   행 마감과 (2) 좁은 시트에 맞춘 라벨 칸 폭뿐이다. **공유 규칙 뒤에 와야**
+   이 마감이 이기므로 파일 끝에 둔다.
+   ══════════════════════════════════════════════════════════ */
+#memoRecordModal .memo-record__body {
+    background: var(--entry-surface, #fff);
+    /* 사진 줄이 넘쳐도 시트가 가로로 밀리지 않게 */
+    overflow-x: hidden;
+    /*
+     * 라벨 칸만 좁힌다. 끼니는 '어디서/무엇을/누구와'처럼 긴 라벨이 있어
+     * 7.25rem 이 필요하지만 메모 라벨은 두 글자뿐이고, 시트도 22rem 으로 좁다.
+     * 그 폭을 그대로 쓰면 시각 복합칸([출처][오전/오후][시:분])이 밀려 시:분이
+     * 잘리고 사진 줄의 비율 버튼이 밖으로 나간다.
+     */
+    --entry-form-label-w: 5rem;
+}
+#memoRecordModal .entry-form-field-section:last-child {
+    border-bottom: 0;
+}
+#memoRecordModal .entry-axis-label {
+    white-space: nowrap;
+}
+#memoRecordModal .entry-axis-label-with-icon {
+    gap: 0.375rem;
+}
+
+/* ── 라벨 아이콘 색: 끼니와 같은 규칙(항목마다 다른 색) ── */
+#memoRecordModal .entry-axis-icon {
+    color: #8b5cf6;
+}
+#memoRecordModal #memoRecordValueRow .entry-axis-icon {
+    color: #f59e0b;
+}
+#memoRecordModal #memoRecordCommentSection .entry-axis-icon {
+    color: var(--entry-action-icon, #76a797);
+}
+#memoRecordModal #memoRecordTimeSection .entry-axis-icon {
+    color: #0ea5e9;
+}
+
+/* ── 시각 복합칸 — 끼니 시간 행과 같은 높이·글자 ── */
+#memoRecordModal #memoRecordTimeSection .entry-meal-clock-compound {
+    height: var(--entry-form-row-h);
+    min-height: var(--entry-form-row-h);
+}
+#memoRecordModal #memoRecordTimeSection .entry-meal-time-source-btn {
+    min-height: var(--entry-form-row-h);
+    padding-left: 0.5rem;
+    padding-right: 0.375rem;
+    background: #ffffff;
+    border-color: var(--entry-border-soft);
+    font-size: 11px;
+}
+#memoRecordModal .entry-meal-clock-compound .entry-meal-ampm {
+    min-width: 3.9rem;
+    padding-left: 0.5rem;
+}
+#memoRecordModal #memoRecordTimeInput {
+    text-align: right;
+    padding-right: 0.625rem;
+    padding-left: 0.375rem;
+    background: #ffffff;
+    font-size: 12px;
+}
+
+/* ── 값 칸 (숫자 메모) ── */
+#memoRecordModal #memoRecordValue {
+    text-align: right;
+    padding: 0.5rem 0.75rem;
+    border-color: var(--entry-border, #d0c6ba);
+    font-variant-numeric: tabular-nums;
+}
+#memoRecordModal .memo-record__unit {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--entry-text-secondary, #64748b);
+}
+
+/* ── 내용 — 흰 바탕이라 윤곽이 있어야 입력칸으로 읽힌다 ── */
+#memoRecordModal .memo-record__body .entry-comment-textarea {
+    border-color: var(--entry-border, #d0c6ba);
+    min-height: 3.5rem;
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+}
+
+/* 사진이 없으면 미리보기 줄이 빈 칸으로 남지 않게 */
+#memoRecordModal .entry-photo-preview-row:not(:has(.photo-preview-item)) {
+    display: none;
+}
+/*
+ * 끼니는 큰 사진 한 장을 두고 좌우 버튼으로 넘기지만(히어로), 메모는 장수가
+ * 적어 띠로 늘어놓는다. 공유 규칙이 overflow:visible 로 덮으므로 되돌린다 —
+ * 안 그러면 셋째 장부터 잘린 채 손이 닿지 않는다.
+ */
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-preview-row {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+#memoRecordModal .entry-photo-preview-row::-webkit-scrollbar {
+    display: none;
+}
+
+/*
+ * 사진 띠 — 끼니 시트는 화면 폭을 다 쓰는 바텀시트지만 메모는 22rem 짜리
+ * 가운데 시트라 같은 내용이 360px 에서 넘친다. 담긴 것을 빼지 않고
+ * 여백과 버튼 폭만 줄인다. 그래도 모자라면 줄을 접는다.
+ */
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-header {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+}
+#memoRecordModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
+    min-width: 2.5rem;
+    padding: 0 0.4rem;
 }

@@ -2902,58 +2902,100 @@
                 </button>
             </div>
             <!--
-                순서는 사진 > 값 > 내용 > 시간이다 (docs/user-memo-items.md §4.4).
-                메모를 남기는 손은 대개 사진에서 출발하고, 시각은 사진에서 끌어올 수
-                있어 마지막에 확인만 하면 된다.
+                끼니 시트와 **같은 부품·같은 결**로 짠다 (docs/user-memo-items.md §4.4).
+                항목마다 구분선을 긋고, 라벨은 색 아이콘 + 굵은 글씨, 시각은
+                출처 버튼이 달린 그 복합 입력칸 그대로. 같은 일을 두 가지 모양으로
+                배우게 하지 않는다.
+
+                순서만 다르다 — 사진 > 값 > 내용 > 시간. 메모를 남기는 손은 대개
+                사진에서 출발하고, 시각은 그 사진에서 끌어올 수 있어 마지막에
+                확인만 하면 된다.
             -->
             <div class="memo-record__body">
-                <div class="memo-record__row memo-record__row--stack">
-                    <span class="memo-record__label">사진 <span id="memoRecordPhotoCount" class="memo-record__count">0/5</span></span>
-                    <div class="memo-record__photo-tools">
-                        <div class="memo-record__photo-btns">
-                            <button type="button" id="memoRecordCameraBtn" class="memo-record__photo-btn" aria-label="사진 찍기" title="사진 찍기">
-                                <i data-lucide="camera" aria-hidden="true"></i>
-                            </button>
-                            <button type="button" id="memoRecordAlbumBtn" class="memo-record__photo-btn" aria-label="앨범에서 선택" title="앨범에서 선택">
-                                <i data-lucide="image" aria-hidden="true"></i>
-                            </button>
-                        </div>
-                        <div class="memo-record__aspect">
-                            <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('1:1')">1:1</button>
-                            <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('3:4')">3:4</button>
-                            <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('4:3')">4:3</button>
+                <div id="memoRecordPhotoSection" class="entry-form-field-section entry-photo-section">
+                    <div class="entry-axis-input-row entry-photo-header flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i data-lucide="image" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>사진</span>
+                            <span id="memoRecordPhotoCount" class="entry-photo-count">0/5</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <div class="entry-photo-add-btns flex gap-1.5 shrink-0">
+                                <button type="button" id="memoRecordCameraBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="사진 찍기" title="사진 찍기">
+                                    <i data-lucide="camera" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" id="memoRecordAlbumBtn" class="record-photo-add-btn flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors" aria-label="앨범에서 선택" title="앨범에서 선택">
+                                    <i data-lucide="image" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="entry-photo-aspect-tools flex items-center gap-1 ml-auto shrink-0">
+                                <button type="button" data-aspect="1:1" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('1:1')">1:1</button>
+                                <button type="button" data-aspect="3:4" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('3:4')">3:4</button>
+                                <button type="button" data-aspect="4:3" class="photo-aspect-btn aspect-btn-memo-record px-2 py-0.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors" onclick="window.setMemoRecordPhotoAspectRatio('4:3')">4:3</button>
+                            </div>
                         </div>
                     </div>
-                    <div id="memoRecordPhotoPreviews" class="memo-record__previews"></div>
+                    <div class="entry-photo-preview-row flex gap-2 overflow-x-auto">
+                        <div id="memoRecordPhotoPreviews" class="flex gap-2 min-w-0"></div>
+                    </div>
                 </div>
-                <div id="memoRecordValueRow" class="memo-record__row hidden">
-                    <label class="memo-record__label" for="memoRecordValue">값</label>
-                    <input type="text" id="memoRecordValue" class="memo-record__value" inputmode="decimal" autocomplete="off" placeholder="0" />
-                    <span id="memoRecordUnit" class="memo-record__unit"></span>
+                <div id="memoRecordValueRow" class="entry-form-field-section hidden">
+                    <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                        <label class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0" for="memoRecordValue">
+                            <i data-lucide="hash" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>값</span>
+                        </label>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 items-center gap-2 pl-2">
+                            <input type="text" id="memoRecordValue" class="memo-record__value min-w-0 flex-1" inputmode="decimal" autocomplete="off" placeholder="0" />
+                            <span id="memoRecordUnit" class="memo-record__unit shrink-0"></span>
+                        </div>
+                    </div>
                 </div>
-                <div class="memo-record__row memo-record__row--stack">
-                    <label class="memo-record__label" for="memoRecordText">내용</label>
-                    <textarea id="memoRecordText" rows="3" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요."></textarea>
+                <div id="memoRecordCommentSection" class="entry-form-field-section entry-axis-stack">
+                    <div class="entry-axis-label-row">
+                        <div class="entry-axis-label-group shrink-0">
+                            <label class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase" for="memoRecordText">
+                                <i data-lucide="message-circle-more" class="entry-axis-icon" aria-hidden="true"></i>
+                                <span>내용</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="entry-axis-input-area w-full min-w-0">
+                        <textarea id="memoRecordText" rows="2" maxlength="300" placeholder="비워 두어도 괜찮아요 — 시간만 남겨도 기록이에요." class="entry-comment-textarea w-full resize-none border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 appearance-none"></textarea>
+                    </div>
                 </div>
-                <div class="memo-record__row">
-                    <span class="memo-record__label">시간</span>
-                    <!--
-                        끼니 시트와 같은 모양 — 오전/오후 + 시:분 직접 입력 + 버튼으로 고르기.
-                        같은 일을 두 가지 모양으로 배우게 하지 않는다 (user-memo-items §4.4).
-                    -->
-                    <div class="entry-meal-clock-compound memo-record__clock">
-                        <label for="memoRecordAmpm" class="sr-only">오전 또는 오후</label>
-                        <select id="memoRecordAmpm" class="entry-meal-ampm shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                            <option value="am">오전</option>
-                            <option value="pm">오후</option>
-                        </select>
-                        <input type="text" id="memoRecordTimeInput"
-                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                            placeholder="시:분" aria-label="시각"
-                            class="min-w-0 flex-1 border-0 bg-white py-2 pl-3 pr-2 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
-                        <button type="button" id="memoRecordTimeBtn" class="memo-record__clock-btn" aria-label="시각 고르기" title="시각 고르기">
-                            <i data-lucide="clock" aria-hidden="true"></i>
-                        </button>
+                <div id="memoRecordTimeSection" class="entry-form-field-section">
+                    <div class="entry-axis-input-row flex items-center gap-3 min-w-0">
+                        <span class="entry-axis-label entry-axis-label-with-icon text-sm font-extrabold text-slate-600 uppercase shrink-0">
+                            <i data-lucide="clock" class="entry-axis-icon" aria-hidden="true"></i>
+                            <span>시간</span>
+                        </span>
+                        <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
+                            <!--
+                                끼니 시트의 시각 복합칸 그대로 — [출처 ▾][오전/오후][시:분].
+                                출처 버튼을 누르면 현재 시각·사진 시각·직접 입력 시트가 열린다.
+                                '미입력'만 없다: 메모는 시각이 곧 자리다 (§3.3).
+                            -->
+                            <div id="memoRecordClockCompound" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
+                                <button type="button" id="memoRecordTimeSourceBtn"
+                                    class="entry-meal-time-source-btn shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 active:bg-slate-100"
+                                    aria-label="시간 선택 방식" aria-haspopup="dialog">
+                                    <span id="memoRecordTimeSourceLabel" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite">현재 시각</span>
+                                    <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
+                                </button>
+                                <label for="memoRecordAmpm" class="sr-only">오전 또는 오후</label>
+                                <select id="memoRecordAmpm" class="entry-meal-ampm shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
+                                    <option value="am">오전</option>
+                                    <option value="pm">오후</option>
+                                </select>
+                                <div class="relative min-w-0 flex-1">
+                                    <input type="text" id="memoRecordTimeInput"
+                                        maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
+                                        placeholder="시:분" aria-label="시각"
+                                        class="absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

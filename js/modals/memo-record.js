@@ -34,6 +34,12 @@ import { RECORD_MAX_PHOTOS } from '../constants.js';
 
 /** 시각 시트·시계 휠은 메모 시트(--z-record-modal: 300) 위에 떠야 한다 */
 const MEMO_SHEET_Z = 350;
+/** 끼니 시트와 같은 문구 — 출처 버튼에 그대로 뜬다 */
+const MEMO_CLOCK_SOURCE_LABELS = {
+    now: '현재 시각',
+    photo: '사진 시각',
+    manual: '직접 입력'
+};
 const PHOTO_ASPECT_OPTIONS = ['1:1', '3:4', '4:3'];
 
 let bound = false;
@@ -58,6 +64,20 @@ function syncClockRow() {
     const { ampm, display } = mealClock24ToAmPmAndDisplay(state.clock || '12:00');
     if (sel) sel.value = ampm;
     if (txt) txt.value = display;
+    syncClockSourceLabel();
+}
+
+/**
+ * 출처 버튼의 글자 — 끼니 시트와 같다.
+ *
+ * 새 기록의 기본 시각은 '지금'이므로 처음부터 '현재 시각'이 떠 있다. 끼니는
+ * 시각을 비울 수 있어 아무것도 안 고른 상태가 있지만, 메모는 시각이 늘
+ * 있으므로(§3.3) 라벨이 빌 일이 없다.
+ */
+function syncClockSourceLabel() {
+    const el = document.getElementById('memoRecordTimeSourceLabel');
+    if (!el) return;
+    el.textContent = MEMO_CLOCK_SOURCE_LABELS[state?.clockSource || 'now'] || '현재 시각';
 }
 
 /** 입력칸·select 에서 읽은 24시 'HH:mm' — 못 읽으면 빈 문자열 */
@@ -126,15 +146,13 @@ function memoAspectCss() {
     return '1';
 }
 
+/** 비율 버튼 선택 표시 — 끼니 시트와 같은 클래스(`photo-aspect-btn--active`) */
 function syncMemoAspectButtons() {
     const ratio = appState.memoRecordPhotoAspectRatio || '1:1';
     document.querySelectorAll('.aspect-btn-memo-record').forEach((btn) => {
         const active = btn.getAttribute('data-aspect') === ratio;
-        btn.classList.toggle('bg-white', active);
-        btn.classList.toggle('text-slate-900', active);
-        btn.classList.toggle('border-slate-900', active);
-        btn.classList.toggle('border-slate-200', !active);
-        btn.classList.toggle('text-slate-600', !active);
+        btn.classList.toggle('photo-aspect-btn--active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
 }
 
@@ -171,7 +189,11 @@ export function renderMemoRecordPhotoPreviews() {
     const photos = memoPhotos();
     const aspectCss = memoAspectCss();
 
-    if (countEl) countEl.textContent = `${photos.length}/${RECORD_MAX_PHOTOS}`;
+    if (countEl) {
+        countEl.textContent = `${photos.length}/${RECORD_MAX_PHOTOS}`;
+        countEl.classList.toggle('text-emerald-600', photos.length >= RECORD_MAX_PHOTOS);
+        countEl.classList.toggle('text-slate-400', photos.length < RECORD_MAX_PHOTOS);
+    }
     if (wrap) {
         wrap.innerHTML = photos
             .map((src, idx) => {
@@ -199,6 +221,14 @@ export function renderMemoRecordPhotoPreviews() {
             .join('');
         scheduleLucideIcons(wrap);
     }
+
+    /*
+     * 끼니 시트와 같은 전환 — 사진이 생기면 미리보기가 위로 올라오고
+     * 머리줄(장수·추가·비율)이 그 아래 띠가 된다. 비율 버튼도 이때만 뜬다.
+     */
+    document
+        .getElementById('memoRecordPhotoSection')
+        ?.classList.toggle('entry-photo-section--has-photos', photos.length > 0);
 
     const full = photos.length >= RECORD_MAX_PHOTOS;
     setPhotoAddButtonsEnabled([cameraBtn, albumBtn], !full, {
@@ -288,6 +318,7 @@ export function openMemoRecordModal(dateIso, slotKey, entryId = null) {
         comment: String(existing?.comment || ''),
         // 새 기록의 기본 시각은 **지금** — 시각이 늘 있어야 §3.3 이 성립한다
         clock: normalizeExistingClock(existing) || nowHHmm(),
+        clockSource: existing ? 'manual' : 'now',
         saving: false
     };
 
@@ -331,10 +362,11 @@ export function closeMemoRecordModal() {
 
 /* ── 편집 ─────────────────────────────────────────────────── */
 
-/** Date 를 시각 칸에 꽂는다 */
-function applyClockFromDate(date) {
+/** Date 를 시각 칸에 꽂는다 — 어디서 온 값인지(source)도 같이 남긴다 */
+function applyClockFromDate(date, source) {
     if (!state || !date || Number.isNaN(date.getTime())) return;
     state.clock = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    if (source) state.clockSource = source;
     syncClockRow();
 }
 
@@ -349,7 +381,7 @@ function openTimePicker() {
     openMealClockWheelPanel({
         zIndex: MEMO_SHEET_Z,
         initialDate: seed,
-        onApply: (date) => applyClockFromDate(date)
+        onApply: (date) => applyClockFromDate(date, 'manual')
     });
 }
 
@@ -366,7 +398,7 @@ function openTimeSourceForMemo() {
         title: '시간 선택',
         zIndex: MEMO_SHEET_Z,
         showEmpty: false,
-        onNow: () => applyClockFromDate(new Date()),
+        onNow: () => applyClockFromDate(new Date(), 'now'),
         onPhoto: async () => {
             const date = await resolveFirstPhotoTakenAt({
                 photoMeta: memoPhotoMeta(),
@@ -377,7 +409,7 @@ function openTimeSourceForMemo() {
                 return;
             }
             closeTimeSourceSheets();
-            applyClockFromDate(date);
+            applyClockFromDate(date, 'photo');
         },
         onManual: () => openTimePicker()
     });
@@ -577,7 +609,7 @@ function bindOnce() {
     if (!modal) return;
     modal.querySelector('#memoRecordBackdrop')?.addEventListener('click', closeMemoRecordModal);
     modal.querySelector('#memoRecordCloseBtn')?.addEventListener('click', closeMemoRecordModal);
-    modal.querySelector('#memoRecordTimeBtn')?.addEventListener('click', openTimeSourceForMemo);
+    modal.querySelector('#memoRecordTimeSourceBtn')?.addEventListener('click', openTimeSourceForMemo);
 
     /**
      * 직접 입력 — 끼니 시트와 같은 규칙이다.
@@ -611,7 +643,10 @@ function bindOnce() {
         const sel = document.getElementById('memoRecordAmpm');
         const raw24 = n12 ? mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', n12) : '';
         const n24 = normalizeMealClockInputValue(raw24 || '');
-        if (n24) state.clock = n24;
+        if (n24) {
+            state.clock = n24;
+            state.clockSource = 'manual';
+        }
         syncClockRow();
     });
     timeInput?.addEventListener('keydown', (e) => {
@@ -623,7 +658,10 @@ function bindOnce() {
     modal.querySelector('#memoRecordAmpm')?.addEventListener('change', () => {
         if (!state) return;
         const n24 = readClockFromRow();
-        if (n24) state.clock = n24;
+        if (n24) {
+            state.clock = n24;
+            state.clockSource = 'manual';
+        }
         syncClockRow();
     });
     modal.querySelector('#memoRecordCameraBtn')?.addEventListener('click', () => void pickPhotos('camera'));
