@@ -1115,15 +1115,30 @@ function buildHomeFeedCardShellHtml({
 function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opts = {}) {
     const forShareCapture = !!opts.forShareCapture;
     /**
-     * 숫자 메모는 값이 본체다(§2.7) — '68.4kg' 이 제목이 되고
-     * 내용은 그 뒤에 붙는다. 텍스트 메모는 내용이 그대로 제목이다.
+     * 위계는 끼니 카드와 **같다** (docs/user-memo-items.md §4.5):
+     *   초록점 옆(meta) = 항목 이름   ·   큰 줄(title) = 본문   ·   회색 줄(note) = 덧말
+     *
+     * 끼니에서 meta 가 '아침 · 우리집'이고 title 이 메뉴이듯, 메모의 meta 는 늘
+     * 항목 이름이다. 이름이 어느 줄에 있을지가 기록마다 달라지면 카드를 훑을 때
+     * 눈이 매번 다시 자리를 찾아야 한다.
+     *
+     * 숫자 메모는 값이 본체이므로(§2.7) 값이 제목을 차지하고, 내용은 끼니의
+     * 코멘트와 같은 자리(회색 인용 줄)로 내려간다. 텍스트 메모는 내용이 곧 제목이라
+     * 그 줄이 비어 있다.
      */
     const note = String(r.comment || '').trim();
     const valueText =
         Number.isFinite(Number(r.value)) && r.value !== '' && r.value != null
             ? `${Number(r.value)}${slot.unit || ''}`
             : '';
-    const body = valueText ? (note ? `${valueText} · ${note}` : valueText) : note;
+    const body = valueText || note;
+    let noteText = valueText ? note : '';
+    /**
+     * 공유 캡처는 한 줄짜리라 회색 줄이 없다 — 거기서만 값과 덧말을 한 줄로 잇는다.
+     * 안 그러면 캡처에서 덧말이 통째로 사라진다.
+     */
+    const titleText = forShareCapture && valueText && note ? `${valueText} · ${note}` : body;
+    if (forShareCapture) noteText = '';
     const photoUrls = getMealPhotoUrlsForTimeline(r);
     const hasPhoto = photoUrls.length > 0;
     const photoHtml = hasPhoto
@@ -1160,13 +1175,17 @@ function buildMemoTimelineCardHtml(dateStr, slot, r, cardMbClass = 'mb-1.5', opt
         iconKind: 'snack',
         iconToneClass: 'home-feed-card__icon--tone-memo',
         /**
-         * 본문이 있으면 [이름 / 본문] 두 줄, 없으면 [이름] 한 줄.
-         * 빈 메모도 유효한 기록이고(§4.6), 그때 이름을 두 번 적으면
-         * '혈당 혈당'이 된다.
+         * 이름은 **늘** meta 에 있다. 본문이 없는 메모(§4.6 "있었다")는 제목 줄이
+         * 비는데, 거기에 이름을 한 번 더 적으면 '운동 / 운동'이 된다. 빈 줄은
+         * CSS 가 접는다(.home-feed-card--memo .home-feed-card__title:empty).
+         * 그 카드에는 이름과 시각 태그가 남고, 그게 그 기록의 전부다.
          */
-        metaHtml: body ? escapeHtml(slot.label) : '',
-        titleHtml: escapeHtml(body || slot.label),
-        noteHtml: '',
+        metaHtml: escapeHtml(slot.label),
+        titleHtml: escapeHtml(titleText),
+        noteHtml:
+            !forShareCapture && noteText
+                ? `<p class="home-feed-card__note">"${escapeHtml(noteText)}"</p>`
+                : '',
         tagsHtml: forShareCapture ? '' : buildHomeFeedTagsHtml(tags),
         ratingVal: '',
         forShareCapture,

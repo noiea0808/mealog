@@ -7551,6 +7551,13 @@ body[data-main-tab='timeline'] .date-section-header__share-btn.date-section-head
     margin-bottom: 5px;
     word-break: break-word;
 }
+/*
+ * 본문 없는 메모 카드 — 제목 줄이 비면 접는다 (docs/user-memo-items.md §4.5).
+ * 이름은 meta 에 있으므로 여기 다시 적지 않는다.
+ */
+.home-feed-card--memo .home-feed-card__title:empty {
+    display: none;
+}
 .home-feed-card__note {
     font-size: 14px;
     color: #64748b;

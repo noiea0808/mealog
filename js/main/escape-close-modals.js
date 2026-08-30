@@ -24,9 +24,20 @@ import { dismissDemoIntroModal } from '../demo-account.js';
 import { closePwaInstallGuideModal, closeDesktopShortcutGuideModal } from '../pwa-install.js';
 import { tryCloseDemoNavGuideFromBack } from '../demo-nav-guide.js';
 import { closeMomentImageLightbox } from './moment-image-lightbox.js';
+import { closeTimeSourceSheets } from '../time-source-picker.js';
+import { closeMealClockWheelPickerSheets } from '../meal-clock-wheel-picker.js';
 
 /** termsModal 제외 — 동적 생성 kakaoPlaceSearchModal·dailySharePreviewModal 등 포함 */
 const ESCAPE_OVERLAY_IDS = [
+    /*
+     * 시각 시트·시계 휠은 body 에 동적으로 붙는 오버레이다. 여기 없으면 그
+     * 위에서 ESC 를 눌렀을 때 시트만 닫히는 게 아니라 **그 아래 기록 시트까지**
+     * 같이 닫힌다 — 시트 자신의 ESC 처리와 이 전역 처리가 따로 돌기 때문이다.
+     * z(350·420)가 기록 시트(300)보다 높아 목록에 넣기만 하면 순서가 맞는다.
+     */
+    'mealClockWheelPickerSheet',
+    'timeSourceManualSheet',
+    'timeSourcePickerSheet',
     'successPopup',
     'attendancePopup',
     'serviceGuideOverlay',
@@ -66,6 +77,7 @@ const ESCAPE_OVERLAY_IDS = [
     'entryModal',
     'entrySlotPickerModal',
     'memoSettingsModal',
+    'memoRecordModal',
     'slotPlanHelpModal',
     'slotPlanSettingsModal',
     'dailyJournalModal'
@@ -251,6 +263,16 @@ function closeOverlayById(id) {
             break;
         case 'memoSettingsModal':
             window.closeMemoSettings?.();
+            break;
+        case 'memoRecordModal':
+            window.closeMemoRecordModal?.();
+            break;
+        case 'mealClockWheelPickerSheet':
+            closeMealClockWheelPickerSheets();
+            break;
+        case 'timeSourcePickerSheet':
+        case 'timeSourceManualSheet':
+            closeTimeSourceSheets();
             break;
         case 'slotPlanHelpModal':
             // 설정 시트보다 z 가 높다 — 도움말만 닫고 시트는 남는다
