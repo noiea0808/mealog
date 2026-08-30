@@ -12823,6 +12823,16 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     font-weight: 700;
     color: #94a3b8;
 }
+.memo-settings__new-hint {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #94a3b8;
+}
+/* 아이콘 판이 열려 있으면 안내는 제 할 일을 끝냈다 */
+.memo-settings__new-hint.hidden {
+    display: none;
+}
 .memo-settings__row--new .memo-settings__name::placeholder {
     font-weight: 600;
     color: #cbd5e1;

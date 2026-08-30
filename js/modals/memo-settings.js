@@ -143,6 +143,8 @@ function renderNew() {
         iconBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         scheduleLucideIcons(iconBtn);
     }
+    // 아이콘 판이 열리면 안내는 제 할 일을 끝냈다 — 자리만 차지한다
+    el('memoNewIconHint')?.classList.toggle('hidden', open);
     const grid = el('memoNewIconGrid');
     if (grid) {
         grid.classList.toggle('hidden', !open);

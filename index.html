@@ -3029,6 +3029,12 @@
                     <input type="text" id="memoNewNameInput" class="memo-settings__name" maxlength="8" placeholder="이름 (8자)" autocomplete="off" aria-label="새 메모 항목 이름" />
                     <button type="button" id="memoNewAddBtn" class="memo-settings__make">만들기</button>
                 </div>
+                <!--
+                    아이콘 안내는 이름 칸 플레이스홀더에 못 넣는다 — 그 칸이 200px 인데
+                    이 문장은 346px 다. 넣으면 '다양한 아이…' 에서 잘려 아무것도 안 알려 준다.
+                    줄 아래 한 줄이면 온전히 읽히고, 이름 칸은 이름 칸이라는 것도 남는다.
+                -->
+                <p id="memoNewIconHint" class="memo-settings__new-hint">왼쪽 박스를 선택하면 다양한 아이콘을 선택할 수 있어요</p>
                 <div id="memoNewIconGrid" class="slot-memo-edit__icons hidden" role="radiogroup" aria-label="아이콘"></div>
                 <p id="memoSettingsError" class="slot-memo-edit__error" role="alert"></p>
             </div>
