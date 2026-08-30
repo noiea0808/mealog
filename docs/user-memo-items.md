@@ -863,7 +863,7 @@ getMetricRecordsForDate(settings, date, metric)
 |---|---|---|
 | 피커의 자리 | 메모 격자의 한 칸 | |
 | 사용 여부 | 기본 항목 토글 | |
-| 순서 | 끌어 바꿈 | |
+| 순서 | 끌어 바꿈 (손잡이 ↑/↓ 키로도) — 기록 항목 설정과 같은 부품(`js/utils/list-drag-reorder.js`) | |
 | 이름·아이콘 | 고칠 수 있음 | |
 | 기록 저장소 | | `dailyComments` |
 | 기록 시트 | | 하루 소감 시트 |

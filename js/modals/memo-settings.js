@@ -18,6 +18,7 @@
 import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { bindListDragReorder } from '../utils/list-drag-reorder.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
 import {
@@ -103,7 +104,7 @@ function rowHtml(item, idx) {
         : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="${escapeHtml(item.label)} 항목 빼기">빼기</button>`;
     return `<div class="memo-settings__row-wrap${off ? ' memo-settings__row-wrap--off' : ''}" data-idx="${idx}">
         <div class="memo-settings__row">
-            <span class="slot-plan-row__drag memo-settings__drag" data-action="drag" role="button" aria-label="순서 이동" title="끌어서 순서 변경">
+            <span class="slot-plan-row__drag memo-settings__drag" data-action="drag" role="button" tabindex="0" aria-label="순서 이동" title="끌어서 순서 변경 (위아래 화살표 키로도 이동)">
                 <i data-lucide="grip-vertical" aria-hidden="true"></i>
             </span>
             <button type="button" class="memo-settings__icon${open ? ' memo-settings__icon--on' : ''}" data-action="icon" aria-label="${escapeHtml(item.label)} 아이콘 고르기" aria-expanded="${open ? 'true' : 'false'}">
@@ -121,7 +122,7 @@ function renderList() {
     renderListFrom(currentMemos());
 }
 
-/** 끌기 중에는 저장 전 작업 사본을 그려야 한다 — 그래서 목록을 받는다 */
+/** 목록을 인자로 받는다 — 저장 직전의 사본을 그려야 하는 자리가 있다 */
 function renderListFrom(memos) {
     const wrap = el('memoSettingsList');
     if (!wrap || !session) return;
@@ -273,59 +274,32 @@ function addNew() {
  * 것 — 이 시트에는 저장 버튼이 없다. 끌기 중에는 draft 로만 움직이고
  * 떼는 순간 한 번 쓴다 — 한 칸 움직일 때마다 저장하면 개정판이 쌓는다.
  */
+/**
+ * 순서 바꾸기 — 공용 헬퍼에 얹는다 (js/utils/list-drag-reorder.js).
+ * 끄는 동안 여기서 하는 일은 없다. 손을 뗀 뒤 한 번만 불린다.
+ */
 function bindDrag(list) {
-    let dragIdx = -1;
-    let startY = 0;
-    let rowH = 0;
-    /** 끌기 중에만 사는 작업 사본 — 떼면 저장하고 버린다 */
-    let order = null;
-
-    list.addEventListener('pointerdown', (e) => {
-        const handle = e.target.closest('[data-action="drag"]');
-        if (!handle || !session) return;
-        const row = handle.closest('.memo-settings__row-wrap');
-        if (!row) return;
-        order = currentMemos();
-        dragIdx = Number(row.getAttribute('data-idx'));
-        if (!Number.isFinite(dragIdx) || !order[dragIdx]) {
-            order = null;
-            dragIdx = -1;
-            return;
+    bindListDragReorder({
+        list,
+        rowSelector: '.memo-settings__row-wrap',
+        handleSelector: '[data-action="drag"]',
+        draggingClass: 'memo-settings__row-wrap--dragging',
+        isEnabled: () => !!session,
+        onStart: () => {
+            // 펼친 아이콘 판을 접는다 — 그 행만 키가 크면 자리 계산이 어긋난다
+            if (session && session.gridFor !== null) {
+                session.gridFor = null;
+                render();
+            }
+        },
+        onMove: (from, to) => {
+            const next = currentMemos();
+            if (!next[from]) return;
+            const [moved] = next.splice(from, 1);
+            next.splice(to, 0, moved);
+            void commitMemos(next);
         }
-        startY = e.clientY;
-        rowH = row.offsetHeight || 48;
-        session.gridFor = null;
-        row.classList.add('memo-settings__row-wrap--dragging');
-        handle.setPointerCapture?.(e.pointerId);
-        e.preventDefault();
     });
-
-    list.addEventListener('pointermove', (e) => {
-        if (dragIdx < 0 || !order) return;
-        const delta = Math.round((e.clientY - startY) / rowH);
-        if (delta === 0) return;
-        const to = Math.max(0, Math.min(order.length - 1, dragIdx + delta));
-        if (to === dragIdx) return;
-        const [moved] = order.splice(dragIdx, 1);
-        order.splice(to, 0, moved);
-        dragIdx = to;
-        startY = e.clientY;
-        renderListFrom(order);
-        list.querySelectorAll('.memo-settings__row-wrap')[to]?.classList.add('memo-settings__row-wrap--dragging');
-    });
-
-    const endDrag = () => {
-        if (dragIdx < 0) return;
-        const next = order;
-        dragIdx = -1;
-        order = null;
-        list.querySelectorAll('.memo-settings__row-wrap--dragging').forEach((el) =>
-            el.classList.remove('memo-settings__row-wrap--dragging')
-        );
-        if (next) void commitMemos(next);
-    };
-    list.addEventListener('pointerup', endDrag);
-    list.addEventListener('pointercancel', endDrag);
 }
 
 /* ── 열기/닫기 ────────────────────────────────────────────── */

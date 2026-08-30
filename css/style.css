@@ -12578,6 +12578,37 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     background: #f8fafc;
     border-radius: 0.75rem;
 }
+
+/* ── 목록 순서 끌기 (js/utils/list-drag-reorder.js) ──
+ *
+ * 끄는 동안 DOM 순서는 그대로다. 비켜서는 연출이 전부 여기 있다.
+ */
+.list-drag__row {
+    transition: transform 0.16s cubic-bezier(0.2, 0.7, 0.3, 1);
+    will-change: transform;
+}
+/*
+ * 끄는 행만은 전환을 끊는다 — 손가락을 1:1로 따라야 하는데 0.16s 가 걸리면
+ * 그만큼 뒤에서 따라오는 것처럼 보인다.
+ */
+.list-drag__row--lift {
+    transition: none;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    border-radius: 0.75rem;
+}
+/* 끄는 중에는 글자가 잡히지 않게 — 길게 눌러 선택되면 끌기가 끊긴다 */
+.list-drag__row {
+    -webkit-user-select: none;
+    user-select: none;
+}
+/* 손잡이에 포커스가 가면 보인다 — 화살표 키로 옮기는 길이 있다는 신호 */
+.slot-plan-row__drag:focus-visible {
+    outline: 2px solid var(--green, #059669);
+    outline-offset: 2px;
+    border-radius: 0.375rem;
+}
 /* 손잡이·연필은 '만질 수 있다'는 유일한 신호다 — 흐리면 아무도 못 본다 (사용자 피드백) */
 .slot-plan-row__drag {
     flex-shrink: 0;

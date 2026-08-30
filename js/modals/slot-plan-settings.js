@@ -32,6 +32,7 @@ import { dbOps } from '../db.js';
 import { showToast } from '../ui.js';
 import { escapeHtml } from '../render/utils.js';
 import { scheduleLucideIcons } from '../icons.js';
+import { bindListDragReorder } from '../utils/list-drag-reorder.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { diag } from '../utils/diagnostics.js';
 
@@ -158,7 +159,7 @@ function rowHtml(slot, idx, isOriginal) {
         ? `<button type="button" class="slot-plan-row__toggle" data-action="toggle" aria-pressed="${slot.enabled ? 'true' : 'false'}" aria-label="이 항목 사용">${slot.enabled ? '사용 중' : '사용 안 함'}</button>`
         : `<button type="button" class="slot-plan-row__del" data-action="del" aria-label="이 항목 삭제">삭제</button>`;
     return `<div class="slot-plan-row${off ? ' slot-plan-row--off' : ''}" data-idx="${idx}">
-        <span class="slot-plan-row__drag" data-action="drag" role="button" aria-label="순서 이동" title="끌어서 순서 변경">
+        <span class="slot-plan-row__drag" data-action="drag" role="button" tabindex="0" aria-label="순서 이동" title="끌어서 순서 변경 (위아래 화살표 키로도 이동)">
             <i data-lucide="grip-vertical" aria-hidden="true"></i>
         </span>
         <span class="slot-plan-row__icon ${style.iconBg} ${style.iconText}" aria-hidden="true">
@@ -374,55 +375,29 @@ function onDelete(idx) {
 
 /* ── 드래그 순서 (pointer 기반 — 터치 포함) ────────────────── */
 
+/**
+ * 순서 바꾸기 — 공용 헬퍼에 얹는다 (js/utils/list-drag-reorder.js).
+ *
+ * 목록에 그려지는 것은 draft 의 **슬롯 구간뿐**이다(메모는 안 그린다). 그래서
+ * DOM 인덱스가 곧 draft 인덱스이고, 헬퍼가 목록 밖으로 못 나가게 막아 주는 것이
+ * 곧 "메모 구간으로 넘어가지 않는다"(§2.1)가 된다.
+ */
 function bindDrag(list) {
-    let dragIdx = -1;
-    let startY = 0;
-    let rowH = 0;
-
-    list.addEventListener('pointerdown', (e) => {
-        const handle = e.target.closest('[data-action="drag"]');
-        if (!handle) return;
-        const row = handle.closest('.slot-plan-row');
-        if (!row || !draft) return;
-        syncDraftLabelsFromInputs();
-        dragIdx = Number(row.getAttribute('data-idx'));
-        startY = e.clientY;
-        rowH = row.offsetHeight || 48;
-        row.classList.add('slot-plan-row--dragging');
-        handle.setPointerCapture?.(e.pointerId);
-        e.preventDefault();
+    bindListDragReorder({
+        list,
+        rowSelector: '.slot-plan-row',
+        handleSelector: '[data-action="drag"]',
+        draggingClass: 'slot-plan-row--dragging',
+        isEnabled: () => !!draft,
+        // 고치던 이름을 먼저 draft 에 넣는다 — 옮기고 나면 그 입력칸은 없다
+        onStart: () => syncDraftLabelsFromInputs(),
+        onMove: (from, to) => {
+            if (!draft || !draft[from]) return;
+            const [moved] = draft.splice(from, 1);
+            draft.splice(to, 0, moved);
+            render();
+        }
     });
-
-    list.addEventListener('pointermove', (e) => {
-        if (dragIdx < 0 || !draft) return;
-        const delta = Math.round((e.clientY - startY) / rowH);
-        if (delta === 0) return;
-        /**
-         * 슬롯 구간 밖으로 나가지 않는다. 메모가 섮이면 sanitizeSlots 가
-         * 저장 때 다시 뒤로 보내버려(§2.1), 끌어다 놓은 결과가 사라진다.
-         */
-        const lastSlot = draft.findIndex(isMemoItem);
-        const upper = (lastSlot < 0 ? draft.length : lastSlot) - 1;
-        const to = Math.max(0, Math.min(upper, dragIdx + delta));
-        if (to === dragIdx) return;
-        const [moved] = draft.splice(dragIdx, 1);
-        draft.splice(to, 0, moved);
-        dragIdx = to;
-        startY = e.clientY;
-        render();
-        const rows = list.querySelectorAll('.slot-plan-row');
-        rows[to]?.classList.add('slot-plan-row--dragging');
-    });
-
-    const endDrag = () => {
-        if (dragIdx < 0) return;
-        dragIdx = -1;
-        list.querySelectorAll('.slot-plan-row--dragging').forEach((el) =>
-            el.classList.remove('slot-plan-row--dragging')
-        );
-    };
-    list.addEventListener('pointerup', endDrag);
-    list.addEventListener('pointercancel', endDrag);
 }
 
 /* ── 저장 ─────────────────────────────────────────────────── */
