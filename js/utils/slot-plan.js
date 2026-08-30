@@ -527,18 +527,17 @@ export function resolveSlotView(record, userSettings, todayIso) {
  * 그 날짜에 이미 유효하던 구성과 완전히 같으면 원본 plan 을 그대로 돌려준다 —
  * 성장 억제(§5.6). 호출부는 참조 동일성으로 "저장 불필요"를 안다.
  *
- * 날짜는 **사용자가 고른다**(§4.2.3). 27일에 저장하고 29일에 또 저장하면
- * 27·28일은 27일 구성, 29일부터는 29일 구성이 된다 — 맵이라 서로 안 지운다.
+ * 호출부는 **늘 오늘**을 넘긴다(§4.2.3). 날짜를 매개변수로 남겨 둔 것은 순수
+ * 함수의 테스트 가능성과, 이미 여러 날짜 개정판을 가진 사용자의 plan 을 그대로
+ * 읽어야 하기 때문이다 — 새로 과거 날짜에 쓰는 경로는 없다.
  *
  * key 가 null 인 기본 슬롯은 여기서 실제 key 로 구체화한다. 이때 생성 순서를
  * 목록 순서로 하므로, 구체화 후에도 "가장 오래된 key = 원본" 이 성립한다.
  *
  * @param {string} effectiveFrom YYYY-MM-DD — 이 날짜 기록부터 적용
  * @param {string} [todayIso] 시계 방어 기준(§5.5). 생략하면 effectiveFrom
- * @param {{ overwriteLater?: boolean }} [opts] overwriteLater 면 이 날짜보다 뒤의
- *        개정판도 같은 내용으로 덮어쓴다 (§4.2.4). 기본 false
  */
-export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(), rng = Math.random, todayIso = effectiveFrom, opts = {}) {
+export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(), rng = Math.random, todayIso = effectiveFrom) {
     if (!isIsoDate(effectiveFrom)) return plan;
     const cleaned = sanitizeSlots(nextSlots);
     if (!cleaned) return plan;
@@ -554,20 +553,7 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
      */
     const current = withDefaultMemos(revisionSlotsForDate(plan, effectiveFrom, todayIso) || defaultUserSlots());
 
-    /**
-     * 뒤 개정판 통일(§4.2.4) — 사용자가 명시적으로 골랐을 때만.
-     * 지우지 않고 **같은 내용으로 덮어쓴다**. 삭제는 `deleteField` 센티널이
-     * 필요해 아웃박스 payload 를 탈 수 없고(§5.2), §5.6 과도 부딪힌다.
-     * 맵 갱신만으로 같은 결과를 얻는다.
-     */
-    const laterDates = opts.overwriteLater
-        ? Object.keys(plan?.revisions || {}).filter((d) => isIsoDate(d) && d > effectiveFrom).sort()
-        : [];
-    const laterNeedsWrite = laterDates.some(
-        (d) => !slotsIdentical(sanitizeSlots(plan.revisions[d]?.slots) || [], cleaned)
-    );
-
-    if (slotsIdentical(current, cleaned) && !laterNeedsWrite) return plan;
+    if (slotsIdentical(current, cleaned)) return plan;
 
     const materialized = cleaned;
 
@@ -576,9 +562,6 @@ export function withRevisionOn(plan, effectiveFrom, nextSlots, nowMs = Date.now(
         ...base.revisions,
         [effectiveFrom]: { createdAt: nowMs, slots: materialized }
     };
-    for (const d of laterDates) {
-        nextRevisions[d] = { createdAt: nowMs, slots: materialized };
-    }
 
     /**
      * 이 저장으로 **어느 개정판에서도 사라지는** key 를 이름과 함께 남긴다 (§3.2).
@@ -693,29 +676,6 @@ function slotsIdentical(a, b) {
             isMemoItem(s) === isMemoItem(b[i]) &&
             (!isMemoItem(s) || (s.icon === b[i].icon && (s.unit || '') === (b[i].unit || '') && (s.decimals || 0) === (b[i].decimals || 0)))
     );
-}
-
-/**
- * `slots` 구성이 **실제로 끝나는** 날 — `dateIso` 뒤에서 내용이 처음으로 달라지는
- * 개정판 날짜. 없으면 null(= 계속 적용).
- *
- * "다음 개정판"이 아니라 "다음으로 **다른** 개정판"인 이유(§4.2.5): 내용이 같은
- * 개정판이 남을 수 있다.
- * - 29일에 고쳤다가 되돌리면 개정판 29 가 28 과 같은 내용으로 덮여 남는다
- *   (그 날짜의 개정판 자신과 비교하므로 되돌림도 '변경'이다).
- * - '뒤 개정판 통일'(§4.2.4)은 설계상 같은 내용을 뒤 날짜에 써넣는다.
- *
- * 이런 자국을 세면 안내가 "28일까지만 적용"이라고 거짓말한다 — 29일 내용이
- * 같으니 실제로는 계속 적용되는데도.
- */
-export function nextDifferentRevisionAfter(plan, dateIso, todayIso, slots) {
-    const revisions = plan && typeof plan === 'object' ? plan.revisions : null;
-    if (!revisions) return null;
-    for (const d of listRevisionDates(plan, todayIso)) {
-        if (d <= dateIso) continue;
-        if (!slotsIdentical(sanitizeSlots(revisions[d]?.slots) || [], slots)) return d;
-    }
-    return null;
 }
 
 /** 피커에 보이는(=enabled) 슬롯 수 — MAX_ENABLED_SLOTS 와 비교하는 쪽. 메모는 안 센다 */

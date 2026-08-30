@@ -53,9 +53,14 @@ function localTodayIso() {
     return `${y}-${m}-${d}`;
 }
 
-/** 지금 유효한 전체 항목(식사+메모) — 개정판을 쓸 때 통째로 넘겨야 한다 */
+/**
+ * 지금 유효한 전체 항목(식사+메모) — 개정판을 쓸 때 통째로 넘겨야 한다.
+ * 기준은 늘 **오늘**이다. 메모 항목 설정도 "앞으로 이렇게 기록한다"는 선언이라
+ * 부른 화면이 며칠을 보고 있었는지와 무관하다 (user-slot-plan §4.2.3).
+ */
 function currentItems() {
-    return effectiveSlots(window.userSettings, session.effectiveFrom, localTodayIso());
+    const today = localTodayIso();
+    return effectiveSlots(window.userSettings, today, today);
 }
 
 function currentMemos() {
@@ -186,13 +191,14 @@ async function commitMemos(nextMemos) {
     if (!session) return;
     const settings = window.userSettings || {};
     const slots = currentItems().filter((s) => !isMemoItem(s));
+    const today = localTodayIso();
     const next = withRevisionOn(
         settings.slotPlan || null,
-        session.effectiveFrom,
+        today,
         [...slots, ...nextMemos],
         Date.now(),
         Math.random,
-        localTodayIso()
+        today
     );
     if (next === (settings.slotPlan || null)) return;
 
@@ -306,7 +312,7 @@ function bindDrag(list) {
 
 /**
  * @param {{ dateIso?: string, fromPicker?: boolean }} [opts]
- *        dateIso — 적용 시작일(부른 화면이 보고 있던 날짜). 미래는 오늘로 자른다
+ *        dateIso — 닫을 때 피커를 되돌릴 날짜. 편집 대상 구성과는 무관하다
  *        fromPicker — 닫을 때 피커로 돌아간다 (기록 항목 설정과 같은 결)
  */
 export function openMemoSettings(opts = {}) {
@@ -316,10 +322,7 @@ export function openMemoSettings(opts = {}) {
     }
     const modal = el('memoSettingsModal');
     if (!modal) return;
-    const today = localTodayIso();
-    const asked = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateIso || '')) ? opts.dateIso : today;
     session = {
-        effectiveFrom: asked > today ? today : asked,
         reopenPicker: opts.fromPicker === true,
         pickerDateIso: typeof opts.dateIso === 'string' ? opts.dateIso : '',
         gridFor: null,

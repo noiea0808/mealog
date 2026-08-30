@@ -4,7 +4,7 @@
  * 이미 입력된 슬롯도 표시하며 추가 입력 가능.
  */
 import { SLOT_STYLES, getSlotLucideIcon } from '../constants.js';
-import { userSlotGroupsForDate, userMemoItemsForDate, userMealSlotsForDate, memoRecordCountsForDate } from '../utils/slot-view.js';
+import { userSlotGroupsForDate, currentMemoItems, currentMealSlots, memoRecordCountsForDate } from '../utils/slot-view.js';
 import { appState } from '../state.js';
 import { showToast } from '../ui.js';
 import { openModal } from './entry-and-core.js';
@@ -119,14 +119,16 @@ function renderPickerList(dateIso) {
     if (dateEl) dateEl.textContent = formatPickerDateLabel(dateIso);
 
     /**
-     * 그 날짜 유효 개정판의 enabled 슬롯만 — 여기가 enabled 를 볼 수 있는
-     * 유일한 곳이다(불변식 4: 렌더 필터 아님, 피커 필터).
+     * **지금** 쓰는 enabled 슬롯만 — 여기가 enabled 를 볼 수 있는 유일한 곳이다
+     * (불변식 4: 렌더 필터 아님, 피커 필터). 보고 있는 날짜가 과거여도 목록은
+     * 지금 것이다 — 기록 항목 설정은 "앞으로 이렇게 기록한다"는 선언이므로
+     * (user-slot-plan §4.2.3). 기록 **수**는 그 날짜 것을 센다.
      */
     // 메모를 배제한 식사 슬롯만 — 메모는 아래 구역이 따로 맡는다
-    const slots = userMealSlotsForDate(dateIso).filter((s) => s.enabled);
+    const slots = currentMealSlots().filter((s) => s.enabled);
     const counts = countMealsByUserSlot(dateIso);
 
-    const memos = userMemoItemsForDate(dateIso).filter((m) => m.enabled);
+    const memos = currentMemoItems().filter((m) => m.enabled);
     const memoCounts = memoRecordCountsForDate(dateIso);
     const memoGroup = memos.length
         ? `<div class="entry-slot-picker__memo-group">

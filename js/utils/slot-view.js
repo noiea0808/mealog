@@ -22,7 +22,6 @@ import {
     normalizeTimeKey,
     defaultMemoKey,
     defaultMemoItemByKey,
-    isJournalMemoKey,
     MEMO_SLOT_ID
 } from './slot-plan.js';
 import { getDailyJournalFromSettings, dailyJournalHasContent } from './daily-journal-data.js';
@@ -36,11 +35,20 @@ function localTodayIso() {
 }
 
 /**
- * 그 날짜의 사용자 슬롯 목록. ⚠️ 필터링용 아님(불변식 4) —
- * enabled:false 슬롯도 온다. 피커만 enabled 로 거른다.
+ * **지금** 쓰는 기록 항목 목록 — 입력 경로 전용(피커·기록 시트 헤더·설정 시트).
+ *
+ * 날짜를 받지 않는다. 기록 항목 설정은 "이 날짜의 화면을 이렇게 그려라"가 아니라
+ * **"앞으로 이렇게 기록하겠다"** 는 선언이라, 어제 일을 오늘 적을 때 고를 수 있는
+ * 항목도 지금의 목록이어야 한다 (docs/user-slot-plan.md §4.2.3).
+ *
+ * 과거 기록의 **표시**는 여전히 그날 개정판을 본다 — `resolveRecordSlotView`·
+ * `userSlotGroupsForDate` 쪽이다. 둘을 섞지 않는다.
+ *
+ * ⚠️ 필터링용 아님(불변식 4) — enabled:false 슬롯도 온다. 피커만 enabled 로 거른다.
  */
-export function userSlotsForDate(dateIso) {
-    return effectiveSlots(window.userSettings, dateIso, localTodayIso());
+export function currentUserSlots() {
+    const today = localTodayIso();
+    return effectiveSlots(window.userSettings, today, today);
 }
 
 /** 기록 하나의 표시 슬롯 { label, base, slotKey, matchedBy } — 절대 실패하지 않는다 */
@@ -160,12 +168,12 @@ function journalMemoUnitsForDate(dateStr) {
     return out;
 }
 
-/** 그 날짜의 메모 항목 정의만 (피커·설정 시트용) */
-export function userMemoItemsForDate(dateIso) {
-    return memoItemsOnly(effectiveSlots(window.userSettings, dateIso, localTodayIso()));
+/** 지금 쓰는 메모 항목 정의만 (피커·설정 시트용) — `currentUserSlots` 와 같은 규칙 */
+export function currentMemoItems() {
+    return memoItemsOnly(currentUserSlots());
 }
 
-/** 그 날짜의 식사 슬롯 정의만 — 메모를 빼고 세는 자리 */
-export function userMealSlotsForDate(dateIso) {
-    return slotItemsOnly(effectiveSlots(window.userSettings, dateIso, localTodayIso()));
+/** 지금 쓰는 식사 슬롯 정의만 — 메모를 빼고 세는 자리 */
+export function currentMealSlots() {
+    return slotItemsOnly(currentUserSlots());
 }

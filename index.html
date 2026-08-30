@@ -2869,16 +2869,8 @@
             </div>
             <div id="slotPlanSettingsList" class="entry-slot-picker__list slot-plan-settings__list max-h-[min(70vh,30rem)] overflow-y-auto pt-1"></div>
             <div class="slot-plan-settings__footer">
-                <!-- 날짜와 그 날짜를 설명하는 안내문은 붙어 있어야 한다 (§4.2.3) -->
-                <div class="slot-plan-settings__date-row">
-                    <label for="slotPlanEffectiveFrom">적용 시작일</label>
-                    <input type="date" id="slotPlanEffectiveFrom" />
-                </div>
+                <!-- 적용 시작일은 묻지 않는다 — 늘 "지금부터" 다 (§4.2.3) -->
                 <p id="slotPlanSettingsNotice" class="slot-plan-settings__notice"></p>
-                <label id="slotPlanCascadeRow" class="slot-plan-settings__cascade hidden">
-                    <input type="checkbox" id="slotPlanCascade" />
-                    <span id="slotPlanCascadeLabel"></span>
-                </label>
                 <div class="slot-plan-settings__actions">
                     <button type="button" id="slotPlanCancelBtn" class="slot-plan-settings__btn">취소</button>
                     <button type="button" id="slotPlanSaveBtn" class="slot-plan-settings__btn slot-plan-settings__btn--primary">저장</button>
@@ -3067,7 +3059,7 @@
                 </section>
                 <section class="slot-plan-help__item">
                     <h3>언제부터 적용되나요?</h3>
-                    <p>'적용 시작일'에 고른 날짜부터예요. 그 이전의 기록은 예전 이름과 구성 그대로 남습니다. 특별한 일이 없다면 오늘 날짜 그대로 두셔도 좋아요.</p>
+                    <p>저장하는 순간부터요. 여기서 정한 항목으로 앞으로 계속 기록하시게 돼요. 이미 남겨 둔 기록은 그대로 있고, 이름만 고치신 거라면 지난 기록에도 새 이름이 따라갑니다.</p>
                 </section>
             </div>
         </div>

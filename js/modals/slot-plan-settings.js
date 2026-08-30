@@ -4,8 +4,12 @@
  *
  * 편집은 draft(작업 사본)에서만 일어나고, 저장 버튼에서 한 번에:
  *   1. 이름 소급(renameSlotEverywhere) — key 유지 편집, 과거 기록도 바뀐다
- *   2. 구성 개정판(withRevisionOn) — 추가·삭제·토글·순서, **고른 날짜부터**
+ *   2. 구성 개정판(withRevisionOn) — 추가·삭제·토글·순서, **오늘부터**
  * 변화가 없으면(참조 동일) 아무것도 저장하지 않는다 (§5.6 성장 억제).
+ *
+ * 적용 시작일은 **묻지 않는다.** 기록 항목 설정은 "이 날짜의 화면을 이렇게
+ * 그려라"가 아니라 "앞으로 이렇게 기록하겠다"는 선언이다 (§4.2.3). 저장은 늘
+ * 오늘 개정판이고, 피커·헤더가 보는 목록도 늘 지금 것이다.
  *
  * 저장은 dbOps.saveSettings 전체 경로를 그대로 탄다 — 아웃박스 내구화·병합
  * 규칙(§5.2)이 이미 거기 있다. slotPlan 만의 새 기계장치를 만들지 않는다.
@@ -16,8 +20,6 @@ import {
     originalSlotSet,
     generateSlotKey,
     withRevisionOn,
-    nextDifferentRevisionAfter,
-    addDaysIso,
     renameSlotEverywhere,
     revisionCount,
     countEnabledSlots,
@@ -44,10 +46,6 @@ let openedLabels = new Map();
 let reopenPickerOnClose = false;
 /** 피커로 돌아갈 때 되돌려 줄 날짜 — 없으면 피커가 pageDate 로 연다 */
 let pickerReturnDateIso = '';
-/** 이 구성이 적용될 시작일 (YYYY-MM-DD) — 사용자가 고른다 (§4.2.3) */
-let effectiveFromIso = '';
-/** 날짜를 바꿀 때 "편집분이 날아갔다"를 알리기 위한 기준 스냅샷 */
-let baselineJson = '';
 
 function localTodayIso() {
     const t = new Date();
@@ -57,54 +55,11 @@ function localTodayIso() {
     return `${y}-${m}-${d}`;
 }
 
-function formatNoticeDate(iso) {
-    const [, mo, d] = String(iso).split('-').map(Number);
-    return mo && d ? `${mo}월 ${d}일` : iso;
-}
-
 /**
- * 이 구성이 **며칠까지** 적용되는지 알려준다.
- * 뒤에 다른 개정판이 있으면 거기서 끊긴다 — 27일에 저장하고 29일에 또 저장하면
- * 27일 구성은 28일까지다(§4.2.3).
+ * 안내문은 한 줄이다 — 날짜를 묻지 않으니 "며칠부터 며칠까지"가 없다 (§4.2.3).
+ * 이미 남긴 기록이 안전하다는 것만 말한다. 그게 여기서 유일하게 불안한 대목이다.
  */
-function noticeText() {
-    const from = formatNoticeDate(effectiveFromIso);
-    const next = nextDifferentRevisionAfter(
-        window.userSettings?.slotPlan || null,
-        effectiveFromIso,
-        localTodayIso(),
-        draft || []
-    );
-    if (next) {
-        return `${from}부터 ${formatNoticeDate(addDaysIso(next, -1))}까지의 기록에 적용됩니다. ${formatNoticeDate(next)}부터는 그날 저장한 구성이 따로 있어요.`;
-    }
-    return `${from} 기록부터 적용됩니다. 그 이전 기록은 그대로 남습니다.`;
-}
-
-/**
- * "뒤 개정판도 이걸로 통일" 체크박스 — 뒤에 개정판이 **있을 때만** 뜬다 (§4.2.4).
- *
- * 28일을 편집한 뒤 26일을 편집하면 26일 편집이 26~27일짜리 섬이 된다. 대개는
- * "사실 26일부터였어"라는 뜻이므로 통일하고 싶겠지만, 28일을 일부러 다르게
- * 둔 경우도 있다. 추측하지 않고 묻는다. 기본은 꺼짐 — 켜면 되돌릴 수 없다.
- */
-function syncCascadeRow() {
-    const row = document.getElementById('slotPlanCascadeRow');
-    const label = document.getElementById('slotPlanCascadeLabel');
-    if (!row) return;
-    // 내용이 이미 같은 뒤 개정판은 통일할 게 없다 — 세지 않는다 (§4.2.5)
-    const next = nextDifferentRevisionAfter(
-        window.userSettings?.slotPlan || null,
-        effectiveFromIso,
-        localTodayIso(),
-        draft || []
-    );
-    row.classList.toggle('hidden', !next);
-    if (next && label) {
-        label.textContent = `${formatNoticeDate(next)} 이후 구성도 이걸로 통일하기 — 그날 저장해 둔 구성은 덮어써집니다.`;
-    }
-    if (!next) setCascadeChecked(false);
-}
+const NOTICE_TEXT = '지금부터 이렇게 기록해요. 이미 남긴 기록은 그대로 있어요.';
 
 /**
  * 도움말 팝업 — 우상단 물음표. 설정 시트 위에 겹친다.
@@ -130,15 +85,6 @@ function setHelpOpen(open) {
 /** ESC·바깥 클릭에서 부르는 닫기 (escape-close-modals 등록용) */
 export function closeSlotPlanHelp() {
     setHelpOpen(false);
-}
-
-function setCascadeChecked(v) {
-    const cb = document.getElementById('slotPlanCascade');
-    if (cb) cb.checked = !!v;
-}
-
-function isCascadeChecked() {
-    return !!document.getElementById('slotPlanCascade')?.checked;
 }
 
 /* ── 렌더 ─────────────────────────────────────────────────── */
@@ -199,27 +145,17 @@ function render() {
     const slotCount = cut < 0 ? draft.length : cut;
     list.innerHTML = draft.slice(0, slotCount).map((s, i) => rowHtml(s, i, originals.has(s))).join('');
     if (countEl) countEl.textContent = `사용 중 ${countEnabledSlots(draft)} / ${MAX_ENABLED_SLOTS}`;
-    if (notice) notice.textContent = noticeText();
-    syncCascadeRow();
+    if (notice) notice.textContent = NOTICE_TEXT;
     scheduleLucideIcons(list);
 }
 
 /* ── 열기/닫기 ────────────────────────────────────────────── */
 
-/**
- * `effectiveFromIso` 날짜에 유효하던 구성을 draft 로 적재한다.
- * 기본 슬롯의 key 가 결정적이라(§2.4) 날짜가 달라도 같은 슬롯은 같은 key 다 —
- * 여기서 따로 손볼 게 없다.
- */
-function loadDraftForDate(dateIso) {
-    draft = effectiveSlots(window.userSettings, dateIso, localTodayIso()).map((s) => ({ ...s }));
+/** 지금 쓰는 구성을 draft 로 적재한다 — 편집 대상은 늘 현재 목록이다 (§4.2.3) */
+function loadDraft() {
+    const today = localTodayIso();
+    draft = effectiveSlots(window.userSettings, today, today).map((s) => ({ ...s }));
     openedLabels = new Map(draft.map((s) => [s.key, s.label]));
-    baselineJson = JSON.stringify(draft);
-}
-
-/** 편집분이 남아 있는지 — 날짜를 바꿀 때 소리 없이 버리지 않으려고 */
-function draftHasEdits() {
-    return !!draft && JSON.stringify(draft) !== baselineJson;
 }
 
 export function openSlotPlanSettings(opts = {}) {
@@ -230,55 +166,15 @@ export function openSlotPlanSettings(opts = {}) {
     const modal = document.getElementById('slotPlanSettingsModal');
     if (!modal) return;
     reopenPickerOnClose = opts.fromPicker === true;
+    // 날짜는 피커로 돌아갈 때만 쓴다 — 편집 대상 구성을 고르는 값이 아니다
     pickerReturnDateIso = typeof opts.dateIso === 'string' ? opts.dateIso : '';
 
-    /**
-     * 기본 시작일 = 피커가 보고 있던 날짜(없으면 오늘). 미래는 받지 않는다(§5.5).
-     * 편집 대상은 그 날짜에 유효하던 구성 — enabled:false 도 제자리에 회색으로.
-     */
-    const today = localTodayIso();
-    const asked = typeof opts.dateIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(opts.dateIso)
-        ? opts.dateIso
-        : today;
-    effectiveFromIso = asked > today ? today : asked;
-
-    setCascadeChecked(false);
     setHelpOpen(false);
-    loadDraftForDate(effectiveFromIso);
-    syncDateInput();
+    loadDraft();
     render();
     modal.classList.remove('hidden');
     modal.setAttribute('aria-hidden', 'false');
     lockBodyScroll('slotPlanSettings');
-}
-
-function syncDateInput() {
-    const input = document.getElementById('slotPlanEffectiveFrom');
-    if (!input) return;
-    input.max = localTodayIso();
-    input.value = effectiveFromIso;
-}
-
-function onEffectiveFromChange() {
-    const input = document.getElementById('slotPlanEffectiveFrom');
-    const today = localTodayIso();
-    let v = String(input?.value || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-        syncDateInput();
-        return;
-    }
-    if (v > today) {
-        v = today;
-        showToast('앞으로의 날짜는 고를 수 없어요.', 'error');
-    }
-    if (v === effectiveFromIso) return;
-    const hadEdits = draftHasEdits();
-    effectiveFromIso = v;
-    setCascadeChecked(false);
-    loadDraftForDate(v);
-    syncDateInput();
-    render();
-    if (hadEdits) showToast('날짜를 바꿔서 편집하던 내용은 되돌렸어요.', 'error');
 }
 
 export function closeSlotPlanSettings() {
@@ -422,10 +318,9 @@ async function onSave() {
         }
     }
 
-    // 2. 구성 개정판 — 사용자가 고른 날짜부터 (§4.2.3). 변화 없으면 참조 그대로
-    const nextPlan = withRevisionOn(plan, effectiveFromIso, draft, Date.now(), Math.random, localTodayIso(), {
-        overwriteLater: isCascadeChecked()
-    });
+    // 2. 구성 개정판 — 늘 오늘부터 (§4.2.3). 변화 없으면 참조 그대로
+    const today = localTodayIso();
+    const nextPlan = withRevisionOn(plan, today, draft, Date.now(), Math.random, today);
 
     if (nextPlan === (settings.slotPlan || null)) {
         closeSlotPlanSettings();
@@ -471,7 +366,6 @@ function bindOnce() {
 
     modal.querySelector('#slotPlanSettingsBackdrop')?.addEventListener('click', closeSlotPlanSettings);
     modal.querySelector('#slotPlanCancelBtn')?.addEventListener('click', closeSlotPlanSettings);
-    modal.querySelector('#slotPlanEffectiveFrom')?.addEventListener('change', onEffectiveFromChange);
     modal.querySelector('#slotPlanSettingsHelpBtn')?.addEventListener('click', () => setHelpOpen(true));
 
     const help = document.getElementById('slotPlanHelpModal');

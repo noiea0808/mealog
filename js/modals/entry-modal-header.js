@@ -6,7 +6,7 @@
 
 import { SLOTS } from '../constants.js';
 
-import { resolveRecordSlotView, userSlotsForDate } from '../utils/slot-view.js';
+import { resolveRecordSlotView, currentUserSlots } from '../utils/slot-view.js';
 
 import { appState } from '../state.js';
 
@@ -224,7 +224,8 @@ function parseHeaderSlotOptionValue(value, slots) {
 
 function currentHeaderSlotList() {
     const date = appState.currentEditingDate || '';
-    const slots = userSlotsForDate(date).filter((s) => s.enabled);
+    // 과거 날짜를 적을 때도 고를 수 있는 항목은 **지금** 목록이다 (user-slot-plan §4.2.3)
+    const slots = currentUserSlots().filter((s) => s.enabled);
     /**
      * 수정 중인 기록의 슬롯이 꺼져 있어도(enabled:false·삭제) 목록에 넣는다 —
      * 없으면 select 가 임의 슬롯으로 튀어 기록이 소리 없이 이사간다 (불변식 4).
