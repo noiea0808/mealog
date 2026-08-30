@@ -18,6 +18,7 @@ import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
+import { bindListDragReorder } from '../utils/list-drag-reorder.js';
 
 // HTML 이스케이프 함수 (XSS 방지)
 function escapeHtml(text) {
@@ -514,16 +515,17 @@ export function renderBestMeals() {
         }
 
         const rank = index + 1;
+        /**
+         * 순서 바꾸기는 **끌기**다 — 기록 항목·메모 설정과 같은 부품
+         * (js/utils/list-drag-reorder.js). 한 칸씩 눌러 올리던 화살표는 세 칸을
+         * 옮기려면 세 번을 눌러야 했고, 누를 때마다 그 버튼이 손가락 밑에서
+         * 도망갔다.
+         */
         const showOrderControls = displayMeals.length > 1;
         const orderControlsHtml = showOrderControls ? `
-                    <div class="dashboard-best-order flex flex-col gap-0.5 ml-1">
-                        <button type="button" class="best-order-btn best-order-up-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="위로"${index === 0 ? ' disabled' : ''}>
-                            <i data-lucide="chevron-up" class="text-xs"></i>
-                        </button>
-                        <button type="button" class="best-order-btn best-order-down-btn w-6 h-6 flex items-center justify-center rounded disabled:opacity-30 disabled:pointer-events-none" aria-label="아래로"${index === displayMeals.length - 1 ? ' disabled' : ''}>
-                            <i data-lucide="chevron-down" class="text-xs"></i>
-                        </button>
-                    </div>` : '';
+                    <span class="dashboard-best-drag" data-best-drag role="button" tabindex="0" aria-label="순서 이동" title="끌어서 순서 변경 (위아래 화살표 키로도 이동)">
+                        <i data-lucide="grip-vertical" aria-hidden="true"></i>
+                    </span>` : '';
 
         return `
             <div class="dashboard-best-item best-meal-item cursor-pointer"
@@ -578,8 +580,6 @@ async function updateBestOrder() {
         }
     });
     
-    updateBestOrderButtonStates();
-
     try {
         if (window.dbOps && window.dbOps.saveSettings) {
             await window.dbOps.saveSettings(window.userSettings);
@@ -589,37 +589,8 @@ async function updateBestOrder() {
     }
 }
 
-function updateBestOrderButtonStates() {
-    const container = document.getElementById('bestMealsContainer');
-    if (!container) return;
-
-    const items = container.querySelectorAll('.best-meal-item');
-    items.forEach((item, index) => {
-        const upBtn = item.querySelector('.best-order-up-btn');
-        const downBtn = item.querySelector('.best-order-down-btn');
-        if (upBtn) upBtn.disabled = index === 0;
-        if (downBtn) downBtn.disabled = index === items.length - 1;
-    });
-}
-
-function moveBestMealItem(item, delta) {
-    const container = document.getElementById('bestMealsContainer');
-    if (!container || !item) return;
-
-    const items = Array.from(container.querySelectorAll('.best-meal-item'));
-    const index = items.indexOf(item);
-    const targetIndex = index + delta;
-    if (index === -1 || targetIndex < 0 || targetIndex >= items.length) return;
-
-    const targetItem = items[targetIndex];
-    if (delta < 0) {
-        container.insertBefore(item, targetItem);
-    } else {
-        container.insertBefore(targetItem, item);
-    }
-
-    updateBestOrder();
-}
+/** 목록을 다시 그릴 때마다 새로 걸리지 않게 — 컨테이너는 그대로다 */
+let bestDragBound = false;
 
 function setupBestOrderControls() {
     const container = document.getElementById('bestMealsContainer');
@@ -627,7 +598,8 @@ function setupBestOrderControls() {
 
     container.querySelectorAll('.best-meal-item').forEach(item => {
         item.addEventListener('click', (e) => {
-            if (e.target.closest('.best-order-btn')) return;
+            // 손잡이는 끌기 전용 — 눌렀다고 기록이 열리면 안 된다
+            if (e.target.closest('[data-best-drag]')) return;
 
             const date = item.getAttribute('data-date');
             const slotId = item.getAttribute('data-slot-id');
@@ -636,24 +608,30 @@ function setupBestOrderControls() {
                 window.openModal(date, slotId, mealId);
             }
         });
-
-        const upBtn = item.querySelector('.best-order-up-btn');
-        const downBtn = item.querySelector('.best-order-down-btn');
-
-        upBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            moveBestMealItem(item, -1);
-        });
-
-        downBtn?.addEventListener('click', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            moveBestMealItem(item, 1);
-        });
     });
 
-    updateBestOrderButtonStates();
+    if (bestDragBound) return;
+    bestDragBound = true;
+    bindListDragReorder({
+        list: container,
+        rowSelector: '.best-meal-item',
+        handleSelector: '[data-best-drag]',
+        draggingClass: 'dashboard-best-item--dragging',
+        onMove: (from, to) => {
+            const items = Array.from(container.querySelectorAll('.best-meal-item'));
+            const moved = items[from];
+            const target = items[to];
+            if (!moved || !target) return;
+            /**
+             * 설정 시트와 달리 여기는 다시 그리지 않는다 — 노드를 그대로 옮긴다.
+             * 옛 화살표는 한 칸씩만 움직여 두 노드를 맞바꾸면 됐지만, 끌기는 여러
+             * 칸을 건너뛴다. 맞바꾸기로 처리하면 사이에 낀 항목들의 순서가 뒤집힌다.
+             */
+            if (to < from) container.insertBefore(moved, target);
+            else container.insertBefore(moved, target.nextSibling);
+            void updateBestOrder();
+        }
+    });
 }
 
 // 베스트 공유 상태 확인

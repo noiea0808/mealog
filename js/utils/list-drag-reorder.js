@@ -20,11 +20,14 @@
  * `transform` 만 바꾼다. 손을 뗄 때 한 번 `onMove` 로 알린다. 위 셋이 한꺼번에
  * 사라진다 — 손잡이가 살아 있으니 캡처도 유지된다.
  *
- * ## 행 높이가 균일하다고 본다
+ * ## 행 높이는 하나씩 잰다
  *
- * 두 시트 모두 한 줄짜리 행이다(기록 항목 47px, 메모 44px). 균일하다는 가정이
- * 자리 계산을 `Math.round(dy / rowH)` 한 줄로 만든다. 여러 줄 행이 생기면 이
- * 가정부터 깨지므로, 그때는 행마다 높이를 재는 쪽으로 바꿔야 한다.
+ * 균일하다고 보면 `Math.round(dy / rowH)` 한 줄로 끝나지만, 그 가정은 쉽게
+ * 깨진다 — 분석의 베스트 목록만 해도 첫 행과 마지막 행의 위아래 여백이 달라
+ * 10px 씩 짧다. 그래서 끌기 시작에 각 행의 높이와 시작 위치를 한 번 재고,
+ * **끄는 행의 한가운데가 어느 행의 한가운데를 넘었는지**로 자리를 정한다.
+ * 비켜서는 행들이 움직이는 거리는 저마다의 높이가 아니라 **끄는 행의 높이**다 —
+ * 그 행이 비운(만든) 자리가 그만큼이기 때문이다.
  */
 
 /** 가장자리 이 안에 손가락이 들어오면 목록이 스스로 스크롤한다 */
@@ -57,7 +60,9 @@ export function bindListDragReorder(options) {
     let dragRow = null;
     let dragIdx = -1;
     let toIdx = -1;
-    let rowH = 0;
+    let heights = null;
+    let tops = null;
+    let totalH = 0;
     let startY = 0;
     let startScroll = 0;
     let pointerY = 0;
@@ -76,17 +81,40 @@ export function bindListDragReorder(options) {
         if (dragIdx < 0 || !dragRow) return;
         // 자동 스크롤로 목록이 밀린 만큼도 이동으로 친다
         const dy = pointerY - startY + (list.scrollTop - startScroll);
+        const dragH = heights[dragIdx];
         // 목록 밖으로는 안 나간다 — 첫 행 위/마지막 행 아래로 끌어도 제자리
-        const shown = Math.max(-dragIdx * rowH, Math.min((rows.length - 1 - dragIdx) * rowH, dy));
-        // 반 칸에서 자리가 바뀐다 — 한 칸을 다 지나야 했던 것이 뻑뻑함의 원인이었다
-        toIdx = dragIdx + Math.round(shown / rowH);
+        const shown = Math.max(-tops[dragIdx], Math.min(totalH - tops[dragIdx] - dragH, dy));
+
+        /**
+         * 이웃 행을 **절반**만 지나면 자리가 바뀐다. 한 행을 통째로 지나야 했던
+         * 것이 뻑뻑함의 정체였다.
+         *
+         * 높이가 제각각일 수 있으므로 지나온 높이를 쌓아 가며 비교한다 —
+         * 다음 행은 그 행 높이의 절반, 그 다음 행은 앞 행 높이 + 자기 높이의 절반.
+         * 높이가 모두 같다면 `Math.round(dy / rowH)` 와 정확히 같은 결과다.
+         */
+        let to = dragIdx;
+        let acc = 0;
+        if (shown > 0) {
+            while (to + 1 < rows.length && shown > acc + heights[to + 1] / 2) {
+                acc += heights[to + 1];
+                to++;
+            }
+        } else if (shown < 0) {
+            while (to - 1 >= 0 && -shown > acc + heights[to - 1] / 2) {
+                acc += heights[to - 1];
+                to--;
+            }
+        }
+        toIdx = to;
 
         dragRow.style.transform = `translateY(${shown}px)`;
         for (let i = 0; i < rows.length; i++) {
             if (i === dragIdx) continue;
+            // 비켜서는 거리는 **끄는 행의 높이** — 그 행이 비운 자리가 그만큼이다
             let shift = 0;
-            if (toIdx > dragIdx && i > dragIdx && i <= toIdx) shift = -rowH;
-            else if (toIdx < dragIdx && i >= toIdx && i < dragIdx) shift = rowH;
+            if (toIdx > dragIdx && i > dragIdx && i <= toIdx) shift = -dragH;
+            else if (toIdx < dragIdx && i >= toIdx && i < dragIdx) shift = dragH;
             rows[i].style.transform = shift ? `translateY(${shift}px)` : '';
         }
     }
@@ -132,6 +160,8 @@ export function bindListDragReorder(options) {
             /* 이미 풀린 캡처 */
         }
         rows = null;
+        heights = null;
+        tops = null;
         dragRow = null;
         capturedHandle = null;
         capturedId = null;
@@ -184,9 +214,17 @@ export function bindListDragReorder(options) {
         }
         const liveHandle = dragRow.querySelector(handleSelector) || handle;
 
+        // 높이·시작 위치를 여기서 한 번만 잰다 — 끄는 동안 DOM 이 안 바뀌므로 유효하다
+        const listTop = list.getBoundingClientRect().top - list.scrollTop;
+        heights = rows.map((r) => r.getBoundingClientRect().height);
+        tops = rows.map((r) => r.getBoundingClientRect().top - listTop);
+        totalH = tops[rows.length - 1] + heights[rows.length - 1] - tops[0];
+        // 위치는 첫 행을 0 으로 놓고 잰다
+        const base = tops[0];
+        for (let i = 0; i < tops.length; i++) tops[i] -= base;
+
         dragIdx = idx;
         toIdx = idx;
-        rowH = dragRow.offsetHeight || 44;
         startY = e.clientY;
         pointerY = e.clientY;
         startScroll = list.scrollTop;

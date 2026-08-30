@@ -11635,17 +11635,41 @@ body[data-main-tab='dashboard'] #dashboardView {
     font-weight: 700;
     white-space: nowrap;
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn {
-    color: #475569; /* slate-600 */
+/*
+ * 베스트 순서 손잡이 — 설정 시트와 같은 부품·같은 낯(⠿).
+ * 손가락이 닿는 넓이는 36px x 행 높이로, 글리프는 작게(HIG 44pt 권고에 맞춰
+ * 영역만 넓힌다). 늘어난 만큼은 음수 마진으로 되돌려 별점이 안 밀리게 한다.
+ */
+#dashboardView.dashboard-view-v2 .dashboard-best-drag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 2.25rem;
+    margin: -10px -0.5rem -10px 0;
+    border-radius: 0.625rem;
+    color: #475569;
+    cursor: grab;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn:hover:not(:disabled) {
-    color: #1e293b; /* slate-800 */
+#dashboardView.dashboard-view-v2 .dashboard-best-drag:active {
+    background: rgba(15, 23, 42, 0.06);
 }
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn [data-lucide],
-#dashboardView.dashboard-view-v2 .dashboard-best-order .best-order-btn svg {
-    width: 14px;
-    height: 14px;
-    stroke-width: 2.5;
+#dashboardView.dashboard-view-v2 .dashboard-best-drag:focus-visible {
+    outline: 2px solid var(--green, #059669);
+    outline-offset: 2px;
+}
+#dashboardView.dashboard-view-v2 .dashboard-best-drag [data-lucide],
+#dashboardView.dashboard-view-v2 .dashboard-best-drag svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2;
+}
+/* 끄는 동안은 목록 배경 위로 살짝 떠 보이게 */
+#dashboardView.dashboard-view-v2 .dashboard-best-item--dragging {
+    background: var(--card, #fff);
+    border-radius: 0.75rem;
 }
 
 /* 레거시 선택자 유지 (비-v2 또는 공유 블록) */
@@ -12610,14 +12634,48 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     border-radius: 0.375rem;
 }
 /* 손잡이·연필은 '만질 수 있다'는 유일한 신호다 — 흐리면 아무도 못 본다 (사용자 피드백) */
+/*
+ * 손가락이 닿는 넓이는 **44px**(HIG 44pt / Material 48dp). 예전엔 17x25 였고,
+ * 47px 짜리 행에서 위아래 11px 씩이 죽은 공간이었다 — 조준해야 잡히는 손잡이는
+ * 끌기가 아무리 부드러워도 불편하다.
+ *
+ * 글리프는 그대로 두고 **영역만** 넓힌다. 아이콘을 키우면 목록이 시끄러워진다.
+ * 세로는 `align-self: stretch` 로 행 높이를 받고, 행 안쪽 여백은 아래 두 규칙이
+ * 음수 마진으로 마저 먹는다. 가로로 늘어난 만큼은 좌우 음수 마진으로 되돌려
+ * 이름 칸이 밀리지 않게 한다.
+ */
 .slot-plan-row__drag {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: 2.25rem;
+    /*
+     * 늘어난 폭은 좌우 음수 마진으로 되돌린다 — 왼쪽은 행·목록의 여백(죽은 공간)
+     * 으로, 오른쪽은 아이콘과의 간격으로. 글리프는 제자리에 남고 이름 칸도
+     * 3px 밖에 안 밀린다.
+     */
+    margin-left: -0.75rem;
+    margin-right: -0.5rem;
+    padding: 0;
+    border-radius: 0.625rem;
     color: #64748b;
     touch-action: none;
     cursor: grab;
-    padding: 0.25rem 0;
+    -webkit-tap-highlight-color: transparent;
+}
+/* 눌린 낯 — 잡혔다는 신호가 있어야 끌지 말지 손이 정한다 */
+.slot-plan-row__drag:active {
+    background: #f1f5f9;
+}
+.slot-plan-row > .slot-plan-row__drag {
+    margin-top: -0.5rem;
+    margin-bottom: -0.5rem;
+}
+.memo-settings__row > .slot-plan-row__drag {
+    margin-top: -0.35rem;
+    margin-bottom: -0.35rem;
 }
 .slot-plan-row__drag [data-lucide],
 .slot-plan-row__drag .lucide {
@@ -12768,9 +12826,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     padding: 0.35rem 0;
 }
 /* 순서 끌기 — 피커 격자에 보이는 순서다(타임라인 자리는 시각이 정한다) */
-.memo-settings__drag {
-    margin-left: -0.15rem;
-}
 .memo-settings__row-wrap--dragging {
     background: #f8fafc;
     border-radius: 0.75rem;
