@@ -12327,7 +12327,6 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
 }
 #slotPlanSettingsModal .mealog-dialog-grabber,
 #slotPlanSettingsModal .entry-slot-picker__head,
-#slotPlanSettingsModal .slot-plan-settings__date-row,
 #slotPlanSettingsModal .slot-plan-settings__footer {
     flex-shrink: 0;
 }
@@ -12588,12 +12587,17 @@ body:has(#mainApp:not(.hidden)) #mainAppHeader .gallery-trace-btn[data-trace="bo
     height: 1rem;
     stroke-width: 1.75;
 }
-/* 적용 시작일 — 고른 날짜부터 구성이 바뀐다 (user-slot-plan §4.2.3) */
+/*
+ * 적용 시작일 — 고른 날짜부터 구성이 바뀐다 (user-slot-plan §4.2.3).
+ * 바닥에 둔다. 안내문("8월 30일 기록부터…")이 바로 이 날짜를 풀어 쓴 문장이라,
+ * 목록을 사이에 끼고 위아래로 떨어져 있으면 둘이 한 쌍으로 안 읽힌다.
+ * 가로 여백은 감싼 푸터가 이미 준다 — 여기서 또 주면 두 겹이 된다.
+ */
 .slot-plan-settings__date-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.25rem var(--mealog-dialog-pad-x) 0.6rem;
+    padding: 0.15rem 0 0.55rem;
 }
 .slot-plan-settings__date-row label {
     font-size: 0.75rem;
