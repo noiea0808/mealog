@@ -589,7 +589,10 @@ function renderTrendGuideBody() {
                  <li><b>자동</b> — 사용자 값 없이 분류기가 채웠다</li>
                  <li><b>미분류</b> — 거부 · 서버 대기 · 상세 없음</li>
              </ul>
-             <p>직접 + 자동 = 최종이고, 미분류까지 더하면 100%입니다.</p>`
+             <p>직접 + 자동 = 최종이고, 미분류까지 더하면 100%입니다.</p>
+             <p><b>「자동」 칸에 마우스를 올리면 누가 채웠는지</b>가 나옵니다 — 로컬 분류기(저장할 때
+             클라이언트가) · 서버 AI(Gemini 배치가 나중에) · 경로 미상(<code>categorySource</code> 가
+             유실된 옛 기록). 셋의 합은 그 칸과 정확히 같습니다.</p>`
         ),
         guideSection(
             '추천 분류 — 제안을 사람이 받아들였나',
@@ -622,9 +625,14 @@ function renderTrendGuideBody() {
              개편 전 기록에는 이 자국(<code>autoContext</code>)이 없어 0으로 나옵니다.</p>`
         ),
         guideSection(
-            '조심할 곳',
-            `<p>「무엇을」의 <b>자동</b>은 서버 AI 배치가 <b>나중에</b> 돌아 채웁니다. 최근 며칠은 자동이 덜 차
-             있고 미분류가 부풀어 보입니다 — 맨 윗 구간 몇 줄은 그만큼 감해서 보세요.</p>`
+            '서버 AI 배치는 나중에, 그것도 조금씩 돕니다',
+            `<p>「무엇을」의 <b>자동</b> 중 서버 AI 몫은 <code>classifyUncategorizedMeals</code> 가 채웁니다 —
+             <b>6시간마다(하루 4회) · 한 번에 최대 100건 · 최근 7일 범위</b>입니다.</p>
+             <p>그래서 <b>맨 윗 구간 몇 줄은 자동이 덜 차 있고 미분류가 부풀어 보입니다</b> — 그만큼 감해서
+             보세요. 반대로 그 기간의 미분류가 하루 400건보다 빠르게 쌓이면 배치가 따라잡지 못하고,
+             <b>7일이 지나면 정기 배치는 그 기록을 다시 보지 않습니다</b>(영구 미분류로 남습니다).</p>
+             <p>임의 기간을 다시 도는 <code>adminClassifyLegacyMeals</code> 가 서버에 있지만 <b>화면에 버튼이
+             없습니다</b> — 지금은 콘솔에서 직접 부르는 수밖에 없습니다.</p>`
         )
     ].join('');
 }
@@ -732,7 +740,21 @@ const TREND_COLUMN_GROUPS = [
                 label: '자동',
                 tone: 'info',
                 value: (b) => b.counts.whatFinal - b.counts.what,
-                hint: '사용자 값 없이 로컬·서버 분류기가 채운 것'
+                /**
+                 * 자동을 **누가** 채웠나 — 저장할 때 클라이언트가 잡았나, 나중에 서버 배치가 메웠나.
+                 *
+                 * 이 자리인 이유: 서버 Gemini 배치는 6시간마다 **최근 7일만** 돌기 때문에
+                 * 「얼마나 채웠나」가 애초에 날짜에 매인 값이다. 기간 전체를 한 덩어리로 접은
+                 * 축별 구성에 두면 숫자 하나가 나올 뿐이고, 그건 엑셀이 이미 주는 값과 같다.
+                 * 여기 두면 배치가 따라잡고 있는지가 세로로 보인다.
+                 *
+                 * 셋의 합은 이 칸과 **정확히** 같다 — 자동 = 최종 − 직접 = 로컬 + AI + 경로 미상.
+                 */
+                detail: (b) =>
+                    `로컬 분류기 ${(b.counts.pathLocal || 0).toLocaleString()} · ` +
+                    `서버 AI(Gemini) ${(b.counts.pathAi || 0).toLocaleString()} · ` +
+                    `경로 미상 ${(b.counts.pathAutoUnknown || 0).toLocaleString()}`,
+                hint: '사용자 값 없이 로컬·서버 분류기가 채운 것 (마우스를 올리면 누가 채웠는지)'
             },
             {
                 label: '미분류',
@@ -812,7 +834,12 @@ function renderTrendRow(b, { label, emphasis = false }) {
             .map((col, i) => {
                 const n = b.total ? Math.max(0, col.value(b)) : 0;
                 const rate = pct(n, b.total);
-                const title = `${col.label} · ${n.toLocaleString()}건 / ${b.total.toLocaleString()}건`;
+                const title = [
+                    `${col.label} · ${n.toLocaleString()}건 / ${b.total.toLocaleString()}건`,
+                    col.detail && b.total ? col.detail(b) : ''
+                ]
+                    .filter(Boolean)
+                    .join('\n');
                 return `<td class="px-2 py-2 text-center text-xs font-bold tabular-nums ${trendCellClass(
                     col.tone,
                     rate

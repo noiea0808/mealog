@@ -531,3 +531,19 @@ test('건수 0인 선택지는 칸도 슬롯도 없이 뒤로 밀린다 — 범�
         ['외식', null]
     ]);
 });
+
+test('「자동」은 로컬·서버AI·경로미상 셋으로 정확히 쪼개진다 — 추이 툴팁이 이 항등식에 기댄다', () => {
+    const rows = [
+        { userId: 'u1', date: '2026-08-10', category: '밥류' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '면류', categorySource: 'local' },
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '커피', categorySource: 'ai' },
+        // categorySource 가 유실된 옛 기록 — 자동이지만 누가 채웠는지 모른다
+        { userId: 'u1', date: '2026-08-10', categoryAuto: '빵류' },
+        { userId: 'u1', date: '2026-08-10', menuDetail: '라면' }
+    ];
+    const c = analyzeMomentRows(rows, '2026-08-10', '2026-08-10').overall.counts;
+    const auto = c.whatFinal - c.what;
+    assert.equal(auto, 3);
+    assert.equal(c.pathLocal + c.pathAi + c.pathAutoUnknown, auto, '자동 = 최종 − 직접 = 로컬 + AI + 경로미상');
+    assert.equal(c.pathAi, 1, '서버 Gemini 배치가 채운 몫');
+});

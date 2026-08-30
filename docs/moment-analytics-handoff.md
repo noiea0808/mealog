@@ -47,7 +47,7 @@
 | [`js/admin/moment-analytics-model.js`](../js/admin/moment-analytics-model.js) | 계산부. Firestore·DOM 모름 |
 | [`js/admin/moment-analytics.js`](../js/admin/moment-analytics.js) | 조회·렌더 |
 | [`js/admin/admin-tag-axes.js`](../js/admin/admin-tag-axes.js) | 태그 목록의 **유일한 출처** — 「태그 관리」와 공유 |
-| [`test/moment-analytics-model.test.mjs`](../test/moment-analytics-model.test.mjs) | 32개 |
+| [`test/moment-analytics-model.test.mjs`](../test/moment-analytics-model.test.mjs) | 33개 |
 
 계산부를 가른 이유는 하나입니다 — **이 값들은 틀려도 표가 멀쩡해 보입니다.** 필드 판정이나
 주 경계가 한 칸 어긋나도 그럴듯한 숫자가 그려져서, 화면으로는 잡을 수 없습니다.
@@ -163,6 +163,31 @@
 - 막대 **위**의 짧은 두 줄(길이=입력률, 칸 나눔=구성) — 그림을 처음 보는 사람이 팝업을 열지
   않고도 읽을 수 있어야 합니다.
 - 추이 표 아래 **추천 분류 건수 한 줄** — 그건 설명이 아니라 **데이터**입니다.
+
+#### 서버 AI(Gemini) 몫은 어디서 보나 (2026-08-30)
+
+추이의 **「자동」 칸에 마우스를 올리면** `로컬 분류기 n · 서버 AI(Gemini) n · 경로 미상 n` 이
+뜹니다. 셋의 합은 그 칸과 **정확히** 같습니다 — `자동 = 최종 − 직접 = pathLocal + pathAi +
+pathAutoUnknown`(테스트로 잡아 둔 항등식입니다).
+
+**축별 구성이 아니라 여기 둔 이유**: 이 숫자는 애초에 날짜에 매인 값입니다. 배치가
+6시간마다 **최근 7일만** 돌아서 「얼마나 채웠나」가 구간마다 다릅니다. 기간 전체를 한 덩어리로
+접은 축별 구성에 두면 숫자 하나가 나올 뿐이고 그건 엑셀이 이미 주는 값과 같습니다. 추이에
+두면 **배치가 따라잡고 있는지**가 세로로 보입니다.
+
+배치 스펙(`functions/index.js` 의 `classifyUncategorizedMeals`):
+
+| 항목 | 값 |
+|---|---|
+| 주기 | `0 */6 * * *` KST — 하루 4회 |
+| 한 번에 | 최대 100건 (`maxDocs`) |
+| 범위 | 최근 7일 (`today-7 ~ today`) |
+| 모델 | `gemini-2.5-flash` |
+
+**두 가지 구멍이 있습니다.** 하루 최대 400건이라 그보다 빠르게 쌓이면 따라잡지 못하고,
+**7일이 지나면 정기 배치는 그 기록을 다시 보지 않습니다**(영구 미분류). 임의 기간을 다시 도는
+`adminClassifyLegacyMeals`(onCall)가 있지만 **어디서도 호출하지 않습니다** — 관리자 화면에
+버튼이 없어 콘솔에서 직접 부르는 수밖에 없습니다.
 
 ### 2.2 기간 추이 — 입력 시트 순서로 읽는다
 
