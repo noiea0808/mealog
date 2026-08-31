@@ -16463,10 +16463,124 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #snackSatietySection .entry-axis-input-row {
     align-items: center;
 }
+/*
+ * 평가 구역의 라벨 열을 좁힌다 — 7.25rem → 5rem.
+ *
+ * "🕐 시간" 두 자에 116px 이 배정돼 있었다. 375px 기기에서 그 행의 전체 폭이
+ * 301px 이니 라벨이 40% 를 쥐고 시작한 셈이고, 남은 167px 을 세 칸이 나눠
+ * 가지려니 시각이 밀려났다.
+ *
+ * 같은 구역의 별점·포만감은 이 변화가 보이지 않는다 — 두 게이지 모두
+ * `justify-content: flex-end` 라 **오른쪽 끝에 붙어 있고**, 감싼 띠는 배경도
+ * 테두리도 없다. 열이 넓어지면 왼쪽에 투명한 빈자리가 늘 뿐이다. 라벨 자체는
+ * 열 안에서 왼쪽 정렬이라 제자리에 그대로 선다.
+ */
+#entryModal .entry-sheet-zone--metrics {
+    /* 만족도·포만감은 라벨 옆에 초기화 버튼을 달고 있다 — 실측 96.4px 이 그 행의 하한이다 */
+    --entry-form-label-w: 6.25rem;
+    /* 이 구역에서 눈에 보이는 왼쪽 모서리는 시각 칸 하나뿐이라(게이지는 오른쪽 정렬) 여백을 걷는다 */
+    --entry-form-input-pl: 0rem;
+}
+
+/*
+ * 시각 복합칸의 너비 배분 — [출처 ▾][오전/오후][시:분]
+ *
+ * 좁은 화면에서 시:분이 통째로 잘려 나가던 자리다. 실측(375px 기기): 칸 전체가
+ * 167px 인데 출처 버튼 88.5 + 오전/오후 select 76 = 164.5 를 먼저 가져가 시각에
+ * 0.5px 만 남았다. 셋 다 `shrink-0` 이었고, 유일하게 줄어들 수 있는 것이 하필
+ * 제일 중요한 시각 칸이었기 때문이다.
+ *
+ * 그래서 양보의 순서를 뒤집는다.
+ *  - 시:분: 최소 폭을 못 박는다. 어떤 폭에서도 "12:34" 는 온전히 보인다.
+ *  - 오전/오후: 글자 두 자 + 여백만큼 고정. 줄지도 늘지도 않는다.
+ *  - 출처: 가장 먼저 양보한다 — 셋 중 유일하게 글자를 줄여도 뜻이 남는 칸이다
+ *    (…으로 잘려도 옆의 시트를 열면 무엇이 골라져 있는지 다시 보인다).
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-btn {
+    flex: 0 1 auto;
+    min-width: 2.25rem;
+    gap: 0.125rem;
+    padding-left: 0.5rem;
+    padding-right: 0.375rem;
+}
+/* 12px 글자 옆에 18px(lucide 기본) 화살표가 서 있었다 — 글자에 맞춰 낮춘다 */
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-btn > svg {
+    width: 0.6875rem;
+    height: 0.6875rem;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value {
+    /*
+     * '오전 09:45' 한 덩어리가 들어가는 최소 폭 — 실측 84.4px 에 여유 한 줌.
+     * 상자에 상한이 걸린 뒤로 이 값이 커지면 그만큼 **출처 버튼에서 뺏어 온다**
+     * (이 칸만 flex-grow 를 갖는다). 필요한 만큼만 잡아 둔다.
+     */
+    flex: 1 1 5.5rem;
+    min-width: 5.5rem;
+}
+/*
+ * 시각 칸은 「고쳐 쓰는 자리」가 아니라 「캐러셀을 여는 자리」다.
+ *
+ * 예전에는 여기만 자판으로 치고 출처▾ 의 '직접 입력'은 휠을 띄워, 같은 값을 같은
+ * 시트 안에서 두 가지 방법으로 고치게 돼 있었다. 그리고 그 옆에는 오전/오후를
+ * 따로 뒤집는 칸이 또 있었다 — 만질 곳이 셋이었다. 지금은 하나다.
+ *
+ * 값은 이 버튼의 `data-clock24` 가 쥔다. 안의 두 조각은 그 값을 그린 것뿐이라
+ * 표시와 저장값이 어긋날 자리가 없다.
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value__btn {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+/*
+ * 오전/오후는 컨트롤이 아니라 시:분에 붙은 **단위 글자**다 — 숫자보다 한 걸음
+ * 물러서게 두어, 눈이 시각부터 읽고 오전/오후를 확인하게 한다.
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value .entry-meal-ampm {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: var(--entry-text-muted, #64748b);
+    white-space: nowrap;
+}
+/* 이 행에서 가장 자주 읽히는 글자다 — 옆 라벨(12px)보다 크게 둬야 먼저 눈에 든다 */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-text {
+    flex: 0 0 auto;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--entry-text-primary, #1e293b);
+    white-space: nowrap;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-text--placeholder {
+    font-weight: 500;
+    color: var(--entry-placeholder, #94a3b8);
+}
+/*
+ * 상자는 열을 다 채우지 않는다 — 내용만큼만 쥐고 오른쪽에 붙는다.
+ *
+ * 오전/오후가 제 칸을 갖고 있을 때는 셋이 열을 꽉 채웠지만, 시:분과 한 덩어리가
+ * 된 뒤로는 값이 오른쪽에 붙고 왼쪽에 흰 여백만 길게 남았다. 넓은 기기일수록
+ * 심했다(430px 에서 246px 상자에 내용은 162px). 상한을 두고 오른쪽에 붙이면
+ * 위의 만족도·포만감 게이지와 오른쪽 끝이 나란해진다 — 그쪽도 오른쪽 정렬이다.
+ *
+ * 상한은 최악의 조합(출처 '현재 시각' + '오전 09:01')의 실측 161.9px 에 여유 한 줌.
+ * 좁은 기기에서는 상한에 닿지 않으니 지금까지의 폭 배분이 그대로 산다.
+ */
 :is(#entryModal, #memoRecordModal) .entry-meal-clock-compound {
     width: 100%;
-    max-width: 100%;
-    margin-left: 0;
+    max-width: 10.5rem;
+    margin-left: auto;
     background: #ffffff;
     border: 1px solid var(--entry-border-row);
     border-radius: var(--entry-radius);
@@ -16484,24 +16598,11 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-border-soft);
     font-size: 12px;
 }
-:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound .entry-meal-ampm {
-    background: #ffffff;
-    border-color: var(--entry-border-soft);
-    font-size: 12px;
-}
 #entryModal .entry-meal-clock-compound .entry-meal-time-off-display {
     background: #ffffff;
     justify-content: flex-end;
     text-align: right;
     padding-right: 0.75rem;
-    font-size: 12px;
-}
-#entryModal #entryMealTimeInputMain,
-#entryModal #entryMealTimeInputSnack {
-    text-align: right;
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
-    background: #ffffff;
     font-size: 12px;
 }
 :is(#entryModal, #memoRecordModal) .entry-meal-clock-compound:focus-within {
@@ -20006,17 +20107,6 @@ html.service-guide-active #landingPage {
     background: #ffffff;
     border-color: var(--entry-border-soft);
     font-size: 11px;
-}
-#memoRecordModal .entry-meal-clock-compound .entry-meal-ampm {
-    min-width: 3.9rem;
-    padding-left: 0.5rem;
-}
-#memoRecordModal #memoRecordTimeInput {
-    text-align: right;
-    padding-right: 0.625rem;
-    padding-left: 0.375rem;
-    background: #ffffff;
-    font-size: 12px;
 }
 
 /* ── 값 칸 (숫자 메모) ── */

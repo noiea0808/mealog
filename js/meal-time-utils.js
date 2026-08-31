@@ -189,3 +189,29 @@ export async function tryExifTimeHHmmFromImageFile(file) {
     const mm = String(d.getMinutes()).padStart(2, '0');
     return `${hh}:${mm}`;
 }
+
+/**
+ * 시각 표시 칸을 24시 "HH:mm" 에서 다시 그린다 — `[오전][08:35]` 두 조각.
+ *
+ * 이 자리는 두 번 접혔다. 처음에는 오전/오후가 `<select>` 였고(고를 것이 둘뿐인데
+ * 드롭다운을 띄웠다), 다음에는 눌러서 뒤집는 버튼이었다. 지금은 아예 컨트롤이
+ * 아니다 — 시각은 '현재'·'사진'이면 시계와 EXIF 가 정하고 '직접 입력'이면
+ * 캐러셀 안에서 고르므로, **오전/오후만 따로 만질 일이 없다.**
+ *
+ * 값이 없으면 오전/오후까지 지운다. 예전에는 '미입력'인데도 기본값 '오후'가 떠
+ * 있었는데, 그건 없는 시각을 있다고 말하는 표시였다.
+ *
+ * @param {Element|null} ampmEl 오전/오후를 적는 자리
+ * @param {Element|null} textEl 시:분을 적는 자리
+ * @param {string} hhmm24 24시 "HH:mm" (빈 값이면 자리표시로 돌아간다)
+ */
+export function renderMealClockDisplay(ampmEl, textEl, hhmm24) {
+    const { ampm, display } = mealClock24ToAmPmAndDisplay(hhmm24);
+    if (ampmEl) {
+        ampmEl.textContent = display ? (ampm === 'am' ? '오전' : '오후') : '';
+    }
+    if (textEl) {
+        textEl.textContent = display || '시:분';
+        textEl.classList.toggle('entry-meal-clock-text--placeholder', !display);
+    }
+}

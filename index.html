@@ -2970,21 +2970,18 @@
                             -->
                             <div id="memoRecordClockCompound" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
                                 <button type="button" id="memoRecordTimeSourceBtn"
-                                    class="entry-meal-time-source-btn shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 active:bg-slate-100"
+                                    class="entry-meal-time-source-btn flex min-w-0 min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100 active:bg-slate-100"
                                     aria-label="시간 선택 방식" aria-haspopup="dialog">
                                     <span id="memoRecordTimeSourceLabel" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite">현재 시각</span>
                                     <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
                                 </button>
-                                <label for="memoRecordAmpm" class="sr-only">오전 또는 오후</label>
-                                <select id="memoRecordAmpm" class="entry-meal-ampm shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                                    <option value="am">오전</option>
-                                    <option value="pm">오후</option>
-                                </select>
-                                <div class="relative min-w-0 flex-1">
-                                    <input type="text" id="memoRecordTimeInput"
-                                        maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                                        placeholder="시:분" aria-label="시각"
-                                        class="absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
+                                <div class="entry-meal-clock-value relative min-w-0">
+                                    <button type="button" id="memoRecordTimeValue"
+                                        class="entry-meal-clock-value__btn absolute inset-0 flex items-center justify-end gap-1 border-0 bg-white py-2 pl-2 pr-3 outline-none"
+                                        aria-haspopup="dialog" aria-label="시각">
+                                        <span id="memoRecordAmpm" class="entry-meal-ampm"></span>
+                                        <span id="memoRecordTimeText" class="entry-meal-clock-text entry-meal-clock-text--placeholder">시:분</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -3339,28 +3336,26 @@
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                 <div id="entryMealClockCompoundMain" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
                                     <button type="button" id="entryMealTimeSourceBtnMain"
-                                        class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
+                                        class="entry-meal-time-source-btn pointer-events-none flex min-w-0 min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
                                         aria-label="시간 선택 방식" aria-haspopup="dialog">
                                         <span id="entryMealTimeSourceLabelMain" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
                                         <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
                                     </button>
-                                    <label for="entryMealAmpmMain" class="sr-only">오전 또는 오후</label>
-                                    <select id="entryMealAmpmMain"
-                                        class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                                        <option value="am">오전</option>
-                                        <option value="pm">오후</option>
-                                    </select>
-                                    <div class="relative min-w-0 flex-1">
+                                    <!--
+                                        오전/오후는 컨트롤이 아니라 **표시**다 — 시각은 현재/사진이면 시계·EXIF 가
+                                        정하고, 직접 입력이면 캐러셀 안에서 고른다. 그래서 시:분과 한 덩어리로
+                                        묶여 있고, 눌리는 것은 이 덩어리 전체(→ 캐러셀) 하나뿐이다.
+                                    -->
+                                    <div class="entry-meal-clock-value relative min-w-0">
                                         <div id="entryMealTimeOffDisplayMain"
                                             class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 text-sm font-bold tabular-nums text-slate-400"
-                                            aria-hidden="true">-- : -- : --</div>
-                                        <input type="text" id="entryMealTimeInputMain"
-                                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                                            placeholder="시:분"
-                                            class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
-                                        <input type="time" step="60" id="entryMealTimeBridgeMain"
-                                            tabindex="-1" aria-hidden="true"
-                                            class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                            aria-hidden="true">--:--</div>
+                                        <button type="button" id="entryMealTimeValueMain"
+                                            class="entry-meal-clock-value__btn pointer-events-none absolute inset-0 flex items-center justify-end gap-1 border-0 bg-white py-2 pl-2 pr-3 outline-none"
+                                            aria-haspopup="dialog" aria-label="시각">
+                                            <span id="entryMealAmpmMain" class="entry-meal-ampm"></span>
+                                            <span id="entryMealTimeTextMain" class="entry-meal-clock-text entry-meal-clock-text--placeholder">시:분</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -3423,28 +3418,26 @@
                             <div class="entry-axis-input-col flex min-w-0 flex-1 flex-col pl-2">
                                 <div id="entryMealClockCompoundSnack" class="entry-meal-clock-compound flex min-h-[42px] w-full overflow-hidden rounded-xl border border-slate-200 bg-white transition-[border-color] focus-within:border-slate-400">
                                     <button type="button" id="entryMealTimeSourceBtnSnack"
-                                        class="entry-meal-time-source-btn pointer-events-none shrink-0 flex min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
+                                        class="entry-meal-time-source-btn pointer-events-none flex min-w-0 min-h-[42px] items-center gap-1 border-0 border-r border-slate-200 bg-slate-50 pl-2.5 pr-2 py-2 text-sm font-bold text-slate-700 opacity-0 hover:bg-slate-100 active:bg-slate-100"
                                         aria-label="시간 선택 방식" aria-haspopup="dialog">
                                         <span id="entryMealTimeSourceLabelSnack" class="entry-meal-time-source-label truncate whitespace-nowrap max-w-[5.5rem]" aria-live="polite"></span>
                                         <i data-lucide="chevron-down" class="shrink-0 text-[11px] text-slate-400" aria-hidden="true"></i>
                                     </button>
-                                    <label for="entryMealAmpmSnack" class="sr-only">오전 또는 오후</label>
-                                    <select id="entryMealAmpmSnack"
-                                        class="entry-meal-ampm pointer-events-none shrink-0 rounded-none border-0 border-r border-slate-200 bg-slate-50 py-2 pl-2.5 pr-1 text-[11px] font-extrabold text-slate-700 outline-none focus:ring-0 min-w-[4.75rem]">
-                                        <option value="am">오전</option>
-                                        <option value="pm">오후</option>
-                                    </select>
-                                    <div class="relative min-w-0 flex-1">
+                                    <!--
+                                        오전/오후는 컨트롤이 아니라 **표시**다 — 시각은 현재/사진이면 시계·EXIF 가
+                                        정하고, 직접 입력이면 캐러셀 안에서 고른다. 그래서 시:분과 한 덩어리로
+                                        묶여 있고, 눌리는 것은 이 덩어리 전체(→ 캐러셀) 하나뿐이다.
+                                    -->
+                                    <div class="entry-meal-clock-value relative min-w-0">
                                         <div id="entryMealTimeOffDisplaySnack"
                                             class="entry-meal-time-off-display flex min-h-[42px] items-center bg-slate-50 px-3 py-2 text-sm font-bold tabular-nums text-slate-400"
-                                            aria-hidden="true">-- : -- : --</div>
-                                        <input type="text" id="entryMealTimeInputSnack"
-                                            maxlength="5" inputmode="numeric" autocomplete="off" spellcheck="false"
-                                            placeholder="시:분"
-                                            class="pointer-events-none absolute inset-0 border-0 bg-white py-2 pl-3 pr-3 text-sm tabular-nums text-slate-800 outline-none focus:ring-0" />
-                                        <input type="time" step="60" id="entryMealTimeBridgeSnack"
-                                            tabindex="-1" aria-hidden="true"
-                                            class="pointer-events-none fixed left-[-9999px] top-0 h-px w-px opacity-0" />
+                                            aria-hidden="true">--:--</div>
+                                        <button type="button" id="entryMealTimeValueSnack"
+                                            class="entry-meal-clock-value__btn pointer-events-none absolute inset-0 flex items-center justify-end gap-1 border-0 bg-white py-2 pl-2 pr-3 outline-none"
+                                            aria-haspopup="dialog" aria-label="시각">
+                                            <span id="entryMealAmpmSnack" class="entry-meal-ampm"></span>
+                                            <span id="entryMealTimeTextSnack" class="entry-meal-clock-text entry-meal-clock-text--placeholder">시:분</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
