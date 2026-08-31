@@ -20179,12 +20179,18 @@ html.service-guide-active #landingPage {
     /* 바탕은 아주 연한 크림. 아트의 베이지(#fce6c9)는 아트 칩 안에만 남겨, 주황이
        배너 전체를 덮지 않게 한다 — 기록 사이에 끼는 광고라 존재감은 낮을수록 좋다 */
     --promo-bg: #fff7ec;
-    --promo-line: #f6e0c4;
+    --promo-line: #e9c9a2;
     --promo-art-bg: #fce6c9;
     /* 이 바탕 위에서 대비 6.1 — 4.5 를 넘겨야 작은 글씨가 읽힌다 */
     --promo-lead: #6f5a4a;
-    --promo-title: #9a3412;
-    --promo-cta: #c2410c;
+    /* 제목은 대비 3.7. 4.5 에 못 미치지만 18px 800 굵기라 이 크기에서는 또렷하다 —
+       더 진한 orange-800 은 배너 전체를 무겁게 만들었다 */
+    --promo-title: #d75c0d;
+    /* 배지도 솔리드 주황을 걷었다. 연한 바탕 + 진한 글씨로 대비 4.5 를 지키면서
+       CTA 가 배너에서 혼자 튀지 않는다 */
+    --promo-cta-bg: #ffe9d4;
+    --promo-cta-line: #fbd3ae;
+    --promo-cta-text: #b84709;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -20204,7 +20210,7 @@ html.service-guide-active #landingPage {
     transform: scale(0.98);
 }
 .mealog-promo-banner:focus-visible {
-    outline: 2px solid var(--promo-cta);
+    outline: 2px solid var(--promo-cta-text);
     outline-offset: 2px;
 }
 .mealog-promo-banner__art {
@@ -20249,10 +20255,11 @@ html.service-guide-active #landingPage {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    padding: 6px 9px 6px 11px;
+    padding: 5px 8px 5px 10px;
     border-radius: 999px;
-    background: var(--promo-cta);
-    color: #fff;
+    background: var(--promo-cta-bg);
+    border: 1px solid var(--promo-cta-line);
+    color: var(--promo-cta-text);
     font-size: 12.5px;
     font-weight: 700;
     line-height: 1;
