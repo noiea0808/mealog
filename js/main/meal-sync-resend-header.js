@@ -26,6 +26,20 @@ const MEAL_SYNC_FAB_ARIA = '아직 서버에 올라가지 않은 기록 다시 �
  * 정확해야 하므로 그 값 자체는 건드리지 않고, "보이기 시작하는" 전환만 늦춘다.
  */
 const MEAL_SYNC_FAB_SHOW_DELAY_MS = 2000;
+
+/**
+ * 앱 기동 직후에는 첫 표시를 더 오래 미룬다.
+ *
+ * 콜드 부팅에는 미전송처럼 「보이는」 순간이 구조적으로 있다: ① 지난 세션이 서버 ack 를
+ * 확인하기 전에 종료돼 아웃박스에 남은 항목(실제로는 대부분 이미 서버에 있음)은 워커의
+ * 첫 사이클(~6초)+서버 대조가 끝나야 빠지고, ② 부팅 초기의 설정 저장은 App Check 토큰·
+ * 채널 워밍업 때문에 ack 가 평소보다 늦다. 이 정리 시간 안에 FAB 를 반짝이면 사용자는
+ * 매 부팅마다 「기록이 안 올라갔나?」 하고 불안해진다. 유예를 부팅 정리가 끝날 만큼 주고,
+ * 그 뒤에도 남아 있는 것만 진짜 미전송으로 보여 준다. (워커의 FRESH_ENTRY_GRACE_MS 와
+ * 같은 15초 — 근거도 같다: 정상 경로가 스스로 해결할 시간을 준다.)
+ */
+const MEAL_SYNC_FAB_BOOT_QUIET_MS = 15000;
+const MODULE_BOOT_AT_MS = Date.now();
 let mealSyncFabShowTimer = null;
 
 function clearMealSyncFabShowTimer() {
@@ -108,11 +122,14 @@ export function refreshMealSyncResendNavButton() {
     // "여전히 숨어 있으니 또 기다린다"로 되먹임돼 영원히 안 뜬다.
     if (btn.classList.contains('hidden')) {
         if (!mealSyncFabShowTimer) {
+            // 부팅 유예가 아직 남아 있으면 그 끝까지, 지났으면 평소 유예만큼 늦춘다
+            const bootQuietLeft = MEAL_SYNC_FAB_BOOT_QUIET_MS - (Date.now() - MODULE_BOOT_AT_MS);
+            const delay = Math.max(MEAL_SYNC_FAB_SHOW_DELAY_MS, bootQuietLeft);
             mealSyncFabShowTimer = setTimeout(() => {
                 mealSyncFabShowTimer = null;
                 const stillN = currentUnsentMealWorkCount();
                 if (stillN > 0) applyMealSyncFabVisible(btn, badge, stillN);
-            }, MEAL_SYNC_FAB_SHOW_DELAY_MS);
+            }, delay);
         }
         return;
     }

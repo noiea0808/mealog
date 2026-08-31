@@ -385,6 +385,12 @@ window.submitNotice = async function() {
             pushFrequency,
             imageUrls: imageUrls,
             timestamp: new Date().toISOString(),
+            /**
+             * 하단 네비 레드닷의 내 글 제외용 — 이 timestamp 를 갱신한 관리자 본인에게는
+             * 새 공지 점을 띄우지 않는다 (nav-feed-update-dots.js peekLatestNoticeTimestampMs).
+             * 수정도 timestamp 를 갱신하므로 수정자 uid 로 덮어쓰는 것이 맞다.
+             */
+            authorId: auth.currentUser?.uid || null,
             authorDisplayName: await getAdminDisplayName()
         };
 

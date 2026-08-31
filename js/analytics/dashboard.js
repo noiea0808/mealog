@@ -6,7 +6,7 @@ import { renderProportionChart } from './charts.js';
 import { updateInsightComment, setupInsightBubbleClick, getCurrentCharacter, getInsightCharacters, updateShareButtonStatus } from './insight.js';
 import { getWeekRange, getCurrentWeekInMonth, getWeeksInMonth, formatDateWithDay, getWeekDisplayLabel } from './date-utils.js';
 import { renderBestMeals } from './best-share.js';
-import { renderHealthVitalsCharts, destroyHealthVitalsCharts } from './health-charts.js';
+import { renderHealthVitalsCharts, destroyHealthVitalsCharts, setVitalsChartView } from './health-charts.js';
 import { renderMainAnalysisTopIcons, renderSnackAnalysisTopIcons, setAnalysisTopIconsVisible } from './analysis-top-icons.js';
 import { toLocalDateString } from '../utils.js';
 import { showToast } from '../ui.js';
@@ -968,37 +968,25 @@ function bindWhatAxisSwitch() {
     });
 }
 
-/** 건강 상세 차트 토글 (식사/간식은 기본 전체 노출) */
-export function initDashboardAnalysisUi() {
-    bindWhatAxisSwitch();
-    document.querySelectorAll('.dashboard-vital-detail-btn').forEach((btn) => {
-        if (btn.dataset.bound === '1') return;
-        btn.dataset.bound = '1';
-        btn.addEventListener('click', () => {
-            const wrapId = btn.getAttribute('aria-controls');
-            const wrap = wrapId ? document.getElementById(wrapId) : null;
-            if (!wrap) return;
-            const open = wrap.hasAttribute('hidden') || wrap.classList.contains('hidden');
-            if (open) {
-                wrap.removeAttribute('hidden');
-                wrap.classList.remove('hidden');
-                btn.setAttribute('aria-expanded', 'true');
-                btn.textContent = '접기';
-                // Chart.js는 wrap이 보일 때 리사이즈 필요
-                requestAnimationFrame(() => {
-                    try {
-                        const canvas = wrap.querySelector('canvas');
-                        const chart = canvas && typeof Chart !== 'undefined' ? Chart.getChart(canvas) : null;
-                        chart?.resize();
-                    } catch (_) { /* ignore */ }
-                });
-            } else {
-                wrap.setAttribute('hidden', '');
-                wrap.classList.add('hidden');
-                btn.setAttribute('aria-expanded', 'false');
-                btn.textContent = '상세';
-            }
+/** 건강 차트 라인·캔들 보기 전환 (활성 표시는 차트가 그려질 때 맞춰진다) */
+function bindVitalsViewSwitch() {
+    document.querySelectorAll('.health-vitals-view-bar').forEach((bar) => {
+        if (bar.dataset.bound === '1') return;
+        bar.dataset.bound = '1';
+        bar.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-vitals-view]');
+            if (!btn) return;
+            setVitalsChartView(
+                btn.getAttribute('data-vitals-metric'),
+                btn.getAttribute('data-vitals-view')
+            );
         });
     });
+}
+
+/** 건강 카드는 차트를 바로 편다 — 라인·캔들만 고른다 */
+export function initDashboardAnalysisUi() {
+    bindWhatAxisSwitch();
+    bindVitalsViewSwitch();
 }
 

@@ -22,13 +22,7 @@ import { prepareIntakeImage } from '../utils/image-downscale.js';
 import { createPhotoMetaFromFile, resolveFirstPhotoTakenAt } from '../photo-meta.js';
 import { openTimeSourceSheet, closeTimeSourceSheets } from '../time-source-picker.js';
 import { openMealClockWheelPanel } from '../meal-clock-wheel-picker.js';
-import {
-    mealClock24ToAmPmAndDisplay,
-    mealClock24FromAmPmClock,
-    normalizeMealClockInputValue,
-    normalizeMealClock12InputValue,
-    formatMealClock12TextWhileTyping
-} from '../meal-time-utils.js';
+import { normalizeMealClockInputValue, renderMealClockDisplay } from '../meal-time-utils.js';
 import { findSlotByKey, defaultMemoItemByKey, memoIconOrDefault, MEMO_SLOT_ID, MEMO_MEAL_ID_PREFIX, DEFAULT_MEMO_LABEL, DEFAULT_MEMO_ICON } from '../utils/slot-plan.js';
 import { RECORD_MAX_PHOTOS } from '../constants.js';
 
@@ -59,11 +53,14 @@ function localTodayIso() {
  * `applyMealClockRowFrom24` 와 같은 수다(오전/오후 select + 12시 표시).
  */
 function syncClockRow() {
-    const sel = document.getElementById('memoRecordAmpm');
-    const txt = document.getElementById('memoRecordTimeInput');
-    const { ampm, display } = mealClock24ToAmPmAndDisplay(state.clock || '12:00');
-    if (sel) sel.value = ampm;
-    if (txt) txt.value = display;
+    const n24 = normalizeMealClockInputValue(state.clock || '') || '12:00';
+    const valueEl = document.getElementById('memoRecordTimeValue');
+    if (valueEl) valueEl.dataset.clock24 = n24;
+    renderMealClockDisplay(
+        document.getElementById('memoRecordAmpm'),
+        document.getElementById('memoRecordTimeText'),
+        n24
+    );
     syncClockSourceLabel();
 }
 
@@ -80,12 +77,11 @@ function syncClockSourceLabel() {
     el.textContent = MEMO_CLOCK_SOURCE_LABELS[state?.clockSource || 'now'] || '현재 시각';
 }
 
-/** 입력칸·select 에서 읽은 24시 'HH:mm' — 못 읽으면 빈 문자열 */
+/** 시각 칸이 쥐고 있는 24시 'HH:mm' — 못 읽으면 빈 문자열 */
 function readClockFromRow() {
-    const sel = document.getElementById('memoRecordAmpm');
-    const txt = document.getElementById('memoRecordTimeInput');
-    const raw = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', txt?.value || '');
-    return normalizeMealClockInputValue(raw || '');
+    return normalizeMealClockInputValue(
+        document.getElementById('memoRecordTimeValue')?.dataset?.clock24 || ''
+    );
 }
 
 function nowHHmm() {
@@ -372,7 +368,7 @@ function applyClockFromDate(date, source) {
 
 function openTimePicker() {
     if (!state) return;
-    // 입력칸을 고치다 휠을 열면 **방금 친 값**에서 시작해야 한다
+    // 휠은 지금 화면에 떠 있는 값에서 시작한다 (오전/오후만 뒤집어 놓은 경우 포함)
     const fromRow = readClockFromRow();
     if (fromRow) state.clock = fromRow;
     const [h, m] = state.clock.split(':').map(Number);
@@ -485,9 +481,9 @@ async function onSave() {
     const saveBtn = document.getElementById('memoRecordSaveBtn');
     if (saveBtn) saveBtn.disabled = true;
 
-    // blur 없이 저장을 누를 수 있다 — 입력칸을 한 번 더 집는다
-    const typed = readClockFromRow();
-    if (typed) state.clock = typed;
+    /* 화면에 보이는 값이 곧 답이다 — 저장 직전에 시각 칸을 한 번 더 집는다 */
+    const shown = readClockFromRow();
+    if (shown) state.clock = shown;
     const comment = String(document.getElementById('memoRecordText')?.value || '').trim().slice(0, 300);
 
     /**
@@ -611,59 +607,15 @@ function bindOnce() {
     modal.querySelector('#memoRecordCloseBtn')?.addEventListener('click', closeMemoRecordModal);
     modal.querySelector('#memoRecordTimeSourceBtn')?.addEventListener('click', openTimeSourceForMemo);
 
-    /**
-     * 직접 입력 — 끼니 시트와 같은 규칙이다.
-     * 치는 동안에는 '1230' → '12:30' 으로 모양만 잡아 주고(값 판정은 안 한다),
-     * 떠날 때 한 번 정리한다 — '9' 만 적고 나가면 09:00 으로 읽는다.
+    /*
+     * 시각 칸은 통째로 캐러셀을 여는 버튼 하나다.
+     *
+     * 안에 든 '오전/오후'는 컨트롤이 아니라 표시다 — 시각은 '현재'·'사진'이면
+     * 시계와 EXIF 가 정하고 '직접 입력'이면 캐러셀 안에서 고르므로, 오전/오후만
+     * 따로 뒤집을 일이 없다. 만질 곳이 하나면 어디를 눌러야 하는지 배울 것도 없다.
      */
-    const timeInput = modal.querySelector('#memoRecordTimeInput');
-    timeInput?.addEventListener('focus', () => {
-        requestAnimationFrame(() => {
-            try {
-                timeInput.select();
-            } catch (_) {
-                /* 일부 브라우저에서만 던진다 */
-            }
-        });
-    });
-    timeInput?.addEventListener('input', () => {
-        const next = formatMealClock12TextWhileTyping(timeInput.value);
-        if (timeInput.value !== next) timeInput.value = next;
-    });
-    timeInput?.addEventListener('blur', () => {
-        if (!state) return;
-        const d = timeInput.value.replace(/\D/g, '').slice(0, 4);
-        if (!d.length) {
-            // 비워 두면 직전 값으로 되돌린다 — 자리를 정하는 값이라 비울 수 없다(§3.3)
-            syncClockRow();
-            return;
-        }
-        const candidate = d.length <= 2 ? `${d.padStart(2, '0')}:00` : `${d.slice(0, 2)}:${d.slice(2).padEnd(2, '0').slice(0, 2)}`;
-        const n12 = normalizeMealClock12InputValue(candidate);
-        const sel = document.getElementById('memoRecordAmpm');
-        const raw24 = n12 ? mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', n12) : '';
-        const n24 = normalizeMealClockInputValue(raw24 || '');
-        if (n24) {
-            state.clock = n24;
-            state.clockSource = 'manual';
-        }
-        syncClockRow();
-    });
-    timeInput?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            timeInput.blur();
-        }
-    });
-    modal.querySelector('#memoRecordAmpm')?.addEventListener('change', () => {
-        if (!state) return;
-        const n24 = readClockFromRow();
-        if (n24) {
-            state.clock = n24;
-            state.clockSource = 'manual';
-        }
-        syncClockRow();
-    });
+    modal.querySelector('#memoRecordTimeValue')?.addEventListener('click', openTimePicker);
+
     modal.querySelector('#memoRecordCameraBtn')?.addEventListener('click', () => void pickPhotos('camera'));
     modal.querySelector('#memoRecordAlbumBtn')?.addEventListener('click', () => void pickPhotos('gallery'));
     modal.querySelector('#memoRecordSaveBtn')?.addEventListener('click', () => void onSave());

@@ -168,6 +168,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-onboarding: 500;          /* 도메인오류·약관·프로필설정, 관리자 모달 */
     --z-signup-wizard: 550;
     --z-report-sheet: 580;
+    --z-admin-popover: 590;       /* 관리자 표에서 앵커에 붙는 작은 메뉴 — 모달 아래 */
     --z-admin-modal: 600;         /* 관리자 모달·알림 (admin.html 전용) */
     --z-admin-over: 700;
     --z-admin-loading: 999;
@@ -657,12 +658,22 @@ body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus,
     padding-right: 22px;
 }
 .health-vitals-chart-wrap {
-    height: 220px;
+    height: auto;
+    margin-top: 8px;
     padding-left: 2px;
     padding-right: 2px;
 }
+/* 라인·캔들 보기 스위치 — 카드 머리, 기간 증감 아래 */
+.health-vitals-view-bar {
+    display: flex;
+    justify-content: flex-end;
+}
+/* style.css 가 tailwind 뒤에 실려서 .hidden 만으로는 안 눌린다 */
+.health-vitals-view-bar.hidden {
+    display: none;
+}
 .health-vitals-chart-scroll {
-    height: 100%;
+    height: 220px;
     overflow-x: hidden;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -730,12 +741,10 @@ body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus,
     white-space: nowrap;
 }
 .health-vitals-chart-empty {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-height: 72px;
     margin: 0;
     padding: 0 1rem;
     text-align: center;
@@ -746,7 +755,11 @@ body.keyboard-closed:not(.ime-open):not(:has(input:not(.push-pref-toggle):focus,
 .health-vitals-chart-empty.hidden {
     display: none;
 }
+.health-vitals-chart-wrap--empty {
+    margin-top: 0;
+}
 .health-vitals-chart-wrap--empty .health-vitals-chart-scroll {
+    height: 0;
     pointer-events: none;
 }
 .health-vitals-bubble__title {
@@ -11530,6 +11543,9 @@ body[data-main-tab='dashboard'] #dashboardView {
     gap: 8px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-vital-val {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
     font-size: 22px;
     font-weight: 700;
     letter-spacing: -0.03em;
@@ -11553,25 +11569,15 @@ body[data-main-tab='dashboard'] #dashboardView {
     font-weight: 600;
     color: var(--green, #3cb889);
 }
+#dashboardView.dashboard-view-v2 .dashboard-vital-val .dashboard-vital-delta {
+    margin-left: 8px;
+    letter-spacing: 0;
+}
 #dashboardView.dashboard-view-v2 .dashboard-vital-delta.is-up {
     color: #e11d48;
 }
-#dashboardView.dashboard-view-v2 .dashboard-vital-spark {
-    width: 100%;
-    height: 72px;
-}
-#dashboardView.dashboard-view-v2 .dashboard-vital-spark svg {
-    width: 100%;
-    height: 72px;
-    display: block;
-}
-#dashboardView.dashboard-view-v2 .dashboard-vital-detail-chart {
-    margin-top: 12px;
-    min-height: 180px;
-}
-#dashboardView.dashboard-view-v2 .dashboard-vital-detail-chart[hidden],
-#dashboardView.dashboard-view-v2 .dashboard-vital-detail-chart.hidden {
-    display: none !important;
+#dashboardView.dashboard-view-v2 .health-vitals-view-bar {
+    margin-top: 2px;
 }
 #dashboardView.dashboard-view-v2 .dashboard-best-card .dashboard-best-card-head {
     justify-content: flex-end;
@@ -16465,10 +16471,124 @@ body:has(#adminPage:not(.hidden)),
 #entryModal #snackSatietySection .entry-axis-input-row {
     align-items: center;
 }
+/*
+ * 평가 구역의 라벨 열을 좁힌다 — 7.25rem → 5rem.
+ *
+ * "🕐 시간" 두 자에 116px 이 배정돼 있었다. 375px 기기에서 그 행의 전체 폭이
+ * 301px 이니 라벨이 40% 를 쥐고 시작한 셈이고, 남은 167px 을 세 칸이 나눠
+ * 가지려니 시각이 밀려났다.
+ *
+ * 같은 구역의 별점·포만감은 이 변화가 보이지 않는다 — 두 게이지 모두
+ * `justify-content: flex-end` 라 **오른쪽 끝에 붙어 있고**, 감싼 띠는 배경도
+ * 테두리도 없다. 열이 넓어지면 왼쪽에 투명한 빈자리가 늘 뿐이다. 라벨 자체는
+ * 열 안에서 왼쪽 정렬이라 제자리에 그대로 선다.
+ */
+#entryModal .entry-sheet-zone--metrics {
+    /* 만족도·포만감은 라벨 옆에 초기화 버튼을 달고 있다 — 실측 96.4px 이 그 행의 하한이다 */
+    --entry-form-label-w: 6.25rem;
+    /* 이 구역에서 눈에 보이는 왼쪽 모서리는 시각 칸 하나뿐이라(게이지는 오른쪽 정렬) 여백을 걷는다 */
+    --entry-form-input-pl: 0rem;
+}
+
+/*
+ * 시각 복합칸의 너비 배분 — [출처 ▾][오전/오후][시:분]
+ *
+ * 좁은 화면에서 시:분이 통째로 잘려 나가던 자리다. 실측(375px 기기): 칸 전체가
+ * 167px 인데 출처 버튼 88.5 + 오전/오후 select 76 = 164.5 를 먼저 가져가 시각에
+ * 0.5px 만 남았다. 셋 다 `shrink-0` 이었고, 유일하게 줄어들 수 있는 것이 하필
+ * 제일 중요한 시각 칸이었기 때문이다.
+ *
+ * 그래서 양보의 순서를 뒤집는다.
+ *  - 시:분: 최소 폭을 못 박는다. 어떤 폭에서도 "12:34" 는 온전히 보인다.
+ *  - 오전/오후: 글자 두 자 + 여백만큼 고정. 줄지도 늘지도 않는다.
+ *  - 출처: 가장 먼저 양보한다 — 셋 중 유일하게 글자를 줄여도 뜻이 남는 칸이다
+ *    (…으로 잘려도 옆의 시트를 열면 무엇이 골라져 있는지 다시 보인다).
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-btn {
+    flex: 0 1 auto;
+    min-width: 2.25rem;
+    gap: 0.125rem;
+    padding-left: 0.5rem;
+    padding-right: 0.375rem;
+}
+/* 12px 글자 옆에 18px(lucide 기본) 화살표가 서 있었다 — 글자에 맞춰 낮춘다 */
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-btn > svg {
+    width: 0.6875rem;
+    height: 0.6875rem;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-time-source-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value {
+    /*
+     * '오전 09:45' 한 덩어리가 들어가는 최소 폭 — 실측 84.4px 에 여유 한 줌.
+     * 상자에 상한이 걸린 뒤로 이 값이 커지면 그만큼 **출처 버튼에서 뺏어 온다**
+     * (이 칸만 flex-grow 를 갖는다). 필요한 만큼만 잡아 둔다.
+     */
+    flex: 1 1 5.5rem;
+    min-width: 5.5rem;
+}
+/*
+ * 시각 칸은 「고쳐 쓰는 자리」가 아니라 「캐러셀을 여는 자리」다.
+ *
+ * 예전에는 여기만 자판으로 치고 출처▾ 의 '직접 입력'은 휠을 띄워, 같은 값을 같은
+ * 시트 안에서 두 가지 방법으로 고치게 돼 있었다. 그리고 그 옆에는 오전/오후를
+ * 따로 뒤집는 칸이 또 있었다 — 만질 곳이 셋이었다. 지금은 하나다.
+ *
+ * 값은 이 버튼의 `data-clock24` 가 쥔다. 안의 두 조각은 그 값을 그린 것뿐이라
+ * 표시와 저장값이 어긋날 자리가 없다.
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value__btn {
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+/*
+ * 오전/오후는 컨트롤이 아니라 시:분에 붙은 **단위 글자**다 — 숫자보다 한 걸음
+ * 물러서게 두어, 눈이 시각부터 읽고 오전/오후를 확인하게 한다.
+ */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-value .entry-meal-ampm {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    color: var(--entry-text-muted, #64748b);
+    white-space: nowrap;
+}
+/* 이 행에서 가장 자주 읽히는 글자다 — 옆 라벨(12px)보다 크게 둬야 먼저 눈에 든다 */
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-text {
+    flex: 0 0 auto;
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--entry-text-primary, #1e293b);
+    white-space: nowrap;
+}
+:is(#entryModal, #memoRecordModal) .entry-meal-clock-text--placeholder {
+    font-weight: 500;
+    color: var(--entry-placeholder, #94a3b8);
+}
+/*
+ * 상자는 열을 다 채우지 않는다 — 내용만큼만 쥐고 오른쪽에 붙는다.
+ *
+ * 오전/오후가 제 칸을 갖고 있을 때는 셋이 열을 꽉 채웠지만, 시:분과 한 덩어리가
+ * 된 뒤로는 값이 오른쪽에 붙고 왼쪽에 흰 여백만 길게 남았다. 넓은 기기일수록
+ * 심했다(430px 에서 246px 상자에 내용은 162px). 상한을 두고 오른쪽에 붙이면
+ * 위의 만족도·포만감 게이지와 오른쪽 끝이 나란해진다 — 그쪽도 오른쪽 정렬이다.
+ *
+ * 상한은 최악의 조합(출처 '현재 시각' + '오전 09:01')의 실측 161.9px 에 여유 한 줌.
+ * 좁은 기기에서는 상한에 닿지 않으니 지금까지의 폭 배분이 그대로 산다.
+ */
 :is(#entryModal, #memoRecordModal) .entry-meal-clock-compound {
     width: 100%;
-    max-width: 100%;
-    margin-left: 0;
+    max-width: 10.5rem;
+    margin-left: auto;
     background: #ffffff;
     border: 1px solid var(--entry-border-row);
     border-radius: var(--entry-radius);
@@ -16486,24 +16606,11 @@ body:has(#adminPage:not(.hidden)),
     border-color: var(--entry-border-soft);
     font-size: 12px;
 }
-:is(#entryModal, #memoRecordModal) .entry-meal-clock-compound .entry-meal-ampm {
-    background: #ffffff;
-    border-color: var(--entry-border-soft);
-    font-size: 12px;
-}
 #entryModal .entry-meal-clock-compound .entry-meal-time-off-display {
     background: #ffffff;
     justify-content: flex-end;
     text-align: right;
     padding-right: 0.75rem;
-    font-size: 12px;
-}
-#entryModal #entryMealTimeInputMain,
-#entryModal #entryMealTimeInputSnack {
-    text-align: right;
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
-    background: #ffffff;
     font-size: 12px;
 }
 :is(#entryModal, #memoRecordModal) .entry-meal-clock-compound:focus-within {
@@ -20009,17 +20116,6 @@ html.service-guide-active #landingPage {
     border-color: var(--entry-border-soft);
     font-size: 11px;
 }
-#memoRecordModal .entry-meal-clock-compound .entry-meal-ampm {
-    min-width: 3.9rem;
-    padding-left: 0.5rem;
-}
-#memoRecordModal #memoRecordTimeInput {
-    text-align: right;
-    padding-right: 0.625rem;
-    padding-left: 0.375rem;
-    background: #ffffff;
-    font-size: 12px;
-}
 
 /* ── 값 칸 (숫자 메모) ── */
 #memoRecordModal #memoRecordValue {
@@ -20073,4 +20169,124 @@ html.service-guide-active #landingPage {
 #memoRecordModal .entry-photo-section--has-photos .entry-photo-aspect-tools .photo-aspect-btn {
     min-width: 2.5rem;
     padding: 0 0.4rem;
+}
+
+/* ── 밀로그 타임라인 「같이 먹자」 앱 소개 배너 (js/render/promo-banner.js) ────────
+   기록 카드(.home-feed-card)와 **톤을 일부러 다르게** 둔다. 폭·모서리·그림자만 맞추고
+   바탕은 아트의 베이지를 그대로 받는다 — 흰 카드로 두면 스크롤하는 눈에 기록으로 읽힌다.
+   높이는 가로 배열(아트 · 문구 · 배지)이라 메모 카드 한 장과 같은 줄에 선다.            */
+.mealog-promo-banner {
+    /* 바탕은 아주 연한 크림. 아트의 베이지(#fce6c9)는 아트 칩 안에만 남겨, 주황이
+       배너 전체를 덮지 않게 한다 — 기록 사이에 끼는 광고라 존재감은 낮을수록 좋다 */
+    --promo-bg: #fff7ec;
+    --promo-line: #e9c9a2;
+    --promo-art-bg: #fce6c9;
+    /* 이 바탕 위에서 대비 6.1 — 4.5 를 넘겨야 작은 글씨가 읽힌다 */
+    --promo-lead: #6f5a4a;
+/* 제목은 크림 바탕과 색상 계열이 겹쳐 어두운 주황을 쓰면 뭉개져 보인다 —
+       명도를 올린 orange-500 이라야 또렷하다. 대비 2.9 는 4.5 에 못 미치지만 18px 800
+       이고, 같은 뜻을 위 안내 줄(대비 6.1)이 이미 회색으로 전하고 있다 */
+    --promo-title: #f97316;
+    /* 배지 하나만 솔리드로 남긴다 — 바탕과 제목에서 주황을 눕힌 만큼, 누를 곳은 또렷해야
+       배너가 「읽고 마는 것」이 되지 않는다. 흰 글씨 대비는 2.9 로 낮지만 배지는 보조 표시이고
+       배너 전체가 클릭 대상이라 여기서 놓치는 정보는 없다 */
+    --promo-cta-bg: #f2711c;
+    --promo-cta-line: #e6650f;
+    --promo-cta-text: #fff;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    padding: 11px 14px;
+    background: var(--promo-bg);
+    border: 1px solid var(--promo-line);
+    border-radius: 1.5rem;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    /* 일간보기 좌우 스와이프가 배너 위에서도 이어지게 — 세로 스크롤만 브라우저에 넘긴다 */
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: transparent;
+}
+.mealog-promo-banner:active {
+    transform: scale(0.98);
+}
+.mealog-promo-banner:focus-visible {
+    outline: 2px solid var(--promo-cta-line);
+    outline-offset: 2px;
+}
+.mealog-promo-banner__art {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    border-radius: 16px;
+    object-fit: cover;
+    /* 아트 자체의 바탕색 — 칩 모서리가 배너 바탕 위에 또렷하게 선다 */
+    background: var(--promo-art-bg);
+}
+.mealog-promo-banner__text {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    /* 기록 카드는 모두 왼쪽 정렬이다 — 배너만 가운데로 두어 「기록이 아닌 것」이
+       한 번 더 갈린다. 두 줄 길이가 크게 달라(안내 15자 / 제목 4자) 왼쪽에 붙이면
+       제목이 허전하게 뜬다 */
+    text-align: center;
+}
+.mealog-promo-banner__lead {
+    margin: 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--promo-lead);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mealog-promo-banner__title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--promo-title);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mealog-promo-banner__cta {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 999px;
+    background: var(--promo-cta-bg);
+    border: 1px solid var(--promo-cta-line);
+    color: var(--promo-cta-text);
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1;
+}
+.mealog-promo-banner__cta i,
+.mealog-promo-banner__cta svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+}
+/* 좁은 화면에서는 문구가 먼저 줄고 배지는 유지된다 */
+@media (max-width: 360px) {
+    .mealog-promo-banner {
+        gap: 10px;
+        padding: 9px 12px;
+    }
+    .mealog-promo-banner__art {
+        width: 46px;
+        height: 46px;
+    }
+    .mealog-promo-banner__title {
+        font-size: 16.5px;
+    }
 }

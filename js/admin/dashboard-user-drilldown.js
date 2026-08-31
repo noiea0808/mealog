@@ -130,6 +130,8 @@ let allWeekKeys = [];
 let cohortCache = null;
 /** 사용자 상세 열기 순번 — 늦게 도착한 이전 조회가 화면을 덮어쓰지 않도록 */
 let detailSeq = 0;
+/** 상세 팝업 닫기·ESC 바인딩 1회 */
+let detailModalBound = false;
 
 export function invalidateDashboardUserDrilldownCache() {
     drilldownDocCache.clear();
@@ -344,12 +346,31 @@ export function ensureDashboardDrilldownBinding() {
             if (e.key === 'Enter' || e.key === ' ') openFromEvent(e);
         });
 
-        const detailModal = document.getElementById('dashboardUserDetailModal');
-        detailModal?.addEventListener('click', (e) => {
-            if (e.target === detailModal) closeDashboardUserDetail();
-        });
-        document.getElementById('dashboardUserDetailClose')?.addEventListener('click', closeDashboardUserDetail);
+        ensureUserDetailModalBinding();
     }
+}
+
+/**
+ * 상세 팝업만 따로 쓰는 화면(모먼트 관리의 작성자 메뉴)이 있어 목록 모달과 분리해 건다.
+ * ESC는 목록 모달이 닫혀 있을 때만 여기서 처리한다 — 목록이 떠 있으면 그쪽 핸들러가
+ * 「상세 먼저, 그다음 목록」 순서를 이미 지킨다.
+ */
+function ensureUserDetailModalBinding() {
+    if (detailModalBound) return;
+    const detailModal = document.getElementById('dashboardUserDetailModal');
+    if (!detailModal) return;
+    detailModal.addEventListener('click', (e) => {
+        if (e.target === detailModal) closeDashboardUserDetail();
+    });
+    document.getElementById('dashboardUserDetailClose')?.addEventListener('click', closeDashboardUserDetail);
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (detailModal.classList.contains('hidden')) return;
+        const list = document.getElementById('dashboardUserListModal');
+        if (list && !list.classList.contains('hidden')) return;
+        closeDashboardUserDetail();
+    });
+    detailModalBound = true;
 }
 
 // ============================================================
@@ -982,10 +1003,11 @@ export function closeDashboardUserDetail() {
     detailSeq++;
 }
 
-async function openDashboardUserDetail(uid, fallbackNickname) {
+export async function openDashboardUserDetail(uid, fallbackNickname) {
     const modal = document.getElementById('dashboardUserDetailModal');
     const body = document.getElementById('dashboardUserDetailBody');
     if (!modal || !body) return;
+    ensureUserDetailModalBinding();
     const seq = ++detailSeq;
 
     setModalText('dashboardUserDetailTitle', fallbackNickname || '사용자 정보');
