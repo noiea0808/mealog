@@ -20176,10 +20176,12 @@ html.service-guide-active #landingPage {
    바탕은 아트의 베이지를 그대로 받는다 — 흰 카드로 두면 스크롤하는 눈에 기록으로 읽힌다.
    높이는 가로 배열(아트 · 문구 · 배지)이라 메모 카드 한 장과 같은 줄에 선다.            */
 .mealog-promo-banner {
-    /* 아트(assets/promo-eat-together.png) 바탕에서 그대로 뽑은 값 — 이미지 경계가 보이지 않는다 */
-    --promo-bg: #fce6c9;
-    --promo-line: #f0cfa2;
-    /* 이 바탕 위에서 대비 5.3 — 4.5 를 넘겨야 작은 글씨가 읽힌다 */
+    /* 바탕은 아주 연한 크림. 아트의 베이지(#fce6c9)는 아트 칩 안에만 남겨, 주황이
+       배너 전체를 덮지 않게 한다 — 기록 사이에 끼는 광고라 존재감은 낮을수록 좋다 */
+    --promo-bg: #fff7ec;
+    --promo-line: #f6e0c4;
+    --promo-art-bg: #fce6c9;
+    /* 이 바탕 위에서 대비 6.1 — 4.5 를 넘겨야 작은 글씨가 읽힌다 */
     --promo-lead: #6f5a4a;
     --promo-title: #9a3412;
     --promo-cta: #c2410c;
@@ -20187,7 +20189,7 @@ html.service-guide-active #landingPage {
     align-items: center;
     gap: 12px;
     margin-top: 4px;
-    padding: 10px 14px;
+    padding: 11px 14px;
     background: var(--promo-bg);
     border: 1px solid var(--promo-line);
     border-radius: 1.5rem;
@@ -20206,13 +20208,13 @@ html.service-guide-active #landingPage {
     outline-offset: 2px;
 }
 .mealog-promo-banner__art {
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     flex-shrink: 0;
-    border-radius: 14px;
+    border-radius: 16px;
     object-fit: cover;
-    /* 아트 바탕이 배너 바탕과 같은 계열이라 경계가 보이지 않는다 */
-    background: var(--promo-bg);
+    /* 아트 자체의 바탕색 — 칩 모서리가 배너 바탕 위에 또렷하게 선다 */
+    background: var(--promo-art-bg);
 }
 .mealog-promo-banner__text {
     min-width: 0;
@@ -20223,7 +20225,7 @@ html.service-guide-active #landingPage {
 }
 .mealog-promo-banner__lead {
     margin: 0;
-    font-size: 11.5px;
+    font-size: 12.5px;
     font-weight: 600;
     line-height: 1.35;
     color: var(--promo-lead);
@@ -20233,7 +20235,7 @@ html.service-guide-active #landingPage {
 }
 .mealog-promo-banner__title {
     margin: 0;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
     line-height: 1.25;
     letter-spacing: -0.01em;
@@ -20247,11 +20249,11 @@ html.service-guide-active #landingPage {
     display: inline-flex;
     align-items: center;
     gap: 2px;
-    padding: 5px 8px 5px 10px;
+    padding: 6px 9px 6px 11px;
     border-radius: 999px;
     background: var(--promo-cta);
     color: #fff;
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 700;
     line-height: 1;
 }
@@ -20268,10 +20270,10 @@ html.service-guide-active #landingPage {
         padding: 9px 12px;
     }
     .mealog-promo-banner__art {
-        width: 40px;
-        height: 40px;
+        width: 46px;
+        height: 46px;
     }
     .mealog-promo-banner__title {
-        font-size: 15px;
+        font-size: 16.5px;
     }
 }

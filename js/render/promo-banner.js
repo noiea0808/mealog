@@ -97,11 +97,11 @@ function ensurePromoBannerDelegation() {
 export function buildTimelinePromoBannerHtml() {
     ensurePromoBannerDelegation();
     return `<div class="mealog-promo-banner" ${PROMO_ATTR}="${PROMO_KEY}" role="link" tabindex="0" aria-label="같이 먹자 앱 — Play 스토어에서 설치">
-        <img class="mealog-promo-banner__art" src="${PROMO_ART_SRC}" alt="" width="44" height="44" loading="lazy" decoding="async">
+        <img class="mealog-promo-banner__art" src="${PROMO_ART_SRC}" alt="" width="52" height="52" loading="lazy" decoding="async">
         <div class="mealog-promo-banner__text">
             <p class="mealog-promo-banner__lead">"점약있어?" 묻지 말고,</p>
             <p class="mealog-promo-banner__title">같이 먹자</p>
         </div>
-        <span class="mealog-promo-banner__cta">설치<i data-lucide="chevron-right"></i></span>
+        <span class="mealog-promo-banner__cta">구경하기<i data-lucide="chevron-right"></i></span>
     </div>`;
 }
