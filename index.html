@@ -2068,16 +2068,20 @@
                                     <div class="dashboard-kpi__label">체중</div>
                                     <div class="dashboard-vital-val">
                                         <span id="healthWeightValue">—</span><span>kg</span>
+                                        <span id="healthWeightDelta" class="dashboard-vital-delta"></span>
                                     </div>
                                 </div>
                                 <div class="dashboard-vital-actions">
-                                    <div id="healthWeightDelta" class="dashboard-vital-delta"></div>
-                                    <button type="button" class="dashboard-detail-link dashboard-vital-detail-btn" data-vital-detail="weight" aria-expanded="false" aria-controls="healthWeightChartWrap">상세</button>
+                                    <div class="health-vitals-view-bar">
+                                        <div class="analysis-axis-switch" role="group" aria-label="체중 차트 보기 전환">
+                                            <button type="button" class="analysis-axis-switch__btn" data-vitals-view="line" data-vitals-metric="weight" aria-pressed="false">라인</button>
+                                            <button type="button" class="analysis-axis-switch__btn is-active" data-vitals-view="candle" data-vitals-metric="weight" aria-pressed="true">캔들</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div id="healthWeightSpark" class="dashboard-vital-spark" aria-hidden="true"></div>
                             <p id="healthWeightEmpty" class="health-vitals-chart-empty hidden" aria-hidden="true">이 기간에 체중 기록이 없습니다.</p>
-                            <div id="healthWeightChartWrap" class="health-vitals-chart-wrap relative hidden dashboard-vital-detail-chart" hidden>
+                            <div id="healthWeightChartWrap" class="health-vitals-chart-wrap relative">
                                 <div class="health-vitals-chart-scroll">
                                     <div class="health-vitals-chart-inner">
                                         <canvas id="healthWeightChart" aria-label="체중 추이 차트"></canvas>
@@ -2092,16 +2096,20 @@
                                     <div class="dashboard-kpi__label">공복 혈당</div>
                                     <div class="dashboard-vital-val">
                                         <span id="healthBloodSugarValue">—</span><span>mg/dL</span>
+                                        <span id="healthBloodSugarDelta" class="dashboard-vital-delta"></span>
                                     </div>
                                 </div>
                                 <div class="dashboard-vital-actions">
-                                    <div id="healthBloodSugarDelta" class="dashboard-vital-delta"></div>
-                                    <button type="button" class="dashboard-detail-link dashboard-vital-detail-btn" data-vital-detail="bloodSugar" aria-expanded="false" aria-controls="healthBloodSugarChartWrap">상세</button>
+                                    <div class="health-vitals-view-bar">
+                                        <div class="analysis-axis-switch" role="group" aria-label="혈당 차트 보기 전환">
+                                            <button type="button" class="analysis-axis-switch__btn" data-vitals-view="line" data-vitals-metric="bloodSugar" aria-pressed="false">라인</button>
+                                            <button type="button" class="analysis-axis-switch__btn is-active" data-vitals-view="candle" data-vitals-metric="bloodSugar" aria-pressed="true">캔들</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div id="healthBloodSugarSpark" class="dashboard-vital-spark" aria-hidden="true"></div>
                             <p id="healthBloodSugarEmpty" class="health-vitals-chart-empty hidden" aria-hidden="true">이 기간에 혈당 기록이 없습니다.</p>
-                            <div id="healthBloodSugarChartWrap" class="health-vitals-chart-wrap relative hidden dashboard-vital-detail-chart" hidden>
+                            <div id="healthBloodSugarChartWrap" class="health-vitals-chart-wrap relative">
                                 <div class="health-vitals-chart-scroll">
                                     <div class="health-vitals-chart-inner">
                                         <canvas id="healthBloodSugarChart" aria-label="혈당 추이 차트"></canvas>
