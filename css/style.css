@@ -168,6 +168,7 @@ html.platform-native-app .bottom-nav button i.lucide {
     --z-onboarding: 500;          /* 도메인오류·약관·프로필설정, 관리자 모달 */
     --z-signup-wizard: 550;
     --z-report-sheet: 580;
+    --z-admin-popover: 590;       /* 관리자 표에서 앵커에 붙는 작은 메뉴 — 모달 아래 */
     --z-admin-modal: 600;         /* 관리자 모달·알림 (admin.html 전용) */
     --z-admin-over: 700;
     --z-admin-loading: 999;

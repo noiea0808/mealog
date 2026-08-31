@@ -20,6 +20,7 @@ import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
+import { openDashboardUserDetail } from './dashboard-user-drilldown.js';
 import {
     normalizeDailyJournalEntry,
     dailyJournalHasContent,
@@ -1603,6 +1604,8 @@ async function renderFeedManagement() {
     const container = document.getElementById('feedManagementContainer');
     if (!container) return;
 
+    // 목록을 다시 그리면 메뉴가 붙어 있던 이름 칸이 사라진다
+    closeFeedAuthorMenu();
     ensureFeedAuthorSearchHandlers();
     
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
@@ -1905,7 +1908,7 @@ async function renderFeedManagement() {
                     </td>
                     <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
-                            <button type="button" class="admin-feed-author-filter text-sm font-semibold text-emerald-700 hover:text-emerald-900 hover:underline break-words cursor-pointer bg-transparent border-0 p-0 text-center" data-user-id="${escapeHtml(meal.userId)}" data-nickname="${escapeHtml(userInfo.nickname)}" title="이 작성자 기록만 보기">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</button>
+                            <button type="button" class="admin-feed-author-menu text-sm font-semibold text-emerald-700 hover:text-emerald-900 hover:underline break-words cursor-pointer bg-transparent border-0 p-0 text-center" data-user-id="${escapeHtml(meal.userId)}" data-nickname="${escapeHtml(userInfo.nickname)}" data-icon="${escapeHtml(userInfo.icon || '')}" data-email="${escapeHtml(userInfo.email || '')}" aria-haspopup="menu" title="작성자 메뉴 열기">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</button>
                             ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>
@@ -2010,12 +2013,11 @@ async function renderFeedManagement() {
                 void window.adminDeleteSingleFeedPost(btn);
             });
         });
-        container.querySelectorAll('.admin-feed-author-filter').forEach((btn) => {
+        container.querySelectorAll('.admin-feed-author-menu').forEach((btn) => {
             btn.addEventListener('click', (ev) => {
                 ev.preventDefault();
-                const uid = btn.getAttribute('data-user-id') || '';
-                const nick = btn.getAttribute('data-nickname') || '';
-                void window.setFeedAuthorFilter(uid, nick);
+                ev.stopPropagation();
+                openFeedAuthorMenu(btn);
             });
         });
 
@@ -2270,6 +2272,125 @@ function renderFeedPagination(totalPages) {
         html += `<button onclick="window.feedGoToPage(${feedCurrentPage + 1})" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">다음</button>`;
     }
     paginationContainer.innerHTML = html;
+}
+
+// ============================================================
+// 작성자 메뉴 (표에서 닉네임 클릭)
+// ============================================================
+
+/** 열려 있는 메뉴. 목록을 다시 그리면 앵커가 사라지므로 그때 반드시 닫는다 */
+let feedAuthorMenuEl = null;
+/** 바깥 클릭·ESC·스크롤 리스너 해제 */
+let feedAuthorMenuDismiss = null;
+
+function closeFeedAuthorMenu() {
+    if (feedAuthorMenuDismiss) {
+        feedAuthorMenuDismiss();
+        feedAuthorMenuDismiss = null;
+    }
+    if (feedAuthorMenuEl) {
+        feedAuthorMenuEl.remove();
+        feedAuthorMenuEl = null;
+    }
+}
+
+/** 화면 밖으로 나가지 않게 앵커 아래(자리가 없으면 위)에 붙인다 */
+function placeFeedAuthorMenu(menu, anchor) {
+    const r = anchor.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const margin = 8;
+    let left = r.left + r.width / 2 - w / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 6);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+}
+
+/**
+ * 닉네임을 누르면 곧바로 필터가 걸리던 자리에 선택지를 둔다.
+ * 「정보 보기」는 대시보드 드릴다운과 같은 사용자 상세 팝업을 그대로 쓴다.
+ */
+function openFeedAuthorMenu(anchor) {
+    const uid = (anchor.getAttribute('data-user-id') || '').trim();
+    if (!uid) return;
+    const nickname = anchor.getAttribute('data-nickname') || '익명';
+    const icon = anchor.getAttribute('data-icon') || '';
+    const email = anchor.getAttribute('data-email') || '';
+
+    // 같은 이름을 다시 누르면 토글로 닫힌다
+    const sameAnchor = feedAuthorMenuEl?.dataset.userId === uid;
+    closeFeedAuthorMenu();
+    if (sameAnchor) return;
+
+    const filtered = getFeedAuthorUserId() === uid;
+    const menu = document.createElement('div');
+    menu.className =
+        'fixed w-64 max-w-[calc(100vw-1rem)] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden';
+    menu.style.setProperty('z-index', 'var(--z-admin-popover, 590)');
+    menu.dataset.userId = uid;
+    menu.setAttribute('role', 'menu');
+
+    const itemCls =
+        'w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors';
+    menu.innerHTML = `
+        <div class="px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+            <p class="text-xs font-black text-slate-800 truncate">${escapeHtml(`${icon} ${nickname}`.trim())}</p>
+            ${email ? `<p class="text-[11px] text-slate-500 break-all leading-tight mt-0.5">${escapeHtml(email)}</p>` : ''}
+            <p class="text-[10px] text-slate-400 font-mono break-all leading-tight mt-0.5">${escapeHtml(uid)}</p>
+        </div>
+        <button type="button" role="menuitem" data-act="detail" class="${itemCls}">
+            <i class="fa-solid fa-circle-info text-slate-400" aria-hidden="true"></i>작성자 정보 보기
+        </button>
+        <button type="button" role="menuitem" data-act="${filtered ? 'unfilter' : 'filter'}" class="${itemCls} border-t border-slate-100">
+            <i class="fa-solid ${filtered ? 'fa-xmark text-slate-400' : 'fa-filter text-emerald-500'}" aria-hidden="true"></i>${
+                filtered ? '작성자 필터 해제' : '이 작성자 기록만 보기'
+            }
+        </button>
+    `;
+    document.body.appendChild(menu);
+    feedAuthorMenuEl = menu;
+    placeFeedAuthorMenu(menu, anchor);
+
+    menu.addEventListener('click', (ev) => {
+        const btn = ev.target?.closest?.('[data-act]');
+        if (!btn) return;
+        ev.preventDefault();
+        const act = btn.getAttribute('data-act');
+        closeFeedAuthorMenu();
+        if (act === 'detail') {
+            void openDashboardUserDetail(uid, `${icon} ${nickname}`.trim());
+        } else if (act === 'filter') {
+            void window.setFeedAuthorFilter(uid, nickname);
+        } else if (act === 'unfilter') {
+            void window.clearFeedAuthorFilter();
+        }
+    });
+
+    const onDocClick = (ev) => {
+        if (!menu.contains(ev.target)) closeFeedAuthorMenu();
+    };
+    const onKeyDown = (ev) => {
+        if (ev.key === 'Escape') {
+            closeFeedAuthorMenu();
+            anchor.focus?.();
+        }
+    };
+    // 표가 스크롤되면 앵커와 어긋나므로 따라다니지 않고 닫는다
+    const onScrollOrResize = () => closeFeedAuthorMenu();
+    document.addEventListener('mousedown', onDocClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    feedAuthorMenuDismiss = () => {
+        document.removeEventListener('mousedown', onDocClick, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+        window.removeEventListener('scroll', onScrollOrResize, true);
+        window.removeEventListener('resize', onScrollOrResize);
+    };
+
+    menu.querySelector('[data-act]')?.focus?.();
 }
 
 window.setFeedAuthorFilter = async function (userId, nickname) {
