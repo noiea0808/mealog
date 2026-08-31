@@ -1,9 +1,14 @@
 /**
  * 하단 네비: 모먼트(신규 공유)·라운지(신규) 아이콘 우상단 빨간 점
- * — 서버 최신 1건 시각 vs localStorage의 「해당 메뉴(탭)에 들어간 시각」
+ * — 서버 최신 글 시각 vs localStorage의 「해당 메뉴(탭)에 들어간 시각」
  * — 점 제거: 새 글을 읽을 필요 없음. 모먼트/밀톡 하단 아이콘으로 그 메뉴에 들어가면 제거.
  *
- * Firestore reads: peek(모먼트 1 + 밀톡 1 + 게시판 1)는 로그인 직후·앱 포그라운드 복귀·메인 탭 전환(디바운스)·밀톡 목록/게시판 목록 새로고침 직후에 실행.
+ * **내 글은 새 글이 아니다.** seen 은 탭 진입 시각에만 찍히므로, 진입 이후 내가 올린
+ * 글(공유·게시글·공지)은 항상 seen 보다 새 글로 판정돼 내 기기에 점이 켜졌다. 그래서
+ * 모든 peek 은 현재 사용자의 글을 제외하고 「남의 최신 글」만 본다.
+ *
+ * Firestore reads: peek(모먼트 1 + 밀톡 1 + 게시판 ~20 + 공지 ~20)는 로그인 직후·앱 포그라운드 복귀·메인 탭 전환(디바운스)·밀톡 목록/게시판 목록 새로고침 직후에 실행.
+ * 모먼트·밀톡은 최신 1건이 내 글일 때만 창을 6건으로 한 번 더 넓힌다(내가 방금 올린 직후에만 발생).
  * 실시간 리스너는 없음.
  */
 import { peekLatestSharedPhotoTimestampMs } from '../db/listeners.js';
@@ -121,11 +126,18 @@ function maxTimestampMs(docs, toMs) {
 /** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
 async function peekLatestNoticeTimestampMs() {
     try {
+        const uid = window.currentUser?.uid;
         const noticesColl = collection(db, 'artifacts', appId, 'notices');
         const q = query(noticesColl, orderBy('timestamp', 'desc'), limit(NOTICE_PEEK_LIMIT));
         const snap = await getDocsFromServer(q);
         if (!snap.docs.length) return 0;
-        return maxTimestampMs(snap.docs, (d) => {
+        /**
+         * authorId 가 있는 공지는 작성한 관리자 본인에게는 새 글이 아니다.
+         * 옛 공지에는 authorId 가 없어서(undefined) 필터에 걸리지 않는다 — 남의 글 취급이
+         * 맞다(작성자 판별 불가면 점을 띄우는 쪽이 안전하고, 이미 본 글이면 seen 이 거른다).
+         */
+        const docs = snap.docs.filter((d) => !uid || d.data()?.authorId !== uid);
+        return maxTimestampMs(docs, (d) => {
             const ts = d.data()?.timestamp;
             if (ts && typeof ts.toDate === 'function') return ts.toDate().getTime();
             if (typeof ts === 'string') return new Date(ts).getTime();
@@ -150,7 +162,11 @@ async function peekLatestBoardPostTimestampMs() {
          */
         const posts = await window.boardOperations.getPosts('all', 'latest', 10);
         if (!posts?.length) return 0;
-        return maxTimestampMs(posts, getBoardPostTsMs);
+        // 내 글 제외 — 방금 내가 쓴 글이 내 점을 켜지 않게
+        const uid = window.currentUser?.uid;
+        const others = uid ? posts.filter((p) => p?.authorId !== uid) : posts;
+        if (!others.length) return 0;
+        return maxTimestampMs(others, getBoardPostTsMs);
     } catch (e) {
         console.warn('peekLatestBoardPostTimestampMs:', e?.message || e);
         return null;
@@ -165,16 +181,31 @@ function getFeedPostTsMs(post) {
     return new Date(post.timestamp || 0).getTime();
 }
 
-/** @returns {Promise<number|null>} 0 = 없음, null = 조회 실패(모름) */
+/**
+ * 최신 문서가 내 것일 때 남의 최신 글을 찾기 위해 넓히는 창 (listeners.js 모먼트 peek 과 동일한 발상).
+ * 창 전부가 내 글이면 「남의 새 글 징후 없음」(0)으로 본다.
+ */
+const SELF_PEEK_WIDEN_LIMIT = 6;
+
+/** @returns {Promise<number|null>} 0 = 남의 글 없음, null = 조회 실패(모름) */
 async function peekLatestFeedPostTimestampMs() {
     if (!window.currentUser) return 0;
     try {
+        const uid = window.currentUser.uid;
         const postsColl = collection(db, 'artifacts', appId, 'feedPosts');
-        const q = query(postsColl, orderBy('timestamp', 'desc'), limit(1));
-        const snap = await getDocsFromServer(q);
+        const snap = await getDocsFromServer(query(postsColl, orderBy('timestamp', 'desc'), limit(1)));
         if (!snap.docs.length) return 0;
-        const post = { id: snap.docs[0].id, ...snap.docs[0].data() };
-        return getFeedPostTsMs(post);
+        let docs = snap.docs;
+        // 최신이 내 글이면(내가 방금 보낸 직후) 한 번만 창을 넓혀 남의 최신 글을 찾는다
+        if (docs[0].data()?.authorId === uid) {
+            const wide = await getDocsFromServer(
+                query(postsColl, orderBy('timestamp', 'desc'), limit(SELF_PEEK_WIDEN_LIMIT))
+            );
+            docs = wide.docs;
+        }
+        const others = docs.filter((d) => d.data()?.authorId !== uid);
+        if (!others.length) return 0;
+        return maxTimestampMs(others, (d) => getFeedPostTsMs({ id: d.id, ...d.data() }));
     } catch (e) {
         console.warn('peekLatestFeedPostTimestampMs:', e?.message || e);
         return null;
