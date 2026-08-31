@@ -123,6 +123,7 @@ import {
     bindEntryQuickInputOnce,
     applyEntryQuickInputUi,
     finalizeEntryModalQuickInput,
+    resetEntryWhatQuickInputSession,
     syncEntryQuickInputToggle,
 } from './entry-quick-input.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
@@ -1843,6 +1844,8 @@ export async function openModal(date, slotId, entryId = null, opts = {}) {
         resetEntrySheetTab();
         resetEntrySheetBaseHeight();
         setEntrySheetTabsForSkip(false);
+        // '무엇을' 그리드는 시트를 열 때마다 접힘부터 — 펼침은 이 세션 안의 직접 선택만
+        resetEntryWhatQuickInputSession();
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
         initEntryCategorySuggest();
