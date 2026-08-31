@@ -20186,11 +20186,12 @@ html.service-guide-active #landingPage {
     /* 제목은 대비 3.7. 4.5 에 못 미치지만 18px 800 굵기라 이 크기에서는 또렷하다 —
        더 진한 orange-800 은 배너 전체를 무겁게 만들었다 */
     --promo-title: #d75c0d;
-    /* 배지도 솔리드 주황을 걷었다. 연한 바탕 + 진한 글씨로 대비 4.5 를 지키면서
-       CTA 가 배너에서 혼자 튀지 않는다 */
-    --promo-cta-bg: #ffe9d4;
-    --promo-cta-line: #fbd3ae;
-    --promo-cta-text: #b84709;
+    /* 배지 하나만 솔리드로 남긴다 — 바탕과 제목에서 주황을 눕힌 만큼, 누를 곳은 또렷해야
+       배너가 「읽고 마는 것」이 되지 않는다. 흰 글씨 대비는 2.9 로 낮지만 배지는 보조 표시이고
+       배너 전체가 클릭 대상이라 여기서 놓치는 정보는 없다 */
+    --promo-cta-bg: #f2711c;
+    --promo-cta-line: #e6650f;
+    --promo-cta-text: #fff;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -20210,7 +20211,7 @@ html.service-guide-active #landingPage {
     transform: scale(0.98);
 }
 .mealog-promo-banner:focus-visible {
-    outline: 2px solid var(--promo-cta-text);
+    outline: 2px solid var(--promo-cta-line);
     outline-offset: 2px;
 }
 .mealog-promo-banner__art {
