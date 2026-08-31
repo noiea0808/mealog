@@ -20229,6 +20229,10 @@ html.service-guide-active #landingPage {
     display: flex;
     flex-direction: column;
     gap: 1px;
+    /* 기록 카드는 모두 왼쪽 정렬이다 — 배너만 가운데로 두어 「기록이 아닌 것」이
+       한 번 더 갈린다. 두 줄 길이가 크게 달라(안내 15자 / 제목 4자) 왼쪽에 붙이면
+       제목이 허전하게 뜬다 */
+    text-align: center;
 }
 .mealog-promo-banner__lead {
     margin: 0;
