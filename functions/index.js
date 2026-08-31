@@ -4154,6 +4154,8 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'settings_tags',
   'settings_mealdang_memo',
   'settings_push',
+  // 밀로그 타임라인 「같이 먹자」 앱 소개 배너 탭 (js/render/promo-banner.js)
+  'promo_eat_together_click',
 
   // --- 기록 시트 안에서 벌어지는 일 (RECORD_USAGE_METRIC_DEFS) ---
   'entry_sheet_opened',

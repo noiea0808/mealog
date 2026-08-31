@@ -20170,3 +20170,108 @@ html.service-guide-active #landingPage {
     min-width: 2.5rem;
     padding: 0 0.4rem;
 }
+
+/* ── 밀로그 타임라인 「같이 먹자」 앱 소개 배너 (js/render/promo-banner.js) ────────
+   기록 카드(.home-feed-card)와 **톤을 일부러 다르게** 둔다. 폭·모서리·그림자만 맞추고
+   바탕은 아트의 베이지를 그대로 받는다 — 흰 카드로 두면 스크롤하는 눈에 기록으로 읽힌다.
+   높이는 가로 배열(아트 · 문구 · 배지)이라 메모 카드 한 장과 같은 줄에 선다.            */
+.mealog-promo-banner {
+    /* 아트(assets/promo-eat-together.png) 바탕에서 그대로 뽑은 값 — 이미지 경계가 보이지 않는다 */
+    --promo-bg: #fce6c9;
+    --promo-line: #f0cfa2;
+    /* 이 바탕 위에서 대비 5.3 — 4.5 를 넘겨야 작은 글씨가 읽힌다 */
+    --promo-lead: #6f5a4a;
+    --promo-title: #9a3412;
+    --promo-cta: #c2410c;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 4px;
+    padding: 10px 14px;
+    background: var(--promo-bg);
+    border: 1px solid var(--promo-line);
+    border-radius: 1.5rem;
+    box-shadow: 0 1px 0 rgba(43, 40, 37, 0.06), 0 6px 18px rgba(43, 40, 37, 0.07);
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    /* 일간보기 좌우 스와이프가 배너 위에서도 이어지게 — 세로 스크롤만 브라우저에 넘긴다 */
+    touch-action: pan-y;
+    -webkit-tap-highlight-color: transparent;
+}
+.mealog-promo-banner:active {
+    transform: scale(0.98);
+}
+.mealog-promo-banner:focus-visible {
+    outline: 2px solid var(--promo-cta);
+    outline-offset: 2px;
+}
+.mealog-promo-banner__art {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 14px;
+    object-fit: cover;
+    /* 아트 바탕이 배너 바탕과 같은 계열이라 경계가 보이지 않는다 */
+    background: var(--promo-bg);
+}
+.mealog-promo-banner__text {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.mealog-promo-banner__lead {
+    margin: 0;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--promo-lead);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mealog-promo-banner__title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    color: var(--promo-title);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.mealog-promo-banner__cta {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 999px;
+    background: var(--promo-cta);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+}
+.mealog-promo-banner__cta i,
+.mealog-promo-banner__cta svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+}
+/* 좁은 화면에서는 문구가 먼저 줄고 배지는 유지된다 */
+@media (max-width: 360px) {
+    .mealog-promo-banner {
+        gap: 10px;
+        padding: 9px 12px;
+    }
+    .mealog-promo-banner__art {
+        width: 40px;
+        height: 40px;
+    }
+    .mealog-promo-banner__title {
+        font-size: 15px;
+    }
+}

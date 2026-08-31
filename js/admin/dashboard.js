@@ -89,6 +89,7 @@ const PAGE_VIEW_METRIC_DEFS = [
     { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
+    { field: 'promo_eat_together_click', section: '밀로그', label: '같이 먹자 배너 클릭' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
     { field: 'lounge_notice', section: '라운지', label: '공지' },
