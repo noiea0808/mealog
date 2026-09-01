@@ -771,6 +771,7 @@ ESC 로 닫힌다 — 다른 시트와 같은 전역 처리(`js/main/escape-clos
 | `js/utils/slot-plan.js` 그룹 순회 | `BASE_IDS` 아니면 버림 | 메모가 안 그려짐 | 메모 가지 + §3.3 자리 계산 (의도된 변경) |
 | **`js/admin/feed-moderation.js`** | `daily_journal` 특례 | — | **포함시킨다 (§6.1)** |
 | `js/admin/moment-analytics.js:815` | `daily_journal` 제외 | 분석 오염 | `'memo'` 제외 추가 |
+| **`js/admin/dashboard.js`** 트렌드 표 | 「하루 소감」행 | 메모가 **「기록 · 전체」에만 섞이고 어느 행에도 안 보인다** | **「메모」행으로 합쳐 센다 (§6.3)** |
 | `js/analytics/charts.js` 웰컴 슬라이드 | `MEAL/SNACK_SLOTS` 필터 | 영향 없음 | — |
 | `js/analytics/best-share.js` | `rating` 필터 | 영향 없음 | — |
 | `js/utils/diet-record-score.js` | `MAIN_SLOT_IDS` | 영향 없음 | — |
@@ -854,6 +855,30 @@ getMetricRecordsForDate(settings, date, metric)
 식단분석(Gemini)에는 **넣지 않는다.** 지금 프롬프트에 체중·혈당이 아예 없고,
 프롬프트는 `docs`·`functions`·`admin` 세 사본이 바이트 단위로 같아야 한다.
 값이 없다는 뜻이 아니라 **별건**이라는 뜻이다.
+
+### 6.3 관리자 트렌드 표 — 하루 소감 행이 「메모」행이 된다
+
+> **구현 메모(2026-09-01).** 위 전수표가 이 자리를 빠뜨렸다. 메모가 들어오자
+> `meals` 전량 count 인 「기록 · 전체」에는 섞이는데, 슬롯 행은 기준 7개만 돌고
+> 메모는 어느 행에도 없어 **열별 합이 안 맞았다.**
+
+하루 소감 행을 「메모」행으로 넓혀 **하루 소감 + 사용자 메모**를 함께 센다.
+하루 소감도 메모 목록의 한 항목이 된 뒤로(§7.3) 사용자에게는 둘이 같은 것이라,
+따로 세면 「메모를 얼마나 쓰나」가 두 칸으로 갈려 안 보인다.
+
+**저장은 두 축, 표시는 한 행이다.** 캐시(`adminSettings/dashboardStats`)에
+`dailyJournal` 과 `memo` 를 따로 두고 표에서만 더한다 — 합쳐서 세면 안 되는
+이유가 분명하다. 하루 소감의 정본은 `dailyComments` 이고 `meals` 문서는 미러라
+「기록 · 전체」가 미러 몫을 덜어내는 보정을 받는데, 사용자 메모는 `meals` 가
+정본이라 그 보정을 받으면 값이 통째로 사라진다.
+
+**옛 캐시에는 `memo` 배열이 아예 없다.** 없는 것을 0 으로 펴면 「모른다」가
+「없다」로 둔갑하므로, 있는 축만 돌려주고 없는 자리는 '—' 로 둔다
+(`js/admin/dashboard-memo-row.js` + 테스트 9개).
+
+**「전체」는 되찾을 것이 없다.** 하루 소감은 증분에서 `config` 를 안 읽어 주차
+합으로 되찾지만, 메모는 `slotId == 'memo'` count 쿼리(또는 미러 전량)가 이미
+정확하다. 최근 7일·오늘은 다시 세는 구간 안이라 스캔이 빠짐없이 훑는다.
 
 ## 7. 하루 소감 — 숫자 메모가 문을 연다
 

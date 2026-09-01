@@ -33,11 +33,13 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
+import { MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import {
     HOUR_BUCKETS,
     hourSlotForMealDoc,
     hourSlotForJournalEntry
 } from './dashboard-hour-buckets.js';
+import { sumMemoRowArrays, sumMemoRowTotals } from './dashboard-memo-row.js';
 import {
     rescanStartDateKey,
     rescanFromWeekIndex,
@@ -715,7 +717,7 @@ const RECORD_HOUR_7_SUM_IDS = ['statRecHourTotal_7Sum', ...HOUR_BUCKETS.map((b) 
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
-    'statDailyJournal7d',
+    'statMemo7d',
     'statRecordedUsers7d',
     ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
@@ -724,7 +726,7 @@ const DASHBOARD_7D_ROW_PREFIXES = [
 const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
-    'statDailyJournal7Sum',
+    'statMemo7Sum',
     'statRecordedUsers7Sum',
     ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
@@ -827,7 +829,9 @@ function cloneLast7Breakdown(raw) {
         // 기록한 사람도 마찬가지 (시간대와 같은 recordedAt 축)
         ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pick(raw.recordedUsers) } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
-        dailyJournal: pick(raw.dailyJournal)
+        dailyJournal: pick(raw.dailyJournal),
+        // 사용자 메모는 나중에 생긴 축이라 옛 캐시엔 없다 — 없으면 통째로 빼서 하루 소감만으로 센다
+        ...(Array.isArray(raw.memo) ? { memo: pick(raw.memo) } : {})
     };
 }
 
@@ -883,6 +887,8 @@ function cloneWeeklyBreakdown(raw) {
         ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
+        // 사용자 메모는 나중에 생긴 축이다 — 옛 캐시에 없으면 하루 소감만 세게 둔다
+        ...(Array.isArray(raw.memo) ? { memo: pickWeekArr(raw.memo, n) } : {}),
         // 옛 캐시엔 없다 — 없으면 행이 '—'로 남는다
         ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pickWeekArr(raw.recordedUsers, n) } : {}),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {}),
@@ -1121,7 +1127,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
     if (key === 'recordedUsers') return weeklyBreakdown.recordedUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
-    if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
+    if (key === 'memo') return sumMemoRowArrays(weeklyBreakdown.dailyJournal, weeklyBreakdown.memo);
     if (key === 'records') return weeklyBreakdown.records || [];
     if (key.startsWith('slot:')) {
         const id = key.slice(5);
@@ -1310,12 +1316,23 @@ const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', '
 
 /**
  * 「전체」열을 세는 slotId 목록.
- * 뒤에 붙은 'daily_journal'은 슬롯 행이 아니라 **하루 소감 meals 미러**의 건수다 —
- * 하루 소감은 config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서,
- * 미러 수를 알아야 「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ *
+ * 뒤에 붙은 둘은 슬롯 행이 아니다.
+ *
+ * - `'daily_journal'` 은 **하루 소감 meals 미러**의 건수다. 하루 소감은
+ *   config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서, 미러 수를 알아야
+ *   「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ * - `'memo'` 는 사용자 메모다. 이쪽은 meals 가 정본이라 뺄 것이 없고, 세는 이유가
+ *   반대다 — 안 세면 「기록 · 전체」에만 섞이고 어느 행에도 안 보인다
+ *   (docs/user-memo-items.md §6.3).
  */
-const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal'];
-const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.length - 1;
+const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal', MEMO_SLOT_ID];
+const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.indexOf('daily_journal');
+/**
+ * 사용자 메모(docs/user-memo-items.md)의 「전체」. 하루 소감과 달리 meals 가 정본이라
+ * 미러 보정이 없다 — 이 값이 그대로 메모 건수다.
+ */
+const MEMO_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.indexOf(MEMO_SLOT_ID);
 
 /**
  * 컬렉션 그룹 `slotId` 인덱스가 없을 때(aggregation failed-precondition):
@@ -1463,6 +1480,8 @@ export async function getUserStatistics(options = {}) {
         });
         const slotAgg = {};
         for (const s of SLOTS) slotAgg[s.id] = emptySlotAgg();
+        // 사용자 메모도 같은 통에 담는다 — scanMealDoc 이 slotId 로 찾아 넣는다
+        slotAgg[MEMO_SLOT_ID] = emptySlotAgg();
 
         /**
          * 시간대 집계. 슬롯과 달리 「전체」를 count 쿼리로 못 센다 —
@@ -1535,6 +1554,7 @@ export async function getUserStatistics(options = {}) {
             recordsByHour: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
             dailyJournal: { all: 0, last7: 0, today: 0 },
+            memo: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: 0,
@@ -1904,6 +1924,16 @@ export async function getUserStatistics(options = {}) {
         stats.dailyJournal.last7 = dailyJournalLast7;
 
         /**
+         * 사용자 메모. 하루 소감과 달리 되찾을 것이 없다 — meals 가 정본이라
+         * 「전체」는 count 쿼리(또는 미러 전량)가 이미 정확하고, 최근 7일·오늘은
+         * 다시 세는 구간 안이라 스캔이 빠짐없이 훑는다.
+         */
+        const memoAgg = slotAgg[MEMO_SLOT_ID];
+        stats.memo.all = Math.max(0, slotAllArr[MEMO_COUNT_INDEX] ?? 0);
+        stats.memo.today = memoAgg.today;
+        stats.memo.last7 = memoAgg.last7;
+
+        /**
          * 「전체」는 스캔 구간 밖 날짜도 포함해야 해서 미러 키 집합(구간 내)만으로는 못 뺀다.
          * meals 전량 count 에 섞여 있는 미러 문서 수를 통째로 덜어내고 dailyComments 전량을 얹는다.
          */
@@ -2105,7 +2135,8 @@ export async function getUserStatistics(options = {}) {
             recordsBySlot: recordsBySlotBreakdown,
             recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
             sharedPhotos: [...sharedByDayCounts],
-            dailyJournal: [...dailyJournalByDay]
+            dailyJournal: [...dailyJournalByDay],
+            memo: [...slotAgg[MEMO_SLOT_ID].byDay]
         };
 
         stats.weeklyBreakdown =
@@ -2135,7 +2166,8 @@ export async function getUserStatistics(options = {}) {
                               recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
                               recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
                               sharedPhotos: sharedSetsByWeek.map((x) => x.size),
-                              dailyJournal: [...dailyJournalByWeek]
+                              dailyJournal: [...dailyJournalByWeek],
+                              memo: [...slotAgg[MEMO_SLOT_ID].byWeek]
                           };
                       }
 
@@ -2200,7 +2232,8 @@ export async function getUserStatistics(options = {}) {
                               rescanFromIdx,
                               nWeeks
                           ),
-                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek)
+                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek),
+                          memo: mergeCount(cw.memo, slotAgg[MEMO_SLOT_ID].byWeek)
                       };
                   })()
                 : null;
@@ -2378,7 +2411,11 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         set('statRecordedUsersAll', stats.recordedUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
-        set('statDailyJournalAll', stats.dailyJournal?.all);
+        // 「메모」행은 하루 소감과 사용자 메모를 합쳐 보여준다 (dashboard-memo-row.js 주석 참조)
+        const memoAllSum = sumMemoRowTotals(stats.dailyJournal?.all, stats.memo?.all);
+        const memoLast7Sum = sumMemoRowTotals(stats.dailyJournal?.last7, stats.memo?.last7);
+        const memoByDay = sumMemoRowArrays(bd?.dailyJournal, bd?.memo);
+        set('statMemoAll', memoAllSum);
 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
@@ -2386,14 +2423,14 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         fillDashboard7dNumericRow('statRecordedUsers7d', bd?.recordedUsers, stats.recordedUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
-        fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
+        fillDashboard7dNumericRow('statMemo7d', memoByDay, memoLast7Sum);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
         set('statRecordedUsers7Sum', stats.recordedUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
-        set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
+        set('statMemo7Sum', sumSevenDaily(memoByDay) ?? memoLast7Sum);
 
         SLOTS.forEach((s) => {
             const d = stats.recordsBySlot?.[s.id] || { all: 0, last7: 0, today: 0 };
@@ -2431,7 +2468,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
         const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statMemoAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -2525,6 +2562,7 @@ export async function updateStatistics() {
             recordsByHour: data.recordsByHour && typeof data.recordsByHour === 'object' ? data.recordsByHour : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
             dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
+            memo: data.memo || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
         };
         let last7Breakdown = cloneLast7Breakdown(data.last7Breakdown);
@@ -2631,6 +2669,7 @@ export async function refreshDashboardStats(options = {}) {
                     recordsByHour: stats.recordsByHour,
                     sharedPhotos: stats.sharedPhotos,
                     dailyJournal: stats.dailyJournal,
+                    memo: stats.memo,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,
