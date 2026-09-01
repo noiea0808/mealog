@@ -19836,6 +19836,51 @@ html.service-guide-active #landingPage {
     background: var(--green-soft, #eaf8f2);
     color: #0f5132;
 }
+/* 지도에서 찾은 곳 — **입력칸 아래 제 층**이다.
+   위 칩 줄은 「내가 간 곳」이라 자리를 뺏지 않고, 늦게 오는 지도 결과가 이미 손이 가던
+   칩을 밀지도 않는다(응답이 빨라야 0.5초, 앱에서는 몇 초 뒤에 온다). */
+.entry-context-place-found {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #cbd5e1;
+}
+.entry-context-place-found.hidden {
+    display: none;
+}
+/* 라벨은 아이콘만 — 핀 하나가 "지도에서 왔다"를 이미 말한다 ('무엇을' 회상 줄과 같은 수) */
+.entry-context-place-found__label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+}
+.entry-context-place-found__label svg {
+    width: 14px;
+    height: 14px;
+}
+.entry-context-place-found__empty {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+}
+/* 지도에서 찾아온 칩 — 층이 갈렸어도 모양을 한 단 낮춘다.
+   내 것은 이미 쓰던 표기라 그냥 고르면 되지만, 이쪽은 주소·업종까지 함께 붙는 값이다. */
+.entry-context-opt--found {
+    border-style: dashed;
+    border-color: #94a3b8;
+}
+/* 어느 지점인지를 말하는 꼬리 — '스타벅스'는 열 개라 이름만으로는 못 가른다.
+   이름보다 작고 흐리게 둬서 고르는 눈이 이름을 먼저 읽게 한다. */
+.entry-context-opt__sub {
+    margin-left: 5px;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+}
 /* 3단 뎁스 — 2단계에서 고른 값에 종속된 상세('친구' → 친구 이름들).
    같은 패널 안에서 한 단 들여 붙여, 위 칩을 고르면 아래가 따라 바뀐다는 걸 위치로 보여준다. */
 .entry-context-sub {
@@ -19940,36 +19985,42 @@ html.service-guide-active #landingPage {
     font-weight: 600;
     cursor: pointer;
 }
-/* 어디서 자유 입력 — [돋보기][직접 입력칸].
-   기본은 오른쪽 입력칸에 직접 적는 것이고, 카카오 검색은 왼쪽 돋보기를 눌렀을 때만 열린다.
+/* 어디서 자유 입력 — 칸 하나에 돋보기가 들어앉은 꼴.
+   적으면 곧 검색이라 누를 버튼이 없다. 돋보기는 **표시**일 뿐이고, 하는 일은
+   "여기 적으면 찾아 준다"를 말하는 것뿐이다 (js/modals/entry-context-predict.js).
    위 추천 칩보다 한 치수 크다 — 고르는 자리가 아니라 **적는 자리**라 손이 먼저 가야 한다. */
 .entry-context-place-free {
+    position: relative;
     display: flex;
     align-items: stretch;
-    gap: 6px;
     min-width: 0;
 }
-.entry-context-place-free__search {
-    flex: 0 0 auto;
-    display: inline-flex;
+.entry-context-place-free__mark {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    /* 크기를 박아 둔다 — 안 주면 아이콘이 제 몫보다 넓은 상자 안에서 가운데로 밀려
+       입력 글자와 붙는다(실측 33px). */
+    width: 15px;
+    height: 15px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    width: 34px;
-    padding: 0;
-    border: 1px dashed var(--color-primary);
-    border-radius: 999px;
-    background: white;
-    color: #64748b;
-    cursor: pointer;
+    color: #94a3b8;
+    /* 입력칸이 제 배경(흰색)으로 아이콘을 덮는다 — 한 겹 올려야 보인다 */
+    z-index: 1;
+    /* 표시일 뿐이라 손가락을 받지 않는다 — 눌러도 칸에 커서가 간다 */
+    pointer-events: none;
 }
-.entry-context-place-free__search svg {
+.entry-context-place-free__mark svg {
     width: 15px;
     height: 15px;
 }
 .entry-context-place-free__input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 7px 14px;
+    padding: 7px 14px 7px 34px;
     /* 누구와 상세 칸(.entry-context-sub-input)과 같은 알약 꼴 — 완전히 둥근 점선 테두리.
        점선은 두 곳 모두 "아직 굳지 않은 값"을 뜻한다. 크기만 한 치수 크다(적는 자리라서). */
     border: 1px dashed var(--color-primary);

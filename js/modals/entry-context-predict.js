@@ -33,6 +33,21 @@ import { procurementHintFromText } from '../utils/procurement-hint.js';
 import { classifyCuisineText } from '../utils/food-classifier.js';
 import { getAxis1TagList } from './entry-form-config.js';
 import { frequentSubTagValues } from '../utils/frequent-subtags.js';
+import {
+    buildPlaceIndex,
+    pickPlaceSuggestions,
+    hasTrailingJamo,
+    PLACE_QUERY_MIN_LENGTH,
+    PLACE_SUGGEST_LIMIT
+} from '../utils/place-recall-index.js';
+/**
+ * ⚠ kakao-place.js 와 **서로 import 한다**(그쪽은 syncEntryContextPlaceFromInput 을 쓴다).
+ * 양쪽 다 `export function` 선언만 주고받고 모듈 평가 중에는 아무것도 호출하지 않으므로
+ * 안전하다 — 함수 선언은 호이스팅되어 어느 쪽이 먼저 평가돼도 이름이 이미 서 있다.
+ * 이 파일에서 저쪽의 **const 를 import 하면 그 순간 TDZ 로 깨진다**(예: 최소 글자 수).
+ * 문턱 값은 place-recall-index.js 쪽 상수를 쓴다.
+ */
+import { searchKakaoPlacesShared, peekKakaoPlaceCache, applyKakaoPlaceToInput } from './kakao-place.js';
 
 const CONTAINER_ID = 'entryContextPredict';
 const MIN_SAMPLES = 3;
@@ -846,24 +861,331 @@ function currentWithDetailValues() {
         .filter(Boolean);
 }
 
+/* ── 어디서 인라인 검색 ──────────────────────────────────────
+ *
+ * 층이 셋이고 **각자 제 정체를 지킨다** (2026-09-01 치프 결정):
+ *
+ *   [내가 간 곳]   ← 위 칩 줄. 적으면 그 글자로 **좁아진다**(덮이지 않는다)
+ *   [입력란 🔍]
+ *   [지도에서 찾은 곳] ← 아래 별도 층. 있을 때만 나타난다
+ *
+ * 처음에는 지도 결과를 위 칩 줄 뒤에 이어 붙였는데 두 가지가 걸렸다. 하나는 그 줄이
+ * 원래 「가 본 곳」인데 검색 결과가 자리를 뺏는 것이고, 다른 하나는 **늦게 오는 것이
+ * 이미 보고 있던 것을 민다**는 것이다 — 지도 응답은 빨라야 0.5초, 앱에서는 몇 초 뒤에
+ * 와서, 이력 칩을 누르려는 손 밑에서 줄이 접히며 엉뚱한 칩이 눌린다.
+ *
+ * 카카오 프록시는 사용자당 **분당 15회·시간당 100회**이고(functions/index.js
+ * RATE_LIMITS.kakaoSearch), 앱·스테이징에서는 us-central1 을 거쳐 한국까지 갔다 온다.
+ */
+
+/** 이력 매칭은 순수 계산이라 싸다 — 글자마다 다시 그리지 않을 만큼만 늦춘다 */
+const PLACE_LOCAL_DEBOUNCE_MS = 100;
+/**
+ * 카카오 디바운스. 검색 시트(320ms)보다 늦다 — 시트는 "검색하겠다"고 연 자리지만
+ * 이 칸은 그냥 적는 자리라, 지나가는 글자마다 부르면 분당 제한이 금세 바닥난다.
+ */
+const PLACE_KAKAO_DEBOUNCE_MS = 500;
+/**
+ * 지도를 부르는 최소 글자 수 — 이력 매칭(2글자)보다 **한 글자 길다**.
+ *
+ * 두 문턱이 갈려도 헷갈리지 않는 것은 층이 갈려 있기 때문이다. 위 줄은 2글자부터
+ * 좁아지고 아래 층은 3글자부터 나타난다 — 같은 자리에서 번갈아 서던 때와 다르다.
+ * 이력은 공짜라 일찍 좁혀 주고, 지도는 두 글자로는 후보가 수백 개라 뜻이 없다.
+ */
+const PLACE_KAKAO_MIN_LENGTH = 3;
+
+const placeSuggest = {
+    /** 지금 칸에 적힌 글자 (이 값이 비면 위 줄은 추천 칩으로 돌아간다) */
+    query: '',
+    /** 내 이력에서 찾은 것 — 위 칩 줄에 즉시 (네트워크 0) */
+    /** @type {Array<{text: string, sub: string, place: any|null}>} */
+    localItems: [],
+    /** 지도에서 찾은 것 — 아래 별도 층 */
+    /** @type {Array<{text: string, sub: string, place: any|null}>} */
+    kakaoItems: [],
+    /** 카카오 응답을 기다리는 중 — 아래 층에 한 줄짜리 표시를 남긴다 */
+    pending: false,
+    /** @type {ReturnType<typeof buildPlaceIndex>} */
+    index: [],
+    /** 한글 조합 중에는 카카오를 부르지 않는다 (완성 전 글자로 검색하면 헛돈다) */
+    composing: false,
+    /** 늦게 온 카카오 응답이 이미 바뀐 글자를 덮지 않게 */
+    seq: 0,
+    shown: { local: false, kakao: false }
+};
+
+let placeLocalTimer = null;
+let placeKakaoTimer = null;
+
+/** 위 칩 줄이 추천이 아니라 「좁혀진 내 장소」를 보여주는 상태인가 */
+function placeSuggestActive() {
+    return Boolean(placeSuggest.query) && placeSuggest.localItems.length > 0;
+}
+
+/** 아래 층에 그릴 것이 있는가 (결과 또는 기다리는 중) */
+function placeFoundActive() {
+    return Boolean(placeSuggest.query) && (placeSuggest.kakaoItems.length > 0 || placeSuggest.pending);
+}
+
+function resetPlaceSuggest() {
+    clearTimeout(placeLocalTimer);
+    clearTimeout(placeKakaoTimer);
+    placeSuggest.query = '';
+    placeSuggest.localItems = [];
+    placeSuggest.kakaoItems = [];
+    placeSuggest.pending = false;
+    placeSuggest.composing = false;
+    placeSuggest.seq++;
+    placeSuggest.shown = { local: false, kakao: false };
+}
+
+/** 위 칩 줄 — 「내가 간 곳」. 적으면 좁아질 뿐, 정체는 안 바뀐다 */
+function renderPlaceChipsInner() {
+    if (placeSuggestActive()) {
+        return placeSuggest.localItems
+            .map(
+                (it, i) =>
+                    `<button type="button" class="entry-context-opt" data-context-place-recent="${i}">${escapeHtml(it.text)}</button>`
+            )
+            .join('');
+    }
+    const current = axisValue('place');
+    const options = optionsForAxis('place');
+    if (options.length === 0) {
+        return '<span class="entry-context-picker__empty">아직 쓸 만한 값이 없어요. 직접 입력해 주세요.</span>';
+    }
+    return options
+        .map(
+            (opt) => `
+            <button type="button" class="entry-context-opt${opt === current ? ' entry-context-opt--on' : ''}" data-context-pick="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`
+        )
+        .join('');
+}
+
+/**
+ * 아래 층 — 지도에서 찾은 곳.
+ *
+ * 라벨은 **아이콘만** 둔다 ('무엇을' 회상 줄과 같은 수). 핀 하나가 "지도에서 왔다"를
+ * 이미 말하고, 글자까지 두면 좁은 줄에서 칩 자리를 그만큼 빼앗는다.
+ *
+ * 이름만으로는 못 가른다 — '스타벅스'가 열 개 나온다. 그래서 주소에서 구·로만 잘라
+ * 꼬리로 붙여 어느 동네인지 말한다.
+ */
+function renderPlaceFoundInner() {
+    if (placeSuggest.kakaoItems.length === 0) {
+        return placeSuggest.pending
+            ? '<span class="entry-context-place-found__empty">장소를 찾는 중…</span>'
+            : '';
+    }
+    const chips = placeSuggest.kakaoItems
+        .map((it, i) => {
+            const sub = it.sub
+                ? `<span class="entry-context-opt__sub">${escapeHtml(it.sub)}</span>`
+                : '';
+            return `<button type="button" class="entry-context-opt entry-context-opt--found" data-context-place-found="${i}">${escapeHtml(it.text)}${sub}</button>`;
+        })
+        .join('');
+    return `<span class="entry-context-place-found__label" role="img" aria-label="지도에서 찾은 곳" title="지도에서 찾은 곳">
+                <i data-lucide="map-pin" aria-hidden="true"></i>
+            </span>${chips}`;
+}
+
+/**
+ * 두 층만 다시 그린다. 피커 전체를 render() 로 다시 그리면 입력칸이 새 노드가 되어
+ * **커서와 조합 중인 글자가 날아간다** — 적는 도중에 부르는 자리라 여기서는 부분 교체다.
+ */
+function repaintPlaceChips() {
+    const el = document.getElementById(CONTAINER_ID);
+    if (!el || state.openAxis !== 'place') return;
+    const box = el.querySelector('.entry-context-picker__chips');
+    if (!box) return;
+    box.innerHTML = renderPlaceChipsInner();
+
+    const found = el.querySelector('.entry-context-place-found');
+    if (found) {
+        found.innerHTML = renderPlaceFoundInner();
+        found.classList.toggle('hidden', !placeFoundActive());
+    }
+
+    refreshLucideIcons(el);
+    // 층이 늘거나 줄면 시트 높이가 달라진다 — 늘어난 분이 경계 밖에 남지 않게 굴린다
+    revealEntryContextPicker();
+    // 두 출처를 따로 센다 — 이력 쪽이 클수록 카카오 호출이 적다는 뜻이다
+    if (placeSuggest.localItems.length > 0 && !placeSuggest.shown.local) {
+        placeSuggest.shown.local = true;
+        logUsageMetric('context_place_found_recent').catch(() => {});
+    }
+    if (placeSuggest.kakaoItems.length > 0 && !placeSuggest.shown.kakao) {
+        placeSuggest.shown.kakao = true;
+        logUsageMetric('context_place_found_kakao').catch(() => {});
+    }
+}
+
+/** 이력에서 찾은 몫. 네트워크 없이 즉시 뜬다 — 지도는 이것과 별개로 계속 간다. */
+function applyLocalPlaceSuggest(query) {
+    const hits = pickPlaceSuggestions(placeSuggest.index, query, PLACE_SUGGEST_LIMIT);
+    placeSuggest.localItems = hits.map((text) => ({ text, sub: '', place: null }));
+    return hits.length > 0;
+}
+
+function kakaoDocsToItems(docs) {
+    return (Array.isArray(docs) ? docs : [])
+        .filter((d) => d && d.place_name)
+        .slice(0, PLACE_SUGGEST_LIMIT)
+        .map((d) => {
+            const addr = String(d.road_address_name || d.address_name || '');
+            // 주소 전체는 칩에 안 들어간다 — 시·구까지만 잘라 "어느 동네"만 말한다
+            const sub = addr.split(/\s+/).slice(1, 3).join(' ');
+            return { text: String(d.place_name), sub, place: d };
+        });
+}
+
+/**
+ * 카카오 호출. 실패·쿼터 초과는 **조용히 삼킨다** — 적는 도중이라 토스트는 방해이고,
+ * 안 뜨면 사용자는 적은 그대로 쓰면 된다(그게 이 설계의 기본값이다).
+ */
+async function runKakaoPlaceSuggest(query, seq) {
+    try {
+        const docs = await searchKakaoPlacesShared(query);
+        if (seq !== placeSuggest.seq) return;
+        placeSuggest.pending = false;
+        placeSuggest.kakaoItems = kakaoDocsToItems(docs);
+        repaintPlaceChips();
+    } catch (_) {
+        if (seq !== placeSuggest.seq) return;
+        // 못 찾은 것과 못 부른 것은 화면에서 같다 — 이력 칩은 그대로 두고 지도 몫만 비운다
+        placeSuggest.pending = false;
+        placeSuggest.kakaoItems = [];
+        repaintPlaceChips();
+    }
+}
+
+/**
+ * 어디서 칸에 글자가 바뀔 때마다 — **이력은 즉시, 지도는 그 뒤로 이어서.**
+ *
+ * 처음에는 이력에서 하나라도 찾으면 지도를 아예 안 불렀는데, 실제로 써 보니 검색이
+ * 막힌 것처럼 보였다(2026-09-01 치프 지적). '스타벅스'를 다 쳐도 이력의 그 한 지점만
+ * 서고 다른 지점은 영영 안 나온다 — 이력에 부분일치가 걸리는 일이 워낙 흔해서다.
+ * 그래서 이력은 즉시 세우되 지도는 **막지 않고** 뒤에 붙인다.
+ */
+function onPlaceInputTyped(rawValue) {
+    if (state.openAxis !== 'place') return;
+    const query = String(rawValue || '').trim();
+    clearTimeout(placeLocalTimer);
+    clearTimeout(placeKakaoTimer);
+    placeSuggest.seq++;
+
+    if (query.length < PLACE_QUERY_MIN_LENGTH) {
+        placeSuggest.query = '';
+        placeSuggest.localItems = [];
+        placeSuggest.kakaoItems = [];
+        placeSuggest.pending = false;
+        placeSuggest.shown = { local: false, kakao: false };
+        repaintPlaceChips();
+        return;
+    }
+
+    placeSuggest.query = query;
+    const seq = placeSuggest.seq;
+
+    placeLocalTimer = setTimeout(() => {
+        if (seq !== placeSuggest.seq) return;
+        applyLocalPlaceSuggest(query);
+        placeSuggest.kakaoItems = [];
+
+        // 지도는 이력보다 한 글자 늦게 나선다 — 두 글자로는 후보가 수백 개라 뜻이 없다
+        if (query.length < PLACE_KAKAO_MIN_LENGTH) {
+            placeSuggest.pending = false;
+            repaintPlaceChips();
+            return;
+        }
+
+        /**
+         * 같은 글자를 이미 검색해 둔 적이 있으면 캐시에서 바로 그린다 — 지웠다 다시 치는
+         * 흐름이 흔해서 이 한 줄이 호출을 꽤 걷어낸다.
+         */
+        const cached = peekKakaoPlaceCache(query);
+        if (cached) {
+            placeSuggest.kakaoItems = kakaoDocsToItems(cached);
+            placeSuggest.pending = false;
+            repaintPlaceChips();
+            return;
+        }
+
+        // 아래 층은 제 자리라 「찾는 중」이 위 칩을 밀지 않는다 — 이력 유무와 무관하게 띄운다
+        placeSuggest.pending = true;
+        repaintPlaceChips();
+        placeKakaoTimer = setTimeout(() => {
+            if (seq !== placeSuggest.seq) return;
+            /**
+             * 조합 중이어도 **완성된 음절로 끝나면 부른다.** 한글은 마지막 음절의 조합이
+             * 계속 열려 있어서, 조합 자체를 막으면 스페이스를 쳐야 결과가 나온다
+             * (hasTrailingJamo 주석 참조). 자모만 남은 중간 상태에서만 기다린다 —
+             * 다음 input 또는 compositionend 가 곧 다시 태운다.
+             */
+            if (placeSuggest.composing && hasTrailingJamo(query)) {
+                placeSuggest.pending = false;
+                repaintPlaceChips();
+                return;
+            }
+            runKakaoPlaceSuggest(query, seq);
+        }, PLACE_KAKAO_DEBOUNCE_MS);
+    }, PLACE_LOCAL_DEBOUNCE_MS);
+}
+
+/**
+ * 좁혀진 「내가 간 곳」 칩 탭 — 내가 쓰던 표기 그대로 확정한다.
+ *
+ * 고른 순간 두 층은 원래대로 돌아가야 하므로 **다시 그리기 전에** 검색 상태를 비운다.
+ * @returns {boolean} 호출부가 render() 해야 하면 true
+ */
+function pickPlaceRecent(index) {
+    const it = placeSuggest.localItems[Number(index)];
+    if (!it) return false;
+    confirmAxis('place', it.text);
+    logUsageMetric('context_place_picked_recent').catch(() => {});
+    resetPlaceSuggest();
+    return true;
+}
+
+/** 지도 결과 칩 탭 — 값과 함께 주소·placeId·업종까지 심는다 (저장 때 placeType 이 나온다) */
+function pickPlaceFound(index) {
+    const it = placeSuggest.kakaoItems[Number(index)];
+    if (!it?.place) return false;
+    const name = applyKakaoPlaceToInput(it.place, 'entryWhereInput');
+    if (!name) return false;
+    logUsageMetric('context_place_picked_kakao').catch(() => {});
+    resetPlaceSuggest();
+    // 값은 입력란에 이미 심었다 — 축 상태를 그 값으로 맞춘다(어떻게 추론도 함께 갱신)
+    syncEntryContextPlaceFromInput();
+    return true;
+}
+
 function renderPicker() {
     const axis = AXES.find((a) => a.key === state.openAxis);
     if (!axis) return '';
     const current = axisValue(axis.key);
     const options = optionsForAxis(axis.key);
-    const chips = options.length
-        ? options.map((opt) => `
+    const chips =
+        axis.key === 'place'
+            ? renderPlaceChipsInner()
+            : options.length
+              ? options.map((opt) => `
             <button type="button" class="entry-context-opt${opt === current ? ' entry-context-opt--on' : ''}" data-context-pick="${escapeHtml(opt)}">${escapeHtml(opt)}</button>`).join('')
-        : '<span class="entry-context-picker__empty">아직 쓸 만한 값이 없어요. 직접 입력해 주세요.</span>';
+              : '<span class="entry-context-picker__empty">아직 쓸 만한 값이 없어요. 직접 입력해 주세요.</span>';
     /**
      * 어디서만 자유 입력 — 카테고리로 안 잡히는 장소는 직접 적거나 검색으로 (설계 §5).
      *
      * 추천 칩과 같은 흐름에 두면 "칩 하나 더"로 읽힌다 — 고르는 자리와 새로 적는 자리는
      * 층이 다르다. 패널 **바닥의 별도 칸**으로 내려 자리와 구분선으로 그 층을 말한다.
      *
-     * **기본은 직접 입력**이다. 버튼 하나로 카카오 검색 시트를 띄우던 때는, 이름만 적으면
-     * 되는 '집'·'회사' 같은 자리에도 지도 검색이 통째로 열려 과했다. 검색은 돋보기를
-     * 눌렀을 때만 — 옆의 작은 버튼 하나로 좁힌다.
+     * **적으면 곧 검색이다** (2026-09-01). 예전에는 돋보기를 눌러야 카카오 검색 시트가
+     * 통째로 열렸는데, 이름만 적으면 되는 '집'·'회사' 자리에는 시트가 과하고 식당을
+     * 찾으려는 사람에게는 탭이 하나 더 붙었다. 이제 시트는 이 경로에서 사라지고, 친
+     * 글자로 위 칩 줄이 바뀐다 — 나오면 고르고 안 나오면 적은 그대로 쓴다.
+     *
+     * 그래서 돋보기는 **누르는 버튼이 아니라 칸 안의 표시**다. 하는 일이 없는 대신
+     * "여기 적으면 찾아 준다"를 말한다 — 없애면 검색이 된다는 사실 자체가 안 보인다.
      *
      * 값의 주인은 여전히 entryWhereInput 하나이고 이 칸은 그 거울이다 — 그래서 현재
      * 확정값을 그대로 담고, 엔터·포커스 이동에서 굳힌다(누구와 상세 칸과 같은 규칙).
@@ -871,14 +1193,15 @@ function renderPicker() {
     const free = axis.key === 'place'
         ? `<div class="entry-context-picker__foot">
                <div class="entry-context-place-free">
-                   <button type="button" class="entry-context-place-free__search" data-context-search
-                           aria-label="장소 검색" title="장소 검색">
-                       <i data-lucide="search" aria-hidden="true"></i>
-                   </button>
+                   <span class="entry-context-place-free__mark" aria-hidden="true">
+                       <i data-lucide="search"></i>
+                   </span>
                    <input type="text" class="entry-context-place-free__input" data-context-place-input
-                          value="${escapeHtml(current || '')}" placeholder="장소를 직접 적어요"
-                          aria-label="어디서 직접 입력" enterkeyhint="done">
+                          value="${escapeHtml(current || '')}" placeholder="장소를 적으면 찾아봐요"
+                          aria-label="어디서 — 적으면 장소를 찾습니다" enterkeyhint="done">
                </div>
+               <div class="entry-context-place-found${placeFoundActive() ? '' : ' hidden'}"
+                    aria-live="polite">${renderPlaceFoundInner()}</div>
            </div>`
         : '';
     /**
@@ -1007,13 +1330,38 @@ function render() {
             }
         }
     }
-    // 피커가 열리면 시트를 그만큼 키우고(높이 잠금 재측정), 잘려 있으면 통째로 보이는 자리까지
-    // 끌어온다 — 선택지를 보려고 사용자가 직접 스크롤하지 않게 한다.
+    // 피커가 열리면 시트를 그만큼 키우고(높이 잠금 재측정), 잘려 있으면 보이는 자리까지 굴린다
+    revealEntryContextPicker();
+}
+
+/**
+ * 피커가 커진 만큼 시트를 굴려 **아래끝까지** 보이게 한다.
+ *
+ * 예전에는 `scrollIntoView({block:'nearest'})` 였는데, 그건 피커가 스크롤 영역보다 길면
+ * **위쪽 경계만 맞추고 멈춘다** — 칩이 여러 줄로 늘어난 순간 정작 아래의 입력칸과 그 밑
+ * 버튼들이 경계 밖에 남았다. 여기서는 모자란 만큼을 직접 재서 그만큼만 내린다.
+ *
+ * 칩 줄만 갈아끼우는 부분 갱신(repaintPlaceChips)도 이 길을 타야 한다. 내용이 늘었는데
+ * 높이 잠금을 다시 재지 않으면 시트가 안 커지고, 굴리지 않으면 늘어난 분이 경계 밖에 남는다.
+ */
+function revealEntryContextPicker() {
     if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
-    if (state.openAxis) {
-        const picker = el.querySelector('.entry-context-picker');
-        if (picker) requestAnimationFrame(() => picker.scrollIntoView({ block: 'nearest' }));
+    if (!state.openAxis) return;
+    const el = document.getElementById(CONTAINER_ID);
+    const picker = el?.querySelector('.entry-context-picker');
+    if (!picker) return;
+    const area = document.getElementById('entryModal')?.querySelector('#modalScrollArea');
+    if (!area) {
+        requestAnimationFrame(() => picker.scrollIntoView({ block: 'nearest' }));
+        return;
     }
+    // 레이아웃이 굳은 다음 프레임에 잰다 — 방금 innerHTML 을 갈아끼운 직후에도 불린다
+    requestAnimationFrame(() => {
+        if (!document.contains(picker)) return;
+        const pad = 8;
+        const need = picker.getBoundingClientRect().bottom + pad - area.getBoundingClientRect().bottom;
+        if (need > 1) area.scrollTop += need;
+    });
 }
 
 /**
@@ -1146,6 +1494,8 @@ function commitPlaceFreeInput() {
     if (!input) return false;
     const value = (input.value || '').trim();
     if (value === (axisValue('place') || '')) return false;
+    // 값이 굳었으면 칩 줄은 검색 결과가 아니라 추천으로 돌아간다
+    resetPlaceSuggest();
     if (value) {
         confirmAxis('place', value);
         logUsageMetric('context_place_typed').catch(() => {});
@@ -1231,6 +1581,13 @@ function onContainerClick(e) {
         const key = seg.getAttribute('data-context-seg');
         state.openAxis = state.openAxis === key ? null : key;
         state.subFreeOpen = false; // 축을 옮기면 직접 입력 칸은 접는다
+        resetPlaceSuggest();
+        // 어디서를 열 때 이력 색인을 한 번 만든다 — 이 색인이 카카오 호출을 걷어낸다
+        if (state.openAxis === 'place') {
+            placeSuggest.index = buildPlaceIndex(
+                Array.isArray(window.mealHistory) ? window.mealHistory : []
+            );
+        }
         render();
         return;
     }
@@ -1270,11 +1627,14 @@ function onContainerClick(e) {
         render();
         return;
     }
-    if (e.target.closest('[data-context-search]')) {
-        // 검색은 **돋보기를 눌렀을 때만** — 옆 입력칸은 직접 적는 자리다.
-        // 카카오 검색 시트는 entryWhereInput에 값을 넣는다 — 닫힌 뒤 그 값을 확정으로 승격.
-        // 피커는 열어 둬서 검색을 취소해도 원래 자리로 돌아온다
-        if (typeof window.openKakaoPlaceSearch === 'function') window.openKakaoPlaceSearch();
+    const recent = e.target.closest('[data-context-place-recent]');
+    if (recent) {
+        if (pickPlaceRecent(recent.getAttribute('data-context-place-recent'))) render();
+        return;
+    }
+    const found = e.target.closest('[data-context-place-found]');
+    if (found) {
+        if (pickPlaceFound(found.getAttribute('data-context-place-found'))) render();
         return;
     }
 }
@@ -1344,6 +1704,26 @@ export function initEntryContextPredict() {
             if (e.target.closest?.('[data-context-sub-input], [data-context-place-input]')) {
                 clearTimeout(subFreeCommitTimer);
             }
+        });
+        /**
+         * 어디서 칸은 적는 즉시 위 칩 줄을 바꾼다 (돋보기를 눌러 시트를 여는 대신).
+         * 위임으로 받는 이유는 피커가 render() 마다 입력칸을 새로 만들기 때문이다 —
+         * 노드에 직접 붙이면 다시 그릴 때마다 리스너를 잃는다.
+         */
+        el.addEventListener('input', (e) => {
+            const input = e.target.closest?.('[data-context-place-input]');
+            if (!input) return;
+            onPlaceInputTyped(input.value);
+        });
+        el.addEventListener('compositionstart', (e) => {
+            if (e.target.closest?.('[data-context-place-input]')) placeSuggest.composing = true;
+        });
+        el.addEventListener('compositionend', (e) => {
+            const input = e.target.closest?.('[data-context-place-input]');
+            if (!input) return;
+            // 조합이 끝나야 비로소 쓸 만한 글자다 — 여기서 다시 태워 카카오까지 간다
+            placeSuggest.composing = false;
+            onPlaceInputTyped(input.value);
         });
     }
     const placeInput = document.getElementById('entryWhereInput');

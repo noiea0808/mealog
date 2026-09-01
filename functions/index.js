@@ -4137,6 +4137,11 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'context_predict_dismissed',
   'context_predict_auto_saved',
   'context_place_typed',
+  // 어디서 인라인 검색 — 내 이력에서 찾았나, 지도까지 갔나 (js/modals/entry-context-predict.js)
+  'context_place_found_recent',
+  'context_place_picked_recent',
+  'context_place_found_kakao',
+  'context_place_picked_kakao',
   'context_sub_picked',
   'context_sub_added',
   'context_sub_deleted',

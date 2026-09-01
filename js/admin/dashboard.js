@@ -136,6 +136,15 @@ const RECORD_USAGE_METRIC_DEFS = [
     // 손대지 않고 저장 = 추측이 그대로 적용된 기록 — 교정률의 분모
     { field: 'context_predict_auto_saved', section: '맥락 줄', label: '그대로 저장' },
     { field: 'context_place_typed', section: '맥락 줄', label: '어디서 직접 입력' },
+    /**
+     * 어디서 인라인 검색 — 적으면 곧 검색이다(entry-context-predict.js).
+     * 「내 이력」과 「지도」를 갈라 세는 것이 요점이다. 이력 쪽이 클수록 카카오 호출이
+     * 적다는 뜻이고(분당 15회 제한), 지도 쪽이 클수록 새로 가는 곳이 많다는 뜻이다.
+     */
+    { field: 'context_place_found_recent', section: '맥락 줄', label: '어디서 이력 후보 표시' },
+    { field: 'context_place_picked_recent', section: '맥락 줄', label: '어디서 이력 후보 선택' },
+    { field: 'context_place_found_kakao', section: '맥락 줄', label: '어디서 지도 후보 표시' },
+    { field: 'context_place_picked_kakao', section: '맥락 줄', label: '어디서 지도 후보 선택' },
     { field: 'context_sub_picked', section: '맥락 줄', label: '누구와 세부 선택' },
     { field: 'context_sub_added', section: '맥락 줄', label: '누구와 세부 추가' },
     { field: 'context_sub_deleted', section: '맥락 줄', label: '누구와 세부 삭제' },
