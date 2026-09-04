@@ -1575,9 +1575,29 @@ function bindMomentV2SocialSheetHandlePullClose(commentSection) {
     }
 }
 
+/*
+ * 배경 잠금은 공용 lockBodyScroll 로 — html overflow:hidden 만으로는 실기기 터치가
+ * 새고, scrollY 도 살아 있어 키보드 핀(overlay-keyboard-pin 의 scrollTo(0,0))이
+ * 피드를 맨 위로 날려 버렸다("댓글 열면 뒤의 사진이 휘리릭"). 잠그면 scrollY=0 이라
+ * 그 경로가 무해해지고, 닫을 때 원래 위치로 되돌린다.
+ */
+const MV2_SOCIAL_SHEET_LOCK_OWNER = 'mv2SocialCommentSheet';
+
 function mv2SetSocialSheetBodyScrollLock(on) {
     if (typeof document === 'undefined' || !document.documentElement) return;
     document.documentElement.classList.toggle('mv2-social-comment-sheet-open', Boolean(on));
+    if (on) lockBodyScroll(MV2_SOCIAL_SHEET_LOCK_OWNER);
+    else unlockBodyScroll(MV2_SOCIAL_SHEET_LOCK_OWNER);
+}
+
+/** 열려 있고 돌아갈 자리(캡션 푸터)가 아직 문서에 있는 시트 — 재배치가 건드리면 안 된다 */
+function isMomentV2SocialCommentSheetOpenInBody(commentSection) {
+    return (
+        commentSection?.dataset?.mv2SheetInBody === '1' &&
+        !commentSection.classList.contains('hidden') &&
+        commentSection.classList.contains('comment-input-open') &&
+        Boolean(commentSection._mv2SheetAnchorParent?.isConnected)
+    );
 }
 
 function mountMomentV2SocialCommentSheetToBody(commentSection) {
@@ -1630,11 +1650,22 @@ function restoreMomentV2SocialCommentSheetFromBody(commentSection) {
     }
 }
 
+/*
+ * 휠 레이아웃의 캡션 재배치(scrollend·resize·focusin 마다)가 부른다. 열린 시트까지
+ * 피드 안으로 되돌리면 댓글창에 포커스가 가는 순간 시트가 body 를 떠나 잠금이
+ * 풀리고, 댓글 로드가 끝나면 다시 body 로 — 이 왕복이 "시트 뒤가 가끔 스크롤"의
+ * 원인이었다. 열린 시트는 두고, 피드가 다시 그려져 자리를 잃은 시트만 거둔다.
+ */
 function restoreAllMomentV2SocialCommentSheetsFromBody() {
+    let stillOpen = false;
     document.querySelectorAll(`.moment-v2-social-comments-panel.${MV2_SOCIAL_SHEET_BODY_CLASS}`).forEach((el) => {
+        if (isMomentV2SocialCommentSheetOpenInBody(el)) {
+            stillOpen = true;
+            return;
+        }
         restoreMomentV2SocialCommentSheetFromBody(el);
     });
-    mv2SetSocialSheetBodyScrollLock(false);
+    if (!stillOpen) mv2SetSocialSheetBodyScrollLock(false);
 }
 
 window.restoreMomentV2SocialCommentSheetsFromBody = restoreAllMomentV2SocialCommentSheetsFromBody;
@@ -1737,14 +1768,21 @@ window.viewAllComments = async (postId) => {
         }
         const v2Section = document.getElementById(`comment-section-${postId}`);
         if (v2Section?.classList?.contains('moment-v2-social-comments-panel')) {
-            v2Section.classList.remove('comment-input-open');
-            v2Section.classList.remove('hidden');
-            mountMomentV2SocialCommentSheetToBody(v2Section);
-            requestAnimationFrame(() => {
+            // toggleCommentInput 이 이미 올린 시트를 댓글 로드 뒤 다시 내렸다 올리지 않는다
+            const alreadyOpen =
+                v2Section.dataset.mv2SheetInBody === '1' &&
+                !v2Section.classList.contains('hidden') &&
+                v2Section.classList.contains('comment-input-open');
+            if (!alreadyOpen) {
+                v2Section.classList.remove('comment-input-open');
+                v2Section.classList.remove('hidden');
+                mountMomentV2SocialCommentSheetToBody(v2Section);
                 requestAnimationFrame(() => {
-                    v2Section.classList.add('comment-input-open');
+                    requestAnimationFrame(() => {
+                        v2Section.classList.add('comment-input-open');
+                    });
                 });
-            });
+            }
         }
         syncMomentV2SocialCommentEmptyOverlay(postId);
     } catch (e) {

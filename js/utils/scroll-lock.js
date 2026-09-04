@@ -17,6 +17,9 @@ const SCROLL_ALLOW_SELECTOR =
  * `Sheet` 는 시각 시트(timeSourcePickerSheet·timeSourceManualSheet)와 시계
  * 휠(mealClockWheelPickerSheet), 밀톡 버블 메뉴(feedBubbleActionSheet)의 이름이다.
  * 휠은 세로로 굴려야 하는데 이 목록에 없어 실기기에서 손가락이 먹히지 않았다.
+ *
+ * 모먼트 댓글 시트는 id 가 `comment-section-<postId>` 라 이름으로는 못 알아본다 —
+ * 열릴 때 body 로 옮겨지며 붙는 클래스로 잡는다.
  */
 const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#successPopup:not(.hidden)',
@@ -27,7 +30,8 @@ const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#serviceGuideOverlay:not(.hidden)',
     '[id$="Modal"]:not(.hidden)',
     '[id$="Popup"]:not(.hidden)',
-    '[id$="Sheet"]:not(.hidden)'
+    '[id$="Sheet"]:not(.hidden)',
+    '.moment-v2-social-comments-panel--sheet-in-body:not(.hidden)'
 ].join(', ');
 
 function ownerKey(owner) {
