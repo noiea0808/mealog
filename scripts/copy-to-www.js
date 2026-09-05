@@ -29,9 +29,10 @@ function verifyConfigForAppBuild() {
         /* 못 읽으면 판단 불가 — 엄격한 쪽(운영)으로 본다 */
     }
     const isStaging = appId.endsWith('.staging');
-    const { errors } = checkDeployConfig(undefined, {
+    const { errors, warnings } = checkDeployConfig(undefined, {
         allowEmptyDemoPassword: process.env.ALLOW_EMPTY_DEMO_PASSWORD === '1'
     });
+    warnings.forEach((w) => console.warn(`\n⚠️  ${w}\n`));
     if (errors.length === 0) return;
 
     const head = `js/config.js 가 앱에 그대로 실립니다 (appId: ${appId || '알 수 없음'})`;
