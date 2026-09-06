@@ -10,6 +10,8 @@
 | [05-store-and-competition.md](05-store-and-competition.md) | **스토어·경쟁 실측.** 실제 규모(설치 1,640 / 가입 464 / 기록 88), 코호트 개선 추세, 유입 경로, 경쟁 앱, 카테고리·리뷰 문제, 다모앙 100만원 성과 | 스토어를 손보기 전에 |
 | [06-ad-campaign-log.md](06-ad-campaign-log.md) | **광고 집행 기록.** 2026년 3회(구글×2·다모앙) 합계 146만원의 비용·성과·실제 잔존, 왜 실패했는지, 다음 집행 전 체크리스트 | **광고를 태우기 전에 반드시** |
 | [04-improvement-backlog.md](04-improvement-backlog.md) | **오늘 나온 할 일 모음.** A 코드 없이 지금 / B 다음 배포 / C AI 모델 종료 대응 / D 확인 필요 / E 처리 완료 / F 바로잡은 오해 | 무엇부터 할지 정할 때 |
+| [prompts/](prompts/) | **로컬 세션용 작업 지시.** b1(공유 링크) · b7(리포트·웰컴 계측) | 구현할 때 |
+| [reports/](reports/) | **게시한 보고서 페이지 원본**(HTML)과 그 주소 | 페이지를 고치거나 다시 찾을 때 |
 | [scripts/positioning-analysis.py](scripts/positioning-analysis.py) | 01 문서의 모든 숫자를 재현하는 스크립트(표준 라이브러리만) | 새 내보내기로 다시 볼 때 |
 
 ## 쉬운 말 요약 — 이것만 읽어도 됩니다
