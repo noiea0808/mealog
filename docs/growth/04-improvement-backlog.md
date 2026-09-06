@@ -83,7 +83,7 @@ Play Console 통계 · 기준=트래픽 소스 · 8/9~8/26. 「모든 트래픽 
 
 | # | 할 일 | 어디를 고치나 | 비고 |
 |---|---|---|---|
-| **B-1** ★ | **공유 텍스트에 링크 넣기** — [작업 지시](prompts/b1-share-link.md) | `js/utils.js` `shareBlobsToExternal` (~2049행 `text: captionText \|\| 'mealog'`), `sharePhotosToExternal` | 지금까지 나간 공유가 한 명도 못 데려왔다. 가장 싼 수정 |
+| ~~B-1~~ ✅ | ~~공유 텍스트에 링크 넣기~~ **완료 2026-09-06** ([지시서](prompts/b1-share-link.md)) | `js/utils.js` `shareBlobsToExternal` (~2049행 `text: captionText \|\| 'mealog'`), `sharePhotosToExternal` | `SHARE_LINK_URL` + `utm_source=share` 로 적용. 공유 계측 4종(모먼트·리포트 SNS)도 함께 들어갔다. **남은 것: B-2 공개 공유 페이지** — 링크는 붙었지만 아직 비회원이 볼 화면이 없어 mealog.net 첫 화면으로 떨어진다 |
 | B-2 | **비회원용 공개 공유 페이지** `/s/{id}` | Hosting rewrite → Cloud Function. 새 컬렉션 `shareCards/{id}` | `meals`를 공개하지 않는다. 공유 버튼을 누른 순간의 렌더된 이미지와 최소 텍스트만 복제. 삭제하면 링크가 죽는다 |
 | B-3 | **OG 이미지 교체** | `index.html` 17~30행 | 지금은 512px 앱 아이콘. 1200×630 실제 화면으로 |
 | B-4 | **App Links** (링크 누르면 앱이 열림) | `android/app/src/main/AndroidManifest.xml`, `/.well-known/assetlinks.json` | 프로덕션 서명키 SHA-256 필요 |

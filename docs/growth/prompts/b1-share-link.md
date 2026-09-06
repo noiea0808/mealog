@@ -1,5 +1,9 @@
 # B-1 공유 링크 — 작업 지시 (로컬 세션용)
 
+> **✅ 완료 (2026-09-06, staging).** `js/utils.js` 에 `SHARE_LINK_URL = 'https://mealog.net/?utm_source=share'`
+> 가 들어갔고(커밋 `9dbe2bb`), 공유 계측 4종도 함께 붙었다(`b7a2bca`·`fb0b297`).
+> 아래는 당시 지시서이며 **기록으로만 남긴다.**
+
 배경: [../04-improvement-backlog.md](../04-improvement-backlog.md) B-1.
 지금 사용자의 22%가 공유를 누르는데 **공유물에 링크가 없어 아무도 데려오지 못한다.**
 
