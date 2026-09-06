@@ -21,7 +21,11 @@ import { refreshLucideIcons } from '../icons.js';
 import { logUsageMetric } from '../usage-metrics.js';
 import { updateEntryContextFoodCategory, keepEntryContextPredictVisible } from './entry-context-predict.js';
 import { ENTRY_DOM } from './entry-form-config.js';
-import { isEntryFieldQuickInputOn, setEntryFieldQuickInputEnabled } from './entry-quick-input.js';
+import {
+    isEntryFieldQuickInputOn,
+    setEntryFieldQuickInputEnabled,
+    setEntryWhatGridOpenedHook,
+} from './entry-quick-input.js';
 
 const CONTAINER_ID = 'entryCategorySuggest';
 const INPUT_ID = 'entryWhatInput';
@@ -352,11 +356,8 @@ function setConfirmed(value, source) {
 function onContainerClick(e) {
     if (e.target.closest('[data-suggest-open-grid]')) {
         logUsageMetric('category_suggest_grid_opened').catch(() => {});
-        // 그리드를 다시 그리면서 active 가 날아가므로 확정값을 되붙인다
+        // 확정값 되붙이기·시트 높이는 onWhatGridOpened 훅이 처리한다 (셰브론으로 열 때와 같은 길)
         setEntryFieldQuickInputEnabled('what', true);
-        applyConfirmedToChips(state.confirmed);
-        render();
-        if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
         return;
     }
     if (e.target.closest('[data-suggest-undismiss]')) {
@@ -382,8 +383,19 @@ function onContainerClick(e) {
     }
 }
 
+/**
+ * 그리드가 펼쳐진 직후 — 새로 그려진 칩에 확정값을 되붙이고 줄을 다시 그린다.
+ * ('다른 구분' 버튼이 사라지고 그리드 안 제안 표시가 살아나야 하므로 render 도 함께)
+ */
+function onWhatGridOpened() {
+    applyConfirmedToChips(state.confirmed);
+    render();
+    if (typeof window.syncEntrySheetHeightLock === 'function') window.syncEntrySheetHeightLock();
+}
+
 /** 시트 초기화 시 1회 호출 — input 리스너와 클릭 위임을 바인딩 */
 export function initEntryCategorySuggest() {
+    setEntryWhatGridOpenedHook(onWhatGridOpened);
     const input = document.getElementById(INPUT_ID);
     if (input && !input._categorySuggestBound) {
         input._categorySuggestBound = true;

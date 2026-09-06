@@ -13,6 +13,7 @@ import { appState } from '../state.js';
 import { escapeHtml } from './utils.js';
 import { getThumbImageUrl, getDisplayImageUrl, imgFallbackAttrs } from '../utils/image-variants.js';
 import { formatMealMenuDisplayLine } from '../utils/meal-display-line.js';
+import { buildTimelinePromoBannerHtml } from './promo-banner.js';
 
 /** 기록추가 슬롯 피커와 동일한 아이콘 톤 클래스 (SLOT_STYLES 색 매핑) */
 function slotPickerIconToneClass(slotId) {
@@ -2225,6 +2226,20 @@ export function renderTimeline(options = {}) {
         const hasAnyMealOnDate = (window.mealHistory || []).some((m) => m?.date === dateStr);
         if (!hasAnyMealOnDate && !dailyJournalHasContent(dailyJournal)) {
             html += buildTimelineDayEmptyHtml(dateStr, todayStr);
+        }
+
+        /**
+         * 「같이 먹자」 배너는 **오늘 섹션에만** 붙는다 (render/promo-banner.js).
+         *
+         * 목록보기는 날짜 섹션이 최신→과거로 쌓이므로 오늘이 곧 맨 위 섹션이고, 날짜마다
+         * 붙이면 스크롤 한 번에 같은 광고가 여러 번 나온다. 일간보기에서도 같은 규칙이라
+         * 과거 날짜로 스와이프하면 배너가 없다 — 지난 기록을 되짚는 화면에 광고를 얹지 않는다.
+         *
+         * 공유 캡처(buildDailyShareHomeFeedBodyHtml)는 이 조립부를 타지 않는다 —
+         * 배너가 공유 이미지에 박히지 않는 것은 그 덕이다.
+         */
+        if (dateStr === todayStr) {
+            html += buildTimelinePromoBannerHtml();
         }
 
         section.innerHTML = html;

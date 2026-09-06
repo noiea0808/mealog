@@ -51,10 +51,7 @@ import { getMealSyncManager } from '../utils/meal-sync-manager.js';
 import { applyOptimisticMealDelete, rollbackOptimisticMealDelete } from '../utils/meal-delete-optimistic.js';
 import {
     normalizeMealClockInputValue,
-    formatMealClock12TextWhileTyping,
-    normalizeMealClock12InputValue,
-    mealClock24FromAmPmClock,
-    mealClock24ToAmPmAndDisplay,
+    renderMealClockDisplay,
     hasExifGpsInImageFile
 } from '../meal-time-utils.js';
 import {
@@ -126,6 +123,7 @@ import {
     bindEntryQuickInputOnce,
     applyEntryQuickInputUi,
     finalizeEntryModalQuickInput,
+    resetEntryWhatQuickInputSession,
     syncEntryQuickInputToggle,
 } from './entry-quick-input.js';
 import { bindDialogGrabberPullClose } from '../utils/dialog-grabber.js';
@@ -445,16 +443,22 @@ function updateEntryMealClockSourceLabel(isMain) {
     el.textContent = source ? (MEAL_CLOCK_SOURCE_LABELS[source] || '') : '';
 }
 
+/** 시각 칸 — 값은 `data-clock24` 가 쥐고, 안의 두 조각은 그 값을 그린 것뿐이다 */
+function mealClockValueEl(isMain) {
+    return document.getElementById(isMain ? 'entryMealTimeValueMain' : 'entryMealTimeValueSnack');
+}
+
 function applyMealClockRowFrom24(isMain, hhmm24maybe) {
-    const txt = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
-    const bridge = document.getElementById(isMain ? 'entryMealTimeBridgeMain' : 'entryMealTimeBridgeSnack');
-    const sel = document.getElementById(isMain ? 'entryMealAmpmMain' : 'entryMealAmpmSnack');
-    if (!txt || !bridge) return;
+    const valueEl = mealClockValueEl(isMain);
+    if (!valueEl) return;
     const n24 = normalizeMealClockInputValue(hhmm24maybe);
+    renderMealClockDisplay(
+        document.getElementById(isMain ? 'entryMealAmpmMain' : 'entryMealAmpmSnack'),
+        document.getElementById(isMain ? 'entryMealTimeTextMain' : 'entryMealTimeTextSnack'),
+        n24
+    );
     if (!n24) {
-        txt.value = '';
-        if (sel) sel.value = 'pm';
-        bridge.value = '';
+        delete valueEl.dataset.clock24;
         const curSource = isMain ? appState.entryMealClockSourceMain : appState.entryMealClockSourceSnack;
         if (curSource !== 'empty') {
             setEntryMealClockSource(isMain, null);
@@ -463,19 +467,12 @@ function applyMealClockRowFrom24(isMain, hhmm24maybe) {
         }
         return;
     }
-    bridge.value = n24;
-    const { ampm, display } = mealClock24ToAmPmAndDisplay(n24);
-    if (sel) sel.value = ampm;
-    txt.value = display;
+    valueEl.dataset.clock24 = n24;
 }
 
 /** 모달에서 읽은 24시 "HH:mm"(빈 문자열 가능) */
 function getMealClock24FromModal(isMain) {
-    const txt = document.getElementById(isMain ? 'entryMealTimeInputMain' : 'entryMealTimeInputSnack');
-    const sel = document.getElementById(isMain ? 'entryMealAmpmMain' : 'entryMealAmpmSnack');
-    const a = sel?.value === 'am' ? 'am' : 'pm';
-    const raw = mealClock24FromAmPmClock(a, txt?.value || '');
-    return normalizeMealClockInputValue(raw || '');
+    return normalizeMealClockInputValue(mealClockValueEl(isMain)?.dataset?.clock24 || '');
 }
 
 function getMealClockInitialDate(isMain) {
@@ -493,6 +490,24 @@ function applyMealClockFromDate(isMain, date, source) {
     const hhmm = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
     applyMealClockRowFrom24(isMain, hhmm);
     if (source) setEntryMealClockSource(isMain, source);
+}
+
+/**
+ * 시·분 캐러셀을 연다 — 시각 칸을 눌러도, 출처 시트의 '직접 입력'을 골라도 여기로 온다.
+ *
+ * 예전에는 시각 칸이 자판으로 치는 입력란이라, 같은 값을 고치는 방법이 시트 안에
+ * 두 가지였다(칸을 누르면 자판, 출처▾ 를 거치면 휠). 어느 쪽이 나올지는 어디를
+ * 눌렀느냐에 달려 있었고 사용자는 그 규칙을 알 길이 없었다. 입구를 휠로 모은다.
+ */
+function openEntryMealClockWheel(isMain) {
+    openMealClockWheelPanel({
+        zIndex: 350,
+        initialDate: getMealClockInitialDate(isMain),
+        onApply: (date) => {
+            markMealClockPickedByUser(isMain, 'manual');
+            applyMealClockFromDate(isMain, date, 'manual');
+        },
+    });
 }
 
 function openEntryMealTimeSourceSheet(isMain) {
@@ -520,16 +535,7 @@ function openEntryMealTimeSourceSheet(isMain) {
             markMealClockPickedByUser(isMain, 'photo');
             applyMealClockFromDate(isMain, date, 'photo');
         },
-        onManual: () => {
-            openMealClockWheelPanel({
-                zIndex: 350,
-                initialDate: getMealClockInitialDate(isMain),
-                onApply: (date) => {
-                    markMealClockPickedByUser(isMain, 'manual');
-                    applyMealClockFromDate(isMain, date, 'manual');
-                },
-            });
-        },
+        onManual: () => openEntryMealClockWheel(isMain),
         onEmpty: () => {
             markMealClockPickedByUser(isMain, 'empty');
             applyMealClockRowFrom24(isMain, '');
@@ -539,47 +545,49 @@ function openEntryMealTimeSourceSheet(isMain) {
 }
 
 function applyEntryMealClockInputVisibility() {
-    const onM = appState.entryTimeOnMain === true;
-    const onS = appState.entryTimeOnSnack === true;
-    const inM = document.getElementById('entryMealTimeInputMain');
-    const inS = document.getElementById('entryMealTimeInputSnack');
     const offM = document.getElementById('entryMealTimeOffDisplayMain');
     const offS = document.getElementById('entryMealTimeOffDisplaySnack');
-    const pickM = document.getElementById('entryMealTimeSourceBtnMain');
-    const pickS = document.getElementById('entryMealTimeSourceBtnSnack');
-    const amM = document.getElementById('entryMealAmpmMain');
-    const amS = document.getElementById('entryMealAmpmSnack');
     const compoundMain = document.getElementById('entryMealClockCompoundMain');
     const compoundSnack = document.getElementById('entryMealClockCompoundSnack');
 
-    const applyOne = (on, inp, offEl, pickBtn, amSel, compound) => {
-        if (!inp || !offEl) return;
+    /* 오전/오후는 시각 칸 **안의** 글자라 따로 여닫지 않는다 — 칸이 숨으면 같이 숨는다 */
+    const applyOne = (on, valueEl, offEl, pickBtn, compound) => {
+        if (!valueEl || !offEl) return;
+        offEl.classList.toggle('pointer-events-none', on);
+        offEl.classList.toggle('opacity-0', on);
+        valueEl.classList.toggle('pointer-events-none', !on);
+        valueEl.classList.toggle('opacity-0', !on);
         if (on) {
-            offEl.classList.add('pointer-events-none', 'opacity-0');
-            inp.classList.remove('pointer-events-none', 'opacity-0');
-            inp.removeAttribute('tabindex');
-            inp.removeAttribute('aria-hidden');
-            pickBtn?.classList.remove('pointer-events-none', 'opacity-0');
-            amSel?.classList.remove('pointer-events-none', 'opacity-0');
-            if (compound) {
-                compound.classList.remove('pointer-events-none', 'bg-slate-50', 'border-slate-100');
-                compound.classList.add('bg-white', 'border-slate-200');
-            }
+            valueEl.removeAttribute('tabindex');
+            valueEl.removeAttribute('aria-hidden');
         } else {
-            offEl.classList.remove('pointer-events-none', 'opacity-0');
-            inp.classList.add('pointer-events-none', 'opacity-0');
-            inp.setAttribute('tabindex', '-1');
-            inp.setAttribute('aria-hidden', 'true');
-            pickBtn?.classList.add('pointer-events-none', 'opacity-0');
-            amSel?.classList.add('pointer-events-none', 'opacity-0');
-            if (compound) {
-                compound.classList.add('pointer-events-none', 'bg-slate-50', 'border-slate-100');
-                compound.classList.remove('bg-white', 'border-slate-200');
-            }
+            valueEl.setAttribute('tabindex', '-1');
+            valueEl.setAttribute('aria-hidden', 'true');
+        }
+        pickBtn?.classList.toggle('pointer-events-none', !on);
+        pickBtn?.classList.toggle('opacity-0', !on);
+        if (compound) {
+            compound.classList.toggle('pointer-events-none', !on);
+            compound.classList.toggle('bg-slate-50', !on);
+            compound.classList.toggle('border-slate-100', !on);
+            compound.classList.toggle('bg-white', on);
+            compound.classList.toggle('border-slate-200', on);
         }
     };
-    applyOne(onM, inM, offM, pickM, amM, compoundMain);
-    applyOne(onS, inS, offS, pickS, amS, compoundSnack);
+    applyOne(
+        appState.entryTimeOnMain === true,
+        mealClockValueEl(true),
+        offM,
+        document.getElementById('entryMealTimeSourceBtnMain'),
+        compoundMain
+    );
+    applyOne(
+        appState.entryTimeOnSnack === true,
+        mealClockValueEl(false),
+        offS,
+        document.getElementById('entryMealTimeSourceBtnSnack'),
+        compoundSnack
+    );
     updateEntryMealClockSourceLabel(true);
     updateEntryMealClockSourceLabel(false);
 }
@@ -674,88 +682,30 @@ function initEntryModalGaugeControlsOnce() {
         syncEntryGaugesFromDetailRecordPrefs(prefs, mode);
     });
 
-    initMealTimeTextInputsOnce();
+    initMealTimeRowsOnce();
 }
 
-function initMealTimeTextInputsOnce() {
-    if (window.__mealTimeTextInputsInit) return;
-    window.__mealTimeTextInputsInit = true;
+function initMealTimeRowsOnce() {
+    if (window.__mealTimeRowsInit) return;
+    window.__mealTimeRowsInit = true;
 
-    const bindRow = (mainSide, textId, bridgeId, sourceBtnId, ampmId) => {
-        const text = document.getElementById(textId);
-        const bridge = document.getElementById(bridgeId);
+    const bindRow = (mainSide, sourceBtnId) => {
+        const valueEl = mealClockValueEl(mainSide);
         const sourceBtn = document.getElementById(sourceBtnId);
-        const sel = document.getElementById(ampmId);
-        if (!text || !bridge || !sourceBtn) return;
+        if (!valueEl || !sourceBtn) return;
 
-        const selectAllMealClockText = () => {
-            try {
-                text.setSelectionRange(0, text.value.length);
-            } catch (_) {
-                try {
-                    text.select();
-                } catch (_) {}
-            }
-        };
-        text.addEventListener('focus', () => {
-            requestAnimationFrame(selectAllMealClockText);
-        });
+        /* 시각 칸은 통째로 캐러셀 여는 버튼 하나다 — 오전/오후만 따로 만지는 길은 없다 */
+        valueEl.addEventListener('click', () => openEntryMealClockWheel(mainSide));
 
-        // value 재대입은 조합 중이면 IME 상태를 깨뜨린다 — 숫자 칸이라도 한글 자판일 수 있다
-        addCompositionAwareInput(text, () => {
-            const next = formatMealClock12TextWhileTyping(text.value);
-            if (text.value !== next) text.value = next;
-            const raw = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', text.value);
-            const n = normalizeMealClockInputValue(raw || '');
-            if (n) bridge.value = n;
-        });
-        text.addEventListener('blur', () => {
-            const d = text.value.replace(/\D/g, '').slice(0, 4);
-            if (!d.length) {
-                applyMealClockRowFrom24(mainSide, '');
-                return;
-            }
-            let candHourMin;
-            if (d.length <= 2) {
-                candHourMin = `${d.padStart(2, '0')}:00`;
-            } else {
-                candHourMin = `${d.slice(0, 2)}:${d.slice(2).padEnd(2, '0').slice(0, 2)}`;
-            }
-            const n12 = normalizeMealClock12InputValue(candHourMin);
-            if (!n12) {
-                applyMealClockRowFrom24(mainSide, '');
-                return;
-            }
-            const raw24 = mealClock24FromAmPmClock(sel?.value === 'am' ? 'am' : 'pm', n12) || '';
-            applyMealClockRowFrom24(mainSide, normalizeMealClockInputValue(raw24) || '');
-            setEntryMealClockSource(mainSide, 'manual');
-        });
-        if (sel) {
-            sel.addEventListener('change', () => {
-                const n24 = getMealClock24FromModal(mainSide);
-                applyMealClockRowFrom24(mainSide, n24 || '');
-                if (n24) setEntryMealClockSource(mainSide, 'manual');
-            });
-        }
         sourceBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             openEntryMealTimeSourceSheet(mainSide);
         });
-        bridge.addEventListener('change', () => {
-            const n = normalizeMealClockInputValue(bridge.value);
-            if (n) applyMealClockRowFrom24(mainSide, n);
-        });
-        bridge.addEventListener('cancel', () => {
-            try {
-                const n = normalizeMealClockInputValue(bridge.value);
-                if (n) applyMealClockRowFrom24(mainSide, n);
-            } catch (_) {}
-        });
     };
 
-    bindRow(true, 'entryMealTimeInputMain', 'entryMealTimeBridgeMain', 'entryMealTimeSourceBtnMain', 'entryMealAmpmMain');
-    bindRow(false, 'entryMealTimeInputSnack', 'entryMealTimeBridgeSnack', 'entryMealTimeSourceBtnSnack', 'entryMealAmpmSnack');
+    bindRow(true, 'entryMealTimeSourceBtnMain');
+    bindRow(false, 'entryMealTimeSourceBtnSnack');
 }
 
 function syncEntryModalBodyClass() {
@@ -1894,6 +1844,8 @@ export async function openModal(date, slotId, entryId = null, opts = {}) {
         resetEntrySheetTab();
         resetEntrySheetBaseHeight();
         setEntrySheetTabsForSkip(false);
+        // '무엇을' 그리드는 시트를 열 때마다 접힘부터 — 펼침은 이 세션 안의 직접 선택만
+        resetEntryWhatQuickInputSession();
         finalizeEntryModalQuickInput();
         ensureEntryWhatInputSnackCompositionInit();
         initEntryCategorySuggest();

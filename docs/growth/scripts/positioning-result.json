@@ -1,0 +1,273 @@
+{
+ "total_users": 88,
+ "total_recs": 2831,
+ "segments": {
+  "B-lean": 11,
+  "A-lean": 14,
+  "A": 11,
+  "B": 9,
+  "U": 43
+ },
+ "broad": {
+  "B": {
+   "n": 20,
+   "recs_med": 30.5,
+   "recs_mean": 52.0,
+   "days_med": 9.0,
+   "days_mean": 12.5,
+   "recs_per_day": 4.16,
+   "photo_rate": 0.37,
+   "alive": 70,
+   "share_users": 5,
+   "total_recs": 1041
+  },
+  "A": {
+   "n": 25,
+   "recs_med": 31,
+   "recs_mean": 44.4,
+   "days_med": 7,
+   "days_mean": 11.3,
+   "recs_per_day": 3.92,
+   "photo_rate": 0.8,
+   "alive": 68,
+   "share_users": 5,
+   "total_recs": 1109
+  },
+  "U": {
+   "n": 43,
+   "recs_med": 4,
+   "recs_mean": 15.8,
+   "days_med": 2,
+   "days_mean": 4.3,
+   "recs_per_day": 3.66,
+   "photo_rate": 0.68,
+   "alive": 44,
+   "share_users": 9,
+   "total_recs": 681
+  }
+ },
+ "strict": {
+  "B": {
+   "n": 9,
+   "recs_med": 43,
+   "recs_mean": 78.9,
+   "days_med": 9,
+   "days_mean": 16,
+   "recs_per_day": 4.93,
+   "photo_rate": 0.43,
+   "alive": 78,
+   "share_users": 3,
+   "total_recs": 710
+  },
+  "A": {
+   "n": 11,
+   "recs_med": 31,
+   "recs_mean": 57.2,
+   "days_med": 11,
+   "days_mean": 14.5,
+   "recs_per_day": 3.93,
+   "photo_rate": 0.74,
+   "alive": 55,
+   "share_users": 2,
+   "total_recs": 629
+  }
+ },
+ "tests_broad": {
+  "days": [
+   1.18,
+   0.718
+  ],
+  "recs": [
+   7.69,
+   0.6485
+  ],
+  "alive": [
+   0.02,
+   1.0
+  ]
+ },
+ "tests_strict": {
+  "days": [
+   1.45,
+   0.7816
+  ],
+  "recs": [
+   21.71,
+   0.5081
+  ]
+ },
+ "new_cohort": {
+  "n": 61,
+  "D1": {
+   "k": 1,
+   "eligible": 60,
+   "retained": 37,
+   "rate": 62
+  },
+  "D3": {
+   "k": 3,
+   "eligible": 56,
+   "retained": 28,
+   "rate": 50
+  },
+  "D7": {
+   "k": 7,
+   "eligible": 42,
+   "retained": 16,
+   "rate": 38
+  },
+  "D14": {
+   "k": 14,
+   "eligible": 28,
+   "retained": 9,
+   "rate": 32
+  },
+  "D21": {
+   "k": 21,
+   "eligible": 14,
+   "retained": 3,
+   "rate": 21
+  }
+ },
+ "new_cohort_by_seg": {
+  "B": {
+   "n": 13,
+   "D7": {
+    "k": 7,
+    "eligible": 10,
+    "retained": 7,
+    "rate": 70
+   },
+   "D14": {
+    "k": 14,
+    "eligible": 9,
+    "retained": 6,
+    "rate": 67
+   }
+  },
+  "A": {
+   "n": 15,
+   "D7": {
+    "k": 7,
+    "eligible": 11,
+    "retained": 4,
+    "rate": 36
+   },
+   "D14": {
+    "k": 14,
+    "eligible": 8,
+    "retained": 2,
+    "rate": 25
+   }
+  },
+  "U": {
+   "n": 33,
+   "D7": {
+    "k": 7,
+    "eligible": 21,
+    "retained": 5,
+    "rate": 24
+   },
+   "D14": {
+    "k": 14,
+    "eligible": 11,
+    "retained": 1,
+    "rate": 9
+   }
+  }
+ },
+ "first_day_activation": {
+  "3건+": {
+   "k": 7,
+   "eligible": 25,
+   "retained": 11,
+   "rate": 44
+  },
+  "2건": {
+   "k": 7,
+   "eligible": 7,
+   "retained": 1,
+   "rate": 14
+  },
+  "1건": {
+   "k": 7,
+   "eligible": 10,
+   "retained": 4,
+   "rate": 40
+  }
+ },
+ "hour_top": [
+  [
+   12,
+   294
+  ],
+  [
+   19,
+   289
+  ],
+  [
+   22,
+   198
+  ],
+  [
+   21,
+   184
+  ],
+  [
+   13,
+   173
+  ],
+  [
+   11,
+   165
+  ]
+ ],
+ "weekday": [
+  550,
+  467,
+  428,
+  369,
+  352,
+  338,
+  327
+ ],
+ "new_first_weekday": {
+  "1": 11,
+  "2": 11,
+  "3": 4,
+  "0": 7,
+  "6": 9,
+  "5": 9,
+  "4": 10
+ },
+ "provider_users": {
+  "kakao": 68,
+  "other": 20
+ },
+ "photo_rate_all": 61.4,
+ "share_rate_all": 1.9,
+ "share_users": 19,
+ "top10_share": 49.2,
+ "examples": {
+  "B": [
+   "보리밥4숟,각종야채,제육6개",
+   "51.7kg",
+   "그린 키위 마 케일 스무디 2숟, 분짜2/3, 짜조 1개, 코코넛 쉬림프",
+   "44.2kg-&gt;43.9 똥싸고",
+   "52.1kg",
+   "생새우5,새우15,버터구이,라면3숟",
+   "시케야 성수 식혜 100ml",
+   "치미창가 5입, 우유 한 모금, 카라향 주스 한 모금, 케일사과 주스 한"
+  ],
+  "A": [
+   "비오는 날 빼고 이만큼 바람이 많이 분 날이 있었나..출근길은 괜찮게 달",
+   "요즘엔 토마토 쥬스가 계속 땡기네.ㅎㅎ",
+   "흑백요리사에 나왔던 셰프네 업장이라는데..깔끔하고 맛은있는데 가격이 이게",
+   "갑자기 시원해진 날씨가 너무 상쾌한.ㅎㅎ이것이 바로 입추 매직인가",
+   "이거 이전에 여행가서 샀던 시리얼(...)",
+   "아빠생일로",
+   "계란 토스트는 애기들꺼고(...)",
+   "의외로 애들이 자두를 잘먹네?ㅎㅎ"
+  ]
+ }
+}

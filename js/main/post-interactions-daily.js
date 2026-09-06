@@ -48,8 +48,11 @@ import {
     addCompositionAwareInput,
     warmUpIME,
     sharePhotosToExternal,
+    shareBlobsToExternal,
     setupBirthdateInputFormatting
 } from '../utils.js';
+import { createShareBlobCache } from '../utils/share-blob-cache.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { applyStackCommentBtnVisual } from '../render/moment-post-interactions.js';
 import {
     patchMomentFeedSocialCounts,
@@ -276,8 +279,11 @@ window.openDailySharePreviewModal = (dateStr) => {
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
                 <button type="button" onclick="window.closeDailySharePreviewModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="dailyShareSnsBtn" onclick="window.shareDailyToSns('${safeDate}')" class="mealog-btn mealog-btn-secondary" aria-label="다른 앱으로 공유" title="카카오톡·인스타 등으로 보내기">
+                    <span class="mealog-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>
+                </button>
                 <button type="button" id="dailyShareConfirmBtn" data-date="${safeDate}" data-mode="${isShared ? 'unshare' : 'share'}" class="${isShared ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary'}">
-                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">${isShared ? '공유 취소' : '공유하기'}</span></span>
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">${isShared ? '공유 취소' : '모먼트'}</span></span>
                 </button>
             </div>
         </div>
@@ -317,6 +323,15 @@ window.openDailySharePreviewModal = (dateStr) => {
 
     modal.addEventListener('click', (e) => {
         if (e.target === modal) window.closeDailySharePreviewModal();
+    });
+
+    // 캡처는 폰트·이미지 로드까지 기다리느라 느리다. 모달이 그려진 직후 미리 돌려 둬야
+    // SNS 버튼을 눌렀을 때 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+    dailyShareBlobCache.clear();
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            void dailyShareBlobCache.warm(dateStr);
+        });
     });
 };
 
@@ -371,9 +386,187 @@ window.closeDailySharePreviewModal = () => {
     fitted?._dailySharePreviewFitObserver?.disconnect();
     if (modal) modal.remove();
     unlockBodyScroll('dailySharePreviewModal');
+    // 카드가 사라졌으니 예열해 둔 이미지도 버린다 — 다음에 열 때 그 시점 내용으로 다시 뜬다.
+    dailyShareBlobCache.clear();
 };
 
 // 미리보기에서 공유 확정: 미리보기 화면을 그대로 캡쳐해서 공유
+/**
+ * 하루 기록 공유 카드를 캡처해 canvas 로 돌려준다.
+ *
+ * 모먼트 공유(업로드용 base64)와 외부 SNS 공유(blob 예열)가 같은 캡처를 쓴다.
+ * 캡처는 폰트·이미지 로드를 기다리느라 느리므로, SNS 쪽은 모달이 열릴 때 미리 돌려
+ * 두고 클릭 시점에는 결과만 꺼내 쓴다(share-blob-cache.js).
+ */
+async function captureDailyShareCanvas() {
+    const previewModal = document.getElementById('dailySharePreviewModal');
+    if (!previewModal) {
+        throw new Error('미리보기 모달을 찾을 수 없습니다.');
+    }
+
+    const previewCard = previewModal.querySelector('#dailyShareCardContainer');
+    if (!previewCard) {
+        throw new Error('미리보기 카드를 찾을 수 없습니다.');
+    }
+
+    // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
+    let fredokaFontCSS = '';
+    // 폰트가 이미 로드되어 있는지 먼저 확인
+    const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
+    
+    if (!fontAlreadyLoaded) {
+        try {
+            const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
+            fredokaFontCSS = await fontCSSResponse.text();
+            // CSS를 스타일 태그로 추가하여 폰트 로드
+            const styleTag = document.createElement('style');
+            styleTag.textContent = fredokaFontCSS;
+            document.head.appendChild(styleTag);
+            
+            await document.fonts.ready;
+            let attempts = 0;
+            while (attempts < 10) {
+                if (document.fonts.check('1em Fredoka')) break;
+                await new Promise(resolve => setTimeout(resolve, 50));
+                attempts++;
+            }
+        } catch (e) {
+            console.warn('Fredoka 폰트 CSS 로드 실패:', e);
+        }
+    }
+    
+    // 이미지 로드 확인 (img + background-image용 data-photo-url)
+    const images = previewCard.querySelectorAll('img');
+    const imageLoadPromises = Array.from(images).map(img => {
+        if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+        return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 400);
+        });
+    });
+    const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
+    const bgLoadPromises = Array.from(bgDivs).map(div => {
+        const url = div.getAttribute('data-photo-url');
+        if (!url) return Promise.resolve();
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = resolve;
+            img.onerror = resolve;
+            img.src = url;
+            if (img.complete) resolve();
+        });
+    });
+    await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
+
+    const innerContent =
+        previewCard.querySelector('.daily-share-capture__sheet') ||
+        previewCard.querySelector(`div[style*="width: ${DAILY_SHARE_CARD_WIDTH}px"]`) ||
+        previewCard;
+
+    // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
+    const canvas = await captureWithGhostStrategy(innerContent, {
+        captureWidth: DAILY_SHARE_CARD_WIDTH,
+        allowTaint: false,
+        foreignObjectRendering: false,
+        // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
+        onclone: (clonedDoc) => {
+            const garamCss = MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+            if (fredokaFontCSS) {
+                const clonedStyle = clonedDoc.createElement('style');
+                clonedStyle.textContent = fredokaFontCSS + garamCss;
+                clonedDoc.head.appendChild(clonedStyle);
+            } else {
+                const clonedStyle = clonedDoc.createElement('style');
+                clonedStyle.textContent =
+                    `
+                    @font-face {
+                        font-family: 'Fredoka';
+                        font-style: normal;
+                        font-weight: 700;
+                        font-display: swap;
+                        src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
+                        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+                    }
+                ` + garamCss;
+                clonedDoc.head.appendChild(clonedStyle);
+            }
+            const allSpans = clonedDoc.querySelectorAll('span');
+            allSpans.forEach(el => {
+                const style = el.getAttribute('style') || '';
+                const text = el.textContent.trim();
+                if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
+                    el.style.fontFamily = "'Fredoka', sans-serif";
+                    el.style.fontWeight = '700';
+                }
+            });
+        }
+    });
+
+    return canvas;
+}
+
+/** 예열 중에는 SNS 버튼을 흐리게 — 눌러도 되지만 잠깐 기다린다는 표시다. */
+function setDailySnsButtonBusy(busy) {
+    const btn = document.getElementById('dailyShareSnsBtn');
+    if (!btn) return;
+    btn.classList.toggle('opacity-60', !!busy);
+    if (busy) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+}
+
+/** 하루 기록 SNS 공유용 blob 예열 캐시 — 모달을 열 때 채우고 닫을 때 비운다. */
+const dailyShareBlobCache = createShareBlobCache({
+    capture: captureDailyShareCanvas,
+    onBusy: setDailySnsButtonBusy,
+    label: 'daily'
+});
+
+/**
+ * 하루 기록 카드를 카카오톡·인스타 등 외부 앱으로 내보낸다.
+ * 모먼트 공유와 달리 서버 상태를 건드리지 않는다 — 캡처 이미지를 공유 시트에 넘길 뿐이다.
+ */
+window.shareDailyToSns = async (dateStr) => {
+    const btn = document.getElementById('dailyShareSnsBtn');
+    if (btn?.disabled) return;
+
+    logUsageMetric('daily_sns_share_tap').catch(() => {});
+    if (btn) btn.disabled = true;
+    let loadingShown = false;
+    try {
+        // 예열이 끝나 있으면 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+        let blob = dailyShareBlobCache.get(dateStr);
+        if (!blob) {
+            showLoading('공유 이미지 준비 중...');
+            loadingShown = true;
+            blob = await dailyShareBlobCache.ensure(dateStr);
+            hideLoading();
+            loadingShown = false;
+        }
+        if (!blob) {
+            showToast('공유 이미지를 만들지 못했어요.', 'error');
+            return;
+        }
+
+        // 캡처 카드에 이미 MEALOG 마크가 들어가 있고 폭도 맞춰져 있다 — 다시 손대지 않는다.
+        const shared = await shareBlobsToExternal([blob], {
+            caption: (document.getElementById('dailyShareComment')?.value || '').trim(),
+            appendLogo: false,
+            resize: false,
+            fileNamePrefix: `mealog_daily_${dateStr}`
+        });
+        if (shared) logUsageMetric('daily_sns_share_done').catch(() => {});
+    } catch (e) {
+        if (e?.name !== 'AbortError') {
+            console.error('하루 기록 SNS 공유 실패:', e);
+            showToast(e?.message || 'SNS 공유에 실패했어요.', 'error');
+        }
+    } finally {
+        if (loadingShown) hideLoading();
+        if (btn) btn.disabled = false;
+    }
+};
+
 window.confirmDailyShare = async (dateStr, ev) => {
     const uid = window.currentUser?.uid;
     if (!uid) {
@@ -411,108 +604,7 @@ window.confirmDailyShare = async (dateStr, ev) => {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        if (!previewModal) {
-            throw new Error('미리보기 모달을 찾을 수 없습니다.');
-        }
-
-        const previewCard = previewModal.querySelector('#dailyShareCardContainer');
-        if (!previewCard) {
-            throw new Error('미리보기 카드를 찾을 수 없습니다.');
-        }
-
-        // Fredoka 폰트 CSS를 미리 가져와서 실제 @font-face URL 추출
-        let fredokaFontCSS = '';
-        // 폰트가 이미 로드되어 있는지 먼저 확인
-        const fontAlreadyLoaded = document.fonts.check('1em Fredoka');
-        
-        if (!fontAlreadyLoaded) {
-            try {
-                const fontCSSResponse = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&display=swap');
-                fredokaFontCSS = await fontCSSResponse.text();
-                // CSS를 스타일 태그로 추가하여 폰트 로드
-                const styleTag = document.createElement('style');
-                styleTag.textContent = fredokaFontCSS;
-                document.head.appendChild(styleTag);
-                
-                await document.fonts.ready;
-                let attempts = 0;
-                while (attempts < 10) {
-                    if (document.fonts.check('1em Fredoka')) break;
-                    await new Promise(resolve => setTimeout(resolve, 50));
-                    attempts++;
-                }
-            } catch (e) {
-                console.warn('Fredoka 폰트 CSS 로드 실패:', e);
-            }
-        }
-        
-        // 이미지 로드 확인 (img + background-image용 data-photo-url)
-        const images = previewCard.querySelectorAll('img');
-        const imageLoadPromises = Array.from(images).map(img => {
-            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-            return new Promise((resolve) => {
-                img.onload = resolve;
-                img.onerror = resolve;
-                setTimeout(resolve, 400);
-            });
-        });
-        const bgDivs = previewCard.querySelectorAll('[data-photo-url]');
-        const bgLoadPromises = Array.from(bgDivs).map(div => {
-            const url = div.getAttribute('data-photo-url');
-            if (!url) return Promise.resolve();
-            return new Promise((resolve) => {
-                const img = new Image();
-                img.onload = resolve;
-                img.onerror = resolve;
-                img.src = url;
-                if (img.complete) resolve();
-            });
-        });
-        await Promise.all([...imageLoadPromises, ...bgLoadPromises]);
-
-        const innerContent =
-            previewCard.querySelector('.daily-share-capture__sheet') ||
-            previewCard.querySelector(`div[style*="width: ${DAILY_SHARE_CARD_WIDTH}px"]`) ||
-            previewCard;
-
-        // 유령 캡처: 화면 밖(-10000px)에 복제본을 만들어 모달/transform/Flex 간섭 없이 정사이즈 캡처
-        const canvas = await captureWithGhostStrategy(innerContent, {
-            captureWidth: DAILY_SHARE_CARD_WIDTH,
-            allowTaint: false,
-            foreignObjectRendering: false,
-            // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
-            onclone: (clonedDoc) => {
-                const garamCss = MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
-                if (fredokaFontCSS) {
-                    const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent = fredokaFontCSS + garamCss;
-                    clonedDoc.head.appendChild(clonedStyle);
-                } else {
-                    const clonedStyle = clonedDoc.createElement('style');
-                    clonedStyle.textContent =
-                        `
-                        @font-face {
-                            font-family: 'Fredoka';
-                            font-style: normal;
-                            font-weight: 700;
-                            font-display: swap;
-                            src: url('https://fonts.gstatic.com/s/fredoka/v14/X7nP4b87HvSqjb_WIi2yDCRwoQ_k7367_DWs89XyHw.woff2') format('woff2');
-                            unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-                        }
-                    ` + garamCss;
-                    clonedDoc.head.appendChild(clonedStyle);
-                }
-                const allSpans = clonedDoc.querySelectorAll('span');
-                allSpans.forEach(el => {
-                    const style = el.getAttribute('style') || '';
-                    const text = el.textContent.trim();
-                    if (style.includes('MEALOG') || text === 'MEALOG' || (style.includes('font-family') && style.includes('Fredoka'))) {
-                        el.style.fontFamily = "'Fredoka', sans-serif";
-                        el.style.fontWeight = '700';
-                    }
-                });
-            }
-        });
+        const canvas = await captureDailyShareCanvas();
 
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('../utils.js');
@@ -589,7 +681,7 @@ window.confirmDailyShare = async (dateStr, ev) => {
             shareBtn.disabled = false;
             shareBtn.className = 'mealog-btn mealog-btn-primary';
             shareBtn.innerHTML =
-                '<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">공유하기</span></span>';
+                '<span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="dailyShareConfirmLabel">모먼트</span></span>';
             scheduleLucideIcons(shareBtn);
         }
     }
@@ -1575,9 +1667,29 @@ function bindMomentV2SocialSheetHandlePullClose(commentSection) {
     }
 }
 
+/*
+ * 배경 잠금은 공용 lockBodyScroll 로 — html overflow:hidden 만으로는 실기기 터치가
+ * 새고, scrollY 도 살아 있어 키보드 핀(overlay-keyboard-pin 의 scrollTo(0,0))이
+ * 피드를 맨 위로 날려 버렸다("댓글 열면 뒤의 사진이 휘리릭"). 잠그면 scrollY=0 이라
+ * 그 경로가 무해해지고, 닫을 때 원래 위치로 되돌린다.
+ */
+const MV2_SOCIAL_SHEET_LOCK_OWNER = 'mv2SocialCommentSheet';
+
 function mv2SetSocialSheetBodyScrollLock(on) {
     if (typeof document === 'undefined' || !document.documentElement) return;
     document.documentElement.classList.toggle('mv2-social-comment-sheet-open', Boolean(on));
+    if (on) lockBodyScroll(MV2_SOCIAL_SHEET_LOCK_OWNER);
+    else unlockBodyScroll(MV2_SOCIAL_SHEET_LOCK_OWNER);
+}
+
+/** 열려 있고 돌아갈 자리(캡션 푸터)가 아직 문서에 있는 시트 — 재배치가 건드리면 안 된다 */
+function isMomentV2SocialCommentSheetOpenInBody(commentSection) {
+    return (
+        commentSection?.dataset?.mv2SheetInBody === '1' &&
+        !commentSection.classList.contains('hidden') &&
+        commentSection.classList.contains('comment-input-open') &&
+        Boolean(commentSection._mv2SheetAnchorParent?.isConnected)
+    );
 }
 
 function mountMomentV2SocialCommentSheetToBody(commentSection) {
@@ -1630,11 +1742,22 @@ function restoreMomentV2SocialCommentSheetFromBody(commentSection) {
     }
 }
 
+/*
+ * 휠 레이아웃의 캡션 재배치(scrollend·resize·focusin 마다)가 부른다. 열린 시트까지
+ * 피드 안으로 되돌리면 댓글창에 포커스가 가는 순간 시트가 body 를 떠나 잠금이
+ * 풀리고, 댓글 로드가 끝나면 다시 body 로 — 이 왕복이 "시트 뒤가 가끔 스크롤"의
+ * 원인이었다. 열린 시트는 두고, 피드가 다시 그려져 자리를 잃은 시트만 거둔다.
+ */
 function restoreAllMomentV2SocialCommentSheetsFromBody() {
+    let stillOpen = false;
     document.querySelectorAll(`.moment-v2-social-comments-panel.${MV2_SOCIAL_SHEET_BODY_CLASS}`).forEach((el) => {
+        if (isMomentV2SocialCommentSheetOpenInBody(el)) {
+            stillOpen = true;
+            return;
+        }
         restoreMomentV2SocialCommentSheetFromBody(el);
     });
-    mv2SetSocialSheetBodyScrollLock(false);
+    if (!stillOpen) mv2SetSocialSheetBodyScrollLock(false);
 }
 
 window.restoreMomentV2SocialCommentSheetsFromBody = restoreAllMomentV2SocialCommentSheetsFromBody;
@@ -1737,14 +1860,21 @@ window.viewAllComments = async (postId) => {
         }
         const v2Section = document.getElementById(`comment-section-${postId}`);
         if (v2Section?.classList?.contains('moment-v2-social-comments-panel')) {
-            v2Section.classList.remove('comment-input-open');
-            v2Section.classList.remove('hidden');
-            mountMomentV2SocialCommentSheetToBody(v2Section);
-            requestAnimationFrame(() => {
+            // toggleCommentInput 이 이미 올린 시트를 댓글 로드 뒤 다시 내렸다 올리지 않는다
+            const alreadyOpen =
+                v2Section.dataset.mv2SheetInBody === '1' &&
+                !v2Section.classList.contains('hidden') &&
+                v2Section.classList.contains('comment-input-open');
+            if (!alreadyOpen) {
+                v2Section.classList.remove('comment-input-open');
+                v2Section.classList.remove('hidden');
+                mountMomentV2SocialCommentSheetToBody(v2Section);
                 requestAnimationFrame(() => {
-                    v2Section.classList.add('comment-input-open');
+                    requestAnimationFrame(() => {
+                        v2Section.classList.add('comment-input-open');
+                    });
                 });
-            });
+            }
         }
         syncMomentV2SocialCommentEmptyOverlay(postId);
     } catch (e) {
@@ -2055,6 +2185,17 @@ window.submitComment = async (postId) => {
         console.error("[submitComment] 에러:", e);
         const errorMessage = e.message || e.details || e.code || "댓글 작성에 실패했습니다.";
         showToast(errorMessage, 'error');
+        /* 전송 전에 비운 입력창을 되돌린다 — 실패하면 쓴 글이 사라지던 자리다 (2026-08-30 밀톡 사고와 같은 구조).
+           그 사이에 다음 댓글을 이미 쓰고 있었다면 덮어쓰지 않는다. */
+        if (inputEl && !inputEl.value.trim()) {
+            inputEl.value = commentText;
+            try {
+                syncCommentSendButtonVisibility(postId, inputEl);
+            } catch (_) {}
+            try {
+                syncMomentV2CommentTextareaHeight(inputEl);
+            } catch (_) {}
+        }
         // 낙관적 업데이트 롤백
         if (commentsListEl) {
             const tempRow = commentsListEl.querySelector(`[data-temp-comment-id="${tempId}"]`);

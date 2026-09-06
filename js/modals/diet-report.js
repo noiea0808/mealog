@@ -22,6 +22,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
@@ -226,14 +227,16 @@ function setSnsShareButtonPreparing(preparing) {
     if (!btn || btn.classList.contains('hidden')) return;
     if (preparing) {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i>';
+        btn.innerHTML =
+            '<span class="diet-report-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>SNS</span></span>';
         btn.setAttribute('aria-label', '공유 이미지 준비 중');
         btn.title = '공유 이미지 준비 중…';
     } else {
         btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
-        btn.setAttribute('aria-label', '다른 SNS에 공유');
-        btn.title = '다른 SNS에 공유';
+        btn.innerHTML =
+            '<span class="diet-report-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>';
+        btn.setAttribute('aria-label', '다른 앱으로 공유');
+        btn.title = '카카오톡·인스타 등으로 보내기';
     }
     scheduleLucideIcons(btn);
 }
@@ -306,10 +309,12 @@ function setSnsShareButton(visible) {
             btn.classList.remove('opacity-60');
         }
         if (!btn.querySelector('[data-lucide], svg')) {
-            btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
+            btn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>';
         }
         scheduleLucideIcons(btn);
     }
+    syncDietReportActionsLayout();
 }
 
 /** 헤더(다시 분석) + 하단(모먼트 공유) 표시/상태 제어 */
@@ -338,16 +343,27 @@ function setFooterButtons({ regen = false, share = false, regenLabel = '다시 �
         } else {
             shareBtn.className = 'mealog-btn mealog-btn-primary';
             shareBtn.innerHTML =
-                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span>';
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트</span></span>';
         }
         if (!share) shareBtn.classList.add('hidden');
         else scheduleLucideIcons(shareBtn);
     }
+    syncDietReportActionsLayout();
+}
+
+/**
+ * 하단 액션 영역의 가로/세로 배치를 정한다.
+ * 닫기 말고 보이는 버튼이 하나라도 있으면 가로(3버튼까지), 없으면 닫기 하나만 세로로 채운다.
+ * 모먼트 공유와 SNS 는 표시 조건이 서로 달라서 한 곳에서 함께 판단해야 어긋나지 않는다.
+ */
+function syncDietReportActionsLayout() {
     const actions = document.getElementById('dietReportModalActions');
-    if (actions) {
-        actions.classList.toggle('mealog-dialog-actions--pair', !!share);
-        actions.classList.toggle('mealog-dialog-actions--single', !share);
-    }
+    if (!actions) return;
+    const shareVisible = !document.getElementById('dietReportShareBtn')?.classList.contains('hidden');
+    const snsVisible = !document.getElementById('dietReportSnsShareBtn')?.classList.contains('hidden');
+    const multi = shareVisible || snsVisible;
+    actions.classList.toggle('mealog-dialog-actions--pair', multi);
+    actions.classList.toggle('mealog-dialog-actions--single', !multi);
 }
 
 function renderLoading(mode = 'fetch') {
@@ -523,7 +539,11 @@ async function runRegenerate(dateStr) {
     }
 }
 
-export async function openDietReportModal(dateStr) {
+/**
+ * @param {string} dateStr
+ * @param {''|'welcome'|'timeline'} [from] 계측용 진입 경로 — logUsageMetric 은 키만 받으므로 키 이름으로 가른다
+ */
+export async function openDietReportModal(dateStr, from = '') {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast('로그인이 필요합니다.', 'error');
         return;
@@ -539,6 +559,8 @@ export async function openDietReportModal(dateStr) {
     if (title) title.textContent = `AI 식단분석 · ${formatMealogDateLabel(dateStr)}`;
 
     setModalVisible(true);
+    if (from === 'welcome') logUsageMetric('diet_report_open_welcome').catch(() => {});
+    else if (from === 'timeline') logUsageMetric('diet_report_open_timeline').catch(() => {});
     void getShareCaptureFontCss();
 
     const mealCount = countAnalyzableMealsForDate(dateStr);
@@ -795,6 +817,12 @@ async function shareDietReportToSns() {
 
     const snsBtn = document.getElementById('dietReportSnsShareBtn');
     _sharing = true;
+    /**
+     * 모먼트 SNS 공유(feed-options-report.js)와 같은 규칙이다 — 여기는 「눌러서 실제로
+     * 시도가 시작됐다」, done 은 「공유 시트가 대상 앱으로 넘겼다」. 이미지 생성 실패는
+     * tap 에만 잡히므로 두 행의 차이엔 취소뿐 아니라 준비 실패도 섞인다.
+     */
+    logUsageMetric('diet_report_sns_tap').catch(() => {});
 
     try {
         if (!_snsShareBlob) {
@@ -808,11 +836,12 @@ async function shareDietReportToSns() {
         }
 
         if (snsBtn) snsBtn.disabled = true;
-        await shareBlobsToExternal([_snsShareBlob], {
+        const shared = await shareBlobsToExternal([_snsShareBlob], {
             appendLogo: false,
             resize: false,
             fileNamePrefix: `mealog_ai_diet_${_currentDate}`
         });
+        if (shared) logUsageMetric('diet_report_sns_done').catch(() => {});
     } catch (e) {
         if (e?.name !== 'AbortError') {
             console.error('shareDietReportToSns failed', e);
@@ -888,7 +917,7 @@ function bindDietReportTimelineDelegation() {
         if (!dateStr) return;
         e.preventDefault();
         e.stopPropagation();
-        void openDietReportModal(dateStr);
+        void openDietReportModal(dateStr, 'timeline');
     });
 }
 

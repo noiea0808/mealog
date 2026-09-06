@@ -33,11 +33,13 @@ import {
     weekLabelKoreanFromSunday
 } from './utils.js';
 import { SLOTS } from '../constants.js';
+import { MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import {
     HOUR_BUCKETS,
     hourSlotForMealDoc,
     hourSlotForJournalEntry
 } from './dashboard-hour-buckets.js';
+import { sumMemoRowArrays, sumMemoRowTotals } from './dashboard-memo-row.js';
 import {
     rescanStartDateKey,
     rescanFromWeekIndex,
@@ -88,7 +90,14 @@ const PAGE_VIEW_METRIC_DEFS = [
     { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
     { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
+    /**
+     * SNS 공유 — 「공유 시트로 넘김」은 대상 앱을 골랐다는 뜻까지다. 실제 게시 여부는
+     * OS 가 알려주지 않는다. 두 행의 차이가 「열어 보고 그만둔 양」이다.
+     */
+    { field: 'moment_sns_share_tap', section: '모먼트', label: 'SNS 공유 누름' },
+    { field: 'moment_sns_share_done', section: '모먼트', label: 'SNS 공유 시트로 넘김' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
+    { field: 'promo_eat_together_click', section: '밀로그', label: '같이 먹자 배너 클릭' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },
     { field: 'lounge_board', section: '라운지', label: '게시판' },
     { field: 'lounge_notice', section: '라운지', label: '공지' },
@@ -96,7 +105,40 @@ const PAGE_VIEW_METRIC_DEFS = [
     // 마이 > 태그 탭은 없어졌다(나만의 태그 제거) — 호출부가 없어 더 오르지 않지만 과거 이력이 남아 있다
     { field: 'settings_tags', section: '사용자', label: '태그 관리(폐지)' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
-    { field: 'settings_push', section: '사용자', label: '푸시 알림' }
+    { field: 'settings_push', section: '사용자', label: '푸시 알림' },
+    /**
+     * 웰컴 팝업 — 「뜬 것」과 「본 것」은 다르다.
+     * 첫 화면(shown_*)은 요일별 기본값이 정하는 것이라 사용자 선택이 아니다. 사용자가 고른
+     * 것은 kind_switch_* 쪽이다. 둘을 같은 줄로 읽지 말 것.
+     */
+    { field: 'welcome_shown_report', section: '웰컴', label: '첫 화면 리포트' },
+    { field: 'welcome_shown_meal', section: '웰컴', label: '첫 화면 식사' },
+    { field: 'welcome_shown_snack', section: '웰컴', label: '첫 화면 간식' },
+    { field: 'welcome_dwell_3s', section: '웰컴', label: '3초 이상 머묾' },
+    { field: 'welcome_kind_switch_report', section: '웰컴', label: '탭 전환 → 리포트' },
+    { field: 'welcome_kind_switch_meal', section: '웰컴', label: '탭 전환 → 식사' },
+    { field: 'welcome_kind_switch_snack', section: '웰컴', label: '탭 전환 → 간식' },
+    { field: 'welcome_slide_move', section: '웰컴', label: '슬라이드 넘김' },
+    { field: 'welcome_report_nav', section: '웰컴', label: '리포트 날짜 이동' },
+    /**
+     * AI 식단분석 리포트 열람 — 분모는 welcome_shown_report 다.
+     * 이 두 행이 낮으면 리포트를 덜 만들어도 되고, 높으면 비용을 아끼면 안 된다는 뜻이다.
+     */
+    { field: 'diet_report_open_welcome', section: '리포트', label: '웰컴에서 열기' },
+    { field: 'diet_report_open_timeline', section: '리포트', label: '타임라인에서 열기' },
+    // 모먼트 SNS 공유 두 행과 같은 규칙 — 여기 차이엔 취소 외에 이미지 생성 실패도 섞인다
+    { field: 'diet_report_sns_tap', section: '리포트', label: 'SNS 공유 누름' },
+    { field: 'diet_report_sns_done', section: '리포트', label: 'SNS 공유 시트로 넘김' },
+    /**
+     * 공유 카드 세 종의 외부 SNS 내보내기 — 모먼트 공유와 나란히 놓인 버튼이다.
+     * 같은 카드를 「모먼트에 올린 수」와 견주어야 두 갈래 중 어디로 나가는지 읽힌다.
+     */
+    { field: 'daily_sns_share_tap', section: '밀로그', label: '하루 기록 SNS 누름' },
+    { field: 'daily_sns_share_done', section: '밀로그', label: '하루 기록 SNS 시트로 넘김' },
+    { field: 'best_sns_share_tap', section: '분석', label: '베스트 SNS 누름' },
+    { field: 'best_sns_share_done', section: '분석', label: '베스트 SNS 시트로 넘김' },
+    { field: 'insight_sns_share_tap', section: '분석', label: '인사이트 SNS 누름' },
+    { field: 'insight_sns_share_done', section: '분석', label: '인사이트 SNS 시트로 넘김' }
 ];
 
 /**
@@ -133,6 +175,15 @@ const RECORD_USAGE_METRIC_DEFS = [
     // 손대지 않고 저장 = 추측이 그대로 적용된 기록 — 교정률의 분모
     { field: 'context_predict_auto_saved', section: '맥락 줄', label: '그대로 저장' },
     { field: 'context_place_typed', section: '맥락 줄', label: '어디서 직접 입력' },
+    /**
+     * 어디서 인라인 검색 — 적으면 곧 검색이다(entry-context-predict.js).
+     * 「내 이력」과 「지도」를 갈라 세는 것이 요점이다. 이력 쪽이 클수록 카카오 호출이
+     * 적다는 뜻이고(분당 15회 제한), 지도 쪽이 클수록 새로 가는 곳이 많다는 뜻이다.
+     */
+    { field: 'context_place_found_recent', section: '맥락 줄', label: '어디서 이력 후보 표시' },
+    { field: 'context_place_picked_recent', section: '맥락 줄', label: '어디서 이력 후보 선택' },
+    { field: 'context_place_found_kakao', section: '맥락 줄', label: '어디서 지도 후보 표시' },
+    { field: 'context_place_picked_kakao', section: '맥락 줄', label: '어디서 지도 후보 선택' },
     { field: 'context_sub_picked', section: '맥락 줄', label: '누구와 세부 선택' },
     { field: 'context_sub_added', section: '맥락 줄', label: '누구와 세부 추가' },
     { field: 'context_sub_deleted', section: '맥락 줄', label: '누구와 세부 삭제' },
@@ -272,15 +323,40 @@ function computePageUsageSectionRowspans() {
     return spans;
 }
 
+/**
+ * 구분 셀 색 — **정체성이 아니라 덩어리 나누기**다.
+ *
+ * 어느 구분인지는 셀에 적힌 글자가 말한다. 색이 하는 일은 53행짜리 표에서
+ * 「여기서 묶음이 바뀐다」를 눈에 띄게 하는 것뿐이라, 구분마다 고유색을 박지 않고
+ * 4톤을 돌려 쓴다 — 이웃끼리만 다르면 목적을 다한다.
+ *
+ * 4톤인 것은 취향이 아니라 검증 결과다. 8색 팔레트에서 7색을 한 화면에 올리면 전 쌍
+ * 색각 분리가 깨진다(정상시 ΔE 12.9 < 15 하한). blue·orange·aqua·violet 네 개는 전 쌍
+ * 통과다. 구분을 중간에 끼워 넣어도 이웃 충돌이 안 생기도록 이름이 아니라 순서로 돌린다.
+ */
+function computePageUsageSectionTones() {
+    const n = PAGE_USAGE_METRIC_DEFS.length;
+    const tones = new Array(n).fill(1);
+    let sectionIdx = -1;
+    for (let i = 0; i < n; i++) {
+        if (i === 0 || PAGE_USAGE_METRIC_DEFS[i - 1].section !== PAGE_USAGE_METRIC_DEFS[i].section) {
+            sectionIdx++;
+        }
+        tones[i] = (sectionIdx % 4) + 1;
+    }
+    return tones;
+}
+
 function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v7-page-record-split`;
+    const buildKey = `${n}-v8-section-tones`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
     const rowSpans = computePageUsageSectionRowspans();
+    const sectionTones = computePageUsageSectionTones();
     const sectionCellClass =
         'px-2 py-2 text-sm sticky left-0 z-20 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle text-center';
     const labelCellClass =
@@ -292,7 +368,7 @@ function ensurePageUsageTableBody() {
         if (rs > 0) {
             const rowspanAttr = rs > 1 ? ` rowspan="${rs}"` : '';
             cells.push(
-                `<td${rowspanAttr} class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
+                `<td${rowspanAttr} data-usage-tone="${sectionTones[rowIdx]}" class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
             );
         }
         cells.push(
@@ -310,7 +386,8 @@ function ensurePageUsageTableBody() {
                 `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
             );
         }
-        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
+        const sectionStart = rs > 0 ? ' data-usage-section-start' : '';
+        return `<tr class="group border-b border-slate-300"${sectionStart} data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
     }).join('');
     _pageUsageTableBuildKey = buildKey;
     // tbody를 다시 만들면 숨김이 풀린다 — 지금 보고 있는 탭으로 되돌린다
@@ -714,7 +791,7 @@ const RECORD_HOUR_7_SUM_IDS = ['statRecHourTotal_7Sum', ...HOUR_BUCKETS.map((b) 
 const DASHBOARD_7D_ROW_PREFIXES = [
     'statNewUsers7d', 'statActiveUsers7d', 'statRecords7d',
     ...RECORD_SLOT_7D_PREFIXES,
-    'statDailyJournal7d',
+    'statMemo7d',
     'statRecordedUsers7d',
     ...RECORD_HOUR_7D_PREFIXES,
     'statShared7d'
@@ -723,7 +800,7 @@ const DASHBOARD_7D_ROW_PREFIXES = [
 const DASHBOARD_7_SUM_IDS = [
     'statNewUsers7Sum', 'statActiveUsers7Sum', 'statRecords7Sum',
     ...RECORD_SLOT_7_SUM_IDS,
-    'statDailyJournal7Sum',
+    'statMemo7Sum',
     'statRecordedUsers7Sum',
     ...RECORD_HOUR_7_SUM_IDS,
     'statShared7Sum'
@@ -826,7 +903,9 @@ function cloneLast7Breakdown(raw) {
         // 기록한 사람도 마찬가지 (시간대와 같은 recordedAt 축)
         ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pick(raw.recordedUsers) } : {}),
         sharedPhotos: pick(raw.sharedPhotos),
-        dailyJournal: pick(raw.dailyJournal)
+        dailyJournal: pick(raw.dailyJournal),
+        // 사용자 메모는 나중에 생긴 축이라 옛 캐시엔 없다 — 없으면 통째로 빼서 하루 소감만으로 센다
+        ...(Array.isArray(raw.memo) ? { memo: pick(raw.memo) } : {})
     };
 }
 
@@ -882,6 +961,8 @@ function cloneWeeklyBreakdown(raw) {
         ...(rbh ? { recordsByHour, recordsByHourTotal: sumHourBucketArrays(recordsByHour, n) } : {}),
         sharedPhotos: pickWeekArr(raw.sharedPhotos, n),
         dailyJournal: pickWeekArr(raw.dailyJournal, n),
+        // 사용자 메모는 나중에 생긴 축이다 — 옛 캐시에 없으면 하루 소감만 세게 둔다
+        ...(Array.isArray(raw.memo) ? { memo: pickWeekArr(raw.memo, n) } : {}),
         // 옛 캐시엔 없다 — 없으면 행이 '—'로 남는다
         ...(Array.isArray(raw.recordedUsers) ? { recordedUsers: pickWeekArr(raw.recordedUsers, n) } : {}),
         ...(activeUsersMonthUnique ? { activeUsersMonthUnique } : {}),
@@ -1120,7 +1201,7 @@ function weeklyValuesForRow(key, weeklyBreakdown) {
     if (key === 'activeUsers') return weeklyBreakdown.activeUsers || [];
     if (key === 'recordedUsers') return weeklyBreakdown.recordedUsers || [];
     if (key === 'sharedPhotos') return weeklyBreakdown.sharedPhotos || [];
-    if (key === 'dailyJournal') return weeklyBreakdown.dailyJournal || [];
+    if (key === 'memo') return sumMemoRowArrays(weeklyBreakdown.dailyJournal, weeklyBreakdown.memo);
     if (key === 'records') return weeklyBreakdown.records || [];
     if (key.startsWith('slot:')) {
         const id = key.slice(5);
@@ -1309,12 +1390,23 @@ const DASHBOARD_STATS_REF = () => doc(db, 'artifacts', appId, 'adminSettings', '
 
 /**
  * 「전체」열을 세는 slotId 목록.
- * 뒤에 붙은 'daily_journal'은 슬롯 행이 아니라 **하루 소감 meals 미러**의 건수다 —
- * 하루 소감은 config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서,
- * 미러 수를 알아야 「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ *
+ * 뒤에 붙은 둘은 슬롯 행이 아니다.
+ *
+ * - `'daily_journal'` 은 **하루 소감 meals 미러**의 건수다. 하루 소감은
+ *   config/settings 의 dailyComments 와 meals 미러 문서 양쪽에 있어서, 미러 수를 알아야
+ *   「기록 · 전체」에서 같은 기록을 두 번 세지 않는다 (dbOps.syncDailyJournalMealMirror).
+ * - `'memo'` 는 사용자 메모다. 이쪽은 meals 가 정본이라 뺄 것이 없고, 세는 이유가
+ *   반대다 — 안 세면 「기록 · 전체」에만 섞이고 어느 행에도 안 보인다
+ *   (docs/user-memo-items.md §6.3).
  */
-const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal'];
-const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.length - 1;
+const MEAL_COUNT_SLOT_IDS = [...SLOTS.map((s) => s.id), 'daily_journal', MEMO_SLOT_ID];
+const JOURNAL_MIRROR_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.indexOf('daily_journal');
+/**
+ * 사용자 메모(docs/user-memo-items.md)의 「전체」. 하루 소감과 달리 meals 가 정본이라
+ * 미러 보정이 없다 — 이 값이 그대로 메모 건수다.
+ */
+const MEMO_COUNT_INDEX = MEAL_COUNT_SLOT_IDS.indexOf(MEMO_SLOT_ID);
 
 /**
  * 컬렉션 그룹 `slotId` 인덱스가 없을 때(aggregation failed-precondition):
@@ -1462,6 +1554,8 @@ export async function getUserStatistics(options = {}) {
         });
         const slotAgg = {};
         for (const s of SLOTS) slotAgg[s.id] = emptySlotAgg();
+        // 사용자 메모도 같은 통에 담는다 — scanMealDoc 이 slotId 로 찾아 넣는다
+        slotAgg[MEMO_SLOT_ID] = emptySlotAgg();
 
         /**
          * 시간대 집계. 슬롯과 달리 「전체」를 count 쿼리로 못 센다 —
@@ -1534,6 +1628,7 @@ export async function getUserStatistics(options = {}) {
             recordsByHour: {},
             sharedPhotos: { all: 0, last7: 0, today: 0 },
             dailyJournal: { all: 0, last7: 0, today: 0 },
+            memo: { all: 0, last7: 0, today: 0 },
             totalUsers: 0,
             totalMeals: 0,
             totalSharedPhotos: 0,
@@ -1903,6 +1998,16 @@ export async function getUserStatistics(options = {}) {
         stats.dailyJournal.last7 = dailyJournalLast7;
 
         /**
+         * 사용자 메모. 하루 소감과 달리 되찾을 것이 없다 — meals 가 정본이라
+         * 「전체」는 count 쿼리(또는 미러 전량)가 이미 정확하고, 최근 7일·오늘은
+         * 다시 세는 구간 안이라 스캔이 빠짐없이 훑는다.
+         */
+        const memoAgg = slotAgg[MEMO_SLOT_ID];
+        stats.memo.all = Math.max(0, slotAllArr[MEMO_COUNT_INDEX] ?? 0);
+        stats.memo.today = memoAgg.today;
+        stats.memo.last7 = memoAgg.last7;
+
+        /**
          * 「전체」는 스캔 구간 밖 날짜도 포함해야 해서 미러 키 집합(구간 내)만으로는 못 뺀다.
          * meals 전량 count 에 섞여 있는 미러 문서 수를 통째로 덜어내고 dailyComments 전량을 얹는다.
          */
@@ -2104,7 +2209,8 @@ export async function getUserStatistics(options = {}) {
             recordsBySlot: recordsBySlotBreakdown,
             recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byDay]])),
             sharedPhotos: [...sharedByDayCounts],
-            dailyJournal: [...dailyJournalByDay]
+            dailyJournal: [...dailyJournalByDay],
+            memo: [...slotAgg[MEMO_SLOT_ID].byDay]
         };
 
         stats.weeklyBreakdown =
@@ -2134,7 +2240,8 @@ export async function getUserStatistics(options = {}) {
                               recordsBySlot: Object.fromEntries(SLOTS.map((x) => [x.id, [...slotAgg[x.id].byWeek]])),
                               recordsByHour: Object.fromEntries(HOUR_BUCKETS.map((b) => [b.id, [...hourAgg[b.id].byWeek]])),
                               sharedPhotos: sharedSetsByWeek.map((x) => x.size),
-                              dailyJournal: [...dailyJournalByWeek]
+                              dailyJournal: [...dailyJournalByWeek],
+                              memo: [...slotAgg[MEMO_SLOT_ID].byWeek]
                           };
                       }
 
@@ -2199,7 +2306,8 @@ export async function getUserStatistics(options = {}) {
                               rescanFromIdx,
                               nWeeks
                           ),
-                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek)
+                          dailyJournal: mergeCount(cw.dailyJournal, dailyJournalByWeek),
+                          memo: mergeCount(cw.memo, slotAgg[MEMO_SLOT_ID].byWeek)
                       };
                   })()
                 : null;
@@ -2377,7 +2485,11 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         set('statRecordedUsersAll', stats.recordedUsers?.all);
         set('statRecordsAll', stats.records?.all);
         set('statSharedAll', stats.sharedPhotos?.all);
-        set('statDailyJournalAll', stats.dailyJournal?.all);
+        // 「메모」행은 하루 소감과 사용자 메모를 합쳐 보여준다 (dashboard-memo-row.js 주석 참조)
+        const memoAllSum = sumMemoRowTotals(stats.dailyJournal?.all, stats.memo?.all);
+        const memoLast7Sum = sumMemoRowTotals(stats.dailyJournal?.last7, stats.memo?.last7);
+        const memoByDay = sumMemoRowArrays(bd?.dailyJournal, bd?.memo);
+        set('statMemoAll', memoAllSum);
 
         renderDashboard7dHeaders(bd?.dates);
         fillDashboard7dNumericRow('statNewUsers7d', bd?.newUsers, stats.newUsers?.last7);
@@ -2385,14 +2497,14 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
         fillDashboard7dNumericRow('statRecordedUsers7d', bd?.recordedUsers, stats.recordedUsers?.last7);
         fillDashboard7dNumericRow('statRecords7d', bd?.records, stats.records?.last7);
         fillDashboard7dNumericRow('statShared7d', bd?.sharedPhotos, stats.sharedPhotos?.last7);
-        fillDashboard7dNumericRow('statDailyJournal7d', bd?.dailyJournal, stats.dailyJournal?.last7);
+        fillDashboard7dNumericRow('statMemo7d', memoByDay, memoLast7Sum);
 
         set('statNewUsers7Sum', sumSevenDaily(bd?.newUsers) ?? stats.newUsers?.last7);
         set('statActiveUsers7Sum', stats.activeUsers?.last7);
         set('statRecordedUsers7Sum', stats.recordedUsers?.last7);
         set('statRecords7Sum', sumSevenDaily(bd?.records) ?? stats.records?.last7);
         set('statShared7Sum', sumSevenDaily(bd?.sharedPhotos) ?? stats.sharedPhotos?.last7);
-        set('statDailyJournal7Sum', sumSevenDaily(bd?.dailyJournal) ?? stats.dailyJournal?.last7);
+        set('statMemo7Sum', sumSevenDaily(memoByDay) ?? memoLast7Sum);
 
         SLOTS.forEach((s) => {
             const d = stats.recordsBySlot?.[s.id] || { all: 0, last7: 0, today: 0 };
@@ -2430,7 +2542,7 @@ export function renderDashboardStats(stats, updatedAt, last7BreakdownOverride = 
     } else {
         const recordSlotAll = SLOTS.map((s) => `statRecSlot_${s.id}_all`);
         const recordHourAll = ['statRecHourTotal_all', ...HOUR_BUCKETS.map((b) => `statRecHour_${b.id}_all`)];
-        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statDailyJournalAll', ...recordSlotAll, ...recordHourAll].forEach(
+        ['statNewUsersAll', 'statActiveUsersAll', 'statRecordedUsersAll', 'statRecordsAll', 'statSharedAll', 'statMemoAll', ...recordSlotAll, ...recordHourAll].forEach(
             (id) => set(id, null)
         );
         renderDashboard7dHeaders(null);
@@ -2524,6 +2636,7 @@ export async function updateStatistics() {
             recordsByHour: data.recordsByHour && typeof data.recordsByHour === 'object' ? data.recordsByHour : {},
             sharedPhotos: data.sharedPhotos || { all: 0, last7: 0, today: 0 },
             dailyJournal: data.dailyJournal || { all: 0, last7: 0, today: 0 },
+            memo: data.memo || { all: 0, last7: 0, today: 0 },
             weeklyBreakdown: data.weeklyBreakdown && data.weeklyBreakdown.weeks?.length ? data.weeklyBreakdown : null
         };
         let last7Breakdown = cloneLast7Breakdown(data.last7Breakdown);
@@ -2630,6 +2743,7 @@ export async function refreshDashboardStats(options = {}) {
                     recordsByHour: stats.recordsByHour,
                     sharedPhotos: stats.sharedPhotos,
                     dailyJournal: stats.dailyJournal,
+                    memo: stats.memo,
                     last7Breakdown: stats.last7Breakdown || null,
                     weeklyBreakdown: stats.weeklyBreakdown || null,
                     pageUsage,

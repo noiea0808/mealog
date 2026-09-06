@@ -20,6 +20,7 @@ import { REPORT_REASONS } from '../constants.js';
 import { escapeHtml, fetchAdminEmailsForUserIds, runAdminRefreshAction } from './utils.js';
 import { refreshLucideIcons } from '../icons.js';
 import { fetchAllUsersForAdminAnalytics } from './users.js';
+import { openDashboardUserDetail } from './dashboard-user-drilldown.js';
 import {
     normalizeDailyJournalEntry,
     dailyJournalHasContent,
@@ -30,7 +31,8 @@ import {
     dailyJournalMealDocToModerationFields,
     isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
-import { isMemoMealRecord } from '../utils/slot-plan.js';
+import { isMemoMealRecord, defaultMemoItemByKey } from '../utils/slot-plan.js';
+import { formatMealClockTagLabel } from '../meal-time-utils.js';
 import {
     collection,
     collectionGroup,
@@ -1103,6 +1105,34 @@ async function getFeedPageWithCache(page) {
     return items;
 }
 
+/**
+ * 숫자 메모(체중·혈당)의 값 한 줄 — '체중 93.0 kg'.
+ *
+ * 단위와 소수 자리는 **문서에 없다**. 메모 저장이 담는 것은 `value` 와
+ * `memoLabel` 뿐이고(user-memo-items §6.1), 단위는 그 사용자의 slotPlan 에
+ * 산다. 관리자는 행마다 남의 설정을 읽어 오지 않으므로 **기본 메모 key** 로만
+ * 단위를 되살린다 — 체중·혈당이 바로 그 둘이다.
+ *
+ * 사용자가 만든 숫자 메모는 정의를 못 찾으니 값만 적는다. 반올림도 하지
+ * 않는다 — 자릿수를 모르는 채 깎으면 적힌 값이 아닌 것이 보인다.
+ *
+ * `withLabel` 은 부르는 자리가 항목 이름을 이미 보여 주는지에 달렸다. 목록의
+ * 값 칸은 92px 이고 바로 옆 '식사구분' 칸에 같은 이름이 서 있으므로 값만
+ * 적어 한 줄에 담는다. 내보내기는 하루기록 지표와 한 칸을 나눠 쓰니 이름이
+ * 있어야 무엇의 숫자인지 남는다.
+ */
+function formatMemoValueAdminText(row, { withLabel = true } = {}) {
+    const raw = row?.value;
+    if (raw == null || raw === '') return '';
+    const num = Number(raw);
+    if (!Number.isFinite(num)) return '';
+    const def = defaultMemoItemByKey(String(row?.slotKey || ''));
+    const valueText = def ? (def.decimals === 1 ? num.toFixed(1) : String(Math.round(num))) : String(num);
+    const label = withLabel ? String(row?.memoLabel || def?.label || '').trim() : '';
+    const unit = def?.unit ? ` ${def.unit}` : '';
+    return `${label ? `${label} ` : ''}${valueText}${unit}`;
+}
+
 function mealDocSnapToFeedRow(d) {
     const pathParts = d.ref.path.split('/');
     const uidx = pathParts.indexOf('users');
@@ -1125,7 +1155,15 @@ function mealRowToFeedRow(row) {
         return {
             ...row,
             isUserMemo: true,
+            memoValueText: formatMemoValueAdminText(row),
             slotDisplayDate: formatKoDateLabelFromYmd(String(row.date || '')),
+            /**
+             * 메모는 하루 다건이 정상이라(user-memo-items §3.2) 날짜·항목명만으로는
+             * 두 건이 같아 보인다. 등록일시는 저장 시각이라 답이 못 된다 — 이틀치를
+             * 몰아 적으면 등록은 1분 차이고 기록 날짜만 다르다. 사용자 화면과 같은
+             * 함수로 기록 시각을 함께 보인다.
+             */
+            slotDisplayClock: formatMealClockTagLabel(row.mealClock),
             slotDisplayLabel: label
         };
     }
@@ -1574,6 +1612,8 @@ async function renderFeedManagement() {
     const container = document.getElementById('feedManagementContainer');
     if (!container) return;
 
+    // 목록을 다시 그리면 메뉴가 붙어 있던 이름 칸이 사라진다
+    closeFeedAuthorMenu();
     ensureFeedAuthorSearchHandlers();
     
     container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader-circle" class="text-2xl mb-2 lucide-spin"></i><p>로딩 중...</p></div>';
@@ -1800,6 +1840,9 @@ async function renderFeedManagement() {
             const dailyJournalMetricsHtml = isDailyJournal
                 ? formatDailyJournalMetricsAdminHtml(meal.dailyJournalEntry)
                 : '';
+            // 숫자 메모(체중·혈당)의 값 — 하루기록 지표와 같은 칸에 싣는다.
+            // 이름은 옆 '식사구분' 칸에 이미 있어 값만 적는다
+            const memoValueText = isUserMemo ? formatMemoValueAdminText(meal, { withLabel: false }) : '';
             const photoUrls = (() => {
                 if (Array.isArray(meal.photos) && meal.photos.length > 0) {
                     return meal.photos.map((u) => String(u || '').trim()).filter(Boolean);
@@ -1852,8 +1895,8 @@ async function renderFeedManagement() {
             })();
             const mealSlotDisplay =
                 typeof meal.slotDisplayLabel === 'string'
-                    ? { date: meal.slotDisplayDate ?? '', label: meal.slotDisplayLabel }
-                    : { date: mealDateLabel, label: mealSlotLabel };
+                    ? { date: meal.slotDisplayDate ?? '', clock: meal.slotDisplayClock ?? '', label: meal.slotDisplayLabel }
+                    : { date: mealDateLabel, clock: '', label: mealSlotLabel };
 
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
@@ -1873,7 +1916,7 @@ async function renderFeedManagement() {
                     </td>
                     <td class="px-3 py-3 align-middle w-[176px] max-w-[176px] text-center border-r border-slate-200">
                         <div class="flex flex-col items-center gap-1 overflow-hidden">
-                            <button type="button" class="admin-feed-author-filter text-sm font-semibold text-emerald-700 hover:text-emerald-900 hover:underline break-words cursor-pointer bg-transparent border-0 p-0 text-center" data-user-id="${escapeHtml(meal.userId)}" data-nickname="${escapeHtml(userInfo.nickname)}" title="이 작성자 기록만 보기">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</button>
+                            <button type="button" class="admin-feed-author-menu text-sm font-semibold text-emerald-700 hover:text-emerald-900 hover:underline break-words cursor-pointer bg-transparent border-0 p-0 text-center" data-user-id="${escapeHtml(meal.userId)}" data-nickname="${escapeHtml(userInfo.nickname)}" data-icon="${escapeHtml(userInfo.icon || '')}" data-email="${escapeHtml(userInfo.email || '')}" aria-haspopup="menu" title="작성자 메뉴 열기">${userInfo.icon} ${escapeHtml(userInfo.nickname)}</button>
                             ${userInfo.email ? `<span class="text-[11px] text-slate-500 break-all leading-tight">${escapeHtml(userInfo.email)}</span>` : ''}
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-bold rounded">${typeLabel}</span>
                         </div>
@@ -1881,6 +1924,7 @@ async function renderFeedManagement() {
                     <td class="px-2 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
                         <div class="inline-flex flex-col items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold leading-tight">
                             ${mealSlotDisplay.date ? `<span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.date))}</span>` : ''}
+                            ${mealSlotDisplay.clock ? `<span class="whitespace-nowrap text-[11px] font-medium text-slate-500">${escapeHtml(String(mealSlotDisplay.clock))}</span>` : ''}
                             <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
                         </div>
                     </td>
@@ -1892,6 +1936,12 @@ async function renderFeedManagement() {
                         ${
                             isDailyJournal
                                 ? `<div class="text-xs leading-tight">${dailyJournalMetricsHtml}</div>`
+                                : isUserMemo
+                                ? `<div class="text-xs leading-tight">${
+                                      memoValueText
+                                          ? `<div class="font-bold text-slate-700 whitespace-nowrap">${escapeHtml(memoValueText)}</div>`
+                                          : '<span class="text-slate-300 text-xs">-</span>'
+                                  }</div>`
                                 : `<div class="text-xs leading-tight">
                             <div class="font-bold text-slate-700 break-words">만족도 ${escapeHtml(String(ratingVal ?? '-'))}</div>
                             <div class="font-bold text-slate-600 break-words mt-0.5">포만감 ${escapeHtml(String(satietyVal ?? '-'))}</div>
@@ -1954,7 +2004,7 @@ async function renderFeedManagement() {
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">어디서</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">무엇을</th>
                             <th class="px-3 py-3 font-bold text-center w-[102px] whitespace-nowrap border-r border-slate-200">누구와</th>
-                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감</th>
+                            <th class="px-3 py-3 font-bold text-center w-[92px] whitespace-nowrap border-r border-slate-200">만족도/포만감·값</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[208px] min-w-[208px] border-r border-slate-200">사진</th>
                             <th class="px-3 py-3 font-bold text-center whitespace-nowrap w-[240px] min-w-[240px] border-r border-slate-200">코멘트</th>
                             <th class="px-2 py-3 font-bold text-center whitespace-nowrap w-[72px] min-w-[72px] border-r border-slate-200">상태/신고</th>
@@ -1972,12 +2022,11 @@ async function renderFeedManagement() {
                 void window.adminDeleteSingleFeedPost(btn);
             });
         });
-        container.querySelectorAll('.admin-feed-author-filter').forEach((btn) => {
+        container.querySelectorAll('.admin-feed-author-menu').forEach((btn) => {
             btn.addEventListener('click', (ev) => {
                 ev.preventDefault();
-                const uid = btn.getAttribute('data-user-id') || '';
-                const nick = btn.getAttribute('data-nickname') || '';
-                void window.setFeedAuthorFilter(uid, nick);
+                ev.stopPropagation();
+                openFeedAuthorMenu(btn);
             });
         });
 
@@ -2232,6 +2281,125 @@ function renderFeedPagination(totalPages) {
         html += `<button onclick="window.feedGoToPage(${feedCurrentPage + 1})" class="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-200 transition-colors">다음</button>`;
     }
     paginationContainer.innerHTML = html;
+}
+
+// ============================================================
+// 작성자 메뉴 (표에서 닉네임 클릭)
+// ============================================================
+
+/** 열려 있는 메뉴. 목록을 다시 그리면 앵커가 사라지므로 그때 반드시 닫는다 */
+let feedAuthorMenuEl = null;
+/** 바깥 클릭·ESC·스크롤 리스너 해제 */
+let feedAuthorMenuDismiss = null;
+
+function closeFeedAuthorMenu() {
+    if (feedAuthorMenuDismiss) {
+        feedAuthorMenuDismiss();
+        feedAuthorMenuDismiss = null;
+    }
+    if (feedAuthorMenuEl) {
+        feedAuthorMenuEl.remove();
+        feedAuthorMenuEl = null;
+    }
+}
+
+/** 화면 밖으로 나가지 않게 앵커 아래(자리가 없으면 위)에 붙인다 */
+function placeFeedAuthorMenu(menu, anchor) {
+    const r = anchor.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const margin = 8;
+    let left = r.left + r.width / 2 - w / 2;
+    left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - margin) top = Math.max(margin, r.top - h - 6);
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(top)}px`;
+}
+
+/**
+ * 닉네임을 누르면 곧바로 필터가 걸리던 자리에 선택지를 둔다.
+ * 「정보 보기」는 대시보드 드릴다운과 같은 사용자 상세 팝업을 그대로 쓴다.
+ */
+function openFeedAuthorMenu(anchor) {
+    const uid = (anchor.getAttribute('data-user-id') || '').trim();
+    if (!uid) return;
+    const nickname = anchor.getAttribute('data-nickname') || '익명';
+    const icon = anchor.getAttribute('data-icon') || '';
+    const email = anchor.getAttribute('data-email') || '';
+
+    // 같은 이름을 다시 누르면 토글로 닫힌다
+    const sameAnchor = feedAuthorMenuEl?.dataset.userId === uid;
+    closeFeedAuthorMenu();
+    if (sameAnchor) return;
+
+    const filtered = getFeedAuthorUserId() === uid;
+    const menu = document.createElement('div');
+    menu.className =
+        'fixed w-64 max-w-[calc(100vw-1rem)] bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden';
+    menu.style.setProperty('z-index', 'var(--z-admin-popover, 590)');
+    menu.dataset.userId = uid;
+    menu.setAttribute('role', 'menu');
+
+    const itemCls =
+        'w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors';
+    menu.innerHTML = `
+        <div class="px-3 py-2.5 bg-slate-50 border-b border-slate-200">
+            <p class="text-xs font-black text-slate-800 truncate">${escapeHtml(`${icon} ${nickname}`.trim())}</p>
+            ${email ? `<p class="text-[11px] text-slate-500 break-all leading-tight mt-0.5">${escapeHtml(email)}</p>` : ''}
+            <p class="text-[10px] text-slate-400 font-mono break-all leading-tight mt-0.5">${escapeHtml(uid)}</p>
+        </div>
+        <button type="button" role="menuitem" data-act="detail" class="${itemCls}">
+            <i class="fa-solid fa-circle-info text-slate-400" aria-hidden="true"></i>작성자 정보 보기
+        </button>
+        <button type="button" role="menuitem" data-act="${filtered ? 'unfilter' : 'filter'}" class="${itemCls} border-t border-slate-100">
+            <i class="fa-solid ${filtered ? 'fa-xmark text-slate-400' : 'fa-filter text-emerald-500'}" aria-hidden="true"></i>${
+                filtered ? '작성자 필터 해제' : '이 작성자 기록만 보기'
+            }
+        </button>
+    `;
+    document.body.appendChild(menu);
+    feedAuthorMenuEl = menu;
+    placeFeedAuthorMenu(menu, anchor);
+
+    menu.addEventListener('click', (ev) => {
+        const btn = ev.target?.closest?.('[data-act]');
+        if (!btn) return;
+        ev.preventDefault();
+        const act = btn.getAttribute('data-act');
+        closeFeedAuthorMenu();
+        if (act === 'detail') {
+            void openDashboardUserDetail(uid, `${icon} ${nickname}`.trim());
+        } else if (act === 'filter') {
+            void window.setFeedAuthorFilter(uid, nickname);
+        } else if (act === 'unfilter') {
+            void window.clearFeedAuthorFilter();
+        }
+    });
+
+    const onDocClick = (ev) => {
+        if (!menu.contains(ev.target)) closeFeedAuthorMenu();
+    };
+    const onKeyDown = (ev) => {
+        if (ev.key === 'Escape') {
+            closeFeedAuthorMenu();
+            anchor.focus?.();
+        }
+    };
+    // 표가 스크롤되면 앵커와 어긋나므로 따라다니지 않고 닫는다
+    const onScrollOrResize = () => closeFeedAuthorMenu();
+    document.addEventListener('mousedown', onDocClick, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    feedAuthorMenuDismiss = () => {
+        document.removeEventListener('mousedown', onDocClick, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+        window.removeEventListener('scroll', onScrollOrResize, true);
+        window.removeEventListener('resize', onScrollOrResize);
+    };
+
+    menu.querySelector('[data-act]')?.focus?.();
 }
 
 window.setFeedAuthorFilter = async function (userId, nickname) {
@@ -3244,7 +3412,12 @@ async function collectMomentRowsForExport(range = {}) {
             ? meal.photos.filter(Boolean)
             : (meal.photoUrl && String(meal.photoUrl).trim() ? [meal.photoUrl] : []);
 
-        const metricsText = isDailyJournal ? dailyJournalMetricsPlainText(meal.dailyJournalEntry) : '';
+        // 하루기록의 체중·혈당과 숫자 메모의 값은 성격이 같다 — 한 칸에 모은다
+        const metricsText = isDailyJournal
+            ? dailyJournalMetricsPlainText(meal.dailyJournalEntry)
+            : isUserMemo
+              ? String(meal.memoValueText || '')
+              : '';
 
         return {
             번호: total - idx,
@@ -3262,7 +3435,7 @@ async function collectMomentRowsForExport(range = {}) {
             만족도: ratingVal === null ? '' : ratingVal,
             포만감: satietyVal === null ? '' : satietyVal,
             코멘트: meal.comment ? String(meal.comment) : '',
-            하루기록지표: metricsText,
+            지표값: metricsText,
             공유여부: isShared ? 'Y' : 'N',
             금지여부: isBanned ? 'Y' : 'N',
             신고수: reportCount,

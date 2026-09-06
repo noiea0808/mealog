@@ -68,17 +68,12 @@ function migrateQuickInputPrefs(cur) {
         out.openedByDefaultV2 = true;
     }
     /**
-     * V3: 끼니 카테고리 칩 그리드 기본 접힘 (docs/entry-sheet-redesign.md §2 1층).
-     * 자동 분류 제안이 그리드를 대신하므로 1회만 접는다 — 이후 사용자가
-     * 셰브론으로 다시 열면 그 선택이 저장되어 유지된다. (실선택률 23% 근거)
+     * V3 시절 여기서 끼니 what 을 1회 접었지만(docs/entry-sheet-redesign.md §2 1층),
+     * 이제 what 의 열림 상태는 저장하지 않고 시트 세션마다 접힘에서 시작한다
+     * (whatOpenThisSession). 저장된 what 값은 읽지 않으므로 마이그레이션도 두지 않는다.
+     * 이미 찍힌 플래그만 그대로 옮긴다 — 지웠다 다시 쓰는 왕복이 설정 쓰기를 부른다.
      */
-    if (!cur?.whatSuggestDefaultV3) {
-        out.meal = { ...out.meal, what: false };
-        out.whatSuggestDefaultV3 = true;
-        out._didOpenByDefaultUpgrade = true;
-    } else {
-        out.whatSuggestDefaultV3 = true;
-    }
+    if (cur?.whatSuggestDefaultV3) out.whatSuggestDefaultV3 = true;
     return out;
 }
 
@@ -97,9 +92,27 @@ function getFieldPrefs(modeKey) {
     return window.userSettings?.entryModalQuickInput?.[modeKey] ?? DEFAULT_FIELD_PREFS;
 }
 
+/**
+ * '무엇을' 그리드의 열림 상태는 **저장하지 않는다** — 시트를 열 때마다 접힌 채로 시작하고,
+ * 이 시트 세션 안에서 사용자가 직접 펼쳤을 때만 열린다.
+ *
+ * 예전에는 어디서·누구와와 같은 저장 설정이라, '다른 구분'으로 한 번 펼치면 그 뒤 모든
+ * 기록이 그리드가 펼쳐진 채로 열렸다. 1층은 사진 + 텍스트 + 자동 분류 제안 한 줄이 전부라는
+ * 설계(docs/entry-sheet-redesign.md §2 1층)와 어긋나고, 사진까지 붙으면 시트가 상한에 걸려
+ * 분류 제안 줄이 화면 밖으로 밀렸다.
+ * @type {Record<'meal'|'snack', boolean>}
+ */
+let whatOpenThisSession = { meal: false, snack: false };
+
+/** 시트를 열 때 호출 — '무엇을' 그리드를 접힌 상태로 되돌린다 */
+export function resetEntryWhatQuickInputSession() {
+    whatOpenThisSession = { meal: false, snack: false };
+}
+
 /** @param {EntryQuickField} field @param {'meal'|'snack'} [mode] */
 export function isEntryFieldQuickInputOn(field, mode) {
     const modeKey = mode ?? getEntryFormModeKey();
+    if (field === 'what') return whatOpenThisSession[modeKey] === true;
     const prefs = getFieldPrefs(modeKey);
     return prefs[field] !== false;
 }
@@ -110,12 +123,10 @@ export function isEntryQuickInputOn(mode) {
 }
 
 export function syncEntryFieldQuickInputToggles() {
-    const modeKey = getEntryFormModeKey();
-    const prefs = getFieldPrefs(modeKey);
     QUICK_FIELDS.forEach((field) => {
         const btn = document.querySelector(`.entry-field-quick-toggle[data-entry-quick-field="${field}"]`);
         if (!btn) return;
-        const on = prefs[field] !== false;
+        const on = isEntryFieldQuickInputOn(field);
         btn.setAttribute('aria-expanded', on ? 'true' : 'false');
         btn.classList.toggle('entry-field-quick-toggle--open', on);
     });
@@ -183,6 +194,50 @@ export function finalizeEntryModalQuickInput() {
     applyEntryQuickInputUi();
 }
 
+/**
+ * 그리드를 펼친 직후, '무엇을' 한 덩어리(입력 + 분류 제안 + 그리드)를 화면 안으로 되감는다.
+ *
+ * 시트가 상한(80vh)에 걸리면 늘어난 분은 스크롤로 흐르는데 스크롤 위치는 그대로라,
+ * 사진이 붙어 있을수록 새로 열린 그리드도 그 위의 분류 제안 줄도 화면 밖에 남았다.
+ * 위쪽 사진부는 이미 지나온 자리이므로 그쪽을 걷어 올린다 — 단 '무엇을' 라벨 위로는
+ * 올리지 않는다.
+ *
+ * `entryUserScrolling` 가드를 두지 않는 이유: 셰브론 탭 자체가 스크롤 영역의 touchstart라
+ * 그 플래그를 켠다. 여기서는 사용자가 방금 누른 것이 곧 의도다.
+ */
+function revealEntryWhatSection() {
+    const area = document.getElementById('modalScrollArea');
+    const section = document.getElementById(ENTRY_DOM.whatSection);
+    if (!area || !section || !area.contains(section)) return;
+    // 시트 높이 잠금이 rAF로 반영된 뒤에 재야 늘어난 높이가 계산에 들어온다
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (!document.contains(section)) return;
+        const pad = 8;
+        const areaRect = area.getBoundingClientRect();
+        const rect = section.getBoundingClientRect();
+        const need = rect.bottom + pad - areaRect.bottom;
+        if (need <= 1) return;
+        const room = rect.top - (areaRect.top + pad);
+        const delta = Math.min(need, Math.max(0, room));
+        if (delta > 1) area.scrollTop += delta;
+    }));
+}
+
+/**
+ * '무엇을' 그리드가 펼쳐진 직후 불린다 — 분류 제안 줄이 확정값을 새 칩에 되붙이는 자리.
+ *
+ * 그리드는 접혀 있는 동안 칩 DOM 자체가 비어 있어서(render/entry-chips.js), 펼치면 항상
+ * active 없는 새 칩이 그려진다. 훅으로 뒤집은 이유는 import 방향 때문 —
+ * entry-category-suggest 가 이 모듈을 가져다 쓰므로 반대로는 못 가져온다.
+ * @type {null | (() => void)}
+ */
+let whatGridOpenedHook = null;
+
+/** @param {(() => void)|null} fn */
+export function setEntryWhatGridOpenedHook(fn) {
+    whatGridOpenedHook = typeof fn === 'function' ? fn : null;
+}
+
 /** @param {EntryQuickField} field @param {boolean} enabled */
 export function setEntryFieldQuickInputEnabled(field, enabled) {
     const on = enabled !== false;
@@ -190,8 +245,23 @@ export function setEntryFieldQuickInputEnabled(field, enabled) {
     if (!on && isEntryFieldQuickInputOn(field)) {
         clearFieldChipSelection(field);
     }
-    ensureEntryModalQuickInputOnUserSettings();
     const modeKey = getEntryFormModeKey();
+    // '무엇을'은 세션 한정 — 설정에 쓰지 않는다 (whatOpenThisSession 주석)
+    if (field === 'what') {
+        whatOpenThisSession[modeKey] = on;
+        applyEntryQuickInputUi();
+        renderEntryChips();
+        if (on) {
+            try {
+                whatGridOpenedHook?.();
+            } catch (_) {
+                /* 되붙이기 실패가 펼치기를 막아선 안 된다 */
+            }
+            revealEntryWhatSection();
+        }
+        return;
+    }
+    ensureEntryModalQuickInputOnUserSettings();
     window.userSettings.entryModalQuickInput[modeKey][field] = on;
     applyEntryQuickInputUi();
     renderEntryChips();

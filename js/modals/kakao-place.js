@@ -95,6 +95,36 @@ function fetchKakaoPlacesShared(keyword) {
 }
 
 /**
+ * 검색 시트 밖에서 같은 검색을 쓰는 자리(맥락 줄 어디서 칸)용 입구.
+ *
+ * 캐시·요청 합치기·데드라인을 **여기서 함께** 채워 내보낸다. 호출부가 저마다
+ * `callableFunctions.searchKakaoPlaces` 를 직접 부르면 그 셋이 갈라지고, 서버의
+ * 분당 제한(functions/index.js RATE_LIMITS.kakaoSearch)을 두 경로가 따로 깎는다.
+ *
+ * 실패를 삼키지 않는다 — 타이핑 중에 쓰는 자리는 조용히 넘겨야 하고 시트는 문구를
+ * 띄워야 해서, 무엇을 할지는 호출부가 정한다.
+ *
+ * @param {string} keyword 2글자 이상
+ * @returns {Promise<any[]>} 카카오 place 문서 배열
+ */
+export function searchKakaoPlacesShared(keyword) {
+    const kw = String(keyword || '').trim();
+    if (kw.length < KAKAO_SEARCH_MIN_LENGTH) return Promise.resolve([]);
+    const cached = readKakaoSearchCache(kw);
+    if (cached) return Promise.resolve(cached);
+    return withDeadline(fetchKakaoPlacesShared(kw), KAKAO_SEARCH_DEADLINE_MS, 'kakao-place-search');
+}
+
+/** 네트워크를 타지 않고 캐시만 본다 — 타이핑 중 즉시 그릴 것이 있는지 확인용 */
+export function peekKakaoPlaceCache(keyword) {
+    const kw = String(keyword || '').trim();
+    if (kw.length < KAKAO_SEARCH_MIN_LENGTH) return null;
+    return readKakaoSearchCache(kw);
+}
+
+export { KAKAO_SEARCH_MIN_LENGTH };
+
+/**
  * 앱/스테이징은 Callable, 로컬 웹은 SDK(없으면 Callable) — 경로만 고르고 상한·캐시는 호출부가 건다.
  * @param {string} keyword
  * @returns {Promise<any[]>}
@@ -386,6 +416,57 @@ export function applyKakaoPlaceManualText() {
     // 프로그램적 value 설정은 change 이벤트를 발화시키지 않으므로 맥락 줄에 직접 알린다
     if (targetId === ENTRY_DOM.whereInput) syncEntryContextPlaceFromInput();
     showToast('장소명이 입력되었습니다.', 'success');
+}
+
+/**
+ * 카카오 결과 하나를 「어디서」 입력란에 값 + 메타로 심는다.
+ *
+ * 검색 시트를 거치지 않는 자리(맥락 줄 어디서 칸)가 쓴다. `selectKakaoPlace` 와 달리
+ * 모달을 닫지도 토스트를 띄우지도 않는다 — 시트가 없는 흐름이라 닫을 것이 없고,
+ * 타이핑 중에 뜨는 토스트는 방해다.
+ *
+ * 심는 속성은 시트 경로와 **같아야 한다.** 저장부가 `data-kakao-place-name` 과 현재
+ * 값을 대조해 이름이 고쳐졌으면 주소·placeId 를 안 붙이고, `categoryGroupCode` 로
+ * placeType(식당/카페/편의점/술집)을 파생한다 (js/utils/place-type.js).
+ *
+ * @param {any} place 카카오 place 문서
+ * @param {string} [targetId]
+ * @returns {string} 심은 장소명 ('' 이면 아무것도 안 했다)
+ */
+export function applyKakaoPlaceToInput(place, targetId = ENTRY_DOM.whereInput) {
+    const input = document.getElementById(targetId);
+    const placeName = String(place?.place_name || '').trim();
+    if (!input || !placeName) return '';
+
+    const roadAddress = place?.road_address_name || '';
+    const address = roadAddress || place?.address_name || '';
+    const placeId = place?.id || '';
+
+    input.value = placeName;
+    if (!placeId) {
+        // 아이디가 없으면 그냥 적은 것과 같다 — 옛 메타가 남아 붙지 않게 걷어낸다
+        input.removeAttribute('data-kakao-place-id');
+        input.removeAttribute('data-kakao-place-address');
+        input.removeAttribute('data-kakao-place-data');
+        input.removeAttribute('data-kakao-place-name');
+        return placeName;
+    }
+
+    input.setAttribute('data-kakao-place-id', placeId);
+    input.setAttribute('data-kakao-place-address', address);
+    input.setAttribute('data-kakao-place-name', placeName);
+    input.setAttribute(
+        'data-kakao-place-data',
+        JSON.stringify({
+            id: placeId,
+            name: placeName,
+            address,
+            roadAddress,
+            category: place?.category_name || '',
+            categoryGroupCode: place?.category_group_code || ''
+        })
+    );
+    return placeName;
 }
 
 // 카카오 장소 선택

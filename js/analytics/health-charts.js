@@ -1,4 +1,5 @@
-// 밀당 건강 탭 — 체중·혈당 일별 차트 (단일 기록: 선, 복수 기록: 시고저종 캔들)
+// 밀당 건강 탭 — 체중·혈당 일별 차트
+// 보기 두 가지: 라인(복수 기록일은 마지막 값 + 점마다 수치) / 캔들(시고저종)
 import { getDailyJournalFromSettings } from '../utils/daily-journal-data.js';
 import { defaultMemoKey, MEMO_SLOT_ID } from '../utils/slot-plan.js';
 import { formatMealogDateLabel } from '../utils/date-label.js';
@@ -34,6 +35,77 @@ const VITALS_CHART_COLORS = {
 
 const POINT_RADIUS = 4;
 const POINT_HOVER_RADIUS = 6;
+
+/** 라인 보기에서 점 위 수치 — 이 간격보다 좁으면 건너뛴다 (겹침 방지) */
+const VALUE_LABEL_MIN_GAP_PX = 32;
+const VALUE_LABEL_COLOR = '#475569';
+
+const VITALS_VIEW_LINE = 'line';
+const VITALS_VIEW_CANDLE = 'candle';
+const VITALS_VIEW_STORAGE_KEY = 'mealog_vitalsChartView';
+
+/** 체중·혈당은 읽는 결이 달라 보기 모드를 따로 기억한다 */
+const vitalsViewModes = { weight: VITALS_VIEW_CANDLE, bloodSugar: VITALS_VIEW_CANDLE };
+
+/** metric -> 마지막 렌더 인자 (보기 전환 때 그 차트만 다시 그린다) */
+const lastVitalsRender = new Map();
+
+function isVitalsView(mode) {
+    return mode === VITALS_VIEW_LINE || mode === VITALS_VIEW_CANDLE;
+}
+
+function loadVitalsViewModes() {
+    try {
+        const raw = localStorage.getItem(VITALS_VIEW_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        Object.keys(vitalsViewModes).forEach((m) => {
+            if (isVitalsView(parsed?.[m])) vitalsViewModes[m] = parsed[m];
+        });
+    } catch (_) {
+        /* 저장값이 깨져도 기본(캔들)으로 간다 */
+    }
+}
+loadVitalsViewModes();
+
+export function getVitalsChartView(metric) {
+    return vitalsViewModes[metric] || VITALS_VIEW_CANDLE;
+}
+
+/** 보기 전환 — 저장하고 그 metric 차트만 다시 그린다 */
+export function setVitalsChartView(metric, mode) {
+    if (!isVitalsView(mode) || !(metric in vitalsViewModes)) return false;
+    if (vitalsViewModes[metric] === mode) return false;
+    vitalsViewModes[metric] = mode;
+    try {
+        localStorage.setItem(VITALS_VIEW_STORAGE_KEY, JSON.stringify(vitalsViewModes));
+    } catch (_) {
+        /* 저장 실패는 이번 세션만 유지하고 넘어간다 */
+    }
+    const last = lastVitalsRender.get(metric);
+    if (last) renderVitalsChart(last.canvasId, last.emptyId, last.series, last.opts);
+    return true;
+}
+
+/** 스위치 버튼 활성 상태를 현재 모드에 맞춘다 */
+function setVitalsViewSwitchVisible(metric, visible) {
+    document
+        .querySelectorAll('[data-vitals-view][data-vitals-metric="' + metric + '"]')
+        .forEach((btn) => {
+            btn.closest('.health-vitals-view-bar')?.classList.toggle('hidden', !visible);
+        });
+}
+
+function syncVitalsViewSwitch(metric) {
+    const mode = getVitalsChartView(metric);
+    document
+        .querySelectorAll('[data-vitals-view][data-vitals-metric="' + metric + '"]')
+        .forEach((btn) => {
+            const on = btn.getAttribute('data-vitals-view') === mode;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+}
 
 const ohlcPlugin = {
     id: 'mealogOhlc',
@@ -76,9 +148,52 @@ const ohlcPlugin = {
     }
 };
 
-if (typeof Chart !== 'undefined' && Chart.registry && !Chart.registry.plugins.get('mealogOhlc')) {
-    Chart.register(ohlcPlugin);
+/** 라인 보기 전용 — 점 위(자리 없으면 아래)에 수치 */
+const valueLabelPlugin = {
+    id: 'mealogVitalsValues',
+    afterDatasetsDraw(chart, _args, opts) {
+        if (!opts?.enabled) return;
+        const values = opts.values;
+        if (!values?.length) return;
+        const yScale = chart.scales.y;
+        const xScale = chart.scales.x;
+        if (!yScale || !xScale) return;
+
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = '600 10px -apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = opts.color || VALUE_LABEL_COLOR;
+
+        let lastX = -Infinity;
+        values.forEach((v, i) => {
+            if (v == null) return;
+            const x = xScale.getPixelForValue(i);
+            if (!Number.isFinite(x) || x - lastX < VALUE_LABEL_MIN_GAP_PX) return;
+            lastX = x;
+            const y = yScale.getPixelForValue(v);
+            if (!Number.isFinite(y)) return;
+            const text = formatValue(v, opts.decimals);
+            const above = y - 9;
+            if (above >= chart.chartArea.top + 4) {
+                ctx.textBaseline = 'bottom';
+                ctx.fillText(text, x, above);
+            } else {
+                ctx.textBaseline = 'top';
+                ctx.fillText(text, x, y + 9);
+            }
+        });
+        ctx.restore();
+    }
+};
+
+function ensureVitalsPlugins() {
+    if (typeof Chart === 'undefined' || !Chart.registry) return;
+    if (!Chart.registry.plugins.get('mealogOhlc')) Chart.register(ohlcPlugin);
+    if (!Chart.registry.plugins.get('mealogVitalsValues')) Chart.register(valueLabelPlugin);
 }
+
+ensureVitalsPlugins();
 
 function destroyVitalsChart(canvasId) {
     const entry = chartInstances.get(canvasId);
@@ -575,15 +690,26 @@ function buildDailySeries(settings, dates, metric) {
     return { labels: dates.map(shortDayLabel), dates, points, ohlcDays, hasAny };
 }
 
-/** 당일 1건 — 중립 닷만 */
-function pointColorsForSeries(points) {
-    return points.map((v) => (v == null ? 'transparent' : VITALS_CHART_COLORS.dot));
+/** 값 없는 날은 투명 — 캔들 보기는 중립 닷, 라인 보기는 선 색 */
+function pointColorsForSeries(points, color) {
+    const dot = color || VITALS_CHART_COLORS.dot;
+    return points.map((v) => (v == null ? 'transparent' : dot));
 }
 
-function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey, metric, metricLabel }) {
+function renderVitalsChart(canvasId, emptyId, series, opts) {
+    const { unit, decimals, styleKey, metric, metricLabel, stroke } = opts;
     ensureBubbleDismissListener();
+    ensureVitalsPlugins();
+    lastVitalsRender.set(metric, { canvasId, emptyId, series, opts });
+    syncVitalsViewSwitch(metric);
+
+    const isLine = getVitalsChartView(metric) === VITALS_VIEW_LINE;
     const colors = VITALS_CHART_COLORS;
-    const ptColors = pointColorsForSeries(series.points);
+    const lineColor = stroke || colors.dot;
+    // 라인 보기는 복수 기록일을 마지막 값 하나로 잇는다 — 캔들은 시고저종을 다 그린다
+    const displayPoints = isLine ? seriesCloseValues(series) : series.points;
+    const displayOhlc = isLine ? [] : series.ohlcDays;
+    const ptColors = pointColorsForSeries(displayPoints, isLine ? lineColor : colors.dot);
     const canvas = document.getElementById(canvasId);
     const emptyEl = document.getElementById(emptyId);
     const wrap = canvas?.closest('.health-vitals-chart-wrap');
@@ -591,6 +717,8 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
 
     destroyVitalsChart(canvasId);
     hideAllVitalsBubbles();
+
+    setVitalsViewSwitchVisible(metric, series.hasAny);
 
     if (!series.hasAny) {
         canvas.classList.add('hidden');
@@ -620,8 +748,8 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
 
     const meta = {
         dates: series.dates,
-        points: series.points,
-        ohlcDays: series.ohlcDays,
+        points: displayPoints,
+        ohlcDays: displayOhlc,
         metric,
         metricLabel,
         unit,
@@ -630,8 +758,8 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
         scrollable: layout.scrollable
     };
 
-    const numericPoints = series.points.filter((v) => v != null);
-    const ohlcVals = series.ohlcDays.flatMap((d) => [d.open, d.high, d.low, d.close]);
+    const numericPoints = displayPoints.filter((v) => v != null);
+    const ohlcVals = displayOhlc.flatMap((d) => [d.open, d.high, d.low, d.close]);
     const allVals = [...numericPoints, ...ohlcVals];
     const dataMin = Math.min(...allVals);
     const dataMax = Math.max(...allVals);
@@ -646,17 +774,19 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
             datasets: [
                 {
                     label: unit,
-                    data: series.points,
-                    showLine: false,
-                    borderColor: colors.line,
+                    data: displayPoints,
+                    showLine: isLine,
+                    borderColor: isLine ? lineColor : colors.line,
                     backgroundColor: colors.fill,
                     pointBackgroundColor: ptColors,
                     pointBorderColor: ptColors,
                     pointRadius: POINT_RADIUS,
                     pointHoverRadius: POINT_HOVER_RADIUS,
                     pointHitRadius: 18,
-                    borderWidth: 0,
-                    spanGaps: false
+                    borderWidth: isLine ? 2 : 0,
+                    tension: 0,
+                    // 기록 없는 날은 건너뛰고 잇는다 (라인 보기)
+                    spanGaps: isLine
                 }
             ]
         },
@@ -668,9 +798,15 @@ function renderVitalsChart(canvasId, emptyId, series, { unit, decimals, styleKey
                 legend: { display: false },
                 tooltip: { enabled: false },
                 mealogOhlc: {
-                    ohlcDays: series.ohlcDays,
+                    ohlcDays: displayOhlc,
                     colorUp: colors.intradayUp,
                     colorDown: colors.intradayDown
+                },
+                mealogVitalsValues: {
+                    enabled: isLine,
+                    values: displayPoints,
+                    decimals,
+                    color: VALUE_LABEL_COLOR
                 }
             },
             scales: {
@@ -717,8 +853,8 @@ function formatValue(v, decimals) {
     return n.toFixed(1);
 }
 
-/** 스파크라인용 일별 값 (당일 복수는 close 사용) */
-function seriesValuesForSpark(series) {
+/** 일별 대표값 — 당일 복수 기록은 마지막 값(close) */
+function seriesCloseValues(series) {
     const vals = series.dates.map((dateStr, index) => {
         if (series.points[index] != null) return series.points[index];
         const ohlc = series.ohlcDays.find((d) => d.index === index);
@@ -741,14 +877,12 @@ function firstDefined(values) {
     return null;
 }
 
-function renderVitalSparkCard({ sparkId, valueId, deltaId, emptyId, series, unit, decimals, stroke, fillId }) {
-    const sparkEl = document.getElementById(sparkId);
+/** 카드 머리 요약 — 현재값과 기간 증감 (그래프는 renderVitalsChart 가 그린다) */
+function renderVitalSummary({ valueId, deltaId, series, decimals }) {
     const valueEl = document.getElementById(valueId);
     const deltaEl = document.getElementById(deltaId);
-    const emptyEl = document.getElementById(emptyId);
-    if (!sparkEl) return;
 
-    const values = seriesValuesForSpark(series);
+    const values = seriesCloseValues(series);
     const last = lastDefined(values);
     const first = firstDefined(values);
 
@@ -758,87 +892,34 @@ function renderVitalSparkCard({ sparkId, valueId, deltaId, emptyId, series, unit
             deltaEl.textContent = '';
             deltaEl.classList.remove('is-up');
         }
-        sparkEl.innerHTML = '';
-        if (emptyEl) {
-            emptyEl.classList.remove('hidden');
-            emptyEl.setAttribute('aria-hidden', 'false');
-        }
         return;
     }
 
-    if (emptyEl) {
-        emptyEl.classList.add('hidden');
-        emptyEl.setAttribute('aria-hidden', 'true');
-    }
+    if (valueEl) valueEl.textContent = formatValue(last.value, decimals);
+    if (!deltaEl) return;
 
-    if (valueEl) {
-        valueEl.textContent = formatValue(last.value, decimals);
-    }
-
-    if (deltaEl) {
-        if (first && first.index !== last.index) {
-            const delta = last.value - first.value;
-            const abs = Math.abs(delta);
-            const absText = formatValue(abs, decimals);
-            if (delta === 0 || abs < (decimals === 0 ? 0.5 : 0.05)) {
-                deltaEl.textContent = '변동 없음';
-                deltaEl.classList.remove('is-up');
-            } else if (delta < 0) {
-                deltaEl.textContent = `▼ ${absText} 기간`;
-                deltaEl.classList.remove('is-up');
-            } else {
-                deltaEl.textContent = `▲ ${absText} 기간`;
-                deltaEl.classList.add('is-up');
-            }
-        } else {
-            deltaEl.textContent = '';
-            deltaEl.classList.remove('is-up');
-        }
-    }
-
-    const defined = values.map((v, i) => (v == null ? null : { v, i })).filter(Boolean);
-    if (defined.length < 2) {
-        // 단일 점이면 수평선
-        const y = 36;
-        sparkEl.innerHTML = `<svg class="spark" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
-            <circle cx="300" cy="${y}" r="3.5" fill="${stroke}"/>
-        </svg>`;
+    if (!first || first.index === last.index) {
+        deltaEl.textContent = '';
+        deltaEl.classList.remove('is-up');
         return;
     }
 
-    const nums = defined.map((d) => d.v);
-    let min = Math.min(...nums);
-    let max = Math.max(...nums);
-    if (max === min) {
-        min -= 1;
-        max += 1;
+    const delta = last.value - first.value;
+    const abs = Math.abs(delta);
+    const absText = formatValue(abs, decimals);
+    if (delta === 0 || abs < (decimals === 0 ? 0.5 : 0.05)) {
+        deltaEl.textContent = '변동 없음';
+        deltaEl.classList.remove('is-up');
+    } else if (delta < 0) {
+        deltaEl.textContent = `▼ ${absText} 기간`;
+        deltaEl.classList.remove('is-up');
+    } else {
+        deltaEl.textContent = `▲ ${absText} 기간`;
+        deltaEl.classList.add('is-up');
     }
-    const pad = (max - min) * 0.12;
-    min -= pad;
-    max += pad;
-    const w = 320;
-    const h = 72;
-    const coords = defined.map(({ v, i }) => {
-        const x = values.length <= 1 ? w : (i / (values.length - 1)) * w;
-        const y = h - ((v - min) / (max - min)) * (h - 12) - 6;
-        return { x, y };
-    });
-    const line = coords.map((c, idx) => `${idx === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
-    const area = `${line} L${coords[coords.length - 1].x.toFixed(1)},${h} L${coords[0].x.toFixed(1)},${h} Z`;
-
-    sparkEl.innerHTML = `<svg class="spark" viewBox="0 0 320 72" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-            <linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="${stroke}" stop-opacity="0.25"/>
-                <stop offset="100%" stop-color="${stroke}" stop-opacity="0"/>
-            </linearGradient>
-        </defs>
-        <path d="${area}" fill="url(#${fillId})"/>
-        <path d="${line}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`;
 }
 
-/** 기간 내 체중·혈당 — 스파크라인(1차) + Chart.js 상세(토글) */
+/** 기간 내 체중·혈당 — 카드 머리 요약 + 라인·캔들 차트 */
 export function renderHealthVitalsCharts(startStr, endStr) {
     const settings = window.userSettings;
     const dates = enumerateDates(startStr, endStr);
@@ -847,43 +928,34 @@ export function renderHealthVitalsCharts(startStr, endStr) {
     const weightSeries = buildDailySeries(settings, dates, 'weight');
     const glucoseSeries = buildDailySeries(settings, dates, 'bloodSugar');
 
-    renderVitalSparkCard({
-        sparkId: 'healthWeightSpark',
+    renderVitalSummary({
         valueId: 'healthWeightValue',
         deltaId: 'healthWeightDelta',
-        emptyId: 'healthWeightEmpty',
         series: weightSeries,
-        unit: 'kg',
-        decimals: 1,
-        stroke: '#3cb889',
-        fillId: 'wgSpark'
+        decimals: 1
     });
-    renderVitalSparkCard({
-        sparkId: 'healthBloodSugarSpark',
+    renderVitalSummary({
         valueId: 'healthBloodSugarValue',
         deltaId: 'healthBloodSugarDelta',
-        emptyId: 'healthBloodSugarEmpty',
         series: glucoseSeries,
-        unit: 'mg/dL',
-        decimals: 0,
-        stroke: '#3b82f6',
-        fillId: 'bgSpark'
+        decimals: 0
     });
 
-    // 상세 Chart.js는 숨긴 wrap에 렌더 (펼칠 때 사용)
-    renderVitalsChart('healthWeightChart', null, weightSeries, {
+    renderVitalsChart('healthWeightChart', 'healthWeightEmpty', weightSeries, {
         unit: 'kg',
         decimals: 1,
         styleKey: 'weight',
         metric: 'weight',
-        metricLabel: '체중'
+        metricLabel: '체중',
+        stroke: '#3cb889'
     });
-    renderVitalsChart('healthBloodSugarChart', null, glucoseSeries, {
+    renderVitalsChart('healthBloodSugarChart', 'healthBloodSugarEmpty', glucoseSeries, {
         unit: 'mg/dL',
         decimals: 0,
         styleKey: 'bloodSugar',
         metric: 'bloodSugar',
-        metricLabel: '혈당'
+        metricLabel: '혈당',
+        stroke: '#3b82f6'
     });
 }
 

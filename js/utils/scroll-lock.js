@@ -6,7 +6,21 @@ let savedScrollY = 0;
 const SCROLL_ALLOW_SELECTOR =
     '[data-scroll-lock-allow], .attendance-welcome-report-content, .attendance-welcome-detail-slide-body, .attendance-welcome-chart-viewport';
 
-/** 열린 오버레이 내부 — 팝업 안 터치·제스처는 허용, 배경만 차단 */
+/**
+ * 열린 오버레이 내부 — 팝업 안 터치·제스처는 허용, 배경만 차단.
+ *
+ * 대부분은 id 끝 이름으로 알아본다(`...Modal`·`...Popup`·`...Sheet`). 이 목록에
+ * 없는 오버레이는 **배경으로 취급돼 그 안의 터치가 통째로 막힌다** — 마우스는
+ * 자체 JS 경로를 타는 경우가 많아 멀쩡하고 실기기에서만 안 움직이므로, 화면을
+ * body 에 새로 붙일 때는 이름이 여기 걸리는지 먼저 확인할 것.
+ *
+ * `Sheet` 는 시각 시트(timeSourcePickerSheet·timeSourceManualSheet)와 시계
+ * 휠(mealClockWheelPickerSheet), 밀톡 버블 메뉴(feedBubbleActionSheet)의 이름이다.
+ * 휠은 세로로 굴려야 하는데 이 목록에 없어 실기기에서 손가락이 먹히지 않았다.
+ *
+ * 모먼트 댓글 시트는 id 가 `comment-section-<postId>` 라 이름으로는 못 알아본다 —
+ * 열릴 때 body 로 옮겨지며 붙는 클래스로 잡는다.
+ */
 const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#successPopup:not(.hidden)',
     '#attendancePopup:not(.hidden)',
@@ -15,7 +29,9 @@ const OPEN_OVERLAY_ROOT_SELECTOR = [
     '#signupWizard:not(.hidden)',
     '#serviceGuideOverlay:not(.hidden)',
     '[id$="Modal"]:not(.hidden)',
-    '[id$="Popup"]:not(.hidden)'
+    '[id$="Popup"]:not(.hidden)',
+    '[id$="Sheet"]:not(.hidden)',
+    '.moment-v2-social-comments-panel--sheet-in-body:not(.hidden)'
 ].join(', ');
 
 function ownerKey(owner) {

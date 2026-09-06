@@ -1,0 +1,250 @@
+<title>광고비 146만원 결산</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@300;400;500;700;900&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --paper:#FAFAFA; --card:#FFFFFF; --ink:#16191D; --muted:#6A737D; --faint:#9AA3AC;
+  --rule:#E2E6EA; --rule-strong:#C7CED5;
+  --surface:#3A6EA5;      /* 표면 숫자 */
+  --real:#B4462F;         /* 실제 결과 */
+  --ok:#2E7D5B;
+  --wash:#F0F3F6;
+  --sans:"Gothic A1","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#14171A; --card:#1B1F23; --ink:#E6EAED; --muted:#98A1AA; --faint:#6E7880;
+    --rule:#2A3036; --rule-strong:#3D454D;
+    --surface:#7FA9D8; --real:#E28368; --ok:#5FBF92; --wash:#20262C;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#14171A; --card:#1B1F23; --ink:#E6EAED; --muted:#98A1AA; --faint:#6E7880;
+  --rule:#2A3036; --rule-strong:#3D454D;
+  --surface:#7FA9D8; --real:#E28368; --ok:#5FBF92; --wash:#20262C;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:40px 20px 72px}
+
+header{border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:8px}
+.kicker{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase}
+h1{font-size:34px;font-weight:900;letter-spacing:-.02em;margin:6px 0 0;line-height:1.2}
+.sub{color:var(--muted);font-size:15px;margin:8px 0 0;max-width:34em}
+.totalbar{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--rule);margin-bottom:40px}
+.tot{flex:1 1 130px;padding:14px 16px 14px 0}
+.tot dt{font-size:12px;color:var(--muted);margin-bottom:2px}
+.tot dd{margin:0;font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+
+section{margin-bottom:44px}
+h2{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;margin:0 0 14px;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+h3{font-size:17px;font-weight:700;margin:26px 0 8px}
+p{margin:0 0 12px;max-width:36em}
+strong{font-weight:700}
+
+/* 캠페인 카드 */
+.camp{border:1px solid var(--rule);background:var(--card);padding:16px 18px;margin-bottom:12px}
+.camp-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.camp-no{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--faint)}
+.camp-name{font-size:17px;font-weight:700}
+.camp-when{font-size:13px;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:12px}
+.fig dt{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.fig dd{margin:1px 0 0;font-family:var(--mono);font-size:15.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.fig dd.hi{color:var(--ok)}
+.fig dd.lo{color:var(--real)}
+.fig dd.na{color:var(--faint);font-weight:400}
+
+/* CTR 비교 */
+.ctr{display:flex;flex-direction:column;gap:9px;margin:6px 0 4px}
+.ctrrow{display:grid;grid-template-columns:9.5em 1fr 4.2em;gap:10px;align-items:center;font-size:13.5px}
+.ctrrow .lb{color:var(--muted)}
+.ctrtrack{height:13px;background:var(--wash);border:1px solid var(--rule)}
+.ctrfill{height:100%;background:var(--surface)}
+.ctrrow .vl{font-family:var(--mono);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+
+/* 표면 vs 실제 */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 10px}
+.pane{border:1px solid var(--rule);padding:16px 18px 18px;background:var(--card)}
+.pane.a{border-top:4px solid var(--surface)}
+.pane.b{border-top:4px solid var(--real)}
+.pane .tag{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.pane .big{font-family:var(--mono);font-size:27px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin:8px 0 2px;line-height:1.15}
+.pane.a .big{color:var(--surface)}
+.pane.b .big{color:var(--real)}
+.pane .cap{font-size:13px;color:var(--muted);line-height:1.55}
+.verdict{border-left:4px solid var(--real);background:var(--wash);padding:14px 18px;margin:14px 0 0}
+.verdict p{margin:0;max-width:none;font-size:15.5px}
+
+table{border-collapse:collapse;width:100%;font-size:14px;margin:10px 0 4px}
+th,td{text-align:left;padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-size:11.5px;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.bad td{color:var(--real)}
+.scroll{overflow-x:auto}
+
+ol.why{list-style:none;counter-reset:w;padding:0;margin:0}
+ol.why li{counter-increment:w;display:grid;grid-template-columns:30px 1fr;gap:12px;padding:13px 0;border-bottom:1px solid var(--rule);max-width:none}
+ol.why li::before{content:counter(w);grid-column:1;grid-row:1;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--faint);padding-top:3px}
+ol.why b{grid-column:2;grid-row:1;display:block;margin-bottom:2px}
+ol.why span{grid-column:2;grid-row:2;color:var(--muted);font-size:14.5px}
+
+ul.next{list-style:none;padding:0;margin:0}
+ul.next li{display:grid;grid-template-columns:18px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:15px}
+ul.next li .bx{width:14px;height:14px;border:1.5px solid var(--muted);margin-top:5px}
+.warn{border:1px solid var(--real);padding:14px 18px;margin-top:18px;font-size:14.5px;color:var(--ink)}
+.warn b{color:var(--real)}
+.foot{margin-top:40px;padding-top:14px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--faint);font-family:var(--mono)}
+@media (max-width:560px){
+  h1{font-size:27px}
+  .vs{grid-template-columns:1fr}
+  .ctrrow{grid-template-columns:1fr;gap:3px}
+  .ctrrow .vl{text-align:left}
+  .camp-when{margin-left:0;width:100%}
+}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="kicker">mealog · 광고 집행 결산 · 2026-09-06</div>
+  <h1>광고비 146만원 결산</h1>
+  <p class="sub">2026년에 집행한 광고 세 건을 사후 점검했다. 설치 지표는 좋았고, 남은 사람은 없었다.</p>
+</header>
+
+<dl class="totalbar">
+  <div class="tot"><dt>집행 건수</dt><dd>3건</dd></div>
+  <div class="tot"><dt>총 비용</dt><dd>1,461,463원</dd></div>
+  <div class="tot"><dt>총 노출</dt><dd>1,772만</dd></div>
+  <div class="tot"><dt>총 클릭</dt><dd>8,404</dd></div>
+</dl>
+
+<section>
+  <h2>집행 내역</h2>
+
+  <div class="camp">
+    <div class="camp-top">
+      <span class="camp-no">01</span>
+      <span class="camp-name">구글 애드</span>
+      <span class="camp-when">3/12 – 3/19 · 8일</span>
+    </div>
+    <dl class="figs">
+      <div class="fig"><dt>비용</dt><dd>258,979</dd></div>
+      <div class="fig"><dt>노출</dt><dd>32,621</dd></div>
+      <div class="fig"><dt>클릭</dt><dd>887</dd></div>
+      <div class="fig"><dt>CTR</dt><dd>2.72%</dd></div>
+      <div class="fig"><dt>전환(설치)</dt><dd>238</dd></div>
+      <div class="fig"><dt>전환당</dt><dd>1,088원</dd></div>
+    </dl>
+  </div>
+
+  <div class="camp">
+    <div class="camp-top">
+      <span class="camp-no">02</span>
+      <span class="camp-name">구글 애드</span>
+      <span class="camp-when">4/30 – 5/8 · 9일</span>
+    </div>
+    <dl class="figs">
+      <div class="fig"><dt>비용</dt><dd>202,484</dd></div>
+      <div class="fig"><dt>노출</dt><dd>12,929</dd></div>
+      <div class="fig"><dt>클릭</dt><dd>939</dd></div>
+      <div class="fig"><dt>CTR</dt><dd class="hi">7.26%</dd></div>
+      <div class="fig"><dt>전환(설치)</dt><dd>236</dd></div>
+      <div class="fig"><dt>전환당</dt><dd class="hi">858원</dd></div>
+    </dl>
+  </div>
+
+  <div class="camp">
+    <div class="camp-top">
+      <span class="camp-no">03</span>
+      <span class="camp-name">다모앙 배너</span>
+      <span class="camp-when">5/6 – 6/20 · 46일</span>
+    </div>
+    <dl class="figs">
+      <div class="fig"><dt>비용</dt><dd>1,000,000</dd></div>
+      <div class="fig"><dt>노출</dt><dd>1,767만</dd></div>
+      <div class="fig"><dt>클릭</dt><dd>6,578</dd></div>
+      <div class="fig"><dt>CTR</dt><dd class="lo">0.04%</dd></div>
+      <div class="fig"><dt>전환(설치)</dt><dd class="na">미측정</dd></div>
+      <div class="fig"><dt>전환당</dt><dd class="na">—</dd></div>
+    </dl>
+  </div>
+
+  <h3>클릭률 비교</h3>
+  <div class="ctr">
+    <div class="ctrrow"><span class="lb">02 구글 5월</span><div class="ctrtrack"><div class="ctrfill" style="width:100%"></div></div><span class="vl">7.26%</span></div>
+    <div class="ctrrow"><span class="lb">01 구글 3월</span><div class="ctrtrack"><div class="ctrfill" style="width:37.5%"></div></div><span class="vl">2.72%</span></div>
+    <div class="ctrrow"><span class="lb">03 다모앙</span><div class="ctrtrack"><div class="ctrfill" style="width:0.55%"></div></div><span class="vl">0.04%</span></div>
+  </div>
+  <p style="font-size:13.5px;color:var(--muted)">다모앙은 노출을 1,767만 회 샀지만 누른 사람은 0.04%였다. 구글보다 노출이 <strong>500배</strong> 많고 비용은 4배였는데, 결과는 더 나빴다.</p>
+</section>
+
+<section>
+  <h2>표면과 실제</h2>
+  <div class="vs">
+    <div class="pane a">
+      <div class="tag">보고서에 찍힌 숫자</div>
+      <div class="big">974원</div>
+      <div class="cap">설치 한 건당. 구글 애드 두 건 합계 474건.<br>업계 통상 기준 1,000~3,000원보다 싸다.<br><strong>성공한 광고로 보인다.</strong></div>
+    </div>
+    <div class="pane b">
+      <div class="tag">실제로 남은 사람</div>
+      <div class="big">15만~30만원</div>
+      <div class="cap">일주일 뒤에도 기록을 남긴 사람 한 명당.<br>세 건 통틀어 남은 사람은 한 자릿수.<br><strong>판정 기준(8,000원)의 스무 배가 넘는다.</strong></div>
+    </div>
+  </div>
+
+  <h3>근거 — 가입 주차별 잔존율</h3>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>가입 주차</th><th>인원</th><th>가입 주</th><th>1주 뒤</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr class="bad"><td>3월 2주</td><td class="n">38</td><td class="n">53%</td><td class="n">5%</td><td>광고 01</td></tr>
+      <tr class="bad"><td>3월 3주</td><td class="n">26</td><td class="n">35%</td><td class="n">19%</td><td>광고 01</td></tr>
+      <tr><td>4월 4주</td><td class="n">13</td><td class="n">69%</td><td class="n">38%</td><td>광고 없음</td></tr>
+      <tr><td>5월 4주</td><td class="n">16</td><td class="n">63%</td><td class="n">44%</td><td>광고 없음</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:13.5px;color:var(--muted)">3월 2주는 가입 38명으로 전체 기간을 통틀어 가장 큰 코호트였지만, 다음 주에 기록을 남긴 사람은 2명이었다. 같은 시기 광고 없이 들어온 사람들은 38~44%가 남았다. <strong>여덟 배 차이.</strong> 광고 02는 전환 236건이 잡혔는데도 가입 자체가 늘지 않았다.</p>
+
+  <div class="verdict">
+    <p>세 건 모두 <strong>설치는 샀지만 사용자는 사지 못했다.</strong></p>
+  </div>
+</section>
+
+<section>
+  <h2>왜 그랬나</h2>
+  <ol class="why">
+    <li><b>구글에게 「설치」를 시켰다</b><span>앱 캠페인은 목표로 준 것을 정확히 최적화한다. 목표가 설치면 설치할 사람을 찾지, 쓸 사람을 찾지 않는다. 게임 안 배너에서 잘못 눌러 설치하는 사람이 여기서 대량으로 나온다.</span></li>
+    <li><b>노출 규모를 효과로 착각했다</b><span>다모앙 1,767만 노출이 구글 4.5만 노출보다 못했다. 관심 없는 사람에게 500번 보여주는 것보다 관심 있을 사람에게 한 번 보여주는 게 낫다.</span></li>
+    <li><b>클릭의 40%가 아이폰이었다</b><span>다모앙 클릭 6,578건 중 약 2,600건이 iOS. 밀로그는 안드로이드 앱뿐이라 처음부터 설치가 불가능한 클릭이었다. 예산의 40%가 그냥 버려졌다.</span></li>
+    <li><b>계측이 없어 사후 추정만 가능했다</b><span>유입 경로를 저장하지 않아 개인 단위로 "이 사람이 어느 광고로 왔는지"를 알 수 없다. 코호트 크기 변화로 역산하는 수밖에 없었다.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>다음에 지킬 것</h2>
+  <ul class="next">
+    <li><span class="bx"></span><span>목표를 <strong>「가입 완료」 또는 「첫 기록 저장」</strong>으로. 단가는 오르지만 그게 진짜 숫자다</span></li>
+    <li><span class="bx"></span><span>그러려면 <strong>Firebase Analytics 이벤트가 먼저</strong>. 자체 계측은 Firestore라 광고가 못 본다</span></li>
+    <li><span class="bx"></span><span>모든 링크에 <strong>UTM</strong> 붙이기</span></li>
+    <li><span class="bx"></span><span>판정은 설치 단가가 아니라 <strong>활성 사용자 단가</strong>. 8,000원 이하면 계속, 15,000원 넘으면 중단</span></li>
+    <li><span class="bx"></span><span><strong>한 채널씩 2~3주.</strong> 동시에 열면 뭐가 효과였는지 알 수 없다</span></li>
+    <li><span class="bx"></span><span>iOS 대응이 없으면 <strong>안드로이드만 타겟팅</strong></span></li>
+  </ul>
+
+  <div class="warn">
+    <b>다만 지금은 때가 아니다.</b> 가입이 하루 2~3명이다. 구글이 "가입할 사람"을 학습하려면 하루 10건 이상의 전환 신호가 필요하다. 이벤트를 붙여도 당분간은 배울 데이터가 부족하다. <strong>유료 광고는 오가닉으로 규모를 키운 뒤가 낫다.</strong>
+  </div>
+</section>
+
+<section>
+  <h2>아직 확인 못 한 것</h2>
+  <ul class="next">
+    <li><span class="bx"></span><span>구글 애드의 <strong>「전환」 정의</strong> — 설치인지 다른 인앱 이벤트인지. 위 해석의 전제다</span></li>
+    <li><span class="bx"></span><span>Play Console <strong>총 설치 수 5~6월 그래프</strong> — 다모앙 기간에 설치가 튀었는지 보면 100만원의 성과가 확정된다</span></li>
+  </ul>
+</section>
+
+<p class="foot">출처 · Google Ads 캠페인 화면 · 다모앙 광고주 통계 · 밀로그 관리자 코호트 리텐션(가입 464명) · Play Console<br>전문 · docs/growth/06-ad-campaign-log.md</p>
+</div>

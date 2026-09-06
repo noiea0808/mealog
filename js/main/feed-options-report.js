@@ -34,6 +34,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { switchScreen, showToast, updateHeaderUI, showLoading, hideLoading } from '../ui.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import {
     getDisplayProfile,
     uploadBoardImages,
@@ -182,6 +183,32 @@ window.showFeedOptions = (
     };
     bg.onclick = () => closeMenu();
 
+    /**
+     * SNS 공유 — 내 게시물·남의 게시물 두 버튼이 똑같은 일을 한다.
+     * 계측을 양쪽에 복사해 두면 갈라지므로 여기 한 곳에서만 쏜다.
+     *
+     * done 은 「공유 시트가 대상 앱으로 넘겼다」는 뜻이지 실제로 게시됐다는 보장이 아니다.
+     * OS 가 거기까지만 알려준다. 취소·실패는 sharePhotosToExternal 이 false 로 돌려주므로
+     * tap 대비 done 의 차이가 곧 「열어 보고 그만둔 양」이다.
+     */
+    const runExternalShare = async () => {
+        const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
+        if (urls.length === 0) {
+            showToast('공유할 사진이 없습니다.', 'error');
+            return;
+        }
+        logUsageMetric('moment_sns_share_tap').catch(() => {});
+        try {
+            showLoading('사진 불러오는 중...');
+            const shared = await sharePhotosToExternal(urls, caption);
+            if (shared) logUsageMetric('moment_sns_share_done').catch(() => {});
+        } catch (err) {
+            console.error('외부 공유 실패:', err);
+        } finally {
+            hideLoading();
+        }
+    };
+
     if (isMyPost) {
         // 1. 수정하기
         const editBtn = document.createElement('button');
@@ -226,22 +253,10 @@ window.showFeedOptions = (
         const externalShareBtn = document.createElement('button');
         externalShareBtn.className = 'mealog-action-btn';
         externalShareBtn.type = 'button';
-        externalShareBtn.addEventListener('click', async (e) => {
+        externalShareBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             closeMenu();
-            const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
-            if (urls.length > 0) {
-                try {
-                    showLoading('사진 불러오는 중...');
-                    await sharePhotosToExternal(urls, caption);
-                } catch (err) {
-                    console.error('외부 공유 실패:', err);
-                } finally {
-                    hideLoading();
-                }
-            } else {
-                showToast('공유할 사진이 없습니다.', 'error');
-            }
+            void runExternalShare();
         });
         externalShareBtn.innerHTML = '<i data-lucide="share-2"></i><span>SNS 공유</span>';
         buttonContainer.appendChild(externalShareBtn);
@@ -262,22 +277,10 @@ window.showFeedOptions = (
         const externalShareBtn = document.createElement('button');
         externalShareBtn.className = 'mealog-action-btn';
         externalShareBtn.type = 'button';
-        externalShareBtn.addEventListener('click', async (e) => {
+        externalShareBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             closeMenu();
-            const urls = photoUrls && photoUrls !== '' ? photoUrls.split(',').map(u => u.trim()).filter(Boolean) : [];
-            if (urls.length > 0) {
-                try {
-                    showLoading('사진 불러오는 중...');
-                    await sharePhotosToExternal(urls, caption);
-                } catch (err) {
-                    console.error('외부 공유 실패:', err);
-                } finally {
-                    hideLoading();
-                }
-            } else {
-                showToast('공유할 사진이 없습니다.', 'error');
-            }
+            void runExternalShare();
         });
         externalShareBtn.innerHTML = '<i data-lucide="share-2"></i><span>SNS 공유</span>';
         buttonContainer.appendChild(externalShareBtn);

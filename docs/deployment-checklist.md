@@ -93,13 +93,30 @@ for(let i = 0; i < 4; i++) {
 ```javascript
 await window.boardOperations.createPost({
     title: '광고 게시글',
-    content: '무료 이벤트 참여하세요!',
+    content: '추천인 코드 넣어 주세요',
     category: 'serious'
 });
 ```
 
 **예상 결과:**
-- ❌ "금칙어가 포함되어 있습니다" 오류
+- ❌ "스팸 의심 단어가 포함되어 있습니다: '광고'" 오류 — 걸린 말이 함께 나온다
+
+같은 글을 **연달아 3번** 보내 본다:
+
+**예상 결과:**
+- ❌ 3번 다 같은 오류. 횟수에 따라 통과하면 `/g` 회귀다(§ App Check 가이드의 주의 참조).
+
+우리 도메인 링크가 든 글:
+```javascript
+await window.boardOperations.createPost({
+    title: '안내',
+    content: '자세한 내용은 https://www.mealog.net/ 에서 보실 수 있습니다.',
+    category: 'serious'
+});
+```
+
+**예상 결과:**
+- ✅ 정상 등록 (우리 도메인은 링크 수에 세지 않는다)
 
 ### 4. 직접 쓰기 차단 확인
 Firestore 직접 쓰기 시도 (브라우저 콘솔):

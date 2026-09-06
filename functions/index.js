@@ -10,6 +10,7 @@ const { onDocumentCreated, onDocumentWritten, onDocumentDeleted } = require('fir
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { onTaskDispatched } = require('firebase-functions/v2/tasks');
 const { getMealDelta, mergeDeltaIntoDay, sanitizeDayEntry, computeStatsFromMeals, isMainSlot } = require('./mealStats.js');
+const { checkSpam } = require('./spam-filter.js');
 const momentPostV2 = require('./momentPostV2.js');
 const mealPhotoVariantsBackfill = require('./mealPhotoVariantsBackfill.js');
 const { logger } = require('firebase-functions');
@@ -146,21 +147,6 @@ const GEMINI_ALLOWED_MODELS = ['gemini-2.5-flash'];
 const GEMINI_ALLOWED_API_VERSION = 'v1beta';
 const GEMINI_MAX_REQUEST_BODY_BYTES = 32 * 1024; // 32KB — 프롬프트+페르소나 여유 포함
 const GEMINI_MAX_OUTPUT_TOKENS_CEILING = 1024; // 클라이언트 기본값(768)보다 여유만 둔 서버 상한
-
-// 금칙어 목록 (간단한 예시, 필요시 확장)
-const BANNED_WORDS = [
-  // 스팸 관련
-  /(광고|홍보|무료|이벤트|할인|쿠폰|추천인|링크|http|www\.|\.com)/gi,
-  // 부적절한 내용 (예시)
-  /(욕설|비방|혐오)/gi
-];
-
-// 링크 패턴 감지
-const LINK_PATTERNS = [
-  /https?:\/\/[^\s]+/gi,
-  /www\.[^\s]+/gi,
-  /[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*/gi
-];
 
 /**
  * 에러 리포팅 헬퍼 (Functions용)
@@ -619,32 +605,6 @@ async function checkRateLimit(userId, actionType, context) {
     [actionKey]: recentActions,
     lastUpdated: FieldValue.serverTimestamp()
   }, { merge: true });
-}
-
-/**
- * 스팸 필터링
- */
-function checkSpam(content) {
-  if (!content || typeof content !== 'string') {
-    return { isSpam: false };
-  }
-
-  const text = content.toLowerCase().trim();
-
-  // 금칙어 체크
-  for (const pattern of BANNED_WORDS) {
-    if (pattern.test(text)) {
-      return { isSpam: true, reason: '금칙어가 포함되어 있습니다.' };
-    }
-  }
-
-  // 링크 체크 (게시글/댓글에 링크가 많으면 스팸 의심)
-  const links = text.match(LINK_PATTERNS[0]) || [];
-  if (links.length > 2) {
-    return { isSpam: true, reason: '과도한 링크가 포함되어 있습니다.' };
-  }
-
-  return { isSpam: false };
 }
 
 /**
@@ -4145,6 +4105,9 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'mealdang_analysis_detail_click',
   'mealdang_analysis_cuisine_axis',
   'tab_moment',
+  // 모먼트 옵션 시트 「SNS 공유」 — tap 대비 done 의 차이가 열어 보고 그만둔 양이다
+  'moment_sns_share_tap',
+  'moment_sns_share_done',
   'tab_mealog',
   'lounge_mealtalk',
   'lounge_board',
@@ -4154,6 +4117,8 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'settings_tags',
   'settings_mealdang_memo',
   'settings_push',
+  // 밀로그 타임라인 「같이 먹자」 앱 소개 배너 탭 (js/render/promo-banner.js)
+  'promo_eat_together_click',
 
   // --- 기록 시트 안에서 벌어지는 일 (RECORD_USAGE_METRIC_DEFS) ---
   'entry_sheet_opened',
@@ -4175,11 +4140,45 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'context_predict_dismissed',
   'context_predict_auto_saved',
   'context_place_typed',
+  // 어디서 인라인 검색 — 내 이력에서 찾았나, 지도까지 갔나 (js/modals/entry-context-predict.js)
+  'context_place_found_recent',
+  'context_place_picked_recent',
+  'context_place_found_kakao',
+  'context_place_picked_kakao',
   'context_sub_picked',
   'context_sub_added',
   'context_sub_deleted',
   'photo_gps_present',
-  'photo_gps_absent'
+  'photo_gps_absent',
+
+  // --- 웰컴 팝업 (js/ui.js) ---
+  // 뜬 것과 본 것을 가른다. 첫 화면은 요일 기본값이 정하므로 문서 ID(날짜)와 엮어 읽는다.
+  'welcome_shown_report',
+  'welcome_shown_meal',
+  'welcome_shown_snack',
+  'welcome_dwell_3s',
+  'welcome_kind_switch_report',
+  'welcome_kind_switch_meal',
+  'welcome_kind_switch_snack',
+  'welcome_slide_move',
+  'welcome_report_nav',
+
+  // --- AI 식단분석 리포트 열람 (js/modals/diet-report.js) ---
+  // 운영비의 큰 몫이 여기서 나가므로 「만들었는데 안 읽는다」를 재는 것이 요점이다.
+  'diet_report_open_welcome',
+  'diet_report_open_timeline',
+  // 리포트 모달 「SNS 공유」 — 모먼트 쪽과 같은 tap/done 규칙
+  'diet_report_sns_tap',
+  'diet_report_sns_done',
+
+  // --- 공유 카드 외부 SNS 내보내기 (하루 기록·베스트·인사이트) ---
+  // 모먼트 공유 버튼 옆에 나란히 붙은 갈래다. 같은 카드의 모먼트 공유 수와 견주어 읽는다.
+  'daily_sns_share_tap',
+  'daily_sns_share_done',
+  'best_sns_share_tap',
+  'best_sns_share_done',
+  'insight_sns_share_tap',
+  'insight_sns_share_done'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */

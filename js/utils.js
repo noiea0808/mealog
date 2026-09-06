@@ -1903,6 +1903,21 @@ function downloadBlob(blob, filename = 'mealog_share.jpg') {
     return true;
 }
 
+/** 공유 텍스트에 함께 실어 보내는 앱 링크 — 유입은 utm_source=share 로 센다. */
+const SHARE_LINK_URL = 'https://mealog.net/?utm_source=share';
+
+/**
+ * 공유 캡션 뒤에 앱 링크를 붙인다. 캡션이 비어 있어도 링크는 나간다.
+ * @param {string} [caption]
+ * @returns {string}
+ */
+function withShareLink(caption) {
+    const text = (caption || '').trim();
+    if (!text) return SHARE_LINK_URL;
+    if (text.includes(SHARE_LINK_URL)) return text;
+    return `${text}\n\n${SHARE_LINK_URL}`;
+}
+
 /**
  * 준비된 이미지 Blob을 카카오톡·인스타 등 외부 앱으로 공유합니다.
  * @param {Blob[]} blobs
@@ -1950,8 +1965,12 @@ export async function shareBlobsToExternal(blobs, options = {}) {
     const tryWebShare = async (fileBlobs) => {
         if (isNative || !navigator.share || !fileBlobs.length) return null;
         const files = webShareFiles(fileBlobs);
-        const shareData = { files };
-        if (navigator.canShare && !navigator.canShare(shareData)) return null;
+        let shareData = { files, text: withShareLink(captionText) };
+        if (navigator.canShare && !navigator.canShare(shareData)) {
+            // files + text 조합을 거부하는 브라우저가 있다 — 링크를 접고 파일만 보낸다.
+            shareData = { files };
+            if (!navigator.canShare(shareData)) return null;
+        }
         await navigator.share(shareData);
         if (typeof window.showToast === 'function') {
             window.showToast('공유되었습니다.', 'success');
@@ -2048,7 +2067,7 @@ export async function shareBlobsToExternal(blobs, options = {}) {
         step = '공유 창 열기';
         const shareOptions = {
             files: fileUris,
-            text: captionText || 'mealog',
+            text: withShareLink(captionText),
             title: 'mealog',
             dialogTitle: '공유하기',
         };
@@ -2058,7 +2077,7 @@ export async function shareBlobsToExternal(blobs, options = {}) {
             try {
                 await Share.share({
                     url: fileUris[0],
-                    text: captionText || 'mealog',
+                    text: withShareLink(captionText),
                     title: 'mealog',
                     dialogTitle: '공유하기',
                 });
@@ -2067,7 +2086,7 @@ export async function shareBlobsToExternal(blobs, options = {}) {
             } catch (_) {}
             try {
                 await Share.share({
-                    text: captionText ? `mealog - ${captionText}` : 'mealog',
+                    text: withShareLink(captionText ? `mealog - ${captionText}` : 'mealog'),
                     title: 'mealog',
                     dialogTitle: '공유하기',
                 });

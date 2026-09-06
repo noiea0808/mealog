@@ -30,6 +30,7 @@
       "test/**",
       "www/**",
       "docs/*.md",
+      "docs/growth/**",
       "*.md",
       "*.ps1",
       "*.bat",

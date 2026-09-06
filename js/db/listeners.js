@@ -903,20 +903,46 @@ function toTimestampMs(photo) {
 }
 
 /**
- * 모먼트 피드 최신 공유 1건의 시각(ms). 하단 네비 신규 공유 점 표시용 (1회 읽기)
- * @returns {Promise<number|null>} 0 = 공유 없음, null = 조회 실패(모름). 둘을 섞으면
+ * 최신 문서가 내 것일 때 남의 최신 글을 찾기 위해 넓히는 창.
+ * 내가 방금 연속으로 공유한 직후를 덮으면 충분하다 — 이 창 전부가 내 글이면
+ * 「남의 새 글 징후 없음」으로 본다(점의 실패 방향은 안 뜨는 쪽이 맞다).
+ */
+const SELF_PEEK_WIDEN_LIMIT = 6;
+
+/**
+ * 모먼트 피드 최신 공유의 시각(ms) — **내 글은 세지 않는다.**
+ *
+ * 점의 의미는 「내가 안 본 남의 새 글」이다. seen 은 탭 진입 시각에만 찍히는데, 공유는
+ * 모먼트 탭에 들어가지 않고도(기록 저장 모달에서) 일어나므로, 내 글을 포함하면 내가
+ * 공유할 때마다 내 기기에 점이 켜졌다 — 앱 업데이트 후 기록 테스트만 해도 점이 도로
+ * 떠 보이던 원인.
+ *
+ * 읽기 비용: 평소 1건. 최신이 내 글일 때만(내가 방금 공유한 직후) 창을 넓혀 한 번 더 본다.
+ * @returns {Promise<number|null>} 0 = 남의 공유 없음, null = 조회 실패(모름). 둘을 섞으면
  *   기준선이 없는 신규 사용자에서 실패가 「글이 없다」로 굳어 점이 영영 안 뜬다.
  */
 export async function peekLatestSharedPhotoTimestampMs() {
     if (!window.currentUser) return 0;
     try {
+        const uid = window.currentUser.uid;
         const sharedColl = collection(db, 'artifacts', appId, 'sharedPhotos');
-        const q = query(sharedColl, orderBy('timestamp', 'desc'), limit(1));
-        const snap = await getDocsFromServer(q);
+        const snap = await getDocsFromServer(query(sharedColl, orderBy('timestamp', 'desc'), limit(1)));
         if (!snap.docs.length) return 0;
-        const photo = normalizeSharedPhotoDoc(snap.docs[0]);
-        const [shifted] = applyDemoShiftToSharedDocsIfNeeded([photo]);
-        return toTimestampMs(shifted || photo);
+        let docs = snap.docs.map((d) => normalizeSharedPhotoDoc(d));
+        if (docs[0]?.userId === uid) {
+            const wide = await getDocsFromServer(
+                query(sharedColl, orderBy('timestamp', 'desc'), limit(SELF_PEEK_WIDEN_LIMIT))
+            );
+            docs = wide.docs.map((d) => normalizeSharedPhotoDoc(d));
+        }
+        const others = docs.filter((p) => p?.userId !== uid);
+        if (!others.length) return 0;
+        let best = 0;
+        for (const p of others) {
+            const ms = toTimestampMs(p);
+            if (Number.isFinite(ms) && ms > best) best = ms;
+        }
+        return best;
     } catch (e) {
         console.warn('peekLatestSharedPhotoTimestampMs:', e?.message || e);
         return null;

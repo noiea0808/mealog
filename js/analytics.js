@@ -40,6 +40,7 @@ export {
     openShareInsightModal,
     closeShareInsightModal,
     shareInsightToFeed,
+    shareInsightToSns,
     updateShareButtonStatus,
     openEditInsightShareModal
 } from './analytics/insight.js';
@@ -50,6 +51,7 @@ export {
     openShareBestModal,
     closeShareBestModal,
     shareBestToFeed,
+    shareBestToSns,
     closeBestSharePeriodNotice
 } from './analytics/best-share.js';
 
