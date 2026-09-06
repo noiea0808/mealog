@@ -52,8 +52,17 @@
 | `welcome_slide_move` | `attendanceWelcomeSlideIdx` 변경 | kind, slideIdx |
 | `welcome_report_nav` | `bindWelcomeReportDateNavOnce` | — |
 
+> **주의 — `logUsageMetric(key)`는 인자가 key 하나뿐이다.** 저장이 `usageDaily/{YYYY-MM-DD}` 문서의
+> 필드별 `increment(1)`이라 파라미터를 못 받는다. 위 표의 파라미터는 **키 이름에 넣어야 한다**
+> (`diet_report_open_welcome`, `welcome_shown_report` 등). 최종 키 11개는 구현 프롬프트에 정리했다.
+>
+> 요일은 키에 넣지 않는다 — 문서 ID가 이미 날짜라 나중에 계산된다.
+
 서버 허용 목록 `USAGE_DAILY_METRIC_KEYS`(`functions/index.js` ~4141행)에도 추가해야 한다.
-관리자 화면은 항목만 추가하면 기존 표에 붙는다.
+관리자 화면은 `PAGE_VIEW_METRIC_DEFS`(`js/admin/dashboard.js` ~85행)에 항목을 넣으면 기존 표에 붙는다.
+`firestore.rules`는 손댈 필요 없다(날짜 형식만 검사하고 필드는 검사하지 않는다).
+
+**구현 프롬프트: [prompts/b7-report-welcome-metrics.md](prompts/b7-report-welcome-metrics.md)**
 
 **요일별 구성이 측정에 유리하다.** 지금 월·목은 AI리포트가 강제로 첫 화면이고 나머지 요일은 아니다
 (`js/welcome-weekday-config.js`). 그래서 자연스럽게 두 집단이 생긴다.
