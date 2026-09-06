@@ -32,6 +32,7 @@ import {
     isDailyJournalMealRecord
 } from '../utils/daily-journal-data.js';
 import { isMemoMealRecord, defaultMemoItemByKey } from '../utils/slot-plan.js';
+import { formatMealClockTagLabel } from '../meal-time-utils.js';
 import {
     collection,
     collectionGroup,
@@ -1156,6 +1157,13 @@ function mealRowToFeedRow(row) {
             isUserMemo: true,
             memoValueText: formatMemoValueAdminText(row),
             slotDisplayDate: formatKoDateLabelFromYmd(String(row.date || '')),
+            /**
+             * 메모는 하루 다건이 정상이라(user-memo-items §3.2) 날짜·항목명만으로는
+             * 두 건이 같아 보인다. 등록일시는 저장 시각이라 답이 못 된다 — 이틀치를
+             * 몰아 적으면 등록은 1분 차이고 기록 날짜만 다르다. 사용자 화면과 같은
+             * 함수로 기록 시각을 함께 보인다.
+             */
+            slotDisplayClock: formatMealClockTagLabel(row.mealClock),
             slotDisplayLabel: label
         };
     }
@@ -1887,8 +1895,8 @@ async function renderFeedManagement() {
             })();
             const mealSlotDisplay =
                 typeof meal.slotDisplayLabel === 'string'
-                    ? { date: meal.slotDisplayDate ?? '', label: meal.slotDisplayLabel }
-                    : { date: mealDateLabel, label: mealSlotLabel };
+                    ? { date: meal.slotDisplayDate ?? '', clock: meal.slotDisplayClock ?? '', label: meal.slotDisplayLabel }
+                    : { date: mealDateLabel, clock: '', label: mealSlotLabel };
 
             return `
                 <tr class="border-t border-slate-200 ${rowBg}">
@@ -1916,6 +1924,7 @@ async function renderFeedManagement() {
                     <td class="px-2 py-3 align-middle w-[92px] max-w-[92px] text-center border-r border-slate-200 overflow-hidden">
                         <div class="inline-flex flex-col items-center justify-center px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-bold leading-tight">
                             ${mealSlotDisplay.date ? `<span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.date))}</span>` : ''}
+                            ${mealSlotDisplay.clock ? `<span class="whitespace-nowrap text-[11px] font-medium text-slate-500">${escapeHtml(String(mealSlotDisplay.clock))}</span>` : ''}
                             <span class="whitespace-nowrap">${escapeHtml(String(mealSlotDisplay.label))}</span>
                         </div>
                     </td>
