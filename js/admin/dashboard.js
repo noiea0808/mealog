@@ -128,7 +128,17 @@ const PAGE_VIEW_METRIC_DEFS = [
     { field: 'diet_report_open_timeline', section: '리포트', label: '타임라인에서 열기' },
     // 모먼트 SNS 공유 두 행과 같은 규칙 — 여기 차이엔 취소 외에 이미지 생성 실패도 섞인다
     { field: 'diet_report_sns_tap', section: '리포트', label: 'SNS 공유 누름' },
-    { field: 'diet_report_sns_done', section: '리포트', label: 'SNS 공유 시트로 넘김' }
+    { field: 'diet_report_sns_done', section: '리포트', label: 'SNS 공유 시트로 넘김' },
+    /**
+     * 공유 카드 세 종의 외부 SNS 내보내기 — 모먼트 공유와 나란히 놓인 버튼이다.
+     * 같은 카드를 「모먼트에 올린 수」와 견주어야 두 갈래 중 어디로 나가는지 읽힌다.
+     */
+    { field: 'daily_sns_share_tap', section: '밀로그', label: '하루 기록 SNS 누름' },
+    { field: 'daily_sns_share_done', section: '밀로그', label: '하루 기록 SNS 시트로 넘김' },
+    { field: 'best_sns_share_tap', section: '분석', label: '베스트 SNS 누름' },
+    { field: 'best_sns_share_done', section: '분석', label: '베스트 SNS 시트로 넘김' },
+    { field: 'insight_sns_share_tap', section: '분석', label: '인사이트 SNS 누름' },
+    { field: 'insight_sns_share_done', section: '분석', label: '인사이트 SNS 시트로 넘김' }
 ];
 
 /**

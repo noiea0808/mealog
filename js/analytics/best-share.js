@@ -5,7 +5,7 @@ import {
     SATIETY_DATA
 } from '../constants.js';
 import { appState } from '../state.js';
-import { showToast } from '../ui.js';
+import { showToast, showLoading, hideLoading } from '../ui.js';
 import { resolveRecordSlotView } from '../utils/slot-view.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { dbOps } from '../db.js';
@@ -14,7 +14,9 @@ import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-writ
 import { getWeekRange, getWeeksInMonth, getDayName, formatDateWithDay, getWeekDisplayLabel, getWeekInfoFromDate } from './date-utils.js';
 import { renderGallery } from '../render/index.js';
 import { buildBestShareCaptureHtml } from '../render/best-share-card.js';
-import { toLocalDateString, captureWithGhostStrategy } from '../utils.js';
+import { toLocalDateString, captureWithGhostStrategy, shareBlobsToExternal } from '../utils.js';
+import { createShareBlobCache } from '../utils/share-blob-cache.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { getThumbImageUrl, getOriginalImageUrl } from '../utils/image-variants.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos, upsertSharedPhoto } from '../utils/moment-share-state.js';
@@ -77,7 +79,7 @@ function applyBestShareSubmitVariant(variant) {
     const btn = document.getElementById('bestShareSubmitBtn');
     if (!btn) return;
     const labelText =
-        variant === 'unshare' ? '공유 취소' : variant === 'edit' ? '수정 완료' : '공유하기';
+        variant === 'unshare' ? '공유 취소' : variant === 'edit' ? '수정 완료' : '모먼트';
     btn.className = variant === 'unshare' ? 'mealog-btn mealog-btn-danger' : 'mealog-btn mealog-btn-primary';
     btn.disabled = false;
     btn.innerHTML =
@@ -771,6 +773,10 @@ export async function openShareBestModal() {
         
         applyBestShareSubmitVariant(isShared ? 'unshare' : 'default');
     }
+
+    // 캡처는 폰트·이미지 로드까지 기다리느라 느리다. 모달이 그려진 직후 미리 돌려 둬야
+    // SNS 버튼을 눌렀을 때 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+    warmBestShareBlob();
 }
 
 // 베스트 공유 모달 닫기
@@ -780,6 +786,8 @@ export function closeShareBestModal() {
         modal.classList.add('hidden');
         unlockBodyScroll('bestShareModal');
     }
+    // 카드가 사라졌으니 예열해 둔 이미지도 버린다 — 다음에 열 때 그 시점 내용으로 다시 뜬다.
+    clearBestShareBlob();
 }
 
 // 베스트 공유 기간 안내 팝업 표시 (토스트 대신 확인 버튼 팝업)
@@ -866,6 +874,120 @@ export async function openEditBestShareModal(photoUrl) {
 }
 
 // 베스트를 피드에 공유하기 (토글 방식)
+/**
+ * 베스트 공유 카드를 캡처해 canvas 로 돌려준다.
+ *
+ * 모먼트 공유(업로드용 base64)와 외부 SNS 공유(blob 예열)가 같은 캡처를 쓴다.
+ * 캡처가 느려서 클릭 후에 돌리면 공유 시트가 제스처를 잃는다(share-blob-cache.js).
+ */
+async function captureBestShareCanvas() {
+    const preview = document.getElementById('bestScreenshotContainer');
+    if (!preview) throw new Error('베스트 미리보기를 찾을 수 없습니다.');
+
+    const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
+    const targetElement =
+        screenshotContainer?.querySelector('.best-share-capture__sheet') ||
+        screenshotContainer ||
+        preview;
+
+    await document.fonts.ready;
+    let fontCSS = '';
+    try {
+        const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
+        fontCSS = await fredokaRes.text();
+    } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
+
+    // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
+    const canvas = await captureWithGhostStrategy(targetElement, {
+        captureWidth: 420,
+        // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
+        onclone: (clonedDoc) => {
+            if (fontCSS) {
+                const style = clonedDoc.createElement('style');
+                style.textContent = fontCSS;
+                clonedDoc.head.appendChild(style);
+            }
+        }
+    });
+
+    return canvas;
+}
+
+/** 예열 중에는 SNS 버튼을 흐리게 — 눌러도 되지만 잠깐 기다린다는 표시다. */
+function setBestSnsButtonBusy(busy) {
+    const btn = document.getElementById('bestShareSnsBtn');
+    if (!btn) return;
+    btn.classList.toggle('opacity-60', !!busy);
+    if (busy) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+}
+
+/** 베스트 SNS 공유용 blob 예열 캐시 — 모달을 열 때 채우고 닫을 때 비운다. */
+const bestShareBlobCache = createShareBlobCache({
+    capture: captureBestShareCanvas,
+    onBusy: setBestSnsButtonBusy,
+    label: 'best'
+});
+
+export function warmBestShareBlob() {
+    bestShareBlobCache.clear();
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            void bestShareBlobCache.warm(getBestPeriodKey());
+        });
+    });
+}
+
+export function clearBestShareBlob() {
+    bestShareBlobCache.clear();
+}
+
+/**
+ * 베스트 카드를 카카오톡·인스타 등 외부 앱으로 내보낸다.
+ * 모먼트 공유와 달리 서버 상태를 건드리지 않는다 — 캡처 이미지를 공유 시트에 넘길 뿐이다.
+ */
+export async function shareBestToSns() {
+    const btn = document.getElementById('bestShareSnsBtn');
+    if (btn?.disabled) return;
+
+    logUsageMetric('best_sns_share_tap').catch(() => {});
+    if (btn) btn.disabled = true;
+    const periodKey = getBestPeriodKey();
+    let loadingShown = false;
+    try {
+        // 예열이 끝나 있으면 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+        let blob = bestShareBlobCache.get(periodKey);
+        if (!blob) {
+            showLoading('공유 이미지 준비 중...');
+            loadingShown = true;
+            blob = await bestShareBlobCache.ensure(periodKey);
+            hideLoading();
+            loadingShown = false;
+        }
+        if (!blob) {
+            showToast('공유 이미지를 만들지 못했어요.', 'error');
+            return;
+        }
+
+        // 캡처 카드에 이미 MEALOG 마크가 들어가 있고 폭도 맞춰져 있다 — 다시 손대지 않는다.
+        const shared = await shareBlobsToExternal([blob], {
+            caption: (document.getElementById('bestShareComment')?.value || '').trim(),
+            appendLogo: false,
+            resize: false,
+            fileNamePrefix: `mealog_best_${periodKey}`
+        });
+        if (shared) logUsageMetric('best_sns_share_done').catch(() => {});
+    } catch (e) {
+        if (e?.name !== 'AbortError') {
+            console.error('베스트 SNS 공유 실패:', e);
+            showToast(e?.message || 'SNS 공유에 실패했어요.', 'error');
+        }
+    } finally {
+        if (loadingShown) hideLoading();
+        if (btn) btn.disabled = false;
+    }
+}
+
 export async function shareBestToFeed() {
     const preview = document.getElementById('bestScreenshotContainer');
     const commentInput = document.getElementById('bestShareComment');
@@ -1022,35 +1144,8 @@ export async function shareBestToFeed() {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        const screenshotContainer = preview.querySelector('#bestScreenshotContainer');
-        const targetElement =
-            screenshotContainer?.querySelector('.best-share-capture__sheet') ||
-            screenshotContainer ||
-            preview;
+        const canvas = await captureBestShareCanvas();
 
-        await document.fonts.ready;
-        let fontCSS = '';
-        try {
-            const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
-            fontCSS = await fredokaRes.text();
-        } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
-
-        // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
-        const canvas = await captureWithGhostStrategy(targetElement, {
-            captureWidth: 420,
-            // html2canvas 폴백 전용 — 클론 문서 폰트 주입 (snapdom 은 embedFonts 로 처리)
-            onclone: (clonedDoc) => {
-                if (fontCSS) {
-                    const style = clonedDoc.createElement('style');
-                    style.textContent = fontCSS;
-                    clonedDoc.head.appendChild(style);
-                }
-            }
-        });
-        
-        // Canvas를 Blob으로 변환
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
-        
         // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('../utils.js');

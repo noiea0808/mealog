@@ -17,13 +17,14 @@ import {
     GEMINI_MEALDANG_CHARACTER_PROMPT_MAX_CHARS
 } from '../constants.js';
 import { appState } from '../state.js';
-import { showToast } from '../ui.js';
+import { showToast, showLoading, hideLoading } from '../ui.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
 import { isDemoUser } from '../demo-account.js';
 import { isUserSettingsReadyForContentWrites } from '../utils/user-settings-write-guard.js';
 import { db, appId, callableFunctions } from '../firebase.js';
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
-import { captureWithGhostStrategy, toLocalDateString } from '../utils.js';
+import { captureWithGhostStrategy, toLocalDateString, shareBlobsToExternal } from '../utils.js';
+import { createShareBlobCache } from '../utils/share-blob-cache.js';
 import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { getWeekRange } from './date-utils.js';
 import { logUsageMetric } from '../usage-metrics.js';
@@ -1698,6 +1699,10 @@ export async function openShareInsightModal() {
         submitBtn.removeAttribute('data-photo-url');
         applyInsightShareSubmitVariant(isShared ? 'unshare' : 'default');
     }
+
+    // 캡처는 폰트·이미지 로드까지 기다리느라 느리다. 모달이 그려진 직후 미리 돌려 둬야
+    // SNS 버튼을 눌렀을 때 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+    warmInsightShareBlob();
 }
 
 const INSIGHT_SHARE_SUBMIT_BASE = 'flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 transition-colors min-w-0 border-0 cursor-pointer';
@@ -1725,7 +1730,7 @@ function applyInsightShareSubmitVariant(variant) {
         sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
     } else {
         btn.className = `${INSIGHT_SHARE_SUBMIT_BASE} bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800`;
-        label.textContent = '공유하기';
+        label.textContent = '모먼트';
         label.className = 'text-sm sm:text-[15px] font-bold text-white';
         sub.textContent = '피드에 공유';
         sub.className = 'text-[11px] sm:text-xs text-white/80 font-medium';
@@ -1817,9 +1822,143 @@ export function closeShareInsightModal() {
         modal.classList.add('hidden');
         unlockBodyScroll('insightShareModal');
     }
+    // 카드가 사라졌으니 예열해 둔 이미지도 버린다 — 다음에 열 때 그 시점 내용으로 다시 뜬다.
+    clearInsightShareBlob();
 }
 
 // 밀당 코멘트를 피드에 공유하기
+/**
+ * 인사이트 공유 카드를 캡처해 canvas 로 돌려준다.
+ *
+ * 모먼트 공유(업로드용 base64)와 외부 SNS 공유(blob 예열)가 같은 캡처를 쓴다.
+ * 캡처가 느려서 클릭 후에 돌리면 공유 시트가 제스처를 잃는다(share-blob-cache.js).
+ */
+async function captureInsightShareCanvas() {
+    const preview = document.getElementById('insightScreenshotContainer');
+    if (!preview) throw new Error('인사이트 미리보기를 찾을 수 없습니다.');
+
+    // 스크린샷 생성 시 insightScreenshotContainer 사용
+    const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
+    const targetElement = screenshotContainer || preview;
+
+    // 외부 이미지를 data URL 로 인라인한다 (html2canvas 의 캔버스 오염 방지).
+    // 예전에는 이미지마다 직렬로 콜러블을 왕복했다 — 장수만큼 대기가 쌓였다.
+    await inlineImagesForCapture(targetElement, 'insight-share');
+    await document.fonts.ready;
+    await new Promise(r => setTimeout(r, 150)); // 페인트 대기
+
+    // 폰트 CSS (html2canvas 클론에서 폰트 로드용)
+    let fontCSS = '';
+    try {
+        const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
+        fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
+    } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
+
+    // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
+    const canvas = await captureWithGhostStrategy(targetElement, {
+        captureWidth: 420,
+        // 공유 버튼은 캡처 이미지에서 빠져야 한다 — 엔진 무관하게 유령 노드에서 숨김
+        prepareGhost: (ghost) => {
+            const shareBtn = ghost.querySelector('.insight-share-button');
+            if (shareBtn) shareBtn.style.display = 'none';
+        },
+        // html2canvas 폴백 전용 — 클론 문서에 폰트 CSS 주입 (snapdom 은 embedFonts 로 처리)
+        onclone: (clonedDoc) => {
+            if (fontCSS) {
+                const style = clonedDoc.createElement('style');
+                style.textContent = fontCSS;
+                clonedDoc.head.appendChild(style);
+            }
+        }
+    });
+
+    return canvas;
+}
+
+/** 예열 중에는 SNS 버튼을 흐리게 — 눌러도 되지만 잠깐 기다린다는 표시다. */
+function setInsightSnsButtonBusy(busy) {
+    const btn = document.getElementById('insightShareSnsBtn');
+    if (!btn) return;
+    btn.classList.toggle('opacity-60', !!busy);
+    if (busy) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+}
+
+/** 인사이트 SNS 공유용 blob 예열 캐시 — 모달을 열 때 채우고 닫을 때 비운다. */
+const insightShareBlobCache = createShareBlobCache({
+    capture: captureInsightShareCanvas,
+    onBusy: setInsightSnsButtonBusy,
+    label: 'insight'
+});
+
+/** 캡처 대상은 현재 대시보드 기간이다. 기간이 바뀌면 예열해 둔 이미지도 무효가 된다. */
+function getInsightShareKey() {
+    try {
+        return window.getDashboardData?.()?.dateRangeText || 'insight';
+    } catch (e) {
+        return 'insight';
+    }
+}
+
+export function warmInsightShareBlob() {
+    insightShareBlobCache.clear();
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            void insightShareBlobCache.warm(getInsightShareKey());
+        });
+    });
+}
+
+export function clearInsightShareBlob() {
+    insightShareBlobCache.clear();
+}
+
+/**
+ * 인사이트 카드를 카카오톡·인스타 등 외부 앱으로 내보낸다.
+ * 모먼트 공유와 달리 서버 상태를 건드리지 않는다 — 캡처 이미지를 공유 시트에 넘길 뿐이다.
+ */
+export async function shareInsightToSns() {
+    const btn = document.getElementById('insightShareSnsBtn');
+    if (btn?.disabled) return;
+
+    logUsageMetric('insight_sns_share_tap').catch(() => {});
+    if (btn) btn.disabled = true;
+    const shareKey = getInsightShareKey();
+    let loadingShown = false;
+    try {
+        // 예열이 끝나 있으면 제스처를 잃지 않고 공유 시트가 곧바로 열린다.
+        let blob = insightShareBlobCache.get(shareKey);
+        if (!blob) {
+            showLoading('공유 이미지 준비 중...');
+            loadingShown = true;
+            blob = await insightShareBlobCache.ensure(shareKey);
+            hideLoading();
+            loadingShown = false;
+        }
+        if (!blob) {
+            showToast('공유 이미지를 만들지 못했어요.', 'error');
+            return;
+        }
+
+        // 캡처 카드에 이미 MEALOG 마크가 들어가 있고 폭도 맞춰져 있다 — 다시 손대지 않는다.
+        const shared = await shareBlobsToExternal([blob], {
+            caption: (document.getElementById('insightShareComment')?.value || '').trim(),
+            appendLogo: false,
+            resize: false,
+            fileNamePrefix: `mealog_insight_${shareKey.replace(/\s+/g, '_')}`
+        });
+        if (shared) logUsageMetric('insight_sns_share_done').catch(() => {});
+    } catch (e) {
+        if (e?.name !== 'AbortError') {
+            console.error('인사이트 SNS 공유 실패:', e);
+            showToast(e?.message || 'SNS 공유에 실패했어요.', 'error');
+        }
+    } finally {
+        if (loadingShown) hideLoading();
+        if (btn) btn.disabled = false;
+    }
+}
+
 export async function shareInsightToFeed() {
     const preview = document.getElementById('insightScreenshotContainer');
     const commentInput = document.getElementById('insightShareComment');
@@ -1958,44 +2097,8 @@ export async function shareInsightToFeed() {
     await new Promise(r => setTimeout(r, 50));
 
     try {
-        // 스크린샷 생성 시 insightScreenshotContainer 사용
-        const screenshotContainer = preview.querySelector('#insightScreenshotContainer');
-        const targetElement = screenshotContainer || preview;
+        const canvas = await captureInsightShareCanvas();
 
-        // 외부 이미지를 data URL 로 인라인한다 (html2canvas 의 캔버스 오염 방지).
-        // 예전에는 이미지마다 직렬로 콜러블을 왕복했다 — 장수만큼 대기가 쌓였다.
-        await inlineImagesForCapture(targetElement, 'insight-share');
-        await document.fonts.ready;
-        await new Promise(r => setTimeout(r, 150)); // 페인트 대기
-
-        // 폰트 CSS (html2canvas 클론에서 폰트 로드용)
-        let fontCSS = '';
-        try {
-            const fredokaRes = await fetch('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&display=swap');
-            fontCSS = (await fredokaRes.text()) + MEALOG_SHARE_CAPTURE_GARAM_FONT_FACE_CSS;
-        } catch (e) { console.warn('폰트 CSS 로드 실패:', e); }
-
-        // 유령 캡처: 화면 밖에 복제본을 만들어 모달/transform 간섭 없이 정사이즈 캡처
-        const canvas = await captureWithGhostStrategy(targetElement, {
-            captureWidth: 420,
-            // 공유 버튼은 캡처 이미지에서 빠져야 한다 — 엔진 무관하게 유령 노드에서 숨김
-            prepareGhost: (ghost) => {
-                const shareBtn = ghost.querySelector('.insight-share-button');
-                if (shareBtn) shareBtn.style.display = 'none';
-            },
-            // html2canvas 폴백 전용 — 클론 문서에 폰트 CSS 주입 (snapdom 은 embedFonts 로 처리)
-            onclone: (clonedDoc) => {
-                if (fontCSS) {
-                    const style = clonedDoc.createElement('style');
-                    style.textContent = fontCSS;
-                    clonedDoc.head.appendChild(style);
-                }
-            }
-        });
-        
-        // Canvas를 Blob으로 변환
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
-        
         // Firebase Storage에 업로드
         const base64Image = canvas.toDataURL('image/png');
         const { uploadBase64ToStorage } = await import('../utils.js');

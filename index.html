@@ -3639,15 +3639,13 @@
                     <button type="button" id="dietReportRegenerateBtn" class="diet-report-icon-btn hidden" aria-label="다시 분석" title="다시 분석">
                         <i data-lucide="refresh-cw" aria-hidden="true"></i>
                     </button>
-                    <button type="button" id="dietReportSnsShareBtn" class="diet-report-icon-btn hidden" aria-label="다른 SNS에 공유" title="다른 SNS에 공유">
-                        <i data-lucide="share-2" aria-hidden="true"></i>
-                    </button>
                 </div>
             </div>
             <div id="dietReportModalBody" class="diet-report-modal__body"></div>
             <div id="dietReportModalActions" class="mealog-dialog-actions mealog-dialog-actions--single mealog-dialog-actions--border">
                 <button type="button" id="dietReportCloseBtn" class="mealog-btn mealog-btn-secondary">닫기</button>
-                <button type="button" id="dietReportShareBtn" class="mealog-btn mealog-btn-primary hidden"><span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span></button>
+                <button type="button" id="dietReportSnsShareBtn" class="mealog-btn mealog-btn-secondary hidden" aria-label="다른 앱으로 공유" title="카카오톡·인스타 등으로 보내기"><span class="diet-report-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span></button>
+                <button type="button" id="dietReportShareBtn" class="mealog-btn mealog-btn-primary hidden"><span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트</span></span></button>
             </div>
         </div>
     </div>
@@ -3735,8 +3733,11 @@
             </div>
             <div class="mealog-dialog-actions mealog-dialog-actions--pair mealog-dialog-actions--border">
                 <button type="button" onclick="window.closeShareBestModal()" class="mealog-btn mealog-btn-secondary">닫기</button>
+                <button type="button" id="bestShareSnsBtn" onclick="window.shareBestToSns()" class="mealog-btn mealog-btn-secondary" aria-label="다른 앱으로 공유" title="카카오톡·인스타 등으로 보내기">
+                    <span class="mealog-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>
+                </button>
                 <button type="button" id="bestShareSubmitBtn" onclick="window.shareBestToFeed()" class="mealog-btn mealog-btn-primary">
-                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="bestShareSubmitLabel">공유하기</span></span>
+                    <span class="mealog-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span id="bestShareSubmitLabel">모먼트</span></span>
                 </button>
             </div>
         </div>
@@ -3765,8 +3766,12 @@
                     <span class="text-sm sm:text-[15px] font-bold text-slate-700">취소</span>
                     <span class="text-[11px] sm:text-xs text-slate-500 font-medium">이전 화면으로</span>
                 </button>
+                <button type="button" id="insightShareSnsBtn" onclick="window.shareInsightToSns()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-100 hover:bg-slate-200/90 active:bg-slate-200 border-r border-slate-200 transition-colors min-w-0" aria-label="다른 앱으로 공유" title="카카오톡·인스타 등으로 보내기">
+                    <span class="text-sm sm:text-[15px] font-bold text-slate-700">SNS</span>
+                    <span class="text-[11px] sm:text-xs text-slate-500 font-medium">다른 앱으로</span>
+                </button>
                 <button type="button" id="insightShareSubmitBtn" onclick="window.shareInsightToFeed()" class="flex-1 flex flex-col items-center justify-center gap-0.5 px-2 py-2.5 sm:py-3 bg-slate-900 text-white hover:bg-slate-800 active:bg-slate-800 transition-colors min-w-0">
-                    <span id="insightShareSubmitLabel" class="text-sm sm:text-[15px] font-bold">공유하기</span>
+                    <span id="insightShareSubmitLabel" class="text-sm sm:text-[15px] font-bold">모먼트</span>
                     <span id="insightShareSubmitSub" class="text-[11px] sm:text-xs text-white/80 font-medium">피드에 공유</span>
                 </button>
             </div>

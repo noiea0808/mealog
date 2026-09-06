@@ -227,14 +227,16 @@ function setSnsShareButtonPreparing(preparing) {
     if (!btn || btn.classList.contains('hidden')) return;
     if (preparing) {
         btn.disabled = true;
-        btn.innerHTML = '<i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i>';
+        btn.innerHTML =
+            '<span class="diet-report-share-btn__inner"><i data-lucide="loader-circle" class="lucide-spin" aria-hidden="true"></i><span>SNS</span></span>';
         btn.setAttribute('aria-label', '공유 이미지 준비 중');
         btn.title = '공유 이미지 준비 중…';
     } else {
         btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
-        btn.setAttribute('aria-label', '다른 SNS에 공유');
-        btn.title = '다른 SNS에 공유';
+        btn.innerHTML =
+            '<span class="diet-report-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>';
+        btn.setAttribute('aria-label', '다른 앱으로 공유');
+        btn.title = '카카오톡·인스타 등으로 보내기';
     }
     scheduleLucideIcons(btn);
 }
@@ -307,10 +309,12 @@ function setSnsShareButton(visible) {
             btn.classList.remove('opacity-60');
         }
         if (!btn.querySelector('[data-lucide], svg')) {
-            btn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
+            btn.innerHTML =
+                '<span class="diet-report-share-btn__inner"><i data-lucide="share-2" aria-hidden="true"></i><span>SNS</span></span>';
         }
         scheduleLucideIcons(btn);
     }
+    syncDietReportActionsLayout();
 }
 
 /** 헤더(다시 분석) + 하단(모먼트 공유) 표시/상태 제어 */
@@ -339,16 +343,27 @@ function setFooterButtons({ regen = false, share = false, regenLabel = '다시 �
         } else {
             shareBtn.className = 'mealog-btn mealog-btn-primary';
             shareBtn.innerHTML =
-                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트 공유</span></span>';
+                '<span class="diet-report-share-btn__inner"><i data-lucide="send" aria-hidden="true"></i><span>모먼트</span></span>';
         }
         if (!share) shareBtn.classList.add('hidden');
         else scheduleLucideIcons(shareBtn);
     }
+    syncDietReportActionsLayout();
+}
+
+/**
+ * 하단 액션 영역의 가로/세로 배치를 정한다.
+ * 닫기 말고 보이는 버튼이 하나라도 있으면 가로(3버튼까지), 없으면 닫기 하나만 세로로 채운다.
+ * 모먼트 공유와 SNS 는 표시 조건이 서로 달라서 한 곳에서 함께 판단해야 어긋나지 않는다.
+ */
+function syncDietReportActionsLayout() {
     const actions = document.getElementById('dietReportModalActions');
-    if (actions) {
-        actions.classList.toggle('mealog-dialog-actions--pair', !!share);
-        actions.classList.toggle('mealog-dialog-actions--single', !share);
-    }
+    if (!actions) return;
+    const shareVisible = !document.getElementById('dietReportShareBtn')?.classList.contains('hidden');
+    const snsVisible = !document.getElementById('dietReportSnsShareBtn')?.classList.contains('hidden');
+    const multi = shareVisible || snsVisible;
+    actions.classList.toggle('mealog-dialog-actions--pair', multi);
+    actions.classList.toggle('mealog-dialog-actions--single', !multi);
 }
 
 function renderLoading(mode = 'fetch') {

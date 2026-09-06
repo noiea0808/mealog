@@ -17608,7 +17608,10 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
 #dietReportModal #dietReportModalActions.mealog-dialog-actions--single {
     flex-direction: column;
 }
-#dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportShareBtn.hidden {
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportShareBtn.hidden,
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportSnsShareBtn.hidden,
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--pair > #dietReportShareBtn.hidden,
+#dietReportModal #dietReportModalActions.mealog-dialog-actions--pair > #dietReportSnsShareBtn.hidden {
     display: none !important;
 }
 #dietReportModal #dietReportModalActions.mealog-dialog-actions--single > #dietReportCloseBtn {
@@ -17628,6 +17631,19 @@ body > .moment-v2-social-comments-panel.moment-v2-social-comments-panel--sheet-i
     justify-content: center;
     gap: 0.4rem;
     color: #fff;
+}
+/**
+ * 나란히 선 SNS 버튼 — 아이콘·라벨 가로 정렬은 위와 같게 두되 색은 건드리지 않는다.
+ * 이쪽은 secondary(흰 바탕)라 color:#fff 를 물려받으면 글자가 배경에 묻힌다.
+ */
+#dietReportModal #dietReportSnsShareBtn:not(.hidden),
+#bestShareModal #bestShareSnsBtn,
+#dailySharePreviewModal #dailyShareSnsBtn {
+    display: inline-flex !important;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
 }
 #dietReportModal #dietReportShareBtn.mealog-btn-danger,
 #bestShareModal #bestShareSubmitBtn.mealog-btn-danger {

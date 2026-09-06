@@ -4169,7 +4169,16 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'diet_report_open_timeline',
   // 리포트 모달 「SNS 공유」 — 모먼트 쪽과 같은 tap/done 규칙
   'diet_report_sns_tap',
-  'diet_report_sns_done'
+  'diet_report_sns_done',
+
+  // --- 공유 카드 외부 SNS 내보내기 (하루 기록·베스트·인사이트) ---
+  // 모먼트 공유 버튼 옆에 나란히 붙은 갈래다. 같은 카드의 모먼트 공유 수와 견주어 읽는다.
+  'daily_sns_share_tap',
+  'daily_sns_share_done',
+  'best_sns_share_tap',
+  'best_sns_share_done',
+  'insight_sns_share_tap',
+  'insight_sns_share_done'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */

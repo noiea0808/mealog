@@ -23,6 +23,7 @@ const WINDOW_BINDINGS = [
     ['openShareInsightModal', (m) => m.openShareInsightModal],
     ['closeShareInsightModal', (m) => m.closeShareInsightModal],
     ['shareInsightToFeed', (m) => m.shareInsightToFeed],
+    ['shareInsightToSns', (m) => m.shareInsightToSns],
     ['setAnalysisType', (m) => m.setAnalysisType],
     ['setAnalysisSlotFilter', (m) => m.setAnalysisSlotFilter],
     ['setMealdangView', (m) => m.setMealdangView],
@@ -30,6 +31,7 @@ const WINDOW_BINDINGS = [
     ['closeShareBestModal', (m) => m.closeShareBestModal],
     ['closeBestSharePeriodNotice', (m) => m.closeBestSharePeriodNotice],
     ['shareBestToFeed', (m) => m.shareBestToFeed],
+    ['shareBestToSns', (m) => m.shareBestToSns],
     ['editInsightShare', (m) => m.openEditInsightShareModal],
     ['updateDashboard', (m) => m.updateDashboard]
 ];
