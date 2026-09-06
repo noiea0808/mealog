@@ -22,6 +22,7 @@ import {
 } from '../utils/diet-report-share.js';
 import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js';
 import { lockBodyScroll, unlockBodyScroll } from '../utils/scroll-lock.js';
+import { logUsageMetric } from '../usage-metrics.js';
 import { inlineImagesForCapture } from '../utils/capture-image-inline.js';
 import { scheduleLucideIcons } from '../icons.js';
 import { unshareWithOptimisticUpdate, getSharedPhotos, setSharedPhotos } from '../utils/moment-share-state.js';
@@ -523,7 +524,11 @@ async function runRegenerate(dateStr) {
     }
 }
 
-export async function openDietReportModal(dateStr) {
+/**
+ * @param {string} dateStr
+ * @param {''|'welcome'|'timeline'} [from] 계측용 진입 경로 — logUsageMetric 은 키만 받으므로 키 이름으로 가른다
+ */
+export async function openDietReportModal(dateStr, from = '') {
     if (!window.currentUser || window.currentUser.isAnonymous) {
         showToast('로그인이 필요합니다.', 'error');
         return;
@@ -539,6 +544,8 @@ export async function openDietReportModal(dateStr) {
     if (title) title.textContent = `AI 식단분석 · ${formatMealogDateLabel(dateStr)}`;
 
     setModalVisible(true);
+    if (from === 'welcome') logUsageMetric('diet_report_open_welcome').catch(() => {});
+    else if (from === 'timeline') logUsageMetric('diet_report_open_timeline').catch(() => {});
     void getShareCaptureFontCss();
 
     const mealCount = countAnalyzableMealsForDate(dateStr);
@@ -888,7 +895,7 @@ function bindDietReportTimelineDelegation() {
         if (!dateStr) return;
         e.preventDefault();
         e.stopPropagation();
-        void openDietReportModal(dateStr);
+        void openDietReportModal(dateStr, 'timeline');
     });
 }
 

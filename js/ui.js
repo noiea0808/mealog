@@ -17,6 +17,7 @@ import { computeDietRecordScore } from './utils/diet-record-score.js';
 import { escapeHtml } from './render/utils.js';
 import { formatMealogDateLabel } from './utils/date-label.js';
 import { lockBodyScroll, unlockBodyScroll } from './utils/scroll-lock.js';
+import { logUsageMetric } from './usage-metrics.js';
 import { getProfileAvatarDisplay } from './utils.js';
 import { appState } from './state.js';
 import { scheduleLucideIcons } from './icons.js';
@@ -591,6 +592,26 @@ let welcomeReportIndex = 0;
 /** @type {Map<string, object>} */
 const welcomeReportDataCache = new Map();
 
+/**
+ * 웰컴 팝업 3초 체류 — 「떴다」와 「봤다」를 가르는 최소선.
+ * 열림 1회당 최대 1회. 3초 전에 닫히면 타이머만 지우고 아무것도 쏘지 않는다.
+ */
+let welcomeDwellTimerId = null;
+
+function clearWelcomeDwellTimer() {
+    if (welcomeDwellTimerId == null) return;
+    clearTimeout(welcomeDwellTimerId);
+    welcomeDwellTimerId = null;
+}
+
+function startWelcomeDwellTimer() {
+    clearWelcomeDwellTimer();
+    welcomeDwellTimerId = setTimeout(() => {
+        welcomeDwellTimerId = null;
+        logUsageMetric('welcome_dwell_3s').catch(() => {});
+    }, 3000);
+}
+
 function resetWelcomeReportNavState() {
     welcomeLatestReportDate = '';
     welcomeReportDates = [];
@@ -780,6 +801,7 @@ function bindAttendanceWelcomeChartNavOnce() {
         if (n < 2) return;
         const next = Math.max(0, Math.min(n - 1, attendanceWelcomeSlideIdx + delta));
         if (next === attendanceWelcomeSlideIdx) return;
+        logUsageMetric('welcome_slide_move').catch(() => {});
         attendanceWelcomeSlideIdx = next;
         applyAttendanceWelcomeSlideTransform();
     };
@@ -850,6 +872,9 @@ function bindAttendanceWelcomeKindSwitchOnce() {
         else if (mealHit) next = 'meal';
         else if (snackHit) next = 'snack';
         if (!next || next === welcomeChartKind) return;
+        if (next === 'report') logUsageMetric('welcome_kind_switch_report').catch(() => {});
+        else if (next === 'meal') logUsageMetric('welcome_kind_switch_meal').catch(() => {});
+        else logUsageMetric('welcome_kind_switch_snack').catch(() => {});
         welcomeChartKind = next;
         attendanceWelcomeSlideIdx = 0;
         updateWelcomeKindSwitchUi();
@@ -866,7 +891,7 @@ function bindWelcomeReportPanelOnce() {
         const dateStr = getWelcomeCurrentReportDate();
         if (!dateStr || typeof window.openDietReportModal !== 'function') return;
         closeAttendancePopup();
-        void window.openDietReportModal(dateStr);
+        void window.openDietReportModal(dateStr, 'welcome');
     });
 }
 
@@ -886,6 +911,7 @@ function bindWelcomeReportDateNavOnce() {
         const dateStr = welcomeReportDates[nextIdx];
         if (!uid || !dateStr) return;
 
+        logUsageMetric('welcome_report_nav').catch(() => {});
         welcomeReportIndex = nextIdx;
         welcomeLatestReportDate = dateStr;
         updateWelcomeReportDateNavUi();
@@ -1044,11 +1070,13 @@ function bindAttendanceWelcomeChartsOnce() {
         if (Math.abs(dx) < 36) return;
         const n = Number(vp.dataset.slideCount || 0);
         if (n < 2) return;
+        const prevIdx = attendanceWelcomeSlideIdx;
         if (dx < 0) {
             attendanceWelcomeSlideIdx = Math.min(attendanceWelcomeSlideIdx + 1, n - 1);
         } else {
             attendanceWelcomeSlideIdx = Math.max(attendanceWelcomeSlideIdx - 1, 0);
         }
+        if (attendanceWelcomeSlideIdx !== prevIdx) logUsageMetric('welcome_slide_move').catch(() => {});
         applyAttendanceWelcomeSlideTransform();
     };
 
@@ -1158,6 +1186,7 @@ function renderAttendanceWelcomeChartsArea() {
  * 출석/연속 기록 팝업 닫기 (자동 닫기 없음 — 닫기 버튼 전용)
  */
 export function closeAttendancePopup() {
+    clearWelcomeDwellTimer();
     const popup = document.getElementById('attendancePopup');
     const attendanceContent = document.getElementById('attendancePopupContent');
     if (attendanceContent) {
@@ -1238,6 +1267,8 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     const auxBox = document.getElementById('attendancePopupAuxBox');
     if (!popup || !textRoot || !textSvg) return false;
 
+    /** 리렌더·재호출로 「뜸」이 부풀지 않도록, 실제로 닫혀 있다가 열리는 경우만 센다 */
+    const wasHidden = popup.classList.contains('hidden');
     const showWelcomeCharts = welcomeIcon === 'hasRecord' || welcomeIcon === 'hasRecordRestart';
     const svgLines = showWelcomeCharts ? displayLines.slice(0, 1) : displayLines;
 
@@ -1333,6 +1364,16 @@ export function showAttendancePopup(line1, line2 = '', welcomeIcon = 'hasRecord'
     void popup.offsetHeight;
     document.body.classList.add('attendance-popup-anim');
     lockAttendancePopupScroll();
+    /**
+     * 첫 화면이 무엇이었나 — 리포트 열람률의 분모다.
+     * 차트가 없는 분기(기록 없음)엔 리포트/식사/간식 자체가 없어 세지 않는다.
+     */
+    if (wasHidden && showWelcomeCharts) {
+        if (welcomeChartKind === 'report') logUsageMetric('welcome_shown_report').catch(() => {});
+        else if (welcomeChartKind === 'meal') logUsageMetric('welcome_shown_meal').catch(() => {});
+        else logUsageMetric('welcome_shown_snack').catch(() => {});
+        startWelcomeDwellTimer();
+    }
     return true;
 }
 

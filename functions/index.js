@@ -4146,7 +4146,24 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'context_sub_added',
   'context_sub_deleted',
   'photo_gps_present',
-  'photo_gps_absent'
+  'photo_gps_absent',
+
+  // --- 웰컴 팝업 (js/ui.js) ---
+  // 뜬 것과 본 것을 가른다. 첫 화면은 요일 기본값이 정하므로 문서 ID(날짜)와 엮어 읽는다.
+  'welcome_shown_report',
+  'welcome_shown_meal',
+  'welcome_shown_snack',
+  'welcome_dwell_3s',
+  'welcome_kind_switch_report',
+  'welcome_kind_switch_meal',
+  'welcome_kind_switch_snack',
+  'welcome_slide_move',
+  'welcome_report_nav',
+
+  // --- AI 식단분석 리포트 열람 (js/modals/diet-report.js) ---
+  // 운영비의 큰 몫이 여기서 나가므로 「만들었는데 안 읽는다」를 재는 것이 요점이다.
+  'diet_report_open_welcome',
+  'diet_report_open_timeline'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */

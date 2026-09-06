@@ -99,7 +99,27 @@ const PAGE_VIEW_METRIC_DEFS = [
     // 마이 > 태그 탭은 없어졌다(나만의 태그 제거) — 호출부가 없어 더 오르지 않지만 과거 이력이 남아 있다
     { field: 'settings_tags', section: '사용자', label: '태그 관리(폐지)' },
     { field: 'settings_mealdang_memo', section: '사용자', label: '밀당 메모' },
-    { field: 'settings_push', section: '사용자', label: '푸시 알림' }
+    { field: 'settings_push', section: '사용자', label: '푸시 알림' },
+    /**
+     * 웰컴 팝업 — 「뜬 것」과 「본 것」은 다르다.
+     * 첫 화면(shown_*)은 요일별 기본값이 정하는 것이라 사용자 선택이 아니다. 사용자가 고른
+     * 것은 kind_switch_* 쪽이다. 둘을 같은 줄로 읽지 말 것.
+     */
+    { field: 'welcome_shown_report', section: '웰컴', label: '첫 화면 리포트' },
+    { field: 'welcome_shown_meal', section: '웰컴', label: '첫 화면 식사' },
+    { field: 'welcome_shown_snack', section: '웰컴', label: '첫 화면 간식' },
+    { field: 'welcome_dwell_3s', section: '웰컴', label: '3초 이상 머묾' },
+    { field: 'welcome_kind_switch_report', section: '웰컴', label: '탭 전환 → 리포트' },
+    { field: 'welcome_kind_switch_meal', section: '웰컴', label: '탭 전환 → 식사' },
+    { field: 'welcome_kind_switch_snack', section: '웰컴', label: '탭 전환 → 간식' },
+    { field: 'welcome_slide_move', section: '웰컴', label: '슬라이드 넘김' },
+    { field: 'welcome_report_nav', section: '웰컴', label: '리포트 날짜 이동' },
+    /**
+     * AI 식단분석 리포트 열람 — 분모는 welcome_shown_report 다.
+     * 이 두 행이 낮으면 리포트를 덜 만들어도 되고, 높으면 비용을 아끼면 안 된다는 뜻이다.
+     */
+    { field: 'diet_report_open_welcome', section: '리포트', label: '웰컴에서 열기' },
+    { field: 'diet_report_open_timeline', section: '리포트', label: '타임라인에서 열기' }
 ];
 
 /**
