@@ -8,6 +8,7 @@
 | [02-marketing-roadmap.md](02-marketing-roadmap.md) | 0~3단계 계획(2주 → 6주 → 8주 → 9개월), 채널, 예산, 판정 기준, 카피 초안, 사용자 확인 사항 | 실행할 때 |
 | [03-measurement-spec.md](03-measurement-spec.md) | 이벤트·유입 귀속·딥링크 명세. 광고 전 필수 | 0단계 개발할 때 |
 | [05-store-and-competition.md](05-store-and-competition.md) | **스토어·경쟁 실측.** 실제 규모(설치 1,640 / 가입 464 / 기록 88), 코호트 개선 추세, 유입 경로, 경쟁 앱, 카테고리·리뷰 문제, 다모앙 100만원 성과 | 스토어를 손보기 전에 |
+| [06-ad-campaign-log.md](06-ad-campaign-log.md) | **광고 집행 기록.** 2026년 3회(구글×2·다모앙) 합계 146만원의 비용·성과·실제 잔존, 왜 실패했는지, 다음 집행 전 체크리스트 | **광고를 태우기 전에 반드시** |
 | [04-improvement-backlog.md](04-improvement-backlog.md) | **오늘 나온 할 일 모음.** A 코드 없이 지금 / B 다음 배포 / C AI 모델 종료 대응 / D 확인 필요 / E 처리 완료 / F 바로잡은 오해 | 무엇부터 할지 정할 때 |
 | [scripts/positioning-analysis.py](scripts/positioning-analysis.py) | 01 문서의 모든 숫자를 재현하는 스크립트(표준 라이브러리만) | 새 내보내기로 다시 볼 때 |
 
