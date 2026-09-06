@@ -802,6 +802,12 @@ async function shareDietReportToSns() {
 
     const snsBtn = document.getElementById('dietReportSnsShareBtn');
     _sharing = true;
+    /**
+     * 모먼트 SNS 공유(feed-options-report.js)와 같은 규칙이다 — 여기는 「눌러서 실제로
+     * 시도가 시작됐다」, done 은 「공유 시트가 대상 앱으로 넘겼다」. 이미지 생성 실패는
+     * tap 에만 잡히므로 두 행의 차이엔 취소뿐 아니라 준비 실패도 섞인다.
+     */
+    logUsageMetric('diet_report_sns_tap').catch(() => {});
 
     try {
         if (!_snsShareBlob) {
@@ -815,11 +821,12 @@ async function shareDietReportToSns() {
         }
 
         if (snsBtn) snsBtn.disabled = true;
-        await shareBlobsToExternal([_snsShareBlob], {
+        const shared = await shareBlobsToExternal([_snsShareBlob], {
             appendLogo: false,
             resize: false,
             fileNamePrefix: `mealog_ai_diet_${_currentDate}`
         });
+        if (shared) logUsageMetric('diet_report_sns_done').catch(() => {});
     } catch (e) {
         if (e?.name !== 'AbortError') {
             console.error('shareDietReportToSns failed', e);

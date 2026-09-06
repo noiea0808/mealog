@@ -4166,7 +4166,10 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   // --- AI 식단분석 리포트 열람 (js/modals/diet-report.js) ---
   // 운영비의 큰 몫이 여기서 나가므로 「만들었는데 안 읽는다」를 재는 것이 요점이다.
   'diet_report_open_welcome',
-  'diet_report_open_timeline'
+  'diet_report_open_timeline',
+  // 리포트 모달 「SNS 공유」 — 모먼트 쪽과 같은 tap/done 규칙
+  'diet_report_sns_tap',
+  'diet_report_sns_done'
 ]);
 
 /** firestore.rules · js/excluded-analytics-uids.js DEFAULT 과 동기화 */

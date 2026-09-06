@@ -125,7 +125,10 @@ const PAGE_VIEW_METRIC_DEFS = [
      * 이 두 행이 낮으면 리포트를 덜 만들어도 되고, 높으면 비용을 아끼면 안 된다는 뜻이다.
      */
     { field: 'diet_report_open_welcome', section: '리포트', label: '웰컴에서 열기' },
-    { field: 'diet_report_open_timeline', section: '리포트', label: '타임라인에서 열기' }
+    { field: 'diet_report_open_timeline', section: '리포트', label: '타임라인에서 열기' },
+    // 모먼트 SNS 공유 두 행과 같은 규칙 — 여기 차이엔 취소 외에 이미지 생성 실패도 섞인다
+    { field: 'diet_report_sns_tap', section: '리포트', label: 'SNS 공유 누름' },
+    { field: 'diet_report_sns_done', section: '리포트', label: 'SNS 공유 시트로 넘김' }
 ];
 
 /**
