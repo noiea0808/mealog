@@ -7,6 +7,7 @@
 | [01-positioning-validation.md](01-positioning-validation.md) | 사용자 88명·기록 2,831건으로 "누가 남는가" 검증. A(음식 일기) / B(몸 상태 추적) 세그먼트, 신규 코호트 리텐션, 검정 결과 | 타겟을 정할 때, 사업계획서 쓸 때 |
 | [02-marketing-roadmap.md](02-marketing-roadmap.md) | 0~3단계 계획(2주 → 6주 → 8주 → 9개월), 채널, 예산, 판정 기준, 카피 초안, 사용자 확인 사항 | 실행할 때 |
 | [03-measurement-spec.md](03-measurement-spec.md) | 이벤트·유입 귀속·딥링크 명세. 광고 전 필수 | 0단계 개발할 때 |
+| [04-improvement-backlog.md](04-improvement-backlog.md) | **오늘 나온 할 일 모음.** A 코드 없이 지금 / B 다음 배포 / C AI 모델 종료 대응 / D 확인 필요 / E 처리 완료 / F 바로잡은 오해 | 무엇부터 할지 정할 때 |
 | [scripts/positioning-analysis.py](scripts/positioning-analysis.py) | 01 문서의 모든 숫자를 재현하는 스크립트(표준 라이브러리만) | 새 내보내기로 다시 볼 때 |
 
 ## 쉬운 말 요약 — 이것만 읽어도 됩니다
