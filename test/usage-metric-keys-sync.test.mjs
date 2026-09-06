@@ -37,21 +37,41 @@ function collectJsFiles(dir) {
 }
 
 /**
+ * 같은 파일 안의 `const NAME = 'key';` 목록.
+ *
+ * 키를 상수로 빼 두고 호출하는 모듈이 있다(promo-banner.js). 인자가 식별자라
+ * 리터럴 훑기로는 안 잡히므로, 선언을 찾아 되짚는다.
+ */
+function stringConstMap(src) {
+    const map = new Map();
+    for (const m of src.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*=\s*'([a-z0-9_]+)'\s*;/g)) {
+        map.set(m[1], m[2]);
+    }
+    return map;
+}
+
+/**
  * 앱이 실제로 올릴 수 있는 키.
  *
- * 두 갈래를 본다. 대부분은 logUsageMetric('...') 리터럴이지만, 키를 표로 들고 발행하는
- * 모듈(entry-sheet-session.js)도 있어서 그쪽은 리터럴로 안 잡힌다. 그런 모듈은
+ * 세 갈래를 본다. 대부분은 logUsageMetric('...') 리터럴이다. 인자를 상수로 빼 쓴
+ * 호출부는 같은 파일의 const 선언으로 되짚는다. 키를 표로 들고 발행하는
+ * 모듈(entry-sheet-session.js)은 어느 쪽으로도 안 잡히므로
  * `export const ..._METRIC_KEYS = [...]` 로 발행 목록을 내보내기로 하고, 여기서 함께 읽는다.
  */
 function calledKeys() {
     const keys = new Set();
     for (const file of collectJsFiles(join(ROOT, 'js'))) {
         const src = readFileSync(file, 'utf8');
+        const consts = stringConstMap(src);
         for (const m of src.matchAll(/logUsageMetric\(([^)]*)\)/g)) {
             const arg = m[1];
             // 삼항의 조건절에 있는 비교 문자열(mode === 'typeahead')은 키가 아니다
             const withoutConditions = arg.replace(/[=!]==?\s*'[^']*'/g, '');
             for (const lit of withoutConditions.matchAll(/'([a-z0-9_]+)'/g)) keys.add(lit[1]);
+            for (const id of withoutConditions.matchAll(/[A-Za-z_$][\w$]*/g)) {
+                const resolved = consts.get(id[0]);
+                if (resolved) keys.add(resolved);
+            }
         }
         // 선언형 발행 목록 — export const XXX_METRIC_KEYS = Object.freeze([...]) / [...]
         for (const m of src.matchAll(/export const [A-Z0-9_]*METRIC_KEYS?\s*=\s*(?:Object\.freeze\()?\[([\s\S]*?)\]/g)) {
