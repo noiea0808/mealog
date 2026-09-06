@@ -15256,6 +15256,38 @@ body:has(#adminPage:not(.hidden)),
     color: #0f172a;
 }
 
+/*
+ * 구분 셀 색띠 — 53행짜리 표에서 묶음 경계를 잡아 준다.
+ * 구분 이름이 셀에 그대로 적혀 있으니 색은 정체성이 아니라 덩어리 표시다. 그래서 구분마다
+ * 고유색이 아니라 4톤을 돌려 쓴다 (js/admin/dashboard.js computePageUsageSectionTones).
+ * 위쪽 border-color 일괄 !important 를 이겨야 해서 여기도 !important 를 쓴다.
+ * hover 규칙이 더 구체적이라 마우스를 올리면 기존대로 행 전체가 강조된다.
+ */
+#adminDashboardPageUsageTable tbody td[data-usage-tone] {
+    border-left-width: 4px;
+    border-left-style: solid;
+}
+#adminDashboardPageUsageTable tbody td[data-usage-tone='1'] {
+    background-color: #e5effa !important;
+    border-left-color: #2a78d6 !important;
+}
+#adminDashboardPageUsageTable tbody td[data-usage-tone='2'] {
+    background-color: #fdede7 !important;
+    border-left-color: #eb6834 !important;
+}
+#adminDashboardPageUsageTable tbody td[data-usage-tone='3'] {
+    background-color: #e4f5ef !important;
+    border-left-color: #1baf7a !important;
+}
+#adminDashboardPageUsageTable tbody td[data-usage-tone='4'] {
+    background-color: #e9e7f4 !important;
+    border-left-color: #4a3aa7 !important;
+}
+/* 묶음이 바뀌는 행에만 굵은 가로선 — 색띠와 함께 경계를 두 번 말해 준다 */
+#adminDashboardPageUsageTable tbody tr[data-usage-section-start] > td {
+    border-top: 2px solid #64748b !important;
+}
+
 /* 관리자 > AI > AI 식단분석: 목록·상세 독립 스크롤 */
 #adminPage #ai-main-aiDietReports .admin-ai-diet-panels {
     min-height: 0;

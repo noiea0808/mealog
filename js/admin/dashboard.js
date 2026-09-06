@@ -304,15 +304,40 @@ function computePageUsageSectionRowspans() {
     return spans;
 }
 
+/**
+ * 구분 셀 색 — **정체성이 아니라 덩어리 나누기**다.
+ *
+ * 어느 구분인지는 셀에 적힌 글자가 말한다. 색이 하는 일은 53행짜리 표에서
+ * 「여기서 묶음이 바뀐다」를 눈에 띄게 하는 것뿐이라, 구분마다 고유색을 박지 않고
+ * 4톤을 돌려 쓴다 — 이웃끼리만 다르면 목적을 다한다.
+ *
+ * 4톤인 것은 취향이 아니라 검증 결과다. 8색 팔레트에서 7색을 한 화면에 올리면 전 쌍
+ * 색각 분리가 깨진다(정상시 ΔE 12.9 < 15 하한). blue·orange·aqua·violet 네 개는 전 쌍
+ * 통과다. 구분을 중간에 끼워 넣어도 이웃 충돌이 안 생기도록 이름이 아니라 순서로 돌린다.
+ */
+function computePageUsageSectionTones() {
+    const n = PAGE_USAGE_METRIC_DEFS.length;
+    const tones = new Array(n).fill(1);
+    let sectionIdx = -1;
+    for (let i = 0; i < n; i++) {
+        if (i === 0 || PAGE_USAGE_METRIC_DEFS[i - 1].section !== PAGE_USAGE_METRIC_DEFS[i].section) {
+            sectionIdx++;
+        }
+        tones[i] = (sectionIdx % 4) + 1;
+    }
+    return tones;
+}
+
 function ensurePageUsageTableBody() {
     const tb = document.getElementById('dashboardPageUsageTableBody');
     if (!tb) return;
     const n = PAGE_USAGE_METRIC_DEFS.length;
-    const buildKey = `${n}-v7-page-record-split`;
+    const buildKey = `${n}-v8-section-tones`;
     const rowCount = tb.querySelectorAll('tr').length;
     if (_pageUsageTableBuildKey === buildKey && rowCount === n) return;
 
     const rowSpans = computePageUsageSectionRowspans();
+    const sectionTones = computePageUsageSectionTones();
     const sectionCellClass =
         'px-2 py-2 text-sm sticky left-0 z-20 w-[4.5rem] min-w-[4.5rem] max-w-[4.5rem] box-border shadow-[4px_0_12px_-6px_rgba(0,0,0,0.1)] border-r border-slate-300 align-middle text-center';
     const labelCellClass =
@@ -324,7 +349,7 @@ function ensurePageUsageTableBody() {
         if (rs > 0) {
             const rowspanAttr = rs > 1 ? ` rowspan="${rs}"` : '';
             cells.push(
-                `<td${rowspanAttr} class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
+                `<td${rowspanAttr} data-usage-tone="${sectionTones[rowIdx]}" class="${sectionCellClass}"><span class="block text-base font-black text-slate-800 leading-tight">${escapeHtml(def.section)}</span></td>`
             );
         }
         cells.push(
@@ -342,7 +367,8 @@ function ensurePageUsageTableBody() {
                 `<td class="px-1 py-2 text-center text-xs font-bold text-slate-800 tabular-nums${border}" id="pageUsageRow_${rowIdx}_7d${i}">—</td>`
             );
         }
-        return `<tr class="group border-b border-slate-300" data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
+        const sectionStart = rs > 0 ? ' data-usage-section-start' : '';
+        return `<tr class="group border-b border-slate-300"${sectionStart} data-page-dash-row="${rowIdx}" data-usage-group="${def.group || 'page'}">${cells.join('')}</tr>`;
     }).join('');
     _pageUsageTableBuildKey = buildKey;
     // tbody를 다시 만들면 숨김이 풀린다 — 지금 보고 있는 탭으로 되돌린다
