@@ -1,0 +1,223 @@
+<title>밀로그 성장 계획</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F7F8F5; --ink:#1C2420; --muted:#66746C; --rule:#D9E1DB; --tint:#E7F2EC;
+  --accent:#2C8F6A; --accent-ink:#1F6F52; --warn:#B8741B; --bar-track:#E1E8E3;
+  --serif:"Gowun Batang","Noto Serif KR",Georgia,serif;
+  --sans:"IBM Plex Sans KR","Noto Sans KR","Apple SD Gothic Neo",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131917; --ink:#E5EBE7; --muted:#97A69E; --rule:#28332E; --tint:#1A2A22;
+    --accent:#5CC896; --accent-ink:#8ADBB4; --warn:#E0A44A; --bar-track:#233029;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131917; --ink:#E5EBE7; --muted:#97A69E; --rule:#28332E; --tint:#1A2A22;
+  --accent:#5CC896; --accent-ink:#8ADBB4; --warn:#E0A44A; --bar-track:#233029;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased}
+.page{max-width:700px;margin:0 auto;padding:40px 22px 80px}
+header{display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--rule);padding-bottom:22px;margin-bottom:34px}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+h1{font-family:var(--serif);font-weight:700;font-size:34px;line-height:1.25;margin:0;text-wrap:balance}
+.lede{font-family:var(--serif);font-size:18px;color:var(--muted);margin:4px 0 0;max-width:32em}
+h2{font-family:var(--serif);font-size:24px;font-weight:700;margin:0 0 6px;line-height:1.3;text-wrap:balance}
+.sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+h3{font-size:16px;font-weight:600;margin:24px 0 8px}
+section{margin-bottom:46px}
+p{margin:0 0 12px;max-width:36em}
+strong{font-weight:600;color:var(--accent-ink)}
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin:18px 0 18px}
+.tile{background:var(--bg);padding:16px 16px 14px;display:flex;flex-direction:column;gap:3px}
+.tile .n{font-family:var(--serif);font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile .l{font-size:13px;color:var(--muted);line-height:1.5}
+.tile.bad .n{color:var(--warn)}
+.tile.good .n{color:var(--accent)}
+ul{padding-left:1.15em;margin:0 0 12px}
+li{margin-bottom:8px;max-width:36em}
+.bars{display:flex;flex-direction:column;gap:12px;margin:16px 0 6px}
+.bar{display:grid;grid-template-columns:7.4em 1fr 5.2em;align-items:center;gap:12px;font-size:14px}
+.bar .track{height:16px;background:var(--bar-track);position:relative}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--accent)}
+.bar.dim .fill{background:var(--muted);opacity:.5}
+.bar .v{font-variant-numeric:tabular-nums;text-align:right;font-weight:500;font-size:13px}
+.bar .k{color:var(--ink)}
+.note{font-size:13.5px;color:var(--muted);margin-top:10px;max-width:36em}
+.callout{background:var(--tint);border-left:3px solid var(--accent);padding:14px 16px;margin:18px 0}
+.callout p{margin:0;max-width:none}
+.timeline{display:flex;flex-direction:column;border-left:2px solid var(--rule);margin:20px 0 0 8px;padding-left:24px}
+.phase{position:relative;padding-bottom:30px}
+.phase::before{content:"";position:absolute;left:-31px;top:9px;width:12px;height:12px;border-radius:50%;background:var(--bg);border:2px solid var(--accent)}
+.phase.now::before{background:var(--accent)}
+.phase .when{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500;margin-bottom:3px}
+.phase h3{margin:0 0 4px;font-family:var(--serif);font-size:20px;font-weight:700}
+.phase .why{font-size:14px;color:var(--muted);margin:0 0 10px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;margin:14px 0 6px}
+th,td{text-align:left;padding:9px 12px 9px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:12px;letter-spacing:.06em}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.scroll{overflow-x:auto}
+.check{list-style:none;padding:0;margin:14px 0 0}
+.check li{display:grid;grid-template-columns:20px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--rule);margin:0;max-width:none;font-size:15px}
+.check li span.box{width:15px;height:15px;border:1.5px solid var(--muted);margin-top:6px;display:block}
+.repo{margin-top:10px;font-size:14px;color:var(--muted)}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.88em;background:var(--tint);padding:1px 5px}
+a{color:var(--accent-ink)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:480px){
+  h1{font-size:28px}.tile .n{font-size:26px}
+  .bar{grid-template-columns:1fr;gap:4px}
+  .bar .v{text-align:left}
+}
+</style>
+
+<div class="page">
+<header>
+  <div class="eyebrow">밀로그 · 2026년 9월 6일</div>
+  <h1>밀로그 성장 계획</h1>
+  <p class="lede">앱은 잘 만들었습니다. 이제 사람을 데려올 차례입니다. 실제 사용 기록으로 확인한 것과, 앞으로 할 일을 순서대로 적었습니다.</p>
+</header>
+
+<section>
+  <h2>한 줄로 말하면</h2>
+  <p class="sub">지난 한 달(7월 13일~8월 12일) 사용 기록 2,831건을 봤습니다.</p>
+  <div class="callout">
+    <p><strong>들어온 사람은 잘 남습니다. 그런데 들어오는 사람이 하루 2명뿐입니다.</strong> 기능을 더 만드는 게 아니라, 앱을 알릴 통로를 뚫는 게 지금 할 일입니다.</p>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="n">88명</div><div class="l">지난 한 달에 한 번이라도 쓴 사람</div></div>
+    <div class="tile good"><div class="n">26명</div><div class="l">그 88명 중 매일 들어오는 사람<br>(보통 앱은 10~20명)</div></div>
+    <div class="tile bad"><div class="n">2명</div><div class="l">하루에 새로 들어오는 사람<br>광고 없이 저절로</div></div>
+    <div class="tile bad"><div class="n">0</div><div class="l">소문날 통로<br>지금은 다 막혀 있습니다</div></div>
+  </div>
+  <p>새로 온 사람 10명 중 4명이 일주일 뒤에도 쓰고, 3명은 2주 뒤에도 씁니다. 비슷한 기록 앱보다 훨씬 높은 수치입니다. <strong>제품에는 문제가 없습니다.</strong></p>
+</section>
+
+<section>
+  <h2>왜 안 늘어날까 — 통로가 막혀 있습니다</h2>
+  <p class="sub">코드를 살펴보니 알려질 방법이 네 가지 다 막혀 있었습니다.</p>
+  <ul>
+    <li><strong>공유해도 링크가 없습니다.</strong> 사용자가 기록 카드를 카톡으로 보내면 그림만 갑니다. 받은 사람이 눌러볼 곳이 없어서, 지금까지 나간 공유는 한 명도 데려오지 못했습니다.</li>
+    <li><strong>링크를 눌러도 앱이 안 열립니다.</strong> 밀로그 주소를 눌러도 브라우저만 뜹니다.</li>
+    <li><strong>검색에 안 나옵니다.</strong> 모든 화면이 로그인 뒤에 있어서, 구글이나 네이버가 밀로그 안을 볼 수 없습니다.</li>
+    <li><strong>어디서 왔는지 기록을 안 합니다.</strong> 지금 광고를 하면 돈은 나가는데 어느 광고가 효과가 있었는지 알 방법이 없습니다.</li>
+  </ul>
+  <p>이 넷을 막지 않고 광고비를 쓰면 절반이 그냥 샙니다. 그래서 <strong>광고보다 이걸 먼저</strong> 해야 합니다.</p>
+</section>
+
+<section>
+  <h2>누구를 데려와야 할까</h2>
+  <p class="sub">사용자들이 뭘 적는지 봤더니, 두 종류로 뚜렷하게 갈렸습니다.</p>
+
+  <h3>맛집·추억파 (25명)</h3>
+  <p>사진을 찍고, 어디서 누구와 먹었는지 남깁니다. <span style="color:var(--muted)">"아빠 생일로", "흑백요리사 나온 셰프 가게인데 가격이 이게 맞나", "회사 안 가는 아침의 여유로움"</span></p>
+
+  <h3>몸관리파 (20명)</h3>
+  <p>혈당 수치, 체중, 먹은 양을 숫자로 남깁니다. 사진은 거의 안 찍습니다. <span style="color:var(--muted)">"식후1시간 117", "47.9kg", "공복유산소 계단 20분", "보리밥 4숟, 제육 6개", "수술붓기 4일차"</span></p>
+
+  <h3>아무것도 안 정한 사람 (43명)</h3>
+  <p>사진도 숫자도 장소도 안 적고 그냥 몇 번 남기다 맙니다. 가장 많은데 가장 빨리 떠납니다.</p>
+
+  <h3>새로 들어온 사람 중 일주일 뒤에도 쓴 비율</h3>
+  <div class="bars">
+    <div class="bar"><span class="k">몸관리파</span><div class="track"><div class="fill" style="width:70%"></div></div><span class="v">10명 중 7명</span></div>
+    <div class="bar dim"><span class="k">맛집·추억파</span><div class="track"><div class="fill" style="width:36%"></div></div><span class="v">11명 중 4명</span></div>
+    <div class="bar dim"><span class="k">안 정한 사람</span><div class="track"><div class="fill" style="width:24%"></div></div><span class="v">21명 중 5명</span></div>
+  </div>
+  <p class="note">몸관리파가 거의 두 배 오래 남았습니다. <strong>다만 사람 수가 10명, 11명이라 우연일 가능성이 5분의 1쯤 됩니다.</strong> 확실히 하려면 각각 30명은 모아봐야 합니다. 이게 다음 단계에서 할 일입니다.</p>
+
+  <div class="callout">
+    <p><strong>확실한 것 하나.</strong> 사진이든 숫자든 <strong>자기 방식을 하나라도 정한 사람</strong>은 2주 뒤에도 절반 가까이 남습니다. 아무것도 안 정한 사람은 10명 중 1명만 남습니다. 처음 들어왔을 때 "몇 개를 적었나"는 상관없었고, <strong>"뭘 적을지 정했나"</strong>가 갈랐습니다.</p>
+  </div>
+</section>
+
+<section>
+  <h2>그래서 이렇게 하자</h2>
+  <ul>
+    <li><strong>광고는 몸관리파부터 시도합니다.</strong> 어디에 광고할지가 분명하기 때문입니다. 당뇨·혈당 카페, "혈당 기록 앱" 같은 검색어, 보건소. 맛집·추억파는 어디에 광고해야 할지 애매하고, 사실상 인스타그램과 싸워야 합니다.</li>
+    <li><strong>앱 소개 문구는 하나로 통일합니다.</strong> "잔소리하지 않는 식사 기록." 칼로리를 세지 않고 훈수를 두지 않는다는 점은 두 종류 사용자 모두에게 통합니다. 지금 쓰는 분들을 밀어낼 이유가 없습니다.</li>
+    <li><strong>첫 화면에서 물어봅니다.</strong> "무엇을 남기고 싶으세요?" → 사진·장소·함께 / 체중·혈당·운동. 떠나는 사람을 줄이는 가장 싼 방법입니다.</li>
+    <li><strong>몸관리파용 공유 카드를 만듭니다.</strong> 지금 공유 카드 세 종류가 전부 사진 기반이라, 사진을 안 찍는 몸관리파는 자랑할 거리가 없습니다.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>언제 뭘 할까</h2>
+  <div class="scroll">
+  <table>
+    <thead><tr><th></th><th>지금</th><th>12월</th><th>내년 3월</th><th>내년 9월</th></tr></thead>
+    <tbody>
+      <tr><td>한 달 사용자</td><td class="num">88명</td><td class="num">300명</td><td class="num">1,000명</td><td class="num">3,000명</td></tr>
+      <tr><td>하루 신규</td><td class="num">2명</td><td class="num">8명</td><td class="num">25명</td><td class="num">60명</td></tr>
+      <tr><td>드는 돈</td><td class="num">0원</td><td class="num">0~50만</td><td class="num">100~300만</td><td class="num">1~2천만</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">예상이 아니라 목표입니다. "한 명 데려오는 데 3천~1만원"이라는 가정에서 나온 숫자라, 실제로 광고를 해보고 나면 바꿔야 합니다.</p>
+
+  <div class="timeline">
+    <div class="phase now">
+      <div class="when">1단계 · 지금부터 2주 · 돈 안 듦</div>
+      <h3>막힌 통로 뚫기</h3>
+      <p class="why">이걸 안 하면 뒤에 뭘 해도 새어나갑니다. 모두의 창업 접수(9월 17일) 전에 끝내면 계획서에도 쓸 수 있습니다.</p>
+      <ul>
+        <li>공유할 때 링크가 같이 가게 하기</li>
+        <li>그 링크를 누르면 로그인 없이도 볼 수 있는 페이지 만들기 (그 아래 "나도 시작하기" 버튼)</li>
+        <li>링크 누르면 앱이 열리게 하기</li>
+        <li>누가 어디서 들어왔는지 기록 남기기</li>
+        <li>첫 화면에서 "뭘 남기고 싶으세요?" 물어보기</li>
+        <li>지금 쓰는 88명에게 "왜 쓰세요?" 한 문항 물어보기 — 두 종류 비율이 하루면 확실해집니다</li>
+        <li>플레이스토어 소개 문구·스크린샷 다시 쓰기</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="when">2단계 · 9월 말~10월 · 6주 · 0~50만원</div>
+      <h3>돈 안 쓰고 테스트</h3>
+      <p class="why">몸관리파가 정말 더 오래 남는지 확인하는 게 목표입니다. 각각 30명씩 모으면 답이 나옵니다.</p>
+      <ul>
+        <li>몸관리파: 당뇨·혈당·수술 회복 관련 네이버 카페에 광고 아닌 경험담 올리기, 블로그 글 3~5편</li>
+        <li>맛집·추억파: 다모앙 배너에 추적 링크 붙이기(지금까지 성과를 처음으로 알 수 있음), 인스타</li>
+        <li>지금 쓰는 88명이 첫 번째 통로입니다. 주 1회 "이번 주 21끼 남기셨어요" 알림으로 공유 유도</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="when">3단계 · 11~12월 · 8주 · 100~300만원</div>
+      <h3>광고 조금씩 써보기</h3>
+      <p class="why">한 번에 하나씩만 합니다. 혼자 개발하시니 여러 개를 동시에 열면 뭐가 효과였는지 알 수 없습니다.</p>
+      <ul>
+        <li>네이버 검색광고 → 구글 앱 광고 → 인스타·페북 순서로, 각 2~3주씩</li>
+        <li>판단 기준은 설치 수가 아니라 <strong>"제대로 쓰기 시작한 사람 한 명당 얼마 들었나"</strong>입니다. 8천원 이하면 계속, 1만5천원 넘으면 중단.</li>
+        <li>모두의 창업 지원금이 들어오면 광고비로 써도 되는지 먼저 확인해야 합니다</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <div class="when">4단계 · 내년 · 1~2천만원</div>
+      <h3>되는 것에 집중</h3>
+      <ul>
+        <li>3단계에서 효과 본 광고 한두 개만 키우기</li>
+        <li>초대 기능: 몸관리파는 가족·보호자 초대가 자연스럽습니다. 혈당 기록은 가족이 같이 보니까요.</li>
+        <li>보건소 당뇨 교실, 내과·영양 상담실과 제휴</li>
+        <li>아이폰 앱을 만들지 결정 (지금은 안드로이드만 있습니다)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>돌아오시면 확인해주실 것</h2>
+  <p class="sub">코드나 데이터로는 알 수 없어서 남겨둡니다.</p>
+  <ul class="check">
+    <li><span class="box"></span><span>다모앙 배너로 몇 명이 눌렀는지, 얼마 썼는지 — 광고 효과를 가늠할 유일한 기준입니다</span></li>
+    <li><span class="box"></span><span>플레이스토어 관리자 화면: 총 설치 수, 별점, 리뷰 수</span></li>
+    <li><span class="box"></span><span>모두의 창업 자격 확인 (사업자등록 하셨는지, 언제 하셨는지)</span></li>
+    <li><span class="box"></span><span>선정되면 — 지원금을 광고비로 써도 되는지 협약 전에 확인</span></li>
+    <li><span class="box"></span><span>알림 설정에 "광고 알림 받기" 동의가 따로 있는지 (법으로 나눠야 합니다)</span></li>
+    <li><span class="box"></span><span>마케팅 폴더의 엑셀 파일에 사용자 이름·이메일이 그대로 들어 있습니다 — 저장소에서 뺄지 결정 필요</span></li>
+    <li><span class="box"></span><span>광고에 쓸 수 있는 자기 돈 상한선</span></li>
+  </ul>
+  <p class="repo">자세한 내용과 계산 근거: <code>claude/user-growth-strategy-4ec5g0</code> 브랜치의 <code>docs/growth/</code> 폴더</p>
+</section>
+</div>
