@@ -90,6 +90,12 @@ const PAGE_VIEW_METRIC_DEFS = [
     { field: 'mealdang_analysis_detail_click', section: '밀당', label: '분석 상세 클릭' },
     { field: 'mealdang_analysis_cuisine_axis', section: '밀당', label: '분석 요리 종류 전환' },
     { field: 'tab_moment', section: '모먼트', label: '탭 방문' },
+    /**
+     * SNS 공유 — 「공유 시트로 넘김」은 대상 앱을 골랐다는 뜻까지다. 실제 게시 여부는
+     * OS 가 알려주지 않는다. 두 행의 차이가 「열어 보고 그만둔 양」이다.
+     */
+    { field: 'moment_sns_share_tap', section: '모먼트', label: 'SNS 공유 누름' },
+    { field: 'moment_sns_share_done', section: '모먼트', label: 'SNS 공유 시트로 넘김' },
     { field: 'tab_mealog', section: '밀로그', label: '탭 방문' },
     { field: 'promo_eat_together_click', section: '밀로그', label: '같이 먹자 배너 클릭' },
     { field: 'lounge_mealtalk', section: '라운지', label: '밀톡' },

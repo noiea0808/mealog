@@ -4105,6 +4105,9 @@ const USAGE_DAILY_METRIC_KEYS = new Set([
   'mealdang_analysis_detail_click',
   'mealdang_analysis_cuisine_axis',
   'tab_moment',
+  // 모먼트 옵션 시트 「SNS 공유」 — tap 대비 done 의 차이가 열어 보고 그만둔 양이다
+  'moment_sns_share_tap',
+  'moment_sns_share_done',
   'tab_mealog',
   'lounge_mealtalk',
   'lounge_board',
